@@ -86,6 +86,11 @@ access to the tools' documentation.
 
 [![iOS simulator](./docs/images/tools-demo.gif)](./docs/images/tools-demo.gif)
 
+## Links
+
+- [Twitter](https://twitter.com/sweetpad_dev)
+- [GitHub](https://github.com/sweetpad-dev/sweetpad)
+
 ## Changelog
 
 All notable changes to the "sweetpad" extension you can find in the [CHANGELOG.md](./CHANGELOG.md).
