@@ -1,0 +1,185 @@
+{
+  "name": "sweetpad",
+  "type": "commonjs",
+  "displayName": "SweetPad (alpha)",
+  "description": "Develop Swift/iOS projects in VS Code",
+  "version": "0.0.3",
+  "publisher": "sweetpad",
+  "icon": "images/logo.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sweetpad-dev/sweetpad.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Formatters",
+    "Linters",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:swift"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "speedpad-view",
+          "title": "SweetPad",
+          "icon": "images/logo-activity-bar.svg"
+        }
+      ]
+    },
+    "views": {
+      "speedpad-view": [
+        {
+          "id": "sweetpad.simulators.view",
+          "name": "Simulators",
+          "visibility": "visible"
+        },
+        {
+          "id": "sweetpad.tools.view",
+          "name": "tools",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "sweetpad.format",
+        "title": "SweetPad: Format",
+        "icon": "$(code)"
+      },
+      {
+        "command": "sweetpad.format.showLogs",
+        "title": "SweetPad: Show format logs",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "sweetpad.simualtors.refresh",
+        "title": "SweetPad: Refresh simulators list",
+        "icon": "$(extensions-refresh)"
+      },
+      {
+        "command": "sweetpad.simulators.openSimulator",
+        "title": "SweetPad: Open simulator",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "sweetpad.simulators.removeCache",
+        "title": "SweetPad: Remove cache",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "sweetpad.simulators.start",
+        "title": "SweetPad: Start simulator",
+        "icon": "$(debug-start)"
+      },
+      {
+        "command": "sweetpad.simulators.stop",
+        "title": "SweetPad: Stop simulator",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "sweetpad.tools.install",
+        "title": "SweetPad: Install tool",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "sweetpad.tools.documentation",
+        "title": "SweetPad: Open tool documentation",
+        "icon": "$(book)"
+      },
+      {
+        "command": "sweetpad.tools.refresh",
+        "title": "SweetPad: Refresh tools list",
+        "icon": "$(extensions-refresh)",
+        "enablement": "view == sweetpad.tools.view"
+      }
+    ],
+    "menus": {
+      "commandPalette": [],
+      "view/title": [
+        {
+          "command": "sweetpad.simualtors.refresh",
+          "when": "view == sweetpad.simulators.view",
+          "group": "navigation"
+        },
+        {
+          "command": "sweetpad.simulators.openSimulator",
+          "when": "view == sweetpad.simulators.view",
+          "group": "navigation"
+        },
+        {
+          "command": "sweetpad.simulators.removeCache",
+          "when": "view == sweetpad.simulators.view",
+          "group": "navigation"
+        },
+        {
+          "command": "sweetpad.tools.refresh",
+          "when": "view == sweetpad.tools.view",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "sweetpad.simulators.start",
+          "when": "view == sweetpad.simulators.view && viewItem == shutdown",
+          "group": "inline"
+        },
+        {
+          "command": "sweetpad.simulators.stop",
+          "when": "view == sweetpad.simulators.view && viewItem == booted",
+          "group": "inline"
+        },
+        {
+          "command": "sweetpad.tools.documentation",
+          "when": "view == sweetpad.tools.view",
+          "group": "inline@1"
+        },
+        {
+          "command": "sweetpad.tools.install",
+          "when": "view == sweetpad.tools.view && viewItem == notInstalled",
+          "group": "inline@2"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "SweetPad",
+      "properties": {
+        "sweetpad.format.path": {
+          "type": "string",
+          "default": "swift-format",
+          "description": "Command or path to swift-format executable."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "18.x",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "@vscode/test-cli": "^0.0.4",
+    "@vscode/test-electron": "^2.3.8",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "execa": "^8.0.1",
+    "vscode-languageclient": "^9.0.1"
+  }
+}
