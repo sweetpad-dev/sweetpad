@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.4] - 2024-02-03
+
+Fixed problem with panel icon not showing up
+
 ## [0.0.3] - 2024-01-28
 
 Public release of SweetPad:
