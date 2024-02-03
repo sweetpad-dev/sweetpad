@@ -1,16 +1,10 @@
 #!/usr/bin/env node
 
 // BSP server for apple sourcekit-lsp
-// Work in progress, not usable yet.
-
-import fs from "fs/promises";
+// Work in progress, not usable yet.-
+import path from "path";
 
 process.stdin.setEncoding("utf8");
-
-const OPTIONS = {
-  options: [],
-  workingDirectory: "",
-};
 
 /**
  * Write logs to stderr so they don't interfere with the protocol
@@ -71,20 +65,70 @@ class MessageProcessor {
 class Server {
   private processor = new MessageProcessor();
 
-  async getOptions(options: { filename: string }) {
-    const compileFile = "...";
-    const compileJSON: any[] = JSON.parse(await fs.readFile(compileFile, "utf8"));
+  private buildDirectory: string | null = null;
 
-    for (const item of compileJSON) {
-      if (!item.command) {
-        continue;
-      }
+  /**
+   * Get the build directory from xcodebuild
+   *
+   * TODO: provide workspace and scheme as parameters
+   */
+  async getBuildDirectory(): Promise<string> {
+    const { $ } = await import("execa");
+
+    if (this.buildDirectory) {
+      return this.buildDirectory;
     }
-    return OPTIONS;
+
+    const outputRawJson =
+      await $`xcodebuild -showBuildSettings -workspace terminal23.xcodeproj/project.xcworkspace -scheme terminal23  -json`;
+
+    const outputJson = JSON.parse(outputRawJson.stdout);
+
+    const buildPath = outputJson[0]["buildSettings"]["BUILD_DIR"];
+    // get ../..
+    return path.resolve(buildPath, "..", "..");
+  }
+
+  async getIndexStorePath(): Promise<string> {
+    const buildDirectory = await this.getBuildDirectory();
+    return path.join(buildDirectory, "Index.noindex/DataStore");
+  }
+
+  removeFileUriPrefix(uri: string) {
+    return uri.replace("file://", "");
+  }
+
+  async getOptions(options: { filename: string }) {
+    const buildDirectory = await this.getBuildDirectory();
+    const indexStorePath = path.join(buildDirectory, "Index.noindex/DataStore");
+
+    // get current directory
+    const currentDirectory = process.cwd();
+    logger.log(
+      "DEBUG!!!!" +
+        JSON.stringify(
+          {
+            indexStorePath,
+            currentDirectory,
+            filename: options.filename,
+          },
+          null,
+          2
+        )
+    );
+    return {
+      options: [
+        this.removeFileUriPrefix(options.filename),
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/",
+      ],
+      workingDirectory: currentDirectory,
+    };
   }
 
   async dispatchMessage(message: any): Promise<void> {
     if (message.method === "build/initialize") {
+      const indexStorePath = await this.getIndexStorePath();
       await this.send({
         jsonrpc: "2.0",
         id: message.id,
@@ -92,11 +136,11 @@ class Server {
           displayName: "xcode build server",
           version: "0.1",
           bspVersion: "2.0",
-          rootUri: "...",
+          rootUri: "file://" + process.cwd() + "/",
           capabilities: { languageIds: ["c", "cpp", "objective-c", "objective-cpp", "swift"] },
           data: {
-            indexDatabasePath: "...",
-            indexStorePath: "...",
+            indexDatabasePath: "/Users/hyzyla/Developer/terminal23/.index-store",
+            indexStorePath: indexStorePath,
           },
         },
       });
@@ -138,10 +182,13 @@ class Server {
         },
       });
     } else if (message.method === "textDocument/sourceKitOptions") {
+      const options = await this.getOptions({
+        filename: message.params.uri,
+      });
       await this.send({
         jsonrpc: "2.0",
         id: message.id,
-        result: OPTIONS,
+        result: options,
       });
     } else {
       await this.send({

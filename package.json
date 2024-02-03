@@ -20,7 +20,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:swift"
+    "onLanguage:swift",
+    "onCommand:workbench.action.tasks.runTask"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -36,13 +37,18 @@
     "views": {
       "speedpad-view": [
         {
-          "id": "sweetpad.simulators.view",
-          "name": "Simulators",
+          "id": "sweetpad.build.view",
+          "name": "Build",
           "visibility": "visible"
         },
         {
+          "id": "sweetpad.simulators.view",
+          "name": "Simulators",
+          "visibility": "collapsed"
+        },
+        {
           "id": "sweetpad.tools.view",
-          "name": "tools",
+          "name": "Tools",
           "visibility": "collapsed"
         }
       ]
@@ -98,6 +104,11 @@
         "title": "SweetPad: Refresh tools list",
         "icon": "$(extensions-refresh)",
         "enablement": "view == sweetpad.tools.view"
+      },
+      {
+        "command": "sweetpad.build.build",
+        "title": "SweetPad: Build",
+        "icon": "$(run)"
       }
     ],
     "menus": {
@@ -144,6 +155,11 @@
           "command": "sweetpad.tools.install",
           "when": "view == sweetpad.tools.view && viewItem == notInstalled",
           "group": "inline@2"
+        },
+        {
+          "command": "sweetpad.build.build",
+          "when": "view == sweetpad.build.view && viewItem == destination",
+          "group": "inline"
         }
       ]
     },
@@ -157,7 +173,12 @@
           "description": "Command or path to swift-format executable."
         }
       }
-    }
+    },
+    "taskDefinitions": [
+      {
+        "type": "sweetpad"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

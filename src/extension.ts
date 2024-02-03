@@ -4,6 +4,7 @@ import * as common from "./common/index.js";
 import * as simulators from "./simulators/index.js";
 import * as tools from "./tools/index.js";
 import * as format from "./format/index.js";
+import * as build from "./build/index.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // shortcut to push disposable to context.subscriptions
@@ -11,6 +12,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Preload exec function to avoid delay on first exec call
   void common.preloadExec();
+
+  // Build
+  // p(build.createTaskProvider());
+  p(build.createTaskProvider());
+  const buildTreeProvider = new build.BuildTreeProvider();
+  p(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
+  p(vscode.commands.registerCommand("sweetpad.build.build", build.buildScheme));
 
   // Format
   p(format.createFormatStatusItem());

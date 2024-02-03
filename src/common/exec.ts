@@ -1,4 +1,5 @@
 import { Timer } from "./timer.js";
+import * as vscode from "vscode";
 
 export type ExecaError = {
   command: string;
@@ -41,8 +42,13 @@ export async function preloadExec() {
 export async function exec(command: TemplateStringsArray, ...values: any[]): Promise<ExecResult> {
   const timer = new Timer();
   const execa = await getExeca();
+  const cwdPath = vscode.workspace.workspaceFolders?.[0].uri.path;
+  if (!cwdPath) {
+    throw new Error("No workspace folder found");
+  }
+
   try {
-    const output = await execa.$(command, ...values);
+    const output = await execa.$({ cwd: cwdPath })(command, ...values);
     return {
       stdout: output.stdout,
       time: timer.elapsed,
