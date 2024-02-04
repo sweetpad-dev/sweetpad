@@ -16,8 +16,8 @@ export function activate(context: vscode.ExtensionContext) {
   // Build
   // p(build.createTaskProvider());
   p(build.createTaskProvider());
-  const buildTreeProvider = new build.BuildTreeProvider();
-  p(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
+  p(build.registerBuildView(context));
+
   p(vscode.commands.registerCommand("sweetpad.build.build", build.buildScheme));
 
   // Format

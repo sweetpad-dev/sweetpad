@@ -13,30 +13,19 @@ interface ProjectConfig {
   };
 }
 
-export enum ItemType {
-  Project,
-  Configuration,
-  Scheme,
-  Target,
-  Destination,
-}
-
 export class BuildTreeItem extends vscode.TreeItem {
   private provider: BuildTreeProvider;
-  type: ItemType;
 
   constructor(options: {
     label: string;
     collapsibleState: vscode.TreeItemCollapsibleState;
     command?: vscode.Command;
     provider: BuildTreeProvider;
-    type: ItemType;
     icon: vscode.ThemeIcon;
   }) {
     super(options.label, options.collapsibleState);
     this.command = options.command;
     this.provider = options.provider;
-    this.type = options.type;
     this.iconPath = options.icon;
   }
 
@@ -45,40 +34,7 @@ export class BuildTreeItem extends vscode.TreeItem {
   }
 
   async build() {
-    // nothing to do here
-  }
-}
-
-export class SchemeTreeItem extends BuildTreeItem {
-  constructor(options: {
-    label: string;
-    collapsibleState: vscode.TreeItemCollapsibleState;
-    command?: vscode.Command;
-    provider: BuildTreeProvider;
-    icon: vscode.ThemeIcon;
-  }) {
-    super({ ...options, type: ItemType.Scheme });
-  }
-}
-
-export class DestinationTreeItem extends BuildTreeItem {
-  scheme: SchemeTreeItem;
-
-  constructor(options: {
-    label: string;
-    collapsibleState: vscode.TreeItemCollapsibleState;
-    command?: vscode.Command;
-    provider: BuildTreeProvider;
-    icon: vscode.ThemeIcon;
-    scheme: SchemeTreeItem;
-  }) {
-    super({ ...options, type: ItemType.Destination });
-    this.scheme = options.scheme;
-    this.contextValue = "destination";
-  }
-
-  async build() {
-    const buildCommand = `xcodebuild -scheme ${this.scheme.label} -destination 'generic/platform=iOS Simulator'`;
+    const buildCommand = `xcodebuild -scheme ${this.label} -destination 'generic/platform=iOS Simulator'`;
     const bootDeviceCommand = `xcrun simctl boot 'iPhone 15'`;
     const openSimulatorCommand = `open -a Simulator`;
     const runSimulatorCommand = `xcrun simctl launch booted 'dev.hyzyla.terminal23'`;
@@ -122,27 +78,12 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     if (!element) {
       return this.getSchemes();
     }
-    if (element.type === ItemType.Scheme) {
-      return this.getDestinations(element);
-    }
 
     return [];
   }
 
   getTreeItem(element: BuildTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
     return element;
-  }
-
-  getDestinations(scheme: SchemeTreeItem) {
-    return [
-      new DestinationTreeItem({
-        label: "iPhone 15",
-        collapsibleState: vscode.TreeItemCollapsibleState.None,
-        provider: this,
-        icon: new vscode.ThemeIcon("device-mobile"),
-        scheme,
-      }),
-    ];
   }
 
   async getSchemes(): Promise<BuildTreeItem[]> {
@@ -159,9 +100,8 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     for (const scheme of data.project.schemes) {
       const item = new BuildTreeItem({
         label: scheme,
-        collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+        collapsibleState: vscode.TreeItemCollapsibleState.None,
         provider: this,
-        type: ItemType.Scheme,
         icon: new vscode.ThemeIcon("symbol-method"),
       });
       items.push(item);
@@ -169,4 +109,9 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
 
     return items;
   }
+}
+
+export async function registerBuildView() {
+  const buildTreeProvider = new BuildTreeProvider();
+  return vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider);
 }
