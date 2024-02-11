@@ -1,38 +1,64 @@
 import * as vscode from "vscode";
 
-import * as common from "./common/index.js";
-import * as simulators from "./simulators/index.js";
-import * as tools from "./tools/index.js";
-import * as format from "./format/index.js";
+import { BuildTreeProvider } from "./build/tree.js";
+import { buildAndRunCommand, buildCommand, removeBundleDirCommand } from "./build/commands.js";
+import { preloadExec } from "./common/exec.js";
+import { formatCommand, showLogsCommand } from "./format/commands.js";
+import { createFormatStatusItem } from "./format/status.js";
+import { createFormatProvider } from "./format/provider.js";
+import {
+  openSimulatorCommand,
+  removeSimulatorCacheCommand,
+  startSimulatorCommand,
+  stopSimulatorCommand,
+} from "./simulators/commands.js";
+import { SimulatorsTreeProvider } from "./simulators/tree.js";
+import { ToolTreeProvider } from "./tools/tree.js";
+import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // shortcut to push disposable to context.subscriptions
   const p = (disposable: vscode.Disposable) => context.subscriptions.push(disposable);
 
   // Preload exec function to avoid delay on first exec call
-  void common.preloadExec();
+  void preloadExec();
 
+  function registerCommand(command: string, callback: (context: vscode.ExtensionContext, ...args: any[]) => void) {
+    return vscode.commands.registerCommand(command, (...args: any[]) => callback(context, ...args));
+  }
+
+  // Trees 🎄
+  const simulatorsTreeProvider = new SimulatorsTreeProvider();
+  const buildTreeProvider = new BuildTreeProvider({
+    simulatorsTree: simulatorsTreeProvider,
+  });
+
+  // Build
+  p(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
+  p(registerCommand("sweetpad.build.refresh", () => buildTreeProvider.refresh()));
+  p(registerCommand("sweetpad.build.buildAndRun", buildAndRunCommand));
+  p(registerCommand("sweetpad.build.build", buildCommand));
+  p(registerCommand("sweetpad.build.removeBundleDir", removeBundleDirCommand));
   // Format
-  p(format.createFormatStatusItem());
-  p(format.createFormatProvider());
-  p(vscode.commands.registerCommand("sweetpad.format", format.formatCommand));
-  p(vscode.commands.registerCommand("sweetpad.format.showLogs", format.showLogsCommand));
+  p(createFormatStatusItem());
+  p(createFormatProvider());
+  p(registerCommand("sweetpad.format.run", formatCommand));
+  p(registerCommand("sweetpad.format.showLogs", showLogsCommand));
 
   // Simulators
-  const simulatorsTreeProvider = new simulators.SimulatorsTreeProvider();
   p(vscode.window.registerTreeDataProvider("sweetpad.simulators.view", simulatorsTreeProvider));
-  p(vscode.commands.registerCommand("sweetpad.simulators.refresh", () => simulatorsTreeProvider.refresh()));
-  p(vscode.commands.registerCommand("sweetpad.simulators.openSimulator", simulators.openSimulatorCommand));
-  p(vscode.commands.registerCommand("sweetpad.simulators.removeCache", simulators.removeSimulatorCacheCommand));
-  p(vscode.commands.registerCommand("sweetpad.simulators.start", simulators.startSimulatorCommand));
-  p(vscode.commands.registerCommand("sweetpad.simulators.stop", simulators.stopSimulatorCommand));
+  p(registerCommand("sweetpad.simulators.refresh", () => simulatorsTreeProvider.refresh()));
+  p(registerCommand("sweetpad.simulators.openSimulator", openSimulatorCommand));
+  p(registerCommand("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
+  p(registerCommand("sweetpad.simulators.start", startSimulatorCommand));
+  p(registerCommand("sweetpad.simulators.stop", stopSimulatorCommand));
 
   // Tools
-  const toolsTreeProvider = new tools.ToolTreeProvider();
+  const toolsTreeProvider = new ToolTreeProvider();
   p(vscode.window.registerTreeDataProvider("sweetpad.tools.view", toolsTreeProvider));
-  p(vscode.commands.registerCommand("sweetpad.tools.install", tools.installToolCommand));
-  p(vscode.commands.registerCommand("sweetpad.tools.refresh", () => toolsTreeProvider.refresh()));
-  p(vscode.commands.registerCommand("sweetpad.tools.documentation", tools.openDocumentationCommand));
+  p(registerCommand("sweetpad.tools.install", installToolCommand));
+  p(registerCommand("sweetpad.tools.refresh", () => toolsTreeProvider.refresh()));
+  p(registerCommand("sweetpad.tools.documentation", openDocumentationCommand));
 }
 
 export function deactivate() {}

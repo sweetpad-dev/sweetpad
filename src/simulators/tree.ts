@@ -1,16 +1,6 @@
 import * as vscode from "vscode";
 import { exec } from "../common/exec.js";
-
-export type SimulatorOutput = {
-  dataPath: string;
-  dataPathSize: number;
-  logPath: string;
-  udid: string;
-  isAvailable: boolean;
-  deviceTypeIdentifier: string;
-  state: string;
-  name: string;
-};
+import { getSimulators } from "../common/cli/scripts.js";
 
 export class SimulatorTreeItem extends vscode.TreeItem {
   udid: string;
@@ -67,9 +57,8 @@ export class SimulatorsTreeProvider implements vscode.TreeDataProvider<Simulator
   }
 
   async getSimulators(): Promise<SimulatorTreeItem[]> {
-    const simulatorsRaw = await exec`xcrun simctl list --json devices`;
-    const simulators = JSON.parse(simulatorsRaw.stdout);
-    const devices = simulators.devices as { [key: string]: SimulatorOutput[] };
+    const output = await getSimulators();
+    const devices = output.devices;
     return Object.entries(devices)
       .map(([key, value]) => {
         return value

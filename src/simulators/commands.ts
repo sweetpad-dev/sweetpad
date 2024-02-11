@@ -4,7 +4,7 @@ import { SimulatorTreeItem } from "./tree.js";
 /**
  * Command to start simulator from the simulator tree view in the sidebar
  */
-export async function startSimulatorCommand(item: SimulatorTreeItem) {
+export async function startSimulatorCommand(context: vscode.ExtensionContext, item: SimulatorTreeItem) {
   const simulatorName = item.udid;
 
   const task = new vscode.Task(
@@ -27,7 +27,7 @@ export async function startSimulatorCommand(item: SimulatorTreeItem) {
 /**
  * Command to stop simulator from the simulator tree view in the sidebar
  */
-export async function stopSimulatorCommand(item: SimulatorTreeItem) {
+export async function stopSimulatorCommand(context: vscode.ExtensionContext, item: SimulatorTreeItem) {
   const simulatorName = item.udid;
 
   const task = new vscode.Task(

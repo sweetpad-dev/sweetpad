@@ -36,9 +36,14 @@
     "views": {
       "speedpad-view": [
         {
+          "id": "sweetpad.build.view",
+          "name": "Build",
+          "visibility": "visible"
+        },
+        {
           "id": "sweetpad.simulators.view",
           "name": "Simulators",
-          "visibility": "visible"
+          "visibility": "collapsed"
         },
         {
           "id": "sweetpad.tools.view",
@@ -49,7 +54,7 @@
     },
     "commands": [
       {
-        "command": "sweetpad.format",
+        "command": "sweetpad.format.run",
         "title": "SweetPad: Format",
         "icon": "$(code)"
       },
@@ -59,7 +64,22 @@
         "icon": "$(list-tree)"
       },
       {
-        "command": "sweetpad.simualtors.refresh",
+        "command": "sweetpad.build.buildAndRun",
+        "title": "SweetPad: Build and run",
+        "icon": "$(play)"
+      },
+      {
+        "command": "sweetpad.build.build",
+        "title": "SweetPad: Build",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "sweetpad.build.removeBundleDir",
+        "title": "SweetPad: Remove bundle directory",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "sweetpad.simulators.refresh",
         "title": "SweetPad: Refresh simulators list",
         "icon": "$(extensions-refresh)"
       },
@@ -104,7 +124,12 @@
       "commandPalette": [],
       "view/title": [
         {
-          "command": "sweetpad.simualtors.refresh",
+          "command": "sweetpad.build.removeBundleDir",
+          "when": "view == sweetpad.build.view",
+          "group": "navigation"
+        },
+        {
+          "command": "sweetpad.simulators.refresh",
           "when": "view == sweetpad.simulators.view",
           "group": "navigation"
         },
@@ -125,6 +150,16 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "sweetpad.build.buildAndRun",
+          "when": "view == sweetpad.build.view",
+          "group": "inline@2"
+        },
+        {
+          "command": "sweetpad.build.build",
+          "when": "view == sweetpad.build.view",
+          "group": "inline@1"
+        },
         {
           "command": "sweetpad.simulators.start",
           "when": "view == sweetpad.simulators.view && viewItem == shutdown",

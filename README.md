@@ -10,9 +10,9 @@ tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **sour
 - 💅🏼 Format Swift files using **swift-format**.
 - 📱 Run and stop the iOS simulator/emulator.
 - 🍺 Install essential iOS tools using **homebrew**.
+- 🧱 Build project using **xcodebuild** (simulator only)
 - 🧠 **WIP**: Integrate Xcode with **sourcekit-lsp** for autocomplete functionality.
 - 👩‍🌾 **WIP**: Lint Swift files using **swiftlint**.
-- 🧱 **WIP**: Build project using **xcodebuild**.
 - 🧪 **WIP**: Run tests with **swift test**.
 - 💡 If you have any ideas, please open an issue or start a discussion on the
   [SweetPad](https://github.com/sweetpad-dev/sweetpad) GitHub repository.
@@ -53,6 +53,40 @@ Then, open your Swift file and press `⌘ + S` to format it 💅🏼
 > 🙈 In case of errors, open the Command Palette with `⌘ + P` and run `> SweetPad: Show format logs`. This command will
 > open an "Output" panel displaying logs from swift-format. If you encounter issues, grab the logs and open an issue on
 > the SweetPad GitHub repository.
+
+## Build & Run app on Simulator
+
+You can build and run your iOS app directly on the simulator from the VSCode sidebar. This functionality leverages
+`xcodebuild`, a component of the Xcode command-line tools.
+
+[![iOS simulator](./docs/images/build-demo.gif)](./docs/images/build-demo.gif)
+
+To build and run your app on the simulator, first open the folder containing your Xcode project. Then, open the SweetPad
+tools panel on the left side of VSCode, navigate to the **"Build"** section, and click the **"Build & Run"** button next
+to the schema name ▶️. The extension will prompt you to select a simulator, and then it will build and run your app on
+the chosen simulator.
+
+For optimal results, I highly recommend installing `xcbeautify` as well:
+
+```bash
+brew install xcbeautify
+```
+
+Alternatively, you can use the **"Tools"** section in the SweetPad panel to install `xcbeautify` and other essential
+iOS.
+
+### Main parts of the "Build" section:
+
+[![iOS simulator](./docs/images/build-preview.png)](./docs/images/build-preview.png)
+
+1. Build & Run: Click the ▶️ button next to the schema name in the "Build" panel to build and run the app on the
+   simulator.
+2. Select Simulator: After clicking the "Build & Run" button, the extension will prompt you to select a simulator.
+3. Build Logs: You can view the build logs in the "Terminal" panel, which will automatically open after you click the
+   "Build & Run" button.
+
+> ⚠️ This feature is currently in alpha and may not perform as expected. Should you encounter any issues, please report
+> them by opening an issue on the SweetPad GitHub repository.
 
 ## iOS Simulator/Emulator
 

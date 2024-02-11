@@ -59,11 +59,16 @@ export async function exec(command: TemplateStringsArray, ...values: any[]): Pro
 /**
  * Execute already prepared command and return the result object. Should never throw an error.
  */
-export async function execPrepared(command: string): Promise<ExecResult> {
+export async function execPrepared(
+  command: string,
+  options?: {
+    cwd?: string;
+  }
+): Promise<ExecResult> {
   const timer = new Timer();
   const execa = await getExeca();
   try {
-    const output = await execa.execaCommand(command);
+    const output = await execa.execaCommand(command, options);
     return {
       stdout: output.stdout,
       time: timer.elapsed,
