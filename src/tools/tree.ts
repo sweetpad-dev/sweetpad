@@ -64,6 +64,20 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
         installCommand: "brew install swiftlint",
         documentation: "https://github.com/realm/SwiftLint",
       },
+      {
+        id: "xcbeautify",
+        label: "xcbeautify",
+        checkCommand: "xcbeautify --version",
+        installCommand: "brew install xcbeautify",
+        documentation: "https://github.com/cpisciotta/xcbeautify",
+      },
+      {
+        id: "xcode-build-server",
+        label: "Xcode Build Server",
+        checkCommand: "xcode-build-server --help",
+        installCommand: "brew install xcode-build-server",
+        documentation: "https://github.com/SolaWing/xcode-build-server",
+      },
     ];
     const results = await Promise.all(
       items.map(async (item) => {

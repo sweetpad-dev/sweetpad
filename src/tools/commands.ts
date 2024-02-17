@@ -4,7 +4,7 @@ import { ToolTreeItem } from "./tree.js";
 /**
  * Comamnd to install tool from the tool tree view in the sidebar using brew
  */
-export async function installToolCommand(item: ToolTreeItem) {
+export async function installToolCommand(context: vscode.ExtensionContext, item: ToolTreeItem) {
   const task = new vscode.Task(
     { type: "shell" },
     vscode.TaskScope.Workspace,
@@ -25,6 +25,6 @@ export async function installToolCommand(item: ToolTreeItem) {
 /**
  * Command to open documentation in the browser from the tool tree view in the sidebar
  */
-export async function openDocumentationCommand(item: ToolTreeItem) {
+export async function openDocumentationCommand(context: vscode.ExtensionContext, item: ToolTreeItem) {
   await vscode.env.openExternal(vscode.Uri.parse(item.documentation));
 }
