@@ -1,19 +1,14 @@
 import path from "path";
-import { runShellTask } from "../common/tasks";
-import { BuildTreeItem } from "./tree";
 import * as vscode from "vscode";
 import { showQuickPick } from "../common/quick-pick";
 
-import {
-  SimulatorOutput,
-  createDirectory,
-  getBuildSettings,
-  getIsXcbeautifyInstalled,
-  getSchemes,
-  getSimulators,
-  removeDirectory,
-} from "../common/cli/scripts";
+import { SimulatorOutput, createDirectory, getSchemes, getSimulators, removeDirectory } from "../common/cli/scripts";
+import { CommandExecution } from "../common/commands";
+import { ExtensionError } from "../common/errors";
 
+/**
+ * Ask user to select simulator to run on using quick pick
+ */
 export async function askSimulatorToRunOn(): Promise<SimulatorOutput> {
   const output = await getSimulators();
 
@@ -42,10 +37,7 @@ export async function askSimulatorToRunOn(): Promise<SimulatorOutput> {
  * Ask user to select scheme to build
  */
 export async function askScheme(options?: { title?: string }): Promise<string> {
-  const cwd = await getWorkspacePath();
-  const schemes = await getSchemes({
-    cwd: cwd,
-  });
+  const schemes = await getSchemes();
 
   const scheme = await showQuickPick({
     title: options?.title ?? "Select scheme to build",
@@ -65,23 +57,32 @@ export async function askScheme(options?: { title?: string }): Promise<string> {
 /**
  * It's path to current opened workspace
  */
-export async function getWorkspacePath(): Promise<string> {
+export function getWorkspacePath(): string {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
   if (!workspaceFolder) {
-    throw new Error("No workspace folder found");
+    throw new ExtensionError("No workspace folder found");
   }
   return workspaceFolder;
 }
 
-export async function prepareBundleDir(context: vscode.ExtensionContext, schema: string): Promise<string> {
-  const storagePath = context.storageUri?.fsPath;
+/**
+ * Prepare storage path for the extension. It's a folder where we store all intermediate files
+ */
+export async function prepareStoragePath(execution: CommandExecution): Promise<string> {
+  const storagePath = execution.context.storageUri?.fsPath;
   if (!storagePath) {
-    vscode.window.showErrorMessage("No storage path found");
-    throw new Error("No storage path found");
+    throw new ExtensionError("No storage path found");
   }
-
   // Creatre folder at storagePath, because vscode doesn't create it automatically
   await createDirectory(storagePath);
+  return storagePath;
+}
+
+/**
+ * Prepare bundle directory for the given schema in the storage path
+ */
+export async function prepareBundleDir(execution: CommandExecution, schema: string): Promise<string> {
+  const storagePath = await prepareStoragePath(execution);
 
   const bundleDir = path.join(storagePath, "bundle", schema);
 

@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { execPrepared } from "../common/exec";
 import { SimulatorsTreeProvider } from "../simulators/tree";
 import { getSchemes } from "../common/cli/scripts";
 
@@ -60,11 +59,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   }
 
   async getSchemes(): Promise<BuildTreeItem[]> {
-    const cwd = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
-    if (!cwd) {
-      return [];
-    }
-    const schemes = await getSchemes({ cwd: cwd });
+    const schemes = await getSchemes();
 
     // return list of schemes
     return schemes.map(

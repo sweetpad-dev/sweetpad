@@ -1,11 +1,12 @@
 import * as vscode from "vscode";
 import { exec } from "../common/exec.js";
 import { formatLogger } from "./logger.js";
+import { Timer } from "../common/timer.js";
 
 /**
  * Get path to swift-format executable from user settings.
  */
-function getSwiftFormatPath() {
+function getSwiftFormatPath(): string {
   const config = vscode.workspace.getConfiguration("sweetpad");
   return config.get("format.path") ?? "swift-format";
 }
@@ -20,20 +21,26 @@ export async function formatDocument(document: vscode.TextDocument) {
   const executable = getSwiftFormatPath();
 
   const filename = document.fileName;
-  const { error, time } = await exec`${executable} --in-place ${filename}`;
 
-  if (error) {
+  const timer = new Timer();
+  try {
+    await exec({
+      command: executable,
+      args: ["--in-place", filename],
+    });
+  } catch (error) {
     formatLogger.error("Failed to format code", {
       executable: executable,
       filename: filename,
-      execTime: `${time}ms`,
+      execTime: `${timer.elapsed}ms`,
       error: error,
     });
     return;
   }
+
   formatLogger.log("Code successfully formatted", {
     executable: executable,
     filename: filename,
-    execTime: `${time}ms`,
+    execTime: `${timer.elapsed}ms`,
   });
 }

@@ -61,3 +61,5 @@ export class Logger {
     this.outputChannel.show();
   }
 }
+
+export const commonLogger = new Logger({ name: "Common" });

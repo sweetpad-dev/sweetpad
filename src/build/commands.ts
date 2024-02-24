@@ -13,20 +13,18 @@ import {
   removeDirectory,
 } from "../common/cli/scripts";
 import { askScheme, askSimulatorToRunOn, getWorkspacePath, prepareBundleDir } from "./utils";
+import { CommandExecution } from "../common/commands";
+import { ExtensionError } from "../common/errors";
 
 async function runOnDevice(options: { scheme: string; simulator: SimulatorOutput; item: BuildTreeItem }) {
-  const workspaceFolder = await getWorkspacePath();
-
   const buildSettings = await getBuildSettings({
     scheme: options.scheme,
-    cwd: workspaceFolder,
     configuration: "Debug", // todo: make it configurable
     sdk: "iphonesimulator", // todo: make it configurable
   });
   const settings = buildSettings[0]?.buildSettings;
   if (!settings) {
-    vscode.window.showErrorMessage("Error fetching build settings");
-    return;
+    throw new ExtensionError("Error fetching build settings");
   }
 
   const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
@@ -34,19 +32,16 @@ async function runOnDevice(options: { scheme: string; simulator: SimulatorOutput
   const targetName = settings.TARGET_NAME;
   const targetPath = path.join(targetBuildDir, `${targetName}.app`);
 
-  let response;
   const simulator = options.simulator;
 
   // Boot device
   if (simulator.state !== "Booted") {
-    response = await runShellTask({
+    await runShellTask({
       name: "Run",
       command: "xcrun",
       args: ["simctl", "boot", simulator.udid],
+      error: "Error booting simulator",
     });
-    if (response.type === "error") {
-      vscode.window.showErrorMessage("Error running simulator");
-    }
 
     // Refresh list of simulators after we start new simulator
     // TODO: make it less hacky, but let's keep it for now
@@ -54,35 +49,35 @@ async function runOnDevice(options: { scheme: string; simulator: SimulatorOutput
   }
 
   // Install app
-  response = await runShellTask({
+  await runShellTask({
     name: "Install",
     command: "xcrun",
     args: ["simctl", "install", simulator.udid, targetPath],
+    error: "Error installing app",
   });
 
   // Open simulatorcte
-  response = await runShellTask({
+  await runShellTask({
     name: "Open Simulator",
     command: "open",
     args: ["-a", "Simulator"],
+    error: "Could not open simulator app",
   });
-  if (response.type === "error") {
-    vscode.window.showErrorMessage("Error opening simulator");
-  }
 
   // Run app
-  response = await runShellTask({
+  await runShellTask({
     name: "Run",
     command: "xcrun",
     args: ["simctl", "launch", simulator.udid, bundleIdentifier, "--console-pty"],
+    error: "Error running app",
   });
 }
 
-async function buildApp(options: { scheme: string; context: vscode.ExtensionContext }) {
+async function buildApp(options: { scheme: string; execution: CommandExecution }) {
   const isXcbeautifyInstalled = await getIsXcbeautifyInstalled();
-  const bundleDir = await prepareBundleDir(options.context, options.scheme);
+  const bundleDir = await prepareBundleDir(options.execution, options.scheme);
 
-  let response = await runShellTask({
+  await runShellTask({
     name: "Build",
     command: "xcodebuild",
     args: [
@@ -96,30 +91,28 @@ async function buildApp(options: { scheme: string; context: vscode.ExtensionCont
       "build",
       ...(isXcbeautifyInstalled ? ["|", "xcbeautify"] : []),
     ],
+    error: "Error building project",
   });
-  if (response.type === "error") {
-    vscode.window.showErrorMessage("Error building project");
-  }
 
   // Restart SourceKit Language Server
   await vscode.commands.executeCommand("swift.restartLSPServer");
 }
 
-export async function buildCommand(context: vscode.ExtensionContext, item: BuildTreeItem) {
+export async function buildCommand(execution: CommandExecution, item: BuildTreeItem) {
   await buildApp({
     scheme: item.scheme,
-    context: context,
+    execution: execution,
   });
 }
 
-export async function buildAndRunCommand(context: vscode.ExtensionContext, item: BuildTreeItem) {
+export async function buildAndRunCommand(execution: CommandExecution, item: BuildTreeItem) {
   // Ask simulator to run on before we start building to not distract user
   // during build command execution
   const simulator = await askSimulatorToRunOn();
 
   await buildApp({
     scheme: item.scheme,
-    context: context,
+    execution: execution,
   });
 
   await runOnDevice({
@@ -129,20 +122,19 @@ export async function buildAndRunCommand(context: vscode.ExtensionContext, item:
   });
 }
 
-export async function removeBundleDirCommand(context: vscode.ExtensionContext) {
-  const workspaceFolder = await getWorkspacePath();
+export async function removeBundleDirCommand(execution: CommandExecution) {
+  const workspaceFolder = getWorkspacePath();
   const bundleDir = path.join(workspaceFolder, "build");
 
   await removeDirectory(bundleDir);
   vscode.window.showInformationMessage("Bundle directory removed");
 }
 
-export async function generateBuildServerConfigCommand(context: vscode.ExtensionContext) {
-  const workspacePath = await getWorkspacePath();
+export async function generateBuildServerConfigCommand(execution: CommandExecution) {
+  const workspacePath = getWorkspacePath();
   const isServerInstalled = await getIsXcodeBuildServerInstalled();
   if (!isServerInstalled) {
-    vscode.window.showErrorMessage("xcode-build-server is not installed");
-    return;
+    throw new ExtensionError("xcode-build-server is not installed");
   }
 
   const projPath = await getXcodeProjectPath({
@@ -155,7 +147,6 @@ export async function generateBuildServerConfigCommand(context: vscode.Extension
   await generateBuildServerConfig({
     projectPath: projPath,
     scheme: scheme,
-    cwd: workspacePath,
   });
 
   vscode.window.showInformationMessage(`buildServer.json generated in workspace root`);

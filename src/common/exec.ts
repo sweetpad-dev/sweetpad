@@ -1,4 +1,5 @@
-import { Timer } from "./timer.js";
+import { getWorkspacePath } from "../build/utils.js";
+import { ExecBaseError, ExecErrror } from "./errors.js";
 
 export type ExecaError = {
   command: string;
@@ -17,12 +18,6 @@ export type ExecaError = {
   originalMessage: string;
 };
 
-type ExecResult = {
-  stdout: string;
-  error?: ExecaError;
-  time: number;
-};
-
 /**
  * Execa is ESM only, so we need to import it dynamically, because we are using CJS and
  * can't move to ESM yet due to vscode limitations
@@ -35,49 +30,37 @@ export async function preloadExec() {
   await getExeca();
 }
 
-/**
- * Tagged template literal that executes a command and returns the result object. Should never throw an error.
- */
-export async function exec(command: TemplateStringsArray, ...values: any[]): Promise<ExecResult> {
-  const timer = new Timer();
+export async function exec(options: { command: string; args: string[]; cwd?: string }): Promise<string> {
   const execa = await getExeca();
-  try {
-    const output = await execa.$(command, ...values);
-    return {
-      stdout: output.stdout,
-      time: timer.elapsed,
-    };
-  } catch (e: any) {
-    return {
-      stdout: "",
-      error: e,
-      time: timer.elapsed,
-    };
-  }
-}
+  const cwd = options.cwd ?? getWorkspacePath();
 
-/**
- * Execute already prepared command and return the result object. Should never throw an error.
- */
-export async function execPrepared(
-  command: string,
-  options?: {
-    cwd?: string;
-  }
-): Promise<ExecResult> {
-  const timer = new Timer();
-  const execa = await getExeca();
+  let result;
   try {
-    const output = await execa.execaCommand(command, options);
-    return {
-      stdout: output.stdout,
-      time: timer.elapsed,
-    };
+    result = await execa.execa(options.command, options.args, {
+      cwd: cwd,
+    });
   } catch (e: any) {
-    return {
-      stdout: "",
-      error: e,
-      time: timer.elapsed,
-    };
+    const errorMessage: string = e?.shortMessage ?? e?.message ?? "[unknown error]";
+    const stderr: string | undefined = e?.stderr;
+    throw new ExecBaseError(`Error executing "${options.command}" command`, {
+      errorMessage: errorMessage,
+      stderr: stderr,
+      command: options.command,
+      args: options.args,
+      cwd: cwd,
+    });
   }
+
+  if (result.stderr) {
+    throw new ExecErrror(`Error executing "${options.command}" command`, {
+      stderr: result.stderr,
+      command: options.command,
+      args: options.args,
+      cwd: cwd,
+      exitCode: result.exitCode,
+      errorMessage: "[stderr not empty]",
+    });
+  }
+
+  return result.stdout;
 }

@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { exec } from "../common/exec.js";
 import { getSimulators } from "../common/cli/scripts.js";
 
 export class SimulatorTreeItem extends vscode.TreeItem {

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import { execPrepared } from "../common/exec.js";
+import { exec } from "../common/exec.js";
+import { TOOLS } from "./constants.js";
 
 type EventData = ToolTreeItem | undefined | null | void;
 
@@ -29,73 +30,32 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
   }
 
   async getTools(): Promise<ToolTreeItem[]> {
-    const items: {
-      id: string;
-      label: string;
-      checkCommand: string;
-      installCommand: string;
-      documentation: string;
-    }[] = [
-      {
-        id: "brew",
-        label: "Homebrew",
-        checkCommand: "brew --version",
-        installCommand: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`,
-        documentation: "https://brew.sh/",
-      },
-      {
-        id: "swift-format",
-        label: "swift-format",
-        checkCommand: "swift-format --version",
-        installCommand: "brew install swift-format",
-        documentation: "https://github.com/apple/swift-format",
-      },
-      {
-        id: "xcodegen",
-        label: "XcodeGen",
-        checkCommand: "xcodegen --version",
-        installCommand: "brew install xcodegen",
-        documentation: "https://github.com/yonaskolb/XcodeGen",
-      },
-      {
-        id: "swiftlint",
-        label: "SwiftLint",
-        checkCommand: "swiftlint --version",
-        installCommand: "brew install swiftlint",
-        documentation: "https://github.com/realm/SwiftLint",
-      },
-      {
-        id: "xcbeautify",
-        label: "xcbeautify",
-        checkCommand: "xcbeautify --version",
-        installCommand: "brew install xcbeautify",
-        documentation: "https://github.com/cpisciotta/xcbeautify",
-      },
-      {
-        id: "xcode-build-server",
-        label: "Xcode Build Server",
-        checkCommand: "xcode-build-server --help",
-        installCommand: "brew install xcode-build-server",
-        documentation: "https://github.com/SolaWing/xcode-build-server",
-      },
-    ];
     const results = await Promise.all(
-      items.map(async (item) => {
-        const { stdout, error } = await execPrepared(item.checkCommand);
-
-        return {
-          ...item,
-          stdout,
-          stderr: error?.message,
-        };
+      TOOLS.map(async (item) => {
+        try {
+          const stdout = await exec({
+            command: item.check.command,
+            args: item.check.args,
+          });
+          return {
+            ...item,
+            isInstalled: true,
+          };
+        } catch (error) {
+          return {
+            ...item,
+            isInstalled: false,
+          };
+        }
       })
     );
     return results.map((item) => {
       return new ToolTreeItem({
         label: item.label,
         collapsibleState: vscode.TreeItemCollapsibleState.None,
-        isInstalled: !item.stderr,
-        installCommand: item.installCommand,
+        isInstalled: item.isInstalled,
+        commandName: item.install.command,
+        commandArgs: item.install.args,
         documentation: item.documentation,
         provider: this,
       });
@@ -105,7 +65,8 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
 
 export class ToolTreeItem extends vscode.TreeItem {
   private provider: ToolTreeProvider;
-  installCommand: string;
+  commandName: string;
+  commandArgs: string[];
   documentation: string;
 
   constructor(options: {
@@ -113,7 +74,8 @@ export class ToolTreeItem extends vscode.TreeItem {
     collapsibleState: vscode.TreeItemCollapsibleState;
     isInstalled: boolean;
     documentation: string;
-    installCommand: string;
+    commandName: string;
+    commandArgs: string[];
     provider: ToolTreeProvider;
   }) {
     super(options.label, options.collapsibleState);
@@ -121,7 +83,9 @@ export class ToolTreeItem extends vscode.TreeItem {
     this.provider = options.provider;
     this.contextValue = options.isInstalled ? "installed" : "notInstalled";
     this.documentation = options.documentation;
-    this.installCommand = options.installCommand;
+    this.commandName = options.commandName;
+    this.commandArgs = options.commandArgs;
+
     if (options.isInstalled) {
       this.iconPath = new vscode.ThemeIcon("check");
     } else {

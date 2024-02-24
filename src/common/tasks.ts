@@ -1,15 +1,5 @@
-import { exec } from "child_process";
 import * as vscode from "vscode";
-
-type Response =
-  | {
-      type: "success";
-      stdout: string;
-    }
-  | {
-      type: "error";
-      error: string;
-    };
+import { TaskError } from "./errors";
 
 /**
  * Runs a shell task asynchronously.
@@ -21,7 +11,8 @@ export async function runShellTask(options: {
   source?: string;
   command: string;
   args: string[];
-}): Promise<Response> {
+  error?: string;
+}): Promise<void> {
   const task = new vscode.Task(
     { type: "shell" },
     vscode.TaskScope.Workspace,
@@ -37,9 +28,17 @@ export async function runShellTask(options: {
       if (e.execution === execution) {
         disposable.dispose();
         if (e.exitCode !== 0) {
-          reject({ type: "error", error: `Task failed with exit code ${e.exitCode}` });
+          const message = options.error ?? `Error running task '${options.name}'`;
+          const error = new TaskError(message, {
+            name: options.name,
+            soruce: options.source,
+            command: options.command,
+            args: options.args,
+            errorCode: e.exitCode,
+          });
+          reject(error);
         } else {
-          resolve({ type: "success", stdout: "" });
+          resolve();
         }
       }
     });

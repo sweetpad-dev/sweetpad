@@ -20,6 +20,7 @@ import {
 import { SimulatorsTreeProvider } from "./simulators/tree.js";
 import { ToolTreeProvider } from "./tools/tree.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
+import { CommandExecution } from "./common/commands.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // shortcut to push disposable to context.subscriptions
@@ -28,8 +29,11 @@ export function activate(context: vscode.ExtensionContext) {
   // Preload exec function to avoid delay on first exec call
   void preloadExec();
 
-  function registerCommand(command: string, callback: (context: vscode.ExtensionContext, ...args: any[]) => void) {
-    return vscode.commands.registerCommand(command, (...args: any[]) => callback(context, ...args));
+  function registerCommand(command: string, callback: (context: CommandExecution, ...args: any[]) => Promise<void>) {
+    return vscode.commands.registerCommand(command, (...args: any[]) => {
+      const execution = new CommandExecution(command, callback, context);
+      return execution.run(...args);
+    });
   }
 
   // Trees 🎄
@@ -40,7 +44,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Build
   p(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
-  p(registerCommand("sweetpad.build.refresh", () => buildTreeProvider.refresh()));
+  p(registerCommand("sweetpad.build.refresh", async () => buildTreeProvider.refresh()));
   p(registerCommand("sweetpad.build.buildAndRun", buildAndRunCommand));
   p(registerCommand("sweetpad.build.build", buildCommand));
   p(registerCommand("sweetpad.build.removeBundleDir", removeBundleDirCommand));
@@ -53,7 +57,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Simulators
   p(vscode.window.registerTreeDataProvider("sweetpad.simulators.view", simulatorsTreeProvider));
-  p(registerCommand("sweetpad.simulators.refresh", () => simulatorsTreeProvider.refresh()));
+  p(registerCommand("sweetpad.simulators.refresh", async () => simulatorsTreeProvider.refresh()));
   p(registerCommand("sweetpad.simulators.openSimulator", openSimulatorCommand));
   p(registerCommand("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
   p(registerCommand("sweetpad.simulators.start", startSimulatorCommand));
@@ -63,7 +67,7 @@ export function activate(context: vscode.ExtensionContext) {
   const toolsTreeProvider = new ToolTreeProvider();
   p(vscode.window.registerTreeDataProvider("sweetpad.tools.view", toolsTreeProvider));
   p(registerCommand("sweetpad.tools.install", installToolCommand));
-  p(registerCommand("sweetpad.tools.refresh", () => toolsTreeProvider.refresh()));
+  p(registerCommand("sweetpad.tools.refresh", async () => toolsTreeProvider.refresh()));
   p(registerCommand("sweetpad.tools.documentation", openDocumentationCommand));
 }
 
