@@ -1,17 +1,19 @@
-# SweetPad (alpha)
+# SweetPad (alpha) <img valign="middle" alt="SweetPad logo" width="40" src="./images/logo.png" />
+
+![Discord](https://img.shields.io/badge/SweetPad-Discord-blue?logo=discord&logoColor=white&link=https%3A%2F%2Fdiscord.gg%2FXZwRtQ5dew)
 
 Develop Swift/iOS projects using VSCode.
 
 The long-term goal is to make VSCode as a viable alternative to Xcode for iOS development, by integrating open-source
 tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **sourcekit-lsp**, and so on into VSCode.
 
-## Features
+## Feature
 
 - 💅🏼 Format Swift files using **swift-format**.
 - 📱 Run and stop the iOS simulator/emulator.
 - 🍺 Install essential iOS tools using **homebrew**.
 - 🧱 Build project using **xcodebuild** (simulator only)
-- 🧠 **WIP**: Integrate Xcode with **sourcekit-lsp** for autocomplete functionality.
+- 🧠 Integrate Xcode with **sourcekit-lsp** for autocomplete functionality.
 - 👩‍🌾 **WIP**: Lint Swift files using **swiftlint**.
 - 🧪 **WIP**: Run tests with **swift test**.
 - 💡 If you have any ideas, please open an issue or start a discussion on the
@@ -87,6 +89,20 @@ iOS.
 
 > ⚠️ This feature is currently in alpha and may not perform as expected. Should you encounter any issues, please report
 > them by opening an issue on the SweetPad GitHub repository.
+
+## Integrate Xcode with SourceKit-LSP
+
+This extension helps you to integrate Xcode with SourceKit-LSP for autocomplete functionality. In order to start install
+[Swift](https://marketplace.visualstudio.com/items?itemName=sswg.swift-lang) from the marketplace and and
+[xcode-build-server] using Homebrew:
+
+```bash
+brew install xcode-build-server
+```
+
+Now create config file `buildServer.json` in the root of your project by running command: **"SweetPad: Create Build
+Server Config"** from the command palette. Now you have to build project in order to create build logs. After that you
+autocmplete should work.
 
 ## iOS Simulator/Emulator
 
