@@ -9,6 +9,7 @@ import {
   createDirectory,
   getBuildSettings,
   getIsXcbeautifyInstalled,
+  getSchemes,
   getSimulators,
   removeDirectory,
 } from "../common/cli/scripts";
@@ -37,6 +38,33 @@ export async function askSimulatorToRunOn(): Promise<SimulatorOutput> {
   return device.context.simulator;
 }
 
+/**
+ * Ask user to select scheme to build
+ */
+export async function askScheme(options?: { title?: string }): Promise<string> {
+  const cwd = await getWorkspacePath();
+  const schemes = await getSchemes({
+    cwd: cwd,
+  });
+
+  const scheme = await showQuickPick({
+    title: options?.title ?? "Select scheme to build",
+    items: schemes.map((scheme) => {
+      return {
+        label: scheme,
+        context: {
+          scheme,
+        },
+      };
+    }),
+  });
+
+  return scheme.context.scheme;
+}
+
+/**
+ * It's path to current opened workspace
+ */
 export async function getWorkspacePath(): Promise<string> {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
   if (!workspaceFolder) {

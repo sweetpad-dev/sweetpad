@@ -1,17 +1,9 @@
 import * as vscode from "vscode";
 import { execPrepared } from "../common/exec";
 import { SimulatorsTreeProvider } from "../simulators/tree";
+import { getSchemes } from "../common/cli/scripts";
 
 type EventData = BuildTreeItem | undefined | null | void;
-
-interface XcodeBuildListOutput {
-  project: {
-    configurations: string[];
-    name: string;
-    schemes: string[];
-    targets: string[];
-  };
-}
 
 export class BuildTreeItem extends vscode.TreeItem {
   private provider: BuildTreeProvider;
@@ -57,7 +49,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   getChildren(element?: BuildTreeItem | undefined): vscode.ProviderResult<BuildTreeItem[]> {
     // get elements only for root
     if (!element) {
-      return this.getSimulators();
+      return this.getSchemes();
     }
 
     return [];
@@ -67,19 +59,15 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     return element;
   }
 
-  async getSimulators(): Promise<BuildTreeItem[]> {
+  async getSchemes(): Promise<BuildTreeItem[]> {
     const cwd = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
-    const { stdout, error } = await execPrepared("xcodebuild -list -json", { cwd: cwd });
-    if (error) {
-      // proper error handling
-      console.error("Error fetching simulators", error);
+    if (!cwd) {
       return [];
     }
-
-    const data = JSON.parse(stdout) as XcodeBuildListOutput;
+    const schemes = await getSchemes({ cwd: cwd });
 
     // return list of schemes
-    return data.project.schemes.map(
+    return schemes.map(
       (scheme) =>
         new BuildTreeItem({
           scheme: scheme,

@@ -1,7 +1,12 @@
 import * as vscode from "vscode";
 
 import { BuildTreeProvider } from "./build/tree.js";
-import { buildAndRunCommand, buildCommand, removeBundleDirCommand } from "./build/commands.js";
+import {
+  buildAndRunCommand,
+  buildCommand,
+  generateBuildServerConfigCommand,
+  removeBundleDirCommand,
+} from "./build/commands.js";
 import { preloadExec } from "./common/exec.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { createFormatStatusItem } from "./format/status.js";
@@ -39,6 +44,7 @@ export function activate(context: vscode.ExtensionContext) {
   p(registerCommand("sweetpad.build.buildAndRun", buildAndRunCommand));
   p(registerCommand("sweetpad.build.build", buildCommand));
   p(registerCommand("sweetpad.build.removeBundleDir", removeBundleDirCommand));
+  p(registerCommand("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
   // Format
   p(createFormatStatusItem());
   p(createFormatProvider());

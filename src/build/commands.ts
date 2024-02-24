@@ -2,17 +2,17 @@ import path from "path";
 import { runShellTask } from "../common/tasks";
 import { BuildTreeItem } from "./tree";
 import * as vscode from "vscode";
-import { showQuickPick } from "../common/quick-pick";
 
 import {
   SimulatorOutput,
-  createDirectory,
+  generateBuildServerConfig,
   getBuildSettings,
   getIsXcbeautifyInstalled,
-  getSimulators,
+  getIsXcodeBuildServerInstalled,
+  getXcodeProjectPath,
   removeDirectory,
 } from "../common/cli/scripts";
-import { askSimulatorToRunOn, getWorkspacePath, prepareBundleDir } from "./utils";
+import { askScheme, askSimulatorToRunOn, getWorkspacePath, prepareBundleDir } from "./utils";
 
 async function runOnDevice(options: { scheme: string; simulator: SimulatorOutput; item: BuildTreeItem }) {
   const workspaceFolder = await getWorkspacePath();
@@ -129,4 +129,34 @@ export async function buildAndRunCommand(context: vscode.ExtensionContext, item:
   });
 }
 
-export async function removeBundleDirCommand(context: vscode.ExtensionContext) {}
+export async function removeBundleDirCommand(context: vscode.ExtensionContext) {
+  const workspaceFolder = await getWorkspacePath();
+  const bundleDir = path.join(workspaceFolder, "build");
+
+  await removeDirectory(bundleDir);
+  vscode.window.showInformationMessage("Bundle directory removed");
+}
+
+export async function generateBuildServerConfigCommand(context: vscode.ExtensionContext) {
+  const workspacePath = await getWorkspacePath();
+  const isServerInstalled = await getIsXcodeBuildServerInstalled();
+  if (!isServerInstalled) {
+    vscode.window.showErrorMessage("xcode-build-server is not installed");
+    return;
+  }
+
+  const projPath = await getXcodeProjectPath({
+    cwd: workspacePath,
+  });
+
+  const scheme = await askScheme({
+    title: "Select scheme for build server",
+  });
+  await generateBuildServerConfig({
+    projectPath: projPath,
+    scheme: scheme,
+    cwd: workspacePath,
+  });
+
+  vscode.window.showInformationMessage(`buildServer.json generated in workspace root`);
+}

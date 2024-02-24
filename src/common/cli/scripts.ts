@@ -1,4 +1,7 @@
 import { exec, execPrepared } from "../exec";
+import { Stats, promises as fs } from "fs";
+import * as path from "path";
+import { findFiles } from "../files";
 
 export type SimulatorOutput = {
   dataPath: string;
@@ -14,6 +17,15 @@ export type SimulatorOutput = {
 export type SimulatorsOutput = {
   devices: { [key: string]: SimulatorOutput[] };
 };
+
+interface XcodeBuildListOutput {
+  project: {
+    configurations: string[];
+    name: string;
+    schemes: string[];
+    targets: string[];
+  };
+}
 
 export async function getSimulators() {
   const { stdout: simulatorsRaw, error: simulatorsError } = await exec`xcrun simctl list --json devices`;
@@ -70,4 +82,49 @@ export async function createDirectory(directory: string) {
 export async function getIsXcbeautifyInstalled() {
   const { error } = await exec`which xcbeautify`;
   return !error;
+}
+
+/**
+ * Find if xcode-build-server is installed
+ */
+export async function getIsXcodeBuildServerInstalled() {
+  const { error } = await exec`which xcode-build-server`;
+  return !error;
+}
+
+/**
+ * Find xcode project in a given directory
+ */
+export async function getXcodeProjectPath(options: { cwd: string }): Promise<string> {
+  const xcodeProjects = await findFiles(options.cwd, (file, stats) => {
+    return stats.isDirectory() && file.endsWith(".xcodeproj");
+  });
+  if (xcodeProjects.length === 0) {
+    throw new Error("No xcode projects found");
+  }
+  return xcodeProjects[0];
+}
+
+/**
+ * Get list of schemes for a given project
+ */
+export async function getSchemes(options: { cwd: string }) {
+  const { stdout, error } = await execPrepared("xcodebuild -list -json", { cwd: options.cwd });
+
+  const data = JSON.parse(stdout) as XcodeBuildListOutput;
+  return data.project.schemes;
+}
+
+/**
+ * Generate xcode-build-server config
+ */
+export async function generateBuildServerConfig(options: { projectPath: string; scheme: string; cwd: string }) {
+  // xcode-build-server config -project *.xcodeproj -scheme <XXX>
+  const { error, stdout } = await execPrepared(
+    `xcode-build-server config -project ${options.projectPath} -scheme ${options.scheme}`,
+    {
+      cwd: options.cwd,
+    }
+  );
+  console.log("generateBuildServerConfig", error);
 }

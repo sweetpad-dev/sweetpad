@@ -79,6 +79,11 @@
         "icon": "$(clear-all)"
       },
       {
+        "command": "sweetpad.build.genereateBuildServerConfig",
+        "title": "SweetPad: Generate Build Server Config (buildServer.json)",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "sweetpad.simulators.refresh",
         "title": "SweetPad: Refresh simulators list",
         "icon": "$(extensions-refresh)"
