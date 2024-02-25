@@ -1,6 +1,7 @@
 # SweetPad (alpha) <img valign="middle" alt="SweetPad logo" width="40" src="./images/logo.png" />
 
 ![Discord](https://img.shields.io/badge/SweetPad-Discord-blue?logo=discord&logoColor=white&link=https%3A%2F%2Fdiscord.gg%2FXZwRtQ5dew)
+![Twitter](https://img.shields.io/twitter/follow/sweetpad_dev?style=social&logo=twitter)
 
 Develop Swift/iOS projects using VSCode.
 
@@ -81,11 +82,14 @@ iOS.
 
 [![iOS simulator](./docs/images/build-preview.png)](./docs/images/build-preview.png)
 
-1. Build & Run: Click the ▶️ button next to the schema name in the "Build" panel to build and run the app on the
-   simulator.
-2. Select Simulator: After clicking the "Build & Run" button, the extension will prompt you to select a simulator.
-3. Build Logs: You can view the build logs in the "Terminal" panel, which will automatically open after you click the
-   "Build & Run" button.
+1. ▶️ **Build & Run** — Click the play `▶️` button next to the schema name to build and run the app on the simulator.
+2. ⚙️ **Build** — Click the gear `⚙️` button next to the schema name just to build the app.
+3. **SweetPad: Clean** — right-click on the schema name to see the "Clean" option. This option will clean the build
+   folder and derived data.
+4. **SweetPad: Resolve Dependencies** — right-click on the schema name to see the "Resolve Dependencies" option. This
+   option will resolve the dependencies using Swift Package Manager.
+
+   ![Context Menu](./docs/images/build-context-menu.png)
 
 > ⚠️ This feature is currently in alpha and may not perform as expected. Should you encounter any issues, please report
 > them by opening an issue on the SweetPad GitHub repository.
