@@ -89,5 +89,9 @@ export async function prepareBundleDir(execution: CommandExecution, schema: stri
   // Remove old bundle if exists
   await removeDirectory(bundleDir);
 
+  // Remove old .xcresult if exists
+  const xcresult = path.join(storagePath, "bundle", `${schema}.xcresult`);
+  await removeDirectory(xcresult);
+
   return bundleDir;
 }

@@ -74,6 +74,16 @@
         "icon": "$(gear)"
       },
       {
+        "command": "sweetpad.build.clean",
+        "title": "SweetPad: Clean",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "sweetpad.build.resolveDependencies",
+        "title": "SweetPad: Resolve dependencies",
+        "icon": "$(sync)"
+      },
+      {
         "command": "sweetpad.build.removeBundleDir",
         "title": "SweetPad: Remove bundle directory",
         "icon": "$(clear-all)"
@@ -164,6 +174,14 @@
           "command": "sweetpad.build.build",
           "when": "view == sweetpad.build.view",
           "group": "inline@1"
+        },
+        {
+          "command": "sweetpad.build.clean",
+          "when": "view == sweetpad.build.view"
+        },
+        {
+          "command": "sweetpad.build.resolveDependencies",
+          "when": "view == sweetpad.build.view"
         },
         {
           "command": "sweetpad.simulators.start",

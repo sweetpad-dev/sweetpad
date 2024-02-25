@@ -12,7 +12,7 @@ import {
   getXcodeProjectPath,
   removeDirectory,
 } from "../common/cli/scripts";
-import { askScheme, askSimulatorToRunOn, getWorkspacePath, prepareBundleDir } from "./utils";
+import { askScheme, askSimulatorToRunOn, getWorkspacePath, prepareBundleDir, prepareStoragePath } from "./utils";
 import { CommandExecution } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 
@@ -73,7 +73,12 @@ async function runOnDevice(options: { scheme: string; simulator: SimulatorOutput
   });
 }
 
-async function buildApp(options: { scheme: string; execution: CommandExecution }) {
+async function buildApp(options: {
+  scheme: string;
+  execution: CommandExecution;
+  shouldBuild: boolean;
+  shouldClean: boolean;
+}) {
   const isXcbeautifyInstalled = await getIsXcbeautifyInstalled();
   const bundleDir = await prepareBundleDir(options.execution, options.scheme);
 
@@ -87,8 +92,9 @@ async function buildApp(options: { scheme: string; execution: CommandExecution }
       "generic/platform=iOS Simulator",
       "-resultBundlePath",
       bundleDir,
-      "clean",
-      "build",
+      "-allowProvisioningUpdates",
+      ...(options.shouldClean ? ["clean"] : []),
+      ...(options.shouldBuild ? ["build"] : []),
       ...(isXcbeautifyInstalled ? ["|", "xcbeautify"] : []),
     ],
     error: "Error building project",
@@ -102,6 +108,8 @@ export async function buildCommand(execution: CommandExecution, item: BuildTreeI
   await buildApp({
     scheme: item.scheme,
     execution: execution,
+    shouldBuild: true,
+    shouldClean: false,
   });
 }
 
@@ -113,6 +121,8 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
   await buildApp({
     scheme: item.scheme,
     execution: execution,
+    shouldBuild: true,
+    shouldClean: false,
   });
 
   await runOnDevice({
@@ -122,9 +132,27 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
   });
 }
 
+export async function cleanCommand(execution: CommandExecution, item: BuildTreeItem) {
+  await buildApp({
+    scheme: item.scheme,
+    execution: execution,
+    shouldBuild: false,
+    shouldClean: true,
+  });
+}
+
+export async function resolveDependenciesCommand(execution: CommandExecution, item: BuildTreeItem) {
+  await runShellTask({
+    name: "Resolve Dependencies",
+    command: "xcodebuild",
+    args: ["-resolvePackageDependencies", "-scheme", item.scheme],
+    error: "Error resolving dependencies",
+  });
+}
+
 export async function removeBundleDirCommand(execution: CommandExecution) {
-  const workspaceFolder = getWorkspacePath();
-  const bundleDir = path.join(workspaceFolder, "build");
+  const storagePath = await prepareStoragePath(execution);
+  const bundleDir = path.join(storagePath, "build");
 
   await removeDirectory(bundleDir);
   vscode.window.showInformationMessage("Bundle directory removed");
