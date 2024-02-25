@@ -9,7 +9,7 @@ interface Context {
 
 interface Message {
   message: string;
-  type: "info" | "error";
+  type: "info" | "error" | "warning";
   time: string;
   [key: string]: any;
 }
@@ -52,6 +52,15 @@ export class Logger {
     this.addMessage({
       message: message,
       type: "error",
+      time: this.getNow(),
+      ...context,
+    });
+  }
+
+  warn(message: string, context: Context) {
+    this.addMessage({
+      message: message,
+      type: "warning",
       time: this.getNow(),
       ...context,
     });

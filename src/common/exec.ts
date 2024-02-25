@@ -1,5 +1,6 @@
 import { getWorkspacePath } from "../build/utils.js";
 import { ExecBaseError, ExecErrror } from "./errors.js";
+import { commonLogger } from "./logger.js";
 
 export type ExecaError = {
   command: string;
@@ -49,6 +50,17 @@ export async function exec(options: { command: string; args: string[]; cwd?: str
       args: options.args,
       cwd: cwd,
     });
+  }
+
+  if (result.stdout && result.stderr) {
+    commonLogger.warn(`Both stdout and stderr are not empty for "${options.command}" command`, {
+      stdout: result.stdout,
+      stderr: result.stderr,
+      command: options.command,
+      args: options.args,
+      cwd: cwd,
+    });
+    return result.stdout;
   }
 
   if (result.stderr) {

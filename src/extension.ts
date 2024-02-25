@@ -4,8 +4,10 @@ import { BuildTreeProvider } from "./build/tree.js";
 import {
   buildAndRunCommand,
   buildCommand,
+  cleanCommand,
   generateBuildServerConfigCommand,
   removeBundleDirCommand,
+  resolveDependenciesCommand,
 } from "./build/commands.js";
 import { preloadExec } from "./common/exec.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
@@ -47,6 +49,8 @@ export function activate(context: vscode.ExtensionContext) {
   p(registerCommand("sweetpad.build.refresh", async () => buildTreeProvider.refresh()));
   p(registerCommand("sweetpad.build.buildAndRun", buildAndRunCommand));
   p(registerCommand("sweetpad.build.build", buildCommand));
+  p(registerCommand("sweetpad.build.clean", cleanCommand));
+  p(registerCommand("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
   p(registerCommand("sweetpad.build.removeBundleDir", removeBundleDirCommand));
   p(registerCommand("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
   // Format
