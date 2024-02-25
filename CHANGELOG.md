@@ -4,6 +4,15 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.6] - 2024-02-25
+
+- Add command to generate buildServer.json file for SourceKit-LSP integration
+- Add command to execute "xcodebuild clean" command
+- Execute "Build" command without "clean" option
+- Add command to resolve dependencies using xcodebuild -resolvePackageDependencies
+- Improve error handling and logging
+- Imrpove shell and task execution
+
 ## [0.0.5] - 2024-02-17
 
 Add basic build functionality
