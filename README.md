@@ -1,7 +1,7 @@
 # SweetPad (alpha) <img valign="middle" alt="SweetPad logo" width="40" src="./images/logo.png" />
 
-![Discord](https://img.shields.io/badge/SweetPad-Discord-blue?logo=discord&logoColor=white&link=https%3A%2F%2Fdiscord.gg%2FXZwRtQ5dew)
-![Twitter](https://img.shields.io/twitter/follow/sweetpad_dev?style=social&logo=twitter)
+[![Discord](https://img.shields.io/badge/SweetPad-Discord-blue?logo=discord&logoColor=white&link=https%3A%2F%2Fdiscord.gg%2FXZwRtQ5dew)](https://discord.gg/XZwRtQ5dew)
+[![Twitter](https://img.shields.io/twitter/follow/sweetpad_dev?style=social&logo=twitter)](https://twitter.com/sweetpad_dev)
 
 Develop Swift/iOS projects using VSCode.
 
