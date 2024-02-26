@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (alpha)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
