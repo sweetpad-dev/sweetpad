@@ -2,6 +2,8 @@ import { getWorkspacePath } from "../build/utils.js";
 import { ExecBaseError, ExecErrror } from "./errors.js";
 import { commonLogger } from "./logger.js";
 
+import { execa } from "execa";
+
 export type ExecaError = {
   command: string;
   escapedCommand: string;
@@ -19,25 +21,16 @@ export type ExecaError = {
   originalMessage: string;
 };
 
-/**
- * Execa is ESM only, so we need to import it dynamically, because we are using CJS and
- * can't move to ESM yet due to vscode limitations
- */
-async function getExeca() {
-  return await import("execa");
-}
-
 export async function preloadExec() {
-  await getExeca();
+  // await getExeca();
 }
 
 export async function exec(options: { command: string; args: string[]; cwd?: string }): Promise<string> {
-  const execa = await getExeca();
   const cwd = options.cwd ?? getWorkspacePath();
 
   let result;
   try {
-    result = await execa.execa(options.command, options.args, {
+    result = await execa(options.command, options.args, {
       cwd: cwd,
     });
   } catch (e: any) {

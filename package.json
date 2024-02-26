@@ -237,7 +237,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "execa": "^8.0.1",
+    "execa": "npm:@esm2cjs/execa@^6.1.1-cjs.1",
     "vscode-languageclient": "^9.0.1"
   }
 }
