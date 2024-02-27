@@ -27,17 +27,26 @@ import { commonLogger } from "../common/logger";
 const DEFAULT_CONFIGURATION = "Debug";
 const DEFAULT_SDK = "iphonesimulator";
 
-async function runOnDevice(options: {
-  scheme: string;
-  simulator: SimulatorOutput;
-  item: BuildTreeItem;
-  sdk: string;
-  configuration: string;
-}) {
+async function runOnDevice(
+  execution: CommandExecution,
+  options: {
+    scheme: string;
+    simulator: SimulatorOutput;
+    item: BuildTreeItem;
+    sdk: string;
+    configuration: string;
+  }
+) {
+  const workspacePath = getWorkspacePath();
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution, {
+    cwd: workspacePath,
+  });
+
   const buildSettings = await getBuildSettings({
     scheme: options.scheme,
     configuration: options.configuration,
     sdk: options.sdk,
+    xcodeWorkspacePath: xcodeWorkspacePath,
   });
   const settings = buildSettings[0]?.buildSettings;
   if (!settings) {
@@ -169,7 +178,7 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
     shouldClean: false,
   });
 
-  await runOnDevice({
+  await runOnDevice(execution, {
     scheme: item.scheme,
     simulator: simulator,
     item: item,
@@ -190,10 +199,15 @@ export async function cleanCommand(execution: CommandExecution, item: BuildTreeI
 }
 
 export async function resolveDependenciesCommand(execution: CommandExecution, item: BuildTreeItem) {
+  const workspacePath = getWorkspacePath();
+  const xcworkspacePath = await askXcodeWorkspacePath(execution, {
+    cwd: workspacePath,
+  });
+
   await runShellTask({
     name: "Resolve Dependencies",
     command: "xcodebuild",
-    args: ["-resolvePackageDependencies", "-scheme", item.scheme],
+    args: ["-resolvePackageDependencies", "-scheme", item.scheme, "-workspace", xcworkspacePath],
     error: "Error resolving dependencies",
   });
 }

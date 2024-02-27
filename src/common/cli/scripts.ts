@@ -1,3 +1,4 @@
+import { askXcodeWorkspacePath, getWorkspacePath } from "../../build/utils";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { findFiles } from "../files";
@@ -46,13 +47,20 @@ export type BuildSettingOutput = {
   };
 };
 
-export async function getBuildSettings(options: { scheme: string; configuration: string; sdk: string }) {
+export async function getBuildSettings(options: {
+  scheme: string;
+  configuration: string;
+  sdk: string;
+  xcodeWorkspacePath: string;
+}) {
   const stdout = await exec({
     command: "xcodebuild",
     args: [
       "-showBuildSettings",
       "-scheme",
       options.scheme,
+      "-workspace",
+      options.xcodeWorkspacePath,
       "-configuration",
       options.configuration,
       "-sdk",
