@@ -12,15 +12,32 @@ import {
   getXcodeProjectPath,
   removeDirectory,
 } from "../common/cli/scripts";
-import { askScheme, askSimulatorToRunOn, getWorkspacePath, prepareBundleDir, prepareStoragePath } from "./utils";
+import {
+  askScheme,
+  askSimulatorToRunOn,
+  getWorkspacePath,
+  askXcodeWorkspacePath,
+  prepareBundleDir,
+  prepareStoragePath,
+} from "./utils";
 import { CommandExecution } from "../common/commands";
 import { ExtensionError } from "../common/errors";
+import { commonLogger } from "../common/logger";
 
-async function runOnDevice(options: { scheme: string; simulator: SimulatorOutput; item: BuildTreeItem }) {
+const DEFAULT_CONFIGURATION = "Debug";
+const DEFAULT_SDK = "iphonesimulator";
+
+async function runOnDevice(options: {
+  scheme: string;
+  simulator: SimulatorOutput;
+  item: BuildTreeItem;
+  sdk: string;
+  configuration: string;
+}) {
   const buildSettings = await getBuildSettings({
     scheme: options.scheme,
-    configuration: "Debug", // todo: make it configurable
-    sdk: "iphonesimulator", // todo: make it configurable
+    configuration: options.configuration,
+    sdk: options.sdk,
   });
   const settings = buildSettings[0]?.buildSettings;
   if (!settings) {
@@ -73,14 +90,25 @@ async function runOnDevice(options: { scheme: string; simulator: SimulatorOutput
   });
 }
 
-async function buildApp(options: {
-  scheme: string;
-  execution: CommandExecution;
-  shouldBuild: boolean;
-  shouldClean: boolean;
-}) {
+async function buildApp(
+  execution: CommandExecution,
+  options: {
+    scheme: string;
+    sdk: string;
+    configuration: string;
+    execution: CommandExecution;
+    shouldBuild: boolean;
+    shouldClean: boolean;
+  }
+) {
   const isXcbeautifyInstalled = await getIsXcbeautifyInstalled();
   const bundleDir = await prepareBundleDir(options.execution, options.scheme);
+
+  const workspacePath = getWorkspacePath();
+
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution, {
+    cwd: workspacePath,
+  });
 
   await runShellTask({
     name: "Build",
@@ -88,6 +116,12 @@ async function buildApp(options: {
     args: [
       "-scheme",
       options.scheme,
+      "-sdk",
+      options.sdk,
+      "-configuration",
+      options.configuration,
+      "-workspace",
+      xcodeWorkspacePath,
       "-destination",
       "generic/platform=iOS Simulator",
       "-resultBundlePath",
@@ -101,13 +135,21 @@ async function buildApp(options: {
   });
 
   // Restart SourceKit Language Server
-  await vscode.commands.executeCommand("swift.restartLSPServer");
+  try {
+    await vscode.commands.executeCommand("swift.restartLSPServer");
+  } catch (error) {
+    commonLogger.warn("Error restarting SourceKit Language Server", {
+      error: error,
+    });
+  }
 }
 
 export async function buildCommand(execution: CommandExecution, item: BuildTreeItem) {
-  await buildApp({
+  await buildApp(execution, {
     scheme: item.scheme,
     execution: execution,
+    sdk: DEFAULT_SDK,
+    configuration: DEFAULT_CONFIGURATION,
     shouldBuild: true,
     shouldClean: false,
   });
@@ -118,9 +160,11 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
   // during build command execution
   const simulator = await askSimulatorToRunOn();
 
-  await buildApp({
+  await buildApp(execution, {
     scheme: item.scheme,
     execution: execution,
+    sdk: DEFAULT_SDK,
+    configuration: DEFAULT_CONFIGURATION,
     shouldBuild: true,
     shouldClean: false,
   });
@@ -129,13 +173,17 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
     scheme: item.scheme,
     simulator: simulator,
     item: item,
+    sdk: DEFAULT_SDK,
+    configuration: DEFAULT_CONFIGURATION,
   });
 }
 
 export async function cleanCommand(execution: CommandExecution, item: BuildTreeItem) {
-  await buildApp({
+  await buildApp(execution, {
     scheme: item.scheme,
     execution: execution,
+    sdk: DEFAULT_SDK,
+    configuration: DEFAULT_CONFIGURATION,
     shouldBuild: false,
     shouldClean: true,
   });

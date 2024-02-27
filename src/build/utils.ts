@@ -5,6 +5,9 @@ import { showQuickPick } from "../common/quick-pick";
 import { SimulatorOutput, createDirectory, getSchemes, getSimulators, removeDirectory } from "../common/cli/scripts";
 import { CommandExecution } from "../common/commands";
 import { ExtensionError } from "../common/errors";
+import { findFilesRecursive, isFileExists } from "../common/files";
+import { commonLogger } from "../common/logger";
+import { findAndSaveXcodeWorkspace } from "../system/utils";
 
 /**
  * Ask user to select simulator to run on using quick pick
@@ -94,4 +97,25 @@ export async function prepareBundleDir(execution: CommandExecution, schema: stri
   await removeDirectory(xcresult);
 
   return bundleDir;
+}
+
+export async function askXcodeWorkspacePath(execution: CommandExecution, options: { cwd: string }): Promise<string> {
+  // try get from config
+  const config = vscode.workspace.getConfiguration("sweetpad");
+  const pathConfig = config.get("build.xcodeWorkspacePath");
+  if (pathConfig) {
+    return pathConfig as string;
+  }
+
+  const pathCache = execution.xcodeWorkspacePath;
+  if (pathCache) {
+    if (!(await isFileExists(pathCache as string))) {
+      execution.xcodeWorkspacePath = undefined;
+    } else {
+      return pathCache as string;
+    }
+  }
+
+  const pathSelected = await findAndSaveXcodeWorkspace(execution, options);
+  return pathSelected;
 }

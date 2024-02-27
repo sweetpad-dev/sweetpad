@@ -23,6 +23,7 @@ import { SimulatorsTreeProvider } from "./simulators/tree.js";
 import { ToolTreeProvider } from "./tools/tree.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { CommandExecution } from "./common/commands.js";
+import { setWorkspaceCommand } from "./system/commands.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // shortcut to push disposable to context.subscriptions
@@ -73,6 +74,9 @@ export function activate(context: vscode.ExtensionContext) {
   p(registerCommand("sweetpad.tools.install", installToolCommand));
   p(registerCommand("sweetpad.tools.refresh", async () => toolsTreeProvider.refresh()));
   p(registerCommand("sweetpad.tools.documentation", openDocumentationCommand));
+
+  // System commands
+  p(registerCommand("sweetpad.system.setWorkspace", setWorkspaceCommand));
 }
 
 export function deactivate() {}

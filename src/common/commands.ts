@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { ExtensionError } from "./errors";
+import { ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
 
 /**
@@ -15,9 +15,15 @@ export class CommandExecution {
   /**
    * Show error message with proper actions
    */
-  async showErrorMessage(message: string): Promise<void> {
-    const actions = ["Show details", "Close"] as const;
-    type Action = (typeof actions)[number];
+  async showErrorMessage(
+    message: string,
+    options?: {
+      withoutShowDetails: boolean;
+    }
+  ): Promise<void> {
+    type Action = "Show details" | "Close";
+
+    const actions: Action[] = options?.withoutShowDetails ? ["Close"] : ["Show details", "Close"];
 
     const finalMessage = `${message}`;
     const action = await vscode.window.showErrorMessage<Action>(finalMessage, ...actions);
@@ -46,7 +52,11 @@ export class CommandExecution {
           command: this.command,
           errorContext: error.context,
         });
-        await this.showErrorMessage(`Sweetpad: ${error.message}`);
+        if (error instanceof TaskError) {
+          await this.showErrorMessage(`Sweetpad: ${error.message}. See "Terminal" output for details.`);
+        } else {
+          await this.showErrorMessage(`Sweetpad: ${error.message}`);
+        }
       } else {
         // Handle unexpected error
         const errorMessage: string = error instanceof Error ? error.message : error?.toString() ?? "[unknown error]";
@@ -57,5 +67,12 @@ export class CommandExecution {
         await this.showErrorMessage(`Sweetpad: ${errorMessage}`);
       }
     }
+  }
+
+  get xcodeWorkspacePath(): string | undefined {
+    return this.context.workspaceState.get<string>("sweetpad.build.xcodeWorkspacePath");
+  }
+  set xcodeWorkspacePath(value: string | undefined) {
+    this.context.workspaceState.update("sweetpad.build.xcodeWorkspacePath", value);
   }
 }

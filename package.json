@@ -133,6 +133,11 @@
         "title": "SweetPad: Refresh tools list",
         "icon": "$(extensions-refresh)",
         "enablement": "view == sweetpad.tools.view"
+      },
+      {
+        "command": "sweetpad.system.setWorkspace",
+        "title": "SweetPad: Set workspace",
+        "icon": "$(file-directory)"
       }
     ],
     "menus": {
