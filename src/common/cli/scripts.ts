@@ -1,7 +1,8 @@
+import { XMLParser } from "fast-xml-parser";
 import { askXcodeWorkspacePath, getWorkspacePath } from "../../build/utils";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
-import { findFiles } from "../files";
+import { findFiles, findFilesRecursive, readFile } from "../files";
 
 export type SimulatorOutput = {
   dataPath: string;
@@ -138,17 +139,72 @@ export async function getXcodeProjectPath(options: { cwd: string }): Promise<str
   return projects[0];
 }
 
-/**
- * Get list of schemes for a given project
- */
-export async function getSchemes() {
+let _basicProjectInfoCache: XcodeBuildListOutput | null = null;
+
+export async function getBasicProjectInfo(): Promise<XcodeBuildListOutput> {
+  if (_basicProjectInfoCache) {
+    return _basicProjectInfoCache;
+  }
   const stdout = await exec({
     command: "xcodebuild",
     args: ["-list", "-json"],
   });
 
   const data = JSON.parse(stdout) as XcodeBuildListOutput;
-  return data.project.schemes;
+  _basicProjectInfoCache = data;
+  return data;
+}
+
+type ParsedScheme = {
+  name: string;
+  launchAction: {
+    buildConfiguration: string;
+  };
+};
+
+let _schemesCache: ParsedScheme[] = [];
+/**
+ * Get list of schemes for a given project
+ */
+export async function getSchemes(): Promise<ParsedScheme[]> {
+  // Return from cache if available
+  if (_schemesCache.length) {
+    return _schemesCache;
+  }
+
+  // Find all .xcscheme files in the workspace
+  const workspacePath = getWorkspacePath();
+  const schemesPath = await findFilesRecursive(
+    workspacePath,
+    (file, stats) => {
+      return stats.isFile() && file.endsWith(".xcscheme");
+    },
+    {
+      ignore: ["Pods", "node_modules"],
+      depth: 5,
+    }
+  );
+
+  // Parse all XML schemes files and extract basic information, like name
+  // and launch configuration
+  const schemes = await Promise.all(
+    schemesPath.map(async (schemePath) => {
+      const content = await readFile(schemePath);
+      const name = schemePath.split("/").pop()!.replace(".xcscheme", "");
+      const parser = new XMLParser({
+        ignoreAttributes: false,
+      });
+      const parsed = parser.parse(content);
+      return {
+        name: name,
+        launchAction: {
+          buildConfiguration: parsed.Scheme.LaunchAction["@_buildConfiguration"],
+        },
+      };
+    })
+  );
+  _schemesCache = schemes;
+  return schemes;
 }
 
 /**

@@ -243,6 +243,7 @@
   },
   "dependencies": {
     "execa": "npm:@esm2cjs/execa@^6.1.1-cjs.1",
+    "fast-xml-parser": "^4.3.5",
     "vscode-languageclient": "^9.0.1"
   }
 }

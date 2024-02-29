@@ -24,7 +24,6 @@ import { CommandExecution } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { commonLogger } from "../common/logger";
 
-const DEFAULT_CONFIGURATION = "Debug";
 const DEFAULT_SDK = "iphonesimulator";
 
 async function runOnDevice(
@@ -52,7 +51,7 @@ async function runOnDevice(
   if (!settings) {
     throw new ExtensionError("Error fetching build settings");
   }
-
+§
   const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
   const targetBuildDir = settings.TARGET_BUILD_DIR;
   const targetName = settings.TARGET_NAME;
@@ -158,7 +157,7 @@ export async function buildCommand(execution: CommandExecution, item: BuildTreeI
     scheme: item.scheme,
     execution: execution,
     sdk: DEFAULT_SDK,
-    configuration: DEFAULT_CONFIGURATION,
+    configuration: item.launchConfiguration,
     shouldBuild: true,
     shouldClean: false,
   });
@@ -173,7 +172,7 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
     scheme: item.scheme,
     execution: execution,
     sdk: DEFAULT_SDK,
-    configuration: DEFAULT_CONFIGURATION,
+    configuration: item.launchConfiguration,
     shouldBuild: true,
     shouldClean: false,
   });
@@ -183,7 +182,7 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
     simulator: simulator,
     item: item,
     sdk: DEFAULT_SDK,
-    configuration: DEFAULT_CONFIGURATION,
+    configuration: item.launchConfiguration,
   });
 }
 
@@ -192,7 +191,7 @@ export async function cleanCommand(execution: CommandExecution, item: BuildTreeI
     scheme: item.scheme,
     execution: execution,
     sdk: DEFAULT_SDK,
-    configuration: DEFAULT_CONFIGURATION,
+    configuration: item.launchConfiguration,
     shouldBuild: false,
     shouldClean: true,
   });

@@ -5,8 +5,7 @@ import { showQuickPick } from "../common/quick-pick";
 import { SimulatorOutput, createDirectory, getSchemes, getSimulators, removeDirectory } from "../common/cli/scripts";
 import { CommandExecution } from "../common/commands";
 import { ExtensionError } from "../common/errors";
-import { findFilesRecursive, isFileExists } from "../common/files";
-import { commonLogger } from "../common/logger";
+import { isFileExists } from "../common/files";
 import { findAndSaveXcodeWorkspace } from "../system/utils";
 
 /**
@@ -46,15 +45,15 @@ export async function askScheme(options?: { title?: string }): Promise<string> {
     title: options?.title ?? "Select scheme to build",
     items: schemes.map((scheme) => {
       return {
-        label: scheme,
+        label: scheme.name,
         context: {
-          scheme,
+          scheme: scheme,
         },
       };
     }),
   });
 
-  return scheme.context.scheme;
+  return scheme.context.scheme.name;
 }
 
 /**

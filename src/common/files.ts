@@ -65,3 +65,7 @@ export async function isFileExists(filePath: string): Promise<boolean> {
     return false;
   }
 }
+
+export async function readFile(filePath: string): Promise<Buffer> {
+  return await fs.readFile(filePath);
+}
