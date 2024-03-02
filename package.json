@@ -110,7 +110,7 @@
       },
       {
         "command": "sweetpad.simulators.removeCache",
-        "title": "SweetPad: Remove cache",
+        "title": "SweetPad: Remove simulator cache",
         "icon": "$(clear-all)"
       },
       {
@@ -143,6 +143,11 @@
         "command": "sweetpad.build.selectXcodeWorkspace",
         "title": "SweetPad: Select Xcode workspace",
         "icon": "$(file-directory)"
+      },
+      {
+        "command": "sweetpad.system.resetSweetpadCache",
+        "title": "SweetPad: Reset Extension Cache",
+        "icon": "$(clear-all)"
       }
     ],
     "menus": {
@@ -228,6 +233,11 @@
           "type": "string",
           "default": "swift-format",
           "description": "Command or path to swift-format executable."
+        },
+        "sweetpad.build.xcbeautifyEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable xcbeautify for build logs."
         }
       }
     }

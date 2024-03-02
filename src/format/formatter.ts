@@ -2,13 +2,14 @@ import * as vscode from "vscode";
 import { exec } from "../common/exec.js";
 import { formatLogger } from "./logger.js";
 import { Timer } from "../common/timer.js";
+import { getWorkspaceConfig } from "../common/config.js";
 
 /**
  * Get path to swift-format executable from user settings.
  */
 function getSwiftFormatPath(): string {
-  const config = vscode.workspace.getConfiguration("sweetpad");
-  return config.get("format.path") ?? "swift-format";
+  const path = getWorkspaceConfig("format.path");
+  return path ?? "swift-format";
 }
 
 /**

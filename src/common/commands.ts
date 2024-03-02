@@ -86,6 +86,17 @@ export class CommandExecution {
     return this.context.workspaceState.get(`sweetpad.${key}`);
   }
 
+  /**
+   * Remove all sweetpad.* keys from workspace state
+   */
+  resetWorkspaceState() {
+    this.context.workspaceState.keys().forEach((key) => {
+      if (key.startsWith("sweetpad.")) {
+        this.context.workspaceState.update(key, undefined);
+      }
+    });
+  }
+
   async withCache<T>(key: WorkspaceStateKey, callback: () => Promise<T>): Promise<T> {
     let value = this.getWorkspaceState<T>(key);
     if (value) {

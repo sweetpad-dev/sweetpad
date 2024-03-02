@@ -25,6 +25,7 @@ import { ToolTreeProvider } from "./tools/tree.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { CommandExecution } from "./common/commands.js";
 import { selectXcodeWorkspaceCommand } from "./build/commands.js";
+import { resetSweetpadCache } from "./system/commands.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // shortcut to push disposable to context.subscriptions
@@ -78,6 +79,9 @@ export function activate(context: vscode.ExtensionContext) {
   p(registerCommand("sweetpad.tools.install", installToolCommand));
   p(registerCommand("sweetpad.tools.refresh", async () => toolsTreeProvider.refresh()));
   p(registerCommand("sweetpad.tools.documentation", openDocumentationCommand));
+
+  // System
+  p(registerCommand("sweetpad.system.resetSweetpadCache", resetSweetpadCache));
 }
 
 export function deactivate() {}

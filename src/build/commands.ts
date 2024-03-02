@@ -26,6 +26,7 @@ import { CommandExecution } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { commonLogger } from "../common/logger";
 import { exec } from "../common/exec";
+import { getWorkspaceConfig } from "../common/config";
 
 const DEFAULT_SDK = "iphonesimulator";
 
@@ -101,6 +102,10 @@ async function runOnDevice(
   });
 }
 
+function isXcbeautifyEnabled() {
+  return getWorkspaceConfig<boolean>("build.xcbeautifyEnabled") ?? true;
+}
+
 async function buildApp(
   execution: CommandExecution,
   options: {
@@ -112,7 +117,7 @@ async function buildApp(
     shouldClean: boolean;
   }
 ) {
-  const isXcbeautifyInstalled = await getIsXcbeautifyInstalled();
+  const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundleDir = await prepareBundleDir(options.execution, options.scheme);
 
   const workspacePath = getWorkspacePath();
@@ -121,32 +126,34 @@ async function buildApp(
     cwd: workspacePath,
   });
 
+  const commandParts: string[] = [
+    "xcodebuild",
+    "-scheme",
+    options.scheme,
+    "-sdk",
+    options.sdk,
+    "-configuration",
+    options.configuration,
+    "-workspace",
+    xcodeWorkspacePath,
+    "-destination",
+    "generic/platform=iOS Simulator",
+    "-resultBundlePath",
+    bundleDir,
+    "-allowProvisioningUpdates",
+    ...(options.shouldClean ? ["clean"] : []),
+    ...(options.shouldBuild ? ["build"] : []),
+  ];
+
+  if (useXcbeatify) {
+    commandParts.unshift("set", "-o", "pipefail", "&&");
+    commandParts.push("|", "xcbeautify");
+  }
+
   await runShellTask({
     name: "Build",
-    // command: "xcodebuild",
-    command: "set",
-    args: [
-      "-o",
-      "pipefail",
-      "&&",
-      "xcodebuild",
-      "-scheme",
-      options.scheme,
-      "-sdk",
-      options.sdk,
-      "-configuration",
-      options.configuration,
-      "-workspace",
-      xcodeWorkspacePath,
-      "-destination",
-      "generic/platform=iOS Simulator",
-      "-resultBundlePath",
-      bundleDir,
-      "-allowProvisioningUpdates",
-      ...(options.shouldClean ? ["clean"] : []),
-      ...(options.shouldBuild ? ["build"] : []),
-      ...(isXcbeautifyInstalled ? ["|", "xcbeautify"] : []),
-    ],
+    command: commandParts[0],
+    args: commandParts.slice(1),
     error: "Error building project",
   });
 
