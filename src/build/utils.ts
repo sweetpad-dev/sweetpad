@@ -2,11 +2,20 @@ import path from "path";
 import * as vscode from "vscode";
 import { showQuickPick } from "../common/quick-pick";
 
-import { SimulatorOutput, createDirectory, getSchemes, getSimulators, removeDirectory } from "../common/cli/scripts";
+import {
+  SimulatorOutput,
+  createDirectory,
+  getBuildConfigurations,
+  getSchemes,
+  getSimulators,
+  removeDirectory,
+} from "../common/cli/scripts";
 import { CommandExecution } from "../common/commands";
 import { ExtensionError } from "../common/errors";
-import { isFileExists } from "../common/files";
-import { findAndSaveXcodeWorkspace } from "../system/utils";
+import { findFilesRecursive, isFileExists } from "../common/files";
+import { commonLogger } from "../common/logger";
+
+const DEFAULT_CONFIGURATION = "Debug";
 
 /**
  * Ask user to select simulator to run on using quick pick
@@ -99,22 +108,91 @@ export async function prepareBundleDir(execution: CommandExecution, schema: stri
 }
 
 export async function askXcodeWorkspacePath(execution: CommandExecution, options: { cwd: string }): Promise<string> {
-  // try get from config
-  const config = vscode.workspace.getConfiguration("sweetpad");
-  const pathConfig = config.get("build.xcodeWorkspacePath");
-  if (pathConfig) {
-    return pathConfig as string;
-  }
+  return await execution.withPathCache("build.xcodeWorkspacePath", async () => {
+    return await selectXcodeWorkspace();
+  });
+}
 
-  const pathCache = execution.xcodeWorkspacePath;
-  if (pathCache) {
-    if (!(await isFileExists(pathCache as string))) {
-      execution.xcodeWorkspacePath = undefined;
-    } else {
-      return pathCache as string;
+export async function askConfiguration(execution: CommandExecution): Promise<string> {
+  return await execution.withCache("build.xcodeConfiguration", async () => {
+    // Fetch all configurations
+    const configurations = await getBuildConfigurations();
+
+    // Use default configuration if it exists
+    if (configurations.some((configuration) => configuration.name === DEFAULT_CONFIGURATION)) {
+      return DEFAULT_CONFIGURATION;
     }
+
+    // Give user a choice to select configuration if we don't know wich one to use
+    const selected = await showQuickPick({
+      title: "Select configuration",
+      items: configurations.map((configuration) => {
+        return {
+          label: configuration.name,
+          context: {
+            configuration,
+          },
+        };
+      }),
+    });
+    return selected.context.configuration.name;
+  });
+}
+
+/**
+ * Detect xcode workspace in the given directory
+ */
+export async function detectXcodeProjectPaths(): Promise<string[]> {
+  const workspace = getWorkspacePath();
+
+  // Get all files that end with .xcworkspace (4 depth)
+  const paths = await findFilesRecursive(
+    workspace,
+    (file, stats) => {
+      return stats.isDirectory() && file.endsWith(".xcworkspace");
+    },
+    {
+      depth: 4,
+    }
+  );
+  return paths;
+}
+
+/**
+ * Find xcode workspace in the given directory and ask user to select it
+ */
+export async function selectXcodeWorkspace(): Promise<string> {
+  const workspace = getWorkspacePath();
+  let path: string | undefined;
+  // Get all files that end with .xcworkspace (4 depth)
+  const paths = await detectXcodeProjectPaths();
+
+  // No files, nothing to do
+  if (paths.length === 0) {
+    throw new ExtensionError("No xcode workspaces found", {
+      cwd: workspace,
+    });
   }
 
-  const pathSelected = await findAndSaveXcodeWorkspace(execution, options);
-  return pathSelected;
+  // One file, use it and save it to the cache
+  if (paths.length === 1) {
+    path = paths[0];
+    commonLogger.log("Xcode workspace was detected", {
+      workspace: workspace,
+      path: path,
+    });
+    return path;
+  }
+
+  // More then one, ask user to select
+  const selected = await showQuickPick({
+    title: "Select xcode workspace",
+    items: paths.map((path) => {
+      return {
+        label: path,
+        context: { path },
+      };
+    }),
+  });
+  return selected.context.path;
 }

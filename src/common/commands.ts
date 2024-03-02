@@ -1,6 +1,15 @@
 import * as vscode from "vscode";
 import { ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
+import { isFileExists } from "./files";
+
+type WorkspaceStateKey =
+  | "build.xcodeWorkspacePath"
+  | "build.xcodeProjectPath"
+  | "build.xcodeScheme"
+  | "build.xcodeConfiguration"
+  | "build.xcodeSimulator"
+  | "build.xcodeSdk";
 
 /**
  * Class that represents a command execution with proper error handling
@@ -69,10 +78,37 @@ export class CommandExecution {
     }
   }
 
-  get xcodeWorkspacePath(): string | undefined {
-    return this.context.workspaceState.get<string>("sweetpad.build.xcodeWorkspacePath");
+  updateWorkspaceState(key: WorkspaceStateKey, value: any | undefined) {
+    this.context.workspaceState.update(`sweetpad.${key}`, value);
   }
-  set xcodeWorkspacePath(value: string | undefined) {
-    this.context.workspaceState.update("sweetpad.build.xcodeWorkspacePath", value);
+
+  getWorkspaceState<T = any>(key: WorkspaceStateKey): T | undefined {
+    return this.context.workspaceState.get(`sweetpad.${key}`);
+  }
+
+  async withCache<T>(key: WorkspaceStateKey, callback: () => Promise<T>): Promise<T> {
+    let value = this.getWorkspaceState<T>(key);
+    if (value) {
+      return value;
+    }
+
+    value = await callback();
+    this.updateWorkspaceState(key, value);
+    return value;
+  }
+
+  async withPathCache(key: WorkspaceStateKey, callback: () => Promise<string>): Promise<string> {
+    let value = this.getWorkspaceState<string>(key);
+    if (value) {
+      if (!(await isFileExists(value))) {
+        this.updateWorkspaceState(key, undefined);
+      } else {
+        return value;
+      }
+    }
+
+    value = await callback();
+    this.updateWorkspaceState(key, value);
+    return value;
   }
 }

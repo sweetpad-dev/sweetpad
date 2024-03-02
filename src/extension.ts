@@ -6,6 +6,7 @@ import {
   buildCommand,
   cleanCommand,
   generateBuildServerConfigCommand,
+  openXcodeCommand,
   removeBundleDirCommand,
   resolveDependenciesCommand,
 } from "./build/commands.js";
@@ -23,7 +24,7 @@ import { SimulatorsTreeProvider } from "./simulators/tree.js";
 import { ToolTreeProvider } from "./tools/tree.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { CommandExecution } from "./common/commands.js";
-import { setWorkspaceCommand } from "./system/commands.js";
+import { selectXcodeWorkspaceCommand } from "./build/commands.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // shortcut to push disposable to context.subscriptions
@@ -54,6 +55,9 @@ export function activate(context: vscode.ExtensionContext) {
   p(registerCommand("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
   p(registerCommand("sweetpad.build.removeBundleDir", removeBundleDirCommand));
   p(registerCommand("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
+  p(registerCommand("sweetpad.build.openXcode", openXcodeCommand));
+  p(registerCommand("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
+
   // Format
   p(createFormatStatusItem());
   p(createFormatProvider());
@@ -74,9 +78,6 @@ export function activate(context: vscode.ExtensionContext) {
   p(registerCommand("sweetpad.tools.install", installToolCommand));
   p(registerCommand("sweetpad.tools.refresh", async () => toolsTreeProvider.refresh()));
   p(registerCommand("sweetpad.tools.documentation", openDocumentationCommand));
-
-  // System commands
-  p(registerCommand("sweetpad.system.setWorkspace", setWorkspaceCommand));
 }
 
 export function deactivate() {}

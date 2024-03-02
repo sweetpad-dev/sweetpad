@@ -7,18 +7,15 @@ type EventData = BuildTreeItem | undefined | null | void;
 export class BuildTreeItem extends vscode.TreeItem {
   private provider: BuildTreeProvider;
   public scheme: string;
-  public launchConfiguration: string;
 
   constructor(options: {
     scheme: string;
     collapsibleState: vscode.TreeItemCollapsibleState;
     provider: BuildTreeProvider;
-    launchConfiguration: string;
   }) {
     super(options.scheme, options.collapsibleState);
     this.provider = options.provider;
     this.scheme = options.scheme;
-    this.launchConfiguration = options.launchConfiguration ?? "Debug";
     this.iconPath = new vscode.ThemeIcon("symbol-method");
   }
 
@@ -69,7 +66,6 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
       (scheme) =>
         new BuildTreeItem({
           scheme: scheme.name,
-          launchConfiguration: scheme.launchAction.buildConfiguration,
           collapsibleState: vscode.TreeItemCollapsibleState.None,
           provider: this,
         })

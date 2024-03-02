@@ -19,10 +19,13 @@ import {
   askXcodeWorkspacePath,
   prepareBundleDir,
   prepareStoragePath,
+  askConfiguration,
+  selectXcodeWorkspace,
 } from "./utils";
 import { CommandExecution } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { commonLogger } from "../common/logger";
+import { exec } from "../common/exec";
 
 const DEFAULT_SDK = "iphonesimulator";
 
@@ -51,7 +54,7 @@ async function runOnDevice(
   if (!settings) {
     throw new ExtensionError("Error fetching build settings");
   }
-§
+
   const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
   const targetBuildDir = settings.TARGET_BUILD_DIR;
   const targetName = settings.TARGET_NAME;
@@ -120,8 +123,13 @@ async function buildApp(
 
   await runShellTask({
     name: "Build",
-    command: "xcodebuild",
+    // command: "xcodebuild",
+    command: "set",
     args: [
+      "-o",
+      "pipefail",
+      "&&",
+      "xcodebuild",
       "-scheme",
       options.scheme,
       "-sdk",
@@ -153,17 +161,20 @@ async function buildApp(
 }
 
 export async function buildCommand(execution: CommandExecution, item: BuildTreeItem) {
+  const configuration = await askConfiguration(execution);
   await buildApp(execution, {
     scheme: item.scheme,
     execution: execution,
     sdk: DEFAULT_SDK,
-    configuration: item.launchConfiguration,
+    configuration: configuration,
     shouldBuild: true,
     shouldClean: false,
   });
 }
 
 export async function buildAndRunCommand(execution: CommandExecution, item: BuildTreeItem) {
+  const configuration = await askConfiguration(execution);
+
   // Ask simulator to run on before we start building to not distract user
   // during build command execution
   const simulator = await askSimulatorToRunOn();
@@ -172,7 +183,7 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
     scheme: item.scheme,
     execution: execution,
     sdk: DEFAULT_SDK,
-    configuration: item.launchConfiguration,
+    configuration: configuration,
     shouldBuild: true,
     shouldClean: false,
   });
@@ -182,16 +193,17 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
     simulator: simulator,
     item: item,
     sdk: DEFAULT_SDK,
-    configuration: item.launchConfiguration,
+    configuration: configuration,
   });
 }
 
 export async function cleanCommand(execution: CommandExecution, item: BuildTreeItem) {
+  const configuration = await askConfiguration(execution);
   await buildApp(execution, {
     scheme: item.scheme,
     execution: execution,
     sdk: DEFAULT_SDK,
-    configuration: item.launchConfiguration,
+    configuration: configuration,
     shouldBuild: false,
     shouldClean: true,
   });
@@ -239,4 +251,24 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
   });
 
   vscode.window.showInformationMessage(`buildServer.json generated in workspace root`);
+}
+
+/**
+ *
+ * Open current project in Xcode
+ */
+export async function openXcodeCommand(execution: CommandExecution) {
+  const workspacePath = getWorkspacePath();
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution, {
+    cwd: workspacePath,
+  });
+
+  await exec({
+    command: "open",
+    args: [xcodeWorkspacePath],
+  });
+}
+export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
+  const workspace = await selectXcodeWorkspace();
+  execution.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
 }

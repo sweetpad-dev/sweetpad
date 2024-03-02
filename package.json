@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (alpha)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -94,6 +94,11 @@
         "icon": "$(file-code)"
       },
       {
+        "command": "sweetpad.build.openXcode",
+        "title": "SweetPad: Open Xcode",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "sweetpad.simulators.refresh",
         "title": "SweetPad: Refresh simulators list",
         "icon": "$(extensions-refresh)"
@@ -135,8 +140,8 @@
         "enablement": "view == sweetpad.tools.view"
       },
       {
-        "command": "sweetpad.system.setWorkspace",
-        "title": "SweetPad: Set workspace",
+        "command": "sweetpad.build.selectXcodeWorkspace",
+        "title": "SweetPad: Select Xcode workspace",
         "icon": "$(file-directory)"
       }
     ],
@@ -145,6 +150,11 @@
       "view/title": [
         {
           "command": "sweetpad.build.removeBundleDir",
+          "when": "view == sweetpad.build.view",
+          "group": "navigation"
+        },
+        {
+          "command": "sweetpad.build.openXcode",
           "when": "view == sweetpad.build.view",
           "group": "navigation"
         },
