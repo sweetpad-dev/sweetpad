@@ -59,7 +59,18 @@ async function runOnDevice(
   const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
   const targetBuildDir = settings.TARGET_BUILD_DIR;
   const targetName = settings.TARGET_NAME;
-  const targetPath = path.join(targetBuildDir, `${targetName}.app`);
+  let appName;
+  if (settings.WRAPPER_NAME) {
+    appName = settings.WRAPPER_NAME;
+  } else if (settings.FULL_PRODUCT_NAME) {
+    appName = settings.FULL_PRODUCT_NAME;
+  } else if (settings.PRODUCT_NAME) {
+    appName = `${settings.PRODUCT_NAME}.app`;
+  } else {
+    appName = `${targetName}.app`;
+  }
+
+  const targetPath = path.join(targetBuildDir, appName);
 
   const simulator = options.simulator;
 
