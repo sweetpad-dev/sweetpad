@@ -20,28 +20,30 @@ const DEFAULT_CONFIGURATION = "Debug";
 /**
  * Ask user to select simulator to run on using quick pick
  */
-export async function askSimulatorToRunOn(): Promise<SimulatorOutput> {
-  const output = await getSimulators();
+export async function askSimulatorToRunOn(execution: CommandExecution): Promise<SimulatorOutput> {
+  return await execution.withCache("build.xcodeSimulator", async () => {
+    const output = await getSimulators();
 
-  const device = await showQuickPick({
-    title: "Select simulator to run on",
-    items: Object.entries(output.devices)
-      .map(([key, value]) => {
-        return value
-          .filter((simulator) => simulator.isAvailable)
-          .map((simulator) => {
-            return {
-              label: simulator.name,
-              context: {
-                simulator,
-              },
-            };
-          });
-      })
-      .flat(),
+    const device = await showQuickPick({
+      title: "Select simulator to run on",
+      items: Object.entries(output.devices)
+        .map(([key, value]) => {
+          return value
+            .filter((simulator) => simulator.isAvailable)
+            .map((simulator) => {
+              return {
+                label: simulator.name,
+                context: {
+                  simulator,
+                },
+              };
+            });
+        })
+        .flat(),
+    });
+
+    return device.context.simulator;
   });
-
-  return device.context.simulator;
 }
 
 /**

@@ -184,7 +184,7 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
 
   // Ask simulator to run on before we start building to not distract user
   // during build command execution
-  const simulator = await askSimulatorToRunOn();
+  const simulator = await askSimulatorToRunOn(execution);
 
   await buildApp(execution, {
     scheme: item.scheme,
