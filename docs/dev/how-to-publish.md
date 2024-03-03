@@ -9,5 +9,5 @@ https://code.visualstudio.com/api/working-with-extensions/publishing-extension#p
 # Auto-increment version number
 
 ```shell
-vsce publish minor
+vsce publish patch
 ```
