@@ -20,7 +20,11 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:swift"
+    "onLanguage:swift",
+    "workspaceContains:**/*.xcworkspace",
+    "workspaceContains:**/*.xcodeproj",
+    "workspaceContains:**/project.yml",
+    "workspaceContains:**/Podfile"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -29,7 +33,8 @@
         {
           "id": "speedpad-view",
           "title": "SweetPad",
-          "icon": "images/logo-panel.png"
+          "icon": "images/logo-panel.png",
+          "when": "sweetpad.enabled"
         }
       ]
     },

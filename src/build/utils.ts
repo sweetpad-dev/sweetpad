@@ -210,7 +210,7 @@ export async function selectXcodeWorkspace(): Promise<string> {
         let detail: string | undefined;
         if (isCocoaPods && isInRootDir) {
           detail = "CocoaPods (recommended)";
-        } else if (!isInRootDir && parentDir.endsWith("xcodeproj")) {
+        } else if (!isInRootDir && parentDir.endsWith(".xcodeproj")) {
           detail = "Xcode";
         }
 

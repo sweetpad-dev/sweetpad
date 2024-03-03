@@ -28,6 +28,9 @@ import { selectXcodeWorkspaceCommand } from "./build/commands.js";
 import { resetSweetpadCache } from "./system/commands.js";
 
 export function activate(context: vscode.ExtensionContext) {
+  // For "when" clauses to enable/disable views/commands
+  vscode.commands.executeCommand("setContext", "sweetpad.enabled", true);
+
   // shortcut to push disposable to context.subscriptions
   const p = (disposable: vscode.Disposable) => context.subscriptions.push(disposable);
 
