@@ -4,6 +4,15 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.10] — 2024-03-03
+
+- Improve caching of schemes and configurations
+- Add command to reset cache "sweetpad.system.resetSweetpadCache"
+- Add command to open project in Xcode
+- Improve selection of workspaces and schemes
+- Propage errors when xcodebuild used with xcbeautify
+- Allow to disable xcbeautify in settings
+
 ## [0.0.9] — 2024-02-28
 
 - Detect schemes by reading files in workspace folder instead of using xcodebuild
