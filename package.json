@@ -26,7 +26,7 @@
     "workspaceContains:**/project.yml",
     "workspaceContains:**/Podfile"
   ],
-  "main": "./dist/extension.js",
+  "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -248,8 +248,9 @@
     }
   },
   "scripts": {
-    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
     "vscode:prepublish": "npm run esbuild-base -- --minify",
+    "build": "npm run esbuild-base -- --sourcemap",
     "watch": "npm run esbuild-base -- --sourcemap --watch",
     "test": "vscode-test"
   },

@@ -13,7 +13,6 @@ vsc-extension-quickstart.md
 
 .vscode/
 node_modules/
-out/
 src/
 .eslintrc.json
 .gitignore
