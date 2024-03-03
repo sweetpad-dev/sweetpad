@@ -164,37 +164,64 @@ export async function detectXcodeProjectPaths(): Promise<string[]> {
  * Find xcode workspace in the given directory and ask user to select it
  */
 export async function selectXcodeWorkspace(): Promise<string> {
-  const workspace = getWorkspacePath();
-  let path: string | undefined;
+  const workspacePath = getWorkspacePath();
+
   // Get all files that end with .xcworkspace (4 depth)
   const paths = await detectXcodeProjectPaths();
 
   // No files, nothing to do
   if (paths.length === 0) {
     throw new ExtensionError("No xcode workspaces found", {
-      cwd: workspace,
+      cwd: workspacePath,
     });
   }
 
   // One file, use it and save it to the cache
   if (paths.length === 1) {
-    path = paths[0];
+    const path = paths[0];
     commonLogger.log("Xcode workspace was detected", {
-      workspace: workspace,
+      workspace: workspacePath,
       path: path,
     });
     return path;
   }
 
+  const podfilePath = path.join(workspacePath, "Podfile");
+  const isCocoaProject = await isFileExists(podfilePath);
+
   // More then one, ask user to select
   const selected = await showQuickPick({
     title: "Select xcode workspace",
-    items: paths.map((path) => {
-      return {
-        label: path,
-        context: { path },
-      };
-    }),
+    items: paths
+      .sort((a, b) => {
+        // Sort by depth to show less nested paths first
+        const aDepth = a.split(path.sep).length;
+        const bDepth = b.split(path.sep).length;
+        return aDepth - bDepth;
+      })
+      .map((xwPath) => {
+        // show only relative path, to make it more readable
+        const relativePath = path.relative(workspacePath, xwPath);
+        const parentDir = path.dirname(relativePath);
+
+        const isInRootDir = parentDir === ".";
+        const isCocoaPods = isInRootDir && isCocoaProject;
+
+        let detail: string | undefined;
+        if (isCocoaPods && isInRootDir) {
+          detail = "CocoaPods (recommended)";
+        } else if (!isInRootDir && parentDir.endsWith("xcodeproj")) {
+          detail = "Xcode";
+        }
+
+        return {
+          label: relativePath,
+          detail: detail,
+          context: {
+            path: xwPath,
+          },
+        };
+      }),
   });
   return selected.context.path;
 }
