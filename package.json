@@ -26,7 +26,7 @@
     "workspaceContains:**/project.yml",
     "workspaceContains:**/Podfile"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -248,11 +248,9 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "vscode:prepublish": "npm run esbuild-base -- --minify",
+    "watch": "npm run esbuild-base -- --sourcemap --watch",
     "test": "vscode-test"
   },
   "devDependencies": {
@@ -263,12 +261,12 @@
     "@typescript-eslint/parser": "^6.15.0",
     "@vscode/test-cli": "^0.0.4",
     "@vscode/test-electron": "^2.3.8",
+    "esbuild": "^0.20.1",
     "eslint": "^8.56.0",
     "typescript": "^5.3.3"
   },
   "dependencies": {
     "execa": "npm:@esm2cjs/execa@^6.1.1-cjs.1",
-    "fast-xml-parser": "^4.3.5",
     "vscode-languageclient": "^9.0.1"
   }
 }

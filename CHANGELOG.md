@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.11] - 2024-03-03
+
+- Bundle extension using esbuild
+
 ## [0.0.10] — 2024-03-03
 
 - Improve caching of schemes and configurations
