@@ -15,7 +15,6 @@ import {
 import {
   askScheme,
   askSimulatorToRunOn,
-  getWorkspacePath,
   askXcodeWorkspacePath,
   prepareBundleDir,
   prepareStoragePath,
@@ -40,10 +39,7 @@ async function runOnDevice(
     configuration: string;
   }
 ) {
-  const workspacePath = getWorkspacePath();
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution, {
-    cwd: workspacePath,
-  });
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution);
 
   const buildSettings = await getBuildSettings({
     scheme: options.scheme,
@@ -131,11 +127,7 @@ async function buildApp(
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundleDir = await prepareBundleDir(options.execution, options.scheme);
 
-  const workspacePath = getWorkspacePath();
-
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution, {
-    cwd: workspacePath,
-  });
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution);
 
   const commandParts: string[] = [
     "xcodebuild",
@@ -178,6 +170,9 @@ async function buildApp(
   }
 }
 
+/**
+ * Build without running
+ */
 export async function buildCommand(execution: CommandExecution, item: BuildTreeItem) {
   const configuration = await askConfiguration(execution);
   await buildApp(execution, {
@@ -190,6 +185,9 @@ export async function buildCommand(execution: CommandExecution, item: BuildTreeI
   });
 }
 
+/**
+ * Build and run application on the simulator
+ */
 export async function buildAndRunCommand(execution: CommandExecution, item: BuildTreeItem) {
   const configuration = await askConfiguration(execution);
 
@@ -215,6 +213,9 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
   });
 }
 
+/**
+ * Clean build artifacts
+ */
 export async function cleanCommand(execution: CommandExecution, item: BuildTreeItem) {
   const configuration = await askConfiguration(execution);
   await buildApp(execution, {
@@ -227,11 +228,11 @@ export async function cleanCommand(execution: CommandExecution, item: BuildTreeI
   });
 }
 
+/**
+ * Resolve dependencies for the Xcode project
+ */
 export async function resolveDependenciesCommand(execution: CommandExecution, item: BuildTreeItem) {
-  const workspacePath = getWorkspacePath();
-  const xcworkspacePath = await askXcodeWorkspacePath(execution, {
-    cwd: workspacePath,
-  });
+  const xcworkspacePath = await askXcodeWorkspacePath(execution);
 
   await runShellTask({
     name: "Resolve Dependencies",
@@ -241,6 +242,11 @@ export async function resolveDependenciesCommand(execution: CommandExecution, it
   });
 }
 
+/**
+ * Remove directory with build artifacts.
+ *
+ * Context: we are storing build artifacts in the `build` directory in the storage path for support xcode-build-server.
+ */
 export async function removeBundleDirCommand(execution: CommandExecution) {
   const storagePath = await prepareStoragePath(execution);
   const bundleDir = path.join(storagePath, "build");
@@ -249,16 +255,17 @@ export async function removeBundleDirCommand(execution: CommandExecution) {
   vscode.window.showInformationMessage("Bundle directory removed");
 }
 
+/**
+ * Generate buildServer.json in the workspace root for xcode-build-server —
+ * a tool that enable LSP server to see packages from the Xcode project.
+ */
 export async function generateBuildServerConfigCommand(execution: CommandExecution) {
-  const workspacePath = getWorkspacePath();
   const isServerInstalled = await getIsXcodeBuildServerInstalled();
   if (!isServerInstalled) {
     throw new ExtensionError("xcode-build-server is not installed");
   }
 
-  const projPath = await getXcodeProjectPath({
-    cwd: workspacePath,
-  });
+  const projPath = await getXcodeProjectPath();
 
   const scheme = await askScheme({
     title: "Select scheme for build server",
@@ -276,16 +283,17 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
  * Open current project in Xcode
  */
 export async function openXcodeCommand(execution: CommandExecution) {
-  const workspacePath = getWorkspacePath();
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution, {
-    cwd: workspacePath,
-  });
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution);
 
   await exec({
     command: "open",
     args: [xcodeWorkspacePath],
   });
 }
+
+/**
+ * Select Xcode workspace and save it to the workspace state
+ */
 export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
   const workspace = await selectXcodeWorkspace();
   execution.updateWorkspaceState("build.xcodeWorkspacePath", workspace);

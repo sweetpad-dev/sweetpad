@@ -109,7 +109,7 @@ export async function prepareBundleDir(execution: CommandExecution, schema: stri
   return bundleDir;
 }
 
-export async function askXcodeWorkspacePath(execution: CommandExecution, options: { cwd: string }): Promise<string> {
+export async function askXcodeWorkspacePath(execution: CommandExecution): Promise<string> {
   return await execution.withPathCache("build.xcodeWorkspacePath", async () => {
     return await selectXcodeWorkspace();
   });

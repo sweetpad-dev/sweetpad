@@ -2,6 +2,7 @@ import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { findFiles } from "../files";
 import { cache } from "../cache";
+import { getWorkspacePath } from "../../build/utils";
 
 export type SimulatorOutput = {
   dataPath: string;
@@ -134,13 +135,14 @@ export async function getIsXcodeBuildServerInstalled() {
 /**
  * Find xcode project in a given directory
  */
-export async function getXcodeProjectPath(options: { cwd: string }): Promise<string> {
-  const projects = await findFiles(options.cwd, (file, stats) => {
+export async function getXcodeProjectPath(): Promise<string> {
+  const workspaceFolder = getWorkspacePath();
+  const projects = await findFiles(workspaceFolder, (file, stats) => {
     return stats.isDirectory() && file.endsWith(".xcodeproj");
   });
   if (projects.length === 0) {
     throw new ExtensionError("No xcode projects found", {
-      cwd: options.cwd,
+      cwd: workspaceFolder,
     });
   }
   return projects[0];
