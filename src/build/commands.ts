@@ -9,6 +9,7 @@ import {
   getBuildSettings,
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
+  getSimulatorByUdid,
   getXcodeProjectPath,
   removeDirectory,
 } from "../common/cli/scripts";
@@ -68,7 +69,8 @@ async function runOnDevice(
 
   const targetPath = path.join(targetBuildDir, appName);
 
-  const simulator = options.simulator;
+  // Get simulator with fresh state
+  const simulator = await getSimulatorByUdid(options.simulator.udid);
 
   // Boot device
   if (simulator.state !== "Booted") {
@@ -104,7 +106,7 @@ async function runOnDevice(
   await runShellTask({
     name: "Run",
     command: "xcrun",
-    args: ["simctl", "launch", simulator.udid, bundleIdentifier, "--console-pty"],
+    args: ["simctl", "launch", "--console-pty", "--terminate-running-process", simulator.udid, bundleIdentifier],
     error: "Error running app",
   });
 }

@@ -46,6 +46,19 @@ export async function getSimulators() {
   return simulators;
 }
 
+export async function getSimulatorByUdid(udid: string) {
+  const simulators = await getSimulators();
+  for (const key in simulators.devices) {
+    const devices = simulators.devices[key];
+    for (const device of devices) {
+      if (device.udid === udid) {
+        return device;
+      }
+    }
+  }
+  throw new ExtensionError("Simulator not found", { udid });
+}
+
 export type BuildSettingsOutput = BuildSettingOutput[];
 
 export type BuildSettingOutput = {
