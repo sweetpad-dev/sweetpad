@@ -192,9 +192,9 @@ export async function getBuildConfigurations(): Promise<XcodeConfiguration[]> {
 /**
  * Generate xcode-build-server config
  */
-export async function generateBuildServerConfig(options: { projectPath: string; scheme: string }) {
+export async function generateBuildServerConfig(options: { xcodeWorkspacePath: string; scheme: string }) {
   await exec({
     command: "xcode-build-server",
-    args: ["config", "-project", options.projectPath, "-scheme", options.scheme],
+    args: ["config", "-workspace", options.xcodeWorkspacePath, "-scheme", options.scheme],
   });
 }

@@ -267,13 +267,13 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
     throw new ExtensionError("xcode-build-server is not installed");
   }
 
-  const projPath = await getXcodeProjectPath();
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution);
 
   const scheme = await askScheme({
     title: "Select scheme for build server",
   });
   await generateBuildServerConfig({
-    projectPath: projPath,
+    xcodeWorkspacePath: xcodeWorkspacePath,
     scheme: scheme,
   });
 

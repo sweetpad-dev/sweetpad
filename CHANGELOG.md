@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.2] — 2024-03-06
+
+- Use xcodeworkspace instead of xcodeproj for generating buildServer.json
+
 ## [0.1.1] - 2024-03-03
 
 - move to 0.1.x version
