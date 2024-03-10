@@ -40,7 +40,7 @@ iOS.
 SweetPad also provide TaskProvider that automatically provides tasks for building and running the app on the simulator.
 You can run these tasks from the command palette by typing `Tasks: Run Task` and selecting the desired task.
 
-[![Tasks](../images/tasks-preview.png)](../images/tasks-preview.png)
+![Tasks](../images/build-tasks-preview.png)
 
 Or you can add tasks to the `tasks.json` file in the `.vscode` folder of your project:
 
@@ -49,14 +49,11 @@ Or you can add tasks to the `tasks.json` file in the `.vscode` folder of your pr
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Build & Run",
-      "type": "shell",
-      "command": "xcodebuild",
-      "args": ["-scheme", "MyApp", "-destination", "platform=iOS Simulator,name=iPhone 11", "build", "test"],
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      }
+      "label": "SweetPad: Build",
+      "type": "sweetpad",
+      "action": "launch",
+      "scheme": "terminal23",
+      "configuration": "Debug"
     }
   ]
 }
