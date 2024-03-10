@@ -14,5 +14,12 @@ declare module "execa" {
     exitCode: number;
   }
 
-  export function execa(command: string, args: string[], options: { cwd: string }): Promise<ExecaReturnValue>;
+  export function execa(
+    command: string,
+    args: string[],
+    options: {
+      cwd: string;
+      buffer?: boolean;
+    }
+  ): Promise<ExecaReturnValue>;
 }

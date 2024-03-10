@@ -20,14 +20,43 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:swift",
+    "onCommand:workbench.action.tasks.runTask",
     "workspaceContains:**/*.xcworkspace",
     "workspaceContains:**/*.xcodeproj",
     "workspaceContains:**/project.yml",
-    "workspaceContains:**/Podfile"
+    "workspaceContains:**/Podfile",
+    "onLanguage:swift"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "taskDefinitions": [
+      {
+        "type": "sweetpad",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "launch",
+              "build",
+              "clean",
+              "resolve-dependencies"
+            ]
+          },
+          "scheme": {
+            "type": "string"
+          },
+          "configuration": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        }
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {

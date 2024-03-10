@@ -10,7 +10,6 @@ import {
   removeBundleDirCommand,
   resolveDependenciesCommand,
 } from "./build/commands.js";
-import { preloadExec } from "./common/exec.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { createFormatStatusItem } from "./format/status.js";
 import { createFormatProvider } from "./format/provider.js";
@@ -23,23 +22,22 @@ import {
 import { SimulatorsTreeProvider } from "./simulators/tree.js";
 import { ToolTreeProvider } from "./tools/tree.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
-import { CommandExecution } from "./common/commands.js";
+import { CommandExecution, ExtensionContext } from "./common/commands.js";
 import { selectXcodeWorkspaceCommand } from "./build/commands.js";
 import { resetSweetpadCache } from "./system/commands.js";
+import { XcodeBuildTaskProvider } from "./build/provider.js";
 
 export function activate(context: vscode.ExtensionContext) {
+  const _context = new ExtensionContext(context);
   // For "when" clauses to enable/disable views/commands
   vscode.commands.executeCommand("setContext", "sweetpad.enabled", true);
 
   // shortcut to push disposable to context.subscriptions
   const p = (disposable: vscode.Disposable) => context.subscriptions.push(disposable);
 
-  // Preload exec function to avoid delay on first exec call
-  void preloadExec();
-
   function registerCommand(command: string, callback: (context: CommandExecution, ...args: any[]) => Promise<void>) {
     return vscode.commands.registerCommand(command, (...args: any[]) => {
-      const execution = new CommandExecution(command, callback, context);
+      const execution = new CommandExecution(command, callback, _context);
       return execution.run(...args);
     });
   }
@@ -49,6 +47,11 @@ export function activate(context: vscode.ExtensionContext) {
   const buildTreeProvider = new BuildTreeProvider({
     simulatorsTree: simulatorsTreeProvider,
   });
+
+  const buildTaskProvider = new XcodeBuildTaskProvider(_context);
+
+  // Tasks
+  p(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
 
   // Build
   p(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));

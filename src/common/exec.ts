@@ -21,10 +21,6 @@ export type ExecaError = {
   originalMessage: string;
 };
 
-export async function preloadExec() {
-  // await getExeca();
-}
-
 export async function exec(options: { command: string; args: string[]; cwd?: string }): Promise<string> {
   const cwd = options.cwd ?? getWorkspacePath();
 

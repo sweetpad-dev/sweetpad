@@ -10,7 +10,7 @@ import {
   getSimulators,
   removeDirectory,
 } from "../common/cli/scripts";
-import { CommandExecution } from "../common/commands";
+import { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { findFilesRecursive, isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
@@ -20,8 +20,8 @@ const DEFAULT_CONFIGURATION = "Debug";
 /**
  * Ask user to select simulator to run on using quick pick
  */
-export async function askSimulatorToRunOn(execution: CommandExecution): Promise<SimulatorOutput> {
-  return await execution.withCache("build.xcodeSimulator", async () => {
+export async function askSimulatorToRunOn(context: ExtensionContext): Promise<SimulatorOutput> {
+  return await context.withCache("build.xcodeSimulator", async () => {
     const output = await getSimulators();
 
     const device = await showQuickPick({
@@ -81,8 +81,8 @@ export function getWorkspacePath(): string {
 /**
  * Prepare storage path for the extension. It's a folder where we store all intermediate files
  */
-export async function prepareStoragePath(execution: CommandExecution): Promise<string> {
-  const storagePath = execution.context.storageUri?.fsPath;
+export async function prepareStoragePath(context: ExtensionContext): Promise<string> {
+  const storagePath = context.storageUri?.fsPath;
   if (!storagePath) {
     throw new ExtensionError("No storage path found");
   }
@@ -94,8 +94,8 @@ export async function prepareStoragePath(execution: CommandExecution): Promise<s
 /**
  * Prepare bundle directory for the given schema in the storage path
  */
-export async function prepareBundleDir(execution: CommandExecution, schema: string): Promise<string> {
-  const storagePath = await prepareStoragePath(execution);
+export async function prepareBundleDir(context: ExtensionContext, schema: string): Promise<string> {
+  const storagePath = await prepareStoragePath(context);
 
   const bundleDir = path.join(storagePath, "bundle", schema);
 
@@ -109,14 +109,14 @@ export async function prepareBundleDir(execution: CommandExecution, schema: stri
   return bundleDir;
 }
 
-export async function askXcodeWorkspacePath(execution: CommandExecution): Promise<string> {
-  return await execution.withPathCache("build.xcodeWorkspacePath", async () => {
+export async function askXcodeWorkspacePath(context: ExtensionContext): Promise<string> {
+  return await context.withPathCache("build.xcodeWorkspacePath", async () => {
     return await selectXcodeWorkspace();
   });
 }
 
-export async function askConfiguration(execution: CommandExecution): Promise<string> {
-  return await execution.withCache("build.xcodeConfiguration", async () => {
+export async function askConfiguration(context: ExtensionContext): Promise<string> {
+  return await context.withCache("build.xcodeConfiguration", async () => {
     // Fetch all configurations
     const configurations = await getBuildConfigurations();
 

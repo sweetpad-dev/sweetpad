@@ -10,7 +10,6 @@ import {
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
   getSimulatorByUdid,
-  getXcodeProjectPath,
   removeDirectory,
 } from "../common/cli/scripts";
 import {
@@ -22,25 +21,25 @@ import {
   askConfiguration,
   selectXcodeWorkspace,
 } from "./utils";
-import { CommandExecution } from "../common/commands";
+import { CommandExecution, ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { commonLogger } from "../common/logger";
 import { exec } from "../common/exec";
 import { getWorkspaceConfig } from "../common/config";
 
-const DEFAULT_SDK = "iphonesimulator";
+export const DEFAULT_SDK = "iphonesimulator";
 
-async function runOnDevice(
-  execution: CommandExecution,
+export async function runOnDevice(
+  context: ExtensionContext,
   options: {
     scheme: string;
     simulator: SimulatorOutput;
-    item: BuildTreeItem;
+    item?: BuildTreeItem;
     sdk: string;
     configuration: string;
   }
 ) {
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution);
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(context);
 
   const buildSettings = await getBuildSettings({
     scheme: options.scheme,
@@ -83,7 +82,7 @@ async function runOnDevice(
 
     // Refresh list of simulators after we start new simulator
     // TODO: make it less hacky, but let's keep it for now
-    options.item.refreshSimulators();
+    options.item?.refreshSimulators();
   }
 
   // Install app
@@ -111,25 +110,24 @@ async function runOnDevice(
   });
 }
 
-function isXcbeautifyEnabled() {
+export function isXcbeautifyEnabled() {
   return getWorkspaceConfig<boolean>("build.xcbeautifyEnabled") ?? true;
 }
 
-async function buildApp(
-  execution: CommandExecution,
+export async function buildApp(
+  context: ExtensionContext,
   options: {
     scheme: string;
     sdk: string;
     configuration: string;
-    execution: CommandExecution;
     shouldBuild: boolean;
     shouldClean: boolean;
   }
 ) {
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
-  const bundleDir = await prepareBundleDir(options.execution, options.scheme);
+  const bundleDir = await prepareBundleDir(context, options.scheme);
 
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution);
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(context);
 
   const commandParts: string[] = [
     "xcodebuild",
@@ -176,10 +174,9 @@ async function buildApp(
  * Build without running
  */
 export async function buildCommand(execution: CommandExecution, item: BuildTreeItem) {
-  const configuration = await askConfiguration(execution);
-  await buildApp(execution, {
+  const configuration = await askConfiguration(execution.context);
+  await buildApp(execution.context, {
     scheme: item.scheme,
-    execution: execution,
     sdk: DEFAULT_SDK,
     configuration: configuration,
     shouldBuild: true,
@@ -191,22 +188,21 @@ export async function buildCommand(execution: CommandExecution, item: BuildTreeI
  * Build and run application on the simulator
  */
 export async function buildAndRunCommand(execution: CommandExecution, item: BuildTreeItem) {
-  const configuration = await askConfiguration(execution);
+  const configuration = await askConfiguration(execution.context);
 
   // Ask simulator to run on before we start building to not distract user
   // during build command execution
-  const simulator = await askSimulatorToRunOn(execution);
+  const simulator = await askSimulatorToRunOn(execution.context);
 
-  await buildApp(execution, {
+  await buildApp(execution.context, {
     scheme: item.scheme,
-    execution: execution,
     sdk: DEFAULT_SDK,
     configuration: configuration,
     shouldBuild: true,
     shouldClean: false,
   });
 
-  await runOnDevice(execution, {
+  await runOnDevice(execution.context, {
     scheme: item.scheme,
     simulator: simulator,
     item: item,
@@ -219,10 +215,9 @@ export async function buildAndRunCommand(execution: CommandExecution, item: Buil
  * Clean build artifacts
  */
 export async function cleanCommand(execution: CommandExecution, item: BuildTreeItem) {
-  const configuration = await askConfiguration(execution);
-  await buildApp(execution, {
+  const configuration = await askConfiguration(execution.context);
+  await buildApp(execution.context, {
     scheme: item.scheme,
-    execution: execution,
     sdk: DEFAULT_SDK,
     configuration: configuration,
     shouldBuild: false,
@@ -230,17 +225,24 @@ export async function cleanCommand(execution: CommandExecution, item: BuildTreeI
   });
 }
 
+export async function resolveDependencies(options: { scheme: string; xcodeWorkspacePath: string }) {
+  await runShellTask({
+    name: "Resolve Dependencies",
+    command: "xcodebuild",
+    args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcodeWorkspacePath],
+    error: "Error resolving dependencies",
+  });
+}
+
 /**
  * Resolve dependencies for the Xcode project
  */
 export async function resolveDependenciesCommand(execution: CommandExecution, item: BuildTreeItem) {
-  const xcworkspacePath = await askXcodeWorkspacePath(execution);
+  const xcworkspacePath = await askXcodeWorkspacePath(execution.context);
 
-  await runShellTask({
-    name: "Resolve Dependencies",
-    command: "xcodebuild",
-    args: ["-resolvePackageDependencies", "-scheme", item.scheme, "-workspace", xcworkspacePath],
-    error: "Error resolving dependencies",
+  await resolveDependencies({
+    scheme: item.scheme,
+    xcodeWorkspacePath: xcworkspacePath,
   });
 }
 
@@ -250,7 +252,7 @@ export async function resolveDependenciesCommand(execution: CommandExecution, it
  * Context: we are storing build artifacts in the `build` directory in the storage path for support xcode-build-server.
  */
 export async function removeBundleDirCommand(execution: CommandExecution) {
-  const storagePath = await prepareStoragePath(execution);
+  const storagePath = await prepareStoragePath(execution.context);
   const bundleDir = path.join(storagePath, "build");
 
   await removeDirectory(bundleDir);
@@ -267,7 +269,7 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
     throw new ExtensionError("xcode-build-server is not installed");
   }
 
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution);
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution.context);
 
   const scheme = await askScheme({
     title: "Select scheme for build server",
@@ -285,7 +287,7 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
  * Open current project in Xcode
  */
 export async function openXcodeCommand(execution: CommandExecution) {
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution);
+  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution.context);
 
   await exec({
     command: "open",
@@ -298,5 +300,5 @@ export async function openXcodeCommand(execution: CommandExecution) {
  */
 export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
   const workspace = await selectXcodeWorkspace();
-  execution.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
+  execution.context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
 }

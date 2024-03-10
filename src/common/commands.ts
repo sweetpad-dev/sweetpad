@@ -11,6 +11,63 @@ type WorkspaceStateKey =
   | "build.xcodeSimulator"
   | "build.xcodeSdk";
 
+export class ExtensionContext {
+  private _context: vscode.ExtensionContext;
+
+  constructor(context: vscode.ExtensionContext) {
+    this._context = context;
+  }
+
+  get storageUri() {
+    return this._context.storageUri;
+  }
+
+  updateWorkspaceState(key: WorkspaceStateKey, value: any | undefined) {
+    this._context.workspaceState.update(`sweetpad.${key}`, value);
+  }
+
+  getWorkspaceState<T = any>(key: WorkspaceStateKey): T | undefined {
+    return this._context.workspaceState.get(`sweetpad.${key}`);
+  }
+
+  /**
+   * Remove all sweetpad.* keys from workspace state
+   */
+  resetWorkspaceState() {
+    this._context.workspaceState.keys().forEach((key) => {
+      if (key.startsWith("sweetpad.")) {
+        this._context.workspaceState.update(key, undefined);
+      }
+    });
+  }
+
+  async withCache<T>(key: WorkspaceStateKey, callback: () => Promise<T>): Promise<T> {
+    let value = this.getWorkspaceState<T>(key);
+    if (value) {
+      return value;
+    }
+
+    value = await callback();
+    this.updateWorkspaceState(key, value);
+    return value;
+  }
+
+  async withPathCache(key: WorkspaceStateKey, callback: () => Promise<string>): Promise<string> {
+    let value = this.getWorkspaceState<string>(key);
+    if (value) {
+      if (!(await isFileExists(value))) {
+        this.updateWorkspaceState(key, undefined);
+      } else {
+        return value;
+      }
+    }
+
+    value = await callback();
+    this.updateWorkspaceState(key, value);
+    return value;
+  }
+}
+
 /**
  * Class that represents a command execution with proper error handling
  */
@@ -18,7 +75,7 @@ export class CommandExecution {
   constructor(
     public readonly command: string,
     public readonly callback: (context: CommandExecution, ...args: any[]) => Promise<any>,
-    public context: vscode.ExtensionContext
+    public context: ExtensionContext
   ) {}
 
   /**
@@ -78,50 +135,5 @@ export class CommandExecution {
         await this.showErrorMessage(`Sweetpad: ${errorMessage}`);
       }
     }
-  }
-
-  updateWorkspaceState(key: WorkspaceStateKey, value: any | undefined) {
-    this.context.workspaceState.update(`sweetpad.${key}`, value);
-  }
-
-  getWorkspaceState<T = any>(key: WorkspaceStateKey): T | undefined {
-    return this.context.workspaceState.get(`sweetpad.${key}`);
-  }
-
-  /**
-   * Remove all sweetpad.* keys from workspace state
-   */
-  resetWorkspaceState() {
-    this.context.workspaceState.keys().forEach((key) => {
-      if (key.startsWith("sweetpad.")) {
-        this.context.workspaceState.update(key, undefined);
-      }
-    });
-  }
-
-  async withCache<T>(key: WorkspaceStateKey, callback: () => Promise<T>): Promise<T> {
-    let value = this.getWorkspaceState<T>(key);
-    if (value) {
-      return value;
-    }
-
-    value = await callback();
-    this.updateWorkspaceState(key, value);
-    return value;
-  }
-
-  async withPathCache(key: WorkspaceStateKey, callback: () => Promise<string>): Promise<string> {
-    let value = this.getWorkspaceState<string>(key);
-    if (value) {
-      if (!(await isFileExists(value))) {
-        this.updateWorkspaceState(key, undefined);
-      } else {
-        return value;
-      }
-    }
-
-    value = await callback();
-    this.updateWorkspaceState(key, value);
-    return value;
   }
 }
