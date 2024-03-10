@@ -17,7 +17,6 @@ src/
 .eslintrc.json
 .gitignore
 .prettierrc
-.vscode-test.mjs
 .vscodeignore
 package-lock.json
 tsconfig.json

@@ -11,6 +11,8 @@ The long-term goal is to make VSCode as a viable alternative to Xcode for iOS de
 tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcode-build-server**, **sourcekit-lsp**, and
 so on into VSCode.
 
+![iOS simulator](./docs/images/build-demo.gif)
+
 ## Feature
 
 - ✅ **[Autocomplete](./docs/wiki/autocomplete.md)** — setup autocomplete using
