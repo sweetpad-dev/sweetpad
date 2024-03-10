@@ -3,7 +3,7 @@
 You can build and run your iOS app directly on the simulator from the VSCode sidebar. This functionality leverages
 `xcodebuild`, a component of the Xcode command-line tools.
 
-![iOS simulator](../images/build-demo.mp4)
+![iOS simulator](../images/build-demo.gif)
 
 To build and run your app on the simulator, first open the folder containing your Xcode project. Then, open the SweetPad
 tools panel on the left side of VSCode, navigate to the **"Build"** section, and click the **"Build & Run"** button next
