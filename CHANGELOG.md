@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.4] - 2024-03-10
+
+- Update README.md
+
 ## [0.1.3] - 2024-03-10
 
 - Add task provider for building and running app on simulator
