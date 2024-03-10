@@ -4,6 +4,11 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.3] - 2024-03-10
+
+- Add task provider for building and running app on simulator
+- Allow to configure task in tasks.json
+
 ## [0.1.2] — 2024-03-06
 
 - Use xcodeworkspace instead of xcodeproj for generating buildServer.json
