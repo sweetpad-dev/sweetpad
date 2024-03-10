@@ -46,13 +46,20 @@
             ]
           },
           "scheme": {
-            "type": "string"
+            "type": "string",
+            "description": "Scheme to build"
           },
           "configuration": {
-            "type": "string"
+            "type": "string",
+            "description": "Configuration to build"
           },
           "workspace": {
-            "type": "string"
+            "type": "string",
+            "description": "Path to workspace for resolving dependencies"
+          },
+          "simulator": {
+            "type": "string",
+            "description": "Simulator to launch. Currently only device UUID is supported."
           }
         }
       }
