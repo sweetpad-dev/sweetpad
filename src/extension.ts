@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 
 import { BuildTreeProvider } from "./build/tree.js";
 import {
-  buildAndRunCommand,
+  launchCommand,
   buildCommand,
   cleanCommand,
   generateBuildServerConfigCommand,
@@ -56,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Build
   p(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
   p(registerCommand("sweetpad.build.refresh", async () => buildTreeProvider.refresh()));
-  p(registerCommand("sweetpad.build.buildAndRun", buildAndRunCommand));
+  p(registerCommand("sweetpad.build.laucnh", launchCommand));
   p(registerCommand("sweetpad.build.build", buildCommand));
   p(registerCommand("sweetpad.build.clean", cleanCommand));
   p(registerCommand("sweetpad.build.resolveDependencies", resolveDependenciesCommand));

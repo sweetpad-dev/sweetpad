@@ -107,7 +107,7 @@
         "icon": "$(list-tree)"
       },
       {
-        "command": "sweetpad.build.buildAndRun",
+        "command": "sweetpad.build.launch",
         "title": "SweetPad: Build and run",
         "icon": "$(play)"
       },
@@ -229,7 +229,7 @@
       ],
       "view/item/context": [
         {
-          "command": "sweetpad.build.buildAndRun",
+          "command": "sweetpad.build.launch",
           "when": "view == sweetpad.build.view",
           "group": "inline@2"
         },

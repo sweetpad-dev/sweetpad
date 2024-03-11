@@ -187,7 +187,7 @@ export async function buildCommand(execution: CommandExecution, item: BuildTreeI
 /**
  * Build and run application on the simulator
  */
-export async function buildAndRunCommand(execution: CommandExecution, item: BuildTreeItem) {
+export async function launchCommand(execution: CommandExecution, item: BuildTreeItem) {
   const configuration = await askConfiguration(execution.context);
 
   // Ask simulator to run on before we start building to not distract user
