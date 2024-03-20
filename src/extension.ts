@@ -41,54 +41,48 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // shortcut to push disposable to context.subscriptions
-  const p = (disposable: vscode.Disposable) => context.subscriptions.push(disposable);
-
-  function registerCommand(command: string, callback: (context: CommandExecution, ...args: any[]) => Promise<void>) {
-    return vscode.commands.registerCommand(command, (...args: any[]) => {
-      const execution = new CommandExecution(command, callback, _context);
-      return execution.run(...args);
-    });
-  }
+  const d = _context.disposable.bind(_context);
+  const command = _context.registerCommand.bind(_context);
 
   const buildTaskProvider = new XcodeBuildTaskProvider(_context);
 
   // Tasks
-  p(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
+  d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
 
   // Build
-  p(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
-  p(registerCommand("sweetpad.build.refresh", async () => buildTreeProvider.refresh()));
-  p(registerCommand("sweetpad.build.launch", launchCommand));
-  p(registerCommand("sweetpad.build.build", buildCommand));
-  p(registerCommand("sweetpad.build.clean", cleanCommand));
-  p(registerCommand("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
-  p(registerCommand("sweetpad.build.removeBundleDir", removeBundleDirCommand));
-  p(registerCommand("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
-  p(registerCommand("sweetpad.build.openXcode", openXcodeCommand));
-  p(registerCommand("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
+  d(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
+  d(command("sweetpad.build.refresh", async () => buildTreeProvider.refresh()));
+  d(command("sweetpad.build.launch", launchCommand));
+  d(command("sweetpad.build.build", buildCommand));
+  d(command("sweetpad.build.clean", cleanCommand));
+  d(command("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
+  d(command("sweetpad.build.removeBundleDir", removeBundleDirCommand));
+  d(command("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
+  d(command("sweetpad.build.openXcode", openXcodeCommand));
+  d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
 
   // Format
-  p(createFormatStatusItem());
-  p(createFormatProvider());
-  p(registerCommand("sweetpad.format.run", formatCommand));
-  p(registerCommand("sweetpad.format.showLogs", showLogsCommand));
+  d(createFormatStatusItem());
+  d(createFormatProvider());
+  d(command("sweetpad.format.run", formatCommand));
+  d(command("sweetpad.format.showLogs", showLogsCommand));
 
   // Simulators
-  p(vscode.window.registerTreeDataProvider("sweetpad.simulators.view", simulatorsTreeProvider));
-  p(registerCommand("sweetpad.simulators.refresh", async () => simulatorsTreeProvider.refresh()));
-  p(registerCommand("sweetpad.simulators.openSimulator", openSimulatorCommand));
-  p(registerCommand("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
-  p(registerCommand("sweetpad.simulators.start", startSimulatorCommand));
-  p(registerCommand("sweetpad.simulators.stop", stopSimulatorCommand));
+  d(vscode.window.registerTreeDataProvider("sweetpad.simulators.view", simulatorsTreeProvider));
+  d(command("sweetpad.simulators.refresh", async () => simulatorsTreeProvider.refresh()));
+  d(command("sweetpad.simulators.openSimulator", openSimulatorCommand));
+  d(command("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
+  d(command("sweetpad.simulators.start", startSimulatorCommand));
+  d(command("sweetpad.simulators.stop", stopSimulatorCommand));
 
   // Tools
-  p(vscode.window.registerTreeDataProvider("sweetpad.tools.view", toolsTreeProvider));
-  p(registerCommand("sweetpad.tools.install", installToolCommand));
-  p(registerCommand("sweetpad.tools.refresh", async () => toolsTreeProvider.refresh()));
-  p(registerCommand("sweetpad.tools.documentation", openDocumentationCommand));
+  d(vscode.window.registerTreeDataProvider("sweetpad.tools.view", toolsTreeProvider));
+  d(command("sweetpad.tools.install", installToolCommand));
+  d(command("sweetpad.tools.refresh", async () => toolsTreeProvider.refresh()));
+  d(command("sweetpad.tools.documentation", openDocumentationCommand));
 
   // System
-  p(registerCommand("sweetpad.system.resetSweetpadCache", resetSweetpadCache));
+  d(command("sweetpad.system.resetSweetpadCache", resetSweetpadCache));
 }
 
 export function deactivate() {}

@@ -36,6 +36,17 @@ export class ExtensionContext {
     return this._context.storageUri;
   }
 
+  disposable(disposable: vscode.Disposable) {
+    this._context.subscriptions.push(disposable);
+  }
+
+  registerCommand(command: string, callback: (context: CommandExecution, ...args: any[]) => Promise<void>) {
+    return vscode.commands.registerCommand(command, (...args: any[]) => {
+      const execution = new CommandExecution(command, callback, this);
+      return execution.run(...args);
+    });
+  }
+
   updateWorkspaceState(key: WorkspaceStateKey, value: any | undefined) {
     this._context.workspaceState.update(`sweetpad.${key}`, value);
   }
