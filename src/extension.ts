@@ -22,7 +22,7 @@ import {
 import { SimulatorsTreeProvider } from "./simulators/tree.js";
 import { ToolTreeProvider } from "./tools/tree.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
-import { CommandExecution, ExtensionContext } from "./common/commands.js";
+import { ExtensionContext } from "./common/commands.js";
 import { selectXcodeWorkspaceCommand } from "./build/commands.js";
 import { resetSweetpadCache } from "./system/commands.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
