@@ -2,6 +2,9 @@ import * as vscode from "vscode";
 import { ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
 import { isFileExists } from "./files";
+import { BuildTreeProvider } from "../build/tree";
+import { SimulatorsTreeProvider } from "../simulators/tree";
+import { ToolTreeProvider } from "../tools/tree";
 
 type WorkspaceStateKey =
   | "build.xcodeWorkspacePath"
@@ -13,9 +16,20 @@ type WorkspaceStateKey =
 
 export class ExtensionContext {
   private _context: vscode.ExtensionContext;
+  public _buildProvider: BuildTreeProvider;
+  public _simulatorsProvider: SimulatorsTreeProvider;
+  public _toolsProvider: ToolTreeProvider;
 
-  constructor(context: vscode.ExtensionContext) {
-    this._context = context;
+  constructor(options: {
+    context: vscode.ExtensionContext;
+    buildProvider: BuildTreeProvider;
+    simulatorsProvider: SimulatorsTreeProvider;
+    toolsProvider: ToolTreeProvider;
+  }) {
+    this._context = options.context;
+    this._buildProvider = options.buildProvider;
+    this._simulatorsProvider = options.simulatorsProvider;
+    this._toolsProvider = options.toolsProvider;
   }
 
   get storageUri() {
@@ -65,6 +79,10 @@ export class ExtensionContext {
     value = await callback();
     this.updateWorkspaceState(key, value);
     return value;
+  }
+
+  refreshSimulators() {
+    this._simulatorsProvider.refresh();
   }
 }
 

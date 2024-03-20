@@ -57,7 +57,6 @@ class ActionDispatcher {
     await runOnDevice(this.context, {
       scheme: scheme,
       simulator: simulator,
-      item: undefined,
       sdk: DEFAULT_SDK,
       configuration: configuration,
     });

@@ -34,7 +34,6 @@ export async function runOnDevice(
   options: {
     scheme: string;
     simulator: SimulatorOutput;
-    item?: BuildTreeItem;
     sdk: string;
     configuration: string;
   }
@@ -82,7 +81,7 @@ export async function runOnDevice(
 
     // Refresh list of simulators after we start new simulator
     // TODO: make it less hacky, but let's keep it for now
-    options.item?.refreshSimulators();
+    context.refreshSimulators();
   }
 
   // Install app
@@ -173,10 +172,12 @@ export async function buildApp(
 /**
  * Build without running
  */
-export async function buildCommand(execution: CommandExecution, item: BuildTreeItem) {
+export async function buildCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to build" }));
   const configuration = await askConfiguration(execution.context);
+
   await buildApp(execution.context, {
-    scheme: item.scheme,
+    scheme: scheme,
     sdk: DEFAULT_SDK,
     configuration: configuration,
     shouldBuild: true,
@@ -187,7 +188,9 @@ export async function buildCommand(execution: CommandExecution, item: BuildTreeI
 /**
  * Build and run application on the simulator
  */
-export async function launchCommand(execution: CommandExecution, item: BuildTreeItem) {
+export async function launchCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to build and run" }));
+
   const configuration = await askConfiguration(execution.context);
 
   // Ask simulator to run on before we start building to not distract user
@@ -195,7 +198,7 @@ export async function launchCommand(execution: CommandExecution, item: BuildTree
   const simulator = await askSimulatorToRunOn(execution.context);
 
   await buildApp(execution.context, {
-    scheme: item.scheme,
+    scheme: scheme,
     sdk: DEFAULT_SDK,
     configuration: configuration,
     shouldBuild: true,
@@ -203,9 +206,9 @@ export async function launchCommand(execution: CommandExecution, item: BuildTree
   });
 
   await runOnDevice(execution.context, {
-    scheme: item.scheme,
+    scheme: scheme,
     simulator: simulator,
-    item: item,
+
     sdk: DEFAULT_SDK,
     configuration: configuration,
   });
@@ -214,10 +217,11 @@ export async function launchCommand(execution: CommandExecution, item: BuildTree
 /**
  * Clean build artifacts
  */
-export async function cleanCommand(execution: CommandExecution, item: BuildTreeItem) {
+export async function cleanCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to clean" }));
   const configuration = await askConfiguration(execution.context);
   await buildApp(execution.context, {
-    scheme: item.scheme,
+    scheme: scheme,
     sdk: DEFAULT_SDK,
     configuration: configuration,
     shouldBuild: false,
@@ -237,11 +241,12 @@ export async function resolveDependencies(options: { scheme: string; xcodeWorksp
 /**
  * Resolve dependencies for the Xcode project
  */
-export async function resolveDependenciesCommand(execution: CommandExecution, item: BuildTreeItem) {
+export async function resolveDependenciesCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to resolve dependencies" }));
   const xcworkspacePath = await askXcodeWorkspacePath(execution.context);
 
   await resolveDependencies({
-    scheme: item.scheme,
+    scheme: scheme,
     xcodeWorkspacePath: xcworkspacePath,
   });
 }

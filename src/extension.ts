@@ -28,9 +28,17 @@ import { resetSweetpadCache } from "./system/commands.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
 
 export function activate(context: vscode.ExtensionContext) {
-  const _context = new ExtensionContext(context);
-  // For "when" clauses to enable/disable views/commands
-  vscode.commands.executeCommand("setContext", "sweetpad.enabled", true);
+  // Trees 🎄
+  const simulatorsTreeProvider = new SimulatorsTreeProvider();
+  const buildTreeProvider = new BuildTreeProvider();
+  const toolsTreeProvider = new ToolTreeProvider();
+
+  const _context = new ExtensionContext({
+    context: context,
+    buildProvider: buildTreeProvider,
+    simulatorsProvider: simulatorsTreeProvider,
+    toolsProvider: toolsTreeProvider,
+  });
 
   // shortcut to push disposable to context.subscriptions
   const p = (disposable: vscode.Disposable) => context.subscriptions.push(disposable);
@@ -42,12 +50,6 @@ export function activate(context: vscode.ExtensionContext) {
     });
   }
 
-  // Trees 🎄
-  const simulatorsTreeProvider = new SimulatorsTreeProvider();
-  const buildTreeProvider = new BuildTreeProvider({
-    simulatorsTree: simulatorsTreeProvider,
-  });
-
   const buildTaskProvider = new XcodeBuildTaskProvider(_context);
 
   // Tasks
@@ -56,7 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Build
   p(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
   p(registerCommand("sweetpad.build.refresh", async () => buildTreeProvider.refresh()));
-  p(registerCommand("sweetpad.build.laucnh", launchCommand));
+  p(registerCommand("sweetpad.build.launch", launchCommand));
   p(registerCommand("sweetpad.build.build", buildCommand));
   p(registerCommand("sweetpad.build.clean", cleanCommand));
   p(registerCommand("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
@@ -80,7 +82,6 @@ export function activate(context: vscode.ExtensionContext) {
   p(registerCommand("sweetpad.simulators.stop", stopSimulatorCommand));
 
   // Tools
-  const toolsTreeProvider = new ToolTreeProvider();
   p(vscode.window.registerTreeDataProvider("sweetpad.tools.view", toolsTreeProvider));
   p(registerCommand("sweetpad.tools.install", installToolCommand));
   p(registerCommand("sweetpad.tools.refresh", async () => toolsTreeProvider.refresh()));

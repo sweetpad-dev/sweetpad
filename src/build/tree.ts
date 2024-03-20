@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { SimulatorsTreeProvider } from "../simulators/tree";
 import { getSchemes } from "../common/cli/scripts";
 
 type EventData = BuildTreeItem | undefined | null | void;
@@ -22,27 +21,13 @@ export class BuildTreeItem extends vscode.TreeItem {
   refresh() {
     this.provider.refresh();
   }
-
-  refreshSimulators() {
-    this.provider.refreshSimulators();
-  }
 }
 export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem> {
-  private simulatorsTree: SimulatorsTreeProvider;
-
-  constructor(options: { simulatorsTree: SimulatorsTreeProvider }) {
-    this.simulatorsTree = options.simulatorsTree;
-  }
-
   private _onDidChangeTreeData = new vscode.EventEmitter<EventData>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
-  }
-
-  refreshSimulators() {
-    this.simulatorsTree.refresh();
   }
 
   getChildren(element?: BuildTreeItem | undefined): vscode.ProviderResult<BuildTreeItem[]> {

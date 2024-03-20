@@ -108,7 +108,7 @@
       },
       {
         "command": "sweetpad.build.launch",
-        "title": "SweetPad: Build and run",
+        "title": "SweetPad: Build & Run (Launch)",
         "icon": "$(play)"
       },
       {
