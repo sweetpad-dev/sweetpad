@@ -4,6 +4,11 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.7] - 2024-03-20
+
+- Fix typo with launch command
+- Add ability to build and run from command palette
+
 ## [0.1.6] - 2024-03-10
 
 - Update extension categories
