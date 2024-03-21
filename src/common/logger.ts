@@ -21,9 +21,12 @@ interface Message {
  */
 export class Logger {
   private outputChannel: vscode.OutputChannel;
+  private messages: Message[];
+  private maxMessages = 1000;
 
   constructor(options: { name: string }) {
     this.outputChannel = vscode.window.createOutputChannel(`SweetPad: ${options.name}`);
+    this.messages = [];
   }
 
   private format(data: Message) {
@@ -33,6 +36,10 @@ export class Logger {
   private addMessage(data: Message) {
     const formatted = this.format(data);
     this.outputChannel.appendLine(formatted);
+    this.messages.push(data);
+    if (this.messages.length >= this.maxMessages) {
+      this.messages.shift();
+    }
   }
 
   private getNow() {
@@ -68,6 +75,14 @@ export class Logger {
 
   show() {
     this.outputChannel.show();
+  }
+
+  last(n: number): Message[] {
+    return this.messages.slice(-n);
+  }
+
+  lastFormatted(n: number): string {
+    return this.messages.slice(-n).map(this.format).join("\n");
   }
 }
 

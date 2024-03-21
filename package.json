@@ -95,6 +95,13 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "sweetpad.build.view",
+        "contents": "No Xcode scheme was found. Open the workspace that has the Xcode project to use SweetPad.\n[Open Workspace](command:workbench.action.files.openFileFolder)\nIf your workspace already has a scheme and SweetPad isn't recognizing it, please report this problem on GitHub.\n[Create Issue](command:sweetpad.system.createIssue.noSchemes)",
+        "when": "sweetpad.build.noSchemes"
+      }
+    ],
     "commands": [
       {
         "command": "sweetpad.format.run",
@@ -191,6 +198,16 @@
         "command": "sweetpad.system.resetSweetpadCache",
         "title": "SweetPad: Reset Extension Cache",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "sweetpad.system.createIssue.generic",
+        "title": "SweetPad: Create Issue on GitHub",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "sweetpad.system.createIssue.noSchemes",
+        "title": "SweetPad: Create Issue on GitHub (No Schemes)",
+        "icon": "$(bug)"
       }
     ],
     "menus": {
@@ -290,7 +307,8 @@
     "vscode:prepublish": "npm run esbuild-base -- --minify",
     "build": "npm run esbuild-base -- --sourcemap",
     "watch": "npm run esbuild-base -- --sourcemap --watch",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "check": "eslint . --ext .ts && tsc --noEmit"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import { getSchemes } from "../common/cli/scripts";
+import { XcodeScheme, getSchemes } from "../common/cli/scripts";
+import { commonLogger } from "../common/logger";
 
 type EventData = BuildTreeItem | undefined | null | void;
 
@@ -44,7 +45,20 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   }
 
   async getSchemes(): Promise<BuildTreeItem[]> {
-    const schemes = await getSchemes();
+    let schemes: XcodeScheme[] = [];
+    try {
+      schemes = await getSchemes();
+    } catch (error) {
+      commonLogger.error("Failed to get schemes", {
+        error,
+      });
+    }
+
+    if (schemes.length === 0) {
+      // Display welcome screen with explanation what to do.
+      // See "viewsWelcome": [ {"view": "sweetpad.build.view", ...} ] in package.json
+      vscode.commands.executeCommand("setContext", "sweetpad.build.noSchemes", true);
+    }
 
     // return list of schemes
     return schemes.map(

@@ -28,7 +28,7 @@ interface XcodeBuildListOutput {
   };
 }
 
-type XcodeScheme = {
+export type XcodeScheme = {
   name: string;
 };
 

@@ -24,7 +24,7 @@ import { ToolTreeProvider } from "./tools/tree.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { ExtensionContext } from "./common/commands.js";
 import { selectXcodeWorkspaceCommand } from "./build/commands.js";
-import { resetSweetpadCache } from "./system/commands.js";
+import { createIssueGenericCommand, createIssueNoSchemesCommand, resetSweetpadCache } from "./system/commands.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -83,6 +83,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   // System
   d(command("sweetpad.system.resetSweetpadCache", resetSweetpadCache));
+  d(command("sweetpad.system.createIssue.generic", createIssueGenericCommand));
+  d(command("sweetpad.system.createIssue.noSchemes", createIssueNoSchemesCommand));
 }
 
 export function deactivate() {}
