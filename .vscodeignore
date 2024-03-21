@@ -20,3 +20,4 @@ src/
 .vscodeignore
 package-lock.json
 tsconfig.json
+docs/
