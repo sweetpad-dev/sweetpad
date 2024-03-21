@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.9] - 2024-03-21
+
+- Remove ./docs folder from the extension package
+
 ## [0.1.8] - 2024-03-21
 
 - Add empty screen when Xcode project is not found
