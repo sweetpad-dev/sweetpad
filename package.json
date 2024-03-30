@@ -308,11 +308,14 @@
     "build": "npm run esbuild-base -- --sourcemap",
     "watch": "npm run esbuild-base -- --sourcemap --watch",
     "test": "vscode-test",
-    "check": "eslint . --ext .ts && tsc --noEmit"
+    "check": "eslint . --ext .ts && tsc --noEmit",
+    "postinstall": "electron-rebuild -w node-pty -v 27.1.0",
+    "compile-setvbuf": "bash ./setvbuf/compile.sh"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
+    "@types/shell-quote": "^1.7.5",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
@@ -323,7 +326,10 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@electron/rebuild": "^3.6.0",
     "execa": "npm:@esm2cjs/execa@^6.1.1-cjs.1",
+    "node-pty": "^1.0.0",
+    "shell-quote": "^1.8.1",
     "vscode-languageclient": "^9.0.1"
   }
 }

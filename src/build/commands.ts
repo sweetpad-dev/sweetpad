@@ -26,6 +26,7 @@ import { ExtensionError } from "../common/errors";
 import { commonLogger } from "../common/logger";
 import { exec } from "../common/exec";
 import { getWorkspaceConfig } from "../common/config";
+import { runCustomTaskV2 } from "../common/tasks_v2";
 
 export const DEFAULT_SDK = "iphonesimulator";
 
@@ -123,50 +124,82 @@ export async function buildApp(
     shouldClean: boolean;
   }
 ) {
-  const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
-  const bundleDir = await prepareBundleDir(context, options.scheme);
-
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(context);
-
-  const commandParts: string[] = [
-    "xcodebuild",
-    "-scheme",
-    options.scheme,
-    "-sdk",
-    options.sdk,
-    "-configuration",
-    options.configuration,
-    "-workspace",
-    xcodeWorkspacePath,
-    "-destination",
-    "generic/platform=iOS Simulator",
-    "-resultBundlePath",
-    bundleDir,
-    "-allowProvisioningUpdates",
-    ...(options.shouldClean ? ["clean"] : []),
-    ...(options.shouldBuild ? ["build"] : []),
-  ];
-
-  if (useXcbeatify) {
-    commandParts.unshift("set", "-o", "pipefail", "&&");
-    commandParts.push("|", "xcbeautify");
-  }
-
-  await runShellTask({
+  await runCustomTaskV2({
     name: "Build",
-    command: commandParts[0],
-    args: commandParts.slice(1),
-    error: "Error building project",
-  });
+    callback: async (terminal): Promise<void> => {
+      const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
+      const bundleDir = await prepareBundleDir(context, options.scheme);
 
-  // Restart SourceKit Language Server
-  try {
-    await vscode.commands.executeCommand("swift.restartLSPServer");
-  } catch (error) {
-    commonLogger.warn("Error restarting SourceKit Language Server", {
-      error: error,
-    });
-  }
+      const xcodeWorkspacePath = await askXcodeWorkspacePath(context);
+
+      // // execute test command
+      // // yes "This is a test line" | head -n 100 | xargs -I{} bash -c 'echo "{}"; sleep 0.1'
+      // await terminal.execute({
+      //   command: "yes",
+      //   args: ["This is a test line"],
+      //   pipes: [
+      //     {
+      //       command: "head",
+      //       args: ["-n", "100"],
+      //     },
+      //     {
+      //       command: "xargs",
+      //       args: ["-I{}", "bash", "-c", 'echo "{}"; sleep 0.1'],
+      //     },
+      //   ],
+      // });
+      // return;
+
+      const commandParts: string[] = [
+        "xcodebuild",
+        "-scheme",
+        options.scheme,
+        "-sdk",
+        options.sdk,
+        "-configuration",
+        options.configuration,
+        "-workspace",
+        xcodeWorkspacePath,
+        "-destination",
+        "generic/platform=iOS Simulator",
+        "-resultBundlePath",
+        bundleDir,
+        "-allowProvisioningUpdates",
+        ...(options.shouldClean ? ["clean"] : []),
+        ...(options.shouldBuild ? ["build"] : []),
+      ];
+
+      const pipes = useXcbeatify
+        ? [
+            // { command: "xcbeautify", args: [] },
+            // other tty options
+            // { command: "stdbuf", args: ["-oL", "xcbeautify"] },
+            {
+              command: "xcbeautify",
+              args: [],
+              setvbuf: true,
+            },
+          ]
+        : undefined;
+
+      await terminal.execute({
+        command: commandParts[0],
+        args: commandParts.slice(1),
+        pipes: pipes,
+      });
+
+      console.log("Build completed");
+
+      // Restart SourceKit Language Server
+      try {
+        await vscode.commands.executeCommand("swift.restartLSPServer");
+      } catch (error) {
+        commonLogger.warn("Error restarting SourceKit Language Server", {
+          error: error,
+        });
+      }
+    },
+  });
 }
 
 /**
@@ -261,7 +294,7 @@ export async function removeBundleDirCommand(execution: CommandExecution) {
   const bundleDir = path.join(storagePath, "build");
 
   await removeDirectory(bundleDir);
-  vscode.window.showInformationMessage("Bundle directory removed");
+  vscode.window.showInformationMessage("Bundle directory was removed");
 }
 
 /**
