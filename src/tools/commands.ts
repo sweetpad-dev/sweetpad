@@ -1,17 +1,23 @@
 import * as vscode from "vscode";
 import { ToolTreeItem } from "./tree.js";
 import { CommandExecution } from "../common/commands.js";
-import { runShellTask } from "../common/tasks.js";
+import { runTask } from "../common/tasks.js";
 
 /**
  * Comamnd to install tool from the tool tree view in the sidebar using brew
  */
 export async function installToolCommand(execution: CommandExecution, item: ToolTreeItem) {
-  await runShellTask({
+  await runTask({
     name: "Install Tool",
-    command: item.commandName,
-    args: item.commandArgs,
     error: "Error installing tool",
+    callback: async (terminal) => {
+      await terminal.execute({
+        command: item.commandName,
+        args: item.commandArgs,
+      });
+
+      item.refresh();
+    },
   });
 
   item.refresh();

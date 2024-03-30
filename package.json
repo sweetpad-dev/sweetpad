@@ -298,6 +298,19 @@
           "type": "boolean",
           "default": true,
           "description": "Enable xcbeautify for build logs."
+        },
+        "sweetpad.system.executor": {
+          "type": "string",
+          "default": "v2",
+          "enum": [
+            "v1",
+            "v2"
+          ],
+          "enumDescriptions": [
+            "Legacy executor, use this if you have issues with the new executor.",
+            "New executor, use this for better performance and better error handling."
+          ],
+          "description": "Use version task executor for build tasks."
         }
       }
     }

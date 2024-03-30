@@ -36,6 +36,10 @@ export class ExtensionContext {
     return this._context.storageUri;
   }
 
+  get extensionPath() {
+    return this._context.extensionPath;
+  }
+
   disposable(disposable: vscode.Disposable) {
     this._context.subscriptions.push(disposable);
   }

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { SimulatorTreeItem } from "./tree.js";
 import { CommandExecution } from "../common/commands.js";
-import { runShellTask } from "../common/tasks.js";
+import { runTask } from "../common/tasks.js";
 
 /**
  * Command to start simulator from the simulator tree view in the sidebar
@@ -9,14 +9,17 @@ import { runShellTask } from "../common/tasks.js";
 export async function startSimulatorCommand(execution: CommandExecution, item: SimulatorTreeItem) {
   const simulatorName = item.udid;
 
-  await runShellTask({
+  await runTask(execution.context, {
     name: "Start Simulator",
-    command: "xcrun",
-    args: ["simctl", "boot", simulatorName],
-    error: "Error starting simulator",
-  });
+    callback: async (terminal) => {
+      await terminal.execute({
+        command: "xcrun",
+        args: ["simctl", "boot", simulatorName],
+      });
 
-  item.refresh();
+      item.refresh();
+    },
+  });
 }
 
 /**
@@ -25,28 +28,35 @@ export async function startSimulatorCommand(execution: CommandExecution, item: S
 export async function stopSimulatorCommand(execution: CommandExecution, item: SimulatorTreeItem) {
   const simulatorName = item.udid;
 
-  await runShellTask({
+  await runTask(execution.context, {
     name: "Stop Simulator",
-    command: "xcrun",
-    args: ["simctl", "shutdown", simulatorName],
-    error: "Error stopping simulator",
-  });
+    callback: async (terminal) => {
+      await terminal.execute({
+        command: "xcrun",
+        args: ["simctl", "shutdown", simulatorName],
+      });
 
-  item.refresh();
+      item.refresh();
+    },
+  });
 }
 
 /**
  * Command to delete simulator from top of the simulator tree view in the sidebar
  */
-export async function openSimulatorCommand() {
-  await runShellTask({
+export async function openSimulatorCommand(execution: CommandExecution) {
+  await runTask(execution.context, {
     name: "Open Simulator",
-    command: "open",
-    args: ["-a", "Simulator"],
     error: "Could not open simulator app",
-  });
+    callback: async (terminal) => {
+      await terminal.execute({
+        command: "open",
+        args: ["-a", "Simulator"],
+      });
 
-  vscode.commands.executeCommand("sweetpad.simulators.refresh");
+      vscode.commands.executeCommand("sweetpad.simulators.refresh");
+    },
+  });
 }
 
 /**
@@ -54,16 +64,16 @@ export async function openSimulatorCommand() {
  * This is useful when you have a lot of simulators and you want to free up some space.
  * Also in some cases it can help to issues with starting simulators.
  */
-
-export async function removeSimulatorCacheCommand() {
-  // remove simulator cache using rm -rf ~/Library/Developer/CoreSimulator/Devices
-
-  await runShellTask({
+export async function removeSimulatorCacheCommand(execution: CommandExecution) {
+  await runTask(execution.context, {
     name: "Remove Simulator Cache",
-    command: "rm",
-    args: ["-rf", "~/Library/Developer/CoreSimulator/Caches"],
     error: "Error removing simulator cache",
+    callback: async (terminal) => {
+      await terminal.execute({
+        command: "rm",
+        args: ["-rf", "~/Library/Developer/CoreSimulator/Caches"],
+      });
+      vscode.commands.executeCommand("sweetpad.simulators.refresh");
+    },
   });
-
-  vscode.commands.executeCommand("sweetpad.simulators.refresh");
 }

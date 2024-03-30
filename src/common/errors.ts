@@ -16,8 +16,8 @@ export class TaskError extends ExtensionError {
     context: {
       name: string;
       soruce?: string;
-      command: string;
-      args: string[];
+      command?: string;
+      args?: string[];
       errorCode?: number;
     }
   ) {
