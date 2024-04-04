@@ -4,6 +4,10 @@
 
 [![Twitter](https://img.shields.io/twitter/follow/sweetpad_dev?style=social&logo=twitter)](https://twitter.com/sweetpad_dev)
 [![GitHub](https://img.shields.io/github/stars/sweetpad-dev/sweetpad?style=social)](https://github.com/sweetpad-dev/sweetpad)
+[![Github Sponsor](https://img.shields.io/github/sponsors/sweetpad-dev)](https://github.com/sponsors/sweetpad-dev)
+
+
+
 
 Develop Swift/iOS projects using VSCode.
 
