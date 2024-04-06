@@ -298,21 +298,36 @@
           "type": "boolean",
           "default": true,
           "description": "Enable xcbeautify for build logs."
+        },
+        "sweetpad.system.taskExecutor": {
+          "type": "string",
+          "default": "v2",
+          "enum": [
+            "v1",
+            "v2"
+          ],
+          "enumDescriptions": [
+            "Legacy executor, use this if you have issues with the new executor.",
+            "New executor, use this for better performance and better error handling."
+          ],
+          "description": "Use version task executor for build tasks."
         }
       }
     }
   },
   "scripts": {
     "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
-    "vscode:prepublish": "npm run esbuild-base -- --minify",
+    "vscode:prepublish": "npm run compile-setvbuf && npm run esbuild-base -- --minify",
     "build": "npm run esbuild-base -- --sourcemap",
     "watch": "npm run esbuild-base -- --sourcemap --watch",
     "test": "vscode-test",
-    "check": "eslint . --ext .ts && tsc --noEmit"
+    "check": "eslint . --ext .ts && tsc --noEmit",
+    "compile-setvbuf": "bash ./setvbuf/compile.sh"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
+    "@types/shell-quote": "^1.7.5",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
@@ -324,6 +339,7 @@
   },
   "dependencies": {
     "execa": "npm:@esm2cjs/execa@^6.1.1-cjs.1",
+    "shell-quote": "^1.8.1",
     "vscode-languageclient": "^9.0.1"
   }
 }

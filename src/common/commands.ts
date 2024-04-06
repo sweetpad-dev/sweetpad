@@ -36,6 +36,10 @@ export class ExtensionContext {
     return this._context.storageUri;
   }
 
+  get extensionPath() {
+    return this._context.extensionPath;
+  }
+
   disposable(disposable: vscode.Disposable) {
     this._context.subscriptions.push(disposable);
   }
@@ -148,9 +152,7 @@ export class CommandExecution {
           errorContext: error.context,
         });
         if (error instanceof TaskError) {
-          await this.showErrorMessage(`Sweetpad: ${error.message}. See "Terminal" output for details.`, {
-            withoutShowDetails: true,
-          });
+          // do nothing
         } else {
           await this.showErrorMessage(`Sweetpad: ${error.message}`);
         }

@@ -3,6 +3,13 @@ import { askConfiguration, askScheme, askSimulatorToRunOn, askXcodeWorkspacePath
 import { DEFAULT_SDK, buildApp, runOnDevice, resolveDependencies } from "./commands";
 import { ExtensionContext } from "../common/commands";
 import { getSimulatorByUdid } from "../common/cli/scripts";
+import {
+  TaskTerminalV2,
+  TaskTerminalV1,
+  TaskTerminal,
+  getTaskExecutorName,
+  TaskTerminalV1Parent,
+} from "../common/tasks";
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -19,34 +26,34 @@ class ActionDispatcher {
     this.context = context;
   }
 
-  async do(definition: TaskDefinition) {
+  async do(terminal: TaskTerminal, definition: TaskDefinition) {
     const action = definition.action;
     switch (action) {
       case "launch":
-        await this.launchCallback(definition);
+        await this.launchCallback(terminal, definition);
         break;
       case "build":
-        await this.buildCallback(definition);
+        await this.buildCallback(terminal, definition);
         break;
       case "clean":
-        await this.cleanCallback(definition);
+        await this.cleanCallback(terminal, definition);
         break;
       case "resolve-dependencies":
-        await this.resolveDependenciesCallback(definition);
+        await this.resolveDependenciesCallback(terminal, definition);
         break;
       default:
         throw new Error(`Action ${action} is not supported`);
     }
   }
 
-  private async launchCallback(definition: TaskDefinition) {
+  private async launchCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     const scheme = definition.scheme ?? (await askScheme());
     const configuration = definition.configuration ?? (await askConfiguration(this.context));
     const simulator = definition.simulator
       ? await getSimulatorByUdid(definition.simulator)
       : await askSimulatorToRunOn(this.context);
 
-    await buildApp(this.context, {
+    await buildApp(this.context, terminal, {
       scheme: scheme,
       sdk: DEFAULT_SDK,
       configuration: configuration,
@@ -54,7 +61,7 @@ class ActionDispatcher {
       shouldClean: false,
     });
 
-    await runOnDevice(this.context, {
+    await runOnDevice(this.context, terminal, {
       scheme: scheme,
       simulator: simulator,
       sdk: DEFAULT_SDK,
@@ -62,11 +69,11 @@ class ActionDispatcher {
     });
   }
 
-  private async buildCallback(definition: TaskDefinition) {
+  private async buildCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     const scheme = definition.scheme ?? (await askScheme());
     const configuration = definition.configuration ?? (await askConfiguration(this.context));
 
-    await buildApp(this.context, {
+    await buildApp(this.context, terminal, {
       scheme: scheme,
       sdk: DEFAULT_SDK,
       configuration: configuration,
@@ -75,11 +82,11 @@ class ActionDispatcher {
     });
   }
 
-  private async cleanCallback(definition: TaskDefinition) {
+  private async cleanCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     const scheme = definition.scheme ?? (await askScheme());
     const configuration = definition.configuration ?? (await askConfiguration(this.context));
 
-    await buildApp(this.context, {
+    await buildApp(this.context, terminal, {
       scheme: scheme,
       sdk: DEFAULT_SDK,
       configuration: configuration,
@@ -88,11 +95,11 @@ class ActionDispatcher {
     });
   }
 
-  private async resolveDependenciesCallback(definition: TaskDefinition) {
+  private async resolveDependenciesCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     const scheme = definition.scheme ?? (await askScheme());
     const xcworkspacePath = definition.workspace ?? (await askXcodeWorkspacePath(this.context));
 
-    await resolveDependencies({
+    await resolveDependencies(this.context, {
       scheme: scheme,
       xcodeWorkspacePath: xcworkspacePath,
     });
@@ -146,14 +153,6 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
     ];
   }
 
-  private getExecution() {
-    return new vscode.CustomExecution(async (defition: vscode.TaskDefinition) => {
-      const _defition = defition as TaskDefinition;
-      await this.dispathcer.do(_defition);
-      return new XcodeBuildTerminal();
-    });
-  }
-
   private getTask(options: { name: string; details?: string; defintion: TaskDefinition }): vscode.Task {
     // Task looks like this:
     // -------
@@ -165,7 +164,34 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
       vscode.TaskScope.Workspace,
       options.name, // name, after source
       "sweetpad", // source, before name`
-      this.getExecution(),
+      new vscode.CustomExecution(async (defition: vscode.TaskDefinition) => {
+        const _defition = defition as TaskDefinition;
+        const executorName = getTaskExecutorName();
+        switch (executorName) {
+          case "v1":
+            // Each task will create a new vscode.Task for each script
+            // and one parent Terminal is used to show all tasks
+            const terminal = new TaskTerminalV1(this.context, {
+              name: options.name,
+              source: "sweetpad",
+            });
+            await this.dispathcer.do(terminal, _defition);
+
+            // create a dummy terminal to show the task in the terminal panel
+            return new TaskTerminalV1Parent();
+          case "v2":
+            // In the V2 executor, one terminal is created for all tasks.
+            // The callback should call terminal.execute(command) to run the script
+            // in the current terminal.
+            return new TaskTerminalV2(this.context, {
+              callback: async (terminal) => {
+                await this.dispathcer.do(terminal, _defition);
+              },
+            });
+          default:
+            throw new Error(`Task executor ${executorName} is not supported`);
+        }
+      }),
       []
     );
 
@@ -186,30 +212,5 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
       name: `Custom "${definition.action}" task`, // name, after source
       defintion: definition,
     });
-  }
-}
-
-class XcodeBuildTerminal implements vscode.Pseudoterminal {
-  public writeEmitter = new vscode.EventEmitter<string>();
-  public closeEmitter = new vscode.EventEmitter<number>();
-
-  constructor() {}
-
-  onDidWrite = this.writeEmitter.event;
-  onDidClose = this.closeEmitter.event;
-
-  writePlaceholderText(): void {
-    this.writeEmitter.fire("====> It's parent task, just ignore it\r\n");
-  }
-
-  open(): void {
-    this.writePlaceholderText();
-    this.closeEmitter.fire(0);
-  }
-
-  close(): void {
-    this.writeEmitter.dispose();
-    this.closeEmitter.fire(0);
-    this.closeEmitter.dispose();
   }
 }

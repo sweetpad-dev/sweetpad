@@ -1,5 +1,4 @@
 import path from "path";
-import { runShellTask } from "../common/tasks";
 import { BuildTreeItem } from "./tree";
 import * as vscode from "vscode";
 
@@ -26,11 +25,13 @@ import { ExtensionError } from "../common/errors";
 import { commonLogger } from "../common/logger";
 import { exec } from "../common/exec";
 import { getWorkspaceConfig } from "../common/config";
+import { TaskTerminal, runTask } from "../common/tasks";
 
 export const DEFAULT_SDK = "iphonesimulator";
 
 export async function runOnDevice(
   context: ExtensionContext,
+  terminal: TaskTerminal,
   options: {
     scheme: string;
     simulator: SimulatorOutput;
@@ -72,40 +73,31 @@ export async function runOnDevice(
 
   // Boot device
   if (simulator.state !== "Booted") {
-    await runShellTask({
-      name: "Run",
+    await terminal.execute({
       command: "xcrun",
       args: ["simctl", "boot", simulator.udid],
-      error: "Error booting simulator",
     });
 
     // Refresh list of simulators after we start new simulator
-    // TODO: make it less hacky, but let's keep it for now
     context.refreshSimulators();
   }
 
   // Install app
-  await runShellTask({
-    name: "Install",
+  await terminal.execute({
     command: "xcrun",
     args: ["simctl", "install", simulator.udid, targetPath],
-    error: "Error installing app",
   });
 
   // Open simulatorcte
-  await runShellTask({
-    name: "Open Simulator",
+  await terminal.execute({
     command: "open",
     args: ["-a", "Simulator"],
-    error: "Could not open simulator app",
   });
 
   // Run app
-  await runShellTask({
-    name: "Run",
+  await terminal.execute({
     command: "xcrun",
     args: ["simctl", "launch", "--console-pty", "--terminate-running-process", simulator.udid, bundleIdentifier],
-    error: "Error running app",
   });
 }
 
@@ -115,6 +107,7 @@ export function isXcbeautifyEnabled() {
 
 export async function buildApp(
   context: ExtensionContext,
+  terminal: TaskTerminal,
   options: {
     scheme: string;
     sdk: string;
@@ -147,16 +140,12 @@ export async function buildApp(
     ...(options.shouldBuild ? ["build"] : []),
   ];
 
-  if (useXcbeatify) {
-    commandParts.unshift("set", "-o", "pipefail", "&&");
-    commandParts.push("|", "xcbeautify");
-  }
+  const pipes = useXcbeatify ? [{ command: "xcbeautify", args: [], setvbuf: true }] : undefined;
 
-  await runShellTask({
-    name: "Build",
+  await terminal.execute({
     command: commandParts[0],
     args: commandParts.slice(1),
-    error: "Error building project",
+    pipes: pipes,
   });
 
   // Restart SourceKit Language Server
@@ -170,18 +159,23 @@ export async function buildApp(
 }
 
 /**
- * Build without running
+ * Build app without running
  */
 export async function buildCommand(execution: CommandExecution, item?: BuildTreeItem) {
   const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to build" }));
   const configuration = await askConfiguration(execution.context);
 
-  await buildApp(execution.context, {
-    scheme: scheme,
-    sdk: DEFAULT_SDK,
-    configuration: configuration,
-    shouldBuild: true,
-    shouldClean: false,
+  await runTask(execution.context, {
+    name: "Build",
+    callback: async (terminal) => {
+      await buildApp(execution.context, terminal, {
+        scheme: scheme,
+        sdk: DEFAULT_SDK,
+        configuration: configuration,
+        shouldBuild: true,
+        shouldClean: false,
+      });
+    },
   });
 }
 
@@ -197,20 +191,24 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
   // during build command execution
   const simulator = await askSimulatorToRunOn(execution.context);
 
-  await buildApp(execution.context, {
-    scheme: scheme,
-    sdk: DEFAULT_SDK,
-    configuration: configuration,
-    shouldBuild: true,
-    shouldClean: false,
-  });
+  await runTask(execution.context, {
+    name: "Launch",
+    callback: async (terminal) => {
+      await buildApp(execution.context, terminal, {
+        scheme: scheme,
+        sdk: DEFAULT_SDK,
+        configuration: configuration,
+        shouldBuild: true,
+        shouldClean: false,
+      });
 
-  await runOnDevice(execution.context, {
-    scheme: scheme,
-    simulator: simulator,
-
-    sdk: DEFAULT_SDK,
-    configuration: configuration,
+      await runOnDevice(execution.context, terminal, {
+        scheme: scheme,
+        simulator: simulator,
+        sdk: DEFAULT_SDK,
+        configuration: configuration,
+      });
+    },
   });
 }
 
@@ -220,21 +218,33 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
 export async function cleanCommand(execution: CommandExecution, item?: BuildTreeItem) {
   const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to clean" }));
   const configuration = await askConfiguration(execution.context);
-  await buildApp(execution.context, {
-    scheme: scheme,
-    sdk: DEFAULT_SDK,
-    configuration: configuration,
-    shouldBuild: false,
-    shouldClean: true,
+
+  await runTask(execution.context, {
+    name: "Clean",
+    callback: async (terminal) => {
+      await buildApp(execution.context, terminal, {
+        scheme: scheme,
+        sdk: DEFAULT_SDK,
+        configuration: configuration,
+        shouldBuild: false,
+        shouldClean: true,
+      });
+    },
   });
 }
 
-export async function resolveDependencies(options: { scheme: string; xcodeWorkspacePath: string }) {
-  await runShellTask({
+export async function resolveDependencies(
+  context: ExtensionContext,
+  options: { scheme: string; xcodeWorkspacePath: string }
+) {
+  await runTask(context, {
     name: "Resolve Dependencies",
-    command: "xcodebuild",
-    args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcodeWorkspacePath],
-    error: "Error resolving dependencies",
+    callback: async (terminal) => {
+      await terminal.execute({
+        command: "xcodebuild",
+        args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcodeWorkspacePath],
+      });
+    },
   });
 }
 
@@ -245,7 +255,7 @@ export async function resolveDependenciesCommand(execution: CommandExecution, it
   const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to resolve dependencies" }));
   const xcworkspacePath = await askXcodeWorkspacePath(execution.context);
 
-  await resolveDependencies({
+  await resolveDependencies(execution.context, {
     scheme: scheme,
     xcodeWorkspacePath: xcworkspacePath,
   });
@@ -261,7 +271,7 @@ export async function removeBundleDirCommand(execution: CommandExecution) {
   const bundleDir = path.join(storagePath, "build");
 
   await removeDirectory(bundleDir);
-  vscode.window.showInformationMessage("Bundle directory removed");
+  vscode.window.showInformationMessage("Bundle directory was removed");
 }
 
 /**
