@@ -14,7 +14,11 @@ export async function installToolCommand(execution: CommandExecution, item: Tool
       await terminal.execute({
         command: item.commandName,
         args: item.commandArgs,
-        env: { HOMEBREW_COLOR: "1" },
+        env: {
+          // We don't run the command in ptty, that's why we need to tell homebrew to use color
+          // output explicitly
+          HOMEBREW_COLOR: "1",
+        },
       });
 
       item.refresh();
