@@ -3,7 +3,13 @@ import { askConfiguration, askScheme, askSimulatorToRunOn, askXcodeWorkspacePath
 import { DEFAULT_SDK, buildApp, runOnDevice, resolveDependencies } from "./commands";
 import { ExtensionContext } from "../common/commands";
 import { getSimulatorByUdid } from "../common/cli/scripts";
-import { TaskTerminalV2, TaskTerminalV1, TaskTerminal, getExecutorVersion, runTaskV1 } from "../common/tasks";
+import {
+  TaskTerminalV2,
+  TaskTerminalV1,
+  TaskTerminal,
+  getTaskExecutorName,
+  TaskTerminalV1Parent,
+} from "../common/tasks";
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -160,23 +166,30 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
       "sweetpad", // source, before name`
       new vscode.CustomExecution(async (defition: vscode.TaskDefinition) => {
         const _defition = defition as TaskDefinition;
+        const executorName = getTaskExecutorName();
+        switch (executorName) {
+          case "v1":
+            // Each task will create a new vscode.Task for each script
+            // and one parent Terminal is used to show all tasks
+            const terminal = new TaskTerminalV1(this.context, {
+              name: options.name,
+              source: "sweetpad",
+            });
+            await this.dispathcer.do(terminal, _defition);
 
-        if (!getExecutorVersion()) {
-          // Run all task before the custom terminal is created
-          const terminal = new TaskTerminalV1(this.context, {
-            name: options.name,
-            source: "sweetpad",
-          });
-          await this.dispathcer.do(terminal, _defition);
-
-          // create a dummy terminal to show the task in the terminal panel
-          return new XcodeBuildTerminal();
-        } else {
-          return new TaskTerminalV2(this.context, {
-            callback: async (terminal) => {
-              await this.dispathcer.do(terminal, _defition);
-            },
-          });
+            // create a dummy terminal to show the task in the terminal panel
+            return new TaskTerminalV1Parent();
+          case "v2":
+            // In the V2 executor, one terminal is created for all tasks.
+            // The callback should call terminal.execute(command) to run the script
+            // in the current terminal.
+            return new TaskTerminalV2(this.context, {
+              callback: async (terminal) => {
+                await this.dispathcer.do(terminal, _defition);
+              },
+            });
+          default:
+            throw new Error(`Task executor ${executorName} is not supported`);
         }
       }),
       []
@@ -199,30 +212,5 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
       name: `Custom "${definition.action}" task`, // name, after source
       defintion: definition,
     });
-  }
-}
-
-class XcodeBuildTerminal implements vscode.Pseudoterminal {
-  public writeEmitter = new vscode.EventEmitter<string>();
-  public closeEmitter = new vscode.EventEmitter<number>();
-
-  constructor() {}
-
-  onDidWrite = this.writeEmitter.event;
-  onDidClose = this.closeEmitter.event;
-
-  writePlaceholderText(): void {
-    this.writeEmitter.fire("====> It's parent task, just ignore it\r\n");
-  }
-
-  open(): void {
-    this.writePlaceholderText();
-    this.closeEmitter.fire(0);
-  }
-
-  close(): void {
-    this.writeEmitter.dispose();
-    this.closeEmitter.fire(0);
-    this.closeEmitter.dispose();
   }
 }

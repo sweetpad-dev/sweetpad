@@ -7,13 +7,14 @@ import { runTask } from "../common/tasks.js";
  * Comamnd to install tool from the tool tree view in the sidebar using brew
  */
 export async function installToolCommand(execution: CommandExecution, item: ToolTreeItem) {
-  await runTask({
+  await runTask(execution.context, {
     name: "Install Tool",
     error: "Error installing tool",
     callback: async (terminal) => {
       await terminal.execute({
         command: item.commandName,
         args: item.commandArgs,
+        env: { HOMEBREW_COLOR: "1" },
       });
 
       item.refresh();

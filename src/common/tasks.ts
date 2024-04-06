@@ -5,8 +5,9 @@ import { quote } from "shell-quote";
 import { getWorkspaceConfig } from "./config";
 import { ExtensionContext } from "./commands";
 import path from "path";
+import { isFileExists } from "./files";
 
-type ExecutorVersion = "v1" | "v2";
+type TaskExecutor = "v1" | "v2";
 
 type Command = {
   command: string;
@@ -18,6 +19,7 @@ type CommandOptions = {
   command: string;
   args?: string[];
   pipes?: Command[];
+  env?: Record<string, string>;
 };
 
 type TerminalTextColor = "green" | "red" | "blue" | "yellow" | "magenta" | "cyan" | "white";
@@ -55,8 +57,8 @@ export interface TaskTerminal {
   execute(options: CommandOptions): Promise<void>;
 }
 
-export function getExecutorVersion(): ExecutorVersion {
-  return getWorkspaceConfig<ExecutorVersion>("system.executor") ?? "v2";
+export function getTaskExecutorName(): TaskExecutor {
+  return getWorkspaceConfig<TaskExecutor>("system.taskExecutor") ?? "v2";
 }
 
 export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
@@ -78,32 +80,25 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     return quote([command, ...(args ?? [])]);
   }
 
-  private createCommandLine(options: CommandOptions): string {
+  private async createCommandLine(options: CommandOptions): Promise<string> {
     const mainCommand = quote([options.command, ...(options.args ?? [])]);
 
     if (!options.pipes) {
       return mainCommand;
     }
 
+    // just in case, check if the setvbuf library exists
+    const setvbufPath = path.join(this.context.extensionPath, "out/setvbuf_universal.so");
+    const setvbufExists = await isFileExists(setvbufPath);
+
     // Combine them into a big pipe with error propagation
     const commands = [mainCommand];
     commands.push(
       ...options.pipes.map((pipe) => {
         const command = this.command(pipe.command, pipe.args);
-        if (pipe.setvbuf) {
-          const env = {
-            DYLD_INSERT_LIBRARIES: path.join(this.context.extensionPath, "out/setvbuf_universal.so"),
-            DYLD_FORCE_FLAT_NAMESPACE: "y",
-          };
-
-          // Create a prefix with environment variables, like:
-          // ENV_1=VALUE_1 ENV_2=VALUE_2
-          const envPrefix = Object.entries(env)
-            .map(([key, value]) => `${key}=${quote([value])}`)
-            .join(" ");
-
-          // Append the prefix before the command
-          return `${envPrefix} ${command}`;
+        if (pipe.setvbuf && setvbufExists) {
+          const prefix = `DYLD_INSERT_LIBRARIES=${quote([setvbufPath])} DYLD_FORCE_FLAT_NAMESPACE=y`;
+          return `${prefix} ${command}`;
         }
         return command;
       })
@@ -141,7 +136,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       // to another process and we can kill it by mistake
       const pid = this.process?.pid;
       if (pid) {
-        console.log("Killing process");
+        // Kill whole process group
         process.kill(-pid, "SIGINT");
       }
     } else {
@@ -153,44 +148,65 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
    * This method you can call in your callback to execute a command in the terminal.
    */
   async execute(options: CommandOptions): Promise<void> {
+    const command = await this.createCommandLine(options);
+
+    const commandPrint = this.command(options.command, options.args);
+
+    this.writeLine(`🚀 Executing command:`);
+    this.writeLine(commandPrint, { color: "green" });
+    this.writeLine();
+
+    let hasOutput = false;
+
     return new Promise<void>((resolve, reject) => {
-      const command = this.createCommandLine(options);
-      const commandPrint = this.command(options.command, options.args);
-
-      this.writeLine(`🚀 Executing command:`);
-      this.writeLine(commandPrint, { color: "green" });
-      this.writeLine();
-
       this.process = spawn(command, {
+        // run command in shell to support pipes
         shell: true,
+        // in order to be able to kill the whole process group
+        // run it in a separate process group
         detached: true,
         env: {
           ...process.env,
-          FORCE_COLOR: "1",
+          ...options.env,
         },
       });
       this.process.stderr?.on("data", (data: string | Buffer): void => {
         const output = data.toString();
         this.write(output, { color: "red" });
+        hasOutput = true;
       });
       this.process.stdout?.on("data", (data: string | Buffer): void => {
         const output = data.toString();
         this.write(output);
+        hasOutput = true;
       });
       this.process.stdin?.on("data", (data: string | Buffer): void => {
         const input = data.toString();
         this.write(input);
+        hasOutput = true;
       });
       this.process.on("close", (code) => {
+        // make space between command output and next command or error message
+        // when we don't have any output, we already have a new line after command
+        if (hasOutput) {
+          this.writeLine();
+        }
+
         this.process = null;
         if (code !== 0) {
-          reject(new ExecuteTaskError("Command failed", { command, errorCode: code }));
+          reject(
+            new ExecuteTaskError("Command returned non-zero exit code", { command: commandPrint, errorCode: code })
+          );
         } else {
           resolve();
         }
       });
       this.process.on("error", (error) => {
-        reject(new ExecuteTaskError("Command failed", { command, errorCode: null }));
+        if (hasOutput) {
+          this.writeLine();
+        }
+
+        reject(new ExecuteTaskError("Error running command", { command: commandPrint, errorCode: null }));
         this.process = null;
       });
     });
@@ -209,7 +225,6 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   }
 
   private closeTerminal(code: number, message: string, options?: TerminalWriteOptions): void {
-    this.writeLine();
     this.writeLine(message, options);
     this.writeLine();
     this.closeEmitter.fire(code);
@@ -231,8 +246,8 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
         // If task was canceled, change message color to green
         if (errorCode === 130) {
-          options.color = "green";
-          this.closeTerminal(0, `🫡 Task was canceled by user`, options);
+          options.color = "yellow";
+          this.closeTerminal(0, `🫡 Command was cancelled by user`, options);
           return;
         }
       }
@@ -305,6 +320,31 @@ export class TaskTerminalV1 implements TaskTerminal {
         }
       });
     });
+  }
+}
+
+export class TaskTerminalV1Parent implements vscode.Pseudoterminal {
+  public writeEmitter = new vscode.EventEmitter<string>();
+  public closeEmitter = new vscode.EventEmitter<number>();
+
+  constructor() {}
+
+  onDidWrite = this.writeEmitter.event;
+  onDidClose = this.closeEmitter.event;
+
+  writePlaceholderText(): void {
+    this.writeEmitter.fire("====> It's parent task, just ignore it\r\n");
+  }
+
+  open(): void {
+    this.writePlaceholderText();
+    this.closeEmitter.fire(0);
+  }
+
+  close(): void {
+    this.writeEmitter.dispose();
+    this.closeEmitter.fire(0);
+    this.closeEmitter.dispose();
   }
 }
 
@@ -384,13 +424,13 @@ export async function runTask(
     callback: (terminal: TaskTerminal) => Promise<void>;
   }
 ): Promise<void> {
-  const executorVersion = getExecutorVersion();
-  switch (executorVersion) {
+  const name = getTaskExecutorName();
+  switch (name) {
     case "v1":
       return await runTaskV1(context, options);
     case "v2":
       return await runTaskV2(context, options);
     default:
-      throw new Error(`Unknown executor: ${executorVersion}`);
+      throw new Error(`Unknown executor: ${name}`);
   }
 }

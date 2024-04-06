@@ -152,9 +152,7 @@ export class CommandExecution {
           errorContext: error.context,
         });
         if (error instanceof TaskError) {
-          await this.showErrorMessage(`Sweetpad: ${error.message}. See "Terminal" output for details.`, {
-            withoutShowDetails: true,
-          });
+          // do nothing
         } else {
           await this.showErrorMessage(`Sweetpad: ${error.message}`);
         }

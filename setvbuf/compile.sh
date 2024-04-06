@@ -1,9 +1,6 @@
 #!/bin/bash
 set -Eeuo pipefail
 
-# Ensure the output directory exists
-mkdir -p out
-
 # Path to your source file
 SOURCE_FILE="setvbuf/setvbuf.c"
 
@@ -11,8 +8,9 @@ SOURCE_FILE="setvbuf/setvbuf.c"
 TEMP_DIR="./.temp"
 OUT_DIR="./out"
 
-# Ensure the temporary directory exists
+# Ensure directories exist
 mkdir -p $TEMP_DIR
+mkdir -p $OUT_DIR
 
 # Compile for arm64 architecture
 clang -O2 -fpic -shared -arch arm64 -o $TEMP_DIR/setvbuf_arm64.so $SOURCE_FILE

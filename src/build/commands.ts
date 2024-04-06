@@ -79,7 +79,6 @@ export async function runOnDevice(
     });
 
     // Refresh list of simulators after we start new simulator
-    // TODO: make it less hacky, but let's keep it for now
     context.refreshSimulators();
   }
 
