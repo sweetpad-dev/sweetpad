@@ -4,6 +4,11 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.10] - 2024-04-14
+
+- Add new command executor
+- Add basic XcodeGen integration
+
 ## [0.1.9] - 2024-03-21
 
 - Remove ./docs folder from the extension package
