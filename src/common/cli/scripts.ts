@@ -198,3 +198,25 @@ export async function generateBuildServerConfig(options: { xcodeWorkspacePath: s
     args: ["config", "-workspace", options.xcodeWorkspacePath, "-scheme", options.scheme],
   });
 }
+
+/**
+ * Is XcodeGen installed?s
+ */
+export async function getIsXcodeGenInstalled() {
+  try {
+    await exec({
+      command: "which",
+      args: ["xcodegen"],
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+export async function generateXcodeGen() {
+  await exec({
+    command: "xcodegen",
+    args: ["generate"],
+  });
+}

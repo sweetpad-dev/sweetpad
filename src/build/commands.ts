@@ -19,6 +19,7 @@ import {
   prepareStoragePath,
   askConfiguration,
   selectXcodeWorkspace,
+  restartSwiftLSP,
 } from "./utils";
 import { CommandExecution, ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
@@ -148,14 +149,7 @@ export async function buildApp(
     pipes: pipes,
   });
 
-  // Restart SourceKit Language Server
-  try {
-    await vscode.commands.executeCommand("swift.restartLSPServer");
-  } catch (error) {
-    commonLogger.warn("Error restarting SourceKit Language Server", {
-      error: error,
-    });
-  }
+  await restartSwiftLSP();
 }
 
 /**
@@ -293,6 +287,8 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
     xcodeWorkspacePath: xcodeWorkspacePath,
     scheme: scheme,
   });
+
+  await restartSwiftLSP();
 
   vscode.window.showInformationMessage(`buildServer.json generated in workspace root`);
 }

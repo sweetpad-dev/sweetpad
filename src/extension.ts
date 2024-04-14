@@ -26,6 +26,7 @@ import { ExtensionContext } from "./common/commands.js";
 import { selectXcodeWorkspaceCommand } from "./build/commands.js";
 import { createIssueGenericCommand, createIssueNoSchemesCommand, resetSweetpadCache } from "./system/commands.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
+import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // Trees 🎄
@@ -60,6 +61,9 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
   d(command("sweetpad.build.openXcode", openXcodeCommand));
   d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
+
+  // XcodeGen
+  d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));
 
   // Format
   d(createFormatStatusItem());

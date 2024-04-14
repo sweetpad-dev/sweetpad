@@ -144,6 +144,11 @@
         "icon": "$(file-code)"
       },
       {
+        "command": "sweetpad.xcodegen.generate",
+        "title": "SweetPad: Generate Xcode project with XcodeGen",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "sweetpad.build.openXcode",
         "title": "SweetPad: Open Xcode",
         "icon": "$(file-code)"

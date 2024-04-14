@@ -225,3 +225,14 @@ export async function selectXcodeWorkspace(): Promise<string> {
   });
   return selected.context.path;
 }
+
+export async function restartSwiftLSP() {
+  // Restart SourceKit Language Server
+  try {
+    await vscode.commands.executeCommand("swift.restartLSPServer");
+  } catch (error) {
+    commonLogger.warn("Error restarting SourceKit Language Server", {
+      error: error,
+    });
+  }
+}
