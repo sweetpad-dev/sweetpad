@@ -13,5 +13,5 @@ export async function xcodgenGenerateCommand() {
   // Restart LSP to catch changes
   await restartSwiftLSP();
 
-  vscode.window.showInformationMessage(`Xcode project was successfully generated with XcodeGen`);
+  vscode.window.showInformationMessage(`The Xcode project was successfully generated using XcodeGen.`);
 }

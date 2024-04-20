@@ -27,6 +27,7 @@ import { selectXcodeWorkspaceCommand } from "./build/commands.js";
 import { createIssueGenericCommand, createIssueNoSchemesCommand, resetSweetpadCache } from "./system/commands.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
+import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // Trees 🎄
@@ -64,6 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));
+  d(createXcodeGenWatcher(_context));
 
   // Format
   d(createFormatStatusItem());

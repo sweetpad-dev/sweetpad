@@ -145,7 +145,7 @@
       },
       {
         "command": "sweetpad.xcodegen.generate",
-        "title": "SweetPad: Generate Xcode project with XcodeGen",
+        "title": "SweetPad: Generate an Xcode project using XcodeGen.",
         "icon": "$(file-code)"
       },
       {
@@ -316,6 +316,11 @@
             "New executor, use this for better performance and better error handling."
           ],
           "description": "Use version task executor for build tasks."
+        },
+        "sweetpad.xcodegen.autogenerate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Watch for new .swift files and regenerate the project using XcodeGen. Restart VSCode to apply the settings."
         }
       }
     }
