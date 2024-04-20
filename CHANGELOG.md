@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.11] - 2024-04-12
+
+- Automatically regenerate Xcode project on new .swift files using XcodeGen
+
 ## [0.1.10] - 2024-04-14
 
 - Add new command executor
