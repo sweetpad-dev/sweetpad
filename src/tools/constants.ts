@@ -91,4 +91,17 @@ export const TOOLS: Tool[] = [
     },
     documentation: "https://github.com/SolaWing/xcode-build-server",
   },
+  {
+    id: "ios-deploy",
+    label: "ios-deploy",
+    check: {
+      command: "ios-deploy",
+      args: ["--version"],
+    },
+    install: {
+      command: "brew",
+      args: ["install", "ios-deploy"],
+    },
+    documentation: "https://github.com/ios-control/ios-deploy",
+  },
 ];

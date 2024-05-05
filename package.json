@@ -332,7 +332,8 @@
     "watch": "npm run esbuild-base -- --sourcemap --watch",
     "test": "vscode-test",
     "check": "eslint . --ext .ts && tsc --noEmit",
-    "compile-setvbuf": "bash ./setvbuf/compile.sh"
+    "compile-setvbuf": "bash ./setvbuf/compile.sh",
+    "publish-patch": "vsce publish patch"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",
