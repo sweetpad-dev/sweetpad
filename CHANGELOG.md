@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.13] - 2024-05-12
+
+- README.md updates
+
 ## [0.1.12] - 2024-05-11
 
 - Add ability to attach debugger to running app. See
