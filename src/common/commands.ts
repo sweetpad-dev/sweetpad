@@ -143,8 +143,6 @@ export class CommandExecution {
       callback: () => commonLogger.show(),
     };
 
-    // Close is always should be last, if "actions" is not provided, then show "Show logs" action also
-
     let actions = [closeAction];
     actions.unshift(...(options?.actions ?? [showLogsAction]));
 
