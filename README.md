@@ -6,9 +6,6 @@
 [![GitHub](https://img.shields.io/github/stars/sweetpad-dev/sweetpad?style=social)](https://github.com/sweetpad-dev/sweetpad)
 [![Github Sponsor](https://img.shields.io/github/sponsors/sweetpad-dev)](https://github.com/sponsors/sweetpad-dev)
 
-
-
-
 Develop Swift/iOS projects using VSCode.
 
 The long-term goal is to make VSCode as a viable alternative to Xcode for iOS development, by integrating open-source
@@ -26,6 +23,8 @@ so on into VSCode.
 - 💅🏼 **[Format](./docs/wiki/format.md)** — format files using [swift-format](https://github.com/apple/swift-format)
 - 📱 **[Simulator](./docs/wiki/simulator.md)** — manage iOS simulators
 - 🛠️ **[Tools](./docs/wiki/tools.md)** — manage essential iOS development tools using [Homebrew](https://brew.sh/)
+- 🪲 **[Debug](./docs/wiki/debug.md)** — debug iOS applications using
+  [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
 
 > 💡 If you have any ideas, please open an issue or start a discussion on the
 > [SweetPad](https://github.com/sweetpad-dev/sweetpad) GitHub repository.
