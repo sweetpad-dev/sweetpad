@@ -4,6 +4,11 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.12] - 2024-05-11
+
+- Add ability to attach debugger to running app. See
+  [documentation](https://github.com/sweetpad-dev/sweetpad/blob/main/docs/wiki/debug.md) for more details.
+
 ## [0.1.11] - 2024-04-12
 
 - Automatically regenerate Xcode project on new .swift files using XcodeGen
