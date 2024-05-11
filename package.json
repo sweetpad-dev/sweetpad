@@ -27,7 +27,8 @@
     "workspaceContains:**/*.xcodeproj",
     "workspaceContains:**/project.yml",
     "workspaceContains:**/Podfile",
-    "onLanguage:swift"
+    "onLanguage:swift",
+    "onDebug"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -213,6 +214,11 @@
         "command": "sweetpad.system.createIssue.noSchemes",
         "title": "SweetPad: Create Issue on GitHub (No Schemes)",
         "icon": "$(bug)"
+      },
+      {
+        "command": "sweetpad.debugger.getAppPath",
+        "title": "SweetPad: Get app path for debugging",
+        "icon": "$(file-code)"
       }
     ],
     "menus": {

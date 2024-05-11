@@ -96,6 +96,8 @@ export async function runOnDevice(
   });
 
   // Run app
+  context.updateSessionState("build.lastLaunchedAppPath", targetPath);
+
   await terminal.execute({
     command: "xcrun",
     args: ["simctl", "launch", "--console-pty", "--terminate-running-process", simulator.udid, bundleIdentifier],

@@ -19,6 +19,7 @@ type CommandOptions = {
   command: string;
   args?: string[];
   pipes?: Command[];
+  setvbuf?: boolean;
   env?: Record<string, string>;
 };
 
@@ -81,7 +82,14 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   }
 
   private async createCommandLine(options: CommandOptions): Promise<string> {
-    const mainCommand = quote([options.command, ...(options.args ?? [])]);
+    let mainCommand = quote([options.command, ...(options.args ?? [])]);
+    if (options.setvbuf) {
+      const setvbufPath = path.join(this.context.extensionPath, "out/setvbuf_universal.so");
+      const setvbufExists = await isFileExists(setvbufPath);
+      if (setvbufExists) {
+        mainCommand = `DYLD_INSERT_LIBRARIES=${quote([setvbufPath])} DYLD_FORCE_FLAT_NAMESPACE=y ${mainCommand}`;
+      }
+    }
 
     if (!options.pipes) {
       return mainCommand;

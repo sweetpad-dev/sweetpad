@@ -28,6 +28,8 @@ import { createIssueGenericCommand, createIssueNoSchemesCommand, resetSweetpadCa
 import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
+import { registerDebugConfigurationProvider } from "./debugger/provider.js";
+import { getAppPathCommand } from "./debugger/commands.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // Trees 🎄
@@ -47,6 +49,10 @@ export function activate(context: vscode.ExtensionContext) {
   const command = _context.registerCommand.bind(_context);
 
   const buildTaskProvider = new XcodeBuildTaskProvider(_context);
+
+  // Debug
+  d(registerDebugConfigurationProvider(_context));
+  d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
 
   // Tasks
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { ExtensionError, TaskError } from "./errors";
+import { ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
 import { isFileExists } from "./files";
 import { BuildTreeProvider } from "../build/tree";
@@ -14,11 +14,14 @@ type WorkspaceStateKey =
   | "build.xcodeSimulator"
   | "build.xcodeSdk";
 
+type SessionStateKey = "build.lastLaunchedAppPath";
+
 export class ExtensionContext {
   private _context: vscode.ExtensionContext;
   public _buildProvider: BuildTreeProvider;
   public _simulatorsProvider: SimulatorsTreeProvider;
   public _toolsProvider: ToolTreeProvider;
+  private _sessionState: Map<SessionStateKey, any> = new Map();
 
   constructor(options: {
     context: vscode.ExtensionContext;
@@ -44,11 +47,22 @@ export class ExtensionContext {
     this._context.subscriptions.push(disposable);
   }
 
-  registerCommand(command: string, callback: (context: CommandExecution, ...args: any[]) => Promise<void>) {
+  registerCommand(command: string, callback: (context: CommandExecution, ...args: any[]) => Promise<any>) {
     return vscode.commands.registerCommand(command, (...args: any[]) => {
       const execution = new CommandExecution(command, callback, this);
       return execution.run(...args);
     });
+  }
+
+  /**
+   * State local to the running instance of the extension. It is not persisted across sessions.
+   */
+  updateSessionState(key: SessionStateKey, value: any | undefined) {
+    this._sessionState.set(key, value);
+  }
+
+  getSessionState<T = any>(key: SessionStateKey): T | undefined {
+    return this._sessionState.get(key);
   }
 
   updateWorkspaceState(key: WorkspaceStateKey, value: any | undefined) {
@@ -117,23 +131,33 @@ export class CommandExecution {
   async showErrorMessage(
     message: string,
     options?: {
-      withoutShowDetails: boolean;
+      actions?: ErrorMessageAction[];
     }
   ): Promise<void> {
-    type Action = "Show details" | "Close";
+    const closeAction: ErrorMessageAction = {
+      label: "Close",
+      callback: () => {},
+    };
+    const showLogsAction: ErrorMessageAction = {
+      label: "Show logs",
+      callback: () => commonLogger.show(),
+    };
 
-    const actions: Action[] = options?.withoutShowDetails ? ["Close"] : ["Show details", "Close"];
+    // Close is always should be last, if "actions" is not provided, then show "Show logs" action also
+
+    let actions = [closeAction];
+    actions.unshift(...(options?.actions ?? [showLogsAction]));
+
+    const actionsLabels = actions.map((action) => action.label);
 
     const finalMessage = `${message}`;
-    const action = await vscode.window.showErrorMessage<Action>(finalMessage, ...actions);
+    const action = await vscode.window.showErrorMessage(finalMessage, ...actionsLabels);
 
-    switch (action) {
-      case "Show details":
-        // Help user to find logs by showing the logs view
-        commonLogger.show();
-        break;
-      case "Close" || undefined:
-        break;
+    if (action) {
+      const callback = actions.find((a) => a.label === action)?.callback;
+      if (callback) {
+        callback();
+      }
     }
   }
 
@@ -149,12 +173,14 @@ export class CommandExecution {
         // Handle default error
         commonLogger.error(error.message, {
           command: this.command,
-          errorContext: error.context,
+          errorContext: error.options?.context,
         });
         if (error instanceof TaskError) {
           // do nothing
         } else {
-          await this.showErrorMessage(`Sweetpad: ${error.message}`);
+          await this.showErrorMessage(`Sweetpad: ${error.message}`, {
+            actions: error.options?.actions,
+          });
         }
       } else {
         // Handle unexpected error

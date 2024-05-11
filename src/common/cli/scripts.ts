@@ -56,7 +56,7 @@ export async function getSimulatorByUdid(udid: string) {
       }
     }
   }
-  throw new ExtensionError("Simulator not found", { udid });
+  throw new ExtensionError("Simulator not found", { context: { udid } });
 }
 
 export type BuildSettingsOutput = BuildSettingOutput[];
@@ -155,7 +155,9 @@ export async function getXcodeProjectPath(): Promise<string> {
   });
   if (projects.length === 0) {
     throw new ExtensionError("No xcode projects found", {
-      cwd: workspaceFolder,
+      context: {
+        cwd: workspaceFolder,
+      },
     });
   }
   return projects[0];

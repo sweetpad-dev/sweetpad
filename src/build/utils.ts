@@ -172,7 +172,9 @@ export async function selectXcodeWorkspace(): Promise<string> {
   // No files, nothing to do
   if (paths.length === 0) {
     throw new ExtensionError("No xcode workspaces found", {
-      cwd: workspacePath,
+      context: {
+        cwd: workspacePath,
+      },
     });
   }
 
