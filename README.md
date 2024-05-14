@@ -20,7 +20,8 @@ so on into VSCode.
   [xcode-build-server](https://github.com/SolaWing/xcode-build-server)
 - 🛠️ **[Build & Run](./docs/wiki/build.md)** — build and run application using
   [xcodebuild](https://developer.apple.com/library/archive/technotes/tn2339/_index.html)
-- 💅🏼 **[Format](./docs/wiki/format.md)** — format files using [swift-format](https://github.com/apple/swift-format)
+- 💅🏼 **[Format](./docs/wiki/format.md)** — format files using [swift-format](https://github.com/apple/swift-format) or
+  other formatter of your choice
 - 📱 **[Simulator](./docs/wiki/simulator.md)** — manage iOS simulators
 - 🛠️ **[Tools](./docs/wiki/tools.md)** — manage essential iOS development tools using [Homebrew](https://brew.sh/)
 - 🪲 **[Debug](./docs/wiki/debug.md)** — debug iOS applications using
