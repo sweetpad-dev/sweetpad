@@ -5,22 +5,31 @@ import { Timer } from "../common/timer.js";
 import { getWorkspaceConfig } from "../common/config.js";
 
 /**
- * Get path to formatter executable from user settings.
+ * Get formatter command parameters from workspace configuration.
  */
-function getFormatterPath(): string {
-  const path = getWorkspaceConfig("format.path");
-  return path ?? "swift-format";
-}
+function getFormatterCommand(filename: string): {
+  command: string;
+  args: string[];
+} {
+  const path = getWorkspaceConfig<string>("format.path");
 
-/**
- * Get args for the formatter executable from user settings.
- */
-function getFormatterArgs(): string[] {
-  const args: string[] | undefined = getWorkspaceConfig("format.args");
+  // We use "swift-format" as default command if no path is provided, args are ignored in this case.
+  if (!path) {
+    return {
+      command: "swift-format",
+      args: ["--in-place", filename],
+    };
+  }
 
-  return args ?? [
-    "--in-place",
-  ];
+  // By default we "swift-format" args.
+  // Also we replace "${file}" with actual filename to provide more flexibility to users.
+  const args: string[] | undefined = getWorkspaceConfig("format.args") ?? ["--in-place", "${file}"];
+  const replacedArgs = args.map((arg) => (arg === "${file}" ? filename : arg));
+
+  return {
+    command: path,
+    args: replacedArgs,
+  };
 }
 
 /**
@@ -30,20 +39,20 @@ export async function formatDocument(document: vscode.TextDocument) {
   if (document.languageId !== "swift") {
     return;
   }
-  const executable = getFormatterPath();
-  const args = getFormatterArgs();
 
   const filename = document.fileName;
+  const { command, args } = getFormatterCommand(filename);
 
   const timer = new Timer();
   try {
     await exec({
-      command: executable,
-      args: [...args, filename],
+      command: command,
+      args: args,
     });
   } catch (error) {
     formatLogger.error("Failed to format code", {
-      executable: executable,
+      executable: command,
+      args: args,
       filename: filename,
       execTime: `${timer.elapsed}ms`,
       error: error,
@@ -52,7 +61,8 @@ export async function formatDocument(document: vscode.TextDocument) {
   }
 
   formatLogger.log("Code successfully formatted", {
-    executable: executable,
+    executable: command,
+    args: args,
     filename: filename,
     execTime: `${timer.elapsed}ms`,
   });

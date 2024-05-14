@@ -308,10 +308,13 @@
         "sweetpad.format.args": {
           "type": "array",
           "items": {
-              "type": "string"
+            "type": "string"
           },
-          "default": ["--in-place"],
-          "description": "Command or path to formatter executable."
+          "default": [
+            "--in-place",
+            "${file}"
+          ],
+          "description": "Command or path to formatter executable. Use ${file} as a placeholder for the file path. Placehodler ${file} is supported only as a separate item in the array."
         },
         "sweetpad.build.xcbeautifyEnabled": {
           "type": "boolean",

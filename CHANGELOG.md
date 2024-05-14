@@ -4,6 +4,12 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [Next]
+
+- Add settings options for alternative formatter, like [swiftformat](https://github.com/nicklockwood/SwiftFormat).
+  Thanks to [Rafael Pedretti](https://github.com/rafaelpedretti-toast) for the adding this feature.
+  [#8](https://github.com/sweetpad-dev/sweetpad/pull/8)
+
 ## [0.1.13] - 2024-05-12
 
 - README.md updates
@@ -113,6 +119,6 @@ Fixed problem with panel icon not showing up
 
 Public release of SweetPad:
 
-- Integration of swift-format (or other formatter of your choice) with VSCode for formatting Swift files.
+- Integration of swift-format with VSCode for formatting Swift files.
 - iOS simulator panel for running and stopping the iOS simulator.
 - Panel for installing iOS tools using Homebrew.
