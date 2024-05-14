@@ -5,11 +5,22 @@ import { Timer } from "../common/timer.js";
 import { getWorkspaceConfig } from "../common/config.js";
 
 /**
- * Get path to swift-format executable from user settings.
+ * Get path to formatter executable from user settings.
  */
-function getSwiftFormatPath(): string {
+function getFormatterPath(): string {
   const path = getWorkspaceConfig("format.path");
   return path ?? "swift-format";
+}
+
+/**
+ * Get args for the formatter executable from user settings.
+ */
+function getFormatterArgs(): string[] {
+  const args: string[] | undefined = getWorkspaceConfig("format.args");
+
+  return args ?? [
+    "--in-place",
+  ];
 }
 
 /**
@@ -19,7 +30,8 @@ export async function formatDocument(document: vscode.TextDocument) {
   if (document.languageId !== "swift") {
     return;
   }
-  const executable = getSwiftFormatPath();
+  const executable = getFormatterPath();
+  const args = getFormatterArgs();
 
   const filename = document.fileName;
 
@@ -27,7 +39,7 @@ export async function formatDocument(document: vscode.TextDocument) {
   try {
     await exec({
       command: executable,
-      args: ["--in-place", filename],
+      args: [...args, filename],
     });
   } catch (error) {
     formatLogger.error("Failed to format code", {

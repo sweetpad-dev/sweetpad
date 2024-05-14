@@ -113,6 +113,6 @@ Fixed problem with panel icon not showing up
 
 Public release of SweetPad:
 
-- Integration of swift-format with VSCode for formatting Swift files.
+- Integration of swift-format (or other formatter of your choice) with VSCode for formatting Swift files.
 - iOS simulator panel for running and stopping the iOS simulator.
 - Panel for installing iOS tools using Homebrew.

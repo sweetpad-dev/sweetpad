@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-type ConfigKey = "format.path" | "build.xcbeautifyEnabled" | "system.taskExecutor" | "xcodegen.autogenerate";
+type ConfigKey = "format.path" | "format.args" | "build.xcbeautifyEnabled" | "system.taskExecutor" | "xcodegen.autogenerate";
 
 export function getWorkspaceConfig<T = any>(key: ConfigKey): T | undefined {
   const config = vscode.workspace.getConfiguration("sweetpad");

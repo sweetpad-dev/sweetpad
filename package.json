@@ -303,7 +303,15 @@
         "sweetpad.format.path": {
           "type": "string",
           "default": "swift-format",
-          "description": "Command or path to swift-format executable."
+          "description": "Command or path to formatter executable."
+        },
+        "sweetpad.format.args": {
+          "type": "array",
+          "items": {
+              "type": "string"
+          },
+          "default": ["--in-place"],
+          "description": "Command or path to formatter executable."
         },
         "sweetpad.build.xcbeautifyEnabled": {
           "type": "boolean",
