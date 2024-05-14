@@ -4,7 +4,7 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Next]
+## [0.1.14] - 2024-05-15
 
 - Add settings options for alternative formatter, like [swiftformat](https://github.com/nicklockwood/SwiftFormat).
   Thanks to [Rafael Pedretti](https://github.com/rafaelpedretti-toast) for the adding this feature.
