@@ -13,7 +13,8 @@ function getFormatterCommand(filename: string): {
 } {
   const path = getWorkspaceConfig<string>("format.path");
 
-  // We use "swift-format" as default command if no path is provided, args are ignored in this case.
+  // We use "swift-format" as default command if no path is provided,
+  // "args" config are ignored in this case
   if (!path) {
     return {
       command: "swift-format",
@@ -21,8 +22,7 @@ function getFormatterCommand(filename: string): {
     };
   }
 
-  // By default we "swift-format" args.
-  // Also we replace "${file}" with actual filename to provide more flexibility to users.
+  // By default we use "swift-format" arguments
   const args: string[] | undefined = getWorkspaceConfig("format.args") ?? ["--in-place", "${file}"];
   const replacedArgs = args.map((arg) => (arg === "${file}" ? filename : arg));
 
