@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.15] - 2024-05-25
+
+- Add workspace with multiple projects support
+
 ## [0.1.14] - 2024-05-15
 
 - Add settings options for alternative formatter, like [swiftformat](https://github.com/nicklockwood/SwiftFormat).
