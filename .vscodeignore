@@ -14,7 +14,6 @@ vsc-extension-quickstart.md
 .vscode/
 node_modules/
 src/
-.eslintrc.json
 .gitignore
 .prettierrc
 .vscodeignore
@@ -23,3 +22,6 @@ tsconfig.json
 docs/
 tests/
 *.spec.ts
+setvbuf/
+eslint.config.mjs
+jest.config.js
