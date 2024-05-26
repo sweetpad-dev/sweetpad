@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { XcodeScheme, getSchemes } from "../common/cli/scripts";
+import { XcodeScheme, getBasicProjectInfo } from "../common/cli/scripts";
 import { commonLogger } from "../common/logger";
 
 type EventData = BuildTreeItem | undefined | null | void;
@@ -34,7 +34,8 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   getChildren(element?: BuildTreeItem | undefined): vscode.ProviderResult<BuildTreeItem[]> {
     // get elements only for root
     if (!element) {
-      return this.getSchemes();
+      const schemes = this.getSchemes();
+      return schemes;
     }
 
     return [];
@@ -47,7 +48,22 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   async getSchemes(): Promise<BuildTreeItem[]> {
     let schemes: XcodeScheme[] = [];
     try {
-      schemes = await getSchemes();
+      const output = await getBasicProjectInfo();
+
+      if (output.type === "project") {
+        schemes = output.project.schemes.map((scheme) => {
+          return {
+            name: scheme,
+          };
+        });
+      }
+      if (output.type === "workspace") {
+        schemes = output.workspace.schemes.map((scheme) => {
+          return {
+            name: scheme,
+          };
+        });
+      }
     } catch (error) {
       commonLogger.error("Failed to get schemes", {
         error,

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "container:test.xcconfig">
+   </FileRef>
+   <Group
+      location = "group:../std"
+      name = "std">
+      <FileRef
+         location = "group:../std/test1.hpp">
+      </FileRef>
+      <FileRef
+         location = "group:../std/test2.hpp">
+      </FileRef>
+   </Group>
+   <Group
+      location = "container:"
+      name = "3party">
+      <FileRef
+         location = "container:agg/agg.xcodeproj">
+      </FileRef>
+      <FileRef
+         location = "container:alohalitics/alohalitics.xcodeproj">
+      </FileRef>
+   </Group>
+   <FileRef
+      location = "container:ge0/ge0.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:../iphone/CoreApi/CoreApi.xcodeproj">
+   </FileRef>
+</Workspace>

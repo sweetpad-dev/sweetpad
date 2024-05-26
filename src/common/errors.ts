@@ -3,7 +3,7 @@ export type ErrorMessageAction = {
   callback: () => void;
 };
 
-export type ExtensionErrorOptions = {
+type ExtensionErrorOptions = {
   actions?: ErrorMessageAction[];
   context?: Record<string, unknown>;
 };

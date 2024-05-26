@@ -68,7 +68,7 @@ export async function askScheme(options?: { title?: string }): Promise<string> {
 }
 
 /**
- * It's path to current opened workspace
+ * It's absolute path to current opened workspace
  */
 export function getWorkspacePath(): string {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
@@ -111,7 +111,9 @@ export async function prepareBundleDir(context: ExtensionContext, schema: string
 
 export async function askXcodeWorkspacePath(context: ExtensionContext): Promise<string> {
   return await context.withPathCache("build.xcodeWorkspacePath", async () => {
-    return await selectXcodeWorkspace();
+    return await selectXcodeWorkspace({
+      autoset: true,
+    });
   });
 }
 
@@ -119,6 +121,11 @@ export async function askConfiguration(context: ExtensionContext): Promise<strin
   return await context.withCache("build.xcodeConfiguration", async () => {
     // Fetch all configurations
     const configurations = await getBuildConfigurations();
+
+    // Use default configuration if no configurations found
+    if (configurations.length === 0) {
+      return DEFAULT_CONFIGURATION;
+    }
 
     // Use default configuration if it exists
     if (configurations.some((configuration) => configuration.name === DEFAULT_CONFIGURATION)) {
@@ -144,30 +151,28 @@ export async function askConfiguration(context: ExtensionContext): Promise<strin
 /**
  * Detect xcode workspace in the given directory
  */
-export async function detectXcodeProjectPaths(): Promise<string[]> {
+async function detectXcodeWorkspacesPaths(): Promise<string[]> {
   const workspace = getWorkspacePath();
 
   // Get all files that end with .xcworkspace (4 depth)
-  const paths = await findFilesRecursive(
-    workspace,
-    (file, stats) => {
-      return stats.isDirectory() && file.endsWith(".xcworkspace");
+  const paths = await findFilesRecursive({
+    directory: workspace,
+    depth: 4,
+    matcher: (file) => {
+      return file.name.endsWith(".xcworkspace");
     },
-    {
-      depth: 4,
-    }
-  );
+  });
   return paths;
 }
 
 /**
  * Find xcode workspace in the given directory and ask user to select it
  */
-export async function selectXcodeWorkspace(): Promise<string> {
+export async function selectXcodeWorkspace(options: { autoset: boolean }): Promise<string> {
   const workspacePath = getWorkspacePath();
 
   // Get all files that end with .xcworkspace (4 depth)
-  const paths = await detectXcodeProjectPaths();
+  const paths = await detectXcodeWorkspacesPaths();
 
   // No files, nothing to do
   if (paths.length === 0) {
@@ -179,7 +184,7 @@ export async function selectXcodeWorkspace(): Promise<string> {
   }
 
   // One file, use it and save it to the cache
-  if (paths.length === 1) {
+  if (paths.length === 1 && options.autoset) {
     const path = paths[0];
     commonLogger.log("Xcode workspace was detected", {
       workspace: workspacePath,
@@ -215,6 +220,7 @@ export async function selectXcodeWorkspace(): Promise<string> {
         } else if (!isInRootDir && parentDir.endsWith(".xcodeproj")) {
           detail = "Xcode";
         }
+        // todo: add workspace with multiple projects
 
         return {
           label: relativePath,

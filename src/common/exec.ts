@@ -4,7 +4,7 @@ import { commonLogger } from "./logger.js";
 
 import { execa } from "execa";
 
-export type ExecaError = {
+type ExecaError = {
   command: string;
   escapedCommand: string;
   exitCode: number;

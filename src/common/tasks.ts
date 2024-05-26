@@ -245,7 +245,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       // Default values for error handling
       let errorCode = -1;
       let errorMessage = `🚷 ${error?.toString()}`;
-      let options: TerminalWriteOptions = { color: "red" };
+      const options: TerminalWriteOptions = { color: "red" };
 
       // Handling specific error types
       if (error instanceof ExecuteTaskError) {
@@ -359,7 +359,7 @@ export class TaskTerminalV1Parent implements vscode.Pseudoterminal {
 /**
  * V1 version of the task runner that uses the `vscode.Task` API for each execution.
  */
-export async function runTaskV1(
+async function runTaskV1(
   context: ExtensionContext,
   options: {
     name: string;
@@ -377,7 +377,7 @@ export async function runTaskV1(
  * just adds a new command to the same terminal, it allows to have a single terminal for all
  * commands and cancel them all at once.
  */
-export async function runTaskV2(
+async function runTaskV2(
   context: ExtensionContext,
   options: {
     name: string;

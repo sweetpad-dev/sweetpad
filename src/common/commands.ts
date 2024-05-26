@@ -143,7 +143,7 @@ export class CommandExecution {
       callback: () => commonLogger.show(),
     };
 
-    let actions = [closeAction];
+    const actions = [closeAction];
     actions.unshift(...(options?.actions ?? [showLogsAction]));
 
     const actionsLabels = actions.map((action) => action.label);
