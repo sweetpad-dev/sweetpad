@@ -21,3 +21,5 @@ src/
 package-lock.json
 tsconfig.json
 docs/
+tests/
+*.spec.ts

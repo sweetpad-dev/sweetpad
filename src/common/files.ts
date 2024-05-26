@@ -1,21 +1,17 @@
-import { promises as fs, Stats } from "fs";
+import { Dirent, promises as fs } from "fs";
 import * as path from "path";
 
 /**
  * Find files or directories in a given directory
  */
-export async function findFiles(
-  directory: string,
-  matcher: (file: string, stats: Stats) => boolean
-): Promise<string[]> {
-  const files = await fs.readdir(directory);
+export async function findFiles(options: { directory: string; matcher: (file: Dirent) => boolean }): Promise<string[]> {
+  const files = await fs.readdir(options.directory, { withFileTypes: true });
   const matchedFiles: string[] = [];
 
   for (const file of files) {
-    const fullPath = path.join(directory, file);
-    const stats = await fs.stat(fullPath);
+    const fullPath = file.path;
 
-    if (matcher(file, stats)) {
+    if (options.matcher(file)) {
       matchedFiles.push(fullPath);
     }
   }
@@ -26,28 +22,30 @@ export async function findFiles(
 /**
  * Find files or directories in a given directory recursively
  */
-export async function findFilesRecursive(
-  directory: string,
-  matcher: (file: string, stats: Stats) => boolean,
-  options: { ignore?: string[]; depth?: number } = {}
-): Promise<string[]> {
+export async function findFilesRecursive(options: {
+  directory: string;
+  matcher: (file: Dirent) => boolean;
+  ignore?: string[];
+  depth?: number;
+}): Promise<string[]> {
   const ignore = options.ignore ?? [];
   const depth = options.depth ?? 0;
 
-  const files = await fs.readdir(directory);
+  const files = await fs.readdir(options.directory, { withFileTypes: true });
   const matchedFiles: string[] = [];
 
   for (const file of files) {
-    const fullPath = path.join(directory, file);
-    const stats = await fs.stat(fullPath);
+    const fullPath = path.join(file.path, file.name);
 
-    if (matcher(file, stats)) {
+    if (options.matcher(file)) {
       matchedFiles.push(fullPath);
     }
 
-    if (stats.isDirectory() && !ignore.includes(file) && depth > 0) {
-      const subFiles = await findFilesRecursive(fullPath, matcher, {
-        ignore,
+    if (file.isDirectory() && !ignore.includes(file.name) && depth > 0) {
+      const subFiles = await findFilesRecursive({
+        directory: fullPath,
+        matcher: options.matcher,
+        ignore: options.ignore,
         depth: depth - 1,
       });
       matchedFiles.push(...subFiles);

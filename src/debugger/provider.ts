@@ -9,7 +9,7 @@ const ATTACH_CONFIG: vscode.DebugConfiguration = {
   program: "${command:sweetpad.debugger.getAppPath}",
 };
 
-export class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider {
+class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider {
   async provideDebugConfigurations(
     folder: vscode.WorkspaceFolder | undefined,
     token?: vscode.CancellationToken | undefined

@@ -1,6 +1,6 @@
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
-import { findFiles } from "../files";
+import { findFiles, readFile } from "../files";
 import { cache } from "../cache";
 import { getWorkspacePath } from "../../build/utils";
 
@@ -15,11 +15,12 @@ export type SimulatorOutput = {
   name: string;
 };
 
-export type SimulatorsOutput = {
+type SimulatorsOutput = {
   devices: { [key: string]: SimulatorOutput[] };
 };
 
-interface XcodeBuildListOutput {
+interface XcodebuildListProjectOutput {
+  type: "project";
   project: {
     configurations: string[];
     name: string;
@@ -27,6 +28,16 @@ interface XcodeBuildListOutput {
     targets: string[];
   };
 }
+
+interface XcodebuildListWorkspaceOutput {
+  type: "workspace";
+  workspace: {
+    name: string;
+    schemes: string[];
+  };
+}
+
+type XcodebuildListOutput = XcodebuildListProjectOutput | XcodebuildListWorkspaceOutput;
 
 export type XcodeScheme = {
   name: string;
@@ -59,9 +70,9 @@ export async function getSimulatorByUdid(udid: string) {
   throw new ExtensionError("Simulator not found", { context: { udid } });
 }
 
-export type BuildSettingsOutput = BuildSettingOutput[];
+type BuildSettingsOutput = BuildSettingOutput[];
 
-export type BuildSettingOutput = {
+type BuildSettingOutput = {
   action: string;
   target: string;
   buildSettings: {
@@ -146,49 +157,76 @@ export async function getIsXcodeBuildServerInstalled() {
 }
 
 /**
- * Find xcode project in a given directory
+ * Find xcode workspace in a given directory
  */
-export async function getXcodeProjectPath(): Promise<string> {
+async function getXcodeWorkspacePath(): Promise<string> {
   const workspaceFolder = getWorkspacePath();
-  const projects = await findFiles(workspaceFolder, (file, stats) => {
-    return stats.isDirectory() && file.endsWith(".xcodeproj");
+  const workspaces = await findFiles({
+    directory: workspaceFolder,
+    matcher: (file) => {
+      return file.isDirectory() && file.name.endsWith(".xcworkspace");
+    },
   });
-  if (projects.length === 0) {
-    throw new ExtensionError("No xcode projects found", {
+  if (workspaces.length === 0) {
+    throw new ExtensionError("No xcode workspaces found", {
       context: {
         cwd: workspaceFolder,
       },
     });
   }
-  return projects[0];
+  return workspaces[0];
 }
 
-export const getBasicProjectInfo = cache(async () => {
+export const getBasicProjectInfo = cache(async (): Promise<XcodebuildListOutput> => {
   const stdout = await exec({
     command: "xcodebuild",
     args: ["-list", "-json"],
   });
-
-  return JSON.parse(stdout) as XcodeBuildListOutput;
+  const parsed = JSON.parse(stdout);
+  if (parsed.project) {
+    return {
+      type: "project",
+      ...parsed,
+    } as XcodebuildListProjectOutput;
+  } else {
+    return {
+      type: "workspace",
+      ...parsed,
+    } as XcodebuildListWorkspaceOutput;
+  }
 });
 
 export async function getSchemes(): Promise<XcodeScheme[]> {
   const output = await getBasicProjectInfo();
-  const schemes = output.project.schemes.map((scheme) => {
-    return {
-      name: scheme,
-    };
-  });
-  return schemes;
+  if (output.type === "project") {
+    return output.project.schemes.map((scheme) => {
+      return {
+        name: scheme,
+      };
+    });
+  } else {
+    return output.workspace.schemes.map((scheme) => {
+      return {
+        name: scheme,
+      };
+    });
+  }
 }
 
 export async function getBuildConfigurations(): Promise<XcodeConfiguration[]> {
   const output = await getBasicProjectInfo();
-  return output.project.configurations.map((configuration) => {
-    return {
-      name: configuration,
-    };
-  });
+  if (output.type === "project") {
+    return output.project.configurations.map((configuration) => {
+      return {
+        name: configuration,
+      };
+    });
+  }
+  if (output.type === "workspace") {
+    // how to get configurations for workspace?
+    // todo: pass scheme here and try to get configurations from it
+  }
+  return [];
 }
 
 /**

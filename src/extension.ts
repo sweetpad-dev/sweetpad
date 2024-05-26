@@ -59,7 +59,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Build
   d(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
-  d(command("sweetpad.build.refresh", async () => buildTreeProvider.refresh()));
+  d(command("sweetpad.build.refreshView", async () => buildTreeProvider.refresh()));
   d(command("sweetpad.build.launch", launchCommand));
   d(command("sweetpad.build.build", buildCommand));
   d(command("sweetpad.build.clean", cleanCommand));

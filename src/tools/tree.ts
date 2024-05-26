@@ -33,7 +33,7 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
     const results = await Promise.all(
       TOOLS.map(async (item) => {
         try {
-          const stdout = await exec({
+          await exec({
             command: item.check.command,
             args: item.check.args,
           });

@@ -168,7 +168,7 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
         const _defition = defition as TaskDefinition;
         const executorName = getTaskExecutorName();
         switch (executorName) {
-          case "v1":
+          case "v1": {
             // Each task will create a new vscode.Task for each script
             // and one parent Terminal is used to show all tasks
             const terminal = new TaskTerminalV1(this.context, {
@@ -179,7 +179,8 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
 
             // create a dummy terminal to show the task in the terminal panel
             return new TaskTerminalV1Parent();
-          case "v2":
+          }
+          case "v2": {
             // In the V2 executor, one terminal is created for all tasks.
             // The callback should call terminal.execute(command) to run the script
             // in the current terminal.
@@ -188,6 +189,7 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
                 await this.dispathcer.do(terminal, _defition);
               },
             });
+          }
           default:
             throw new Error(`Task executor ${executorName} is not supported`);
         }

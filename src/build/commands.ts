@@ -23,7 +23,6 @@ import {
 } from "./utils";
 import { CommandExecution, ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
-import { commonLogger } from "../common/logger";
 import { exec } from "../common/exec";
 import { getWorkspaceConfig } from "../common/config";
 import { TaskTerminal, runTask } from "../common/tasks";
@@ -104,7 +103,7 @@ export async function runOnDevice(
   });
 }
 
-export function isXcbeautifyEnabled() {
+function isXcbeautifyEnabled() {
   return getWorkspaceConfig<boolean>("build.xcbeautifyEnabled") ?? true;
 }
 
@@ -312,6 +311,8 @@ export async function openXcodeCommand(execution: CommandExecution) {
  * Select Xcode workspace and save it to the workspace state
  */
 export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
-  const workspace = await selectXcodeWorkspace();
+  const workspace = await selectXcodeWorkspace({
+    autoset: false,
+  });
   execution.context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
 }
