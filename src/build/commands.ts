@@ -343,6 +343,7 @@ export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
   if (selected.context.answer) {
     const relative = getWorkspaceRelativePath(workspace);
     await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
+    execution.context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
   } else {
     execution.context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
   }

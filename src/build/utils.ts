@@ -115,6 +115,7 @@ export async function prepareBundleDir(context: ExtensionContext, schema: string
 export function getCurrentXcodeWorkspacePath(context: ExtensionContext): string | undefined {
   const configPath = getWorkspaceConfig("build.xcodeWorkspacePath");
   if (configPath) {
+    context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
     if (path.isAbsolute(configPath)) {
       return configPath;
     } else {
