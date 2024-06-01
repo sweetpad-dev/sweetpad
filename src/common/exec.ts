@@ -24,6 +24,12 @@ type ExecaError = {
 export async function exec(options: { command: string; args: string[]; cwd?: string }): Promise<string> {
   const cwd = options.cwd ?? getWorkspacePath();
 
+  commonLogger.debug("Executing command", {
+    command: options.command,
+    args: options.args,
+    cwd: cwd,
+  });
+
   let result;
   try {
     result = await execa(options.command, options.args, {

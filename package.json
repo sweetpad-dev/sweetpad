@@ -344,6 +344,17 @@
           ],
           "description": "Use version task executor for build tasks."
         },
+        "sweetpad.system.logLevel": {
+          "type": "string",
+          "default": "info",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
+          "description": "Log level for SweetPad."
+        },
         "sweetpad.xcodegen.autogenerate": {
           "type": "boolean",
           "default": false,

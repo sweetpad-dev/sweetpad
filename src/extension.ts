@@ -30,8 +30,12 @@ import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
 import { getAppPathCommand } from "./debugger/commands.js";
+import { Logger } from "./common/logger.js";
 
 export function activate(context: vscode.ExtensionContext) {
+  // 🪵🪓
+  Logger.setup();
+
   // Trees 🎄
   const simulatorsTreeProvider = new SimulatorsTreeProvider();
   const buildTreeProvider = new BuildTreeProvider();

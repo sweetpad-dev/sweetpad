@@ -1,3 +1,5 @@
+import { commonLogger } from "./logger";
+
 export type ErrorMessageAction = {
   label: string;
   callback: () => void;
@@ -13,6 +15,10 @@ export class ExtensionError extends Error {
 
   constructor(message: string, options?: ExtensionErrorOptions) {
     super(message);
+    commonLogger.debug("ExecBaseError constructor", {
+      errorMessage: message,
+      errorOptions: options,
+    });
     this.options = options;
   }
 }

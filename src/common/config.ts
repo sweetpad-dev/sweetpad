@@ -5,6 +5,7 @@ type ConfigKey =
   | "format.args"
   | "build.xcbeautifyEnabled"
   | "system.taskExecutor"
+  | "system.logLevel"
   | "xcodegen.autogenerate";
 
 export function getWorkspaceConfig<T = any>(key: ConfigKey): T | undefined {

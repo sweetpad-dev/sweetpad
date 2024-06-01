@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [In Progress]
+
+- Add "debug" level to show debug messages in the output panel
+
 ## [0.1.15] - 2024-05-25
 
 - Add workspace with multiple projects support

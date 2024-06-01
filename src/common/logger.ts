@@ -7,9 +7,16 @@ interface Context {
   [key: string]: any;
 }
 
+enum LogLevel {
+  debug = 0,
+  info = 1,
+  warning = 2,
+  error = 3,
+}
+
 interface Message {
   message: string;
-  type: "info" | "error" | "warning";
+  level: LogLevel;
   time: string;
   [key: string]: any;
 }
@@ -22,11 +29,15 @@ interface Message {
 export class Logger {
   private outputChannel: vscode.OutputChannel;
   private messages: Message[];
-  private maxMessages = 1000;
+  private maxMessages: number;
+
+  // Log level is global for all loggers in the extension
+  static level: LogLevel = LogLevel.info;
 
   constructor(options: { name: string }) {
     this.outputChannel = vscode.window.createOutputChannel(`SweetPad: ${options.name}`);
     this.messages = [];
+    this.maxMessages = 1000;
   }
 
   private format(data: Message) {
@@ -34,6 +45,10 @@ export class Logger {
   }
 
   private addMessage(data: Message) {
+    if (!this.isOKLevel(data.level)) {
+      return;
+    }
+
     const formatted = this.format(data);
     this.outputChannel.appendLine(formatted);
     this.messages.push(data);
@@ -46,10 +61,50 @@ export class Logger {
     return new Date().toISOString();
   }
 
+  private isOKLevel(level: LogLevel) {
+    return level >= Logger.level;
+  }
+
+  static getLevelFromString(level: string): LogLevel {
+    switch (level) {
+      case "debug":
+        return LogLevel.debug;
+      case "info":
+        return LogLevel.info;
+      case "warning":
+        return LogLevel.warning;
+      case "error":
+        return LogLevel.error;
+      default:
+        return LogLevel.info;
+    }
+  }
+
+  static setLevel(level: LogLevel | string) {
+    if (typeof level === "string") {
+      level = Logger.getLevelFromString(level);
+    }
+
+    Logger.level = level;
+  }
+
+  static setup() {
+    Logger.setLevel(vscode.workspace.getConfiguration("sweetpad").get<string>("system.logLevel") ?? "info");
+  }
+
+  debug(message: string, context: Context) {
+    this.addMessage({
+      message: message,
+      level: LogLevel.debug,
+      time: this.getNow(),
+      ...context,
+    });
+  }
+
   log(message: string, context: Context) {
     this.addMessage({
       message: message,
-      type: "info",
+      level: LogLevel.info,
       time: this.getNow(),
       ...context,
     });
@@ -58,7 +113,7 @@ export class Logger {
   error(message: string, context: Context) {
     this.addMessage({
       message: message,
-      type: "error",
+      level: LogLevel.error,
       time: this.getNow(),
       ...context,
     });
@@ -67,7 +122,7 @@ export class Logger {
   warn(message: string, context: Context) {
     this.addMessage({
       message: message,
-      type: "warning",
+      level: LogLevel.warning,
       time: this.getNow(),
       ...context,
     });
