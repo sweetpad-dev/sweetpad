@@ -16,7 +16,7 @@ brew install swift-format
 
 Next, add the following configuration to your settings.json file:
 
-```json
+```jsonc
 {
   "[swift]": {
     "editor.defaultFormatter": "sweetpad.sweetpad",
@@ -40,7 +40,7 @@ However, you can use any other formatter of your choice. We provide several conf
 formatter used by SweetPad. Here is an example of how to use another formatter
 [**swiftformat**](https://github.com/nicklockwood/SwiftFormat):
 
-```json
+```jsonc
 {
   "sweetpad.format.path": "swiftformat",
   // The "--quiet" flag is important here to ignore output that "swiftformat" writes to stderr.

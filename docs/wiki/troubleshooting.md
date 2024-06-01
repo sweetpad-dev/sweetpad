@@ -4,7 +4,7 @@
 
 1. Set up "debug" level logging in the configuration file to show debug messages in the output panel.
 
-```json
+```jsonc
 {
   "sweetpad.system.logLevel": "debug"
 }

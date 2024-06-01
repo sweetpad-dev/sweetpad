@@ -14,7 +14,7 @@ To debug an iOS application extension, provide thin integration with the
 2. Create a `launch.json` configuration file in the `.vscode` directory of your project. The configuration file should
    contain the following configuration:
 
-```json
+```jsonc
 {
   "version": "0.2.0",
   "configurations": [

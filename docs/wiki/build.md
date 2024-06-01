@@ -44,7 +44,7 @@ You can run these tasks from the command palette by typing `Tasks: Run Task` and
 
 Or you can add tasks to the `tasks.json` file in the `.vscode` folder of your project:
 
-```json
+```jsonc
 {
   "version": "2.0.0",
   "tasks": [
@@ -63,7 +63,7 @@ Or you can add tasks to the `tasks.json` file in the `.vscode` folder of your pr
 
 If you are working on multiple Xcode workspaces, you can set the workspace path in the SweetPad configuration:
 
-```json
+```jsonc
 {
   // Path to your Xcode workspace (.xcworkspace file)
   // The path can be absolute or relative to the folder in which VSCode is opened.
