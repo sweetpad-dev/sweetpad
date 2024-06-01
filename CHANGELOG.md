@@ -4,9 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [In Progress]
+## [0.1.16] - 2024-06-01
 
 - Add "debug" level to show debug messages in the output panel
+- Add "sweetpad.build.xcodeWorkspacePath" setting to set the path of the current Xcode workspace
 
 ## [0.1.15] - 2024-05-25
 
