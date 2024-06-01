@@ -47,8 +47,18 @@ class ActionDispatcher {
   }
 
   private async launchCallback(terminal: TaskTerminal, definition: TaskDefinition) {
-    const scheme = definition.scheme ?? (await askScheme());
-    const configuration = definition.configuration ?? (await askConfiguration(this.context));
+    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const scheme =
+      definition.scheme ??
+      (await askScheme({
+        xcworkspace: xcworkspace,
+      }));
+
+    const configuration =
+      definition.configuration ??
+      (await askConfiguration(this.context, {
+        xcworkspace: xcworkspace,
+      }));
     const simulator = definition.simulator
       ? await getSimulatorByUdid(definition.simulator)
       : await askSimulatorToRunOn(this.context);
@@ -59,6 +69,7 @@ class ActionDispatcher {
       configuration: configuration,
       shouldBuild: true,
       shouldClean: false,
+      xcworkspace: xcworkspace,
     });
 
     await runOnDevice(this.context, terminal, {
@@ -70,8 +81,17 @@ class ActionDispatcher {
   }
 
   private async buildCallback(terminal: TaskTerminal, definition: TaskDefinition) {
-    const scheme = definition.scheme ?? (await askScheme());
-    const configuration = definition.configuration ?? (await askConfiguration(this.context));
+    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const scheme =
+      definition.scheme ??
+      (await askScheme({
+        xcworkspace: xcworkspace,
+      }));
+    const configuration =
+      definition.configuration ??
+      (await askConfiguration(this.context, {
+        xcworkspace: xcworkspace,
+      }));
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
@@ -79,12 +99,23 @@ class ActionDispatcher {
       configuration: configuration,
       shouldBuild: true,
       shouldClean: false,
+      xcworkspace: xcworkspace,
     });
   }
 
   private async cleanCallback(terminal: TaskTerminal, definition: TaskDefinition) {
-    const scheme = definition.scheme ?? (await askScheme());
-    const configuration = definition.configuration ?? (await askConfiguration(this.context));
+    const xcworkspace = await askXcodeWorkspacePath(this.context);
+
+    const scheme =
+      definition.scheme ??
+      (await askScheme({
+        xcworkspace: xcworkspace,
+      }));
+    const configuration =
+      definition.configuration ??
+      (await askConfiguration(this.context, {
+        xcworkspace: xcworkspace,
+      }));
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
@@ -92,16 +123,21 @@ class ActionDispatcher {
       configuration: configuration,
       shouldBuild: false,
       shouldClean: true,
+      xcworkspace: xcworkspace,
     });
   }
 
   private async resolveDependenciesCallback(terminal: TaskTerminal, definition: TaskDefinition) {
-    const scheme = definition.scheme ?? (await askScheme());
     const xcworkspacePath = definition.workspace ?? (await askXcodeWorkspacePath(this.context));
+    const scheme =
+      definition.scheme ??
+      (await askScheme({
+        xcworkspace: xcworkspacePath,
+      }));
 
     await resolveDependencies(this.context, {
       scheme: scheme,
-      xcodeWorkspacePath: xcworkspacePath,
+      xcworkspace: xcworkspacePath,
     });
   }
 }

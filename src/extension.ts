@@ -47,6 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
     simulatorsProvider: simulatorsTreeProvider,
     toolsProvider: toolsTreeProvider,
   });
+  buildTreeProvider.context = _context;
 
   // shortcut to push disposable to context.subscriptions
   const d = _context.disposable.bind(_context);

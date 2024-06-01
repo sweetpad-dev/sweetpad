@@ -11,7 +11,7 @@ function getFormatterCommand(filename: string): {
   command: string;
   args: string[];
 } {
-  const path = getWorkspaceConfig<string>("format.path");
+  const path = getWorkspaceConfig("format.path");
 
   // We use "swift-format" as default command if no path is provided,
   // "args" config are ignored in this case

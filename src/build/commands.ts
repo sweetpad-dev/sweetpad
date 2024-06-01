@@ -24,8 +24,10 @@ import {
 import { CommandExecution, ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
-import { getWorkspaceConfig } from "../common/config";
+import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { TaskTerminal, runTask } from "../common/tasks";
+import { getWorkspaceRelativePath } from "../common/files";
+import { showQuickPick } from "../common/quick-pick";
 
 export const DEFAULT_SDK = "iphonesimulator";
 
@@ -39,13 +41,13 @@ export async function runOnDevice(
     configuration: string;
   }
 ) {
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspacePath(context);
 
   const buildSettings = await getBuildSettings({
     scheme: options.scheme,
     configuration: options.configuration,
     sdk: options.sdk,
-    xcodeWorkspacePath: xcodeWorkspacePath,
+    xcworkspace: xcworkspace,
   });
   const settings = buildSettings[0]?.buildSettings;
   if (!settings) {
@@ -104,7 +106,7 @@ export async function runOnDevice(
 }
 
 function isXcbeautifyEnabled() {
-  return getWorkspaceConfig<boolean>("build.xcbeautifyEnabled") ?? true;
+  return getWorkspaceConfig("build.xcbeautifyEnabled") ?? true;
 }
 
 export async function buildApp(
@@ -116,12 +118,11 @@ export async function buildApp(
     configuration: string;
     shouldBuild: boolean;
     shouldClean: boolean;
+    xcworkspace: string;
   }
 ) {
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundleDir = await prepareBundleDir(context, options.scheme);
-
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(context);
 
   const commandParts: string[] = [
     "xcodebuild",
@@ -132,7 +133,7 @@ export async function buildApp(
     "-configuration",
     options.configuration,
     "-workspace",
-    xcodeWorkspacePath,
+    options.xcworkspace,
     "-destination",
     "generic/platform=iOS Simulator",
     "-resultBundlePath",
@@ -157,8 +158,9 @@ export async function buildApp(
  * Build app without running
  */
 export async function buildCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to build" }));
-  const configuration = await askConfiguration(execution.context);
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to build", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
   await runTask(execution.context, {
     name: "Build",
@@ -169,6 +171,7 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
         configuration: configuration,
         shouldBuild: true,
         shouldClean: false,
+        xcworkspace: xcworkspace,
       });
     },
   });
@@ -178,9 +181,12 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
  * Build and run application on the simulator
  */
 export async function launchCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to build and run" }));
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
-  const configuration = await askConfiguration(execution.context);
+  const scheme =
+    item?.scheme ?? (await askScheme({ title: "Select scheme to build and run", xcworkspace: xcworkspace }));
+
+  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
   // Ask simulator to run on before we start building to not distract user
   // during build command execution
@@ -195,6 +201,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         configuration: configuration,
         shouldBuild: true,
         shouldClean: false,
+        xcworkspace: xcworkspace,
       });
 
       await runOnDevice(execution.context, terminal, {
@@ -211,8 +218,9 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
  * Clean build artifacts
  */
 export async function cleanCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to clean" }));
-  const configuration = await askConfiguration(execution.context);
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to clean", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
   await runTask(execution.context, {
     name: "Clean",
@@ -223,21 +231,19 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
         configuration: configuration,
         shouldBuild: false,
         shouldClean: true,
+        xcworkspace: xcworkspace,
       });
     },
   });
 }
 
-export async function resolveDependencies(
-  context: ExtensionContext,
-  options: { scheme: string; xcodeWorkspacePath: string }
-) {
+export async function resolveDependencies(context: ExtensionContext, options: { scheme: string; xcworkspace: string }) {
   await runTask(context, {
     name: "Resolve Dependencies",
     callback: async (terminal) => {
       await terminal.execute({
         command: "xcodebuild",
-        args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcodeWorkspacePath],
+        args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],
       });
     },
   });
@@ -247,12 +253,14 @@ export async function resolveDependencies(
  * Resolve dependencies for the Xcode project
  */
 export async function resolveDependenciesCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to resolve dependencies" }));
-  const xcworkspacePath = await askXcodeWorkspacePath(execution.context);
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+
+  const scheme =
+    item?.scheme ?? (await askScheme({ title: "Select scheme to resolve dependencies", xcworkspace: xcworkspace }));
 
   await resolveDependencies(execution.context, {
     scheme: scheme,
-    xcodeWorkspacePath: xcworkspacePath,
+    xcworkspace: xcworkspace,
   });
 }
 
@@ -279,13 +287,14 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
     throw new ExtensionError("xcode-build-server is not installed");
   }
 
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution.context);
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
   const scheme = await askScheme({
     title: "Select scheme for build server",
+    xcworkspace: xcworkspace,
   });
   await generateBuildServerConfig({
-    xcodeWorkspacePath: xcodeWorkspacePath,
+    xcworkspace: xcworkspace,
     scheme: scheme,
   });
 
@@ -299,11 +308,11 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
  * Open current project in Xcode
  */
 export async function openXcodeCommand(execution: CommandExecution) {
-  const xcodeWorkspacePath = await askXcodeWorkspacePath(execution.context);
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
   await exec({
     command: "open",
-    args: [xcodeWorkspacePath],
+    args: [xcworkspace],
   });
 }
 
@@ -312,7 +321,30 @@ export async function openXcodeCommand(execution: CommandExecution) {
  */
 export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
   const workspace = await selectXcodeWorkspace({
-    autoset: false,
+    autoselect: false,
   });
-  execution.context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
+  const selected = await showQuickPick({
+    title: "Do you want to update path to xcode workspace in the workspace settings (.vscode/settings.json)?",
+    items: [
+      {
+        label: "Yes",
+        context: {
+          answer: true,
+        },
+      },
+      {
+        label: "No",
+        context: {
+          answer: false,
+        },
+      },
+    ],
+  });
+  if (selected.context.answer) {
+    const relative = getWorkspaceRelativePath(workspace);
+    await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
+  } else {
+    execution.context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
+  }
+  execution.context.refreshBuildView();
 }

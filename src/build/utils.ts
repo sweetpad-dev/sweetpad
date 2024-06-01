@@ -14,6 +14,7 @@ import { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { findFilesRecursive, isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
+import { getWorkspaceConfig } from "../common/config";
 
 const DEFAULT_CONFIGURATION = "Debug";
 
@@ -49,8 +50,10 @@ export async function askSimulatorToRunOn(context: ExtensionContext): Promise<Si
 /**
  * Ask user to select scheme to build
  */
-export async function askScheme(options?: { title?: string }): Promise<string> {
-  const schemes = await getSchemes();
+export async function askScheme(options: { title?: string; xcworkspace: string }): Promise<string> {
+  const schemes = await getSchemes({
+    xcworkspace: options.xcworkspace,
+  });
 
   const scheme = await showQuickPick({
     title: options?.title ?? "Select scheme to build",
@@ -109,18 +112,50 @@ export async function prepareBundleDir(context: ExtensionContext, schema: string
   return bundleDir;
 }
 
-export async function askXcodeWorkspacePath(context: ExtensionContext): Promise<string> {
-  return await context.withPathCache("build.xcodeWorkspacePath", async () => {
-    return await selectXcodeWorkspace({
-      autoset: true,
-    });
-  });
+export function getCurrentXcodeWorkspacePath(context: ExtensionContext): string | undefined {
+  const configPath = getWorkspaceConfig("build.xcodeWorkspacePath");
+  if (configPath) {
+    if (path.isAbsolute(configPath)) {
+      return configPath;
+    } else {
+      return path.join(getWorkspacePath(), configPath);
+    }
+  }
+
+  const cachedPath = context.getWorkspaceState("build.xcodeWorkspacePath");
+  if (cachedPath) {
+    return cachedPath;
+  }
+
+  return undefined;
 }
 
-export async function askConfiguration(context: ExtensionContext): Promise<string> {
+export async function askXcodeWorkspacePath(context: ExtensionContext): Promise<string> {
+  const current = getCurrentXcodeWorkspacePath(context);
+  if (current) {
+    return current;
+  }
+
+  const selectedPath = await selectXcodeWorkspace({
+    autoselect: true,
+  });
+
+  context.updateWorkspaceState("build.xcodeWorkspacePath", selectedPath);
+  context.refreshBuildView();
+  return selectedPath;
+}
+
+export async function askConfiguration(
+  context: ExtensionContext,
+  options: {
+    xcworkspace: string;
+  }
+): Promise<string> {
   return await context.withCache("build.xcodeConfiguration", async () => {
     // Fetch all configurations
-    const configurations = await getBuildConfigurations();
+    const configurations = await getBuildConfigurations({
+      xcworkspace: options.xcworkspace,
+    });
 
     // Use default configuration if no configurations found
     if (configurations.length === 0) {
@@ -168,7 +203,7 @@ async function detectXcodeWorkspacesPaths(): Promise<string[]> {
 /**
  * Find xcode workspace in the given directory and ask user to select it
  */
-export async function selectXcodeWorkspace(options: { autoset: boolean }): Promise<string> {
+export async function selectXcodeWorkspace(options: { autoselect: boolean }): Promise<string> {
   const workspacePath = getWorkspacePath();
 
   // Get all files that end with .xcworkspace (4 depth)
@@ -184,7 +219,7 @@ export async function selectXcodeWorkspace(options: { autoset: boolean }): Promi
   }
 
   // One file, use it and save it to the cache
-  if (paths.length === 1 && options.autoset) {
+  if (paths.length === 1 && options.autoselect) {
     const path = paths[0];
     commonLogger.log("Xcode workspace was detected", {
       workspace: workspacePath,

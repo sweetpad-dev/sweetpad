@@ -3,6 +3,8 @@ import { exec } from "../exec";
 import { findFiles, readFile } from "../files";
 import { cache } from "../cache";
 import { getWorkspacePath } from "../../build/utils";
+import { XcodeWorkspace } from "../xcode/workspace";
+import { uniqueFilter } from "../helpers";
 
 export type SimulatorOutput = {
   dataPath: string;
@@ -84,7 +86,7 @@ export async function getBuildSettings(options: {
   scheme: string;
   configuration: string;
   sdk: string;
-  xcodeWorkspacePath: string;
+  xcworkspace: string;
 }) {
   const stdout = await exec({
     command: "xcodebuild",
@@ -93,7 +95,7 @@ export async function getBuildSettings(options: {
       "-scheme",
       options.scheme,
       "-workspace",
-      options.xcodeWorkspacePath,
+      options.xcworkspace,
       "-configuration",
       options.configuration,
       "-sdk",
@@ -156,48 +158,31 @@ export async function getIsXcodeBuildServerInstalled() {
   }
 }
 
-/**
- * Find xcode workspace in a given directory
- */
-async function getXcodeWorkspacePath(): Promise<string> {
-  const workspaceFolder = getWorkspacePath();
-  const workspaces = await findFiles({
-    directory: workspaceFolder,
-    matcher: (file) => {
-      return file.isDirectory() && file.name.endsWith(".xcworkspace");
-    },
-  });
-  if (workspaces.length === 0) {
-    throw new ExtensionError("No xcode workspaces found", {
-      context: {
-        cwd: workspaceFolder,
-      },
+export const getBasicProjectInfo = cache(
+  async (options: { xcworkspace: string | undefined }): Promise<XcodebuildListOutput> => {
+    const stdout = await exec({
+      command: "xcodebuild",
+      args: ["-list", "-json", ...(options?.xcworkspace ? ["-workspace", options?.xcworkspace] : [])],
     });
+    const parsed = JSON.parse(stdout);
+    if (parsed.project) {
+      return {
+        type: "project",
+        ...parsed,
+      } as XcodebuildListProjectOutput;
+    } else {
+      return {
+        type: "workspace",
+        ...parsed,
+      } as XcodebuildListWorkspaceOutput;
+    }
   }
-  return workspaces[0];
-}
+);
 
-export const getBasicProjectInfo = cache(async (): Promise<XcodebuildListOutput> => {
-  const stdout = await exec({
-    command: "xcodebuild",
-    args: ["-list", "-json"],
+export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
+  const output = await getBasicProjectInfo({
+    xcworkspace: options?.xcworkspace,
   });
-  const parsed = JSON.parse(stdout);
-  if (parsed.project) {
-    return {
-      type: "project",
-      ...parsed,
-    } as XcodebuildListProjectOutput;
-  } else {
-    return {
-      type: "workspace",
-      ...parsed,
-    } as XcodebuildListWorkspaceOutput;
-  }
-});
-
-export async function getSchemes(): Promise<XcodeScheme[]> {
-  const output = await getBasicProjectInfo();
   if (output.type === "project") {
     return output.project.schemes.map((scheme) => {
       return {
@@ -213,9 +198,12 @@ export async function getSchemes(): Promise<XcodeScheme[]> {
   }
 }
 
-export async function getBuildConfigurations(): Promise<XcodeConfiguration[]> {
-  const output = await getBasicProjectInfo();
+export async function getBuildConfigurations(options: { xcworkspace: string }): Promise<XcodeConfiguration[]> {
+  const output = await getBasicProjectInfo({
+    xcworkspace: options.xcworkspace,
+  });
   if (output.type === "project") {
+    // todo: if workspace option is required, can this happen at all? 🤔
     return output.project.configurations.map((configuration) => {
       return {
         name: configuration,
@@ -223,8 +211,18 @@ export async function getBuildConfigurations(): Promise<XcodeConfiguration[]> {
     });
   }
   if (output.type === "workspace") {
-    // how to get configurations for workspace?
-    // todo: pass scheme here and try to get configurations from it
+    const xcworkspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+    const projects = await xcworkspace.getProjects();
+    return projects
+      .flatMap((project) => {
+        return project.getConfigurations();
+      })
+      .filter(uniqueFilter)
+      .map((configuration) => {
+        return {
+          name: configuration,
+        };
+      });
   }
   return [];
 }
@@ -232,10 +230,10 @@ export async function getBuildConfigurations(): Promise<XcodeConfiguration[]> {
 /**
  * Generate xcode-build-server config
  */
-export async function generateBuildServerConfig(options: { xcodeWorkspacePath: string; scheme: string }) {
+export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
   await exec({
     command: "xcode-build-server",
-    args: ["config", "-workspace", options.xcodeWorkspacePath, "-scheme", options.scheme],
+    args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme],
   });
 }
 

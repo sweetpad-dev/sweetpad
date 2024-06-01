@@ -6,6 +6,7 @@ import { getWorkspaceConfig } from "./config";
 import { ExtensionContext } from "./commands";
 import path from "path";
 import { isFileExists } from "./files";
+import { getWorkspacePath } from "../build/utils";
 
 type TaskExecutor = "v1" | "v2";
 
@@ -59,7 +60,7 @@ export interface TaskTerminal {
 }
 
 export function getTaskExecutorName(): TaskExecutor {
-  return getWorkspaceConfig<TaskExecutor>("system.taskExecutor") ?? "v2";
+  return getWorkspaceConfig("system.taskExecutor") ?? "v2";
 }
 
 export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
@@ -167,6 +168,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     let hasOutput = false;
 
     return new Promise<void>((resolve, reject) => {
+      const workspacePath = getWorkspacePath();
       this.process = spawn(command, {
         // run command in shell to support pipes
         shell: true,
@@ -177,6 +179,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
           ...process.env,
           ...options.env,
         },
+        cwd: workspacePath,
       });
       this.process.stderr?.on("data", (data: string | Buffer): void => {
         const output = data.toString();

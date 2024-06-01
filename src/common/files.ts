@@ -1,5 +1,6 @@
 import { Dirent, promises as fs } from "fs";
 import * as path from "path";
+import { getWorkspacePath } from "../build/utils";
 
 /**
  * Find files or directories in a given directory
@@ -66,4 +67,9 @@ export async function isFileExists(filePath: string): Promise<boolean> {
 
 export async function readFile(filePath: string): Promise<Buffer> {
   return await fs.readFile(filePath);
+}
+
+export function getWorkspaceRelativePath(filePath: string): string {
+  const workspacePath = getWorkspacePath();
+  return path.relative(workspacePath, filePath);
 }

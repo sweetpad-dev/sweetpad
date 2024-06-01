@@ -140,7 +140,7 @@ export class XcodeWorkspace {
     return projects;
   }
 
-  static parseWorkspaceItem(options: { element: XmlElement; workspacePath: string }): XcodeWorksaceItem | null {
+  static parseWorkspaceItem(options: { element: XmlElement; xcworkspace: string }): XcodeWorksaceItem | null {
     const { element } = options;
 
     // FileRef contains reference to xcodeproject or other files
@@ -154,7 +154,7 @@ export class XcodeWorkspace {
 
       return new XcodeWorkspaceFileRef({
         location: location,
-        workspacePath: options.workspacePath,
+        workspacePath: options.xcworkspace,
       });
     }
 
@@ -164,7 +164,7 @@ export class XcodeWorkspace {
         .map((obj: any) => {
           return XcodeWorkspace.parseWorkspaceItem({
             element: obj,
-            workspacePath: options.workspacePath,
+            xcworkspace: options.xcworkspace,
           });
         })
         .filter(Boolean) as any;
@@ -177,13 +177,13 @@ export class XcodeWorkspace {
         name: element.attributes["name"],
         location: location,
         children: items,
-        workspacePath: options.workspacePath,
+        workspacePath: options.xcworkspace,
       });
     }
     return null;
   }
 
-  static async parseWorkspace(xcodeWorkspacePath: string): Promise<XcodeWorkspace> {
+  static async parseWorkspace(xcworkspacePath: string): Promise<XcodeWorkspace> {
     // Xcode store workspace structure in *.xcworkspace/contents.xcworkspacedata
     // It's XML fil with structure like:
     // <Workspace
@@ -200,12 +200,12 @@ export class XcodeWorkspace {
     //   </Group>
     // </Workspace>
     // Read contents file
-    const contentsPath = path.join(xcodeWorkspacePath, "contents.xcworkspacedata");
+    const contentsPath = path.join(xcworkspacePath, "contents.xcworkspacedata");
     return XcodeWorkspace.parseContents(contentsPath);
   }
 
   static async parseContents(contentsPath: string): Promise<XcodeWorkspace> {
-    const xcodeWorkspacePath = path.dirname(contentsPath);
+    const xcworkspace = path.dirname(contentsPath);
 
     const contentsData = await readFile(contentsPath);
     const contentsString = contentsData.toString();
@@ -220,7 +220,7 @@ export class XcodeWorkspace {
         if (item instanceof XmlElement) {
           return XcodeWorkspace.parseWorkspaceItem({
             element: item,
-            workspacePath: xcodeWorkspacePath,
+            xcworkspace: xcworkspace,
           });
         }
         return null;
@@ -228,7 +228,7 @@ export class XcodeWorkspace {
       .filter(isNotNull);
 
     return new XcodeWorkspace({
-      path: xcodeWorkspacePath,
+      path: xcworkspace,
       items: items,
     });
   }

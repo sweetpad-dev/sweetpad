@@ -17,7 +17,7 @@ class XcodeGenWatcher {
   async start() {
     // Is config enabled?
     // TODO: add config to enable/disable watcher
-    const isEnabled = getWorkspaceConfig<boolean>("xcodegen.autogenerate");
+    const isEnabled = getWorkspaceConfig("xcodegen.autogenerate");
     if (!isEnabled) {
       return new Disposable(() => {});
     }

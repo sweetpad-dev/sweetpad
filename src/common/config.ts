@@ -1,14 +1,27 @@
 import * as vscode from "vscode";
 
-type ConfigKey =
-  | "format.path"
-  | "format.args"
-  | "build.xcbeautifyEnabled"
-  | "system.taskExecutor"
-  | "system.logLevel"
-  | "xcodegen.autogenerate";
+type Config = {
+  "format.path": string;
+  "format.args": string[];
+  "build.xcbeautifyEnabled": boolean;
+  "build.xcodeWorkspacePath": string;
+  "system.taskExecutor": "v1" | "v2";
+  "system.logLevel": "debug" | "info" | "warn" | "error";
+  "xcodegen.autogenerate": boolean;
+};
 
-export function getWorkspaceConfig<T = any>(key: ConfigKey): T | undefined {
+type ConfigKey = keyof Config;
+
+export function getWorkspaceConfig<K extends ConfigKey>(key: K): Config[K] | undefined {
   const config = vscode.workspace.getConfiguration("sweetpad");
   return config.get(key);
+}
+
+export function isWorkspaceConfigIsDefined<K extends ConfigKey>(key: K): boolean {
+  return getWorkspaceConfig(key) !== undefined;
+}
+
+export async function updateWorkspaceConfig<K extends ConfigKey>(key: K, value: Config[K]): Promise<void> {
+  const config = vscode.workspace.getConfiguration("sweetpad");
+  return await config.update(key, value, vscode.ConfigurationTarget.Workspace);
 }

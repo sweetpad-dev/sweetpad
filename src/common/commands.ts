@@ -95,23 +95,12 @@ export class ExtensionContext {
     return value;
   }
 
-  async withPathCache(key: WorkspaceStateKey, callback: () => Promise<string>): Promise<string> {
-    let value = this.getWorkspaceState<string>(key);
-    if (value) {
-      if (!(await isFileExists(value))) {
-        this.updateWorkspaceState(key, undefined);
-      } else {
-        return value;
-      }
-    }
-
-    value = await callback();
-    this.updateWorkspaceState(key, value);
-    return value;
-  }
-
   refreshSimulators() {
     this._simulatorsProvider.refresh();
+  }
+
+  refreshBuildView() {
+    this._buildProvider.refresh();
   }
 }
 

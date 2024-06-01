@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
-import { XcodeScheme, getBasicProjectInfo } from "../common/cli/scripts";
+import { XcodeScheme, getBasicProjectInfo, getSchemes } from "../common/cli/scripts";
 import { commonLogger } from "../common/logger";
+import { getCurrentXcodeWorkspacePath } from "./utils";
+import { ExtensionContext } from "../common/commands";
 
 type EventData = BuildTreeItem | undefined | null | void;
 
@@ -26,6 +28,7 @@ export class BuildTreeItem extends vscode.TreeItem {
 export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<EventData>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+  public context: ExtensionContext | undefined;
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
@@ -46,24 +49,13 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   }
 
   async getSchemes(): Promise<BuildTreeItem[]> {
+    const xcworkspace = this.context ? getCurrentXcodeWorkspacePath(this.context) : undefined;
+
     let schemes: XcodeScheme[] = [];
     try {
-      const output = await getBasicProjectInfo();
-
-      if (output.type === "project") {
-        schemes = output.project.schemes.map((scheme) => {
-          return {
-            name: scheme,
-          };
-        });
-      }
-      if (output.type === "workspace") {
-        schemes = output.workspace.schemes.map((scheme) => {
-          return {
-            name: scheme,
-          };
-        });
-      }
+      schemes = await getSchemes({
+        xcworkspace: xcworkspace,
+      });
     } catch (error) {
       commonLogger.error("Failed to get schemes", {
         error,

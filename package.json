@@ -331,6 +331,12 @@
           "default": true,
           "description": "Enable xcbeautify for build logs."
         },
+        "sweetpad.build.xcodeWorkspacePath": {
+          "type": "string",
+          "default": null,
+          "required": false,
+          "description": "Path to Xcode workspace. Can absolute or relative to the workspace root."
+        },
         "sweetpad.system.taskExecutor": {
           "type": "string",
           "default": "v2",
