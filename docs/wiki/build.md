@@ -58,3 +58,29 @@ Or you can add tasks to the `tasks.json` file in the `.vscode` folder of your pr
   ]
 }
 ```
+
+## Set Xcode workspace path
+
+If you are working on multiple Xcode workspaces, you can set the workspace path in the SweetPad configuration:
+
+```json
+{
+  // Path to your Xcode workspace (.xcworkspace file)
+  // The path can be absolute or relative to the folder in which VSCode is opened.
+  "sweetpad.workspacePath": "/path/to/your/workspace"
+  // Examples:
+  // "sweetpad.workspacePath": "terminal23.xcodeproj/project.xcworkspace"
+  // "sweetpad.workspacePath": "terminal23.xcworkspace"
+  // "sweetpad.workspacePath": "/Users/username/Projects/terminal23.xcworkspace"
+}
+```
+
+To simplify the process, you can use the `> SweetPad: Select Xcode Workspace` command from the command palette to select
+the workspace and save it in the configuration.
+
+If the configuration is not provided, the extension will ask you to select the workspace the first time you run the
+build task and will save it in the extension cache. To clean the cache, you can use the
+`> SweetPad: Reset Extension Cache`
+
+> **Note:** If you are working on a project that contains only one Xcode workspace, the extension will automatically
+> detect it and use it to build and run the app. You don't need to set the workspace path in the configuration.
