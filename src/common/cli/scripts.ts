@@ -1,12 +1,10 @@
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
-import { findFiles, readFile } from "../files";
 import { cache } from "../cache";
-import { getWorkspacePath } from "../../build/utils";
 import { XcodeWorkspace } from "../xcode/workspace";
 import { uniqueFilter } from "../helpers";
 
-export type SimulatorOutput = {
+type SimulatorOutput = {
   dataPath: string;
   dataPathSize: number;
   logPath: string;
@@ -49,24 +47,63 @@ type XcodeConfiguration = {
   name: string;
 };
 
-export async function getSimulators() {
+export class Simulator {
+  public udid: string;
+  public isAvailable: boolean;
+  public state: "Booted" | "Shutdown";
+  public name: string;
+  public runtime: string;
+  public iosVersion: string;
+  constructor(options: {
+    udid: string;
+    isAvailable: boolean;
+    state: "Booted" | "Shutdown";
+    name: string;
+    runtime: string;
+  }) {
+    this.udid = options.udid;
+    this.isAvailable = options.isAvailable;
+    this.state = options.state;
+    this.name = options.name;
+    this.runtime = options.runtime;
+
+    // iOS-14-5 => 14.5
+    const rawiOSVersion = options.runtime.split(".").slice(-1)[0];
+    this.iosVersion = rawiOSVersion.replace(/^(\w+)-(\d+)-(\d+)$/, "$2.$3");
+  }
+
+  get label() {
+    // iPhone 12 Pro Max (14.5)
+    return `${this.name} (${this.iosVersion})`;
+  }
+}
+
+export async function getSimulators(): Promise<Simulator[]> {
   const simulatorsRaw = await exec({
     command: "xcrun",
     args: ["simctl", "list", "--json", "devices"],
   });
 
-  const simulators = JSON.parse(simulatorsRaw) as SimulatorsOutput;
+  const output = JSON.parse(simulatorsRaw) as SimulatorsOutput;
+  const simulators = Object.entries(output.devices).flatMap(([key, value]) =>
+    value.map((simulator) => {
+      return new Simulator({
+        udid: simulator.udid,
+        isAvailable: simulator.isAvailable,
+        state: simulator.state as "Booted",
+        name: simulator.name,
+        runtime: key,
+      });
+    })
+  );
   return simulators;
 }
 
 export async function getSimulatorByUdid(udid: string) {
   const simulators = await getSimulators();
-  for (const key in simulators.devices) {
-    const devices = simulators.devices[key];
-    for (const device of devices) {
-      if (device.udid === udid) {
-        return device;
-      }
+  for (const simulator of simulators) {
+    if (simulator.udid === udid) {
+      return simulator;
     }
   }
   throw new ExtensionError("Simulator not found", { context: { udid } });

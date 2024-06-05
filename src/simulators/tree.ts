@@ -56,22 +56,17 @@ export class SimulatorsTreeProvider implements vscode.TreeDataProvider<Simulator
   }
 
   async getSimulators(): Promise<SimulatorTreeItem[]> {
-    const output = await getSimulators();
-    const devices = output.devices;
-    return Object.entries(devices)
-      .map(([key, value]) => {
-        return value
-          .filter((simulator) => simulator.isAvailable)
-          .map((simulator) => {
-            return new SimulatorTreeItem({
-              label: simulator.name,
-              collapsibleState: vscode.TreeItemCollapsibleState.None,
-              udid: simulator.udid,
-              state: simulator.state,
-              provider: this,
-            });
-          });
-      })
-      .flat();
+    const simulators = await getSimulators();
+    return simulators
+      .filter((simulator) => simulator.isAvailable)
+      .map((simulator) => {
+        return new SimulatorTreeItem({
+          label: simulator.label,
+          collapsibleState: vscode.TreeItemCollapsibleState.None,
+          udid: simulator.udid,
+          state: simulator.state,
+          provider: this,
+        });
+      });
   }
 }

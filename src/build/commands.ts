@@ -3,7 +3,7 @@ import { BuildTreeItem } from "./tree";
 import * as vscode from "vscode";
 
 import {
-  SimulatorOutput,
+  Simulator,
   generateBuildServerConfig,
   getBuildSettings,
   getIsXcbeautifyInstalled,
@@ -36,7 +36,7 @@ export async function runOnDevice(
   terminal: TaskTerminal,
   options: {
     scheme: string;
-    simulator: SimulatorOutput;
+    simulator: Simulator;
     sdk: string;
     configuration: string;
   }

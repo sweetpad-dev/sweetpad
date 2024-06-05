@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { showQuickPick } from "../common/quick-pick";
 
 import {
-  SimulatorOutput,
+  Simulator,
   createDirectory,
   getBuildConfigurations,
   getSchemes,
@@ -21,26 +21,22 @@ const DEFAULT_CONFIGURATION = "Debug";
 /**
  * Ask user to select simulator to run on using quick pick
  */
-export async function askSimulatorToRunOn(context: ExtensionContext): Promise<SimulatorOutput> {
+export async function askSimulatorToRunOn(context: ExtensionContext): Promise<Simulator> {
   return await context.withCache("build.xcodeSimulator", async () => {
-    const output = await getSimulators();
+    const simulators = await getSimulators();
 
     const device = await showQuickPick({
       title: "Select simulator to run on",
-      items: Object.entries(output.devices)
-        .map(([key, value]) => {
-          return value
-            .filter((simulator) => simulator.isAvailable)
-            .map((simulator) => {
-              return {
-                label: simulator.name,
-                context: {
-                  simulator,
-                },
-              };
-            });
-        })
-        .flat(),
+      items: simulators
+        .filter((simulator) => simulator.isAvailable)
+        .map((simulator) => {
+          return {
+            label: simulator.label,
+            context: {
+              simulator,
+            },
+          };
+        }),
     });
 
     return device.context.simulator;
