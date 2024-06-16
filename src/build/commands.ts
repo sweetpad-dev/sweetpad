@@ -241,8 +241,11 @@ export async function buildApp(
 
   const destination = getDestination({ platform: options.destinationType, id: options.destinationId });
 
+  const arch = getWorkspaceConfig("build.arch") || undefined;
+
   const commandParts: string[] = [
     "xcodebuild",
+    ...(arch ? [`ARCHS=${arch}`, `VALID_ARCHS=${arch}`, `ONLY_ACTIVE_ARCH=NO`] : []),
     "-scheme",
     options.scheme,
     "-configuration",
