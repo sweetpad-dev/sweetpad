@@ -76,6 +76,13 @@ export class Simulator {
     // iPhone 12 Pro Max (14.5)
     return `${this.name} (${this.iosVersion})`;
   }
+
+  /**
+   * ID for uniquely identifying simulator saved in workspace state
+   */
+  get storageId() {
+    return this.udid;
+  }
 }
 
 export async function getSimulators(): Promise<Simulator[]> {

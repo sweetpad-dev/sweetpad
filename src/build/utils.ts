@@ -22,25 +22,35 @@ const DEFAULT_CONFIGURATION = "Debug";
  * Ask user to select simulator to run on using quick pick
  */
 export async function askSimulatorToRunOn(context: ExtensionContext): Promise<Simulator> {
-  return await context.withCache("build.xcodeSimulator", async () => {
-    const simulators = await getSimulators();
+  // If we have cached simulator, use it
+  const cachedSimulator = context.getWorkspaceState("build.xcodeSimulator");
+  const simulators = await getSimulators();
+  if (cachedSimulator) {
+    const simulator = simulators.find((simulator) => simulator.storageId == cachedSimulator);
+    if (simulator) {
+      return simulator;
+    }
+  }
 
-    const device = await showQuickPick({
-      title: "Select simulator to run on",
-      items: simulators
-        .filter((simulator) => simulator.isAvailable)
-        .map((simulator) => {
-          return {
-            label: simulator.label,
-            context: {
-              simulator,
-            },
-          };
-        }),
-    });
-
-    return device.context.simulator;
+  const device = await showQuickPick({
+    title: "Select simulator to run on",
+    items: simulators
+      .filter((simulator) => simulator.isAvailable)
+      .map((simulator) => {
+        return {
+          label: simulator.label,
+          context: {
+            simulator,
+          },
+        };
+      }),
   });
+
+  const selectedSimulator = device.context.simulator;
+
+  context.updateWorkspaceState("build.xcodeSimulator", selectedSimulator.storageId);
+
+  return selectedSimulator;
 }
 
 /**

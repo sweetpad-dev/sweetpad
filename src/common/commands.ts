@@ -1,19 +1,20 @@
 import * as vscode from "vscode";
 import { ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
-import { isFileExists } from "./files";
 import { BuildTreeProvider } from "../build/tree";
 import { SimulatorsTreeProvider } from "../simulators/tree";
 import { ToolTreeProvider } from "../tools/tree";
 
-type WorkspaceStateKey =
-  | "build.xcodeWorkspacePath"
-  | "build.xcodeProjectPath"
-  | "build.xcodeScheme"
-  | "build.xcodeConfiguration"
-  | "build.xcodeSimulator"
-  | "build.xcodeSdk";
+type WorkspaceTypes = {
+  "build.xcodeWorkspacePath": string;
+  "build.xcodeProjectPath": string;
+  "build.xcodeScheme": string;
+  "build.xcodeConfiguration": string;
+  "build.xcodeSimulator": string;
+  "build.xcodeSdk": string;
+};
 
+type WorkspaceStateKey = keyof WorkspaceTypes;
 type SessionStateKey = "build.lastLaunchedAppPath";
 
 export class ExtensionContext {
@@ -65,11 +66,11 @@ export class ExtensionContext {
     return this._sessionState.get(key);
   }
 
-  updateWorkspaceState(key: WorkspaceStateKey, value: any | undefined) {
+  updateWorkspaceState<T extends WorkspaceStateKey>(key: T, value: WorkspaceTypes[T] | undefined) {
     this._context.workspaceState.update(`sweetpad.${key}`, value);
   }
 
-  getWorkspaceState<T = any>(key: WorkspaceStateKey): T | undefined {
+  getWorkspaceState<T extends WorkspaceStateKey>(key: T): WorkspaceTypes[T] | undefined {
     return this._context.workspaceState.get(`sweetpad.${key}`);
   }
 
@@ -84,7 +85,7 @@ export class ExtensionContext {
     });
   }
 
-  async withCache<T>(key: WorkspaceStateKey, callback: () => Promise<T>): Promise<T> {
+  async withCache<T extends WorkspaceStateKey>(key: T, callback: () => Promise<WorkspaceTypes[T]>) {
     let value = this.getWorkspaceState<T>(key);
     if (value) {
       return value;
