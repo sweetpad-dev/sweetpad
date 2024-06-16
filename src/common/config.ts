@@ -8,6 +8,7 @@ type Config = {
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "xcodegen.autogenerate": boolean;
+  "build.arch": "x86_64";
 };
 
 type ConfigKey = keyof Config;
