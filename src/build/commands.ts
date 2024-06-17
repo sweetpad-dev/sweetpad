@@ -124,8 +124,11 @@ export async function buildApp(
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundleDir = await prepareBundleDir(context, options.scheme);
 
+  const arch = getWorkspaceConfig("build.arch") || undefined;
+
   const commandParts: string[] = [
     "xcodebuild",
+    ...(arch ? [`ARCHS=${arch}`, `VALID_ARCHS=${arch}`, `ONLY_ACTIVE_ARCH=NO`] : []),
     "-scheme",
     options.scheme,
     "-sdk",
