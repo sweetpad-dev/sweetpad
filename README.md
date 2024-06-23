@@ -25,7 +25,7 @@ so on into VSCode.
 - 💅🏼 **[Format](./docs/wiki/format.md)** — format files using [swift-format](https://github.com/apple/swift-format) or
   other formatter of your choice
 - 📱 **[Simulator](./docs/wiki/simulator.md)** — manage iOS simulators
-- 📱 **[Devices](./docs/wiki/devices.md)** — run iOS applications on physical iPhone
+- 📱 **[Devices](./docs/wiki/devices.md)** — run iOS applications on iPhone or iPad
 - 🛠️ **[Tools](./docs/wiki/tools.md)** — manage essential iOS development tools using [Homebrew](https://brew.sh/)
 - 🪲 **[Debug](./docs/wiki/debug.md)** — debug iOS applications using
   [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
