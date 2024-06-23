@@ -57,6 +57,7 @@ const TERMINAL_COLOR_MAP: Record<TerminalTextColor, string> = {
  */
 export interface TaskTerminal {
   execute(options: CommandOptions): Promise<void>;
+  write(data: string, options?: TerminalWriteOptions): void;
 }
 
 export function getTaskExecutorName(): TaskExecutor {
@@ -72,7 +73,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     private context: ExtensionContext,
     private options: {
       callback: (terminal: TaskTerminalV2) => Promise<void>;
-    }
+    },
   ) {}
 
   onDidWrite = this.writeEmitter.event;
@@ -110,12 +111,12 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
           return `${prefix} ${command}`;
         }
         return command;
-      })
+      }),
     );
     return `set -o pipefail;  ${commands.join(" | ")}`;
   }
 
-  private write(data: string, options?: TerminalWriteOptions): void {
+  write(data: string, options?: TerminalWriteOptions): void {
     const color = options?.color;
 
     // Replace all \r\n or \n with \r\n CR+LF (VSCode requires this format for new lines)
@@ -206,7 +207,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
         this.process = null;
         if (code !== 0) {
           reject(
-            new ExecuteTaskError("Command returned non-zero exit code", { command: commandPrint, errorCode: code })
+            new ExecuteTaskError("Command returned non-zero exit code", { command: commandPrint, errorCode: code }),
           );
         } else {
           resolve();
@@ -278,8 +279,15 @@ export class TaskTerminalV1 implements TaskTerminal {
       name: string;
       source?: string;
       error?: string;
-    }
+    },
   ) {}
+
+  write(data: string, options?: TerminalWriteOptions): void {
+    this.execute({
+      command: "echo",
+      args: [data],
+    });
+  }
 
   private command(command: string, args?: string[]): string {
     return quote([command, ...(args ?? [])]);
@@ -306,7 +314,7 @@ export class TaskTerminalV1 implements TaskTerminal {
       vscode.TaskScope.Workspace,
       this.options.name,
       this.options.source ?? "sweetpad",
-      new vscode.ShellExecution(command)
+      new vscode.ShellExecution(command),
     );
 
     const execution = await vscode.tasks.executeTask(task);
@@ -369,7 +377,7 @@ async function runTaskV1(
     source?: string;
     error?: string;
     callback: (terminal: TaskTerminal) => Promise<void>;
-  }
+  },
 ): Promise<void> {
   const terminal = new TaskTerminalV1(context, options);
   await options.callback(terminal);
@@ -387,7 +395,7 @@ async function runTaskV2(
     source?: string;
     error?: string;
     callback: (terminal: TaskTerminal) => Promise<void>;
-  }
+  },
 ): Promise<void> {
   const task = new vscode.Task(
     { type: "custom" },
@@ -398,7 +406,7 @@ async function runTaskV2(
       return new TaskTerminalV2(context, {
         callback: options.callback,
       });
-    })
+    }),
   );
 
   const execution = await vscode.tasks.executeTask(task);
@@ -433,7 +441,7 @@ export async function runTask(
     source?: string;
     error?: string;
     callback: (terminal: TaskTerminal) => Promise<void>;
-  }
+  },
 ): Promise<void> {
   const name = getTaskExecutorName();
   switch (name) {

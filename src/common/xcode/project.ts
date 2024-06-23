@@ -68,8 +68,8 @@ export class XcodeProject {
           XcodeScheme.fromFile({
             schemePath: file,
             project: this,
-          })
-        )
+          }),
+        ),
       );
     }
     return schemes;

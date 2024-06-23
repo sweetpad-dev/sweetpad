@@ -1,6 +1,8 @@
 import { Dirent, promises as fs } from "fs";
 import * as path from "path";
-import { getWorkspacePath } from "../build/utils";
+import { getWorkspacePath, prepareStoragePath } from "../build/utils";
+import { ExtensionContext } from "./commands";
+import { randomBytes } from "crypto";
 
 /**
  * Find files or directories in a given directory
@@ -69,7 +71,53 @@ export async function readFile(filePath: string): Promise<Buffer> {
   return await fs.readFile(filePath);
 }
 
+export async function readJsonFile<T = any>(filePath: string): Promise<T> {
+  const rawBuffer = await readFile(filePath);
+  const rawString = rawBuffer.toString();
+  return JSON.parse(rawString);
+}
+
 export function getWorkspaceRelativePath(filePath: string): string {
   const workspacePath = getWorkspacePath();
   return path.relative(workspacePath, filePath);
+}
+
+export async function tempFilePath(
+  context: ExtensionContext,
+  options: {
+    prefix: string;
+  },
+) {
+  // Where extension store some intermediate files
+  const storagePath = await prepareStoragePath(context);
+
+  // Directory for all temporary files
+  const tempPath = path.join(storagePath, "_temp");
+  await createDirectory(tempPath);
+
+  // Generate random file name
+  const random = randomBytes(4).toString("hex");
+  const filePath = path.join(tempPath, `${options.prefix}_${random}`);
+  return {
+    path: filePath,
+    [Symbol.asyncDispose]: async () => {
+      await removeFile(filePath);
+    },
+  };
+}
+
+export async function createDirectory(directory: string) {
+  return fs.mkdir(directory, { recursive: true });
+}
+
+export async function removeDirectory(directory: string) {
+  return fs.rm(directory, {
+    recursive: true,
+    // exceptions will be ignored if `path` does not exist.
+    force: true,
+  });
+}
+
+export async function removeFile(filePath: string) {
+  return fs.rm(filePath);
 }

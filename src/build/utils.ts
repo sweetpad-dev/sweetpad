@@ -2,55 +2,113 @@ import path from "path";
 import * as vscode from "vscode";
 import { showQuickPick } from "../common/quick-pick";
 
-import {
-  Simulator,
-  createDirectory,
-  getBuildConfigurations,
-  getSchemes,
-  getSimulators,
-  removeDirectory,
-} from "../common/cli/scripts";
+import { getBuildConfigurations, getSchemes } from "../common/cli/scripts";
 import { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
-import { findFilesRecursive, isFileExists } from "../common/files";
+import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { getWorkspaceConfig } from "../common/config";
 
 const DEFAULT_CONFIGURATION = "Debug";
 
+type SelectedDestination = {
+  type: "simulator" | "device";
+  udid: string;
+};
+
 /**
- * Ask user to select simulator to run on using quick pick
+ * Ask user to select simulator or device to run on
  */
-export async function askSimulatorToRunOn(context: ExtensionContext): Promise<Simulator> {
-  // If we have cached simulator, use it
-  const cachedSimulator = context.getWorkspaceState("build.xcodeSimulator");
-  const simulators = await getSimulators();
-  if (cachedSimulator) {
-    const simulator = simulators.find((simulator) => simulator.storageId == cachedSimulator);
-    if (simulator) {
-      return simulator;
+export async function askDestinationToRunOn(context: ExtensionContext): Promise<SelectedDestination> {
+  // If we have cached desination, use it
+  const simulators = await context.simulatorsManager.getSimulators();
+  const devices = await context.devicesManager.getDevices();
+  const cachedDestination = context.getWorkspaceState("build.xcodeDestination");
+  if (cachedDestination) {
+    if (cachedDestination.type === "simulator") {
+      const simulator = simulators.find((simulator) => simulator.udid === cachedDestination.udid);
+      if (simulator) {
+        return {
+          type: "simulator",
+          udid: simulator.udid,
+        };
+      }
+    }
+    if (cachedDestination.type === "device") {
+      const device = devices.find((device) => device.udid === cachedDestination.udid);
+      if (device) {
+        return {
+          type: "device",
+          udid: device.udid,
+        };
+      }
     }
   }
 
-  const device = await showQuickPick({
-    title: "Select simulator to run on",
-    items: simulators
-      .filter((simulator) => simulator.isAvailable)
-      .map((simulator) => {
+  const selected = await showQuickPick<SelectedDestination>({
+    title: "Select destination to run on",
+    items: [
+      ...simulators.map((simulator) => {
         return {
           label: simulator.label,
+          iconPath: new vscode.ThemeIcon("vm"),
           context: {
-            simulator,
+            type: "simulator" as const,
+            udid: simulator.udid,
           },
         };
       }),
+      ...devices.map((device) => {
+        return {
+          label: device.label,
+          iconPath: new vscode.ThemeIcon("device-mobile"),
+          context: {
+            type: "device" as const,
+            udid: device.udid,
+          },
+        };
+      }),
+    ],
   });
 
-  const selectedSimulator = device.context.simulator;
+  context.updateWorkspaceState("build.xcodeDestination", {
+    type: selected.context.type,
+    udid: selected.context.udid,
+  });
 
-  context.updateWorkspaceState("build.xcodeSimulator", selectedSimulator.storageId);
+  return selected.context;
+}
 
-  return selectedSimulator;
+export async function getDestinationByUdid(
+  context: ExtensionContext,
+  options: { udid: string },
+): Promise<SelectedDestination> {
+  const simulators = await context.simulatorsManager.getSimulators();
+  const devices = await context.devicesManager.getDevices();
+
+  for (const simulator of simulators) {
+    if (simulator.udid === options.udid) {
+      return {
+        type: "simulator",
+        udid: simulator.udid,
+      };
+    }
+  }
+
+  for (const device of devices) {
+    if (device.udid === options.udid) {
+      return {
+        type: "device",
+        udid: device.udid,
+      };
+    }
+  }
+
+  throw new ExtensionError("Destination not found", {
+    context: {
+      udid: options.udid,
+    },
+  });
 }
 
 /**
@@ -156,7 +214,7 @@ export async function askConfiguration(
   context: ExtensionContext,
   options: {
     xcworkspace: string;
-  }
+  },
 ): Promise<string> {
   return await context.withCache("build.xcodeConfiguration", async () => {
     // Fetch all configurations

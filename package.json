@@ -62,7 +62,11 @@
           },
           "simulator": {
             "type": "string",
-            "description": "Simulator to launch. Currently only device UUID is supported."
+            "description": "Simulator to launch. Currently only device UUID is supported. Deprecated: use `destinationId` instead."
+          },
+          "destinationId": {
+            "type": "string",
+            "description": "Device ID to launch the app on."
           }
         }
       }
@@ -90,6 +94,11 @@
           "visibility": "collapsed"
         },
         {
+          "id": "sweetpad.devices.view",
+          "name": "Devices",
+          "visibility": "collapsed"
+        },
+        {
           "id": "sweetpad.tools.view",
           "name": "tools",
           "visibility": "collapsed"
@@ -101,6 +110,16 @@
         "view": "sweetpad.build.view",
         "contents": "No Xcode scheme was found. Open the workspace that has the Xcode project to use SweetPad.\n[Open Workspace](command:workbench.action.files.openFileFolder)\nIf your workspace already has a scheme and SweetPad isn't recognizing it, please report this problem on GitHub.\n[Create Issue](command:sweetpad.system.createIssue.noSchemes)",
         "when": "sweetpad.build.noSchemes"
+      },
+      {
+        "view": "sweetpad.devices.view",
+        "contents": "No devicectl found. Install the latest version of Xcode to manage device.",
+        "when": "sweetpad.devices.noDevicectl"
+      },
+      {
+        "view": "sweetpad.devices.view",
+        "contents": "No devices found. Use Xcode to pair a device:\nProduct -> Destination -> Manage Run destination.\n[Open Xcode](command:sweetpad.build.openXcode)",
+        "when": "sweetpad.devices.noDevices"
       }
     ],
     "commands": [
@@ -185,6 +204,11 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "sweetpad.devices.refresh",
+        "title": "SweetPad: Refresh devices list",
+        "icon": "$(extensions-refresh)"
+      },
+      {
         "command": "sweetpad.tools.install",
         "title": "SweetPad: Install tool",
         "icon": "$(cloud-download)"
@@ -257,6 +281,11 @@
         {
           "command": "sweetpad.simulators.removeCache",
           "when": "view == sweetpad.simulators.view",
+          "group": "navigation"
+        },
+        {
+          "command": "sweetpad.devices.refresh",
+          "when": "view == sweetpad.devices.view",
           "group": "navigation"
         },
         {
@@ -370,7 +399,7 @@
     }
   },
   "scripts": {
-    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=es6",
     "vscode:prepublish": "npm run compile-setvbuf && npm run esbuild-base -- --minify",
     "build": "npm run esbuild-base -- --sourcemap",
     "watch": "npm run esbuild-base -- --sourcemap --watch",
@@ -382,24 +411,24 @@
     "find-deadcode": "ts-prune --error --skip spec.ts?"
   },
   "devDependencies": {
-    "@eslint/js": "^9.3.0",
+    "@eslint/js": "^9.5.0",
+    "@types/eslint__js": "^8.42.3",
     "@types/jest": "^29.5.12",
     "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
     "@types/shell-quote": "^1.7.5",
     "@types/vscode": "^1.85.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0-alpha.16",
-    "@typescript-eslint/parser": "^8.0.0-alpha.16",
     "@vscode/test-cli": "^0.0.4",
     "@vscode/test-electron": "^2.3.8",
     "esbuild": "^0.20.1",
-    "eslint": "^9.3.0",
+    "eslint": "^8.57.0",
     "globals": "^15.3.0",
     "jest": "^29.7.0",
+    "prettier": "3.3.2",
     "ts-jest": "^29.1.2",
     "ts-prune": "^0.10.3",
-    "typescript": "^5.3.3",
-    "typescript-eslint": "^8.0.0-alpha.16"
+    "typescript": "^5.5.2",
+    "typescript-eslint": "^7.13.1"
   },
   "dependencies": {
     "@bacons/xcode": "^1.0.0-alpha.12",

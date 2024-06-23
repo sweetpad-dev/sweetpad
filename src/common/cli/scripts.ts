@@ -3,6 +3,7 @@ import { exec } from "../exec";
 import { cache } from "../cache";
 import { XcodeWorkspace } from "../xcode/workspace";
 import { uniqueFilter } from "../helpers";
+import { ExtensionContext } from "../commands";
 
 type SimulatorOutput = {
   dataPath: string;
@@ -47,7 +48,7 @@ type XcodeConfiguration = {
   name: string;
 };
 
-export class Simulator {
+export class IosSimulator {
   public udid: string;
   public isAvailable: boolean;
   public state: "Booted" | "Shutdown";
@@ -85,35 +86,43 @@ export class Simulator {
   }
 }
 
-export async function getSimulators(): Promise<Simulator[]> {
+export async function getSimulators(): Promise<IosSimulator[]> {
   const simulatorsRaw = await exec({
     command: "xcrun",
     args: ["simctl", "list", "--json", "devices"],
   });
 
   const output = JSON.parse(simulatorsRaw) as SimulatorsOutput;
-  const simulators = Object.entries(output.devices).flatMap(([key, value]) =>
-    value.map((simulator) => {
-      return new Simulator({
-        udid: simulator.udid,
-        isAvailable: simulator.isAvailable,
-        state: simulator.state as "Booted",
-        name: simulator.name,
-        runtime: key,
-      });
-    })
-  );
+  const simulators = Object.entries(output.devices)
+    .flatMap(([key, value]) =>
+      value.map((simulator) => {
+        return new IosSimulator({
+          udid: simulator.udid,
+          isAvailable: simulator.isAvailable,
+          state: simulator.state as "Booted",
+          name: simulator.name,
+          runtime: key,
+        });
+      }),
+    )
+    .filter((simulator) => simulator.isAvailable);
   return simulators;
 }
 
-export async function getSimulatorByUdid(udid: string) {
-  const simulators = await getSimulators();
+export async function getSimulatorByUdid(
+  context: ExtensionContext,
+  options: {
+    udid: string;
+    refresh: boolean;
+  },
+): Promise<IosSimulator> {
+  const simulators = await context.simulatorsManager.getSimulators({ refresh: options.refresh ?? false });
   for (const simulator of simulators) {
-    if (simulator.udid === udid) {
+    if (simulator.udid === options.udid) {
       return simulator;
     }
   }
-  throw new ExtensionError("Simulator not found", { context: { udid } });
+  throw new ExtensionError("Simulator not found", { context: { udid: options.udid } });
 }
 
 type BuildSettingsOutput = BuildSettingOutput[];
@@ -161,20 +170,6 @@ export async function getBuildSettings(options: {
   throw new ExtensionError("Error parsing build settings");
 }
 
-export async function removeDirectory(directory: string) {
-  return exec({
-    command: "rm",
-    args: ["-rf", directory],
-  });
-}
-
-export async function createDirectory(directory: string) {
-  return exec({
-    command: "mkdir",
-    args: ["-p", directory],
-  });
-}
-
 export async function getIsXcbeautifyInstalled() {
   try {
     await exec({
@@ -220,7 +215,7 @@ export const getBasicProjectInfo = cache(
         ...parsed,
       } as XcodebuildListWorkspaceOutput;
     }
-  }
+  },
 );
 
 export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {

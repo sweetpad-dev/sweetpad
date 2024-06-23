@@ -4,13 +4,18 @@ import { commonLogger } from "./logger";
 import { BuildTreeProvider } from "../build/tree";
 import { SimulatorsTreeProvider } from "../simulators/tree";
 import { ToolTreeProvider } from "../tools/tree";
+import { DevicesManager } from "../devices/manager";
+import { SimulatorsManager } from "../simulators/manager";
 
 type WorkspaceTypes = {
   "build.xcodeWorkspacePath": string;
   "build.xcodeProjectPath": string;
   "build.xcodeScheme": string;
   "build.xcodeConfiguration": string;
-  "build.xcodeSimulator": string;
+  "build.xcodeDestination": {
+    type: "simulator" | "device";
+    udid: string;
+  };
   "build.xcodeSdk": string;
 };
 
@@ -21,6 +26,8 @@ export class ExtensionContext {
   private _context: vscode.ExtensionContext;
   public _buildProvider: BuildTreeProvider;
   public _simulatorsProvider: SimulatorsTreeProvider;
+  public devicesManager: DevicesManager;
+  public simulatorsManager: SimulatorsManager;
   public _toolsProvider: ToolTreeProvider;
   private _sessionState: Map<SessionStateKey, any> = new Map();
 
@@ -28,11 +35,15 @@ export class ExtensionContext {
     context: vscode.ExtensionContext;
     buildProvider: BuildTreeProvider;
     simulatorsProvider: SimulatorsTreeProvider;
+    devicesManager: DevicesManager;
+    simulatorsManager: SimulatorsManager;
     toolsProvider: ToolTreeProvider;
   }) {
     this._context = options.context;
     this._buildProvider = options.buildProvider;
     this._simulatorsProvider = options.simulatorsProvider;
+    this.devicesManager = options.devicesManager;
+    this.simulatorsManager = options.simulatorsManager;
     this._toolsProvider = options.toolsProvider;
   }
 
@@ -97,11 +108,11 @@ export class ExtensionContext {
   }
 
   refreshSimulators() {
-    this._simulatorsProvider.refresh();
+    void this.simulatorsManager.refresh();
   }
 
   refreshBuildView() {
-    this._buildProvider.refresh();
+    void this.simulatorsManager.refresh();
   }
 }
 
@@ -112,7 +123,7 @@ export class CommandExecution {
   constructor(
     public readonly command: string,
     public readonly callback: (context: CommandExecution, ...args: any[]) => Promise<any>,
-    public context: ExtensionContext
+    public context: ExtensionContext,
   ) {}
 
   /**
@@ -122,7 +133,7 @@ export class CommandExecution {
     message: string,
     options?: {
       actions?: ErrorMessageAction[];
-    }
+    },
   ): Promise<void> {
     const closeAction: ErrorMessageAction = {
       label: "Close",

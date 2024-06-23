@@ -31,23 +31,38 @@ import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
 import { getAppPathCommand } from "./debugger/commands.js";
 import { Logger } from "./common/logger.js";
+import { DevicesTreeProvider } from "./devices/tree.js";
+import { DevicesManager } from "./devices/manager.js";
+import { SimulatorsManager } from "./simulators/manager.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // 🪵🪓
   Logger.setup();
 
+  // Managers 💼
+  const devicesManager = new DevicesManager();
+  const simulatorsManager = new SimulatorsManager();
+
   // Trees 🎄
-  const simulatorsTreeProvider = new SimulatorsTreeProvider();
+  const simulatorsTreeProvider = new SimulatorsTreeProvider({
+    manager: simulatorsManager,
+  });
   const buildTreeProvider = new BuildTreeProvider();
   const toolsTreeProvider = new ToolTreeProvider();
+  const devicesTreeProvider = new DevicesTreeProvider({
+    manager: devicesManager,
+  });
 
   const _context = new ExtensionContext({
     context: context,
     buildProvider: buildTreeProvider,
     simulatorsProvider: simulatorsTreeProvider,
+    simulatorsManager: simulatorsManager,
+    devicesManager: devicesManager,
     toolsProvider: toolsTreeProvider,
   });
   buildTreeProvider.context = _context;
+  devicesManager.context = _context;
 
   // shortcut to push disposable to context.subscriptions
   const d = _context.disposable.bind(_context);
@@ -91,6 +106,10 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
   d(command("sweetpad.simulators.start", startSimulatorCommand));
   d(command("sweetpad.simulators.stop", stopSimulatorCommand));
+
+  // Devices
+  d(vscode.window.registerTreeDataProvider("sweetpad.devices.view", devicesTreeProvider));
+  d(command("sweetpad.devices.refresh", async () => devicesTreeProvider.refresh()));
 
   // Tools
   d(vscode.window.registerTreeDataProvider("sweetpad.tools.view", toolsTreeProvider));

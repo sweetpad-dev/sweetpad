@@ -1,0 +1,106 @@
+{
+  "info": {
+    "arguments": [
+      "devicectl",
+      "list",
+      "devices",
+      "--json-output",
+      "/Users/hyzyla/Library/Application Support/Code/User/workspaceStorage/97c65aa4ba8e014c103472b21f1e58a0/sweetpad.sweetpad/_temp/devices_9f26a8d4",
+      "--timeout",
+      "10"
+    ],
+    "commandType": "devicectl.list.devices",
+    "environment": {},
+    "jsonVersion": 2,
+    "outcome": "success",
+    "version": "355.28"
+  },
+  "result": {
+    "devices": [
+      {
+        "capabilities": [
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.acquireusageassertion",
+            "name": "Acquire Usage Assertion"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.unpairdevice",
+            "name": "Unpair Device"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.connectdevice",
+            "name": "Connect to Device"
+          }
+        ],
+        "connectionProperties": {
+          "authenticationType": "manualPairing",
+          "isMobileDeviceOnly": false,
+          "lastConnectionDate": "2024-06-16T09:30:27.366Z",
+          "pairingState": "paired",
+          "potentialHostnames": [
+            "00008110-000559182E90401E.coredevice.local",
+            "2782A5CE-797F-4EB9-BDF1-14AE4425C406.coredevice.local"
+          ],
+          "transportType": "localNetwork",
+          "tunnelState": "disconnected",
+          "tunnelTransportProtocol": "tcp"
+        },
+        "deviceProperties": {
+          "bootedFromSnapshot": true,
+          "bootedSnapshotName": "com.apple.os.update-79907DF16DDA79139ADD17AE329F2C37D95C9775B2C3617B7BC58BA624664785C694BB1535CCC43DD1E645F2B85A2B03",
+          "ddiServicesAvailable": false,
+          "developerModeStatus": "enabled",
+          "hasInternalOSBuild": false,
+          "name": "Iphone 13",
+          "osBuildUpdate": "21F90",
+          "osVersionNumber": "17.5.1",
+          "rootFileSystemIsWritable": false
+        },
+        "hardwareProperties": {
+          "cpuType": {
+            "name": "arm64e",
+            "subType": 2,
+            "type": 16777228
+          },
+          "deviceType": "iPhone",
+          "ecid": 1505335278845982,
+          "hardwareModel": "D17AP",
+          "internalStorageCapacity": 128000000000,
+          "isProductionFused": true,
+          "marketingName": "iPhone 13",
+          "platform": "iOS",
+          "productType": "iPhone14,5",
+          "reality": "physical",
+          "serialNumber": "GCF0J25N4T",
+          "supportedCPUTypes": [
+            {
+              "name": "arm64e",
+              "subType": 2,
+              "type": 16777228
+            },
+            {
+              "name": "arm64",
+              "subType": 0,
+              "type": 16777228
+            },
+            {
+              "name": "arm64",
+              "subType": 1,
+              "type": 16777228
+            },
+            {
+              "name": "arm64_32",
+              "subType": 1,
+              "type": 33554444
+            }
+          ],
+          "supportedDeviceFamilies": [1],
+          "thinningProductType": "iPhone14,5",
+          "udid": "00008110-000559182E90401E"
+        },
+        "identifier": "2782A5CE-797F-4EB9-BDF1-14AE4425C406",
+        "visibilityClass": "default"
+      }
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { getSimulators } from "../common/cli/scripts.js";
+import { SimulatorsManager } from "./manager.js";
 
 export class SimulatorTreeItem extends vscode.TreeItem {
   udid: string;
@@ -28,18 +28,25 @@ export class SimulatorTreeItem extends vscode.TreeItem {
   }
 
   refresh() {
-    this.provider.refresh();
+    this.provider.manager.refresh();
   }
 }
 
 export class SimulatorsTreeProvider implements vscode.TreeDataProvider<SimulatorTreeItem> {
-  private _onDidChangeTreeData: vscode.EventEmitter<SimulatorTreeItem | undefined | null | void> =
-    new vscode.EventEmitter<SimulatorTreeItem | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<SimulatorTreeItem | undefined | null | void> =
-    this._onDidChangeTreeData.event;
+  public manager: SimulatorsManager;
 
-  refresh(): void {
-    this._onDidChangeTreeData.fire();
+  private _onDidChangeTreeData = new vscode.EventEmitter<SimulatorTreeItem | undefined | null | void>();
+  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+
+  constructor(options: { manager: SimulatorsManager }) {
+    this.manager = options.manager;
+    this.manager.on("refresh", () => {
+      this._onDidChangeTreeData.fire();
+    });
+  }
+
+  refresh() {
+    void this.manager.refresh();
   }
 
   getChildren(element?: SimulatorTreeItem | undefined): vscode.ProviderResult<SimulatorTreeItem[]> {
@@ -56,17 +63,16 @@ export class SimulatorsTreeProvider implements vscode.TreeDataProvider<Simulator
   }
 
   async getSimulators(): Promise<SimulatorTreeItem[]> {
-    const simulators = await getSimulators();
-    return simulators
-      .filter((simulator) => simulator.isAvailable)
-      .map((simulator) => {
-        return new SimulatorTreeItem({
-          label: simulator.label,
-          collapsibleState: vscode.TreeItemCollapsibleState.None,
-          udid: simulator.udid,
-          state: simulator.state,
-          provider: this,
-        });
+    const simulatorsRaw = await this.manager.getSimulators({ refresh: false });
+    const simulators = simulatorsRaw.map((simulator) => {
+      return new SimulatorTreeItem({
+        label: simulator.label,
+        collapsibleState: vscode.TreeItemCollapsibleState.None,
+        udid: simulator.udid,
+        state: simulator.state,
+        provider: this,
       });
+    });
+    return simulators;
   }
 }

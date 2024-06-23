@@ -3,51 +3,50 @@ import { BuildTreeItem } from "./tree";
 import * as vscode from "vscode";
 
 import {
-  Simulator,
   generateBuildServerConfig,
   getBuildSettings,
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
   getSimulatorByUdid,
-  removeDirectory,
 } from "../common/cli/scripts";
 import {
   askScheme,
-  askSimulatorToRunOn,
   askXcodeWorkspacePath,
   prepareBundleDir,
   prepareStoragePath,
   askConfiguration,
   selectXcodeWorkspace,
   restartSwiftLSP,
+  askDestinationToRunOn,
 } from "./utils";
 import { CommandExecution, ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { TaskTerminal, runTask } from "../common/tasks";
-import { getWorkspaceRelativePath } from "../common/files";
+import { getWorkspaceRelativePath, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
 import { showQuickPick } from "../common/quick-pick";
 
-export const DEFAULT_SDK = "iphonesimulator";
+export const IOS_DEVICE_SDK = "iphoneos";
+export const IOS_SIMULATOR_SDK = "iphonesimulator";
+export const DEFAULT_SDK = IOS_SIMULATOR_SDK;
 
-export async function runOnDevice(
+export async function runOnSimulator(
   context: ExtensionContext,
   terminal: TaskTerminal,
   options: {
     scheme: string;
-    simulator: Simulator;
+    simulatorId: string;
     sdk: string;
     configuration: string;
-  }
+    xcworkspace: string;
+  },
 ) {
-  const xcworkspace = await askXcodeWorkspacePath(context);
-
   const buildSettings = await getBuildSettings({
     scheme: options.scheme,
     configuration: options.configuration,
     sdk: options.sdk,
-    xcworkspace: xcworkspace,
+    xcworkspace: options.xcworkspace,
   });
   const settings = buildSettings[0]?.buildSettings;
   if (!settings) {
@@ -71,7 +70,10 @@ export async function runOnDevice(
   const targetPath = path.join(targetBuildDir, appName);
 
   // Get simulator with fresh state
-  const simulator = await getSimulatorByUdid(options.simulator.udid);
+  const simulator = await getSimulatorByUdid(context, {
+    udid: options.simulatorId,
+    refresh: true,
+  });
 
   // Boot device
   if (simulator.state !== "Booted") {
@@ -105,8 +107,110 @@ export async function runOnDevice(
   });
 }
 
+export async function runOnDevice(
+  context: ExtensionContext,
+  terminal: TaskTerminal,
+  option: {
+    scheme: string;
+    configuration: string;
+    deviceId: string;
+    sdk: string;
+    xcworkspace: string;
+  },
+) {
+  const { scheme, configuration, deviceId: device } = option;
+
+  const buildSettings = await getBuildSettings({
+    scheme: scheme,
+    configuration: configuration,
+    sdk: option.sdk,
+    xcworkspace: option.xcworkspace,
+  });
+  const settings = buildSettings[0]?.buildSettings;
+  if (!settings) {
+    throw new ExtensionError("Error fetching build settings");
+  }
+
+  const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
+  const targetBuildDir = settings.TARGET_BUILD_DIR;
+  const targetName = settings.TARGET_NAME;
+  let appName;
+  if (settings.WRAPPER_NAME) {
+    appName = settings.WRAPPER_NAME;
+  } else if (settings.FULL_PRODUCT_NAME) {
+    appName = settings.FULL_PRODUCT_NAME;
+  } else if (settings.PRODUCT_NAME) {
+    appName = `${settings.PRODUCT_NAME}.app`;
+  } else {
+    appName = `${targetName}.app`;
+  }
+
+  const targetPath = path.join(targetBuildDir, appName);
+
+  // Install app on device
+  await terminal.execute({
+    command: "xcrun",
+    args: ["devicectl", "device", "install", "app", "--device", device, targetPath],
+  });
+
+  await using jsonOuputPath = await tempFilePath(context, {
+    prefix: "json",
+  });
+
+  // Launch app on device
+  await terminal.execute({
+    command: "xcrun",
+    args: [
+      "devicectl",
+      "device",
+      "process",
+      "launch",
+      "--json-output",
+      jsonOuputPath.path,
+      "--terminate-existing",
+      "--device",
+      device,
+      bundleIdentifier,
+    ],
+  });
+
+  let jsonOutput;
+  try {
+    jsonOutput = await readJsonFile(jsonOuputPath.path);
+  } catch (e) {
+    throw new ExtensionError("Error reading json output");
+  }
+
+  if (jsonOutput.info.outcome !== "success") {
+    terminal.write("Error launching app on device", {
+      newLine: true,
+    });
+    terminal.write(JSON.stringify(jsonOutput.result, null, 2), {
+      newLine: true,
+    });
+    return;
+  } else {
+    terminal.write("App launched on device with PID: " + jsonOutput.result.process.processIdentifier, {
+      newLine: true,
+    });
+  }
+}
+
 function isXcbeautifyEnabled() {
   return getWorkspaceConfig("build.xcbeautifyEnabled") ?? true;
+}
+
+function getDestinationByType(options: { type: "simulator" | "device" }): string {
+  switch (options.type) {
+    case "simulator":
+      return "generic/platform=iOS Simulator";
+    case "device":
+      return "generic/platform=iOS";
+    default: {
+      const t: never = options.type;
+      throw new Error(`Unknown destination type: ${t}`);
+    }
+  }
 }
 
 export async function buildApp(
@@ -119,10 +223,13 @@ export async function buildApp(
     shouldBuild: boolean;
     shouldClean: boolean;
     xcworkspace: string;
-  }
+    destinationType: "simulator" | "device";
+  },
 ) {
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundleDir = await prepareBundleDir(context, options.scheme);
+
+  const destination = getDestinationByType({ type: options.destinationType });
 
   const commandParts: string[] = [
     "xcodebuild",
@@ -135,7 +242,7 @@ export async function buildApp(
     "-workspace",
     options.xcworkspace,
     "-destination",
-    "generic/platform=iOS Simulator",
+    destination,
     "-resultBundlePath",
     bundleDir,
     "-allowProvisioningUpdates",
@@ -172,44 +279,54 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
         shouldBuild: true,
         shouldClean: false,
         xcworkspace: xcworkspace,
+        destinationType: "simulator",
       });
     },
   });
 }
 
 /**
- * Build and run application on the simulator
+ * Build and run application on the simulator or device
  */
 export async function launchCommand(execution: CommandExecution, item?: BuildTreeItem) {
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
   const scheme =
     item?.scheme ?? (await askScheme({ title: "Select scheme to build and run", xcworkspace: xcworkspace }));
-
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
-  // Ask simulator to run on before we start building to not distract user
-  // during build command execution
-  const simulator = await askSimulatorToRunOn(execution.context);
+  const destination = await askDestinationToRunOn(execution.context);
+  const sdk = destination.type === "simulator" ? IOS_SIMULATOR_SDK : IOS_DEVICE_SDK;
 
   await runTask(execution.context, {
     name: "Launch",
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
         scheme: scheme,
-        sdk: DEFAULT_SDK,
+        sdk: sdk,
         configuration: configuration,
         shouldBuild: true,
         shouldClean: false,
         xcworkspace: xcworkspace,
+        destinationType: destination.type,
       });
-
-      await runOnDevice(execution.context, terminal, {
-        scheme: scheme,
-        simulator: simulator,
-        sdk: DEFAULT_SDK,
-        configuration: configuration,
-      });
+      if (destination.type === "simulator") {
+        await runOnSimulator(execution.context, terminal, {
+          scheme: scheme,
+          simulatorId: destination.udid,
+          sdk: sdk,
+          configuration: configuration,
+          xcworkspace: xcworkspace,
+        });
+      } else if (destination.type === "device") {
+        await runOnDevice(execution.context, terminal, {
+          scheme: scheme,
+          deviceId: destination.udid,
+          sdk: sdk,
+          configuration: configuration,
+          xcworkspace: xcworkspace,
+        });
+      }
     },
   });
 }
@@ -232,6 +349,7 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
         shouldBuild: false,
         shouldClean: true,
         xcworkspace: xcworkspace,
+        destinationType: "simulator",
       });
     },
   });

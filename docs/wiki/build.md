@@ -1,14 +1,14 @@
 # SweetPad: Build & Run app on iOS Simulator
 
-You can build and run your iOS app directly on the simulator from the VSCode sidebar. This functionality leverages
-`xcodebuild`, a component of the Xcode command-line tools.
+You can build and run your iOS app directly on the simulator or device from the VSCode sidebar. This functionality
+leverages `xcodebuild`, a component of the Xcode command-line tools.
 
-![iOS simulator](../images/build-demo.gif)
+![iOS build](../images/build-demo.gif)
 
-To build and run your app on the simulator, first open the folder containing your Xcode project. Then, open the SweetPad
-tools panel on the left side of VSCode, navigate to the **"Build"** section, and click the **"Build & Run"** button next
-to the schema name ▶️. The extension will prompt you to select a simulator, and then it will build and run your app on
-the chosen simulator.
+To build and run your app on the simulator or device, first open the folder containing your Xcode project. Then, open
+the SweetPad tools panel on the left side of VSCode, navigate to the **"Build"** section, and click the **"Build &
+Run"** button next to the schema name ▶️. The extension will prompt you to select a simulator or device, and then it
+will build and run your app on the chosen simulator or device.
 
 For better output, I highly recommend installing `xcbeautify` as well:
 
@@ -21,9 +21,10 @@ iOS.
 
 ## Main parts of the "Build" section:
 
-[![iOS simulator](../images/build-preview.png)](../images/build-preview.png)
+[![iOS build preview](../images/build-preview.png)](../images/build-preview.png)
 
-1. ▶️ **Build & Run** — Click the play `▶️` button next to the schema name to build and run the app on the simulator.
+1. ▶️ **Build & Run** — Click the play `▶️` button next to the schema name to build and run the app on the simulator or
+   device.
 2. ⚙️ **Build** — Click the gear `⚙️` button next to the schema name just to build the app.
 3. **SweetPad: Clean** — right-click on the schema name to see the "Clean" option. This option will clean the build
    folder and derived data.
@@ -37,8 +38,8 @@ iOS.
 
 ## Tasks
 
-SweetPad also provide TaskProvider that automatically provides tasks for building and running the app on the simulator.
-You can run these tasks from the command palette by typing `Tasks: Run Task` and selecting the desired task.
+SweetPad also provide TaskProvider that automatically provides tasks for building and running the app on the simulator
+or device. You can run these tasks from the command palette by typing `Tasks: Run Task` and selecting the desired task.
 
 ![Tasks](../images/build-tasks-preview.png)
 
@@ -53,9 +54,9 @@ Or you can add tasks to the `tasks.json` file in the `.vscode` folder of your pr
       "type": "sweetpad",
       "action": "launch",
       "scheme": "terminal23",
-      "configuration": "Debug"
-    }
-  ]
+      "configuration": "Debug",
+    },
+  ],
 }
 ```
 
@@ -67,7 +68,7 @@ If you are working on multiple Xcode workspaces, you can set the workspace path 
 {
   // Path to your Xcode workspace (.xcworkspace file)
   // The path can be absolute or relative to the folder in which VSCode is opened.
-  "sweetpad.workspacePath": "/path/to/your/workspace"
+  "sweetpad.workspacePath": "/path/to/your/workspace",
   // Examples:
   // "sweetpad.workspacePath": "terminal23.xcodeproj/project.xcworkspace"
   // "sweetpad.workspacePath": "terminal23.xcworkspace"

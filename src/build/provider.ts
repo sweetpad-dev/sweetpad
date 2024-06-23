@@ -1,8 +1,21 @@
 import * as vscode from "vscode";
-import { askConfiguration, askScheme, askSimulatorToRunOn, askXcodeWorkspacePath } from "./utils";
-import { DEFAULT_SDK, buildApp, runOnDevice, resolveDependencies } from "./commands";
+import {
+  askConfiguration,
+  askDestinationToRunOn,
+  askScheme,
+  askXcodeWorkspacePath,
+  getDestinationByUdid,
+} from "./utils";
+import {
+  DEFAULT_SDK,
+  buildApp,
+  runOnSimulator,
+  resolveDependencies,
+  runOnDevice,
+  IOS_DEVICE_SDK,
+  IOS_SIMULATOR_SDK,
+} from "./commands";
 import { ExtensionContext } from "../common/commands";
-import { getSimulatorByUdid } from "../common/cli/scripts";
 import {
   TaskTerminalV2,
   TaskTerminalV1,
@@ -17,7 +30,8 @@ interface TaskDefinition extends vscode.TaskDefinition {
   scheme?: string;
   configuration?: string;
   workspace?: string;
-  simulator?: string;
+  simulator?: string; // deprecated, use "destination" instead
+  destinationId?: string;
 }
 
 class ActionDispatcher {
@@ -59,25 +73,41 @@ class ActionDispatcher {
       (await askConfiguration(this.context, {
         xcworkspace: xcworkspace,
       }));
-    const simulator = definition.simulator
-      ? await getSimulatorByUdid(definition.simulator)
-      : await askSimulatorToRunOn(this.context);
+
+    const destinationUdid = definition.destinationId ?? definition.simulator;
+    const destination = destinationUdid
+      ? await getDestinationByUdid(this.context, { udid: destinationUdid })
+      : await askDestinationToRunOn(this.context);
+
+    const sdk = destination.type === "simulator" ? IOS_SIMULATOR_SDK : IOS_DEVICE_SDK;
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
-      sdk: DEFAULT_SDK,
+      sdk: sdk,
       configuration: configuration,
       shouldBuild: true,
       shouldClean: false,
       xcworkspace: xcworkspace,
+      destinationType: destination.type,
     });
 
-    await runOnDevice(this.context, terminal, {
-      scheme: scheme,
-      simulator: simulator,
-      sdk: DEFAULT_SDK,
-      configuration: configuration,
-    });
+    if (destination.type === "simulator") {
+      await runOnSimulator(this.context, terminal, {
+        scheme: scheme,
+        simulatorId: destination.udid,
+        sdk: sdk,
+        configuration: configuration,
+        xcworkspace: xcworkspace,
+      });
+    } else {
+      await runOnDevice(this.context, terminal, {
+        scheme: scheme,
+        deviceId: destination.udid,
+        sdk: sdk,
+        configuration: configuration,
+        xcworkspace: xcworkspace,
+      });
+    }
   }
 
   private async buildCallback(terminal: TaskTerminal, definition: TaskDefinition) {
@@ -100,6 +130,7 @@ class ActionDispatcher {
       shouldBuild: true,
       shouldClean: false,
       xcworkspace: xcworkspace,
+      destinationType: "simulator",
     });
   }
 
@@ -124,6 +155,7 @@ class ActionDispatcher {
       shouldBuild: false,
       shouldClean: true,
       xcworkspace: xcworkspace,
+      destinationType: "simulator",
     });
   }
 
@@ -230,7 +262,7 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
             throw new Error(`Task executor ${executorName} is not supported`);
         }
       }),
-      []
+      [],
     );
 
     if (options.details) {
