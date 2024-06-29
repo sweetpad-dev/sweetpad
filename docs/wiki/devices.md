@@ -6,7 +6,7 @@ integration with the devicectl command to run the app on the device.
 ## Limitations
 
 1. You have to pair with the device using Xcode manually.
-2. It works only with iOS 17 and Xcode 15 or later.
+2. It works only with **iOS 17** and **Xcode 15** or later.
 3. Logs and debugging from the device are currently not supported.
 
 ## How to Run on the Device
