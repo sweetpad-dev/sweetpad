@@ -52,6 +52,9 @@ class ActionDispatcher {
       case "clean":
         await this.cleanCallback(terminal, definition);
         break;
+      case "test":
+        await this.testCallback(terminal, definition);
+        break;
       case "resolve-dependencies":
         await this.resolveDependenciesCallback(terminal, definition);
         break;
@@ -87,8 +90,10 @@ class ActionDispatcher {
       configuration: configuration,
       shouldBuild: true,
       shouldClean: false,
+      shouldTest: false,
       xcworkspace: xcworkspace,
       destinationType: destination.type,
+      destinationId: null,
     });
 
     if (destination.type === "simulator") {
@@ -129,8 +134,10 @@ class ActionDispatcher {
       configuration: configuration,
       shouldBuild: true,
       shouldClean: false,
+      shouldTest: false,
       xcworkspace: xcworkspace,
       destinationType: "simulator",
+      destinationId: null,
     });
   }
 
@@ -154,8 +161,41 @@ class ActionDispatcher {
       configuration: configuration,
       shouldBuild: false,
       shouldClean: true,
+      shouldTest: false,
       xcworkspace: xcworkspace,
       destinationType: "simulator",
+      destinationId: null,
+    });
+  }
+
+  private async testCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const scheme =
+      definition.scheme ??
+      (await askScheme({
+        xcworkspace: xcworkspace,
+      }));
+    const configuration =
+      definition.configuration ??
+      (await askConfiguration(this.context, {
+        xcworkspace: xcworkspace,
+      }));
+
+    const destinationUdid = definition.destinationId ?? definition.simulator;
+    const destination = destinationUdid
+      ? await getDestinationByUdid(this.context, { udid: destinationUdid })
+      : await askDestinationToRunOn(this.context);
+
+    await buildApp(this.context, terminal, {
+      scheme: scheme,
+      sdk: DEFAULT_SDK,
+      configuration: configuration,
+      shouldBuild: false,
+      shouldClean: false,
+      shouldTest: true,
+      xcworkspace: xcworkspace,
+      destinationType: destination.type,
+      destinationId: destination.udid,
     });
   }
 

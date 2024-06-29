@@ -29,6 +29,7 @@ so on into VSCode.
 - 🛠️ **[Tools](./docs/wiki/tools.md)** — manage essential iOS development tools using [Homebrew](https://brew.sh/)
 - 🪲 **[Debug](./docs/wiki/debug.md)** — debug iOS applications using
   [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
+- ✅ **[Tests](./docs/wiki/test.md)** — run tests on simulators and devices
 
 > 💡 If you have any ideas, please open an issue or start a discussion on the
 > [SweetPad](https://github.com/sweetpad-dev/sweetpad) GitHub repository.

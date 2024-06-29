@@ -9,6 +9,7 @@ import {
   openXcodeCommand,
   removeBundleDirCommand,
   resolveDependenciesCommand,
+  testCommand,
 } from "./build/commands.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { createFormatStatusItem } from "./format/status.js";
@@ -83,6 +84,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.launch", launchCommand));
   d(command("sweetpad.build.build", buildCommand));
   d(command("sweetpad.build.clean", cleanCommand));
+  d(command("sweetpad.build.test", testCommand));
   d(command("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
   d(command("sweetpad.build.removeBundleDir", removeBundleDirCommand));
   d(command("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));

@@ -45,6 +45,7 @@
               "launch",
               "build",
               "clean",
+              "test",
               "resolve-dependencies"
             ]
           },
@@ -147,6 +148,11 @@
         "command": "sweetpad.build.clean",
         "title": "SweetPad: Clean",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "sweetpad.build.test",
+        "title": "SweetPad: Test",
+        "icon": "$(beaker)"
       },
       {
         "command": "sweetpad.build.resolveDependencies",
@@ -307,6 +313,10 @@
         },
         {
           "command": "sweetpad.build.clean",
+          "when": "view == sweetpad.build.view"
+        },
+        {
+          "command": "sweetpad.build.test",
           "when": "view == sweetpad.build.view"
         },
         {

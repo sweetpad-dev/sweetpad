@@ -200,7 +200,20 @@ function isXcbeautifyEnabled() {
   return getWorkspaceConfig("build.xcbeautifyEnabled") ?? true;
 }
 
-function getDestinationByType(options: { type: "simulator" | "device" }): string {
+function getDestination(options: { type: "simulator" | "device"; id: string | null }): string {
+  if (options.id != null) {
+    switch (options.type) {
+      case "simulator":
+        return `platform=iOS Simulator,id=${options.id}`;
+      case "device":
+        return `platform=iOS,id=${options.id}`;
+      default: {
+        const t: never = options.type;
+        throw new Error(`Unknown destination type: ${t}`);
+      }
+    }
+  }
+
   switch (options.type) {
     case "simulator":
       return "generic/platform=iOS Simulator";
@@ -222,14 +235,16 @@ export async function buildApp(
     configuration: string;
     shouldBuild: boolean;
     shouldClean: boolean;
+    shouldTest: boolean;
     xcworkspace: string;
     destinationType: "simulator" | "device";
+    destinationId: string | null;
   },
 ) {
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundleDir = await prepareBundleDir(context, options.scheme);
 
-  const destination = getDestinationByType({ type: options.destinationType });
+  const destination = getDestination({ type: options.destinationType, id: options.destinationId });
 
   const commandParts: string[] = [
     "xcodebuild",
@@ -248,6 +263,7 @@ export async function buildApp(
     "-allowProvisioningUpdates",
     ...(options.shouldClean ? ["clean"] : []),
     ...(options.shouldBuild ? ["build"] : []),
+    ...(options.shouldTest ? ["test"] : []),
   ];
 
   const pipes = useXcbeatify ? [{ command: "xcbeautify", args: [], setvbuf: true }] : undefined;
@@ -278,8 +294,10 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
         configuration: configuration,
         shouldBuild: true,
         shouldClean: false,
+        shouldTest: false,
         xcworkspace: xcworkspace,
         destinationType: "simulator",
+        destinationId: null,
       });
     },
   });
@@ -307,8 +325,10 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         configuration: configuration,
         shouldBuild: true,
         shouldClean: false,
+        shouldTest: false,
         xcworkspace: xcworkspace,
         destinationType: destination.type,
+        destinationId: null,
       });
       if (destination.type === "simulator") {
         await runOnSimulator(execution.context, terminal, {
@@ -348,8 +368,34 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
         configuration: configuration,
         shouldBuild: false,
         shouldClean: true,
+        shouldTest: false,
         xcworkspace: xcworkspace,
         destinationType: "simulator",
+        destinationId: null,
+      });
+    },
+  });
+}
+
+export async function testCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to test", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+  const destination = await askDestinationToRunOn(execution.context);
+
+  await runTask(execution.context, {
+    name: "Test",
+    callback: async (terminal) => {
+      await buildApp(execution.context, terminal, {
+        scheme: scheme,
+        sdk: DEFAULT_SDK,
+        configuration: configuration,
+        shouldBuild: false,
+        shouldClean: false,
+        shouldTest: true,
+        xcworkspace: xcworkspace,
+        destinationType: "simulator",
+        destinationId: destination.udid,
       });
     },
   });
