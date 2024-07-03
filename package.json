@@ -171,7 +171,27 @@
       },
       {
         "command": "sweetpad.xcodegen.generate",
-        "title": "SweetPad: Generate an Xcode project using XcodeGen.",
+        "title": "SweetPad: Generate an Xcode project using XcodeGen",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.tuist.generate",
+        "title": "SweetPad: Generate an Xcode project using Tuist",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.tuist.install",
+        "title": "SweetPad: Install Swift Package using Tuist",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.tuist.clean",
+        "title": "SweetPad: Clean Tuist project",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.tuist.edit",
+        "title": "SweetPad: Edit Tuist project (Open project in Xcode)",
         "icon": "$(file-code)"
       },
       {
@@ -404,6 +424,11 @@
           "type": "boolean",
           "default": false,
           "description": "Watch for new .swift files and regenerate the project using XcodeGen. Restart VSCode to apply the settings."
+        },
+        "sweetpad.tuist.autogenerate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Watch for new .swift files and regenerate the project using Tuist. Restart VSCode to apply the settings."
         }
       }
     }
