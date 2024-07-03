@@ -47,7 +47,7 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
             isInstalled: false,
           };
         }
-      })
+      }),
     );
     return results.map((item) => {
       return new ToolTreeItem({

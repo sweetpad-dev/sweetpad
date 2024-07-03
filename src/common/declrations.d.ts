@@ -20,6 +20,6 @@ declare module "execa" {
     options: {
       cwd: string;
       buffer?: boolean;
-    }
+    },
   ): Promise<ExecaReturnValue>;
 }

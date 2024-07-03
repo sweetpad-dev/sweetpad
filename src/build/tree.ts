@@ -75,7 +75,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
           scheme: scheme.name,
           collapsibleState: vscode.TreeItemCollapsibleState.None,
           provider: this,
-        })
+        }),
     );
   }
 }

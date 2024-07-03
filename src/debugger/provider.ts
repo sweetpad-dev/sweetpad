@@ -12,7 +12,7 @@ const ATTACH_CONFIG: vscode.DebugConfiguration = {
 class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider {
   async provideDebugConfigurations(
     folder: vscode.WorkspaceFolder | undefined,
-    token?: vscode.CancellationToken | undefined
+    token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration[]> {
     return [ATTACH_CONFIG];
   }
@@ -20,7 +20,7 @@ class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider
   async resolveDebugConfiguration(
     folder: vscode.WorkspaceFolder | undefined,
     config: vscode.DebugConfiguration,
-    token?: vscode.CancellationToken | undefined
+    token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration> {
     // currently doing nothing useful here, but leave it for future extension
     return config;
@@ -29,7 +29,7 @@ class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider
   async resolveDebugConfigurationWithSubstitutedVariables(
     folder: vscode.WorkspaceFolder | undefined,
     config: vscode.DebugConfiguration,
-    token?: vscode.CancellationToken | undefined
+    token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration> {
     // currently doing nothing useful here, but leave it for future extension
     return config;
@@ -40,11 +40,11 @@ export function registerDebugConfigurationProvider(context: ExtensionContext) {
   vscode.debug.registerDebugConfigurationProvider(
     "lldb",
     new DebuggerConfigurationProvider(),
-    vscode.DebugConfigurationProviderTriggerKind.Initial
+    vscode.DebugConfigurationProviderTriggerKind.Initial,
   );
   return vscode.debug.registerDebugConfigurationProvider(
     "lldb",
     new DebuggerConfigurationProvider(),
-    vscode.DebugConfigurationProviderTriggerKind.Dynamic
+    vscode.DebugConfigurationProviderTriggerKind.Dynamic,
   );
 }

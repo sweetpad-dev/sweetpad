@@ -35,7 +35,7 @@ export class TaskError extends ExtensionError {
       command?: string;
       args?: string[];
       errorCode?: number;
-    }
+    },
   ) {
     super(message, { context });
   }
@@ -47,7 +47,7 @@ export class TaskError extends ExtensionError {
 export class ExecBaseError extends ExtensionError {
   constructor(
     message: string,
-    context: { errorMessage: string; stderr?: string; command: string; args: string[]; cwd?: string }
+    context: { errorMessage: string; stderr?: string; command: string; args: string[]; cwd?: string },
   ) {
     super(message, { context });
   }
@@ -59,7 +59,7 @@ export class ExecBaseError extends ExtensionError {
 export class ExecErrror extends ExecBaseError {
   constructor(
     message: string,
-    context: { command: string; args: string[]; cwd?: string; exitCode: number; stderr: string; errorMessage: string }
+    context: { command: string; args: string[]; cwd?: string; exitCode: number; stderr: string; errorMessage: string },
   ) {
     super(message, context);
   }
