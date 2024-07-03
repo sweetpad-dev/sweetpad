@@ -297,3 +297,43 @@ export async function generateXcodeGen() {
     args: ["generate"],
   });
 }
+
+export async function getIsTuistInstalled() {
+  try {
+    await exec({
+      command: "which",
+      args: ["tuist"],
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+export async function generateTuist() {
+  return await exec({
+    command: "tuist",
+    args: ["generate", "--no-open"],
+  });
+}
+
+export async function cleanTuist() {
+  await exec({
+    command: "tuist",
+    args: ["clean"],
+  });
+}
+
+export async function fetchTuist() {
+  await exec({
+    command: "tuist",
+    args: ["install"],
+  });
+}
+
+export async function editTuist() {
+  await exec({
+    command: "tuist",
+    args: ["edit"],
+  });
+}
