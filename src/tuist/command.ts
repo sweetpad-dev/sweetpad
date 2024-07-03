@@ -1,18 +1,19 @@
 import { restartSwiftLSP } from "../build/utils";
-import { cleanTuist, editTuist, fetchTuist, generateTuist, getIsTuistInstalled } from "../common/cli/scripts";
+import { tuistClean, tuistEdit, tuistInstall, tuistGenerate, getIsTuistInstalled } from "../common/cli/scripts";
 import { ExtensionError } from "../common/errors";
 import * as vscode from "vscode";
-import { commonLogger } from "../common/logger";
-import { buildCommand, generateBuildServerConfigCommand } from "../build/commands";
-import { CommandExecution } from "../common/commands";
 
-export async function tuistGenerateCommand() {
+async function tuistCheckInstalled() {
   const isTuistInstalled = await getIsTuistInstalled();
   if (!isTuistInstalled) {
     throw new ExtensionError("Tuist is not installed");
   }
+}
 
-  const raw = await generateTuist();
+export async function tuistGenerateCommand() {
+  await tuistCheckInstalled();
+
+  const raw = await tuistGenerate();
   if (raw.includes("tuist install")) {
     vscode.window.showErrorMessage(`Please run "tuist install" first`);
     return;
@@ -23,13 +24,10 @@ export async function tuistGenerateCommand() {
   vscode.window.showInformationMessage(`The Xcode project was successfully generated using Tuist.`);
 }
 
-export async function tuistFetchCommand() {
-  const isTuistInstalled = await getIsTuistInstalled();
-  if (!isTuistInstalled) {
-    throw new ExtensionError("Tuist is not installed");
-  }
+export async function tuistInstallCommand() {
+  await tuistCheckInstalled();
 
-  await fetchTuist();
+  await tuistInstall();
 
   await restartSwiftLSP();
 
@@ -37,21 +35,15 @@ export async function tuistFetchCommand() {
 }
 
 export async function tuistCleanCommand() {
-  const isTuistInstalled = await getIsTuistInstalled();
-  if (!isTuistInstalled) {
-    throw new ExtensionError("Tuist is not installed");
-  }
+  await tuistCheckInstalled();
 
-  await cleanTuist();
+  await tuistClean();
 
   vscode.window.showInformationMessage(`Tuist cleaned.`);
 }
 
 export async function tuistEditComnmand() {
-  const isTuistInstalled = await getIsTuistInstalled();
-  if (!isTuistInstalled) {
-    throw new ExtensionError("Tuist is not installed");
-  }
+  await tuistCheckInstalled();
 
-  await editTuist();
+  await tuistEdit();
 }

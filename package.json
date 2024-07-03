@@ -171,17 +171,17 @@
       },
       {
         "command": "sweetpad.xcodegen.generate",
-        "title": "SweetPad: Generate an Xcode project using XcodeGen.",
+        "title": "SweetPad: Generate an Xcode project using XcodeGen",
         "icon": "$(file-code)"
       },
       {
         "command": "sweetpad.tuist.generate",
-        "title": "SweetPad: Generate an Xcode project using Tuist.",
+        "title": "SweetPad: Generate an Xcode project using Tuist",
         "icon": "$(file-code)"
       },
       {
-        "command": "sweetpad.tuist.fetch",
-        "title": "SweetPad: Install Swift Package using Tuist.",
+        "command": "sweetpad.tuist.install",
+        "title": "SweetPad: Install Swift Package using Tuist",
         "icon": "$(file-code)"
       },
       {
@@ -191,7 +191,7 @@
       },
       {
         "command": "sweetpad.tuist.edit",
-        "title": "SweetPad: Edit Tuist project",
+        "title": "SweetPad: Edit Tuist project (Open project in Xcode)",
         "icon": "$(file-code)"
       },
       {

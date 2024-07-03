@@ -113,7 +113,7 @@ export const TOOLS: Tool[] = [
     },
     install: {
       command: "brew",
-      args: ["install", "tuist@x.y.z"],
+      args: ["install", "--cask", "tuist"],
     },
     documentation: "https://docs.tuist.io/",
   },

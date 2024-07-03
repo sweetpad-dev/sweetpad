@@ -310,28 +310,28 @@ export async function getIsTuistInstalled() {
   }
 }
 
-export async function generateTuist() {
+export async function tuistGenerate() {
   return await exec({
     command: "tuist",
     args: ["generate", "--no-open"],
   });
 }
 
-export async function cleanTuist() {
+export async function tuistClean() {
   await exec({
     command: "tuist",
     args: ["clean"],
   });
 }
 
-export async function fetchTuist() {
+export async function tuistInstall() {
   await exec({
     command: "tuist",
     args: ["install"],
   });
 }
 
-export async function editTuist() {
+export async function tuistEdit() {
   await exec({
     command: "tuist",
     args: ["edit"],

@@ -35,7 +35,7 @@ import { Logger } from "./common/logger.js";
 import { DevicesTreeProvider } from "./devices/tree.js";
 import { DevicesManager } from "./devices/manager.js";
 import { SimulatorsManager } from "./simulators/manager.js";
-import { tuistCleanCommand, tuistEditComnmand, tuistFetchCommand, tuistGenerateCommand } from "./tuist/command.js";
+import { tuistCleanCommand, tuistEditComnmand, tuistInstallCommand, tuistGenerateCommand } from "./tuist/command.js";
 import { createTuistWatcher } from "./tuist/watcher.js";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -99,7 +99,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Tuist
   d(command("sweetpad.tuist.generate", tuistGenerateCommand));
-  d(command("sweetpad.tuist.fetch", tuistFetchCommand));
+  d(command("sweetpad.tuist.install", tuistInstallCommand));
   d(command("sweetpad.tuist.clean", tuistCleanCommand));
   d(command("sweetpad.tuist.edit", tuistEditComnmand));
   d(createTuistWatcher(_context));
