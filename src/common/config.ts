@@ -8,6 +8,7 @@ type Config = {
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "xcodegen.autogenerate": boolean;
+  "tuist.autogenerate": boolean;
 };
 
 type ConfigKey = keyof Config;
