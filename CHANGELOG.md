@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.22] - 2024-07-04
+
+- Integration with [Tuist](https://tuist.io). Thanks to [N-Joy-Shadow](https://github.com/N-Joy-Shadow) 💜
+
 ## [0.1.21] - 2024-06-29
 
 - Add basic support for running tests on simulators and devices
