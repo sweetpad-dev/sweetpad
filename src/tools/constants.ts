@@ -104,4 +104,17 @@ export const TOOLS: Tool[] = [
     },
     documentation: "https://github.com/ios-control/ios-deploy",
   },
+  {
+    id: "tuist",
+    label: "tuist",
+    check: {
+      command: "tuist",
+      args: ["version"],
+    },
+    install: {
+      command: "brew",
+      args: ["install", "--cask", "tuist"],
+    },
+    documentation: "https://docs.tuist.io/",
+  },
 ];
