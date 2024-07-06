@@ -2,7 +2,7 @@ import path from "path";
 import * as vscode from "vscode";
 import { showQuickPick } from "../common/quick-pick";
 
-import { getBuildConfigurations, getSchemes } from "../common/cli/scripts";
+import { getBuildConfigurations, getSchemes, IosSimulator } from "../common/cli/scripts";
 import { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
@@ -15,6 +15,40 @@ type SelectedDestination = {
   type: "simulator" | "device";
   udid: string;
 };
+
+/**
+ * Ask user to select one of the booted simulators
+ */
+export async function askBootedSimulator(
+  context: ExtensionContext,
+  options?: {
+    title?: string;
+  },
+): Promise<IosSimulator> {
+  const simulators = await context.simulatorsManager.getSimulators();
+
+  const simulatorsBooted = simulators.filter((simulator) => simulator.state === "Booted");
+  if (simulatorsBooted.length === 0) {
+    throw new ExtensionError("No booted simulators found");
+  }
+  if (simulatorsBooted.length === 1) {
+    return simulatorsBooted[0];
+  }
+
+  const selected = await showQuickPick({
+    title: options?.title ?? "Select booted simulator",
+    items: simulatorsBooted.map((simulator) => {
+      return {
+        label: simulator.label,
+        context: {
+          simulator: simulator,
+        },
+      };
+    }),
+  });
+
+  return selected.context.simulator;
+}
 
 /**
  * Ask user to select simulator or device to run on
