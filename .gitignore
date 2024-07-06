@@ -6,4 +6,8 @@ node_modules
 
 # Temporary files for building setvbuf
 .temp/
-.vscode
+
+# Ensure .vscode is not ignored in this project
+!.vscode/
+.vscode/extensions.json
+.vscode/settings.json
