@@ -2,23 +2,33 @@ import * as vscode from "vscode";
 import { SimulatorTreeItem } from "./tree.js";
 import { CommandExecution } from "../common/commands.js";
 import { runTask } from "../common/tasks.js";
-import { askBootedSimulator, askDestinationToRunOn } from "../build/utils.js";
+import { asSimulator, askDestinationToRunOn } from "../build/utils.js";
 
 /**
  * Command to start simulator from the simulator tree view in the sidebar
  */
-export async function startSimulatorCommand(execution: CommandExecution, item: SimulatorTreeItem) {
-  const simulatorName = item.udid;
+export async function startSimulatorCommand(execution: CommandExecution, item?: SimulatorTreeItem) {
+  let simulatorUdid: string;
+  if (item) {
+    simulatorUdid = item.udid;
+  } else {
+    const simulator = await asSimulator(execution.context, {
+      title: "Select simulator to start",
+      state: "Shutdown",
+      error: "No available simulators to start",
+    });
+    simulatorUdid = simulator.udid;
+  }
 
   await runTask(execution.context, {
     name: "Start Simulator",
     callback: async (terminal) => {
       await terminal.execute({
         command: "xcrun",
-        args: ["simctl", "boot", simulatorName],
+        args: ["simctl", "boot", simulatorUdid],
       });
 
-      item.refresh();
+      execution.context.refreshSimulators();
     },
   });
 }
@@ -31,8 +41,10 @@ export async function stopSimulatorCommand(execution: CommandExecution, item?: S
   if (item) {
     simulatorId = item.udid;
   } else {
-    const simulator = await askBootedSimulator(execution.context, {
+    const simulator = await asSimulator(execution.context, {
       title: "Select simulator to stop",
+      state: "Booted",
+      error: "No available simulators to stop",
     });
     simulatorId = simulator.udid;
   }

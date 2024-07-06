@@ -114,6 +114,10 @@ export class ExtensionContext {
   refreshBuildView() {
     void this.simulatorsManager.refresh();
   }
+
+  refreshTools() {
+    void this._toolsProvider.refresh();
+  }
 }
 
 /**

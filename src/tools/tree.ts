@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { exec } from "../common/exec.js";
-import { TOOLS } from "./constants.js";
+import { Tool, TOOLS } from "./constants.js";
 
 type EventData = ToolTreeItem | undefined | null | void;
 
@@ -51,13 +51,10 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
     );
     return results.map((item) => {
       return new ToolTreeItem({
-        label: item.label,
         collapsibleState: vscode.TreeItemCollapsibleState.None,
-        isInstalled: item.isInstalled,
-        commandName: item.install.command,
-        commandArgs: item.install.args,
-        documentation: item.documentation,
         provider: this,
+        isInstalled: item.isInstalled,
+        tool: item,
       });
     });
   }
@@ -68,23 +65,22 @@ export class ToolTreeItem extends vscode.TreeItem {
   commandName: string;
   commandArgs: string[];
   documentation: string;
+  tool: Tool;
 
   constructor(options: {
-    label: string;
     collapsibleState: vscode.TreeItemCollapsibleState;
     isInstalled: boolean;
-    documentation: string;
-    commandName: string;
-    commandArgs: string[];
     provider: ToolTreeProvider;
+    tool: Tool;
   }) {
-    super(options.label, options.collapsibleState);
+    super(options.tool.label, options.collapsibleState);
 
     this.provider = options.provider;
     this.contextValue = options.isInstalled ? "installed" : "notInstalled";
-    this.documentation = options.documentation;
-    this.commandName = options.commandName;
-    this.commandArgs = options.commandArgs;
+    this.documentation = options.tool.documentation;
+    this.commandName = options.tool.install.command;
+    this.commandArgs = options.tool.install.args;
+    this.tool = options.tool;
 
     if (options.isInstalled) {
       this.iconPath = new vscode.ThemeIcon("check");

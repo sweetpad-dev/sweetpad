@@ -17,27 +17,32 @@ type SelectedDestination = {
 };
 
 /**
- * Ask user to select one of the booted simulators
+ * Ask user to select one of the Booted/Shutdown simulators
  */
-export async function askBootedSimulator(
+export async function asSimulator(
   context: ExtensionContext,
-  options?: {
-    title?: string;
+  options: {
+    title: string;
+    state: "Booted" | "Shutdown";
+    error: string;
   },
 ): Promise<IosSimulator> {
-  const simulators = await context.simulatorsManager.getSimulators();
+  let simulators = await context.simulatorsManager.getSimulators();
 
-  const simulatorsBooted = simulators.filter((simulator) => simulator.state === "Booted");
-  if (simulatorsBooted.length === 0) {
-    throw new ExtensionError("No booted simulators found");
+  if (options?.state) {
+    simulators = simulators.filter((simulator) => simulator.state === options.state);
   }
-  if (simulatorsBooted.length === 1) {
-    return simulatorsBooted[0];
+
+  if (simulators.length === 0) {
+    throw new ExtensionError(options.error);
+  }
+  if (simulators.length === 1) {
+    return simulators[0];
   }
 
   const selected = await showQuickPick({
-    title: options?.title ?? "Select booted simulator",
-    items: simulatorsBooted.map((simulator) => {
+    title: options.title,
+    items: simulators.map((simulator) => {
       return {
         label: simulator.label,
         context: {
