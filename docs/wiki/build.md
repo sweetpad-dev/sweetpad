@@ -85,3 +85,23 @@ build task and will save it in the extension cache. To clean the cache, you can 
 
 > **Note:** If you are working on a project that contains only one Xcode workspace, the extension will automatically
 > detect it and use it to build and run the app. You don't need to set the workspace path in the configuration.
+
+## Set DerivedData path
+
+DerivedData is a directory where Xcode saves temporary files and data created during the build process. Normally,
+xcodebuild uses a default location for this data in the `/Users/<username>/Library/Developer/Xcode/DerivedData/` folder,
+and there's no need to change it manually. However, sometimes you may want to change this location to a different
+directory. Here's how you can do it in your VSCode's `.vscode/settings.json`:
+
+```jsonc
+{
+  "sweetpad.build.derivedDataPath": "/path/to/your/derivedData",
+  // Examples:
+  //
+  // 1. Relative path to the folder in which VSCode is opened:
+  // "sweetpad.build.derivedDataPath": ".build/derivedData"
+  //
+  // 2. Absolute path:
+  // "sweetpad.build.derivedDataPath": "/Users/hyzyla/Projects/sweetpad/derivedData"
+}
+```

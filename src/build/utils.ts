@@ -176,6 +176,24 @@ export async function prepareBundleDir(context: ExtensionContext, schema: string
   return bundleDir;
 }
 
+export function prepareDerivedDataPath(): string | null {
+  const configPath = getWorkspaceConfig("build.derivedDataPath");
+
+  // No config -> path will be provided by xcodebuild
+  if (!configPath) {
+    return null;
+  }
+
+  // Expand relative path to absolute
+  let derivedDataPath: string = configPath;
+  if (!path.isAbsolute(configPath)) {
+    // Example: .biuld/ -> /Users/username/Projects/project/.build
+    derivedDataPath = path.join(getWorkspacePath(), configPath);
+  }
+
+  return derivedDataPath;
+}
+
 export function getCurrentXcodeWorkspacePath(context: ExtensionContext): string | undefined {
   const configPath = getWorkspaceConfig("build.xcodeWorkspacePath");
   if (configPath) {

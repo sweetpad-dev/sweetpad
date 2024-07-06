@@ -18,6 +18,7 @@ import {
   selectXcodeWorkspace,
   restartSwiftLSP,
   askDestinationToRunOn,
+  prepareDerivedDataPath,
 } from "./utils";
 import { CommandExecution, ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
@@ -242,7 +243,8 @@ export async function buildApp(
   },
 ) {
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
-  const bundleDir = await prepareBundleDir(context, options.scheme);
+  const bundlePath = await prepareBundleDir(context, options.scheme);
+  const derivedDataPath = prepareDerivedDataPath();
 
   const destination = getDestination({ type: options.destinationType, id: options.destinationId });
 
@@ -259,8 +261,9 @@ export async function buildApp(
     "-destination",
     destination,
     "-resultBundlePath",
-    bundleDir,
+    bundlePath,
     "-allowProvisioningUpdates",
+    ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
     ...(options.shouldClean ? ["clean"] : []),
     ...(options.shouldBuild ? ["build"] : []),
     ...(options.shouldTest ? ["test"] : []),

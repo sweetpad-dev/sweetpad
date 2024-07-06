@@ -11,8 +11,13 @@ import path from "path";
 class XcodeGenWatcher {
   private watchers: vscode.FileSystemWatcher[] = [];
   private throttle: NodeJS.Timeout | null = null;
+  private derivedDataPath: string | null;
+  private workspacePath: string;
 
-  constructor(private extension: ExtensionContext) {}
+  constructor(private extension: ExtensionContext) {
+    this.derivedDataPath = null;
+    this.workspacePath = getWorkspacePath();
+  }
 
   async start() {
     // Is config enabled?
@@ -32,23 +37,28 @@ class XcodeGenWatcher {
       return new Disposable(() => {});
     }
 
-    const swiftWatcher = vscode.workspace.createFileSystemWatcher("**/*.swift");
+    const swiftWatcher = vscode.workspace.createFileSystemWatcher("**/*.swift", false, true, false);
     swiftWatcher.onDidCreate((e) => this.handleChange(e));
     swiftWatcher.onDidDelete((e) => this.handleChange(e));
     this.watchers.push(swiftWatcher);
 
     commonLogger.log("XcodeGen watcher started", {
-      workspacePath: getWorkspacePath(),
+      workspacePath: this.workspacePath,
     });
   }
 
   handleChange(e: vscode.Uri) {
     commonLogger.log("XcodeGen watcher detected changes", {
-      workspacePath: getWorkspacePath(),
+      workspacePath: this.workspacePath,
       file: e.fsPath,
     });
     if (this.throttle) {
       clearTimeout(this.throttle);
+    }
+
+    // Skip files created in derived data path
+    if (this.derivedDataPath && e.fsPath.startsWith(this.derivedDataPath)) {
+      return;
     }
 
     this.throttle = setTimeout(() => {
@@ -56,12 +66,12 @@ class XcodeGenWatcher {
       xcodgenGenerateCommand()
         .then(() => {
           commonLogger.log("XcodeGen project was successfully generated", {
-            workspacePath: getWorkspacePath(),
+            workspacePath: this.workspacePath,
           });
         })
         .catch((error) => {
           commonLogger.error("Failed to generate XcodeGen project", {
-            workspacePath: getWorkspacePath(),
+            workspacePath: this.workspacePath,
             error,
           });
         });

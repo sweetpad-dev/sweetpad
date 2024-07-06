@@ -4,6 +4,7 @@ import { cache } from "../cache";
 import { XcodeWorkspace } from "../xcode/workspace";
 import { uniqueFilter } from "../helpers";
 import { ExtensionContext } from "../commands";
+import { prepareDerivedDataPath } from "../../build/utils";
 
 type SimulatorOutput = {
   dataPath: string;
@@ -141,6 +142,7 @@ export async function getBuildSettings(options: {
   sdk: string;
   xcworkspace: string;
 }) {
+  const derivedDataPath = prepareDerivedDataPath();
   const stdout = await exec({
     command: "xcodebuild",
     args: [
@@ -153,6 +155,7 @@ export async function getBuildSettings(options: {
       options.configuration,
       "-sdk",
       options.sdk,
+      ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
       "-json",
     ],
   });

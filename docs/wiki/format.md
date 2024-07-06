@@ -14,14 +14,14 @@ To use this feature, first install **swift-format** using Homebrew:
 brew install swift-format
 ```
 
-Next, add the following configuration to your settings.json file:
+Next, add the following configuration to your `.vscode/settings.json` file:
 
 ```jsonc
 {
   "[swift]": {
     "editor.defaultFormatter": "sweetpad.sweetpad",
-    "editor.formatOnSave": true
-  }
+    "editor.formatOnSave": true,
+  },
 }
 ```
 
@@ -45,6 +45,6 @@ formatter used by SweetPad. Here is an example of how to use another formatter
   "sweetpad.format.path": "swiftformat",
   // The "--quiet" flag is important here to ignore output that "swiftformat" writes to stderr.
   // Otherwise, the extension thinks that the formatting failed and shows an annoying error message
-  "sweetpad.format.args": ["--quiet", "${file}"]
+  "sweetpad.format.args": ["--quiet", "${file}"],
 }
 ```

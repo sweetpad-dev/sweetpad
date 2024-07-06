@@ -394,7 +394,13 @@
           "type": "string",
           "default": null,
           "required": false,
-          "description": "Path to Xcode workspace. Can absolute or relative to the workspace root."
+          "description": "Path to Xcode workspace. Can be absolute or relative to the workspace root."
+        },
+        "sweetpad.build.derivedDataPath": {
+          "type": "string",
+          "default": null,
+          "required": false,
+          "description": "Path to derived data directory. Can be absolute or relative to the workspace root."
         },
         "sweetpad.system.taskExecutor": {
           "type": "string",

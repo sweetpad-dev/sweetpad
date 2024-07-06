@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.23] - 2024-07-06
+
+- Add "sweetpad.build.derivedDataPath" setting to set the path of the DerivedData folder
+
 ## [0.1.22] - 2024-07-04
 
 - Integration with [Tuist](https://tuist.io). Thanks to [N-Joy-Shadow](https://github.com/N-Joy-Shadow) 💜

@@ -16,7 +16,7 @@ common commands.
 The SweetPad extension includes a file watcher for Tuist projects. When you create or delete a ".swift" file in the
 project, the watcher will automatically regenerate the Xcode project by executing the `sweetpad.tuist.generate` command.
 
-To enable the watcher, add the following configuration to your `settings.json` file:
+To enable the watcher, add the following configuration to your `.vscode/settings.json` file:
 
 ```json
 {

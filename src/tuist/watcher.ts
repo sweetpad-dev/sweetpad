@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { ExtensionContext } from "../common/commands";
 import path from "path";
 import { getWorkspaceConfig } from "../common/config";
-import { getWorkspacePath } from "../build/utils";
+import { getWorkspacePath, prepareDerivedDataPath } from "../build/utils";
 import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { Disposable } from "vscode";
@@ -11,8 +11,13 @@ import { tuistGenerateCommand } from "./command";
 class TuistGenWatcher {
   private watchers: vscode.FileSystemWatcher[] = [];
   private throttle: NodeJS.Timeout | null = null;
+  private derivedDataPath: string | null;
+  private workspacePath: string;
 
-  constructor(private extension: ExtensionContext) {}
+  constructor(private extension: ExtensionContext) {
+    this.derivedDataPath = prepareDerivedDataPath();
+    this.workspacePath = getWorkspacePath();
+  }
 
   async start() {
     // Is config enabled?
@@ -32,7 +37,7 @@ class TuistGenWatcher {
       return new Disposable(() => {});
     }
 
-    const swiftWatcher = vscode.workspace.createFileSystemWatcher("**/*.swift");
+    const swiftWatcher = vscode.workspace.createFileSystemWatcher("**/*.swift", false, true, false);
     swiftWatcher.onDidCreate((e) => this.handleChange(e));
     swiftWatcher.onDidDelete((e) => this.handleChange(e));
     this.watchers.push(swiftWatcher);
@@ -44,11 +49,16 @@ class TuistGenWatcher {
 
   handleChange(e: vscode.Uri) {
     commonLogger.log("tuist watcher detected changes", {
-      workspacePath: getWorkspacePath(),
+      workspacePath: this.workspacePath,
       file: e.fsPath,
     });
     if (this.throttle) {
       clearTimeout(this.throttle);
+    }
+
+    // Skip files created in derived data path
+    if (this.derivedDataPath && e.fsPath.startsWith(this.derivedDataPath)) {
+      return;
     }
 
     this.throttle = setTimeout(() => {
@@ -56,12 +66,12 @@ class TuistGenWatcher {
       tuistGenerateCommand()
         .then(() => {
           commonLogger.log("tuist project was successfully generated", {
-            workspacePath: getWorkspacePath(),
+            workspacePath: this.workspacePath,
           });
         })
         .catch((error) => {
           commonLogger.error("Failed to generate tuist project", {
-            workspacePath: getWorkspacePath(),
+            workspacePath: this.workspacePath,
             error,
           });
         });

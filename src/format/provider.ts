@@ -3,7 +3,7 @@ import { formatDocument } from "./formatter.js";
 
 /**
  * Register swiftpad as formatter for Swift documents. User then can use
- * "editor.defaultFormatter" in settings.json to set swiftpad as default formatter
+ * "editor.defaultFormatter" in `.vscode/settings.json` to set swiftpad as default formatter
  * for Swift documents.
  */
 export function createFormatProvider() {
