@@ -15,6 +15,7 @@ type WorkspaceTypes = {
   "build.xcodeDestination": {
     type: "simulator" | "device";
     udid: string;
+    name: string;
   };
   "build.xcodeSdk": string;
 };

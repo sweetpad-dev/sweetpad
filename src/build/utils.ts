@@ -8,12 +8,15 @@ import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { getWorkspaceConfig } from "../common/config";
+import { updateStatusBarTargetPicker } from "../destination/destinationPicker";
+
 
 const DEFAULT_CONFIGURATION = "Debug";
 
 type SelectedDestination = {
   type: "simulator" | "device";
   udid: string;
+  name?: string;
 };
 
 /**
@@ -63,6 +66,7 @@ export async function askDestinationToRunOn(context: ExtensionContext): Promise<
   const simulators = await context.simulatorsManager.getSimulators();
   const devices = await context.devicesManager.getDevices();
   const cachedDestination = context.getWorkspaceState("build.xcodeDestination");
+
   if (cachedDestination) {
     if (cachedDestination.type === "simulator") {
       const simulator = simulators.find((simulator) => simulator.udid === cachedDestination.udid);
@@ -70,6 +74,7 @@ export async function askDestinationToRunOn(context: ExtensionContext): Promise<
         return {
           type: "simulator",
           udid: simulator.udid,
+          name: simulator.label,
         };
       }
     }
@@ -79,24 +84,22 @@ export async function askDestinationToRunOn(context: ExtensionContext): Promise<
         return {
           type: "device",
           udid: device.udid,
+          name: device.label,
         };
       }
     }
   }
 
+  return selectDestination(context);
+}
+
+export async function selectDestination(context: ExtensionContext): Promise<SelectedDestination> {
+  const simulators = await context.simulatorsManager.getSimulators();
+  const devices = await context.devicesManager.getDevices();
+
   const selected = await showQuickPick<SelectedDestination>({
     title: "Select destination to run on",
     items: [
-      ...simulators.map((simulator) => {
-        return {
-          label: simulator.label,
-          iconPath: new vscode.ThemeIcon("vm"),
-          context: {
-            type: "simulator" as const,
-            udid: simulator.udid,
-          },
-        };
-      }),
       ...devices.map((device) => {
         return {
           label: device.label,
@@ -104,6 +107,18 @@ export async function askDestinationToRunOn(context: ExtensionContext): Promise<
           context: {
             type: "device" as const,
             udid: device.udid,
+            name: device.label,
+          },
+        };
+      }),
+      ...simulators.map((simulator) => {
+        return {
+          label: simulator.label,
+          iconPath: new vscode.ThemeIcon("vm"),
+          context: {
+            type: "simulator" as const,
+            udid: simulator.udid,
+            name: simulator.label,
           },
         };
       }),
@@ -113,7 +128,10 @@ export async function askDestinationToRunOn(context: ExtensionContext): Promise<
   context.updateWorkspaceState("build.xcodeDestination", {
     type: selected.context.type,
     udid: selected.context.udid,
+    name: selected.context.name || "",
   });
+
+  updateStatusBarTargetPicker(context);
 
   return selected.context;
 }

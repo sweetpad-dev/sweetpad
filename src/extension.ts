@@ -37,6 +37,8 @@ import { DevicesManager } from "./devices/manager.js";
 import { SimulatorsManager } from "./simulators/manager.js";
 import { tuistCleanCommand, tuistEditComnmand, tuistInstallCommand, tuistGenerateCommand } from "./tuist/command.js";
 import { createTuistWatcher } from "./tuist/watcher.js";
+import * as destinationPicker from './destination/destinationPicker.js';
+import { pickDestinationCommand } from "./destination/commands.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // 🪵🪓
@@ -45,7 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Managers 💼
   const devicesManager = new DevicesManager();
   const simulatorsManager = new SimulatorsManager();
-
+  
   // Trees 🎄
   const simulatorsTreeProvider = new SimulatorsTreeProvider({
     manager: simulatorsManager,
@@ -72,6 +74,10 @@ export function activate(context: vscode.ExtensionContext) {
   const command = _context.registerCommand.bind(_context);
 
   const buildTaskProvider = new XcodeBuildTaskProvider(_context);
+
+  // Desintations
+  destinationPicker.activate(_context);
+  d(command("sweetpad.pickDestination", pickDestinationCommand));
 
   // Debug
   d(registerDebugConfigurationProvider(_context));

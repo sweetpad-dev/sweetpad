@@ -331,7 +331,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         shouldTest: false,
         xcworkspace: xcworkspace,
         destinationType: destination.type,
-        destinationId: null,
+        destinationId: destination.udid,
       });
       if (destination.type === "simulator") {
         await runOnSimulator(execution.context, terminal, {

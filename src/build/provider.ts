@@ -93,7 +93,7 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationType: destination.type,
-      destinationId: null,
+      destinationId: definition.destinationId ?? null,
     });
 
     if (destination.type === "simulator") {
@@ -137,7 +137,7 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationType: "simulator",
-      destinationId: null,
+      destinationId: definition.destinationId ?? null,
     });
   }
 
@@ -164,7 +164,7 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationType: "simulator",
-      destinationId: null,
+      destinationId: definition.destinationId ?? null,
     });
   }
 

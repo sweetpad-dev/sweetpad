@@ -1,4 +1,4 @@
-import { IosSimulator, getSimulators } from "../common/cli/scripts";
+import { IosSimulator, SimDeviceOSType, getSimulators } from "../common/cli/scripts";
 import events from "events";
 
 type SimulatorManagerEventTypes = {
@@ -14,15 +14,15 @@ export class SimulatorsManager {
     this.emitter.on(event, listener);
   }
 
-  async refresh(): Promise<IosSimulator[]> {
-    this.cache = await getSimulators();
+  async refresh(filterOSTypes: [SimDeviceOSType] = [SimDeviceOSType.iOS]): Promise<IosSimulator[]> {
+    this.cache = await getSimulators(filterOSTypes);
     this.emitter.emit("refresh");
     return this.cache;
   }
 
-  async getSimulators(options?: { refresh?: boolean }): Promise<IosSimulator[]> {
+  async getSimulators(options?: { refresh?: boolean , filterOSTypes: [SimDeviceOSType] }): Promise<IosSimulator[]> {
     if (this.cache === undefined || options?.refresh) {
-      return await this.refresh();
+      return await this.refresh(options?.filterOSTypes ?? [SimDeviceOSType.iOS]);
     }
     return this.cache;
   }

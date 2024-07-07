@@ -49,7 +49,7 @@ type XcodeConfiguration = {
   name: string;
 };
 
-enum SimDeviceOSType {
+export enum SimDeviceOSType {
   iOS = "iOS",
   watchOS = "WatchOS",
   tvOS = "tvOS"
@@ -133,7 +133,7 @@ export async function getSimulatorByUdid(
     refresh: boolean;
   },
 ): Promise<IosSimulator> {
-  const simulators = await context.simulatorsManager.getSimulators({ refresh: options.refresh ?? false });
+  const simulators = await context.simulatorsManager.getSimulators({ refresh: options.refresh ?? false, filterOSTypes: [SimDeviceOSType.iOS]});
   for (const simulator of simulators) {
     if (simulator.udid === options.udid) {
       return simulator;

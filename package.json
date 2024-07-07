@@ -274,6 +274,11 @@
         "command": "sweetpad.debugger.getAppPath",
         "title": "SweetPad: Get app path for debugging",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.pickDestination",
+        "title": "SweetPad: pick a device/simulator to debug",
+        "icon": "$(file-code)"
       }
     ],
     "menus": {
