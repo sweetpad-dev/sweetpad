@@ -27,10 +27,55 @@ import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { TaskTerminal, runTask } from "../common/tasks";
 import { getWorkspaceRelativePath, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
 import { showQuickPick } from "../common/quick-pick";
+import { OS, Platform, getDestinationName, getOS } from "../common/destinationTypes";
+import { get } from "http";
 
 export const IOS_DEVICE_SDK = "iphoneos";
 export const IOS_SIMULATOR_SDK = "iphonesimulator";
 export const DEFAULT_SDK = IOS_SIMULATOR_SDK;
+
+export async function runOnMac(
+  context: ExtensionContext, 
+  terminal: TaskTerminal,
+  options: { 
+    scheme: string; 
+    xcworkspace: string;
+    configuration: string;
+  }) {
+  const buildSettings = await getBuildSettings({
+    scheme: options.scheme,
+    configuration: options.configuration,
+    sdk: Platform.macosx,
+    xcworkspace: options.xcworkspace,
+  });
+
+  const settings = buildSettings[0]?.buildSettings;
+  if (!settings) {
+    throw new ExtensionError("Error fetching build settings");
+  }
+
+  const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
+  const targetBuildDir = settings.TARGET_BUILD_DIR;
+  const targetName = settings.TARGET_NAME;
+  let appName;
+  if (settings.WRAPPER_NAME) {
+    appName = settings.WRAPPER_NAME;
+  } else if (settings.FULL_PRODUCT_NAME) {
+    appName = settings.FULL_PRODUCT_NAME;
+  } else if (settings.PRODUCT_NAME) {
+    appName = `${settings.PRODUCT_NAME}.app`;
+  } else {
+    appName = `${targetName}.app`;
+  }
+
+  const targetPath = path.join(targetBuildDir, appName);
+
+  // Open simulatorcte
+  await terminal.execute({
+    command: "open",
+    args: ["-a", targetPath],
+  });
+}
 
 export async function runOnSimulator(
   context: ExtensionContext,
@@ -201,30 +246,14 @@ function isXcbeautifyEnabled() {
   return getWorkspaceConfig("build.xcbeautifyEnabled") ?? true;
 }
 
-function getDestination(options: { type: "simulator" | "device"; id: string | null }): string {
+function getDestination(options: { platform: Platform; id: string | null }): string {
+  const platformName = getDestinationName(options.platform);
+
   if (options.id != null) {
-    switch (options.type) {
-      case "simulator":
-        return `platform=iOS Simulator,id=${options.id}`;
-      case "device":
-        return `platform=iOS,id=${options.id}`;
-      default: {
-        const t: never = options.type;
-        throw new Error(`Unknown destination type: ${t}`);
-      }
-    }
+    return `platform=${platformName},id=${options.id}`;
   }
 
-  switch (options.type) {
-    case "simulator":
-      return "generic/platform=iOS Simulator";
-    case "device":
-      return "generic/platform=iOS";
-    default: {
-      const t: never = options.type;
-      throw new Error(`Unknown destination type: ${t}`);
-    }
-  }
+  return `generic/platform=${platformName}`;
 }
 
 export async function buildApp(
@@ -238,15 +267,15 @@ export async function buildApp(
     shouldClean: boolean;
     shouldTest: boolean;
     xcworkspace: string;
-    destinationType: "simulator" | "device";
+    destinationType: Platform;
     destinationId: string | null;
   },
 ) {
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundlePath = await prepareBundleDir(context, options.scheme);
   const derivedDataPath = prepareDerivedDataPath();
-
-  const destination = getDestination({ type: options.destinationType, id: options.destinationId });
+  
+  const destination = getDestination({ platform: options.destinationType, id: options.destinationId });
 
   const commandParts: string[] = [
     "xcodebuild",
@@ -288,19 +317,34 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
   const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to build", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
+  const buildSettings = await getBuildSettings({
+    scheme: scheme,
+    configuration: configuration,
+    sdk: undefined,
+    xcworkspace: xcworkspace,
+  });
+
+  const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
+  const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
+    return platform as Platform;
+  })
+
+  const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
+  const sdk = destination.getPlatform();
+
   await runTask(execution.context, {
     name: "Build",
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
         scheme: scheme,
-        sdk: DEFAULT_SDK,
+        sdk: sdk,
         configuration: configuration,
         shouldBuild: true,
         shouldClean: false,
         shouldTest: false,
         xcworkspace: xcworkspace,
-        destinationType: "simulator",
-        destinationId: null,
+        destinationType: sdk,
+        destinationId: destination.udid ?? null,
       });
     },
   });
@@ -316,8 +360,20 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
     item?.scheme ?? (await askScheme({ title: "Select scheme to build and run", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
-  const destination = await askDestinationToRunOn(execution.context);
-  const sdk = destination.type === "simulator" ? IOS_SIMULATOR_SDK : IOS_DEVICE_SDK;
+  const buildSettings = await getBuildSettings({
+    scheme: scheme,
+    configuration: configuration,
+    sdk: undefined,
+    xcworkspace: xcworkspace,
+  });
+
+  const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
+  const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
+    return platform as Platform;
+  })
+
+  const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
+  const sdk = destination.getPlatform();
 
   await runTask(execution.context, {
     name: "Launch",
@@ -330,21 +386,31 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         shouldClean: false,
         shouldTest: false,
         xcworkspace: xcworkspace,
-        destinationType: destination.type,
-        destinationId: destination.udid,
+        destinationType: sdk,
+        destinationId: destination.udid ?? null,
       });
-      if (destination.type === "simulator") {
+
+      if (sdk === Platform.macosx) {
+        await runOnMac(execution.context, terminal, {
+          scheme: scheme,
+          xcworkspace: xcworkspace,
+          configuration: configuration,
+        });
+        return;
+      }
+
+      if (destination.isSimulator) {
         await runOnSimulator(execution.context, terminal, {
           scheme: scheme,
-          simulatorId: destination.udid,
+          simulatorId: destination.udid ?? "",
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
         });
-      } else if (destination.type === "device") {
+      } else {
         await runOnDevice(execution.context, terminal, {
           scheme: scheme,
-          deviceId: destination.udid,
+          deviceId: destination.udid ?? "",
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
@@ -362,18 +428,33 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
   const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to clean", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
+  const buildSettings = await getBuildSettings({
+    scheme: scheme,
+    configuration: configuration,
+    sdk: undefined,
+    xcworkspace: xcworkspace,
+  });
+
+  const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
+  const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
+    return platform as Platform;
+  })
+
+  const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
+  const sdk = destination.getPlatform();
+
   await runTask(execution.context, {
     name: "Clean",
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
         scheme: scheme,
-        sdk: DEFAULT_SDK,
+        sdk: sdk,
         configuration: configuration,
         shouldBuild: false,
         shouldClean: true,
         shouldTest: false,
         xcworkspace: xcworkspace,
-        destinationType: "simulator",
+        destinationType: sdk,
         destinationId: null,
       });
     },
@@ -384,21 +465,35 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
   const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to test", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
-  const destination = await askDestinationToRunOn(execution.context);
+
+  const buildSettings = await getBuildSettings({
+    scheme: scheme,
+    configuration: configuration,
+    sdk: undefined,
+    xcworkspace: xcworkspace,
+  });
+
+  const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
+  const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
+    return platform as Platform;
+  })
+
+  const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
+  const sdk = destination.getPlatform();
 
   await runTask(execution.context, {
     name: "Test",
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
         scheme: scheme,
-        sdk: DEFAULT_SDK,
+        sdk: sdk,
         configuration: configuration,
         shouldBuild: false,
         shouldClean: false,
         shouldTest: true,
         xcworkspace: xcworkspace,
-        destinationType: "simulator",
-        destinationId: destination.udid,
+        destinationType: sdk,
+        destinationId: destination.udid ?? null,
       });
     },
   });

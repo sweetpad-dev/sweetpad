@@ -9,11 +9,14 @@ import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } fr
 import { commonLogger } from "../common/logger";
 import { getWorkspaceConfig } from "../common/config";
 import { updateStatusBarTargetPicker } from "../destination/destinationPicker";
+import { getOS, OS, Platform } from "../common/destinationTypes";
+import { cache } from "../common/cache";
+import { SelectableDestination } from "../destination/destination";
 
 
 const DEFAULT_CONFIGURATION = "Debug";
 
-type SelectedDestination = {
+export type SelectedDestination = {
   type: "simulator" | "device";
   udid: string;
   name?: string;
@@ -61,75 +64,46 @@ export async function asSimulator(
 /**
  * Ask user to select simulator or device to run on
  */
-export async function askDestinationToRunOn(context: ExtensionContext): Promise<SelectedDestination> {
+export async function askDestinationToRunOn(context: ExtensionContext, supportedPlatforms: Platform[]): Promise<SelectableDestination> {
   // If we have cached desination, use it
-  const simulators = await context.simulatorsManager.getSimulators();
-  const devices = await context.devicesManager.getDevices();
   const cachedDestination = context.getWorkspaceState("build.xcodeDestination");
 
+  const supportedOSLists = supportedPlatforms.map((platform) => {
+    return getOS(platform);
+  });
+
+  const uniqueOSLists = Array.from(new Set(supportedOSLists));
+
+  const destinations = await context.destinationManager.getAvailableDestinations(uniqueOSLists);
+
   if (cachedDestination) {
-    if (cachedDestination.type === "simulator") {
-      const simulator = simulators.find((simulator) => simulator.udid === cachedDestination.udid);
-      if (simulator) {
-        return {
-          type: "simulator",
-          udid: simulator.udid,
-          name: simulator.label,
-        };
-      }
-    }
-    if (cachedDestination.type === "device") {
-      const device = devices.find((device) => device.udid === cachedDestination.udid);
-      if (device) {
-        return {
-          type: "device",
-          udid: device.udid,
-          name: device.label,
-        };
-      }
+    const destination = destinations.find((destination) => destination.udid === cachedDestination.udid && destination.name === cachedDestination.name);
+    if (destination) {
+      return destination;
     }
   }
 
-  return selectDestination(context);
+  return selectDestination(context, uniqueOSLists);
 }
 
-export async function selectDestination(context: ExtensionContext): Promise<SelectedDestination> {
-  const simulators = await context.simulatorsManager.getSimulators();
-  const devices = await context.devicesManager.getDevices();
+export async function selectDestination(context: ExtensionContext, osList: OS[] = [OS.macOS, OS.iOS, OS.watchOS] ): Promise<SelectableDestination> {
 
-  const selected = await showQuickPick<SelectedDestination>({
+  const destinations = await context.destinationManager.getAvailableDestinations(osList);
+
+  const selected = await showQuickPick<SelectableDestination>({
     title: "Select destination to run on",
     items: [
-      ...devices.map((device) => {
+      ...destinations.map((device) => {
         return {
-          label: device.label,
+          label: device.name,
           iconPath: new vscode.ThemeIcon("device-mobile"),
-          context: {
-            type: "device" as const,
-            udid: device.udid,
-            name: device.label,
-          },
-        };
-      }),
-      ...simulators.map((simulator) => {
-        return {
-          label: simulator.label,
-          iconPath: new vscode.ThemeIcon("vm"),
-          context: {
-            type: "simulator" as const,
-            udid: simulator.udid,
-            name: simulator.label,
-          },
+          context: device
         };
       }),
     ],
   });
 
-  context.updateWorkspaceState("build.xcodeDestination", {
-    type: selected.context.type,
-    udid: selected.context.udid,
-    name: selected.context.name || "",
-  });
+  context.updateWorkspaceState("build.xcodeDestination", selected.context);
 
   updateStatusBarTargetPicker(context);
 
@@ -139,26 +113,13 @@ export async function selectDestination(context: ExtensionContext): Promise<Sele
 export async function getDestinationByUdid(
   context: ExtensionContext,
   options: { udid: string },
-): Promise<SelectedDestination> {
-  const simulators = await context.simulatorsManager.getSimulators();
-  const devices = await context.devicesManager.getDevices();
+): Promise<SelectableDestination> {
 
-  for (const simulator of simulators) {
-    if (simulator.udid === options.udid) {
-      return {
-        type: "simulator",
-        udid: simulator.udid,
-      };
-    }
-  }
+  const desinations = await context.destinationManager.getAvailableDestinations([OS.macOS, OS.iOS, OS.watchOS]);
+  const destination = desinations.find((destination) => destination.udid === options.udid);
 
-  for (const device of devices) {
-    if (device.udid === options.udid) {
-      return {
-        type: "device",
-        udid: device.udid,
-      };
-    }
+  if (destination) {
+    return destination;
   }
 
   throw new ExtensionError("Destination not found", {

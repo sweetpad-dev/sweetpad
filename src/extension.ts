@@ -39,6 +39,7 @@ import { tuistCleanCommand, tuistEditComnmand, tuistInstallCommand, tuistGenerat
 import { createTuistWatcher } from "./tuist/watcher.js";
 import * as destinationPicker from './destination/destinationPicker.js';
 import { pickDestinationCommand } from "./destination/commands.js";
+import { DesintationManager } from "./destination/destinationManager.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // 🪵🪓
@@ -47,7 +48,10 @@ export function activate(context: vscode.ExtensionContext) {
   // Managers 💼
   const devicesManager = new DevicesManager();
   const simulatorsManager = new SimulatorsManager();
-  
+  const destinationManager = new DesintationManager({
+    simulatorsManager: simulatorsManager,
+    devicesManager: devicesManager,
+  });
   // Trees 🎄
   const simulatorsTreeProvider = new SimulatorsTreeProvider({
     manager: simulatorsManager,
@@ -64,6 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
     simulatorsProvider: simulatorsTreeProvider,
     simulatorsManager: simulatorsManager,
     devicesManager: devicesManager,
+    destinationManager: destinationManager,
     toolsProvider: toolsTreeProvider,
   });
   buildTreeProvider.context = _context;

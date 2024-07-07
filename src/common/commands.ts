@@ -6,17 +6,16 @@ import { SimulatorsTreeProvider } from "../simulators/tree";
 import { ToolTreeProvider } from "../tools/tree";
 import { DevicesManager } from "../devices/manager";
 import { SimulatorsManager } from "../simulators/manager";
+import { DesintationManager } from "../destination/destinationManager";
+import { SelectableDestination }  from "../destination/destination";
+import { OS } from "./destinationTypes";
 
 type WorkspaceTypes = {
   "build.xcodeWorkspacePath": string;
   "build.xcodeProjectPath": string;
   "build.xcodeScheme": string;
   "build.xcodeConfiguration": string;
-  "build.xcodeDestination": {
-    type: "simulator" | "device";
-    udid: string;
-    name: string;
-  };
+  "build.xcodeDestination": SelectableDestination;
   "build.xcodeSdk": string;
 };
 
@@ -29,6 +28,7 @@ export class ExtensionContext {
   public _simulatorsProvider: SimulatorsTreeProvider;
   public devicesManager: DevicesManager;
   public simulatorsManager: SimulatorsManager;
+  public destinationManager: DesintationManager;
   public _toolsProvider: ToolTreeProvider;
   private _sessionState: Map<SessionStateKey, any> = new Map();
 
@@ -38,6 +38,7 @@ export class ExtensionContext {
     simulatorsProvider: SimulatorsTreeProvider;
     devicesManager: DevicesManager;
     simulatorsManager: SimulatorsManager;
+    destinationManager: DesintationManager
     toolsProvider: ToolTreeProvider;
   }) {
     this._context = options.context;
@@ -45,6 +46,7 @@ export class ExtensionContext {
     this._simulatorsProvider = options.simulatorsProvider;
     this.devicesManager = options.devicesManager;
     this.simulatorsManager = options.simulatorsManager;
+    this.destinationManager = options.destinationManager;
     this._toolsProvider = options.toolsProvider;
   }
 
@@ -109,11 +111,11 @@ export class ExtensionContext {
   }
 
   refreshSimulators() {
-    void this.simulatorsManager.refresh();
+    void this.simulatorsManager.refresh([OS.iOS, OS.watchOS, OS.macOS]);
   }
 
   refreshBuildView() {
-    void this.simulatorsManager.refresh();
+    void this.simulatorsManager.refresh([OS.iOS, OS.watchOS, OS.macOS]);
   }
 
   refreshTools() {

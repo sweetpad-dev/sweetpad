@@ -90,11 +90,6 @@
           "visibility": "visible"
         },
         {
-          "id": "sweetpad.simulators.view",
-          "name": "Simulators",
-          "visibility": "collapsed"
-        },
-        {
           "id": "sweetpad.devices.view",
           "name": "Devices",
           "visibility": "collapsed"

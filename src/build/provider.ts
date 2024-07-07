@@ -11,9 +11,7 @@ import {
   buildApp,
   runOnSimulator,
   resolveDependencies,
-  runOnDevice,
-  IOS_DEVICE_SDK,
-  IOS_SIMULATOR_SDK,
+  runOnDevice
 } from "./commands";
 import { ExtensionContext } from "../common/commands";
 import {
@@ -23,6 +21,8 @@ import {
   getTaskExecutorName,
   TaskTerminalV1Parent,
 } from "../common/tasks";
+import { getBuildSettings } from "../common/cli/scripts";
+import { Platform } from "../common/destinationTypes";
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -77,12 +77,24 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
+      const buildSettings = await getBuildSettings({
+        scheme: scheme,
+        configuration: configuration,
+        sdk: undefined,
+        xcworkspace: xcworkspace,
+      });
+    
+      const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
+      const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
+        return platform as Platform;
+      })
+    
     const destinationUdid = definition.destinationId ?? definition.simulator;
     const destination = destinationUdid
       ? await getDestinationByUdid(this.context, { udid: destinationUdid })
-      : await askDestinationToRunOn(this.context);
-
-    const sdk = destination.type === "simulator" ? IOS_SIMULATOR_SDK : IOS_DEVICE_SDK;
+      : await askDestinationToRunOn(this.context, supportedPlatforms);
+    
+      const sdk = destination.getPlatform();
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
@@ -92,14 +104,18 @@ class ActionDispatcher {
       shouldClean: false,
       shouldTest: false,
       xcworkspace: xcworkspace,
-      destinationType: destination.type,
+      destinationType: sdk,
       destinationId: definition.destinationId ?? null,
     });
 
-    if (destination.type === "simulator") {
+    if (!destination.isAvailableForRun) {
+      throw new Error(`Destination ${destination.name} is not available for run`);
+    }
+
+    if (destination.isSimulator) {
       await runOnSimulator(this.context, terminal, {
         scheme: scheme,
-        simulatorId: destination.udid,
+        simulatorId: destination.udid ?? "",
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
@@ -107,7 +123,7 @@ class ActionDispatcher {
     } else {
       await runOnDevice(this.context, terminal, {
         scheme: scheme,
-        deviceId: destination.udid,
+        deviceId: destination.udid ?? "",
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
@@ -128,6 +144,21 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
+      const buildSettings = await getBuildSettings({
+        scheme: scheme,
+        configuration: configuration,
+        sdk: undefined,
+        xcworkspace: xcworkspace,
+      });
+    
+      const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
+      const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
+        return platform as Platform;
+      })
+    
+      const destination = await askDestinationToRunOn(this.context, supportedPlatforms);
+      const sdk = destination.getPlatform();
+
     await buildApp(this.context, terminal, {
       scheme: scheme,
       sdk: DEFAULT_SDK,
@@ -136,7 +167,7 @@ class ActionDispatcher {
       shouldClean: false,
       shouldTest: false,
       xcworkspace: xcworkspace,
-      destinationType: "simulator",
+      destinationType:sdk,
       destinationId: definition.destinationId ?? null,
     });
   }
@@ -155,6 +186,21 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
+      const buildSettings = await getBuildSettings({
+        scheme: scheme,
+        configuration: configuration,
+        sdk: undefined,
+        xcworkspace: xcworkspace,
+      });
+    
+      const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
+      const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
+        return platform as Platform;
+      })
+    
+      const destination = await askDestinationToRunOn(this.context, supportedPlatforms);
+      const sdk = destination.getPlatform();
+
     await buildApp(this.context, terminal, {
       scheme: scheme,
       sdk: DEFAULT_SDK,
@@ -163,7 +209,7 @@ class ActionDispatcher {
       shouldClean: true,
       shouldTest: false,
       xcworkspace: xcworkspace,
-      destinationType: "simulator",
+      destinationType: sdk,
       destinationId: definition.destinationId ?? null,
     });
   }
@@ -181,21 +227,35 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
+      const buildSettings = await getBuildSettings({
+        scheme: scheme,
+        configuration: configuration,
+        sdk: undefined,
+        xcworkspace: xcworkspace,
+      });
+    
+      const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
+      const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
+        return platform as Platform;
+      })
+
     const destinationUdid = definition.destinationId ?? definition.simulator;
     const destination = destinationUdid
       ? await getDestinationByUdid(this.context, { udid: destinationUdid })
-      : await askDestinationToRunOn(this.context);
+      : await askDestinationToRunOn(this.context, supportedPlatforms);
+
+    const sdk = destination.getPlatform();
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
-      sdk: DEFAULT_SDK,
+      sdk: sdk,
       configuration: configuration,
       shouldBuild: false,
       shouldClean: false,
       shouldTest: true,
       xcworkspace: xcworkspace,
-      destinationType: destination.type,
-      destinationId: destination.udid,
+      destinationType: sdk,
+      destinationId: destination.udid ?? null,
     });
   }
 

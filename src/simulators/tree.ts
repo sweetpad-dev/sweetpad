@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { SimulatorsManager } from "./manager.js";
+import { OS } from "../common/destinationTypes.js";
 
 export class SimulatorTreeItem extends vscode.TreeItem {
   udid: string;
@@ -28,7 +29,7 @@ export class SimulatorTreeItem extends vscode.TreeItem {
   }
 
   refresh() {
-    this.provider.manager.refresh();
+    this.provider.manager.refresh([OS.iOS, OS.watchOS, OS.macOS]);
   }
 }
 
@@ -46,7 +47,7 @@ export class SimulatorsTreeProvider implements vscode.TreeDataProvider<Simulator
   }
 
   refresh() {
-    void this.manager.refresh();
+    void this.manager.refresh([OS.iOS, OS.watchOS, OS.macOS]);
   }
 
   getChildren(element?: SimulatorTreeItem | undefined): vscode.ProviderResult<SimulatorTreeItem[]> {
@@ -63,7 +64,7 @@ export class SimulatorsTreeProvider implements vscode.TreeDataProvider<Simulator
   }
 
   async getSimulators(): Promise<SimulatorTreeItem[]> {
-    const simulatorsRaw = await this.manager.getSimulators({ refresh: false });
+    const simulatorsRaw = await this.manager.getSimulators({ refresh: false , filterOSTypes: [OS.iOS, OS.watchOS, OS.macOS]});
     const simulators = simulatorsRaw.map((simulator) => {
       return new SimulatorTreeItem({
         label: simulator.label,

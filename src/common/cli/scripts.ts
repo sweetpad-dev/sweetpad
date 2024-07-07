@@ -5,6 +5,7 @@ import { XcodeWorkspace } from "../xcode/workspace";
 import { uniqueFilter } from "../helpers";
 import { ExtensionContext } from "../commands";
 import { prepareDerivedDataPath } from "../../build/utils";
+import { OS, ArchType, Platform } from "../destinationTypes";
 
 type SimulatorOutput = {
   dataPath: string;
@@ -49,12 +50,6 @@ type XcodeConfiguration = {
   name: string;
 };
 
-export enum SimDeviceOSType {
-  iOS = "iOS",
-  watchOS = "WatchOS",
-  tvOS = "tvOS"
-}
-
 export class IosSimulator {
   public udid: string;
   public isAvailable: boolean;
@@ -62,7 +57,7 @@ export class IosSimulator {
   public name: string;
   public runtime: string;
   public iosVersion: string;
-  public runtimeType: SimDeviceOSType;
+  public runtimeType: OS;
 
   constructor(options: {
     udid: string;
@@ -86,8 +81,10 @@ export class IosSimulator {
     // extract iOS, tvOS, watchOS
     const regex = /com\.apple\.CoreSimulator\.SimRuntime\.(iOS|tvOS|watchOS)-\d+-\d+/;
     const match = this.runtime.match(regex);
-    this.runtimeType = match ? match[1] as SimDeviceOSType : SimDeviceOSType.iOS;
+    this.runtimeType = match ? match[1] as OS : OS.iOS;
   }
+
+  
 
   get label() {
     // iPhone 12 Pro Max (14.5)
@@ -102,7 +99,7 @@ export class IosSimulator {
   }
 }
 
-export async function getSimulators(filterOSTypes: SimDeviceOSType[] = [SimDeviceOSType.iOS]): Promise<IosSimulator[]> {
+export async function getSimulators(filterOSTypes: OS[] = [OS.iOS]): Promise<IosSimulator[]> {
   const simulatorsRaw = await exec({
     command: "xcrun",
     args: ["simctl", "list", "--json", "devices"],
@@ -133,7 +130,7 @@ export async function getSimulatorByUdid(
     refresh: boolean;
   },
 ): Promise<IosSimulator> {
-  const simulators = await context.simulatorsManager.getSimulators({ refresh: options.refresh ?? false, filterOSTypes: [SimDeviceOSType.iOS]});
+  const simulators = await context.simulatorsManager.getSimulators({ refresh: options.refresh ?? false, filterOSTypes: [OS.iOS]});
   for (const simulator of simulators) {
     if (simulator.udid === options.udid) {
       return simulator;
@@ -155,25 +152,30 @@ type BuildSettingOutput = {
 export async function getBuildSettings(options: {
   scheme: string;
   configuration: string;
-  sdk: string;
+  sdk: string | undefined;
   xcworkspace: string;
 }) {
   const derivedDataPath = prepareDerivedDataPath();
+
+  const args = [
+    "-showBuildSettings",
+    "-scheme",
+    options.scheme,
+    "-workspace",
+    options.xcworkspace,
+    "-configuration",
+    options.configuration,
+    ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
+    "-json",
+  ];
+
+  if (options.sdk !== undefined) {
+    args.push("-sdk", options.sdk);
+  }
+  
   const stdout = await exec({
     command: "xcodebuild",
-    args: [
-      "-showBuildSettings",
-      "-scheme",
-      options.scheme,
-      "-workspace",
-      options.xcworkspace,
-      "-configuration",
-      options.configuration,
-      "-sdk",
-      options.sdk,
-      ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
-      "-json",
-    ],
+    args: args,
   });
 
   // First few lines can be invalid json, so we need to skip them, untill we find "{" or "[" at the beginning of the line
