@@ -49,6 +49,12 @@ type XcodeConfiguration = {
   name: string;
 };
 
+enum SimDeviceOSType {
+  iOS = "iOS",
+  watchOS = "WatchOS",
+  tvOS = "tvOS"
+}
+
 export class IosSimulator {
   public udid: string;
   public isAvailable: boolean;
@@ -56,6 +62,8 @@ export class IosSimulator {
   public name: string;
   public runtime: string;
   public iosVersion: string;
+  public runtimeType: SimDeviceOSType;
+
   constructor(options: {
     udid: string;
     isAvailable: boolean;
@@ -72,6 +80,13 @@ export class IosSimulator {
     // iOS-14-5 => 14.5
     const rawiOSVersion = options.runtime.split(".").slice(-1)[0];
     this.iosVersion = rawiOSVersion.replace(/^(\w+)-(\d+)-(\d+)$/, "$2.$3");
+
+    // "com.apple.CoreSimulator.SimRuntime.iOS-16-4"
+    // "com.apple.CoreSimulator.SimRuntime.WatchOS-8-0"
+    // extract iOS, tvOS, watchOS
+    const regex = /com\.apple\.CoreSimulator\.SimRuntime\.(iOS|tvOS|watchOS)-\d+-\d+/;
+    const match = this.runtime.match(regex);
+    this.runtimeType = match ? match[1] as SimDeviceOSType : SimDeviceOSType.iOS;
   }
 
   get label() {
@@ -87,7 +102,7 @@ export class IosSimulator {
   }
 }
 
-export async function getSimulators(): Promise<IosSimulator[]> {
+export async function getSimulators(filterOSTypes: SimDeviceOSType[] = [SimDeviceOSType.iOS]): Promise<IosSimulator[]> {
   const simulatorsRaw = await exec({
     command: "xcrun",
     args: ["simctl", "list", "--json", "devices"],
@@ -106,6 +121,7 @@ export async function getSimulators(): Promise<IosSimulator[]> {
         });
       }),
     )
+    .filter((simulator) => filterOSTypes.includes(simulator.runtimeType))
     .filter((simulator) => simulator.isAvailable);
   return simulators;
 }
