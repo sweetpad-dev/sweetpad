@@ -69,12 +69,22 @@ export async function runOnMac(
   }
 
   const targetPath = path.join(targetBuildDir, appName);
+  const binaryPath = path.join(targetPath, "Contents/MacOS" , targetName);
 
-  // Open simulatorcte
-  await terminal.execute({
-    command: "open",
-    args: ["-a", targetPath],
-  });
+  await startDebuggingMacApp(targetName, targetPath);
+}
+
+async function startDebuggingMacApp(appName: string, binaryPath: string) {
+  const debugConfig: vscode.DebugConfiguration = {
+    type: 'lldb',
+    request: 'launch',
+    name: `Debug with LLDB (appName)`,
+    program: binaryPath,
+    args: [],
+    cwd: '${workspaceFolder}',
+  };
+
+  await vscode.debug.startDebugging(undefined, debugConfig);
 }
 
 export async function runOnSimulator(
