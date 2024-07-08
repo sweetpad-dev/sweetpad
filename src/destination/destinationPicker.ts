@@ -22,5 +22,5 @@ function setupStatusBarPicker(c: ExtensionContext) {
 export function updateStatusBarTargetPicker(c: ExtensionContext)
 {	
 	const destination = c.getWorkspaceState("build.xcodeDestination");
-	statusBarTargetPicker.text = destination?.name ?? destination?.udid ?? "No device selected";
+	statusBarTargetPicker.text = `$(device-mobile)` + (destination?.name ?? destination?.udid ?? "No device selected");
 }

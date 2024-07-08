@@ -10,9 +10,7 @@ import { commonLogger } from "../common/logger";
 import { getWorkspaceConfig } from "../common/config";
 import { updateStatusBarTargetPicker } from "../destination/destinationPicker";
 import { getOS, OS, Platform } from "../common/destinationTypes";
-import { cache } from "../common/cache";
 import { SelectableDestination } from "../destination/destination";
-
 
 const DEFAULT_CONFIGURATION = "Debug";
 
@@ -97,6 +95,7 @@ export async function selectDestination(context: ExtensionContext, osList: OS[] 
         return {
           label: device.name,
           iconPath: new vscode.ThemeIcon("device-mobile"),
+          detail: device.udid ?? "",
           context: device
         };
       }),
