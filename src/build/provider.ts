@@ -167,7 +167,7 @@ class ActionDispatcher {
       shouldClean: false,
       shouldTest: false,
       xcworkspace: xcworkspace,
-      destinationType:sdk,
+      destinationType: sdk,
       destinationId: definition.destinationId ?? null,
     });
   }

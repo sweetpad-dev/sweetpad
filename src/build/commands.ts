@@ -291,8 +291,6 @@ export async function buildApp(
     "xcodebuild",
     "-scheme",
     options.scheme,
-    "-sdk",
-    options.sdk,
     "-configuration",
     options.configuration,
     "-workspace",
