@@ -6,6 +6,7 @@ import { uniqueFilter } from "../helpers";
 import { ExtensionContext } from "../commands";
 import { prepareDerivedDataPath } from "../../build/utils";
 import { OS, ArchType, Platform } from "../destinationTypes";
+import path from "path";
 
 type SimulatorOutput = {
   dataPath: string;
@@ -149,6 +150,13 @@ type BuildSettingOutput = {
   };
 };
 
+type ProductOutputInfo = {
+  productPath: string;
+  productName: string;
+  binaryPath: string;
+  bundleIdentifier: string;
+}
+
 export async function getBuildSettings(options: {
   scheme: string;
   configuration: string;
@@ -189,6 +197,38 @@ export async function getBuildSettings(options: {
   }
 
   throw new ExtensionError("Error parsing build settings");
+}
+
+export function getProductOutputInfoFromBuildSettings(buildSettings: BuildSettingsOutput) {
+  const settings = buildSettings[0]?.buildSettings;
+  if (!settings) {
+    throw new ExtensionError("Error fetching build settings");
+  }
+
+  const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
+  const targetBuildDir = settings.TARGET_BUILD_DIR;
+  const targetName = settings.TARGET_NAME;
+  let appName;
+  if (settings.WRAPPER_NAME) {
+    appName = settings.WRAPPER_NAME;
+  } else if (settings.FULL_PRODUCT_NAME) {
+    appName = settings.FULL_PRODUCT_NAME;
+  } else if (settings.PRODUCT_NAME) {
+    appName = `${settings.PRODUCT_NAME}.app`;
+  } else {
+    appName = `${targetName}.app`;
+  }
+
+  const executablePath = settings.EXECUTABLE_PATH
+  const productPath = path.join(targetBuildDir, appName);
+  const binaryPath = path.join(targetBuildDir, executablePath)
+
+  return {
+    productPath: productPath,
+    productName: appName,
+    binaryPath: binaryPath,
+    bundleIdentifier: bundleIdentifier,
+  } as ProductOutputInfo;
 }
 
 export async function getIsXcbeautifyInstalled() {

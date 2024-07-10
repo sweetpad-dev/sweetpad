@@ -7,6 +7,7 @@ import {
   getBuildSettings,
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
+  getProductOutputInfoFromBuildSettings,
   getSimulatorByUdid,
 } from "../common/cli/scripts";
 import {
@@ -49,29 +50,8 @@ export async function runOnMac(
     xcworkspace: options.xcworkspace,
   });
 
-  const settings = buildSettings[0]?.buildSettings;
-  if (!settings) {
-    throw new ExtensionError("Error fetching build settings");
-  }
-
-  const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
-  const targetBuildDir = settings.TARGET_BUILD_DIR;
-  const targetName = settings.TARGET_NAME;
-  let appName;
-  if (settings.WRAPPER_NAME) {
-    appName = settings.WRAPPER_NAME;
-  } else if (settings.FULL_PRODUCT_NAME) {
-    appName = settings.FULL_PRODUCT_NAME;
-  } else if (settings.PRODUCT_NAME) {
-    appName = `${settings.PRODUCT_NAME}.app`;
-  } else {
-    appName = `${targetName}.app`;
-  }
-
-  const targetPath = path.join(targetBuildDir, appName);
-  const binaryPath = path.join(targetPath, "Contents/MacOS" , targetName);
-
-  await startDebuggingMacApp(targetName, targetPath);
+  const productOutputInfo = getProductOutputInfoFromBuildSettings(buildSettings);
+  await startDebuggingMacApp(productOutputInfo.productName, productOutputInfo.productPath);
 }
 
 async function startDebuggingMacApp(appName: string, binaryPath: string) {
@@ -109,21 +89,8 @@ export async function runOnSimulator(
     throw new ExtensionError("Error fetching build settings");
   }
 
-  const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
-  const targetBuildDir = settings.TARGET_BUILD_DIR;
-  const targetName = settings.TARGET_NAME;
-  let appName;
-  if (settings.WRAPPER_NAME) {
-    appName = settings.WRAPPER_NAME;
-  } else if (settings.FULL_PRODUCT_NAME) {
-    appName = settings.FULL_PRODUCT_NAME;
-  } else if (settings.PRODUCT_NAME) {
-    appName = `${settings.PRODUCT_NAME}.app`;
-  } else {
-    appName = `${targetName}.app`;
-  }
-
-  const targetPath = path.join(targetBuildDir, appName);
+  const productOutputInfo = getProductOutputInfoFromBuildSettings(buildSettings);
+  const targetPath = productOutputInfo.productPath;
 
   // Get simulator with fresh state
   const simulator = await getSimulatorByUdid(context, {
@@ -159,7 +126,7 @@ export async function runOnSimulator(
 
   await terminal.execute({
     command: "xcrun",
-    args: ["simctl", "launch", "--console-pty", "--terminate-running-process", simulator.udid, bundleIdentifier],
+    args: ["simctl", "launch", "--console-pty", "--terminate-running-process", simulator.udid, productOutputInfo.bundleIdentifier],
   });
 }
 
@@ -182,26 +149,9 @@ export async function runOnDevice(
     sdk: option.sdk,
     xcworkspace: option.xcworkspace,
   });
-  const settings = buildSettings[0]?.buildSettings;
-  if (!settings) {
-    throw new ExtensionError("Error fetching build settings");
-  }
 
-  const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
-  const targetBuildDir = settings.TARGET_BUILD_DIR;
-  const targetName = settings.TARGET_NAME;
-  let appName;
-  if (settings.WRAPPER_NAME) {
-    appName = settings.WRAPPER_NAME;
-  } else if (settings.FULL_PRODUCT_NAME) {
-    appName = settings.FULL_PRODUCT_NAME;
-  } else if (settings.PRODUCT_NAME) {
-    appName = `${settings.PRODUCT_NAME}.app`;
-  } else {
-    appName = `${targetName}.app`;
-  }
-
-  const targetPath = path.join(targetBuildDir, appName);
+  const productOuputInfo = getProductOutputInfoFromBuildSettings(buildSettings);
+  const targetPath = productOuputInfo.productPath;
 
   // Install app on device
   await terminal.execute({
@@ -226,7 +176,7 @@ export async function runOnDevice(
       "--terminate-existing",
       "--device",
       device,
-      bundleIdentifier,
+      productOuputInfo.bundleIdentifier,
     ],
   });
 
