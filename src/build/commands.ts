@@ -27,7 +27,7 @@ import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { TaskTerminal, runTask } from "../common/tasks";
 import { getWorkspaceRelativePath, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
 import { showQuickPick } from "../common/quick-pick";
-import { OS, Platform, getDestinationName, getOS } from "../common/destinationTypes";
+import { OS, Platform, getDestinationName, getOS, isSimulator } from "../common/destinationTypes";
 import { get } from "http";
 
 export const IOS_DEVICE_SDK = "iphoneos";
@@ -258,8 +258,8 @@ function isXcbeautifyEnabled() {
 
 function getDestination(options: { platform: Platform; id: string | null }): string {
   const platformName = getDestinationName(options.platform);
-
-  if (options.id != null) {
+  // ?? iPhone device can't be built with id
+  if (options.id != null && isSimulator(options.platform)) {
     return `platform=${platformName},id=${options.id}`;
   }
 

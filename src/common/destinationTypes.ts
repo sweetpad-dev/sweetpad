@@ -26,6 +26,10 @@ export enum OS {
         return OS.watchOS;
     }
   }
+
+  export function isSimulator(platform: Platform): boolean {
+    return platform === Platform.iphonesimulator || platform === Platform.watchsimulator;
+  }
   
   export function getDestinationName(platform: Platform): string {
     switch (platform) {
