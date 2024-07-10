@@ -33,9 +33,9 @@ export class DesintationManager {
 
 
     anyiOSSimulator: Destination = new SelectableDestination({
-        udid: undefined,
+        udid: "dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder",
         state: "Booted",
-        name: "Any iOS Simulator",
+        name: "Any iOS Simulator Device",
         os: OS.iOS,
         version: "Any",
         archTypes: [ArchType.x86_64, ArchType.arm64],
@@ -45,7 +45,7 @@ export class DesintationManager {
     });
 
     anyiOSDevice: Destination = new SelectableDestination({
-        udid: undefined,
+        udid: "dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder",
         state: "Booted",
         name: "Any iOS Device",
         os: OS.iOS,
