@@ -21,7 +21,7 @@ import {
   getTaskExecutorName,
   TaskTerminalV1Parent,
 } from "../common/tasks";
-import { getBuildSettings } from "../common/cli/scripts";
+import { getBuildSettings, getSupportedPlatforms } from "../common/cli/scripts";
 import { Platform } from "../common/destinationTypes";
 
 interface TaskDefinition extends vscode.TaskDefinition {
@@ -84,11 +84,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       });
     
-      const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
-      const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
-        return platform as Platform;
-      })
-    
+    const supportedPlatforms = getSupportedPlatforms(buildSettings);
     const destinationUdid = definition.destinationId ?? definition.simulator;
     const destination = destinationUdid
       ? await getDestinationByUdid(this.context, { udid: destinationUdid })
@@ -151,17 +147,13 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       });
     
-      const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
-      const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
-        return platform as Platform;
-      })
-    
+      const supportedPlatforms = getSupportedPlatforms(buildSettings);
       const destination = await askDestinationToRunOn(this.context, supportedPlatforms);
       const sdk = destination.getPlatform();
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
-      sdk: DEFAULT_SDK,
+      sdk: sdk,
       configuration: configuration,
       shouldBuild: true,
       shouldClean: false,
@@ -193,17 +185,13 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       });
     
-      const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
-      const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
-        return platform as Platform;
-      })
-    
+      const supportedPlatforms = getSupportedPlatforms(buildSettings);
       const destination = await askDestinationToRunOn(this.context, supportedPlatforms);
       const sdk = destination.getPlatform();
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
-      sdk: DEFAULT_SDK,
+      sdk: sdk,
       configuration: configuration,
       shouldBuild: false,
       shouldClean: true,
@@ -234,13 +222,9 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       });
     
-      const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
-      const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
-        return platform as Platform;
-      })
-
-    const destinationUdid = definition.destinationId ?? definition.simulator;
-    const destination = destinationUdid
+      const supportedPlatforms = getSupportedPlatforms(buildSettings);
+      const destinationUdid = definition.destinationId ?? definition.simulator;
+      const destination = destinationUdid
       ? await getDestinationByUdid(this.context, { udid: destinationUdid })
       : await askDestinationToRunOn(this.context, supportedPlatforms);
 

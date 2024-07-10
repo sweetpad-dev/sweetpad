@@ -9,6 +9,7 @@ import {
   getIsXcodeBuildServerInstalled,
   getProductOutputInfoFromBuildSettings,
   getSimulatorByUdid,
+  getSupportedPlatforms,
 } from "../common/cli/scripts";
 import {
   askScheme,
@@ -28,8 +29,7 @@ import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { TaskTerminal, runTask } from "../common/tasks";
 import { getWorkspaceRelativePath, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
 import { showQuickPick } from "../common/quick-pick";
-import { OS, Platform, getDestinationName, getOS, isSimulator } from "../common/destinationTypes";
-import { get } from "http";
+import { Platform, getDestinationName, isSimulator } from "../common/destinationTypes";
 
 export const IOS_DEVICE_SDK = "iphoneos";
 export const IOS_SIMULATOR_SDK = "iphonesimulator";
@@ -282,11 +282,7 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
     xcworkspace: xcworkspace,
   });
 
-  const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
-  const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
-    return platform as Platform;
-  })
-
+  const supportedPlatforms = getSupportedPlatforms(buildSettings);
   const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
   const sdk = destination.getPlatform();
 
@@ -325,11 +321,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
     xcworkspace: xcworkspace,
   });
 
-  const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
-  const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
-    return platform as Platform;
-  })
-
+  const supportedPlatforms = getSupportedPlatforms(buildSettings);
   const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
   const sdk = destination.getPlatform();
 
@@ -393,11 +385,7 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
     xcworkspace: xcworkspace,
   });
 
-  const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
-  const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
-    return platform as Platform;
-  })
-
+  const supportedPlatforms = getSupportedPlatforms(buildSettings);
   const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
   const sdk = destination.getPlatform();
 
@@ -431,11 +419,7 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
     xcworkspace: xcworkspace,
   });
 
-  const supportedPlatformsString = buildSettings[0].buildSettings.SUPPORTED_PLATFORMS as string
-  const supportedPlatforms = supportedPlatformsString.split(" ").map((platform) => { 
-    return platform as Platform;
-  })
-
+  const supportedPlatforms = getSupportedPlatforms(buildSettings);
   const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
   const sdk = destination.getPlatform();
 

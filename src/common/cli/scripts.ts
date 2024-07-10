@@ -4,7 +4,7 @@ import { cache } from "../cache";
 import { XcodeWorkspace } from "../xcode/workspace";
 import { uniqueFilter } from "../helpers";
 import { ExtensionContext } from "../commands";
-import { prepareDerivedDataPath } from "../../build/utils";
+import { askDestinationToRunOn, prepareDerivedDataPath } from "../../build/utils";
 import { OS, ArchType, Platform } from "../destinationTypes";
 import path from "path";
 
@@ -229,6 +229,18 @@ export function getProductOutputInfoFromBuildSettings(buildSettings: BuildSettin
     binaryPath: binaryPath,
     bundleIdentifier: bundleIdentifier,
   } as ProductOutputInfo;
+}
+
+export function getSupportedPlatforms(buildSettings: BuildSettingsOutput) {
+  const settings = buildSettings[0]?.buildSettings;
+  if (!settings) {
+    throw new ExtensionError("Error fetching build settings");
+  }
+
+  const supportedPlatformsString = settings.SUPPORTED_PLATFORMS as string
+  return supportedPlatformsString.split(" ").map((platform) => { 
+    return platform as Platform;
+  })
 }
 
 export async function getIsXcbeautifyInstalled() {
