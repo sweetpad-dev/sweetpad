@@ -31,10 +31,6 @@ import { getWorkspaceRelativePath, readJsonFile, removeDirectory, tempFilePath }
 import { showQuickPick } from "../common/quick-pick";
 import { Platform, getDestinationName, isSimulator } from "../common/destinationTypes";
 
-export const IOS_DEVICE_SDK = "iphoneos";
-export const IOS_SIMULATOR_SDK = "iphonesimulator";
-export const DEFAULT_SDK = IOS_SIMULATOR_SDK;
-
 export async function runOnMac(
   context: ExtensionContext, 
   terminal: TaskTerminal,

@@ -7,7 +7,6 @@ import {
   getDestinationByUdid,
 } from "./utils";
 import {
-  DEFAULT_SDK,
   buildApp,
   runOnSimulator,
   resolveDependencies,
