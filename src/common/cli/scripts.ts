@@ -82,10 +82,8 @@ export class IosSimulator {
     // extract iOS, tvOS, watchOS
     const regex = /com\.apple\.CoreSimulator\.SimRuntime\.(iOS|tvOS|watchOS)-\d+-\d+/;
     const match = this.runtime.match(regex);
-    this.runtimeType = match ? match[1] as OS : OS.iOS;
+    this.runtimeType = match ? (match[1] as OS) : OS.iOS;
   }
-
-  
 
   get label() {
     // iPhone 12 Pro Max (14.5)
@@ -131,7 +129,10 @@ export async function getSimulatorByUdid(
     refresh: boolean;
   },
 ): Promise<IosSimulator> {
-  const simulators = await context.simulatorsManager.getSimulators({ refresh: options.refresh ?? false, filterOSTypes: [OS.iOS]});
+  const simulators = await context.simulatorsManager.getSimulators({
+    refresh: options.refresh ?? false,
+    filterOSTypes: [OS.iOS],
+  });
   for (const simulator of simulators) {
     if (simulator.udid === options.udid) {
       return simulator;
@@ -155,7 +156,7 @@ type ProductOutputInfo = {
   productName: string;
   binaryPath: string;
   bundleIdentifier: string;
-}
+};
 
 export async function getBuildSettings(options: {
   scheme: string;
@@ -180,7 +181,7 @@ export async function getBuildSettings(options: {
   if (options.sdk !== undefined) {
     args.push("-sdk", options.sdk);
   }
-  
+
   const stdout = await exec({
     command: "xcodebuild",
     args: args,
@@ -219,9 +220,9 @@ export function getProductOutputInfoFromBuildSettings(buildSettings: BuildSettin
     appName = `${targetName}.app`;
   }
 
-  const executablePath = settings.EXECUTABLE_PATH
+  const executablePath = settings.EXECUTABLE_PATH;
   const productPath = path.join(targetBuildDir, appName);
-  const binaryPath = path.join(targetBuildDir, executablePath)
+  const binaryPath = path.join(targetBuildDir, executablePath);
 
   return {
     productPath: productPath,
@@ -237,10 +238,10 @@ export function getSupportedPlatforms(buildSettings: BuildSettingsOutput) {
     throw new ExtensionError("Error fetching build settings");
   }
 
-  const supportedPlatformsString = settings.SUPPORTED_PLATFORMS as string
-  return supportedPlatformsString.split(" ").map((platform) => { 
+  const supportedPlatformsString = settings.SUPPORTED_PLATFORMS as string;
+  return supportedPlatformsString.split(" ").map((platform) => {
     return platform as Platform;
-  })
+  });
 }
 
 export async function getIsXcbeautifyInstalled() {

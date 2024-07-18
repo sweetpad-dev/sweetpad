@@ -7,7 +7,7 @@ import { ToolTreeProvider } from "../tools/tree";
 import { DevicesManager } from "../devices/manager";
 import { SimulatorsManager } from "../simulators/manager";
 import { DesintationManager } from "../destination/destinationManager";
-import { SelectableDestination }  from "../destination/destination";
+import { SelectableDestination } from "../destination/destination";
 import { OS } from "./destinationTypes";
 
 type WorkspaceTypes = {
@@ -38,7 +38,7 @@ export class ExtensionContext {
     simulatorsProvider: SimulatorsTreeProvider;
     devicesManager: DevicesManager;
     simulatorsManager: SimulatorsManager;
-    destinationManager: DesintationManager
+    destinationManager: DesintationManager;
     toolsProvider: ToolTreeProvider;
   }) {
     this._context = options.context;

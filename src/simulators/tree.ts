@@ -64,7 +64,10 @@ export class SimulatorsTreeProvider implements vscode.TreeDataProvider<Simulator
   }
 
   async getSimulators(): Promise<SimulatorTreeItem[]> {
-    const simulatorsRaw = await this.manager.getSimulators({ refresh: false , filterOSTypes: [OS.iOS, OS.watchOS, OS.macOS]});
+    const simulatorsRaw = await this.manager.getSimulators({
+      refresh: false,
+      filterOSTypes: [OS.iOS, OS.watchOS, OS.macOS],
+    });
     const simulators = simulatorsRaw.map((simulator) => {
       return new SimulatorTreeItem({
         label: simulator.label,

@@ -62,7 +62,10 @@ export async function asSimulator(
 /**
  * Ask user to select simulator or device to run on
  */
-export async function askDestinationToRunOn(context: ExtensionContext, supportedPlatforms: Platform[]): Promise<SelectableDestination> {
+export async function askDestinationToRunOn(
+  context: ExtensionContext,
+  supportedPlatforms: Platform[],
+): Promise<SelectableDestination> {
   // If we have cached desination, use it
   const cachedDestination = context.getWorkspaceState("build.xcodeDestination");
 
@@ -75,7 +78,9 @@ export async function askDestinationToRunOn(context: ExtensionContext, supported
   const destinations = await context.destinationManager.getAvailableDestinations(uniqueOSLists);
 
   if (cachedDestination) {
-    const destination = destinations.find((destination) => destination.udid === cachedDestination.udid && destination.name === cachedDestination.name);
+    const destination = destinations.find(
+      (destination) => destination.udid === cachedDestination.udid && destination.name === cachedDestination.name,
+    );
     if (destination) {
       return destination;
     }
@@ -84,8 +89,10 @@ export async function askDestinationToRunOn(context: ExtensionContext, supported
   return selectDestination(context, uniqueOSLists);
 }
 
-export async function selectDestination(context: ExtensionContext, osList: OS[] = [OS.macOS, OS.iOS, OS.watchOS] ): Promise<SelectableDestination> {
-
+export async function selectDestination(
+  context: ExtensionContext,
+  osList: OS[] = [OS.macOS, OS.iOS, OS.watchOS],
+): Promise<SelectableDestination> {
   const destinations = await context.destinationManager.getAvailableDestinations(osList);
 
   const selected = await showQuickPick<SelectableDestination>({
@@ -96,7 +103,7 @@ export async function selectDestination(context: ExtensionContext, osList: OS[] 
           label: device.name,
           iconPath: new vscode.ThemeIcon("device-mobile"),
           detail: device.udid ?? "",
-          context: device
+          context: device,
         };
       }),
     ],
@@ -113,7 +120,6 @@ export async function getDestinationByUdid(
   context: ExtensionContext,
   options: { udid: string },
 ): Promise<SelectableDestination> {
-
   const desinations = await context.destinationManager.getAvailableDestinations([OS.macOS, OS.iOS, OS.watchOS]);
   const destination = desinations.find((destination) => destination.udid === options.udid);
 

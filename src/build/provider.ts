@@ -6,12 +6,7 @@ import {
   askXcodeWorkspacePath,
   getDestinationByUdid,
 } from "./utils";
-import {
-  buildApp,
-  runOnSimulator,
-  resolveDependencies,
-  runOnDevice
-} from "./commands";
+import { buildApp, runOnSimulator, resolveDependencies, runOnDevice } from "./commands";
 import { ExtensionContext } from "../common/commands";
 import {
   TaskTerminalV2,
@@ -76,20 +71,20 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-      const buildSettings = await getBuildSettings({
-        scheme: scheme,
-        configuration: configuration,
-        sdk: undefined,
-        xcworkspace: xcworkspace,
-      });
-    
+    const buildSettings = await getBuildSettings({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
     const supportedPlatforms = getSupportedPlatforms(buildSettings);
     const destinationUdid = definition.destinationId ?? definition.simulator;
     const destination = destinationUdid
       ? await getDestinationByUdid(this.context, { udid: destinationUdid })
       : await askDestinationToRunOn(this.context, supportedPlatforms);
-    
-      const sdk = destination.getPlatform();
+
+    const sdk = destination.getPlatform();
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
@@ -139,16 +134,16 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-      const buildSettings = await getBuildSettings({
-        scheme: scheme,
-        configuration: configuration,
-        sdk: undefined,
-        xcworkspace: xcworkspace,
-      });
-    
-      const supportedPlatforms = getSupportedPlatforms(buildSettings);
-      const destination = await askDestinationToRunOn(this.context, supportedPlatforms);
-      const sdk = destination.getPlatform();
+    const buildSettings = await getBuildSettings({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
+    const supportedPlatforms = getSupportedPlatforms(buildSettings);
+    const destination = await askDestinationToRunOn(this.context, supportedPlatforms);
+    const sdk = destination.getPlatform();
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
@@ -177,16 +172,16 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-      const buildSettings = await getBuildSettings({
-        scheme: scheme,
-        configuration: configuration,
-        sdk: undefined,
-        xcworkspace: xcworkspace,
-      });
-    
-      const supportedPlatforms = getSupportedPlatforms(buildSettings);
-      const destination = await askDestinationToRunOn(this.context, supportedPlatforms);
-      const sdk = destination.getPlatform();
+    const buildSettings = await getBuildSettings({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
+    const supportedPlatforms = getSupportedPlatforms(buildSettings);
+    const destination = await askDestinationToRunOn(this.context, supportedPlatforms);
+    const sdk = destination.getPlatform();
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
@@ -214,16 +209,16 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-      const buildSettings = await getBuildSettings({
-        scheme: scheme,
-        configuration: configuration,
-        sdk: undefined,
-        xcworkspace: xcworkspace,
-      });
-    
-      const supportedPlatforms = getSupportedPlatforms(buildSettings);
-      const destinationUdid = definition.destinationId ?? definition.simulator;
-      const destination = destinationUdid
+    const buildSettings = await getBuildSettings({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
+    const supportedPlatforms = getSupportedPlatforms(buildSettings);
+    const destinationUdid = definition.destinationId ?? definition.simulator;
+    const destination = destinationUdid
       ? await getDestinationByUdid(this.context, { udid: destinationUdid })
       : await askDestinationToRunOn(this.context, supportedPlatforms);
 

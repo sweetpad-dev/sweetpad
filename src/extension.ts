@@ -37,7 +37,7 @@ import { DevicesManager } from "./devices/manager.js";
 import { SimulatorsManager } from "./simulators/manager.js";
 import { tuistCleanCommand, tuistEditComnmand, tuistInstallCommand, tuistGenerateCommand } from "./tuist/command.js";
 import { createTuistWatcher } from "./tuist/watcher.js";
-import * as destinationPicker from './destination/destinationPicker.js';
+import * as destinationPicker from "./destination/destinationPicker.js";
 import { pickDestinationCommand } from "./destination/commands.js";
 import { DesintationManager } from "./destination/destinationManager.js";
 

@@ -23,7 +23,7 @@ export class SimulatorsManager {
     return this.cache;
   }
 
-  async getSimulators(options?: { refresh?: boolean , filterOSTypes: OS[] }): Promise<IosSimulator[]> {
+  async getSimulators(options?: { refresh?: boolean; filterOSTypes: OS[] }): Promise<IosSimulator[]> {
     if (this.cache === undefined || options?.refresh || this.cacheOSTypes !== options?.filterOSTypes) {
       return await this.refresh(options?.filterOSTypes ?? [OS.iOS]);
     }

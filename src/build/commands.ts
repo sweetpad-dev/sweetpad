@@ -32,13 +32,14 @@ import { showQuickPick } from "../common/quick-pick";
 import { Platform, getDestinationName, isSimulator } from "../common/destinationTypes";
 
 export async function runOnMac(
-  context: ExtensionContext, 
+  context: ExtensionContext,
   terminal: TaskTerminal,
-  options: { 
-    scheme: string; 
+  options: {
+    scheme: string;
     xcworkspace: string;
     configuration: string;
-  }) {
+  },
+) {
   const buildSettings = await getBuildSettings({
     scheme: options.scheme,
     configuration: options.configuration,
@@ -52,12 +53,12 @@ export async function runOnMac(
 
 async function startDebuggingMacApp(appName: string, binaryPath: string) {
   const debugConfig: vscode.DebugConfiguration = {
-    type: 'lldb',
-    request: 'launch',
+    type: "lldb",
+    request: "launch",
     name: `Debug with LLDB (appName)`,
     program: binaryPath,
     args: [],
-    cwd: '${workspaceFolder}',
+    cwd: "${workspaceFolder}",
   };
 
   await vscode.debug.startDebugging(undefined, debugConfig);
@@ -122,7 +123,14 @@ export async function runOnSimulator(
 
   await terminal.execute({
     command: "xcrun",
-    args: ["simctl", "launch", "--console-pty", "--terminate-running-process", simulator.udid, productOutputInfo.bundleIdentifier],
+    args: [
+      "simctl",
+      "launch",
+      "--console-pty",
+      "--terminate-running-process",
+      simulator.udid,
+      productOutputInfo.bundleIdentifier,
+    ],
   });
 }
 
@@ -230,7 +238,7 @@ export async function buildApp(
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundlePath = await prepareBundleDir(context, options.scheme);
   const derivedDataPath = prepareDerivedDataPath();
-  
+
   const destination = getDestination({ platform: options.destinationType, id: options.destinationId });
 
   const commandParts: string[] = [
