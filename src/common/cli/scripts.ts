@@ -4,9 +4,11 @@ import { cache } from "../cache";
 import { XcodeWorkspace } from "../xcode/workspace";
 import { uniqueFilter } from "../helpers";
 import { ExtensionContext } from "../commands";
-import { askDestinationToRunOn, prepareDerivedDataPath } from "../../build/utils";
-import { OS, ArchType, Platform } from "../destinationTypes";
+import { prepareDerivedDataPath } from "../../build/utils";
+import { DestinationPlatform } from "../../destination/constants";
+import { DestinationOS } from "../../destination/constants";
 import path from "path";
+import { iOSSimulatorDestination } from "../../destination/types";
 
 type SimulatorOutput = {
   dataPath: string;
@@ -51,14 +53,14 @@ type XcodeConfiguration = {
   name: string;
 };
 
-export class IosSimulator {
+export class iOSSimulator {
   public udid: string;
   public isAvailable: boolean;
   public state: "Booted" | "Shutdown";
   public name: string;
   public runtime: string;
-  public iosVersion: string;
-  public runtimeType: OS;
+  public osVersion: string;
+  public runtimeType: DestinationOS;
 
   constructor(options: {
     udid: string;
@@ -75,19 +77,14 @@ export class IosSimulator {
 
     // iOS-14-5 => 14.5
     const rawiOSVersion = options.runtime.split(".").slice(-1)[0];
-    this.iosVersion = rawiOSVersion.replace(/^(\w+)-(\d+)-(\d+)$/, "$2.$3");
+    this.osVersion = rawiOSVersion.replace(/^(\w+)-(\d+)-(\d+)$/, "$2.$3");
 
     // "com.apple.CoreSimulator.SimRuntime.iOS-16-4"
     // "com.apple.CoreSimulator.SimRuntime.WatchOS-8-0"
     // extract iOS, tvOS, watchOS
     const regex = /com\.apple\.CoreSimulator\.SimRuntime\.(iOS|tvOS|watchOS)-\d+-\d+/;
     const match = this.runtime.match(regex);
-    this.runtimeType = match ? (match[1] as OS) : OS.iOS;
-  }
-
-  get label() {
-    // iPhone 12 Pro Max (14.5)
-    return `${this.name} (${this.iosVersion})`;
+    this.runtimeType = match ? (match[1] as DestinationOS) : DestinationOS.iOS;
   }
 
   /**
@@ -98,7 +95,7 @@ export class IosSimulator {
   }
 }
 
-export async function getSimulators(filterOSTypes: OS[] = [OS.iOS]): Promise<IosSimulator[]> {
+export async function getSimulators(): Promise<iOSSimulator[]> {
   const simulatorsRaw = await exec({
     command: "xcrun",
     args: ["simctl", "list", "--json", "devices"],
@@ -108,7 +105,7 @@ export async function getSimulators(filterOSTypes: OS[] = [OS.iOS]): Promise<Ios
   const simulators = Object.entries(output.devices)
     .flatMap(([key, value]) =>
       value.map((simulator) => {
-        return new IosSimulator({
+        return new iOSSimulator({
           udid: simulator.udid,
           isAvailable: simulator.isAvailable,
           state: simulator.state as "Booted",
@@ -117,7 +114,6 @@ export async function getSimulators(filterOSTypes: OS[] = [OS.iOS]): Promise<Ios
         });
       }),
     )
-    .filter((simulator) => filterOSTypes.includes(simulator.runtimeType))
     .filter((simulator) => simulator.isAvailable);
   return simulators;
 }
@@ -128,10 +124,9 @@ export async function getSimulatorByUdid(
     udid: string;
     refresh: boolean;
   },
-): Promise<IosSimulator> {
-  const simulators = await context.simulatorsManager.getSimulators({
+): Promise<iOSSimulatorDestination> {
+  const simulators = await context.destinationsManager.getiOSSimulators({
     refresh: options.refresh ?? false,
-    filterOSTypes: [OS.iOS],
   });
   for (const simulator of simulators) {
     if (simulator.udid === options.udid) {
@@ -141,7 +136,7 @@ export async function getSimulatorByUdid(
   throw new ExtensionError("Simulator not found", { context: { udid: options.udid } });
 }
 
-type BuildSettingsOutput = BuildSettingOutput[];
+export type BuildSettingsOutput = BuildSettingOutput[];
 
 type BuildSettingOutput = {
   action: string;
@@ -232,15 +227,19 @@ export function getProductOutputInfoFromBuildSettings(buildSettings: BuildSettin
   } as ProductOutputInfo;
 }
 
-export function getSupportedPlatforms(buildSettings: BuildSettingsOutput) {
+/**
+ * Check which platforms current project supports by looking at build settings
+ */
+export function getSupportedPlatforms(buildSettings: BuildSettingsOutput): DestinationPlatform[] {
   const settings = buildSettings[0]?.buildSettings;
   if (!settings) {
     throw new ExtensionError("Error fetching build settings");
   }
 
-  const supportedPlatformsString = settings.SUPPORTED_PLATFORMS as string;
-  return supportedPlatformsString.split(" ").map((platform) => {
-    return platform as Platform;
+  // ex: "iphonesimulator iphoneos"
+  const platformsRaw = settings.SUPPORTED_PLATFORMS;
+  return platformsRaw.split(" ").map((platform) => {
+    return platform as DestinationPlatform;
   });
 }
 

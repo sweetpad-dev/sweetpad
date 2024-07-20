@@ -2,20 +2,19 @@ import * as vscode from "vscode";
 import { ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
 import { BuildTreeProvider } from "../build/tree";
-import { SimulatorsTreeProvider } from "../simulators/tree";
 import { ToolTreeProvider } from "../tools/tree";
 import { DevicesManager } from "../devices/manager";
 import { SimulatorsManager } from "../simulators/manager";
-import { DesintationManager } from "../destination/destinationManager";
-import { SelectableDestination } from "../destination/destination";
-import { OS } from "./destinationTypes";
+import { DestinationsManager } from "../destination/manager";
+import { SelectedDestination } from "../destination/types";
+import { ToolsManager } from "../tools/manager";
 
 type WorkspaceTypes = {
   "build.xcodeWorkspacePath": string;
   "build.xcodeProjectPath": string;
   "build.xcodeScheme": string;
   "build.xcodeConfiguration": string;
-  "build.xcodeDestination": SelectableDestination;
+  "build.xcodeDestination": SelectedDestination;
   "build.xcodeSdk": string;
 };
 
@@ -24,30 +23,19 @@ type SessionStateKey = "build.lastLaunchedAppPath";
 
 export class ExtensionContext {
   private _context: vscode.ExtensionContext;
-  public _buildProvider: BuildTreeProvider;
-  public _simulatorsProvider: SimulatorsTreeProvider;
-  public devicesManager: DevicesManager;
-  public simulatorsManager: SimulatorsManager;
-  public destinationManager: DesintationManager;
-  public _toolsProvider: ToolTreeProvider;
+  public destinationsManager: DestinationsManager;
+  public toolsManager: ToolsManager;
   private _sessionState: Map<SessionStateKey, any> = new Map();
 
   constructor(options: {
     context: vscode.ExtensionContext;
-    buildProvider: BuildTreeProvider;
-    simulatorsProvider: SimulatorsTreeProvider;
-    devicesManager: DevicesManager;
-    simulatorsManager: SimulatorsManager;
-    destinationManager: DesintationManager;
-    toolsProvider: ToolTreeProvider;
+    destinationsManager: DestinationsManager;
+
+    toolsManager: ToolsManager;
   }) {
     this._context = options.context;
-    this._buildProvider = options.buildProvider;
-    this._simulatorsProvider = options.simulatorsProvider;
-    this.devicesManager = options.devicesManager;
-    this.simulatorsManager = options.simulatorsManager;
-    this.destinationManager = options.destinationManager;
-    this._toolsProvider = options.toolsProvider;
+    this.destinationsManager = options.destinationsManager;
+    this.toolsManager = options.toolsManager;
   }
 
   get storageUri() {
@@ -97,6 +85,7 @@ export class ExtensionContext {
         this._context.workspaceState.update(key, undefined);
       }
     });
+    this.destinationsManager.fireSelectedDestinationRemoved();
   }
 
   async withCache<T extends WorkspaceStateKey>(key: T, callback: () => Promise<WorkspaceTypes[T]>) {
@@ -108,18 +97,6 @@ export class ExtensionContext {
     value = await callback();
     this.updateWorkspaceState(key, value);
     return value;
-  }
-
-  refreshSimulators() {
-    void this.simulatorsManager.refresh([OS.iOS, OS.watchOS, OS.macOS]);
-  }
-
-  refreshBuildView() {
-    void this.simulatorsManager.refresh([OS.iOS, OS.watchOS, OS.macOS]);
-  }
-
-  refreshTools() {
-    void this._toolsProvider.refresh();
   }
 }
 

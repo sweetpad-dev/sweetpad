@@ -18,7 +18,8 @@ export class BuildTreeItem extends vscode.TreeItem {
     super(options.scheme, options.collapsibleState);
     this.provider = options.provider;
     this.scheme = options.scheme;
-    this.iconPath = new vscode.ThemeIcon("symbol-method");
+    const color = new vscode.ThemeColor("sweetpad.scheme");
+    this.iconPath = new vscode.ThemeIcon("sweetpad-package", color);
   }
 
   refresh() {
@@ -29,6 +30,10 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   private _onDidChangeTreeData = new vscode.EventEmitter<EventData>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   public context: ExtensionContext | undefined;
+
+  constructor(options: { context: ExtensionContext }) {
+    this.context = options.context;
+  }
 
   refresh(): void {
     this._onDidChangeTreeData.fire();

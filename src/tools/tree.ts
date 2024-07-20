@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { exec } from "../common/exec.js";
-import { Tool, TOOLS } from "./constants.js";
+import { Tool } from "./constants.js";
+import { ToolsManager } from "./manager.js";
 
 type EventData = ToolTreeItem | undefined | null | void;
 
@@ -11,6 +11,15 @@ type EventData = ToolTreeItem | undefined | null | void;
 export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<EventData>();
   readonly onDidChangeTreeData: vscode.Event<EventData> = this._onDidChangeTreeData.event;
+
+  manager: ToolsManager;
+
+  constructor(options: { manager: ToolsManager }) {
+    this.manager = options.manager;
+    this.manager.on("refresh", () => {
+      this.refresh();
+    });
+  }
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
@@ -30,25 +39,7 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
   }
 
   async getTools(): Promise<ToolTreeItem[]> {
-    const results = await Promise.all(
-      TOOLS.map(async (item) => {
-        try {
-          await exec({
-            command: item.check.command,
-            args: item.check.args,
-          });
-          return {
-            ...item,
-            isInstalled: true,
-          };
-        } catch (error) {
-          return {
-            ...item,
-            isInstalled: false,
-          };
-        }
-      }),
-    );
+    const results = await this.manager.getTools();
     return results.map((item) => {
       return new ToolTreeItem({
         collapsibleState: vscode.TreeItemCollapsibleState.None,
@@ -61,7 +52,6 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
 }
 
 export class ToolTreeItem extends vscode.TreeItem {
-  private provider: ToolTreeProvider;
   commandName: string;
   commandArgs: string[];
   documentation: string;
@@ -75,7 +65,6 @@ export class ToolTreeItem extends vscode.TreeItem {
   }) {
     super(options.tool.label, options.collapsibleState);
 
-    this.provider = options.provider;
     this.contextValue = options.isInstalled ? "installed" : "notInstalled";
     this.documentation = options.tool.documentation;
     this.commandName = options.tool.install.command;
@@ -83,13 +72,9 @@ export class ToolTreeItem extends vscode.TreeItem {
     this.tool = options.tool;
 
     if (options.isInstalled) {
-      this.iconPath = new vscode.ThemeIcon("check");
+      this.iconPath = new vscode.ThemeIcon("sweetpad-check");
     } else {
-      this.iconPath = new vscode.ThemeIcon("x");
+      this.iconPath = new vscode.ThemeIcon("sweetpad-x");
     }
-  }
-
-  refresh() {
-    this.provider.refresh();
   }
 }

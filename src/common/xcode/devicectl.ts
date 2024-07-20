@@ -1,7 +1,6 @@
-import { SimulatorTreeItem } from "../../simulators/tree";
 import { ExtensionContext } from "../commands";
 import { exec } from "../exec";
-import { readFile, readJsonFile, removeFile, tempFilePath } from "../files";
+import { readJsonFile, tempFilePath } from "../files";
 import { commonLogger } from "../logger";
 
 type DeviceCtlListCommandOutput = {
@@ -50,7 +49,7 @@ type DeviceCtlDeviceProperties = {
 
 type DeviceCtlHardwareProperties = {
   cpuType: DeviceCtlCpuType;
-  deviceType: "iPhone";
+  deviceType: "iPhone" | "iPad";
   ecid: number;
   hardwareModel: string;
   internalStorageCapacity: number;
@@ -71,7 +70,7 @@ type DeviceCtlDeviceCapability = {
   featureIdentifier: string;
 };
 
-export class IosDevice {
+export class iOSDevice {
   constructor(public device: DeviceCtlDevice) {
     this.device = device;
   }
@@ -80,16 +79,24 @@ export class IosDevice {
     return this.device.hardwareProperties.udid;
   }
 
-  get label() {
-    return `${this.device.deviceProperties.name} (${this.device.deviceProperties.osVersionNumber})`;
+  get name() {
+    return this.device.deviceProperties.name;
+  }
+
+  get osVersion() {
+    return this.device.deviceProperties.osVersionNumber;
   }
 
   get state(): "connected" | "disconnected" | "unavailable" {
     return this.device.connectionProperties.tunnelState;
   }
+
+  get deviceType() {
+    return this.device.hardwareProperties.deviceType;
+  }
 }
 
-export async function listDevices(context: ExtensionContext): Promise<IosDevice[]> {
+export async function listDevices(context: ExtensionContext): Promise<iOSDevice[]> {
   await using tmpPath = await tempFilePath(context, {
     prefix: "devices",
   });
@@ -101,5 +108,5 @@ export async function listDevices(context: ExtensionContext): Promise<IosDevice[
   commonLogger.debug("Stdout devicectl list devices", { stdout: devicesStdout });
 
   const output = await readJsonFile<DeviceCtlListCommandOutput>(tmpPath.path);
-  return output.result.devices.map((device) => new IosDevice(device));
+  return output.result.devices.map((device) => new iOSDevice(device));
 }

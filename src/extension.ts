@@ -20,7 +20,6 @@ import {
   startSimulatorCommand,
   stopSimulatorCommand,
 } from "./simulators/commands.js";
-import { SimulatorsTreeProvider } from "./simulators/tree.js";
 import { ToolTreeProvider } from "./tools/tree.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { ExtensionContext } from "./common/commands.js";
@@ -32,14 +31,15 @@ import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
 import { getAppPathCommand } from "./debugger/commands.js";
 import { Logger } from "./common/logger.js";
-import { DevicesTreeProvider } from "./devices/tree.js";
 import { DevicesManager } from "./devices/manager.js";
 import { SimulatorsManager } from "./simulators/manager.js";
 import { tuistCleanCommand, tuistEditComnmand, tuistInstallCommand, tuistGenerateCommand } from "./tuist/command.js";
 import { createTuistWatcher } from "./tuist/watcher.js";
-import * as destinationPicker from "./destination/destinationPicker.js";
-import { pickDestinationCommand } from "./destination/commands.js";
-import { DesintationManager } from "./destination/destinationManager.js";
+import { selectDestinationCommand } from "./destination/commands.js";
+import { DestinationsManager } from "./destination/manager.js";
+import { DestinationStatusBar } from "./destination/status-bar.js";
+import { DestinationsTreeProvider } from "./destination/tree.js";
+import { ToolsManager } from "./tools/manager.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // 🪵🪓
@@ -48,41 +48,36 @@ export function activate(context: vscode.ExtensionContext) {
   // Managers 💼
   const devicesManager = new DevicesManager();
   const simulatorsManager = new SimulatorsManager();
-  const destinationManager = new DesintationManager({
+  const destinationsManager = new DestinationsManager({
     simulatorsManager: simulatorsManager,
     devicesManager: devicesManager,
   });
-  // Trees 🎄
-  const simulatorsTreeProvider = new SimulatorsTreeProvider({
-    manager: simulatorsManager,
-  });
-  const buildTreeProvider = new BuildTreeProvider();
-  const toolsTreeProvider = new ToolTreeProvider();
-  const devicesTreeProvider = new DevicesTreeProvider({
-    manager: devicesManager,
-  });
+  const toolsManager = new ToolsManager();
 
   const _context = new ExtensionContext({
     context: context,
-    buildProvider: buildTreeProvider,
-    simulatorsProvider: simulatorsTreeProvider,
-    simulatorsManager: simulatorsManager,
-    devicesManager: devicesManager,
-    destinationManager: destinationManager,
-    toolsProvider: toolsTreeProvider,
+    destinationsManager: destinationsManager,
+    toolsManager: toolsManager,
   });
-  buildTreeProvider.context = _context;
   devicesManager.context = _context;
+  destinationsManager.context = _context;
+
+  // Trees 🎄
+  const buildTreeProvider = new BuildTreeProvider({
+    context: _context,
+  });
+  const toolsTreeProvider = new ToolTreeProvider({
+    manager: toolsManager,
+  });
+  const destinationsTreeProvider = new DestinationsTreeProvider({
+    manager: destinationsManager,
+  });
 
   // shortcut to push disposable to context.subscriptions
   const d = _context.disposable.bind(_context);
   const command = _context.registerCommand.bind(_context);
 
   const buildTaskProvider = new XcodeBuildTaskProvider(_context);
-
-  // Desintations
-  destinationPicker.activate(_context);
-  d(command("sweetpad.pickDestination", pickDestinationCommand));
 
   // Debug
   d(registerDebugConfigurationProvider(_context));
@@ -122,21 +117,29 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.format.showLogs", showLogsCommand));
 
   // Simulators
-  d(vscode.window.registerTreeDataProvider("sweetpad.simulators.view", simulatorsTreeProvider));
-  d(command("sweetpad.simulators.refresh", async () => simulatorsTreeProvider.refresh()));
+  // d(vscode.window.registerTreeDataProvider("sweetpad.simulators.view", simulatorsTreeProvider));
+  d(command("sweetpad.simulators.refresh", async () => destinationsManager.refreshiOSSimulators()));
   d(command("sweetpad.simulators.openSimulator", openSimulatorCommand));
   d(command("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
   d(command("sweetpad.simulators.start", startSimulatorCommand));
   d(command("sweetpad.simulators.stop", stopSimulatorCommand));
 
-  // Devices
-  d(vscode.window.registerTreeDataProvider("sweetpad.devices.view", devicesTreeProvider));
-  d(command("sweetpad.devices.refresh", async () => devicesTreeProvider.refresh()));
+  // // Devices
+  // d(vscode.window.registerTreeDataProvider("sweetpad.devices.view", devicesTreeProvider));
+  d(command("sweetpad.devices.refresh", async () => destinationsManager.refreshiOSDevices()));
+
+  // Desintations
+  const destinationBar = new DestinationStatusBar({
+    context: _context,
+  });
+  d(destinationBar);
+  d(command("sweetpad.destinations.select", selectDestinationCommand));
+  d(vscode.window.registerTreeDataProvider("sweetpad.destinations.view", destinationsTreeProvider));
 
   // Tools
   d(vscode.window.registerTreeDataProvider("sweetpad.tools.view", toolsTreeProvider));
   d(command("sweetpad.tools.install", installToolCommand));
-  d(command("sweetpad.tools.refresh", async () => toolsTreeProvider.refresh()));
+  d(command("sweetpad.tools.refresh", async () => toolsManager.refresh()));
   d(command("sweetpad.tools.documentation", openDocumentationCommand));
 
   // System

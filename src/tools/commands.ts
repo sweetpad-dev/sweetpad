@@ -24,7 +24,7 @@ export async function installToolCommand(execution: CommandExecution, item?: Too
         },
       });
 
-      execution.context.refreshTools();
+      execution.context.toolsManager.refresh();
     },
   });
 }

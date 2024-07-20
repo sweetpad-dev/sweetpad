@@ -9,7 +9,6 @@ import {
   getIsXcodeBuildServerInstalled,
   getProductOutputInfoFromBuildSettings,
   getSimulatorByUdid,
-  getSupportedPlatforms,
 } from "../common/cli/scripts";
 import {
   askScheme,
@@ -29,7 +28,8 @@ import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { TaskTerminal, runTask } from "../common/tasks";
 import { getWorkspaceRelativePath, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
 import { showQuickPick } from "../common/quick-pick";
-import { Platform, getDestinationName, isSimulator } from "../common/destinationTypes";
+import { getDestinationName, isSimulator } from "../destination/utils";
+import { DestinationPlatform } from "../destination/constants";
 
 export async function runOnMac(
   context: ExtensionContext,
@@ -43,7 +43,7 @@ export async function runOnMac(
   const buildSettings = await getBuildSettings({
     scheme: options.scheme,
     configuration: options.configuration,
-    sdk: Platform.macosx,
+    sdk: DestinationPlatform.macosx,
     xcworkspace: options.xcworkspace,
   });
 
@@ -64,7 +64,7 @@ async function startDebuggingMacApp(appName: string, binaryPath: string) {
   await vscode.debug.startDebugging(undefined, debugConfig);
 }
 
-export async function runOnSimulator(
+export async function runOniOSSimulator(
   context: ExtensionContext,
   terminal: TaskTerminal,
   options: {
@@ -96,14 +96,14 @@ export async function runOnSimulator(
   });
 
   // Boot device
-  if (simulator.state !== "Booted") {
+  if (!simulator.isBooted) {
     await terminal.execute({
       command: "xcrun",
       args: ["simctl", "boot", simulator.udid],
     });
 
     // Refresh list of simulators after we start new simulator
-    context.refreshSimulators();
+    context.destinationsManager.refreshiOSSimulators();
   }
 
   // Install app
@@ -134,7 +134,7 @@ export async function runOnSimulator(
   });
 }
 
-export async function runOnDevice(
+export async function runOniOSDevice(
   context: ExtensionContext,
   terminal: TaskTerminal,
   option: {
@@ -210,7 +210,7 @@ function isXcbeautifyEnabled() {
   return getWorkspaceConfig("build.xcbeautifyEnabled") ?? true;
 }
 
-function getDestination(options: { platform: Platform; id: string | null }): string {
+function getDestination(options: { platform: DestinationPlatform; id: string | null }): string {
   const platformName = getDestinationName(options.platform);
   // ?? iPhone device can't be built with id
   if (options.id != null && isSimulator(options.platform)) {
@@ -231,7 +231,7 @@ export async function buildApp(
     shouldClean: boolean;
     shouldTest: boolean;
     xcworkspace: string;
-    destinationType: Platform;
+    destinationType: DestinationPlatform;
     destinationId: string | null;
   },
 ) {
@@ -286,9 +286,8 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
     xcworkspace: xcworkspace,
   });
 
-  const supportedPlatforms = getSupportedPlatforms(buildSettings);
-  const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
-  const sdk = destination.getPlatform();
+  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const sdk = destination.platform;
 
   await runTask(execution.context, {
     name: "Build",
@@ -325,9 +324,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
     xcworkspace: xcworkspace,
   });
 
-  const supportedPlatforms = getSupportedPlatforms(buildSettings);
-  const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
-  const sdk = destination.getPlatform();
+  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const sdk = destination.platform;
 
   await runTask(execution.context, {
     name: "Launch",
@@ -344,7 +342,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         destinationId: destination.udid ?? null,
       });
 
-      if (sdk === Platform.macosx) {
+      if (sdk === DestinationPlatform.macosx) {
         await runOnMac(execution.context, terminal, {
           scheme: scheme,
           xcworkspace: xcworkspace,
@@ -353,8 +351,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         return;
       }
 
-      if (destination.isSimulator) {
-        await runOnSimulator(execution.context, terminal, {
+      if (destination.type === "iOSSimulator") {
+        await runOniOSSimulator(execution.context, terminal, {
           scheme: scheme,
           simulatorId: destination.udid ?? "",
           sdk: sdk,
@@ -362,7 +360,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           xcworkspace: xcworkspace,
         });
       } else {
-        await runOnDevice(execution.context, terminal, {
+        await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
           deviceId: destination.udid ?? "",
           sdk: sdk,
@@ -389,9 +387,8 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
     xcworkspace: xcworkspace,
   });
 
-  const supportedPlatforms = getSupportedPlatforms(buildSettings);
-  const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
-  const sdk = destination.getPlatform();
+  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const sdk = destination.platform;
 
   await runTask(execution.context, {
     name: "Clean",
@@ -423,9 +420,8 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
     xcworkspace: xcworkspace,
   });
 
-  const supportedPlatforms = getSupportedPlatforms(buildSettings);
-  const destination = await askDestinationToRunOn(execution.context, supportedPlatforms);
-  const sdk = destination.getPlatform();
+  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const sdk = destination.platform;
 
   await runTask(execution.context, {
     name: "Test",
@@ -555,5 +551,4 @@ export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
   } else {
     execution.context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
   }
-  execution.context.refreshBuildView();
 }

@@ -6,7 +6,7 @@ import {
   askXcodeWorkspacePath,
   getDestinationByUdid,
 } from "./utils";
-import { buildApp, runOnSimulator, resolveDependencies, runOnDevice } from "./commands";
+import { buildApp, runOniOSSimulator, resolveDependencies, runOniOSDevice } from "./commands";
 import { ExtensionContext } from "../common/commands";
 import {
   TaskTerminalV2,
@@ -16,7 +16,7 @@ import {
   TaskTerminalV1Parent,
 } from "../common/tasks";
 import { getBuildSettings, getSupportedPlatforms } from "../common/cli/scripts";
-import { Platform } from "../common/destinationTypes";
+import { DestinationPlatform } from "../destination/constants";
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -78,13 +78,12 @@ class ActionDispatcher {
       xcworkspace: xcworkspace,
     });
 
-    const supportedPlatforms = getSupportedPlatforms(buildSettings);
     const destinationUdid = definition.destinationId ?? definition.simulator;
     const destination = destinationUdid
       ? await getDestinationByUdid(this.context, { udid: destinationUdid })
-      : await askDestinationToRunOn(this.context, supportedPlatforms);
+      : await askDestinationToRunOn(this.context, buildSettings);
 
-    const sdk = destination.getPlatform();
+    const sdk = destination.platform;
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
@@ -98,20 +97,16 @@ class ActionDispatcher {
       destinationId: definition.destinationId ?? null,
     });
 
-    if (!destination.isAvailableForRun) {
-      throw new Error(`Destination ${destination.name} is not available for run`);
-    }
-
-    if (destination.isSimulator) {
-      await runOnSimulator(this.context, terminal, {
+    if (destination.type == "iOSSimulator") {
+      await runOniOSSimulator(this.context, terminal, {
         scheme: scheme,
-        simulatorId: destination.udid ?? "",
+        simulatorId: destination.udid,
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
       });
     } else {
-      await runOnDevice(this.context, terminal, {
+      await runOniOSDevice(this.context, terminal, {
         scheme: scheme,
         deviceId: destination.udid ?? "",
         sdk: sdk,
@@ -141,9 +136,8 @@ class ActionDispatcher {
       xcworkspace: xcworkspace,
     });
 
-    const supportedPlatforms = getSupportedPlatforms(buildSettings);
-    const destination = await askDestinationToRunOn(this.context, supportedPlatforms);
-    const sdk = destination.getPlatform();
+    const destination = await askDestinationToRunOn(this.context, buildSettings);
+    const sdk = destination.platform;
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
@@ -179,9 +173,8 @@ class ActionDispatcher {
       xcworkspace: xcworkspace,
     });
 
-    const supportedPlatforms = getSupportedPlatforms(buildSettings);
-    const destination = await askDestinationToRunOn(this.context, supportedPlatforms);
-    const sdk = destination.getPlatform();
+    const destination = await askDestinationToRunOn(this.context, buildSettings);
+    const sdk = destination.platform;
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
@@ -216,13 +209,12 @@ class ActionDispatcher {
       xcworkspace: xcworkspace,
     });
 
-    const supportedPlatforms = getSupportedPlatforms(buildSettings);
     const destinationUdid = definition.destinationId ?? definition.simulator;
     const destination = destinationUdid
       ? await getDestinationByUdid(this.context, { udid: destinationUdid })
-      : await askDestinationToRunOn(this.context, supportedPlatforms);
+      : await askDestinationToRunOn(this.context, buildSettings);
 
-    const sdk = destination.getPlatform();
+    const sdk = destination.platform;
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
