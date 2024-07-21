@@ -48,17 +48,19 @@ export class iOSSimulatorDestinationTreeItem extends vscode.TreeItem implements 
       this.provider.selectedDestination?.type === "iOSSimulator" &&
       this.provider.selectedDestination.udid === this.simulator.udid;
 
+    let color: vscode.ThemeColor | undefined = undefined;
     if (isSelected) {
       this.description = `${this.description} •`;
     }
 
-    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, undefined);
-
     if (this.simulator.isBooted) {
       this.contextValue = `${contextPrefix}-booted`; // "destination-item-iOSSimulator-booted"
+      color = new vscode.ThemeColor("sweetpad.simulator.booted");
     } else {
       this.contextValue = `${contextPrefix}-shutdown`; // "destination-item-iOSSimulator-shutdown"
     }
+
+    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, color);
   }
 
   get destination(): iOSSimulatorDestination {
