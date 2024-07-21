@@ -4,6 +4,15 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.24] - 2024-07-21
+
+- Add the "sweetpad.build.derivedDataPath" setting to set the path of the DerivedData folder.
+- Add the "destination" parameter to the ".vscode/tasks.json" file to specify the raw destination for xcodebuild.
+- Add a "destination" status bar item at the bottom of the VSCode window to show the current destination. Thanks to
+  [@aelam](https://github.com/aelam) for the contribution.
+- Add a new destination sidebar panel to show the list of devices and simulators in one place.
+- Update icons across the extension. Acknowledgements to [tabler-icons](https://github.com/tabler/tabler-icons).
+
 ## [0.1.23] - 2024-07-06
 
 - Add "sweetpad.build.derivedDataPath" setting to set the path of the DerivedData folder
