@@ -1,15 +1,15 @@
 import { ExtensionContext } from "../common/commands";
-import { iOSDevice, listDevices } from "../common/xcode/devicectl";
+import { IosDevice, listDevices } from "../common/xcode/devicectl";
 import events from "events";
 
-type IEventMap = {
+type DeviceManagerEventTypes = {
   refresh: [];
 };
 
 export class DevicesManager {
-  private cache: iOSDevice[] | undefined = undefined;
+  private cache: IosDevice[] | undefined = undefined;
   private _context: ExtensionContext | undefined = undefined;
-  private emitter = new events.EventEmitter<IEventMap>();
+  private emitter = new events.EventEmitter<DeviceManagerEventTypes>();
 
   public failed: "unknown" | "no-devicectl" | null = null;
 
@@ -28,7 +28,7 @@ export class DevicesManager {
     return this._context;
   }
 
-  async refresh(): Promise<iOSDevice[]> {
+  async refresh(): Promise<IosDevice[]> {
     this.failed = null;
     try {
       this.cache = await listDevices(this.context);
@@ -44,7 +44,7 @@ export class DevicesManager {
     return this.cache;
   }
 
-  async getDevices(options?: { refresh?: boolean }): Promise<iOSDevice[]> {
+  async getDevices(options?: { refresh?: boolean }): Promise<IosDevice[]> {
     if (this.cache === undefined || options?.refresh) {
       return await this.refresh();
     }

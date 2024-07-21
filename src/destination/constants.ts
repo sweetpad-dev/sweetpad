@@ -1,8 +1,9 @@
 export enum DestinationOS {
-  iOS = "iOS",
+  iOS = "iOS", // also includes iPadOS and visionOS/xrOS
   watchOS = "watchOS",
   macOS = "macOS",
 }
+
 export enum DestinationPlatform {
   macosx = "macosx", // macOS
   iphoneos = "iphoneos", // iOS Device
@@ -10,4 +11,5 @@ export enum DestinationPlatform {
   watchos = "watchos", // watchOS Device
   watchsimulator = "watchsimulator",
 }
+
 export const SUPPORTED_DESTINATION_PLATFORMS = [DestinationPlatform.iphoneos, DestinationPlatform.iphonesimulator];

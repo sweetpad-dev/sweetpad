@@ -81,7 +81,13 @@ export class DestinationsManager {
 
     if (platforms.includes(DestinationPlatform.iphonesimulator)) {
       const simulators = await this.simulatorsManager.getSimulators();
-      destinations.push(...simulators.map((simulator) => new iOSSimulatorDestination({ simulator: simulator })));
+
+      destinations.push(
+        ...simulators
+          // currently we only support iOS simulators (ignoring watchOS and tvOS)
+          .filter((simulator) => simulator.runtimeType === DestinationOS.iOS)
+          .map((simulator) => new iOSSimulatorDestination({ simulator: simulator })),
+      );
     }
 
     if (platforms.includes(DestinationPlatform.iphoneos)) {

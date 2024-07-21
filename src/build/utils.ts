@@ -95,7 +95,7 @@ export async function selectDestination(context: ExtensionContext): Promise<Dest
         return {
           label: destination.name,
           iconPath: new vscode.ThemeIcon(destination.icon),
-          detail: `Type: ${destination.typeLabel}, OS: ${destination.osVersion}, ID: ${destination.udid.toLocaleLowerCase()}`,
+          detail: `Type: ${destination.typeLabel}, Version: ${destination.osVersion}, ID: ${destination.udid.toLocaleLowerCase()}`,
           context: destination,
         };
       }),
