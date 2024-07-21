@@ -119,8 +119,6 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationRaw: destinationRaw,
-      // destinationType: sdk,
-      // destinationId: definition.destinationId,
     });
 
     if (destination.type == "iOSSimulator") {
@@ -184,8 +182,6 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationRaw: destinationRaw,
-      // destinationType: sdk,
-      // destinationId: definition.destinationId ?? null,
     });
   }
 
@@ -232,8 +228,6 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationRaw: destinationRaw,
-      // destinationType: sdk,
-      // destinationId: definition.destinationId,
     });
   }
 
