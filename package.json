@@ -51,23 +51,50 @@
           },
           "scheme": {
             "type": "string",
-            "description": "Scheme to build"
+            "description": "Scheme to build",
+            "examples": [
+              "MyApp",
+              "MyAppTests"
+            ]
           },
           "configuration": {
             "type": "string",
-            "description": "Configuration to build"
+            "description": "Configuration to build",
+            "examples": [
+              "Debug",
+              "Release"
+            ]
           },
           "workspace": {
             "type": "string",
-            "description": "Path to workspace for resolving dependencies"
+            "description": "Path to workspace for resolving dependencies",
+            "examples": [
+              "./MyApp.xcworkspace",
+              "/Users/user/Developer/MyApp/MyApp.xcworkspace"
+            ]
           },
           "simulator": {
             "type": "string",
-            "description": "Simulator to launch. Currently only device UUID is supported. Deprecated: use `destinationId` instead."
+            "description": "Simulator to launch. Currently only device UUID is supported. Deprecated: use `destinationId` instead",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
           },
           "destinationId": {
             "type": "string",
-            "description": "Device ID to launch the app on."
+            "description": "Device ID to launch the app on",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "destination": {
+            "type": "string",
+            "description": "Raw destination string to launch the app on. Alternative to `destinationId`",
+            "examples": [
+              "platform=iOS Simulator,name=iPhone 12,OS=15.0",
+              "generic/platform=iOS Simulator",
+              "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
+            ]
           }
         }
       }
