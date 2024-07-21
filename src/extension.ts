@@ -117,7 +117,6 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.format.showLogs", showLogsCommand));
 
   // Simulators
-  // d(vscode.window.registerTreeDataProvider("sweetpad.simulators.view", simulatorsTreeProvider));
   d(command("sweetpad.simulators.refresh", async () => destinationsManager.refreshiOSSimulators()));
   d(command("sweetpad.simulators.openSimulator", openSimulatorCommand));
   d(command("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
@@ -125,7 +124,6 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.simulators.stop", stopSimulatorCommand));
 
   // // Devices
-  // d(vscode.window.registerTreeDataProvider("sweetpad.devices.view", devicesTreeProvider));
   d(command("sweetpad.devices.refresh", async () => destinationsManager.refreshiOSDevices()));
 
   // Desintations

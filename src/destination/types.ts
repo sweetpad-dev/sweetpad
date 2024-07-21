@@ -5,7 +5,6 @@ import { iOSDevice } from "../common/xcode/devicectl";
 /**
  * Generic interface for a destination (iOS simulator, iOS device, etc.)
  */
-
 interface IDestination {
   type: "iOSSimulator" | "iOSDevice";
   typeLabel: string;

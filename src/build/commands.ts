@@ -551,4 +551,5 @@ export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
   } else {
     execution.context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
   }
+  // todo: refresh build tree
 }
