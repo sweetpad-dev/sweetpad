@@ -406,6 +406,14 @@
           "required": false,
           "description": "Path to derived data directory. Can be absolute or relative to the workspace root."
         },
+        "sweetpad.build.arch": {
+          "type": "string",
+          "enum": [
+            "x86_64",
+            "arm64"
+          ],
+          "description": "Architecture to build for. Can be usefull for building x86_64 simulator builds on M1 Macs. Usually, you don't need to change this setting."
+        },
         "sweetpad.system.taskExecutor": {
           "type": "string",
           "default": "v2",

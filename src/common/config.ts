@@ -6,6 +6,7 @@ type Config = {
   "build.xcbeautifyEnabled": boolean;
   "build.xcodeWorkspacePath": string;
   "build.derivedDataPath": string;
+  "build.arch": "x86_64" | "arm64";
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "xcodegen.autogenerate": boolean;
