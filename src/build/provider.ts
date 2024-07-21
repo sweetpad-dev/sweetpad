@@ -6,15 +6,7 @@ import {
   askXcodeWorkspacePath,
   getDestinationByUdid,
 } from "./utils";
-import {
-  DEFAULT_SDK,
-  buildApp,
-  runOnSimulator,
-  resolveDependencies,
-  runOnDevice,
-  IOS_DEVICE_SDK,
-  IOS_SIMULATOR_SDK,
-} from "./commands";
+import { buildApp, runOniOSSimulator, resolveDependencies, runOniOSDevice } from "./commands";
 import { ExtensionContext } from "../common/commands";
 import {
   TaskTerminalV2,
@@ -23,6 +15,8 @@ import {
   getTaskExecutorName,
   TaskTerminalV1Parent,
 } from "../common/tasks";
+import { getBuildSettings, getSupportedPlatforms } from "../common/cli/scripts";
+import { DestinationPlatform } from "../destination/constants";
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -77,12 +71,19 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
+    const buildSettings = await getBuildSettings({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
     const destinationUdid = definition.destinationId ?? definition.simulator;
     const destination = destinationUdid
       ? await getDestinationByUdid(this.context, { udid: destinationUdid })
-      : await askDestinationToRunOn(this.context);
+      : await askDestinationToRunOn(this.context, buildSettings);
 
-    const sdk = destination.type === "simulator" ? IOS_SIMULATOR_SDK : IOS_DEVICE_SDK;
+    const sdk = destination.platform;
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
@@ -92,12 +93,12 @@ class ActionDispatcher {
       shouldClean: false,
       shouldTest: false,
       xcworkspace: xcworkspace,
-      destinationType: destination.type,
-      destinationId: null,
+      destinationType: sdk,
+      destinationId: definition.destinationId ?? null,
     });
 
-    if (destination.type === "simulator") {
-      await runOnSimulator(this.context, terminal, {
+    if (destination.type == "iOSSimulator") {
+      await runOniOSSimulator(this.context, terminal, {
         scheme: scheme,
         simulatorId: destination.udid,
         sdk: sdk,
@@ -105,9 +106,9 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       });
     } else {
-      await runOnDevice(this.context, terminal, {
+      await runOniOSDevice(this.context, terminal, {
         scheme: scheme,
-        deviceId: destination.udid,
+        deviceId: destination.udid ?? "",
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
@@ -128,16 +129,26 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
+    const buildSettings = await getBuildSettings({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
+    const destination = await askDestinationToRunOn(this.context, buildSettings);
+    const sdk = destination.platform;
+
     await buildApp(this.context, terminal, {
       scheme: scheme,
-      sdk: DEFAULT_SDK,
+      sdk: sdk,
       configuration: configuration,
       shouldBuild: true,
       shouldClean: false,
       shouldTest: false,
       xcworkspace: xcworkspace,
-      destinationType: "simulator",
-      destinationId: null,
+      destinationType: sdk,
+      destinationId: definition.destinationId ?? null,
     });
   }
 
@@ -155,16 +166,26 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
+    const buildSettings = await getBuildSettings({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
+    const destination = await askDestinationToRunOn(this.context, buildSettings);
+    const sdk = destination.platform;
+
     await buildApp(this.context, terminal, {
       scheme: scheme,
-      sdk: DEFAULT_SDK,
+      sdk: sdk,
       configuration: configuration,
       shouldBuild: false,
       shouldClean: true,
       shouldTest: false,
       xcworkspace: xcworkspace,
-      destinationType: "simulator",
-      destinationId: null,
+      destinationType: sdk,
+      destinationId: definition.destinationId ?? null,
     });
   }
 
@@ -181,21 +202,30 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
+    const buildSettings = await getBuildSettings({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
     const destinationUdid = definition.destinationId ?? definition.simulator;
     const destination = destinationUdid
       ? await getDestinationByUdid(this.context, { udid: destinationUdid })
-      : await askDestinationToRunOn(this.context);
+      : await askDestinationToRunOn(this.context, buildSettings);
+
+    const sdk = destination.platform;
 
     await buildApp(this.context, terminal, {
       scheme: scheme,
-      sdk: DEFAULT_SDK,
+      sdk: sdk,
       configuration: configuration,
       shouldBuild: false,
       shouldClean: false,
       shouldTest: true,
       xcworkspace: xcworkspace,
-      destinationType: destination.type,
-      destinationId: destination.udid,
+      destinationType: sdk,
+      destinationId: destination.udid ?? null,
     });
   }
 

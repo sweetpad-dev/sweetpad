@@ -1,18 +1,18 @@
 import * as vscode from "vscode";
-import { SimulatorTreeItem } from "./tree.js";
 import { CommandExecution } from "../common/commands.js";
 import { runTask } from "../common/tasks.js";
-import { asSimulator, askDestinationToRunOn } from "../build/utils.js";
+import { askSimulator } from "../build/utils.js";
+import { iOSSimulatorDestinationTreeItem } from "../destination/tree.js";
 
 /**
  * Command to start simulator from the simulator tree view in the sidebar
  */
-export async function startSimulatorCommand(execution: CommandExecution, item?: SimulatorTreeItem) {
+export async function startSimulatorCommand(execution: CommandExecution, item?: iOSSimulatorDestinationTreeItem) {
   let simulatorUdid: string;
   if (item) {
-    simulatorUdid = item.udid;
+    simulatorUdid = item.simulator.udid;
   } else {
-    const simulator = await asSimulator(execution.context, {
+    const simulator = await askSimulator(execution.context, {
       title: "Select simulator to start",
       state: "Shutdown",
       error: "No available simulators to start",
@@ -28,7 +28,7 @@ export async function startSimulatorCommand(execution: CommandExecution, item?: 
         args: ["simctl", "boot", simulatorUdid],
       });
 
-      execution.context.refreshSimulators();
+      execution.context.destinationsManager.refreshiOSSimulators();
     },
   });
 }
@@ -36,12 +36,12 @@ export async function startSimulatorCommand(execution: CommandExecution, item?: 
 /**
  * Command to stop simulator from the simulator tree view in the sidebar
  */
-export async function stopSimulatorCommand(execution: CommandExecution, item?: SimulatorTreeItem) {
+export async function stopSimulatorCommand(execution: CommandExecution, item?: iOSSimulatorDestinationTreeItem) {
   let simulatorId: string;
   if (item) {
-    simulatorId = item.udid;
+    simulatorId = item.simulator.udid;
   } else {
-    const simulator = await asSimulator(execution.context, {
+    const simulator = await askSimulator(execution.context, {
       title: "Select simulator to stop",
       state: "Booted",
       error: "No available simulators to stop",
@@ -57,7 +57,7 @@ export async function stopSimulatorCommand(execution: CommandExecution, item?: S
         args: ["simctl", "shutdown", simulatorId],
       });
 
-      execution.context.refreshSimulators();
+      execution.context.destinationsManager.refreshiOSSimulators();
     },
   });
 }

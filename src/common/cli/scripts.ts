@@ -5,6 +5,10 @@ import { XcodeWorkspace } from "../xcode/workspace";
 import { uniqueFilter } from "../helpers";
 import { ExtensionContext } from "../commands";
 import { prepareDerivedDataPath } from "../../build/utils";
+import { DestinationPlatform } from "../../destination/constants";
+import { DestinationOS } from "../../destination/constants";
+import path from "path";
+import { iOSSimulatorDestination } from "../../destination/types";
 
 type SimulatorOutput = {
   dataPath: string;
@@ -49,13 +53,15 @@ type XcodeConfiguration = {
   name: string;
 };
 
-export class IosSimulator {
+export class iOSSimulator {
   public udid: string;
   public isAvailable: boolean;
   public state: "Booted" | "Shutdown";
   public name: string;
   public runtime: string;
-  public iosVersion: string;
+  public osVersion: string;
+  public runtimeType: DestinationOS;
+
   constructor(options: {
     udid: string;
     isAvailable: boolean;
@@ -71,12 +77,14 @@ export class IosSimulator {
 
     // iOS-14-5 => 14.5
     const rawiOSVersion = options.runtime.split(".").slice(-1)[0];
-    this.iosVersion = rawiOSVersion.replace(/^(\w+)-(\d+)-(\d+)$/, "$2.$3");
-  }
+    this.osVersion = rawiOSVersion.replace(/^(\w+)-(\d+)-(\d+)$/, "$2.$3");
 
-  get label() {
-    // iPhone 12 Pro Max (14.5)
-    return `${this.name} (${this.iosVersion})`;
+    // "com.apple.CoreSimulator.SimRuntime.iOS-16-4"
+    // "com.apple.CoreSimulator.SimRuntime.WatchOS-8-0"
+    // extract iOS, tvOS, watchOS
+    const regex = /com\.apple\.CoreSimulator\.SimRuntime\.(iOS|tvOS|watchOS)-\d+-\d+/;
+    const match = this.runtime.match(regex);
+    this.runtimeType = match ? (match[1] as DestinationOS) : DestinationOS.iOS;
   }
 
   /**
@@ -87,7 +95,7 @@ export class IosSimulator {
   }
 }
 
-export async function getSimulators(): Promise<IosSimulator[]> {
+export async function getSimulators(): Promise<iOSSimulator[]> {
   const simulatorsRaw = await exec({
     command: "xcrun",
     args: ["simctl", "list", "--json", "devices"],
@@ -97,7 +105,7 @@ export async function getSimulators(): Promise<IosSimulator[]> {
   const simulators = Object.entries(output.devices)
     .flatMap(([key, value]) =>
       value.map((simulator) => {
-        return new IosSimulator({
+        return new iOSSimulator({
           udid: simulator.udid,
           isAvailable: simulator.isAvailable,
           state: simulator.state as "Booted",
@@ -116,8 +124,10 @@ export async function getSimulatorByUdid(
     udid: string;
     refresh: boolean;
   },
-): Promise<IosSimulator> {
-  const simulators = await context.simulatorsManager.getSimulators({ refresh: options.refresh ?? false });
+): Promise<iOSSimulatorDestination> {
+  const simulators = await context.destinationsManager.getiOSSimulators({
+    refresh: options.refresh ?? false,
+  });
   for (const simulator of simulators) {
     if (simulator.udid === options.udid) {
       return simulator;
@@ -126,7 +136,7 @@ export async function getSimulatorByUdid(
   throw new ExtensionError("Simulator not found", { context: { udid: options.udid } });
 }
 
-type BuildSettingsOutput = BuildSettingOutput[];
+export type BuildSettingsOutput = BuildSettingOutput[];
 
 type BuildSettingOutput = {
   action: string;
@@ -136,28 +146,40 @@ type BuildSettingOutput = {
   };
 };
 
+type ProductOutputInfo = {
+  productPath: string;
+  productName: string;
+  binaryPath: string;
+  bundleIdentifier: string;
+};
+
 export async function getBuildSettings(options: {
   scheme: string;
   configuration: string;
-  sdk: string;
+  sdk: string | undefined;
   xcworkspace: string;
 }) {
   const derivedDataPath = prepareDerivedDataPath();
+
+  const args = [
+    "-showBuildSettings",
+    "-scheme",
+    options.scheme,
+    "-workspace",
+    options.xcworkspace,
+    "-configuration",
+    options.configuration,
+    ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
+    "-json",
+  ];
+
+  if (options.sdk !== undefined) {
+    args.push("-sdk", options.sdk);
+  }
+
   const stdout = await exec({
     command: "xcodebuild",
-    args: [
-      "-showBuildSettings",
-      "-scheme",
-      options.scheme,
-      "-workspace",
-      options.xcworkspace,
-      "-configuration",
-      options.configuration,
-      "-sdk",
-      options.sdk,
-      ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
-      "-json",
-    ],
+    args: args,
   });
 
   // First few lines can be invalid json, so we need to skip them, untill we find "{" or "[" at the beginning of the line
@@ -171,6 +193,54 @@ export async function getBuildSettings(options: {
   }
 
   throw new ExtensionError("Error parsing build settings");
+}
+
+export function getProductOutputInfoFromBuildSettings(buildSettings: BuildSettingsOutput) {
+  const settings = buildSettings[0]?.buildSettings;
+  if (!settings) {
+    throw new ExtensionError("Error fetching build settings");
+  }
+
+  const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
+  const targetBuildDir = settings.TARGET_BUILD_DIR;
+  const targetName = settings.TARGET_NAME;
+  let appName;
+  if (settings.WRAPPER_NAME) {
+    appName = settings.WRAPPER_NAME;
+  } else if (settings.FULL_PRODUCT_NAME) {
+    appName = settings.FULL_PRODUCT_NAME;
+  } else if (settings.PRODUCT_NAME) {
+    appName = `${settings.PRODUCT_NAME}.app`;
+  } else {
+    appName = `${targetName}.app`;
+  }
+
+  const executablePath = settings.EXECUTABLE_PATH;
+  const productPath = path.join(targetBuildDir, appName);
+  const binaryPath = path.join(targetBuildDir, executablePath);
+
+  return {
+    productPath: productPath,
+    productName: appName,
+    binaryPath: binaryPath,
+    bundleIdentifier: bundleIdentifier,
+  } as ProductOutputInfo;
+}
+
+/**
+ * Check which platforms current project supports by looking at build settings
+ */
+export function getSupportedPlatforms(buildSettings: BuildSettingsOutput): DestinationPlatform[] {
+  const settings = buildSettings[0]?.buildSettings;
+  if (!settings) {
+    throw new ExtensionError("Error fetching build settings");
+  }
+
+  // ex: "iphonesimulator iphoneos"
+  const platformsRaw = settings.SUPPORTED_PLATFORMS;
+  return platformsRaw.split(" ").map((platform) => {
+    return platform as DestinationPlatform;
+  });
 }
 
 export async function getIsXcbeautifyInstalled() {

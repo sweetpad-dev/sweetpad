@@ -90,18 +90,13 @@
           "visibility": "visible"
         },
         {
-          "id": "sweetpad.simulators.view",
-          "name": "Simulators",
-          "visibility": "collapsed"
-        },
-        {
-          "id": "sweetpad.devices.view",
-          "name": "Devices",
+          "id": "sweetpad.destinations.view",
+          "name": "Destinations",
           "visibility": "collapsed"
         },
         {
           "id": "sweetpad.tools.view",
-          "name": "tools",
+          "name": "Tools",
           "visibility": "collapsed"
         }
       ]
@@ -109,7 +104,7 @@
     "viewsWelcome": [
       {
         "view": "sweetpad.build.view",
-        "contents": "No Xcode scheme was found. Open the workspace that has the Xcode project to use SweetPad.\n[Open Workspace](command:workbench.action.files.openFileFolder)\nIf your workspace already has a scheme and SweetPad isn't recognizing it, please report this problem on GitHub.\n[Create Issue](command:sweetpad.system.createIssue.noSchemes)",
+        "contents": "No Xcode scheme was found. Select the workspace that has the Xcode project to use SweetPad.\n[Select Workspace](command:sweetpad.build.selectXcodeWorkspace)\nIf your workspace already has a scheme and SweetPad isn't recognizing it, please report this problem on GitHub.\n[Create Issue](command:sweetpad.system.createIssue.noSchemes)",
         "when": "sweetpad.build.noSchemes"
       },
       {
@@ -137,12 +132,12 @@
       {
         "command": "sweetpad.build.launch",
         "title": "SweetPad: Build & Run (Launch)",
-        "icon": "$(play)"
+        "icon": "$(sweetpad-player-play)"
       },
       {
         "command": "sweetpad.build.build",
         "title": "SweetPad: Build",
-        "icon": "$(gear)"
+        "icon": "$(sweetpad-tool)"
       },
       {
         "command": "sweetpad.build.clean",
@@ -162,7 +157,7 @@
       {
         "command": "sweetpad.build.removeBundleDir",
         "title": "SweetPad: Remove bundle directory",
-        "icon": "$(clear-all)"
+        "icon": "$(sweetpad-trash-x)"
       },
       {
         "command": "sweetpad.build.genereateBuildServerConfig",
@@ -197,27 +192,27 @@
       {
         "command": "sweetpad.build.openXcode",
         "title": "SweetPad: Open Xcode",
-        "icon": "$(file-code)"
+        "icon": "$(sweetpad-tools)"
       },
       {
         "command": "sweetpad.build.refreshView",
         "title": "SweetPad: Refresh view",
-        "icon": "$(refresh)"
+        "icon": "$(sweetpad-refresh)"
       },
       {
         "command": "sweetpad.simulators.refresh",
         "title": "SweetPad: Refresh simulators list",
-        "icon": "$(extensions-refresh)"
+        "icon": "$(sweetpad-refresh)"
       },
       {
         "command": "sweetpad.simulators.openSimulator",
         "title": "SweetPad: Open simulator",
-        "icon": "$(device-mobile)"
+        "icon": "$(sweetpad-device-mobile-heart)"
       },
       {
         "command": "sweetpad.simulators.removeCache",
         "title": "SweetPad: Remove simulator cache",
-        "icon": "$(clear-all)"
+        "icon": "$(sweetpad-trash-x)"
       },
       {
         "command": "sweetpad.simulators.start",
@@ -232,22 +227,22 @@
       {
         "command": "sweetpad.devices.refresh",
         "title": "SweetPad: Refresh devices list",
-        "icon": "$(extensions-refresh)"
+        "icon": "$(sweetpad-refresh)"
       },
       {
         "command": "sweetpad.tools.install",
         "title": "SweetPad: Install tool",
-        "icon": "$(cloud-download)"
+        "icon": "$(sweetpad-terminal-2)"
       },
       {
         "command": "sweetpad.tools.documentation",
         "title": "SweetPad: Open tool documentation",
-        "icon": "$(book)"
+        "icon": "$(sweetpad-book)"
       },
       {
         "command": "sweetpad.tools.refresh",
         "title": "SweetPad: Refresh tools list",
-        "icon": "$(extensions-refresh)",
+        "icon": "$(sweetpad-refresh)",
         "enablement": "view == sweetpad.tools.view"
       },
       {
@@ -274,6 +269,11 @@
         "command": "sweetpad.debugger.getAppPath",
         "title": "SweetPad: Get app path for debugging",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.destinations.select",
+        "title": "SweetPad: Select destination",
+        "icon": "$(file-code)"
       }
     ],
     "menus": {
@@ -295,32 +295,32 @@
           "group": "navigation@3"
         },
         {
-          "command": "sweetpad.simulators.refresh",
-          "when": "view == sweetpad.simulators.view",
-          "group": "navigation"
-        },
-        {
-          "command": "sweetpad.simulators.openSimulator",
-          "when": "view == sweetpad.simulators.view",
-          "group": "navigation"
-        },
-        {
-          "command": "sweetpad.simulators.removeCache",
-          "when": "view == sweetpad.simulators.view",
-          "group": "navigation"
-        },
-        {
-          "command": "sweetpad.devices.refresh",
-          "when": "view == sweetpad.devices.view",
-          "group": "navigation"
-        },
-        {
           "command": "sweetpad.tools.refresh",
           "when": "view == sweetpad.tools.view",
           "group": "navigation"
         }
       ],
       "view/item/context": [
+        {
+          "command": "sweetpad.simulators.refresh",
+          "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSSimulator",
+          "group": "inline@1"
+        },
+        {
+          "command": "sweetpad.simulators.openSimulator",
+          "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSSimulator",
+          "group": "inline@2"
+        },
+        {
+          "command": "sweetpad.simulators.removeCache",
+          "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSSimulator",
+          "group": "inline@3"
+        },
+        {
+          "command": "sweetpad.devices.refresh",
+          "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSDevice",
+          "group": "inline@1"
+        },
         {
           "command": "sweetpad.build.launch",
           "when": "view == sweetpad.build.view",
@@ -345,12 +345,12 @@
         },
         {
           "command": "sweetpad.simulators.start",
-          "when": "view == sweetpad.simulators.view && viewItem == shutdown",
+          "when": "view == sweetpad.destinations.view && viewItem == destination-item-iOSSimulator-shutdown",
           "group": "inline"
         },
         {
           "command": "sweetpad.simulators.stop",
-          "when": "view == sweetpad.simulators.view && viewItem == booted",
+          "when": "view == sweetpad.destinations.view && viewItem == destination-item-iOSSimulator-booted",
           "group": "inline"
         },
         {
@@ -437,7 +437,159 @@
           "description": "Watch for new .swift files and regenerate the project using Tuist. Restart VSCode to apply the settings."
         }
       }
-    }
+    },
+    "icons": {
+      "sweetpad-square-letter-s": {
+        "description": "Square Letter S",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f48e"
+        }
+      },
+      "sweetpad-square-letter-d": {
+        "description": "Square Letter D",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f47f"
+        }
+      },
+      "sweetpad-device-mobile": {
+        "description": "Device Mobile",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\ea8a"
+        }
+      },
+      "sweetpad-device-mobile-check": {
+        "description": "Device Mobile Check",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f8af"
+        }
+      },
+      "sweetpad-device-mobile-question": {
+        "description": "Device Mobile Question",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f8ba"
+        }
+      },
+      "sweetpad-device-ipad": {
+        "description": "Device iPad",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f648"
+        }
+      },
+      "sweetpad-device-mobile-pause": {
+        "description": "Device Mobile Pause",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f8b7"
+        }
+      },
+      "sweetpad-device-mobile-x": {
+        "description": "Device Mobile X",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f8bf"
+        }
+      },
+      "sweetpad-device-ipad-x": {
+        "description": "Device iPad X",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f8ac"
+        }
+      },
+      "sweetpad-tools": {
+        "description": "Tools",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\ebca"
+        }
+      },
+      "sweetpad-tool": {
+        "description": "Tool",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\eb40"
+        }
+      },
+      "sweetpad-trash-x": {
+        "description": "Trash X",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\ef88"
+        }
+      },
+      "sweetpad-refresh": {
+        "description": "Refresh",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\eb13"
+        }
+      },
+      "sweetpad-player-play": {
+        "description": "Player Play",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\ed46"
+        }
+      },
+      "sweetpad-device-mobile-heart": {
+        "description": "Device Mobile Heart",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f8b5"
+        }
+      },
+      "sweetpad-package": {
+        "description": "Package",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\eaff"
+        }
+      },
+      "sweetpad-check": {
+        "description": "Check",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\ea5e"
+        }
+      },
+      "sweetpad-x": {
+        "description": "X",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\eb55"
+        }
+      },
+      "sweetpad-book": {
+        "description": "Boook",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\ea39"
+        }
+      },
+      "sweetpad-terminal-2": {
+        "description": "Terminal 2",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\ebef"
+        }
+      }
+    },
+    "colors": [
+      {
+        "id": "sweetpad.scheme",
+        "description": "Scheme",
+        "defaults": {
+          "dark": "#ff3755",
+          "light": "#ff0026"
+        }
+      }
+    ]
   },
   "scripts": {
     "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=es6",

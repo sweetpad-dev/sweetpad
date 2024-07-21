@@ -2,32 +2,34 @@ import path from "path";
 import * as vscode from "vscode";
 import { showQuickPick } from "../common/quick-pick";
 
-import { getBuildConfigurations, getSchemes, IosSimulator } from "../common/cli/scripts";
+import { BuildSettingsOutput, getBuildConfigurations, getSchemes, getSupportedPlatforms } from "../common/cli/scripts";
 import { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { getWorkspaceConfig } from "../common/config";
+import { Destination, iOSSimulatorDestination } from "../destination/types";
 
 const DEFAULT_CONFIGURATION = "Debug";
 
-type SelectedDestination = {
+export type SelectedDestination = {
   type: "simulator" | "device";
   udid: string;
+  name?: string;
 };
 
 /**
  * Ask user to select one of the Booted/Shutdown simulators
  */
-export async function asSimulator(
+export async function askSimulator(
   context: ExtensionContext,
   options: {
     title: string;
     state: "Booted" | "Shutdown";
     error: string;
   },
-): Promise<IosSimulator> {
-  let simulators = await context.simulatorsManager.getSimulators();
+): Promise<iOSSimulatorDestination> {
+  let simulators = await context.destinationsManager.getiOSSimulators();
 
   if (options?.state) {
     simulators = simulators.filter((simulator) => simulator.state === options.state);
@@ -58,89 +60,60 @@ export async function asSimulator(
 /**
  * Ask user to select simulator or device to run on
  */
-export async function askDestinationToRunOn(context: ExtensionContext): Promise<SelectedDestination> {
+export async function askDestinationToRunOn(
+  context: ExtensionContext,
+  buildSettings: BuildSettingsOutput,
+): Promise<Destination> {
+  // We can remove platforms that are not supported by the project
+  const supportedPlatforms = getSupportedPlatforms(buildSettings);
+
+  const destinations = await context.destinationsManager.getDestinations({
+    platformFilter: supportedPlatforms,
+  });
+
   // If we have cached desination, use it
-  const simulators = await context.simulatorsManager.getSimulators();
-  const devices = await context.devicesManager.getDevices();
-  const cachedDestination = context.getWorkspaceState("build.xcodeDestination");
+  const cachedDestination = context.destinationsManager.getWorkspaceSelectedDestination();
   if (cachedDestination) {
-    if (cachedDestination.type === "simulator") {
-      const simulator = simulators.find((simulator) => simulator.udid === cachedDestination.udid);
-      if (simulator) {
-        return {
-          type: "simulator",
-          udid: simulator.udid,
-        };
-      }
-    }
-    if (cachedDestination.type === "device") {
-      const device = devices.find((device) => device.udid === cachedDestination.udid);
-      if (device) {
-        return {
-          type: "device",
-          udid: device.udid,
-        };
-      }
+    const destination = destinations.find(
+      (destination) => destination.udid === cachedDestination.udid && destination.type === cachedDestination.type,
+    );
+    if (destination) {
+      return destination;
     }
   }
 
-  const selected = await showQuickPick<SelectedDestination>({
+  return selectDestination(context);
+}
+
+export async function selectDestination(context: ExtensionContext): Promise<Destination> {
+  const destinations = await context.destinationsManager.getDestinations();
+
+  const selected = await showQuickPick<Destination>({
     title: "Select destination to run on",
     items: [
-      ...simulators.map((simulator) => {
+      ...destinations.map((destination) => {
         return {
-          label: simulator.label,
-          iconPath: new vscode.ThemeIcon("vm"),
-          context: {
-            type: "simulator" as const,
-            udid: simulator.udid,
-          },
-        };
-      }),
-      ...devices.map((device) => {
-        return {
-          label: device.label,
-          iconPath: new vscode.ThemeIcon("device-mobile"),
-          context: {
-            type: "device" as const,
-            udid: device.udid,
-          },
+          label: destination.name,
+          iconPath: new vscode.ThemeIcon(destination.icon),
+          detail: `Type: ${destination.typeLabel}, OS: ${destination.osVersion}, ID: ${destination.udid.toLocaleLowerCase()}`,
+          context: destination,
         };
       }),
     ],
   });
 
-  context.updateWorkspaceState("build.xcodeDestination", {
-    type: selected.context.type,
-    udid: selected.context.udid,
-  });
+  const destination = selected.context;
 
-  return selected.context;
+  context.destinationsManager.setWorkspaceDestination(destination);
+  return destination;
 }
 
-export async function getDestinationByUdid(
-  context: ExtensionContext,
-  options: { udid: string },
-): Promise<SelectedDestination> {
-  const simulators = await context.simulatorsManager.getSimulators();
-  const devices = await context.devicesManager.getDevices();
+export async function getDestinationByUdid(context: ExtensionContext, options: { udid: string }): Promise<Destination> {
+  const desinations = await context.destinationsManager.getDestinations();
+  const destination = desinations.find((destination) => destination.udid === options.udid);
 
-  for (const simulator of simulators) {
-    if (simulator.udid === options.udid) {
-      return {
-        type: "simulator",
-        udid: simulator.udid,
-      };
-    }
-  }
-
-  for (const device of devices) {
-    if (device.udid === options.udid) {
-      return {
-        type: "device",
-        udid: device.udid,
-      };
-    }
+  if (destination) {
+    return destination;
   }
 
   throw new ExtensionError("Destination not found", {
@@ -263,7 +236,6 @@ export async function askXcodeWorkspacePath(context: ExtensionContext): Promise<
   });
 
   context.updateWorkspaceState("build.xcodeWorkspacePath", selectedPath);
-  context.refreshBuildView();
   return selectedPath;
 }
 
