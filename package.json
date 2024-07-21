@@ -634,6 +634,14 @@
           "dark": "#ff3755",
           "light": "#ff0026"
         }
+      },
+      {
+        "id": "sweetpad.simulator.booted",
+        "description": "Scheme",
+        "defaults": {
+          "dark": "#00bb22",
+          "light": "#007315"
+        }
       }
     ]
   },
