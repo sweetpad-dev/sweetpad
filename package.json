@@ -354,6 +354,10 @@
           "group": "inline"
         },
         {
+          "command": "sweetpad.destinations.select",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-.*/"
+        },
+        {
           "command": "sweetpad.tools.documentation",
           "when": "view == sweetpad.tools.view",
           "group": "inline@1"

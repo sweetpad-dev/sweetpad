@@ -64,6 +64,10 @@ export class iOSSimulatorDestinationTreeItem extends vscode.TreeItem implements 
       this.contextValue = `${contextPrefix}-shutdown`; // "destination-item-iOSSimulator-shutdown"
     }
   }
+
+  get destination(): iOSSimulatorDestination {
+    return this.simulator;
+  }
 }
 
 /**
@@ -99,6 +103,10 @@ export class iOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDe
     } else {
       this.contextValue = `${contextPrefix}-disconnected`; // "destination-item-iOSDevice-disconnected
     }
+  }
+
+  get destination(): iOSDeviceDestination {
+    return this.device;
   }
 }
 
