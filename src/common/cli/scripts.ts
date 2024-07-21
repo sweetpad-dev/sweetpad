@@ -53,10 +53,14 @@ type XcodeConfiguration = {
   name: string;
 };
 
+export type iOSSimulatorDeviceType = "iPhone" | "iPad" | "iPod" | "AppleTV" | "AppleWatch" | "AppleVision";
+
 export class iOSSimulator {
   public udid: string;
   public isAvailable: boolean;
   public state: "Booted" | "Shutdown";
+
+  public deviceType: iOSSimulatorDeviceType | null;
   public name: string;
   public runtime: string;
   public osVersion: string;
@@ -67,12 +71,14 @@ export class iOSSimulator {
     isAvailable: boolean;
     state: "Booted" | "Shutdown";
     name: string;
+    rawDeviceType: string;
     runtime: string;
   }) {
     this.udid = options.udid;
     this.isAvailable = options.isAvailable;
     this.state = options.state;
     this.name = options.name;
+    this.deviceType = iOSSimulator.parseDeviceType(options.rawDeviceType);
     this.runtime = options.runtime;
 
     // iOS-14-5 => 14.5
@@ -85,6 +91,39 @@ export class iOSSimulator {
     const regex = /com\.apple\.CoreSimulator\.SimRuntime\.(iOS|tvOS|watchOS)-\d+-\d+/;
     const match = this.runtime.match(regex);
     this.runtimeType = match ? (match[1] as DestinationOS) : DestinationOS.iOS;
+  }
+
+  static parseDeviceType(rawDeviceType: string): iOSSimulatorDeviceType | null {
+    // examples:
+    // - "com.apple.CoreSimulator.SimDeviceType.Apple-Vision-Pro"
+    // - "com.apple.CoreSimulator.SimDeviceType.iPhone-8"
+    // - "com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro"
+    // - "com.apple.CoreSimulator.SimDeviceType.iPod-touch--7th-generation-"
+    // - "com.apple.CoreSimulator.SimDeviceType.Apple-TV-1080p"
+    // - "com.apple.CoreSimulator.SimDeviceType.Apple-TV-4K-3rd-generation-4K"
+    // - "com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-5-40mm"
+
+    // common prefix amoung all device types (hope so)
+    const prefix = "com.apple.CoreSimulator.SimDeviceType.";
+    if (!rawDeviceType.startsWith(prefix)) {
+      return null;
+    }
+
+    const deviceType = rawDeviceType.slice(prefix.length);
+    if (deviceType.startsWith("iPhone")) {
+      return "iPhone";
+    } else if (deviceType.startsWith("iPad")) {
+      return "iPad";
+    } else if (deviceType.startsWith("iPod")) {
+      return "iPod";
+    } else if (deviceType.startsWith("Apple-TV")) {
+      return "AppleTV";
+    } else if (deviceType.startsWith("Apple-Watch")) {
+      return "AppleWatch";
+    } else if (deviceType.startsWith("Apple-Vision")) {
+      return "AppleVision";
+    }
+    return null;
   }
 
   /**
@@ -110,6 +149,7 @@ export async function getSimulators(): Promise<iOSSimulator[]> {
           isAvailable: simulator.isAvailable,
           state: simulator.state as "Booted",
           name: simulator.name,
+          rawDeviceType: simulator.deviceTypeIdentifier,
           runtime: key,
         });
       }),

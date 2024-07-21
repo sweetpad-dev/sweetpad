@@ -12,6 +12,7 @@ type WorkspaceTypes = {
   "build.xcodeScheme": string;
   "build.xcodeConfiguration": string;
   "build.xcodeDestination": SelectedDestination;
+  "build.xcodeDestinationsUsageStatistics": Record<string, number>;
   "build.xcodeSdk": string;
 };
 

@@ -457,6 +457,13 @@
           "fontCharacter": "\\f47f"
         }
       },
+      "sweetpad-square-asterisk": {
+        "description": "Square Asterisk",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f01a"
+        }
+      },
       "sweetpad-device-mobile": {
         "description": "Device Mobile",
         "default": {

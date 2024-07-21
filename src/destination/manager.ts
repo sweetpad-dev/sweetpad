@@ -1,7 +1,12 @@
 import { DevicesManager } from "../devices/manager";
 import { SimulatorsManager } from "../simulators/manager";
 import { Destination, SelectedDestination, iOSDeviceDestination, iOSSimulatorDestination } from "./types";
-import { SUPPORTED_DESTINATION_PLATFORMS } from "./constants";
+import {
+  DESTINATION_IOS_DEVICE_TYPE_PRIORITY,
+  DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY,
+  DESTINATION_TYPE_PRIORITY,
+  SUPPORTED_DESTINATION_PLATFORMS,
+} from "./constants";
 import { DestinationPlatform } from "./constants";
 import { DestinationOS } from "./constants";
 import { ExtensionContext } from "../common/commands";
@@ -60,39 +65,112 @@ export class DestinationsManager {
     this.devicesManager.refresh();
   }
 
-  async getiOSSimulators(options?: { refresh?: boolean }): Promise<iOSSimulatorDestination[]> {
+  isUsageStatsExist(): boolean {
+    return this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") !== undefined;
+  }
+
+  async getMostUsedDestinations(): Promise<Destination[]> {
+    const usageStats = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
+    const udidList = Object.keys(usageStats).sort((a, b) => usageStats[b] - usageStats[a]);
+    const destinations: Destination[] = [];
+
+    for (const udid of udidList) {
+      const destination = await this.findDestination({
+        udid: udid,
+      });
+      if (destination) {
+        destinations.push(destination);
+      }
+    }
+
+    return destinations;
+  }
+
+  async getiOSSimulators(options?: { refresh?: boolean; sort?: boolean }): Promise<iOSSimulatorDestination[]> {
     const simulators = await this.simulatorsManager.getSimulators({
       refresh: options?.refresh,
     });
-    return simulators
+    const items = simulators
+      // currently we only support iOS simulators (ignoring watchOS and tvOS)
       .filter((simulator) => simulator.runtimeType === DestinationOS.iOS)
       .map((simulator) => new iOSSimulatorDestination({ simulator: simulator }));
+
+    if (options?.sort) {
+      items.sort((a, b) => this.sortCompareFn(a, b));
+    }
+
+    return items;
   }
 
-  async getiOSDevices(): Promise<iOSDeviceDestination[]> {
+  async getiOSDevices(options?: { sort?: boolean }): Promise<iOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
-    return devices.map((device) => new iOSDeviceDestination({ device: device }));
+    const items = devices.map((device) => new iOSDeviceDestination({ device: device }));
+
+    if (options?.sort) {
+      items.sort((a, b) => this.sortCompareFn(a, b));
+    }
+    return items;
   }
 
-  async getDestinations(options?: { platformFilter?: DestinationPlatform[] }): Promise<Destination[]> {
-    const destinations: Destination[] = [];
+  /**
+   * Function for sorting destinations. This function is not include sorting by usage statistics
+   * bacause it's not needed in a lot of cases and should be done separately
+   */
+  sortCompareFn(a: Destination, b: Destination): number {
+    const aPriority = DESTINATION_TYPE_PRIORITY.findIndex((type) => type === a.type);
+    const bPriority = DESTINATION_TYPE_PRIORITY.findIndex((type) => type === b.type);
+    if (aPriority !== bPriority) {
+      return aPriority - bPriority;
+    }
 
+    if (a.type === "iOSSimulator" && b.type === "iOSSimulator") {
+      const aPriority = DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY.findIndex((type) => type === a.deviceType);
+      const bPriority = DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY.findIndex((type) => type === b.deviceType);
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+    }
+
+    if (a.type === "iOSDevice" && b.type === "iOSDevice") {
+      const aPriority = DESTINATION_IOS_DEVICE_TYPE_PRIORITY.findIndex((type) => type === a.deviceType);
+      const bPriority = DESTINATION_IOS_DEVICE_TYPE_PRIORITY.findIndex((type) => type === b.deviceType);
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+    }
+
+    // In any other cases, fallback to sorting by name
+    return a.name.localeCompare(b.name);
+  }
+
+  async getDestinations(options?: {
+    platformFilter?: DestinationPlatform[];
+    mostUsedSort?: boolean;
+  }): Promise<Destination[]> {
+    const destinations: Destination[] = [];
     const platforms = options?.platformFilter ?? SUPPORTED_DESTINATION_PLATFORMS;
 
     if (platforms.includes(DestinationPlatform.iphonesimulator)) {
-      const simulators = await this.simulatorsManager.getSimulators();
-
-      destinations.push(
-        ...simulators
-          // currently we only support iOS simulators (ignoring watchOS and tvOS)
-          .filter((simulator) => simulator.runtimeType === DestinationOS.iOS)
-          .map((simulator) => new iOSSimulatorDestination({ simulator: simulator })),
-      );
+      const simulators = await this.getiOSSimulators();
+      destinations.push(...simulators);
     }
 
     if (platforms.includes(DestinationPlatform.iphoneos)) {
-      const devices = await this.devicesManager.getDevices();
-      destinations.push(...devices.map((device) => new iOSDeviceDestination({ device: device })));
+      const devices = await this.getiOSDevices();
+      destinations.push(...devices);
+    }
+
+    // Most used destinations should be on top of the list
+    if (options?.mostUsedSort) {
+      const usageStats = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
+      destinations.sort((a, b) => {
+        const aCount = usageStats[a.udid] ?? 0;
+        const bCount = usageStats[b.udid] ?? 0;
+        if (aCount !== bCount) {
+          return bCount - aCount;
+        }
+        return this.sortCompareFn(a, b);
+      });
     }
 
     return destinations;
@@ -103,12 +181,12 @@ export class DestinationsManager {
    */
   async findDestination(options: {
     udid: string;
-    type: "iOSSimulator" | "iOSDevice";
+    type?: "iOSSimulator" | "iOSDevice";
   }): Promise<Destination | undefined> {
-    if (options.type === "iOSSimulator") {
+    if (options.type === "iOSSimulator" || !options.type) {
       const simulators = await this.getiOSSimulators();
       return simulators.find((simulator) => simulator.udid === options.udid);
-    } else if (options.type === "iOSDevice") {
+    } else if (options.type === "iOSDevice" || !options.type) {
       const devices = await this.getiOSDevices();
       return devices.find((device) => device.udid === options.udid);
     }
@@ -119,6 +197,19 @@ export class DestinationsManager {
     this.emitter.emit("refreshWorkspaceDestination", undefined);
   }
 
+  /**
+   * Increment the usage statistics for a destination. This statistics is used to show the most recently used
+   * destinations
+   */
+  incrementUsageStats(options: { udid: string }) {
+    const prevStat = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
+    const count: number = prevStat[options.udid] ?? 0;
+    this.context.updateWorkspaceState("build.xcodeDestinationsUsageStatistics", {
+      ...prevStat,
+      [options.udid]: count + 1,
+    });
+  }
+
   setWorkspaceDestination(destination: Destination) {
     const selectedDestination: SelectedDestination = {
       udid: destination.udid,
@@ -126,6 +217,7 @@ export class DestinationsManager {
       name: destination.name,
     };
     this.context.updateWorkspaceState("build.xcodeDestination", selectedDestination);
+    this.incrementUsageStats({ udid: destination.udid });
 
     this.emitter.emit("refreshWorkspaceDestination", selectedDestination);
   }

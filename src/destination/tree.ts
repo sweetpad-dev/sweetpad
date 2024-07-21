@@ -6,11 +6,11 @@ import { SelectedDestination, iOSDeviceDestination, iOSSimulatorDestination } fr
  * Tree item representing a group of destinations (iOSSimulator, iOSDevice, etc.) at the root level
  */
 class DestinationGroupTreeItem extends vscode.TreeItem {
-  type: "iOSSimulator" | "iOSDevice";
+  type: "iOSSimulator" | "iOSDevice" | "Recent";
 
   constructor(options: {
     label: string;
-    type: "iOSSimulator" | "iOSDevice";
+    type: "iOSSimulator" | "iOSDevice" | "Recent";
     collapsibleState: vscode.TreeItemCollapsibleState;
     icon: string;
   }) {
@@ -25,7 +25,7 @@ class DestinationGroupTreeItem extends vscode.TreeItem {
  * Common interface for destination tree item (items under tree group, second level)
  */
 export interface IDestinationTreeItem {
-  type: "iOSSimulator" | "iOSDevice";
+  type: "iOSSimulator" | "iOSDevice" | "Recent";
 }
 
 /**
@@ -36,12 +36,8 @@ export class iOSSimulatorDestinationTreeItem extends vscode.TreeItem implements 
   simulator: iOSSimulatorDestination;
   provider: DestinationsTreeProvider;
 
-  constructor(options: {
-    collapsibleState: vscode.TreeItemCollapsibleState;
-    simulator: iOSSimulatorDestination;
-    provider: DestinationsTreeProvider;
-  }) {
-    super(options.simulator.name, options.collapsibleState);
+  constructor(options: { simulator: iOSSimulatorDestination; provider: DestinationsTreeProvider }) {
+    super(options.simulator.name, vscode.TreeItemCollapsibleState.None);
     this.description = options.simulator.osVersion;
     this.simulator = options.simulator;
     this.provider = options.provider;
@@ -78,12 +74,8 @@ export class iOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDe
   device: iOSDeviceDestination;
   provider: DestinationsTreeProvider;
 
-  constructor(options: {
-    collapsibleState: vscode.TreeItemCollapsibleState;
-    device: iOSDeviceDestination;
-    provider: DestinationsTreeProvider;
-  }) {
-    super(options.device.name, options.collapsibleState);
+  constructor(options: { device: iOSDeviceDestination; provider: DestinationsTreeProvider }) {
+    super(options.device.name, vscode.TreeItemCollapsibleState.None);
     this.device = options.device;
     this.provider = options.provider;
 
@@ -145,6 +137,8 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
         return this.getiOSSimulators();
       } else if (element.type === "iOSDevice") {
         return this.getiOSDevices();
+      } else if (element.type === "Recent") {
+        return this.getRecent();
       }
       return [];
     }
@@ -152,26 +146,70 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
     return [];
   }
 
+  async getRecent(): Promise<vscode.TreeItem[]> {
+    const mostUsed = await this.manager.getMostUsedDestinations();
+    console.log(mostUsed);
+
+    return mostUsed.map((destination) => {
+      if (destination.type === "iOSSimulator") {
+        return new iOSSimulatorDestinationTreeItem({
+          simulator: destination,
+          provider: this,
+        });
+      } else if (destination.type === "iOSDevice") {
+        return new iOSDeviceDestinationTreeItem({
+          device: destination,
+          provider: this,
+        });
+      } else {
+        const _: never = destination;
+        return _;
+      }
+    });
+  }
+
   getRootElements(): vscode.TreeItem[] {
-    return [
-      new DestinationGroupTreeItem({
-        label: "iOS Simulators",
-        type: "iOSSimulator",
-        collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
-        icon: "sweetpad-square-letter-s",
-      }),
-      new DestinationGroupTreeItem({
-        label: "iOS Devices",
-        type: "iOSDevice",
-        collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-        icon: "sweetpad-square-letter-d",
-      }),
-      // todo: add macOS device
-      // todo: add watchOS device
-      // todo: add watchOS simulator
-      // todo: add tvOS device
-      // todo: add tvOS simulator
-    ];
+    const groups = [];
+
+    // Special group that shows destinations of all types that were used recently
+    const isUsageStat = this.manager.isUsageStatsExist();
+    if (isUsageStat) {
+      groups.push(
+        new DestinationGroupTreeItem({
+          label: "Recent",
+          type: "Recent",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-square-asterisk",
+        }),
+      );
+    }
+
+    groups.push(
+      ...[
+        new DestinationGroupTreeItem({
+          label: "iOS Simulators",
+          type: "iOSSimulator",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-square-letter-s",
+        }),
+        new DestinationGroupTreeItem({
+          label: "iOS Devices",
+          type: "iOSDevice",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-square-letter-d",
+        }),
+        // todo: add macOS device
+        // todo: add watchOS device
+        // todo: add watchOS simulator
+        // todo: add tvOS device
+        // todo: add tvOS simulator
+      ],
+    );
+
+    // Make first item Expanded by default
+    groups[0].collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+
+    return groups;
   }
 
   getTreeItem(element: DestinationTreeItem): vscode.TreeItem {
@@ -179,12 +217,13 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   async getiOSSimulators(): Promise<DestinationTreeItem[]> {
-    const simulators = await this.manager.getiOSSimulators();
+    const simulators = await this.manager.getiOSSimulators({
+      sort: true,
+    });
 
     return simulators.map((simulator) => {
       return new iOSSimulatorDestinationTreeItem({
         simulator: simulator,
-        collapsibleState: vscode.TreeItemCollapsibleState.None,
         provider: this,
       });
     });
@@ -196,7 +235,6 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
     return device.map((device) => {
       return new iOSDeviceDestinationTreeItem({
         device: device,
-        collapsibleState: vscode.TreeItemCollapsibleState.None,
         provider: this,
       });
     });

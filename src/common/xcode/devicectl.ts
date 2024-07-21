@@ -47,9 +47,11 @@ type DeviceCtlDeviceProperties = {
   rootFileSystemIsWritable: boolean;
 };
 
+export type DeviceCtlDeviceType = "iPhone" | "iPad";
+
 type DeviceCtlHardwareProperties = {
   cpuType: DeviceCtlCpuType;
-  deviceType: "iPhone" | "iPad";
+  deviceType: DeviceCtlDeviceType;
   ecid: number;
   hardwareModel: string;
   internalStorageCapacity: number;

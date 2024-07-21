@@ -29,7 +29,9 @@ export async function askSimulator(
     error: string;
   },
 ): Promise<iOSSimulatorDestination> {
-  let simulators = await context.destinationsManager.getiOSSimulators();
+  let simulators = await context.destinationsManager.getiOSSimulators({
+    sort: true,
+  });
 
   if (options?.state) {
     simulators = simulators.filter((simulator) => simulator.state === options.state);
@@ -69,6 +71,7 @@ export async function askDestinationToRunOn(
 
   const destinations = await context.destinationsManager.getDestinations({
     platformFilter: supportedPlatforms,
+    mostUsedSort: true,
   });
 
   // If we have cached desination, use it
@@ -86,7 +89,9 @@ export async function askDestinationToRunOn(
 }
 
 export async function selectDestination(context: ExtensionContext): Promise<Destination> {
-  const destinations = await context.destinationsManager.getDestinations();
+  const destinations = await context.destinationsManager.getDestinations({
+    mostUsedSort: true,
+  });
 
   const selected = await showQuickPick<Destination>({
     title: "Select destination to run on",

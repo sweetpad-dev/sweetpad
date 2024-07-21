@@ -1,12 +1,14 @@
-import { iOSSimulator } from "../common/cli/scripts";
+import { iOSSimulator, iOSSimulatorDeviceType } from "../common/cli/scripts";
 import { DestinationPlatform } from "./constants";
-import { iOSDevice } from "../common/xcode/devicectl";
+import { DeviceCtlDeviceType, iOSDevice } from "../common/xcode/devicectl";
+
+export type DestinationType = "iOSSimulator" | "iOSDevice";
 
 /**
  * Generic interface for a destination (iOS simulator, iOS device, etc.)
  */
 interface IDestination {
-  type: "iOSSimulator" | "iOSDevice";
+  type: DestinationType;
   typeLabel: string;
   label: string;
   icon: string;
@@ -27,6 +29,7 @@ export class iOSSimulatorDestination implements IDestination {
   name: string;
   osVersion: string;
   state: "Booted" | "Shutdown";
+  deviceType: iOSSimulatorDeviceType | null;
 
   private simulator: iOSSimulator;
 
@@ -36,6 +39,7 @@ export class iOSSimulatorDestination implements IDestination {
     this.name = this.simulator.name;
     this.osVersion = this.simulator.osVersion;
     this.state = this.simulator.state;
+    this.deviceType = this.simulator.deviceType;
   }
 
   get label(): string {
@@ -64,7 +68,7 @@ export class iOSDeviceDestination implements IDestination {
   udid: string;
   osVersion: string;
   name: string;
-  deviceType: "iPhone" | "iPad";
+  deviceType: DeviceCtlDeviceType;
 
   private device: iOSDevice;
 
@@ -110,7 +114,7 @@ export type Destination = iOSSimulatorDestination | iOSDeviceDestination;
  * store the full destination object because it contains non-serializable properties)
  */
 export type SelectedDestination = {
-  type: "iOSSimulator" | "iOSDevice";
+  type: DestinationType;
   udid: string;
   name: string;
 };
