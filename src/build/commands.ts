@@ -349,8 +349,6 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         shouldTest: false,
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
-        // destinationType: sdk,
-        // destinationId: destination.udid,
       });
 
       if (sdk === DestinationPlatform.macosx) {
@@ -415,8 +413,6 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
         shouldTest: false,
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
-        // destinationType: sdk,
-        // destinationId: null,
       });
     },
   });
