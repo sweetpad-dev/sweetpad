@@ -280,19 +280,19 @@
       "commandPalette": [],
       "view/title": [
         {
-          "command": "sweetpad.build.refreshView",
+          "command": "sweetpad.build.openXcode",
           "when": "view == sweetpad.build.view",
-          "group": "navigation@1"
+          "group": "navigation@3"
         },
         {
-          "command": "sweetpad.build.removeBundleDir",
+          "command": "sweetpad.build.refreshView",
           "when": "view == sweetpad.build.view",
           "group": "navigation@2"
         },
         {
-          "command": "sweetpad.build.openXcode",
+          "command": "sweetpad.build.removeBundleDir",
           "when": "view == sweetpad.build.view",
-          "group": "navigation@3"
+          "group": "navigation@1"
         },
         {
           "command": "sweetpad.tools.refresh",
@@ -302,19 +302,19 @@
       ],
       "view/item/context": [
         {
-          "command": "sweetpad.simulators.refresh",
+          "command": "sweetpad.simulators.openSimulator",
           "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSSimulator",
-          "group": "inline@1"
+          "group": "inline@3"
         },
         {
-          "command": "sweetpad.simulators.openSimulator",
+          "command": "sweetpad.simulators.refresh",
           "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSSimulator",
           "group": "inline@2"
         },
         {
           "command": "sweetpad.simulators.removeCache",
           "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSSimulator",
-          "group": "inline@3"
+          "group": "inline@1"
         },
         {
           "command": "sweetpad.devices.refresh",
