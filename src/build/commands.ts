@@ -210,13 +210,20 @@ function isXcbeautifyEnabled() {
   return getWorkspaceConfig("build.xcbeautifyEnabled") ?? true;
 }
 
-function getDestination(options: { platform: DestinationPlatform; id: string | null }): string {
+/**
+ * Prepare and return destination string for xcodebuild command.
+ *
+ * WARN: Do not use result of this function to anything else than xcodebuild command.
+ */
+export function getDestinationRaw(options: { platform: DestinationPlatform; id: string | null }): string {
   const platformName = getDestinationName(options.platform);
   // ?? iPhone device can't be built with id
   if (options.id != null && isSimulator(options.platform)) {
+    //  Example: "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
     return `platform=${platformName},id=${options.id}`;
   }
 
+  //  Example: "platform=iOS Simulator"
   return `generic/platform=${platformName}`;
 }
 
@@ -231,15 +238,12 @@ export async function buildApp(
     shouldClean: boolean;
     shouldTest: boolean;
     xcworkspace: string;
-    destinationType: DestinationPlatform;
-    destinationId: string | null;
+    destinationRaw: string;
   },
 ) {
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundlePath = await prepareBundleDir(context, options.scheme);
   const derivedDataPath = prepareDerivedDataPath();
-
-  const destination = getDestination({ platform: options.destinationType, id: options.destinationId });
 
   const arch = getWorkspaceConfig("build.arch") || undefined;
 
@@ -253,7 +257,7 @@ export async function buildApp(
     "-workspace",
     options.xcworkspace,
     "-destination",
-    destination,
+    options.destinationRaw,
     "-resultBundlePath",
     bundlePath,
     "-allowProvisioningUpdates",
@@ -290,6 +294,8 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
   });
 
   const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const destinationRaw = getDestinationRaw({ platform: destination.platform, id: destination.udid });
+
   const sdk = destination.platform;
 
   await runTask(execution.context, {
@@ -303,8 +309,7 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
         shouldClean: false,
         shouldTest: false,
         xcworkspace: xcworkspace,
-        destinationType: sdk,
-        destinationId: destination.udid ?? null,
+        destinationRaw: destinationRaw,
       });
     },
   });
@@ -328,6 +333,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
   });
 
   const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const destinationRaw = getDestinationRaw({ platform: destination.platform, id: destination.udid });
+
   const sdk = destination.platform;
 
   await runTask(execution.context, {
@@ -341,8 +348,9 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         shouldClean: false,
         shouldTest: false,
         xcworkspace: xcworkspace,
-        destinationType: sdk,
-        destinationId: destination.udid ?? null,
+        destinationRaw: destinationRaw,
+        // destinationType: sdk,
+        // destinationId: destination.udid,
       });
 
       if (sdk === DestinationPlatform.macosx) {
@@ -391,6 +399,8 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
   });
 
   const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const destinationRaw = getDestinationRaw({ platform: destination.platform, id: destination.udid });
+
   const sdk = destination.platform;
 
   await runTask(execution.context, {
@@ -404,8 +414,9 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
         shouldClean: true,
         shouldTest: false,
         xcworkspace: xcworkspace,
-        destinationType: sdk,
-        destinationId: null,
+        destinationRaw: destinationRaw,
+        // destinationType: sdk,
+        // destinationId: null,
       });
     },
   });
@@ -424,6 +435,11 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
   });
 
   const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const destinationRaw = getDestinationRaw({
+    platform: destination.platform,
+    id: destination.udid, // pay attention that id can't be null for test command
+  });
+
   const sdk = destination.platform;
 
   await runTask(execution.context, {
@@ -437,8 +453,7 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
         shouldClean: false,
         shouldTest: true,
         xcworkspace: xcworkspace,
-        destinationType: sdk,
-        destinationId: destination.udid ?? null,
+        destinationRaw: destinationRaw,
       });
     },
   });

@@ -6,7 +6,7 @@ import {
   askXcodeWorkspacePath,
   getDestinationByUdid,
 } from "./utils";
-import { buildApp, runOniOSSimulator, resolveDependencies, runOniOSDevice } from "./commands";
+import { buildApp, runOniOSSimulator, resolveDependencies, runOniOSDevice, getDestinationRaw } from "./commands";
 import { ExtensionContext } from "../common/commands";
 import {
   TaskTerminalV2,
@@ -15,8 +15,7 @@ import {
   getTaskExecutorName,
   TaskTerminalV1Parent,
 } from "../common/tasks";
-import { getBuildSettings, getSupportedPlatforms } from "../common/cli/scripts";
-import { DestinationPlatform } from "../destination/constants";
+import { BuildSettingsOutput, getBuildSettings } from "../common/cli/scripts";
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -24,8 +23,9 @@ interface TaskDefinition extends vscode.TaskDefinition {
   scheme?: string;
   configuration?: string;
   workspace?: string;
-  simulator?: string; // deprecated, use "destination" instead
-  destinationId?: string;
+  simulator?: string; // deprecated, use "destinationId" or "destinationRaw"
+  destinationId?: string; // ex: "00000000-0000-0000-0000-000000000000"
+  destination?: string; // ex: "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
 }
 
 class ActionDispatcher {
@@ -57,6 +57,25 @@ class ActionDispatcher {
     }
   }
 
+  private async getDestination(options: { definition: TaskDefinition; buildSettings: BuildSettingsOutput }) {
+    const destinationUdid: string | undefined =
+      // ex: "00000000-0000-0000-0000-000000000000"
+      options.definition.destinationId ??
+      // ex: "00000000-0000-0000-0000-000000000000"
+      options.definition.simulator ??
+      // ex: "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
+      options.definition.destination?.match(/id=(.+)/)?.[1];
+
+    // If user has provided the ID of the destination, then use it directly
+    if (destinationUdid) {
+      return await getDestinationByUdid(this.context, { udid: destinationUdid });
+    }
+
+    // Otherwise, ask the user to select the destination (it will be cached for the next time)
+    const destination = await askDestinationToRunOn(this.context, options.buildSettings);
+    return destination;
+  }
+
   private async launchCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
@@ -78,10 +97,16 @@ class ActionDispatcher {
       xcworkspace: xcworkspace,
     });
 
-    const destinationUdid = definition.destinationId ?? definition.simulator;
-    const destination = destinationUdid
-      ? await getDestinationByUdid(this.context, { udid: destinationUdid })
-      : await askDestinationToRunOn(this.context, buildSettings);
+    const destination = await this.getDestination({
+      definition: definition,
+      buildSettings: buildSettings,
+    });
+    const destinationRaw =
+      definition.destination ??
+      getDestinationRaw({
+        platform: destination.platform,
+        id: destination.udid,
+      });
 
     const sdk = destination.platform;
 
@@ -93,8 +118,9 @@ class ActionDispatcher {
       shouldClean: false,
       shouldTest: false,
       xcworkspace: xcworkspace,
-      destinationType: sdk,
-      destinationId: definition.destinationId ?? null,
+      destinationRaw: destinationRaw,
+      // destinationType: sdk,
+      // destinationId: definition.destinationId,
     });
 
     if (destination.type == "iOSSimulator") {
@@ -136,7 +162,17 @@ class ActionDispatcher {
       xcworkspace: xcworkspace,
     });
 
-    const destination = await askDestinationToRunOn(this.context, buildSettings);
+    const destination = await this.getDestination({
+      definition: definition,
+      buildSettings: buildSettings,
+    });
+    const destinationRaw =
+      definition.destination ??
+      getDestinationRaw({
+        platform: destination.platform,
+        id: destination.udid,
+      });
+
     const sdk = destination.platform;
 
     await buildApp(this.context, terminal, {
@@ -147,8 +183,9 @@ class ActionDispatcher {
       shouldClean: false,
       shouldTest: false,
       xcworkspace: xcworkspace,
-      destinationType: sdk,
-      destinationId: definition.destinationId ?? null,
+      destinationRaw: destinationRaw,
+      // destinationType: sdk,
+      // destinationId: definition.destinationId ?? null,
     });
   }
 
@@ -173,7 +210,17 @@ class ActionDispatcher {
       xcworkspace: xcworkspace,
     });
 
-    const destination = await askDestinationToRunOn(this.context, buildSettings);
+    const destination = await this.getDestination({
+      definition: definition,
+      buildSettings: buildSettings,
+    });
+    const destinationRaw =
+      definition.destination ??
+      getDestinationRaw({
+        platform: destination.platform,
+        id: destination.udid,
+      });
+
     const sdk = destination.platform;
 
     await buildApp(this.context, terminal, {
@@ -184,8 +231,9 @@ class ActionDispatcher {
       shouldClean: true,
       shouldTest: false,
       xcworkspace: xcworkspace,
-      destinationType: sdk,
-      destinationId: definition.destinationId ?? null,
+      destinationRaw: destinationRaw,
+      // destinationType: sdk,
+      // destinationId: definition.destinationId,
     });
   }
 
@@ -209,10 +257,16 @@ class ActionDispatcher {
       xcworkspace: xcworkspace,
     });
 
-    const destinationUdid = definition.destinationId ?? definition.simulator;
-    const destination = destinationUdid
-      ? await getDestinationByUdid(this.context, { udid: destinationUdid })
-      : await askDestinationToRunOn(this.context, buildSettings);
+    const destination = await this.getDestination({
+      definition: definition,
+      buildSettings: buildSettings,
+    });
+    const destinationRaw =
+      definition.destination ??
+      getDestinationRaw({
+        platform: destination.platform,
+        id: destination.udid,
+      });
 
     const sdk = destination.platform;
 
@@ -224,8 +278,7 @@ class ActionDispatcher {
       shouldClean: false,
       shouldTest: true,
       xcworkspace: xcworkspace,
-      destinationType: sdk,
-      destinationId: destination.udid ?? null,
+      destinationRaw: destinationRaw,
     });
   }
 
