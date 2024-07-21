@@ -1,13 +1,10 @@
 import * as vscode from "vscode";
 import { ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
-import { BuildTreeProvider } from "../build/tree";
-import { ToolTreeProvider } from "../tools/tree";
-import { DevicesManager } from "../devices/manager";
-import { SimulatorsManager } from "../simulators/manager";
 import { DestinationsManager } from "../destination/manager";
 import { SelectedDestination } from "../destination/types";
 import { ToolsManager } from "../tools/manager";
+import { BuildManager } from "../build/manager";
 
 type WorkspaceTypes = {
   "build.xcodeWorkspacePath": string;
@@ -25,16 +22,18 @@ export class ExtensionContext {
   private _context: vscode.ExtensionContext;
   public destinationsManager: DestinationsManager;
   public toolsManager: ToolsManager;
+  public buildManager: BuildManager;
   private _sessionState: Map<SessionStateKey, any> = new Map();
 
   constructor(options: {
     context: vscode.ExtensionContext;
     destinationsManager: DestinationsManager;
-
+    buildManager: BuildManager;
     toolsManager: ToolsManager;
   }) {
     this._context = options.context;
     this.destinationsManager = options.destinationsManager;
+    this.buildManager = options.buildManager;
     this.toolsManager = options.toolsManager;
   }
 
@@ -86,6 +85,7 @@ export class ExtensionContext {
       }
     });
     this.destinationsManager.fireSelectedDestinationRemoved();
+    this.buildManager.refresh();
   }
 
   async withCache<T extends WorkspaceStateKey>(key: T, callback: () => Promise<WorkspaceTypes[T]>) {
