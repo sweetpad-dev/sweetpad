@@ -80,7 +80,7 @@ class ActionDispatcher {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
-      (await askScheme({
+      (await askScheme(this.context, {
         xcworkspace: xcworkspace,
       }));
 
@@ -144,7 +144,7 @@ class ActionDispatcher {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
-      (await askScheme({
+      (await askScheme(this.context, {
         xcworkspace: xcworkspace,
       }));
     const configuration =
@@ -190,7 +190,7 @@ class ActionDispatcher {
 
     const scheme =
       definition.scheme ??
-      (await askScheme({
+      (await askScheme(this.context, {
         xcworkspace: xcworkspace,
       }));
     const configuration =
@@ -235,7 +235,7 @@ class ActionDispatcher {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
-      (await askScheme({
+      (await askScheme(this.context, {
         xcworkspace: xcworkspace,
       }));
     const configuration =
@@ -280,7 +280,7 @@ class ActionDispatcher {
     const xcworkspacePath = definition.workspace ?? (await askXcodeWorkspacePath(this.context));
     const scheme =
       definition.scheme ??
-      (await askScheme({
+      (await askScheme(this.context, {
         xcworkspace: xcworkspacePath,
       }));
 

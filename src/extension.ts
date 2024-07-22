@@ -10,6 +10,7 @@ import {
   removeBundleDirCommand,
   resolveDependenciesCommand,
   testCommand,
+  selectXcodeSchemeCommand,
 } from "./build/commands.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { createFormatStatusItem } from "./format/status.js";
@@ -99,7 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Build
   d(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
-  d(command("sweetpad.build.refreshView", async () => buildTreeProvider.refresh()));
+  d(command("sweetpad.build.refreshView", async () => buildManager.refresh()));
   d(command("sweetpad.build.launch", launchCommand));
   d(command("sweetpad.build.build", buildCommand));
   d(command("sweetpad.build.clean", cleanCommand));
@@ -109,6 +110,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
   d(command("sweetpad.build.openXcode", openXcodeCommand));
   d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
+  d(command("sweetpad.build.selectXcodeScheme", selectXcodeSchemeCommand));
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));

@@ -12,13 +12,13 @@ export class DestinationStatusBar {
     this.item.tooltip = "Select destination for debugging";
     void this.update();
     this.item.show();
-    this.context.destinationsManager.on("refreshWorkspaceDestination", () => {
+    this.context.destinationsManager.on("xcodeDestinationUpdated", () => {
       void this.update();
     });
   }
 
   update() {
-    const destination = this.context.destinationsManager.getWorkspaceSelectedDestination();
+    const destination = this.context.destinationsManager.getSelectedXcodeDestination();
     if (destination) {
       this.item.text = `$(sweetpad-device-mobile-check) ${destination.name}`;
     } else {

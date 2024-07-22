@@ -50,7 +50,7 @@ export class iOSSimulatorDestinationTreeItem extends vscode.TreeItem implements 
 
     let color: vscode.ThemeColor | undefined = undefined;
     if (isSelected) {
-      this.description = `${this.description} •`;
+      this.description = `${this.description} ✓`;
     }
 
     if (this.simulator.isBooted) {
@@ -88,7 +88,7 @@ export class iOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDe
       this.provider.selectedDestination?.type === "iOSDevice" &&
       this.provider.selectedDestination.udid === this.device.udid;
     if (isSelected) {
-      this.description = `${this.description} •`;
+      this.description = `${this.description} ✓`;
     }
 
     this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
@@ -116,17 +116,17 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
 
   constructor(options: { manager: DestinationsManager }) {
     this.manager = options.manager;
-    this.manager.on("refreshSimulators", () => {
+    this.manager.on("simulatorsUpdated", () => {
       this._onDidChangeTreeData.fire();
     });
-    this.manager.on("refreshDevices", () => {
+    this.manager.on("devicesUpdated", () => {
       this._onDidChangeTreeData.fire();
     });
-    this.manager.on("refreshWorkspaceDestination", (destination) => {
+    this.manager.on("xcodeDestinationUpdated", (destination) => {
       this.selectedDestination = destination;
       this._onDidChangeTreeData.fire(); // todo: update only the selected destination
     });
-    this.selectedDestination = this.manager.getWorkspaceSelectedDestination();
+    this.selectedDestination = this.manager.getSelectedXcodeDestination();
   }
 
   getChildren(element?: DestinationGroupTreeItem | DestinationTreeItem): vscode.ProviderResult<vscode.TreeItem[]> {

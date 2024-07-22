@@ -278,6 +278,11 @@
         "icon": "$(file-directory)"
       },
       {
+        "command": "sweetpad.build.selectXcodeScheme",
+        "title": "SweetPad: Select Xcode scheme",
+        "icon": "$(file-directory)"
+      },
+      {
         "command": "sweetpad.system.resetSweetpadCache",
         "title": "SweetPad: Reset Extension Cache",
         "icon": "$(clear-all)"
@@ -359,16 +364,24 @@
           "group": "inline@1"
         },
         {
-          "command": "sweetpad.build.clean",
-          "when": "view == sweetpad.build.view"
+          "command": "sweetpad.build.test",
+          "when": "view == sweetpad.build.view",
+          "group": "context@1"
         },
         {
-          "command": "sweetpad.build.test",
-          "when": "view == sweetpad.build.view"
+          "command": "sweetpad.build.clean",
+          "when": "view == sweetpad.build.view",
+          "group": "context@2"
         },
         {
           "command": "sweetpad.build.resolveDependencies",
-          "when": "view == sweetpad.build.view"
+          "when": "view == sweetpad.build.view",
+          "group": "context@3"
+        },
+        {
+          "command": "sweetpad.build.selectXcodeScheme",
+          "when": "view == sweetpad.build.view",
+          "group": "context@4"
         },
         {
           "command": "sweetpad.simulators.start",

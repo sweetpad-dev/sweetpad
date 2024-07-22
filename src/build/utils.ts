@@ -75,7 +75,7 @@ export async function askDestinationToRunOn(
   });
 
   // If we have cached desination, use it
-  const cachedDestination = context.destinationsManager.getWorkspaceSelectedDestination();
+  const cachedDestination = context.destinationsManager.getSelectedXcodeDestination();
   if (cachedDestination) {
     const destination = destinations.find(
       (destination) => destination.udid === cachedDestination.udid && destination.type === cachedDestination.type,
@@ -131,7 +131,19 @@ export async function getDestinationByUdid(context: ExtensionContext, options: {
 /**
  * Ask user to select scheme to build
  */
-export async function askScheme(options: { title?: string; xcworkspace: string }): Promise<string> {
+export async function askScheme(
+  context: ExtensionContext,
+  options: {
+    title?: string;
+    xcworkspace: string;
+    ignoreCache: boolean;
+  },
+): Promise<string> {
+  const cachedScheme = context.buildManager.getSelectedScheme();
+  if (cachedScheme && !options.ignoreCache) {
+    return cachedScheme;
+  }
+
   const schemes = await getSchemes({
     xcworkspace: options.xcworkspace,
   });
@@ -148,7 +160,9 @@ export async function askScheme(options: { title?: string; xcworkspace: string }
     }),
   });
 
-  return scheme.context.scheme.name;
+  const schemeName = scheme.context.scheme.name;
+  context.buildManager.setSelectedScheme(schemeName);
+  return schemeName;
 }
 
 /**

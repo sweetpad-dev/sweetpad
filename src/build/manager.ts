@@ -5,16 +5,18 @@ import { getCurrentXcodeWorkspacePath } from "./utils";
 import events from "events";
 
 type IEventMap = {
-  refresh: [];
+  updated: [];
+  selectedSchemeUpdated: [scheme: string | undefined];
 };
+type IEventKey = keyof IEventMap;
 
 export class BuildManager {
   private cache: XcodeScheme[] | undefined = undefined;
   private emitter = new events.EventEmitter<IEventMap>();
   public _context: ExtensionContext | undefined = undefined;
 
-  on(event: "refresh", listener: () => void): void {
-    this.emitter.on(event, listener);
+  on<K extends IEventKey>(event: K, listener: (...args: IEventMap[K]) => void): void {
+    this.emitter.on(event, listener as any); // todo: fix this any
   }
 
   set context(context: ExtensionContext) {
@@ -35,7 +37,7 @@ export class BuildManager {
       xcworkspace: xcworkspace,
     });
     this.cache = scheme;
-    this.emitter.emit("refresh");
+    this.emitter.emit("updated");
     return this.cache;
   }
 
@@ -44,5 +46,14 @@ export class BuildManager {
       return await this.refresh();
     }
     return this.cache;
+  }
+
+  getSelectedScheme(): string | undefined {
+    return this.context.getWorkspaceState("build.xcodeScheme");
+  }
+
+  setSelectedScheme(scheme: string | undefined): void {
+    this.context.updateWorkspaceState("build.xcodeScheme", scheme);
+    this.emitter.emit("selectedSchemeUpdated", scheme);
   }
 }

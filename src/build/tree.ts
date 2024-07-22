@@ -7,7 +7,7 @@ import { BuildManager } from "./manager";
 type EventData = BuildTreeItem | undefined | null | void;
 
 export class BuildTreeItem extends vscode.TreeItem {
-  private provider: BuildTreeProvider;
+  public provider: BuildTreeProvider;
   public scheme: string;
 
   constructor(options: {
@@ -20,10 +20,10 @@ export class BuildTreeItem extends vscode.TreeItem {
     this.scheme = options.scheme;
     const color = new vscode.ThemeColor("sweetpad.scheme");
     this.iconPath = new vscode.ThemeIcon("sweetpad-package", color);
-  }
 
-  refresh() {
-    this.provider.refresh();
+    if (this.scheme === this.provider.selectedScheme) {
+      this.description = "✓";
+    }
   }
 }
 export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem> {
@@ -31,16 +31,22 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   public context: ExtensionContext | undefined;
   public buildManager: BuildManager;
+  public selectedScheme: string | undefined;
 
   constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
     this.context = options.context;
     this.buildManager = options.buildManager;
-    this.buildManager.on("refresh", () => {
+    this.buildManager.on("updated", () => {
       this.refresh();
     });
+    this.buildManager.on("selectedSchemeUpdated", (scheme) => {
+      this.selectedScheme = scheme;
+      this.refresh();
+    });
+    this.selectedScheme = this.buildManager.getSelectedScheme();
   }
 
-  refresh(): void {
+  private refresh(): void {
     this._onDidChangeTreeData.fire();
   }
 

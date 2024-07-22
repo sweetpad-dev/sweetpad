@@ -2,7 +2,7 @@ import { iOSSimulator, getSimulators } from "../common/cli/scripts";
 import events from "events";
 
 type IEventMap = {
-  refresh: [];
+  updated: [];
 };
 
 /**
@@ -13,13 +13,13 @@ export class SimulatorsManager {
 
   private emitter = new events.EventEmitter<IEventMap>();
 
-  on(event: "refresh", listener: () => void): void {
+  on(event: "updated", listener: () => void): void {
     this.emitter.on(event, listener);
   }
 
   async refresh(): Promise<iOSSimulator[]> {
     this.cache = await getSimulators();
-    this.emitter.emit("refresh");
+    this.emitter.emit("updated");
     return this.cache;
   }
 

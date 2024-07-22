@@ -13,9 +13,9 @@ import { ExtensionContext } from "../common/commands";
 import events from "events";
 
 type IEventMap = {
-  refreshSimulators: [];
-  refreshDevices: [];
-  refreshWorkspaceDestination: [destination: SelectedDestination | undefined];
+  simulatorsUpdated: [];
+  devicesUpdated: [];
+  xcodeDestinationUpdated: [destination: SelectedDestination | undefined];
 };
 
 type IEventKey = keyof IEventMap;
@@ -34,11 +34,11 @@ export class DestinationsManager {
     this._context = undefined;
 
     // Forward events from simulators and devices managers
-    this.simulatorsManager.on("refresh", () => {
-      this.emitter.emit("refreshSimulators");
+    this.simulatorsManager.on("updated", () => {
+      this.emitter.emit("simulatorsUpdated");
     });
-    this.devicesManager.on("refresh", () => {
-      this.emitter.emit("refreshDevices");
+    this.devicesManager.on("updated", () => {
+      this.emitter.emit("devicesUpdated");
     });
   }
 
@@ -63,6 +63,11 @@ export class DestinationsManager {
 
   refreshiOSDevices() {
     this.devicesManager.refresh();
+  }
+
+  refresh() {
+    this.refreshiOSSimulators();
+    this.refreshiOSDevices();
   }
 
   isUsageStatsExist(): boolean {
@@ -193,10 +198,6 @@ export class DestinationsManager {
     return undefined;
   }
 
-  fireSelectedDestinationRemoved() {
-    this.emitter.emit("refreshWorkspaceDestination", undefined);
-  }
-
   /**
    * Increment the usage statistics for a destination. This statistics is used to show the most recently used
    * destinations
@@ -210,7 +211,13 @@ export class DestinationsManager {
     });
   }
 
-  setWorkspaceDestination(destination: Destination) {
+  setWorkspaceDestination(destination: Destination | undefined) {
+    if (!destination) {
+      this.context.updateWorkspaceState("build.xcodeDestination", undefined);
+      this.emitter.emit("xcodeDestinationUpdated", undefined);
+      return;
+    }
+
     const selectedDestination: SelectedDestination = {
       udid: destination.udid,
       type: destination.type,
@@ -219,13 +226,13 @@ export class DestinationsManager {
     this.context.updateWorkspaceState("build.xcodeDestination", selectedDestination);
     this.incrementUsageStats({ udid: destination.udid });
 
-    this.emitter.emit("refreshWorkspaceDestination", selectedDestination);
+    this.emitter.emit("xcodeDestinationUpdated", selectedDestination);
   }
 
   /**
    * Get selected destination from the workspace state
    */
-  getWorkspaceSelectedDestination(): SelectedDestination | undefined {
+  getSelectedXcodeDestination(): SelectedDestination | undefined {
     return this.context.getWorkspaceState("build.xcodeDestination");
   }
 
@@ -234,7 +241,7 @@ export class DestinationsManager {
    * fetch the destination from the simulators and devices managers.
    */
   async findWorkspaceSelectedDestination(): Promise<Destination | undefined> {
-    const destination = this.getWorkspaceSelectedDestination();
+    const destination = this.getSelectedXcodeDestination();
     if (!destination) {
       return undefined;
     }

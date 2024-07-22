@@ -283,7 +283,8 @@ export async function buildApp(
  */
 export async function buildCommand(execution: CommandExecution, item?: BuildTreeItem) {
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to build", xcworkspace: xcworkspace }));
+  const scheme =
+    item?.scheme ?? (await askScheme(execution.context, { title: "Select scheme to build", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
   const buildSettings = await getBuildSettings({
@@ -322,7 +323,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
   const scheme =
-    item?.scheme ?? (await askScheme({ title: "Select scheme to build and run", xcworkspace: xcworkspace }));
+    item?.scheme ??
+    (await askScheme(execution.context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
   const buildSettings = await getBuildSettings({
@@ -386,7 +388,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
  */
 export async function cleanCommand(execution: CommandExecution, item?: BuildTreeItem) {
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to clean", xcworkspace: xcworkspace }));
+  const scheme =
+    item?.scheme ?? (await askScheme(execution.context, { title: "Select scheme to clean", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
   const buildSettings = await getBuildSettings({
@@ -420,7 +423,8 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
 
 export async function testCommand(execution: CommandExecution, item?: BuildTreeItem) {
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  const scheme = item?.scheme ?? (await askScheme({ title: "Select scheme to test", xcworkspace: xcworkspace }));
+  const scheme =
+    item?.scheme ?? (await askScheme(execution.context, { title: "Select scheme to test", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
   const buildSettings = await getBuildSettings({
@@ -474,7 +478,8 @@ export async function resolveDependenciesCommand(execution: CommandExecution, it
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
   const scheme =
-    item?.scheme ?? (await askScheme({ title: "Select scheme to resolve dependencies", xcworkspace: xcworkspace }));
+    item?.scheme ??
+    (await askScheme(execution.context, { title: "Select scheme to resolve dependencies", xcworkspace: xcworkspace }));
 
   await resolveDependencies(execution.context, {
     scheme: scheme,
@@ -507,7 +512,7 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
 
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
-  const scheme = await askScheme({
+  const scheme = await askScheme(execution.context, {
     title: "Select scheme for build server",
     xcworkspace: xcworkspace,
   });
@@ -567,4 +572,18 @@ export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
   }
 
   execution.context.buildManager.refresh();
+}
+
+export async function selectXcodeSchemeCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  if (item) {
+    item.provider.buildManager.setSelectedScheme(item.scheme);
+    return;
+  }
+
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+  await askScheme(execution.context, {
+    title: "Select scheme to set as default",
+    xcworkspace: xcworkspace,
+    ignoreCache: true,
+  });
 }

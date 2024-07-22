@@ -86,8 +86,11 @@ export class ExtensionContext {
         this._context.workspaceState.update(key, undefined);
       }
     });
-    this.destinationsManager.fireSelectedDestinationRemoved();
+    this.destinationsManager.setWorkspaceDestination(undefined);
+    this.buildManager.setSelectedScheme(undefined);
+
     this.buildManager.refresh();
+    this.destinationsManager.refresh();
   }
 
   async withCache<T extends WorkspaceStateKey>(key: T, callback: () => Promise<WorkspaceTypes[T]>) {

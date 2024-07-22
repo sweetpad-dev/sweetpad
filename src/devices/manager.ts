@@ -1,13 +1,13 @@
 import { ExtensionContext } from "../common/commands";
-import { IosDevice, listDevices } from "../common/xcode/devicectl";
+import { iOSDevice, listDevices } from "../common/xcode/devicectl";
 import events from "events";
 
 type DeviceManagerEventTypes = {
-  refresh: [];
+  updated: [];
 };
 
 export class DevicesManager {
-  private cache: IosDevice[] | undefined = undefined;
+  private cache: iOSDevice[] | undefined = undefined;
   private _context: ExtensionContext | undefined = undefined;
   private emitter = new events.EventEmitter<DeviceManagerEventTypes>();
 
@@ -17,7 +17,7 @@ export class DevicesManager {
     this._context = context;
   }
 
-  on(event: "refresh", listener: () => void): void {
+  on(event: "updated", listener: () => void): void {
     this.emitter.on(event, listener);
   }
 
@@ -28,7 +28,7 @@ export class DevicesManager {
     return this._context;
   }
 
-  async refresh(): Promise<IosDevice[]> {
+  async refresh(): Promise<iOSDevice[]> {
     this.failed = null;
     try {
       this.cache = await listDevices(this.context);
@@ -40,11 +40,11 @@ export class DevicesManager {
       }
       this.cache = [];
     }
-    this.emitter.emit("refresh");
+    this.emitter.emit("updated");
     return this.cache;
   }
 
-  async getDevices(options?: { refresh?: boolean }): Promise<IosDevice[]> {
+  async getDevices(options?: { refresh?: boolean }): Promise<iOSDevice[]> {
     if (this.cache === undefined || options?.refresh) {
       return await this.refresh();
     }

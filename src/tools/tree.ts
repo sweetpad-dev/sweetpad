@@ -16,12 +16,12 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
 
   constructor(options: { manager: ToolsManager }) {
     this.manager = options.manager;
-    this.manager.on("refresh", () => {
+    this.manager.on("updated", () => {
       this.refresh();
     });
   }
 
-  refresh(): void {
+  private refresh(): void {
     this._onDidChangeTreeData.fire();
   }
 

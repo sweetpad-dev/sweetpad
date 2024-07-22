@@ -3,7 +3,7 @@ import { Tool, TOOLS } from "./constants";
 import { exec } from "../common/exec";
 
 type IEventMap = {
-  refresh: [];
+  updated: [];
 };
 
 type ToolItem = {
@@ -15,7 +15,7 @@ export class ToolsManager {
 
   private emitter = new events.EventEmitter<IEventMap>();
 
-  on(event: "refresh", listener: () => void): void {
+  on(event: "updated", listener: () => void): void {
     this.emitter.on(event, listener);
   }
 
@@ -40,7 +40,7 @@ export class ToolsManager {
       }),
     );
     this.cache = results;
-    this.emitter.emit("refresh");
+    this.emitter.emit("updated");
     return this.cache;
   }
 
