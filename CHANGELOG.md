@@ -4,6 +4,11 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.25] - 2024-07-22
+
+- Save default scheme in workspace state
+- Add status bar item to select default scheme
+
 ## [0.1.24] - 2024-07-21
 
 - Add the "sweetpad.build.derivedDataPath" setting to set the path of the DerivedData folder.
