@@ -278,8 +278,8 @@
         "icon": "$(file-directory)"
       },
       {
-        "command": "sweetpad.build.selectXcodeScheme",
-        "title": "SweetPad: Select Xcode scheme",
+        "command": "sweetpad.build.setDefaultScheme",
+        "title": "SweetPad: Set default Xcode scheme",
         "icon": "$(file-directory)"
       },
       {
@@ -379,7 +379,7 @@
           "group": "context@3"
         },
         {
-          "command": "sweetpad.build.selectXcodeScheme",
+          "command": "sweetpad.build.setDefaultScheme",
           "when": "view == sweetpad.build.view",
           "group": "context@4"
         },

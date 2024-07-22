@@ -576,7 +576,7 @@ export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
 
 export async function selectXcodeSchemeCommand(execution: CommandExecution, item?: BuildTreeItem) {
   if (item) {
-    item.provider.buildManager.setSelectedScheme(item.scheme);
+    item.provider.buildManager.setDefaultScheme(item.scheme);
     return;
   }
 

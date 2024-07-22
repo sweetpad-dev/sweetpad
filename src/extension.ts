@@ -42,7 +42,7 @@ import { DestinationStatusBar } from "./destination/status-bar.js";
 import { DestinationsTreeProvider } from "./destination/tree.js";
 import { ToolsManager } from "./tools/manager.js";
 import { BuildManager } from "./build/manager.js";
-import { SchemeStatusBar } from "./build/status-bar.js";
+import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // 🪵🪓
@@ -100,7 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
 
   // Build
-  const schemeStatusBar = new SchemeStatusBar({
+  const schemeStatusBar = new DefaultSchemeStatusBar({
     context: _context,
   });
   d(schemeStatusBar);
@@ -115,7 +115,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
   d(command("sweetpad.build.openXcode", openXcodeCommand));
   d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
-  d(command("sweetpad.build.selectXcodeScheme", selectXcodeSchemeCommand));
+  d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeCommand));
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));

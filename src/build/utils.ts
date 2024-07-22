@@ -139,7 +139,7 @@ export async function askScheme(
     ignoreCache: boolean;
   },
 ): Promise<string> {
-  const cachedScheme = context.buildManager.getSelectedScheme();
+  const cachedScheme = context.buildManager.getDefaultScheme();
   if (cachedScheme && !options.ignoreCache) {
     return cachedScheme;
   }
@@ -161,7 +161,7 @@ export async function askScheme(
   });
 
   const schemeName = scheme.context.scheme.name;
-  context.buildManager.setSelectedScheme(schemeName);
+  context.buildManager.setDefaultScheme(schemeName);
   return schemeName;
 }
 

@@ -6,7 +6,7 @@ import events from "events";
 
 type IEventMap = {
   updated: [];
-  selectedSchemeUpdated: [scheme: string | undefined];
+  defaultSchemeUpdated: [scheme: string | undefined];
 };
 type IEventKey = keyof IEventMap;
 
@@ -48,12 +48,12 @@ export class BuildManager {
     return this.cache;
   }
 
-  getSelectedScheme(): string | undefined {
+  getDefaultScheme(): string | undefined {
     return this.context.getWorkspaceState("build.xcodeScheme");
   }
 
-  setSelectedScheme(scheme: string | undefined): void {
+  setDefaultScheme(scheme: string | undefined): void {
     this.context.updateWorkspaceState("build.xcodeScheme", scheme);
-    this.emitter.emit("selectedSchemeUpdated", scheme);
+    this.emitter.emit("defaultSchemeUpdated", scheme);
   }
 }

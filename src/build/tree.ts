@@ -21,7 +21,7 @@ export class BuildTreeItem extends vscode.TreeItem {
     const color = new vscode.ThemeColor("sweetpad.scheme");
     this.iconPath = new vscode.ThemeIcon("sweetpad-package", color);
 
-    if (this.scheme === this.provider.selectedScheme) {
+    if (this.scheme === this.provider.defaultScheme) {
       this.description = "✓";
     }
   }
@@ -31,7 +31,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   public context: ExtensionContext | undefined;
   public buildManager: BuildManager;
-  public selectedScheme: string | undefined;
+  public defaultScheme: string | undefined;
 
   constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
     this.context = options.context;
@@ -39,11 +39,11 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     this.buildManager.on("updated", () => {
       this.refresh();
     });
-    this.buildManager.on("selectedSchemeUpdated", (scheme) => {
-      this.selectedScheme = scheme;
+    this.buildManager.on("defaultSchemeUpdated", (scheme) => {
+      this.defaultScheme = scheme;
       this.refresh();
     });
-    this.selectedScheme = this.buildManager.getSelectedScheme();
+    this.defaultScheme = this.buildManager.getDefaultScheme();
   }
 
   private refresh(): void {

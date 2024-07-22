@@ -87,7 +87,7 @@ export class ExtensionContext {
       }
     });
     this.destinationsManager.setWorkspaceDestination(undefined);
-    this.buildManager.setSelectedScheme(undefined);
+    this.buildManager.setDefaultScheme(undefined);
 
     this.buildManager.refresh();
     this.destinationsManager.refresh();
