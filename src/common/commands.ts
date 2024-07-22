@@ -14,10 +14,11 @@ type WorkspaceTypes = {
   "build.xcodeDestination": SelectedDestination;
   "build.xcodeDestinationsUsageStatistics": Record<string, number>;
   "build.xcodeSdk": string;
+  "build.lastLaunchedAppPath": string;
 };
 
 type WorkspaceStateKey = keyof WorkspaceTypes;
-type SessionStateKey = "build.lastLaunchedAppPath";
+type SessionStateKey = "NONE_KEY";
 
 export class ExtensionContext {
   private _context: vscode.ExtensionContext;

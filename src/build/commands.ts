@@ -119,7 +119,7 @@ export async function runOniOSSimulator(
   });
 
   // Run app
-  context.updateSessionState("build.lastLaunchedAppPath", targetPath);
+  context.updateWorkspaceState("build.lastLaunchedAppPath", targetPath);
 
   await terminal.execute({
     command: "xcrun",
