@@ -42,6 +42,7 @@ import { DestinationStatusBar } from "./destination/status-bar.js";
 import { DestinationsTreeProvider } from "./destination/tree.js";
 import { ToolsManager } from "./tools/manager.js";
 import { BuildManager } from "./build/manager.js";
+import { SchemeStatusBar } from "./build/status-bar.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // 🪵🪓
@@ -99,6 +100,10 @@ export function activate(context: vscode.ExtensionContext) {
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
 
   // Build
+  const schemeStatusBar = new SchemeStatusBar({
+    context: _context,
+  });
+  d(schemeStatusBar);
   d(vscode.window.registerTreeDataProvider("sweetpad.build.view", buildTreeProvider));
   d(command("sweetpad.build.refreshView", async () => buildManager.refresh()));
   d(command("sweetpad.build.launch", launchCommand));

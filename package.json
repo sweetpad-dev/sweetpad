@@ -637,6 +637,20 @@
           "fontPath": "images/icons/tabler-icons.woff",
           "fontCharacter": "\\ebef"
         }
+      },
+      "sweetpad-help-hexagon": {
+        "description": "Help Hexagon",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f7a8"
+        }
+      },
+      "sweetpad-hexagons": {
+        "description": "Hexagons",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f09d"
+        }
       }
     },
     "colors": [
