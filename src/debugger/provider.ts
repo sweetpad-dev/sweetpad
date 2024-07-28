@@ -2,14 +2,18 @@ import vscode from "vscode";
 import { ExtensionContext } from "../common/commands";
 
 const ATTACH_CONFIG: vscode.DebugConfiguration = {
-  type: "lldb",
-  request: "attach",
-  name: "Attach to iOS Simulator (SweetPad)",
-  waitFor: true,
-  program: "${command:sweetpad.debugger.getAppPath}",
+  type: "sweetpad-lldb",
+  request: "launch",
+  name: "Attach to iOS app (SweetPad)",
+  preLaunchTask: "sweetpad: launch",
 };
 
 class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider {
+  context: ExtensionContext;
+  constructor(options: { context: ExtensionContext }) {
+    this.context = options.context;
+  }
+
   async provideDebugConfigurations(
     folder: vscode.WorkspaceFolder | undefined,
     token?: vscode.CancellationToken | undefined,
@@ -22,7 +26,9 @@ class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider
     config: vscode.DebugConfiguration,
     token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration> {
-    // currently doing nothing useful here, but leave it for future extension
+    if (Object.keys(config).length === 0) {
+      return ATTACH_CONFIG;
+    }
     return config;
   }
 
@@ -31,20 +37,36 @@ class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider
     config: vscode.DebugConfiguration,
     token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration> {
-    // currently doing nothing useful here, but leave it for future extension
+    config.type = "lldb";
+    config.waitFor = true;
+    config.request = "attach";
+    const appPath = this.context.getWorkspaceState("build.lastLaunchedAppPath");
+    if (!appPath) {
+      throw new Error("No last launched app path found, please launch the app first using the extension");
+    }
+    config.program = appPath;
+
     return config;
   }
 }
 
 export function registerDebugConfigurationProvider(context: ExtensionContext) {
-  vscode.debug.registerDebugConfigurationProvider(
-    "lldb",
-    new DebuggerConfigurationProvider(),
+  const provider = new DebuggerConfigurationProvider({ context });
+  const disposable1 = vscode.debug.registerDebugConfigurationProvider(
+    "sweetpad-lldb",
+    provider,
     vscode.DebugConfigurationProviderTriggerKind.Initial,
   );
-  return vscode.debug.registerDebugConfigurationProvider(
-    "lldb",
-    new DebuggerConfigurationProvider(),
+  const disposable2 = vscode.debug.registerDebugConfigurationProvider(
+    "sweetpad-lldb",
+    provider,
     vscode.DebugConfigurationProviderTriggerKind.Dynamic,
   );
+
+  return {
+    dispose() {
+      disposable1.dispose();
+      disposable2.dispose();
+    },
+  };
 }

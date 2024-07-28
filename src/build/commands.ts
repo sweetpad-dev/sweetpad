@@ -73,6 +73,7 @@ export async function runOniOSSimulator(
     sdk: string;
     configuration: string;
     xcworkspace: string;
+    watchMarker: boolean;
   },
 ) {
   const buildSettings = await getBuildSettings({
@@ -118,9 +119,14 @@ export async function runOniOSSimulator(
     args: ["-a", "Simulator"],
   });
 
-  // Run app
   context.updateWorkspaceState("build.lastLaunchedAppPath", targetPath);
 
+  if (options.watchMarker) {
+    terminal.write("🍭 Sweetpad: watch marker (start)\n");
+    terminal.write("🍩 Sweetpad: watch marker (end)\n\n");
+  }
+
+  // Run app
   await terminal.execute({
     command: "xcrun",
     args: [
@@ -369,6 +375,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
+          watchMarker: false,
         });
       } else {
         await runOniOSDevice(execution.context, terminal, {

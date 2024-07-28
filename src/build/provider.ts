@@ -128,6 +128,7 @@ class ActionDispatcher {
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
+        watchMarker: true,
       });
     } else {
       await runOniOSDevice(this.context, terminal, {
@@ -310,6 +311,7 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
           type: this.type,
           action: "launch",
         },
+        isBackground: true,
       }),
       this.getTask({
         name: "build",
@@ -338,7 +340,12 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
     ];
   }
 
-  private getTask(options: { name: string; details?: string; defintion: TaskDefinition }): vscode.Task {
+  private getTask(options: {
+    name: string;
+    details?: string;
+    defintion: TaskDefinition;
+    isBackground?: boolean;
+  }): vscode.Task {
     // Task looks like this:
     // -------
     // sweetpad: ${options.name}
@@ -379,8 +386,12 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
             throw new Error(`Task executor ${executorName} is not supported`);
         }
       }),
-      [],
+      ["$sweetpad-watch"], // problemMatchers
     );
+
+    if (options.isBackground) {
+      task.isBackground = true;
+    }
 
     if (options.details) {
       task.detail = options.details;

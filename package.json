@@ -99,6 +99,44 @@
         }
       }
     ],
+    "problemMatchers": [
+      {
+        "name": "sweetpad-watch",
+        "label": "Sweetpad (watch)",
+        "owner": "sweetpad",
+        "fileLocation": [
+          "relative",
+          "${workspaceRoot}"
+        ],
+        "applyTo": "allDocuments",
+        "pattern": {
+          "regexp": "",
+          "line": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^🍭 Sweetpad: watch marker",
+          "endsPattern": "^🍩 Sweetpad: watch marker"
+        }
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "sweetpad-lldb",
+        "label": "Sweetpad (LLDB)",
+        "configurationSnippets": [
+          {
+            "label": "Sweetpad: Attach to iOS app",
+            "body": {
+              "type": "sweetpad-lldb",
+              "request": "launch",
+              "name": "Attach to iOS app (SweetPad)",
+              "preLaunchTask": "sweetpad: launch"
+            }
+          }
+        ]
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -672,6 +710,9 @@
       }
     ]
   },
+  "extensionDependencies": [
+    "vadimcn.vscode-lldb"
+  ],
   "scripts": {
     "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=es6",
     "vscode:prepublish": "npm run compile-setvbuf && npm run esbuild-base -- --minify",

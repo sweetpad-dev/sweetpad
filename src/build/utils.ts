@@ -136,7 +136,7 @@ export async function askScheme(
   options: {
     title?: string;
     xcworkspace: string;
-    ignoreCache: boolean;
+    ignoreCache?: boolean;
   },
 ): Promise<string> {
   const cachedScheme = context.buildManager.getDefaultScheme();
