@@ -4,6 +4,14 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.26] - 2024-07-28
+
+- Imrpove debugger setup
+  - new debug type "sweetpad-lldb"
+  - add "preLaunchTask" to debug configuration
+  - add "CodeLLDB" extension to the list of dependencies
+  - add zero-setup `F5` configuration for quick starting with debugging
+
 ## [0.1.25] - 2024-07-22
 
 - Save default scheme in workspace state
