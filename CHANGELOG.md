@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.27] - 2024-08-03
+
+- Add "codelldbAttributes" to the "launch.json" configuration to allow to customize the debugger attributes.
+
 ## [0.1.26] - 2024-07-28
 
 - Imrpove debugger setup
