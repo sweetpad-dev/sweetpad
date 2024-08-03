@@ -40,11 +40,19 @@ class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider
     config.type = "lldb";
     config.waitFor = true;
     config.request = "attach";
-    const appPath = this.context.getWorkspaceState("build.lastLaunchedAppPath");
-    if (!appPath) {
-      throw new Error("No last launched app path found, please launch the app first using the extension");
+    if (!config.program) {
+      const appPath = this.context.getWorkspaceState("build.lastLaunchedAppPath");
+      if (!appPath) {
+        throw new Error("No last launched app path found, please launch the app first using the extension");
+      }
+      config.program = appPath;
     }
-    config.program = appPath;
+
+    // Pass the "codelldbAttributes" to the lldb debugger
+    const codelldbAttributes = config.codelldbAttributes || {};
+    for (const [key, value] of Object.entries(codelldbAttributes)) {
+      config[key] = value;
+    }
 
     return config;
   }

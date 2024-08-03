@@ -134,7 +134,27 @@
               "preLaunchTask": "sweetpad: launch"
             }
           }
-        ]
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [],
+            "type": "object",
+            "properties": {
+              "codelldbAttributes": {
+                "title": "CodeLLDB attributes",
+                "description": "Attributes to pass to CodeLLDB. See: https://github.com/vadimcn/codelldb/blob/v1.10.0/MANUAL.md",
+                "type": "object",
+                "examples": [
+                  {
+                    "initCommands": [
+                      "script print('Hello, SweetPad!')"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
       }
     ],
     "viewsContainers": {
