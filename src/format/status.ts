@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { Command } from "vscode-languageclient";
+import { Command } from "vscode-languageclient/node";
 
 /**
  * Create a language status item for Swift language.
