@@ -1,20 +1,14 @@
-import { DestinationPlatform } from "./constants";
+import os from 'os';
 
-export function isSimulator(platform: DestinationPlatform): boolean {
-  return platform === DestinationPlatform.iphonesimulator || platform === DestinationPlatform.watchsimulator;
-}
+export function getMacOSArchitecture(): "arm64" | "x86_64" | null {
+  const architecture = os.arch();
 
-export function getDestinationName(platform: DestinationPlatform): string {
-  switch (platform) {
-    case DestinationPlatform.macosx:
-      return "macOS";
-    case DestinationPlatform.iphoneos:
-      return "iOS";
-    case DestinationPlatform.iphonesimulator:
-      return "iOS Simulator";
-    case DestinationPlatform.watchos:
-      return "watchOS";
-    case DestinationPlatform.watchsimulator:
-      return "watchOS Simulator";
+  switch (architecture) {
+    case 'arm64':
+      return 'arm64'; // Apple Silicon (M1, M2, etc.)
+    case 'x64':
+      return 'x86_64'; // Intel-based Mac
+    default:
+      return null;
   }
 }

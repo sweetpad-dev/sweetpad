@@ -126,11 +126,11 @@
         "label": "Sweetpad (LLDB)",
         "configurationSnippets": [
           {
-            "label": "Sweetpad: Attach to iOS app",
+            "label": "Sweetpad: Attach to running app",
             "body": {
               "type": "sweetpad-lldb",
               "request": "launch",
-              "name": "Attach to iOS app (SweetPad)",
+              "name": "Attach to running app (SweetPad)",
               "preLaunchTask": "sweetpad: launch"
             }
           }
@@ -563,11 +563,25 @@
           "fontCharacter": "\\f47f"
         }
       },
+      "sweetpad-square-letter-m": {
+        "description": "Square Letter M",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f488"
+        }
+      },
       "sweetpad-square-asterisk": {
         "description": "Square Asterisk",
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
           "fontCharacter": "\\f01a"
+        }
+      },
+      "sweetpad-device-laptop": {
+        "description": "Device Laptop",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\eb64"
         }
       },
       "sweetpad-device-mobile": {

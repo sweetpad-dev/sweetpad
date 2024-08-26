@@ -1,6 +1,6 @@
 import { DevicesManager } from "../devices/manager";
 import { SimulatorsManager } from "../simulators/manager";
-import { Destination, SelectedDestination, iOSDeviceDestination, iOSSimulatorDestination } from "./types";
+import { ALL_DESTINATION_TYPES, Destination, DestinationType, MacOSDestination as MacOSDestination, SelectedDestination, iOSDeviceDestination, iOSSimulatorDestination } from "./types";
 import {
   DESTINATION_IOS_DEVICE_TYPE_PRIORITY,
   DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY,
@@ -8,9 +8,9 @@ import {
   SUPPORTED_DESTINATION_PLATFORMS,
 } from "./constants";
 import { DestinationPlatform } from "./constants";
-import { DestinationOS } from "./constants";
 import { ExtensionContext } from "../common/commands";
 import events from "events";
+import { getMacOSArchitecture } from "./utils";
 
 type IEventMap = {
   simulatorsUpdated: [];
@@ -76,12 +76,12 @@ export class DestinationsManager {
 
   async getMostUsedDestinations(): Promise<Destination[]> {
     const usageStats = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
-    const udidList = Object.keys(usageStats).sort((a, b) => usageStats[b] - usageStats[a]);
+    const destinationsIds = Object.keys(usageStats).sort((a, b) => usageStats[b] - usageStats[a]);
     const destinations: Destination[] = [];
 
-    for (const udid of udidList) {
+    for (const destinationId of destinationsIds) {
       const destination = await this.findDestination({
-        udid: udid,
+        destinationId: destinationId,
       });
       if (destination) {
         destinations.push(destination);
@@ -97,7 +97,7 @@ export class DestinationsManager {
     });
     const items = simulators
       // currently we only support iOS simulators (ignoring watchOS and tvOS)
-      .filter((simulator) => simulator.runtimeType === DestinationOS.iOS)
+      .filter((simulator) => simulator.runtimeType === "iOS")
       .map((simulator) => new iOSSimulatorDestination({ simulator: simulator }));
 
     if (options?.sort) {
@@ -115,6 +115,16 @@ export class DestinationsManager {
       items.sort((a, b) => this.sortCompareFn(a, b));
     }
     return items;
+  }
+
+  async getmacOSDevices(): Promise<MacOSDestination[]> {
+    const currentArch = getMacOSArchitecture() ?? "arm64";
+    return [
+      new MacOSDestination({
+        name: "My Mac",
+        arch: currentArch,
+      }),
+    ];
   }
 
   /**
@@ -144,6 +154,10 @@ export class DestinationsManager {
       }
     }
 
+    if (a.type == "macOS" && b.type == "macOS") {
+      return a.name.localeCompare(b.name);
+    }
+
     // In any other cases, fallback to sorting by name
     return a.name.localeCompare(b.name);
   }
@@ -155,22 +169,27 @@ export class DestinationsManager {
     const destinations: Destination[] = [];
     const platforms = options?.platformFilter ?? SUPPORTED_DESTINATION_PLATFORMS;
 
-    if (platforms.includes(DestinationPlatform.iphonesimulator)) {
+    if (platforms.includes("iphonesimulator")) {
       const simulators = await this.getiOSSimulators();
       destinations.push(...simulators);
     }
 
-    if (platforms.includes(DestinationPlatform.iphoneos)) {
+    if (platforms.includes("iphoneos")) {
       const devices = await this.getiOSDevices();
       destinations.push(...devices);
+    }
+
+    if (platforms.includes("macosx")) {
+      const macosDevcices = await this.getmacOSDevices();
+      destinations.push(...macosDevcices);
     }
 
     // Most used destinations should be on top of the list
     if (options?.mostUsedSort) {
       const usageStats = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
       destinations.sort((a, b) => {
-        const aCount = usageStats[a.udid] ?? 0;
-        const bCount = usageStats[b.udid] ?? 0;
+        const aCount = usageStats[a.id] ?? 0;
+        const bCount = usageStats[b.id] ?? 0;
         if (aCount !== bCount) {
           return bCount - aCount;
         }
@@ -185,29 +204,37 @@ export class DestinationsManager {
    * Find a destination by its udid and type
    */
   async findDestination(options: {
-    udid: string;
-    type?: "iOSSimulator" | "iOSDevice";
+    destinationId: string;
+    type?: DestinationType;
   }): Promise<Destination | undefined> {
-    if (options.type === "iOSSimulator" || !options.type) {
+    const types: DestinationType[] = options.type ? [options.type] : ALL_DESTINATION_TYPES;
+
+    let destination: Destination | undefined = undefined;
+    if (!destination && types.includes("iOSSimulator")) {
       const simulators = await this.getiOSSimulators();
-      return simulators.find((simulator) => simulator.udid === options.udid);
-    } else if (options.type === "iOSDevice" || !options.type) {
-      const devices = await this.getiOSDevices();
-      return devices.find((device) => device.udid === options.udid);
+      destination = simulators.find((simulator) => simulator.id === options.destinationId);
     }
-    return undefined;
+    if (!destination && types.includes("iOSDevice")) {
+      const devices = await this.getiOSDevices();
+      destination = devices.find((device) => device.id === options.destinationId);
+    }
+    if (!destination && types.includes("macOS")) {
+      const devices = await this.getmacOSDevices();
+      destination = devices.find((device) => device.id === options.destinationId);
+    }
+    return destination;
   }
 
   /**
    * Increment the usage statistics for a destination. This statistics is used to show the most recently used
    * destinations
    */
-  incrementUsageStats(options: { udid: string }) {
+  incrementUsageStats(options: { id: string }) {
     const prevStat = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
-    const count: number = prevStat[options.udid] ?? 0;
+    const count: number = prevStat[options.id] ?? 0;
     this.context.updateWorkspaceState("build.xcodeDestinationsUsageStatistics", {
       ...prevStat,
-      [options.udid]: count + 1,
+      [options.id]: count + 1,
     });
   }
 
@@ -219,12 +246,12 @@ export class DestinationsManager {
     }
 
     const selectedDestination: SelectedDestination = {
-      udid: destination.udid,
+      id: destination.id,
       type: destination.type,
       name: destination.name,
     };
     this.context.updateWorkspaceState("build.xcodeDestination", selectedDestination);
-    this.incrementUsageStats({ udid: destination.udid });
+    this.incrementUsageStats({ id: destination.id });
 
     this.emitter.emit("xcodeDestinationUpdated", selectedDestination);
   }
@@ -247,7 +274,7 @@ export class DestinationsManager {
     }
 
     return await this.findDestination({
-      udid: destination.udid,
+      destinationId: destination.id,
       type: destination.type,
     });
   }

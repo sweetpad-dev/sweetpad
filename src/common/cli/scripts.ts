@@ -90,7 +90,7 @@ export class iOSSimulator {
     // extract iOS, tvOS, watchOS
     const regex = /com\.apple\.CoreSimulator\.SimRuntime\.(iOS|tvOS|watchOS)-\d+-\d+/;
     const match = this.runtime.match(regex);
-    this.runtimeType = match ? (match[1] as DestinationOS) : DestinationOS.iOS;
+    this.runtimeType = match ? (match[1] as DestinationOS) : "iOS";
   }
 
   static parseDeviceType(rawDeviceType: string): iOSSimulatorDeviceType | null {
@@ -124,13 +124,6 @@ export class iOSSimulator {
       return "AppleVision";
     }
     return null;
-  }
-
-  /**
-   * ID for uniquely identifying simulator saved in workspace state
-   */
-  get storageId() {
-    return this.udid;
   }
 }
 
@@ -186,12 +179,77 @@ type BuildSettingOutput = {
   };
 };
 
-type ProductOutputInfo = {
-  productPath: string;
-  productName: string;
-  binaryPath: string;
-  bundleIdentifier: string;
-};
+// type ProductOutputInfo = {
+//   productPath: string;
+//   productName: string;
+//   binaryPath: string;
+//   bundleIdentifier: string;
+// };
+
+export class XcodeBuildSettings {
+  private output: BuildSettingsOutput;
+  private settings: { [key: string]: string };
+
+  constructor(output: BuildSettingsOutput) {
+    this.output = output;
+    if (output.length === 0) {
+      throw new ExtensionError("Error fetching build settings");
+    }
+    this.settings = output[0]?.buildSettings;
+  }
+
+  get targetBuildDir() {
+    // Example:
+    // - /Users/hyzyla/Library/Developer/Xcode/DerivedData/ControlRoom-gdvrildvemgjaiameavxoegdskby/Build/Products/Debug
+    return this.settings.TARGET_BUILD_DIR;
+  }
+
+  get executablePath() {
+    // Example:
+    // - {targetBuildDir}/Control Room.app/Contents/MacOS/Control Room
+    return path.join(this.targetBuildDir, this.settings.EXECUTABLE_PATH);
+  }
+
+  get productPath() {
+    // Example:
+    // - {targetBuildDir}/Control Room.app
+    return path.join(this.targetBuildDir, this.appName);
+  }
+
+  get appName() {
+    // Example:
+    // - "Control Room.app"
+    if (this.settings.WRAPPER_NAME) {
+      return this.settings.WRAPPER_NAME;
+    } else if (this.settings.FULL_PRODUCT_NAME) {
+      return this.settings.FULL_PRODUCT_NAME;
+    } else if (this.settings.PRODUCT_NAME) {
+      return `${this.settings.PRODUCT_NAME}.app`;
+    } else {
+      return `${this.targetName}.app`;
+    }
+  }
+
+  get targetName() {
+    // Example:
+    // - "ControlRoom"
+    return this.settings.TARGET_NAME;
+  }
+
+  get bundleIdentifier() {
+    // Example:
+    // - "com.hackingwithswift.ControlRoom"
+    return this.settings.PRODUCT_BUNDLE_IDENTIFIER;
+  }
+
+  get supportedPlatforms(): DestinationPlatform[] {
+    // ex: ["iphonesimulator", "iphoneos"]
+    const platformsRaw = this.settings.SUPPORTED_PLATFORMS;   // ex: "iphonesimulator iphoneos"
+    return platformsRaw.split(" ").map((platform) => {
+      return platform as DestinationPlatform;
+    });
+  }
+}
 
 export async function getBuildSettings(options: {
   scheme: string;
@@ -228,61 +286,26 @@ export async function getBuildSettings(options: {
     const line = lines[i];
     if (line.startsWith("{") || line.startsWith("[")) {
       const data = lines.slice(i).join("\n");
-      return JSON.parse(data) as BuildSettingsOutput;
+      const output = JSON.parse(data) as BuildSettingsOutput;
+      const settings = new XcodeBuildSettings(output);
+      console.log("settings.targetBuildDir", settings.targetBuildDir);
+      console.log("settings.executablePath", settings.executablePath);
+      console.log("settings.productPath", settings.productPath);
+      console.log("settings.appName", settings.appName);
+      console.log("settings.targetName", settings.targetName);
+      console.log("settings.bundleIdentifier", settings.bundleIdentifier);
+      console.log("settings.supportedPlatforms", settings.supportedPlatforms);
+
+      return settings;
     }
   }
 
   throw new ExtensionError("Error parsing build settings");
 }
 
-export function getProductOutputInfoFromBuildSettings(buildSettings: BuildSettingsOutput) {
-  const settings = buildSettings[0]?.buildSettings;
-  if (!settings) {
-    throw new ExtensionError("Error fetching build settings");
-  }
-
-  const bundleIdentifier = settings.PRODUCT_BUNDLE_IDENTIFIER;
-  const targetBuildDir = settings.TARGET_BUILD_DIR;
-  const targetName = settings.TARGET_NAME;
-  let appName;
-  if (settings.WRAPPER_NAME) {
-    appName = settings.WRAPPER_NAME;
-  } else if (settings.FULL_PRODUCT_NAME) {
-    appName = settings.FULL_PRODUCT_NAME;
-  } else if (settings.PRODUCT_NAME) {
-    appName = `${settings.PRODUCT_NAME}.app`;
-  } else {
-    appName = `${targetName}.app`;
-  }
-
-  const executablePath = settings.EXECUTABLE_PATH;
-  const productPath = path.join(targetBuildDir, appName);
-  const binaryPath = path.join(targetBuildDir, executablePath);
-
-  return {
-    productPath: productPath,
-    productName: appName,
-    binaryPath: binaryPath,
-    bundleIdentifier: bundleIdentifier,
-  } as ProductOutputInfo;
-}
-
 /**
- * Check which platforms current project supports by looking at build settings
+ * Find if xcbeautify is installed
  */
-export function getSupportedPlatforms(buildSettings: BuildSettingsOutput): DestinationPlatform[] {
-  const settings = buildSettings[0]?.buildSettings;
-  if (!settings) {
-    throw new ExtensionError("Error fetching build settings");
-  }
-
-  // ex: "iphonesimulator iphoneos"
-  const platformsRaw = settings.SUPPORTED_PLATFORMS;
-  return platformsRaw.split(" ").map((platform) => {
-    return platform as DestinationPlatform;
-  });
-}
-
 export async function getIsXcbeautifyInstalled() {
   try {
     await exec({

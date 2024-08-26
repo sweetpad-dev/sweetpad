@@ -16,7 +16,7 @@ To debug an iOS application extension, provide thin integration with the
     {
       "type": "sweetpad-lldb",
       "request": "launch",
-      "name": "Attach to iOS app (SweetPad)",
+      "name": "Attach to running app (SweetPad)",
       "preLaunchTask": "sweetpad: launch",
     },
   ],

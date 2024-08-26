@@ -4,7 +4,7 @@ import { ExtensionContext } from "../common/commands";
 const ATTACH_CONFIG: vscode.DebugConfiguration = {
   type: "sweetpad-lldb",
   request: "launch",
-  name: "Attach to iOS app (SweetPad)",
+  name: "Attach to running app (SweetPad)",
   preLaunchTask: "sweetpad: launch",
 };
 

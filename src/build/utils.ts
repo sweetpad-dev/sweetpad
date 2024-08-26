@@ -2,7 +2,7 @@ import path from "path";
 import * as vscode from "vscode";
 import { showQuickPick } from "../common/quick-pick";
 
-import { BuildSettingsOutput, getBuildConfigurations, getSchemes, getSupportedPlatforms } from "../common/cli/scripts";
+import { BuildSettingsOutput, getBuildConfigurations, getSchemes, XcodeBuildSettings } from "../common/cli/scripts";
 import { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
@@ -64,10 +64,10 @@ export async function askSimulator(
  */
 export async function askDestinationToRunOn(
   context: ExtensionContext,
-  buildSettings: BuildSettingsOutput,
+  buildSettings: XcodeBuildSettings,
 ): Promise<Destination> {
   // We can remove platforms that are not supported by the project
-  const supportedPlatforms = getSupportedPlatforms(buildSettings);
+  const supportedPlatforms = buildSettings.supportedPlatforms;
 
   const destinations = await context.destinationsManager.getDestinations({
     platformFilter: supportedPlatforms,
@@ -78,18 +78,22 @@ export async function askDestinationToRunOn(
   const cachedDestination = context.destinationsManager.getSelectedXcodeDestination();
   if (cachedDestination) {
     const destination = destinations.find(
-      (destination) => destination.udid === cachedDestination.udid && destination.type === cachedDestination.type,
+      (destination) => destination.id === cachedDestination.id && destination.type === cachedDestination.type,
     );
     if (destination) {
       return destination;
     }
   }
 
-  return selectDestination(context);
+  return selectDestination(context, {
+    destinations: destinations,
+  });
 }
 
-export async function selectDestination(context: ExtensionContext): Promise<Destination> {
-  const destinations = await context.destinationsManager.getDestinations({
+export async function selectDestination(context: ExtensionContext, options?: {
+  destinations?: Destination[];
+}): Promise<Destination> {
+  const destinations = options?.destinations?.length ? options.destinations : await context.destinationsManager.getDestinations({
     mostUsedSort: true,
   });
 
@@ -100,7 +104,7 @@ export async function selectDestination(context: ExtensionContext): Promise<Dest
         return {
           label: destination.name,
           iconPath: new vscode.ThemeIcon(destination.icon),
-          detail: `Type: ${destination.typeLabel}, Version: ${destination.osVersion}, ID: ${destination.udid.toLocaleLowerCase()}`,
+          detail: destination.quickPickDetails,
           context: destination,
         };
       }),
@@ -113,9 +117,9 @@ export async function selectDestination(context: ExtensionContext): Promise<Dest
   return destination;
 }
 
-export async function getDestinationByUdid(context: ExtensionContext, options: { udid: string }): Promise<Destination> {
+export async function getDestinationById(context: ExtensionContext, options: { destinationId: string }): Promise<Destination> {
   const desinations = await context.destinationsManager.getDestinations();
-  const destination = desinations.find((destination) => destination.udid === options.udid);
+  const destination = desinations.find((destination) => destination.id === options.destinationId);
 
   if (destination) {
     return destination;
@@ -123,7 +127,7 @@ export async function getDestinationByUdid(context: ExtensionContext, options: {
 
   throw new ExtensionError("Destination not found", {
     context: {
-      udid: options.udid,
+      destinationId: options.destinationId,
     },
   });
 }

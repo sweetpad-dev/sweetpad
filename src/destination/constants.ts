@@ -2,23 +2,24 @@ import { iOSSimulatorDeviceType } from "../common/cli/scripts";
 import { DeviceCtlDeviceType } from "../common/xcode/devicectl";
 import { DestinationType } from "./types";
 
-export enum DestinationOS {
-  iOS = "iOS", // also includes iPadOS and visionOS/xrOS
-  watchOS = "watchOS",
-  macOS = "macOS",
-}
 
-export enum DestinationPlatform {
-  macosx = "macosx", // macOS
-  iphoneos = "iphoneos", // iOS Device
-  iphonesimulator = "iphonesimulator", // iOS Simulator
-  watchos = "watchos", // watchOS Device
-  watchsimulator = "watchsimulator",
-}
+export type DestinationOS =
+  "iOS" // also includes iPadOS and visionOS/xrOS 
+  | "watchOS"
+  | "macOS";
 
-export const SUPPORTED_DESTINATION_PLATFORMS = [DestinationPlatform.iphoneos, DestinationPlatform.iphonesimulator];
 
-export const DESTINATION_TYPE_PRIORITY: DestinationType[] = ["iOSSimulator", "iOSDevice"];
+export type DestinationPlatform = "macosx" // macOS
+  | "iphoneos" // iOS Device
+  | "iphonesimulator" // iOS Simulator
+  | "watchos" // watchOS Device
+  | "watchsimulator" // watchOS Simulator
+  | "xros" // visionOS/xrOS Device
+  | "xrsimulator"; // visionOS/xrOS Simulator
+
+export const SUPPORTED_DESTINATION_PLATFORMS = ["iphoneos", "iphonesimulator", "macosx"] satisfies DestinationPlatform[];
+
+export const DESTINATION_TYPE_PRIORITY: DestinationType[] = ["iOSSimulator", "iOSDevice", "macOS"];
 export const DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY: iOSSimulatorDeviceType[] = [
   "iPhone",
   "iPad",

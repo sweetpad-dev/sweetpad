@@ -1,16 +1,17 @@
 import * as vscode from "vscode";
 import { DestinationsManager } from "./manager.js";
-import { SelectedDestination, iOSDeviceDestination, iOSSimulatorDestination } from "./types.js";
+import { DestinationType, SelectedDestination, iOSDeviceDestination, iOSSimulatorDestination, MacOSDestination } from "./types.js";
+import { checkUnreachable } from "../common/types.js";
 
 /**
  * Tree item representing a group of destinations (iOSSimulator, iOSDevice, etc.) at the root level
  */
 class DestinationGroupTreeItem extends vscode.TreeItem {
-  type: "iOSSimulator" | "iOSDevice" | "Recent";
+  type: DestinationType | "Recent";
 
   constructor(options: {
     label: string;
-    type: "iOSSimulator" | "iOSDevice" | "Recent";
+    type: DestinationType | "Recent";
     collapsibleState: vscode.TreeItemCollapsibleState;
     icon: string;
   }) {
@@ -25,7 +26,7 @@ class DestinationGroupTreeItem extends vscode.TreeItem {
  * Common interface for destination tree item (items under tree group, second level)
  */
 export interface IDestinationTreeItem {
-  type: "iOSSimulator" | "iOSDevice" | "Recent";
+  type: DestinationType | "Recent";
 }
 
 /**
@@ -46,7 +47,7 @@ export class iOSSimulatorDestinationTreeItem extends vscode.TreeItem implements 
 
     const isSelected =
       this.provider.selectedDestination?.type === "iOSSimulator" &&
-      this.provider.selectedDestination.udid === this.simulator.udid;
+      this.provider.selectedDestination.id === this.simulator.id;
 
     let color: vscode.ThemeColor | undefined = undefined;
     if (isSelected) {
@@ -86,7 +87,7 @@ export class iOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDe
 
     const isSelected =
       this.provider.selectedDestination?.type === "iOSDevice" &&
-      this.provider.selectedDestination.udid === this.device.udid;
+      this.provider.selectedDestination.id === this.device.id;
     if (isSelected) {
       this.description = `${this.description} ✓`;
     }
@@ -104,8 +105,36 @@ export class iOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDe
   }
 }
 
+export class MacOSDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+  type = "macOS" as const;
+  device: MacOSDestination;
+  provider: DestinationsTreeProvider;
+
+  constructor(options: { device: MacOSDestination; provider: DestinationsTreeProvider }) {
+    super(options.device.name, vscode.TreeItemCollapsibleState.None);
+    this.device = options.device;
+    this.provider = options.provider;
+
+    this.description = options.device.arch;
+    const isSelected = this.provider.selectedDestination?.type === "macOS" && this.provider.selectedDestination.id === this.device.id;
+    if (isSelected) {
+      this.description = `${this.description} ✓`;
+    }
+
+    const contextPrefix = "destination-item-macos";
+
+    this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
+    this.contextValue = `${contextPrefix}-connected`; // "destination-item-macOS-connected"
+  }
+
+  get destination(): MacOSDestination {
+    return this.device;
+  }
+}
+
 // Tagged union type for destination tree item (second level)
-export type DestinationTreeItem = iOSSimulatorDestinationTreeItem | iOSDeviceDestinationTreeItem;
+export type DestinationTreeItem = iOSSimulatorDestinationTreeItem | iOSDeviceDestinationTreeItem | MacOSDestinationTreeItem;
+
 
 export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   public manager: DestinationsManager;
@@ -139,8 +168,10 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
         return this.getiOSSimulators();
       } else if (element.type === "iOSDevice") {
         return this.getiOSDevices();
+      } else if (element.type === "macOS") {
+        return this.getmacOSDevices();
       } else if (element.type === "Recent") {
-        return this.getRecent();
+        return this.getRecentDestinations();
       }
       return [];
     }
@@ -148,9 +179,8 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
     return [];
   }
 
-  async getRecent(): Promise<vscode.TreeItem[]> {
+  async getRecentDestinations(): Promise<vscode.TreeItem[]> {
     const mostUsed = await this.manager.getMostUsedDestinations();
-    console.log(mostUsed);
 
     return mostUsed.map((destination) => {
       if (destination.type === "iOSSimulator") {
@@ -163,9 +193,14 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           device: destination,
           provider: this,
         });
+      } else if (destination.type === "macOS") {
+        return new MacOSDestinationTreeItem({
+          device: destination,
+          provider: this,
+        });
       } else {
-        const _: never = destination;
-        return _;
+        checkUnreachable(destination);
+        return destination;
       }
     });
   }
@@ -199,6 +234,12 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           type: "iOSDevice",
           collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
           icon: "sweetpad-square-letter-d",
+        }),
+        new DestinationGroupTreeItem({
+          label: "macOS",
+          type: "macOS",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-square-letter-m",
         }),
         // todo: add macOS device
         // todo: add watchOS device
@@ -236,6 +277,17 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
 
     return device.map((device) => {
       return new iOSDeviceDestinationTreeItem({
+        device: device,
+        provider: this,
+      });
+    });
+  }
+
+  async getmacOSDevices(): Promise<DestinationTreeItem[]> {
+    const devices = await this.manager.getmacOSDevices();
+
+    return devices.map((device) => {
+      return new MacOSDestinationTreeItem({
         device: device,
         provider: this,
       });

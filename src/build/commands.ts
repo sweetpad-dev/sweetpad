@@ -7,7 +7,6 @@ import {
   getBuildSettings,
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
-  getProductOutputInfoFromBuildSettings,
   getSimulatorByUdid,
 } from "../common/cli/scripts";
 import {
@@ -28,8 +27,14 @@ import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { TaskTerminal, runTask } from "../common/tasks";
 import { getWorkspaceRelativePath, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
 import { showQuickPick } from "../common/quick-pick";
-import { getDestinationName, isSimulator } from "../destination/utils";
-import { DestinationPlatform } from "../destination/constants";
+import { assertUnreachable } from "../common/types";
+import { Destination } from "../destination/types";
+
+
+function writeWatchMarkers(terminal: TaskTerminal) {
+  terminal.write("🍭 Sweetpad: watch marker (start)\n");
+  terminal.write("🍩 Sweetpad: watch marker (end)\n\n")
+}
 
 export async function runOnMac(
   context: ExtensionContext,
@@ -38,24 +43,32 @@ export async function runOnMac(
     scheme: string;
     xcworkspace: string;
     configuration: string;
+    watchMarker: boolean;
   },
 ) {
   const buildSettings = await getBuildSettings({
     scheme: options.scheme,
     configuration: options.configuration,
-    sdk: DestinationPlatform.macosx,
+    sdk: "macosx",
     xcworkspace: options.xcworkspace,
   });
 
-  const productOutputInfo = getProductOutputInfoFromBuildSettings(buildSettings);
-  await startDebuggingMacApp(productOutputInfo.productName, productOutputInfo.productPath);
+  context.updateWorkspaceState("build.lastLaunchedAppPath", buildSettings.executablePath);
+  if (options.watchMarker) {
+    writeWatchMarkers(terminal);
+  }
+
+  await terminal.execute({
+    command: buildSettings.executablePath,
+  });
+  // await startDebuggingMacApp(productOutputInfo.productName, productOutputInfo.productPath);
 }
 
 async function startDebuggingMacApp(appName: string, binaryPath: string) {
   const debugConfig: vscode.DebugConfiguration = {
     type: "lldb",
     request: "launch",
-    name: `Debug with LLDB (appName)`,
+    name: `Debug with LLDB (${appName})`,
     program: binaryPath,
     args: [],
     cwd: "${workspaceFolder}",
@@ -82,13 +95,8 @@ export async function runOniOSSimulator(
     sdk: options.sdk,
     xcworkspace: options.xcworkspace,
   });
-  const settings = buildSettings[0]?.buildSettings;
-  if (!settings) {
-    throw new ExtensionError("Error fetching build settings");
-  }
-
-  const productOutputInfo = getProductOutputInfoFromBuildSettings(buildSettings);
-  const targetPath = productOutputInfo.productPath;
+  const targetPath = buildSettings.executablePath;
+  const bundlerId = buildSettings.bundleIdentifier;
 
   // Get simulator with fresh state
   const simulator = await getSimulatorByUdid(context, {
@@ -122,8 +130,7 @@ export async function runOniOSSimulator(
   context.updateWorkspaceState("build.lastLaunchedAppPath", targetPath);
 
   if (options.watchMarker) {
-    terminal.write("🍭 Sweetpad: watch marker (start)\n");
-    terminal.write("🍩 Sweetpad: watch marker (end)\n\n");
+    writeWatchMarkers(terminal);;
   }
 
   // Run app
@@ -135,7 +142,7 @@ export async function runOniOSSimulator(
       "--console-pty",
       "--terminate-running-process",
       simulator.udid,
-      productOutputInfo.bundleIdentifier,
+      bundlerId,
     ],
   });
 }
@@ -160,8 +167,8 @@ export async function runOniOSDevice(
     xcworkspace: option.xcworkspace,
   });
 
-  const productOuputInfo = getProductOutputInfoFromBuildSettings(buildSettings);
-  const targetPath = productOuputInfo.productPath;
+  const targetPath = buildSettings.executablePath;
+  const bundlerId = buildSettings.bundleIdentifier;
 
   // Install app on device
   await terminal.execute({
@@ -186,7 +193,7 @@ export async function runOniOSDevice(
       "--terminate-existing",
       "--device",
       device,
-      productOuputInfo.bundleIdentifier,
+      bundlerId,
     ],
   });
 
@@ -221,16 +228,22 @@ function isXcbeautifyEnabled() {
  *
  * WARN: Do not use result of this function to anything else than xcodebuild command.
  */
-export function getDestinationRaw(options: { platform: DestinationPlatform; id: string | null }): string {
-  const platformName = getDestinationName(options.platform);
-  // ?? iPhone device can't be built with id
-  if (options.id != null && isSimulator(options.platform)) {
-    //  Example: "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
-    return `platform=${platformName},id=${options.id}`;
-  }
+export function getXcodeBuildDestinationString(options: { destination: Destination }): string {
+  const destination = options.destination;
 
-  //  Example: "platform=iOS Simulator"
-  return `generic/platform=${platformName}`;
+  if (destination.type === "macOS") {
+    // note: without arch, xcodebuild will show warning like this:
+    // --- xcodebuild: WARNING: Using the first of multiple matching destinations:
+    // { platform:macOS, arch:arm64, id:00008103-000109910EC3001E, name:My Mac }
+    // { platform:macOS, arch:x86_64, id:00008103-000109910EC3001E, name:My Mac }
+    return `platform=macOS,arch=${destination.arch}`;
+  } else if (destination.type === "iOSSimulator") {
+    return `platform=iOS Simulator,id=${destination.udid}`;
+  } else if (destination.type === "iOSDevice") {
+    return `platform=iOS,id=${destination.udid}`;
+  } else {
+    assertUnreachable(destination);
+  }
 }
 
 export async function buildApp(
@@ -301,7 +314,7 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
   });
 
   const destination = await askDestinationToRunOn(execution.context, buildSettings);
-  const destinationRaw = getDestinationRaw({ platform: destination.platform, id: destination.udid });
+  const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
 
@@ -341,7 +354,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
   });
 
   const destination = await askDestinationToRunOn(execution.context, buildSettings);
-  const destinationRaw = getDestinationRaw({ platform: destination.platform, id: destination.udid });
+  const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
 
@@ -359,16 +372,15 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         destinationRaw: destinationRaw,
       });
 
-      if (sdk === DestinationPlatform.macosx) {
+
+      if (destination.type === "macOS") {
         await runOnMac(execution.context, terminal, {
           scheme: scheme,
           xcworkspace: xcworkspace,
           configuration: configuration,
+          watchMarker: false,
         });
-        return;
-      }
-
-      if (destination.type === "iOSSimulator") {
+      } else if (destination.type === "iOSSimulator") {
         await runOniOSSimulator(execution.context, terminal, {
           scheme: scheme,
           simulatorId: destination.udid ?? "",
@@ -377,7 +389,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           xcworkspace: xcworkspace,
           watchMarker: false,
         });
-      } else {
+      } else if (destination.type === "iOSDevice") {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
           deviceId: destination.udid ?? "",
@@ -385,6 +397,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           configuration: configuration,
           xcworkspace: xcworkspace,
         });
+      } else {
+        assertUnreachable(destination);
       }
     },
   });
@@ -407,7 +421,7 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
   });
 
   const destination = await askDestinationToRunOn(execution.context, buildSettings);
-  const destinationRaw = getDestinationRaw({ platform: destination.platform, id: destination.udid });
+  const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
 
@@ -442,10 +456,7 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
   });
 
   const destination = await askDestinationToRunOn(execution.context, buildSettings);
-  const destinationRaw = getDestinationRaw({
-    platform: destination.platform,
-    id: destination.udid, // pay attention that id can't be null for test command
-  });
+  const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
 
