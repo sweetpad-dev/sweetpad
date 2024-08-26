@@ -1,12 +1,12 @@
-import * as vscode from "vscode";
-import { TaskError } from "./errors";
-import { ChildProcess, spawn } from "child_process";
+import { type ChildProcess, spawn } from "node:child_process";
+import path from "node:path";
 import { quote } from "shell-quote";
-import { getWorkspaceConfig } from "./config";
-import { ExtensionContext } from "./commands";
-import path from "path";
-import { isFileExists } from "./files";
+import * as vscode from "vscode";
 import { getWorkspacePath } from "../build/utils";
+import type { ExtensionContext } from "./commands";
+import { getWorkspaceConfig } from "./config";
+import { TaskError } from "./errors";
+import { isFileExists } from "./files";
 
 type TaskExecutor = "v1" | "v2";
 
@@ -162,7 +162,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
     const commandPrint = this.command(options.command, options.args);
 
-    this.writeLine(`🚀 Executing command:`);
+    this.writeLine("🚀 Executing command:");
     this.writeLine(commandPrint, { color: "green" });
     this.writeLine();
 
@@ -259,7 +259,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
         // If task was canceled, change message color to green
         if (errorCode === 130) {
           options.color = "yellow";
-          this.closeTerminal(0, `🫡 Command was cancelled by user`, options);
+          this.closeTerminal(0, "🫡 Command was cancelled by user", options);
           return;
         }
       }
@@ -345,8 +345,6 @@ export class TaskTerminalV1 implements TaskTerminal {
 export class TaskTerminalV1Parent implements vscode.Pseudoterminal {
   public writeEmitter = new vscode.EventEmitter<string>();
   public closeEmitter = new vscode.EventEmitter<number>();
-
-  constructor() {}
 
   onDidWrite = this.writeEmitter.event;
   onDidClose = this.closeEmitter.event;

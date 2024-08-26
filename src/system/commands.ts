@@ -1,5 +1,5 @@
-import { CommandExecution } from "../common/commands";
 import * as vscode from "vscode";
+import type { CommandExecution } from "../common/commands";
 import { commonLogger } from "../common/logger";
 
 export async function resetSweetpadCache(execution: CommandExecution) {
@@ -26,7 +26,7 @@ export async function createIssueGenericCommand(execution: CommandExecution) {
 
 export async function createIssueNoSchemesCommand() {
   const logs = commonLogger.lastFormatted(5);
-  const logsBlock = "```json\n" + logs + "\n```";
+  const logsBlock = `\`\`\`json\n${logs}\n\`\`\``;
   await createIssue({
     title: "Sweetpad issue: No schemes",
     body: `Please describe your issue here.\n\n\nLast logs:\n${logsBlock}`,

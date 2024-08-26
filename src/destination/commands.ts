@@ -1,6 +1,6 @@
 import { selectDestination } from "../build/utils";
-import { CommandExecution } from "../common/commands";
-import { DestinationTreeItem } from "./tree";
+import type { CommandExecution } from "../common/commands";
+import type { DestinationTreeItem } from "./tree";
 
 export async function selectDestinationCommand(execution: CommandExecution, item?: DestinationTreeItem) {
   if (item) {

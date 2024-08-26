@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { CommandExecution } from "../common/commands.js";
-import { runTask } from "../common/tasks.js";
 import { askSimulator } from "../build/utils.js";
-import { iOSSimulatorDestinationTreeItem } from "../destination/tree.js";
+import type { CommandExecution } from "../common/commands.js";
+import { runTask } from "../common/tasks.js";
+import type { iOSSimulatorDestinationTreeItem } from "../destination/tree.js";
 
 /**
  * Command to start simulator from the simulator tree view in the sidebar

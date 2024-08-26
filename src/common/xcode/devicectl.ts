@@ -1,4 +1,4 @@
-import { ExtensionContext } from "../commands";
+import type { ExtensionContext } from "../commands";
 import { exec } from "../exec";
 import { readJsonFile, tempFilePath } from "../files";
 import { commonLogger } from "../logger";

@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
-import { XcodeScheme } from "../common/cli/scripts";
+import type { XcodeScheme } from "../common/cli/scripts";
+import type { ExtensionContext } from "../common/commands";
 import { commonLogger } from "../common/logger";
-import { ExtensionContext } from "../common/commands";
-import { BuildManager } from "./manager";
+import type { BuildManager } from "./manager";
 
-type EventData = BuildTreeItem | undefined | null | void;
+type EventData = BuildTreeItem | undefined | null | undefined;
 
 export class BuildTreeItem extends vscode.TreeItem {
   public provider: BuildTreeProvider;
@@ -47,7 +47,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   }
 
   private refresh(): void {
-    this._onDidChangeTreeData.fire();
+    this._onDidChangeTreeData.fire(null);
   }
 
   getChildren(element?: BuildTreeItem | undefined): vscode.ProviderResult<BuildTreeItem[]> {

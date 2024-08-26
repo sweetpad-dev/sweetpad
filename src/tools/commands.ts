@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import { ToolTreeItem } from "./tree.js";
-import { CommandExecution } from "../common/commands.js";
+import type { CommandExecution } from "../common/commands.js";
 import { runTask } from "../common/tasks.js";
+import type { ToolTreeItem } from "./tree.js";
 import { askTool } from "./utils.js";
 
 /**

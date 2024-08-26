@@ -1,12 +1,12 @@
-import { ExtensionContext } from "../common/commands";
+import path from "node:path";
 import { Disposable } from "vscode";
 import * as vscode from "vscode";
+import { getWorkspacePath } from "../build/utils";
+import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
-import { getWorkspacePath } from "../build/utils";
 import { xcodgenGenerateCommand } from "./commands";
-import path from "path";
 
 class XcodeGenWatcher {
   private watchers: vscode.FileSystemWatcher[] = [];

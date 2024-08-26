@@ -1,5 +1,5 @@
 import vscode from "vscode";
-import { ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/commands";
 
 const ATTACH_CONFIG: vscode.DebugConfiguration = {
   type: "sweetpad-lldb",

@@ -1,15 +1,23 @@
-import { DevicesManager } from "../devices/manager";
-import { SimulatorsManager } from "../simulators/manager";
-import { ALL_DESTINATION_TYPES, Destination, DestinationType, MacOSDestination as MacOSDestination, SelectedDestination, iOSDeviceDestination, iOSSimulatorDestination } from "./types";
+import events from "node:events";
+import type { ExtensionContext } from "../common/commands";
+import type { DevicesManager } from "../devices/manager";
+import type { SimulatorsManager } from "../simulators/manager";
 import {
   DESTINATION_IOS_DEVICE_TYPE_PRIORITY,
   DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY,
   DESTINATION_TYPE_PRIORITY,
   SUPPORTED_DESTINATION_PLATFORMS,
 } from "./constants";
-import { DestinationPlatform } from "./constants";
-import { ExtensionContext } from "../common/commands";
-import events from "events";
+import type { DestinationPlatform } from "./constants";
+import {
+  ALL_DESTINATION_TYPES,
+  type Destination,
+  type DestinationType,
+  MacOSDestination,
+  type SelectedDestination,
+  iOSDeviceDestination,
+  iOSSimulatorDestination,
+} from "./types";
 import { getMacOSArchitecture } from "./utils";
 
 type IEventMap = {
@@ -154,7 +162,7 @@ export class DestinationsManager {
       }
     }
 
-    if (a.type == "macOS" && b.type == "macOS") {
+    if (a.type === "macOS" && b.type === "macOS") {
       return a.name.localeCompare(b.name);
     }
 

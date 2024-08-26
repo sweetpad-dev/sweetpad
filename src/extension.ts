@@ -1,48 +1,48 @@
 import * as vscode from "vscode";
 
-import { BuildTreeProvider } from "./build/tree.js";
 import {
-  launchCommand,
   buildCommand,
   cleanCommand,
   generateBuildServerConfigCommand,
+  launchCommand,
   openXcodeCommand,
   removeBundleDirCommand,
   resolveDependenciesCommand,
-  testCommand,
   selectXcodeSchemeCommand,
+  testCommand,
 } from "./build/commands.js";
+import { selectXcodeWorkspaceCommand } from "./build/commands.js";
+import { BuildManager } from "./build/manager.js";
+import { XcodeBuildTaskProvider } from "./build/provider.js";
+import { DefaultSchemeStatusBar } from "./build/status-bar.js";
+import { BuildTreeProvider } from "./build/tree.js";
+import { ExtensionContext } from "./common/commands.js";
+import { Logger } from "./common/logger.js";
+import { getAppPathCommand } from "./debugger/commands.js";
+import { registerDebugConfigurationProvider } from "./debugger/provider.js";
+import { selectDestinationCommand } from "./destination/commands.js";
+import { DestinationsManager } from "./destination/manager.js";
+import { DestinationStatusBar } from "./destination/status-bar.js";
+import { DestinationsTreeProvider } from "./destination/tree.js";
+import { DevicesManager } from "./devices/manager.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
-import { createFormatStatusItem } from "./format/status.js";
 import { createFormatProvider } from "./format/provider.js";
+import { createFormatStatusItem } from "./format/status.js";
 import {
   openSimulatorCommand,
   removeSimulatorCacheCommand,
   startSimulatorCommand,
   stopSimulatorCommand,
 } from "./simulators/commands.js";
-import { ToolTreeProvider } from "./tools/tree.js";
-import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
-import { ExtensionContext } from "./common/commands.js";
-import { selectXcodeWorkspaceCommand } from "./build/commands.js";
+import { SimulatorsManager } from "./simulators/manager.js";
 import { createIssueGenericCommand, createIssueNoSchemesCommand, resetSweetpadCache } from "./system/commands.js";
-import { XcodeBuildTaskProvider } from "./build/provider.js";
+import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
+import { ToolsManager } from "./tools/manager.js";
+import { ToolTreeProvider } from "./tools/tree.js";
+import { tuistCleanCommand, tuistEditComnmand, tuistGenerateCommand, tuistInstallCommand } from "./tuist/command.js";
+import { createTuistWatcher } from "./tuist/watcher.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
-import { registerDebugConfigurationProvider } from "./debugger/provider.js";
-import { getAppPathCommand } from "./debugger/commands.js";
-import { Logger } from "./common/logger.js";
-import { DevicesManager } from "./devices/manager.js";
-import { SimulatorsManager } from "./simulators/manager.js";
-import { tuistCleanCommand, tuistEditComnmand, tuistInstallCommand, tuistGenerateCommand } from "./tuist/command.js";
-import { createTuistWatcher } from "./tuist/watcher.js";
-import { selectDestinationCommand } from "./destination/commands.js";
-import { DestinationsManager } from "./destination/manager.js";
-import { DestinationStatusBar } from "./destination/status-bar.js";
-import { DestinationsTreeProvider } from "./destination/tree.js";
-import { ToolsManager } from "./tools/manager.js";
-import { BuildManager } from "./build/manager.js";
-import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // 🪵🪓

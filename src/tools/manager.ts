@@ -1,6 +1,6 @@
-import events from "events";
-import { Tool, TOOLS } from "./constants";
+import events from "node:events";
 import { exec } from "../common/exec";
+import { TOOLS, type Tool } from "./constants";
 
 type IEventMap = {
   updated: [];

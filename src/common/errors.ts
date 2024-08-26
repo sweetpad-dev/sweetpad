@@ -56,11 +56,4 @@ export class ExecBaseError extends ExtensionError {
 /**
  * Stderr of executing shell command. See: exec
  */
-export class ExecErrror extends ExecBaseError {
-  constructor(
-    message: string,
-    context: { command: string; args: string[]; cwd?: string; exitCode: number; stderr: string; errorMessage: string },
-  ) {
-    super(message, context);
-  }
-}
+export class ExecErrror extends ExecBaseError {}

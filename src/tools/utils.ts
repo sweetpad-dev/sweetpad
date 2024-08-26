@@ -1,6 +1,6 @@
 import { showQuickPick } from "../common/quick-pick";
 
-import { Tool, TOOLS } from "./constants";
+import { TOOLS, type Tool } from "./constants";
 
 /**
  * Ask user to select a tool from the list of available tools

@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { Tool } from "./constants.js";
-import { ToolsManager } from "./manager.js";
+import type { Tool } from "./constants.js";
+import type { ToolsManager } from "./manager.js";
 
-type EventData = ToolTreeItem | undefined | null | void;
+type EventData = ToolTreeItem | undefined | null | undefined;
 
 /**
  * Tree view that helps to install basic ios development tools. It should have inline button to install and check if
@@ -22,7 +22,7 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
   }
 
   private refresh(): void {
-    this._onDidChangeTreeData.fire();
+    this._onDidChangeTreeData.fire(null);
   }
 
   getChildren(element?: ToolTreeItem | undefined): vscode.ProviderResult<ToolTreeItem[]> {

@@ -1,6 +1,6 @@
-import { iOSSimulator, iOSSimulatorDeviceType } from "../common/cli/scripts";
-import { DestinationPlatform } from "./constants";
-import { DeviceCtlDeviceType, iOSDevice } from "../common/xcode/devicectl";
+import type { iOSSimulator, iOSSimulatorDeviceType } from "../common/cli/scripts";
+import type { DeviceCtlDeviceType, iOSDevice } from "../common/xcode/devicectl";
+import type { DestinationPlatform } from "./constants";
 
 export type DestinationType = "iOSSimulator" | "iOSDevice" | "macOS";
 
@@ -12,7 +12,6 @@ export const ALL_DESTINATION_TYPES: DestinationType[] = ["iOSSimulator", "iOSDev
  * Generic interface for a destination (iOS simulator, iOS device, etc.)
  */
 interface IDestination {
-
   // Unique identifier for the destination for internal use.
   // This should be unique and never null or undefined.
   id: string;
@@ -69,9 +68,8 @@ export class iOSSimulatorDestination implements IDestination {
   get icon(): string {
     if (this.isBooted) {
       return "sweetpad-device-mobile";
-    } else {
-      return "sweetpad-device-mobile-pause";
     }
+    return "sweetpad-device-mobile-pause";
   }
 }
 
@@ -116,15 +114,14 @@ export class iOSDeviceDestination implements IDestination {
     if (this.device.deviceType === "iPad") {
       if (this.isConnected) {
         return "sweetpad-device-ipad";
-      } else {
-        return "sweetpad-device-ipad-x";
       }
-    } else if (this.device.deviceType === "iPhone") {
+      return "sweetpad-device-ipad-x";
+    }
+    if (this.device.deviceType === "iPhone") {
       if (this.isConnected) {
         return "sweetpad-device-mobile";
-      } else {
-        return "sweetpad-device-mobile-x";
       }
+      return "sweetpad-device-mobile-x";
     }
     return "sweetpad-device-mobile";
   }
@@ -138,7 +135,7 @@ export class MacOSDestination implements IDestination {
   name: string;
   arch: DestinationArch;
 
-  constructor(options: { name: string, arch: DestinationArch }) {
+  constructor(options: { name: string; arch: DestinationArch }) {
     this.name = options.name;
     this.arch = options.arch;
   }

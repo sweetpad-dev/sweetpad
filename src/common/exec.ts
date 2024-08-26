@@ -30,7 +30,7 @@ export async function exec(options: { command: string; args: string[]; cwd?: str
     cwd: cwd,
   });
 
-  let result;
+  let result: any;
   try {
     result = await execa(options.command, options.args, {
       cwd: cwd,
@@ -64,7 +64,6 @@ export async function exec(options: { command: string; args: string[]; cwd?: str
       command: options.command,
       args: options.args,
       cwd: cwd,
-      exitCode: result.exitCode,
       errorMessage: "[stderr not empty]",
     });
   }

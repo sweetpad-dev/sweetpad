@@ -4,7 +4,7 @@ interface Context {
   message?: never;
   type?: never;
   time?: never;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 enum LogLevel {
@@ -18,7 +18,7 @@ interface Message {
   message: string;
   level: LogLevel;
   time: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -81,11 +81,7 @@ export class Logger {
   }
 
   static setLevel(level: LogLevel | string) {
-    if (typeof level === "string") {
-      level = Logger.getLevelFromString(level);
-    }
-
-    Logger.level = level;
+    Logger.level = typeof level === "string" ? Logger.getLevelFromString(level) : level;
   }
 
   static setup() {

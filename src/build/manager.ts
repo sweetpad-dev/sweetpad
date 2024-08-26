@@ -1,8 +1,8 @@
-import { getSchemes, XcodeScheme } from "../common/cli/scripts";
-import { ExtensionContext } from "../common/commands";
+import { type XcodeScheme, getSchemes } from "../common/cli/scripts";
+import type { ExtensionContext } from "../common/commands";
 import { getCurrentXcodeWorkspacePath } from "./utils";
 
-import events from "events";
+import events from "node:events";
 
 type IEventMap = {
   updated: [];

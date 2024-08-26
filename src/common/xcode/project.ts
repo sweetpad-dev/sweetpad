@@ -1,7 +1,7 @@
-import { XcodeWorkspaceFileRef } from "./workspace";
+import path from "node:path";
 import { XcodeProject as XcodeProjectParser } from "@bacons/xcode";
-import path from "path";
 import { findFiles, findFilesRecursive, isFileExists } from "../files";
+import type { XcodeWorkspaceFileRef } from "./workspace";
 
 class XcodeScheme {
   public name: string;

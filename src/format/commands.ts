@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { formatLogger } from "./logger.js";
 import { formatDocument } from "./formatter.js";
+import { formatLogger } from "./logger.js";
 
 /*
  * Format current opened document

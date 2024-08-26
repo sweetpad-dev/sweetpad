@@ -14,13 +14,7 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": [
-    "Formatters",
-    "Linters",
-    "Extension Packs",
-    "Programming Languages",
-    "Other"
-  ],
+  "categories": ["Formatters", "Linters", "Extension Packs", "Programming Languages", "Other"],
   "activationEvents": [
     "onCommand:workbench.action.tasks.runTask",
     "workspaceContains:**/*.xcworkspace",
@@ -35,57 +29,36 @@
     "taskDefinitions": [
       {
         "type": "sweetpad",
-        "required": [
-          "action"
-        ],
+        "required": ["action"],
         "properties": {
           "action": {
             "type": "string",
-            "enum": [
-              "launch",
-              "build",
-              "clean",
-              "test",
-              "resolve-dependencies"
-            ]
+            "enum": ["launch", "build", "clean", "test", "resolve-dependencies"]
           },
           "scheme": {
             "type": "string",
             "description": "Scheme to build",
-            "examples": [
-              "MyApp",
-              "MyAppTests"
-            ]
+            "examples": ["MyApp", "MyAppTests"]
           },
           "configuration": {
             "type": "string",
             "description": "Configuration to build",
-            "examples": [
-              "Debug",
-              "Release"
-            ]
+            "examples": ["Debug", "Release"]
           },
           "workspace": {
             "type": "string",
             "description": "Path to workspace for resolving dependencies",
-            "examples": [
-              "./MyApp.xcworkspace",
-              "/Users/user/Developer/MyApp/MyApp.xcworkspace"
-            ]
+            "examples": ["./MyApp.xcworkspace", "/Users/user/Developer/MyApp/MyApp.xcworkspace"]
           },
           "simulator": {
             "type": "string",
             "description": "Simulator to launch. Currently only device UUID is supported. Deprecated: use `destinationId` instead",
-            "examples": [
-              "00000000-0000-0000-0000-000000000000"
-            ]
+            "examples": ["00000000-0000-0000-0000-000000000000"]
           },
           "destinationId": {
             "type": "string",
             "description": "Device ID to launch the app on",
-            "examples": [
-              "00000000-0000-0000-0000-000000000000"
-            ]
+            "examples": ["00000000-0000-0000-0000-000000000000"]
           },
           "destination": {
             "type": "string",
@@ -104,10 +77,7 @@
         "name": "sweetpad-watch",
         "label": "Sweetpad (watch)",
         "owner": "sweetpad",
-        "fileLocation": [
-          "relative",
-          "${workspaceRoot}"
-        ],
+        "fileLocation": ["relative", "${workspaceRoot}"],
         "applyTo": "allDocuments",
         "pattern": {
           "regexp": "",
@@ -146,9 +116,7 @@
                 "type": "object",
                 "examples": [
                   {
-                    "initCommands": [
-                      "script print('Hello, SweetPad!')"
-                    ]
+                    "initCommands": ["script print('Hello, SweetPad!')"]
                   }
                 ]
               }
@@ -481,10 +449,7 @@
           "items": {
             "type": "string"
           },
-          "default": [
-            "--in-place",
-            "${file}"
-          ],
+          "default": ["--in-place", "${file}"],
           "description": "Command or path to formatter executable. Use ${file} as a placeholder for the file path. Placehodler ${file} is supported only as a separate item in the array."
         },
         "sweetpad.build.xcbeautifyEnabled": {
@@ -506,19 +471,13 @@
         },
         "sweetpad.build.arch": {
           "type": "string",
-          "enum": [
-            "x86_64",
-            "arm64"
-          ],
+          "enum": ["x86_64", "arm64"],
           "description": "Architecture to build for. Can be usefull for building x86_64 simulator builds on M1 Macs. Usually, you don't need to change this setting."
         },
         "sweetpad.system.taskExecutor": {
           "type": "string",
           "default": "v2",
-          "enum": [
-            "v1",
-            "v2"
-          ],
+          "enum": ["v1", "v2"],
           "enumDescriptions": [
             "Legacy executor, use this if you have issues with the new executor.",
             "New executor, use this for better performance and better error handling."
@@ -528,12 +487,7 @@
         "sweetpad.system.logLevel": {
           "type": "string",
           "default": "info",
-          "enum": [
-            "debug",
-            "info",
-            "warn",
-            "error"
-          ],
+          "enum": ["debug", "info", "warn", "error"],
           "description": "Log level for SweetPad."
         },
         "sweetpad.xcodegen.autogenerate": {
@@ -744,9 +698,7 @@
       }
     ]
   },
-  "extensionDependencies": [
-    "vadimcn.vscode-lldb"
-  ],
+  "extensionDependencies": ["vadimcn.vscode-lldb"],
   "scripts": {
     "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=es6",
     "vscode:prepublish": "npm run compile-setvbuf && npm run esbuild-base -- --minify",
@@ -754,14 +706,17 @@
     "watch": "npm run esbuild-base -- --sourcemap --watch",
     "test": "vscode-test",
     "jest": "jest",
-    "check": "eslint src && tsc --noEmit",
+    "check:format:code": "biome format --write",
+    "check:format:markdown": "prettier --write docs/**/*.md",
+    "check:lint": "biome check --fix --unsafe",
+    "check:types": "tsc --noEmit",
+    "check:all": "npm run check:format:code && npm run check:lint && npm run check:types",
     "compile-setvbuf": "bash ./setvbuf/compile.sh",
     "publish-patch": "vsce publish patch",
     "find-deadcode": "ts-prune --error --skip spec.ts?"
   },
   "devDependencies": {
-    "@eslint/js": "^9.5.0",
-    "@types/eslint__js": "^8.42.3",
+    "@biomejs/biome": "1.8.3",
     "@types/jest": "^29.5.12",
     "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
@@ -770,14 +725,12 @@
     "@vscode/test-cli": "^0.0.4",
     "@vscode/test-electron": "^2.3.8",
     "esbuild": "^0.20.1",
-    "eslint": "^8.57.0",
     "globals": "^15.3.0",
     "jest": "^29.7.0",
-    "prettier": "3.3.2",
+    "prettier": "3.3.3",
     "ts-jest": "^29.1.2",
     "ts-prune": "^0.10.3",
-    "typescript": "^5.5.2",
-    "typescript-eslint": "^7.13.1"
+    "typescript": "^5.5.2"
   },
   "dependencies": {
     "@bacons/xcode": "^1.0.0-alpha.12",

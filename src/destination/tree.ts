@@ -1,7 +1,13 @@
 import * as vscode from "vscode";
-import { DestinationsManager } from "./manager.js";
-import { DestinationType, SelectedDestination, iOSDeviceDestination, iOSSimulatorDestination, MacOSDestination } from "./types.js";
 import { checkUnreachable } from "../common/types.js";
+import type { DestinationsManager } from "./manager.js";
+import type {
+  DestinationType,
+  MacOSDestination,
+  SelectedDestination,
+  iOSDeviceDestination,
+  iOSSimulatorDestination,
+} from "./types.js";
 
 /**
  * Tree item representing a group of destinations (iOSSimulator, iOSDevice, etc.) at the root level
@@ -116,7 +122,8 @@ export class MacOSDestinationTreeItem extends vscode.TreeItem implements IDestin
     this.provider = options.provider;
 
     this.description = options.device.arch;
-    const isSelected = this.provider.selectedDestination?.type === "macOS" && this.provider.selectedDestination.id === this.device.id;
+    const isSelected =
+      this.provider.selectedDestination?.type === "macOS" && this.provider.selectedDestination.id === this.device.id;
     if (isSelected) {
       this.description = `${this.description} ✓`;
     }
@@ -133,27 +140,29 @@ export class MacOSDestinationTreeItem extends vscode.TreeItem implements IDestin
 }
 
 // Tagged union type for destination tree item (second level)
-export type DestinationTreeItem = iOSSimulatorDestinationTreeItem | iOSDeviceDestinationTreeItem | MacOSDestinationTreeItem;
-
+export type DestinationTreeItem =
+  | iOSSimulatorDestinationTreeItem
+  | iOSDeviceDestinationTreeItem
+  | MacOSDestinationTreeItem;
 
 export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   public manager: DestinationsManager;
   public selectedDestination: SelectedDestination | undefined;
 
-  private _onDidChangeTreeData = new vscode.EventEmitter<DestinationTreeItem | undefined | null | void>();
+  private _onDidChangeTreeData = new vscode.EventEmitter<DestinationTreeItem | undefined | null | undefined>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   constructor(options: { manager: DestinationsManager }) {
     this.manager = options.manager;
     this.manager.on("simulatorsUpdated", () => {
-      this._onDidChangeTreeData.fire();
+      this._onDidChangeTreeData.fire(null);
     });
     this.manager.on("devicesUpdated", () => {
-      this._onDidChangeTreeData.fire();
+      this._onDidChangeTreeData.fire(null);
     });
     this.manager.on("xcodeDestinationUpdated", (destination) => {
       this.selectedDestination = destination;
-      this._onDidChangeTreeData.fire(); // todo: update only the selected destination
+      this._onDidChangeTreeData.fire(null); // todo: update only the selected destination
     });
     this.selectedDestination = this.manager.getSelectedXcodeDestination();
   }
@@ -166,11 +175,14 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
     if (element instanceof DestinationGroupTreeItem) {
       if (element.type === "iOSSimulator") {
         return this.getiOSSimulators();
-      } else if (element.type === "iOSDevice") {
+      }
+      if (element.type === "iOSDevice") {
         return this.getiOSDevices();
-      } else if (element.type === "macOS") {
+      }
+      if (element.type === "macOS") {
         return this.getmacOSDevices();
-      } else if (element.type === "Recent") {
+      }
+      if (element.type === "Recent") {
         return this.getRecentDestinations();
       }
       return [];
@@ -188,20 +200,21 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           simulator: destination,
           provider: this,
         });
-      } else if (destination.type === "iOSDevice") {
+      }
+      if (destination.type === "iOSDevice") {
         return new iOSDeviceDestinationTreeItem({
           device: destination,
           provider: this,
         });
-      } else if (destination.type === "macOS") {
+      }
+      if (destination.type === "macOS") {
         return new MacOSDestinationTreeItem({
           device: destination,
           provider: this,
         });
-      } else {
-        checkUnreachable(destination);
-        return destination;
       }
+      checkUnreachable(destination);
+      return destination;
     });
   }
 

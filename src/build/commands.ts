@@ -1,6 +1,6 @@
-import path from "path";
-import { BuildTreeItem } from "./tree";
+import path from "node:path";
 import * as vscode from "vscode";
+import type { BuildTreeItem } from "./tree";
 
 import {
   generateBuildServerConfig,
@@ -9,31 +9,30 @@ import {
   getIsXcodeBuildServerInstalled,
   getSimulatorByUdid,
 } from "../common/cli/scripts";
+import type { CommandExecution, ExtensionContext } from "../common/commands";
+import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
+import { ExtensionError } from "../common/errors";
+import { exec } from "../common/exec";
+import { getWorkspaceRelativePath, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
+import { showQuickPick } from "../common/quick-pick";
+import { type TaskTerminal, runTask } from "../common/tasks";
+import { assertUnreachable } from "../common/types";
+import type { Destination } from "../destination/types";
 import {
+  askConfiguration,
+  askDestinationToRunOn,
   askScheme,
   askXcodeWorkspacePath,
   prepareBundleDir,
-  prepareStoragePath,
-  askConfiguration,
-  selectXcodeWorkspace,
-  restartSwiftLSP,
-  askDestinationToRunOn,
   prepareDerivedDataPath,
+  prepareStoragePath,
+  restartSwiftLSP,
+  selectXcodeWorkspace,
 } from "./utils";
-import { CommandExecution, ExtensionContext } from "../common/commands";
-import { ExtensionError } from "../common/errors";
-import { exec } from "../common/exec";
-import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
-import { TaskTerminal, runTask } from "../common/tasks";
-import { getWorkspaceRelativePath, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
-import { showQuickPick } from "../common/quick-pick";
-import { assertUnreachable } from "../common/types";
-import { Destination } from "../destination/types";
-
 
 function writeWatchMarkers(terminal: TaskTerminal) {
   terminal.write("🍭 Sweetpad: watch marker (start)\n");
-  terminal.write("🍩 Sweetpad: watch marker (end)\n\n")
+  terminal.write("🍩 Sweetpad: watch marker (end)\n\n");
 }
 
 export async function runOnMac(
@@ -130,20 +129,13 @@ export async function runOniOSSimulator(
   context.updateWorkspaceState("build.lastLaunchedAppPath", targetPath);
 
   if (options.watchMarker) {
-    writeWatchMarkers(terminal);;
+    writeWatchMarkers(terminal);
   }
 
   // Run app
   await terminal.execute({
     command: "xcrun",
-    args: [
-      "simctl",
-      "launch",
-      "--console-pty",
-      "--terminate-running-process",
-      simulator.udid,
-      bundlerId,
-    ],
+    args: ["simctl", "launch", "--console-pty", "--terminate-running-process", simulator.udid, bundlerId],
   });
 }
 
@@ -197,7 +189,7 @@ export async function runOniOSDevice(
     ],
   });
 
-  let jsonOutput;
+  let jsonOutput: any;
   try {
     jsonOutput = await readJsonFile(jsonOuputPath.path);
   } catch (e) {
@@ -212,11 +204,10 @@ export async function runOniOSDevice(
       newLine: true,
     });
     return;
-  } else {
-    terminal.write("App launched on device with PID: " + jsonOutput.result.process.processIdentifier, {
-      newLine: true,
-    });
   }
+  terminal.write(`App launched on device with PID: ${jsonOutput.result.process.processIdentifier}`, {
+    newLine: true,
+  });
 }
 
 function isXcbeautifyEnabled() {
@@ -237,13 +228,14 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
     // { platform:macOS, arch:arm64, id:00008103-000109910EC3001E, name:My Mac }
     // { platform:macOS, arch:x86_64, id:00008103-000109910EC3001E, name:My Mac }
     return `platform=macOS,arch=${destination.arch}`;
-  } else if (destination.type === "iOSSimulator") {
-    return `platform=iOS Simulator,id=${destination.udid}`;
-  } else if (destination.type === "iOSDevice") {
-    return `platform=iOS,id=${destination.udid}`;
-  } else {
-    assertUnreachable(destination);
   }
+  if (destination.type === "iOSSimulator") {
+    return `platform=iOS Simulator,id=${destination.udid}`;
+  }
+  if (destination.type === "iOSDevice") {
+    return `platform=iOS,id=${destination.udid}`;
+  }
+  assertUnreachable(destination);
 }
 
 export async function buildApp(
@@ -268,7 +260,7 @@ export async function buildApp(
 
   const commandParts: string[] = [
     "xcodebuild",
-    ...(arch ? [`ARCHS=${arch}`, `VALID_ARCHS=${arch}`, `ONLY_ACTIVE_ARCH=NO`] : []),
+    ...(arch ? [`ARCHS=${arch}`, `VALID_ARCHS=${arch}`, "ONLY_ACTIVE_ARCH=NO"] : []),
     "-scheme",
     options.scheme,
     "-configuration",
@@ -371,7 +363,6 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
       });
-
 
       if (destination.type === "macOS") {
         await runOnMac(execution.context, terminal, {
@@ -541,7 +532,7 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
 
   await restartSwiftLSP();
 
-  vscode.window.showInformationMessage(`buildServer.json generated in workspace root`);
+  vscode.window.showInformationMessage("buildServer.json generated in workspace root");
 }
 
 /**

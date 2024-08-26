@@ -1,14 +1,14 @@
-import path from "path";
+import path from "node:path";
 import * as vscode from "vscode";
 import { showQuickPick } from "../common/quick-pick";
 
-import { BuildSettingsOutput, getBuildConfigurations, getSchemes, XcodeBuildSettings } from "../common/cli/scripts";
-import { ExtensionContext } from "../common/commands";
+import { type XcodeBuildSettings, getBuildConfigurations, getSchemes } from "../common/cli/scripts";
+import type { ExtensionContext } from "../common/commands";
+import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
-import { getWorkspaceConfig } from "../common/config";
-import { Destination, iOSSimulatorDestination } from "../destination/types";
+import type { Destination, iOSSimulatorDestination } from "../destination/types";
 
 const DEFAULT_CONFIGURATION = "Debug";
 
@@ -90,12 +90,17 @@ export async function askDestinationToRunOn(
   });
 }
 
-export async function selectDestination(context: ExtensionContext, options?: {
-  destinations?: Destination[];
-}): Promise<Destination> {
-  const destinations = options?.destinations?.length ? options.destinations : await context.destinationsManager.getDestinations({
-    mostUsedSort: true,
-  });
+export async function selectDestination(
+  context: ExtensionContext,
+  options?: {
+    destinations?: Destination[];
+  },
+): Promise<Destination> {
+  const destinations = options?.destinations?.length
+    ? options.destinations
+    : await context.destinationsManager.getDestinations({
+        mostUsedSort: true,
+      });
 
   const selected = await showQuickPick<Destination>({
     title: "Select destination to run on",
@@ -117,7 +122,10 @@ export async function selectDestination(context: ExtensionContext, options?: {
   return destination;
 }
 
-export async function getDestinationById(context: ExtensionContext, options: { destinationId: string }): Promise<Destination> {
+export async function getDestinationById(
+  context: ExtensionContext,
+  options: { destinationId: string },
+): Promise<Destination> {
   const desinations = await context.destinationsManager.getDestinations();
   const destination = desinations.find((destination) => destination.id === options.destinationId);
 
@@ -235,9 +243,8 @@ export function getCurrentXcodeWorkspacePath(context: ExtensionContext): string 
     context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
     if (path.isAbsolute(configPath)) {
       return configPath;
-    } else {
-      return path.join(getWorkspacePath(), configPath);
     }
+    return path.join(getWorkspacePath(), configPath);
   }
 
   const cachedPath = context.getWorkspaceState("build.xcodeWorkspacePath");

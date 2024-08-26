@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
-import { ErrorMessageAction, ExtensionError, TaskError } from "./errors";
+import type { BuildManager } from "../build/manager";
+import type { DestinationsManager } from "../destination/manager";
+import type { SelectedDestination } from "../destination/types";
+import type { ToolsManager } from "../tools/manager";
+import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
-import { DestinationsManager } from "../destination/manager";
-import { SelectedDestination } from "../destination/types";
-import { ToolsManager } from "../tools/manager";
-import { BuildManager } from "../build/manager";
 
 type WorkspaceTypes = {
   "build.xcodeWorkspacePath": string;
@@ -25,7 +25,7 @@ export class ExtensionContext {
   public destinationsManager: DestinationsManager;
   public toolsManager: ToolsManager;
   public buildManager: BuildManager;
-  private _sessionState: Map<SessionStateKey, any> = new Map();
+  private _sessionState: Map<SessionStateKey, unknown> = new Map();
 
   constructor(options: {
     context: vscode.ExtensionContext;
@@ -51,7 +51,7 @@ export class ExtensionContext {
     this._context.subscriptions.push(disposable);
   }
 
-  registerCommand(command: string, callback: (context: CommandExecution, ...args: any[]) => Promise<any>) {
+  registerCommand(command: string, callback: (context: CommandExecution, ...args: any[]) => Promise<unknown>) {
     return vscode.commands.registerCommand(command, (...args: any[]) => {
       const execution = new CommandExecution(command, callback, this);
       return execution.run(...args);
@@ -61,12 +61,12 @@ export class ExtensionContext {
   /**
    * State local to the running instance of the extension. It is not persisted across sessions.
    */
-  updateSessionState(key: SessionStateKey, value: any | undefined) {
+  updateSessionState(key: SessionStateKey, value: unknown | undefined) {
     this._sessionState.set(key, value);
   }
 
   getSessionState<T = any>(key: SessionStateKey): T | undefined {
-    return this._sessionState.get(key);
+    return this._sessionState.get(key) as T | undefined;
   }
 
   updateWorkspaceState<T extends WorkspaceStateKey>(key: T, value: WorkspaceTypes[T] | undefined) {
@@ -81,11 +81,11 @@ export class ExtensionContext {
    * Remove all sweetpad.* keys from workspace state
    */
   resetWorkspaceState() {
-    this._context.workspaceState.keys().forEach((key) => {
+    for (const key of this._context.workspaceState.keys()) {
       if (key.startsWith("sweetpad.")) {
         this._context.workspaceState.update(key, undefined);
       }
-    });
+    }
     this.destinationsManager.setWorkspaceDestination(undefined);
     this.buildManager.setDefaultScheme(undefined);
 
@@ -111,7 +111,7 @@ export class ExtensionContext {
 export class CommandExecution {
   constructor(
     public readonly command: string,
-    public readonly callback: (context: CommandExecution, ...args: any[]) => Promise<any>,
+    public readonly callback: (context: CommandExecution, ...args: unknown[]) => Promise<unknown>,
     public context: ExtensionContext,
   ) {}
 
@@ -153,7 +153,7 @@ export class CommandExecution {
    * Run the command with proper error handling. First argument passed to
    * the callback is this instance itself.
    */
-  async run(...args: any[]) {
+  async run(...args: unknown[]) {
     try {
       return await this.callback(this, ...args);
     } catch (error) {

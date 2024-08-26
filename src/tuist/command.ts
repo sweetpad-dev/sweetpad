@@ -1,7 +1,7 @@
-import { restartSwiftLSP } from "../build/utils";
-import { tuistClean, tuistEdit, tuistInstall, tuistGenerate, getIsTuistInstalled } from "../common/cli/scripts";
-import { ExtensionError } from "../common/errors";
 import * as vscode from "vscode";
+import { restartSwiftLSP } from "../build/utils";
+import { getIsTuistInstalled, tuistClean, tuistEdit, tuistGenerate, tuistInstall } from "../common/cli/scripts";
+import { ExtensionError } from "../common/errors";
 
 async function tuistCheckInstalled() {
   const isTuistInstalled = await getIsTuistInstalled();
@@ -21,7 +21,7 @@ export async function tuistGenerateCommand() {
 
   await restartSwiftLSP();
 
-  vscode.window.showInformationMessage(`The Xcode project was successfully generated using Tuist.`);
+  vscode.window.showInformationMessage("The Xcode project was successfully generated using Tuist.");
 }
 
 export async function tuistInstallCommand() {
@@ -31,7 +31,7 @@ export async function tuistInstallCommand() {
 
   await restartSwiftLSP();
 
-  vscode.window.showInformationMessage(`The Swift Package was successfully installed using Tuist.`);
+  vscode.window.showInformationMessage("The Swift Package was successfully installed using Tuist.");
 }
 
 export async function tuistCleanCommand() {
@@ -39,7 +39,7 @@ export async function tuistCleanCommand() {
 
   await tuistClean();
 
-  vscode.window.showInformationMessage(`Tuist cleaned.`);
+  vscode.window.showInformationMessage("Tuist cleaned.");
 }
 
 export async function tuistEditComnmand() {

@@ -1,7 +1,7 @@
 /**
  * Caches the result of a function call based on its arguments.
  */
-export function cache<T, Args extends any[]>(fn: (...args: Args) => Promise<T>): (...args: Args) => Promise<T> {
+export function cache<T, Args extends unknown[]>(fn: (...args: Args) => Promise<T>): (...args: Args) => Promise<T> {
   const cache: Record<string, T> = {};
 
   return async (...args: Args): Promise<T> => {

@@ -1,4 +1,4 @@
-import path from "path";
+import path from "node:path";
 import { XcodeWorkspace, XcodeWorkspaceFileRef, XcodeWorkspaceGroup } from "./workspace";
 
 describe("parse *.xcworkspace/contents.xml", () => {

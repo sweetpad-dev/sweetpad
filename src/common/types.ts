@@ -6,7 +6,6 @@ export function isNotNull<T>(value: T | null): value is T {
 // See issue: https://github.com/microsoft/TypeScript/issues/41707
 type NeverStringLiteral = "__THIS_SHOULD_BE_UNREACHABLE__";
 
-
 export function assertUnreachable(value: NeverStringLiteral): never {
   throw new Error(`Unreachable: ${value}`);
 }

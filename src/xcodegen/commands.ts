@@ -1,7 +1,7 @@
+import * as vscode from "vscode";
 import { restartSwiftLSP } from "../build/utils";
 import { generateXcodeGen, getIsXcodeGenInstalled } from "../common/cli/scripts";
 import { ExtensionError } from "../common/errors";
-import * as vscode from "vscode";
 
 export async function xcodgenGenerateCommand() {
   const isServerInstalled = await getIsXcodeGenInstalled();
@@ -13,5 +13,5 @@ export async function xcodgenGenerateCommand() {
   // Restart LSP to catch changes
   await restartSwiftLSP();
 
-  vscode.window.showInformationMessage(`The Xcode project was successfully generated using XcodeGen.`);
+  vscode.window.showInformationMessage("The Xcode project was successfully generated using XcodeGen.");
 }

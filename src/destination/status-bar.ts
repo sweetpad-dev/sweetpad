@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { ExtensionContext } from "../common/commands.js";
+import type { ExtensionContext } from "../common/commands.js";
 
 export class DestinationStatusBar {
   context: ExtensionContext;

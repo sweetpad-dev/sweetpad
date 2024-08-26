@@ -1,23 +1,24 @@
 import * as vscode from "vscode";
+import { type XcodeBuildSettings, getBuildSettings } from "../common/cli/scripts";
+import type { ExtensionContext } from "../common/commands";
 import {
-  askConfiguration,
-  askDestinationToRunOn,
-  askScheme,
-  askXcodeWorkspacePath,
-  getDestinationById,
-} from "./utils";
-import { buildApp, runOniOSSimulator, resolveDependencies, runOniOSDevice, getXcodeBuildDestinationString, runOnMac } from "./commands";
-import { ExtensionContext } from "../common/commands";
-import {
-  TaskTerminalV2,
+  type TaskTerminal,
   TaskTerminalV1,
-  TaskTerminal,
-  getTaskExecutorName,
   TaskTerminalV1Parent,
+  TaskTerminalV2,
+  getTaskExecutorName,
 } from "../common/tasks";
-import { getBuildSettings, XcodeBuildSettings } from "../common/cli/scripts";
-import { Destination } from "../destination/types";
 import { assertUnreachable } from "../common/types";
+import type { Destination } from "../destination/types";
+import {
+  buildApp,
+  getXcodeBuildDestinationString,
+  resolveDependencies,
+  runOnMac,
+  runOniOSDevice,
+  runOniOSSimulator,
+} from "./commands";
+import { askConfiguration, askDestinationToRunOn, askScheme, askXcodeWorkspacePath, getDestinationById } from "./utils";
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -59,7 +60,10 @@ class ActionDispatcher {
     }
   }
 
-  private async getDestination(options: { definition: TaskDefinition; buildSettings: XcodeBuildSettings }): Promise<Destination> {
+  private async getDestination(options: {
+    definition: TaskDefinition;
+    buildSettings: XcodeBuildSettings;
+  }): Promise<Destination> {
     const destinationId: string | undefined =
       // ex: "00000000-0000-0000-0000-000000000000"
       options.definition.destinationId ??
@@ -103,9 +107,7 @@ class ActionDispatcher {
       definition: definition,
       buildSettings: buildSettings,
     });
-    const destinationRaw =
-      definition.destination ??
-      getXcodeBuildDestinationString({ destination: destination });
+    const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
 
@@ -120,14 +122,14 @@ class ActionDispatcher {
       destinationRaw: destinationRaw,
     });
 
-    if (destination.type == "macOS") {
+    if (destination.type === "macOS") {
       await runOnMac(this.context, terminal, {
         scheme: scheme,
         configuration: configuration,
         xcworkspace: xcworkspace,
         watchMarker: true,
       });
-    } else if (destination.type == "iOSSimulator") {
+    } else if (destination.type === "iOSSimulator") {
       await runOniOSSimulator(this.context, terminal, {
         scheme: scheme,
         simulatorId: destination.udid,
@@ -136,7 +138,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
         watchMarker: true,
       });
-    } else if (destination.type == "iOSDevice") {
+    } else if (destination.type === "iOSDevice") {
       await runOniOSDevice(this.context, terminal, {
         scheme: scheme,
         deviceId: destination.id ?? "",
@@ -173,9 +175,7 @@ class ActionDispatcher {
       definition: definition,
       buildSettings: buildSettings,
     });
-    const destinationRaw =
-      definition.destination ??
-      getXcodeBuildDestinationString({ destination: destination });
+    const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
 
@@ -216,9 +216,7 @@ class ActionDispatcher {
       definition: definition,
       buildSettings: buildSettings,
     });
-    const destinationRaw =
-      definition.destination ??
-      getXcodeBuildDestinationString({ destination: destination });
+    const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
 
@@ -258,9 +256,7 @@ class ActionDispatcher {
       definition: definition,
       buildSettings: buildSettings,
     });
-    const destinationRaw =
-      definition.destination ??
-      getXcodeBuildDestinationString({ destination: destination });
+    const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
 

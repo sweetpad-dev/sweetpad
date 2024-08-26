@@ -1,5 +1,5 @@
-import { iOSSimulator, getSimulators } from "../common/cli/scripts";
-import events from "events";
+import events from "node:events";
+import { getSimulators, type iOSSimulator } from "../common/cli/scripts";
 
 type IEventMap = {
   updated: [];

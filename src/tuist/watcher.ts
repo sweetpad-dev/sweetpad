@@ -1,11 +1,11 @@
+import path from "node:path";
 import * as vscode from "vscode";
-import { ExtensionContext } from "../common/commands";
-import path from "path";
-import { getWorkspaceConfig } from "../common/config";
+import { Disposable } from "vscode";
 import { getWorkspacePath, prepareDerivedDataPath } from "../build/utils";
+import type { ExtensionContext } from "../common/commands";
+import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
-import { Disposable } from "vscode";
 import { tuistGenerateCommand } from "./command";
 
 class TuistGenWatcher {

@@ -1,6 +1,6 @@
-import { readFile } from "../files";
-import path from "path";
+import path from "node:path";
 import { XmlElement, parseXml } from "@rgrove/parse-xml";
+import { readFile } from "../files";
 import { isNotNull } from "../types";
 import { XcodeProject } from "./project";
 
@@ -145,7 +145,7 @@ export class XcodeWorkspace {
 
     // FileRef contains reference to xcodeproject or other files
     if (element.name === "FileRef") {
-      const locationRaw: string | undefined = element.attributes["location"];
+      const locationRaw: string | undefined = element.attributes.location;
       if (!locationRaw) {
         return null;
       }
@@ -161,20 +161,23 @@ export class XcodeWorkspace {
     // Groups can contain other groups or FileRefs
     if (element.name === "Group") {
       const items: XcodeWorksaceItem[] = element.children
-        .map((obj: any) => {
-          return XcodeWorkspace.parseWorkspaceItem({
-            element: obj,
-            xcworkspace: options.xcworkspace,
-          });
+        .map((obj) => {
+          if (obj instanceof XmlElement) {
+            return XcodeWorkspace.parseWorkspaceItem({
+              element: obj,
+              xcworkspace: options.xcworkspace,
+            });
+          }
+          return null;
         })
-        .filter(Boolean) as any;
+        .filter(isNotNull);
 
-      const locationRaw: string | undefined = element.attributes["location"];
+      const locationRaw: string | undefined = element.attributes.location;
 
       const location = locationRaw ? parseLocation(locationRaw) : undefined;
 
       return new XcodeWorkspaceGroup({
-        name: element.attributes["name"],
+        name: element.attributes.name,
         location: location,
         children: items,
         workspacePath: options.xcworkspace,

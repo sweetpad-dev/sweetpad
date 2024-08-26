@@ -1,8 +1,8 @@
-import { Dirent, promises as fs } from "fs";
-import * as path from "path";
+import { randomBytes } from "node:crypto";
+import { promises as fs, type Dirent } from "node:fs";
+import * as path from "node:path";
 import { getWorkspacePath, prepareStoragePath } from "../build/utils";
-import { ExtensionContext } from "./commands";
-import { randomBytes } from "crypto";
+import type { ExtensionContext } from "./commands";
 
 /**
  * Find files or directories in a given directory
@@ -71,7 +71,7 @@ export async function readFile(filePath: string): Promise<Buffer> {
   return await fs.readFile(filePath);
 }
 
-export async function readJsonFile<T = any>(filePath: string): Promise<T> {
+export async function readJsonFile<T = unknown>(filePath: string): Promise<T> {
   const rawBuffer = await readFile(filePath);
   const rawString = rawBuffer.toString();
   return JSON.parse(rawString);

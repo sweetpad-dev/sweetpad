@@ -1,14 +1,14 @@
+import path from "node:path";
+import { prepareDerivedDataPath } from "../../build/utils";
+import type { DestinationPlatform } from "../../destination/constants";
+import type { DestinationOS } from "../../destination/constants";
+import type { iOSSimulatorDestination } from "../../destination/types";
+import { cache } from "../cache";
+import type { ExtensionContext } from "../commands";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
-import { cache } from "../cache";
-import { XcodeWorkspace } from "../xcode/workspace";
 import { uniqueFilter } from "../helpers";
-import { ExtensionContext } from "../commands";
-import { prepareDerivedDataPath } from "../../build/utils";
-import { DestinationPlatform } from "../../destination/constants";
-import { DestinationOS } from "../../destination/constants";
-import path from "path";
-import { iOSSimulatorDestination } from "../../destination/types";
+import { XcodeWorkspace } from "../xcode/workspace";
 
 type SimulatorOutput = {
   dataPath: string;
@@ -112,15 +112,20 @@ export class iOSSimulator {
     const deviceType = rawDeviceType.slice(prefix.length);
     if (deviceType.startsWith("iPhone")) {
       return "iPhone";
-    } else if (deviceType.startsWith("iPad")) {
+    }
+    if (deviceType.startsWith("iPad")) {
       return "iPad";
-    } else if (deviceType.startsWith("iPod")) {
+    }
+    if (deviceType.startsWith("iPod")) {
       return "iPod";
-    } else if (deviceType.startsWith("Apple-TV")) {
+    }
+    if (deviceType.startsWith("Apple-TV")) {
       return "AppleTV";
-    } else if (deviceType.startsWith("Apple-Watch")) {
+    }
+    if (deviceType.startsWith("Apple-Watch")) {
       return "AppleWatch";
-    } else if (deviceType.startsWith("Apple-Vision")) {
+    }
+    if (deviceType.startsWith("Apple-Vision")) {
       return "AppleVision";
     }
     return null;
@@ -221,13 +226,14 @@ export class XcodeBuildSettings {
     // - "Control Room.app"
     if (this.settings.WRAPPER_NAME) {
       return this.settings.WRAPPER_NAME;
-    } else if (this.settings.FULL_PRODUCT_NAME) {
-      return this.settings.FULL_PRODUCT_NAME;
-    } else if (this.settings.PRODUCT_NAME) {
-      return `${this.settings.PRODUCT_NAME}.app`;
-    } else {
-      return `${this.targetName}.app`;
     }
+    if (this.settings.FULL_PRODUCT_NAME) {
+      return this.settings.FULL_PRODUCT_NAME;
+    }
+    if (this.settings.PRODUCT_NAME) {
+      return `${this.settings.PRODUCT_NAME}.app`;
+    }
+    return `${this.targetName}.app`;
   }
 
   get targetName() {
@@ -244,7 +250,7 @@ export class XcodeBuildSettings {
 
   get supportedPlatforms(): DestinationPlatform[] {
     // ex: ["iphonesimulator", "iphoneos"]
-    const platformsRaw = this.settings.SUPPORTED_PLATFORMS;   // ex: "iphonesimulator iphoneos"
+    const platformsRaw = this.settings.SUPPORTED_PLATFORMS; // ex: "iphonesimulator iphoneos"
     return platformsRaw.split(" ").map((platform) => {
       return platform as DestinationPlatform;
     });
@@ -345,12 +351,11 @@ export const getBasicProjectInfo = cache(
         type: "project",
         ...parsed,
       } as XcodebuildListProjectOutput;
-    } else {
-      return {
-        type: "workspace",
-        ...parsed,
-      } as XcodebuildListWorkspaceOutput;
     }
+    return {
+      type: "workspace",
+      ...parsed,
+    } as XcodebuildListWorkspaceOutput;
   },
 );
 
@@ -364,13 +369,12 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
         name: scheme,
       };
     });
-  } else {
-    return output.workspace.schemes.map((scheme) => {
-      return {
-        name: scheme,
-      };
-    });
   }
+  return output.workspace.schemes.map((scheme) => {
+    return {
+      name: scheme,
+    };
+  });
 }
 
 export async function getBuildConfigurations(options: { xcworkspace: string }): Promise<XcodeConfiguration[]> {

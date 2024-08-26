@@ -1,8 +1,8 @@
-import * as vscode from "vscode";
-import { exec } from "../common/exec.js";
-import { formatLogger } from "./logger.js";
-import { Timer } from "../common/timer.js";
+import type * as vscode from "vscode";
 import { getWorkspaceConfig } from "../common/config.js";
+import { exec } from "../common/exec.js";
+import { Timer } from "../common/timer.js";
+import { formatLogger } from "./logger.js";
 
 /**
  * Get formatter command parameters from workspace configuration.
