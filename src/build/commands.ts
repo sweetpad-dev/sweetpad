@@ -257,6 +257,8 @@ export async function buildApp(
   const derivedDataPath = prepareDerivedDataPath();
 
   const arch = getWorkspaceConfig("build.arch") || undefined;
+  // ex: ["-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
+  const additionalArgs: string[] = getWorkspaceConfig("build.args") || [];
 
   const commandParts: string[] = [
     "xcodebuild",
@@ -272,6 +274,7 @@ export async function buildApp(
     "-resultBundlePath",
     bundlePath,
     "-allowProvisioningUpdates",
+    ...additionalArgs,
     ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
     ...(options.shouldClean ? ["clean"] : []),
     ...(options.shouldBuild ? ["build"] : []),

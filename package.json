@@ -474,6 +474,15 @@
           "enum": ["x86_64", "arm64"],
           "description": "Architecture to build for. Can be usefull for building x86_64 simulator builds on M1 Macs. Usually, you don't need to change this setting."
         },
+        "sweetpad.build.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "examples": ["-skipMacroValidation", "-disablePackageRepositoryCache"],
+          "description": "Additional arguments to pass to the build command."
+        },
         "sweetpad.system.taskExecutor": {
           "type": "string",
           "default": "v2",

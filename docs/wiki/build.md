@@ -105,3 +105,14 @@ directory. Here's how you can do it in your VSCode's `.vscode/settings.json`:
   // "sweetpad.build.derivedDataPath": "/Users/hyzyla/Projects/sweetpad/derivedData"
 }
 ```
+
+## Set additional build settings
+
+You can set additional build settings for the `xcodebuild` command using the `sweetpad.build.args` configuration. For
+example, you can skip the macro validation step by adding the `-skipMacroValidation` argument:
+
+```jsonc
+{
+  "sweetpad.build.args": ["-skipMacroValidation"],
+}
+```
