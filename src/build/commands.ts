@@ -94,8 +94,15 @@ export async function runOniOSSimulator(
     sdk: options.sdk,
     xcworkspace: options.xcworkspace,
   });
-  const targetPath = buildSettings.executablePath;
+  const appPath = buildSettings.appPath;
   const bundlerId = buildSettings.bundleIdentifier;
+
+  // Open simulatorcte
+  await terminal.execute({
+    command: "open",
+    args: ["-a", "Simulator"],
+  });
+
 
   // Get simulator with fresh state
   const simulator = await getSimulatorByUdid(context, {
@@ -117,16 +124,11 @@ export async function runOniOSSimulator(
   // Install app
   await terminal.execute({
     command: "xcrun",
-    args: ["simctl", "install", simulator.udid, targetPath],
+    args: ["simctl", "install", simulator.udid, appPath],
   });
 
-  // Open simulatorcte
-  await terminal.execute({
-    command: "open",
-    args: ["-a", "Simulator"],
-  });
 
-  context.updateWorkspaceState("build.lastLaunchedAppPath", targetPath);
+  context.updateWorkspaceState("build.lastLaunchedAppPath", appPath);
 
   if (options.watchMarker) {
     writeWatchMarkers(terminal);

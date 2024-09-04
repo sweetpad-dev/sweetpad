@@ -215,7 +215,7 @@ export class XcodeBuildSettings {
     return path.join(this.targetBuildDir, this.settings.EXECUTABLE_PATH);
   }
 
-  get productPath() {
+  get appPath() {
     // Example:
     // - {targetBuildDir}/Control Room.app
     return path.join(this.targetBuildDir, this.appName);
@@ -293,16 +293,7 @@ export async function getBuildSettings(options: {
     if (line.startsWith("{") || line.startsWith("[")) {
       const data = lines.slice(i).join("\n");
       const output = JSON.parse(data) as BuildSettingsOutput;
-      const settings = new XcodeBuildSettings(output);
-      console.log("settings.targetBuildDir", settings.targetBuildDir);
-      console.log("settings.executablePath", settings.executablePath);
-      console.log("settings.productPath", settings.productPath);
-      console.log("settings.appName", settings.appName);
-      console.log("settings.targetName", settings.targetName);
-      console.log("settings.bundleIdentifier", settings.bundleIdentifier);
-      console.log("settings.supportedPlatforms", settings.supportedPlatforms);
-
-      return settings;
+      return new XcodeBuildSettings(output);
     }
   }
 
