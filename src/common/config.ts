@@ -12,6 +12,7 @@ type Config = {
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "xcodegen.autogenerate": boolean;
   "tuist.autogenerate": boolean;
+  "experimental.enableMacOsDestination": boolean;
 };
 
 type ConfigKey = keyof Config;

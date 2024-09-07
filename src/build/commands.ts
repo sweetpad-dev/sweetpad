@@ -60,21 +60,8 @@ export async function runOnMac(
   await terminal.execute({
     command: buildSettings.executablePath,
   });
-  // await startDebuggingMacApp(productOutputInfo.productName, productOutputInfo.productPath);
 }
 
-async function startDebuggingMacApp(appName: string, binaryPath: string) {
-  const debugConfig: vscode.DebugConfiguration = {
-    type: "lldb",
-    request: "launch",
-    name: `Debug with LLDB (${appName})`,
-    program: binaryPath,
-    args: [],
-    cwd: "${workspaceFolder}",
-  };
-
-  await vscode.debug.startDebugging(undefined, debugConfig);
-}
 
 export async function runOniOSSimulator(
   context: ExtensionContext,
@@ -94,8 +81,15 @@ export async function runOniOSSimulator(
     sdk: options.sdk,
     xcworkspace: options.xcworkspace,
   });
-  const targetPath = buildSettings.executablePath;
+  const appPath = buildSettings.appPath;
   const bundlerId = buildSettings.bundleIdentifier;
+
+  // Open simulatorcte
+  await terminal.execute({
+    command: "open",
+    args: ["-a", "Simulator"],
+  });
+
 
   // Get simulator with fresh state
   const simulator = await getSimulatorByUdid(context, {
@@ -117,16 +111,11 @@ export async function runOniOSSimulator(
   // Install app
   await terminal.execute({
     command: "xcrun",
-    args: ["simctl", "install", simulator.udid, targetPath],
+    args: ["simctl", "install", simulator.udid, appPath],
   });
 
-  // Open simulatorcte
-  await terminal.execute({
-    command: "open",
-    args: ["-a", "Simulator"],
-  });
 
-  context.updateWorkspaceState("build.lastLaunchedAppPath", targetPath);
+  context.updateWorkspaceState("build.lastLaunchedAppPath", appPath);
 
   if (options.watchMarker) {
     writeWatchMarkers(terminal);

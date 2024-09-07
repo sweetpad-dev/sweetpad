@@ -40,6 +40,7 @@ class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider
     config.type = "lldb";
     config.waitFor = true;
     config.request = "attach";
+
     if (!config.program) {
       const appPath = this.context.getWorkspaceState("build.lastLaunchedAppPath");
       if (!appPath) {

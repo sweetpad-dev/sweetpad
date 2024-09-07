@@ -1,5 +1,6 @@
 import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
+import { getWorkspaceConfig } from "../common/config";
 import type { DevicesManager } from "../devices/manager";
 import type { SimulatorsManager } from "../simulators/manager";
 import {
@@ -170,12 +171,21 @@ export class DestinationsManager {
     return a.name.localeCompare(b.name);
   }
 
+  defaultDestinationPlatforms(): DestinationPlatform[] {
+    if (this.isMacOSDestinationEnabled()) {
+      return SUPPORTED_DESTINATION_PLATFORMS;
+    }
+    return SUPPORTED_DESTINATION_PLATFORMS;
+  }
+
   async getDestinations(options?: {
     platformFilter?: DestinationPlatform[];
     mostUsedSort?: boolean;
   }): Promise<Destination[]> {
     const destinations: Destination[] = [];
-    const platforms = options?.platformFilter ?? SUPPORTED_DESTINATION_PLATFORMS;
+
+    const platforms = options?.platformFilter ?? this.defaultDestinationPlatforms();
+
 
     if (platforms.includes("iphonesimulator")) {
       const simulators = await this.getiOSSimulators();
@@ -285,5 +295,9 @@ export class DestinationsManager {
       destinationId: destination.id,
       type: destination.type,
     });
+  }
+
+  isMacOSDestinationEnabled(): boolean {
+    return getWorkspaceConfig("experimental.enableMacOsDestination") ?? false;
   }
 }
