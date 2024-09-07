@@ -16,11 +16,16 @@ export type DestinationPlatform =
   | "xros" // visionOS/xrOS Device
   | "xrsimulator"; // visionOS/xrOS Simulator
 
-export const SUPPORTED_DESTINATION_PLATFORMS = [
+export const SUPPORTED_DESTINATION_IOS_PLATFORMS: DestinationPlatform[] = [
   "iphoneos",
   "iphonesimulator",
+];
+
+export const SUPPORTED_DESTINATION_PLATFORMS: DestinationPlatform[] = [
+  ...SUPPORTED_DESTINATION_IOS_PLATFORMS,
   "macosx",
-] satisfies DestinationPlatform[];
+];
+
 
 export const DESTINATION_TYPE_PRIORITY: DestinationType[] = ["iOSSimulator", "iOSDevice", "macOS"];
 export const DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY: iOSSimulatorDeviceType[] = [

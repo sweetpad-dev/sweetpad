@@ -60,21 +60,8 @@ export async function runOnMac(
   await terminal.execute({
     command: buildSettings.executablePath,
   });
-  // await startDebuggingMacApp(productOutputInfo.productName, productOutputInfo.productPath);
 }
 
-async function startDebuggingMacApp(appName: string, binaryPath: string) {
-  const debugConfig: vscode.DebugConfiguration = {
-    type: "lldb",
-    request: "launch",
-    name: `Debug with LLDB (${appName})`,
-    program: binaryPath,
-    args: [],
-    cwd: "${workspaceFolder}",
-  };
-
-  await vscode.debug.startDebugging(undefined, debugConfig);
-}
 
 export async function runOniOSSimulator(
   context: ExtensionContext,

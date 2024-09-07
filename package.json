@@ -508,6 +508,11 @@
           "type": "boolean",
           "default": false,
           "description": "Watch for new .swift files and regenerate the project using Tuist. Restart VSCode to apply the settings."
+        },
+        "sweetpad.experimental.enableMacOsDestination": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable macOS destinations in the simulator list."
         }
       }
     },
