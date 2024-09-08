@@ -4,6 +4,12 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.28] - 2024-09-08
+
+- Add experimental support for macOS apps
+- Add "sweetpad.build.args" settings to pass additional arguments to xcodebuild
+- New home for documentation: [sweetpad.hyzyla.dev](https://sweetpad.hyzyla.dev) 🎉
+
 ## [0.1.27] - 2024-08-03
 
 - Add "codelldbAttributes" to the "launch.json" configuration to allow to customize the debugger attributes.
