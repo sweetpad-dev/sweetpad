@@ -1,7 +1,7 @@
 {
   "name": "sweetpad",
   "type": "commonjs",
-  "displayName": "SweetPad (beta)",
+  "displayName": "SweetPad (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
   "version": "0.1.27",
   "publisher": "sweetpad",

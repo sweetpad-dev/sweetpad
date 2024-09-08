@@ -1,3 +1,3 @@
 # SweetPad: Run tests
 
-![Tests](../images/test-menu-run.png)
+➡️ Moved to [sweetpad.hyzyla.dev/docs/tests](https://sweetpad.hyzyla.dev/docs/tests)

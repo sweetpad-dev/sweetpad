@@ -1,4 +1,4 @@
-# SweetPad (beta) <img valign="middle" alt="SweetPad logo" width="40" src="./images/logo.png" />
+# SweetPad (iOS/Swift development) <img valign="middle" alt="SweetPad logo" width="40" src="./images/logo.png" />
 
 <!-- [![Discord](https://img.shields.io/badge/SweetPad-Discord-blue?logo=discord&logoColor=white&link=https%3A%2F%2Fdiscord.gg%2FXZwRtQ5dew)](https://discord.gg/XZwRtQ5dew) -->
 
@@ -18,18 +18,19 @@ so on into VSCode.
 
 ## Feature
 
-- ✅ **[Autocomplete](./docs/wiki/autocomplete.md)** — setup autocomplete using
+- ✅ **[Autocomplete](https://sweetpad.hyzyla.dev/docs/autocomplete)** — setup autocomplete using
   [xcode-build-server](https://github.com/SolaWing/xcode-build-server)
-- 🛠️ **[Build & Run](./docs/wiki/build.md)** — build and run application using
+- 🛠️ **[Build & Run](https://sweetpad.hyzyla.dev/docs/build)** — build and run application using
   [xcodebuild](https://developer.apple.com/library/archive/technotes/tn2339/_index.html)
-- 💅🏼 **[Format](./docs/wiki/format.md)** — format files using [swift-format](https://github.com/apple/swift-format) or
-  other formatter of your choice
-- 📱 **[Simulator](./docs/wiki/simulator.md)** — manage iOS simulators
-- 📱 **[Devices](./docs/wiki/devices.md)** — run iOS applications on iPhone or iPad
-- 🛠️ **[Tools](./docs/wiki/tools.md)** — manage essential iOS development tools using [Homebrew](https://brew.sh/)
-- 🪲 **[Debug](./docs/wiki/debug.md)** — debug iOS applications using
+- 💅🏼 **[Format](https://sweetpad.hyzyla.dev/docs/format)** — format files using
+  [swift-format](https://github.com/apple/swift-format) or other formatter of your choice
+- 📱 **[Simulator](https://sweetpad.hyzyla.dev/docs/simulators)** — manage iOS simulators
+- 📱 **[Devices](https://sweetpad.hyzyla.dev/docs/devices)** — run iOS applications on iPhone or iPad
+- 🛠️ **[Tools](https://sweetpad.hyzyla.dev/docs/tools)** — manage essential iOS development tools using
+  [Homebrew](https://brew.sh/)
+- 🪲 **[Debug](https://sweetpad.hyzyla.dev/docs/debug)** — debug iOS applications using
   [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
-- ✅ **[Tests](./docs/wiki/test.md)** — run tests on simulators and devices
+- ✅ **[Tests](https://sweetpad.hyzyla.dev/docs/tests)** — run tests on simulators and devices
 
 > 💡 If you have any ideas, please open an issue or start a discussion on the
 > [SweetPad](https://github.com/sweetpad-dev/sweetpad) GitHub repository.
