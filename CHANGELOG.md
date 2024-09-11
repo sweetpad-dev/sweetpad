@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.29] - 2024-09-11
+
+- Add fallback for xcode parser
+
 ## [0.1.28] - 2024-09-08
 
 - Add experimental support for macOS apps
