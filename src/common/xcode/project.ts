@@ -1,6 +1,8 @@
 import path from "node:path";
-import { XcodeProject as XcodeProjectParser } from "@bacons/xcode";
-import { findFiles, findFilesRecursive, isFileExists } from "../files";
+import { XcodeProject as XcodeProjectParsed } from "@bacons/xcode";
+import { type XcodeProject as XcodeProjectRaw, parse as parseChevrotain } from "@bacons/xcode/json";
+import { findFiles, findFilesRecursive, isFileExists, readTextFile } from "../files";
+import { uniqueFilter } from "../helpers";
 import type { XcodeWorkspaceFileRef } from "./workspace";
 
 class XcodeScheme {
@@ -32,18 +34,22 @@ class XcodeScheme {
   }
 }
 
-export class XcodeProject {
-  private parser: XcodeProjectParser;
+export interface XcodeProject {
+  getConfigurations(): string[];
+}
+
+export class XcodeProjectBaconParser implements XcodeProject {
+  private parsed: XcodeProjectParsed;
   // path to .xcodeproj (not .pbxproj)
   public projectPath: string;
 
-  private constructor(options: { parser: XcodeProjectParser; projectPath: string }) {
-    this.parser = options.parser;
+  constructor(options: { parsed: XcodeProjectParsed; projectPath: string }) {
+    this.parsed = options.parsed;
     this.projectPath = options.projectPath;
   }
 
   getConfigurations(): string[] {
-    const configurationList = this.parser.rootObject.props.buildConfigurationList;
+    const configurationList = this.parsed.rootObject.props.buildConfigurationList;
     return configurationList.props.buildConfigurations.map((config: any) => config.props.name);
   }
 
@@ -117,22 +123,50 @@ export class XcodeProject {
     const schemes = await this.getSchemes();
     return schemes.map((scheme) => scheme.name);
   }
+}
 
-  static async parseProject(projectPath: string): Promise<XcodeProject> {
-    const parser = XcodeProjectParser.open(path.join(projectPath, "project.pbxproj"));
-    return new XcodeProject({
-      parser: parser,
-      projectPath: projectPath,
-    });
+export class XcodeProjectFallbackParser implements XcodeProject {
+  parsed: Partial<XcodeProjectRaw>;
+
+  constructor(options: {
+    parsed: Partial<XcodeProjectRaw>;
+  }) {
+    this.parsed = options.parsed;
   }
 
-  static async fromFileRef(fileRef: XcodeWorkspaceFileRef): Promise<XcodeProject | null> {
-    const projectPath = fileRef.getProjectPath();
+  getConfigurations(): string[] {
+    const objects = Object.values(this.parsed.objects ?? {});
+    return objects
+      .filter((obj) => obj.isa === "XCBuildConfiguration")
+      .map((obj: any) => obj.name ?? null)
+      .filter((name) => name !== null)
+      .filter(uniqueFilter);
+  }
+}
 
-    if (!projectPath) {
-      return null;
-    }
+export async function parseXcodeProjectFromFileRef(fileRef: XcodeWorkspaceFileRef): Promise<XcodeProject | null> {
+  const projectPath = fileRef.getProjectPath();
 
-    return XcodeProject.parseProject(projectPath);
+  if (!projectPath) {
+    return null;
+  }
+
+  return parseXcodeProject(projectPath);
+}
+
+export async function parseXcodeProject(projectPath: string): Promise<XcodeProject> {
+  const pbxprojPath = path.join(projectPath, "project.pbxproj");
+  try {
+    const parsed = XcodeProjectParsed.open(pbxprojPath);
+    return new XcodeProjectBaconParser({
+      parsed: parsed,
+      projectPath: projectPath,
+    });
+  } catch (error) {
+    const projectRaw = await readTextFile(pbxprojPath);
+    const parsed = parseChevrotain(projectRaw);
+    return new XcodeProjectFallbackParser({
+      parsed: parsed,
+    });
   }
 }

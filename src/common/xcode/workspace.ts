@@ -2,7 +2,7 @@ import path from "node:path";
 import { XmlElement, parseXml } from "@rgrove/parse-xml";
 import { readFile } from "../files";
 import { isNotNull } from "../types";
-import { XcodeProject } from "./project";
+import { type XcodeProject, parseXcodeProjectFromFileRef } from "./project";
 
 /* self: workspace is inside the project
  * container: relative to workspace dir
@@ -129,7 +129,7 @@ export class XcodeWorkspace {
     while (items.length > 0) {
       const item = items.shift();
       if (item instanceof XcodeWorkspaceFileRef) {
-        const project = await XcodeProject.fromFileRef(item);
+        const project = await parseXcodeProjectFromFileRef(item);
         if (project) {
           projects.push(project);
         }

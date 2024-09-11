@@ -71,6 +71,11 @@ export async function readFile(filePath: string): Promise<Buffer> {
   return await fs.readFile(filePath);
 }
 
+export async function readTextFile(filePath: string): Promise<string> {
+  const rawBuffer = await readFile(filePath);
+  return rawBuffer.toString();
+}
+
 export async function readJsonFile<T = unknown>(filePath: string): Promise<T> {
   const rawBuffer = await readFile(filePath);
   const rawString = rawBuffer.toString();
