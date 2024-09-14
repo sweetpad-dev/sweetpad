@@ -9,6 +9,7 @@ import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { uniqueFilter } from "../helpers";
 import { commonLogger } from "../logger";
+import { XcodeWorkspace } from "../xcode/workspace";
 
 type SimulatorOutput = {
   dataPath: string;
