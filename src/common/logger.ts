@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { errorReporting } from "./error-reporting";
 
 interface Context {
   message?: never;
@@ -55,6 +56,11 @@ export class Logger {
     if (this.messages.length >= this.maxMessages) {
       this.messages.shift();
     }
+    errorReporting.addBreadcrumb({
+      message: data.message,
+      category: "log",
+      data: data,
+    });
   }
 
   private getNow() {

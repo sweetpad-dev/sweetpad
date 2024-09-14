@@ -33,3 +33,11 @@ export async function createIssueNoSchemesCommand() {
     labels: ["bug"],
   });
 }
+
+
+export async function testErrorReportingCommand() {
+  commonLogger.log("Testing error reporting", {
+    contextKey: "Context value",
+  });
+  throw new Error("This is a test error");
+}

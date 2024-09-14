@@ -167,23 +167,23 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
     this.selectedDestination = this.manager.getSelectedXcodeDestination();
   }
 
-  getChildren(element?: DestinationGroupTreeItem | DestinationTreeItem): vscode.ProviderResult<vscode.TreeItem[]> {
+  async getChildren(element?: DestinationGroupTreeItem | DestinationTreeItem): Promise<vscode.TreeItem[]> {
     if (!element) {
-      return this.getRootElements();
+      return await this.getRootElements();
     }
 
     if (element instanceof DestinationGroupTreeItem) {
       if (element.type === "iOSSimulator") {
-        return this.getiOSSimulators();
+        return await this.getiOSSimulators();
       }
       if (element.type === "iOSDevice") {
-        return this.getiOSDevices();
+        return await this.getiOSDevices();
       }
       if (element.type === "macOS") {
-        return this.getmacOSDevices();
+        return await this.getmacOSDevices();
       }
       if (element.type === "Recent") {
-        return this.getRecentDestinations();
+        return await this.getRecentDestinations();
       }
       return [];
     }
@@ -269,7 +269,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
     return groups;
   }
 
-  getTreeItem(element: DestinationTreeItem): vscode.TreeItem {
+  async getTreeItem(element: DestinationTreeItem): Promise<vscode.TreeItem> {
     return element;
   }
 

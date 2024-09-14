@@ -25,16 +25,16 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
     this._onDidChangeTreeData.fire(null);
   }
 
-  getChildren(element?: ToolTreeItem | undefined): vscode.ProviderResult<ToolTreeItem[]> {
+  async getChildren(element?: ToolTreeItem | undefined): Promise<ToolTreeItem[]> {
     // get elements only for root
     if (!element) {
-      return this.getTools();
+      return await this.getTools();
     }
 
     return [];
   }
 
-  getTreeItem(element: ToolTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
+  async getTreeItem(element: ToolTreeItem): Promise<vscode.TreeItem> {
     return element;
   }
 

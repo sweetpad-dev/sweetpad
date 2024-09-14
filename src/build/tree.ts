@@ -50,17 +50,17 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     this._onDidChangeTreeData.fire(null);
   }
 
-  getChildren(element?: BuildTreeItem | undefined): vscode.ProviderResult<BuildTreeItem[]> {
+  async getChildren(element?: BuildTreeItem | undefined): Promise<BuildTreeItem[]> {
     // get elements only for root
     if (!element) {
-      const schemes = this.getSchemes();
+      const schemes = await this.getSchemes();
       return schemes;
     }
 
     return [];
   }
 
-  getTreeItem(element: BuildTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
+  async getTreeItem(element: BuildTreeItem): Promise<BuildTreeItem> {
     return element;
   }
 

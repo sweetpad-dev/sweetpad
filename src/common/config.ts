@@ -10,6 +10,7 @@ type Config = {
   "build.args": string[];
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
+  "system.enableSentry": boolean;
   "xcodegen.autogenerate": boolean;
   "tuist.autogenerate": boolean;
   "experimental.enableMacOsDestination": boolean;

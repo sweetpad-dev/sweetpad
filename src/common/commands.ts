@@ -3,6 +3,7 @@ import type { BuildManager } from "../build/manager";
 import type { DestinationsManager } from "../destination/manager";
 import type { SelectedDestination } from "../destination/types";
 import type { ToolsManager } from "../tools/manager";
+import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting";
 import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
 
@@ -26,6 +27,7 @@ export class ExtensionContext {
   public toolsManager: ToolsManager;
   public buildManager: BuildManager;
   private _sessionState: Map<SessionStateKey, unknown> = new Map();
+
 
   constructor(options: {
     context: vscode.ExtensionContext;
@@ -56,6 +58,11 @@ export class ExtensionContext {
       const execution = new CommandExecution(command, callback, this);
       return execution.run(...args);
     });
+  }
+
+  registerTreeDataProvider<T extends vscode.TreeItem>(id: string, tree: vscode.TreeDataProvider<T>) {
+    const wrappedTree = addTreeProviderErrorReporting(tree);
+    return vscode.window.registerTreeDataProvider(id, wrappedTree);
   }
 
   /**
@@ -113,7 +120,7 @@ export class CommandExecution {
     public readonly command: string,
     public readonly callback: (context: CommandExecution, ...args: unknown[]) => Promise<unknown>,
     public context: ExtensionContext,
-  ) {}
+  ) { }
 
   /**
    * Show error message with proper actions
@@ -126,7 +133,7 @@ export class CommandExecution {
   ): Promise<void> {
     const closeAction: ErrorMessageAction = {
       label: "Close",
-      callback: () => {},
+      callback: () => { },
     };
     const showLogsAction: ErrorMessageAction = {
       label: "Show logs",
@@ -154,31 +161,37 @@ export class CommandExecution {
    * the callback is this instance itself.
    */
   async run(...args: unknown[]) {
-    try {
-      return await this.callback(this, ...args);
-    } catch (error) {
-      if (error instanceof ExtensionError) {
-        // Handle default error
-        commonLogger.error(error.message, {
-          command: this.command,
-          errorContext: error.options?.context,
-        });
-        if (error instanceof TaskError) {
-          // do nothing
-        } else {
-          await this.showErrorMessage(`Sweetpad: ${error.message}`, {
-            actions: error.options?.actions,
+    return await errorReporting.withScope(async (scope) => {
+      scope.setTag("command", this.command);
+      try {
+        return await this.callback(this, ...args);
+      } catch (error) {
+        if (error instanceof ExtensionError) {
+          // Handle default error
+          commonLogger.error(error.message, {
+            command: this.command,
+            errorContext: error.options?.context,
           });
+          if (error instanceof TaskError) {
+            // do nothing
+          } else {
+            await this.showErrorMessage(`Sweetpad: ${error.message}`, {
+              actions: error.options?.actions,
+            });
+          }
+        } else {
+          // Handle unexpected error
+          const errorMessage: string = error instanceof Error ? error.message : error?.toString() ?? "[unknown error]";
+          const stackTrace: string = error instanceof Error ? error.stack ?? "" : "";
+          commonLogger.error(errorMessage, {
+            command: this.command,
+            error: error,
+            stackTrace: stackTrace,
+          });
+          errorReporting.captureException(error);
+          await this.showErrorMessage(`Sweetpad: ${errorMessage}`);
         }
-      } else {
-        // Handle unexpected error
-        const errorMessage: string = error instanceof Error ? error.message : error?.toString() ?? "[unknown error]";
-        commonLogger.error(errorMessage, {
-          command: this.command,
-          error: error,
-        });
-        await this.showErrorMessage(`Sweetpad: ${errorMessage}`);
       }
-    }
+    });
   }
 }

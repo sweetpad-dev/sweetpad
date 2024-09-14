@@ -11,3 +11,5 @@ node_modules
 !.vscode/
 .vscode/extensions.json
 .vscode/settings.json
+
+.env

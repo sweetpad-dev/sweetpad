@@ -346,6 +346,11 @@
         "icon": "$(clear-all)"
       },
       {
+        "command": "sweetpad.system.testErrorReporting",
+        "title": "SweetPad: Test Error Reporting",
+        "icon": "$(bug)"
+      },
+      {
         "command": "sweetpad.system.createIssue.generic",
         "title": "SweetPad: Create Issue on GitHub",
         "icon": "$(bug)"
@@ -547,6 +552,11 @@
             "error"
           ],
           "description": "Log level for SweetPad."
+        },
+        "sweetpad.system.enableSentry": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Sentry error reporting. NOTE: This config is disable by default, I recommend enabling it when you have issues with SweetPad and want to report about them."
         },
         "sweetpad.xcodegen.autogenerate": {
           "type": "boolean",
@@ -765,10 +775,9 @@
     "vadimcn.vscode-lldb"
   ],
   "scripts": {
-    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=es6",
-    "vscode:prepublish": "npm run compile-setvbuf && npm run esbuild-base -- --minify",
-    "build": "npm run esbuild-base -- --sourcemap",
-    "watch": "npm run esbuild-base -- --sourcemap --watch",
+    "build": "node esbuild.config.mjs --sourcemap",
+    "watch": "node esbuild.config.mjs --sourcemap --watch",
+    "vscode:prepublish": "npm run compile-setvbuf && node esbuild.config.mjs --minify --sourcemap --production",
     "test": "vscode-test",
     "jest": "jest",
     "check:format:code": "biome format --write",
@@ -782,6 +791,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.8.3",
+    "@sentry/esbuild-plugin": "^2.22.4",
     "@types/jest": "^29.5.12",
     "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
@@ -789,7 +799,9 @@
     "@types/vscode": "^1.85.0",
     "@vscode/test-cli": "^0.0.4",
     "@vscode/test-electron": "^2.3.8",
+    "dotenv": "^16.4.5",
     "esbuild": "^0.20.1",
+    "esbuild-plugin-env": "^1.1.1",
     "globals": "^15.3.0",
     "jest": "^29.7.0",
     "prettier": "3.3.3",
@@ -800,6 +812,7 @@
   "dependencies": {
     "@bacons/xcode": "^1.0.0-alpha.12",
     "@rgrove/parse-xml": "^4.1.0",
+    "@sentry/node": "^8.30.0",
     "add": "^2.0.6",
     "execa": "npm:@esm2cjs/execa@^6.1.1-cjs.1",
     "shell-quote": "^1.8.1",
