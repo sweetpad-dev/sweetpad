@@ -8,8 +8,7 @@ import type { ExtensionContext } from "../commands";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { uniqueFilter } from "../helpers";
-import { commonLogger from "../lologger
-import { XcodeWorkspacece } from ".xcode/workspacee/workspace";
+import { commonLogger } from "../logger";
 
 type SimulatorOutput = {
   dataPath: string;
