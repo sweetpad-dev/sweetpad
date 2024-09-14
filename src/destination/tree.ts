@@ -1,13 +1,9 @@
 import * as vscode from "vscode";
 import { checkUnreachable } from "../common/types.js";
+import type { iOSDeviceDestination } from "../devices/types.js";
+import type { iOSSimulatorDestination } from "../simulators/types.js";
 import type { DestinationsManager } from "./manager.js";
-import type {
-  DestinationType,
-  MacOSDestination,
-  SelectedDestination,
-  iOSDeviceDestination,
-  iOSSimulatorDestination,
-} from "./types.js";
+import type { DestinationType, MacOSDestination, SelectedDestination } from "./types.js";
 
 /**
  * Tree item representing a group of destinations (iOSSimulator, iOSDevice, etc.) at the root level
@@ -243,19 +239,28 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
           icon: "sweetpad-square-letter-s",
         }),
+        // new DestinationGroupTreeItem({
+        //   label: "watchOS Simulators",
+        //   type: "iOSSimulator",
+        //   collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+        //   icon: "sweetpad-square-letter-s",
+        // }),
         new DestinationGroupTreeItem({
           label: "iOS Devices",
           type: "iOSDevice",
           collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
           icon: "sweetpad-square-letter-d",
         }),
-        ...(isMacosEnabled ? [
-          new DestinationGroupTreeItem({
-            label: "macOS",
-            type: "macOS",
-            collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-            icon: "sweetpad-square-letter-m",
-          })] : []),
+        ...(isMacosEnabled
+          ? [
+            new DestinationGroupTreeItem({
+              label: "macOS",
+              type: "macOS",
+              collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+              icon: "sweetpad-square-letter-m",
+            }),
+          ]
+          : []),
         // todo: add watchOS device
         // todo: add watchOS simulator
         // todo: add tvOS device

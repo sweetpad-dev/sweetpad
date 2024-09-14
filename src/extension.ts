@@ -36,7 +36,12 @@ import {
   stopSimulatorCommand,
 } from "./simulators/commands.js";
 import { SimulatorsManager } from "./simulators/manager.js";
-import { createIssueGenericCommand, createIssueNoSchemesCommand, resetSweetpadCache, testErrorReportingCommand } from "./system/commands.js";
+import {
+  createIssueGenericCommand,
+  createIssueNoSchemesCommand,
+  resetSweetpadCache,
+  testErrorReportingCommand,
+} from "./system/commands.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { ToolsManager } from "./tools/manager.js";
 import { ToolTreeProvider } from "./tools/tree.js";
@@ -46,7 +51,6 @@ import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
 
 export function activate(context: vscode.ExtensionContext) {
-
   // Sentry 🚨
   errorReporting.logSetup();
 
@@ -94,7 +98,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Shortcut to push disposable to context.subscriptions
   const d = _context.disposable.bind(_context);
   const command = _context.registerCommand.bind(_context);
-  const tree = _context.registerTreeDataProvider.bind(_context)
+  const tree = _context.registerTreeDataProvider.bind(_context);
 
   const buildTaskProvider = new XcodeBuildTaskProvider(_context);
 
@@ -171,4 +175,4 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
 }
 
-export function deactivate() { }
+export function deactivate() {}

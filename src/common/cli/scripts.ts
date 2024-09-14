@@ -1,10 +1,7 @@
 import path from "node:path";
 import { prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
-import type { DestinationOS } from "../../destination/constants";
-import type { iOSSimulatorDestination } from "../../destination/types";
 import { cache } from "../cache";
-import type { ExtensionContext } from "../commands";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { uniqueFilter } from "../helpers";
@@ -56,126 +53,12 @@ type XcodeConfiguration = {
 
 export type iOSSimulatorDeviceType = "iPhone" | "iPad" | "iPod" | "AppleTV" | "AppleWatch" | "AppleVision";
 
-export class iOSSimulator {
-  public udid: string;
-  public isAvailable: boolean;
-  public state: "Booted" | "Shutdown";
-
-  public deviceType: iOSSimulatorDeviceType | null;
-  public name: string;
-  public runtime: string;
-  public osVersion: string;
-  public runtimeType: DestinationOS;
-
-  constructor(options: {
-    udid: string;
-    isAvailable: boolean;
-    state: "Booted" | "Shutdown";
-    name: string;
-    rawDeviceType: string;
-    runtime: string;
-  }) {
-    this.udid = options.udid;
-    this.isAvailable = options.isAvailable;
-    this.state = options.state;
-    this.name = options.name;
-    this.deviceType = iOSSimulator.parseDeviceType(options.rawDeviceType);
-    this.runtime = options.runtime;
-
-    // iOS-14-5 => 14.5
-    const rawiOSVersion = options.runtime.split(".").slice(-1)[0];
-    this.osVersion = rawiOSVersion.replace(/^(\w+)-(\d+)-(\d+)$/, "$2.$3");
-
-    // "com.apple.CoreSimulator.SimRuntime.iOS-16-4"
-    // "com.apple.CoreSimulator.SimRuntime.WatchOS-8-0"
-    // extract iOS, tvOS, watchOS
-    const regex = /com\.apple\.CoreSimulator\.SimRuntime\.(iOS|tvOS|watchOS)-\d+-\d+/;
-    const match = this.runtime.match(regex);
-    this.runtimeType = match ? (match[1] as DestinationOS) : "iOS";
-  }
-
-  static parseDeviceType(rawDeviceType: string): iOSSimulatorDeviceType | null {
-    // examples:
-    // - "com.apple.CoreSimulator.SimDeviceType.Apple-Vision-Pro"
-    // - "com.apple.CoreSimulator.SimDeviceType.iPhone-8"
-    // - "com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro"
-    // - "com.apple.CoreSimulator.SimDeviceType.iPod-touch--7th-generation-"
-    // - "com.apple.CoreSimulator.SimDeviceType.Apple-TV-1080p"
-    // - "com.apple.CoreSimulator.SimDeviceType.Apple-TV-4K-3rd-generation-4K"
-    // - "com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-5-40mm"
-
-    // common prefix amoung all device types (hope so)
-    const prefix = "com.apple.CoreSimulator.SimDeviceType.";
-    if (!rawDeviceType?.startsWith(prefix)) {
-      return null;
-    }
-
-    const deviceType = rawDeviceType.slice(prefix.length);
-    if (!deviceType) {
-      return null;
-    }
-    if (deviceType.startsWith("iPhone")) {
-      return "iPhone";
-    }
-    if (deviceType.startsWith("iPad")) {
-      return "iPad";
-    }
-    if (deviceType.startsWith("iPod")) {
-      return "iPod";
-    }
-    if (deviceType.startsWith("Apple-TV")) {
-      return "AppleTV";
-    }
-    if (deviceType.startsWith("Apple-Watch")) {
-      return "AppleWatch";
-    }
-    if (deviceType.startsWith("Apple-Vision")) {
-      return "AppleVision";
-    }
-    return null;
-  }
-}
-
-export async function getSimulators(): Promise<iOSSimulator[]> {
+export async function getSimulators(): Promise<SimulatorsOutput> {
   const simulatorsRaw = await exec({
     command: "xcrun",
     args: ["simctl", "list", "--json", "devices"],
   });
-
-  const output = JSON.parse(simulatorsRaw) as SimulatorsOutput;
-  const simulators = Object.entries(output.devices)
-    .flatMap(([key, value]) =>
-      value.map((simulator) => {
-        return new iOSSimulator({
-          udid: simulator.udid,
-          isAvailable: simulator.isAvailable,
-          state: simulator.state as "Booted",
-          name: simulator.name,
-          rawDeviceType: simulator.deviceTypeIdentifier,
-          runtime: key,
-        });
-      }),
-    )
-    .filter((simulator) => simulator.isAvailable);
-  return simulators;
-}
-
-export async function getSimulatorByUdid(
-  context: ExtensionContext,
-  options: {
-    udid: string;
-    refresh: boolean;
-  },
-): Promise<iOSSimulatorDestination> {
-  const simulators = await context.destinationsManager.getiOSSimulators({
-    refresh: options.refresh ?? false,
-  });
-  for (const simulator of simulators) {
-    if (simulator.udid === options.udid) {
-      return simulator;
-    }
-  }
-  throw new ExtensionError("Simulator not found", { context: { udid: options.udid } });
+  return JSON.parse(simulatorsRaw) as SimulatorsOutput;
 }
 
 export type BuildSettingsOutput = BuildSettingOutput[];
@@ -188,19 +71,10 @@ type BuildSettingOutput = {
   };
 };
 
-// type ProductOutputInfo = {
-//   productPath: string;
-//   productName: string;
-//   binaryPath: string;
-//   bundleIdentifier: string;
-// };
-
 export class XcodeBuildSettings {
-  private output: BuildSettingsOutput;
   private settings: { [key: string]: string };
 
   constructor(output: BuildSettingsOutput) {
-    this.output = output;
     if (output.length === 0) {
       throw new ExtensionError("Error fetching build settings");
     }

@@ -7,7 +7,6 @@ import {
   getBuildSettings,
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
-  getSimulatorByUdid,
 } from "../common/cli/scripts";
 import type { CommandExecution, ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
@@ -18,6 +17,7 @@ import { showQuickPick } from "../common/quick-pick";
 import { type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
 import type { Destination } from "../destination/types";
+import { getSimulatorByUdid } from "../simulators/utils";
 import {
   askConfiguration,
   askDestinationToRunOn,
@@ -62,7 +62,6 @@ export async function runOnMac(
   });
 }
 
-
 export async function runOniOSSimulator(
   context: ExtensionContext,
   terminal: TaskTerminal,
@@ -90,7 +89,6 @@ export async function runOniOSSimulator(
     args: ["-a", "Simulator"],
   });
 
-
   // Get simulator with fresh state
   const simulator = await getSimulatorByUdid(context, {
     udid: options.simulatorId,
@@ -113,7 +111,6 @@ export async function runOniOSSimulator(
     command: "xcrun",
     args: ["simctl", "install", simulator.udid, appPath],
   });
-
 
   context.updateWorkspaceState("build.lastLaunchedAppPath", appPath);
 
@@ -219,7 +216,13 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
     return `platform=macOS,arch=${destination.arch}`;
   }
   if (destination.type === "iOSSimulator") {
-    return `platform=iOS Simulator,id=${destination.udid}`;
+    if (destination.osType === "iOS") {
+      return `platform=iOS Simulator,id=${destination.udid}`;
+    }
+    if (destination.osType === "watchOS") {
+      return `platform=watchOS Simulator,id=${destination.udid}`;
+    }
+    throw new ExtensionError(`Unsupported simulator osType: ${destination.osType}`); // todo make unreachable
   }
   if (destination.type === "iOSDevice") {
     return `platform=iOS,id=${destination.udid}`;
@@ -367,7 +370,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         await runOniOSSimulator(execution.context, terminal, {
           scheme: scheme,
           simulatorId: destination.udid ?? "",
-          sdk: sdk,
+          // sdk: sdk,
+          sdk: "watchsimulator",
           configuration: configuration,
           xcworkspace: xcworkspace,
           watchMarker: false,

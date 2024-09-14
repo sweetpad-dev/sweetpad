@@ -2,7 +2,9 @@ import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import type { DevicesManager } from "../devices/manager";
+import type { iOSDeviceDestination } from "../devices/types";
 import type { SimulatorsManager } from "../simulators/manager";
+import type { iOSSimulatorDestination } from "../simulators/types";
 import {
   DESTINATION_IOS_DEVICE_TYPE_PRIORITY,
   DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY,
@@ -16,8 +18,6 @@ import {
   type DestinationType,
   MacOSDestination,
   type SelectedDestination,
-  iOSDeviceDestination,
-  iOSSimulatorDestination,
 } from "./types";
 import { getMacOSArchitecture } from "./utils";
 
@@ -104,10 +104,7 @@ export class DestinationsManager {
     const simulators = await this.simulatorsManager.getSimulators({
       refresh: options?.refresh,
     });
-    const items = simulators
-      // currently we only support iOS simulators (ignoring watchOS and tvOS)
-      .filter((simulator) => simulator.runtimeType === "iOS")
-      .map((simulator) => new iOSSimulatorDestination({ simulator: simulator }));
+    const items = [...simulators];
 
     if (options?.sort) {
       items.sort((a, b) => this.sortCompareFn(a, b));
@@ -118,7 +115,7 @@ export class DestinationsManager {
 
   async getiOSDevices(options?: { sort?: boolean }): Promise<iOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
-    const items = devices.map((device) => new iOSDeviceDestination({ device: device }));
+    const items = [...devices];
 
     if (options?.sort) {
       items.sort((a, b) => this.sortCompareFn(a, b));
@@ -185,7 +182,6 @@ export class DestinationsManager {
     const destinations: Destination[] = [];
 
     const platforms = options?.platformFilter ?? this.defaultDestinationPlatforms();
-
 
     if (platforms.includes("iphonesimulator")) {
       const simulators = await this.getiOSSimulators();

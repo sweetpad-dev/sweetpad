@@ -34,7 +34,6 @@ export async function createIssueNoSchemesCommand() {
   });
 }
 
-
 export async function testErrorReportingCommand() {
   commonLogger.log("Testing error reporting", {
     contextKey: "Context value",

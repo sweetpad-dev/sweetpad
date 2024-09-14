@@ -8,7 +8,8 @@ import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
-import type { Destination, iOSSimulatorDestination } from "../destination/types";
+import type { Destination } from "../destination/types";
+import type { iOSSimulatorDestination } from "../simulators/types";
 
 const DEFAULT_CONFIGURATION = "Debug";
 
@@ -99,8 +100,8 @@ export async function selectDestination(
   const destinations = options?.destinations?.length
     ? options.destinations
     : await context.destinationsManager.getDestinations({
-      mostUsedSort: true,
-    });
+        mostUsedSort: true,
+      });
 
   const selected = await showQuickPick<Destination>({
     title: "Select destination to run on",

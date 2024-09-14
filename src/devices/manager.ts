@@ -1,13 +1,14 @@
 import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
-import { type iOSDevice, listDevices } from "../common/xcode/devicectl";
+import { listDevices } from "../common/xcode/devicectl";
+import { iOSDeviceDestination } from "./types";
 
 type DeviceManagerEventTypes = {
   updated: [];
 };
 
 export class DevicesManager {
-  private cache: iOSDevice[] | undefined = undefined;
+  private cache: iOSDeviceDestination[] | undefined = undefined;
   private _context: ExtensionContext | undefined = undefined;
   private emitter = new events.EventEmitter<DeviceManagerEventTypes>();
 
@@ -28,10 +29,15 @@ export class DevicesManager {
     return this._context;
   }
 
-  async refresh(): Promise<iOSDevice[]> {
+  private async fetchDevices(): Promise<iOSDeviceDestination[]> {
+    const output = await listDevices(this.context);
+    return output.result.devices.map((device) => new iOSDeviceDestination(device));
+  }
+
+  async refresh(): Promise<iOSDeviceDestination[]> {
     this.failed = null;
     try {
-      this.cache = await listDevices(this.context);
+      this.cache = await this.fetchDevices();
     } catch (error: any) {
       if (error?.error?.code === "ENOENT") {
         this.failed = "no-devicectl";
@@ -44,7 +50,7 @@ export class DevicesManager {
     return this.cache;
   }
 
-  async getDevices(options?: { refresh?: boolean }): Promise<iOSDevice[]> {
+  async getDevices(options?: { refresh?: boolean }): Promise<iOSDeviceDestination[]> {
     if (this.cache === undefined || options?.refresh) {
       return await this.refresh();
     }

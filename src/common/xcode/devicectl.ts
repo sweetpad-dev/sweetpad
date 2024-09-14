@@ -9,7 +9,7 @@ type DeviceCtlListCommandOutput = {
   };
 };
 
-type DeviceCtlDevice = {
+export type DeviceCtlDevice = {
   capabilities: DeviceCtlDeviceCapability[];
   connectionProperties: DeviceCtlConnectionProperties;
   deviceProperties: DeviceCtlDeviceProperties;
@@ -72,33 +72,7 @@ type DeviceCtlDeviceCapability = {
   featureIdentifier: string;
 };
 
-export class iOSDevice {
-  constructor(public device: DeviceCtlDevice) {
-    this.device = device;
-  }
-
-  get udid() {
-    return this.device.hardwareProperties.udid;
-  }
-
-  get name() {
-    return this.device.deviceProperties.name;
-  }
-
-  get osVersion() {
-    return this.device.deviceProperties.osVersionNumber;
-  }
-
-  get state(): "connected" | "disconnected" | "unavailable" {
-    return this.device.connectionProperties.tunnelState;
-  }
-
-  get deviceType() {
-    return this.device.hardwareProperties.deviceType;
-  }
-}
-
-export async function listDevices(context: ExtensionContext): Promise<iOSDevice[]> {
+export async function listDevices(context: ExtensionContext): Promise<DeviceCtlListCommandOutput> {
   await using tmpPath = await tempFilePath(context, {
     prefix: "devices",
   });
@@ -109,6 +83,5 @@ export async function listDevices(context: ExtensionContext): Promise<iOSDevice[
   });
   commonLogger.debug("Stdout devicectl list devices", { stdout: devicesStdout });
 
-  const output = await readJsonFile<DeviceCtlListCommandOutput>(tmpPath.path);
-  return output.result.devices.map((device) => new iOSDevice(device));
+  return await readJsonFile<DeviceCtlListCommandOutput>(tmpPath.path);
 }
