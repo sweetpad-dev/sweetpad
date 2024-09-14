@@ -8,7 +8,8 @@ import type { ExtensionContext } from "../commands";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { uniqueFilter } from "../helpers";
-import { XcodeWorkspace } from "../xcode/workspace";
+import { commonLogger from "../lologger
+import { XcodeWorkspacece } from ".xcode/workspacee/workspace";
 
 type SimulatorOutput = {
   dataPath: string;
@@ -105,11 +106,14 @@ export class iOSSimulator {
 
     // common prefix amoung all device types (hope so)
     const prefix = "com.apple.CoreSimulator.SimDeviceType.";
-    if (!rawDeviceType.startsWith(prefix)) {
+    if (!rawDeviceType?.startsWith(prefix)) {
       return null;
     }
 
     const deviceType = rawDeviceType.slice(prefix.length);
+    if (!deviceType) {
+      return null;
+    }
     if (deviceType.startsWith("iPhone")) {
       return "iPhone";
     }
@@ -290,6 +294,14 @@ export async function getBuildSettings(options: {
   const lines = stdout.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (!line) {
+      commonLogger.warn("Empty line in build settings output", {
+        stdout: stdout,
+        index: i,
+      });
+      continue;
+    }
+
     if (line.startsWith("{") || line.startsWith("[")) {
       const data = lines.slice(i).join("\n");
       const output = JSON.parse(data) as BuildSettingsOutput;

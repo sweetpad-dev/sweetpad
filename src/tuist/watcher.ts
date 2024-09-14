@@ -24,7 +24,7 @@ class TuistGenWatcher {
     // TODO: add config to enable/disable watcher
     const isEnabled = getWorkspaceConfig("tuist.autogenerate");
     if (!isEnabled) {
-      return new Disposable(() => {});
+      return new Disposable(() => { });
     }
 
     // Is project.swift exists?
@@ -34,7 +34,7 @@ class TuistGenWatcher {
       commonLogger.log("project.swift not found, skipping tuist watcher", {
         workspacePath: getWorkspacePath(),
       });
-      return new Disposable(() => {});
+      return new Disposable(() => { });
     }
 
     const swiftWatcher = vscode.workspace.createFileSystemWatcher("**/*.swift", false, true, false);

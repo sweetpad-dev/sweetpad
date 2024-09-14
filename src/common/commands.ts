@@ -89,7 +89,7 @@ export class ExtensionContext {
    */
   resetWorkspaceState() {
     for (const key of this._context.workspaceState.keys()) {
-      if (key.startsWith("sweetpad.")) {
+      if (key?.startsWith("sweetpad.")) {
         this._context.workspaceState.update(key, undefined);
       }
     }
