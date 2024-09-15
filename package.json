@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.1.31",
+  "version": "0.1.32",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -14,7 +14,13 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Formatters", "Linters", "Extension Packs", "Programming Languages", "Other"],
+  "categories": [
+    "Formatters",
+    "Linters",
+    "Extension Packs",
+    "Programming Languages",
+    "Other"
+  ],
   "activationEvents": [
     "onCommand:workbench.action.tasks.runTask",
     "workspaceContains:**/*.xcworkspace",
@@ -29,36 +35,57 @@
     "taskDefinitions": [
       {
         "type": "sweetpad",
-        "required": ["action"],
+        "required": [
+          "action"
+        ],
         "properties": {
           "action": {
             "type": "string",
-            "enum": ["launch", "build", "clean", "test", "resolve-dependencies"]
+            "enum": [
+              "launch",
+              "build",
+              "clean",
+              "test",
+              "resolve-dependencies"
+            ]
           },
           "scheme": {
             "type": "string",
             "description": "Scheme to build",
-            "examples": ["MyApp", "MyAppTests"]
+            "examples": [
+              "MyApp",
+              "MyAppTests"
+            ]
           },
           "configuration": {
             "type": "string",
             "description": "Configuration to build",
-            "examples": ["Debug", "Release"]
+            "examples": [
+              "Debug",
+              "Release"
+            ]
           },
           "workspace": {
             "type": "string",
             "description": "Path to workspace for resolving dependencies",
-            "examples": ["./MyApp.xcworkspace", "/Users/user/Developer/MyApp/MyApp.xcworkspace"]
+            "examples": [
+              "./MyApp.xcworkspace",
+              "/Users/user/Developer/MyApp/MyApp.xcworkspace"
+            ]
           },
           "simulator": {
             "type": "string",
             "description": "Simulator to launch. Currently only device UUID is supported. Deprecated: use `destinationId` instead",
-            "examples": ["00000000-0000-0000-0000-000000000000"]
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
           },
           "destinationId": {
             "type": "string",
             "description": "Device ID to launch the app on",
-            "examples": ["00000000-0000-0000-0000-000000000000"]
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
           },
           "destination": {
             "type": "string",
@@ -77,7 +104,10 @@
         "name": "sweetpad-watch",
         "label": "Sweetpad (watch)",
         "owner": "sweetpad",
-        "fileLocation": ["relative", "${workspaceRoot}"],
+        "fileLocation": [
+          "relative",
+          "${workspaceRoot}"
+        ],
         "applyTo": "allDocuments",
         "pattern": {
           "regexp": "",
@@ -116,7 +146,9 @@
                 "type": "object",
                 "examples": [
                   {
-                    "initCommands": ["script print('Hello, SweetPad!')"]
+                    "initCommands": [
+                      "script print('Hello, SweetPad!')"
+                    ]
                   }
                 ]
               }
@@ -454,7 +486,10 @@
           "items": {
             "type": "string"
           },
-          "default": ["--in-place", "${file}"],
+          "default": [
+            "--in-place",
+            "${file}"
+          ],
           "description": "Command or path to formatter executable. Use ${file} as a placeholder for the file path. Placehodler ${file} is supported only as a separate item in the array."
         },
         "sweetpad.build.xcbeautifyEnabled": {
@@ -476,7 +511,10 @@
         },
         "sweetpad.build.arch": {
           "type": "string",
-          "enum": ["x86_64", "arm64"],
+          "enum": [
+            "x86_64",
+            "arm64"
+          ],
           "description": "Architecture to build for. Can be usefull for building x86_64 simulator builds on M1 Macs. Usually, you don't need to change this setting."
         },
         "sweetpad.build.args": {
@@ -485,13 +523,19 @@
             "type": "string"
           },
           "default": [],
-          "examples": ["-skipMacroValidation", "-disablePackageRepositoryCache"],
+          "examples": [
+            "-skipMacroValidation",
+            "-disablePackageRepositoryCache"
+          ],
           "description": "Additional arguments to pass to the build command."
         },
         "sweetpad.system.taskExecutor": {
           "type": "string",
           "default": "v2",
-          "enum": ["v1", "v2"],
+          "enum": [
+            "v1",
+            "v2"
+          ],
           "enumDescriptions": [
             "Legacy executor, use this if you have issues with the new executor.",
             "New executor, use this for better performance and better error handling."
@@ -501,7 +545,12 @@
         "sweetpad.system.logLevel": {
           "type": "string",
           "default": "info",
-          "enum": ["debug", "info", "warn", "error"],
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
           "description": "Log level for SweetPad."
         },
         "sweetpad.system.enableSentry": {
@@ -736,7 +785,9 @@
       }
     ]
   },
-  "extensionDependencies": ["vadimcn.vscode-lldb"],
+  "extensionDependencies": [
+    "vadimcn.vscode-lldb"
+  ],
   "scripts": {
     "build": "node esbuild.config.mjs --sourcemap",
     "watch": "node esbuild.config.mjs --sourcemap --watch",
