@@ -4,6 +4,19 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.32] - 2024-09-15
+
+- Add watchOS simalators support
+
+## [0.1.31] - 2024-09-15
+
+- Fix imports
+
+## [0.1.30] - 2024-09-14
+
+- Add sentry integration
+- Try to fix issue with .startsWith
+
 ## [0.1.29] - 2024-09-11
 
 - Add fallback for xcode parser
