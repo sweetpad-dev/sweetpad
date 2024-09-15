@@ -28,7 +28,7 @@ export async function startSimulatorCommand(execution: CommandExecution, item?: 
         args: ["simctl", "boot", simulatorUdid],
       });
 
-      execution.context.destinationsManager.refreshiOSSimulators();
+      await execution.context.destinationsManager.refreshSimulators();
     },
   });
 }
@@ -57,7 +57,7 @@ export async function stopSimulatorCommand(execution: CommandExecution, item?: i
         args: ["simctl", "shutdown", simulatorId],
       });
 
-      execution.context.destinationsManager.refreshiOSSimulators();
+      await execution.context.destinationsManager.refreshSimulators();
     },
   });
 }

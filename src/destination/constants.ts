@@ -1,5 +1,4 @@
-import type { iOSSimulatorDeviceType } from "../common/cli/scripts";
-import type { DeviceCtlDeviceType } from "../common/xcode/devicectl";
+import type { SimulatorType } from "../simulators/types";
 import type { DestinationType } from "./types";
 
 export type DestinationOs =
@@ -19,7 +18,8 @@ export type DestinationPlatform =
 export const SUPPORTED_DESTINATION_PLATFORMS: DestinationPlatform[] = [
   "iphoneos",
   "iphonesimulator",
-  "watchos",
+  "watchsimulator",
+  // "watchos",
   "macosx",
 ];
 
@@ -27,14 +27,14 @@ export const DESTINATION_TYPE_PRIORITY: DestinationType[] = [
   "iOSSimulator",
   "iOSDevice",
   "watchOSSimulator",
-  "watchOSDevice",
+  // "watchOSDevice",
   "macOS",
 ];
-export const DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY: iOSSimulatorDeviceType[] = [
+export const SIMULATOR_TYPE_PRIORITY: SimulatorType[] = [
   "iPhone",
   "iPad",
   "AppleWatch",
   "AppleTV",
   "AppleVision",
+  "iPod",
 ];
-export const DESTINATION_IOS_DEVICE_TYPE_PRIORITY: DeviceCtlDeviceType[] = ["iPhone", "iPad"];

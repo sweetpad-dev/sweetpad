@@ -9,7 +9,7 @@ import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
 import type { Destination } from "../destination/types";
-import type { iOSSimulatorDestination } from "../simulators/types";
+import type { SimulatorDestination } from "../simulators/types";
 
 const DEFAULT_CONFIGURATION = "Debug";
 
@@ -29,8 +29,8 @@ export async function askSimulator(
     state: "Booted" | "Shutdown";
     error: string;
   },
-): Promise<iOSSimulatorDestination> {
-  let simulators = await context.destinationsManager.getiOSSimulators({
+): Promise<SimulatorDestination> {
+  let simulators = await context.destinationsManager.getSimulators({
     sort: true,
   });
 

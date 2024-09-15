@@ -366,22 +366,22 @@
       "view/item/context": [
         {
           "command": "sweetpad.simulators.openSimulator",
-          "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSSimulator",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-group-simulator-.*/",
           "group": "inline@3"
         },
         {
           "command": "sweetpad.simulators.refresh",
-          "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSSimulator",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-group-simulator-.*/",
           "group": "inline@2"
         },
         {
           "command": "sweetpad.simulators.removeCache",
-          "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSSimulator",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-group-simulator-.*/",
           "group": "inline@1"
         },
         {
           "command": "sweetpad.devices.refresh",
-          "when": "view == sweetpad.destinations.view && viewItem == destination-group-iOSDevice",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-group-device-.*/",
           "group": "inline@1"
         },
         {
@@ -416,12 +416,12 @@
         },
         {
           "command": "sweetpad.simulators.start",
-          "when": "view == sweetpad.destinations.view && viewItem == destination-item-iOSSimulator-shutdown",
+          "when": "view == sweetpad.destinations.view && viewItem == destination-item-simulator-shutdown",
           "group": "inline"
         },
         {
           "command": "sweetpad.simulators.stop",
-          "when": "view == sweetpad.destinations.view && viewItem == destination-item-iOSSimulator-booted",
+          "when": "view == sweetpad.destinations.view && viewItem == destination-item-simulator-booted",
           "group": "inline"
         },
         {
@@ -567,6 +567,20 @@
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
           "fontCharacter": "\\ea8a"
+        }
+      },
+      "sweetpad-device-watch": {
+        "description": "Device Watch",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\ebf9"
+        }
+      },
+      "sweetpad-device-watch-pause": {
+        "description": "Device Watch Pause",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f8dd"
         }
       },
       "sweetpad-device-mobile-check": {

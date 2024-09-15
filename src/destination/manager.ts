@@ -4,20 +4,15 @@ import { getWorkspaceConfig } from "../common/config";
 import type { DevicesManager } from "../devices/manager";
 import type { iOSDeviceDestination } from "../devices/types";
 import type { SimulatorsManager } from "../simulators/manager";
-import type { iOSSimulatorDestination } from "../simulators/types";
-import {
-  DESTINATION_IOS_DEVICE_TYPE_PRIORITY,
-  DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY,
-  DESTINATION_TYPE_PRIORITY,
-  SUPPORTED_DESTINATION_PLATFORMS,
-} from "./constants";
+import type { SimulatorDestination, iOSSimulatorDestination, watchOSSimulatorDestination } from "../simulators/types";
+import { DESTINATION_TYPE_PRIORITY, SIMULATOR_TYPE_PRIORITY, SUPPORTED_DESTINATION_PLATFORMS } from "./constants";
 import type { DestinationPlatform } from "./constants";
 import {
   ALL_DESTINATION_TYPES,
   type Destination,
   type DestinationType,
-  MacOSDestination,
   type SelectedDestination,
+  macOSDestination,
 } from "./types";
 import { getMacOSArchitecture } from "./utils";
 
@@ -66,17 +61,17 @@ export class DestinationsManager {
     this._context = context;
   }
 
-  refreshiOSSimulators() {
-    this.simulatorsManager.refresh();
+  async refreshSimulators(): Promise<SimulatorDestination[]> {
+    return await this.simulatorsManager.refresh();
   }
 
-  refreshiOSDevices() {
-    this.devicesManager.refresh();
+  async refreshiOSDevices() {
+    await this.devicesManager.refresh();
   }
 
-  refresh() {
-    this.refreshiOSSimulators();
-    this.refreshiOSDevices();
+  async refresh() {
+    await this.refreshSimulators();
+    await this.refreshiOSDevices();
   }
 
   isUsageStatsExist(): boolean {
@@ -100,33 +95,41 @@ export class DestinationsManager {
     return destinations;
   }
 
-  async getiOSSimulators(options?: { refresh?: boolean; sort?: boolean }): Promise<iOSSimulatorDestination[]> {
-    const simulators = await this.simulatorsManager.getSimulators({
-      refresh: options?.refresh,
-    });
+  async getSimulators(options?: { sort?: boolean }): Promise<SimulatorDestination[]> {
+    const simulators = await this.simulatorsManager.getSimulators();
+
+    const items = [...simulators];
+    if (options?.sort) {
+      items.sort((a, b) => this.sortCompareFn(a, b));
+    }
+    return items;
+  }
+
+  async getiOSSimulators(options?: { sort?: boolean }): Promise<iOSSimulatorDestination[]> {
+    const simulators = await this.simulatorsManager.getSimulators();
     const items = [...simulators];
 
     if (options?.sort) {
       items.sort((a, b) => this.sortCompareFn(a, b));
     }
 
-    return items;
+    return items.filter((simulator) => simulator.type === "iOSSimulator");
   }
 
-  async getiOSDevices(options?: { sort?: boolean }): Promise<iOSDeviceDestination[]> {
+  async getwatchOSSimulators(): Promise<watchOSSimulatorDestination[]> {
+    const simulators = await this.simulatorsManager.getSimulators();
+    return simulators.filter((simulator) => simulator.type === "watchOSSimulator");
+  }
+
+  async getiOSDevices(): Promise<iOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
-    const items = [...devices];
-
-    if (options?.sort) {
-      items.sort((a, b) => this.sortCompareFn(a, b));
-    }
-    return items;
+    return devices.filter((device) => device.type === "iOSDevice");
   }
 
-  async getmacOSDevices(): Promise<MacOSDestination[]> {
+  async getmacOSDevices(): Promise<macOSDestination[]> {
     const currentArch = getMacOSArchitecture() ?? "arm64";
     return [
-      new MacOSDestination({
+      new macOSDestination({
         name: "My Mac",
         arch: currentArch,
       }),
@@ -144,35 +147,25 @@ export class DestinationsManager {
       return aPriority - bPriority;
     }
 
+    // todo: sort ipad/iPhone/xorOS
     if (a.type === "iOSSimulator" && b.type === "iOSSimulator") {
-      const aPriority = DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY.findIndex((type) => type === a.deviceType);
-      const bPriority = DESTINATION_IOS_SIMULATOR_DEVICE_TYPE_PRIORITY.findIndex((type) => type === b.deviceType);
+      const aPriority = SIMULATOR_TYPE_PRIORITY.findIndex((type) => type === a.simulatorType);
+      const bPriority = SIMULATOR_TYPE_PRIORITY.findIndex((type) => type === b.simulatorType);
       if (aPriority !== bPriority) {
         return aPriority - bPriority;
       }
     }
 
-    if (a.type === "iOSDevice" && b.type === "iOSDevice") {
-      const aPriority = DESTINATION_IOS_DEVICE_TYPE_PRIORITY.findIndex((type) => type === a.deviceType);
-      const bPriority = DESTINATION_IOS_DEVICE_TYPE_PRIORITY.findIndex((type) => type === b.deviceType);
-      if (aPriority !== bPriority) {
-        return aPriority - bPriority;
-      }
-    }
-
-    if (a.type === "macOS" && b.type === "macOS") {
-      return a.name.localeCompare(b.name);
-    }
+    // if (a.type === "iOSDevice" && b.type === "iOSDevice") {
+    //   const aPriority = DESTINATION_IOS_DEVICE_TYPE_PRIORITY.findIndex((type) => type === a.deviceType);
+    //   const bPriority = DESTINATION_IOS_DEVICE_TYPE_PRIORITY.findIndex((type) => type === b.deviceType);
+    //   if (aPriority !== bPriority) {
+    //     return aPriority - bPriority;
+    //   }
+    // }
 
     // In any other cases, fallback to sorting by name
     return a.name.localeCompare(b.name);
-  }
-
-  defaultDestinationPlatforms(): DestinationPlatform[] {
-    if (this.isMacOSDestinationEnabled()) {
-      return SUPPORTED_DESTINATION_PLATFORMS;
-    }
-    return SUPPORTED_DESTINATION_PLATFORMS;
   }
 
   async getDestinations(options?: {
@@ -181,10 +174,15 @@ export class DestinationsManager {
   }): Promise<Destination[]> {
     const destinations: Destination[] = [];
 
-    const platforms = options?.platformFilter ?? this.defaultDestinationPlatforms();
+    const platforms = options?.platformFilter ?? SUPPORTED_DESTINATION_PLATFORMS;
 
     if (platforms.includes("iphonesimulator")) {
       const simulators = await this.getiOSSimulators();
+      destinations.push(...simulators);
+    }
+
+    if (platforms.includes("watchsimulator")) {
+      const simulators = await this.getwatchOSSimulators();
       destinations.push(...simulators);
     }
 
@@ -226,6 +224,10 @@ export class DestinationsManager {
     let destination: Destination | undefined = undefined;
     if (!destination && types.includes("iOSSimulator")) {
       const simulators = await this.getiOSSimulators();
+      destination = simulators.find((simulator) => simulator.id === options.destinationId);
+    }
+    if (!destination && types.includes("watchOSSimulator")) {
+      const simulators = await this.getwatchOSSimulators();
       destination = simulators.find((simulator) => simulator.id === options.destinationId);
     }
     if (!destination && types.includes("iOSDevice")) {

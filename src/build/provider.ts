@@ -129,7 +129,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
         watchMarker: true,
       });
-    } else if (destination.type === "iOSSimulator") {
+    } else if (destination.type === "iOSSimulator" || destination.type === "watchOSSimulator") {
       await runOniOSSimulator(this.context, terminal, {
         scheme: scheme,
         simulatorId: destination.udid,

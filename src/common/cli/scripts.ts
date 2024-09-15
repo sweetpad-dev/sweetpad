@@ -8,7 +8,7 @@ import { uniqueFilter } from "../helpers";
 import { commonLogger } from "../logger";
 import { XcodeWorkspace } from "../xcode/workspace";
 
-type SimulatorOutput = {
+export type SimulatorOutput = {
   dataPath: string;
   dataPathSize: number;
   logPath: string;
@@ -50,8 +50,6 @@ export type XcodeScheme = {
 type XcodeConfiguration = {
   name: string;
 };
-
-export type iOSSimulatorDeviceType = "iPhone" | "iPad" | "iPod" | "AppleTV" | "AppleWatch" | "AppleVision";
 
 export async function getSimulators(): Promise<SimulatorsOutput> {
   const simulatorsRaw = await exec({

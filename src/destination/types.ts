@@ -1,9 +1,9 @@
 import type { iOSDeviceDestination } from "../devices/types";
-import type { iOSSimulatorDestination } from "../simulators/types";
+import type { iOSSimulatorDestination, watchOSSimulatorDestination } from "../simulators/types";
 import type { DestinationPlatform } from "./constants";
 
 // Sometimes it can be called as "platform" or "DestinationPlatform"
-export type DestinationType = "iOSSimulator" | "iOSDevice" | "macOS" | "watchOSSimulator" | "watchOSDevice";
+export type DestinationType = "iOSSimulator" | "iOSDevice" | "macOS" | "watchOSSimulator";
 
 export type DestinationArch = "arm64" | "x86_64";
 
@@ -12,7 +12,7 @@ export const ALL_DESTINATION_TYPES: DestinationType[] = [
   "iOSDevice",
   "macOS",
   "watchOSSimulator",
-  "watchOSDevice",
+  // "watchOSDevice",
 ];
 
 /**
@@ -30,7 +30,7 @@ export interface IDestination {
   quickPickDetails: string;
 }
 
-export class MacOSDestination implements IDestination {
+export class macOSDestination implements IDestination {
   type = "macOS" as const;
   typeLabel = "macOS Device";
   platform = "macosx" as const;
@@ -60,7 +60,11 @@ export class MacOSDestination implements IDestination {
   }
 }
 
-export type Destination = iOSSimulatorDestination | iOSDeviceDestination | MacOSDestination;
+export type Destination =
+  | iOSSimulatorDestination
+  | iOSDeviceDestination
+  | macOSDestination
+  | watchOSSimulatorDestination;
 
 /**
  * Lightweight representation of a selected destination that can be stored in the workspace state (we can't

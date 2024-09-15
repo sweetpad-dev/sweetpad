@@ -95,8 +95,8 @@ export class ExtensionContext {
     this.destinationsManager.setWorkspaceDestination(undefined);
     this.buildManager.setDefaultScheme(undefined);
 
-    this.buildManager.refresh();
-    this.destinationsManager.refresh();
+    void this.buildManager.refresh();
+    void this.destinationsManager.refresh();
   }
 
   async withCache<T extends WorkspaceStateKey>(key: T, callback: () => Promise<WorkspaceTypes[T]>) {

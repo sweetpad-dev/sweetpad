@@ -145,14 +145,14 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.format.showLogs", showLogsCommand));
 
   // Simulators
-  d(command("sweetpad.simulators.refresh", async () => destinationsManager.refreshiOSSimulators()));
+  d(command("sweetpad.simulators.refresh", async () => await destinationsManager.refreshSimulators()));
   d(command("sweetpad.simulators.openSimulator", openSimulatorCommand));
   d(command("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
   d(command("sweetpad.simulators.start", startSimulatorCommand));
   d(command("sweetpad.simulators.stop", stopSimulatorCommand));
 
   // // Devices
-  d(command("sweetpad.devices.refresh", async () => destinationsManager.refreshiOSDevices()));
+  d(command("sweetpad.devices.refresh", async () => await destinationsManager.refreshiOSDevices()));
 
   // Desintations
   const destinationBar = new DestinationStatusBar({

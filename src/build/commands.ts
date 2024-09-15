@@ -83,7 +83,7 @@ export async function runOniOSSimulator(
   const appPath = buildSettings.appPath;
   const bundlerId = buildSettings.bundleIdentifier;
 
-  // Open simulatorcte
+  // Open simulator
   await terminal.execute({
     command: "open",
     args: ["-a", "Simulator"],
@@ -92,7 +92,6 @@ export async function runOniOSSimulator(
   // Get simulator with fresh state
   const simulator = await getSimulatorByUdid(context, {
     udid: options.simulatorId,
-    refresh: true,
   });
 
   // Boot device
@@ -103,7 +102,7 @@ export async function runOniOSSimulator(
     });
 
     // Refresh list of simulators after we start new simulator
-    context.destinationsManager.refreshiOSSimulators();
+    context.destinationsManager.refreshSimulators();
   }
 
   // Install app
@@ -216,16 +215,13 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
     return `platform=macOS,arch=${destination.arch}`;
   }
   if (destination.type === "iOSSimulator") {
-    if (destination.osType === "iOS") {
-      return `platform=iOS Simulator,id=${destination.udid}`;
-    }
-    if (destination.osType === "watchOS") {
-      return `platform=watchOS Simulator,id=${destination.udid}`;
-    }
-    throw new ExtensionError(`Unsupported simulator osType: ${destination.osType}`); // todo make unreachable
+    return `platform=iOS Simulator,id=${destination.udid}`;
   }
   if (destination.type === "iOSDevice") {
     return `platform=iOS,id=${destination.udid}`;
+  }
+  if (destination.type === "watchOSSimulator") {
+    return `platform=watchOS Simulator,id=${destination.udid}`;
   }
   assertUnreachable(destination);
 }
@@ -366,12 +362,11 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           configuration: configuration,
           watchMarker: false,
         });
-      } else if (destination.type === "iOSSimulator") {
+      } else if (destination.type === "iOSSimulator" || destination.type === "watchOSSimulator") {
         await runOniOSSimulator(execution.context, terminal, {
           scheme: scheme,
           simulatorId: destination.udid ?? "",
-          // sdk: sdk,
-          sdk: "watchsimulator",
+          sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
           watchMarker: false,
