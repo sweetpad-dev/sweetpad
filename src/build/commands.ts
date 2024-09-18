@@ -144,7 +144,7 @@ export async function runOniOSDevice(
     xcworkspace: option.xcworkspace,
   });
 
-  const targetPath = buildSettings.executablePath;
+  const targetPath = buildSettings.appPath;
   const bundlerId = buildSettings.bundleIdentifier;
 
   // Install app on device
