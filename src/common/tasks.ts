@@ -18,7 +18,7 @@ type Command = {
 
 type CommandOptions = {
   command: string;
-  args?: string[];
+  args?: (string | null)[];
   pipes?: Command[];
   setvbuf?: boolean;
   env?: Record<string, string>;
@@ -64,6 +64,16 @@ export function getTaskExecutorName(): TaskExecutor {
   return getWorkspaceConfig("system.taskExecutor") ?? "v2";
 }
 
+/**
+ * Remove all null values from the array of command arguments
+ */
+function cleanCommandArgs(args: (string | null)[] | undefined | null): string[] {
+  if (!args) {
+    return [];
+  }
+  return args.filter((arg) => arg !== null);
+}
+
 export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   private writeEmitter = new vscode.EventEmitter<string>();
   private closeEmitter = new vscode.EventEmitter<number>();
@@ -84,7 +94,8 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   }
 
   private async createCommandLine(options: CommandOptions): Promise<string> {
-    let mainCommand = quote([options.command, ...(options.args ?? [])]);
+    const args = cleanCommandArgs(options.args);
+    let mainCommand = quote([options.command, ...args]);
     if (options.setvbuf) {
       const setvbufPath = path.join(this.context.extensionPath, "out/setvbuf_universal.so");
       const setvbufExists = await isFileExists(setvbufPath);
@@ -160,7 +171,8 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   async execute(options: CommandOptions): Promise<void> {
     const command = await this.createCommandLine(options);
 
-    const commandPrint = this.command(options.command, options.args);
+    const args = cleanCommandArgs(options.args);
+    const commandPrint = this.command(options.command, args);
 
     this.writeLine("🚀 Executing command:");
     this.writeLine(commandPrint, { color: "green" });
@@ -294,7 +306,8 @@ export class TaskTerminalV1 implements TaskTerminal {
   }
 
   private commandLine(options: CommandOptions): string {
-    const mainCommand = quote([options.command, ...(options.args ?? [])]);
+    const args = cleanCommandArgs(options.args);
+    const mainCommand = quote([options.command, ...args]);
 
     if (!options.pipes) {
       return mainCommand;
@@ -325,11 +338,12 @@ export class TaskTerminalV1 implements TaskTerminal {
           disposable.dispose();
           if (e.exitCode !== 0) {
             const message = this.options.error ?? `Error running task '${this.options.name}'`;
+            const args = cleanCommandArgs(options.args);
             const error = new TaskError(message, {
               name: this.options.name,
               soruce: this.options.source,
               command: options.command,
-              args: options.args ?? [],
+              args: args,
               errorCode: e.exitCode,
             });
             reject(error);

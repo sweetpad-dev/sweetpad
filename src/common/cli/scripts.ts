@@ -352,3 +352,68 @@ export async function tuistEdit() {
     args: ["edit"],
   });
 }
+
+/**
+ * Get the Xcode version installed on the system using xcodebuild
+ *
+ * This version works properly with Xcodes.app, so it's the recommended one
+ */
+export async function getXcodeVersionInstalled(): Promise<{
+  major: number;
+}> {
+  //~ xcodebuild -version
+  // Xcode 16.0
+  // Build version 16A242d
+  const stdout = await exec({
+    command: "xcodebuild",
+    args: ["-version"],
+  });
+
+  const versionMatch = stdout.match(/Xcode (\d+)\./);
+  if (!versionMatch) {
+    throw new ExtensionError("Error parsing xcode version", {
+      context: {
+        stdout: stdout,
+      },
+    });
+  }
+  const major = Number.parseInt(versionMatch[1]);
+  return {
+    major,
+  };
+}
+
+/**
+ * Get the Xcode version installed on the system using pgkutils
+ *
+ * This version doesn't work properly with Xcodes.app, leave it for reference
+ */
+export async function getXcodeVersionInstalled_pkgutils(): Promise<{
+  major: number;
+}> {
+  const stdout = await exec({
+    command: "pkgutil",
+    args: ["--pkg-info=com.apple.pkg.CLTools_Executables"],
+  });
+
+  /*
+  package-id: com.apple.pkg.CLTools_Executables
+  version: 15.3.0.0.1.1708646388
+  volume: /
+  location: /
+  install-time: 1718529452
+  */
+  const versionMatch = stdout.match(/version:\s*(\d+)\./);
+  if (!versionMatch) {
+    throw new ExtensionError("Error parsing xcode version", {
+      context: {
+        stdout: stdout,
+      },
+    });
+  }
+
+  const major = Number.parseInt(versionMatch[1]);
+  return {
+    major,
+  };
+}

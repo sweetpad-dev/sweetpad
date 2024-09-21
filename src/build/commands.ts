@@ -7,6 +7,7 @@ import {
   getBuildSettings,
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
+  getXcodeVersionInstalled,
 } from "../common/cli/scripts";
 import type { CommandExecution, ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
@@ -157,6 +158,9 @@ export async function runOniOSDevice(
     prefix: "json",
   });
 
+  const xcodeVersion = await getXcodeVersionInstalled();
+  const isConsoleOptionSupported = xcodeVersion.major >= 16;
+
   // Launch app on device
   await terminal.execute({
     command: "xcrun",
@@ -165,6 +169,7 @@ export async function runOniOSDevice(
       "device",
       "process",
       "launch",
+      isConsoleOptionSupported ? "--console" : null,
       "--json-output",
       jsonOuputPath.path,
       "--terminate-existing",
