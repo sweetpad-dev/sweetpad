@@ -272,7 +272,6 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   getRootElements(): vscode.TreeItem[] {
-    const isMacosEnabled = this.manager.isMacOSDestinationEnabled();
     const groups = [];
 
     // Special group that shows destinations of all types that were used recently
@@ -312,17 +311,13 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
           icon: "sweetpad-square-letter-d",
         }),
-        ...(isMacosEnabled
-          ? [
-              new DestinationGroupTreeItem({
-                label: "macOS",
-                type: "macOS",
-                contextValue: "destination-group-macos",
-                collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-                icon: "sweetpad-square-letter-m",
-              }),
-            ]
-          : []),
+        new DestinationGroupTreeItem({
+          label: "macOS",
+          type: "macOS",
+          contextValue: "destination-group-macos",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-square-letter-m",
+        }),
         // todo: add watchOS simulator
         // todo: add tvOS device
         // todo: add tvOS simulator

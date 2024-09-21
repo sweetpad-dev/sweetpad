@@ -13,7 +13,6 @@ type Config = {
   "system.enableSentry": boolean;
   "xcodegen.autogenerate": boolean;
   "tuist.autogenerate": boolean;
-  "experimental.enableMacOsDestination": boolean;
 };
 
 type ConfigKey = keyof Config;

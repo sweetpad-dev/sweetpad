@@ -1,6 +1,5 @@
 import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
-import { getWorkspaceConfig } from "../common/config";
 import type { DevicesManager } from "../devices/manager";
 import type { iOSDeviceDestination } from "../devices/types";
 import type { SimulatorsManager } from "../simulators/manager";
@@ -293,9 +292,5 @@ export class DestinationsManager {
       destinationId: destination.id,
       type: destination.type,
     });
-  }
-
-  isMacOSDestinationEnabled(): boolean {
-    return getWorkspaceConfig("experimental.enableMacOsDestination") ?? false;
   }
 }
