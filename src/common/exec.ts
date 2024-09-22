@@ -1,6 +1,6 @@
-import { getWorkspacePath } from "../build/utils.js";
-import { ExecBaseError, ExecErrror } from "./errors.js";
-import { commonLogger } from "./logger.js";
+import { getWorkspacePath } from "../build/utils";
+import { ExecBaseError, ExecErrror } from "./errors";
+import { commonLogger } from "./logger";
 
 import { execa } from "execa";
 

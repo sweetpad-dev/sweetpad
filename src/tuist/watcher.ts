@@ -72,7 +72,7 @@ class TuistGenWatcher {
         .catch((error) => {
           commonLogger.error("Failed to generate tuist project", {
             workspacePath: this.workspacePath,
-            error,
+            error: error,
           });
         });
     }, 1000 /* 1s */);

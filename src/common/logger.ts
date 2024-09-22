@@ -112,11 +112,13 @@ export class Logger {
     });
   }
 
-  error(message: string, context: Context) {
+  error(message: string, context: Context & { error: unknown | null }) {
+    const stackTrace = context.error instanceof Error ? context.error.stack ?? "" : "";
     this.addMessage({
       message: message,
       level: LogLevel.error,
       time: this.getNow(),
+      stackTrace: stackTrace,
       ...context,
     });
   }

@@ -170,6 +170,7 @@ export class CommandExecution {
           commonLogger.error(error.message, {
             command: this.command,
             errorContext: error.options?.context,
+            error: error,
           });
           if (error instanceof TaskError) {
             // do nothing
@@ -181,11 +182,9 @@ export class CommandExecution {
         } else {
           // Handle unexpected error
           const errorMessage: string = error instanceof Error ? error.message : error?.toString() ?? "[unknown error]";
-          const stackTrace: string = error instanceof Error ? error.stack ?? "" : "";
           commonLogger.error(errorMessage, {
             command: this.command,
             error: error,
-            stackTrace: stackTrace,
           });
           errorReporting.captureException(error);
           await this.showErrorMessage(`Sweetpad: ${errorMessage}`);

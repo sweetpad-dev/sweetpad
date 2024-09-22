@@ -70,7 +70,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
       schemes = await this.buildManager.getSchemas();
     } catch (error) {
       commonLogger.error("Failed to get schemes", {
-        error,
+        error: error,
       });
     }
 

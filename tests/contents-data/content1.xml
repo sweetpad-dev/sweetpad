@@ -4,7 +4,7 @@
    <FileRef
       location = "self:Test1.xcodeproj">
    </FileRef>
-      <FileRef
+   <FileRef
       location = "self:">
    </FileRef>
 </Workspace>

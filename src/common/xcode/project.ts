@@ -3,7 +3,6 @@ import { XcodeProject as XcodeProjectParsed } from "@bacons/xcode";
 import { type XcodeProject as XcodeProjectRaw, parse as parseChevrotain } from "@bacons/xcode/json";
 import { findFiles, findFilesRecursive, isFileExists, readTextFile } from "../files";
 import { uniqueFilter } from "../helpers";
-import type { XcodeWorkspaceFileRef } from "./workspace";
 
 class XcodeScheme {
   public name: string;
@@ -35,6 +34,7 @@ class XcodeScheme {
 }
 
 export interface XcodeProject {
+  projectPath: string;
   getConfigurations(): string[];
 }
 
@@ -126,12 +126,17 @@ export class XcodeProjectBaconParser implements XcodeProject {
 }
 
 export class XcodeProjectFallbackParser implements XcodeProject {
-  parsed: Partial<XcodeProjectRaw>;
+  // path to .xcodeproj (not .pbxproj)
+  public projectPath: string;
+
+  private parsed: Partial<XcodeProjectRaw>;
 
   constructor(options: {
     parsed: Partial<XcodeProjectRaw>;
+    projectPath: string;
   }) {
     this.parsed = options.parsed;
+    this.projectPath = options.projectPath;
   }
 
   getConfigurations(): string[] {
@@ -142,16 +147,6 @@ export class XcodeProjectFallbackParser implements XcodeProject {
       .filter((name) => name !== null)
       .filter(uniqueFilter);
   }
-}
-
-export async function parseXcodeProjectFromFileRef(fileRef: XcodeWorkspaceFileRef): Promise<XcodeProject | null> {
-  const projectPath = fileRef.getProjectPath();
-
-  if (!projectPath) {
-    return null;
-  }
-
-  return parseXcodeProject(projectPath);
 }
 
 export async function parseXcodeProject(projectPath: string): Promise<XcodeProject> {
@@ -167,6 +162,7 @@ export async function parseXcodeProject(projectPath: string): Promise<XcodeProje
     const parsed = parseChevrotain(projectRaw);
     return new XcodeProjectFallbackParser({
       parsed: parsed,
+      projectPath: projectPath,
     });
   }
 }
