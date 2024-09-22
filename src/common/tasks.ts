@@ -291,6 +291,7 @@ export class TaskTerminalV1 implements TaskTerminal {
       name: string;
       source?: string;
       error?: string;
+      problemMatchers?: string[];
     },
   ) {}
 
@@ -328,6 +329,7 @@ export class TaskTerminalV1 implements TaskTerminal {
       this.options.name,
       this.options.source ?? "sweetpad",
       new vscode.ShellExecution(command),
+      this.options.problemMatchers,
     );
 
     const execution = await vscode.tasks.executeTask(task);
@@ -407,6 +409,7 @@ async function runTaskV2(
     source?: string;
     error?: string;
     callback: (terminal: TaskTerminal) => Promise<void>;
+    problemMatchers?: string[];
   },
 ): Promise<void> {
   const task = new vscode.Task(
@@ -419,6 +422,7 @@ async function runTaskV2(
         callback: options.callback,
       });
     }),
+    options.problemMatchers,
   );
 
   const execution = await vscode.tasks.executeTask(task);
@@ -453,6 +457,7 @@ export async function runTask(
     source?: string;
     error?: string;
     callback: (terminal: TaskTerminal) => Promise<void>;
+    problemMatchers?: string[];
   },
 ): Promise<void> {
   const name = getTaskExecutorName();

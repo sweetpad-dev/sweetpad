@@ -19,6 +19,7 @@ import { type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
 import type { Destination } from "../destination/types";
 import { getSimulatorByUdid } from "../simulators/utils";
+import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
 import {
   askConfiguration,
   askDestinationToRunOn,
@@ -320,6 +321,7 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
         destinationRaw: destinationRaw,
       });
     },
+    problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
   });
 }
 
@@ -348,6 +350,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
 
   await runTask(execution.context, {
     name: "Launch",
+    problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
         scheme: scheme,
@@ -414,6 +417,7 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
 
   await runTask(execution.context, {
     name: "Clean",
+    problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
         scheme: scheme,
@@ -449,6 +453,7 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
 
   await runTask(execution.context, {
     name: "Test",
+    problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
         scheme: scheme,

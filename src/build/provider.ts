@@ -18,6 +18,7 @@ import {
   runOniOSDevice,
   runOniOSSimulator,
 } from "./commands";
+import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
 import { askConfiguration, askDestinationToRunOn, askScheme, askXcodeWorkspacePath, getDestinationById } from "./utils";
 
 interface TaskDefinition extends vscode.TaskDefinition {
@@ -381,7 +382,7 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
             throw new Error(`Task executor ${executorName} is not supported`);
         }
       }),
-      ["$sweetpad-watch"], // problemMatchers
+      DEFAULT_BUILD_PROBLEM_MATCHERS, // problemMatchers
     );
 
     if (options.isBackground) {

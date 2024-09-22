@@ -118,6 +118,78 @@
           "beginsPattern": "^🍭 Sweetpad: watch marker",
           "endsPattern": "^🍩 Sweetpad: watch marker"
         }
+      },
+      {
+        "name": "sweetpad-xcodebuild-default",
+        "owner": "sweetpad",
+        "label": "SweetPad xcodebuild (default)",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+
+        "pattern": [
+          {
+            "regexp": "^(.*):(\\d+):(\\d+):\\s+(error|warning):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "severity": 4,
+            "message": 5
+          }
+        ]
+      },
+      {
+        "name": "sweetpad-xcbeautify-errors",
+        "owner": "sweetpad",
+        "label": "SweetPad xcbeautify (errors)",
+        "fileLocation": ["absolute"],
+        "pattern": {
+          "regexp": "^❌\\s*(\\/[^:]+):(\\d+):(\\d+):\\s*(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        },
+        "severity": "error"
+      },
+      {
+        "name": "sweetpad-xcbeautify-warnings",
+        "owner": "sweetpad",
+        "fileLocation": ["absolute"],
+        "pattern": {
+          "regexp": "^⚠️\\s*(\\/[^:]+):(\\d+):(\\d+):\\s*(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        },
+        "severity": "warning"
+      },
+      {
+        "name": "sweetpad-xcbeautify-errors-no-color",
+        "owner": "sweetpad",
+        "label": "SweetPad xcbeautify (errors, NO_COLOR=1)",
+        "fileLocation": ["absolute"],
+        "pattern": {
+          "regexp": "^\\[x\\]\\s*(\\/[^:]+):(\\d+):(\\d+):\\s*(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        },
+        "severity": "error"
+      },
+      {
+        "name": "sweetpad-xcbeautify-warnings-no-color",
+        "owner": "sweetpad",
+        "label": "SweetPad xcbeautify (warnings, NO_COLOR=1)",
+        "fileLocation": ["absolute"],
+        "pattern": {
+          "regexp": "^\\[!\\]\\s*(\\/[^:]+):(\\d+):(\\d+):\\s*(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        },
+        "severity": "warning"
       }
     ],
     "debuggers": [
