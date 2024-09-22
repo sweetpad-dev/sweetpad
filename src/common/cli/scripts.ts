@@ -267,8 +267,16 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
   if (output.type === "workspace") {
     const xcworkspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
     const projects = await xcworkspace.getProjects();
+
+    commonLogger.debug("Projects", {
+      paths: projects.map((project) => project.projectPath),
+    });
+
     return projects
       .flatMap((project) => {
+        commonLogger.debug("Project configurations", {
+          configurations: project.getConfigurations(),
+        });
         return project.getConfigurations();
       })
       .filter(uniqueFilter)

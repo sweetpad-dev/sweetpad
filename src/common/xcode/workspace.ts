@@ -133,9 +133,11 @@ export class XcodeWorkspace {
         // FileRef is actully can be a reference to project, so we need to resolve it
         const fileRef = child;
         const projectPath = await this.resolveProjectPath(ancestors, fileRef);
+        commonLogger.debug("Resolved project path", { projectPath: projectPath });
         if (!projectPath) continue;
 
         if (projects.some((proj) => proj.projectPath === projectPath)) {
+          commonLogger.debug("Project is duplicated", { projectPath: projectPath });
           continue;
         }
 
@@ -162,26 +164,32 @@ export class XcodeWorkspace {
      */
     const location = item.location;
     if (!location) {
+      commonLogger.debug("Item has no location", { item: item });
       return null;
     }
 
     // No need to resolve path, it's already full path. This can happen with any object type
     if (path.isAbsolute(location.path)) {
+      commonLogger.debug("Location is absolute", { location: location });
+
       return location.path;
     }
 
     // Relative path to the ".xcodeproj" directory that contains ".xcworkspace"
     if (location.obj === "self") {
+      commonLogger.debug("Location is self", { location: location });
       return path.join("..", "..", location.path);
     }
 
     // Relative path to the parent directory of ".xcworkspace"
     if (location.obj === "container") {
+      commonLogger.debug("Location is container", { location: location });
       return path.join(this.xcworkspaceParentPath, location.path);
     }
 
     // Relative path to the group
     if (location.obj === "group") {
+      commonLogger.debug("Location is group", { location: location });
       const group = ancestors.at(-1);
       if (!group) {
         return location.path;
@@ -197,6 +205,7 @@ export class XcodeWorkspace {
 
     // Relative path to the developer directory (not sure what it is and how to resolve it)
     if (location.obj === "developer") {
+      commonLogger.debug("Location is developer", { location: location });
       return null;
     }
 
@@ -204,11 +213,13 @@ export class XcodeWorkspace {
     // We already check it at the beginning, but it's here for completness and sometimes it can have relative path
     // Ex: "absolute:../std/test1.hpp"
     if (location.obj === "absolute") {
+      commonLogger.debug("Location is absolute (2)", { location: location });
       if (path.isAbsolute(location.path)) {
         return location.path;
       }
       return path.join(this.xcworkspaceParentPath, location.path);
     }
+    commonLogger.debug("Unknown location type", { location: location });
     assertUnreachable(location.obj);
   }
 
@@ -236,6 +247,7 @@ export class XcodeWorkspace {
     //   |   └── contents.xcworkspacedata
     //   └── ...
     if (xcworkspaceParent.endsWith(projectExtension)) {
+      commonLogger.debug("Parent of xcworkspace is xcodeproj", { xcworkspaceParent: xcworkspaceParent });
       return xcworkspaceParent;
     }
 
@@ -244,6 +256,7 @@ export class XcodeWorkspace {
     // Path is already absolute and ends with ".xcodeproj"
     // Ex: "/Users/user/MyApp/Test1/test1.xcodeproj"
     if (path.isAbsolute(filRefPath)) {
+      commonLogger.debug("FileRef path is absolute", { filRefPath: filRefPath });
       if (filRefPath.endsWith(projectExtension)) {
         return filRefPath;
       }
@@ -253,8 +266,11 @@ export class XcodeWorkspace {
     // Recursivelly build path of the FileRef
     let resolvedPath = this.buildLocation(fileRef, ancestors);
     if (!resolvedPath) {
+      commonLogger.debug("No resolved path", { fileRef: fileRef });
       return null;
     }
+
+    commonLogger.debug("Resolved path", { resolvedPath: resolvedPath });
 
     // Make it absolute path by joining the parent directory of ".xcworkspace"
     if (!path.isAbsolute(resolvedPath)) {
@@ -377,6 +393,8 @@ export class XcodeWorkspace {
    * and return parsed workspace structure
    */
   static async parseContentsWorkspaceData(contentsPath: string): Promise<XcodeWorkspace> {
+    commonLogger.debug("Parsing contents.xcworkspacedata", { contentsPath: contentsPath });
+
     // Parent directory of contents.xcworkspacedata is .xcworkspace directory
     const xcworkspacePath = path.dirname(contentsPath);
 
