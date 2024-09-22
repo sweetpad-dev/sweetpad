@@ -146,7 +146,7 @@
           "absolute"
         ],
         "pattern": {
-          "regexp": "^❌\\s*(\\/[^:]+):(\\d+):(\\d+):\\s*(.*)$",
+          "regexp": "^(?:❌|\\[x\\])\\s*(\\/[^:]+):(\\d+):(\\d+):\\s*(.*)$",
           "file": 1,
           "line": 2,
           "column": 3,
@@ -161,39 +161,7 @@
           "absolute"
         ],
         "pattern": {
-          "regexp": "^⚠️\\s*(\\/[^:]+):(\\d+):(\\d+):\\s*(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "message": 4
-        },
-        "severity": "warning"
-      },
-      {
-        "name": "sweetpad-xcbeautify-errors-no-color",
-        "owner": "sweetpad",
-        "label": "SweetPad xcbeautify (errors, NO_COLOR=1)",
-        "fileLocation": [
-          "absolute"
-        ],
-        "pattern": {
-          "regexp": "^\\[x\\]\\s*(\\/[^:]+):(\\d+):(\\d+):\\s*(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "message": 4
-        },
-        "severity": "error"
-      },
-      {
-        "name": "sweetpad-xcbeautify-warnings-no-color",
-        "owner": "sweetpad",
-        "label": "SweetPad xcbeautify (warnings, NO_COLOR=1)",
-        "fileLocation": [
-          "absolute"
-        ],
-        "pattern": {
-          "regexp": "^\\[!\\]\\s*(\\/[^:]+):(\\d+):(\\d+):\\s*(.*)$",
+          "regexp": "^(?:⚠️|\\[!\\])\\s*(\\/[^:]+):(\\d+):(\\d+):\\s*(.*)$",
           "file": 1,
           "line": 2,
           "column": 3,
