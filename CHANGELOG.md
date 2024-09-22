@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.36] - 2024-09-22
+
+- Reduce the number of problem matchers
+
 ## [0.1.35] - 2024-09-22
 
 - Update xcworkspace parsing to address issue [#30](https://github.com/sweetpad-dev/sweetpad/issues/30)
