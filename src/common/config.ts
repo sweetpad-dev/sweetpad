@@ -13,6 +13,9 @@ type Config = {
   "system.enableSentry": boolean;
   "xcodegen.autogenerate": boolean;
   "tuist.autogenerate": boolean;
+  "build.enableCodeSigning": boolean;
+  "build.useHardenedRuntime": boolean;
+  "build.signingIdentity": string;
 };
 
 type ConfigKey = keyof Config;

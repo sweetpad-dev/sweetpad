@@ -617,6 +617,21 @@
           "type": "boolean",
           "default": false,
           "description": "Watch for new .swift files and regenerate the project using Tuist. Restart VSCode to apply the settings."
+        },
+        "sweetpad.build.enableCodeSigning": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable code signing after building the app"
+        },
+        "sweetpad.build.useHardenedRuntime": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use hardened runtime when code signing (requires enableCodeSigning to be true)"
+        },
+        "sweetpad.build.signingIdentity": {
+          "type": "string",
+          "default": "-",
+          "description": "Signing identity to use for code signing (e.g., 'Developer ID Application: Your Name (XXXXXXXXXX)')"
         }
       }
     },

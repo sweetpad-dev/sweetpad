@@ -283,7 +283,56 @@ export async function buildApp(
     pipes: pipes,
   });
 
+  // Add code signing step
+  const enableCodeSigning = getWorkspaceConfig("build.enableCodeSigning") ?? false;
+  if (enableCodeSigning && options.shouldBuild) {
+    await codeSignApp(context, terminal, options);
+  }
+
   await restartSwiftLSP();
+}
+
+async function codeSignApp(
+  context: ExtensionContext,
+  terminal: TaskTerminal,
+  options: {
+    scheme: string;
+    configuration: string;
+    xcworkspace: string;
+  },
+) {
+  const enableCodeSigning = getWorkspaceConfig("build.enableCodeSigning") ?? false;
+  const useHardenedRuntime = getWorkspaceConfig("build.useHardenedRuntime") ?? false;
+  const signingIdentity = getWorkspaceConfig("build.signingIdentity") ?? "-";
+
+  if (!enableCodeSigning) {
+    terminal.write("Code signing is disabled", { newLine: true });
+    return;
+  }
+
+  const buildSettings = await getBuildSettings({
+    scheme: options.scheme,
+    configuration: options.configuration,
+    sdk: undefined,
+    xcworkspace: options.xcworkspace,
+  });
+
+  const appPath = buildSettings.appPath;
+
+  const codesignArgs = [
+    "--force",
+    "--sign",
+    signingIdentity,
+    ...(useHardenedRuntime ? ["--options", "runtime"] : []),
+    appPath,
+  ];
+
+  await terminal.execute({
+    command: "codesign",
+    args: codesignArgs,
+  });
+
+  terminal.write(`App successfully code signed${useHardenedRuntime ? " with hardened runtime" : ""}`, { newLine: true });
 }
 
 /**
@@ -595,5 +644,23 @@ export async function selectXcodeSchemeCommand(execution: CommandExecution, item
     title: "Select scheme to set as default",
     xcworkspace: xcworkspace,
     ignoreCache: true,
+  });
+}
+
+export async function codeSignCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+  const scheme =
+    item?.scheme ?? (await askScheme(execution.context, { title: "Select scheme to code sign", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+
+  await runTask(execution.context, {
+    name: "Code Sign",
+    callback: async (terminal) => {
+      await codeSignApp(execution.context, terminal, {
+        scheme: scheme,
+        configuration: configuration,
+        xcworkspace: xcworkspace,
+      });
+    },
   });
 }

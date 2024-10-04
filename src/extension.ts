@@ -10,6 +10,7 @@ import {
   resolveDependenciesCommand,
   selectXcodeSchemeCommand,
   testCommand,
+  codeSignCommand, // Add this line
 } from "./build/commands.js";
 import { selectXcodeWorkspaceCommand } from "./build/commands.js";
 import { BuildManager } from "./build/manager.js";
@@ -173,6 +174,9 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.system.createIssue.generic", createIssueGenericCommand));
   d(command("sweetpad.system.createIssue.noSchemes", createIssueNoSchemesCommand));
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
+
+  // Code Sign
+  d(command("sweetpad.build.codeSign", codeSignCommand));
 }
 
 export function deactivate() {}
