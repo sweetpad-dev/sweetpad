@@ -50,7 +50,7 @@ export class XcodeProjectBaconParser implements XcodeProject {
 
   getConfigurations(): string[] {
     const configurationList = this.parsed.rootObject.props.buildConfigurationList;
-    return configurationList.props.buildConfigurations.map((config: any) => config.props.name);
+    return configurationList.props.buildConfigurations.map((config) => config.props?.name).filter((name) => !!name);
   }
 
   /**
