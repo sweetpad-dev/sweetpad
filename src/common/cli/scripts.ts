@@ -85,6 +85,12 @@ export class XcodeBuildSettings {
     return this.settings.TARGET_BUILD_DIR;
   }
 
+  get intermediatesDir() {
+    // Example:
+    // - /Users/hyzyla/Library/Developer/Xcode/DerivedData/ControlRoom-gdvrildvemgjaiameavxoegdskby/Build/Intermediates.noindex
+    return this.settings.OBJROOT;
+  }
+
   get executablePath() {
     // Example:
     // - {targetBuildDir}/Control Room.app/Contents/MacOS/Control Room

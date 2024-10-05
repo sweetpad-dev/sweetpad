@@ -405,3 +405,32 @@ export async function restartSwiftLSP() {
     });
   }
 }
+
+export async function findEntitlementsFile(context: ExtensionContext, buildSettings: XcodeBuildSettings): Promise<string | undefined> {
+  const intermediatesPath = buildSettings.intermediatesDir;
+  if (!intermediatesPath) {
+    commonLogger.warn("Intermediates path not found", { intermediatesPath });
+    return undefined;
+  }
+
+  const entitlementsFileName = `${buildSettings.appName}.xcent`;
+
+  try {
+    const files = await findFilesRecursive({
+      directory: intermediatesPath,
+      matcher: (file) => file.name === entitlementsFileName,
+      depth: 4,
+    });
+
+    if (files.length > 0) {
+      const entitlementsPath = files[0];
+      commonLogger.debug("Entitlements file found", { path: entitlementsPath });
+      return entitlementsPath;
+    }
+  } catch (error) {
+    commonLogger.warn("Error searching for entitlements file", { error });
+  }
+
+  commonLogger.warn("Entitlements file not found", { entitlementsFileName });
+  return undefined;
+}

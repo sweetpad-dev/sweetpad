@@ -30,6 +30,7 @@ import {
   prepareStoragePath,
   restartSwiftLSP,
   selectXcodeWorkspace,
+  findEntitlementsFile,
 } from "./utils";
 
 function writeWatchMarkers(terminal: TaskTerminal) {
@@ -284,7 +285,7 @@ export async function buildApp(
   });
 
   // Add code signing step
-  const enableCodeSigning = getWorkspaceConfig("build.enableCodeSigning") ?? false;
+  const enableCodeSigning = getWorkspaceConfig("build.codesign.enabled") ?? false;
   if (enableCodeSigning && options.shouldBuild) {
     await codeSignApp(context, terminal, options);
   }
@@ -301,9 +302,10 @@ async function codeSignApp(
     xcworkspace: string;
   },
 ) {
-  const enableCodeSigning = getWorkspaceConfig("build.enableCodeSigning") ?? false;
-  const useHardenedRuntime = getWorkspaceConfig("build.useHardenedRuntime") ?? false;
-  const signingIdentity = getWorkspaceConfig("build.signingIdentity") ?? "-";
+  const enableCodeSigning = getWorkspaceConfig("build.codesign.enabled") ?? false;
+  const useHardenedRuntime = getWorkspaceConfig("build.codesign.useHardenedRuntime") ?? false;
+  const signingIdentity = getWorkspaceConfig("build.codesign.signingIdentity") ?? "-";
+  const useEntitlements = getWorkspaceConfig("build.codesign.useEntitlements") ?? false;
 
   if (!enableCodeSigning) {
     terminal.write("Code signing is disabled", { newLine: true });
@@ -323,16 +325,29 @@ async function codeSignApp(
     "--force",
     "--sign",
     signingIdentity,
-    ...(useHardenedRuntime ? ["--options", "runtime"] : []),
-    appPath,
   ];
+
+  if (useHardenedRuntime) {
+    codesignArgs.push("--options=runtime");
+  }
+
+  if (useEntitlements) {
+    const entitlementsPath = await findEntitlementsFile(context, buildSettings);
+    if (entitlementsPath) {
+      codesignArgs.push("--entitlements", entitlementsPath);
+    } else {
+      terminal.write("Warning: Entitlements file not found", { newLine: true });
+    }
+  }
+
+  codesignArgs.push(appPath);
 
   await terminal.execute({
     command: "codesign",
     args: codesignArgs,
   });
 
-  terminal.write(`App successfully code signed${useHardenedRuntime ? " with hardened runtime" : ""}`, { newLine: true });
+  terminal.write(`App successfully code signed${useHardenedRuntime ? " with hardened runtime" : ""}${useEntitlements ? " and entitlements" : ""}`, { newLine: true });
 }
 
 /**

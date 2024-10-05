@@ -632,6 +632,26 @@
           "type": "string",
           "default": "-",
           "description": "Signing identity to use for code signing (e.g., 'Developer ID Application: Your Name (XXXXXXXXXX)')"
+        },
+        "sweetpad.build.codesign.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable code signing for the build process"
+        },
+        "sweetpad.build.codesign.useHardenedRuntime": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use hardened runtime when code signing"
+        },
+        "sweetpad.build.codesign.signingIdentity": {
+          "type": "string",
+          "default": "-",
+          "description": "Signing identity to use for code signing"
+        },
+        "sweetpad.build.codesign.useEntitlements": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use entitlements file during code signing"
         }
       }
     },
