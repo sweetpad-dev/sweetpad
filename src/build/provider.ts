@@ -47,6 +47,9 @@ class ActionDispatcher {
       case "build":
         await this.buildCallback(terminal, definition);
         break;
+      case "run":
+        await this.runCallback(terminal, definition);
+        break;
       case "clean":
         await this.cleanCallback(terminal, definition);
         break;
@@ -190,6 +193,62 @@ class ActionDispatcher {
       xcworkspace: xcworkspace,
       destinationRaw: destinationRaw,
     });
+  }
+
+  private async runCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const scheme =
+      definition.scheme ??
+      (await askScheme(this.context, {
+        xcworkspace: xcworkspace,
+      }));
+    const configuration =
+      definition.configuration ??
+      (await askConfiguration(this.context, {
+        xcworkspace: xcworkspace,
+      }));
+
+    const buildSettings = await getBuildSettings({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
+    const destination = await this.getDestination({
+      definition: definition,
+      buildSettings: buildSettings,
+    });
+
+    const sdk = destination.platform;
+
+    if (destination.type === "macOS") {
+      await runOnMac(this.context, terminal, {
+        scheme: scheme,
+        configuration: configuration,
+        xcworkspace: xcworkspace,
+        watchMarker: false,
+      });
+    } else if (destination.type === "iOSSimulator" || destination.type === "watchOSSimulator") {
+      await runOniOSSimulator(this.context, terminal, {
+        scheme: scheme,
+        simulatorId: destination.udid,
+        sdk: sdk,
+        configuration: configuration,
+        xcworkspace: xcworkspace,
+        watchMarker: false,
+      });
+    } else if (destination.type === "iOSDevice") {
+      await runOniOSDevice(this.context, terminal, {
+        scheme: scheme,
+        deviceId: destination.id ?? "",
+        sdk: sdk,
+        configuration: configuration,
+        xcworkspace: xcworkspace,
+      });
+    } else {
+      assertUnreachable(destination);
+    }
   }
 
   private async cleanCallback(terminal: TaskTerminal, definition: TaskDefinition) {
