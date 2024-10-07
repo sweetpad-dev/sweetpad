@@ -59,8 +59,10 @@ export async function runOnMac(
     writeWatchMarkers(terminal);
   }
 
+  const appPath = buildSettings.appPath;
   await terminal.execute({
-    command: buildSettings.executablePath,
+    command: "open",
+    args: [appPath],
   });
 }
 
