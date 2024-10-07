@@ -44,6 +44,7 @@
             "enum": [
               "launch",
               "build",
+              "run",
               "clean",
               "test",
               "resolve-dependencies"
@@ -270,8 +271,13 @@
         "icon": "$(sweetpad-player-play)"
       },
       {
+        "command": "sweetpad.build.run",
+        "title": "SweetPad: Run (Without Build)",
+        "icon": "$(play)"
+      },
+      {
         "command": "sweetpad.build.build",
-        "title": "SweetPad: Build",
+        "title": "SweetPad: Build (Without Run)",
         "icon": "$(sweetpad-tool)"
       },
       {
@@ -495,6 +501,11 @@
           "command": "sweetpad.build.setDefaultScheme",
           "when": "view == sweetpad.build.view",
           "group": "context@4"
+        },
+        {
+          "command": "sweetpad.build.run",
+          "when": "view == sweetpad.build.view",
+          "group": "context@5"
         },
         {
           "command": "sweetpad.simulators.start",

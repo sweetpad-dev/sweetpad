@@ -13,7 +13,7 @@ import type { CommandExecution, ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
-import { getWorkspaceRelativePath, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
+import { getWorkspaceRelativePath, isFileExists, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
 import { showQuickPick } from "../common/quick-pick";
 import { type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
@@ -37,6 +37,18 @@ function writeWatchMarkers(terminal: TaskTerminal) {
   terminal.write("🍩 Sweetpad: watch marker (end)\n\n");
 }
 
+async function ensureAppPathExists(appPath: string | undefined): Promise<string> {
+  if (!appPath) {
+    throw new ExtensionError("App path is empty. Something went wrong.");
+  }
+
+  const isExists = await isFileExists(appPath);
+  if (!isExists) {
+    throw new ExtensionError(`App path does not exist. Have you built the app? Path: ${appPath}`);
+  }
+  return appPath;
+}
+
 export async function runOnMac(
   context: ExtensionContext,
   terminal: TaskTerminal,
@@ -54,13 +66,15 @@ export async function runOnMac(
     xcworkspace: options.xcworkspace,
   });
 
-  context.updateWorkspaceState("build.lastLaunchedAppPath", buildSettings.executablePath);
+  const executablePath = await ensureAppPathExists(buildSettings.executablePath);
+
+  context.updateWorkspaceState("build.lastLaunchedAppPath", executablePath);
   if (options.watchMarker) {
     writeWatchMarkers(terminal);
   }
 
   await terminal.execute({
-    command: buildSettings.executablePath,
+    command: executablePath,
   });
 }
 
@@ -82,7 +96,7 @@ export async function runOniOSSimulator(
     sdk: options.sdk,
     xcworkspace: options.xcworkspace,
   });
-  const appPath = buildSettings.appPath;
+  const appPath = await ensureAppPathExists(buildSettings.appPath);
   const bundlerId = buildSettings.bundleIdentifier;
 
   // Open simulator
@@ -146,7 +160,7 @@ export async function runOniOSDevice(
     xcworkspace: option.xcworkspace,
   });
 
-  const targetPath = buildSettings.appPath;
+  const targetPath = await ensureAppPathExists(buildSettings.appPath);
   const bundlerId = buildSettings.bundleIdentifier;
 
   // Install app on device
@@ -395,6 +409,63 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
 }
 
 /**
+ * Run application on the simulator or device without building
+ */
+export async function runCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+
+  const scheme =
+    item?.scheme ??
+    (await askScheme(execution.context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+
+  const buildSettings = await getBuildSettings({
+    scheme: scheme,
+    configuration: configuration,
+    sdk: undefined,
+    xcworkspace: xcworkspace,
+  });
+
+  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+
+  const sdk = destination.platform;
+
+  await runTask(execution.context, {
+    name: "Run",
+    problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+    callback: async (terminal) => {
+      if (destination.type === "macOS") {
+        await runOnMac(execution.context, terminal, {
+          scheme: scheme,
+          xcworkspace: xcworkspace,
+          configuration: configuration,
+          watchMarker: false,
+        });
+      } else if (destination.type === "iOSSimulator" || destination.type === "watchOSSimulator") {
+        await runOniOSSimulator(execution.context, terminal, {
+          scheme: scheme,
+          simulatorId: destination.udid ?? "",
+          sdk: sdk,
+          configuration: configuration,
+          xcworkspace: xcworkspace,
+          watchMarker: false,
+        });
+      } else if (destination.type === "iOSDevice") {
+        await runOniOSDevice(execution.context, terminal, {
+          scheme: scheme,
+          deviceId: destination.udid ?? "",
+          sdk: sdk,
+          configuration: configuration,
+          xcworkspace: xcworkspace,
+        });
+      } else {
+        assertUnreachable(destination);
+      }
+    },
+  });
+}
+
+/**
  * Clean build artifacts
  */
 export async function cleanCommand(execution: CommandExecution, item?: BuildTreeItem) {
@@ -507,7 +578,7 @@ export async function removeBundleDirCommand(execution: CommandExecution) {
   const bundleDir = path.join(storagePath, "build");
 
   await removeDirectory(bundleDir);
-  vscode.window.showInformationMessage("Bundle directory was removed");
+  vscode.window.showInformationMessage(`Bundle directory was removed: ${bundleDir}`);
 }
 
 /**
