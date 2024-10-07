@@ -38,13 +38,11 @@ class DebuggerConfigurationProvider implements vscode.DebugConfigurationProvider
     token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration> {
     config.type = "lldb";
-    config.waitFor = true;
-    config.request = "attach";
-
+    config.request = "launch";
     if (!config.program) {
       const appPath = this.context.getWorkspaceState("build.lastLaunchedAppPath");
       if (!appPath) {
-        throw new Error("No last launched app path found, please launch the app first using the extension");
+        throw new Error("No executable path found, please build the app first using the extension");
       }
       config.program = appPath;
     }
