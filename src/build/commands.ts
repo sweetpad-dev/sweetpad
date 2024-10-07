@@ -59,11 +59,19 @@ export async function runOnMac(
     writeWatchMarkers(terminal);
   }
 
-  const appPath = buildSettings.appPath;
-  await terminal.execute({
-    command: "open",
-    args: [appPath],
-  });
+  const executablePath = buildSettings.executablePath;
+  const debugConfiguration: vscode.DebugConfiguration = {
+    type: "sweetpad-lldb",
+    request: "launch",
+    name: "Debug on Mac",
+    program: executablePath,
+  };
+
+  const started = await vscode.debug.startDebugging(undefined, debugConfiguration);
+
+  if (!started) {
+    throw new Error("Failed to start debugging session");
+  }
 }
 
 export async function runOniOSSimulator(
