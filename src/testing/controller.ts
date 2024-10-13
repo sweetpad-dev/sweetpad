@@ -3,6 +3,73 @@ import { askScheme, askXcodeWorkspacePath } from "../build/utils.js";
 import type { ExtensionContext } from "../common/commands";
 import { runTask } from "../common/tasks.js";
 
+type TestingInlineError = {
+  fileName: string;
+  lineNumber: number;
+  message: string;
+};
+
+/**
+ * Track the result of each `xcodebuild` test run — which tests have been processed, failed and so on.
+ *
+ * - methodTestId: the test method ID in the format "ClassName.methodName"
+ */
+class XcodebuildTestRunContext {
+  private processedMethodTests = new Set<string>();
+  private failedMethodTests = new Set<string>();
+  private inlineErrorMap = new Map<string, TestingInlineError>();
+  private methodTests: Map<string, vscode.TestItem>;
+
+  constructor(options: {
+    methodTests: Iterable<[string, vscode.TestItem]>;
+  }) {
+    this.methodTests = new Map(options.methodTests);
+  }
+
+  getMethodTest(methodTestId: string): vscode.TestItem | undefined {
+    return this.methodTests.get(methodTestId);
+  }
+
+  addProcessedMethodTest(methodTestId: string): void {
+    this.processedMethodTests.add(methodTestId);
+  }
+
+  addFailedMethodTest(methodTestId: string): void {
+    this.failedMethodTests.add(methodTestId);
+  }
+
+  addInlineError(methodTestId: string, error: TestingInlineError): void {
+    this.inlineErrorMap.set(methodTestId, error);
+  }
+
+  getInlineError(methodTestId: string): TestingInlineError | undefined {
+    return this.inlineErrorMap.get(methodTestId);
+  }
+
+  isMethodTestProcessed(methodTestId: string): boolean {
+    return this.processedMethodTests.has(methodTestId);
+  }
+
+  getUnprocessedMethodTests(): vscode.TestItem[] {
+    return [...this.methodTests.values()].filter((test) => !this.processedMethodTests.has(test.id));
+  }
+
+  getOverallStatus(): "passed" | "failed" | "skipped" {
+    // Some tests failed
+    if (this.failedMethodTests.size > 0) {
+      return "failed";
+    }
+
+    // All tests passed
+    if (this.processedMethodTests.size === this.methodTests.size) {
+      return "passed";
+    }
+
+    // Some tests are still unprocessed
+    return "skipped";
+  }
+}
+
 /**
  * Extracts a code block from the given text starting from the given index.
  *
@@ -29,32 +96,23 @@ function extractCodeBlock(text: string, startIndex: number): string | null {
   return null;
 }
 
-function parseXcodebuildError(output: string, className: string, methodName: string): string {
-  // Simple parsing logic; in a real scenario, you might want to use more robust parsing
-  const lines = output.split("\n");
-  let errorMessage = "Test failed";
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.includes(`-[${className} ${methodName}]`)) {
-      // Found the test method
-      // The next lines may contain the failure reason
-      for (let j = i + 1; j < lines.length && j < i + 5; j++) {
-        if (lines[j].includes("Assertion failed")) {
-          errorMessage = lines[j].trim();
-          break;
-        }
-      }
-      break;
-    }
-  }
-
-  return errorMessage;
-}
-
 export class TestingManager {
   controller: vscode.TestController;
   context: ExtensionContext;
+
+  // Inline error messages, usually is between "passed" and "failed" lines
+  // Example output:
+  // "/Users/username/Projects/ControlRoom/ControlRoomTests/SimCtlSubCommandsTests.swift:10: error: -[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable] : failed: caught "NSInternalInconsistencyException", "Failed to delete unavailable device with UDID '00000000-0000-0000-0000-000000000000'."
+  // "/Users/hyzyla/Developer/sweetpad-examples/ControlRoom/ControlRoomTests/Controllers/SimCtl+SubCommandsTests.swift:76: error: -[ControlRoomTests.SimCtlSubCommandsTests testDefaultsForApp] : XCTAssertEqual failed: ("1") is not equal to ("2")"
+  // {filePath}:{lineNumber}: error: -[{classAndTargetName} {methodName}] : {errorMessage}
+  readonly INLINE_ERROR_REGEXP = /(.*):(\d+): error: -\[.* (.*)\] : (.*)/;
+
+  // Find test method status lines
+  // Example output:
+  // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' started."
+  // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' passed (0.001 seconds)."
+  // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' failed (0.001 seconds)."
+  readonly METHOD_STATUS_REGEXP = /Test Case '-\[(.*) (.*)\]' (.*)/;
 
   constructor(context: ExtensionContext) {
     this.context = context;
@@ -160,6 +218,69 @@ export class TestingManager {
     });
   }
 
+  /**
+   * Parse each line of the `xcodebuild` output to update the test run
+   * with the test status and any inline error messages.
+   */
+  async parseOutputLine(options: {
+    line: string;
+    className: string;
+    testRun: vscode.TestRun;
+    runContext: XcodebuildTestRunContext;
+  }) {
+    const { testRun, className, runContext } = options;
+    const line = options.line.trim();
+
+    const methodStatusMatch = line.match(this.METHOD_STATUS_REGEXP);
+    if (methodStatusMatch) {
+      const [, , methodName, status] = methodStatusMatch;
+      const methodTestId = `${className}.${methodName}`;
+
+      const methodTest = runContext.getMethodTest(methodTestId);
+      if (!methodTest) {
+        return;
+      }
+
+      if (status.startsWith("started")) {
+        testRun.started(methodTest);
+      } else if (status.startsWith("passed")) {
+        testRun.passed(methodTest);
+        runContext.addProcessedMethodTest(methodTestId);
+      } else if (status.startsWith("failed")) {
+        // Inline error message are usually before the "failed" line
+        const error = runContext.getInlineError(methodTestId);
+        if (error) {
+          // detailed error message with location
+          const testMessage = new vscode.TestMessage(error.message);
+          testMessage.location = new vscode.Location(
+            vscode.Uri.file(error.fileName),
+            new vscode.Position(error.lineNumber - 1, 0),
+          );
+          testRun.failed(methodTest, testMessage);
+        } else {
+          // just geenric error message, no error location or details
+          testRun.failed(methodTest, new vscode.TestMessage("Test failed"));
+        }
+
+        runContext.addProcessedMethodTest(methodTestId);
+        runContext.addFailedMethodTest(methodTestId);
+      }
+      return;
+    }
+
+    const inlineErrorMatch = line.match(this.INLINE_ERROR_REGEXP);
+    if (inlineErrorMatch) {
+      const [, filePath, lineNumber, methodName, errorMessage] = inlineErrorMatch;
+      const testId = `${className}.${methodName}`;
+      runContext.addInlineError(testId, {
+        fileName: filePath,
+        lineNumber: Number.parseInt(lineNumber, 10),
+        message: errorMessage,
+      });
+      return;
+    }
+  }
+
   async runTest(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
     const run = this.controller.createTestRun(request);
     try {
@@ -201,16 +322,16 @@ export class TestingManager {
         }
 
         if (test.id.includes(".")) {
-          await this.runTestMethod({
+          await this.runMethodTest({
             run: run,
-            test: test,
+            methodTest: test,
             scheme: scheme,
             target: testTargetName,
           });
         } else {
-          await this.runTestClass({
+          await this.runClassTest({
             run: run,
-            test: test,
+            classTest: test,
             scheme: scheme,
             target: testTargetName,
           });
@@ -221,28 +342,23 @@ export class TestingManager {
     }
   }
 
-  async runTestClass(options: {
+  async runClassTest(options: {
     run: vscode.TestRun;
-    test: vscode.TestItem;
+    classTest: vscode.TestItem;
     scheme: string;
     target: string;
   }): Promise<void> {
-    const { run, test, scheme, target } = options;
+    const { run, classTest, scheme, target } = options;
+    const className = classTest.id;
 
-    const className = test.id;
-    run.started(test);
+    const runContext = new XcodebuildTestRunContext({
+      methodTests: [...classTest.children],
+    });
 
-    const childrenMap = new Map<string, vscode.TestItem>();
-    for (const [id, child] of test.children) {
-      childrenMap.set(id, child);
-    }
-
-    // Keep track of tests that have been processed and their results
-    const processedTests = new Set<string>();
-    const failedTests = new Set<string>();
+    run.started(classTest);
 
     try {
-      const onlyTesting = `${target}/${test.id}`;
+      const onlyTesting = `${target}/${classTest.id}`;
 
       await runTask(this.context, {
         name: "sweetpad.build.test",
@@ -251,34 +367,12 @@ export class TestingManager {
             command: "xcodebuild",
             args: ["test-without-building", "-scheme", scheme, `-only-testing:${onlyTesting}`],
             onOutputLine: async (output) => {
-              const line = output.value.trim();
-              if (!line.startsWith("Test Case")) {
-                return;
-              }
-
-              const match = line.match(/Test Case '-\[(.*) (.*)\]' (.*)/);
-              if (!match) {
-                return;
-              }
-
-              const [, fullClassName, methodName, status] = match;
-              const testId = `${className}.${methodName}`;
-              const methodTestItem = childrenMap.get(testId);
-              if (!methodTestItem) {
-                return;
-              }
-
-              if (status.startsWith("started")) {
-                run.started(methodTestItem);
-              } else if (status.startsWith("passed")) {
-                run.passed(methodTestItem);
-                processedTests.add(testId);
-              } else if (status.startsWith("failed")) {
-                const errorMessage = parseXcodebuildError(output.value, className, methodName);
-                run.failed(methodTestItem, new vscode.TestMessage(errorMessage));
-                processedTests.add(testId);
-                failedTests.add(testId);
-              }
+              await this.parseOutputLine({
+                line: output.value,
+                testRun: run,
+                className: className,
+                runContext: runContext,
+              });
             },
           });
         },
@@ -286,46 +380,42 @@ export class TestingManager {
     } catch (error) {
       // Handle any errors during test execution
       const errorMessage = `Test class failed due to an error: ${error instanceof Error ? error.message : "Test failed"}`;
-      run.failed(test, new vscode.TestMessage(errorMessage));
+      run.failed(classTest, new vscode.TestMessage(errorMessage));
 
       // Mark all unprocessed child tests as failed
-      for (const [testId, methodTestItem] of childrenMap.entries()) {
-        if (!processedTests.has(testId)) {
-          run.failed(methodTestItem, new vscode.TestMessage("Test failed due to an error."));
-        }
+      for (const methodTest of runContext.getUnprocessedMethodTests()) {
+        run.failed(methodTest, new vscode.TestMessage("Test failed due to an error."));
       }
     } finally {
       // Mark any unprocessed tests as skipped
-      for (const [testId, methodTestItem] of childrenMap.entries()) {
-        if (!processedTests.has(testId)) {
-          run.skipped(methodTestItem);
-        }
+      for (const methodTest of runContext.getUnprocessedMethodTests()) {
+        run.skipped(methodTest);
       }
 
       // Determine the overall status of the test class
-      if (failedTests.size > 0) {
-        run.failed(test, new vscode.TestMessage("One or more tests failed."));
-      } else if (processedTests.size === childrenMap.size) {
-        run.passed(test);
-      } else {
-        run.skipped(test);
+      const overallStatus = runContext.getOverallStatus();
+      if (overallStatus === "failed") {
+        run.failed(classTest, new vscode.TestMessage("One or more tests failed."));
+      } else if (overallStatus === "passed") {
+        run.passed(classTest);
+      } else if (overallStatus === "skipped") {
+        run.skipped(classTest);
       }
     }
   }
 
-  async runTestMethod(options: {
+  async runMethodTest(options: {
     run: vscode.TestRun;
-    test: vscode.TestItem;
+    methodTest: vscode.TestItem;
     scheme: string;
     target: string;
   }): Promise<void> {
-    const { run, test, scheme, target } = options;
-    const [className, methodName] = test.id.split(".");
+    const { run: testRun, methodTest, scheme, target } = options;
+    const [className, methodName] = methodTest.id.split(".");
 
-    // Start the test
-    run.started(test);
-
-    let testResultReceived = false;
+    const runContext = new XcodebuildTestRunContext({
+      methodTests: [[methodTest.id, methodTest]],
+    });
 
     // Run "xcodebuild" command as a task to see the test output
     await runTask(this.context, {
@@ -338,49 +428,21 @@ export class TestingManager {
             command: "xcodebuild",
             args: ["test-without-building", "-scheme", scheme, `-only-testing:${onlyTesting}`],
             onOutputLine: async (output) => {
-              const line = output.value.trim();
-
-              // not a test method line, skip
-              if (!line.startsWith("Test Case")) {
-                return;
-              }
-
-              // Example output:
-              // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' started."
-              // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' passed (0.001 seconds)."
-              // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' failed (0.001 seconds)."
-              const match = line.match(/Test Case '-\[(.*) (.*)\]' (.*)/);
-              if (!match) {
-                return;
-              }
-
-              const [, , testMethodName, status] = match;
-
-              // Not our test method, skip
-              if (testMethodName !== methodName) {
-                return;
-              }
-
-              if (status.startsWith("started")) {
-                // Test already started
-              } else if (status.startsWith("passed")) {
-                run.passed(test);
-                testResultReceived = true;
-              } else if (status.startsWith("failed")) {
-                // Optionally parse error message
-                const errorMessage = "Test failed"; // You can enhance this by parsing the error output
-                run.failed(test, new vscode.TestMessage(errorMessage));
-                testResultReceived = true;
-              }
+              await this.parseOutputLine({
+                line: output.value,
+                testRun: testRun,
+                className: className,
+                runContext: runContext,
+              });
             },
           });
         } catch (error) {
           // todo: proper error handling
           const errorMessage = error instanceof Error ? error.message : "Test failed";
-          run.failed(test, new vscode.TestMessage(errorMessage));
+          testRun.failed(methodTest, new vscode.TestMessage(errorMessage));
         } finally {
-          if (!testResultReceived) {
-            run.skipped(test);
+          if (!runContext.isMethodTestProcessed(methodTest.id)) {
+            testRun.skipped(methodTest);
           }
         }
       },

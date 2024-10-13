@@ -86,6 +86,7 @@ export function activate(context: vscode.ExtensionContext) {
   destinationsManager.context = _context;
 
   const testingManager = new TestingManager(_context);
+
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({
     context: _context,
