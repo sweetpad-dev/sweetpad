@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
-import { askScheme, askXcodeWorkspacePath } from "../build/utils.js";
+import { askScheme, askTestingTarget, askXcodeWorkspacePath } from "../build/utils.js";
 import type { ExtensionContext } from "../common/commands";
+import { commonLogger } from "../common/logger.js";
 import { runTask } from "../common/tasks.js";
 
 type TestingInlineError = {
@@ -304,7 +305,8 @@ export class TestingManager {
       // building every time we run selected tests
       await this.buildForTesting({ scheme: scheme });
 
-      // when class test is runned, all its method tests are runned too, so we need to filter them out from the queue
+      // when class test is runned, all its method tests are runned too, so we need to filter out
+      // methods that should be runned as part of class test
       queue = queue.filter((test) => {
         const [className, methodName] = test.id.split(".");
         if (!methodName) return true;
@@ -312,10 +314,24 @@ export class TestingManager {
       });
 
       // todo: ask user for test target name
-      const testTargetName = "ControlRoomTests";
+      const testTargetName = await askTestingTarget(this.context, {
+        xcworkspace: xcworkspace,
+        title: "Select a target to run tests",
+      });
+
+      commonLogger.debug("Running tests", {
+        scheme: scheme,
+        target: testTargetName,
+        xcworkspace: xcworkspace,
+        tests: queue.map((test) => test.id),
+      });
 
       for (const test of queue) {
-        console.log("Running test: ", test.id);
+        commonLogger.debug("Running single test from queue", {
+          testId: test.id,
+          testLabel: test.label,
+        });
+
         if (token.isCancellationRequested) {
           run.skipped(test);
           continue;
@@ -358,14 +374,12 @@ export class TestingManager {
     run.started(classTest);
 
     try {
-      const onlyTesting = `${target}/${classTest.id}`;
-
       await runTask(this.context, {
         name: "sweetpad.build.test",
         callback: async (terminal) => {
           await terminal.execute({
             command: "xcodebuild",
-            args: ["test-without-building", "-scheme", scheme, `-only-testing:${onlyTesting}`],
+            args: ["test-without-building", "-scheme", scheme, `-only-testing:${target}/${classTest.id}`],
             onOutputLine: async (output) => {
               await this.parseOutputLine({
                 line: output.value,
@@ -422,11 +436,9 @@ export class TestingManager {
       name: "sweetpad.build.test",
       callback: async (terminal) => {
         try {
-          const onlyTesting = `${target}/${className}/${methodName}`;
-
           await terminal.execute({
             command: "xcodebuild",
-            args: ["test-without-building", "-scheme", scheme, `-only-testing:${onlyTesting}`],
+            args: ["test-without-building", "-scheme", scheme, `-only-testing:${target}/${className}/${methodName}`],
             onOutputLine: async (output) => {
               await this.parseOutputLine({
                 line: output.value,
@@ -437,7 +449,7 @@ export class TestingManager {
             },
           });
         } catch (error) {
-          // todo: proper error handling
+          // todo: ??? can we extract error message from error object?
           const errorMessage = error instanceof Error ? error.message : "Test failed";
           testRun.failed(methodTest, new vscode.TestMessage(errorMessage));
         } finally {

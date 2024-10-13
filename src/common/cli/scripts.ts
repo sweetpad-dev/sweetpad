@@ -252,6 +252,18 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
   });
 }
 
+export async function getTargets(options: { xcworkspace: string }): Promise<string[]> {
+  const output = await getBasicProjectInfo({
+    xcworkspace: options.xcworkspace,
+  });
+  if (output.type === "project") {
+    return output.project.targets;
+  }
+  const xcworkspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+  const projects = await xcworkspace.getProjects();
+  return projects.flatMap((project) => project.getTargets());
+}
+
 export async function getBuildConfigurations(options: { xcworkspace: string }): Promise<XcodeConfiguration[]> {
   const output = await getBasicProjectInfo({
     xcworkspace: options.xcworkspace,

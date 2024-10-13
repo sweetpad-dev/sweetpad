@@ -16,6 +16,7 @@ type WorkspaceTypes = {
   "build.xcodeDestinationsUsageStatistics": Record<string, number>;
   "build.xcodeSdk": string;
   "build.lastLaunchedAppPath": string;
+  "testing.xcodeTarget": string;
 };
 
 type WorkspaceStateKey = keyof WorkspaceTypes;
@@ -181,7 +182,8 @@ export class CommandExecution {
           }
         } else {
           // Handle unexpected error
-          const errorMessage: string = error instanceof Error ? error.message : error?.toString() ?? "[unknown error]";
+          const errorMessage: string =
+            error instanceof Error ? error.message : (error?.toString() ?? "[unknown error]");
           commonLogger.error(errorMessage, {
             command: this.command,
             error: error,

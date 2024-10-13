@@ -2,7 +2,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 import { showQuickPick } from "../common/quick-pick";
 
-import { type XcodeBuildSettings, getBuildConfigurations, getSchemes } from "../common/cli/scripts";
+import { type XcodeBuildSettings, getBuildConfigurations, getSchemes, getTargets } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
@@ -176,6 +176,57 @@ export async function askScheme(
   const schemeName = scheme.context.scheme.name;
   context.buildManager.setDefaultScheme(schemeName);
   return schemeName;
+}
+
+/**
+ * Ask user to select target to build
+ */
+export async function askTestingTarget(
+  context: ExtensionContext,
+  options: {
+    title: string;
+    xcworkspace: string;
+  },
+): Promise<string> {
+  // Testing target can be cached
+  const cachedTarget = context.buildManager.getDefaultTesetingTarget();
+  if (cachedTarget) {
+    return cachedTarget;
+  }
+
+  // Get from commmand line or from xcode files
+  const targets = await getTargets({
+    xcworkspace: options.xcworkspace,
+  });
+
+  // Target is required for testing
+  if (!targets.length) {
+    throw new ExtensionError("No testing targets found");
+  }
+
+  // Auto select target if only one found
+  if (targets.length === 1) {
+    const targetName = targets[0];
+    context.buildManager.setDefaultTestingTarget(targetName);
+    return targetName;
+  }
+
+  // Offer user to select target if multiple found
+  const target = await showQuickPick({
+    title: options.title,
+    items: targets.map((target) => {
+      return {
+        label: target,
+        context: {
+          target: target,
+        },
+      };
+    }),
+  });
+
+  const targetName = target.context.target;
+  context.buildManager.setDefaultTestingTarget(targetName);
+  return targetName;
 }
 
 /**

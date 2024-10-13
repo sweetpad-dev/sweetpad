@@ -36,6 +36,7 @@ class XcodeScheme {
 export interface XcodeProject {
   projectPath: string;
   getConfigurations(): string[];
+  getTargets(): string[];
 }
 
 export class XcodeProjectBaconParser implements XcodeProject {
@@ -51,6 +52,12 @@ export class XcodeProjectBaconParser implements XcodeProject {
   getConfigurations(): string[] {
     const configurationList = this.parsed.rootObject.props.buildConfigurationList;
     return configurationList.props.buildConfigurations.map((config) => config.props?.name).filter((name) => !!name);
+  }
+
+  getTargets(): string[] {
+    // todo: test it
+    const targets = this.parsed.rootObject.props.targets;
+    return targets.map((target) => target.props?.name).filter((name) => !!name);
   }
 
   /**
@@ -143,6 +150,16 @@ export class XcodeProjectFallbackParser implements XcodeProject {
     const objects = Object.values(this.parsed.objects ?? {});
     return objects
       .filter((obj) => obj.isa === "XCBuildConfiguration")
+      .map((obj: any) => obj.name ?? null)
+      .filter((name) => name !== null)
+      .filter(uniqueFilter);
+  }
+
+  getTargets(): string[] {
+    // todo: test it
+    const objects = Object.values(this.parsed.objects ?? {});
+    return objects
+      .filter((obj) => obj.isa === "PBXNativeTarget")
       .map((obj: any) => obj.name ?? null)
       .filter((name) => name !== null)
       .filter(uniqueFilter);
