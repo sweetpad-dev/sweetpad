@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-
 import {
   buildCommand,
   cleanCommand,
@@ -17,6 +16,7 @@ import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
+import {} from "./build/utils.js";
 import { ExtensionContext } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
 import { Logger } from "./common/logger.js";
@@ -43,6 +43,7 @@ import {
   resetSweetpadCache,
   testErrorReportingCommand,
 } from "./system/commands.js";
+import { TestingManager } from "./testing/controller.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { ToolsManager } from "./tools/manager.js";
 import { ToolTreeProvider } from "./tools/tree.js";
@@ -84,6 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
   devicesManager.context = _context;
   destinationsManager.context = _context;
 
+  const testingManager = new TestingManager(_context);
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({
     context: _context,
@@ -171,7 +173,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.tools.documentation", openDocumentationCommand));
 
   // System
-  d(command("sweetpad.system.resetSweetpadCache", resetSweetpadCache));
+  d(command("sweetpadasystem.resetSweetpadCache", resetSweetpadCache));
   d(command("sweetpad.system.createIssue.generic", createIssueGenericCommand));
   d(command("sweetpad.system.createIssue.noSchemes", createIssueNoSchemesCommand));
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
