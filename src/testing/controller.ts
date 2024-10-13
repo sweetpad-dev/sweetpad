@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
-import { askScheme, askTestingTarget, askXcodeWorkspacePath } from "../build/utils.js";
+import { askScheme, askXcodeWorkspacePath } from "../build/utils.js";
 import type { ExtensionContext } from "../common/commands";
 import { commonLogger } from "../common/logger.js";
 import { runTask } from "../common/tasks.js";
+import { askTestingTarget } from "./utils.js";
 
 type TestingInlineError = {
   fileName: string;
@@ -99,7 +100,7 @@ function extractCodeBlock(text: string, startIndex: number): string | null {
 
 export class TestingManager {
   controller: vscode.TestController;
-  context: ExtensionContext;
+  private _context: ExtensionContext | undefined;
 
   // Inline error messages, usually is between "passed" and "failed" lines
   // Example output:
@@ -115,9 +116,7 @@ export class TestingManager {
   // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' failed (0.001 seconds)."
   readonly METHOD_STATUS_REGEXP = /Test Case '-\[(.*) (.*)\]' (.*)/;
 
-  constructor(context: ExtensionContext) {
-    this.context = context;
-
+  constructor() {
     this.controller = vscode.tests.createTestController("sweetpad", "SweetPad");
 
     // Register event listeners for updating test items when documents change or open
@@ -135,8 +134,27 @@ export class TestingManager {
     });
   }
 
+  set context(context: ExtensionContext) {
+    this._context = context;
+  }
+
+  get context(): ExtensionContext {
+    if (!this._context) {
+      throw new Error("Context is not set");
+    }
+    return this._context;
+  }
+
   dispose() {
     this.controller.dispose();
+  }
+
+  setDefaultTestingTarget(target: string | undefined) {
+    this.context.updateWorkspaceState("testing.xcodeTarget", target);
+  }
+
+  getDefaultTestingTarget(): string | undefined {
+    return this.context.getWorkspaceState("testing.xcodeTarget");
   }
 
   /**
@@ -313,7 +331,6 @@ export class TestingManager {
         return !queue.some((t) => t.id === className);
       });
 
-      // todo: ask user for test target name
       const testTargetName = await askTestingTarget(this.context, {
         xcworkspace: xcworkspace,
         title: "Select a target to run tests",

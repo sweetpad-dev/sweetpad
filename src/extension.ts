@@ -43,6 +43,7 @@ import {
   resetSweetpadCache,
   testErrorReportingCommand,
 } from "./system/commands.js";
+import { selectTestingTarget } from "./testing/commands.js";
 import { TestingManager } from "./testing/controller.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { ToolsManager } from "./tools/manager.js";
@@ -72,6 +73,7 @@ export function activate(context: vscode.ExtensionContext) {
     devicesManager: devicesManager,
   });
   const toolsManager = new ToolsManager();
+  const testingManager = new TestingManager();
 
   // Main context object 🌍
   const _context = new ExtensionContext({
@@ -79,13 +81,13 @@ export function activate(context: vscode.ExtensionContext) {
     destinationsManager: destinationsManager,
     buildManager: buildManager,
     toolsManager: toolsManager,
+    testingManager: testingManager,
   });
   // Here is circular dependency, but I don't care
   buildManager.context = _context;
   devicesManager.context = _context;
   destinationsManager.context = _context;
-
-  const testingManager = new TestingManager(_context);
+  testingManager.context = _context;
 
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({
@@ -131,6 +133,9 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.openXcode", openXcodeCommand));
   d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
   d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeCommand));
+
+  // Testing
+  d(command("sweetpad.testing.selectTarget", selectTestingTarget));
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));

@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import type { BuildManager } from "../build/manager";
 import type { DestinationsManager } from "../destination/manager";
 import type { SelectedDestination } from "../destination/types";
+import type { TestingManager } from "../testing/controller";
 import type { ToolsManager } from "../tools/manager";
 import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting";
 import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
@@ -27,6 +28,7 @@ export class ExtensionContext {
   public destinationsManager: DestinationsManager;
   public toolsManager: ToolsManager;
   public buildManager: BuildManager;
+  public testingManager: TestingManager;
   private _sessionState: Map<SessionStateKey, unknown> = new Map();
 
   constructor(options: {
@@ -34,11 +36,13 @@ export class ExtensionContext {
     destinationsManager: DestinationsManager;
     buildManager: BuildManager;
     toolsManager: ToolsManager;
+    testingManager: TestingManager;
   }) {
     this._context = options.context;
     this.destinationsManager = options.destinationsManager;
     this.buildManager = options.buildManager;
     this.toolsManager = options.toolsManager;
+    this.testingManager = options.testingManager;
   }
 
   get storageUri() {

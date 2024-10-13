@@ -306,6 +306,11 @@
         "icon": "$(file-code)"
       },
       {
+        "command": "sweetpad.testing.selectTarget",
+        "title": "SweetPad: Select test target",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "sweetpad.xcodegen.generate",
         "title": "SweetPad: Generate an Xcode project using XcodeGen",
         "icon": "$(file-code)"
