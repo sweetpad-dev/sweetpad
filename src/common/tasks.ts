@@ -252,7 +252,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       });
       this.process.stderr?.on("data", (data: string | Buffer): void => {
         const output = data.toString();
-        this.write(output, { color: "red" });
+        this.write(output, { color: "yellow" });
         hasOutput = true;
 
         stderrBuffer.append(output);
