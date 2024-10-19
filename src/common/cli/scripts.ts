@@ -74,6 +74,7 @@ export class XcodeBuildSettings {
 
   constructor(output: BuildSettingsOutput) {
     if (output.length === 0) {
+      // todo: improve logging
       throw new ExtensionError("Error fetching build settings");
     }
     this.settings = output[0]?.buildSettings;
@@ -181,6 +182,7 @@ export async function getBuildSettings(options: {
     }
   }
 
+  // todo: imporve logging
   throw new ExtensionError("Error parsing build settings");
 }
 
