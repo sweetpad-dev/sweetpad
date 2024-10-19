@@ -47,18 +47,16 @@ export async function exec(options: { command: string; args: string[]; cwd?: str
     });
   }
 
-  if (result.stdout && result.stderr) {
-    commonLogger.warn(`Both stdout and stderr are not empty for "${options.command}" command`, {
-      stdout: result.stdout,
-      stderr: result.stderr,
-      command: options.command,
-      args: options.args,
-      cwd: cwd,
-    });
-    return result.stdout;
-  }
+  commonLogger.debug("Command executed", {
+    command: options.command,
+    args: options.args,
+    cwd: cwd,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  });
 
-  if (result.stderr) {
+  // check error code
+  if (result.stderr && !result.stdout) {
     throw new ExecErrror(`Error executing "${options.command}" command`, {
       stderr: result.stderr,
       command: options.command,
