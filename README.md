@@ -2,7 +2,7 @@
 
 📚 [Documentation](https://sweetpad.hyzyla.dev/) | 📦
 [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad) | 🐞
-[Github Issues](https://github.com/sweetpad-dev/sweetpad/issues)
+[Github Issues](https://github.com/sweetpad-dev/sweetpad/issues) | 🏔️ [Roadmap](https://github.com/sweetpad-dev/sweetpad/blob/main/TODO.md)
 
 <!-- [![Discord](https://img.shields.io/badge/SweetPad-Discord-blue?logo=discord&logoColor=white&link=https%3A%2F%2Fdiscord.gg%2FXZwRtQ5dew)](https://discord.gg/XZwRtQ5dew) -->
 
