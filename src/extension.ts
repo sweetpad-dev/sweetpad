@@ -43,8 +43,8 @@ import {
   resetSweetpadCache,
   testErrorReportingCommand,
 } from "./system/commands.js";
-import { selectTestingTarget } from "./testing/commands.js";
-import { TestingManager } from "./testing/controller.js";
+import { buildForTestingCommand, selectTestingTargetCommand, testWithoutBuildingCommand } from "./testing/commands.js";
+import { TestingManager } from "./testing/manager.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { ToolsManager } from "./tools/manager.js";
 import { ToolTreeProvider } from "./tools/tree.js";
@@ -135,7 +135,9 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeCommand));
 
   // Testing
-  d(command("sweetpad.testing.selectTarget", selectTestingTarget));
+  d(command("sweetpad.testing.selectTarget", selectTestingTargetCommand));
+  d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));
+  d(command("sweetpad.testing.testWithoutBuilding", testWithoutBuildingCommand));
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));

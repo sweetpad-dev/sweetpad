@@ -1,8 +1,11 @@
 import * as vscode from "vscode";
-import { askScheme, askXcodeWorkspacePath } from "../build/utils.js";
-import type { ExtensionContext } from "../common/commands";
+import { getXcodeBuildDestinationString } from "../build/commands.js";
+import { askConfiguration, askDestinationToRunOn, askScheme, askXcodeWorkspacePath } from "../build/utils.js";
+import { getBuildSettings } from "../common/cli/scripts.js";
+import type { ExtensionContext } from "../common/commands.js";
 import { commonLogger } from "../common/logger.js";
 import { runTask } from "../common/tasks.js";
+import type { Destination } from "../destination/types.js";
 import { askTestingTarget } from "./utils.js";
 
 type TestingInlineError = {
@@ -102,7 +105,7 @@ export class TestingManager {
   controller: vscode.TestController;
   private _context: ExtensionContext | undefined;
 
-  // Inline error messages, usually is between "passed" and "failed" lines
+  // Inline error messages, usually is between "passed" and "failed" lines. Seems like only macOS apps have this line.
   // Example output:
   // "/Users/username/Projects/ControlRoom/ControlRoomTests/SimCtlSubCommandsTests.swift:10: error: -[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable] : failed: caught "NSInternalInconsistencyException", "Failed to delete unavailable device with UDID '00000000-0000-0000-0000-000000000000'."
   // "/Users/hyzyla/Developer/sweetpad-examples/ControlRoom/ControlRoomTests/Controllers/SimCtl+SubCommandsTests.swift:76: error: -[ControlRoomTests.SimCtlSubCommandsTests testDefaultsForApp] : XCTAssertEqual failed: ("1") is not equal to ("2")"
@@ -113,8 +116,13 @@ export class TestingManager {
   // Example output:
   // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' started."
   // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' passed (0.001 seconds)."
-  // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' failed (0.001 seconds)."
-  readonly METHOD_STATUS_REGEXP = /Test Case '-\[(.*) (.*)\]' (.*)/;
+  // "Test Case '-[ControlRoomTests.SimCtlSubCommandsTests testDeleteUnavailable]' failed (0.001 seconds).")
+  readonly METHOD_STATUS_REGEXP_MACOS = /Test Case '-\[(.*) (.*)\]' (.*)/;
+
+  // "Test case 'terminal23TesMakarenko1ts.testExample1()' failed on 'Clone 1 of iPhone 14 - terminal23 (27767)' (0.154 seconds)"
+  // "Test case 'terminal23TesMakarenko1ts.testExample2()' passed on 'Clone 1 of iPhone 14 - terminal23 (27767)' (0.000 seconds)"
+  // "Test case 'terminal23TesMakarenko1ts.testPerformanceExample()' passed on 'Clone 1 of iPhone 14 - terminal23 (27767)' (0.254 seconds)"
+  readonly METHOD_STATUS_REGEXP_IOS = /Test case '(.*)\.(.*)\(\)' (.*)/;
 
   constructor() {
     this.controller = vscode.tests.createTestController("sweetpad", "SweetPad");
@@ -128,10 +136,25 @@ export class TestingManager {
       this.updateTestItems(document);
     }
 
-    // Add handler for running tests
-    this.controller.createRunProfile("Run Tests", vscode.TestRunProfileKind.Run, (request, token) => {
-      return this.runTest(request, token);
-    });
+    // Default for profile that is slow due to build step, but should work in most cases
+    this.controller.createRunProfile(
+      "Build and Run Tests",
+      vscode.TestRunProfileKind.Run,
+      (request, token) => {
+        return this.buildAndRunTests(request, token);
+      },
+      true, // is default profile
+    );
+
+    // Profile for running tests without building, should be faster but you may need to build manually
+    this.controller.createRunProfile(
+      "Run Tests Without Building",
+      vscode.TestRunProfileKind.Run,
+      (request, token) => {
+        return this.runTestsWithoutBuilding(request, token);
+      },
+      false,
+    );
   }
 
   set context(context: ExtensionContext) {
@@ -221,20 +244,112 @@ export class TestingManager {
   }
 
   /**
+   * Ask common configuration options for running tests
+   */
+  async askTestingConfigurations(): Promise<{
+    xcworkspace: string;
+    scheme: string;
+    configuration: string;
+    destination: Destination;
+  }> {
+    // todo: consider to have separate configuration for testing and building. currently we use the
+    // configuration for building the project
+
+    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const scheme = await askScheme(this.context, {
+      xcworkspace: xcworkspace,
+      title: "Select a scheme to run tests",
+    });
+    const configuration = await askConfiguration(this.context, {
+      xcworkspace: xcworkspace,
+    });
+    const buildSettings = await getBuildSettings({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+    const destination = await askDestinationToRunOn(this.context, buildSettings);
+    return {
+      xcworkspace: xcworkspace,
+      scheme: scheme,
+      configuration: configuration,
+      destination: destination,
+    };
+  }
+
+  /**
+   * Execute separate command to build the project before running tests
+   */
+  async buildForTestingCommand() {
+    const { scheme, destination, xcworkspace } = await this.askTestingConfigurations();
+
+    // before testing we need to build the project to avoid runnning tests on old code or
+    // building every time we run selected tests
+    await this.buildForTesting({
+      destination: destination,
+      scheme: scheme,
+      xcworkspace: xcworkspace,
+    });
+  }
+
+  /**
    * Build the project for testing
    */
   async buildForTesting(options: {
     scheme: string;
+    destination: Destination;
+    xcworkspace: string;
   }) {
+    const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
+
+    // todo: add xcodebeautify command to format output
+
     await runTask(this.context, {
       name: "sweetpad.build.build",
       callback: async (terminal) => {
         await terminal.execute({
           command: "xcodebuild",
-          args: ["build-for-testing", "-scheme", options.scheme],
+          args: [
+            "build-for-testing",
+            "-destination",
+            destinationRaw,
+            "-allowProvisioningUpdates",
+            "-scheme",
+            options.scheme,
+            "-workspace",
+            options.xcworkspace,
+          ],
         });
       },
     });
+  }
+
+  /**
+   * Extract error message from the test output and prepare vscode TestMessage object
+   * to display it in the test results.
+   */
+  getMethodError(options: {
+    methodTestId: string;
+    runContext: XcodebuildTestRunContext;
+  }) {
+    const { methodTestId, runContext } = options;
+
+    // Inline error message are usually before the "failed" line
+    const error = runContext.getInlineError(methodTestId);
+    if (error) {
+      // detailed error message with location
+      const testMessage = new vscode.TestMessage(error.message);
+      testMessage.location = new vscode.Location(
+        vscode.Uri.file(error.fileName),
+        new vscode.Position(error.lineNumber - 1, 0),
+      );
+      return testMessage;
+    }
+
+    // just geeric error message, no error location or details
+    // todo: parse .xcresult file to get more detailed error message
+    return new vscode.TestMessage("Test failed (error message is not extracted).");
   }
 
   /**
@@ -250,9 +365,9 @@ export class TestingManager {
     const { testRun, className, runContext } = options;
     const line = options.line.trim();
 
-    const methodStatusMatch = line.match(this.METHOD_STATUS_REGEXP);
-    if (methodStatusMatch) {
-      const [, , methodName, status] = methodStatusMatch;
+    const methodStatusMatchIOS = line.match(this.METHOD_STATUS_REGEXP_IOS);
+    if (methodStatusMatchIOS) {
+      const [, , methodName, status] = methodStatusMatchIOS;
       const methodTestId = `${className}.${methodName}`;
 
       const methodTest = runContext.getMethodTest(methodTestId);
@@ -266,21 +381,38 @@ export class TestingManager {
         testRun.passed(methodTest);
         runContext.addProcessedMethodTest(methodTestId);
       } else if (status.startsWith("failed")) {
-        // Inline error message are usually before the "failed" line
-        const error = runContext.getInlineError(methodTestId);
-        if (error) {
-          // detailed error message with location
-          const testMessage = new vscode.TestMessage(error.message);
-          testMessage.location = new vscode.Location(
-            vscode.Uri.file(error.fileName),
-            new vscode.Position(error.lineNumber - 1, 0),
-          );
-          testRun.failed(methodTest, testMessage);
-        } else {
-          // just geenric error message, no error location or details
-          testRun.failed(methodTest, new vscode.TestMessage("Test failed"));
-        }
+        const error = this.getMethodError({
+          methodTestId: methodTestId,
+          runContext: runContext,
+        });
+        testRun.failed(methodTest, error);
+        runContext.addProcessedMethodTest(methodTestId);
+        runContext.addFailedMethodTest(methodTestId);
+      }
+      return;
+    }
 
+    const methodStatusMatchMacOS = line.match(this.METHOD_STATUS_REGEXP_MACOS);
+    if (methodStatusMatchMacOS) {
+      const [, , methodName, status] = methodStatusMatchMacOS;
+      const methodTestId = `${className}.${methodName}`;
+
+      const methodTest = runContext.getMethodTest(methodTestId);
+      if (!methodTest) {
+        return;
+      }
+
+      if (status.startsWith("started")) {
+        testRun.started(methodTest);
+      } else if (status.startsWith("passed")) {
+        testRun.passed(methodTest);
+        runContext.addProcessedMethodTest(methodTestId);
+      } else if (status.startsWith("failed")) {
+        const error = this.getMethodError({
+          methodTestId: methodTestId,
+          runContext: runContext,
+        });
+        testRun.failed(methodTest, error);
         runContext.addProcessedMethodTest(methodTestId);
         runContext.addFailedMethodTest(methodTestId);
       }
@@ -300,76 +432,137 @@ export class TestingManager {
     }
   }
 
-  async runTest(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
-    const run = this.controller.createTestRun(request);
-    try {
-      let queue: vscode.TestItem[] = [];
+  /**
+   * Get list of method tests that should be runned
+   */
+  prepareQueueForRun(request: vscode.TestRunRequest): vscode.TestItem[] {
+    const queue: vscode.TestItem[] = [];
 
-      if (request.include) {
-        // all tests selected by the user
-        queue.push(...request.include);
-      } else {
-        // all root test items
-        queue.push(...[...this.controller.items].map(([, item]) => item));
+    if (request.include) {
+      // all tests selected by the user
+      queue.push(...request.include);
+    } else {
+      // all root test items
+      queue.push(...[...this.controller.items].map(([, item]) => item));
+    }
+
+    // when class test is runned, all its method tests are runned too, so we need to filter out
+    // methods that should be runned as part of class test
+    return queue.filter((test) => {
+      const [className, methodName] = test.id.split(".");
+      if (!methodName) return true;
+      return !queue.some((t) => t.id === className);
+    });
+  }
+
+  /**
+   * Run selected tests after prepraration and configuration
+   */
+  async runTests(options: {
+    request: vscode.TestRunRequest;
+    run: vscode.TestRun;
+    xcworkspace: string;
+    destination: Destination;
+    scheme: string;
+    token: vscode.CancellationToken;
+  }) {
+    const { xcworkspace, scheme, token, run, request } = options;
+
+    const queue = this.prepareQueueForRun(request);
+
+    const testTargetName = await askTestingTarget(this.context, {
+      xcworkspace: xcworkspace,
+      title: "Select a target to run tests",
+    });
+
+    commonLogger.debug("Running tests", {
+      scheme: scheme,
+      target: testTargetName,
+      xcworkspace: xcworkspace,
+      tests: queue.map((test) => test.id),
+    });
+
+    for (const test of queue) {
+      commonLogger.debug("Running single test from queue", {
+        testId: test.id,
+        testLabel: test.label,
+      });
+
+      if (token.isCancellationRequested) {
+        run.skipped(test);
+        continue;
       }
 
-      const xcworkspace = await askXcodeWorkspacePath(this.context);
-      const scheme = await askScheme(this.context, {
+      if (test.id.includes(".")) {
+        await this.runMethodTest({
+          run: run,
+          methodTest: test,
+          xcworkspace: xcworkspace,
+          destination: options.destination,
+          scheme: scheme,
+          target: testTargetName,
+        });
+      } else {
+        await this.runClassTest({
+          run: run,
+          classTest: test,
+          scheme: scheme,
+          xcworkspace: xcworkspace,
+          destination: options.destination,
+          target: testTargetName,
+        });
+      }
+    }
+  }
+
+  /**
+   * Run selected tests without building the project
+   * This is faster but you may need to build manually before running tests
+   */
+  async runTestsWithoutBuilding(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
+    const run = this.controller.createTestRun(request);
+    try {
+      const { scheme, destination, xcworkspace } = await this.askTestingConfigurations();
+
+      // todo: add check if project is already built
+
+      await this.runTests({
+        run: run,
+        request: request,
         xcworkspace: xcworkspace,
-        title: "Select a scheme to run tests",
+        destination: destination,
+        scheme: scheme,
+        token: token,
       });
+    } finally {
+      run.end();
+    }
+  }
+
+  /**
+   * Build the project and run the selected tests
+   */
+  async buildAndRunTests(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
+    const run = this.controller.createTestRun(request);
+    try {
+      const { scheme, destination, xcworkspace } = await this.askTestingConfigurations();
 
       // before testing we need to build the project to avoid runnning tests on old code or
       // building every time we run selected tests
-      await this.buildForTesting({ scheme: scheme });
-
-      // when class test is runned, all its method tests are runned too, so we need to filter out
-      // methods that should be runned as part of class test
-      queue = queue.filter((test) => {
-        const [className, methodName] = test.id.split(".");
-        if (!methodName) return true;
-        return !queue.some((t) => t.id === className);
-      });
-
-      const testTargetName = await askTestingTarget(this.context, {
-        xcworkspace: xcworkspace,
-        title: "Select a target to run tests",
-      });
-
-      commonLogger.debug("Running tests", {
+      await this.buildForTesting({
         scheme: scheme,
-        target: testTargetName,
+        destination: destination,
         xcworkspace: xcworkspace,
-        tests: queue.map((test) => test.id),
       });
 
-      for (const test of queue) {
-        commonLogger.debug("Running single test from queue", {
-          testId: test.id,
-          testLabel: test.label,
-        });
-
-        if (token.isCancellationRequested) {
-          run.skipped(test);
-          continue;
-        }
-
-        if (test.id.includes(".")) {
-          await this.runMethodTest({
-            run: run,
-            methodTest: test,
-            scheme: scheme,
-            target: testTargetName,
-          });
-        } else {
-          await this.runClassTest({
-            run: run,
-            classTest: test,
-            scheme: scheme,
-            target: testTargetName,
-          });
-        }
-      }
+      await this.runTests({
+        run: run,
+        request: request,
+        xcworkspace: xcworkspace,
+        destination: destination,
+        scheme: scheme,
+        token: token,
+      });
     } finally {
       run.end();
     }
@@ -379,6 +572,8 @@ export class TestingManager {
     run: vscode.TestRun;
     classTest: vscode.TestItem;
     scheme: string;
+    xcworkspace: string;
+    destination: Destination;
     target: string;
   }): Promise<void> {
     const { run, classTest, scheme, target } = options;
@@ -388,6 +583,8 @@ export class TestingManager {
       methodTests: [...classTest.children],
     });
 
+    const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
+
     run.started(classTest);
 
     try {
@@ -396,8 +593,18 @@ export class TestingManager {
         callback: async (terminal) => {
           await terminal.execute({
             command: "xcodebuild",
-            args: ["test-without-building", "-scheme", scheme, `-only-testing:${target}/${classTest.id}`],
+            args: [
+              "test-without-building",
+              "-workspace",
+              options.xcworkspace,
+              "-destination",
+              destinationRaw,
+              "-scheme",
+              scheme,
+              `-only-testing:${target}/${classTest.id}`,
+            ],
             onOutputLine: async (output) => {
+              console.log("output", output);
               await this.parseOutputLine({
                 line: output.value,
                 testRun: run,
@@ -409,6 +616,7 @@ export class TestingManager {
         },
       });
     } catch (error) {
+      console.error("Test class failed due to an error", error);
       // Handle any errors during test execution
       const errorMessage = `Test class failed due to an error: ${error instanceof Error ? error.message : "Test failed"}`;
       run.failed(classTest, new vscode.TestMessage(errorMessage));
@@ -438,7 +646,9 @@ export class TestingManager {
   async runMethodTest(options: {
     run: vscode.TestRun;
     methodTest: vscode.TestItem;
+    xcworkspace: string;
     scheme: string;
+    destination: Destination;
     target: string;
   }): Promise<void> {
     const { run: testRun, methodTest, scheme, target } = options;
@@ -448,6 +658,8 @@ export class TestingManager {
       methodTests: [[methodTest.id, methodTest]],
     });
 
+    const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
+
     // Run "xcodebuild" command as a task to see the test output
     await runTask(this.context, {
       name: "sweetpad.build.test",
@@ -455,7 +667,16 @@ export class TestingManager {
         try {
           await terminal.execute({
             command: "xcodebuild",
-            args: ["test-without-building", "-scheme", scheme, `-only-testing:${target}/${className}/${methodName}`],
+            args: [
+              "test-without-building",
+              "-workspace",
+              options.xcworkspace,
+              "-destination",
+              destinationRaw,
+              "-scheme",
+              scheme,
+              `-only-testing:${target}/${className}/${methodName}`,
+            ],
             onOutputLine: async (output) => {
               await this.parseOutputLine({
                 line: output.value,

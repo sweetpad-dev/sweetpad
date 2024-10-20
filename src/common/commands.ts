@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import type { BuildManager } from "../build/manager";
 import type { DestinationsManager } from "../destination/manager";
 import type { SelectedDestination } from "../destination/types";
-import type { TestingManager } from "../testing/controller";
+import type { TestingManager } from "../testing/manager";
 import type { ToolsManager } from "../tools/manager";
 import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting";
 import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";

@@ -215,7 +215,7 @@ export async function runOniOSDevice(
   });
 }
 
-function isXcbeautifyEnabled() {
+export function isXcbeautifyEnabled() {
   return getWorkspaceConfig("build.xcbeautifyEnabled") ?? true;
 }
 

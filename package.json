@@ -307,8 +307,18 @@
       },
       {
         "command": "sweetpad.testing.selectTarget",
-        "title": "SweetPad: Select test target",
+        "title": "SweetPad: Select testing target",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.testing.buildForTesting",
+        "title": "SweetPad: Build for testing (without running tests)",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.testing.testWithoutBuilding",
+        "title": "SweetPad: Test without building",
+        "icon": "$(repo-sync)"
       },
       {
         "command": "sweetpad.xcodegen.generate",
@@ -535,6 +545,20 @@
           "command": "sweetpad.tools.install",
           "when": "view == sweetpad.tools.view && viewItem == notInstalled",
           "group": "inline@2"
+        }
+      ],
+      "testing/item/context": [
+        {
+          "command": "sweetpad.testing.selectTarget",
+          "group": "context@1"
+        },
+        {
+          "command": "sweetpad.testing.buildForTesting",
+          "group": "context@2"
+        },
+        {
+          "command": "sweetpad.testing.testWithoutBuilding",
+          "group": "inline@3"
         }
       ]
     },
