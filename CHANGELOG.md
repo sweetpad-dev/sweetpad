@@ -4,6 +4,10 @@ All notable changes to the "sweetpad" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.38] - 2024-10-20
+
+- Add test explorer integration
+
 ## [0.1.37] - 2024-10-05
 
 - Fix issue with buildConfiguration without name
