@@ -14,5 +14,5 @@ node_modules
 
 .env
 
-tests/examples/
+tests/examples/*
 !tests/examples/README.md

@@ -887,7 +887,7 @@
     "compile-setvbuf": "bash ./setvbuf/compile.sh",
     "publish-patch": "vsce publish patch",
     "find-deadcode": "ts-prune --error --skip spec.ts?",
-    "download-example-projects": "tsx ./scripts/download-example-projects.ts"
+    "download-examples": "tsx ./scripts/download-examples.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.3",
