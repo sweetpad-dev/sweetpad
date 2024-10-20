@@ -22,6 +22,7 @@ type CommandOptions = {
   pipes?: Command[];
   setvbuf?: boolean;
   env?: Record<string, string>;
+  onOutputLine?: (data: { value: string; type: "stdout" | "stderr" }) => Promise<void>;
 };
 
 type TerminalTextColor = "green" | "red" | "blue" | "yellow" | "magenta" | "cyan" | "white";
@@ -72,6 +73,45 @@ function cleanCommandArgs(args: (string | null)[] | undefined | null): string[] 
     return [];
   }
   return args.filter((arg) => arg !== null);
+}
+
+/**
+ * Collect stdout or stderr output and send it line by line to the callback
+ */
+class LineBuffer {
+  public buffer = "";
+  public enabled = true;
+  public callback: (line: string) => void;
+
+  constructor(options: { enabled: boolean; callback: (line: string) => void }) {
+    this.enabled = options.enabled;
+    this.callback = options.callback;
+  }
+
+  append(data: string): void {
+    if (!this.enabled) return;
+
+    this.buffer += data;
+
+    const lines = this.buffer.split("\n");
+
+    // last line can be not finished yet, so we need to keep it and send to callback later
+    this.buffer = lines.pop() ?? "";
+
+    // send all lines in buffer to callback, except last one
+    for (const line of lines) {
+      this.callback(line);
+    }
+  }
+
+  flush(): void {
+    if (!this.enabled) return;
+
+    if (this.buffer) {
+      this.callback(this.buffer);
+      this.buffer = "";
+    }
+  }
 }
 
 export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
@@ -182,6 +222,22 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
     return new Promise<void>((resolve, reject) => {
       const workspacePath = getWorkspacePath();
+
+      // Collect lines and send them to the callback
+      // This is usefull when you need to listen to task output and make some actions based on it
+      const stdouBuffer = new LineBuffer({
+        enabled: !!options.onOutputLine,
+        callback: (line) => {
+          options.onOutputLine?.({ value: line, type: "stdout" });
+        },
+      });
+      const stderrBuffer = new LineBuffer({
+        enabled: !!options.onOutputLine,
+        callback: (line) => {
+          options.onOutputLine?.({ value: line, type: "stderr" });
+        },
+      });
+
       this.process = spawn(command, {
         // run command in shell to support pipes
         shell: true,
@@ -196,13 +252,17 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       });
       this.process.stderr?.on("data", (data: string | Buffer): void => {
         const output = data.toString();
-        this.write(output, { color: "red" });
+        this.write(output, { color: "yellow" });
         hasOutput = true;
+
+        stderrBuffer.append(output);
       });
       this.process.stdout?.on("data", (data: string | Buffer): void => {
         const output = data.toString();
         this.write(output);
         hasOutput = true;
+
+        stdouBuffer.append(output);
       });
       this.process.stdin?.on("data", (data: string | Buffer): void => {
         const input = data.toString();
@@ -215,6 +275,9 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
         if (hasOutput) {
           this.writeLine();
         }
+
+        stdouBuffer.flush();
+        stderrBuffer.flush();
 
         this.process = null;
         if (code !== 0) {

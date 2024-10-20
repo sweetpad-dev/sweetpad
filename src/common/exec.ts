@@ -38,6 +38,7 @@ export async function exec(options: { command: string; args: string[]; cwd?: str
   } catch (e: any) {
     const errorMessage: string = e?.shortMessage ?? e?.message ?? "[unknown error]";
     const stderr: string | undefined = e?.stderr;
+    // todo: imrove logging
     throw new ExecBaseError(`Error executing "${options.command}" command`, {
       errorMessage: errorMessage,
       stderr: stderr,

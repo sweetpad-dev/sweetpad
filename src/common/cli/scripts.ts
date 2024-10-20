@@ -74,6 +74,7 @@ export class XcodeBuildSettings {
 
   constructor(output: BuildSettingsOutput) {
     if (output.length === 0) {
+      // todo: improve logging
       throw new ExtensionError("Error fetching build settings");
     }
     this.settings = output[0]?.buildSettings;
@@ -181,6 +182,7 @@ export async function getBuildSettings(options: {
     }
   }
 
+  // todo: imporve logging
   throw new ExtensionError("Error parsing build settings");
 }
 
@@ -250,6 +252,18 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
       name: scheme,
     };
   });
+}
+
+export async function getTargets(options: { xcworkspace: string }): Promise<string[]> {
+  const output = await getBasicProjectInfo({
+    xcworkspace: options.xcworkspace,
+  });
+  if (output.type === "project") {
+    return output.project.targets;
+  }
+  const xcworkspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+  const projects = await xcworkspace.getProjects();
+  return projects.flatMap((project) => project.getTargets());
 }
 
 export async function getBuildConfigurations(options: { xcworkspace: string }): Promise<XcodeConfiguration[]> {
