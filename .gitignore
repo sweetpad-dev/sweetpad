@@ -13,3 +13,6 @@ node_modules
 .vscode/settings.json
 
 .env
+
+tests/examples/
+!tests/examples/README.md
