@@ -16,7 +16,6 @@ import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
-import {} from "./build/utils.js";
 import { ExtensionContext } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
 import { Logger } from "./common/logger.js";
@@ -181,7 +180,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.tools.documentation", openDocumentationCommand));
 
   // System
-  d(command("sweetpadasystem.resetSweetpadCache", resetSweetpadCache));
+  d(command("sweetpad.system.resetSweetpadCache", resetSweetpadCache));
   d(command("sweetpad.system.createIssue.generic", createIssueGenericCommand));
   d(command("sweetpad.system.createIssue.noSchemes", createIssueNoSchemesCommand));
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
