@@ -895,7 +895,7 @@
     "@types/mocha": "^10.0.9",
     "@types/node": "22.x",
     "@types/shell-quote": "^1.7.5",
-    "@types/vscode": "^1.94.0",
+    "@types/vscode": "^1.85.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "dotenv": "^16.4.5",

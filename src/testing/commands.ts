@@ -20,7 +20,7 @@ export async function testWithoutBuildingCommand(
   execution: CommandExecution,
   ...items: vscode.TestItem[]
 ): Promise<void> {
-  const request = new vscode.TestRunRequest(items, [], undefined, undefined, undefined);
+  const request = new vscode.TestRunRequest(items, [], undefined, undefined);
   const tokenSource = new vscode.CancellationTokenSource();
   execution.context.testingManager.runTestsWithoutBuilding(request, tokenSource.token);
 }
