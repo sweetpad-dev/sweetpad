@@ -60,7 +60,7 @@ export function activate(context: vscode.ExtensionContext) {
   Logger.setup();
 
   // Managers 💼
-  // This classes are responsible for managing the state of the specific domain. Other parts of the extension can
+  // These classes are responsible for managing the state of the specific domain. Other parts of the extension can
   // interact with them to get the current state of the domain and subscribe to changes. For example
   // "DestinationsManager" have methods to get the list of current ios devices and simulators, and it also have an
   // event emitter that emits an event when the list of devices or simulators changes.
