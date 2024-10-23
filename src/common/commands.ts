@@ -18,6 +18,9 @@ type WorkspaceTypes = {
   "build.xcodeSdk": string;
   "build.lastLaunchedAppPath": string;
   "testing.xcodeTarget": string;
+  "testing.xcodeConfiguration": string;
+  "testing.xcodeDestination": SelectedDestination;
+  "testing.xcodeScheme": string;
 };
 
 type WorkspaceStateKey = keyof WorkspaceTypes;
@@ -97,8 +100,10 @@ export class ExtensionContext {
         this._context.workspaceState.update(key, undefined);
       }
     }
-    this.destinationsManager.setWorkspaceDestination(undefined);
-    this.buildManager.setDefaultScheme(undefined);
+    this.destinationsManager.setWorkspaceDestinationForBuild(undefined);
+    this.destinationsManager.setWorkspaceDestinationForTesting(undefined);
+    this.buildManager.setDefaultSchemeForBuild(undefined);
+    this.buildManager.setDefaultSchemeForTesting(undefined);
 
     void this.buildManager.refresh();
     void this.destinationsManager.refresh();
@@ -124,7 +129,7 @@ export class CommandExecution {
     public readonly command: string,
     public readonly callback: (context: CommandExecution, ...args: unknown[]) => Promise<unknown>,
     public context: ExtensionContext,
-  ) {}
+  ) { }
 
   /**
    * Show error message with proper actions
@@ -137,7 +142,7 @@ export class CommandExecution {
   ): Promise<void> {
     const closeAction: ErrorMessageAction = {
       label: "Close",
-      callback: () => {},
+      callback: () => { },
     };
     const showLogsAction: ErrorMessageAction = {
       label: "Show logs",

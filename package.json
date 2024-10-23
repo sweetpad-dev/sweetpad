@@ -321,6 +321,11 @@
         "icon": "$(repo-sync)"
       },
       {
+        "command": "sweetpad.testing.setDefaultScheme",
+        "title": "SweetPad: Set scheme for testing",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "sweetpad.xcodegen.generate",
         "title": "SweetPad: Generate an Xcode project using XcodeGen",
         "icon": "$(file-code)"
@@ -408,7 +413,7 @@
       },
       {
         "command": "sweetpad.build.setDefaultScheme",
-        "title": "SweetPad: Set default Xcode scheme",
+        "title": "SweetPad: Set scheme",
         "icon": "$(file-directory)"
       },
       {
@@ -439,6 +444,11 @@
       {
         "command": "sweetpad.destinations.select",
         "title": "SweetPad: Select destination",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.destinations.selectForTesting",
+        "title": "SweetPad: Select destination for testing",
         "icon": "$(file-code)"
       }
     ],

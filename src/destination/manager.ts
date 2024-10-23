@@ -23,7 +23,8 @@ import { getMacOSArchitecture } from "./utils";
 type IEventMap = {
   simulatorsUpdated: [];
   devicesUpdated: [];
-  xcodeDestinationUpdated: [destination: SelectedDestination | undefined];
+  xcodeDestinationForBuildUpdated: [destination: SelectedDestination | undefined];
+  xcodeDestinationForTestingUpdated: [destination: SelectedDestination | undefined];
 };
 
 type IEventKey = keyof IEventMap;
@@ -272,10 +273,10 @@ export class DestinationsManager {
     });
   }
 
-  setWorkspaceDestination(destination: Destination | undefined) {
+  setWorkspaceDestinationForBuild(destination: Destination | undefined) {
     if (!destination) {
       this.context.updateWorkspaceState("build.xcodeDestination", undefined);
-      this.emitter.emit("xcodeDestinationUpdated", undefined);
+      this.emitter.emit("xcodeDestinationForBuildUpdated", undefined);
       return;
     }
 
@@ -287,29 +288,34 @@ export class DestinationsManager {
     this.context.updateWorkspaceState("build.xcodeDestination", selectedDestination);
     this.incrementUsageStats({ id: destination.id });
 
-    this.emitter.emit("xcodeDestinationUpdated", selectedDestination);
+    this.emitter.emit("xcodeDestinationForBuildUpdated", selectedDestination);
+  }
+
+  setWorkspaceDestinationForTesting(destination: Destination | undefined) {
+    if (!destination) {
+      this.context.updateWorkspaceState("testing.xcodeDestination", undefined);
+      this.emitter.emit("xcodeDestinationForTestingUpdated", undefined);
+      return;
+    }
+
+    const selectedDestination: SelectedDestination = {
+      id: destination.id,
+      type: destination.type,
+      name: destination.name,
+    };
+    this.context.updateWorkspaceState("testing.xcodeDestination", selectedDestination);
+    this.incrementUsageStats({ id: destination.id });
+    this.emitter.emit("xcodeDestinationForTestingUpdated", selectedDestination);
   }
 
   /**
    * Get selected destination from the workspace state
    */
-  getSelectedXcodeDestination(): SelectedDestination | undefined {
+  getSelectedXcodeDestinationForBuild(): SelectedDestination | undefined {
     return this.context.getWorkspaceState("build.xcodeDestination");
   }
 
-  /*
-   * Get selected destination from the workspace state. This function is async because it may need to
-   * fetch the destination from the simulators and devices managers.
-   */
-  async findWorkspaceSelectedDestination(): Promise<Destination | undefined> {
-    const destination = this.getSelectedXcodeDestination();
-    if (!destination) {
-      return undefined;
-    }
-
-    return await this.findDestination({
-      destinationId: destination.id,
-      type: destination.type,
-    });
+  getSelectedXcodeDestinationForTesting(): SelectedDestination | undefined {
+    return this.context.getWorkspaceState("testing.xcodeDestination");
   }
 }

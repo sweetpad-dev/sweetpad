@@ -7,7 +7,29 @@ import type {
   watchOSSimulatorDestination,
 } from "../simulators/types.js";
 import type { DestinationsManager } from "./manager.js";
-import type { DestinationType, SelectedDestination, macOSDestination } from "./types.js";
+import type { Destination, DestinationType, SelectedDestination, macOSDestination } from "./types.js";
+
+function addSelectedMarks(options: {
+  description: string;
+  current: Destination;
+  selectedForBuild: SelectedDestination | undefined;
+  selectedForTesting: SelectedDestination | undefined;
+}): string {
+  const { current, selectedForBuild, selectedForTesting } = options;
+
+  let description = options.description;
+  const isSelectedForBuild = selectedForBuild?.type === current.type && selectedForBuild.id === current.id;
+  const isSelectedForTesting = selectedForTesting?.type === current.type && selectedForTesting.id === current.id;
+
+  if (isSelectedForBuild) {
+    description = `${description} ✓`;
+  }
+  if (isSelectedForTesting) {
+    description = `${description} (t)`;
+  }
+
+  return description;
+}
 
 /**
  * Tree item representing a group of destinations (iOSSimulator, iOSDevice, etc.) at the root level
@@ -58,14 +80,13 @@ export class iOSSimulatorDestinationTreeItem extends vscode.TreeItem implements 
 
     const contextPrefix = "destination-item-simulator";
 
-    const isSelected =
-      this.provider.selectedDestination?.type === "iOSSimulator" &&
-      this.provider.selectedDestination.id === this.simulator.id;
-
     let color: vscode.ThemeColor | undefined = undefined;
-    if (isSelected) {
-      this.description = `${this.description} ✓`;
-    }
+    this.description = addSelectedMarks({
+      description: this.description,
+      current: this.simulator,
+      selectedForBuild: this.provider.selectedDestinationForBuild,
+      selectedForTesting: this.provider.selectedDestinationForTesting,
+    });
 
     if (this.simulator.isBooted) {
       this.contextValue = `${contextPrefix}-booted`; // "destination-item-simulator-booted"
@@ -98,14 +119,13 @@ export class watchOSSimulatorDestinationTreeItem extends vscode.TreeItem impleme
 
     const contextPrefix = "destination-item-simulator";
 
-    const isSelected =
-      this.provider.selectedDestination?.type === "watchOSSimulator" &&
-      this.provider.selectedDestination.id === this.simulator.id;
-
     let color: vscode.ThemeColor | undefined = undefined;
-    if (isSelected) {
-      this.description = `${this.description} ✓`;
-    }
+    this.description = addSelectedMarks({
+      description: this.description,
+      current: this.simulator,
+      selectedForBuild: this.provider.selectedDestinationForBuild,
+      selectedForTesting: this.provider.selectedDestinationForTesting,
+    });
 
     if (this.simulator.isBooted) {
       this.contextValue = `${contextPrefix}-booted`; // "destination-item-simulator-booted"
@@ -135,14 +155,13 @@ export class visionOSSimulatorDestinationTreeItem extends vscode.TreeItem implem
 
     const contextPrefix = "destination-item-simulator";
 
-    const isSelected =
-      this.provider.selectedDestination?.type === "visionOSSimulator" &&
-      this.provider.selectedDestination.id === this.simulator.id;
-
     let color: vscode.ThemeColor | undefined = undefined;
-    if (isSelected) {
-      this.description = `${this.description} ✓`;
-    }
+    this.description = addSelectedMarks({
+      description: this.description,
+      current: this.simulator,
+      selectedForBuild: this.provider.selectedDestinationForBuild,
+      selectedForTesting: this.provider.selectedDestinationForTesting,
+    });
 
     if (this.simulator.isBooted) {
       this.contextValue = `${contextPrefix}-booted`; // "destination-item-simulator-booted"
@@ -175,12 +194,12 @@ export class iOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDe
     this.description = options.device.osVersion;
     const contextPrefix = "destination-item-iOSDevice";
 
-    const isSelected =
-      this.provider.selectedDestination?.type === "iOSDevice" &&
-      this.provider.selectedDestination.id === this.device.id;
-    if (isSelected) {
-      this.description = `${this.description} ✓`;
-    }
+    this.description = addSelectedMarks({
+      description: this.description,
+      current: this.device,
+      selectedForBuild: this.provider.selectedDestinationForBuild,
+      selectedForTesting: this.provider.selectedDestinationForTesting,
+    });
 
     this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
     if (this.device.isConnected) {
@@ -206,11 +225,12 @@ export class macOSDestinationTreeItem extends vscode.TreeItem implements IDestin
     this.provider = options.provider;
 
     this.description = options.device.arch;
-    const isSelected =
-      this.provider.selectedDestination?.type === "macOS" && this.provider.selectedDestination.id === this.device.id;
-    if (isSelected) {
-      this.description = `${this.description} ✓`;
-    }
+    this.description = addSelectedMarks({
+      description: this.description,
+      current: this.device,
+      selectedForBuild: this.provider.selectedDestinationForBuild,
+      selectedForTesting: this.provider.selectedDestinationForTesting,
+    });
 
     const contextPrefix = "destination-item-macos";
 
@@ -233,7 +253,8 @@ export type DestinationTreeItem =
 
 export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   public manager: DestinationsManager;
-  public selectedDestination: SelectedDestination | undefined;
+  public selectedDestinationForBuild: SelectedDestination | undefined;
+  public selectedDestinationForTesting: SelectedDestination | undefined;
 
   private _onDidChangeTreeData = new vscode.EventEmitter<DestinationTreeItem | undefined | null | undefined>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -246,11 +267,16 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
     this.manager.on("devicesUpdated", () => {
       this._onDidChangeTreeData.fire(null);
     });
-    this.manager.on("xcodeDestinationUpdated", (destination) => {
-      this.selectedDestination = destination;
+    this.manager.on("xcodeDestinationForBuildUpdated", (destination) => {
+      this.selectedDestinationForBuild = destination;
       this._onDidChangeTreeData.fire(null); // todo: update only the selected destination
     });
-    this.selectedDestination = this.manager.getSelectedXcodeDestination();
+    this.manager.on("xcodeDestinationForTestingUpdated", (destination) => {
+      this.selectedDestinationForTesting = destination;
+      this._onDidChangeTreeData.fire(null); // todo: update only the selected destination
+    });
+    this.selectedDestinationForBuild = this.manager.getSelectedXcodeDestinationForBuild();
+    this.selectedDestinationForTesting = this.manager.getSelectedXcodeDestinationForTesting();
   }
 
   async getChildren(element?: DestinationGroupTreeItem | DestinationTreeItem): Promise<vscode.TreeItem[]> {

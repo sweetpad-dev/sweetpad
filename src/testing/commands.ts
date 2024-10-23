@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
+import type { BuildTreeItem } from "../build/tree";
 import { askXcodeWorkspacePath } from "../build/utils";
 import type { CommandExecution } from "../common/commands";
-import { askTestingTarget } from "./utils";
+import { askSchemeForTesting, askTestingTarget } from "./utils";
 
 export async function selectTestingTargetCommand(execution: CommandExecution): Promise<void> {
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
@@ -20,7 +21,21 @@ export async function testWithoutBuildingCommand(
   execution: CommandExecution,
   ...items: vscode.TestItem[]
 ): Promise<void> {
-  const request = new vscode.TestRunRequest(items, [], undefined, undefined, undefined);
+  const request = new vscode.TestRunRequest(items, [], undefined, undefined);
   const tokenSource = new vscode.CancellationTokenSource();
   execution.context.testingManager.runTestsWithoutBuilding(request, tokenSource.token);
+}
+
+export async function selectXcodeSchemeForTestingCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  if (item) {
+    item.provider.buildManager.setDefaultSchemeForTesting(item.scheme);
+    return;
+  }
+
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+  await askSchemeForTesting(execution.context, {
+    title: "Select scheme to set as default",
+    xcworkspace: xcworkspace,
+    ignoreCache: true,
+  });
 }

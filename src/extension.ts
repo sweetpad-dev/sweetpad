@@ -8,7 +8,7 @@ import {
   removeBundleDirCommand,
   resolveDependenciesCommand,
   runCommand,
-  selectXcodeSchemeCommand,
+  selectXcodeSchemeForBuildCommand,
   testCommand,
 } from "./build/commands.js";
 import { selectXcodeWorkspaceCommand } from "./build/commands.js";
@@ -21,7 +21,7 @@ import { errorReporting } from "./common/error-reporting.js";
 import { Logger } from "./common/logger.js";
 import { getAppPathCommand } from "./debugger/commands.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
-import { selectDestinationCommand } from "./destination/commands.js";
+import { selectDestinationForBuildCommand, selectDestinationForTestingCommand } from "./destination/commands.js";
 import { DestinationsManager } from "./destination/manager.js";
 import { DestinationStatusBar } from "./destination/status-bar.js";
 import { DestinationsTreeProvider } from "./destination/tree.js";
@@ -42,7 +42,12 @@ import {
   resetSweetpadCache,
   testErrorReportingCommand,
 } from "./system/commands.js";
-import { buildForTestingCommand, selectTestingTargetCommand, testWithoutBuildingCommand } from "./testing/commands.js";
+import {
+  buildForTestingCommand,
+  selectTestingTargetCommand,
+  selectXcodeSchemeForTestingCommand,
+  testWithoutBuildingCommand,
+} from "./testing/commands.js";
 import { TestingManager } from "./testing/manager.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { ToolsManager } from "./tools/manager.js";
@@ -131,12 +136,13 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
   d(command("sweetpad.build.openXcode", openXcodeCommand));
   d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
-  d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeCommand));
+  d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeForBuildCommand));
 
   // Testing
-  d(command("sweetpad.testing.selectTarget", selectTestingTargetCommand));
   d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));
   d(command("sweetpad.testing.testWithoutBuilding", testWithoutBuildingCommand));
+  d(command("sweetpad.testing.selectTarget", selectTestingTargetCommand));
+  d(command("sweetpad.testing.setDefaultScheme", selectXcodeSchemeForTestingCommand));
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));
@@ -170,7 +176,8 @@ export function activate(context: vscode.ExtensionContext) {
     context: _context,
   });
   d(destinationBar);
-  d(command("sweetpad.destinations.select", selectDestinationCommand));
+  d(command("sweetpad.destinations.select", selectDestinationForBuildCommand));
+  d(command("sweetpad.destinations.selectForTesting", selectDestinationForTestingCommand));
   d(tree("sweetpad.destinations.view", destinationsTreeProvider));
 
   // Tools

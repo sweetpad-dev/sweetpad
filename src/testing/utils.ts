@@ -1,7 +1,10 @@
-import { getTargets } from "../common/cli/scripts";
+import * as vscode from "vscode";
+import { askConfigurationBase } from "../common/askers";
+import { type XcodeBuildSettings, getSchemes, getTargets } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 import { showQuickPick } from "../common/quick-pick";
+import type { Destination } from "../destination/types";
 
 /**
  * Ask user to select target to build
@@ -55,4 +58,120 @@ export async function askTestingTarget(
   const targetName = target.context.target;
   context.testingManager.setDefaultTestingTarget(targetName);
   return targetName;
+}
+
+/**
+ * Ask user to select configuration
+ */
+export async function askConfigurationForTesting(
+  context: ExtensionContext,
+  options: {
+    xcworkspace: string;
+  },
+): Promise<string> {
+  return await context.withCache("testing.xcodeConfiguration", async () => {
+    return await askConfigurationBase({
+      xcworkspace: options.xcworkspace,
+    });
+  });
+}
+
+/**
+ * Ask user to select simulator or device to run on
+ */
+export async function askDestinationToTestOn(
+  context: ExtensionContext,
+  buildSettings: XcodeBuildSettings,
+): Promise<Destination> {
+  // We can remove platforms that are not supported by the project
+  const supportedPlatforms = buildSettings.supportedPlatforms;
+
+  const destinations = await context.destinationsManager.getDestinations({
+    platformFilter: supportedPlatforms,
+    mostUsedSort: true,
+  });
+
+  // If we have cached desination, use it
+  const cachedDestination = context.destinationsManager.getSelectedXcodeDestinationForTesting();
+  if (cachedDestination) {
+    const destination = destinations.find(
+      (destination) => destination.id === cachedDestination.id && destination.type === cachedDestination.type,
+    );
+    if (destination) {
+      return destination;
+    }
+  }
+
+  return selectDestinationForTesting(context, {
+    destinations: destinations,
+  });
+}
+
+export async function selectDestinationForTesting(
+  context: ExtensionContext,
+  options?: {
+    destinations?: Destination[];
+  },
+): Promise<Destination> {
+  const destinations = options?.destinations?.length
+    ? options.destinations
+    : await context.destinationsManager.getDestinations({
+      mostUsedSort: true,
+    });
+
+  const selected = await showQuickPick<Destination>({
+    title: "Select destination to test on",
+    items: [
+      ...destinations.map((destination) => {
+        return {
+          label: destination.name,
+          iconPath: new vscode.ThemeIcon(destination.icon),
+          detail: destination.quickPickDetails,
+          context: destination,
+        };
+      }),
+    ],
+  });
+
+  const destination = selected.context;
+
+  context.destinationsManager.setWorkspaceDestinationForTesting(destination);
+  return destination;
+}
+
+/**
+ * Ask user to select scheme to build
+ */
+export async function askSchemeForTesting(
+  context: ExtensionContext,
+  options: {
+    title?: string;
+    xcworkspace: string;
+    ignoreCache?: boolean;
+  },
+): Promise<string> {
+  const cachedScheme = context.buildManager.getDefaultSchemeForTesting();
+  if (cachedScheme && !options.ignoreCache) {
+    return cachedScheme;
+  }
+
+  const schemes = await getSchemes({
+    xcworkspace: options.xcworkspace,
+  });
+
+  const scheme = await showQuickPick({
+    title: options?.title ?? "Select scheme to test on",
+    items: schemes.map((scheme) => {
+      return {
+        label: scheme.name,
+        context: {
+          scheme: scheme,
+        },
+      };
+    }),
+  });
+
+  const schemeName = scheme.context.scheme.name;
+  context.buildManager.setDefaultSchemeForTesting(schemeName);
+  return schemeName;
 }

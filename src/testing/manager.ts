@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import { getXcodeBuildDestinationString } from "../build/commands.js";
-import { askConfiguration, askDestinationToRunOn, askScheme, askXcodeWorkspacePath } from "../build/utils.js";
+import { askXcodeWorkspacePath } from "../build/utils.js";
 import { getBuildSettings } from "../common/cli/scripts.js";
 import type { ExtensionContext } from "../common/commands.js";
 import { commonLogger } from "../common/logger.js";
 import { runTask } from "../common/tasks.js";
 import type { Destination } from "../destination/types.js";
-import { askTestingTarget } from "./utils.js";
+import { askConfigurationForTesting, askDestinationToTestOn, askSchemeForTesting, askTestingTarget } from "./utils.js";
 
 type TestingInlineError = {
   fileName: string;
@@ -256,11 +256,11 @@ export class TestingManager {
     // configuration for building the project
 
     const xcworkspace = await askXcodeWorkspacePath(this.context);
-    const scheme = await askScheme(this.context, {
+    const scheme = await askSchemeForTesting(this.context, {
       xcworkspace: xcworkspace,
       title: "Select a scheme to run tests",
     });
-    const configuration = await askConfiguration(this.context, {
+    const configuration = await askConfigurationForTesting(this.context, {
       xcworkspace: xcworkspace,
     });
     const buildSettings = await getBuildSettings({
@@ -269,7 +269,7 @@ export class TestingManager {
       sdk: undefined,
       xcworkspace: xcworkspace,
     });
-    const destination = await askDestinationToRunOn(this.context, buildSettings);
+    const destination = await askDestinationToTestOn(this.context, buildSettings);
     return {
       xcworkspace: xcworkspace,
       scheme: scheme,

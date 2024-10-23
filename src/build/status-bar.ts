@@ -12,13 +12,13 @@ export class DefaultSchemeStatusBar {
     this.item.tooltip = "Select the default Xcode scheme for building";
     void this.update();
     this.item.show();
-    this.context.buildManager.on("defaultSchemeUpdated", () => {
+    this.context.buildManager.on("defaultSchemeForBuildUpdated", () => {
       void this.update();
     });
   }
 
   update() {
-    const scheme = this.context.buildManager.getDefaultScheme();
+    const scheme = this.context.buildManager.getDefaultSchemeForBuild();
     if (scheme) {
       this.item.text = `$(sweetpad-hexagons) ${scheme}`;
     } else {

@@ -19,7 +19,13 @@ import {
   runOniOSSimulator,
 } from "./commands";
 import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
-import { askConfiguration, askDestinationToRunOn, askScheme, askXcodeWorkspacePath, getDestinationById } from "./utils";
+import {
+  askConfiguration,
+  askDestinationToRunOn,
+  askSchemeForBuild,
+  askXcodeWorkspacePath,
+  getDestinationById,
+} from "./utils";
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -90,7 +96,7 @@ class ActionDispatcher {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
-      (await askScheme(this.context, {
+      (await askSchemeForBuild(this.context, {
         xcworkspace: xcworkspace,
       }));
 
@@ -163,7 +169,7 @@ class ActionDispatcher {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
-      (await askScheme(this.context, {
+      (await askSchemeForBuild(this.context, {
         xcworkspace: xcworkspace,
       }));
     const configuration =
@@ -203,7 +209,7 @@ class ActionDispatcher {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
-      (await askScheme(this.context, {
+      (await askSchemeForBuild(this.context, {
         xcworkspace: xcworkspace,
       }));
     const configuration =
@@ -264,7 +270,7 @@ class ActionDispatcher {
 
     const scheme =
       definition.scheme ??
-      (await askScheme(this.context, {
+      (await askSchemeForBuild(this.context, {
         xcworkspace: xcworkspace,
       }));
     const configuration =
@@ -304,7 +310,7 @@ class ActionDispatcher {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
-      (await askScheme(this.context, {
+      (await askSchemeForBuild(this.context, {
         xcworkspace: xcworkspace,
       }));
     const configuration =
@@ -344,7 +350,7 @@ class ActionDispatcher {
     const xcworkspacePath = definition.workspace ?? (await askXcodeWorkspacePath(this.context));
     const scheme =
       definition.scheme ??
-      (await askScheme(this.context, {
+      (await askSchemeForBuild(this.context, {
         xcworkspace: xcworkspacePath,
       }));
 

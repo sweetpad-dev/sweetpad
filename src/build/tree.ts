@@ -21,8 +21,15 @@ export class BuildTreeItem extends vscode.TreeItem {
     const color = new vscode.ThemeColor("sweetpad.scheme");
     this.iconPath = new vscode.ThemeIcon("sweetpad-package", color);
 
-    if (this.scheme === this.provider.defaultScheme) {
-      this.description = "✓";
+    let description = "";
+    if (this.scheme === this.provider.defaultSchemeForBuild) {
+      description = `${description} ✓`;
+    }
+    if (this.scheme === this.provider.defaultSchemeForTesting) {
+      description = `${description} (t)`;
+    }
+    if (description) {
+      this.description = description;
     }
   }
 }
@@ -31,7 +38,8 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   public context: ExtensionContext | undefined;
   public buildManager: BuildManager;
-  public defaultScheme: string | undefined;
+  public defaultSchemeForBuild: string | undefined;
+  public defaultSchemeForTesting: string | undefined;
 
   constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
     this.context = options.context;
@@ -39,11 +47,16 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     this.buildManager.on("updated", () => {
       this.refresh();
     });
-    this.buildManager.on("defaultSchemeUpdated", (scheme) => {
-      this.defaultScheme = scheme;
+    this.buildManager.on("defaultSchemeForBuildUpdated", (scheme) => {
+      this.defaultSchemeForBuild = scheme;
       this.refresh();
     });
-    this.defaultScheme = this.buildManager.getDefaultScheme();
+    this.buildManager.on("defaultSchemeForTestingUpdated", (scheme) => {
+      this.defaultSchemeForTesting = scheme;
+      this.refresh();
+    });
+    this.defaultSchemeForBuild = this.buildManager.getDefaultSchemeForBuild();
+    this.defaultSchemeForTesting = this.buildManager.getDefaultSchemeForTesting();
   }
 
   private refresh(): void {

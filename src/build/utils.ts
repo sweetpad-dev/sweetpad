@@ -2,7 +2,8 @@ import path from "node:path";
 import * as vscode from "vscode";
 import { showQuickPick } from "../common/quick-pick";
 
-import { type XcodeBuildSettings, getBuildConfigurations, getSchemes } from "../common/cli/scripts";
+import { askConfigurationBase } from "../common/askers";
+import { type XcodeBuildSettings, getSchemes } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
@@ -10,8 +11,6 @@ import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } fr
 import { commonLogger } from "../common/logger";
 import type { Destination } from "../destination/types";
 import type { SimulatorDestination } from "../simulators/types";
-
-const DEFAULT_CONFIGURATION = "Debug";
 
 export type SelectedDestination = {
   type: "simulator" | "device";
@@ -76,7 +75,7 @@ export async function askDestinationToRunOn(
   });
 
   // If we have cached desination, use it
-  const cachedDestination = context.destinationsManager.getSelectedXcodeDestination();
+  const cachedDestination = context.destinationsManager.getSelectedXcodeDestinationForBuild();
   if (cachedDestination) {
     const destination = destinations.find(
       (destination) => destination.id === cachedDestination.id && destination.type === cachedDestination.type,
@@ -86,12 +85,12 @@ export async function askDestinationToRunOn(
     }
   }
 
-  return selectDestination(context, {
+  return selectDestinationForBuild(context, {
     destinations: destinations,
   });
 }
 
-export async function selectDestination(
+export async function selectDestinationForBuild(
   context: ExtensionContext,
   options?: {
     destinations?: Destination[];
@@ -119,7 +118,7 @@ export async function selectDestination(
 
   const destination = selected.context;
 
-  context.destinationsManager.setWorkspaceDestination(destination);
+  context.destinationsManager.setWorkspaceDestinationForBuild(destination);
   return destination;
 }
 
@@ -144,7 +143,7 @@ export async function getDestinationById(
 /**
  * Ask user to select scheme to build
  */
-export async function askScheme(
+export async function askSchemeForBuild(
   context: ExtensionContext,
   options: {
     title?: string;
@@ -152,7 +151,7 @@ export async function askScheme(
     ignoreCache?: boolean;
   },
 ): Promise<string> {
-  const cachedScheme = context.buildManager.getDefaultScheme();
+  const cachedScheme = context.buildManager.getDefaultSchemeForBuild();
   if (cachedScheme && !options.ignoreCache) {
     return cachedScheme;
   }
@@ -174,7 +173,7 @@ export async function askScheme(
   });
 
   const schemeName = scheme.context.scheme.name;
-  context.buildManager.setDefaultScheme(schemeName);
+  context.buildManager.setDefaultSchemeForBuild(schemeName);
   return schemeName;
 }
 
@@ -278,34 +277,9 @@ export async function askConfiguration(
   },
 ): Promise<string> {
   return await context.withCache("build.xcodeConfiguration", async () => {
-    // Fetch all configurations
-    const configurations = await getBuildConfigurations({
+    return await askConfigurationBase({
       xcworkspace: options.xcworkspace,
     });
-
-    // Use default configuration if no configurations found
-    if (configurations.length === 0) {
-      return DEFAULT_CONFIGURATION;
-    }
-
-    // Use default configuration if it exists
-    if (configurations.some((configuration) => configuration.name === DEFAULT_CONFIGURATION)) {
-      return DEFAULT_CONFIGURATION;
-    }
-
-    // Give user a choice to select configuration if we don't know wich one to use
-    const selected = await showQuickPick({
-      title: "Select configuration",
-      items: configurations.map((configuration) => {
-        return {
-          label: configuration.name,
-          context: {
-            configuration,
-          },
-        };
-      }),
-    });
-    return selected.context.configuration.name;
   });
 }
 

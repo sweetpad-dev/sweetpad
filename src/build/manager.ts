@@ -6,7 +6,8 @@ import events from "node:events";
 
 type IEventMap = {
   updated: [];
-  defaultSchemeUpdated: [scheme: string | undefined];
+  defaultSchemeForBuildUpdated: [scheme: string | undefined];
+  defaultSchemeForTestingUpdated: [scheme: string | undefined];
 };
 type IEventKey = keyof IEventMap;
 
@@ -48,12 +49,21 @@ export class BuildManager {
     return this.cache;
   }
 
-  getDefaultScheme(): string | undefined {
+  getDefaultSchemeForBuild(): string | undefined {
     return this.context.getWorkspaceState("build.xcodeScheme");
   }
 
-  setDefaultScheme(scheme: string | undefined): void {
+  getDefaultSchemeForTesting(): string | undefined {
+    return this.context.getWorkspaceState("testing.xcodeScheme");
+  }
+
+  setDefaultSchemeForBuild(scheme: string | undefined): void {
     this.context.updateWorkspaceState("build.xcodeScheme", scheme);
-    this.emitter.emit("defaultSchemeUpdated", scheme);
+    this.emitter.emit("defaultSchemeForBuildUpdated", scheme);
+  }
+
+  setDefaultSchemeForTesting(scheme: string | undefined): void {
+    this.context.updateWorkspaceState("testing.xcodeScheme", scheme);
+    this.emitter.emit("defaultSchemeForTestingUpdated", scheme);
   }
 }
