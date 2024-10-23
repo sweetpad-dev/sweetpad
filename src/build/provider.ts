@@ -133,7 +133,11 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
         watchMarker: true,
       });
-    } else if (destination.type === "iOSSimulator" || destination.type === "watchOSSimulator") {
+    } else if (
+      destination.type === "iOSSimulator" ||
+      destination.type === "watchOSSimulator" ||
+      destination.type === "visionOSSimulator"
+    ) {
       await runOniOSSimulator(this.context, terminal, {
         scheme: scheme,
         simulatorId: destination.udid,
@@ -229,7 +233,11 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
         watchMarker: false,
       });
-    } else if (destination.type === "iOSSimulator" || destination.type === "watchOSSimulator") {
+    } else if (
+      destination.type === "iOSSimulator" ||
+      destination.type === "watchOSSimulator" ||
+      destination.type === "visionOSSimulator"
+    ) {
       await runOniOSSimulator(this.context, terminal, {
         scheme: scheme,
         simulatorId: destination.udid,

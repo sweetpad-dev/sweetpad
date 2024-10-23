@@ -1,17 +1,8 @@
 {
   "$schema": "https://biomejs.dev/schemas/1.8.3/schema.json",
   "files": {
-    "include": [
-      "src/**/*.ts",
-      "biome.jsonc",
-      "tests/**/*.ts",
-      "scripts/**/*.ts",
-      "*.json",
-      "*.jsonc",
-      "*.js",
-      "*.mjs"
-    ],
-    "ignore": ["node_modules", "out", ".vscode/*", "tests/*", "package.json"]
+    "include": ["src/**/*.ts", "biome.jsonc", "tests/**/*.ts", "scripts/**/*.ts", "*.json", "*.jsonc", "*.js", "*.mjs"],
+    "ignore": ["node_modules", "out", ".vscode/*", "tests/*", "package.json", "biome.jsonc"]
   },
   "organizeImports": {
     "enabled": true

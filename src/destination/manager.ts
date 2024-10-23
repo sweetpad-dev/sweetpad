@@ -3,9 +3,14 @@ import type { ExtensionContext } from "../common/commands";
 import type { DevicesManager } from "../devices/manager";
 import type { iOSDeviceDestination } from "../devices/types";
 import type { SimulatorsManager } from "../simulators/manager";
-import type { SimulatorDestination, iOSSimulatorDestination, watchOSSimulatorDestination } from "../simulators/types";
-import { DESTINATION_TYPE_PRIORITY, SIMULATOR_TYPE_PRIORITY, SUPPORTED_DESTINATION_PLATFORMS } from "./constants";
+import type {
+  SimulatorDestination,
+  iOSSimulatorDestination,
+  visionOSSimulatorDestination,
+  watchOSSimulatorDestination,
+} from "../simulators/types";
 import type { DestinationPlatform } from "./constants";
+import { DESTINATION_TYPE_PRIORITY, SIMULATOR_TYPE_PRIORITY, SUPPORTED_DESTINATION_PLATFORMS } from "./constants";
 import {
   ALL_DESTINATION_TYPES,
   type Destination,
@@ -120,6 +125,11 @@ export class DestinationsManager {
     return simulators.filter((simulator) => simulator.type === "watchOSSimulator");
   }
 
+  async getvisionOSSimulators(): Promise<visionOSSimulatorDestination[]> {
+    const simulators = await this.simulatorsManager.getSimulators();
+    return simulators.filter((simulator) => simulator.type === "visionOSSimulator");
+  }
+
   async getiOSDevices(): Promise<iOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
     return devices.filter((device) => device.type === "iOSDevice");
@@ -195,6 +205,11 @@ export class DestinationsManager {
       destinations.push(...macosDevcices);
     }
 
+    if (platforms.includes("xrsimulator")) {
+      const simulators = await this.getvisionOSSimulators();
+      destinations.push(...simulators);
+    }
+
     // Most used destinations should be on top of the list
     if (options?.mostUsedSort) {
       const usageStats = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
@@ -236,6 +251,10 @@ export class DestinationsManager {
     if (!destination && types.includes("macOS")) {
       const devices = await this.getmacOSDevices();
       destination = devices.find((device) => device.id === options.destinationId);
+    }
+    if (!destination && types.includes("visionOSSimulator")) {
+      const simulators = await this.getvisionOSSimulators();
+      destination = simulators.find((simulator) => simulator.id === options.destinationId);
     }
     return destination;
   }

@@ -243,6 +243,9 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   if (destination.type === "watchOSSimulator") {
     return `platform=watchOS Simulator,id=${destination.udid}`;
   }
+  if (destination.type === "visionOSSimulator") {
+    return `platform=visionOS Simulator,id=${destination.udid}`;
+  }
   assertUnreachable(destination);
 }
 
@@ -384,7 +387,11 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           configuration: configuration,
           watchMarker: false,
         });
-      } else if (destination.type === "iOSSimulator" || destination.type === "watchOSSimulator") {
+      } else if (
+        destination.type === "iOSSimulator" ||
+        destination.type === "watchOSSimulator" ||
+        destination.type === "visionOSSimulator"
+      ) {
         await runOniOSSimulator(execution.context, terminal, {
           scheme: scheme,
           simulatorId: destination.udid ?? "",
@@ -441,7 +448,11 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
           configuration: configuration,
           watchMarker: false,
         });
-      } else if (destination.type === "iOSSimulator" || destination.type === "watchOSSimulator") {
+      } else if (
+        destination.type === "iOSSimulator" ||
+        destination.type === "watchOSSimulator" ||
+        destination.type === "visionOSSimulator"
+      ) {
         await runOniOSSimulator(execution.context, terminal, {
           scheme: scheme,
           simulatorId: destination.udid ?? "",

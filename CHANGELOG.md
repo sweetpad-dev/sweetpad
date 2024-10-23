@@ -1,8 +1,10 @@
 # Change Log
 
-All notable changes to the "sweetpad" extension will be documented in this file.
+New features, improvements and bug fixes for SweetPad are documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [0.1.38] - 2024-10-23
+
+- Add visionOS simulators support
 
 ## [0.1.37] - 2024-10-05
 

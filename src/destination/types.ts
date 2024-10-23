@@ -1,9 +1,13 @@
 import type { iOSDeviceDestination } from "../devices/types";
-import type { iOSSimulatorDestination, watchOSSimulatorDestination } from "../simulators/types";
+import type {
+  iOSSimulatorDestination,
+  visionOSSimulatorDestination,
+  watchOSSimulatorDestination,
+} from "../simulators/types";
 import type { DestinationPlatform } from "./constants";
 
 // Sometimes it can be called as "platform" or "DestinationPlatform"
-export type DestinationType = "iOSSimulator" | "iOSDevice" | "macOS" | "watchOSSimulator";
+export type DestinationType = "iOSSimulator" | "iOSDevice" | "macOS" | "watchOSSimulator" | "visionOSSimulator";
 
 export type DestinationArch = "arm64" | "x86_64";
 
@@ -13,6 +17,7 @@ export const ALL_DESTINATION_TYPES: DestinationType[] = [
   "macOS",
   "watchOSSimulator",
   // "watchOSDevice",
+  "visionOSSimulator",
 ];
 
 /**
@@ -64,7 +69,8 @@ export type Destination =
   | iOSSimulatorDestination
   | iOSDeviceDestination
   | macOSDestination
-  | watchOSSimulatorDestination;
+  | watchOSSimulatorDestination
+  | visionOSSimulatorDestination;
 
 /**
  * Lightweight representation of a selected destination that can be stored in the workspace state (we can't

@@ -21,6 +21,7 @@ export const SUPPORTED_DESTINATION_PLATFORMS: DestinationPlatform[] = [
   "watchsimulator",
   // "watchos",
   "macosx",
+  "xrsimulator",
 ];
 
 export const DESTINATION_TYPE_PRIORITY: DestinationType[] = [
@@ -29,6 +30,7 @@ export const DESTINATION_TYPE_PRIORITY: DestinationType[] = [
   "watchOSSimulator",
   // "watchOSDevice",
   "macOS",
+  "visionOSSimulator",
 ];
 export const SIMULATOR_TYPE_PRIORITY: SimulatorType[] = [
   "iPhone",

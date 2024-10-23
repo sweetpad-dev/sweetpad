@@ -682,6 +682,13 @@
           "fontCharacter": "\\f488"
         }
       },
+      "sweetpad-square-letter-v": {
+        "description": "Square Letter V",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f4bb"
+        }
+      },
       "sweetpad-square-asterisk": {
         "description": "Square Asterisk",
         "default": {
@@ -757,6 +764,13 @@
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
           "fontCharacter": "\\f8ac"
+        }
+      },
+      "sweetpad-cardboards": {
+        "description": "Cardboards",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\ed74"
         }
       },
       "sweetpad-tools": {
