@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -734,7 +734,7 @@
           "fontCharacter": "\\ebf9"
         }
       },
-      "sweetpad-device-tv-old":{
+      "sweetpad-device-tv-old": {
         "description": "Device TV Old",
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
