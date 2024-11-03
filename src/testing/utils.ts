@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { askConfigurationBase } from "../common/askers";
 import { type XcodeBuildSettings, getSchemes, getTargets } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
-import { ExtensionError } from "../common/errors";
 import { showQuickPick } from "../common/quick-pick";
 import type { Destination } from "../destination/types";
 
@@ -16,7 +15,7 @@ export async function askTestingTarget(
     xcworkspace: string;
     force?: boolean;
   },
-): Promise<string> {
+): Promise<string | null> {
   // Testing target can be cached
   const cachedTarget = context.testingManager.getDefaultTestingTarget();
   if (cachedTarget && !options.force) {
@@ -30,7 +29,7 @@ export async function askTestingTarget(
 
   // Target is required for testing
   if (!targets.length) {
-    throw new ExtensionError("No testing targets found");
+    return null;
   }
 
   // Auto select target if only one found
@@ -81,10 +80,10 @@ export async function askConfigurationForTesting(
  */
 export async function askDestinationToTestOn(
   context: ExtensionContext,
-  buildSettings: XcodeBuildSettings,
+  buildSettings: XcodeBuildSettings | null,
 ): Promise<Destination> {
   // We can remove platforms that are not supported by the project
-  const supportedPlatforms = buildSettings.supportedPlatforms;
+  const supportedPlatforms = buildSettings?.supportedPlatforms;
 
   const destinations = await context.destinationsManager.getDestinations({
     platformFilter: supportedPlatforms,

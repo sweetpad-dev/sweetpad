@@ -2,7 +2,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 import { getXcodeBuildDestinationString } from "../build/commands.js";
 import { askXcodeWorkspacePath, getWorkspacePath } from "../build/utils.js";
-import { getBuildSettings } from "../common/cli/scripts.js";
+import { getOptionalBuildSettings } from "../common/cli/scripts.js";
 import type { ExtensionContext } from "../common/commands.js";
 import { errorReporting } from "../common/error-reporting.js";
 import { exec } from "../common/exec.js";
@@ -355,7 +355,7 @@ export class TestingManager {
     const configuration = await askConfigurationForTesting(this.context, {
       xcworkspace: xcworkspace,
     });
-    const buildSettings = await getBuildSettings({
+    const buildSettings = await getOptionalBuildSettings({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -690,7 +690,7 @@ export class TestingManager {
         continue;
       }
 
-      const testTargetName = await askTestingTarget(this.context, {
+      const defaultTarget = await askTestingTarget(this.context, {
         xcworkspace: xcworkspace,
         title: "Select a target to run tests",
       });
@@ -702,7 +702,7 @@ export class TestingManager {
           xcworkspace: xcworkspace,
           destination: options.destination,
           scheme: scheme,
-          target: testTargetName,
+          defaultTarget: defaultTarget,
         });
       } else {
         await this.runClassTest({
@@ -711,7 +711,7 @@ export class TestingManager {
           scheme: scheme,
           xcworkspace: xcworkspace,
           destination: options.destination,
-          target: testTargetName,
+          defaultTarget: defaultTarget,
         });
       }
     }
@@ -776,9 +776,9 @@ export class TestingManager {
     scheme: string;
     xcworkspace: string;
     destination: Destination;
-    target: string;
+    defaultTarget: string | null;
   }): Promise<void> {
-    const { run, classTest, scheme, target } = options;
+    const { run, classTest, scheme, defaultTarget } = options;
     const className = classTest.id;
 
     const runContext = new XcodebuildTestRunContext({
@@ -789,7 +789,10 @@ export class TestingManager {
 
     // Some test items like SPM packages have a separate target for tests, in other case we use
     // the same target for all selected tests
-    const testTarget = this.testItems.get(classTest)?.spmTarget ?? target;
+    const testTarget = this.testItems.get(classTest)?.spmTarget ?? defaultTarget;
+    if (!testTarget) {
+      throw new Error("Test target is not defined");
+    }
 
     run.started(classTest);
 
@@ -855,9 +858,9 @@ export class TestingManager {
     xcworkspace: string;
     scheme: string;
     destination: Destination;
-    target: string;
+    defaultTarget: string | null;
   }): Promise<void> {
-    const { run: testRun, methodTest, scheme, target } = options;
+    const { run: testRun, methodTest, scheme, defaultTarget } = options;
     const [className, methodName] = methodTest.id.split(".");
 
     const runContext = new XcodebuildTestRunContext({
@@ -866,7 +869,11 @@ export class TestingManager {
 
     // Some test items like SPM packages have a separate target for tests, in other case we use
     // the same target for all selected tests
-    const testTarget = this.testItems.get(methodTest)?.spmTarget ?? target;
+    const testTarget = this.testItems.get(methodTest)?.spmTarget ?? defaultTarget;
+
+    if (!testTarget) {
+      throw new Error("Test target is not defined");
+    }
 
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
 

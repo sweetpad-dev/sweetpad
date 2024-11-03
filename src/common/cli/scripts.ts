@@ -134,12 +134,15 @@ export class XcodeBuildSettings {
   }
 }
 
-export async function getBuildSettings(options: {
+/**
+ * Extract build settings for the given scheme and configuration
+ */
+async function getBuildSettingsBase(options: {
   scheme: string;
   configuration: string;
   sdk: string | undefined;
   xcworkspace: string;
-}) {
+}): Promise<XcodeBuildSettings | null> {
   const derivedDataPath = prepareDerivedDataPath();
 
   const args = [
@@ -178,12 +181,45 @@ export async function getBuildSettings(options: {
     if (line.startsWith("{") || line.startsWith("[")) {
       const data = lines.slice(i).join("\n");
       const output = JSON.parse(data) as BuildSettingsOutput;
+      if (output.length === 0) {
+        return null;
+      }
       return new XcodeBuildSettings(output);
     }
   }
+  return null;
+}
 
-  // todo: imporve logging
-  throw new ExtensionError("Error parsing build settings");
+export async function getOptionalBuildSettings(options: {
+  scheme: string;
+  configuration: string;
+  sdk: string | undefined;
+  xcworkspace: string;
+}): Promise<XcodeBuildSettings | null> {
+  try {
+    return await getBuildSettingsBase(options);
+  } catch (e) {
+    commonLogger.error("Error getting build settings", {
+      error: e,
+    });
+    return null;
+  }
+}
+
+/**
+ * Extract build settings for the given scheme and configuration
+ */
+export async function getBuildSettings(options: {
+  scheme: string;
+  configuration: string;
+  sdk: string | undefined;
+  xcworkspace: string;
+}): Promise<XcodeBuildSettings> {
+  const settings = await getOptionalBuildSettings(options);
+  if (!settings) {
+    throw new ExtensionError("Empty build settings");
+  }
+  return settings;
 }
 
 /**
