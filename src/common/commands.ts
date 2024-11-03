@@ -129,7 +129,7 @@ export class CommandExecution {
     public readonly command: string,
     public readonly callback: (context: CommandExecution, ...args: unknown[]) => Promise<unknown>,
     public context: ExtensionContext,
-  ) { }
+  ) {}
 
   /**
    * Show error message with proper actions
@@ -142,7 +142,7 @@ export class CommandExecution {
   ): Promise<void> {
     const closeAction: ErrorMessageAction = {
       label: "Close",
-      callback: () => { },
+      callback: () => {},
     };
     const showLogsAction: ErrorMessageAction = {
       label: "Show logs",

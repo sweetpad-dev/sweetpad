@@ -1,8 +1,12 @@
+import path from "node:path";
 import * as vscode from "vscode";
 import { getXcodeBuildDestinationString } from "../build/commands.js";
-import { askXcodeWorkspacePath } from "../build/utils.js";
+import { askXcodeWorkspacePath, getWorkspacePath } from "../build/utils.js";
 import { getBuildSettings } from "../common/cli/scripts.js";
 import type { ExtensionContext } from "../common/commands.js";
+import { errorReporting } from "../common/error-reporting.js";
+import { exec } from "../common/exec.js";
+import { isFileExists } from "../common/files.js";
 import { commonLogger } from "../common/logger.js";
 import { runTask } from "../common/tasks.js";
 import type { Destination } from "../destination/types.js";
@@ -101,6 +105,35 @@ function extractCodeBlock(text: string, startIndex: number): string | null {
   return null;
 }
 
+/**
+ * Get all ancestor paths of a childPath that are within the parentPath (including the parentPath).
+ */
+function* getAncestorsPaths(options: {
+  parentPath: string;
+  childPath: string;
+}): Generator<string> {
+  const { parentPath, childPath } = options;
+
+  if (!childPath.startsWith(parentPath)) {
+    return;
+  }
+
+  let currentPath = path.dirname(childPath);
+  while (currentPath !== parentPath) {
+    yield currentPath;
+    currentPath = path.dirname(currentPath);
+  }
+  yield parentPath;
+}
+
+/*
+ * Custom data for test items
+ */
+type TestItemContext = {
+  type: "class" | "method";
+  spmTarget?: string;
+};
+
 export class TestingManager {
   controller: vscode.TestController;
   private _context: ExtensionContext | undefined;
@@ -124,7 +157,16 @@ export class TestingManager {
   // "Test case 'terminal23TesMakarenko1ts.testPerformanceExample()' passed on 'Clone 1 of iPhone 14 - terminal23 (27767)' (0.254 seconds)"
   readonly METHOD_STATUS_REGEXP_IOS = /Test case '(.*)\.(.*)\(\)' (.*)/;
 
+  // Here we are storign additional data for test items. Weak map garanties that we
+  // don't keep the items in memory if they are not used anymore
+  readonly testItems = new WeakMap<vscode.TestItem, TestItemContext>();
+
+  // Root folder of the workspace (VSCode, not Xcode)
+  readonly workspacePath: string;
+
   constructor() {
+    this.workspacePath = getWorkspacePath();
+
     this.controller = vscode.tests.createTestController("sweetpad", "SweetPad");
 
     // Register event listeners for updating test items when documents change or open
@@ -137,23 +179,48 @@ export class TestingManager {
     }
 
     // Default for profile that is slow due to build step, but should work in most cases
-    this.controller.createRunProfile(
-      "Build and Run Tests",
-      vscode.TestRunProfileKind.Run,
-      (request, token) => {
-        return this.buildAndRunTests(request, token);
-      },
-      true, // is default profile
-    );
+    this.createRunProfile({
+      name: "Build and Run Tests",
+      kind: vscode.TestRunProfileKind.Run,
+      isDefault: true,
+      run: (request, token) => this.buildAndRunTests(request, token),
+    });
 
     // Profile for running tests without building, should be faster but you may need to build manually
+    this.createRunProfile({
+      name: "Run Tests Without Building",
+      kind: vscode.TestRunProfileKind.Run,
+      isDefault: false,
+      run: (request, token) => this.runTestsWithoutBuilding(request, token),
+    });
+  }
+
+  /**
+   * Create run profile for the test controller with proper error handling
+   */
+  createRunProfile(options: {
+    name: string;
+    kind: vscode.TestRunProfileKind;
+    isDefault?: boolean;
+    run: (request: vscode.TestRunRequest, token: vscode.CancellationToken) => Promise<void>;
+  }) {
     this.controller.createRunProfile(
-      "Run Tests Without Building",
-      vscode.TestRunProfileKind.Run,
-      (request, token) => {
-        return this.runTestsWithoutBuilding(request, token);
+      options.name,
+      options.kind,
+      async (request, token) => {
+        try {
+          return await options.run(request, token);
+        } catch (error) {
+          const errorMessage: string =
+            error instanceof Error ? error.message : (error?.toString() ?? "[unknown error]");
+          commonLogger.error(errorMessage, {
+            error: error,
+          });
+          errorReporting.captureException(error);
+          throw error;
+        }
       },
-      false,
+      options.isDefault,
     );
   }
 
@@ -178,6 +245,22 @@ export class TestingManager {
 
   getDefaultTestingTarget(): string | undefined {
     return this.context.getWorkspaceState("testing.xcodeTarget");
+  }
+
+  /**
+   * Create a new test item for the given document with additional context data
+   */
+  createTestItem(options: {
+    id: string;
+    label: string;
+    uri: vscode.Uri;
+    type: TestItemContext["type"];
+  }): vscode.TestItem {
+    const testItem = this.controller.createTestItem(options.id, options.label, options.uri);
+    this.testItems.set(testItem, {
+      type: options.type,
+    });
+    return testItem;
   }
 
   /**
@@ -212,10 +295,14 @@ export class TestingManager {
       const classStartIndex = classMatch.index + classMatch[0].length;
       const classPosition = document.positionAt(classMatch.index);
 
-      const classTestItem = this.controller.createTestItem(className, className, document.uri);
+      const classTestItem = this.createTestItem({
+        id: className,
+        label: className,
+        uri: document.uri,
+        type: "class",
+      });
       classTestItem.range = new vscode.Range(classPosition, classPosition);
       this.controller.items.add(classTestItem);
-      //   allItems.set(className, classTestItem);
 
       const classCode = extractCodeBlock(text, classStartIndex - 1); // Start from '{'
 
@@ -235,10 +322,15 @@ export class TestingManager {
         const testStartIndex = classStartIndex + funcMatch.index;
         const position = document.positionAt(testStartIndex);
 
-        const testItem = this.controller.createTestItem(`${className}.${testName}`, testName, document.uri);
+        const testItem = this.createTestItem({
+          id: `${className}.${testName}`,
+          label: testName,
+          uri: document.uri,
+          type: "method",
+        });
+
         testItem.range = new vscode.Range(position, position);
         classTestItem.children.add(testItem);
-        // allItems.set(`${className}.${testName}`, testItem);
       }
     }
   }
@@ -456,6 +548,112 @@ export class TestingManager {
   }
 
   /**
+   * For SPM packages we need to resolve the target name for the test file
+   * from the Package.swift file. For some reason it doesn't use the target name
+   * from xcode project
+   */
+  async resolveSPMTestingTarget(options: {
+    queue: vscode.TestItem[];
+    xcworkspace: string;
+  }) {
+    const { queue, xcworkspace } = options;
+    const workscePath = getWorkspacePath();
+
+    // Cache for resolved target names. Example:
+    // - /folder1/folder2/Tests/MyAppTests -> ""
+    // - /folder1/folder2/Tests -> ""
+    // - /folder1/folder2 -> "MyAppTests"
+    const pathCache = new Map<string, string>();
+
+    for (const test of queue) {
+      const testPath = test.uri?.fsPath;
+      if (!testPath) {
+        continue;
+      }
+
+      // In general all should have context, but check just in case
+      const testContext = this.testItems.get(test);
+      if (!testContext) {
+        continue;
+      }
+
+      // Iterate over all ancestors of the test file path to find SPM file
+      // Example:
+      // /folder1/folder2/folder3/Tests/MyAppTests/MyAppTests.swift
+      // /folder1/folder2/folder3/Tests/MyAppTests/
+      // /folder1/folder2/folder3/Tests
+      // /folder1/folder2/folder3
+      for (const ancestorPath of getAncestorsPaths({
+        parentPath: workscePath,
+        childPath: testPath,
+      })) {
+        const cachedTarget = pathCache.get(ancestorPath);
+        if (cachedTarget !== undefined) {
+          // path doesn't have "Package.swift" file, so move to the next ancestor
+          if (cachedTarget === "") {
+            continue;
+          }
+          testContext.spmTarget = cachedTarget;
+        }
+
+        const packagePath = path.join(ancestorPath, "Package.swift");
+        const isPackageExists = await isFileExists(packagePath);
+        if (!isPackageExists) {
+          pathCache.set(ancestorPath, "");
+          continue;
+        }
+
+        // stop search and try to get the target name from "Package.swift" file
+        try {
+          const stdout = await exec({
+            command: "swift",
+            args: ["package", "dump-package"],
+            cwd: ancestorPath,
+          });
+          const stdoutJson = JSON.parse(stdout);
+
+          const targets = stdoutJson.targets;
+          const testTargetNames = targets
+            ?.filter((target: any) => target.type === "test")
+            .filter((target: any) => {
+              const targetPath = target.path
+                ? path.join(ancestorPath, target.path)
+                : path.join(ancestorPath, "Tests", target.name);
+              return testPath.startsWith(targetPath);
+            })
+            .map((target: any) => target.name);
+
+          if (testTargetNames.length === 1) {
+            const testTargetName = testTargetNames[0];
+            pathCache.set(ancestorPath, testTargetName);
+            testContext.spmTarget = testTargetName;
+            return testTargetName;
+          }
+        } catch (error) {
+          // In case of error, we assume that the target name is is name name of test folder:
+          // - Tests/{targetName}/{testFile}.swift
+          commonLogger.error("Failed to get test target name", {
+            error: error,
+          });
+
+          const relativePath = path.relative(ancestorPath, testPath);
+          const match = relativePath.match(/^Tests\/([^/]+)/);
+          if (match) {
+            const testTargetName = match[1];
+            pathCache.set(ancestorPath, testTargetName);
+            testContext.spmTarget = testTargetName;
+            return match[1];
+          }
+        }
+
+        // Package.json exists but we failed to get the target name, let's move on to the next ancestor
+        pathCache.set(ancestorPath, "");
+        break;
+      }
+    }
+  }
+
+  /**
    * Run selected tests after prepraration and configuration
    */
   async runTests(options: {
@@ -470,14 +668,13 @@ export class TestingManager {
 
     const queue = this.prepareQueueForRun(request);
 
-    const testTargetName = await askTestingTarget(this.context, {
+    await this.resolveSPMTestingTarget({
+      queue: queue,
       xcworkspace: xcworkspace,
-      title: "Select a target to run tests",
     });
 
     commonLogger.debug("Running tests", {
       scheme: scheme,
-      target: testTargetName,
       xcworkspace: xcworkspace,
       tests: queue.map((test) => test.id),
     });
@@ -492,6 +689,11 @@ export class TestingManager {
         run.skipped(test);
         continue;
       }
+
+      const testTargetName = await askTestingTarget(this.context, {
+        xcworkspace: xcworkspace,
+        title: "Select a target to run tests",
+      });
 
       if (test.id.includes(".")) {
         await this.runMethodTest({
@@ -585,6 +787,10 @@ export class TestingManager {
 
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
 
+    // Some test items like SPM packages have a separate target for tests, in other case we use
+    // the same target for all selected tests
+    const testTarget = this.testItems.get(classTest)?.spmTarget ?? target;
+
     run.started(classTest);
 
     try {
@@ -601,7 +807,7 @@ export class TestingManager {
               destinationRaw,
               "-scheme",
               scheme,
-              `-only-testing:${target}/${classTest.id}`,
+              `-only-testing:${testTarget}/${classTest.id}`,
             ],
             onOutputLine: async (output) => {
               console.log("output", output);
@@ -658,6 +864,10 @@ export class TestingManager {
       methodTests: [[methodTest.id, methodTest]],
     });
 
+    // Some test items like SPM packages have a separate target for tests, in other case we use
+    // the same target for all selected tests
+    const testTarget = this.testItems.get(methodTest)?.spmTarget ?? target;
+
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
 
     // Run "xcodebuild" command as a task to see the test output
@@ -675,7 +885,7 @@ export class TestingManager {
               destinationRaw,
               "-scheme",
               scheme,
-              `-only-testing:${target}/${className}/${methodName}`,
+              `-only-testing:${testTarget}/${className}/${methodName}`,
             ],
             onOutputLine: async (output) => {
               await this.parseOutputLine({
