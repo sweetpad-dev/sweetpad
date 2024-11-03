@@ -3,6 +3,7 @@ import { assertUnreachable, checkUnreachable } from "../common/types.js";
 import type { iOSDeviceDestination } from "../devices/types.js";
 import type {
   iOSSimulatorDestination,
+  tvOSSimulatorDestination,
   visionOSSimulatorDestination,
   watchOSSimulatorDestination,
 } from "../simulators/types.js";
@@ -178,6 +179,42 @@ export class visionOSSimulatorDestinationTreeItem extends vscode.TreeItem implem
   }
 }
 
+class tvOSSimulatorDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+  type = "tvOSSimulator" as const;
+  simulator: tvOSSimulatorDestination;
+  provider: DestinationsTreeProvider;
+
+  constructor(options: { simulator: tvOSSimulatorDestination; provider: DestinationsTreeProvider }) {
+    super(options.simulator.name, vscode.TreeItemCollapsibleState.None);
+    this.description = options.simulator.osVersion;
+    this.simulator = options.simulator;
+    this.provider = options.provider;
+
+    const contextPrefix = "destination-item-simulator";
+
+    let color: vscode.ThemeColor | undefined = undefined;
+    this.description = addSelectedMarks({
+      description: this.description,
+      current: this.simulator,
+      selectedForBuild: this.provider.selectedDestinationForBuild,
+      selectedForTesting: this.provider.selectedDestinationForTesting,
+    });
+
+    if (this.simulator.isBooted) {
+      this.contextValue = `${contextPrefix}-booted`; // "destination-item-simulator-booted"
+      color = new vscode.ThemeColor("sweetpad.simulator.booted");
+    } else {
+      this.contextValue = `${contextPrefix}-shutdown`; // "destination-item-simulator-shutdown"
+    }
+
+    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, color);
+  }
+
+  get destination(): tvOSSimulatorDestination {
+    return this.simulator;
+  }
+}
+
 /**
  * Tree item representing a iOS device destination
  */
@@ -249,6 +286,7 @@ export type DestinationTreeItem =
   | iOSDeviceDestinationTreeItem
   | watchOSSimulatorDestinationTreeItem
   | macOSDestinationTreeItem
+  | tvOSSimulatorDestinationTreeItem
   | visionOSSimulatorDestinationTreeItem;
 
 export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
@@ -300,6 +338,9 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
       if (element.type === "visionOSSimulator") {
         return await this.getvisionOSSimulators();
       }
+      if (element.type === "tvOSSimulator") {
+        return await this.gettvOSSimulators();
+      }
       if (element.type === "Recent") {
         return await this.getRecentDestinations();
       }
@@ -334,6 +375,12 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
       if (destination.type === "macOS") {
         return new macOSDestinationTreeItem({
           device: destination,
+          provider: this,
+        });
+      }
+      if (destination.type === "tvOSSimulator") {
+        return new tvOSSimulatorDestinationTreeItem({
+          simulator: destination,
           provider: this,
         });
       }
@@ -402,9 +449,14 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
           icon: "sweetpad-square-letter-v",
         }),
-        // todo: add watchOS simulator
-        // todo: add tvOS device
-        // todo: add tvOS simulator
+        new DestinationGroupTreeItem({
+          label: "tvOS Simulators",
+          type: "tvOSSimulator",
+          contextValue: "destination-group-simulator-tvos",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-square-letter-t",
+        }),
+        // todo: add watchOS, tvOS, visionOS devices
       ],
     );
 
@@ -436,6 +488,17 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
 
     return simulators.map((simulator) => {
       return new watchOSSimulatorDestinationTreeItem({
+        simulator: simulator,
+        provider: this,
+      });
+    });
+  }
+
+  async gettvOSSimulators(): Promise<DestinationTreeItem[]> {
+    const simulators = await this.manager.gettvOSSimulators();
+
+    return simulators.map((simulator) => {
+      return new tvOSSimulatorDestinationTreeItem({
         simulator: simulator,
         provider: this,
       });

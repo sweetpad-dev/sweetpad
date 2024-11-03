@@ -699,6 +699,13 @@
           "fontCharacter": "\\f4bb"
         }
       },
+      "sweetpad-square-letter-t": {
+        "description": "Square Letter T",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f48f"
+        }
+      },
       "sweetpad-square-asterisk": {
         "description": "Square Asterisk",
         "default": {
@@ -725,6 +732,13 @@
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
           "fontCharacter": "\\ebf9"
+        }
+      },
+      "sweetpad-device-tv-old":{
+        "description": "Device TV Old",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f1d3"
         }
       },
       "sweetpad-device-watch-pause": {

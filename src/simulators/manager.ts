@@ -5,6 +5,7 @@ import { assertUnreachable } from "../common/types";
 import {
   type SimulatorDestination,
   iOSSimulatorDestination,
+  tvOSSimulatorDestination,
   visionOSSimulatorDestination,
   watchOSSimulatorDestination,
 } from "./types";
@@ -75,8 +76,16 @@ export class SimulatorsManager {
       });
     }
     if (runtime.os === "tvOS") {
-      // todo: add tvOS simulator support
-      return null;
+      return new tvOSSimulatorDestination({
+        udid: simulator.udid,
+        isAvailable: simulator.isAvailable,
+        state: simulator.state as "Booted",
+        name: simulator.name,
+        os: runtime.os,
+        osVersion: runtime.version,
+        rawDeviceTypeIdentifier: simulator.deviceTypeIdentifier,
+        rawRuntime: rawRuntime,
+      });
     }
     if (runtime.os === "xrOS") {
       return new visionOSSimulatorDestination({

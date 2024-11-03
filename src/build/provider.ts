@@ -142,7 +142,8 @@ class ActionDispatcher {
     } else if (
       destination.type === "iOSSimulator" ||
       destination.type === "watchOSSimulator" ||
-      destination.type === "visionOSSimulator"
+      destination.type === "visionOSSimulator" ||
+      destination.type === "tvOSSimulator"
     ) {
       await runOniOSSimulator(this.context, terminal, {
         scheme: scheme,
@@ -242,7 +243,8 @@ class ActionDispatcher {
     } else if (
       destination.type === "iOSSimulator" ||
       destination.type === "watchOSSimulator" ||
-      destination.type === "visionOSSimulator"
+      destination.type === "visionOSSimulator" ||
+      destination.type === "tvOSSimulator"
     ) {
       await runOniOSSimulator(this.context, terminal, {
         scheme: scheme,

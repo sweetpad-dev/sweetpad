@@ -6,6 +6,7 @@ import type { SimulatorsManager } from "../simulators/manager";
 import type {
   SimulatorDestination,
   iOSSimulatorDestination,
+  tvOSSimulatorDestination,
   visionOSSimulatorDestination,
   watchOSSimulatorDestination,
 } from "../simulators/types";
@@ -126,6 +127,11 @@ export class DestinationsManager {
     return simulators.filter((simulator) => simulator.type === "watchOSSimulator");
   }
 
+  async gettvOSSimulators(): Promise<tvOSSimulatorDestination[]> {
+    const simulators = await this.simulatorsManager.getSimulators();
+    return simulators.filter((simulator) => simulator.type === "tvOSSimulator");
+  }
+
   async getvisionOSSimulators(): Promise<visionOSSimulatorDestination[]> {
     const simulators = await this.simulatorsManager.getSimulators();
     return simulators.filter((simulator) => simulator.type === "visionOSSimulator");
@@ -196,6 +202,11 @@ export class DestinationsManager {
       destinations.push(...simulators);
     }
 
+    if (platforms.includes("appletvsimulator")) {
+      const simulators = await this.gettvOSSimulators();
+      destinations.push(...simulators);
+    }
+
     if (platforms.includes("iphoneos")) {
       const devices = await this.getiOSDevices();
       destinations.push(...devices);
@@ -243,6 +254,10 @@ export class DestinationsManager {
     }
     if (!destination && types.includes("watchOSSimulator")) {
       const simulators = await this.getwatchOSSimulators();
+      destination = simulators.find((simulator) => simulator.id === options.destinationId);
+    }
+    if (!destination && types.includes("tvOSSimulator")) {
+      const simulators = await this.gettvOSSimulators();
       destination = simulators.find((simulator) => simulator.id === options.destinationId);
     }
     if (!destination && types.includes("iOSDevice")) {

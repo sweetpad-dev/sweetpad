@@ -137,6 +137,67 @@ export class watchOSSimulatorDestination implements IDestination {
   }
 }
 
+export class tvOSSimulatorDestination implements IDestination {
+  type = "tvOSSimulator" as const;
+  typeLabel = "tvOS";
+  platform = "appletvsimulator" as const;
+
+  // ex. 10D6D4A3-3A3D-4D3D-8D3D-3D3D3D3D3D3D
+  public udid: string;
+  public isAvailable: boolean;
+  public state: "Booted" | "Shutdown";
+  // ex. Apple TV 4K (2nd generation)
+  public name: string;
+  public os: "tvOS";
+  // ex. 15.2
+  public osVersion: string;
+  // ex. com.apple.CoreSimulator.SimDeviceType.Apple-TV-4K-2nd-gen
+  public rawDeviceTypeIdentifier: string;
+  // ex. com.apple.CoreSimulator.SimRuntime.tvOS-15-2
+  public rawRuntime: string;
+
+  constructor(options: {
+    udid: string;
+    isAvailable: boolean;
+    state: "Booted" | "Shutdown";
+    name: string;
+    os: "tvOS";
+    osVersion: string;
+    rawDeviceTypeIdentifier: string;
+    rawRuntime: string;
+  }) {
+    this.udid = options.udid;
+    this.isAvailable = options.isAvailable;
+    this.state = options.state;
+    this.name = options.name;
+    this.os = options.os;
+    this.osVersion = options.osVersion;
+    this.rawDeviceTypeIdentifier = options.rawDeviceTypeIdentifier;
+    this.rawRuntime = options.rawRuntime;
+  }
+
+  get id(): string {
+    return `tvossimulator-${this.udid}`;
+  }
+
+  get isBooted(): boolean {
+    return this.state === "Booted";
+  }
+
+  get label(): string {
+    // iPhone 12 Pro Max (14.5)
+    return `${this.name} (${this.osVersion})`;
+  }
+
+  get quickPickDetails(): string {
+    return `Type: ${this.typeLabel}, Version: ${this.osVersion}, ID: ${this.udid.toLocaleLowerCase()}`;
+  }
+
+  get icon(): string {
+    return "sweetpad-device-tv-old";
+  }
+}
+
 export class visionOSSimulatorDestination implements IDestination {
   type = "visionOSSimulator" as const;
   typeLabel = "Apple Vision";
@@ -198,4 +259,8 @@ export class visionOSSimulatorDestination implements IDestination {
   }
 }
 
-export type SimulatorDestination = iOSSimulatorDestination | watchOSSimulatorDestination | visionOSSimulatorDestination;
+export type SimulatorDestination =
+  | iOSSimulatorDestination
+  | watchOSSimulatorDestination
+  | visionOSSimulatorDestination
+  | tvOSSimulatorDestination;

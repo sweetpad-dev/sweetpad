@@ -1,13 +1,20 @@
 import type { iOSDeviceDestination } from "../devices/types";
 import type {
   iOSSimulatorDestination,
+  tvOSSimulatorDestination,
   visionOSSimulatorDestination,
   watchOSSimulatorDestination,
 } from "../simulators/types";
 import type { DestinationPlatform } from "./constants";
 
 // Sometimes it can be called as "platform" or "DestinationPlatform"
-export type DestinationType = "iOSSimulator" | "iOSDevice" | "macOS" | "watchOSSimulator" | "visionOSSimulator";
+export type DestinationType =
+  | "iOSSimulator"
+  | "iOSDevice"
+  | "macOS"
+  | "watchOSSimulator"
+  | "tvOSSimulator"
+  | "visionOSSimulator";
 
 export type DestinationArch = "arm64" | "x86_64";
 
@@ -17,6 +24,7 @@ export const ALL_DESTINATION_TYPES: DestinationType[] = [
   "macOS",
   "watchOSSimulator",
   // "watchOSDevice",
+  "tvOSSimulator",
   "visionOSSimulator",
 ];
 
@@ -70,6 +78,7 @@ export type Destination =
   | iOSDeviceDestination
   | macOSDestination
   | watchOSSimulatorDestination
+  | tvOSSimulatorDestination
   | visionOSSimulatorDestination;
 
 /**
