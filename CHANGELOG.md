@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.41] - 2024-11-03
+
+- Add tvOS simulators support
+- Improve test support for SPM packages
+
 ## [0.1.40] - 2024-10-23
 
 - Add separate select functions for testing and launching app
