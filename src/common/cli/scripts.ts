@@ -125,9 +125,12 @@ export class XcodeBuildSettings {
     return this.settings.PRODUCT_BUNDLE_IDENTIFIER;
   }
 
-  get supportedPlatforms(): DestinationPlatform[] {
+  get supportedPlatforms(): DestinationPlatform[] | undefined {
     // ex: ["iphonesimulator", "iphoneos"]
     const platformsRaw = this.settings.SUPPORTED_PLATFORMS; // ex: "iphonesimulator iphoneos"
+    if (!platformsRaw) {
+      return undefined;
+    }
     return platformsRaw.split(" ").map((platform) => {
       return platform as DestinationPlatform;
     });
