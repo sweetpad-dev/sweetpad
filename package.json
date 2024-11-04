@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.1.41",
+  "version": "0.1.42-beta",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -286,11 +286,6 @@
         "icon": "$(clear-all)"
       },
       {
-        "command": "sweetpad.build.test",
-        "title": "SweetPad: Test",
-        "icon": "$(beaker)"
-      },
-      {
         "command": "sweetpad.build.resolveDependencies",
         "title": "SweetPad: Resolve dependencies",
         "icon": "$(sync)"
@@ -309,6 +304,11 @@
         "command": "sweetpad.testing.selectTarget",
         "title": "SweetPad: Select testing target",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.testing.test",
+        "title": "SweetPad: Test",
+        "icon": "$(beaker)"
       },
       {
         "command": "sweetpad.testing.buildForTesting",

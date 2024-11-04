@@ -27,12 +27,12 @@ type WorkspaceStateKey = keyof WorkspaceTypes;
 type SessionStateKey = "NONE_KEY";
 
 export class ExtensionContext {
-  private _context: vscode.ExtensionContext;
+  private readonly _context: vscode.ExtensionContext;
   public destinationsManager: DestinationsManager;
   public toolsManager: ToolsManager;
   public buildManager: BuildManager;
   public testingManager: TestingManager;
-  private _sessionState: Map<SessionStateKey, unknown> = new Map();
+  private readonly _sessionState: Map<SessionStateKey, unknown> = new Map();
 
   constructor(options: {
     context: vscode.ExtensionContext;
@@ -75,7 +75,7 @@ export class ExtensionContext {
   /**
    * State local to the running instance of the extension. It is not persisted across sessions.
    */
-  updateSessionState(key: SessionStateKey, value: unknown | undefined) {
+  updateSessionState(key: SessionStateKey, value?: unknown) {
     this._sessionState.set(key, value);
   }
 

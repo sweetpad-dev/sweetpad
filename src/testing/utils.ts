@@ -1,9 +1,15 @@
 import * as vscode from "vscode";
+import path from "path";
+import fs from "fs";
 import { askConfigurationBase } from "../common/askers";
 import { type XcodeBuildSettings, getSchemes, getTargets } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { showQuickPick } from "../common/quick-pick";
 import type { Destination } from "../destination/types";
+import { getCurrentXcodeWorkspacePath } from '../build/utils';
+import { parseXml, XmlElement } from '@rgrove/parse-xml';
+import type { TestPlan } from './testPlanTypes';
+import { ExtensionError } from '../common/errors';
 
 /**
  * Ask user to select target to build
@@ -173,4 +179,66 @@ export async function askSchemeForTesting(
   const schemeName = scheme.context.scheme.name;
   context.buildManager.setDefaultSchemeForTesting(schemeName);
   return schemeName;
+}
+
+export function parseDefaultTestPlanFile(context: ExtensionContext, rootPath: string): TestPlan {
+  const scheme = context.buildManager.getDefaultSchemeForTesting();
+  const xcworkspacePath = getCurrentXcodeWorkspacePath(context)
+  if (scheme && xcworkspacePath) {
+    const schemePath = path.join(xcworkspacePath, "../xcshareddata/xcschemes", scheme + ".xcscheme");
+    const content = fs.readFileSync(schemePath, "utf-8")
+    const parsed = parseXml(content);
+    const testAction = parsed.root?.
+      children.find((node) => node instanceof XmlElement && node.name === "TestAction") as XmlElement;
+    const testPlanElement = testAction?.children.find((node) => node instanceof XmlElement && node.name === "TestPlans") as XmlElement;
+    const testPlanReference = testPlanElement?.children.find((node) => node instanceof XmlElement && node.name === "TestPlanReference") as XmlElement;
+    const testPlanReferenceContainer = testPlanReference?.attributes['reference'];
+    const [, testPlanPath] = testPlanReferenceContainer.split("container:");
+
+    return JSON.parse(fs.readFileSync(path.join(rootPath, testPlanPath), "utf-8")) as TestPlan;
+  }
+
+  throw new ExtensionError("no scheme or workspace found");
+}
+
+/**
+ * Extracts a code block from the given text starting from the given class name.
+ *
+ * TODO: use a proper Swift parser to find code blocks
+ */
+export function extractCodeBlock(className: string, content: string): string | null {
+  const lines = content.split('\n');
+
+  let codeBlock = [];
+  let stack = 0;
+  let inBlock = false;
+  let foundEntry = false
+
+  for (const line of lines) {
+    foundEntry = foundEntry || line.includes(className)
+
+    if (!foundEntry) {
+      continue
+    }
+
+    if (line.includes('{')) {
+      if (!inBlock) {
+        inBlock = true; // Start of the outermost block
+      }
+      stack++; // Increase stack count for each new block start
+    }
+
+    if (inBlock) {
+      codeBlock.push(line); // Add the line to the code block
+    }
+
+    if (line.includes('}') && inBlock) {
+      stack--; // Decrease stack count for each block end
+      if (stack === 0) {
+        break; // Exit loop after the entire block is captured
+      }
+    }
+  }
+
+  return codeBlock.length > 0 ? codeBlock.join('\n') : null;
 }

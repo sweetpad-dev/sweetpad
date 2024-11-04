@@ -9,9 +9,8 @@ import {
   resolveDependenciesCommand,
   runCommand,
   selectXcodeSchemeForBuildCommand,
-  testCommand,
+  selectXcodeWorkspaceCommand,
 } from "./build/commands.js";
-import { selectXcodeWorkspaceCommand } from "./build/commands.js";
 import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
@@ -47,6 +46,7 @@ import {
   selectTestingTargetCommand,
   selectXcodeSchemeForTestingCommand,
   testWithoutBuildingCommand,
+  testBuildingCommand
 } from "./testing/commands.js";
 import { TestingManager } from "./testing/manager.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
@@ -93,6 +93,9 @@ export function activate(context: vscode.ExtensionContext) {
   destinationsManager.context = _context;
   testingManager.context = _context;
 
+  // Load initial data after setting the context 🚀
+  testingManager.loadTestsFromDefaultScheme();
+
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({
     context: _context,
@@ -130,7 +133,6 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.run", runCommand));
   d(command("sweetpad.build.build", buildCommand));
   d(command("sweetpad.build.clean", cleanCommand));
-  d(command("sweetpad.build.test", testCommand));
   d(command("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
   d(command("sweetpad.build.removeBundleDir", removeBundleDirCommand));
   d(command("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
@@ -139,6 +141,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeForBuildCommand));
 
   // Testing
+  d(command("sweetpad.testing.test", testBuildingCommand));
   d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));
   d(command("sweetpad.testing.testWithoutBuilding", testWithoutBuildingCommand));
   d(command("sweetpad.testing.selectTarget", selectTestingTargetCommand));
