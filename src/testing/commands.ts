@@ -17,12 +17,25 @@ export async function buildForTestingCommand(execution: CommandExecution): Promi
   return await execution.context.testingManager.buildForTestingCommand();
 }
 
+export async function testBuildingCommand(
+  execution: CommandExecution,
+  ...items: vscode.TestItem[]
+): Promise<void> {
+  const actualItems = items.length ? items : [...execution.context.testingManager.controller.items].map(([, item]) => item);
+  const request = new vscode.TestRunRequest(actualItems, [], undefined, undefined);
+  const tokenSource = new vscode.CancellationTokenSource();
+
+  execution.context.testingManager.buildAndRunTests(request, tokenSource.token);
+}
+
 export async function testWithoutBuildingCommand(
   execution: CommandExecution,
   ...items: vscode.TestItem[]
 ): Promise<void> {
-  const request = new vscode.TestRunRequest(items, [], undefined, undefined);
+  const actualItems = items.length ? items : [...execution.context.testingManager.controller.items].map(([, item]) => item);
+  const request = new vscode.TestRunRequest(actualItems, [], undefined, undefined);
   const tokenSource = new vscode.CancellationTokenSource();
+
   execution.context.testingManager.runTestsWithoutBuilding(request, tokenSource.token);
 }
 

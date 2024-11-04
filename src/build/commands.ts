@@ -522,43 +522,6 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
   });
 }
 
-export async function testCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  const scheme =
-    item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to test", xcworkspace: xcworkspace }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
-
-  const buildSettings = await getBuildSettings({
-    scheme: scheme,
-    configuration: configuration,
-    sdk: undefined,
-    xcworkspace: xcworkspace,
-  });
-
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
-  const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
-
-  const sdk = destination.platform;
-
-  await runTask(execution.context, {
-    name: "Test",
-    problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
-    callback: async (terminal) => {
-      await buildApp(execution.context, terminal, {
-        scheme: scheme,
-        sdk: sdk,
-        configuration: configuration,
-        shouldBuild: false,
-        shouldClean: false,
-        shouldTest: true,
-        xcworkspace: xcworkspace,
-        destinationRaw: destinationRaw,
-      });
-    },
-  });
-}
-
 export async function resolveDependencies(context: ExtensionContext, options: { scheme: string; xcworkspace: string }) {
   await runTask(context, {
     name: "Resolve Dependencies",
