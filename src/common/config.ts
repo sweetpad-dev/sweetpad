@@ -8,6 +8,7 @@ type Config = {
   "build.derivedDataPath": string;
   "build.configuration": string;
   "build.arch": "x86_64" | "arm64";
+  "build.allowProvisioningUpdates": boolean;
   "build.args": string[];
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";

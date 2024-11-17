@@ -632,6 +632,11 @@
           "default": null,
           "description": "Configuration to build."
         },
+        "sweetpad.build.allowProvisioningUpdates": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow Xcode to update provisioning profiles."
+        },
         "sweetpad.build.args": {
           "type": "array",
           "items": {
@@ -642,7 +647,7 @@
             "-skipMacroValidation",
             "-disablePackageRepositoryCache"
           ],
-          "description": "Additional arguments to pass to the build command."
+          "description": "Additional arguments to pass to the build command. You can also override the default arguments"
         },
         "sweetpad.testing.configuration": {
           "type": "string",

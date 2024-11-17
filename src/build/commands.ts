@@ -16,6 +16,7 @@ import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
+import { commonLogger } from "../common/logger";
 import { showInputBox } from "../common/quick-pick";
 import { type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
@@ -254,6 +255,136 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   assertUnreachable(destination);
 }
 
+
+
+class XcodeCommandBuilder {
+  NO_VALUE = "__NO_VALUE__";
+
+  private xcodebuild = "xcodebuild";
+  private parameters: {
+    arg: string;
+    value: string | "__NO_VALUE__";
+  }[] = [];
+  private buildSettings: { key: string; value: string }[] = [];
+  private actions: string[] = [];
+
+  addBuildSettings(key: string, value: string) {
+    this.buildSettings.push({
+      key: key,
+      value: value,
+    });
+  }
+
+  addOption(flag: string) {
+    this.parameters.push({
+      arg: flag,
+      value: this.NO_VALUE,
+    });
+  }
+
+  addParameters(arg: string, value: string) {
+    this.parameters.push({
+      arg: arg,
+      value: value,
+    });
+  }
+
+  addAction(action: string) {
+    this.actions.push(action);
+  }
+
+  addAdditionalArgs(args: string[]) {
+    // Cases:
+    // ["-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
+    // ["xcodebuild", "-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
+    // ["ARG1=value1", "ARG2=value2", "ARG3", "ARG4=value4"]
+    // ["xcodebuild", "ARG1=value1", "ARG2=value2", "ARG3", "ARG4=value4"]
+    if (args.length === 0) {
+      return;
+    }
+
+    for (let i = 0; i < args.length; i++) {
+      const current = args[i];
+      const next = args[i + 1];
+      if (current && next && current.startsWith("-") && !next.startsWith("-")) {
+        this.parameters.push({
+          arg: current,
+          value: next,
+        });
+        i++;
+      } else if (current?.startsWith("-")) {
+        this.parameters.push({
+          arg: current,
+          value: this.NO_VALUE,
+        });
+      } else if (current?.includes("=")) {
+        const [arg, value] = current.split("=");
+        this.buildSettings.push({
+          key: arg,
+          value: value,
+        });
+      } else if (["clean", "build", "test"].includes(current)) {
+        this.actions.push(current);
+      } else {
+        commonLogger.warn("Unknown argument", {
+          argument: current,
+          args: args,
+        });
+      }
+    }
+
+    // Remove duplicates, with higher priority for the last occurrence
+    const seenParameters = new Set<string>();
+    this.parameters = this.parameters.slice().reverse().filter((param) => {
+      if (seenParameters.has(param.arg)) {
+        return false;
+      }
+      seenParameters.add(param.arg);
+      return true;
+    }).reverse();
+
+    // Remove duplicates, with higher priority for the last occurrence
+    const seenActions = new Set<string>();
+    this.actions = this.actions.filter((action) => {
+      if (seenActions.has(action)) {
+        return false;
+      }
+      seenActions.add(action);
+      return true;
+    });
+
+    // Remove duplicates, with higher priority for the last occurrence
+    const seenSettings = new Set<string>();
+    this.buildSettings = this.buildSettings.slice().reverse().filter((setting) => {
+      if (seenSettings.has(setting.key)) {
+        return false;
+      }
+      seenSettings.add(setting.key);
+      return true;
+    }).reverse();
+  }
+
+  build(): string[] {
+    const commandParts = [this.xcodebuild];
+
+    for (const { key, value } of this.buildSettings) {
+      commandParts.push(`${key}=${value}`);
+    }
+
+    for (const { arg, value } of this.parameters) {
+      commandParts.push(arg);
+      if (value !== this.NO_VALUE) {
+        commandParts.push(value);
+      }
+    }
+
+    for (const action of this.actions) {
+      commandParts.push(action);
+    }
+    return commandParts;
+  }
+}
+
 export async function buildApp(
   context: ExtensionContext,
   terminal: TaskTerminal,
@@ -273,30 +404,40 @@ export async function buildApp(
   const derivedDataPath = prepareDerivedDataPath();
 
   const arch = getWorkspaceConfig("build.arch") || undefined;
+  const allowProvisioningUpdates = getWorkspaceConfig("build.allowProvisioningUpdates") ?? true;
+
   // ex: ["-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
   const additionalArgs: string[] = getWorkspaceConfig("build.args") || [];
 
-  const commandParts: string[] = [
-    "xcodebuild",
-    ...(arch ? [`ARCHS=${arch}`, `VALID_ARCHS=${arch}`, "ONLY_ACTIVE_ARCH=NO"] : []),
-    "-scheme",
-    options.scheme,
-    "-configuration",
-    options.configuration,
-    "-workspace",
-    options.xcworkspace,
-    "-destination",
-    options.destinationRaw,
-    "-resultBundlePath",
-    bundlePath,
-    "-allowProvisioningUpdates",
-    ...additionalArgs,
-    ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
-    ...(options.shouldClean ? ["clean"] : []),
-    ...(options.shouldBuild ? ["build"] : []),
-    ...(options.shouldTest ? ["test"] : []),
-  ];
+  const command = new XcodeCommandBuilder();
+  if (arch) {
+    command.addBuildSettings("ARCHS", arch);
+    command.addBuildSettings("VALID_ARCHS", arch);
+    command.addBuildSettings("ONLY_ACTIVE_ARCH", "NO");
+  }
+  command.addParameters("-scheme", options.scheme);
+  command.addParameters("-configuration", options.configuration);
+  command.addParameters("-workspace", options.xcworkspace);
+  command.addParameters("-destination", options.destinationRaw);
+  command.addParameters("-resultBundlePath", bundlePath);
+  if (derivedDataPath) {
+    command.addParameters("-derivedDataPath", derivedDataPath)
+  }
+  if (allowProvisioningUpdates) {
+    command.addOption("-allowProvisioningUpdates");
+  }
+  if (options.shouldClean) {
+    command.addAction("clean");
+  }
+  if (options.shouldBuild) {
+    command.addAction("build");
+  }
+  if (options.shouldTest) {
+    command.addAction("test");
+  }
+  command.addAdditionalArgs(additionalArgs);
 
+  const commandParts = command.build();
   const pipes = useXcbeatify ? [{ command: "xcbeautify", args: [], setvbuf: true }] : undefined;
 
   await terminal.execute({
