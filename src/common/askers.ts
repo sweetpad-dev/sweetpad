@@ -1,17 +1,16 @@
-import { getBuildConfigurations, type XcodeConfiguration } from "./cli/scripts";
-import { showInputBox, showQuickPick } from "./quick-pick";
+import { type XcodeConfiguration, getBuildConfigurations } from "./cli/scripts";
+import { showQuickPick } from "./quick-pick";
 
 export const DEFAULT_CONFIGURATION = "Debug";
 
 /**
  * Base function to ask user to select configuration it doesn't use cache nor store selected configuration
- * 
+ *
  * "Debug" configuration is used as default
  */
 export async function askConfigurationBase(options: {
   xcworkspace: string;
 }) {
-
   // Fetch all configurations
   const configurations = await getBuildConfigurations({
     xcworkspace: options.xcworkspace,
@@ -31,7 +30,6 @@ export async function askConfigurationBase(options: {
   return await showConfigurationPicker(configurations);
 }
 
-
 /**
  * Just show quick pick with all configurations and return selected configuration name
  */
@@ -49,7 +47,6 @@ export async function showConfigurationPicker(configurations: XcodeConfiguration
   });
   return selected.context.configuration.name;
 }
-
 
 export async function showYesNoQuestion(options: {
   title: string;

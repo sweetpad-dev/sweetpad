@@ -29,7 +29,6 @@ export async function showQuickPick<T>(options: {
   });
 }
 
-
 export async function showInputBox(options: {
   title: string;
   value?: string;

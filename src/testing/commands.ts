@@ -44,8 +44,6 @@ export async function selectXcodeSchemeForTestingCommand(execution: CommandExecu
   });
 }
 
-
-
 /**
  * Ask user to select configuration for testing
  */

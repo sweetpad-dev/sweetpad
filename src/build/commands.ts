@@ -679,7 +679,6 @@ export async function selectXcodeSchemeForBuildCommand(execution: CommandExecuti
   });
 }
 
-
 /**
  * Ask user to select configuration for build and save it to the build manager cache
  */

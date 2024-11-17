@@ -197,4 +197,4 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
 }
 
-export function deactivate() { }
+export function deactivate() {}

@@ -2,9 +2,9 @@ import * as vscode from "vscode";
 import { askConfigurationBase } from "../common/askers";
 import { type XcodeBuildSettings, getSchemes, getTargets } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
+import { getWorkspaceConfig } from "../common/config";
 import { showQuickPick } from "../common/quick-pick";
 import type { Destination } from "../destination/types";
-import { getWorkspaceConfig } from "../common/config";
 
 /**
  * Ask user to select target to build
@@ -124,8 +124,8 @@ export async function selectDestinationForTesting(
   const destinations = options?.destinations?.length
     ? options.destinations
     : await context.destinationsManager.getDestinations({
-      mostUsedSort: true,
-    });
+        mostUsedSort: true,
+      });
 
   const selected = await showQuickPick<Destination>({
     title: "Select destination to test on",
