@@ -169,6 +169,8 @@ export async function runOniOSDevice(
     args: ["devicectl", "device", "install", "app", "--device", device, targetPath],
   });
 
+  context.updateWorkspaceState("build.lastLaunchedAppPath", targetPath);
+
   await using jsonOuputPath = await tempFilePath(context, {
     prefix: "json",
   });
