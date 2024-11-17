@@ -255,8 +255,6 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   assertUnreachable(destination);
 }
 
-
-
 class XcodeCommandBuilder {
   NO_VALUE = "__NO_VALUE__";
 
@@ -335,13 +333,17 @@ class XcodeCommandBuilder {
 
     // Remove duplicates, with higher priority for the last occurrence
     const seenParameters = new Set<string>();
-    this.parameters = this.parameters.slice().reverse().filter((param) => {
-      if (seenParameters.has(param.arg)) {
-        return false;
-      }
-      seenParameters.add(param.arg);
-      return true;
-    }).reverse();
+    this.parameters = this.parameters
+      .slice()
+      .reverse()
+      .filter((param) => {
+        if (seenParameters.has(param.arg)) {
+          return false;
+        }
+        seenParameters.add(param.arg);
+        return true;
+      })
+      .reverse();
 
     // Remove duplicates, with higher priority for the last occurrence
     const seenActions = new Set<string>();
@@ -355,13 +357,17 @@ class XcodeCommandBuilder {
 
     // Remove duplicates, with higher priority for the last occurrence
     const seenSettings = new Set<string>();
-    this.buildSettings = this.buildSettings.slice().reverse().filter((setting) => {
-      if (seenSettings.has(setting.key)) {
-        return false;
-      }
-      seenSettings.add(setting.key);
-      return true;
-    }).reverse();
+    this.buildSettings = this.buildSettings
+      .slice()
+      .reverse()
+      .filter((setting) => {
+        if (seenSettings.has(setting.key)) {
+          return false;
+        }
+        seenSettings.add(setting.key);
+        return true;
+      })
+      .reverse();
   }
 
   build(): string[] {
@@ -421,7 +427,7 @@ export async function buildApp(
   command.addParameters("-destination", options.destinationRaw);
   command.addParameters("-resultBundlePath", bundlePath);
   if (derivedDataPath) {
-    command.addParameters("-derivedDataPath", derivedDataPath)
+    command.addParameters("-derivedDataPath", derivedDataPath);
   }
   if (allowProvisioningUpdates) {
     command.addOption("-allowProvisioningUpdates");
