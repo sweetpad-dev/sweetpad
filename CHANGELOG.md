@@ -2,6 +2,12 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.42] - 2024-11-17
+
+- Allow to configure and select build configuration
+- Allow to disable "-allowProvisioningUpdates" option
+- Handle duplicated "sweetpad.build.args" parameters
+
 ## [0.1.41] - 2024-11-03
 
 - Add tvOS simulators support
