@@ -306,24 +306,44 @@
         "icon": "$(file-code)"
       },
       {
+        "command": "sweetpad.build.selectXcodeWorkspace",
+        "title": "SweetPad: Select Xcode workspace",
+        "icon": "$(file-directory)"
+      },
+      {
+        "command": "sweetpad.build.selectConfiguration",
+        "title": "SweetPad: Select build configuration",
+        "icon": "$(file-directory)"
+      },
+      {
+        "command": "sweetpad.build.setDefaultScheme",
+        "title": "SweetPad: Set scheme",
+        "icon": "$(file-directory)"
+      },
+      {
         "command": "sweetpad.testing.selectTarget",
-        "title": "SweetPad: Select testing target",
+        "title": "SweetPad.Testing: Select testing target",
         "icon": "$(file-code)"
       },
       {
         "command": "sweetpad.testing.buildForTesting",
-        "title": "SweetPad: Build for testing (without running tests)",
+        "title": "SweetPad.Testing: Build for testing (without running tests)",
         "icon": "$(file-code)"
       },
       {
         "command": "sweetpad.testing.testWithoutBuilding",
-        "title": "SweetPad: Test without building",
+        "title": "SweetPad.Testing: Test without building",
         "icon": "$(repo-sync)"
       },
       {
         "command": "sweetpad.testing.setDefaultScheme",
-        "title": "SweetPad: Set scheme for testing",
+        "title": "SweetPad.Testing: Set scheme for testing",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.testing.selectConfiguration",
+        "title": "SweetPad.Testing: Select configuration for testing",
+        "icon": "$(file-directory)"
       },
       {
         "command": "sweetpad.xcodegen.generate",
@@ -407,16 +427,6 @@
         "enablement": "view == sweetpad.tools.view"
       },
       {
-        "command": "sweetpad.build.selectXcodeWorkspace",
-        "title": "SweetPad: Select Xcode workspace",
-        "icon": "$(file-directory)"
-      },
-      {
-        "command": "sweetpad.build.setDefaultScheme",
-        "title": "SweetPad: Set scheme",
-        "icon": "$(file-directory)"
-      },
-      {
         "command": "sweetpad.system.resetSweetpadCache",
         "title": "SweetPad: Reset Extension Cache",
         "icon": "$(clear-all)"
@@ -448,7 +458,7 @@
       },
       {
         "command": "sweetpad.destinations.selectForTesting",
-        "title": "SweetPad: Select destination for testing",
+        "title": "SweetPad.Testing: Select destination for testing",
         "icon": "$(file-code)"
       }
     ],
@@ -617,6 +627,11 @@
           ],
           "description": "Architecture to build for. Can be usefull for building x86_64 simulator builds on M1 Macs. Usually, you don't need to change this setting."
         },
+        "sweetpad.build.configuration": {
+          "type": "string",
+          "default": null,
+          "description": "Configuration to build."
+        },
         "sweetpad.build.args": {
           "type": "array",
           "items": {
@@ -628,6 +643,11 @@
             "-disablePackageRepositoryCache"
           ],
           "description": "Additional arguments to pass to the build command."
+        },
+        "sweetpad.testing.configuration": {
+          "type": "string",
+          "default": null,
+          "description": "Configuration to build for testing."
         },
         "sweetpad.system.taskExecutor": {
           "type": "string",

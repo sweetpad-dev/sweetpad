@@ -66,4 +66,20 @@ export class BuildManager {
     this.context.updateWorkspaceState("testing.xcodeScheme", scheme);
     this.emitter.emit("defaultSchemeForTestingUpdated", scheme);
   }
+
+  getDefaultConfigurationForBuild(): string | undefined {
+    return this.context.getWorkspaceState("build.xcodeConfiguration");
+  }
+
+  getDefaultConfigurationForTesting(): string | undefined {
+    return this.context.getWorkspaceState("testing.xcodeConfiguration");
+  }
+
+  setDefaultConfigurationForBuild(configuration: string | undefined): void {
+    this.context.updateWorkspaceState("build.xcodeConfiguration", configuration);
+  }
+
+  setDefaultConfigurationForTesting(configuration: string | undefined): void {
+    this.context.updateWorkspaceState("testing.xcodeConfiguration", configuration);
+  }
 }

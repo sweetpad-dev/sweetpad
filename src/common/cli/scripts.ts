@@ -47,7 +47,7 @@ export type XcodeScheme = {
   name: string;
 };
 
-type XcodeConfiguration = {
+export type XcodeConfiguration = {
   name: string;
 };
 

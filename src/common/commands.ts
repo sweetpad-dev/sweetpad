@@ -104,20 +104,11 @@ export class ExtensionContext {
     this.destinationsManager.setWorkspaceDestinationForTesting(undefined);
     this.buildManager.setDefaultSchemeForBuild(undefined);
     this.buildManager.setDefaultSchemeForTesting(undefined);
+    this.buildManager.setDefaultConfigurationForBuild(undefined);
+    this.buildManager.setDefaultConfigurationForTesting(undefined);
 
     void this.buildManager.refresh();
     void this.destinationsManager.refresh();
-  }
-
-  async withCache<T extends WorkspaceStateKey>(key: T, callback: () => Promise<WorkspaceTypes[T]>) {
-    let value = this.getWorkspaceState<T>(key);
-    if (value) {
-      return value;
-    }
-
-    value = await callback();
-    this.updateWorkspaceState(key, value);
-    return value;
   }
 }
 
@@ -129,7 +120,7 @@ export class CommandExecution {
     public readonly command: string,
     public readonly callback: (context: CommandExecution, ...args: unknown[]) => Promise<unknown>,
     public context: ExtensionContext,
-  ) {}
+  ) { }
 
   /**
    * Show error message with proper actions
@@ -142,7 +133,7 @@ export class CommandExecution {
   ): Promise<void> {
     const closeAction: ErrorMessageAction = {
       label: "Close",
-      callback: () => {},
+      callback: () => { },
     };
     const showLogsAction: ErrorMessageAction = {
       label: "Show logs",

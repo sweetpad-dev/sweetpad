@@ -99,8 +99,8 @@ export async function selectDestinationForBuild(
   const destinations = options?.destinations?.length
     ? options.destinations
     : await context.destinationsManager.getDestinations({
-        mostUsedSort: true,
-      });
+      mostUsedSort: true,
+    });
 
   const selected = await showQuickPick<Destination>({
     title: "Select destination to run on",
@@ -276,11 +276,20 @@ export async function askConfiguration(
     xcworkspace: string;
   },
 ): Promise<string> {
-  return await context.withCache("build.xcodeConfiguration", async () => {
-    return await askConfigurationBase({
-      xcworkspace: options.xcworkspace,
-    });
+  const fromConfig = getWorkspaceConfig("build.configuration");
+  if (fromConfig) {
+    return fromConfig;
+  }
+  const cached = context.buildManager.getDefaultConfigurationForBuild();
+  if (cached) {
+    return cached;
+  }
+  const selected = await askConfigurationBase({
+    xcworkspace: options.xcworkspace,
   });
+  context.buildManager.setDefaultConfigurationForBuild(selected);
+  return selected;
+
 }
 
 /**

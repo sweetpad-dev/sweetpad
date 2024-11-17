@@ -6,6 +6,7 @@ type Config = {
   "build.xcbeautifyEnabled": boolean;
   "build.xcodeWorkspacePath": string;
   "build.derivedDataPath": string;
+  "build.configuration": string;
   "build.arch": "x86_64" | "arm64";
   "build.args": string[];
   "system.taskExecutor": "v1" | "v2";
@@ -13,6 +14,7 @@ type Config = {
   "system.enableSentry": boolean;
   "xcodegen.autogenerate": boolean;
   "tuist.autogenerate": boolean;
+  "testing.configuration": string;
 };
 
 type ConfigKey = keyof Config;

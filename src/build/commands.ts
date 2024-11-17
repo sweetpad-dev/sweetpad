@@ -2,8 +2,10 @@ import path from "node:path";
 import * as vscode from "vscode";
 import type { BuildTreeItem } from "./tree";
 
+import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import {
   generateBuildServerConfig,
+  getBuildConfigurations,
   getBuildSettings,
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
@@ -14,7 +16,7 @@ import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
-import { showQuickPick } from "../common/quick-pick";
+import { showInputBox } from "../common/quick-pick";
 import { type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
 import type { Destination } from "../destination/types";
@@ -649,24 +651,10 @@ export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
   const workspace = await selectXcodeWorkspace({
     autoselect: false,
   });
-  const selected = await showQuickPick({
+  const updateAnswer = await showYesNoQuestion({
     title: "Do you want to update path to xcode workspace in the workspace settings (.vscode/settings.json)?",
-    items: [
-      {
-        label: "Yes",
-        context: {
-          answer: true,
-        },
-      },
-      {
-        label: "No",
-        context: {
-          answer: false,
-        },
-      },
-    ],
   });
-  if (selected.context.answer) {
+  if (updateAnswer) {
     const relative = getWorkspaceRelativePath(workspace);
     await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
     execution.context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
@@ -689,4 +677,39 @@ export async function selectXcodeSchemeForBuildCommand(execution: CommandExecuti
     xcworkspace: xcworkspace,
     ignoreCache: true,
   });
+}
+
+
+/**
+ * Ask user to select configuration for build and save it to the build manager cache
+ */
+export async function selectConfigurationForBuildCommand(execution: CommandExecution): Promise<void> {
+  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+  const configurations = await getBuildConfigurations({
+    xcworkspace: xcworkspace,
+  });
+
+  let selected: string | undefined;
+  if (configurations.length === 0) {
+    selected = await showInputBox({
+      title: "No configurations found. Please enter configuration name manually",
+    });
+  } else {
+    selected = await showConfigurationPicker(configurations);
+  }
+
+  if (!selected) {
+    vscode.window.showErrorMessage("Configuration was not selected");
+    return;
+  }
+
+  const saveAnswer = await showYesNoQuestion({
+    title: "Do you want to update configuration in the workspace settings (.vscode/settings.json)?",
+  });
+  if (saveAnswer) {
+    await updateWorkspaceConfig("build.configuration", selected);
+    execution.context.buildManager.setDefaultConfigurationForBuild(undefined);
+  } else {
+    execution.context.buildManager.setDefaultConfigurationForBuild(selected);
+  }
 }

@@ -4,6 +4,7 @@ import { type XcodeBuildSettings, getSchemes, getTargets } from "../common/cli/s
 import type { ExtensionContext } from "../common/commands";
 import { showQuickPick } from "../common/quick-pick";
 import type { Destination } from "../destination/types";
+import { getWorkspaceConfig } from "../common/config";
 
 /**
  * Ask user to select target to build
@@ -68,11 +69,19 @@ export async function askConfigurationForTesting(
     xcworkspace: string;
   },
 ): Promise<string> {
-  return await context.withCache("testing.xcodeConfiguration", async () => {
-    return await askConfigurationBase({
-      xcworkspace: options.xcworkspace,
-    });
+  const fromConfig = getWorkspaceConfig("testing.configuration");
+  if (fromConfig) {
+    return fromConfig;
+  }
+  const cached = context.buildManager.getDefaultConfigurationForTesting();
+  if (cached) {
+    return cached;
+  }
+  const selected = await askConfigurationBase({
+    xcworkspace: options.xcworkspace,
   });
+  context.buildManager.setDefaultConfigurationForTesting(selected);
+  return selected;
 }
 
 /**
@@ -115,8 +124,8 @@ export async function selectDestinationForTesting(
   const destinations = options?.destinations?.length
     ? options.destinations
     : await context.destinationsManager.getDestinations({
-        mostUsedSort: true,
-      });
+      mostUsedSort: true,
+    });
 
   const selected = await showQuickPick<Destination>({
     title: "Select destination to test on",

@@ -10,6 +10,9 @@ type ExtensionErrorOptions = {
   context?: Record<string, unknown>;
 };
 
+/**
+ * Basic generic error for extension. Throw this error if you don't know what to throw.
+ */
 export class ExtensionError extends Error {
   options?: ExtensionErrorOptions;
 
@@ -56,4 +59,4 @@ export class ExecBaseError extends ExtensionError {
 /**
  * Stderr of executing shell command. See: exec
  */
-export class ExecErrror extends ExecBaseError {}
+export class ExecErrror extends ExecBaseError { }
