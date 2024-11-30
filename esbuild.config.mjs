@@ -27,7 +27,7 @@ const config = {
   sourcemap: isSourcemap,
   minify: isMinify,
   define: {
-    GLOBAL_SENTRY_DSN: JSON.stringify(process.env.SENTRY_DSN),
+    GLOBAL_SENTRY_DSN: JSON.stringify(process.env.SENTRY_DSN ?? null),
     GLOBAL_RELEASE_VERSION: isProduction ? JSON.stringify(version) : JSON.stringify("dev"),
   },
   plugins: [
