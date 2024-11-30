@@ -21,7 +21,7 @@ export const SUPPORTED_DESTINATION_PLATFORMS: DestinationPlatform[] = [
   "iphoneos",
   "iphonesimulator",
   "watchsimulator",
-  // "watchos",
+  "watchos",
   "macosx",
   "xrsimulator",
   "appletvsimulator",
@@ -31,7 +31,7 @@ export const DESTINATION_TYPE_PRIORITY: DestinationType[] = [
   "iOSSimulator",
   "iOSDevice",
   "watchOSSimulator",
-  // "watchOSDevice",
+  "watchOSDevice",
   "macOS",
   "visionOSSimulator",
 ];

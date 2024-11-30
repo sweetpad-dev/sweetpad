@@ -63,3 +63,52 @@ export class iOSDeviceDestination implements IDestination {
     return this.device.hardwareProperties.deviceType;
   }
 }
+
+export class watchOSDeviceDestination implements IDestination {
+  type = "watchOSDevice" as const;
+  typeLabel = "watchOS Device";
+  platform = "watchos" as const;
+
+  constructor(public device: DeviceCtlDevice) {
+    this.device = device;
+  }
+
+  get id(): string {
+    return `watchosdevice-${this.udid}`;
+  }
+
+  get icon(): string {
+    if (this.isConnected) {
+      return "sweetpad-device-watch";
+    }
+    return "sweetpad-device-watch-pause";
+  }
+
+  get udid() {
+    return this.device.hardwareProperties.udid;
+  }
+
+  get name() {
+    return this.device.deviceProperties.name;
+  }
+
+  get label(): string {
+    return `${this.name} (${this.osVersion})`;
+  }
+
+  get osVersion() {
+    return this.device.deviceProperties.osVersionNumber;
+  }
+
+  get quickPickDetails(): string {
+    return `Type: ${this.typeLabel}, Version: ${this.osVersion}, ID: ${this.udid.toLocaleLowerCase()}`;
+  }
+
+  get state(): "connected" | "disconnected" | "unavailable" {
+    return this.device.connectionProperties.tunnelState;
+  }
+
+  get isConnected(): boolean {
+    return this.state === "connected";
+  }
+}

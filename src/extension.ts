@@ -173,7 +173,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.simulators.stop", stopSimulatorCommand));
 
   // // Devices
-  d(command("sweetpad.devices.refresh", async () => await destinationsManager.refreshiOSDevices()));
+  d(command("sweetpad.devices.refresh", async () => await destinationsManager.refreshDevices()));
 
   // Desintations
   const destinationBar = new DestinationStatusBar({

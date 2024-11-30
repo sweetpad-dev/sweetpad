@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { assertUnreachable, checkUnreachable } from "../common/types.js";
-import type { iOSDeviceDestination } from "../devices/types.js";
+import type { iOSDeviceDestination, watchOSDeviceDestination } from "../devices/types.js";
 import type {
   iOSSimulatorDestination,
   tvOSSimulatorDestination,
@@ -51,6 +51,7 @@ class DestinationGroupTreeItem extends vscode.TreeItem {
 
     // - destination-group-iOSSimulator
     // - destination-group-iOSDevice
+    // - destination-group-watchOSDevice
     // - destination-group-macOS
     // - destination-group-watchOSSimulator
     // this.contextValue = `destination-group-${this.type}`;
@@ -280,11 +281,48 @@ export class macOSDestinationTreeItem extends vscode.TreeItem implements IDestin
   }
 }
 
+/**
+ * Tree item representing a watchOS device destination
+ */
+export class watchOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+  type = "watchOSDevice" as const;
+  device: watchOSDeviceDestination;
+  provider: DestinationsTreeProvider;
+
+  constructor(options: { device: watchOSDeviceDestination; provider: DestinationsTreeProvider }) {
+    super(options.device.name, vscode.TreeItemCollapsibleState.None);
+    this.device = options.device;
+    this.provider = options.provider;
+
+    this.description = options.device.osVersion;
+    const contextPrefix = "destination-item-watchos";
+
+    this.description = addSelectedMarks({
+      description: this.description,
+      current: this.device,
+      selectedForBuild: this.provider.selectedDestinationForBuild,
+      selectedForTesting: this.provider.selectedDestinationForTesting,
+    });
+
+    this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
+    if (this.device.isConnected) {
+      this.contextValue = `${contextPrefix}-connected`;
+    } else {
+      this.contextValue = `${contextPrefix}-disconnected`;
+    }
+  }
+
+  get destination(): watchOSDeviceDestination {
+    return this.device;
+  }
+}
+
 // Tagged union type for destination tree item (second level)
 export type DestinationTreeItem =
   | iOSSimulatorDestinationTreeItem
   | iOSDeviceDestinationTreeItem
   | watchOSSimulatorDestinationTreeItem
+  | watchOSDeviceDestinationTreeItem
   | macOSDestinationTreeItem
   | tvOSSimulatorDestinationTreeItem
   | visionOSSimulatorDestinationTreeItem;
@@ -341,6 +379,9 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
       if (element.type === "tvOSSimulator") {
         return await this.gettvOSSimulators();
       }
+      if (element.type === "watchOSDevice") {
+        return await this.getWatchOSDevices();
+      }
       if (element.type === "Recent") {
         return await this.getRecentDestinations();
       }
@@ -390,6 +431,12 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           provider: this,
         });
       }
+      if (destination.type === "watchOSDevice") {
+        return new watchOSDeviceDestinationTreeItem({
+          device: destination,
+          provider: this,
+        });
+      }
       checkUnreachable(destination);
       return destination;
     });
@@ -436,6 +483,13 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           icon: "sweetpad-square-letter-d",
         }),
         new DestinationGroupTreeItem({
+          label: "watchOS Devices",
+          type: "watchOSDevice",
+          contextValue: "destination-group-device-watchos",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-square-letter-d",
+        }),
+        new DestinationGroupTreeItem({
           label: "macOS",
           type: "macOS",
           contextValue: "destination-group-macos",
@@ -456,7 +510,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
           icon: "sweetpad-square-letter-t",
         }),
-        // todo: add watchOS, tvOS, visionOS devices
+        // todo: add tvOS, visionOS devices
       ],
     );
 
@@ -521,6 +575,17 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
 
     return device.map((device) => {
       return new iOSDeviceDestinationTreeItem({
+        device: device,
+        provider: this,
+      });
+    });
+  }
+
+  async getWatchOSDevices(): Promise<DestinationTreeItem[]> {
+    const devices = await this.manager.getWatchOSDevices();
+
+    return devices.map((device) => {
+      return new watchOSDeviceDestinationTreeItem({
         device: device,
         provider: this,
       });
