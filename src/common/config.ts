@@ -11,6 +11,7 @@ type Config = {
   "build.allowProvisioningUpdates": boolean;
   "build.args": string[];
   "system.taskExecutor": "v1" | "v2";
+  "system.enableSetvbuf": boolean;
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "system.enableSentry": boolean;
   "xcodegen.autogenerate": boolean;

@@ -10,13 +10,13 @@ import { isFileExists } from "./files";
 
 type TaskExecutor = "v1" | "v2";
 
-type Command = {
+export type Command = {
   command: string;
   args?: string[];
   setvbuf?: boolean;
 };
 
-type CommandOptions = {
+export type CommandOptions = {
   command: string;
   args?: (string | null)[];
   pipes?: Command[];

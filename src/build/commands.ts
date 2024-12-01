@@ -18,7 +18,7 @@ import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { showInputBox } from "../common/quick-pick";
-import { type TaskTerminal, runTask } from "../common/tasks";
+import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
 import type { Destination } from "../destination/types";
 import { getSimulatorByUdid } from "../simulators/utils";
@@ -444,7 +444,11 @@ export async function buildApp(
   command.addAdditionalArgs(additionalArgs);
 
   const commandParts = command.build();
-  const pipes = useXcbeatify ? [{ command: "xcbeautify", args: [], setvbuf: true }] : undefined;
+  let pipes: Command[] | undefined = undefined;
+  if (useXcbeatify) {
+    const isSetvbufEnabled = getWorkspaceConfig("system.enableSetvbuf") ?? false;
+    pipes = [{ command: "xcbeautify", args: [], setvbuf: isSetvbufEnabled }];
+  }
 
   await terminal.execute({
     command: commandParts[0],

@@ -678,6 +678,11 @@
           ],
           "description": "Log level for SweetPad."
         },
+        "sweetpad.system.enableSetvbuf": {
+          "type": "boolean",
+          "default": false,
+          "description": "Experimental: Enable setvbuf for stdout and stderr."
+        },
         "sweetpad.system.enableSentry": {
           "type": "boolean",
           "default": false,
