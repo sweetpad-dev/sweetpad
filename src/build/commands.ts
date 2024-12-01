@@ -557,15 +557,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           xcworkspace: xcworkspace,
           watchMarker: false,
         });
-      } else if (destination.type === "iOSDevice") {
-        await runOniOSDevice(execution.context, terminal, {
-          scheme: scheme,
-          deviceId: destination.udid ?? "",
-          sdk: sdk,
-          configuration: configuration,
-          xcworkspace: xcworkspace,
-        });
-      } else if (destination.type === "watchOSDevice") {
+      } else if (destination.type === "iOSDevice" || destination.type === "watchOSDevice") {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
           deviceId: destination.udid ?? "",
@@ -627,15 +619,7 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
           xcworkspace: xcworkspace,
           watchMarker: false,
         });
-      } else if (destination.type === "iOSDevice") {
-        await runOniOSDevice(execution.context, terminal, {
-          scheme: scheme,
-          deviceId: destination.udid ?? "",
-          sdk: sdk,
-          configuration: configuration,
-          xcworkspace: xcworkspace,
-        });
-      } else if (destination.type === "watchOSDevice") {
+      } else if (destination.type === "iOSDevice" || destination.type === "watchOSDevice") {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
           deviceId: destination.udid ?? "",

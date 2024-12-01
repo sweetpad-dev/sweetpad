@@ -153,7 +153,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
         watchMarker: true,
       });
-    } else if (destination.type === "iOSDevice") {
+    } else if (destination.type === "iOSDevice" || destination.type === "watchOSDevice") {
       await runOniOSDevice(this.context, terminal, {
         scheme: scheme,
         deviceId: destination.id ?? "",
@@ -254,7 +254,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
         watchMarker: false,
       });
-    } else if (destination.type === "iOSDevice") {
+    } else if (destination.type === "iOSDevice" || destination.type === "watchOSDevice") {
       await runOniOSDevice(this.context, terminal, {
         scheme: scheme,
         deviceId: destination.id ?? "",

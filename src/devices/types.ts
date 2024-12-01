@@ -112,3 +112,5 @@ export class watchOSDeviceDestination implements IDestination {
     return this.state === "connected";
   }
 }
+
+export type DeviceDestination = iOSDeviceDestination | watchOSDeviceDestination;

@@ -139,12 +139,12 @@ export class DestinationsManager {
 
   async getiOSDevices(): Promise<iOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
-    return devices.filter((device): device is iOSDeviceDestination => device.type === "iOSDevice");
+    return devices.filter((device) => device.type === "iOSDevice");
   }
 
   async getWatchOSDevices(): Promise<watchOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
-    return devices.filter((device): device is watchOSDeviceDestination => device.type === "watchOSDevice");
+    return devices.filter((device) => device.type === "watchOSDevice");
   }
 
   async getmacOSDevices(): Promise<macOSDestination[]> {
