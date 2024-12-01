@@ -1,8 +1,11 @@
-import { type XcodeScheme, getSchemes } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
-import { getCurrentXcodeWorkspacePath } from "./utils";
-
 import events from "node:events";
+import * as path from "node:path";
+import * as vscode from "vscode";
+import { type XcodeScheme, generateBuildServerConfig, getIsXcodeBuildServerInstalled, getSchemes } from "../common/cli/scripts";
+import type { ExtensionContext } from "../common/commands";
+import { getWorkspaceConfig } from "../common/config";
+import { isFileExists } from "../common/files";
+import { askXcodeWorkspacePath, getCurrentXcodeWorkspacePath, getWorkspacePath, restartSwiftLSP } from "./utils";
 
 type IEventMap = {
   updated: [];
@@ -15,6 +18,14 @@ export class BuildManager {
   private cache: XcodeScheme[] | undefined = undefined;
   private emitter = new events.EventEmitter<IEventMap>();
   public _context: ExtensionContext | undefined = undefined;
+
+  constructor() {
+    this.on("defaultSchemeForBuildUpdated", (scheme: string | undefined) => {
+      void this.generateXcodeBuildServerSettingsOnSchemeChange({
+        scheme: scheme,
+      });
+    });
+  }
 
   on<K extends IEventKey>(event: K, listener: (...args: IEventMap[K]) => void): void {
     this.emitter.on(event, listener as any); // todo: fix this any
@@ -81,5 +92,50 @@ export class BuildManager {
 
   setDefaultConfigurationForTesting(configuration: string | undefined): void {
     this.context.updateWorkspaceState("testing.xcodeConfiguration", configuration);
+  }
+
+  /**
+   * Every time the scheme changes, we need to rebuild the buildServer.json file
+   * for providing the correct build settings to the LSP server.
+   */
+  async generateXcodeBuildServerSettingsOnSchemeChange(options: {
+    scheme: string | undefined;
+  }): Promise<void> {
+
+    if (!options.scheme) {
+      return;
+    }
+
+    const isEnabled = getWorkspaceConfig("xcodebuildserver.autogenerate") ?? true;
+    if (!isEnabled) {
+      return;
+    }
+
+    const buildServerJsonPath = path.join(getWorkspacePath(), "buildServer.json");
+    const isBuildServerJsonExists = await isFileExists(buildServerJsonPath);
+    if (!isBuildServerJsonExists) {
+      return;
+    }
+
+    const isServerInstalled = await getIsXcodeBuildServerInstalled();
+    if (!isServerInstalled) {
+      return;
+    }
+
+    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    await generateBuildServerConfig({
+      xcworkspace: xcworkspace,
+      scheme: options.scheme,
+    });
+    await restartSwiftLSP();
+
+    const isShown = this.context.getWorkspaceState("build.xcodeBuildServerAutogenreateInfoShown") ?? false;
+    if (!isShown) {
+      this.context.updateWorkspaceState("build.xcodeBuildServerAutogenreateInfoShown", true);
+      vscode.window.showInformationMessage(`
+          INFO: "buildServer.json" file is automatically regenerated every time you change the scheme.
+          If you want to disable this feature, you can do it in the settings. This message is shown only once.
+      `);
+    }
   }
 }

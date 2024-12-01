@@ -778,7 +778,6 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
     xcworkspace: xcworkspace,
     scheme: scheme,
   });
-
   await restartSwiftLSP();
 
   vscode.window.showInformationMessage("buildServer.json generated in workspace root");

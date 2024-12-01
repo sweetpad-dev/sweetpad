@@ -15,6 +15,7 @@ type Config = {
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "system.enableSentry": boolean;
   "xcodegen.autogenerate": boolean;
+  "xcodebuildserver.autogenerate": boolean;
   "tuist.autogenerate": boolean;
   "testing.configuration": string;
 };

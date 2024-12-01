@@ -697,6 +697,11 @@
           "type": "boolean",
           "default": false,
           "description": "Watch for new .swift files and regenerate the project using Tuist. Restart VSCode to apply the settings."
+        },
+        "sweetpad.xcodebuildserver.autogenerate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Watch if default scheme is changed and regenerate the build server config"
         }
       }
     },
