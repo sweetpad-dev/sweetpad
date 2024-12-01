@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.44] - 2024-12-01
+
+- Remember app path for iOS device. By @kvaster 🎉
+
 ## [0.1.43] - 2024-12-01
 
 - Disable "setvbuf" by default
