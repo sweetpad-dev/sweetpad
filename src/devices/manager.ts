@@ -1,14 +1,14 @@
 import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
 import { listDevices } from "../common/xcode/devicectl";
-import { iOSDeviceDestination } from "./types";
+import { type DeviceDestination, iOSDeviceDestination, watchOSDeviceDestination } from "./types";
 
 type DeviceManagerEventTypes = {
   updated: [];
 };
 
 export class DevicesManager {
-  private cache: iOSDeviceDestination[] | undefined = undefined;
+  private cache: DeviceDestination[] | undefined = undefined;
   private _context: ExtensionContext | undefined = undefined;
   private emitter = new events.EventEmitter<DeviceManagerEventTypes>();
 
@@ -29,12 +29,22 @@ export class DevicesManager {
     return this._context;
   }
 
-  private async fetchDevices(): Promise<iOSDeviceDestination[]> {
+  private async fetchDevices(): Promise<DeviceDestination[]> {
     const output = await listDevices(this.context);
-    return output.result.devices.map((device) => new iOSDeviceDestination(device));
+    return output.result.devices
+      .map((device) => {
+        if (device.hardwareProperties.deviceType === "appleWatch") {
+          return new watchOSDeviceDestination(device);
+        }
+        if (device.hardwareProperties.deviceType === "iPhone" || device.hardwareProperties.deviceType === "iPad") {
+          return new iOSDeviceDestination(device);
+        }
+        return null; // Unsupported device type
+      })
+      .filter((device) => device !== null);
   }
 
-  async refresh(): Promise<iOSDeviceDestination[]> {
+  async refresh(): Promise<DeviceDestination[]> {
     this.failed = null;
     try {
       this.cache = await this.fetchDevices();
@@ -50,7 +60,7 @@ export class DevicesManager {
     return this.cache;
   }
 
-  async getDevices(options?: { refresh?: boolean }): Promise<iOSDeviceDestination[]> {
+  async getDevices(options?: { refresh?: boolean }): Promise<DeviceDestination[]> {
     if (this.cache === undefined || options?.refresh) {
       return await this.refresh();
     }

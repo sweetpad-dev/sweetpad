@@ -1,7 +1,7 @@
 import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
 import type { DevicesManager } from "../devices/manager";
-import type { iOSDeviceDestination } from "../devices/types";
+import type { iOSDeviceDestination, watchOSDeviceDestination } from "../devices/types";
 import type { SimulatorsManager } from "../simulators/manager";
 import type {
   SimulatorDestination,
@@ -71,13 +71,13 @@ export class DestinationsManager {
     return await this.simulatorsManager.refresh();
   }
 
-  async refreshiOSDevices() {
+  async refreshDevices() {
     await this.devicesManager.refresh();
   }
 
   async refresh() {
     await this.refreshSimulators();
-    await this.refreshiOSDevices();
+    await this.refreshDevices();
   }
 
   isUsageStatsExist(): boolean {
@@ -140,6 +140,11 @@ export class DestinationsManager {
   async getiOSDevices(): Promise<iOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
     return devices.filter((device) => device.type === "iOSDevice");
+  }
+
+  async getWatchOSDevices(): Promise<watchOSDeviceDestination[]> {
+    const devices = await this.devicesManager.getDevices();
+    return devices.filter((device) => device.type === "watchOSDevice");
   }
 
   async getmacOSDevices(): Promise<macOSDestination[]> {
@@ -212,6 +217,11 @@ export class DestinationsManager {
       destinations.push(...devices);
     }
 
+    if (platforms.includes("watchos")) {
+      const devices = await this.getWatchOSDevices();
+      destinations.push(...devices);
+    }
+
     if (platforms.includes("macosx")) {
       const macosDevcices = await this.getmacOSDevices();
       destinations.push(...macosDevcices);
@@ -262,6 +272,10 @@ export class DestinationsManager {
     }
     if (!destination && types.includes("iOSDevice")) {
       const devices = await this.getiOSDevices();
+      destination = devices.find((device) => device.id === options.destinationId);
+    }
+    if (!destination && types.includes("watchOSDevice")) {
+      const devices = await this.getWatchOSDevices();
       destination = devices.find((device) => device.id === options.destinationId);
     }
     if (!destination && types.includes("macOS")) {

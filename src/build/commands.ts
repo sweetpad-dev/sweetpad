@@ -254,7 +254,10 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   if (destination.type === "visionOSSimulator") {
     return `platform=visionOS Simulator,id=${destination.udid}`;
   }
-  assertUnreachable(destination);
+  if (destination.type === "watchOSDevice") {
+    return `platform=watchOS,id=${destination.udid}`;
+  }
+  return assertUnreachable(destination);
 }
 
 class XcodeCommandBuilder {
@@ -560,7 +563,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           xcworkspace: xcworkspace,
           watchMarker: false,
         });
-      } else if (destination.type === "iOSDevice") {
+      } else if (destination.type === "iOSDevice" || destination.type === "watchOSDevice") {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
           deviceId: destination.udid ?? "",
@@ -622,7 +625,7 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
           xcworkspace: xcworkspace,
           watchMarker: false,
         });
-      } else if (destination.type === "iOSDevice") {
+      } else if (destination.type === "iOSDevice" || destination.type === "watchOSDevice") {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
           deviceId: destination.udid ?? "",

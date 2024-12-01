@@ -47,7 +47,7 @@ type DeviceCtlDeviceProperties = {
   rootFileSystemIsWritable: boolean;
 };
 
-export type DeviceCtlDeviceType = "iPhone" | "iPad";
+export type DeviceCtlDeviceType = "iPhone" | "iPad" | "appleWatch";
 
 type DeviceCtlHardwareProperties = {
   cpuType: DeviceCtlCpuType;

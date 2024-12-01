@@ -1,4 +1,4 @@
-import type { iOSDeviceDestination } from "../devices/types";
+import type { iOSDeviceDestination, watchOSDeviceDestination } from "../devices/types";
 import type {
   iOSSimulatorDestination,
   tvOSSimulatorDestination,
@@ -13,6 +13,7 @@ export type DestinationType =
   | "iOSDevice"
   | "macOS"
   | "watchOSSimulator"
+  | "watchOSDevice"
   | "tvOSSimulator"
   | "visionOSSimulator";
 
@@ -23,7 +24,7 @@ export const ALL_DESTINATION_TYPES: DestinationType[] = [
   "iOSDevice",
   "macOS",
   "watchOSSimulator",
-  // "watchOSDevice",
+  "watchOSDevice",
   "tvOSSimulator",
   "visionOSSimulator",
 ];
@@ -78,6 +79,7 @@ export type Destination =
   | iOSDeviceDestination
   | macOSDestination
   | watchOSSimulatorDestination
+  | watchOSDeviceDestination
   | tvOSSimulatorDestination
   | visionOSSimulatorDestination;
 
