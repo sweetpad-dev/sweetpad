@@ -232,18 +232,8 @@ export function isXcbeautifyEnabled() {
 export function getXcodeBuildDestinationString(options: { destination: Destination }): string {
   const destination = options.destination;
 
-  if (destination.type === "macOS") {
-    // note: without arch, xcodebuild will show warning like this:
-    // --- xcodebuild: WARNING: Using the first of multiple matching destinations:
-    // { platform:macOS, arch:arm64, id:00008103-000109910EC3001E, name:My Mac }
-    // { platform:macOS, arch:x86_64, id:00008103-000109910EC3001E, name:My Mac }
-    return `platform=macOS,arch=${destination.arch}`;
-  }
   if (destination.type === "iOSSimulator") {
     return `platform=iOS Simulator,id=${destination.udid}`;
-  }
-  if (destination.type === "iOSDevice") {
-    return `platform=iOS,id=${destination.udid}`;
   }
   if (destination.type === "watchOSSimulator") {
     return `platform=watchOS Simulator,id=${destination.udid}`;
@@ -254,14 +244,24 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   if (destination.type === "visionOSSimulator") {
     return `platform=visionOS Simulator,id=${destination.udid}`;
   }
+  if (destination.type === "macOS") {
+    // note: without arch, xcodebuild will show warning like this:
+    // --- xcodebuild: WARNING: Using the first of multiple matching destinations:
+    // { platform:macOS, arch:arm64, id:00008103-000109910EC3001E, name:My Mac }
+    // { platform:macOS, arch:x86_64, id:00008103-000109910EC3001E, name:My Mac }
+    return `platform=macOS,arch=${destination.arch}`;
+  }
+  if (destination.type === "iOSDevice") {
+    return `platform=iOS,id=${destination.udid}`;
+  }
   if (destination.type === "watchOSDevice") {
     return `platform=watchOS,id=${destination.udid}`;
   }
-  if (destination.type === "visionOSDevice") {
-    return `platform=visionOS,id=${destination.udid}`;
-  }
   if (destination.type === "tvOSDevice") {
     return `platform=tvOS,id=${destination.udid}`;
+  }
+  if (destination.type === "visionOSDevice") {
+    return `platform=visionOS,id=${destination.udid}`;
   }
   return assertUnreachable(destination);
 }
@@ -558,8 +558,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
       } else if (
         destination.type === "iOSSimulator" ||
         destination.type === "watchOSSimulator" ||
-        destination.type === "visionOSSimulator" ||
-        destination.type === "tvOSSimulator"
+        destination.type === "tvOSSimulator" ||
+        destination.type === "visionOSSimulator"
       ) {
         await runOniOSSimulator(execution.context, terminal, {
           scheme: scheme,
@@ -572,8 +572,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
       } else if (
         destination.type === "iOSDevice" ||
         destination.type === "watchOSDevice" ||
-        destination.type === "visionOSDevice" ||
-        destination.type === "tvOSDevice"
+        destination.type === "tvOSDevice" ||
+        destination.type === "visionOSDevice"
       ) {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
@@ -639,8 +639,8 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
       } else if (
         destination.type === "iOSDevice" ||
         destination.type === "watchOSDevice" ||
-        destination.type === "visionOSDevice" ||
-        destination.type === "tvOSDevice"
+        destination.type === "tvOSDevice" ||
+        destination.type === "visionOSDevice"
       ) {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,

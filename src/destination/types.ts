@@ -15,27 +15,27 @@ import type { DestinationPlatform } from "./constants";
 // Sometimes it can be called as "platform" or "DestinationPlatform"
 export type DestinationType =
   | "iOSSimulator"
-  | "iOSDevice"
-  | "macOS"
   | "watchOSSimulator"
-  | "watchOSDevice"
   | "tvOSSimulator"
   | "visionOSSimulator"
-  | "visionOSDevice"
-  | "tvOSDevice";
+  | "macOS"
+  | "iOSDevice"
+  | "watchOSDevice"
+  | "tvOSDevice"
+  | "visionOSDevice";
 
 export type DestinationArch = "arm64" | "x86_64";
 
 export const ALL_DESTINATION_TYPES: DestinationType[] = [
   "iOSSimulator",
-  "iOSDevice",
-  "macOS",
   "watchOSSimulator",
-  "watchOSDevice",
   "tvOSSimulator",
   "visionOSSimulator",
-  "visionOSDevice",
+  "macOS",
+  "iOSDevice",
+  "watchOSDevice",
   "tvOSDevice",
+  "visionOSDevice",
 ];
 
 /**
@@ -85,14 +85,14 @@ export class macOSDestination implements IDestination {
 
 export type Destination =
   | iOSSimulatorDestination
-  | iOSDeviceDestination
-  | macOSDestination
   | watchOSSimulatorDestination
-  | watchOSDeviceDestination
   | tvOSSimulatorDestination
   | visionOSSimulatorDestination
-  | visionOSDeviceDestination
-  | tvOSDeviceDestination;
+  | macOSDestination
+  | iOSDeviceDestination
+  | watchOSDeviceDestination
+  | tvOSDeviceDestination
+  | visionOSDeviceDestination;
 
 /**
  * Lightweight representation of a selected destination that can be stored in the workspace state (we can't

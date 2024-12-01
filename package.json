@@ -706,18 +706,18 @@
       }
     },
     "icons": {
-      "sweetpad-square-letter-s": {
-        "description": "Square Letter S",
+      "sweetpad-square-letter-w": {
+        "description": "Square Letter W",
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
-          "fontCharacter": "\\f48e"
+          "fontCharacter": "\\f491"
         }
       },
-      "sweetpad-square-letter-d": {
-        "description": "Square Letter D",
+      "sweetpad-square-letter-i": {
+        "description": "Square Letter I",
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
-          "fontCharacter": "\\f47f"
+          "fontCharacter": "\\f484"
         }
       },
       "sweetpad-square-letter-m": {
@@ -739,6 +739,41 @@
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
           "fontCharacter": "\\f48f"
+        }
+      },
+      "sweetpad-circle-letter-w": {
+        "description": "Circle Letter W",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f456"
+        }
+      },
+      "sweetpad-circle-letter-i": {
+        "description": "Circle Letter I",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f449"
+        }
+      },
+      "sweetpad-circle-letter-m": {
+        "description": "Circle Letter M",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f44d"
+        }
+      },
+      "sweetpad-circle-letter-v": {
+        "description": "Circle Letter V",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f4ad"
+        }
+      },
+      "sweetpad-circle-letter-t": {
+        "description": "Circle Letter T",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f454"
         }
       },
       "sweetpad-square-asterisk": {

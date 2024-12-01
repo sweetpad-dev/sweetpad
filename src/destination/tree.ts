@@ -55,12 +55,14 @@ class DestinationGroupTreeItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon(options.icon);
 
     // - destination-group-iOSSimulator
+    // - destination-group-watchOSSimulator
+    // - destination-group-tvOSSimulator
+    // - destination-group-visionOSSimulator
+    // - destination-group-macOS
     // - destination-group-iOSDevice
     // - destination-group-watchOSDevice
-    // - destination-group-visionOSDevice
     // - destination-group-tvOSDevice
-    // - destination-group-macOS
-    // - destination-group-watchOSSimulator
+    // - destination-group-visionOSDevice
     // this.contextValue = `destination-group-${this.type}`;
     this.contextValue = options.contextValue;
   }
@@ -324,39 +326,6 @@ export class watchOSDeviceDestinationTreeItem extends vscode.TreeItem implements
   }
 }
 
-export class visionOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
-  type = "visionOSDevice" as const;
-  device: visionOSDeviceDestination;
-  provider: DestinationsTreeProvider;
-
-  constructor(options: { device: visionOSDeviceDestination; provider: DestinationsTreeProvider }) {
-    super(options.device.name, vscode.TreeItemCollapsibleState.None);
-    this.device = options.device;
-    this.provider = options.provider;
-
-    this.description = options.device.osVersion;
-    const contextPrefix = "destination-item-visionos";
-
-    this.description = addSelectedMarks({
-      description: this.description,
-      current: this.device,
-      selectedForBuild: this.provider.selectedDestinationForBuild,
-      selectedForTesting: this.provider.selectedDestinationForTesting,
-    });
-
-    this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
-    if (this.device.isConnected) {
-      this.contextValue = `${contextPrefix}-connected`;
-    } else {
-      this.contextValue = `${contextPrefix}-disconnected`;
-    }
-  }
-
-  get destination(): visionOSDeviceDestination {
-    return this.device;
-  }
-}
-
 export class tvOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
   type = "tvOSDevice" as const;
   device: tvOSDeviceDestination;
@@ -390,17 +359,50 @@ export class tvOSDeviceDestinationTreeItem extends vscode.TreeItem implements ID
   }
 }
 
+export class visionOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+  type = "visionOSDevice" as const;
+  device: visionOSDeviceDestination;
+  provider: DestinationsTreeProvider;
+
+  constructor(options: { device: visionOSDeviceDestination; provider: DestinationsTreeProvider }) {
+    super(options.device.name, vscode.TreeItemCollapsibleState.None);
+    this.device = options.device;
+    this.provider = options.provider;
+
+    this.description = options.device.osVersion;
+    const contextPrefix = "destination-item-visionos";
+
+    this.description = addSelectedMarks({
+      description: this.description,
+      current: this.device,
+      selectedForBuild: this.provider.selectedDestinationForBuild,
+      selectedForTesting: this.provider.selectedDestinationForTesting,
+    });
+
+    this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
+    if (this.device.isConnected) {
+      this.contextValue = `${contextPrefix}-connected`;
+    } else {
+      this.contextValue = `${contextPrefix}-disconnected`;
+    }
+  }
+
+  get destination(): visionOSDeviceDestination {
+    return this.device;
+  }
+}
+
 // Tagged union type for destination tree item (second level)
 export type DestinationTreeItem =
   | iOSSimulatorDestinationTreeItem
-  | iOSDeviceDestinationTreeItem
   | watchOSSimulatorDestinationTreeItem
-  | watchOSDeviceDestinationTreeItem
-  | macOSDestinationTreeItem
   | tvOSSimulatorDestinationTreeItem
   | visionOSSimulatorDestinationTreeItem
-  | visionOSDeviceDestinationTreeItem
-  | tvOSDeviceDestinationTreeItem;
+  | macOSDestinationTreeItem
+  | iOSDeviceDestinationTreeItem
+  | watchOSDeviceDestinationTreeItem
+  | tvOSDeviceDestinationTreeItem
+  | visionOSDeviceDestinationTreeItem;
 
 export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   public manager: DestinationsManager;
@@ -442,26 +444,26 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
       if (element.type === "watchOSSimulator") {
         return await this.getwatchOSSimulators();
       }
-      if (element.type === "iOSDevice") {
-        return await this.getiOSDevices();
-      }
-      if (element.type === "macOS") {
-        return await this.getmacOSDevices();
+      if (element.type === "tvOSSimulator") {
+        return await this.gettvOSSimulators();
       }
       if (element.type === "visionOSSimulator") {
         return await this.getvisionOSSimulators();
       }
-      if (element.type === "tvOSSimulator") {
-        return await this.gettvOSSimulators();
+      if (element.type === "macOS") {
+        return await this.getmacOSDevices();
+      }
+      if (element.type === "iOSDevice") {
+        return await this.getiOSDevices();
       }
       if (element.type === "watchOSDevice") {
         return await this.getWatchOSDevices();
       }
-      if (element.type === "visionOSDevice") {
-        return this.getVisionOSDevices();
-      }
       if (element.type === "tvOSDevice") {
         return this.gettvOSDevices();
+      }
+      if (element.type === "visionOSDevice") {
+        return this.getVisionOSDevices();
       }
       if (element.type === "Recent") {
         return await this.getRecentDestinations();
@@ -488,18 +490,6 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           provider: this,
         });
       }
-      if (destination.type === "iOSDevice") {
-        return new iOSDeviceDestinationTreeItem({
-          device: destination,
-          provider: this,
-        });
-      }
-      if (destination.type === "macOS") {
-        return new macOSDestinationTreeItem({
-          device: destination,
-          provider: this,
-        });
-      }
       if (destination.type === "tvOSSimulator") {
         return new tvOSSimulatorDestinationTreeItem({
           simulator: destination,
@@ -512,20 +502,32 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           provider: this,
         });
       }
+      if (destination.type === "macOS") {
+        return new macOSDestinationTreeItem({
+          device: destination,
+          provider: this,
+        });
+      }
+      if (destination.type === "iOSDevice") {
+        return new iOSDeviceDestinationTreeItem({
+          device: destination,
+          provider: this,
+        });
+      }
       if (destination.type === "watchOSDevice") {
         return new watchOSDeviceDestinationTreeItem({
           device: destination,
           provider: this,
         });
       }
-      if (destination.type === "visionOSDevice") {
-        return new visionOSDeviceDestinationTreeItem({
+      if (destination.type === "tvOSDevice") {
+        return new tvOSDeviceDestinationTreeItem({
           device: destination,
           provider: this,
         });
       }
-      if (destination.type === "tvOSDevice") {
-        return new tvOSDeviceDestinationTreeItem({
+      if (destination.type === "visionOSDevice") {
+        return new visionOSDeviceDestinationTreeItem({
           device: destination,
           provider: this,
         });
@@ -559,49 +561,14 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           type: "iOSSimulator",
           contextValue: "destination-group-simulator-ios",
           collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-          icon: "sweetpad-square-letter-s",
+          icon: "sweetpad-square-letter-i",
         }),
         new DestinationGroupTreeItem({
           label: "watchOS Simulators",
           type: "watchOSSimulator",
           contextValue: "destination-group-simulator-watchos",
           collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-          icon: "sweetpad-square-letter-s",
-        }),
-        new DestinationGroupTreeItem({
-          label: "iOS Devices",
-          type: "iOSDevice",
-          contextValue: "destination-group-device-ios",
-          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-          icon: "sweetpad-square-letter-d",
-        }),
-        new DestinationGroupTreeItem({
-          label: "watchOS Devices",
-          type: "watchOSDevice",
-          contextValue: "destination-group-device-watchos",
-          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-          icon: "sweetpad-square-letter-d",
-        }),
-        new DestinationGroupTreeItem({
-          label: "macOS",
-          type: "macOS",
-          contextValue: "destination-group-macos",
-          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-          icon: "sweetpad-square-letter-m",
-        }),
-        new DestinationGroupTreeItem({
-          label: "visionOS Simulators",
-          type: "visionOSSimulator",
-          contextValue: "destination-group-simulator-visionos",
-          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-          icon: "sweetpad-square-letter-v",
-        }),
-        new DestinationGroupTreeItem({
-          label: "visionOS Devices",
-          type: "visionOSDevice",
-          contextValue: "destination-group-device-visionos",
-          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-          icon: "sweetpad-square-letter-d",
+          icon: "sweetpad-square-letter-w",
         }),
         new DestinationGroupTreeItem({
           label: "tvOS Simulators",
@@ -611,11 +578,46 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           icon: "sweetpad-square-letter-t",
         }),
         new DestinationGroupTreeItem({
+          label: "visionOS Simulators",
+          type: "visionOSSimulator",
+          contextValue: "destination-group-simulator-visionos",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-square-letter-v",
+        }),
+        new DestinationGroupTreeItem({
+          label: "macOS",
+          type: "macOS",
+          contextValue: "destination-group-macos",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-circle-letter-m",
+        }),
+        new DestinationGroupTreeItem({
+          label: "iOS Devices",
+          type: "iOSDevice",
+          contextValue: "destination-group-device-ios",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-circle-letter-i",
+        }),
+        new DestinationGroupTreeItem({
+          label: "watchOS Devices",
+          type: "watchOSDevice",
+          contextValue: "destination-group-device-watchos",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-circle-letter-w",
+        }),
+        new DestinationGroupTreeItem({
           label: "tvOS Devices",
           type: "tvOSDevice",
           contextValue: "destination-group-device-tvos",
           collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-          icon: "sweetpad-square-letter-d",
+          icon: "sweetpad-circle-letter-t",
+        }),
+        new DestinationGroupTreeItem({
+          label: "visionOS Devices",
+          type: "visionOSDevice",
+          contextValue: "destination-group-device-visionos",
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          icon: "sweetpad-circle-letter-v",
         }),
       ],
     );

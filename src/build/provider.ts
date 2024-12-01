@@ -156,8 +156,8 @@ class ActionDispatcher {
     } else if (
       destination.type === "iOSDevice" ||
       destination.type === "watchOSDevice" ||
-      destination.type === "visionOSDevice" ||
-      destination.type === "tvOSDevice"
+      destination.type === "tvOSDevice" ||
+      destination.type === "visionOSDevice"
     ) {
       await runOniOSDevice(this.context, terminal, {
         scheme: scheme,
@@ -262,8 +262,8 @@ class ActionDispatcher {
     } else if (
       destination.type === "iOSDevice" ||
       destination.type === "watchOSDevice" ||
-      destination.type === "visionOSDevice" ||
-      destination.type === "tvOSDevice"
+      destination.type === "tvOSDevice" ||
+      destination.type === "visionOSDevice"
     ) {
       await runOniOSDevice(this.context, terminal, {
         scheme: scheme,

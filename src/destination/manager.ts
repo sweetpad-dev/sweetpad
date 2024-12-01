@@ -153,14 +153,14 @@ export class DestinationsManager {
     return devices.filter((device) => device.type === "watchOSDevice");
   }
 
-  async getVisionOSDevices(): Promise<visionOSDeviceDestination[]> {
-    const devices = await this.devicesManager.getDevices();
-    return devices.filter((device) => device.type === "visionOSDevice");
-  }
-
   async gettvOSDevices(): Promise<tvOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
     return devices.filter((device) => device.type === "tvOSDevice");
+  }
+
+  async getVisionOSDevices(): Promise<visionOSDeviceDestination[]> {
+    const devices = await this.devicesManager.getDevices();
+    return devices.filter((device) => device.type === "visionOSDevice");
   }
 
   async getmacOSDevices(): Promise<macOSDestination[]> {
