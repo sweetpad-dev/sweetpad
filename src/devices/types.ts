@@ -159,4 +159,54 @@ export class visionOSDeviceDestination implements IDestination {
   }
 }
 
-export type DeviceDestination = iOSDeviceDestination | watchOSDeviceDestination | visionOSDeviceDestination;
+export class tvOSDeviceDestination implements IDestination {
+  type = "tvOSDevice" as const;
+  typeLabel = "tvOS Device";
+  platform = "appletvos" as const;
+
+  constructor(public device: DeviceCtlDevice) {
+    this.device = device;
+  }
+
+  get id(): string {
+    return `tvosdevice-${this.udid}`;
+  }
+
+  get icon(): string {
+    return "sweetpad-device-tv-old";
+  }
+
+  get udid() {
+    return this.device.hardwareProperties.udid;
+  }
+
+  get name() {
+    return this.device.deviceProperties.name;
+  }
+
+  get label(): string {
+    return `${this.name} (${this.osVersion})`;
+  }
+
+  get osVersion() {
+    return this.device.deviceProperties.osVersionNumber;
+  }
+
+  get quickPickDetails(): string {
+    return `Type: ${this.typeLabel}, Version: ${this.osVersion}, ID: ${this.udid.toLocaleLowerCase()}`;
+  }
+
+  get state(): "connected" | "disconnected" | "unavailable" {
+    return this.device.connectionProperties.tunnelState;
+  }
+
+  get isConnected(): boolean {
+    return this.state === "connected";
+  }
+}
+
+export type DeviceDestination =
+  | iOSDeviceDestination
+  | watchOSDeviceDestination
+  | visionOSDeviceDestination
+  | tvOSDeviceDestination;

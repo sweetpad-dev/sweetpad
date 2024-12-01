@@ -1,5 +1,6 @@
 import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
+import { checkUnreachable } from "../common/types";
 import { listDevices } from "../common/xcode/devicectl";
 import {
   type DeviceDestination,
@@ -38,15 +39,20 @@ export class DevicesManager {
     const output = await listDevices(this.context);
     return output.result.devices
       .map((device) => {
-        if (device.hardwareProperties.deviceType === "appleWatch") {
+        const deviceType = device.hardwareProperties.deviceType;
+        if (deviceType === "appleWatch") {
           return new watchOSDeviceDestination(device);
         }
-        if (device.hardwareProperties.deviceType === "iPhone" || device.hardwareProperties.deviceType === "iPad") {
+        if (deviceType === "iPhone" || deviceType === "iPad") {
           return new iOSDeviceDestination(device);
         }
-        if (device.hardwareProperties.deviceType === "appleVision") {
+        if (deviceType === "appleVision") {
           return new visionOSDeviceDestination(device);
         }
+        if (deviceType === "appleTV") {
+          return new visionOSDeviceDestination(device);
+        }
+        checkUnreachable(deviceType);
         return null; // Unsupported device type
       })
       .filter((device) => device !== null);

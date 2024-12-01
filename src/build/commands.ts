@@ -260,6 +260,9 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   if (destination.type === "visionOSDevice") {
     return `platform=visionOS,id=${destination.udid}`;
   }
+  if (destination.type === "tvOSDevice") {
+    return `platform=tvOS,id=${destination.udid}`;
+  }
   return assertUnreachable(destination);
 }
 
@@ -569,7 +572,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
       } else if (
         destination.type === "iOSDevice" ||
         destination.type === "watchOSDevice" ||
-        destination.type === "visionOSDevice"
+        destination.type === "visionOSDevice" ||
+        destination.type === "tvOSDevice"
       ) {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
@@ -635,7 +639,8 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
       } else if (
         destination.type === "iOSDevice" ||
         destination.type === "watchOSDevice" ||
-        destination.type === "visionOSDevice"
+        destination.type === "visionOSDevice" ||
+        destination.type === "tvOSDevice"
       ) {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,

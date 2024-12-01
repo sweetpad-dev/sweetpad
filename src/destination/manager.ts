@@ -1,7 +1,13 @@
 import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
+import { checkUnreachable } from "../common/types";
 import type { DevicesManager } from "../devices/manager";
-import type { iOSDeviceDestination, visionOSDeviceDestination, watchOSDeviceDestination } from "../devices/types";
+import type {
+  iOSDeviceDestination,
+  tvOSDeviceDestination,
+  visionOSDeviceDestination,
+  watchOSDeviceDestination,
+} from "../devices/types";
 import type { SimulatorsManager } from "../simulators/manager";
 import type {
   SimulatorDestination,
@@ -152,6 +158,11 @@ export class DestinationsManager {
     return devices.filter((device) => device.type === "visionOSDevice");
   }
 
+  async gettvOSDevices(): Promise<tvOSDeviceDestination[]> {
+    const devices = await this.devicesManager.getDevices();
+    return devices.filter((device) => device.type === "tvOSDevice");
+  }
+
   async getmacOSDevices(): Promise<macOSDestination[]> {
     const currentArch = getMacOSArchitecture() ?? "arm64";
     return [
@@ -202,39 +213,44 @@ export class DestinationsManager {
 
     const platforms = options?.platformFilter ?? SUPPORTED_DESTINATION_PLATFORMS;
 
-    if (platforms.includes("iphonesimulator")) {
-      const simulators = await this.getiOSSimulators();
-      destinations.push(...simulators);
-    }
+    const handledPlatforms = new Set<string>();
+    for (const platform of platforms) {
+      // Skip if already handled to avoid duplicates
+      if (handledPlatforms.has(platform)) {
+        continue;
+      }
+      handledPlatforms.add(platform);
 
-    if (platforms.includes("watchsimulator")) {
-      const simulators = await this.getwatchOSSimulators();
-      destinations.push(...simulators);
-    }
-
-    if (platforms.includes("appletvsimulator")) {
-      const simulators = await this.gettvOSSimulators();
-      destinations.push(...simulators);
-    }
-
-    if (platforms.includes("iphoneos")) {
-      const devices = await this.getiOSDevices();
-      destinations.push(...devices);
-    }
-
-    if (platforms.includes("watchos")) {
-      const devices = await this.getWatchOSDevices();
-      destinations.push(...devices);
-    }
-
-    if (platforms.includes("macosx")) {
-      const macosDevcices = await this.getmacOSDevices();
-      destinations.push(...macosDevcices);
-    }
-
-    if (platforms.includes("xrsimulator")) {
-      const simulators = await this.getvisionOSSimulators();
-      destinations.push(...simulators);
+      if (platform === "macosx") {
+        const devices = await this.getmacOSDevices();
+        destinations.push(...devices);
+      } else if (platform === "iphoneos") {
+        const devices = await this.getiOSDevices();
+        destinations.push(...devices);
+      } else if (platform === "iphonesimulator") {
+        const simulators = await this.getiOSSimulators();
+        destinations.push(...simulators);
+      } else if (platform === "appletvos") {
+        const devices = await this.gettvOSDevices();
+        destinations.push(...devices);
+      } else if (platform === "appletvsimulator") {
+        const simulators = await this.gettvOSSimulators();
+        destinations.push(...simulators);
+      } else if (platform === "watchos") {
+        const devices = await this.getWatchOSDevices();
+        destinations.push(...devices);
+      } else if (platform === "watchsimulator") {
+        const simulators = await this.getwatchOSSimulators();
+        destinations.push(...simulators);
+      } else if (platform === "xros") {
+        const devices = await this.getVisionOSDevices();
+        destinations.push(...devices);
+      } else if (platform === "xrsimulator") {
+        const simulators = await this.getvisionOSSimulators();
+        destinations.push(...simulators);
+      } else {
+        checkUnreachable(platform);
+      }
     }
 
     // Most used destinations should be on top of the list

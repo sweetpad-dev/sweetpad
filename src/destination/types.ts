@@ -1,4 +1,9 @@
-import type { iOSDeviceDestination, visionOSDeviceDestination, watchOSDeviceDestination } from "../devices/types";
+import type {
+  iOSDeviceDestination,
+  tvOSDeviceDestination,
+  visionOSDeviceDestination,
+  watchOSDeviceDestination,
+} from "../devices/types";
 import type {
   iOSSimulatorDestination,
   tvOSSimulatorDestination,
@@ -16,7 +21,8 @@ export type DestinationType =
   | "watchOSDevice"
   | "tvOSSimulator"
   | "visionOSSimulator"
-  | "visionOSDevice";
+  | "visionOSDevice"
+  | "tvOSDevice";
 
 export type DestinationArch = "arm64" | "x86_64";
 
@@ -29,6 +35,7 @@ export const ALL_DESTINATION_TYPES: DestinationType[] = [
   "tvOSSimulator",
   "visionOSSimulator",
   "visionOSDevice",
+  "tvOSDevice",
 ];
 
 /**
@@ -84,7 +91,8 @@ export type Destination =
   | watchOSDeviceDestination
   | tvOSSimulatorDestination
   | visionOSSimulatorDestination
-  | visionOSDeviceDestination;
+  | visionOSDeviceDestination
+  | tvOSDeviceDestination;
 
 /**
  * Lightweight representation of a selected destination that can be stored in the workspace state (we can't
