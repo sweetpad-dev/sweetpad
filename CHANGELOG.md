@@ -5,6 +5,9 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 ## [0.1.45] - 2024-12-01
 
 - Autogenerate `buildServer.json` file when scheme is changed
+- Add visionOS devices support
+- Add tvOS devices support
+- Update icons for destination sidebar panel
 
 ## [0.1.44] - 2024-12-01
 
