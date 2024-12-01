@@ -99,8 +99,8 @@ export async function selectDestinationForBuild(
   const destinations = options?.destinations?.length
     ? options.destinations
     : await context.destinationsManager.getDestinations({
-      mostUsedSort: true,
-    });
+        mostUsedSort: true,
+      });
 
   const selected = await showQuickPick<Destination>({
     title: "Select destination to run on",
@@ -387,4 +387,3 @@ export async function restartSwiftLSP() {
     });
   }
 }
-

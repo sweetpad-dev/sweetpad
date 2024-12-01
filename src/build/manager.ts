@@ -1,7 +1,12 @@
 import events from "node:events";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { type XcodeScheme, generateBuildServerConfig, getIsXcodeBuildServerInstalled, getSchemes } from "../common/cli/scripts";
+import {
+  type XcodeScheme,
+  generateBuildServerConfig,
+  getIsXcodeBuildServerInstalled,
+  getSchemes,
+} from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
@@ -101,7 +106,6 @@ export class BuildManager {
   async generateXcodeBuildServerSettingsOnSchemeChange(options: {
     scheme: string | undefined;
   }): Promise<void> {
-
     if (!options.scheme) {
       return;
     }

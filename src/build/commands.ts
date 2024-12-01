@@ -257,6 +257,9 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   if (destination.type === "watchOSDevice") {
     return `platform=watchOS,id=${destination.udid}`;
   }
+  if (destination.type === "visionOSDevice") {
+    return `platform=visionOS,id=${destination.udid}`;
+  }
   return assertUnreachable(destination);
 }
 
@@ -563,7 +566,11 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           xcworkspace: xcworkspace,
           watchMarker: false,
         });
-      } else if (destination.type === "iOSDevice" || destination.type === "watchOSDevice") {
+      } else if (
+        destination.type === "iOSDevice" ||
+        destination.type === "watchOSDevice" ||
+        destination.type === "visionOSDevice"
+      ) {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
           deviceId: destination.udid ?? "",
@@ -625,7 +632,11 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
           xcworkspace: xcworkspace,
           watchMarker: false,
         });
-      } else if (destination.type === "iOSDevice" || destination.type === "watchOSDevice") {
+      } else if (
+        destination.type === "iOSDevice" ||
+        destination.type === "watchOSDevice" ||
+        destination.type === "visionOSDevice"
+      ) {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
           deviceId: destination.udid ?? "",

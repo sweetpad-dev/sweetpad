@@ -113,4 +113,50 @@ export class watchOSDeviceDestination implements IDestination {
   }
 }
 
-export type DeviceDestination = iOSDeviceDestination | watchOSDeviceDestination;
+export class visionOSDeviceDestination implements IDestination {
+  type = "visionOSDevice" as const;
+  typeLabel = "visionOS Device";
+  platform = "xros" as const;
+
+  constructor(public device: DeviceCtlDevice) {
+    this.device = device;
+  }
+
+  get id(): string {
+    return `visionosdevice-${this.udid}`;
+  }
+
+  get icon(): string {
+    return "sweetpad-cardboards";
+  }
+
+  get udid() {
+    return this.device.hardwareProperties.udid;
+  }
+
+  get name() {
+    return this.device.deviceProperties.name;
+  }
+
+  get label(): string {
+    return `${this.name} (${this.osVersion})`;
+  }
+
+  get osVersion() {
+    return this.device.deviceProperties.osVersionNumber;
+  }
+
+  get quickPickDetails(): string {
+    return `Type: ${this.typeLabel}, Version: ${this.osVersion}, ID: ${this.udid.toLocaleLowerCase()}`;
+  }
+
+  get state(): "connected" | "disconnected" | "unavailable" {
+    return this.device.connectionProperties.tunnelState;
+  }
+
+  get isConnected(): boolean {
+    return this.state === "connected";
+  }
+}
+
+export type DeviceDestination = iOSDeviceDestination | watchOSDeviceDestination | visionOSDeviceDestination;

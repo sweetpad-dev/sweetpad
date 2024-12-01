@@ -1,7 +1,12 @@
 import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
 import { listDevices } from "../common/xcode/devicectl";
-import { type DeviceDestination, iOSDeviceDestination, watchOSDeviceDestination } from "./types";
+import {
+  type DeviceDestination,
+  iOSDeviceDestination,
+  visionOSDeviceDestination,
+  watchOSDeviceDestination,
+} from "./types";
 
 type DeviceManagerEventTypes = {
   updated: [];
@@ -38,6 +43,9 @@ export class DevicesManager {
         }
         if (device.hardwareProperties.deviceType === "iPhone" || device.hardwareProperties.deviceType === "iPad") {
           return new iOSDeviceDestination(device);
+        }
+        if (device.hardwareProperties.deviceType === "appleVision") {
+          return new visionOSDeviceDestination(device);
         }
         return null; // Unsupported device type
       })

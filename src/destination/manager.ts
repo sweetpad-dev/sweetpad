@@ -1,7 +1,7 @@
 import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
 import type { DevicesManager } from "../devices/manager";
-import type { iOSDeviceDestination, watchOSDeviceDestination } from "../devices/types";
+import type { iOSDeviceDestination, visionOSDeviceDestination, watchOSDeviceDestination } from "../devices/types";
 import type { SimulatorsManager } from "../simulators/manager";
 import type {
   SimulatorDestination,
@@ -145,6 +145,11 @@ export class DestinationsManager {
   async getWatchOSDevices(): Promise<watchOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
     return devices.filter((device) => device.type === "watchOSDevice");
+  }
+
+  async getVisionOSDevices(): Promise<visionOSDeviceDestination[]> {
+    const devices = await this.devicesManager.getDevices();
+    return devices.filter((device) => device.type === "visionOSDevice");
   }
 
   async getmacOSDevices(): Promise<macOSDestination[]> {
