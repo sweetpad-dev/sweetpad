@@ -13,6 +13,8 @@ export async function installToolCommand(execution: CommandExecution, item?: Too
   await runTask(execution.context, {
     name: "Install Tool",
     error: "Error installing tool",
+    terminateLocked: false,
+    lock: "sweetpad.tools.install",
     callback: async (terminal) => {
       await terminal.execute({
         command: tool.install.command,

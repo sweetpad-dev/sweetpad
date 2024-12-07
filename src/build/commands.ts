@@ -494,6 +494,9 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
 
   await runTask(execution.context, {
     name: "Build",
+    lock: "sweetpad.build",
+    terminateLocked: true,
+    problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
         scheme: scheme,
@@ -506,7 +509,6 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
         destinationRaw: destinationRaw,
       });
     },
-    problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
   });
 }
 
@@ -535,6 +537,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
 
   await runTask(execution.context, {
     name: "Launch",
+    lock: "sweetpad.build",
+    terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
@@ -613,6 +617,8 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
 
   await runTask(execution.context, {
     name: "Run",
+    lock: "sweetpad.build",
+    terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
       if (destination.type === "macOS") {
@@ -680,6 +686,8 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
 
   await runTask(execution.context, {
     name: "Clean",
+    lock: "sweetpad.build",
+    terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
@@ -717,6 +725,8 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
 
   await runTask(execution.context, {
     name: "Test",
+    lock: "sweetpad.build",
+    terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
       await buildApp(execution.context, terminal, {
@@ -736,6 +746,8 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
 export async function resolveDependencies(context: ExtensionContext, options: { scheme: string; xcworkspace: string }) {
   await runTask(context, {
     name: "Resolve Dependencies",
+    lock: "sweetpad.build",
+    terminateLocked: true,
     callback: async (terminal) => {
       await terminal.execute({
         command: "xcodebuild",

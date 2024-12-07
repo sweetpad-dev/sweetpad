@@ -22,6 +22,8 @@ export async function startSimulatorCommand(execution: CommandExecution, item?: 
 
   await runTask(execution.context, {
     name: "Start Simulator",
+    lock: "sweetpad.simulators",
+    terminateLocked: true,
     callback: async (terminal) => {
       await terminal.execute({
         command: "xcrun",
@@ -51,6 +53,8 @@ export async function stopSimulatorCommand(execution: CommandExecution, item?: i
 
   await runTask(execution.context, {
     name: "Stop Simulator",
+    lock: "sweetpad.simulators",
+    terminateLocked: true,
     callback: async (terminal) => {
       await terminal.execute({
         command: "xcrun",
@@ -69,6 +73,8 @@ export async function openSimulatorCommand(execution: CommandExecution) {
   await runTask(execution.context, {
     name: "Open Simulator",
     error: "Could not open simulator app",
+    lock: "sweetpad.simulators",
+    terminateLocked: true,
     callback: async (terminal) => {
       await terminal.execute({
         command: "open",
@@ -89,6 +95,8 @@ export async function removeSimulatorCacheCommand(execution: CommandExecution) {
   await runTask(execution.context, {
     name: "Remove Simulator Cache",
     error: "Error removing simulator cache",
+    lock: "sweetpad.build",
+    terminateLocked: true,
     callback: async (terminal) => {
       await terminal.execute({
         command: "rm",

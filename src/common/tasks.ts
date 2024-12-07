@@ -473,10 +473,23 @@ async function runTaskV2(
     error?: string;
     callback: (terminal: TaskTerminal) => Promise<void>;
     problemMatchers?: string[];
+    lock: string;
+    terminateLocked: boolean;
   },
 ): Promise<void> {
+  // Termiate all previous tasks with the same lockId
+  if (options.terminateLocked) {
+    const tasks = vscode.tasks.taskExecutions.filter((task) => task.task.definition.lockId === options.lock);
+    for (const task of tasks) {
+      task.terminate();
+    }
+  }
+
   const task = new vscode.Task(
-    { type: "custom" },
+    {
+      type: "custom",
+      lockId: options.lock,
+    },
     vscode.TaskScope.Workspace,
     options.name,
     options.source ?? "sweetpad",
@@ -519,8 +532,10 @@ export async function runTask(
     name: string;
     source?: string;
     error?: string;
-    callback: (terminal: TaskTerminal) => Promise<void>;
     problemMatchers?: string[];
+    lock: string;
+    terminateLocked: boolean;
+    callback: (terminal: TaskTerminal) => Promise<void>;
   },
 ): Promise<void> {
   const name = getTaskExecutorName();

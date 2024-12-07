@@ -399,6 +399,8 @@ export class TestingManager {
 
     await runTask(this.context, {
       name: "sweetpad.build.build",
+      lock: "sweetpad.build",
+      terminateLocked: true,
       callback: async (terminal) => {
         await terminal.execute({
           command: "xcodebuild",
@@ -799,6 +801,8 @@ export class TestingManager {
     try {
       await runTask(this.context, {
         name: "sweetpad.build.test",
+        lock: "sweetpad.build",
+        terminateLocked: true,
         callback: async (terminal) => {
           await terminal.execute({
             command: "xcodebuild",
@@ -880,6 +884,8 @@ export class TestingManager {
     // Run "xcodebuild" command as a task to see the test output
     await runTask(this.context, {
       name: "sweetpad.build.test",
+      lock: "sweetpad.build",
+      terminateLocked: true,
       callback: async (terminal) => {
         try {
           await terminal.execute({
