@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.46] - 2024-12-07
+
+- Terminate previous build task before starting a new one
+
 ## [0.1.45] - 2024-12-01
 
 - Autogenerate `buildServer.json` file when scheme is changed
