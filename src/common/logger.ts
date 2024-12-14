@@ -24,8 +24,7 @@ interface Message {
 
 /**
  * Logger is a wrapper around vscode.OutputChannel that provides a simple way to
- * log messages to the SweetPad output channel. Messages are formatted as JSON
- * and include a timestamp, message type, and any additional context.
+ * log messages to the SweetPad output channel
  */
 export class Logger {
   private outputChannel: vscode.OutputChannel;
@@ -41,8 +40,68 @@ export class Logger {
     this.maxMessages = 1000;
   }
 
-  private format(data: Message) {
-    return JSON.stringify(data, null, 2);
+  /**
+   * Formats a log message as a YAML-like block:
+   *
+   * ---
+   * time: 2024-12-31T23:59:59.000Z
+   * level: INFO
+   * message: "Something happened"
+   * stackTrace: |
+   *   Error: Some error
+   *     at someFile.js:123
+   * context:
+   *   foo: "bar"
+   *   count: 42
+   */
+  private format(data: Message): string {
+    const levelName = LogLevel[data.level].toUpperCase();
+    const { message, level, time, stackTrace, ...context } = data;
+
+    const lines: string[] = ["---"];
+    lines.push(`time: ${time}`);
+    lines.push(`level: ${levelName}`);
+    lines.push(`message: "${message}"`);
+
+    if (stackTrace && typeof stackTrace === "string" && stackTrace.trim().length > 0) {
+      lines.push("stackTrace: |");
+      for (const stackLine of stackTrace.split("\n")) {
+        lines.push(`  ${stackLine}`);
+      }
+    }
+
+    if (Object.keys(context).length > 0) {
+      lines.push("context:");
+      for (const [key, value] of Object.entries(context)) {
+        lines.push(`  ${key}: ${this.formatValue(value)}`);
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Converts a value to a YAML-friendly string without escaping double quotes.
+   */
+  private formatValue(value: unknown): string {
+    if (value === null || value === undefined) {
+      return "null";
+    }
+
+    if (typeof value === "object") {
+      try {
+        const str = JSON.stringify(value);
+        return `${str}`;
+      } catch {
+        return `${String(value)}`;
+      }
+    }
+
+    if (typeof value === "string") {
+      return `${value}`;
+    }
+
+    return String(value);
   }
 
   private addMessage(data: Message) {
@@ -94,7 +153,7 @@ export class Logger {
     Logger.setLevel(vscode.workspace.getConfiguration("sweetpad").get<string>("system.logLevel") ?? "info");
   }
 
-  debug(message: string, context: Context) {
+  debug(message: string, context: Context = {}) {
     this.addMessage({
       message: message,
       level: LogLevel.debug,
@@ -103,7 +162,7 @@ export class Logger {
     });
   }
 
-  log(message: string, context: Context) {
+  log(message: string, context: Context = {}) {
     this.addMessage({
       message: message,
       level: LogLevel.info,
@@ -112,18 +171,19 @@ export class Logger {
     });
   }
 
-  error(message: string, context: Context & { error: unknown | null }) {
+  error(message: string, context: Context & { error?: unknown } = {}) {
     const stackTrace = context.error instanceof Error ? (context.error.stack ?? "") : "";
+    const { error, ...restContext } = context;
     this.addMessage({
       message: message,
       level: LogLevel.error,
       time: this.getNow(),
       stackTrace: stackTrace,
-      ...context,
+      ...restContext,
     });
   }
 
-  warn(message: string, context: Context) {
+  warn(message: string, context: Context = {}) {
     this.addMessage({
       message: message,
       level: LogLevel.warning,
@@ -141,7 +201,7 @@ export class Logger {
   }
 
   lastFormatted(n: number): string {
-    return this.messages.slice(-n).map(this.format).join("\n");
+    return this.messages.slice(-n).map(this.format.bind(this)).join("\n");
   }
 }
 
