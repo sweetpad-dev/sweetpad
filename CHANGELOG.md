@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.47] - 2024-12-19
+
+- Improve logging
+- Add diagnose command to help with troubleshooting
+
 ## [0.1.46] - 2024-12-07
 
 - Terminate previous build task before starting a new one
