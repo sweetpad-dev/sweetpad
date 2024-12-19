@@ -4,6 +4,7 @@ import type { BuildTreeItem } from "./tree";
 
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import {
+  type XcodeScheme,
   generateBuildServerConfig,
   getBuildConfigurations,
   getBuildSettings,
@@ -13,7 +14,7 @@ import {
 } from "../common/cli/scripts";
 import type { CommandExecution, ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
-import { ExtensionError } from "../common/errors";
+import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
 import { commonLogger } from "../common/logger";
@@ -28,6 +29,9 @@ import {
   askDestinationToRunOn,
   askSchemeForBuild,
   askXcodeWorkspacePath,
+  detectXcodeWorkspacesPaths,
+  getCurrentXcodeWorkspacePath,
+  getWorkspacePath,
   prepareBundleDir,
   prepareDerivedDataPath,
   prepareStoragePath,
@@ -894,4 +898,120 @@ export async function selectConfigurationForBuildCommand(execution: CommandExecu
   } else {
     execution.context.buildManager.setDefaultConfigurationForBuild(selected);
   }
+}
+
+export async function diagnoseBuildSetupCommand(execution: CommandExecution): Promise<void> {
+  const context = execution.context;
+
+  await runTask(context, {
+    name: "Diagnose Build Setup",
+    lock: "sweetpad.build",
+    terminateLocked: true,
+    callback: async (terminal) => {
+      const _write = (message: string) =>
+        terminal.write(message, {
+          newLine: true,
+        });
+
+      const _writeQuote = (message: string) => {
+        const splited = message.split("\n");
+        for (const line of splited) {
+          _write(`   ${line}`);
+        }
+      };
+
+      _write("Sweetpad: Diagnose Build Setup");
+      _write("================================");
+
+      const hostPlatform = process.platform;
+      _write("🔎 Checking OS");
+      if (hostPlatform !== "darwin") {
+        _write(
+          `❌ Host platform ${hostPlatform} is not supported. This extension depends on Xcode which is available only on macOS`,
+        );
+        return;
+      }
+      _write(`✅ Host platform: ${hostPlatform}\n`);
+      _write("================================");
+
+      const workspacePath = getWorkspacePath();
+      _write("🔎 Checking VS Code workspace path");
+      _write(`✅ VSCode workspace path: ${workspacePath}\n`);
+      _write("================================");
+
+      const xcWorkspacePath = getCurrentXcodeWorkspacePath(context);
+      _write("🔎 Checking current xcode worskpace path");
+      _write(`✅ Xcode workspace path: ${xcWorkspacePath ?? "<project-root>"}\n`);
+      _write("================================");
+
+      _write("🔎 Getting schemes");
+      let schemes: XcodeScheme[] = [];
+      try {
+        schemes = await context.buildManager.getSchemas({ refresh: true });
+      } catch (e) {
+        _write("❌ Getting schemes failed");
+        if (e instanceof ExecBaseError) {
+          const strerr = e.options?.context?.stderr as string | undefined;
+          if (
+            strerr?.startsWith("xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory")
+          ) {
+            _write("❌ Xcode build tools are not activated");
+            const isXcodeExists = await isFileExists("/Applications/Xcode.app");
+            if (!isXcodeExists) {
+              _write("❌ Xcode is not installed");
+              _write("🌼 Try this:");
+              _write("   1. Download Xcode from App Store https://appstore.com/mac/apple/xcode");
+              _write("   2. Accept the Terms and Conditions");
+              _write("   3. Ensure Xcode app is in the /Applications directory (NOT /Users/{user}/Applications)");
+              _write("   4. Run command `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`");
+              _write("   5. Restart VS Code");
+              _write("🌼 See more: https://stackoverflow.com/a/17980786/7133756");
+              return;
+            }
+            _write("✅ Xcode is installed and located in /Applications/Xcode.app");
+            _write("🌼 Try to activate Xcode:");
+            _write("   1. Execute this command `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`");
+            _write("   2. Restart VS Code");
+            _write("🌼 See more: https://stackoverflow.com/a/17980786/7133756\n");
+            return;
+          }
+          if (strerr?.includes("does not contain an Xcode project, workspace or package")) {
+            _write("❌ Xcode workspace not found");
+            _write("❌ Error message from xcodebuild:");
+            _writeQuote(strerr);
+            _write(
+              "🌼 Check whether your project folder contains folders with the extensions .xcodeproj or .xcworkspace",
+            );
+            const xcodepaths = await detectXcodeWorkspacesPaths();
+            if (xcodepaths.length > 0) {
+              _write("✅ Found Xcode and Xcode workspace paths:");
+              for (const path of xcodepaths) {
+                _write(`   - ${path}`);
+              }
+            }
+            return;
+          }
+          _write("❌ Error message from xcodebuild:");
+          _writeQuote(strerr ?? "Unknown error");
+          return;
+        }
+        _write("❌ Error message from xcodebuild:");
+        _writeQuote(e instanceof Error ? e.message : String(e));
+        return;
+      }
+      if (schemes.length === 0) {
+        _write("❌ No schemes found");
+        return;
+      }
+
+      _write(`✅ Found ${schemes.length} schemes\n`);
+      _write("   Schemes:");
+      for (const scheme of schemes) {
+        _write(`   - ${scheme.name}`);
+      }
+      _write("================================");
+
+      _write("✅ Everything looks good!");
+    },
+  });
 }

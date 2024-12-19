@@ -240,7 +240,7 @@
     "viewsWelcome": [
       {
         "view": "sweetpad.build.view",
-        "contents": "No Xcode scheme was found. Select the workspace that has the Xcode project to use SweetPad.\n[Select Workspace](command:sweetpad.build.selectXcodeWorkspace)\nIf your workspace already has a scheme and SweetPad isn't recognizing it, please report this problem on GitHub.\n[Create Issue](command:sweetpad.system.createIssue.noSchemes)",
+        "contents": "No Xcode scheme was found. Select the workspace that has the Xcode project to use SweetPad.\n[Select Workspace](command:sweetpad.build.selectXcodeWorkspace)\nAlso you can run diagnose to try to detect the root of the problem\n[Run diagnose](command:sweetpad.build.diagnoseSetup)",
         "when": "sweetpad.build.noSchemes"
       },
       {
@@ -319,6 +319,11 @@
         "command": "sweetpad.build.setDefaultScheme",
         "title": "SweetPad: Set scheme",
         "icon": "$(file-directory)"
+      },
+      {
+        "command": "sweetpad.build.diagnoseSetup",
+        "title": "SweetPad: Diagnose build setup",
+        "icon": "$(bug)"
       },
       {
         "command": "sweetpad.testing.selectTarget",

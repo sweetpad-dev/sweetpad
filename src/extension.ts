@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import {
   buildCommand,
   cleanCommand,
+  diagnoseBuildSetupCommand,
   generateBuildServerConfigCommand,
   launchCommand,
   openXcodeCommand,
@@ -140,6 +141,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
   d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeForBuildCommand));
   d(command("sweetpad.build.selectConfiguration", selectConfigurationForBuildCommand));
+  d(command("sweetpad.build.diagnoseSetup", diagnoseBuildSetupCommand));
 
   // Testing
   d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));

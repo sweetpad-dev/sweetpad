@@ -294,7 +294,7 @@ export async function askConfiguration(
 /**
  * Detect xcode workspace in the given directory
  */
-async function detectXcodeWorkspacesPaths(): Promise<string[]> {
+export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
   const workspace = getWorkspacePath();
 
   // Get all files that end with .xcworkspace (4 depth)
