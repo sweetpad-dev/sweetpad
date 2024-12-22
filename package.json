@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.1.47",
+  "version": "0.1.48",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -103,10 +103,12 @@
             "items": {
               "type": "string"
             },
-            "examples": [[
-              "--my-arg",
-              "value"
-            ]]
+            "examples": [
+              [
+                "--my-arg",
+                "value"
+              ]
+            ]
           },
           "launchEnv": {
             "type": "object",
@@ -680,10 +682,12 @@
             "type": "string"
           },
           "default": [],
-          "examples": [[
-            "--my-arg",
-            "value"
-          ]],
+          "examples": [
+            [
+              "--my-arg",
+              "value"
+            ]
+          ],
           "description": "Arguments to pass to the app on launch"
         },
         "sweetpad.build.launchEnv": {
