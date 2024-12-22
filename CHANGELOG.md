@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.48] - 2024-12-22
+
+- Add launch arguments and environment variables to the configuration
+
 ## [0.1.47] - 2024-12-19
 
 - Improve logging
