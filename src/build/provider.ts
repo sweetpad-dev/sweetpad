@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { type XcodeBuildSettings, getBuildSettings } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
+import { getWorkspaceConfig } from "../common/config";
 import {
   type TaskTerminal,
   TaskTerminalV1,
@@ -36,6 +37,8 @@ interface TaskDefinition extends vscode.TaskDefinition {
   simulator?: string; // deprecated, use "destinationId" or "destinationRaw"
   destinationId?: string; // ex: "00000000-0000-0000-0000-000000000000"
   destination?: string; // ex: "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
+  launchArgs?: string[]; // ex: ["-arg1", "-arg2"]
+  launchEnv?: { [key: string]: string }; // ex: { "MY_ENV": "value" }
 }
 
 class ActionDispatcher {
@@ -121,6 +124,9 @@ class ActionDispatcher {
 
     const sdk = destination.platform;
 
+    const launchArgs: string[] = definition.launchArgs ?? getWorkspaceConfig("build.launchArgs") ?? [];
+    const launchEnv: { [key: string]: string } = definition.launchEnv ?? getWorkspaceConfig("build.launchEnv") ?? {};
+
     await buildApp(this.context, terminal, {
       scheme: scheme,
       sdk: sdk,
@@ -138,6 +144,8 @@ class ActionDispatcher {
         configuration: configuration,
         xcworkspace: xcworkspace,
         watchMarker: true,
+        launchArgs: launchArgs,
+        launchEnv: launchEnv,
       });
     } else if (
       destination.type === "iOSSimulator" ||
@@ -152,6 +160,8 @@ class ActionDispatcher {
         configuration: configuration,
         xcworkspace: xcworkspace,
         watchMarker: true,
+        launchArgs: launchArgs,
+        launchEnv: launchEnv,
       });
     } else if (
       destination.type === "iOSDevice" ||
@@ -165,6 +175,8 @@ class ActionDispatcher {
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
+        launchArgs: launchArgs,
+        launchEnv: launchEnv,
       });
     } else {
       assertUnreachable(destination);
@@ -238,12 +250,18 @@ class ActionDispatcher {
 
     const sdk = destination.platform;
 
+    // Launch arguments and envs have higher priority than the workspace configuration
+    const launchArgs: string[] = definition.launchArgs ?? getWorkspaceConfig("build.launchArgs") ?? [];
+    const launchEnv: { [key: string]: string } = definition.launchEnv ?? getWorkspaceConfig("build.launchEnv") ?? {};
+
     if (destination.type === "macOS") {
       await runOnMac(this.context, terminal, {
         scheme: scheme,
         configuration: configuration,
         xcworkspace: xcworkspace,
         watchMarker: false,
+        launchArgs: launchArgs,
+        launchEnv: launchEnv,
       });
     } else if (
       destination.type === "iOSSimulator" ||
@@ -258,6 +276,8 @@ class ActionDispatcher {
         configuration: configuration,
         xcworkspace: xcworkspace,
         watchMarker: false,
+        launchArgs: launchArgs,
+        launchEnv: launchEnv,
       });
     } else if (
       destination.type === "iOSDevice" ||
@@ -271,6 +291,8 @@ class ActionDispatcher {
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
+        launchArgs: launchArgs,
+        launchEnv: launchEnv,
       });
     } else {
       assertUnreachable(destination);

@@ -44,7 +44,6 @@ export async function askTestingTarget(
   const target = await showQuickPick({
     title: options.title,
     items: targets.map((target) => {
-      console.log(target, cachedTarget, target === cachedTarget);
       return {
         label: target,
         description: target === cachedTarget ? "(current)" : undefined,
@@ -124,8 +123,8 @@ export async function selectDestinationForTesting(
   const destinations = options?.destinations?.length
     ? options.destinations
     : await context.destinationsManager.getDestinations({
-        mostUsedSort: true,
-      });
+      mostUsedSort: true,
+    });
 
   const selected = await showQuickPick<Destination>({
     title: "Select destination to test on",

@@ -817,7 +817,6 @@ export class TestingManager {
               `-only-testing:${testTarget}/${classTest.id}`,
             ],
             onOutputLine: async (output) => {
-              console.log("output", output);
               await this.parseOutputLine({
                 line: output.value,
                 testRun: run,

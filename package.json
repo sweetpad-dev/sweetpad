@@ -96,6 +96,26 @@
               "generic/platform=iOS Simulator",
               "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
             ]
+          },
+          "launchArgs": {
+            "type": "array",
+            "description": "Arguments to pass to the app on launch",
+            "items": {
+              "type": "string"
+            },
+            "examples": [[
+              "--my-arg",
+              "value"
+            ]]
+          },
+          "launchEnv": {
+            "type": "object",
+            "description": "Environment variables to pass to the app on launch",
+            "examples": [
+              {
+                "MY_ENV": "value"
+              }
+            ]
           }
         }
       }
@@ -653,6 +673,29 @@
             "-disablePackageRepositoryCache"
           ],
           "description": "Additional arguments to pass to the build command. You can also override the default arguments"
+        },
+        "sweetpad.build.launchArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "examples": [[
+            "--my-arg",
+            "value"
+          ]],
+          "description": "Arguments to pass to the app on launch"
+        },
+        "sweetpad.build.launchEnv": {
+          "type": "object",
+          "default": {},
+          "examples": [
+            {
+              "MY_ENV": "value",
+              "MY_ENV_2": "value2"
+            }
+          ],
+          "description": "Environment variables to pass to the app on launch"
         },
         "sweetpad.testing.configuration": {
           "type": "string",

@@ -64,6 +64,8 @@ export async function runOnMac(
     xcworkspace: string;
     configuration: string;
     watchMarker: boolean;
+    launchArgs: string[];
+    launchEnv: Record<string, string>;
   },
 ) {
   const buildSettings = await getBuildSettings({
@@ -82,6 +84,8 @@ export async function runOnMac(
 
   await terminal.execute({
     command: executablePath,
+    env: options.launchEnv,
+    args: options.launchArgs,
   });
 }
 
@@ -95,6 +99,8 @@ export async function runOniOSSimulator(
     configuration: string;
     xcworkspace: string;
     watchMarker: boolean;
+    launchArgs: string[];
+    launchEnv: Record<string, string>;
   },
 ) {
   const buildSettings = await getBuildSettings({
@@ -143,7 +149,17 @@ export async function runOniOSSimulator(
   // Run app
   await terminal.execute({
     command: "xcrun",
-    args: ["simctl", "launch", "--console-pty", "--terminate-running-process", simulator.udid, bundlerId],
+    args: [
+      "simctl",
+      "launch",
+      "--console-pty",
+      "--terminate-running-process",
+      simulator.udid,
+      bundlerId,
+      ...options.launchArgs,
+    ],
+    // should be prefixed with `SIMCTL_CHILD_` to pass to the child process
+    env: Object.fromEntries(Object.entries(options.launchEnv).map(([key, value]) => [`SIMCTL_CHILD_${key}`, value])),
   });
 }
 
@@ -156,6 +172,8 @@ export async function runOniOSDevice(
     deviceId: string;
     sdk: string;
     xcworkspace: string;
+    launchArgs: string[];
+    launchEnv: Record<string, string>;
   },
 ) {
   const { scheme, configuration, deviceId: device } = option;
@@ -200,7 +218,10 @@ export async function runOniOSDevice(
       "--device",
       device,
       bundlerId,
+      ...option.launchArgs,
     ],
+    // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process
+    env: Object.fromEntries(Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value])),
   });
 
   let jsonOutput: any;
@@ -539,6 +560,9 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
 
   const sdk = destination.platform;
 
+  const launchArgs = getWorkspaceConfig("build.launchArgs") ?? [];
+  const launchEnv = getWorkspaceConfig("build.launchEnv") ?? {};
+
   await runTask(execution.context, {
     name: "Launch",
     lock: "sweetpad.build",
@@ -562,6 +586,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           xcworkspace: xcworkspace,
           configuration: configuration,
           watchMarker: false,
+          launchArgs: launchArgs,
+          launchEnv: launchEnv,
         });
       } else if (
         destination.type === "iOSSimulator" ||
@@ -576,6 +602,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           configuration: configuration,
           xcworkspace: xcworkspace,
           watchMarker: false,
+          launchArgs: launchArgs,
+          launchEnv: launchEnv,
         });
       } else if (
         destination.type === "iOSDevice" ||
@@ -589,6 +617,8 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
+          launchArgs: launchArgs,
+          launchEnv: launchEnv,
         });
       } else {
         assertUnreachable(destination);
@@ -619,6 +649,9 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
 
   const sdk = destination.platform;
 
+  const launchArgs = getWorkspaceConfig("build.launchArgs") ?? [];
+  const launchEnv = getWorkspaceConfig("build.launchEnv") ?? {};
+
   await runTask(execution.context, {
     name: "Run",
     lock: "sweetpad.build",
@@ -631,6 +664,8 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
           xcworkspace: xcworkspace,
           configuration: configuration,
           watchMarker: false,
+          launchArgs: launchArgs,
+          launchEnv: launchEnv,
         });
       } else if (
         destination.type === "iOSSimulator" ||
@@ -645,6 +680,8 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
           configuration: configuration,
           xcworkspace: xcworkspace,
           watchMarker: false,
+          launchArgs: launchArgs,
+          launchEnv: launchEnv,
         });
       } else if (
         destination.type === "iOSDevice" ||
@@ -658,6 +695,8 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
+          launchArgs: launchArgs,
+          launchEnv: launchEnv,
         });
       } else {
         assertUnreachable(destination);

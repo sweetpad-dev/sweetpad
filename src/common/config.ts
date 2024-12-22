@@ -10,6 +10,8 @@ type Config = {
   "build.arch": "x86_64" | "arm64";
   "build.allowProvisioningUpdates": boolean;
   "build.args": string[];
+  "build.launchArgs": string[];
+  "build.launchEnv": { [key: string]: string };
   "system.taskExecutor": "v1" | "v2";
   "system.enableSetvbuf": boolean;
   "system.logLevel": "debug" | "info" | "warn" | "error";
