@@ -21,7 +21,7 @@ import { commonLogger } from "../common/logger";
 import { showInputBox } from "../common/quick-pick";
 import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
-import type { Destination } from "../destination/types";
+import type { Destination, DestinationType } from "../destination/types";
 import { getSimulatorByUdid } from "../simulators/utils";
 import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
 import {
@@ -77,7 +77,10 @@ export async function runOnMac(
 
   const executablePath = await ensureAppPathExists(buildSettings.executablePath);
 
-  context.updateWorkspaceState("build.lastLaunchedAppPath", executablePath);
+  context.updateWorkspaceState("build.lastLaunchedApp", {
+    type: "macos",
+    appPath: executablePath,
+  });
   if (options.watchMarker) {
     writeWatchMarkers(terminal);
   }
@@ -140,8 +143,10 @@ export async function runOniOSSimulator(
     args: ["simctl", "install", simulator.udid, appPath],
   });
 
-  context.updateWorkspaceState("build.lastLaunchedAppPath", appPath);
-
+  context.updateWorkspaceState("build.lastLaunchedApp", {
+    type: "simulator",
+    appPath: appPath,
+  });
   if (options.watchMarker) {
     writeWatchMarkers(terminal);
   }
@@ -169,14 +174,16 @@ export async function runOniOSDevice(
   option: {
     scheme: string;
     configuration: string;
-    deviceId: string;
+    destinationId: string;
+    destinationType: DestinationType;
     sdk: string;
     xcworkspace: string;
+    watchMarker: boolean;
     launchArgs: string[];
     launchEnv: Record<string, string>;
   },
 ) {
-  const { scheme, configuration, deviceId: device } = option;
+  const { scheme, configuration, destinationId: deviceId, destinationType } = option;
 
   const buildSettings = await getBuildSettings({
     scheme: scheme,
@@ -191,10 +198,16 @@ export async function runOniOSDevice(
   // Install app on device
   await terminal.execute({
     command: "xcrun",
-    args: ["devicectl", "device", "install", "app", "--device", device, targetPath],
+    args: ["devicectl", "device", "install", "app", "--device", deviceId, targetPath],
   });
 
-  context.updateWorkspaceState("build.lastLaunchedAppPath", targetPath);
+  context.updateWorkspaceState("build.lastLaunchedApp", {
+    type: "device",
+    appPath: targetPath,
+    appName: buildSettings.appName,
+    destinationId: deviceId,
+    destinationType: destinationType,
+  });
 
   await using jsonOuputPath = await tempFilePath(context, {
     prefix: "json",
@@ -202,6 +215,10 @@ export async function runOniOSDevice(
 
   const xcodeVersion = await getXcodeVersionInstalled();
   const isConsoleOptionSupported = xcodeVersion.major >= 16;
+
+  if (option.watchMarker) {
+    writeWatchMarkers(terminal);
+  }
 
   // Launch app on device
   await terminal.execute({
@@ -211,12 +228,16 @@ export async function runOniOSDevice(
       "device",
       "process",
       "launch",
+      // Attaches the application to the console and waits for it to exit
       isConsoleOptionSupported ? "--console" : null,
       "--json-output",
       jsonOuputPath.path,
+      // Launches the app in a suspended state, waiting for a debugger. (We want oposite)
+      // "--start-stopped",
+      // Terminates any already-running instances of the app prior to launch. Not supported on all platforms.
       "--terminate-existing",
       "--device",
-      device,
+      deviceId,
       bundlerId,
       ...option.launchArgs,
     ],
@@ -613,10 +634,12 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
       ) {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
-          deviceId: destination.udid ?? "",
+          destinationId: destination.udid,
+          destinationType: destination.type,
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
+          watchMarker: false,
           launchArgs: launchArgs,
           launchEnv: launchEnv,
         });
@@ -691,10 +714,12 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
       ) {
         await runOniOSDevice(execution.context, terminal, {
           scheme: scheme,
-          deviceId: destination.udid ?? "",
+          destinationId: destination.udid,
+          destinationType: destination.type,
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
+          watchMarker: false,
           launchArgs: launchArgs,
           launchEnv: launchEnv,
         });

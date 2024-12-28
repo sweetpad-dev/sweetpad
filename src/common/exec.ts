@@ -1,5 +1,5 @@
 import { getWorkspacePath } from "../build/utils";
-import { ExecBaseError, ExecErrror } from "./errors";
+import { ExecBaseError, ExecError } from "./errors";
 import { commonLogger } from "./logger";
 
 import { execa } from "execa";
@@ -58,7 +58,7 @@ export async function exec(options: { command: string; args: string[]; cwd?: str
 
   // check error code
   if (result.stderr && !result.stdout) {
-    throw new ExecErrror(`Error executing "${options.command}" command`, {
+    throw new ExecError(`Error executing "${options.command}" command`, {
       stderr: result.stderr,
       command: options.command,
       args: options.args,

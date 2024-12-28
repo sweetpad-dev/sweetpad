@@ -171,10 +171,12 @@ class ActionDispatcher {
     ) {
       await runOniOSDevice(this.context, terminal, {
         scheme: scheme,
-        deviceId: destination.id ?? "",
+        destinationId: destination.udid,
+        destinationType: destination.type,
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
+        watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
       });
@@ -287,10 +289,12 @@ class ActionDispatcher {
     ) {
       await runOniOSDevice(this.context, terminal, {
         scheme: scheme,
-        deviceId: destination.id ?? "",
+        destinationId: destination.udid,
+        destinationType: destination.type,
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
+        watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
       });

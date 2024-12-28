@@ -202,14 +202,34 @@
             "label": "Sweetpad: Attach to running app",
             "body": {
               "type": "sweetpad-lldb",
-              "request": "launch",
+              "request": "attach",
               "name": "Attach to running app (SweetPad)",
               "preLaunchTask": "sweetpad: launch"
             }
           }
         ],
         "configurationAttributes": {
+          "attach": {
+            "description": "Attach to running app",
+            "required": [],
+            "type": "object",
+            "properties": {
+              "codelldbAttributes": {
+                "title": "CodeLLDB attributes",
+                "description": "Attributes to pass to CodeLLDB. See: https://github.com/vadimcn/codelldb/blob/v1.10.0/MANUAL.md",
+                "type": "object",
+                "examples": [
+                  {
+                    "initCommands": [
+                      "script print('Hello, SweetPad!')"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
           "launch": {
+            "description": "Deprecated: use `attach` instead",
             "required": [],
             "type": "object",
             "properties": {
@@ -294,12 +314,12 @@
       },
       {
         "command": "sweetpad.build.run",
-        "title": "SweetPad: Run (Without Build)",
+        "title": "SweetPad: Run (without Build)",
         "icon": "$(play)"
       },
       {
         "command": "sweetpad.build.build",
-        "title": "SweetPad: Build (Without Run)",
+        "title": "SweetPad: Build (without Run)",
         "icon": "$(sweetpad-tool)"
       },
       {

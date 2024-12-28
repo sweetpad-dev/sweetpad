@@ -1,12 +1,35 @@
 import * as vscode from "vscode";
 import type { BuildManager } from "../build/manager";
 import type { DestinationsManager } from "../destination/manager";
-import type { SelectedDestination } from "../destination/types";
+import type { DestinationType, SelectedDestination } from "../destination/types";
 import type { TestingManager } from "../testing/manager";
 import type { ToolsManager } from "../tools/manager";
 import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting";
 import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
+
+export type LastLaunchedAppDeviceContext = {
+  type: "device";
+  appPath: string; // Example: "/Users/username/Library/Developer/Xcode/DerivedData/MyApp-..."
+  appName: string; // Example: "MyApp.app"
+  destinationId: string; // Example: "00008030-001A0A3E0A68002E"
+  destinationType: DestinationType; // Example: "iOS"
+};
+
+export type LastLaunchedAppSimulatorContext = {
+  type: "simulator";
+  appPath: string;
+};
+
+export type LastLaunchedAppMacOSContext = {
+  type: "macos";
+  appPath: string;
+};
+
+export type LastLaunchedAppContext =
+  | LastLaunchedAppDeviceContext
+  | LastLaunchedAppSimulatorContext
+  | LastLaunchedAppMacOSContext;
 
 type WorkspaceTypes = {
   "build.xcodeWorkspacePath": string;
@@ -16,7 +39,7 @@ type WorkspaceTypes = {
   "build.xcodeDestination": SelectedDestination;
   "build.xcodeDestinationsUsageStatistics": Record<string, number>;
   "build.xcodeSdk": string;
-  "build.lastLaunchedAppPath": string;
+  "build.lastLaunchedApp": LastLaunchedAppContext;
   "build.xcodeBuildServerAutogenreateInfoShown": boolean;
   "testing.xcodeTarget": string;
   "testing.xcodeConfiguration": string;

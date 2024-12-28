@@ -59,4 +59,4 @@ export class ExecBaseError extends ExtensionError {
 /**
  * Stderr of executing shell command. See: exec
  */
-export class ExecErrror extends ExecBaseError {}
+export class ExecError extends ExecBaseError {}

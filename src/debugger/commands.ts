@@ -11,8 +11,8 @@ const DEBUG_DOCUMENTATION_URL = "https://github.com/sweetpad-dev/sweetpad/blob/m
  * directly to the debugger during resolving the debug configuration.
  */
 export async function getAppPathCommand(execution: CommandExecution): Promise<string> {
-  const sessionPath = execution.context.getWorkspaceState("build.lastLaunchedAppPath");
-  if (!sessionPath) {
+  const lastLaunchedPath = execution.context.getWorkspaceState("build.lastLaunchedApp");
+  if (!lastLaunchedPath) {
     throw new ExtensionError("No last launched app path found, please launch the app first using the extension", {
       actions: [
         {
@@ -22,5 +22,5 @@ export async function getAppPathCommand(execution: CommandExecution): Promise<st
       ],
     });
   }
-  return sessionPath;
+  return lastLaunchedPath.appPath;
 }

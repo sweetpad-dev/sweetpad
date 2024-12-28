@@ -85,3 +85,42 @@ export async function listDevices(context: ExtensionContext): Promise<DeviceCtlL
 
   return await readJsonFile<DeviceCtlListCommandOutput>(tmpPath.path);
 }
+
+export type DeviceCtlProcessResult = {
+  result: {
+    runningProcesses: DeviceCtlProcess[];
+  };
+};
+
+export type DeviceCtlProcess = {
+  executable?: string; // Ex: file:///private/var/containers/Bundle/Application/183E1862-A6F2-4060-AEEF-16F61C88F91E/terminal23.app/terminal23
+  processIdentifier: number; // Ex: 1234
+};
+
+export async function getRunningProcesses(
+  context: ExtensionContext,
+  options: {
+    deviceId: string;
+  },
+): Promise<DeviceCtlProcessResult> {
+  await using tmpPath = await tempFilePath(context, {
+    prefix: "processes",
+  });
+  // xcrun devicectl device info processes -d 2782A5CE-797F-4EB9-BDF1-14AE4425C406 --json-output <path>
+  await exec({
+    command: "xcrun",
+    args: ["devicectl", "device", "info", "processes", "-d", options.deviceId, "--json-output", tmpPath.path],
+  });
+
+  return await readJsonFile<DeviceCtlProcessResult>(tmpPath.path);
+}
+
+export async function pairDevice(options: {
+  deviceId: string;
+}): Promise<void> {
+  // xcrun devicectl manage pair --device 00008110-000559182E90401E
+  await exec({
+    command: "xcrun",
+    args: ["devicectl", "manage", "pair", "--device", options.deviceId],
+  });
+}
