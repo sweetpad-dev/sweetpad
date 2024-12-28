@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.49] - 2024-12-28
+
+- Add support for debugging on physical devices
+
 ## [0.1.48] - 2024-12-22
 
 - Add launch arguments and environment variables to the configuration
