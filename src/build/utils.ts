@@ -1,6 +1,6 @@
 import path from "node:path";
 import * as vscode from "vscode";
-import { showQuickPick } from "../common/quick-pick";
+import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 
 import { askConfigurationBase } from "../common/askers";
 import { type XcodeBuildSettings, getSchemes } from "../common/cli/scripts";
@@ -9,7 +9,9 @@ import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
+import type { DestinationPlatform } from "../destination/constants";
 import type { Destination } from "../destination/types";
+import { splitSupportedDestinatinos } from "../destination/utils";
 import type { SimulatorDestination } from "../simulators/types";
 
 export type SelectedDestination = {
@@ -70,7 +72,6 @@ export async function askDestinationToRunOn(
   const supportedPlatforms = buildSettings.supportedPlatforms;
 
   const destinations = await context.destinationsManager.getDestinations({
-    platformFilter: supportedPlatforms,
     mostUsedSort: true,
   });
 
@@ -85,35 +86,65 @@ export async function askDestinationToRunOn(
     }
   }
 
-  return selectDestinationForBuild(context, {
+  return await selectDestinationForBuild(context, {
     destinations: destinations,
+    supportedPlatforms: supportedPlatforms,
   });
 }
 
 export async function selectDestinationForBuild(
   context: ExtensionContext,
-  options?: {
-    destinations?: Destination[];
+  options: {
+    destinations: Destination[];
+    supportedPlatforms: DestinationPlatform[] | undefined;
   },
 ): Promise<Destination> {
-  const destinations = options?.destinations?.length
-    ? options.destinations
-    : await context.destinationsManager.getDestinations({
-        mostUsedSort: true,
-      });
+  const { supported, unsupported } = splitSupportedDestinatinos({
+    destinations: options.destinations,
+    supportedPlatforms: options.supportedPlatforms,
+  });
+
+  const supportedItems: QuickPickItem<Destination>[] = supported.map((destination) => ({
+    label: destination.name,
+    iconPath: new vscode.ThemeIcon(destination.icon),
+    detail: destination.quickPickDetails,
+    context: destination,
+  }));
+  const unsupportedItems: QuickPickItem<Destination>[] = unsupported.map((destination) => ({
+    label: destination.name,
+    iconPath: new vscode.ThemeIcon(destination.icon),
+    detail: destination.quickPickDetails,
+    context: destination,
+  }));
+
+  const items: QuickPickItem<Destination>[] = [];
+  if (unsupported.length === 0 && supported.length === 0) {
+    // Show that no destinations found
+    items.push({
+      label: "No destinations found",
+      kind: vscode.QuickPickItemKind.Separator,
+    });
+  } else if (supported.length > 0 && unsupported.length > 0) {
+    // Split supported and unsupported destinations
+    items.push({
+      label: "Supported platforms",
+      kind: vscode.QuickPickItemKind.Separator,
+    });
+    items.push(...supportedItems);
+    items.push({
+      label: "Other",
+      kind: vscode.QuickPickItemKind.Separator,
+    });
+    items.push(...unsupportedItems);
+  } else {
+    // Just make flat list, one is empty and another is not
+    items.push(...supportedItems);
+    items.push(...unsupportedItems);
+  }
 
   const selected = await showQuickPick<Destination>({
     title: "Select destination to run on",
-    items: [
-      ...destinations.map((destination) => {
-        return {
-          label: destination.name,
-          iconPath: new vscode.ThemeIcon(destination.icon),
-          detail: destination.quickPickDetails,
-          context: destination,
-        };
-      }),
-    ],
+    items: items,
   });
 
   const destination = selected.context;

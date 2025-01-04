@@ -16,7 +16,6 @@ import type {
   visionOSSimulatorDestination,
   watchOSSimulatorDestination,
 } from "../simulators/types";
-import type { DestinationPlatform } from "./constants";
 import { DESTINATION_TYPE_PRIORITY, SIMULATOR_TYPE_PRIORITY, SUPPORTED_DESTINATION_PLATFORMS } from "./constants";
 import {
   ALL_DESTINATION_TYPES,
@@ -206,21 +205,13 @@ export class DestinationsManager {
   }
 
   async getDestinations(options?: {
-    platformFilter?: DestinationPlatform[];
     mostUsedSort?: boolean;
   }): Promise<Destination[]> {
     const destinations: Destination[] = [];
 
-    const platforms = options?.platformFilter ?? SUPPORTED_DESTINATION_PLATFORMS;
+    const platforms = SUPPORTED_DESTINATION_PLATFORMS;
 
-    const handledPlatforms = new Set<string>();
     for (const platform of platforms) {
-      // Skip if already handled to avoid duplicates
-      if (handledPlatforms.has(platform)) {
-        continue;
-      }
-      handledPlatforms.add(platform);
-
       if (platform === "macosx") {
         const devices = await this.getmacOSDevices();
         destinations.push(...devices);

@@ -8,7 +8,13 @@ export async function selectDestinationForBuildCommand(execution: CommandExecuti
     execution.context.destinationsManager.setWorkspaceDestinationForBuild(item.destination);
     return;
   }
-  await selectDestinationForBuild(execution.context);
+  const destinations = await execution.context.destinationsManager.getDestinations({
+    mostUsedSort: true,
+  });
+  await selectDestinationForBuild(execution.context, {
+    destinations: destinations,
+    supportedPlatforms: undefined, // All platforms
+  });
 }
 
 export async function selectDestinationForTestingCommand(execution: CommandExecution, item?: DestinationTreeItem) {
@@ -16,5 +22,11 @@ export async function selectDestinationForTestingCommand(execution: CommandExecu
     execution.context.destinationsManager.setWorkspaceDestinationForTesting(item.destination);
     return;
   }
-  await selectDestinationForTesting(execution.context);
+  const destinations = await execution.context.destinationsManager.getDestinations({
+    mostUsedSort: true,
+  });
+  await selectDestinationForTesting(execution.context, {
+    destinations: destinations,
+    supportedPlatforms: undefined,
+  });
 }

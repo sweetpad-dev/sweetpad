@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 
-interface QuickPickItem<T> extends vscode.QuickPickItem {
-  context: T;
-}
+export type QuickPickItemRow<T> = vscode.QuickPickItem & { context: T };
+export type QuickPickItemSeparator = vscode.QuickPickItem & { kind: vscode.QuickPickItemKind.Separator };
+export type QuickPickItem<T> = QuickPickItemRow<T> | QuickPickItemSeparator;
 
 /**
  * Shows a quick pick dialog with the given options.
@@ -12,7 +12,7 @@ interface QuickPickItem<T> extends vscode.QuickPickItem {
 export async function showQuickPick<T>(options: {
   title: string;
   items: QuickPickItem<T>[];
-}): Promise<QuickPickItem<T>> {
+}): Promise<QuickPickItemRow<T>> {
   const pick = vscode.window.createQuickPick<QuickPickItem<T>>();
 
   pick.items = options.items;
@@ -21,9 +21,16 @@ export async function showQuickPick<T>(options: {
 
   pick.show();
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     pick.onDidAccept(() => {
-      resolve(pick.selectedItems[0]);
+      const selected = pick.selectedItems[0];
+
+      // I'm not sure if it's possible to select a separator, but just in case and to please the TypeScript checker
+      if (!selected || selected?.kind === vscode.QuickPickItemKind.Separator) {
+        reject(new Error("No item selected"));
+      } else {
+        resolve(selected);
+      }
       pick.dispose();
     });
   });
