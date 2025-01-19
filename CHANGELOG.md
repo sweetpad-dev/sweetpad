@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.50] - 2025-01-19
+
+- Show all destinations instead of supported only
+
 ## [0.1.49] - 2024-12-28
 
 - Add support for debugging on physical devices
