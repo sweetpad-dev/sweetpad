@@ -5,6 +5,7 @@ import { listDevices } from "../common/xcode/devicectl";
 import {
   type DeviceDestination,
   iOSDeviceDestination,
+  tvOSDeviceDestination,
   visionOSDeviceDestination,
   watchOSDeviceDestination,
 } from "./types";
@@ -50,7 +51,7 @@ export class DevicesManager {
           return new visionOSDeviceDestination(device);
         }
         if (deviceType === "appleTV") {
-          return new visionOSDeviceDestination(device);
+          return new tvOSDeviceDestination(device);
         }
         checkUnreachable(deviceType);
         return null; // Unsupported device type
