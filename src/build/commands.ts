@@ -862,7 +862,7 @@ export async function removeBundleDirCommand(execution: CommandExecution) {
  * Generate buildServer.json in the workspace root for xcode-build-server —
  * a tool that enable LSP server to see packages from the Xcode project.
  */
-export async function generateBuildServerConfigCommand(execution: CommandExecution) {
+export async function generateBuildServerConfigCommand(execution: CommandExecution, item?: BuildTreeItem) {
   const isServerInstalled = await getIsXcodeBuildServerInstalled();
   if (!isServerInstalled) {
     throw new ExtensionError("xcode-build-server is not installed");
@@ -870,17 +870,22 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
 
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
-  const scheme = await askSchemeForBuild(execution.context, {
+  const scheme = item?.scheme ?? (await askSchemeForBuild(execution.context, {
     title: "Select scheme for build server",
     xcworkspace: xcworkspace,
-  });
+  }));
   await generateBuildServerConfig({
     xcworkspace: xcworkspace,
     scheme: scheme,
   });
   await restartSwiftLSP();
 
-  vscode.window.showInformationMessage("buildServer.json generated in workspace root");
+  const selected = await vscode.window.showInformationMessage("buildServer.json generated in workspace root", "Open");
+  if (selected === "Open") {
+    const workspacePath = getWorkspacePath();
+    const buildServerPath = vscode.Uri.file(path.join(workspacePath, "buildServer.json"));
+    await vscode.commands.executeCommand("vscode.open", buildServerPath);
+  }
 }
 
 /**
