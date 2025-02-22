@@ -66,10 +66,10 @@ export async function askSimulator(
  */
 export async function askDestinationToRunOn(
   context: ExtensionContext,
-  buildSettings: XcodeBuildSettings,
+  buildSettings: XcodeBuildSettings | null,
 ): Promise<Destination> {
   // We can remove platforms that are not supported by the project
-  const supportedPlatforms = buildSettings.supportedPlatforms;
+  const supportedPlatforms = buildSettings?.supportedPlatforms;
 
   const destinations = await context.destinationsManager.getDestinations({
     mostUsedSort: true,

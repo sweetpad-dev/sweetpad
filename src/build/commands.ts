@@ -8,6 +8,7 @@ import {
   generateBuildServerConfig,
   getBuildConfigurations,
   getBuildSettings,
+  getBuildSettingsOptional,
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
   getXcodeVersionInstalled,
@@ -526,7 +527,7 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
     (await askSchemeForBuild(execution.context, { title: "Select scheme to build", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
-  const buildSettings = await getBuildSettings({
+  const buildSettings = await getBuildSettingsOptional({
     scheme: scheme,
     configuration: configuration,
     sdk: undefined,
@@ -569,7 +570,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
     (await askSchemeForBuild(execution.context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
-  const buildSettings = await getBuildSettings({
+  const buildSettings = await getBuildSettingsOptional({
     scheme: scheme,
     configuration: configuration,
     sdk: undefined,
@@ -661,7 +662,7 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
     (await askSchemeForBuild(execution.context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
-  const buildSettings = await getBuildSettings({
+  const buildSettings = await getBuildSettingsOptional({
     scheme: scheme,
     configuration: configuration,
     sdk: undefined,
@@ -740,7 +741,7 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
     (await askSchemeForBuild(execution.context, { title: "Select scheme to clean", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
-  const buildSettings = await getBuildSettings({
+  const buildSettings = await getBuildSettingsOptional({
     scheme: scheme,
     configuration: configuration,
     sdk: undefined,
@@ -779,7 +780,7 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
     (await askSchemeForBuild(execution.context, { title: "Select scheme to test", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
-  const buildSettings = await getBuildSettings({
+  const buildSettings = await getBuildSettingsOptional({
     scheme: scheme,
     configuration: configuration,
     sdk: undefined,

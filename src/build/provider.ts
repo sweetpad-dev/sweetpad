@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { type XcodeBuildSettings, getBuildSettings } from "../common/cli/scripts";
+import { type XcodeBuildSettings, getBuildSettingsOptional } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import {
@@ -75,7 +75,7 @@ class ActionDispatcher {
 
   private async getDestination(options: {
     definition: TaskDefinition;
-    buildSettings: XcodeBuildSettings;
+    buildSettings: XcodeBuildSettings | null;
   }): Promise<Destination> {
     const destinationId: string | undefined =
       // ex: "00000000-0000-0000-0000-000000000000"
@@ -109,7 +109,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    const buildSettings = await getBuildSettings({
+    const buildSettings = await getBuildSettingsOptional({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -198,7 +198,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    const buildSettings = await getBuildSettings({
+    const buildSettings = await getBuildSettingsOptional({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -238,7 +238,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    const buildSettings = await getBuildSettings({
+    const buildSettings = await getBuildSettingsOptional({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -317,7 +317,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    const buildSettings = await getBuildSettings({
+    const buildSettings = await getBuildSettingsOptional({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -357,7 +357,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    const buildSettings = await getBuildSettings({
+    const buildSettings = await getBuildSettingsOptional({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,

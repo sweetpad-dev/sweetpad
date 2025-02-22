@@ -193,7 +193,7 @@ async function getBuildSettingsBase(options: {
   return null;
 }
 
-export async function getOptionalBuildSettings(options: {
+export async function getBuildSettingsOptional(options: {
   scheme: string;
   configuration: string;
   sdk: string | undefined;
@@ -218,7 +218,7 @@ export async function getBuildSettings(options: {
   sdk: string | undefined;
   xcworkspace: string;
 }): Promise<XcodeBuildSettings> {
-  const settings = await getOptionalBuildSettings(options);
+  const settings = await getBuildSettingsOptional(options);
   if (!settings) {
     throw new ExtensionError("Empty build settings");
   }
