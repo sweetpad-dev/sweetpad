@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.52] - 2025-02-55
+
+- Reorganize build context menu
+- Allow to build package without build settings
+
 ## [0.1.51] - 2025-02-05
 
 - Fix device destination: Apple TV to show tvOS instead of VisionOS (Fixes #106). Thanks to @MACwayne!
