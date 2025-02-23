@@ -705,6 +705,17 @@
           ],
           "description": "Additional arguments to pass to the build command. You can also override the default arguments"
         },
+        "sweetpad.build.env": {
+          "type": "object",
+          "default": {},
+          "examples": [
+            {
+              "MY_ENV": "value",
+              "MY_ENV_2": null
+            }
+          ],
+          "description": "Environment variables to pass to the xcodebuild command"
+        },
         "sweetpad.build.launchArgs": {
           "type": "array",
           "items": {

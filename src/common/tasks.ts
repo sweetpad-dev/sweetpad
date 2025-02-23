@@ -21,7 +21,7 @@ export type CommandOptions = {
   args?: (string | null)[];
   pipes?: Command[];
   setvbuf?: boolean;
-  env?: Record<string, string>;
+  env?: Record<string, string | undefined>;
   onOutputLine?: (data: { value: string; type: "stdout" | "stderr" }) => Promise<void>;
 };
 
@@ -124,7 +124,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     private options: {
       callback: (terminal: TaskTerminalV2) => Promise<void>;
     },
-  ) {}
+  ) { }
 
   onDidWrite = this.writeEmitter.event;
   onDidClose = this.closeEmitter.event;
@@ -356,7 +356,7 @@ export class TaskTerminalV1 implements TaskTerminal {
       error?: string;
       problemMatchers?: string[];
     },
-  ) {}
+  ) { }
 
   write(data: string, options?: TerminalWriteOptions): void {
     this.execute({
