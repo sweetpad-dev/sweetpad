@@ -2,7 +2,12 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [0.1.52] - 2025-02-55
+## [0.1.53] - 2025-02-23
+
+- Fix xcodebuild problem matcher
+- Add build.env config
+
+## [0.1.52] - 2025-02-22
 
 - Reorganize build context menu
 - Allow to build package without build settings
