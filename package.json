@@ -147,8 +147,7 @@
         "owner": "sweetpad",
         "label": "SweetPad xcodebuild (default)",
         "fileLocation": [
-          "relative",
-          "${workspaceFolder}"
+          "absolute"
         ],
         "pattern": [
           {
