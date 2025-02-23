@@ -879,10 +879,12 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
 
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
-  const scheme = item?.scheme ?? (await askSchemeForBuild(execution.context, {
-    title: "Select scheme for build server",
-    xcworkspace: xcworkspace,
-  }));
+  const scheme =
+    item?.scheme ??
+    (await askSchemeForBuild(execution.context, {
+      title: "Select scheme for build server",
+      xcworkspace: xcworkspace,
+    }));
   await generateBuildServerConfig({
     xcworkspace: xcworkspace,
     scheme: scheme,
