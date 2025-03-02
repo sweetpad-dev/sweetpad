@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.54] - [0.1.55] — 2025-03-02
+
+- (_just technical release_)
+
 ## [0.1.53] - 2025-02-23
 
 - Fix xcodebuild problem matcher
