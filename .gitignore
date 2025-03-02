@@ -4,8 +4,6 @@ node_modules
 .vscode-test/
 *.vsix
 
-# Temporary files for building setvbuf
-.temp/
 
 # Ensure .vscode is not ignored in this project
 !.vscode/

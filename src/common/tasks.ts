@@ -1,26 +1,22 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import path from "node:path";
 import { quote } from "shell-quote";
 import * as vscode from "vscode";
 import { getWorkspacePath } from "../build/utils";
 import type { ExtensionContext } from "./commands";
 import { getWorkspaceConfig } from "./config";
 import { TaskError } from "./errors";
-import { isFileExists } from "./files";
 
 type TaskExecutor = "v1" | "v2";
 
 export type Command = {
   command: string;
   args?: string[];
-  setvbuf?: boolean;
 };
 
 export type CommandOptions = {
   command: string;
   args?: (string | null)[];
   pipes?: Command[];
-  setvbuf?: boolean;
   env?: Record<string, string | undefined>;
   onOutputLine?: (data: { value: string; type: "stdout" | "stderr" }) => Promise<void>;
 };
@@ -135,35 +131,15 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
   private async createCommandLine(options: CommandOptions): Promise<string> {
     const args = cleanCommandArgs(options.args);
-    let mainCommand = quote([options.command, ...args]);
-    if (options.setvbuf) {
-      const setvbufPath = path.join(this.context.extensionPath, "out/setvbuf_universal.so");
-      const setvbufExists = await isFileExists(setvbufPath);
-      if (setvbufExists) {
-        mainCommand = `DYLD_INSERT_LIBRARIES=${quote([setvbufPath])} DYLD_FORCE_FLAT_NAMESPACE=y ${mainCommand}`;
-      }
-    }
+    const mainCommand = quote([options.command, ...args]);
 
     if (!options.pipes) {
       return mainCommand;
     }
 
-    // just in case, check if the setvbuf library exists
-    const setvbufPath = path.join(this.context.extensionPath, "out/setvbuf_universal.so");
-    const setvbufExists = await isFileExists(setvbufPath);
-
     // Combine them into a big pipe with error propagation
     const commands = [mainCommand];
-    commands.push(
-      ...options.pipes.map((pipe) => {
-        const command = this.command(pipe.command, pipe.args);
-        if (pipe.setvbuf && setvbufExists) {
-          const prefix = `DYLD_INSERT_LIBRARIES=${quote([setvbufPath])} DYLD_FORCE_FLAT_NAMESPACE=y`;
-          return `${prefix} ${command}`;
-        }
-        return command;
-      }),
-    );
+    commands.push(...options.pipes.map((pipe) => this.command(pipe.command, pipe.args)));
     return `set -o pipefail;  ${commands.join(" | ")}`;
   }
 

@@ -511,8 +511,7 @@ export async function buildApp(
   const commandParts = command.build();
   let pipes: Command[] | undefined = undefined;
   if (useXcbeatify) {
-    const isSetvbufEnabled = getWorkspaceConfig("system.enableSetvbuf") ?? false;
-    pipes = [{ command: "xcbeautify", args: [], setvbuf: isSetvbufEnabled }];
+    pipes = [{ command: "xcbeautify", args: [] }];
   }
 
   console.log(additionalArgs);

@@ -22,6 +22,5 @@ tsconfig.json
 docs/
 tests/
 *.spec.ts
-setvbuf/
 eslint.config.mjs
 jest.config.js

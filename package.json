@@ -770,11 +770,6 @@
           ],
           "description": "Log level for SweetPad."
         },
-        "sweetpad.system.enableSetvbuf": {
-          "type": "boolean",
-          "default": false,
-          "description": "Experimental: Enable setvbuf for stdout and stderr."
-        },
         "sweetpad.system.enableSentry": {
           "type": "boolean",
           "default": false,
@@ -1076,7 +1071,7 @@
   "scripts": {
     "build": "node esbuild.config.mjs --sourcemap",
     "watch": "node esbuild.config.mjs --sourcemap --watch",
-    "vscode:prepublish": "npm run compile-setvbuf && node esbuild.config.mjs --minify --sourcemap --production",
+    "vscode:prepublish": "node esbuild.config.mjs --minify --sourcemap --production",
     "test": "vscode-test",
     "jest": "jest",
     "check:format:code": "biome format --write",
@@ -1084,7 +1079,6 @@
     "check:lint": "biome check --fix --unsafe",
     "check:types": "tsc --noEmit",
     "check:all": "npm run check:format:code && npm run check:lint && npm run check:types",
-    "compile-setvbuf": "bash ./setvbuf/compile.sh",
     "publish-patch": "vsce publish patch",
     "find-deadcode": "ts-prune --error --skip spec.ts?",
     "download-examples": "tsx ./scripts/download-examples.ts"
