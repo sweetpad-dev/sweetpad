@@ -1079,7 +1079,7 @@
     "check:lint": "biome check --fix --unsafe",
     "check:types": "tsc --noEmit",
     "check:all": "npm run check:format:code && npm run check:lint && npm run check:types",
-    "publish-patch": "vsce publish patch",
+    "publish-patch": "./scripts/publish-patch.sh",
     "find-deadcode": "ts-prune --error --skip spec.ts?",
     "download-examples": "tsx ./scripts/download-examples.ts"
   },
