@@ -27,17 +27,24 @@ class TuistGenWatcher {
       return new Disposable(() => {});
     }
 
-    // Is project.swift exists?
+    // We don't even need to start the watcher if there is no tuist files in the workspace
     const workspacePath = getWorkspacePath();
-    const isProjectExists = await isFileExists(path.join(workspacePath, "project.swift"));
-    if (!isProjectExists) {
-      commonLogger.log("project.swift not found, skipping tuist watcher", {
+    const isTuistFileExists =
+      (await isFileExists(path.join(workspacePath, "Project.swift"))) ||
+      (await isFileExists(path.join(workspacePath, "Workspace.swift")));
+    if (!isTuistFileExists) {
+      commonLogger.log("Project.swift or Workspace.swift not found, skipping tuist watcher", {
         workspacePath: getWorkspacePath(),
       });
       return new Disposable(() => {});
     }
 
-    const swiftWatcher = vscode.workspace.createFileSystemWatcher("**/*.swift", false, true, false);
+    const swiftWatcher = vscode.workspace.createFileSystemWatcher(
+      "**/*.swift",
+      false, // ignoreCreateEvents
+      true, // ignoreChangeEvents
+      false, // ignoreDeleteEvents
+    );
     swiftWatcher.onDidCreate((e) => this.handleChange(e));
     swiftWatcher.onDidDelete((e) => this.handleChange(e));
     this.watchers.push(swiftWatcher);
