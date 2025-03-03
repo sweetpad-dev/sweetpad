@@ -27,11 +27,11 @@ class TuistGenWatcher {
       return new Disposable(() => {});
     }
 
-    // Is project.swift exists?
+    // Is Project.swift or Workspace.swift exists?
     const workspacePath = getWorkspacePath();
-    const isProjectExists = await isFileExists(path.join(workspacePath, "Project.swift"));
+    const isProjectExists = await isFileExists(path.join(workspacePath, "Project.swift")) || await isFileExists(path.join(workspacePath, "Workspace.swift"));
     if (!isProjectExists) {
-      commonLogger.log("Project.swift not found, skipping tuist watcher", {
+      commonLogger.log("Project.swift or Workspace.swift not found, skipping tuist watcher", {
         workspacePath: getWorkspacePath(),
       });
       return new Disposable(() => {});
