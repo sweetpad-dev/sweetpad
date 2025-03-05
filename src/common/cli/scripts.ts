@@ -7,6 +7,7 @@ import { exec } from "../exec";
 import { uniqueFilter } from "../helpers";
 import { commonLogger } from "../logger";
 import { XcodeWorkspace } from "../xcode/workspace";
+import { getWorkspaceConfig } from "../config";
 
 export type SimulatorOutput = {
   dataPath: string;
@@ -387,8 +388,9 @@ export async function getIsTuistInstalled() {
 }
 
 export async function tuistGenerate() {
+	let config = getWorkspaceConfig("tuist.dynamicConfiguration")?.join(" ") ?? "";
   return await exec({
-    command: "tuist",
+    command: `${config} tuist`,
     args: ["generate", "--no-open"],
   });
 }
