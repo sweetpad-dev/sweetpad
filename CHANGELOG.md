@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.55] - 2025-03-08
+
+- Add tuist dynamic configuration config — @ladislas 🎉
+- Enable tuist for workspace projects — @ladislas 😍
+
 ## [0.1.54] - [0.1.56] — 2025-03-02
 
 - (_just technical release_)
