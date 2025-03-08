@@ -474,11 +474,7 @@ export async function buildApp(
   const additionalArgs: string[] = getWorkspaceConfig("build.args") || [];
 
   // ex: { "ARG1": "value1", "ARG2": null, "ARG3": "value3" }
-  const additionalEnv: Record<string, string | null> = getWorkspaceConfig("build.env") || {};
-  const additionalEnvUpdated: Record<string, string | undefined> = {};
-  for (const [key, value] of Object.entries(additionalEnv)) {
-    additionalEnvUpdated[key] = value ?? undefined;
-  }
+  const env = getWorkspaceConfig("build.env") || {};
 
   const command = new XcodeCommandBuilder();
   if (arch) {
@@ -513,13 +509,11 @@ export async function buildApp(
   if (useXcbeatify) {
     pipes = [{ command: "xcbeautify", args: [] }];
   }
-
-  console.log(additionalArgs);
   await terminal.execute({
     command: commandParts[0],
     args: commandParts.slice(1),
     pipes: pipes,
-    env: additionalEnvUpdated,
+    env: env,
   });
 
   await restartSwiftLSP();

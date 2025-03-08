@@ -5,6 +5,7 @@ import { getWorkspacePath } from "../build/utils";
 import type { ExtensionContext } from "./commands";
 import { getWorkspaceConfig } from "./config";
 import { TaskError } from "./errors";
+import { prepareEnvVars } from "./helpers";
 
 type TaskExecutor = "v1" | "v2";
 
@@ -17,7 +18,7 @@ export type CommandOptions = {
   command: string;
   args?: (string | null)[];
   pipes?: Command[];
-  env?: Record<string, string | undefined>;
+  env?: { [key: string]: string | null };
   onOutputLine?: (data: { value: string; type: "stdout" | "stderr" }) => Promise<void>;
 };
 
@@ -214,16 +215,14 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
         },
       });
 
+      const env = { ...process.env, ...prepareEnvVars(options.env) };
       this.process = spawn(command, {
         // run command in shell to support pipes
         shell: true,
         // in order to be able to kill the whole process group
         // run it in a separate process group
         detached: true,
-        env: {
-          ...process.env,
-          ...options.env,
-        },
+        env: env,
         cwd: workspacePath,
       });
       this.process.stderr?.on("data", (data: string | Buffer): void => {

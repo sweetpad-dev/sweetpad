@@ -1,5 +1,6 @@
 import { getWorkspacePath } from "../build/utils";
 import { ExecBaseError, ExecError } from "./errors";
+import { prepareEnvVars } from "./helpers";
 import { commonLogger } from "./logger";
 
 import { execa } from "execa";
@@ -21,19 +22,28 @@ type ExecaError = {
   originalMessage: string;
 };
 
-export async function exec(options: { command: string; args: string[]; cwd?: string }): Promise<string> {
+export async function exec(options: {
+  command: string;
+  args: string[];
+  cwd?: string;
+  env?: { [key: string]: string | null };
+}): Promise<string> {
   const cwd = options.cwd ?? getWorkspacePath();
 
   commonLogger.debug("Executing command", {
     command: options.command,
     args: options.args,
     cwd: cwd,
+    env: options.env,
   });
+
+  const env = prepareEnvVars(options.env);
 
   let result: any;
   try {
     result = await execa(options.command, options.args, {
       cwd: cwd,
+      env: env,
     });
   } catch (e: any) {
     const errorMessage: string = e?.shortMessage ?? e?.message ?? "[unknown error]";

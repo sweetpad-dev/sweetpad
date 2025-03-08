@@ -2,6 +2,7 @@ import path from "node:path";
 import { prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { cache } from "../cache";
+import { getWorkspaceConfig } from "../config";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { uniqueFilter } from "../helpers";
@@ -387,9 +388,11 @@ export async function getIsTuistInstalled() {
 }
 
 export async function tuistGenerate() {
+  const env = getWorkspaceConfig("tuist.generate.env");
   return await exec({
     command: "tuist",
     args: ["generate", "--no-open"],
+    env: env,
   });
 }
 
