@@ -217,7 +217,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
       const env = { ...process.env, ...prepareEnvVars(options.env) };
       this.process = spawn(command, {
-        // run command in shell to support pipess
+        // run command in shell to support pipes
         shell: true,
         // in order to be able to kill the whole process group
         // run it in a separate process group
