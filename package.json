@@ -785,10 +785,16 @@
           "default": false,
           "description": "Watch for new .swift files and regenerate the project using Tuist. Restart VSCode to apply the settings."
         },
-        "sweetpad.tuist.dynamicConfiguration": {
-          "type": "array",
-          "default": [],
-          "description": "Dynamic configuration for Tuist via env variables. See https://docs.tuist.dev/en/guides/develop/projects/dynamic-configuration for more information."
+        "sweetpad.tuist.generate.env": {
+          "type": "object",
+          "default": {},
+          "description": "Environment variables to pass to the Tuist generate command — https://docs.tuist.dev/en/guides/develop/projects/dynamic-configuration",
+          "examples": [
+            {
+              "TUIST_APP_NAME": "Diia",
+              "TUIST_TARGET_COUNTRY": "Ukraine"
+            }
+          ]
         },
         "sweetpad.xcodebuildserver.autogenerate": {
           "type": "boolean",

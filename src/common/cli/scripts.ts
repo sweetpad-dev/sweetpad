@@ -2,12 +2,12 @@ import path from "node:path";
 import { prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { cache } from "../cache";
+import { getWorkspaceConfig } from "../config";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { uniqueFilter } from "../helpers";
 import { commonLogger } from "../logger";
 import { XcodeWorkspace } from "../xcode/workspace";
-import { getWorkspaceConfig } from "../config";
 
 export type SimulatorOutput = {
   dataPath: string;
@@ -388,10 +388,11 @@ export async function getIsTuistInstalled() {
 }
 
 export async function tuistGenerate() {
-	let config = getWorkspaceConfig("tuist.dynamicConfiguration")?.join(" ") ?? "";
+  const env = getWorkspaceConfig("tuist.generate.env");
   return await exec({
-    command: `${config} tuist`,
+    command: "tuist",
     args: ["generate", "--no-open"],
+    env: env,
   });
 }
 
