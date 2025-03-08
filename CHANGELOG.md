@@ -4,8 +4,8 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 ## [0.1.55] - 2025-03-08
 
-- Add tuist dynamic configuration config — @ladislas 🎉
-- Enable tuist for workspace projects — @ladislas 😍
+- Add tuist dynamic configuration config — [Ladislas de Toldi](https://github.com/ladislas) 🎉
+- Enable tuist for workspace projects — [Ladislas de Toldi](https://github.com/ladislas) 😍
 
 ## [0.1.54] - [0.1.56] — 2025-03-02
 
@@ -23,7 +23,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 ## [0.1.51] - 2025-02-05
 
-- Fix device destination: Apple TV to show tvOS instead of VisionOS (Fixes #106). Thanks to @MACwayne!
+- Fix device destination: Apple TV to show tvOS instead of VisionOS (Fixes #106). Thanks to [@MACwayne](https://github.com/MACwayne)!
 
 ## [0.1.50] - 2025-01-19
 
@@ -55,7 +55,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 ## [0.1.44] - 2024-12-01
 
-- Remember app path for iOS device. By @kvaster 🎉
+- Remember app path for iOS device. By [Viktor Kuzmin](https://github.com/kvaster) 🎉
 
 ## [0.1.43] - 2024-12-01
 
@@ -95,7 +95,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 ## [0.1.35] - 2024-09-22
 
 - Update xcworkspace parsing to address issue [#30](https://github.com/sweetpad-dev/sweetpad/issues/30)
-- Add problem matchers for build output. Thanks @dankinsoid for the contribution.
+- Add problem matchers for build output. Thanks [Daniil Voidilov](https://github.com/dankinsoid) for the contribution.
 
 ## [0.1.34] - 2024-09-21
 
@@ -151,7 +151,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 - Add the "sweetpad.build.derivedDataPath" setting to set the path of the DerivedData folder.
 - Add the "destination" parameter to the ".vscode/tasks.json" file to specify the raw destination for xcodebuild.
 - Add a "destination" status bar item at the bottom of the VSCode window to show the current destination. Thanks to
-  [@aelam](https://github.com/aelam) for the contribution.
+  [Lun Wang](https://github.com/aelam) for the contribution.
 - Add a new destination sidebar panel to show the list of devices and simulators in one place.
 - Update icons across the extension. Acknowledgements to [tabler-icons](https://github.com/tabler/tabler-icons).
 
