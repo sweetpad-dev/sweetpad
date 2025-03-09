@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.56] - 2025-03-09
+
+- Fix: Incorrect build product selected for running #118
+
 ## [0.1.55] - 2025-03-08
 
 - Add tuist dynamic configuration config — [Ladislas de Toldi](https://github.com/ladislas) 🎉

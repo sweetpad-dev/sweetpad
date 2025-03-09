@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { type XcodeBuildSettings, getBuildSettingsOptional } from "../common/cli/scripts";
+import { type XcodeBuildSettings, getBuildSettingsToAskDestination } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import {
@@ -109,7 +109,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    const buildSettings = await getBuildSettingsOptional({
+    const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -198,7 +198,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    const buildSettings = await getBuildSettingsOptional({
+    const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -238,7 +238,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    const buildSettings = await getBuildSettingsOptional({
+    const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -317,7 +317,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    const buildSettings = await getBuildSettingsOptional({
+    const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -357,7 +357,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    const buildSettings = await getBuildSettingsOptional({
+    const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,

@@ -3,7 +3,7 @@ import { XmlElement, type XmlNode, parseXml } from "@rgrove/parse-xml";
 import { readFile } from "../files";
 import { commonLogger } from "../logger";
 import { assertUnreachable, isNotNull } from "../types";
-import { type XcodeProject, parseXcodeProject } from "./project";
+import { type XcodeProject, type XcodeScheme, parseXcodeProject } from "./project";
 
 const XCODE_WORKSPACE_LOCATIONS_TYPES = ["self", "container", "group", "developer", "absolute"] as const;
 type XcodeWorkspaceLocationType = (typeof XCODE_WORKSPACE_LOCATIONS_TYPES)[number];
@@ -107,6 +107,19 @@ export class XcodeWorkspace {
       projects: projects,
     });
     return projects;
+  }
+
+  async getScheme(options: {
+    name: string;
+  }): Promise<XcodeScheme | null> {
+    const projects = await this.getProjects();
+    for (const project of projects) {
+      const scheme = await project.getScheme(options.name);
+      if (scheme) {
+        return scheme;
+      }
+    }
+    return null;
   }
 
   /**

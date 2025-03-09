@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { promises as fs, type Dirent } from "node:fs";
+import { promises as fs, type Dirent, type Stats } from "node:fs";
 import * as path from "node:path";
 import { getWorkspacePath, prepareStoragePath } from "../build/utils";
 import type { ExtensionContext } from "./commands";
@@ -69,6 +69,10 @@ export async function isFileExists(filePath: string): Promise<boolean> {
 
 export async function readFile(filePath: string): Promise<Buffer> {
   return await fs.readFile(filePath);
+}
+
+export async function statFile(filePath: string): Promise<Stats> {
+  return await fs.stat(filePath);
 }
 
 export async function readTextFile(filePath: string): Promise<string> {

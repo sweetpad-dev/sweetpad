@@ -2,7 +2,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 import { getXcodeBuildDestinationString } from "../build/commands.js";
 import { askXcodeWorkspacePath, getWorkspacePath } from "../build/utils.js";
-import { getBuildSettingsOptional } from "../common/cli/scripts.js";
+import { getBuildSettingsToAskDestination } from "../common/cli/scripts.js";
 import type { ExtensionContext } from "../common/commands.js";
 import { errorReporting } from "../common/error-reporting.js";
 import { exec } from "../common/exec.js";
@@ -355,7 +355,7 @@ export class TestingManager {
     const configuration = await askConfigurationForTesting(this.context, {
       xcworkspace: xcworkspace,
     });
-    const buildSettings = await getBuildSettingsOptional({
+    const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,

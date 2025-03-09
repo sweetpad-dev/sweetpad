@@ -7,6 +7,7 @@ import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { uniqueFilter } from "../helpers";
 import { commonLogger } from "../logger";
+import { assertUnreachable } from "../types";
 import { XcodeWorkspace } from "../xcode/workspace";
 
 export type SimulatorOutput = {
@@ -72,27 +73,34 @@ type BuildSettingOutput = {
 
 export class XcodeBuildSettings {
   private settings: { [key: string]: string };
+  public target: string;
 
-  constructor(output: BuildSettingsOutput) {
-    if (output.length === 0) {
-      // todo: improve logging
-      throw new ExtensionError("Error fetching build settings");
-    }
-    this.settings = output[0]?.buildSettings;
+  constructor(options: {
+    settings: { [key: string]: string };
+    target: string;
+  }) {
+    this.settings = options.settings;
+    this.target = options.target;
   }
 
-  get targetBuildDir() {
+  private get targetBuildDir() {
     // Example:
     // - /Users/hyzyla/Library/Developer/Xcode/DerivedData/ControlRoom-gdvrildvemgjaiameavxoegdskby/Build/Products/Debug
     return this.settings.TARGET_BUILD_DIR;
   }
 
+  /**
+   * Path to the executable file (inside the .app bundle) to be used for running macOS apps
+   */
   get executablePath() {
     // Example:
     // - {targetBuildDir}/Control Room.app/Contents/MacOS/Control Room
     return path.join(this.targetBuildDir, this.settings.EXECUTABLE_PATH);
   }
 
+  /**
+   * Path to the .app bundle to be used for installation on iOS simulator or device
+   */
   get appPath() {
     // Example:
     // - {targetBuildDir}/Control Room.app
@@ -114,7 +122,7 @@ export class XcodeBuildSettings {
     return `${this.targetName}.app`;
   }
 
-  get targetName() {
+  private get targetName() {
     // Example:
     // - "ControlRoom"
     return this.settings.TARGET_NAME;
@@ -140,13 +148,16 @@ export class XcodeBuildSettings {
 
 /**
  * Extract build settings for the given scheme and configuration
+ *
+ * Pay attention that this function can return an empty array, if the build settings are not available.
+ * Also it can return several build settings, if there are several targets assigned to the scheme.
  */
-async function getBuildSettingsBase(options: {
+async function getBuildSettingsList(options: {
   scheme: string;
   configuration: string;
   sdk: string | undefined;
   xcworkspace: string;
-}): Promise<XcodeBuildSettings | null> {
+}): Promise<XcodeBuildSettings[]> {
   const derivedDataPath = prepareDerivedDataPath();
 
   const args = [
@@ -186,22 +197,41 @@ async function getBuildSettingsBase(options: {
       const data = lines.slice(i).join("\n");
       const output = JSON.parse(data) as BuildSettingsOutput;
       if (output.length === 0) {
-        return null;
+        return [];
       }
-      return new XcodeBuildSettings(output);
+      return output.map((output) => {
+        return new XcodeBuildSettings({
+          settings: output.buildSettings,
+          target: output.target,
+        });
+      });
     }
   }
-  return null;
+  return [];
 }
 
-export async function getBuildSettingsOptional(options: {
+/**
+ * Extract build settings for the given scheme and configuration to suggest the destination
+ * for the user to select
+ */
+export async function getBuildSettingsToAskDestination(options: {
   scheme: string;
   configuration: string;
   sdk: string | undefined;
   xcworkspace: string;
 }): Promise<XcodeBuildSettings | null> {
   try {
-    return await getBuildSettingsBase(options);
+    const settings = await getBuildSettingsList(options);
+
+    if (settings.length === 0) {
+      return null;
+    }
+    if (settings.length === 1) {
+      return settings[0];
+    }
+    // To ask destination, we might omit the build settings, since they are needed only to
+    // to suggest the destination and nothing bad will happen if we don't have them here
+    return null;
   } catch (e) {
     commonLogger.error("Error getting build settings", {
       error: e,
@@ -211,19 +241,54 @@ export async function getBuildSettingsOptional(options: {
 }
 
 /**
- * Extract build settings for the given scheme and configuration
+ * Get build settings to launch the app
+ *
+ * Each scheme might have several targets. That's why -showBuildSettings might return different
+ * build settings for each target. In the ideal scenario where there is a single target and settings
+ * and I just can use first settings object. But there is a cases when there are several targets
+ * for the scheme and I need to find which target is set to launch in .xcschema XML file.
  */
-export async function getBuildSettings(options: {
+export async function getBuildSettingsToLaunch(options: {
   scheme: string;
   configuration: string;
   sdk: string | undefined;
   xcworkspace: string;
 }): Promise<XcodeBuildSettings> {
-  const settings = await getBuildSettingsOptional(options);
-  if (!settings) {
+  const settings = await getBuildSettingsList(options);
+
+  // Build settings are required to run the app because we use them to locate the executable file or
+  // the .app bundle. So let's just give up here if -showBuildSettings didn't return anything.
+  if (settings.length === 0) {
     throw new ExtensionError("Empty build settings");
   }
-  return settings;
+
+  // I think this is the most common case, when there is only one target in the scheme. Higly likely that
+  // this is the target to launch. Technically, schema mightn't have any target to launch, but I believe
+  // this is a rare case.
+  if (settings.length === 1) {
+    return settings[0];
+  }
+
+  // > 1 target in the scheme
+  // Looking for such pattern in the .xcscheme XML file:
+  // <Schema>
+  //    <LaunchAction>
+  //      <BuildableProductRunnable>
+  //        <BuildableReference BlueprintName=...>
+  const workspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+  const scheme = await workspace.getScheme({ name: options.scheme });
+  if (!scheme) {
+    return settings[0];
+  }
+
+  const target = await scheme.getTargetToLaunch();
+  const targetSettings = settings.find((settings) => settings.target === target);
+  if (targetSettings) {
+    return targetSettings;
+  }
+
+  // As a last resort, let's just return the first settings object (can we handle this case better?)
+  return settings[0];
 }
 
 /**
@@ -287,11 +352,14 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
       };
     });
   }
-  return output.workspace.schemes.map((scheme) => {
-    return {
-      name: scheme,
-    };
-  });
+  if (output.type === "workspace") {
+    return output.workspace.schemes.map((scheme) => {
+      return {
+        name: scheme,
+      };
+    });
+  }
+  assertUnreachable(output);
 }
 
 export async function getTargets(options: { xcworkspace: string }): Promise<string[]> {
@@ -301,9 +369,12 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   if (output.type === "project") {
     return output.project.targets;
   }
-  const xcworkspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
-  const projects = await xcworkspace.getProjects();
-  return projects.flatMap((project) => project.getTargets());
+  if (output.type === "workspace") {
+    const xcworkspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+    const projects = await xcworkspace.getProjects();
+    return projects.flatMap((project) => project.getTargets());
+  }
+  assertUnreachable(output);
 }
 
 export async function getBuildConfigurations(options: { xcworkspace: string }): Promise<XcodeConfiguration[]> {
