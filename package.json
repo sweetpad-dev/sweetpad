@@ -500,7 +500,7 @@
       {
         "command": "sweetpad.destinations.select",
         "title": "SweetPad: Select destination",
-        "icon": "$(file-code)"
+        "icon": "$(sweetpad-pin)"
       },
       {
         "command": "sweetpad.destinations.selectForTesting",
@@ -601,16 +601,17 @@
         {
           "command": "sweetpad.simulators.start",
           "when": "view == sweetpad.destinations.view && viewItem == destination-item-simulator-shutdown",
-          "group": "inline"
+          "group": "inline@2"
         },
         {
           "command": "sweetpad.simulators.stop",
           "when": "view == sweetpad.destinations.view && viewItem == destination-item-simulator-booted",
-          "group": "inline"
+          "group": "inline@2"
         },
         {
           "command": "sweetpad.destinations.select",
-          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-.*/"
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-.*/",
+          "group": "inline@1"
         },
         {
           "command": "sweetpad.tools.documentation",
@@ -1019,6 +1020,13 @@
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
           "fontCharacter": "\\ea5e"
+        }
+      },
+      "sweetpad-pin":{
+        "description": "Select",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\ec9c"
         }
       },
       "sweetpad-x": {
