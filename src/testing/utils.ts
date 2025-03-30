@@ -96,7 +96,6 @@ export async function askDestinationToTestOn(
   const supportedPlatforms = buildSettings?.supportedPlatforms;
 
   const destinations = await context.destinationsManager.getDestinations({
-    // platformFilter: supportedPlatforms,
     mostUsedSort: true,
   });
 

@@ -31,6 +31,7 @@ type IEventMap = {
   devicesUpdated: [];
   xcodeDestinationForBuildUpdated: [destination: SelectedDestination | undefined];
   xcodeDestinationForTestingUpdated: [destination: SelectedDestination | undefined];
+  recentDestinationsUpdated: [];
 };
 
 type IEventKey = keyof IEventMap;
@@ -85,18 +86,19 @@ export class DestinationsManager {
     await this.refreshDevices();
   }
 
-  isUsageStatsExist(): boolean {
-    return this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") !== undefined;
+  isRecentExists(): boolean {
+    const recent = this.context.getWorkspaceState("build.xcodeDestinationsRecent");
+    return Array.isArray(recent) && recent.length > 0;
   }
 
-  async getMostUsedDestinations(): Promise<Destination[]> {
-    const usageStats = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
-    const destinationsIds = Object.keys(usageStats).sort((a, b) => usageStats[b] - usageStats[a]);
-    const destinations: Destination[] = [];
+  async getRecentDestinations(): Promise<Destination[]> {
+    const rawDestinations = this.context.getWorkspaceState("build.xcodeDestinationsRecent") ?? [];
 
-    for (const destinationId of destinationsIds) {
+    const destinations: Destination[] = [];
+    for (const rawDestination of rawDestinations) {
       const destination = await this.findDestination({
-        destinationId: destinationId,
+        destinationId: rawDestination.id,
+        type: rawDestination.type,
       });
       if (destination) {
         destinations.push(destination);
@@ -301,17 +303,43 @@ export class DestinationsManager {
     return destination;
   }
 
+  trackSelectedDestination(destination: Destination) {
+    this.trackDestinationUsage(destination);
+    this.trackRecentDestination(destination);
+  }
+
   /**
-   * Increment the usage statistics for a destination. This statistics is used to show the most recently used
-   * destinations
+   * Collect statistics about the usage of the destinations
    */
-  incrementUsageStats(options: { id: string }) {
+  trackDestinationUsage(destination: Destination) {
+    // Incrmement usage statistics
     const prevStat = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
-    const count: number = prevStat[options.id] ?? 0;
+    const count: number = prevStat[destination.id] ?? 0;
     this.context.updateWorkspaceState("build.xcodeDestinationsUsageStatistics", {
       ...prevStat,
-      [options.id]: count + 1,
+      [destination.id]: count + 1,
     });
+  }
+
+  trackRecentDestination(destination: Destination) {
+    // Add to recent destinations
+    const recentDestinations = this.context.getWorkspaceState("build.xcodeDestinationsRecent") ?? [];
+    const recentDestination = recentDestinations.find((d) => d.id === destination.id);
+    if (!recentDestination) {
+      const newRecentDestination: SelectedDestination = {
+        id: destination.id,
+        type: destination.type,
+        name: destination.name,
+      };
+      this.context.updateWorkspaceState("build.xcodeDestinationsRecent", [...recentDestinations, newRecentDestination]);
+    }
+  }
+
+  removeRecentDestination(destination: Destination) {
+    const recentDestinations = this.context.getWorkspaceState("build.xcodeDestinationsRecent") ?? [];
+    const newRecentDestinations = recentDestinations.filter((d) => d.id !== destination.id);
+    this.context.updateWorkspaceState("build.xcodeDestinationsRecent", newRecentDestinations);
+    this.emitter.emit("recentDestinationsUpdated");
   }
 
   setWorkspaceDestinationForBuild(destination: Destination | undefined) {
@@ -327,7 +355,7 @@ export class DestinationsManager {
       name: destination.name,
     };
     this.context.updateWorkspaceState("build.xcodeDestination", selectedDestination);
-    this.incrementUsageStats({ id: destination.id });
+    this.trackSelectedDestination(destination);
 
     this.emitter.emit("xcodeDestinationForBuildUpdated", selectedDestination);
   }
@@ -345,7 +373,7 @@ export class DestinationsManager {
       name: destination.name,
     };
     this.context.updateWorkspaceState("testing.xcodeDestination", selectedDestination);
-    this.incrementUsageStats({ id: destination.id });
+    this.trackSelectedDestination(destination);
     this.emitter.emit("xcodeDestinationForTestingUpdated", selectedDestination);
   }
 

@@ -23,7 +23,11 @@ import { errorReporting } from "./common/error-reporting.js";
 import { Logger } from "./common/logger.js";
 import { getAppPathCommand } from "./debugger/commands.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
-import { selectDestinationForBuildCommand, selectDestinationForTestingCommand } from "./destination/commands.js";
+import {
+  removeRecentDestinationCommand,
+  selectDestinationForBuildCommand,
+  selectDestinationForTestingCommand,
+} from "./destination/commands.js";
 import { DestinationsManager } from "./destination/manager.js";
 import { DestinationStatusBar } from "./destination/status-bar.js";
 import { DestinationsTreeProvider } from "./destination/tree.js";
@@ -183,6 +187,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
   d(destinationBar);
   d(command("sweetpad.destinations.select", selectDestinationForBuildCommand));
+  d(command("sweetpad.destinations.removeRecent", removeRecentDestinationCommand));
   d(command("sweetpad.destinations.selectForTesting", selectDestinationForTestingCommand));
   d(tree("sweetpad.destinations.view", destinationsTreeProvider));
 

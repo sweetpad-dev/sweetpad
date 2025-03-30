@@ -503,6 +503,11 @@
         "icon": "$(sweetpad-pin)"
       },
       {
+        "command": "sweetpad.destinations.removeRecent",
+        "title": "SweetPad: Remove recent destination",
+        "icon": "$(sweetpad-trash-x)"
+      },
+      {
         "command": "sweetpad.destinations.selectForTesting",
         "title": "SweetPad.Testing: Select destination for testing",
         "icon": "$(file-code)"
@@ -600,18 +605,28 @@
         },
         {
           "command": "sweetpad.simulators.start",
-          "when": "view == sweetpad.destinations.view && viewItem == destination-item-simulator-shutdown",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*&status=shutdown.*/",
           "group": "inline@2"
         },
         {
           "command": "sweetpad.simulators.stop",
-          "when": "view == sweetpad.destinations.view && viewItem == destination-item-simulator-booted",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*&status=booted.*/",
           "group": "inline@2"
         },
         {
           "command": "sweetpad.destinations.select",
           "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-.*/",
           "group": "inline@1"
+        },
+        {
+          "command": "sweetpad.destinations.select",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-.*/",
+          "group": "context@1"
+        },
+        {
+          "command": "sweetpad.destinations.removeRecent",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-.*/ && viewItem =~ /.*recent=true.*/",
+          "group": "context@2"
         },
         {
           "command": "sweetpad.tools.documentation",
