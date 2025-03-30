@@ -71,25 +71,65 @@ class DestinationGroupTreeItem extends vscode.TreeItem {
 /**
  * Common interface for destination tree item (items under tree group, second level)
  */
-export interface IDestinationTreeItem {
+export interface IDestinationTreeItem extends vscode.TreeItem {
   type: DestinationType | "Recent";
+}
+
+/**
+ * Base class for destination item (not group) that provides common functionality
+ * like context value management in uniform way
+ */
+class BaseDestinationTreeItem extends vscode.TreeItem {
+  contextPrefix: string;
+  contextState: Record<string, string> = {};
+
+  constructor(options: {
+    label: string;
+    collapsibleState: vscode.TreeItemCollapsibleState;
+    contextPrefix: string;
+  }) {
+    super(options.label, options.collapsibleState);
+    this.contextPrefix = options.contextPrefix;
+    this.contextState = {};
+    // No automatic updating of contextValue here
+  }
+
+  setContextState(key: string, value: string | undefined): void {
+    if (value === undefined) {
+      delete this.contextState[key];
+    } else {
+      this.contextState[key] = value;
+    }
+    // !Important: remember to call refreshContextValue() after setting context state
+  }
+
+  refreshContextValue(): void {
+    let updated = `${this.contextPrefix}`;
+    const sortedContextState = Object.entries(this.contextState).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
+    for (const [key, value] of sortedContextState) {
+      updated += `&${key}=${value}`;
+    }
+    this.contextValue = updated;
+  }
 }
 
 /**
  * Tree item representing a iOSSimulator destination
  */
-export class iOSSimulatorDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+export class iOSSimulatorDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
   type = "iOSSimulator" as const;
   simulator: iOSSimulatorDestination;
   provider: DestinationsTreeProvider;
 
-  constructor(options: { simulator: iOSSimulatorDestination; provider: DestinationsTreeProvider }) {
-    super(options.simulator.name, vscode.TreeItemCollapsibleState.None);
+  constructor(options: { simulator: iOSSimulatorDestination; provider: DestinationsTreeProvider; isRecent?: boolean }) {
+    super({
+      label: options.simulator.name,
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextPrefix: "destination-item-simulator",
+    });
     this.description = options.simulator.osVersion;
     this.simulator = options.simulator;
     this.provider = options.provider;
-
-    const contextPrefix = "destination-item-simulator";
 
     let color: vscode.ThemeColor | undefined = undefined;
     this.description = addSelectedMarks({
@@ -98,15 +138,18 @@ export class iOSSimulatorDestinationTreeItem extends vscode.TreeItem implements 
       selectedForBuild: this.provider.selectedDestinationForBuild,
       selectedForTesting: this.provider.selectedDestinationForTesting,
     });
+    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, color);
 
     if (this.simulator.isBooted) {
-      this.contextValue = `${contextPrefix}-booted`; // "destination-item-simulator-booted"
+      this.setContextState("status", "booted");
       color = new vscode.ThemeColor("sweetpad.simulator.booted");
     } else {
-      this.contextValue = `${contextPrefix}-shutdown`; // "destination-item-simulator-shutdown"
+      this.setContextState("status", "shutdown");
     }
-
-    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, color);
+    if (options.isRecent) {
+      this.setContextState("recent", "true");
+    }
+    this.refreshContextValue();
   }
 
   get destination(): iOSSimulatorDestination {
@@ -117,18 +160,24 @@ export class iOSSimulatorDestinationTreeItem extends vscode.TreeItem implements 
 /**
  * Tree item representing a watchOSSimulator destination
  */
-export class watchOSSimulatorDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+export class watchOSSimulatorDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
   type = "watchOSSimulator" as const;
   simulator: watchOSSimulatorDestination;
   provider: DestinationsTreeProvider;
 
-  constructor(options: { simulator: watchOSSimulatorDestination; provider: DestinationsTreeProvider }) {
-    super(options.simulator.name, vscode.TreeItemCollapsibleState.None);
+  constructor(options: {
+    simulator: watchOSSimulatorDestination;
+    provider: DestinationsTreeProvider;
+    isRecent?: boolean;
+  }) {
+    super({
+      label: options.simulator.name,
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextPrefix: "destination-item-simulator",
+    });
     this.description = options.simulator.osVersion;
     this.simulator = options.simulator;
     this.provider = options.provider;
-
-    const contextPrefix = "destination-item-simulator";
 
     let color: vscode.ThemeColor | undefined = undefined;
     this.description = addSelectedMarks({
@@ -137,15 +186,18 @@ export class watchOSSimulatorDestinationTreeItem extends vscode.TreeItem impleme
       selectedForBuild: this.provider.selectedDestinationForBuild,
       selectedForTesting: this.provider.selectedDestinationForTesting,
     });
+    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, color);
 
     if (this.simulator.isBooted) {
-      this.contextValue = `${contextPrefix}-booted`; // "destination-item-simulator-booted"
+      this.setContextState("status", "booted");
       color = new vscode.ThemeColor("sweetpad.simulator.booted");
     } else {
-      this.contextValue = `${contextPrefix}-shutdown`; // "destination-item-simulator-shutdown"
+      this.setContextState("status", "shutdown");
     }
-
-    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, color);
+    if (options.isRecent) {
+      this.setContextState("recent", "true");
+    }
+    this.refreshContextValue();
   }
 
   get destination(): watchOSSimulatorDestination {
@@ -153,18 +205,24 @@ export class watchOSSimulatorDestinationTreeItem extends vscode.TreeItem impleme
   }
 }
 
-export class visionOSSimulatorDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+export class visionOSSimulatorDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
   type = "visionOSSimulator" as const;
   simulator: visionOSSimulatorDestination;
   provider: DestinationsTreeProvider;
 
-  constructor(options: { simulator: visionOSSimulatorDestination; provider: DestinationsTreeProvider }) {
-    super(options.simulator.name, vscode.TreeItemCollapsibleState.None);
+  constructor(options: {
+    simulator: visionOSSimulatorDestination;
+    provider: DestinationsTreeProvider;
+    isRecent?: boolean;
+  }) {
+    super({
+      label: options.simulator.name,
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextPrefix: "destination-item-simulator",
+    });
     this.description = options.simulator.osVersion;
     this.simulator = options.simulator;
     this.provider = options.provider;
-
-    const contextPrefix = "destination-item-simulator";
 
     let color: vscode.ThemeColor | undefined = undefined;
     this.description = addSelectedMarks({
@@ -173,15 +231,18 @@ export class visionOSSimulatorDestinationTreeItem extends vscode.TreeItem implem
       selectedForBuild: this.provider.selectedDestinationForBuild,
       selectedForTesting: this.provider.selectedDestinationForTesting,
     });
+    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, color);
 
     if (this.simulator.isBooted) {
-      this.contextValue = `${contextPrefix}-booted`; // "destination-item-simulator-booted"
+      this.setContextState("status", "booted");
       color = new vscode.ThemeColor("sweetpad.simulator.booted");
     } else {
-      this.contextValue = `${contextPrefix}-shutdown`; // "destination-item-simulator-shutdown"
+      this.setContextState("status", "shutdown");
     }
-
-    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, color);
+    if (options.isRecent) {
+      this.setContextState("recent", "true");
+    }
+    this.refreshContextValue();
   }
 
   get destination(): visionOSSimulatorDestination {
@@ -189,18 +250,24 @@ export class visionOSSimulatorDestinationTreeItem extends vscode.TreeItem implem
   }
 }
 
-class tvOSSimulatorDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+class tvOSSimulatorDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
   type = "tvOSSimulator" as const;
   simulator: tvOSSimulatorDestination;
   provider: DestinationsTreeProvider;
 
-  constructor(options: { simulator: tvOSSimulatorDestination; provider: DestinationsTreeProvider }) {
-    super(options.simulator.name, vscode.TreeItemCollapsibleState.None);
+  constructor(options: {
+    simulator: tvOSSimulatorDestination;
+    provider: DestinationsTreeProvider;
+    isRecent?: boolean;
+  }) {
+    super({
+      label: options.simulator.name,
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextPrefix: "destination-item-simulator",
+    });
     this.description = options.simulator.osVersion;
     this.simulator = options.simulator;
     this.provider = options.provider;
-
-    const contextPrefix = "destination-item-simulator";
 
     let color: vscode.ThemeColor | undefined = undefined;
     this.description = addSelectedMarks({
@@ -209,15 +276,18 @@ class tvOSSimulatorDestinationTreeItem extends vscode.TreeItem implements IDesti
       selectedForBuild: this.provider.selectedDestinationForBuild,
       selectedForTesting: this.provider.selectedDestinationForTesting,
     });
+    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, color);
 
     if (this.simulator.isBooted) {
-      this.contextValue = `${contextPrefix}-booted`; // "destination-item-simulator-booted"
+      this.setContextState("status", "booted");
       color = new vscode.ThemeColor("sweetpad.simulator.booted");
     } else {
-      this.contextValue = `${contextPrefix}-shutdown`; // "destination-item-simulator-shutdown"
+      this.setContextState("status", "shutdown");
     }
-
-    this.iconPath = new vscode.ThemeIcon(this.simulator.icon, color);
+    if (options.isRecent) {
+      this.setContextState("recent", "true");
+    }
+    this.refreshContextValue();
   }
 
   get destination(): tvOSSimulatorDestination {
@@ -228,19 +298,21 @@ class tvOSSimulatorDestinationTreeItem extends vscode.TreeItem implements IDesti
 /**
  * Tree item representing a iOS device destination
  */
-export class iOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+export class iOSDeviceDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
   type = "iOSDevice" as const;
   device: iOSDeviceDestination;
   provider: DestinationsTreeProvider;
 
-  constructor(options: { device: iOSDeviceDestination; provider: DestinationsTreeProvider }) {
-    super(options.device.name, vscode.TreeItemCollapsibleState.None);
+  constructor(options: { device: iOSDeviceDestination; provider: DestinationsTreeProvider; isRecent?: boolean }) {
+    super({
+      label: options.device.name,
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextPrefix: "destination-item-ios",
+    });
     this.device = options.device;
     this.provider = options.provider;
 
     this.description = options.device.osVersion;
-    const contextPrefix = "destination-item-iOSDevice";
-
     this.description = addSelectedMarks({
       description: this.description,
       current: this.device,
@@ -250,10 +322,14 @@ export class iOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDe
 
     this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
     if (this.device.isConnected) {
-      this.contextValue = `${contextPrefix}-connected`; // "destination-item-iOSDevice-connected"
+      this.setContextState("status", "connected");
     } else {
-      this.contextValue = `${contextPrefix}-disconnected`; // "destination-item-iOSDevice-disconnected
+      this.setContextState("status", "disconnected");
     }
+    if (options.isRecent) {
+      this.setContextState("recent", "true");
+    }
+    this.refreshContextValue();
   }
 
   get destination(): iOSDeviceDestination {
@@ -261,13 +337,16 @@ export class iOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDe
   }
 }
 
-export class macOSDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+export class macOSDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
   type = "macOS" as const;
   device: macOSDestination;
   provider: DestinationsTreeProvider;
-
-  constructor(options: { device: macOSDestination; provider: DestinationsTreeProvider }) {
-    super(options.device.name, vscode.TreeItemCollapsibleState.None);
+  constructor(options: { device: macOSDestination; provider: DestinationsTreeProvider; isRecent?: boolean }) {
+    super({
+      label: options.device.name,
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextPrefix: "destination-item-macos",
+    });
     this.device = options.device;
     this.provider = options.provider;
 
@@ -279,10 +358,12 @@ export class macOSDestinationTreeItem extends vscode.TreeItem implements IDestin
       selectedForTesting: this.provider.selectedDestinationForTesting,
     });
 
-    const contextPrefix = "destination-item-macos";
-
     this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
-    this.contextValue = `${contextPrefix}-connected`; // "destination-item-macOS-connected"
+    this.setContextState("status", "connected");
+    if (options.isRecent) {
+      this.setContextState("recent", "true");
+    }
+    this.refreshContextValue();
   }
 
   get destination(): macOSDestination {
@@ -293,19 +374,20 @@ export class macOSDestinationTreeItem extends vscode.TreeItem implements IDestin
 /**
  * Tree item representing a watchOS device destination
  */
-export class watchOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+export class watchOSDeviceDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
   type = "watchOSDevice" as const;
   device: watchOSDeviceDestination;
   provider: DestinationsTreeProvider;
-
-  constructor(options: { device: watchOSDeviceDestination; provider: DestinationsTreeProvider }) {
-    super(options.device.name, vscode.TreeItemCollapsibleState.None);
+  constructor(options: { device: watchOSDeviceDestination; provider: DestinationsTreeProvider; isRecent?: boolean }) {
+    super({
+      label: options.device.name,
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextPrefix: "destination-item-watchos",
+    });
     this.device = options.device;
     this.provider = options.provider;
 
     this.description = options.device.osVersion;
-    const contextPrefix = "destination-item-watchos";
-
     this.description = addSelectedMarks({
       description: this.description,
       current: this.device,
@@ -315,10 +397,14 @@ export class watchOSDeviceDestinationTreeItem extends vscode.TreeItem implements
 
     this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
     if (this.device.isConnected) {
-      this.contextValue = `${contextPrefix}-connected`;
+      this.setContextState("status", "connected");
     } else {
-      this.contextValue = `${contextPrefix}-disconnected`;
+      this.setContextState("status", "disconnected");
     }
+    if (options.isRecent) {
+      this.setContextState("recent", "true");
+    }
+    this.refreshContextValue();
   }
 
   get destination(): watchOSDeviceDestination {
@@ -326,19 +412,22 @@ export class watchOSDeviceDestinationTreeItem extends vscode.TreeItem implements
   }
 }
 
-export class tvOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+export class tvOSDeviceDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
   type = "tvOSDevice" as const;
   device: tvOSDeviceDestination;
+
   provider: DestinationsTreeProvider;
 
-  constructor(options: { device: tvOSDeviceDestination; provider: DestinationsTreeProvider }) {
-    super(options.device.name, vscode.TreeItemCollapsibleState.None);
+  constructor(options: { device: tvOSDeviceDestination; provider: DestinationsTreeProvider; isRecent?: boolean }) {
+    super({
+      label: options.device.name,
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextPrefix: "destination-item-tvos",
+    });
     this.device = options.device;
     this.provider = options.provider;
 
     this.description = options.device.osVersion;
-    const contextPrefix = "destination-item-tvos";
-
     this.description = addSelectedMarks({
       description: this.description,
       current: this.device,
@@ -348,10 +437,14 @@ export class tvOSDeviceDestinationTreeItem extends vscode.TreeItem implements ID
 
     this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
     if (this.device.isConnected) {
-      this.contextValue = `${contextPrefix}-connected`;
+      this.setContextState("status", "connected");
     } else {
-      this.contextValue = `${contextPrefix}-disconnected`;
+      this.setContextState("status", "disconnected");
     }
+    if (options.isRecent) {
+      this.setContextState("recent", "true");
+    }
+    this.refreshContextValue();
   }
 
   get destination(): tvOSDeviceDestination {
@@ -359,19 +452,21 @@ export class tvOSDeviceDestinationTreeItem extends vscode.TreeItem implements ID
   }
 }
 
-export class visionOSDeviceDestinationTreeItem extends vscode.TreeItem implements IDestinationTreeItem {
+export class visionOSDeviceDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
   type = "visionOSDevice" as const;
   device: visionOSDeviceDestination;
   provider: DestinationsTreeProvider;
 
-  constructor(options: { device: visionOSDeviceDestination; provider: DestinationsTreeProvider }) {
-    super(options.device.name, vscode.TreeItemCollapsibleState.None);
+  constructor(options: { device: visionOSDeviceDestination; provider: DestinationsTreeProvider; isRecent?: boolean }) {
+    super({
+      label: options.device.name,
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextPrefix: "destination-item-visionos",
+    });
     this.device = options.device;
     this.provider = options.provider;
 
     this.description = options.device.osVersion;
-    const contextPrefix = "destination-item-visionos";
-
     this.description = addSelectedMarks({
       description: this.description,
       current: this.device,
@@ -381,10 +476,14 @@ export class visionOSDeviceDestinationTreeItem extends vscode.TreeItem implement
 
     this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
     if (this.device.isConnected) {
-      this.contextValue = `${contextPrefix}-connected`;
+      this.setContextState("status", "connected");
     } else {
-      this.contextValue = `${contextPrefix}-disconnected`;
+      this.setContextState("status", "disconnected");
     }
+    if (options.isRecent) {
+      this.setContextState("recent", "true");
+    }
+    this.refreshContextValue();
   }
 
   get destination(): visionOSDeviceDestination {
@@ -427,6 +526,9 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
     this.manager.on("xcodeDestinationForTestingUpdated", (destination) => {
       this.selectedDestinationForTesting = destination;
       this._onDidChangeTreeData.fire(null); // todo: update only the selected destination
+    });
+    this.manager.on("recentDestinationsUpdated", () => {
+      this._onDidChangeTreeData.fire(null); // todo: update only the recent destinations
     });
     this.selectedDestinationForBuild = this.manager.getSelectedXcodeDestinationForBuild();
     this.selectedDestinationForTesting = this.manager.getSelectedXcodeDestinationForTesting();
@@ -475,61 +577,70 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   async getRecentDestinations(): Promise<vscode.TreeItem[]> {
-    const mostUsed = await this.manager.getMostUsedDestinations();
+    const mostUsed = await this.manager.getRecentDestinations();
 
     return mostUsed.map((destination) => {
       if (destination.type === "iOSSimulator") {
         return new iOSSimulatorDestinationTreeItem({
           simulator: destination,
           provider: this,
+          isRecent: true,
         });
       }
       if (destination.type === "watchOSSimulator") {
         return new watchOSSimulatorDestinationTreeItem({
           simulator: destination,
           provider: this,
+          isRecent: true,
         });
       }
       if (destination.type === "tvOSSimulator") {
         return new tvOSSimulatorDestinationTreeItem({
           simulator: destination,
           provider: this,
+          isRecent: true,
         });
       }
       if (destination.type === "visionOSSimulator") {
         return new visionOSSimulatorDestinationTreeItem({
           simulator: destination,
           provider: this,
+          isRecent: true,
         });
       }
       if (destination.type === "macOS") {
         return new macOSDestinationTreeItem({
           device: destination,
           provider: this,
+          isRecent: true,
         });
       }
       if (destination.type === "iOSDevice") {
         return new iOSDeviceDestinationTreeItem({
           device: destination,
           provider: this,
+          isRecent: true,
         });
       }
       if (destination.type === "watchOSDevice") {
         return new watchOSDeviceDestinationTreeItem({
           device: destination,
           provider: this,
+          isRecent: true,
         });
       }
       if (destination.type === "tvOSDevice") {
         return new tvOSDeviceDestinationTreeItem({
           device: destination,
           provider: this,
+          isRecent: true,
         });
       }
       if (destination.type === "visionOSDevice") {
         return new visionOSDeviceDestinationTreeItem({
           device: destination,
           provider: this,
+          isRecent: true,
         });
       }
       checkUnreachable(destination);
@@ -541,7 +652,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
     const groups = [];
 
     // Special group that shows destinations of all types that were used recently
-    const isUsageStat = this.manager.isUsageStatsExist();
+    const isUsageStat = this.manager.isRecentExists();
     if (isUsageStat) {
       groups.push(
         new DestinationGroupTreeItem({

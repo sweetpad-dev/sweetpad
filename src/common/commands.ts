@@ -37,7 +37,8 @@ type WorkspaceTypes = {
   "build.xcodeScheme": string;
   "build.xcodeConfiguration": string;
   "build.xcodeDestination": SelectedDestination;
-  "build.xcodeDestinationsUsageStatistics": Record<string, number>;
+  "build.xcodeDestinationsUsageStatistics": Record<string, number>; // destinationId -> usageCount
+  "build.xcodeDestinationsRecent": SelectedDestination[];
   "build.xcodeSdk": string;
   "build.lastLaunchedApp": LastLaunchedAppContext;
   "build.xcodeBuildServerAutogenreateInfoShown": boolean;

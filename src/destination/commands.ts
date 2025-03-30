@@ -30,3 +30,12 @@ export async function selectDestinationForTestingCommand(execution: CommandExecu
     supportedPlatforms: undefined,
   });
 }
+
+export async function removeRecentDestinationCommand(execution: CommandExecution, item?: DestinationTreeItem) {
+  if (!item) {
+    return;
+  }
+
+  const manager = execution.context.destinationsManager;
+  manager.removeRecentDestination(item.destination);
+}
