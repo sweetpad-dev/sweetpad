@@ -2,7 +2,7 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [0.1.58] - 2025-04-23
+## [0.1.60] - 2025-04-23
 
 - Improve select build configuration
 
