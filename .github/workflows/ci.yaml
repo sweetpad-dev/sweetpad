@@ -27,7 +27,6 @@ jobs:
   deploy-vsmarketplace:
     name: Deploy to Visual Studio Marketplace
     runs-on: ubuntu-latest
-    needs: deploy-ovsx
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
