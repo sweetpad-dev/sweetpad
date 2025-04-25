@@ -16,11 +16,10 @@ You can support this project by giving a star on GitHub ⭐️ or by becoming an
 <!-- [![Twitter](https://img.shields.io/twitter/follow/sweetpad_dev?style=social&logo=twitter)](https://twitter.com/sweetpad_dev) -->
 <hr/>
 
-Develop Swift/iOS projects using VSCode.
+Develop Swift/iOS projects using VSCode or Cursor.
 
-The long-term goal is to make VSCode a viable alternative to Xcode for iOS development by integrating open-source
-tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcode-build-server**, **sourcekit-lsp**, and
-so on into VSCode.
+The long-term goal is to make VSCode/Cursor a viable alternative to Xcode for iOS development by integrating open-source
+tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcode-build-server**, **sourcekit-lsp**.
 
 ![iOS simulator](./docs/images/build-demo.gif)
 
