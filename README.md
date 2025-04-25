@@ -36,9 +36,9 @@ so on into VSCode.
   [swift-format](https://github.com/apple/swift-format) or other formatter of your choice
   
 - 📱 **[Simulator](https://sweetpad.hyzyla.dev/docs/simulators)** — manage iOS simulators
-- 
+  
 - 📱 **[Devices](https://sweetpad.hyzyla.dev/docs/devices)** — run iOS applications on iPhone or iPad
-- 
+ 
 - 🛠️ **[Tools](https://sweetpad.hyzyla.dev/docs/tools)** — manage essential iOS development tools using
   [Homebrew](https://brew.sh/)
   
@@ -46,7 +46,7 @@ so on into VSCode.
   [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
   
 - ✅ **[Tests](https://sweetpad.hyzyla.dev/docs/tests)** — run tests on simulators and devices
-- 
+  
 
 > 💡 If you have any ideas, please open an issue or start a discussion on the
 > [SweetPad](https://github.com/sweetpad-dev/sweetpad) GitHub repository.
