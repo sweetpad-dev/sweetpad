@@ -160,6 +160,7 @@ export async function runOniOSSimulator(
       "launch",
       "--console-pty",
       "--terminate-running-process",
+      "--wait-for-debugger",
       simulator.udid,
       bundlerId,
       ...options.launchArgs,
@@ -482,6 +483,11 @@ export async function buildApp(
     command.addBuildSettings("VALID_ARCHS", arch);
     command.addBuildSettings("ONLY_ACTIVE_ARCH", "NO");
   }
+
+  // Debug information
+  command.addBuildSettings("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym");
+  command.addBuildSettings("GCC_GENERATE_DEBUGGING_SYMBOLS", "YES");    
+
   command.addParameters("-scheme", options.scheme);
   command.addParameters("-configuration", options.configuration);
   command.addParameters("-workspace", options.xcworkspace);
