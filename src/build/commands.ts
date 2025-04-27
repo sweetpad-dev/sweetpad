@@ -228,7 +228,7 @@ export async function runOniOSDevice(
     writeWatchMarkers(terminal);
   }
 
-  // Prepare the launch arguments with optional --wait-for-debugger flag
+  // Prepare the launch arguments
   const launchArgs = [
     "devicectl",
     "device",
