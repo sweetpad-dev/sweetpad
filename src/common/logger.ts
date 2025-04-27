@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { errorReporting } from "./error-reporting";
+import { ExtensionError } from "./errors";
 
 interface Context {
   message?: never;
@@ -172,14 +173,17 @@ export class Logger {
   }
 
   error(message: string, context: Context & { error?: unknown } = {}) {
-    const stackTrace = context.error instanceof Error ? (context.error.stack ?? "") : "";
-    const { error, ...restContext } = context;
+    const { error, ...logContext } = context;
+    const errorContext = error instanceof ExtensionError ? error.options : {};
+    const stackTrace = error instanceof Error ? (error.stack ?? "") : "";
+
     this.addMessage({
       message: message,
       level: LogLevel.error,
       time: this.getNow(),
       stackTrace: stackTrace,
-      ...restContext,
+      logContext: logContext,
+      errorContext: errorContext,
     });
   }
 
