@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.1.64",
+  "version": "0.1.65",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -665,16 +665,27 @@
       "properties": {
         "sweetpad.format.path": {
           "type": "string",
-          "examples": ["swift-format"],
+          "examples": [
+            "swift-format"
+          ],
           "description": "Command or path to formatter executable."
         },
         "sweetpad.format.args": {
-          "type": ["array", "null"],
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "string"
           },
           "default": null,
-          "examples": [["--parallel", "--in-place", "${file}"]],
+          "examples": [
+            [
+              "--parallel",
+              "--in-place",
+              "${file}"
+            ]
+          ],
           "description": "Command or path to formatter executable. Use ${file} as a placeholder for the file path. Placeholder ${file} is supported only as a separate item in the array."
         },
         "sweetpad.build.xcbeautifyEnabled": {
@@ -718,7 +729,12 @@
             "type": "string"
           },
           "default": [],
-          "examples": [["-skipMacroValidation", "-disablePackageRepositoryCache"]],
+          "examples": [
+            [
+              "-skipMacroValidation",
+              "-disablePackageRepositoryCache"
+            ]
+          ],
           "description": "Additional arguments to pass to the build command. You can also override the default arguments"
         },
         "sweetpad.build.env": {
