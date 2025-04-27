@@ -224,6 +224,11 @@
                     ]
                   }
                 ]
+              },
+              "continueOnAttach": {
+                "type": "boolean",
+                "default": true,
+                "description": "Continue the app after attaching. If false, the app will be paused after attaching."
               }
             }
           },
