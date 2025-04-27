@@ -238,8 +238,6 @@ export async function runOniOSDevice(
     isConsoleOptionSupported ? "--console" : null,
     "--json-output",
     jsonOuputPath.path,
-    // Add the debug flag if needed
-    ...(option.debug ? ["--wait-for-debugger"] : []),
     // Terminates any already-running instances of the app prior to launch. Not supported on all platforms.
     "--terminate-existing",
     "--device",
