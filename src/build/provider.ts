@@ -53,6 +53,9 @@ class ActionDispatcher {
       case "launch":
         await this.launchCallback(terminal, definition);
         break;
+      case "debug":
+        await this.debugCallback(terminal, definition);
+        break;
       case "build":
         await this.buildCallback(terminal, definition);
         break;
@@ -179,6 +182,101 @@ class ActionDispatcher {
         watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+      });
+    } else {
+      assertUnreachable(destination);
+    }
+  }
+
+  private async debugCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const scheme =
+      definition.scheme ??
+      (await askSchemeForBuild(this.context, {
+        title: "Select scheme to build and debug",
+        xcworkspace: xcworkspace,
+      }));
+
+    const configuration =
+      definition.configuration ??
+      (await askConfiguration(this.context, {
+        xcworkspace: xcworkspace,
+      }));
+
+    const buildSettings = await getBuildSettingsToAskDestination({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
+    const destination = await this.getDestination({
+      definition: definition,
+      buildSettings: buildSettings,
+    });
+    const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
+
+    const sdk = destination.platform;
+
+    const launchArgs: string[] = definition.launchArgs ?? getWorkspaceConfig("build.launchArgs") ?? [];
+    const launchEnv: { [key: string]: string } = definition.launchEnv ?? getWorkspaceConfig("build.launchEnv") ?? {};
+
+    await buildApp(this.context, terminal, {
+      scheme: scheme,
+      sdk: sdk,
+      configuration: configuration,
+      shouldBuild: true,
+      shouldClean: false,
+      shouldTest: false,
+      xcworkspace: xcworkspace,
+      destinationRaw: destinationRaw,
+      debug: true,
+    });
+
+    if (destination.type === "macOS") {
+      await runOnMac(this.context, terminal, {
+        scheme: scheme,
+        configuration: configuration,
+        xcworkspace: xcworkspace,
+        watchMarker: true,
+        launchArgs: launchArgs,
+        launchEnv: launchEnv,
+        debug: true,
+      });
+    } else if (
+      destination.type === "iOSSimulator" ||
+      destination.type === "watchOSSimulator" ||
+      destination.type === "visionOSSimulator" ||
+      destination.type === "tvOSSimulator"
+    ) {
+      await runOniOSSimulator(this.context, terminal, {
+        scheme: scheme,
+        simulatorId: destination.udid,
+        sdk: sdk,
+        configuration: configuration,
+        xcworkspace: xcworkspace,
+        watchMarker: true,
+        launchArgs: launchArgs,
+        launchEnv: launchEnv,
+        debug: true,
+      });
+    } else if (
+      destination.type === "iOSDevice" ||
+      destination.type === "watchOSDevice" ||
+      destination.type === "tvOSDevice" ||
+      destination.type === "visionOSDevice"
+    ) {
+      await runOniOSDevice(this.context, terminal, {
+        scheme: scheme,
+        destinationId: destination.udid,
+        destinationType: destination.type,
+        sdk: sdk,
+        configuration: configuration,
+        xcworkspace: xcworkspace,
+        watchMarker: true,
+        launchArgs: launchArgs,
+        launchEnv: launchEnv,
+        debug: true,
       });
     } else {
       assertUnreachable(destination);
@@ -417,6 +515,15 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
         defintion: {
           type: this.type,
           action: "launch",
+        },
+        isBackground: true,
+      }),
+      this.getTask({
+        name: "debug",
+        details: "Build and Debug the app",
+        defintion: {
+          type: this.type,
+          action: "debug",
         },
         isBackground: true,
       }),

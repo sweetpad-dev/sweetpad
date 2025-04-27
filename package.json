@@ -43,6 +43,7 @@
             "type": "string",
             "enum": [
               "launch",
+              "debug",
               "build",
               "run",
               "clean",
@@ -198,12 +199,12 @@
         "label": "Sweetpad (LLDB)",
         "configurationSnippets": [
           {
-            "label": "Sweetpad: Attach to running app",
+            "label": "Sweetpad: Build and Run (Debug)",
             "body": {
               "type": "sweetpad-lldb",
               "request": "attach",
-              "name": "Attach to running app (SweetPad)",
-              "preLaunchTask": "sweetpad: launch"
+              "name": "Sweetpad: Build and Run (Debug)",
+              "preLaunchTask": "sweetpad: debug"
             }
           }
         ],
@@ -315,6 +316,11 @@
         "command": "sweetpad.build.launch",
         "title": "SweetPad: Build & Run (Launch)",
         "icon": "$(sweetpad-player-play)"
+      },
+      {
+        "command": "sweetpad.build.debug",
+        "title": "SweetPad: Build & Run (Debug)",
+        "icon": "$(bug)"
       },
       {
         "command": "sweetpad.build.run",
@@ -559,6 +565,11 @@
           "group": "inline@1"
         },
         {
+          "command": "sweetpad.build.debug",
+          "when": "view == sweetpad.build.view",
+          "group": "inline@3"
+        },
+        {
           "command": "sweetpad.build.launch",
           "when": "view == sweetpad.build.view",
           "group": "inline@2"
@@ -569,44 +580,49 @@
           "group": "inline@1"
         },
         {
-          "command": "sweetpad.build.launch",
+          "command": "sweetpad.build.debug",
           "when": "view == sweetpad.build.view",
           "group": "context@1"
         },
         {
-          "command": "sweetpad.build.build",
+          "command": "sweetpad.build.launch",
           "when": "view == sweetpad.build.view",
           "group": "context@2"
         },
         {
-          "command": "sweetpad.build.run",
+          "command": "sweetpad.build.build",
           "when": "view == sweetpad.build.view",
           "group": "context@3"
         },
         {
-          "command": "sweetpad.build.test",
+          "command": "sweetpad.build.run",
           "when": "view == sweetpad.build.view",
           "group": "context@4"
         },
         {
-          "command": "sweetpad.build.clean",
+          "command": "sweetpad.build.test",
           "when": "view == sweetpad.build.view",
           "group": "context@5"
         },
         {
-          "command": "sweetpad.build.resolveDependencies",
+          "command": "sweetpad.build.clean",
           "when": "view == sweetpad.build.view",
           "group": "context@6"
         },
         {
-          "command": "sweetpad.build.setDefaultScheme",
+          "command": "sweetpad.build.resolveDependencies",
           "when": "view == sweetpad.build.view",
           "group": "context@7"
         },
         {
-          "command": "sweetpad.build.genereateBuildServerConfig",
+          "command": "sweetpad.build.setDefaultScheme",
           "when": "view == sweetpad.build.view",
           "group": "context@8"
+        },
+        {
+          "command": "sweetpad.build.genereateBuildServerConfig",
+          "when": "view == sweetpad.build.view",
+          "group": "context@9"
         },
         {
           "command": "sweetpad.simulators.start",

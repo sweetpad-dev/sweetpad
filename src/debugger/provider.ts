@@ -12,8 +12,8 @@ import { waitForProcessToLaunch } from "./utils";
 const ATTACH_CONFIG: vscode.DebugConfiguration = {
   type: "sweetpad-lldb",
   request: "attach",
-  name: "Attach to running app (SweetPad)",
-  preLaunchTask: "sweetpad: launch",
+  name: "Sweetpad: Build and Run (Debug)",
+  preLaunchTask: "sweetpad: debug",
 };
 
 class InitialDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
