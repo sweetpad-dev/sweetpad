@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import type { BuildManager } from "../build/manager";
 import type { DestinationsManager } from "../destination/manager";
 import type { DestinationType, SelectedDestination } from "../destination/types";
+import type { SwiftFormattingProvider } from "../format/formatter";
 import type { TestingManager } from "../testing/manager";
 import type { ToolsManager } from "../tools/manager";
 import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting";
@@ -57,6 +58,7 @@ export class ExtensionContext {
   public toolsManager: ToolsManager;
   public buildManager: BuildManager;
   public testingManager: TestingManager;
+  public formatter: SwiftFormattingProvider;
   private _sessionState: Map<SessionStateKey, unknown> = new Map();
 
   constructor(options: {
@@ -65,12 +67,14 @@ export class ExtensionContext {
     buildManager: BuildManager;
     toolsManager: ToolsManager;
     testingManager: TestingManager;
+    formatter: SwiftFormattingProvider;
   }) {
     this._context = options.context;
     this.destinationsManager = options.destinationsManager;
     this.buildManager = options.buildManager;
     this.toolsManager = options.toolsManager;
     this.testingManager = options.testingManager;
+    this.formatter = options.formatter;
   }
 
   get storageUri() {
