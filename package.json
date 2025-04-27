@@ -126,7 +126,7 @@
     "problemMatchers": [
       {
         "name": "sweetpad-watch",
-        "label": "Sweetpad (watch)",
+        "label": "SweetPad (watch)",
         "owner": "sweetpad",
         "fileLocation": [
           "relative",
@@ -139,8 +139,8 @@
         },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "^🍭 Sweetpad: watch marker",
-          "endsPattern": "^🍩 Sweetpad: watch marker"
+          "beginsPattern": "^🍭 SweetPad: watch marker",
+          "endsPattern": "^🍩 SweetPad: watch marker"
         }
       },
       {
@@ -196,7 +196,7 @@
     "debuggers": [
       {
         "type": "sweetpad-lldb",
-        "label": "Sweetpad (LLDB)",
+        "label": "SweetPad (LLDB)",
         "configurationSnippets": [
           {
             "label": "Sweetpad: Build and Run (Debug)",
