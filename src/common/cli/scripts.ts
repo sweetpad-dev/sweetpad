@@ -500,8 +500,8 @@ export async function getXcodeVersionInstalled(): Promise<{
   // Xcode 16.0
   // Build version 16A242d
   const stdout = await exec({
-    command: "xcodebuild",
-    args: ["-version"],
+    command: "xcrun",
+    args: ["xcodebuild", "-version"],
   });
 
   const versionMatch = stdout.match(/Xcode (\d+)\./);

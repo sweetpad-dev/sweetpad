@@ -1,18 +1,18 @@
 import * as vscode from "vscode";
-import { formatDocument } from "./formatter.js";
+import type { CommandExecution } from "../common/commands.js";
 import { formatLogger } from "./logger.js";
 
 /*
  * Format current opened document
  */
-export async function formatCommand() {
+export async function formatCommand(execution: CommandExecution) {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     return;
   }
 
   const document = editor.document;
-  await formatDocument(document);
+  await execution.context.formatter.formatDocument(document);
 }
 
 /*
