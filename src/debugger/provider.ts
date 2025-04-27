@@ -143,7 +143,7 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     ];
 
     // LLDB commands executed after the debuggee process has been created/attached.
-    config.postRunCommands = [...(config.postRunCommands || []), `script print("Sweetpad: Happy debugging!")`];
+    config.postRunCommands = [...(config.postRunCommands || []), `script print("SweetPad: Happy debugging!")`];
 
     config.type = "lldb";
     config.request = "attach";

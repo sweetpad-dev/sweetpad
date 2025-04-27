@@ -201,7 +201,7 @@ export class CommandExecution {
           if (error instanceof TaskError) {
             // do nothing
           } else {
-            await this.showErrorMessage(`Sweetpad: ${error.message}`, {
+            await this.showErrorMessage(`SweetPad: ${error.message}`, {
               actions: error.options?.actions,
             });
           }
@@ -214,7 +214,7 @@ export class CommandExecution {
             error: error,
           });
           errorReporting.captureException(error);
-          await this.showErrorMessage(`Sweetpad: ${errorMessage}`);
+          await this.showErrorMessage(`SweetPad: ${errorMessage}`);
         }
       }
     });

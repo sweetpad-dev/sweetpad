@@ -41,8 +41,8 @@ import {
 } from "./utils";
 
 function writeWatchMarkers(terminal: TaskTerminal) {
-  terminal.write("🍭 Sweetpad: watch marker (start)\n");
-  terminal.write("🍩 Sweetpad: watch marker (end)\n\n");
+  terminal.write("🍭 SweetPad: watch marker (start)\n");
+  terminal.write("🍩 SweetPad: watch marker (end)\n\n");
 }
 
 async function ensureAppPathExists(appPath: string | undefined): Promise<string> {
@@ -994,7 +994,7 @@ export async function diagnoseBuildSetupCommand(execution: CommandExecution): Pr
         }
       };
 
-      _write("Sweetpad: Diagnose Build Setup");
+      _write("SweetPad: Diagnose Build Setup");
       _write("================================");
 
       const hostPlatform = process.platform;
