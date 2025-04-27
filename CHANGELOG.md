@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.63] - 2025-04-27
+
+- Better resolve debug configuration
+
 ## [0.1.61-0.1.62] - 2025-04-24
 
 - (_just technical release_)
