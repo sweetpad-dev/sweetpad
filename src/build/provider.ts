@@ -98,11 +98,12 @@ class ActionDispatcher {
     return destination;
   }
 
-  private async launchCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+  private async launchOrDebugCallback(terminal: TaskTerminal, definition: TaskDefinition, debug: boolean) {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
       (await askSchemeForBuild(this.context, {
+        title: `Select scheme to build and ${debug ? 'debug' : 'run'}`,
         xcworkspace: xcworkspace,
       }));
 
@@ -139,6 +140,7 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationRaw: destinationRaw,
+      debug: debug,
     });
 
     if (destination.type === "macOS") {
@@ -149,6 +151,7 @@ class ActionDispatcher {
         watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+        debug: debug,
       });
     } else if (
       destination.type === "iOSSimulator" ||
@@ -165,6 +168,7 @@ class ActionDispatcher {
         watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+        debug: debug,
       });
     } else if (
       destination.type === "iOSDevice" ||
@@ -182,105 +186,19 @@ class ActionDispatcher {
         watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+        debug: debug,
       });
     } else {
       assertUnreachable(destination);
     }
   }
 
+  private async launchCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    await this.launchOrDebugCallback(terminal, definition, false);
+  }
+
   private async debugCallback(terminal: TaskTerminal, definition: TaskDefinition) {
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
-    const scheme =
-      definition.scheme ??
-      (await askSchemeForBuild(this.context, {
-        title: "Select scheme to build and debug",
-        xcworkspace: xcworkspace,
-      }));
-
-    const configuration =
-      definition.configuration ??
-      (await askConfiguration(this.context, {
-        xcworkspace: xcworkspace,
-      }));
-
-    const buildSettings = await getBuildSettingsToAskDestination({
-      scheme: scheme,
-      configuration: configuration,
-      sdk: undefined,
-      xcworkspace: xcworkspace,
-    });
-
-    const destination = await this.getDestination({
-      definition: definition,
-      buildSettings: buildSettings,
-    });
-    const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
-
-    const sdk = destination.platform;
-
-    const launchArgs: string[] = definition.launchArgs ?? getWorkspaceConfig("build.launchArgs") ?? [];
-    const launchEnv: { [key: string]: string } = definition.launchEnv ?? getWorkspaceConfig("build.launchEnv") ?? {};
-
-    await buildApp(this.context, terminal, {
-      scheme: scheme,
-      sdk: sdk,
-      configuration: configuration,
-      shouldBuild: true,
-      shouldClean: false,
-      shouldTest: false,
-      xcworkspace: xcworkspace,
-      destinationRaw: destinationRaw,
-      debug: true,
-    });
-
-    if (destination.type === "macOS") {
-      await runOnMac(this.context, terminal, {
-        scheme: scheme,
-        configuration: configuration,
-        xcworkspace: xcworkspace,
-        watchMarker: true,
-        launchArgs: launchArgs,
-        launchEnv: launchEnv,
-        debug: true,
-      });
-    } else if (
-      destination.type === "iOSSimulator" ||
-      destination.type === "watchOSSimulator" ||
-      destination.type === "visionOSSimulator" ||
-      destination.type === "tvOSSimulator"
-    ) {
-      await runOniOSSimulator(this.context, terminal, {
-        scheme: scheme,
-        simulatorId: destination.udid,
-        sdk: sdk,
-        configuration: configuration,
-        xcworkspace: xcworkspace,
-        watchMarker: true,
-        launchArgs: launchArgs,
-        launchEnv: launchEnv,
-        debug: true,
-      });
-    } else if (
-      destination.type === "iOSDevice" ||
-      destination.type === "watchOSDevice" ||
-      destination.type === "tvOSDevice" ||
-      destination.type === "visionOSDevice"
-    ) {
-      await runOniOSDevice(this.context, terminal, {
-        scheme: scheme,
-        destinationId: destination.udid,
-        destinationType: destination.type,
-        sdk: sdk,
-        configuration: configuration,
-        xcworkspace: xcworkspace,
-        watchMarker: true,
-        launchArgs: launchArgs,
-        launchEnv: launchEnv,
-        debug: true,
-      });
-    } else {
-      assertUnreachable(destination);
-    }
+    await this.launchOrDebugCallback(terminal, definition, true);
   }
 
   private async buildCallback(terminal: TaskTerminal, definition: TaskDefinition) {
