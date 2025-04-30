@@ -300,25 +300,54 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       let errorCode = -1;
       let errorMessage = `🚷 ${error?.toString()}`;
       const options: TerminalWriteOptions = { color: "red" };
+      let isXcodeBuildTask = false;
 
       // Handling specific error types
       if (error instanceof ExecuteTaskError) {
         errorCode = error.errorCode ?? errorCode;
         errorMessage = `🚫 ${error.message}`;
-
+        
         // If task was canceled, change message color to green
         if (errorCode === 130) {
           options.color = "yellow";
           this.closeTerminal(0, "🫡 Command was cancelled by user", options);
           return;
         }
+
+        // Check if the command is a build task
+        isXcodeBuildTask = error.command.includes("xcodebuild") && error.command.includes("build");
+
+        // Handle xcodebuild errors specifically
+        if (isXcodeBuildTask) {
+          errorMessage = "🚫 Xcode build failed - Check the problems view for more details";
+          // Stop the debug session as VSCode will not do it automatically on task failure
+          this.stopDebugSession();
+        }
       }
 
+      // Show notification to the user with build context if applicable
+      this.showErrorMessage(errorMessage, isXcodeBuildTask);
+      
       // Closing the terminal with error information
       this.closeTerminal(errorCode, errorMessage, options);
       return;
     }
     this.closeSuccessfully();
+  }
+
+  private showErrorMessage(message: string, isXcodeBuildTask: boolean = false): void {
+    const taskType = isXcodeBuildTask ? "Xcode build" : "Task";
+    vscode.window.showErrorMessage(`${taskType} failed: ${message}`);
+  }
+
+  private stopDebugSession(): void {
+    const debugSession = vscode.debug.activeDebugSession;
+    if (debugSession) {
+      vscode.debug.stopDebugging(debugSession);
+    }
+
+    // If no active session, stop all debugging as a fallback
+    vscode.debug.stopDebugging();
   }
 }
 
