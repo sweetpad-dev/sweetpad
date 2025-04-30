@@ -65,6 +65,9 @@ import { createTuistWatcher } from "./tuist/watcher.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
 
+// The name of the pre-launch task defined in package.json and used in ATTACH_CONFIG
+const DEBUG_PRELAUNCH_TASK_NAME = "sweetpad: debug";
+
 export function activate(context: vscode.ExtensionContext) {
   // Sentry 🚨
   errorReporting.logSetup();
@@ -129,6 +132,41 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Tasks
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
+  // Listen for task termination events
+  d(
+    vscode.tasks.onDidEndTaskProcess((event) => {
+      const task = event.execution.task;
+      const exitCode = event.exitCode;
+
+      // Check if the task failed
+      if (exitCode !== undefined && exitCode !== 0) {
+        let commandString: string | undefined;
+        const execution = task.execution;
+
+        // Attempt to extract the command string
+        if (execution instanceof vscode.ProcessExecution) {
+          commandString = `${execution.process} ${execution.args?.join(" ")}`;
+        } else if (execution instanceof vscode.ShellExecution) {
+          if (typeof execution.commandLine === "string") {
+            commandString = execution.commandLine;
+          } else if (typeof execution.command === "string") {
+            commandString = `${execution.command} ${execution.args?.join(" ")}`;
+          }
+        }
+
+        // Check if the command looks like an xcodebuild build command
+        if (commandString && commandString.includes("xcodebuild") && commandString.includes(" build ")) {
+          // Store the failure time to potentially prevent debugger launch
+          _context.updateWorkspaceState("sweetpad.lastBuildTaskFailureTimestamp", Date.now());
+
+          vscode.window.showErrorMessage(
+            `Build task failed (Task: ${task.source} ${task.name}). Please check the terminal output for details. Exit code: ${exitCode}`,
+          );
+        }
+        
+      }
+    }),
+  );
 
   // Build
   const schemeStatusBar = new DefaultSchemeStatusBar({

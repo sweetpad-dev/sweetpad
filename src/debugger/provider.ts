@@ -119,16 +119,16 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
       // iOS environment, necessary for debugging iOS apps on a device.
       "platform select remote-ios",
       // Don't stop after attaching to the process:
-      // -n false — Should LLDB print a “stopped with SIGSTOP” message in the UI? Be silent—no notification to you
+      // -n false — Should LLDB print a "stopped with SIGSTOP" message in the UI? Be silent—no notification to you
       // -p true — Should LLDB forward the signal on to your app? Deliver SIGSTOP to the process
-      // -s false — Should LLDB pause (break into the debugger) when this signal arrives?  Don’t break; just run LLDB’s signal handler logic
+      // -s false — Should LLDB pause (break into the debugger) when this signal arrives?  Don't break; just run LLDB's signal handler logic
       ...(continueOnAttach ? ["process handle SIGSTOP -p true -s false -n false"] : []),
     ];
 
     // LLDB commands executed just before launching of attaching to the debuggee.
     config.preRunCommands = [
       ...(config.preRunCommands || []),
-      // Adjusts the loaded module’s file specification to point to the actual location of the binary on the remote device.
+      // Adjusts the loaded module's file specification to point to the actual location of the binary on the remote device.
       // This ensures symbol resolution and breakpoints align correctly with the actual remote binary.
       `script lldb.target.module[0].SetPlatformFileSpec(lldb.SBFileSpec('${deviceAppPath}'))`,
     ];
@@ -162,7 +162,21 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     folder: vscode.WorkspaceFolder | undefined,
     config: vscode.DebugConfiguration,
     token?: vscode.CancellationToken | undefined,
-  ): Promise<vscode.DebugConfiguration> {
+  ): Promise<vscode.DebugConfiguration | undefined> {
+    // Check if the pre-launch build task failed recently
+    const failureTimestamp = this.context.getWorkspaceState("sweetpad.lastBuildTaskFailureTimestamp");
+    const now = Date.now();
+    const failureThresholdMs = 5000; // 5 seconds
+
+    if (failureTimestamp && now - failureTimestamp < failureThresholdMs) {
+      // A relevant build task failed very recently. Abort the debug launch.
+      // Clear the flag so subsequent attempts aren't blocked unnecessarily.
+      this.context.updateWorkspaceState("sweetpad.lastBuildTaskFailureTimestamp", undefined);
+      commonLogger.warn("Aborting debug session due to recent pre-launch task failure.");
+      // Returning undefined signals VS Code to cancel the debug session launch.
+      return undefined;
+    }
+
     const launchContext = this.context.getWorkspaceState("build.lastLaunchedApp");
     if (!launchContext) {
       throw new Error("No last launched app found, please launch the app first using the SweetPad extension");
