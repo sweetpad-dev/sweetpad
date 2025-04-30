@@ -620,7 +620,7 @@
           "group": "context@8"
         },
         {
-          "command": "sweetpad.build.geneeateBuildServerConfig",
+          "command": "sweetpad.build.generateBuildServerConfig",
           "when": "view == sweetpad.build.view",
           "group": "context@9"
         },

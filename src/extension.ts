@@ -6,6 +6,7 @@ import {
   diagnoseBuildSetupCommand,
   generateBuildServerConfigCommand,
   launchCommand,
+  debugCommand,
   openXcodeCommand,
   removeBundleDirCommand,
   resolveDependenciesCommand,
@@ -138,7 +139,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(tree("sweetpad.build.view", buildTreeProvider));
   d(command("sweetpad.build.refreshView", async () => buildManager.refresh()));
   d(command("sweetpad.build.launch", launchCommand));
-  d(command("sweetpad.build.debug", (execution, item) => launchCommand(execution, item, { debug: true })));
+  d(command("sweetpad.build.debug", debugCommand));
   d(command("sweetpad.build.run", runCommand));
   d(command("sweetpad.build.build", buildCommand));
   d(command("sweetpad.build.clean", cleanCommand));
