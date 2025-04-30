@@ -12,7 +12,7 @@ import { waitForProcessToLaunch } from "./utils";
 const ATTACH_CONFIG: vscode.DebugConfiguration = {
   type: "sweetpad-lldb",
   request: "attach",
-  name: "Sweetpad: Build and Run (Wait for debugger)",
+  name: "SweetPad: Build and Run (Wait for debugger)",
   preLaunchTask: "sweetpad: debug",
 };
 
