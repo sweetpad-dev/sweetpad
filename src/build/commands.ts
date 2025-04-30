@@ -496,8 +496,6 @@ export async function buildApp(
   if (options.debug) {
     command.addBuildSettings("GCC_GENERATE_DEBUGGING_SYMBOLS", "YES");
     command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
-    command.addBuildSettings("-UseModernBuildSystem", "YES");
-    command.addBuildSettings("COMPILER_INDEX_STORE_ENABLE", "NO");    
   }
   
   command.addParameters("-scheme", options.scheme);
@@ -510,10 +508,7 @@ export async function buildApp(
   }
   if (allowProvisioningUpdates) {
     command.addOption("-allowProvisioningUpdates");
-  }
-  
-  // Skip macro validation to improve performance.
-  command.addOption("-skipMacroValidation");
+  }  
   
   if (options.shouldClean) {
     command.addAction("clean");
