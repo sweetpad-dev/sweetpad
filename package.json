@@ -199,7 +199,7 @@
         "label": "SweetPad (LLDB)",
         "configurationSnippets": [
           {
-            "label": "Sweetpad: Build and Run (Wait for debugger)",
+            "label": "SweetPad: Build and Run (Wait for debugger)",
             "body": {
               "type": "sweetpad-lldb",
               "request": "attach",
