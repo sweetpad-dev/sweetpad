@@ -677,6 +677,15 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
 }
 
 /**
+ * Builds and launches the application in debug mode
+ * This is a convenience wrapper around launchCommand that sets the debug flag
+ */
+export async function debugCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  return launchCommand(execution, item, { debug: true });
+}
+
+
+/**
  * Run application on the simulator or device without building
  */
 export async function runCommand(execution: CommandExecution, item?: BuildTreeItem) {

@@ -353,7 +353,7 @@
         "icon": "$(sweetpad-trash-x)"
       },
       {
-        "command": "sweetpad.build.genereateBuildServerConfig",
+        "command": "sweetpad.build.generateBuildServerConfig",
         "title": "SweetPad: Generate Build Server Config (buildServer.json)",
         "icon": "$(file-code)"
       },
@@ -620,7 +620,7 @@
           "group": "context@8"
         },
         {
-          "command": "sweetpad.build.genereateBuildServerConfig",
+          "command": "sweetpad.build.geneeateBuildServerConfig",
           "when": "view == sweetpad.build.view",
           "group": "context@9"
         },
