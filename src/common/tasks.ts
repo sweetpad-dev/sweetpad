@@ -319,7 +319,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
         // Handle xcodebuild errors specifically
         if (isBuildAndRunTask) {
-          errorMessage = "🚫 Build and run failed - Check the problems view for more details";
+          errorMessage = "🚫 Build and run failed - Check the problems view or terminal for more details";
           // Stop the debug session as VSCode will not do it automatically on task failure
           this.stopDebugSession();
         }
