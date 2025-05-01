@@ -315,7 +315,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
         }
 
         // Check if the command is a build task
-        isBuildAndRunTask = error.command.includes("xcodebuild") && error.command.includes("build") || error.command.includes("xcrun simctl");
+        isBuildAndRunTask = error.command.includes("xcodebuild") && error.command.includes(" build ") || error.command.includes("xcrun simctl");
 
         // Handle xcodebuild errors specifically
         if (isBuildAndRunTask) {
