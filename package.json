@@ -43,12 +43,14 @@
             "type": "string",
             "enum": [
               "launch",
-              "debug",
               "build",
               "run",
               "clean",
               "test",
-              "resolve-dependencies"
+              "resolve-dependencies",
+              "debuggingLaunch",
+              "debuggingBuild",
+              "debuggingRun"
             ]
           },
           "scheme": {
@@ -318,11 +320,6 @@
         "icon": "$(sweetpad-player-play)"
       },
       {
-        "command": "sweetpad.build.debug",
-        "title": "SweetPad: Build & Run (Debug)",
-        "icon": "$(bug)"
-      },
-      {
         "command": "sweetpad.build.run",
         "title": "SweetPad: Run (without Build)",
         "icon": "$(play)"
@@ -509,6 +506,21 @@
         "icon": "$(file-code)"
       },
       {
+        "command": "sweetpad.debugger.debuggingLaunch",
+        "title": "SweetPad: Build & Run (for debugging)",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "sweetpad.debugger.debuggingRun",
+        "title": "SweetPad: Run (for debugging)",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "sweetpad.debugger.debuggingBuild",
+        "title": "SweetPad: Build (for debugging)",
+        "icon": "$(bug)"
+      },
+      {
         "command": "sweetpad.destinations.select",
         "title": "SweetPad: Select destination",
         "icon": "$(sweetpad-pin)"
@@ -565,11 +577,6 @@
           "group": "inline@1"
         },
         {
-          "command": "sweetpad.build.debug",
-          "when": "view == sweetpad.build.view",
-          "group": "inline@3"
-        },
-        {
           "command": "sweetpad.build.launch",
           "when": "view == sweetpad.build.view",
           "group": "inline@2"
@@ -578,11 +585,6 @@
           "command": "sweetpad.build.build",
           "when": "view == sweetpad.build.view",
           "group": "inline@1"
-        },
-        {
-          "command": "sweetpad.build.debug",
-          "when": "view == sweetpad.build.view",
-          "group": "context@1"
         },
         {
           "command": "sweetpad.build.launch",

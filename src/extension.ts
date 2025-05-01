@@ -1,12 +1,13 @@
 import * as vscode from "vscode";
 import {
-  buildApp,
   buildCommand,
   cleanCommand,
+  debuggingBuildCommand,
+  debuggingLaunchCommand,
+  debuggingRunCommand,
   diagnoseBuildSetupCommand,
   generateBuildServerConfigCommand,
   launchCommand,
-  debugCommand,
   openXcodeCommand,
   removeBundleDirCommand,
   resolveDependenciesCommand,
@@ -124,10 +125,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   const buildTaskProvider = new XcodeBuildTaskProvider(_context);
 
-  // Debug
-  d(registerDebugConfigurationProvider(_context));
-  d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
-
   // Tasks
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
 
@@ -139,7 +136,6 @@ export function activate(context: vscode.ExtensionContext) {
   d(tree("sweetpad.build.view", buildTreeProvider));
   d(command("sweetpad.build.refreshView", async () => buildManager.refresh()));
   d(command("sweetpad.build.launch", launchCommand));
-  d(command("sweetpad.build.debug", debugCommand));
   d(command("sweetpad.build.run", runCommand));
   d(command("sweetpad.build.build", buildCommand));
   d(command("sweetpad.build.clean", cleanCommand));
@@ -159,6 +155,13 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.testing.selectTarget", selectTestingTargetCommand));
   d(command("sweetpad.testing.setDefaultScheme", selectXcodeSchemeForTestingCommand));
   d(command("sweetpad.testing.selectConfiguration", selectConfigurationForTestingCommand));
+
+  // Debugging
+  d(registerDebugConfigurationProvider(_context));
+  d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
+  d(command("sweetpad.debugger.debuggingLaunch", debuggingLaunchCommand));
+  d(command("sweetpad.debugger.debuggingRun", debuggingRunCommand));
+  d(command("sweetpad.debugger.debuggingBuild", debuggingBuildCommand));
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));
