@@ -53,6 +53,9 @@ class ActionDispatcher {
       case "launch":
         await this.launchCallback(terminal, definition);
         break;
+      case "debug":
+        await this.debugCallback(terminal, definition);
+        break;
       case "build":
         await this.buildCallback(terminal, definition);
         break;
@@ -95,11 +98,12 @@ class ActionDispatcher {
     return destination;
   }
 
-  private async launchCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+  private async launchOrDebugCallback(terminal: TaskTerminal, definition: TaskDefinition, debug: boolean) {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
       (await askSchemeForBuild(this.context, {
+        title: `Select scheme to build and ${debug ? 'debug' : 'run'}`,
         xcworkspace: xcworkspace,
       }));
 
@@ -136,6 +140,7 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationRaw: destinationRaw,
+      debug: debug,
     });
 
     if (destination.type === "macOS") {
@@ -146,6 +151,7 @@ class ActionDispatcher {
         watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+        debug: debug,
       });
     } else if (
       destination.type === "iOSSimulator" ||
@@ -162,6 +168,7 @@ class ActionDispatcher {
         watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+        debug: debug,
       });
     } else if (
       destination.type === "iOSDevice" ||
@@ -179,10 +186,19 @@ class ActionDispatcher {
         watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+        debug: debug,
       });
     } else {
       assertUnreachable(destination);
     }
+  }
+
+  private async launchCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    await this.launchOrDebugCallback(terminal, definition, false);
+  }
+
+  private async debugCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    await this.launchOrDebugCallback(terminal, definition, true);
   }
 
   private async buildCallback(terminal: TaskTerminal, definition: TaskDefinition) {
@@ -417,6 +433,15 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
         defintion: {
           type: this.type,
           action: "launch",
+        },
+        isBackground: true,
+      }),
+      this.getTask({
+        name: "debug",
+        details: "Build and Debug the app",
+        defintion: {
+          type: this.type,
+          action: "debug",
         },
         isBackground: true,
       }),
