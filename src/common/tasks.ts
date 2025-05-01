@@ -300,7 +300,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       let errorCode = -1;
       let errorMessage = `🚷 ${error?.toString()}`;
       const options: TerminalWriteOptions = { color: "red" };
-      let isXcodeBuildTask = false;
+      let isBuildAndRunTask = false;
 
       // Handling specific error types
       if (error instanceof ExecuteTaskError) {
@@ -315,18 +315,18 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
         }
 
         // Check if the command is a build task
-        isXcodeBuildTask = error.command.includes("xcodebuild") && error.command.includes("build");
+        isBuildAndRunTask = error.command.includes("xcodebuild") && error.command.includes("build") || error.command.includes("xcrun simctl");
 
         // Handle xcodebuild errors specifically
-        if (isXcodeBuildTask) {
-          errorMessage = "🚫 Xcode build failed - Check the problems view for more details";
+        if (isBuildAndRunTask) {
+          errorMessage = "🚫 Build and run failed - Check the problems view for more details";
           // Stop the debug session as VSCode will not do it automatically on task failure
           this.stopDebugSession();
         }
       }
 
       // Show notification to the user with build context if applicable
-      this.showErrorMessage(errorMessage, isXcodeBuildTask);
+      this.showErrorMessage(errorMessage, isBuildAndRunTask);
       
       // Closing the terminal with error information
       this.closeTerminal(errorCode, errorMessage, options);
@@ -335,8 +335,8 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     this.closeSuccessfully();
   }
 
-  private showErrorMessage(message: string, isXcodeBuildTask: boolean = false): void {
-    const taskType = isXcodeBuildTask ? "Xcode build" : "Task";
+  private showErrorMessage(message: string, isBuildAndRunTask: boolean = false): void {
+    const taskType = isBuildAndRunTask ? "Xcode build" : "Task";
     vscode.window.showErrorMessage(`${taskType} failed: ${message}`);
   }
 
