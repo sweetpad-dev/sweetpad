@@ -48,9 +48,9 @@
               "clean",
               "test",
               "resolve-dependencies",
-              "debuggingLaunch",
-              "debuggingBuild",
-              "debuggingRun"
+              "debugging-launch",
+              "debugging-build",
+              "debugging-run"
             ]
           },
           "scheme": {
@@ -206,7 +206,7 @@
               "type": "sweetpad-lldb",
               "request": "attach",
               "name": "SweetPad: Build and Run (Wait for debugger)",
-              "preLaunchTask": "sweetpad: debug"
+              "preLaunchTask": "sweetpad: debugging-launch"
             }
           }
         ],

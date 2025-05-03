@@ -496,7 +496,7 @@ export async function buildApp(
     // This tells the compiler to generate debugging symbols and include them in the compiled binary.
     // Without this, LLDB wont know how to match lines of code to machine instructions. This is normally
     // set to YES on XCode debug builds, but forcing it here, ensures you'll always get them in
-    // sweetpad: debug
+    // sweetpad: debugging-launch
     command.addBuildSettings("GCC_GENERATE_DEBUGGING_SYMBOLS", "YES");
     // In Xcode, ONLY_ACTIVE_ARCH is a build setting that controls whether you compile for only the architecture
     // of the machine (or simulator/device) you’re currently targeting, or for all architectures listed in your

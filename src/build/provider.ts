@@ -60,13 +60,13 @@ class ActionDispatcher {
         await this.runCallback(terminal, definition);
         break;
       // ===> Debugger actions
-      case "debuggingLaunch":
+      case "debugging-launch":
         await this.debuggerLaunchCallback(terminal, definition);
         break;
-      case "debuggingBuild":
+      case "debugging-build":
         await this.debuggerBuildCallback(terminal, definition);
         break;
-      case "debuggingRun":
+      case "debugging-run":
         await this.debuggerRunCallback(terminal, definition);
         break;
       // <===
@@ -509,28 +509,28 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
         },
       }),
       this.getTask({
-        name: "debuggingLaunch",
+        name: "debugging-launch",
         details: "Build and Launch the app (for debugging)",
         defintion: {
           type: this.type,
-          action: "debuggingLaunch",
+          action: "debugging-launch",
         },
         isBackground: true,
       }),
       this.getTask({
-        name: "debuggingBuild",
+        name: "debugging-build",
         details: "Build the app (for debugging)",
         defintion: {
           type: this.type,
-          action: "debuggingBuild",
+          action: "debugging-build",
         },
       }),
       this.getTask({
-        name: "debuggingRun",
+        name: "debugging-run",
         details: "Run the app (for debugging)",
         defintion: {
           type: this.type,
-          action: "debuggingRun",
+          action: "debugging-run",
         },
         isBackground: true,
       }),
