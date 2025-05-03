@@ -47,7 +47,10 @@
               "run",
               "clean",
               "test",
-              "resolve-dependencies"
+              "resolve-dependencies",
+              "debugging-launch",
+              "debugging-build",
+              "debugging-run"
             ]
           },
           "scheme": {
@@ -198,12 +201,12 @@
         "label": "SweetPad (LLDB)",
         "configurationSnippets": [
           {
-            "label": "SweetPad: Attach to running app",
+            "label": "SweetPad: Build and Run (Wait for debugger)",
             "body": {
               "type": "sweetpad-lldb",
               "request": "attach",
-              "name": "Attach to running app (SweetPad)",
-              "preLaunchTask": "sweetpad: launch"
+              "name": "SweetPad: Build and Run (Wait for debugger)",
+              "preLaunchTask": "sweetpad: debugging-launch"
             }
           }
         ],
@@ -347,7 +350,7 @@
         "icon": "$(sweetpad-trash-x)"
       },
       {
-        "command": "sweetpad.build.genereateBuildServerConfig",
+        "command": "sweetpad.build.generateBuildServerConfig",
         "title": "SweetPad: Generate Build Server Config (buildServer.json)",
         "icon": "$(file-code)"
       },
@@ -503,6 +506,21 @@
         "icon": "$(file-code)"
       },
       {
+        "command": "sweetpad.debugger.debuggingLaunch",
+        "title": "SweetPad: Build & Run (for debugging)",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "sweetpad.debugger.debuggingRun",
+        "title": "SweetPad: Run (for debugging)",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "sweetpad.debugger.debuggingBuild",
+        "title": "SweetPad: Build (for debugging)",
+        "icon": "$(bug)"
+      },
+      {
         "command": "sweetpad.destinations.select",
         "title": "SweetPad: Select destination",
         "icon": "$(sweetpad-pin)"
@@ -571,42 +589,42 @@
         {
           "command": "sweetpad.build.launch",
           "when": "view == sweetpad.build.view",
-          "group": "context@1"
+          "group": "context@2"
         },
         {
           "command": "sweetpad.build.build",
           "when": "view == sweetpad.build.view",
-          "group": "context@2"
+          "group": "context@3"
         },
         {
           "command": "sweetpad.build.run",
           "when": "view == sweetpad.build.view",
-          "group": "context@3"
+          "group": "context@4"
         },
         {
           "command": "sweetpad.build.test",
           "when": "view == sweetpad.build.view",
-          "group": "context@4"
+          "group": "context@5"
         },
         {
           "command": "sweetpad.build.clean",
           "when": "view == sweetpad.build.view",
-          "group": "context@5"
+          "group": "context@6"
         },
         {
           "command": "sweetpad.build.resolveDependencies",
           "when": "view == sweetpad.build.view",
-          "group": "context@6"
+          "group": "context@7"
         },
         {
           "command": "sweetpad.build.setDefaultScheme",
           "when": "view == sweetpad.build.view",
-          "group": "context@7"
+          "group": "context@8"
         },
         {
-          "command": "sweetpad.build.genereateBuildServerConfig",
+          "command": "sweetpad.build.generateBuildServerConfig",
           "when": "view == sweetpad.build.view",
-          "group": "context@8"
+          "group": "context@9"
         },
         {
           "command": "sweetpad.simulators.start",

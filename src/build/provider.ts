@@ -59,6 +59,17 @@ class ActionDispatcher {
       case "run":
         await this.runCallback(terminal, definition);
         break;
+      // ===> Debugger actions
+      case "debugging-launch":
+        await this.debuggerLaunchCallback(terminal, definition);
+        break;
+      case "debugging-build":
+        await this.debuggerBuildCallback(terminal, definition);
+        break;
+      case "debugging-run":
+        await this.debuggerRunCallback(terminal, definition);
+        break;
+      // <===
       case "clean":
         await this.cleanCallback(terminal, definition);
         break;
@@ -96,10 +107,23 @@ class ActionDispatcher {
   }
 
   private async launchCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    await this.commonLaunchCallback(terminal, definition, {
+      debug: false,
+    });
+  }
+
+  private async debuggerLaunchCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    await this.commonLaunchCallback(terminal, definition, {
+      debug: true,
+    });
+  }
+
+  private async commonLaunchCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
       (await askSchemeForBuild(this.context, {
+        title: options.debug ? "Select scheme to debug" : "Select scheme to run",
         xcworkspace: xcworkspace,
       }));
 
@@ -136,6 +160,7 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationRaw: destinationRaw,
+      debug: options.debug,
     });
 
     if (destination.type === "macOS") {
@@ -162,6 +187,7 @@ class ActionDispatcher {
         watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+        debug: options.debug,
       });
     } else if (
       destination.type === "iOSDevice" ||
@@ -186,6 +212,18 @@ class ActionDispatcher {
   }
 
   private async buildCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    await this.commonBuildCallback(terminal, definition, {
+      debug: false,
+    });
+  }
+
+  private async debuggerBuildCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    await this.commonBuildCallback(terminal, definition, {
+      debug: true,
+    });
+  }
+
+  private async commonBuildCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
@@ -222,10 +260,23 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationRaw: destinationRaw,
+      debug: options.debug,
     });
   }
 
   private async runCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    await this.commonRunCallback(terminal, definition, {
+      debug: false,
+    });
+  }
+
+  private async debuggerRunCallback(terminal: TaskTerminal, definition: TaskDefinition) {
+    await this.commonRunCallback(terminal, definition, {
+      debug: true,
+    });
+  }
+
+  private async commonRunCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
     const xcworkspace = await askXcodeWorkspacePath(this.context);
     const scheme =
       definition.scheme ??
@@ -280,6 +331,7 @@ class ActionDispatcher {
         watchMarker: false,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+        debug: options.debug,
       });
     } else if (
       destination.type === "iOSDevice" ||
@@ -341,6 +393,7 @@ class ActionDispatcher {
       shouldTest: false,
       xcworkspace: xcworkspace,
       destinationRaw: destinationRaw,
+      debug: false,
     });
   }
 
@@ -381,6 +434,7 @@ class ActionDispatcher {
       shouldTest: true,
       xcworkspace: xcworkspace,
       destinationRaw: destinationRaw,
+      debug: false,
     });
   }
 
@@ -429,6 +483,16 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
         },
       }),
       this.getTask({
+        name: "run",
+        details: "Run the app (without building)",
+        defintion: {
+          type: this.type,
+          action: "run",
+        },
+        isBackground: true,
+      }),
+
+      this.getTask({
         name: "clean",
         details: "Clean the app",
         defintion: {
@@ -443,6 +507,32 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
           type: this.type,
           action: "resolve-dependencies",
         },
+      }),
+      this.getTask({
+        name: "debugging-launch",
+        details: "Build and Launch the app (for debugging)",
+        defintion: {
+          type: this.type,
+          action: "debugging-launch",
+        },
+        isBackground: true,
+      }),
+      this.getTask({
+        name: "debugging-build",
+        details: "Build the app (for debugging)",
+        defintion: {
+          type: this.type,
+          action: "debugging-build",
+        },
+      }),
+      this.getTask({
+        name: "debugging-run",
+        details: "Run the app (for debugging)",
+        defintion: {
+          type: this.type,
+          action: "debugging-run",
+        },
+        isBackground: true,
       }),
     ];
   }

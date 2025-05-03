@@ -105,6 +105,7 @@ export async function runOniOSSimulator(
     watchMarker: boolean;
     launchArgs: string[];
     launchEnv: Record<string, string>;
+    debug: boolean;
   },
 ) {
   const buildSettings = await getBuildSettingsToLaunch({
@@ -152,18 +153,23 @@ export async function runOniOSSimulator(
     writeWatchMarkers(terminal);
   }
 
+  const launchArgs = [
+    "simctl",
+    "launch",
+    "--console-pty",
+    // This instructs app to wait for the debugger to be attached before launching,
+    // ensuring you can debug issues happening early on.
+    ...(options.debug ? ["--wait-for-debugger"] : []),
+    "--terminate-running-process",
+    simulator.udid,
+    bundlerId,
+    ...options.launchArgs,
+  ];
+
   // Run app
   await terminal.execute({
     command: "xcrun",
-    args: [
-      "simctl",
-      "launch",
-      "--console-pty",
-      "--terminate-running-process",
-      simulator.udid,
-      bundlerId,
-      ...options.launchArgs,
-    ],
+    args: launchArgs,
     // should be prefixed with `SIMCTL_CHILD_` to pass to the child process
     env: Object.fromEntries(Object.entries(options.launchEnv).map(([key, value]) => [`SIMCTL_CHILD_${key}`, value])),
   });
@@ -221,27 +227,28 @@ export async function runOniOSDevice(
     writeWatchMarkers(terminal);
   }
 
+  // Prepare the launch arguments
+  const launchArgs = [
+    "devicectl",
+    "device",
+    "process",
+    "launch",
+    // Attaches the application to the console and waits for it to exit
+    isConsoleOptionSupported ? "--console" : null,
+    "--json-output",
+    jsonOuputPath.path,
+    // Terminates any already-running instances of the app prior to launch. Not supported on all platforms.
+    "--terminate-existing",
+    "--device",
+    deviceId,
+    bundlerId,
+    ...option.launchArgs,
+  ].filter((arg) => arg !== null); // Filter out null arguments
+
   // Launch app on device
   await terminal.execute({
     command: "xcrun",
-    args: [
-      "devicectl",
-      "device",
-      "process",
-      "launch",
-      // Attaches the application to the console and waits for it to exit
-      isConsoleOptionSupported ? "--console" : null,
-      "--json-output",
-      jsonOuputPath.path,
-      // Launches the app in a suspended state, waiting for a debugger. (We want oposite)
-      // "--start-stopped",
-      // Terminates any already-running instances of the app prior to launch. Not supported on all platforms.
-      "--terminate-existing",
-      "--device",
-      deviceId,
-      bundlerId,
-      ...option.launchArgs,
-    ],
+    args: launchArgs,
     // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process
     env: Object.fromEntries(Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value])),
   });
@@ -461,6 +468,7 @@ export async function buildApp(
     shouldTest: boolean;
     xcworkspace: string;
     destinationRaw: string;
+    debug: boolean;
   },
 ) {
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
@@ -482,6 +490,21 @@ export async function buildApp(
     command.addBuildSettings("VALID_ARCHS", arch);
     command.addBuildSettings("ONLY_ACTIVE_ARCH", "NO");
   }
+
+  // Add debug-specific build settings if in debug mode
+  if (options.debug) {
+    // This tells the compiler to generate debugging symbols and include them in the compiled binary.
+    // Without this, LLDB wont know how to match lines of code to machine instructions. This is normally
+    // set to YES on XCode debug builds, but forcing it here, ensures you'll always get them in
+    // sweetpad: debugging-launch
+    command.addBuildSettings("GCC_GENERATE_DEBUGGING_SYMBOLS", "YES");
+    // In Xcode, ONLY_ACTIVE_ARCH is a build setting that controls whether you compile for only the architecture
+    // of the machine (or simulator/device) you’re currently targeting, or for all architectures listed in your
+    // project’s ARCHS setting.
+    // It speeds up compile times, especially in Debug, because Xcode skips generating unused slices.
+    command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
+  }
+
   command.addParameters("-scheme", options.scheme);
   command.addParameters("-configuration", options.configuration);
   command.addParameters("-workspace", options.xcworkspace);
@@ -493,6 +516,7 @@ export async function buildApp(
   if (allowProvisioningUpdates) {
     command.addOption("-allowProvisioningUpdates");
   }
+
   if (options.shouldClean) {
     command.addAction("clean");
   }
@@ -523,6 +547,24 @@ export async function buildApp(
  * Build app without running
  */
 export async function buildCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  return commonBuildCommand(execution, item, { debug: false });
+}
+
+/**
+ * Build app in debug mode without running
+ */
+export async function debuggingBuildCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  return commonBuildCommand(execution, item, { debug: true });
+}
+
+/**
+ * Build app without running
+ */
+async function commonBuildCommand(
+  execution: CommandExecution,
+  item: BuildTreeItem | undefined,
+  options: { debug: boolean },
+) {
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
   const scheme =
     item?.scheme ??
@@ -556,6 +598,7 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
         shouldTest: false,
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
+        debug: options.debug,
       });
     },
   });
@@ -565,11 +608,33 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
  * Build and run application on the simulator or device
  */
 export async function launchCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  return commonLaunchCommand(execution, item, { debug: false });
+}
+
+/**
+ * Builds and launches the application in debug mode
+ * This is a convenience wrapper around launchCommand that sets the debug flag
+ */
+export async function debuggingLaunchCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  return commonLaunchCommand(execution, item, { debug: true });
+}
+
+/**
+ * Build and run application on the simulator or device
+ */
+async function commonLaunchCommand(
+  execution: CommandExecution,
+  item: BuildTreeItem | undefined,
+  options: { debug: boolean },
+) {
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
+    (await askSchemeForBuild(execution.context, {
+      title: options.debug ? "Select scheme to build and debug" : "Select scheme to build and run",
+      xcworkspace: xcworkspace,
+    }));
   const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
 
   const buildSettings = await getBuildSettingsToAskDestination({
@@ -588,11 +653,12 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
   const launchEnv = getWorkspaceConfig("build.launchEnv") ?? {};
 
   await runTask(execution.context, {
-    name: "Launch",
+    name: options.debug ? "Debug" : "Launch",
     lock: "sweetpad.build",
     terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
+      // Build the app with debug settings if needed
       await buildApp(execution.context, terminal, {
         scheme: scheme,
         sdk: sdk,
@@ -602,6 +668,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         shouldTest: false,
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
+        debug: options.debug,
       });
 
       if (destination.type === "macOS") {
@@ -628,6 +695,7 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
           watchMarker: false,
           launchArgs: launchArgs,
           launchEnv: launchEnv,
+          debug: options.debug,
         });
       } else if (
         destination.type === "iOSDevice" ||
@@ -657,6 +725,24 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
  * Run application on the simulator or device without building
  */
 export async function runCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  return commonRunCommand(execution, item, { debug: false });
+}
+
+/**
+ * Run application on the simulator or device without building in debug mode
+ */
+export async function debuggingRunCommand(execution: CommandExecution, item?: BuildTreeItem) {
+  return commonRunCommand(execution, item, { debug: true });
+}
+
+/**
+ * Run application on the simulator or device without building
+ */
+async function commonRunCommand(
+  execution: CommandExecution,
+  item: BuildTreeItem | undefined,
+  options: { debug: boolean },
+) {
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
 
   const scheme =
@@ -708,6 +794,7 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
           watchMarker: false,
           launchArgs: launchArgs,
           launchEnv: launchEnv,
+          debug: options.debug,
         });
       } else if (
         destination.type === "iOSDevice" ||
@@ -770,6 +857,7 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
         shouldTest: false,
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
+        debug: false,
       });
     },
   });
@@ -809,6 +897,7 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
         shouldTest: true,
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
+        debug: false,
       });
     },
   });

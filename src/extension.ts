@@ -2,6 +2,9 @@ import * as vscode from "vscode";
 import {
   buildCommand,
   cleanCommand,
+  debuggingBuildCommand,
+  debuggingLaunchCommand,
+  debuggingRunCommand,
   diagnoseBuildSetupCommand,
   generateBuildServerConfigCommand,
   launchCommand,
@@ -122,10 +125,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   const buildTaskProvider = new XcodeBuildTaskProvider(_context);
 
-  // Debug
-  d(registerDebugConfigurationProvider(_context));
-  d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
-
   // Tasks
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
 
@@ -143,7 +142,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.test", testCommand));
   d(command("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
   d(command("sweetpad.build.removeBundleDir", removeBundleDirCommand));
-  d(command("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
+  d(command("sweetpad.build.generateBuildServerConfig", generateBuildServerConfigCommand));
   d(command("sweetpad.build.openXcode", openXcodeCommand));
   d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
   d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeForBuildCommand));
@@ -156,6 +155,13 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.testing.selectTarget", selectTestingTargetCommand));
   d(command("sweetpad.testing.setDefaultScheme", selectXcodeSchemeForTestingCommand));
   d(command("sweetpad.testing.selectConfiguration", selectConfigurationForTestingCommand));
+
+  // Debugging
+  d(registerDebugConfigurationProvider(_context));
+  d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
+  d(command("sweetpad.debugger.debuggingLaunch", debuggingLaunchCommand));
+  d(command("sweetpad.debugger.debuggingRun", debuggingRunCommand));
+  d(command("sweetpad.debugger.debuggingBuild", debuggingBuildCommand));
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));
