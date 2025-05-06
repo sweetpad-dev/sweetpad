@@ -4,6 +4,8 @@ export type QuickPickItemRow<T> = vscode.QuickPickItem & { context: T };
 export type QuickPickItemSeparator = vscode.QuickPickItem & { kind: vscode.QuickPickItemKind.Separator };
 export type QuickPickItem<T> = QuickPickItemRow<T> | QuickPickItemSeparator;
 
+export class QuickPickCancelledError extends Error {}
+
 /**
  * Shows a quick pick dialog with the given options.
  * @param options - The options for the quick pick dialog.
@@ -31,6 +33,11 @@ export async function showQuickPick<T>(options: {
       } else {
         resolve(selected);
       }
+      pick.dispose();
+    });
+
+    pick.onDidHide(() => {
+      reject(new QuickPickCancelledError());
       pick.dispose();
     });
   });

@@ -7,6 +7,7 @@ import type { ToolsManager } from "../tools/manager";
 import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting";
 import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
+import { QuickPickCancelledError } from "./quick-pick";
 
 export type LastLaunchedAppDeviceContext = {
   type: "device";
@@ -201,6 +202,10 @@ export class CommandExecution {
           this.statusBarItem.dispose();
         });
       } catch (error) {
+        if (error instanceof QuickPickCancelledError) {
+          return;
+        }
+
         if (error instanceof ExtensionError) {
           // Handle default error
           commonLogger.error(error.message, {
