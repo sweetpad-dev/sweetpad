@@ -18,7 +18,7 @@ export async function selectTestingTargetCommand(execution: CommandExecution): P
 }
 
 export async function buildForTestingCommand(execution: CommandExecution): Promise<void> {
-  return await execution.context.testingManager.buildForTestingCommand();
+  return await execution.context.testingManager.buildForTestingCommand(execution);
 }
 
 export async function testWithoutBuildingCommand(
@@ -37,7 +37,7 @@ export async function selectXcodeSchemeForTestingCommand(execution: CommandExecu
   }
 
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  await askSchemeForTesting(execution.context, {
+  await askSchemeForTesting(execution, {
     title: "Select scheme to set as default",
     xcworkspace: xcworkspace,
     ignoreCache: true,

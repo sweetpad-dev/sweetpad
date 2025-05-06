@@ -155,7 +155,7 @@ class ActionDispatcher {
     ) {
       await runOniOSSimulator(this.context, terminal, {
         scheme: scheme,
-        simulatorId: destination.udid,
+        destination: destination,
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
@@ -171,8 +171,7 @@ class ActionDispatcher {
     ) {
       await runOniOSDevice(this.context, terminal, {
         scheme: scheme,
-        destinationId: destination.udid,
-        destinationType: destination.type,
+        destination: destination,
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
@@ -273,7 +272,7 @@ class ActionDispatcher {
     ) {
       await runOniOSSimulator(this.context, terminal, {
         scheme: scheme,
-        simulatorId: destination.udid,
+        destination: destination,
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
@@ -289,8 +288,7 @@ class ActionDispatcher {
     ) {
       await runOniOSDevice(this.context, terminal, {
         scheme: scheme,
-        destinationId: destination.udid,
-        destinationType: destination.type,
+        destination: destination,
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
