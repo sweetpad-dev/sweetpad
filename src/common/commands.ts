@@ -8,6 +8,7 @@ import type { ToolsManager } from "../tools/manager";
 import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting";
 import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
+import { QuickPickCancelledError } from "./quick-pick";
 
 export type LastLaunchedAppDeviceContext = {
   type: "device";
@@ -89,9 +90,9 @@ export class ExtensionContext {
     this._context.subscriptions.push(disposable);
   }
 
-  registerCommand(command: string, callback: (context: CommandExecution, ...args: any[]) => Promise<unknown>) {
+  registerCommand(command: string, name: string, callback: (context: CommandExecution, ...args: any[]) => Promise<unknown>) {
     return vscode.commands.registerCommand(command, (...args: any[]) => {
-      const execution = new CommandExecution(command, callback, this);
+      const execution = new CommandExecution(command, name, callback, this);
       return execution.run(...args);
     });
   }
@@ -145,11 +146,17 @@ export class ExtensionContext {
  * Class that represents a command execution with proper error handling
  */
 export class CommandExecution {
+
+  private statusBarItem: vscode.StatusBarItem;
+
   constructor(
     public readonly command: string,
+    public readonly name: string,
     public readonly callback: (context: CommandExecution, ...args: unknown[]) => Promise<unknown>,
-    public context: ExtensionContext,
-  ) {}
+    public context: ExtensionContext
+  ) {
+    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+  }
 
   /**
    * Show error message with proper actions
@@ -193,8 +200,16 @@ export class CommandExecution {
     return await errorReporting.withScope(async (scope) => {
       scope.setTag("command", this.command);
       try {
-        return await this.callback(this, ...args);
+        this.setupStatusBarItem();
+
+        return await this.callback(this, ...args).finally(() => {
+          this.statusBarItem.dispose();
+        });
       } catch (error) {
+        if (error instanceof QuickPickCancelledError) {
+          return;
+        }
+
         if (error instanceof ExtensionError) {
           // Handle default error
           commonLogger.error(error.message, {
@@ -222,5 +237,27 @@ export class CommandExecution {
         }
       }
     });
+  }
+
+  setStatusText(text: string) {
+    if (text.length > 0) {
+      this.statusBarItem.text = `$(loading~spin) ${this.name} | ${text}`
+    } else {
+      this.statusBarItem.text = `$(loading~spin) ${this.name}`
+    }
+  }
+
+  private setupStatusBarItem() {
+    const commandName = `sweetpad.command.statusOptions.${this.command}.${Date.now()}`;
+    this.statusBarItem.command = commandName;
+
+    // Register the command
+    const commandDisposable = vscode.commands.registerCommand(commandName, () => {
+      const vscodeWindow = vscode.window;
+      vscodeWindow.terminals[vscodeWindow.terminals.length - 1].show();
+    });
+
+    this.setStatusText("")
+    this.statusBarItem.show();
   }
 }

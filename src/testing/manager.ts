@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { getXcodeBuildDestinationString } from "../build/commands.js";
 import { askXcodeWorkspacePath, getWorkspacePath } from "../build/utils.js";
 import { getBuildSettingsToAskDestination } from "../common/cli/scripts.js";
-import type { ExtensionContext } from "../common/commands.js";
+import type { CommandExecution, ExtensionContext } from "../common/commands.js";
 import { errorReporting } from "../common/error-reporting.js";
 import { exec } from "../common/exec.js";
 import { isFileExists } from "../common/files.js";
@@ -338,7 +338,7 @@ export class TestingManager {
   /**
    * Ask common configuration options for running tests
    */
-  async askTestingConfigurations(): Promise<{
+  async askTestingConfigurations(execution?: CommandExecution): Promise<{
     xcworkspace: string;
     scheme: string;
     configuration: string;
@@ -348,7 +348,7 @@ export class TestingManager {
     // configuration for building the project
 
     const xcworkspace = await askXcodeWorkspacePath(this.context);
-    const scheme = await askSchemeForTesting(this.context, {
+    const scheme = await askSchemeForTesting(execution ?? this.context, {
       xcworkspace: xcworkspace,
       title: "Select a scheme to run tests",
     });
@@ -373,8 +373,8 @@ export class TestingManager {
   /**
    * Execute separate command to build the project before running tests
    */
-  async buildForTestingCommand() {
-    const { scheme, destination, xcworkspace } = await this.askTestingConfigurations();
+  async buildForTestingCommand(execution: CommandExecution) {
+    const { scheme, destination, xcworkspace } = await this.askTestingConfigurations(execution);
 
     // before testing we need to build the project to avoid runnning tests on old code or
     // building every time we run selected tests
@@ -382,7 +382,7 @@ export class TestingManager {
       destination: destination,
       scheme: scheme,
       xcworkspace: xcworkspace,
-    });
+    }, execution);
   }
 
   /**
@@ -392,7 +392,10 @@ export class TestingManager {
     scheme: string;
     destination: Destination;
     xcworkspace: string;
-  }) {
+  }, execution?: CommandExecution) {
+    if (execution) {
+      execution.setStatusText("Building…");
+    }
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
 
     // todo: add xcodebeautify command to format output

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { askConfigurationBase } from "../common/askers";
 import { type XcodeBuildSettings, getSchemes, getTargets } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
+import { CommandExecution, ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { DestinationPlatform } from "../destination/constants";
@@ -184,13 +184,19 @@ export async function selectDestinationForTesting(
  * Ask user to select scheme to build
  */
 export async function askSchemeForTesting(
-  context: ExtensionContext,
+  execution: ExtensionContext | CommandExecution,
   options: {
     title?: string;
     xcworkspace: string;
     ignoreCache?: boolean;
   },
 ): Promise<string> {
+  const context = execution instanceof CommandExecution ? execution.context : execution;
+
+  if (execution instanceof CommandExecution) {
+    execution.setStatusText("Retrieving scheme…");
+  }
+
   const cachedScheme = context.buildManager.getDefaultSchemeForTesting();
   if (cachedScheme && !options.ignoreCache) {
     return cachedScheme;

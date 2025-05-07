@@ -16,6 +16,7 @@ type Config = {
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "system.enableSentry": boolean;
+  "system.autoRevealTerminal": boolean;
   "xcodegen.autogenerate": boolean;
   "xcodebuildserver.autogenerate": boolean;
   "tuist.autogenerate": boolean;
