@@ -125,10 +125,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   const buildTaskProvider = new XcodeBuildTaskProvider(_context);
 
-  // Debug
-  d(registerDebugConfigurationProvider(_context));
-  d(command("sweetpad.debugger.getAppPath", "Get App Path", getAppPathCommand));
-
   // Tasks
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
 
@@ -162,10 +158,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Debugging
   d(registerDebugConfigurationProvider(_context));
-  d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
-  d(command("sweetpad.debugger.debuggingLaunch", debuggingLaunchCommand));
-  d(command("sweetpad.debugger.debuggingRun", debuggingRunCommand));
-  d(command("sweetpad.debugger.debuggingBuild", debuggingBuildCommand));
+  d(command("sweetpad.debugger.getAppPath", "Get App Path", getAppPathCommand));
+  d(command("sweetpad.debugger.debuggingLaunch", "Debug", debuggingLaunchCommand));
+  d(command("sweetpad.debugger.debuggingRun", "Debug (Run only)", debuggingRunCommand));
+  d(command("sweetpad.debugger.debuggingBuild", "Debug (Build only)", debuggingBuildCommand));
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", "Generate project using XcodeGen", xcodgenGenerateCommand));

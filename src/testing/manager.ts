@@ -726,13 +726,21 @@ export class TestingManager {
    * Run selected tests without building the project
    * This is faster but you may need to build manually before running tests
    */
-  async runTestsWithoutBuilding(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
+  async runTestsWithoutBuilding(
+    request: vscode.TestRunRequest, 
+    token: vscode.CancellationToken, 
+    execution?: CommandExecution
+  ) {
     const run = this.controller.createTestRun(request);
     try {
-      const { scheme, destination, xcworkspace } = await this.askTestingConfigurations();
+      const { scheme, destination, xcworkspace } = await this.askTestingConfigurations(execution);
 
       // todo: add check if project is already built
 
+      if (execution) {
+        execution.setStatusText("Testing…");
+      }
+      
       await this.runTests({
         run: run,
         request: request,

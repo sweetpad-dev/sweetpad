@@ -252,7 +252,7 @@ export class CommandExecution {
     this.statusBarItem.command = commandName;
 
     // Register the command
-    const commandDisposable = vscode.commands.registerCommand(commandName, () => {
+    vscode.commands.registerCommand(commandName, () => {
       const vscodeWindow = vscode.window;
       vscodeWindow.terminals[vscodeWindow.terminals.length - 1].show();
     });

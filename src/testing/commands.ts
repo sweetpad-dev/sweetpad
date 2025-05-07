@@ -27,7 +27,7 @@ export async function testWithoutBuildingCommand(
 ): Promise<void> {
   const request = new vscode.TestRunRequest(items, [], undefined, undefined);
   const tokenSource = new vscode.CancellationTokenSource();
-  execution.context.testingManager.runTestsWithoutBuilding(request, tokenSource.token);
+  await execution.context.testingManager.runTestsWithoutBuilding(request, tokenSource.token, execution);
 }
 
 export async function selectXcodeSchemeForTestingCommand(execution: CommandExecution, item?: BuildTreeItem) {
