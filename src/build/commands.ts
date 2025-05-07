@@ -13,7 +13,7 @@ import {
   getIsXcodeBuildServerInstalled,
   getXcodeVersionInstalled,
 } from "../common/cli/scripts";
-import type { CommandExecution, ExtensionContext } from "../common/commands";
+import { CommandExecution, ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
@@ -39,6 +39,8 @@ import {
   restartSwiftLSP,
   selectXcodeWorkspace,
 } from "./utils";
+import { DeviceDestination, iOSDeviceDestination } from "../devices/types";
+import { iOSSimulatorDestination, SimulatorDestination } from "../simulators/types";
 
 function writeWatchMarkers(terminal: TaskTerminal) {
   terminal.write("🍭 SweetPad: watch marker (start)\n");
@@ -58,7 +60,7 @@ async function ensureAppPathExists(appPath: string | undefined): Promise<string>
 }
 
 export async function runOnMac(
-  context: ExtensionContext,
+  executionContext: ExtensionContext | CommandExecution,
   terminal: TaskTerminal,
   options: {
     scheme: string;
@@ -69,6 +71,7 @@ export async function runOnMac(
     launchEnv: Record<string, string>;
   },
 ) {
+  const context = executionContext instanceof ExtensionContext ? executionContext : executionContext.context;
   const buildSettings = await getBuildSettingsToLaunch({
     scheme: options.scheme,
     configuration: options.configuration,
@@ -86,6 +89,9 @@ export async function runOnMac(
     writeWatchMarkers(terminal);
   }
 
+  if (executionContext instanceof CommandExecution) {
+    executionContext.setStatusText(`Running ${options.scheme} on Mac…`);
+  }
   await terminal.execute({
     command: executablePath,
     env: options.launchEnv,
@@ -94,11 +100,11 @@ export async function runOnMac(
 }
 
 export async function runOniOSSimulator(
-  context: ExtensionContext,
+  executionContext: ExtensionContext | CommandExecution,
   terminal: TaskTerminal,
   options: {
     scheme: string;
-    simulatorId: string;
+    destination: SimulatorDestination;
     sdk: string;
     configuration: string;
     xcworkspace: string;
@@ -108,16 +114,22 @@ export async function runOniOSSimulator(
     debug: boolean;
   },
 ) {
+  const simulatorId = options.destination.udid;
   const buildSettings = await getBuildSettingsToLaunch({
     scheme: options.scheme,
     configuration: options.configuration,
     sdk: options.sdk,
     xcworkspace: options.xcworkspace,
   });
+  const context = executionContext instanceof ExtensionContext ? executionContext : executionContext.context;
+
   const appPath = await ensureAppPathExists(buildSettings.appPath);
   const bundlerId = buildSettings.bundleIdentifier;
 
   // Open simulator
+  if (executionContext instanceof CommandExecution) {
+    executionContext.setStatusText(`Launching ${options.destination.name}…`);
+  }
   await terminal.execute({
     command: "open",
     args: ["-a", "Simulator"],
@@ -125,7 +137,7 @@ export async function runOniOSSimulator(
 
   // Get simulator with fresh state
   const simulator = await getSimulatorByUdid(context, {
-    udid: options.simulatorId,
+    udid: simulatorId,
   });
 
   // Boot device
@@ -140,6 +152,9 @@ export async function runOniOSSimulator(
   }
 
   // Install app
+  if (executionContext instanceof CommandExecution) {
+    executionContext.setStatusText(`Installing ${options.scheme} on ${simulator.name}…`);
+  }
   await terminal.execute({
     command: "xcrun",
     args: ["simctl", "install", simulator.udid, appPath],
@@ -167,6 +182,9 @@ export async function runOniOSSimulator(
   ];
 
   // Run app
+  if (executionContext instanceof CommandExecution) {
+    executionContext.setStatusText(`Running ${options.scheme} on ${simulator.name}…`);
+  }
   await terminal.execute({
     command: "xcrun",
     args: launchArgs,
@@ -176,13 +194,12 @@ export async function runOniOSSimulator(
 }
 
 export async function runOniOSDevice(
-  context: ExtensionContext,
+  executionContext: ExtensionContext | CommandExecution,
   terminal: TaskTerminal,
   option: {
     scheme: string;
     configuration: string;
-    destinationId: string;
-    destinationType: DestinationType;
+    destination: DeviceDestination;
     sdk: string;
     xcworkspace: string;
     watchMarker: boolean;
@@ -190,7 +207,9 @@ export async function runOniOSDevice(
     launchEnv: Record<string, string>;
   },
 ) {
-  const { scheme, configuration, destinationId: deviceId, destinationType } = option;
+  const context = executionContext instanceof ExtensionContext ? executionContext : executionContext.context;
+  const { scheme, configuration, destination } = option;
+  const { udid: deviceId, type: destinationType, name: destinationName } = destination;
 
   const buildSettings = await getBuildSettingsToLaunch({
     scheme: scheme,
@@ -203,6 +222,9 @@ export async function runOniOSDevice(
   const bundlerId = buildSettings.bundleIdentifier;
 
   // Install app on device
+  if (executionContext instanceof CommandExecution) {
+    executionContext.setStatusText(`Installing ${scheme} on ${destinationName}…`);
+  }
   await terminal.execute({
     command: "xcrun",
     args: ["devicectl", "device", "install", "app", "--device", deviceId, targetPath],
@@ -246,6 +268,9 @@ export async function runOniOSDevice(
   ].filter((arg) => arg !== null); // Filter out null arguments
 
   // Launch app on device
+  if (executionContext instanceof CommandExecution) {
+    executionContext.setStatusText(`Running ${scheme} on ${destinationName}…`);
+  }
   await terminal.execute({
     command: "xcrun",
     args: launchArgs,
@@ -457,7 +482,7 @@ class XcodeCommandBuilder {
 }
 
 export async function buildApp(
-  context: ExtensionContext,
+  executionContext: ExtensionContext | CommandExecution,
   terminal: TaskTerminal,
   options: {
     scheme: string;
@@ -471,6 +496,7 @@ export async function buildApp(
     debug: boolean;
   },
 ) {
+  const context = executionContext instanceof ExtensionContext ? executionContext : executionContext.context;
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundlePath = await prepareBundleDir(context, options.scheme);
   const derivedDataPath = prepareDerivedDataPath();
@@ -533,6 +559,9 @@ export async function buildApp(
   if (useXcbeatify) {
     pipes = [{ command: "xcbeautify", args: [] }];
   }
+  if (executionContext instanceof CommandExecution) {
+    executionContext.setStatusText("Building…");
+  }
   await terminal.execute({
     command: commandParts[0],
     args: commandParts.slice(1),
@@ -568,8 +597,8 @@ async function commonBuildCommand(
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to build", xcworkspace: xcworkspace }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+    (await askSchemeForBuild(execution, { title: "Select scheme to build", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(execution, { xcworkspace: xcworkspace });
 
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
@@ -578,7 +607,7 @@ async function commonBuildCommand(
     xcworkspace: xcworkspace,
   });
 
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const destination = await askDestinationToRunOn(execution, buildSettings);
   const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
@@ -589,7 +618,7 @@ async function commonBuildCommand(
     terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
-      await buildApp(execution.context, terminal, {
+      await buildApp(execution, terminal, {
         scheme: scheme,
         sdk: sdk,
         configuration: configuration,
@@ -631,20 +660,15 @@ async function commonLaunchCommand(
 
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, {
-      title: options.debug ? "Select scheme to build and debug" : "Select scheme to build and run",
-      xcworkspace: xcworkspace,
-    }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
-
+    (await askSchemeForBuild(execution, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(execution, { xcworkspace: xcworkspace });
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
     configuration: configuration,
     sdk: undefined,
     xcworkspace: xcworkspace,
   });
-
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const destination = await askDestinationToRunOn(execution, buildSettings);
   const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
@@ -658,8 +682,7 @@ async function commonLaunchCommand(
     terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
-      // Build the app with debug settings if needed
-      await buildApp(execution.context, terminal, {
+      await buildApp(execution, terminal, {
         scheme: scheme,
         sdk: sdk,
         configuration: configuration,
@@ -672,7 +695,7 @@ async function commonLaunchCommand(
       });
 
       if (destination.type === "macOS") {
-        await runOnMac(execution.context, terminal, {
+        await runOnMac(execution, terminal, {
           scheme: scheme,
           xcworkspace: xcworkspace,
           configuration: configuration,
@@ -686,9 +709,9 @@ async function commonLaunchCommand(
         destination.type === "tvOSSimulator" ||
         destination.type === "visionOSSimulator"
       ) {
-        await runOniOSSimulator(execution.context, terminal, {
+        await runOniOSSimulator(execution, terminal, {
           scheme: scheme,
-          simulatorId: destination.udid ?? "",
+          destination: destination,
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
@@ -703,10 +726,10 @@ async function commonLaunchCommand(
         destination.type === "tvOSDevice" ||
         destination.type === "visionOSDevice"
       ) {
-        await runOniOSDevice(execution.context, terminal, {
+
+        await runOniOSDevice(execution, terminal, {
           scheme: scheme,
-          destinationId: destination.udid,
-          destinationType: destination.type,
+          destination: destination,
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
@@ -747,8 +770,8 @@ async function commonRunCommand(
 
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+    (await askSchemeForBuild(execution, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(execution, { xcworkspace: xcworkspace });
 
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
@@ -757,7 +780,7 @@ async function commonRunCommand(
     xcworkspace: xcworkspace,
   });
 
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const destination = await askDestinationToRunOn(execution, buildSettings);
 
   const sdk = destination.platform;
 
@@ -771,7 +794,7 @@ async function commonRunCommand(
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
       if (destination.type === "macOS") {
-        await runOnMac(execution.context, terminal, {
+        await runOnMac(execution, terminal, {
           scheme: scheme,
           xcworkspace: xcworkspace,
           configuration: configuration,
@@ -785,9 +808,9 @@ async function commonRunCommand(
         destination.type === "visionOSSimulator" ||
         destination.type === "tvOSSimulator"
       ) {
-        await runOniOSSimulator(execution.context, terminal, {
+        await runOniOSSimulator(execution, terminal, {
           scheme: scheme,
-          simulatorId: destination.udid ?? "",
+          destination: destination,
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
@@ -802,10 +825,9 @@ async function commonRunCommand(
         destination.type === "tvOSDevice" ||
         destination.type === "visionOSDevice"
       ) {
-        await runOniOSDevice(execution.context, terminal, {
+        await runOniOSDevice(execution, terminal, {
           scheme: scheme,
-          destinationId: destination.udid,
-          destinationType: destination.type,
+          destination: destination,
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
@@ -827,8 +849,8 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to clean", xcworkspace: xcworkspace }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+    (await askSchemeForBuild(execution, { title: "Select scheme to clean", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(execution, { xcworkspace: xcworkspace });
 
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
@@ -837,7 +859,7 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
     xcworkspace: xcworkspace,
   });
 
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const destination = await askDestinationToRunOn(execution, buildSettings);
   const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
@@ -848,7 +870,7 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
     terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
-      await buildApp(execution.context, terminal, {
+      await buildApp(execution, terminal, {
         scheme: scheme,
         sdk: sdk,
         configuration: configuration,
@@ -867,8 +889,8 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to test", xcworkspace: xcworkspace }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+    (await askSchemeForBuild(execution, { title: "Select scheme to test", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(execution, { xcworkspace: xcworkspace });
 
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
@@ -877,7 +899,7 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
     xcworkspace: xcworkspace,
   });
 
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  const destination = await askDestinationToRunOn(execution, buildSettings);
   const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
@@ -888,7 +910,7 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
     terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
-      await buildApp(execution.context, terminal, {
+      await buildApp(execution, terminal, {
         scheme: scheme,
         sdk: sdk,
         configuration: configuration,
@@ -903,7 +925,17 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
   });
 }
 
-export async function resolveDependencies(context: ExtensionContext, options: { scheme: string; xcworkspace: string }) {
+export async function resolveDependencies(
+  executionContext: ExtensionContext | CommandExecution,
+  options: {
+    scheme: string;
+    xcworkspace: string;
+  },
+) {
+  const context = executionContext instanceof CommandExecution ? executionContext.context : executionContext
+  if (executionContext instanceof CommandExecution) {
+    executionContext.setStatusText("Resolving Dependencies…");
+  }
   await runTask(context, {
     name: "Resolve Dependencies",
     lock: "sweetpad.build",
@@ -925,12 +957,12 @@ export async function resolveDependenciesCommand(execution: CommandExecution, it
 
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, {
+    (await askSchemeForBuild(execution, {
       title: "Select scheme to resolve dependencies",
       xcworkspace: xcworkspace,
     }));
 
-  await resolveDependencies(execution.context, {
+  await resolveDependencies(execution, {
     scheme: scheme,
     xcworkspace: xcworkspace,
   });
@@ -963,22 +995,27 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
 
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, {
+    (await askSchemeForBuild(execution, {
       title: "Select scheme for build server",
       xcworkspace: xcworkspace,
     }));
+
+  execution.setStatusText("Generating…");
   await generateBuildServerConfig({
     xcworkspace: xcworkspace,
     scheme: scheme,
   });
   await restartSwiftLSP();
 
-  const selected = await vscode.window.showInformationMessage("buildServer.json generated in workspace root", "Open");
-  if (selected === "Open") {
-    const workspacePath = getWorkspacePath();
-    const buildServerPath = vscode.Uri.file(path.join(workspacePath, "buildServer.json"));
-    await vscode.commands.executeCommand("vscode.open", buildServerPath);
-  }
+  const selected = vscode.window
+    .showInformationMessage("buildServer.json generated in workspace root", "Open")
+    .then(selected => {
+      if (selected === "Open") {
+        const workspacePath = getWorkspacePath();
+        const buildServerPath = vscode.Uri.file(path.join(workspacePath, "buildServer.json"));
+        vscode.commands.executeCommand("vscode.open", buildServerPath);
+      }
+    });
 }
 
 /**
@@ -1022,7 +1059,7 @@ export async function selectXcodeSchemeForBuildCommand(execution: CommandExecuti
   }
 
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  await askSchemeForBuild(execution.context, {
+  await askSchemeForBuild(execution, {
     title: "Select scheme to set as default",
     xcworkspace: xcworkspace,
     ignoreCache: true,
@@ -1034,10 +1071,12 @@ export async function selectXcodeSchemeForBuildCommand(execution: CommandExecuti
  */
 export async function selectConfigurationForBuildCommand(execution: CommandExecution): Promise<void> {
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
+  execution.setStatusText("Retrieving configurations…")
   const configurations = await getBuildConfigurations({
     xcworkspace: xcworkspace,
   });
 
+  execution.setStatusText("")
   let selected: string | undefined;
   if (configurations.length === 0) {
     selected = await showInputBox({

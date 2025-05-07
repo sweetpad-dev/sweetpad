@@ -18,7 +18,7 @@ export async function selectTestingTargetCommand(execution: CommandExecution): P
 }
 
 export async function buildForTestingCommand(execution: CommandExecution): Promise<void> {
-  return await execution.context.testingManager.buildForTestingCommand();
+  return await execution.context.testingManager.buildForTestingCommand(execution);
 }
 
 export async function testWithoutBuildingCommand(
@@ -27,7 +27,7 @@ export async function testWithoutBuildingCommand(
 ): Promise<void> {
   const request = new vscode.TestRunRequest(items, [], undefined, undefined);
   const tokenSource = new vscode.CancellationTokenSource();
-  execution.context.testingManager.runTestsWithoutBuilding(request, tokenSource.token);
+  await execution.context.testingManager.runTestsWithoutBuilding(request, tokenSource.token, execution);
 }
 
 export async function selectXcodeSchemeForTestingCommand(execution: CommandExecution, item?: BuildTreeItem) {
@@ -37,7 +37,7 @@ export async function selectXcodeSchemeForTestingCommand(execution: CommandExecu
   }
 
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  await askSchemeForTesting(execution.context, {
+  await askSchemeForTesting(execution, {
     title: "Select scheme to set as default",
     xcworkspace: xcworkspace,
     ignoreCache: true,

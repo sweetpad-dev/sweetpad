@@ -476,6 +476,13 @@ async function runTaskV2(
     options.problemMatchers,
   );
 
+  const autoRevealTerminal = getWorkspaceConfig("system.autoRevealTerminal") ?? true;
+  task.presentationOptions = {
+    reveal: autoRevealTerminal ? vscode.TaskRevealKind.Always : vscode.TaskRevealKind.Never,
+    focus: autoRevealTerminal,
+    clear: !autoRevealTerminal
+  };
+
   const execution = await vscode.tasks.executeTask(task);
 
   return new Promise((resolve, reject) => {
