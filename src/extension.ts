@@ -142,7 +142,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.test", "Test", testCommand));
   d(command("sweetpad.build.resolveDependencies", "Resolve Dependencies", resolveDependenciesCommand));
   d(command("sweetpad.build.removeBundleDir", "Remove Bundle Dir", removeBundleDirCommand));
-  d(command("sweetpad.build.genereateBuildServerConfig", "Generate buildServer.json", generateBuildServerConfigCommand));
+  d(command("sweetpad.build.generateBuildServerConfig", "Generate buildServer.json", generateBuildServerConfigCommand));
   d(command("sweetpad.build.openXcode", "Open Xcode", openXcodeCommand));
   d(command("sweetpad.build.selectXcodeWorkspace", "Select Xcode Workspace", selectXcodeWorkspaceCommand));
   d(command("sweetpad.build.setDefaultScheme", "Set Default Scheme", selectXcodeSchemeForBuildCommand));
