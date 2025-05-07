@@ -394,7 +394,7 @@ export class TestingManager {
     xcworkspace: string;
   }, execution?: CommandExecution) {
     if (execution) {
-      execution.setStatusText("Building");
+      execution.setStatusText("Building…");
     }
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
 

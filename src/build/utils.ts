@@ -71,7 +71,7 @@ export async function askDestinationToRunOn(
   const context = executionContext instanceof ExtensionContext ? executionContext : executionContext.context;
 
   if (executionContext instanceof CommandExecution) {
-    executionContext.setStatusText("Retrieving destinations");
+    executionContext.setStatusText("Retrieving destinations…");
   }
   
   // We can remove platforms that are not supported by the project
@@ -191,7 +191,7 @@ export async function askSchemeForBuild(
   const context = executionContext instanceof ExtensionContext ? executionContext : executionContext.context;
 
   if (executionContext instanceof CommandExecution) {
-    executionContext.setStatusText("Retrieving scheme");
+    executionContext.setStatusText("Retrieving scheme…");
   }
 
   const cachedScheme = context.buildManager.getDefaultSchemeForBuild();
@@ -322,9 +322,9 @@ export async function askConfiguration(
   const context = executionContext instanceof ExtensionContext ? executionContext : executionContext.context;
 
   if (executionContext instanceof CommandExecution) {
-    executionContext.setStatusText("Retrieving build configuration");
+    executionContext.setStatusText("Retrieving build configuration…");
   }
-  
+
   const fromConfig = getWorkspaceConfig("build.configuration");
   if (fromConfig) {
     return fromConfig;

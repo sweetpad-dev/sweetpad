@@ -194,7 +194,7 @@ export async function askSchemeForTesting(
   const context = execution instanceof CommandExecution ? execution.context : execution;
 
   if (execution instanceof CommandExecution) {
-    execution.setStatusText("Retrieving scheme");
+    execution.setStatusText("Retrieving scheme…");
   }
 
   const cachedScheme = context.buildManager.getDefaultSchemeForTesting();

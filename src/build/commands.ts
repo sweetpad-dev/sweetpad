@@ -127,7 +127,7 @@ export async function runOniOSSimulator(
 
   // Open simulator
   if (executionContext instanceof CommandExecution) {
-    executionContext.setStatusText("Launching simulator…");
+    executionContext.setStatusText(`Launching ${options.destination.name}…`);
   }
   await terminal.execute({
     command: "open",
@@ -536,7 +536,7 @@ export async function buildApp(
     pipes = [{ command: "xcbeautify", args: [] }];
   }
   if (executionContext instanceof CommandExecution) {
-    executionContext.setStatusText("Building");
+    executionContext.setStatusText("Building…");
   }
   await terminal.execute({
     command: commandParts[0],
@@ -849,7 +849,7 @@ export async function resolveDependencies(
 ) {
   const context = executionContext instanceof CommandExecution ? executionContext.context : executionContext
   if (executionContext instanceof CommandExecution) {
-    executionContext.setStatusText("Resolving Dependencies");
+    executionContext.setStatusText("Resolving Dependencies…");
   }
   await runTask(context, {
     name: "Resolve Dependencies",
@@ -914,7 +914,8 @@ export async function generateBuildServerConfigCommand(execution: CommandExecuti
       title: "Select scheme for build server",
       xcworkspace: xcworkspace,
     }));
-  execution.setStatusText("Generating buildServer.json")
+
+  execution.setStatusText("Generating…");
   await generateBuildServerConfig({
     xcworkspace: xcworkspace,
     scheme: scheme,
@@ -985,7 +986,7 @@ export async function selectXcodeSchemeForBuildCommand(execution: CommandExecuti
  */
 export async function selectConfigurationForBuildCommand(execution: CommandExecution): Promise<void> {
   const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  execution.setStatusText("Retrieve configurations")
+  execution.setStatusText("Retrieving configurations…")
   const configurations = await getBuildConfigurations({
     xcworkspace: xcworkspace,
   });
