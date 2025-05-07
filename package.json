@@ -791,6 +791,11 @@
           "default": false,
           "description": "Enable Sentry error reporting. NOTE: This config is disable by default, I recommend enabling it when you have issues with SweetPad and want to report about them."
         },
+        "sweetpad.system.autoRevealTerminal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically reveal the terminal when executing a command"
+        },
         "sweetpad.xcodegen.autogenerate": {
           "type": "boolean",
           "default": false,
