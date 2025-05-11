@@ -24,23 +24,27 @@ export async function showQuickPick<T>(options: {
   pick.show();
 
   return new Promise((resolve, reject) => {
+    let isAccepted = false;
     pick.onDidAccept(() => {
       const selected = pick.selectedItems[0];
+      isAccepted = true;
 
+      pick.dispose();
       // I'm not sure if it's possible to select a separator, but just in case and to please the TypeScript checker
       if (!selected || selected?.kind === vscode.QuickPickItemKind.Separator) {
         reject(new Error("No item selected"));
       } else {
         resolve(selected);
       }
-      pick.dispose();
     });
 
     pick.onDidHide(() => {
-      // When the quick pick is cancled by the user (e.g. by pressing Escape), the promise is rejected
-      // with a QuickPickCancelledError to silently cancel the command in which the quick pick was shown.
-      reject(new QuickPickCancelledError());
-      pick.dispose();
+      if (!isAccepted) {
+        // When the quick pick is cancled by the user (e.g. by pressing Escape), the promise is rejected
+        // with a QuickPickCancelledError to silently cancel the command in which the quick pick was shown.
+        reject(new QuickPickCancelledError());
+        pick.dispose();
+      }
     });
   });
 }

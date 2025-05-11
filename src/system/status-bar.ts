@@ -27,6 +27,11 @@ export class ProgressStatusBar {
     this.statusBar.name = "SweetPad: Command Status";
   }
 
+  dispose() {
+    this.statusBar.dispose();
+    this.messageMapping.clear();
+  }
+
   get context(): ExtensionContext {
     if (!this._context) {
       throw new Error("Context is not set");
@@ -41,8 +46,8 @@ export class ProgressStatusBar {
 
     // Every time a command or task is finished we remove message of the current scope
     // and update the status bar accordingly
-    context.on("executionScopeClosed", () => {
-      const scopeId = this.context.getExecutionScopeId() ?? DEFAULT_SCOPE_ID;
+    context.on("executionScopeClosed", (scope) => {
+      const scopeId = scope.id ?? DEFAULT_SCOPE_ID;
       this.messageMapping.delete(scopeId);
       this.displayBar();
     });

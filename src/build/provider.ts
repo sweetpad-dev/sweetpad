@@ -139,7 +139,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for destination");
+    this.context.updateProgressStatus("Extracting build settings");
     const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,
@@ -246,7 +246,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for configuration");
+    this.context.updateProgressStatus("Extracting build settings");
     const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,
@@ -306,7 +306,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for configuration");
+    this.context.updateProgressStatus("Extracting build settings");
     const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,
@@ -391,7 +391,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for configuration");
+    this.context.updateProgressStatus("Searching for build settings");
     const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,
@@ -437,7 +437,7 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for configuration");
+    this.context.updateProgressStatus("Extracting build settings");
     const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
       configuration: configuration,

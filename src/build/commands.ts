@@ -672,7 +672,7 @@ async function commonLaunchCommand(
   context.updateProgressStatus("Searching for configuration");
   const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
 
-  context.updateProgressStatus("Searching for destination");
+  context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
     configuration: configuration,
@@ -792,7 +792,7 @@ async function commonRunCommand(
   context.updateProgressStatus("Searching for configuration");
   const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
 
-  context.updateProgressStatus("Searching for destination");
+  context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
     configuration: configuration,

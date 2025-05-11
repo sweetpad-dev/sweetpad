@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import * as crypto from "node:crypto";
 import * as events from "node:events";
 import * as vscode from "vscode";
 import type { BuildManager } from "../build/manager";
