@@ -4,7 +4,7 @@ import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 
 import { askConfigurationBase } from "../common/askers";
 import { type XcodeBuildSettings, getSchemes } from "../common/cli/scripts";
-import { CommandExecution, ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
@@ -65,18 +65,13 @@ export async function askSimulator(
  * Ask user to select simulator or device to run on
  */
 export async function askDestinationToRunOn(
-  executionContext: ExtensionContext | CommandExecution,
+  context: ExtensionContext,
   buildSettings: XcodeBuildSettings | null,
 ): Promise<Destination> {
-  const context = executionContext instanceof ExtensionContext ? executionContext : executionContext.context;
-
-  if (executionContext instanceof CommandExecution) {
-    executionContext.setStatusText("Retrieving destinations…");
-  }
-  
   // We can remove platforms that are not supported by the project
   const supportedPlatforms = buildSettings?.supportedPlatforms;
 
+  context.updateProgressStatus("Searching for destinations");
   const destinations = await context.destinationsManager.getDestinations({
     mostUsedSort: true,
   });
@@ -181,18 +176,14 @@ export async function getDestinationById(
  * Ask user to select scheme to build
  */
 export async function askSchemeForBuild(
-  executionContext: ExtensionContext | CommandExecution,
+  context: ExtensionContext,
   options: {
     title?: string;
     xcworkspace: string;
     ignoreCache?: boolean;
   },
 ): Promise<string> {
-  const context = executionContext instanceof ExtensionContext ? executionContext : executionContext.context;
-
-  if (executionContext instanceof CommandExecution) {
-    executionContext.setStatusText("Retrieving scheme…");
-  }
+  context.updateProgressStatus("Searching for scheme");
 
   const cachedScheme = context.buildManager.getDefaultSchemeForBuild();
   if (cachedScheme && !options.ignoreCache) {
@@ -314,16 +305,12 @@ export async function askXcodeWorkspacePath(context: ExtensionContext): Promise<
 }
 
 export async function askConfiguration(
-  executionContext: ExtensionContext | CommandExecution,
+  context: ExtensionContext,
   options: {
     xcworkspace: string;
   },
 ): Promise<string> {
-  const context = executionContext instanceof ExtensionContext ? executionContext : executionContext.context;
-
-  if (executionContext instanceof CommandExecution) {
-    executionContext.setStatusText("Retrieving build configuration…");
-  }
+  context.updateProgressStatus("Searching for build configuration");
 
   const fromConfig = getWorkspaceConfig("build.configuration");
   if (fromConfig) {

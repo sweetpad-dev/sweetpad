@@ -1,6 +1,6 @@
 import path from "node:path";
-import { Disposable } from "vscode";
 import * as vscode from "vscode";
+import { Disposable } from "vscode";
 import { getWorkspacePath } from "../build/utils";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
@@ -63,7 +63,7 @@ class XcodeGenWatcher {
 
     this.throttle = setTimeout(() => {
       this.throttle = null;
-      xcodgenGenerateCommand()
+      xcodgenGenerateCommand(this.extension)
         .then(() => {
           commonLogger.log("XcodeGen project was successfully generated", {
             workspacePath: this.workspacePath,

@@ -3,41 +3,48 @@ import type { BuildTreeItem } from "../build/tree";
 import { askXcodeWorkspacePath } from "../build/utils";
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import { getBuildConfigurations } from "../common/cli/scripts";
-import type { CommandExecution } from "../common/commands";
+import type { ExtensionContext } from "../common/commands";
 import { updateWorkspaceConfig } from "../common/config";
 import { showInputBox } from "../common/quick-pick";
 import { askSchemeForTesting, askTestingTarget } from "./utils";
 
-export async function selectTestingTargetCommand(execution: CommandExecution): Promise<void> {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  await askTestingTarget(execution.context, {
+export async function selectTestingTargetCommand(context: ExtensionContext): Promise<void> {
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
+
+  context.updateProgressStatus("Selecting testing target");
+  await askTestingTarget(context, {
     title: "Select default testing target",
     xcworkspace: xcworkspace,
     force: true,
   });
 }
 
-export async function buildForTestingCommand(execution: CommandExecution): Promise<void> {
-  return await execution.context.testingManager.buildForTestingCommand(execution);
+export async function buildForTestingCommand(context: ExtensionContext): Promise<void> {
+  context.updateProgressStatus("Building for testing");
+  return await context.testingManager.buildForTestingCommand(context);
 }
 
 export async function testWithoutBuildingCommand(
-  execution: CommandExecution,
+  context: ExtensionContext,
   ...items: vscode.TestItem[]
 ): Promise<void> {
+  context.updateProgressStatus("Running tests without building");
   const request = new vscode.TestRunRequest(items, [], undefined, undefined);
   const tokenSource = new vscode.CancellationTokenSource();
-  await execution.context.testingManager.runTestsWithoutBuilding(request, tokenSource.token, execution);
+  await context.testingManager.runTestsWithoutBuilding(request, tokenSource.token);
 }
 
-export async function selectXcodeSchemeForTestingCommand(execution: CommandExecution, item?: BuildTreeItem) {
+export async function selectXcodeSchemeForTestingCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Selecting scheme for testing");
+
   if (item) {
     item.provider.buildManager.setDefaultSchemeForTesting(item.scheme);
     return;
   }
 
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  await askSchemeForTesting(execution, {
+  const xcworkspace = await askXcodeWorkspacePath(context);
+  await askSchemeForTesting(context, {
     title: "Select scheme to set as default",
     xcworkspace: xcworkspace,
     ignoreCache: true,
@@ -47,8 +54,11 @@ export async function selectXcodeSchemeForTestingCommand(execution: CommandExecu
 /**
  * Ask user to select configuration for testing
  */
-export async function selectConfigurationForTestingCommand(execution: CommandExecution): Promise<void> {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+export async function selectConfigurationForTestingCommand(context: ExtensionContext): Promise<void> {
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
+
+  context.updateProgressStatus("Searching for configurations");
   const configurations = await getBuildConfigurations({
     xcworkspace: xcworkspace,
   });
@@ -72,8 +82,8 @@ export async function selectConfigurationForTestingCommand(execution: CommandExe
   });
   if (saveAnswer) {
     await updateWorkspaceConfig("testing.configuration", selected);
-    execution.context.buildManager.setDefaultConfigurationForTesting(undefined);
+    context.buildManager.setDefaultConfigurationForTesting(undefined);
   } else {
-    execution.context.buildManager.setDefaultConfigurationForTesting(selected);
+    context.buildManager.setDefaultConfigurationForTesting(selected);
   }
 }

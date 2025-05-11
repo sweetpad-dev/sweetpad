@@ -37,6 +37,8 @@ export async function showQuickPick<T>(options: {
     });
 
     pick.onDidHide(() => {
+      // When the quick pick is cancled by the user (e.g. by pressing Escape), the promise is rejected
+      // with a QuickPickCancelledError to silently cancel the command in which the quick pick was shown.
       reject(new QuickPickCancelledError());
       pick.dispose();
     });

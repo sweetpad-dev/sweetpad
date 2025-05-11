@@ -48,9 +48,11 @@ import { SimulatorsManager } from "./simulators/manager.js";
 import {
   createIssueGenericCommand,
   createIssueNoSchemesCommand,
+  openTerminalPanel,
   resetSweetpadCache,
   testErrorReportingCommand,
 } from "./system/commands.js";
+import { ProgressStatusBar } from "./system/status-bar.js";
 import {
   buildForTestingCommand,
   selectConfigurationForTestingCommand,
@@ -88,8 +90,8 @@ export function activate(context: vscode.ExtensionContext) {
   });
   const toolsManager = new ToolsManager();
   const testingManager = new TestingManager();
-
   const formatter = new SwiftFormattingProvider();
+  const progressStatusBar = new ProgressStatusBar();
 
   // Main context object 🌍
   const _context = new ExtensionContext({
@@ -99,12 +101,14 @@ export function activate(context: vscode.ExtensionContext) {
     toolsManager: toolsManager,
     testingManager: testingManager,
     formatter: formatter,
+    progressStatusBar: progressStatusBar,
   });
   // Here is circular dependency, but I don't care
   buildManager.context = _context;
   devicesManager.context = _context;
   destinationsManager.context = _context;
   testingManager.context = _context;
+  progressStatusBar.context = _context;
 
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({
@@ -134,83 +138,84 @@ export function activate(context: vscode.ExtensionContext) {
   });
   d(schemeStatusBar);
   d(tree("sweetpad.build.view", buildTreeProvider));
-  d(command("sweetpad.build.refreshView", "Refresh View", async () => buildManager.refresh()));
-  d(command("sweetpad.build.launch", "Build & Run", launchCommand));
-  d(command("sweetpad.build.run", "Run", runCommand));
-  d(command("sweetpad.build.build", "Build", buildCommand));
-  d(command("sweetpad.build.clean", "Clean", cleanCommand));
-  d(command("sweetpad.build.test", "Test", testCommand));
-  d(command("sweetpad.build.resolveDependencies", "Resolve Dependencies", resolveDependenciesCommand));
-  d(command("sweetpad.build.removeBundleDir", "Remove Bundle Dir", removeBundleDirCommand));
-  d(command("sweetpad.build.generateBuildServerConfig", "Generate buildServer.json", generateBuildServerConfigCommand));
-  d(command("sweetpad.build.openXcode", "Open Xcode", openXcodeCommand));
-  d(command("sweetpad.build.selectXcodeWorkspace", "Select Xcode Workspace", selectXcodeWorkspaceCommand));
-  d(command("sweetpad.build.setDefaultScheme", "Set Default Scheme", selectXcodeSchemeForBuildCommand));
-  d(command("sweetpad.build.selectConfiguration", "Select Configuration", selectConfigurationForBuildCommand));
-  d(command("sweetpad.build.diagnoseSetup", "Diagnose Setup", diagnoseBuildSetupCommand));
+  d(command("sweetpad.build.refreshView", async () => buildManager.refresh()));
+  d(command("sweetpad.build.launch", launchCommand));
+  d(command("sweetpad.build.run", runCommand));
+  d(command("sweetpad.build.build", buildCommand));
+  d(command("sweetpad.build.clean", cleanCommand));
+  d(command("sweetpad.build.test", testCommand));
+  d(command("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
+  d(command("sweetpad.build.removeBundleDir", removeBundleDirCommand));
+  d(command("sweetpad.build.generateBuildServerConfig", generateBuildServerConfigCommand));
+  d(command("sweetpad.build.openXcode", openXcodeCommand));
+  d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
+  d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeForBuildCommand));
+  d(command("sweetpad.build.selectConfiguration", selectConfigurationForBuildCommand));
+  d(command("sweetpad.build.diagnoseSetup", diagnoseBuildSetupCommand));
 
   // Testing
-  d(command("sweetpad.testing.buildForTesting", "Build for Testing", buildForTestingCommand));
-  d(command("sweetpad.testing.testWithoutBuilding", "Test without Building", testWithoutBuildingCommand));
-  d(command("sweetpad.testing.selectTarget", "Select Target", selectTestingTargetCommand));
-  d(command("sweetpad.testing.setDefaultScheme", "Set Default Scheme", selectXcodeSchemeForTestingCommand));
-  d(command("sweetpad.testing.selectConfiguration", "Select Configuration", selectConfigurationForTestingCommand));
+  d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));
+  d(command("sweetpad.testing.testWithoutBuilding", testWithoutBuildingCommand));
+  d(command("sweetpad.testing.selectTarget", selectTestingTargetCommand));
+  d(command("sweetpad.testing.setDefaultScheme", selectXcodeSchemeForTestingCommand));
+  d(command("sweetpad.testing.selectConfiguration", selectConfigurationForTestingCommand));
 
   // Debugging
   d(registerDebugConfigurationProvider(_context));
-  d(command("sweetpad.debugger.getAppPath", "Get App Path", getAppPathCommand));
-  d(command("sweetpad.debugger.debuggingLaunch", "Debug", debuggingLaunchCommand));
-  d(command("sweetpad.debugger.debuggingRun", "Debug (Run only)", debuggingRunCommand));
-  d(command("sweetpad.debugger.debuggingBuild", "Debug (Build only)", debuggingBuildCommand));
+  d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
+  d(command("sweetpad.debugger.debuggingLaunch", debuggingLaunchCommand));
+  d(command("sweetpad.debugger.debuggingRun", debuggingRunCommand));
+  d(command("sweetpad.debugger.debuggingBuild", debuggingBuildCommand));
 
   // XcodeGen
-  d(command("sweetpad.xcodegen.generate", "Generate project using XcodeGen", xcodgenGenerateCommand));
+  d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));
   d(createXcodeGenWatcher(_context));
 
   // Tuist
-  d(command("sweetpad.tuist.generate", "Generate project using Tuist", tuistGenerateCommand));
-  d(command("sweetpad.tuist.install", "Install Swift Package using Tuist", tuistInstallCommand));
-  d(command("sweetpad.tuist.clean", "Clean Tuist project", tuistCleanCommand));
-  d(command("sweetpad.tuist.edit", "Edit Tuist project", tuistEditComnmand));
+  d(command("sweetpad.tuist.generate", tuistGenerateCommand));
+  d(command("sweetpad.tuist.install", tuistInstallCommand));
+  d(command("sweetpad.tuist.clean", tuistCleanCommand));
+  d(command("sweetpad.tuist.edit", tuistEditComnmand));
   d(createTuistWatcher(_context));
 
   // Format
   d(createFormatStatusItem());
   d(registerFormatProvider(formatter));
-  d(command("sweetpad.format.run", "Format", formatCommand));
-  d(command("sweetpad.format.showLogs", "Show Logs", showLogsCommand));
+  d(command("sweetpad.format.run", formatCommand));
+  d(command("sweetpad.format.showLogs", showLogsCommand));
 
   // Simulators
-  d(command("sweetpad.simulators.refresh", "Refresh Simulators", async () => await destinationsManager.refreshSimulators()));
-  d(command("sweetpad.simulators.openSimulator", "Open Simulator", openSimulatorCommand));
-  d(command("sweetpad.simulators.removeCache", "Remove Simulator Cache", removeSimulatorCacheCommand));
-  d(command("sweetpad.simulators.start", "Start Simulator", startSimulatorCommand));
-  d(command("sweetpad.simulators.stop", "Stop Simulator", stopSimulatorCommand));
+  d(command("sweetpad.simulators.refresh", async () => await destinationsManager.refreshSimulators()));
+  d(command("sweetpad.simulators.openSimulator", openSimulatorCommand));
+  d(command("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
+  d(command("sweetpad.simulators.start", startSimulatorCommand));
+  d(command("sweetpad.simulators.stop", stopSimulatorCommand));
 
   // // Devices
-  d(command("sweetpad.devices.refresh", "Refresh Devices", async () => await destinationsManager.refreshDevices()));
+  d(command("sweetpad.devices.refresh", async () => await destinationsManager.refreshDevices()));
 
   // Desintations
   const destinationBar = new DestinationStatusBar({
     context: _context,
   });
   d(destinationBar);
-  d(command("sweetpad.destinations.select", "Select Destination", selectDestinationForBuildCommand));
-  d(command("sweetpad.destinations.removeRecent", "Remove Recent Destination", removeRecentDestinationCommand));
-  d(command("sweetpad.destinations.selectForTesting", "Select Destination for Testing", selectDestinationForTestingCommand));
+  d(command("sweetpad.destinations.select", selectDestinationForBuildCommand));
+  d(command("sweetpad.destinations.removeRecent", removeRecentDestinationCommand));
+  d(command("sweetpad.destinations.selectForTesting", selectDestinationForTestingCommand));
   d(tree("sweetpad.destinations.view", destinationsTreeProvider));
 
   // Tools
   d(tree("sweetpad.tools.view", toolsTreeProvider));
-  d(command("sweetpad.tools.install", "Install Tool", installToolCommand));
-  d(command("sweetpad.tools.refresh", "Refresh", async () => toolsManager.refresh()));
-  d(command("sweetpad.tools.documentation", "Open Tool Documentation", openDocumentationCommand));
+  d(command("sweetpad.tools.install", installToolCommand));
+  d(command("sweetpad.tools.refresh", async () => toolsManager.refresh()));
+  d(command("sweetpad.tools.documentation", openDocumentationCommand));
 
   // System
-  d(command("sweetpad.system.resetSweetpadCache", "Reset Sweetpad Cache", resetSweetpadCache));
-  d(command("sweetpad.system.createIssue.generic", "Create Issue", createIssueGenericCommand));
-  d(command("sweetpad.system.createIssue.noSchemes", "Create Issue (No Schemes)", createIssueNoSchemesCommand));
-  d(command("sweetpad.system.testErrorReporting", "Test Error Reporting", testErrorReportingCommand));
+  d(command("sweetpad.system.resetSweetpadCache", resetSweetpadCache));
+  d(command("sweetpad.system.createIssue.generic", createIssueGenericCommand));
+  d(command("sweetpad.system.createIssue.noSchemes", createIssueNoSchemesCommand));
+  d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
+  d(command("sweetpad.system.openTerminalPanel", openTerminalPanel));
 }
 
 export function deactivate() {}

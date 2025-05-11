@@ -53,6 +53,7 @@ export class BuildManager {
     const scheme = await getSchemes({
       xcworkspace: xcworkspace,
     });
+
     this.cache = scheme;
     this.emitter.emit("updated");
     return this.cache;

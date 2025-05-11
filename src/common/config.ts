@@ -17,6 +17,7 @@ type Config = {
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "system.enableSentry": boolean;
   "system.autoRevealTerminal": boolean;
+  "system.showProgressStatusBar": boolean;
   "xcodegen.autogenerate": boolean;
   "xcodebuildserver.autogenerate": boolean;
   "tuist.autogenerate": boolean;
