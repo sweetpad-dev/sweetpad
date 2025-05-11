@@ -640,7 +640,6 @@ async function commonBuildCommand(
  * Build and run application on the simulator or device
  */
 export async function launchCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Starting launch command");
   return commonLaunchCommand(context, item, { debug: false });
 }
 
@@ -649,7 +648,6 @@ export async function launchCommand(context: ExtensionContext, item?: BuildTreeI
  * This is a convenience wrapper around launchCommand that sets the debug flag
  */
 export async function debuggingLaunchCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Starting debugging command");
   return commonLaunchCommand(context, item, { debug: true });
 }
 
