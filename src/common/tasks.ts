@@ -77,10 +77,6 @@ export function setTaskPresentationOptions(task: vscode.Task): void {
   task.presentationOptions = {
     // terminal will be revealed, if auto reveal is enabled
     reveal: autoRevealTerminal ? vscode.TaskRevealKind.Always : vscode.TaskRevealKind.Never,
-    // terminal will be focused, if auto reveal is enabled
-    focus: autoRevealTerminal,
-    // terminal will be cleared, if auto reveal is disabled
-    clear: !autoRevealTerminal,
   };
 }
 

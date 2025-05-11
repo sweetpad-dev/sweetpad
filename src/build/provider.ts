@@ -240,6 +240,8 @@ class ActionDispatcher {
       (await askSchemeForBuild(this.context, {
         xcworkspace: xcworkspace,
       }));
+
+    this.context.updateProgressStatus("Searching for configuration");
     const configuration =
       definition.configuration ??
       (await askConfiguration(this.context, {
