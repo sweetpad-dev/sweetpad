@@ -196,6 +196,7 @@ export async function askSchemeForTesting(
     return cachedScheme;
   }
 
+  context.updateProgressStatus("Searching for scheme");
   const schemes = await getSchemes({
     xcworkspace: options.xcworkspace,
   });

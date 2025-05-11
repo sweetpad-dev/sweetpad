@@ -373,7 +373,7 @@ export class TestingManager {
   /**
    * Execute separate command to build the project before running tests
    */
-  async buildForTestingCommand() {
+  async buildForTestingCommand(context: ExtensionContext) {
     const { scheme, destination, xcworkspace } = await this.askTestingConfigurations();
 
     // before testing we need to build the project to avoid runnning tests on old code or
@@ -393,6 +393,7 @@ export class TestingManager {
     destination: Destination;
     xcworkspace: string;
   }) {
+    this.context.updateProgressStatus("Building for testing");
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
 
     // todo: add xcodebeautify command to format output
@@ -730,6 +731,7 @@ export class TestingManager {
 
       // todo: add check if project is already built
 
+      this.context.updateProgressStatus("Running tests");
       await this.runTests({
         run: run,
         request: request,
