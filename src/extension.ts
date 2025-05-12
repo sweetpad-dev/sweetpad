@@ -36,7 +36,7 @@ import { DestinationStatusBar } from "./destination/status-bar.js";
 import { DestinationsTreeProvider } from "./destination/tree.js";
 import { DevicesManager } from "./devices/manager.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
-import { SwiftFormattingProvider, registerFormatProvider } from "./format/formatter.js";
+import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
 import { createFormatStatusItem } from "./format/status.js";
 import {
   openSimulatorCommand,
@@ -181,6 +181,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Format
   d(createFormatStatusItem());
   d(registerFormatProvider(formatter));
+  d(registerRangeFormatProvider(formatter));
   d(command("sweetpad.format.run", formatCommand));
   d(command("sweetpad.format.showLogs", showLogsCommand));
 
