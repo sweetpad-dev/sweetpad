@@ -7,7 +7,9 @@ export class DestinationStatusBar {
 
   constructor(options: { context: ExtensionContext }) {
     this.context = options.context;
-    this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    const itemId = "sweetpad.destinations.statusBar";
+    this.item = vscode.window.createStatusBarItem(itemId, vscode.StatusBarAlignment.Left, 0);
+    this.item.name = "SweetPad: Current Destination";
     this.item.command = "sweetpad.destinations.select";
     this.item.tooltip = "Select destination for debugging";
     void this.update();

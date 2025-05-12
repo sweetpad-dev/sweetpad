@@ -70,7 +70,7 @@ class TuistGenWatcher {
 
     this.throttle = setTimeout(() => {
       this.throttle = null;
-      tuistGenerateCommand()
+      tuistGenerateCommand(this.extension)
         .then(() => {
           commonLogger.log("tuist project was successfully generated", {
             workspacePath: this.workspacePath,

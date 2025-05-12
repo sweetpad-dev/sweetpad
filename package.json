@@ -501,6 +501,11 @@
         "icon": "$(bug)"
       },
       {
+        "command": "sweetpad.system.openTerminalPanel",
+        "title": "SweetPad: Open Terminal Panel",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "sweetpad.debugger.getAppPath",
         "title": "SweetPad: Get app path for debugging",
         "icon": "$(file-code)"
@@ -824,6 +829,16 @@
           "type": "boolean",
           "default": false,
           "description": "Enable Sentry error reporting. NOTE: This config is disable by default, I recommend enabling it when you have issues with SweetPad and want to report about them."
+        },
+        "sweetpad.system.autoRevealTerminal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically reveal the terminal when executing a command or task"
+        },
+        "sweetpad.system.showProgressStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show progress in the status bar when executing a command or task"
         },
         "sweetpad.xcodegen.autogenerate": {
           "type": "boolean",

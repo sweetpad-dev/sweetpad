@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { CommandExecution } from "../common/commands";
+import type { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 
 const DEBUG_DOCUMENTATION_URL = "https://github.com/sweetpad-dev/sweetpad/blob/main/docs/wiki/debug.md";
@@ -10,8 +10,8 @@ const DEBUG_DOCUMENTATION_URL = "https://github.com/sweetpad-dev/sweetpad/blob/m
  * Now we use "sweetpad-lldb" as the debugger type, which wraps around "lldb" and provides the app path
  * directly to the debugger during resolving the debug configuration.
  */
-export async function getAppPathCommand(execution: CommandExecution): Promise<string> {
-  const lastLaunchedPath = execution.context.getWorkspaceState("build.lastLaunchedApp");
+export async function getAppPathCommand(context: ExtensionContext): Promise<string> {
+  const lastLaunchedPath = context.getWorkspaceState("build.lastLaunchedApp");
   if (!lastLaunchedPath) {
     throw new ExtensionError("No last launched app path found, please launch the app first using the extension", {
       actions: [

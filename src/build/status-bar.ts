@@ -7,7 +7,9 @@ export class DefaultSchemeStatusBar {
 
   constructor(options: { context: ExtensionContext }) {
     this.context = options.context;
-    this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    const itemId = "sweetpad.build.statusBar";
+    this.item = vscode.window.createStatusBarItem(itemId, vscode.StatusBarAlignment.Left, 0);
+    this.item.name = "SweetPad: Current Scheme";
     this.item.command = "sweetpad.build.setDefaultScheme";
     this.item.tooltip = "Select the default Xcode scheme for building";
     void this.update();
