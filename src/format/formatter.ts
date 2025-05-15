@@ -69,12 +69,13 @@ export class SwiftFormattingProvider implements vscode.DocumentFormattingEditPro
   /**
    * Get formatter command parameters from workspace configuration.
    */
-  async getFormatterCommand(filename: string, offsets: { start: number, end: number }[]): Promise<{
+  async getFormatterCommand(document: vscode.TextDocument, ranges: vscode.Range[]): Promise<{
     command: string;
     args: string[];
   }> {
     // User might specify a custom arguments and path for swift-format in the workspace settings.
     const rawArgs = getWorkspaceConfig("format.args");
+    const filename = document.fileName;
     let args: string[];
     if (rawArgs && Array.isArray(rawArgs)) {
       // For user supplied arguments, we use "${file}" as a placeholder for the file name
@@ -85,15 +86,14 @@ export class SwiftFormattingProvider implements vscode.DocumentFormattingEditPro
       args = ["--in-place", filename];
     }
 
-    offsets.forEach(offset => {
-      args.push("--offsets")
-      args.push(`${offset.start}:${offset.end}`)
-    })
-
     const path = getWorkspaceConfig("format.path");
     if (path) {
+      args.push(...this.getCustomRangeArgument(document, ranges));
       return { command: path, args: args };
     }
+
+    
+    args.push(...this.getSwiftFormatRangeArgument(document, ranges));
 
     // Since Xcode 16, swift-format is bundled with Xcode. By default, we try to use it.
     // WIKI: xcrun is cli tool that is used to run Xcode tools bundled with Xcode
@@ -105,6 +105,43 @@ export class SwiftFormattingProvider implements vscode.DocumentFormattingEditPro
     return { command: "swift-format", args: [...args] };
   }
 
+  private getCustomRangeArgument(document: vscode.TextDocument, ranges: vscode.Range[]): string[] {
+    const selectionArgs = getWorkspaceConfig("format.selectionArgs");
+    if (!selectionArgs) {
+      return [];
+    }
+    
+    var args: string[] = [];
+    ranges.forEach(range => {
+      const startOffset = document.offsetAt(range.start);
+      const endOffset = document.offsetAt(range.end);
+      const startLine = document.lineAt(range.start).lineNumber;
+      const endLine = document.lineAt(range.end).lineNumber;
+      args.push(...selectionArgs.map((arg) =>
+        arg
+          .replace(/\${startOffset}/g, String(startOffset))
+          .replace(/\${endOffset}/g, String(endOffset))
+          .replace(/\${startLine}/g, String(startLine))
+          .replace(/\${endLine}/g, String(endLine))
+      ));
+    });
+
+    return args;
+  }
+
+  private getSwiftFormatRangeArgument(document: vscode.TextDocument, ranges: vscode.Range[]): string[] {
+    var args: string[] = [];
+    ranges.forEach(range => {
+      const rangeStartOffset = document.offsetAt(range.start);
+      const rangeEndOffset = document.offsetAt(range.end);
+      args.push("--offsets");
+      args.push(`${rangeStartOffset}:${rangeEndOffset}`);
+    });
+
+    return args;
+  }
+    
+
   /**
    * Format given document using swift-format executable.
    */
@@ -113,17 +150,7 @@ export class SwiftFormattingProvider implements vscode.DocumentFormattingEditPro
       return;
     }
 
-    var offsets: { start: number, end: number }[] = [];
-    if (ranges) {
-      ranges.forEach(range => {
-        const rangeStartOffset = document.offsetAt(range.start);
-        const rangeEndOffset = document.offsetAt(range.end);
-        offsets.push({ start: rangeStartOffset, end: rangeEndOffset });
-      });
-    }
-
-    const filename = document.fileName;
-    const { command, args } = await this.getFormatterCommand(filename, offsets);
+    const { command, args } = await this.getFormatterCommand(document, ranges ?? []);
 
     const timer = new Timer();
     try {
@@ -135,7 +162,7 @@ export class SwiftFormattingProvider implements vscode.DocumentFormattingEditPro
       formatLogger.error("Failed to format code", {
         executable: command,
         args: args,
-        filename: filename,
+        filename: document.fileName,
         execTime: `${timer.elapsed}ms`,
         error: error,
       });
@@ -145,7 +172,7 @@ export class SwiftFormattingProvider implements vscode.DocumentFormattingEditPro
     formatLogger.log("Code successfully formatted", {
       executable: command,
       args: args,
-      filename: filename,
+      filename: document.fileName,
       execTime: `${timer.elapsed}ms`,
     });
   }
