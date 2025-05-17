@@ -711,6 +711,23 @@
           ],
           "description": "Command or path to formatter executable. Use ${file} as a placeholder for the file path. Placeholder ${file} is supported only as a separate item in the array."
         },
+        "sweetpad.format.selectionArgs": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null,
+          "examples": [
+            [
+              "--linerange",
+              "${startLine}, ${endLine}"
+            ]
+          ],
+          "description": "Custom arguments to pass to the formatter for selection formatting. Use ${startLine} and ${endLine} as placeholders for the start and end line numbers of the selected code. Use ${startOffset} and ${endOffset} as placeholders for the start and end offset of the selected code. If this is not provided for custom formatters, the entire document will always be reformatted."
+        },
         "sweetpad.build.xcbeautifyEnabled": {
           "type": "boolean",
           "default": true,
