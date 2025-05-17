@@ -22,8 +22,9 @@ export function registerRangeFormatProvider(formatter: SwiftFormattingProvider):
   return vscode.languages.registerDocumentRangeFormattingEditProvider("swift", formatter);
 }
 
-export class SwiftFormattingProvider implements vscode.DocumentFormattingEditProvider, vscode.DocumentRangeFormattingEditProvider {
-  
+export class SwiftFormattingProvider
+  implements vscode.DocumentFormattingEditProvider, vscode.DocumentRangeFormattingEditProvider
+{
   private isBundledSwiftFormat: boolean | undefined = undefined;
 
   provideDocumentFormattingEdits(document: vscode.TextDocument): vscode.TextEdit[] {
@@ -33,14 +34,24 @@ export class SwiftFormattingProvider implements vscode.DocumentFormattingEditPro
     return [];
   }
 
-  provideDocumentRangeFormattingEdits(document: vscode.TextDocument, range: vscode.Range, options: vscode.FormattingOptions, token: vscode.CancellationToken): vscode.ProviderResult<vscode.TextEdit[]> {
-    void this.formatDocument(document, [range])
-    return []
+  provideDocumentRangeFormattingEdits(
+    document: vscode.TextDocument,
+    range: vscode.Range,
+    options: vscode.FormattingOptions,
+    token: vscode.CancellationToken,
+  ): vscode.ProviderResult<vscode.TextEdit[]> {
+    void this.formatDocument(document, [range]);
+    return [];
   }
 
-  provideDocumentRangesFormattingEdits(document: vscode.TextDocument, ranges: vscode.Range[], options: vscode.FormattingOptions, token: vscode.CancellationToken): vscode.ProviderResult<vscode.TextEdit[]> {
-    void this.formatDocument(document, ranges)
-    return []
+  provideDocumentRangesFormattingEdits(
+    document: vscode.TextDocument,
+    ranges: vscode.Range[],
+    options: vscode.FormattingOptions,
+    token: vscode.CancellationToken,
+  ): vscode.ProviderResult<vscode.TextEdit[]> {
+    void this.formatDocument(document, ranges);
+    return [];
   }
 
   /**
@@ -69,7 +80,10 @@ export class SwiftFormattingProvider implements vscode.DocumentFormattingEditPro
   /**
    * Get formatter command parameters from workspace configuration.
    */
-  async getFormatterCommand(document: vscode.TextDocument, ranges: vscode.Range[]): Promise<{
+  async getFormatterCommand(
+    document: vscode.TextDocument,
+    ranges: vscode.Range[],
+  ): Promise<{
     command: string;
     args: string[];
   }> {
@@ -92,7 +106,6 @@ export class SwiftFormattingProvider implements vscode.DocumentFormattingEditPro
       return { command: path, args: args };
     }
 
-    
     args.push(...this.getSwiftFormatRangeArgument(document, ranges));
 
     // Since Xcode 16, swift-format is bundled with Xcode. By default, we try to use it.
@@ -110,37 +123,37 @@ export class SwiftFormattingProvider implements vscode.DocumentFormattingEditPro
     if (!selectionArgs) {
       return [];
     }
-    
-    var args: string[] = [];
-    ranges.forEach(range => {
+
+    const args: string[] = [];
+    for (const range of ranges) {
       const startOffset = document.offsetAt(range.start);
       const endOffset = document.offsetAt(range.end);
       const startLine = document.lineAt(range.start).lineNumber;
       const endLine = document.lineAt(range.end).lineNumber;
-      args.push(...selectionArgs.map((arg) =>
-        arg
-          .replace(/\${startOffset}/g, String(startOffset))
-          .replace(/\${endOffset}/g, String(endOffset))
-          .replace(/\${startLine}/g, String(startLine))
-          .replace(/\${endLine}/g, String(endLine))
-      ));
-    });
+      args.push(
+        ...selectionArgs.map((arg) =>
+          arg
+            .replace(/\${startOffset}/g, String(startOffset))
+            .replace(/\${endOffset}/g, String(endOffset))
+            .replace(/\${startLine}/g, String(startLine))
+            .replace(/\${endLine}/g, String(endLine)),
+        ),
+      );
+    }
 
     return args;
   }
 
   private getSwiftFormatRangeArgument(document: vscode.TextDocument, ranges: vscode.Range[]): string[] {
-    var args: string[] = [];
-    ranges.forEach(range => {
+    const args: string[] = [];
+    for (const range of ranges) {
       const rangeStartOffset = document.offsetAt(range.start);
       const rangeEndOffset = document.offsetAt(range.end);
       args.push("--offsets");
       args.push(`${rangeStartOffset}:${rangeEndOffset}`);
-    });
-
+    }
     return args;
   }
-    
 
   /**
    * Format given document using swift-format executable.
