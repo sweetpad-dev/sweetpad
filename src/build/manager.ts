@@ -62,6 +62,9 @@ export class BuildManager {
       });
 
       this.cache = scheme;
+      
+      await this.validateDefaultSchemes();
+      
       this.emitter.emit("updated");
       return this.cache;
     } catch (error) {
@@ -152,6 +155,27 @@ export class BuildManager {
           INFO: "buildServer.json" file is automatically regenerated every time you change the scheme.
           If you want to disable this feature, you can do it in the settings. This message is shown only once.
       `);
+    }
+  }
+
+  /**
+   * Validates that the current default schemes still exist in the refreshed schemes list.
+   * If a default scheme no longer exists, it will be cleared.
+   */
+  private async validateDefaultSchemes(): Promise<void> {
+    if (!this.cache) {
+      return;
+    }
+
+    const schemeNames = this.cache.map(scheme => scheme.name);
+    const currentBuildScheme = this.getDefaultSchemeForBuild();
+    if (currentBuildScheme && !schemeNames.includes(currentBuildScheme)) {
+      this.setDefaultSchemeForBuild(undefined);
+    }
+    
+    const currentTestingScheme = this.getDefaultSchemeForTesting();
+    if (currentTestingScheme && !schemeNames.includes(currentTestingScheme)) {
+      this.setDefaultSchemeForTesting(undefined);
     }
   }
 }
