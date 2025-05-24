@@ -9,6 +9,7 @@ import {
   generateBuildServerConfigCommand,
   launchCommand,
   openXcodeCommand,
+  refreshViewCommand,
   removeBundleDirCommand,
   resolveDependenciesCommand,
   runCommand,
@@ -16,6 +17,7 @@ import {
   selectXcodeSchemeForBuildCommand,
   selectXcodeWorkspaceCommand,
   testCommand,
+  toggleAutoRefreshCommand,
 } from "./build/commands.js";
 import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
@@ -68,6 +70,7 @@ import { tuistCleanCommand, tuistEditComnmand, tuistGenerateCommand, tuistInstal
 import { createTuistWatcher } from "./tuist/watcher.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
+import { createSchemeWatcher } from "./build/scheme-watcher.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // Sentry 🚨
@@ -138,7 +141,8 @@ export function activate(context: vscode.ExtensionContext) {
   });
   d(schemeStatusBar);
   d(tree("sweetpad.build.view", buildTreeProvider));
-  d(command("sweetpad.build.refreshView", async () => buildManager.refresh()));
+  d(command("sweetpad.build.refreshView", refreshViewCommand));
+  d(command("sweetpad.build.toggleAutoRefresh", toggleAutoRefreshCommand));
   d(command("sweetpad.build.launch", launchCommand));
   d(command("sweetpad.build.run", runCommand));
   d(command("sweetpad.build.build", buildCommand));
@@ -177,6 +181,9 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.tuist.clean", tuistCleanCommand));
   d(command("sweetpad.tuist.edit", tuistEditComnmand));
   d(createTuistWatcher(_context));
+
+  // Scheme Auto-Refresh Watcher
+  d(createSchemeWatcher(_context));
 
   // Format
   d(createFormatStatusItem());

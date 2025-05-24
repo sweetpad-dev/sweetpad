@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import {
   type XcodeScheme,
   generateBuildServerConfig,
+  getBasicProjectInfo,
   getIsXcodeBuildServerInstalled,
   getSchemes,
 } from "../common/cli/scripts";
@@ -13,7 +14,9 @@ import { isFileExists } from "../common/files";
 import { askXcodeWorkspacePath, getCurrentXcodeWorkspacePath, getWorkspacePath, restartSwiftLSP } from "./utils";
 
 type IEventMap = {
+  refreshStarted: [];
   updated: [];
+  refreshError: [error: Error];
   defaultSchemeForBuildUpdated: [scheme: string | undefined];
   defaultSchemeForTestingUpdated: [scheme: string | undefined];
 };
@@ -48,15 +51,26 @@ export class BuildManager {
   }
 
   async refresh(): Promise<XcodeScheme[]> {
-    const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
+    this.emitter.emit("refreshStarted");
+    try {
+      getBasicProjectInfo.clearCache();
+      
+      const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
 
-    const scheme = await getSchemes({
-      xcworkspace: xcworkspace,
-    });
+      const scheme = await getSchemes({
+        xcworkspace: xcworkspace,
+      });
 
-    this.cache = scheme;
-    this.emitter.emit("updated");
-    return this.cache;
+      this.cache = scheme;
+      
+      await this.validateDefaultSchemes();
+      
+      this.emitter.emit("updated");
+      return this.cache;
+    } catch (error) {
+      this.emitter.emit("refreshError", error as Error);
+      throw error;
+    }
   }
 
   async getSchemas(options?: { refresh?: boolean }): Promise<XcodeScheme[]> {
@@ -141,6 +155,27 @@ export class BuildManager {
           INFO: "buildServer.json" file is automatically regenerated every time you change the scheme.
           If you want to disable this feature, you can do it in the settings. This message is shown only once.
       `);
+    }
+  }
+
+  /**
+   * Validates that the current default schemes still exist in the refreshed schemes list.
+   * If a default scheme no longer exists, it will be cleared.
+   */
+  private async validateDefaultSchemes(): Promise<void> {
+    if (!this.cache) {
+      return;
+    }
+
+    const schemeNames = this.cache.map(scheme => scheme.name);
+    const currentBuildScheme = this.getDefaultSchemeForBuild();
+    if (currentBuildScheme && !schemeNames.includes(currentBuildScheme)) {
+      this.setDefaultSchemeForBuild(undefined);
+    }
+    
+    const currentTestingScheme = this.getDefaultSchemeForTesting();
+    if (currentTestingScheme && !schemeNames.includes(currentTestingScheme)) {
+      this.setDefaultSchemeForTesting(undefined);
     }
   }
 }
