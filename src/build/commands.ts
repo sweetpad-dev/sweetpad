@@ -515,8 +515,8 @@ export async function buildApp(
     // sweetpad: debugging-launch
     command.addBuildSettings("GCC_GENERATE_DEBUGGING_SYMBOLS", "YES");
     // In Xcode, ONLY_ACTIVE_ARCH is a build setting that controls whether you compile for only the architecture
-    // of the machine (or simulator/device) you’re currently targeting, or for all architectures listed in your
-    // project’s ARCHS setting.
+    // of the machine (or simulator/device) you're currently targeting, or for all architectures listed in your
+    // project's ARCHS setting.
     // It speeds up compile times, especially in Debug, because Xcode skips generating unused slices.
     command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
   }
@@ -1256,4 +1256,17 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
       _write("✅ Everything looks good!");
     },
   });
+}
+
+export async function refreshViewCommand(context: ExtensionContext): Promise<void> {
+  context.updateProgressStatus("Refreshing the view");
+  const xcworkspace = getCurrentXcodeWorkspacePath(context);
+  
+  if (!xcworkspace) {
+    // If no workspace is set, ask user to select one first
+    await askXcodeWorkspacePath(context);
+    return;
+  }
+
+  await context.buildManager.refresh();
 }

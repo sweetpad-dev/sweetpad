@@ -550,6 +550,11 @@
           "group": "navigation@3"
         },
         {
+          "command": "sweetpad.build.refreshView",
+          "when": "view == sweetpad.build.view",
+          "group": "navigation@2"
+        },
+        {
           "command": "sweetpad.build.removeBundleDir",
           "when": "view == sweetpad.build.view",
           "group": "navigation@1"

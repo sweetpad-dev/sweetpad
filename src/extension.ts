@@ -9,6 +9,7 @@ import {
   generateBuildServerConfigCommand,
   launchCommand,
   openXcodeCommand,
+  refreshViewCommand,
   removeBundleDirCommand,
   resolveDependenciesCommand,
   runCommand,
@@ -138,7 +139,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
   d(schemeStatusBar);
   d(tree("sweetpad.build.view", buildTreeProvider));
-  d(command("sweetpad.build.refreshView", async () => buildManager.refresh()));
+  d(command("sweetpad.build.refreshView", refreshViewCommand));
   d(command("sweetpad.build.launch", launchCommand));
   d(command("sweetpad.build.run", runCommand));
   d(command("sweetpad.build.build", buildCommand));
