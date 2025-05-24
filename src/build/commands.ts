@@ -1270,3 +1270,20 @@ export async function refreshViewCommand(context: ExtensionContext): Promise<voi
 
   await context.buildManager.refresh();
 }
+
+export async function toggleAutoRefreshCommand(context: ExtensionContext): Promise<void> {
+  const currentValue = getWorkspaceConfig("build.schemes.autoRefresh") ?? true;
+  const newValue = !currentValue;
+  
+  await updateWorkspaceConfig("build.schemes.autoRefresh", newValue);
+  
+  const status = newValue ? "enabled" : "disabled";
+  vscode.window.showInformationMessage(
+    `Scheme auto-refresh ${status}. ${newValue ? "Schemes will automatically refresh when project files change." : "You'll need to manually refresh schemes using the refresh button."}`,
+    "Reload Window"
+  ).then((selection) => {
+    if (selection === "Reload Window") {
+      vscode.commands.executeCommand("workbench.action.reloadWindow");
+    }
+  });
+}
