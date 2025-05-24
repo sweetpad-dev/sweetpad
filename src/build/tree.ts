@@ -9,7 +9,7 @@ type EventData = BuildTreeItem | LoadingTreeItem | undefined | null | undefined;
 export class LoadingTreeItem extends vscode.TreeItem {
   constructor(message: string = "Loading schemes...") {
     super(message, vscode.TreeItemCollapsibleState.None);
-    this.iconPath = new vscode.ThemeIcon("loading~spin");
+    this.iconPath = new vscode.ThemeIcon("gear~spin");
     this.description = "";
     this.contextValue = "loading";
     // Make it non-selectable
