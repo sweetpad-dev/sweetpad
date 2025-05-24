@@ -52,8 +52,6 @@ export class BuildManager {
 
   async refresh(): Promise<XcodeScheme[]> {
     this.emitter.emit("refreshStarted");
-    this.context.updateProgressStatus("Updating schemes");
-    
     try {
       getBasicProjectInfo.clearCache();
       
