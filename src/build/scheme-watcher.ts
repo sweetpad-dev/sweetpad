@@ -161,7 +161,7 @@ class SchemeWatcher {
     this.throttle = setTimeout(() => {
       this.throttle = null;
       
-      // Get the refresh delay from config (default: 2 seconds)
+      // Get the refresh delay from config (default: 500ms)
       const refreshDelay = getWorkspaceConfig("build.schemes.autoRefreshDelay") ?? 500;
       
       this.extension.buildManager.refresh()
