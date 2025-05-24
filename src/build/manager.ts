@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import {
   type XcodeScheme,
   generateBuildServerConfig,
+  getBasicProjectInfo,
   getIsXcodeBuildServerInstalled,
   getSchemes,
 } from "../common/cli/scripts";
@@ -48,6 +49,8 @@ export class BuildManager {
   }
 
   async refresh(): Promise<XcodeScheme[]> {
+    getBasicProjectInfo.clearCache();
+    
     const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
 
     const scheme = await getSchemes({
