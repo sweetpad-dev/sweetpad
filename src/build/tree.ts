@@ -4,7 +4,18 @@ import type { ExtensionContext } from "../common/commands";
 import { commonLogger } from "../common/logger";
 import type { BuildManager } from "./manager";
 
-type EventData = BuildTreeItem | undefined | null | undefined;
+type EventData = BuildTreeItem | LoadingTreeItem | undefined | null | undefined;
+
+export class LoadingTreeItem extends vscode.TreeItem {
+  constructor(message: string = "Loading schemes...") {
+    super(message, vscode.TreeItemCollapsibleState.None);
+    this.iconPath = new vscode.ThemeIcon("loading~spin");
+    this.description = "";
+    this.contextValue = "loading";
+    // Make it non-selectable
+    this.command = undefined;
+  }
+}
 
 export class BuildTreeItem extends vscode.TreeItem {
   public provider: BuildTreeProvider;
@@ -33,19 +44,29 @@ export class BuildTreeItem extends vscode.TreeItem {
     }
   }
 }
-export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem> {
+export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem | LoadingTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<EventData>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   public context: ExtensionContext | undefined;
   public buildManager: BuildManager;
   public defaultSchemeForBuild: string | undefined;
   public defaultSchemeForTesting: string | undefined;
+  private isLoading: boolean = false;
 
   constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
     this.context = options.context;
     this.buildManager = options.buildManager;
+    this.buildManager.on("refreshStarted", () => {
+      this.setLoading(true);
+    });
     this.buildManager.on("updated", () => {
+      this.setLoading(false);
       this.refresh();
+    });
+    this.buildManager.on("refreshError", (error) => {
+      this.setLoading(false);
+      this.refresh();
+      commonLogger.error("Failed to refresh schemes", { error });
     });
     this.buildManager.on("defaultSchemeForBuildUpdated", (scheme) => {
       this.defaultSchemeForBuild = scheme;
@@ -59,13 +80,23 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     this.defaultSchemeForTesting = this.buildManager.getDefaultSchemeForTesting();
   }
 
+  private setLoading(loading: boolean): void {
+    if (this.isLoading !== loading) {
+      this.isLoading = loading;
+      this.refresh();
+    }
+  }
+
   private refresh(): void {
     this._onDidChangeTreeData.fire(null);
   }
 
-  async getChildren(element?: BuildTreeItem | undefined): Promise<BuildTreeItem[]> {
+  async getChildren(element?: BuildTreeItem | LoadingTreeItem | undefined): Promise<(BuildTreeItem | LoadingTreeItem)[]> {
     // get elements only for root
     if (!element) {
+      if (this.isLoading) {
+        return [new LoadingTreeItem("Updating schemes...")];
+      }
       const schemes = await this.getSchemes();
       return schemes;
     }
@@ -73,7 +104,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     return [];
   }
 
-  async getTreeItem(element: BuildTreeItem): Promise<BuildTreeItem> {
+  async getTreeItem(element: BuildTreeItem | LoadingTreeItem): Promise<BuildTreeItem | LoadingTreeItem> {
     return element;
   }
 

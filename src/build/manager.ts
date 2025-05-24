@@ -14,7 +14,9 @@ import { isFileExists } from "../common/files";
 import { askXcodeWorkspacePath, getCurrentXcodeWorkspacePath, getWorkspacePath, restartSwiftLSP } from "./utils";
 
 type IEventMap = {
+  refreshStarted: [];
   updated: [];
+  refreshError: [error: Error];
   defaultSchemeForBuildUpdated: [scheme: string | undefined];
   defaultSchemeForTestingUpdated: [scheme: string | undefined];
 };
@@ -49,17 +51,25 @@ export class BuildManager {
   }
 
   async refresh(): Promise<XcodeScheme[]> {
-    getBasicProjectInfo.clearCache();
+    this.emitter.emit("refreshStarted");
+    this.context.updateProgressStatus("Updating schemes");
     
-    const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
+    try {
+      getBasicProjectInfo.clearCache();
+      
+      const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
 
-    const scheme = await getSchemes({
-      xcworkspace: xcworkspace,
-    });
+      const scheme = await getSchemes({
+        xcworkspace: xcworkspace,
+      });
 
-    this.cache = scheme;
-    this.emitter.emit("updated");
-    return this.cache;
+      this.cache = scheme;
+      this.emitter.emit("updated");
+      return this.cache;
+    } catch (error) {
+      this.emitter.emit("refreshError", error as Error);
+      throw error;
+    }
   }
 
   async getSchemas(options?: { refresh?: boolean }): Promise<XcodeScheme[]> {
