@@ -55,6 +55,56 @@ tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcod
 1. 🍏 MacOS — other platforms are currently not supported
 2. 📱 Xcode — required for building and running iOS apps via `xcodebuild`
 
+## Development
+
+### 🛠️ **Local Development Setup**
+
+If you want to contribute to SweetPad or test changes locally, you can use the provided installation script:
+
+```bash
+# Clone the repository
+git clone https://github.com/sweetpad-dev/sweetpad.git
+cd sweetpad
+
+# Install dependencies
+npm install
+
+# Build and install the extension locally
+./scripts/install-and-test.sh
+```
+
+#### **What the script does:**
+1. 🔨 **Builds** the extension from source using `npm run build`
+2. 📦 **Creates** a VSIX package with dynamic versioning from `package.json`
+3. 🚀 **Installs** the extension in VS Code/Cursor automatically
+4. ✅ **Ready** to test your changes immediately
+
+#### **Manual Installation (Alternative):**
+```bash
+# Build the extension
+npm run build
+
+# Create VSIX package
+./scripts/create-vsix.sh
+
+# Install manually
+code --install-extension sweetpad-<version>.vsix
+# or for Cursor
+cursor --install-extension sweetpad-<version>.vsix
+```
+
+#### **Testing with SPM Projects:**
+The extension now supports Swift Package Manager projects. You can test with the included example:
+
+```bash
+# Open the SPM test project
+code tests/examples/sweetpad-spm
+# or
+cursor tests/examples/sweetpad-spm
+```
+
+> 💡 **Tip:** After making changes to the source code, run `./scripts/install-and-test.sh` again to rebuild and reinstall the extension with your latest changes.
+
 ## Changelog
 
 The [CHANGELOG.md](./CHANGELOG.md) contains all notable changes to the "sweet pad" extension.

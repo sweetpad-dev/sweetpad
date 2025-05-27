@@ -101,9 +101,34 @@ fi
 
 
 echo "🔄 Installing SweetPad extension..."
-code --install-extension "sweetpad-$VERSION.vsix"
 
+# Detect which editor is available and use the appropriate one
+if command -v cursor >/dev/null 2>&1; then
+    EDITOR="cursor"
+    EDITOR_NAME="Cursor"
+elif command -v code >/dev/null 2>&1; then
+    EDITOR="code"
+    EDITOR_NAME="VS Code"
+else
+    echo "❌ Neither VS Code nor Cursor found in PATH"
+    echo "💡 Please install VS Code or Cursor and make sure it's in your PATH"
+    exit 1
+fi
 
-echo "✅ Done! Extension installed"
+echo "📝 Using $EDITOR_NAME ($EDITOR)"
+
+# Install the extension using the detected editor
+$EDITOR --install-extension "sweetpad-$VERSION.vsix"
+
+echo "✅ Extension installed successfully in $EDITOR_NAME!"
 echo ""
-echo "💡 You can now reload window to see the extension in action." 
+echo "🔄 Reloading $EDITOR_NAME window..."
+
+# Try to reload the editor window automatically
+$EDITOR --command "workbench.action.reloadWindow" 2>/dev/null || {
+    echo "💡 Please reload your $EDITOR_NAME window manually (Cmd+R or Ctrl+R)"
+}
+
+echo ""
+echo "🎉 SweetPad is ready to use in $EDITOR_NAME!"
+echo "📱 Try opening an iOS project or SPM package to get started." 
