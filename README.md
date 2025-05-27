@@ -76,22 +76,26 @@ npm install
 #### **What the script does:**
 1. 🔨 **Builds** the extension from source using `npm run build`
 2. 📦 **Creates** a VSIX package with dynamic versioning from `package.json`
-3. 🚀 **Installs** the extension in VS Code/Cursor automatically
-4. ✅ **Ready** to test your changes immediately
+3. 🚀 **Installs** the extension automatically in VS Code or Cursor (whichever is available)
+4. 🔄 **Reloads** the editor window to activate the new extension
+5. ✅ **Ready** to test your changes immediately
 
 #### **Manual Installation (Alternative):**
 ```bash
 # Build the extension
 npm run build
 
-# Create VSIX package
-./scripts/create-vsix.sh
-
-# Install manually
+# The install script creates the VSIX package automatically, but you can install manually:
 code --install-extension sweetpad-<version>.vsix
 # or for Cursor
 cursor --install-extension sweetpad-<version>.vsix
 ```
+
+#### **Available Scripts:**
+- `npm run build` - Build the extension
+- `npm run watch` - Build and watch for changes during development
+- `npm test` - Run tests
+- `npm run check:all` - Run all code quality checks (format, lint, types)
 
 #### **Testing with SPM Projects:**
 The extension now supports Swift Package Manager projects. You can test with the included example:
