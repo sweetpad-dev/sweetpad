@@ -344,6 +344,7 @@ class XcodeCommandBuilder {
     arg: string;
     value: string | "__NO_VALUE__";
   }[] = [];
+
   private buildSettings: { key: string; value: string }[] = [];
   private actions: string[] = [];
 
@@ -373,30 +374,8 @@ class XcodeCommandBuilder {
   }
 
   addAdditionalArgs(args: string[]) {
-    // Cases:
-    // ["-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
-    // ["xcodebuild", "-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
-    // ["ARG1=value1", "ARG2=value2", "ARG3", "ARG4=value4"]
-    // ["xcodebuild", "ARG1=value1", "ARG2=value2", "ARG3", "ARG4=value4"]
-    if (args.length === 0) {
-      return;
-    }
-
-    for (let i = 0; i < args.length; i++) {
-      const current = args[i];
-      const next = args[i + 1];
-      if (current && next && current.startsWith("-") && !next.startsWith("-")) {
-        this.parameters.push({
-          arg: current,
-          value: next,
-        });
-        i++;
-      } else if (current?.startsWith("-")) {
-        this.parameters.push({
-          arg: current,
-          value: this.NO_VALUE,
-        });
-      } else if (current?.includes("=")) {
+    for (const current of args) {
+      if (current.includes("=")) {
         const [arg, value] = current.split("=");
         this.buildSettings.push({
           key: arg,
@@ -500,7 +479,56 @@ export async function buildApp(
   // ex: { "ARG1": "value1", "ARG2": null, "ARG3": "value3" }
   const env = getWorkspaceConfig("build.env") || {};
 
+  // Check if this is an SPM project
+  const isSPMProject = options.xcworkspace.endsWith("Package.swift");
+  
+  if (isSPMProject) {
+    // For SPM projects, we need to run xcodebuild from the package directory
+    const packageDir = path.dirname(options.xcworkspace);
+    const relativePath = path.relative(getWorkspacePath(), packageDir);
+    
+    context.updateProgressStatus(`Building SPM package "${options.scheme}"`);
+    
+    // Build the xcodebuild command for SPM
+    const xcodebuildArgs = [
+      "-scheme", options.scheme,
+      "-configuration", options.configuration,
+      "-destination", options.destinationRaw,
+    ];
+    
+    if (options.shouldClean) {
+      xcodebuildArgs.push("clean");
+    }
+    if (options.shouldBuild) {
+      xcodebuildArgs.push("build");
+    }
+    if (options.shouldTest) {
+      xcodebuildArgs.push("test");
+    }
+    
+    // Add additional args
+    xcodebuildArgs.push(...additionalArgs);
+    
+    let pipes: Command[] | undefined = undefined;
+    if (useXcbeatify) {
+      pipes = [{ command: "xcbeautify", args: [] }];
+    }
+    
+    // Execute the command in the package directory
+    await terminal.execute({
+      command: "sh",
+      args: ["-c", `cd "${packageDir}" && xcodebuild ${xcodebuildArgs.map(arg => `"${arg}"`).join(" ")}`],
+      pipes: pipes,
+      env: env,
+    });
+    
+    await restartSwiftLSP();
+    return;
+  }
+
+  // Original Xcode workspace logic
   const command = new XcodeCommandBuilder();
+  
   if (arch) {
     command.addBuildSettings("ARCHS", arch);
     command.addBuildSettings("VALID_ARCHS", arch);
@@ -515,8 +543,8 @@ export async function buildApp(
     // sweetpad: debugging-launch
     command.addBuildSettings("GCC_GENERATE_DEBUGGING_SYMBOLS", "YES");
     // In Xcode, ONLY_ACTIVE_ARCH is a build setting that controls whether you compile for only the architecture
-    // of the machine (or simulator/device) you’re currently targeting, or for all architectures listed in your
-    // project’s ARCHS setting.
+    // of the machine (or simulator/device) you're currently targeting, or for all architectures listed in your
+    // project's ARCHS setting.
     // It speeds up compile times, especially in Debug, because Xcode skips generating unused slices.
     command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
   }
@@ -557,6 +585,7 @@ export async function buildApp(
   } else if (options.shouldTest) {
     context.updateProgressStatus(`Building "${options.scheme}"`);
   }
+  
   await terminal.execute({
     command: commandParts[0],
     args: commandParts.slice(1),
@@ -970,6 +999,17 @@ export async function resolveDependencies(
     lock: "sweetpad.build",
     terminateLocked: true,
     callback: async (terminal) => {
+      // Handle SPM projects
+      if (options.xcworkspace.endsWith("Package.swift")) {
+        const packageDir = path.dirname(options.xcworkspace);
+        await terminal.execute({
+          command: "sh",
+          args: ["-c", `cd "${packageDir}" && swift package resolve`],
+        });
+        return;
+      }
+
+      // Original Xcode workspace logic
       await terminal.execute({
         command: "xcodebuild",
         args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],

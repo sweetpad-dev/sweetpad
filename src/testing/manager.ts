@@ -403,6 +403,17 @@ export class TestingManager {
       lock: "sweetpad.build",
       terminateLocked: true,
       callback: async (terminal) => {
+        // Handle SPM projects
+        if (options.xcworkspace.endsWith("Package.swift")) {
+          const packageDir = path.dirname(options.xcworkspace);
+          await terminal.execute({
+            command: "sh",
+            args: ["-c", `cd "${packageDir}" && xcodebuild build-for-testing -destination "${destinationRaw}" -allowProvisioningUpdates -scheme "${options.scheme}"`],
+          });
+          return;
+        }
+
+        // Original Xcode workspace logic
         await terminal.execute({
           command: "xcodebuild",
           args: [
@@ -806,6 +817,25 @@ export class TestingManager {
         lock: "sweetpad.build",
         terminateLocked: true,
         callback: async (terminal) => {
+          // Handle SPM projects
+          if (options.xcworkspace.endsWith("Package.swift")) {
+            const packageDir = path.dirname(options.xcworkspace);
+            await terminal.execute({
+              command: "sh",
+              args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${classTest.id}"`],
+              onOutputLine: async (output) => {
+                await this.parseOutputLine({
+                  line: output.value,
+                  testRun: run,
+                  className: className,
+                  runContext: runContext,
+                });
+              },
+            });
+            return;
+          }
+
+          // Original Xcode workspace logic
           await terminal.execute({
             command: "xcodebuild",
             args: [
@@ -889,6 +919,25 @@ export class TestingManager {
       terminateLocked: true,
       callback: async (terminal) => {
         try {
+          // Handle SPM projects
+          if (options.xcworkspace.endsWith("Package.swift")) {
+            const packageDir = path.dirname(options.xcworkspace);
+            await terminal.execute({
+              command: "sh",
+              args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}/${methodName}"`],
+              onOutputLine: async (output) => {
+                await this.parseOutputLine({
+                  line: output.value,
+                  testRun: testRun,
+                  className: className,
+                  runContext: runContext,
+                });
+              },
+            });
+            return;
+          }
+
+          // Original Xcode workspace logic
           await terminal.execute({
             command: "xcodebuild",
             args: [

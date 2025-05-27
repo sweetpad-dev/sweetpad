@@ -334,14 +334,25 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
   const workspace = getWorkspacePath();
 
   // Get all files that end with .xcworkspace (4 depth)
-  const paths = await findFilesRecursive({
+  const xcworkspacePaths = await findFilesRecursive({
     directory: workspace,
     depth: 4,
     matcher: (file) => {
       return file.name.endsWith(".xcworkspace");
     },
   });
-  return paths;
+
+  // Also look for Package.swift files for SPM projects
+  const packageSwiftPaths = await findFilesRecursive({
+    directory: workspace,
+    depth: 4,
+    matcher: (file) => {
+      return file.name === "Package.swift";
+    },
+  });
+
+  // Combine both types of paths
+  return [...xcworkspacePaths, ...packageSwiftPaths];
 }
 
 /**
@@ -350,12 +361,12 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
 export async function selectXcodeWorkspace(options: { autoselect: boolean }): Promise<string> {
   const workspacePath = getWorkspacePath();
 
-  // Get all files that end with .xcworkspace (4 depth)
+  // Get all files that end with .xcworkspace (4 depth) and Package.swift files
   const paths = await detectXcodeWorkspacesPaths();
 
   // No files, nothing to do
   if (paths.length === 0) {
-    throw new ExtensionError("No xcode workspaces found", {
+    throw new ExtensionError("No xcode workspaces or SPM packages found", {
       context: {
         cwd: workspacePath,
       },
@@ -365,7 +376,8 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
   // One file, use it and save it to the cache
   if (paths.length === 1 && options.autoselect) {
     const path = paths[0];
-    commonLogger.log("Xcode workspace was detected", {
+    const projectType = path.endsWith("Package.swift") ? "SPM package" : "Xcode workspace";
+    commonLogger.log(`${projectType} was detected`, {
       workspace: workspacePath,
       path: path,
     });
@@ -377,7 +389,7 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
 
   // More then one, ask user to select
   const selected = await showQuickPick({
-    title: "Select xcode workspace",
+    title: "Select xcode workspace or SPM package",
     items: paths
       .sort((a, b) => {
         // Sort by depth to show less nested paths first
@@ -392,9 +404,12 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
 
         const isInRootDir = parentDir === ".";
         const isCocoaPods = isInRootDir && isCocoaProject;
+        const isSPMPackage = xwPath.endsWith("Package.swift");
 
         let detail: string | undefined;
-        if (isCocoaPods && isInRootDir) {
+        if (isSPMPackage) {
+          detail = "Swift Package Manager";
+        } else if (isCocoaPods && isInRootDir) {
           detail = "CocoaPods (recommended)";
         } else if (!isInRootDir && parentDir.endsWith(".xcodeproj")) {
           detail = "Xcode";
