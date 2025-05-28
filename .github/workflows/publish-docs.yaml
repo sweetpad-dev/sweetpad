@@ -89,8 +89,10 @@ jobs:
           cp -r docs/dev/* _site/docs/dev/ 2>/dev/null || true
           cp -r images/* _site/images/ 2>/dev/null || true
       
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
       
       - name: Deploy to GitHub Pages
         id: deployment
