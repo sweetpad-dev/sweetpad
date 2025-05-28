@@ -11,6 +11,7 @@ import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
 import { askXcodeWorkspacePath, getCurrentXcodeWorkspacePath, getWorkspacePath, restartSwiftLSP } from "./utils";
+import { commonLogger } from "../common/logger";
 
 type IEventMap = {
   updated: [];
@@ -48,23 +49,31 @@ export class BuildManager {
     return this._context;
   }
 
-  async refresh(): Promise<XcodeScheme[]> {
-    const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
-
-    const scheme = await getSchemes({
-      xcworkspace: xcworkspace,
-    });
-
-    this.cache = scheme;
-    this.emitter.emit("updated");
-    return this.cache;
-  }
-
   async getSchemas(options?: { refresh?: boolean }): Promise<XcodeScheme[]> {
     if (this.cache === undefined || options?.refresh) {
       return await this.refresh();
     }
     return this.cache;
+  }
+
+  async refresh(): Promise<XcodeScheme[]> {
+    // Always get the latest workspace path from context
+    const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
+
+    try {
+      const scheme = await getSchemes({
+        xcworkspace: xcworkspace,
+      });
+
+      this.cache = scheme;
+      this.emitter.emit("updated");
+      return this.cache;
+    } catch (error) {
+      // If there's an error getting schemes, return empty array
+      commonLogger.error("Failed to get schemes", { error });
+      this.cache = [];
+      return [];
+    }
   }
 
   getDefaultSchemeForBuild(): string | undefined {
@@ -80,9 +89,23 @@ export class BuildManager {
     this.emitter.emit("defaultSchemeForBuildUpdated", scheme);
   }
 
-  setCurrentWorkspacePath(workspacePath: string | undefined): void {
+  setCurrentWorkspacePath(workspacePath: string | undefined, skipRefresh: boolean = false): void {
+    // Only update if the path has actually changed
+    const currentPath = this.context.getWorkspaceState("build.xcodeWorkspacePath");
+    if (currentPath === workspacePath) {
+      return;
+    }
+    
+    // Since workspace is changing, clear the scheme cache to prevent mixing schemes
+    this.clearSchemesCache();
+    
     this.context.updateWorkspaceState("build.xcodeWorkspacePath", workspacePath);
     this.emitter.emit("currentWorkspacePathUpdated", workspacePath);
+    
+    // Allow skipping the automatic refresh when needed
+    if (!skipRefresh) {
+      this.refresh();
+    }
   }
 
   setDefaultSchemeForTesting(scheme: string | undefined): void {

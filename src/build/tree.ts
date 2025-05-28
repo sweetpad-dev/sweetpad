@@ -1,6 +1,7 @@
-import * as path from "node:path";
+import path from "node:path";
 import * as vscode from "vscode";
 import type { XcodeScheme } from "../common/cli/scripts";
+import { getSchemes } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { commonLogger } from "../common/logger";
 import type { BuildManager } from "./manager";
@@ -17,8 +18,10 @@ export class WorkspaceGroupTreeItem extends vscode.TreeItem {
   public provider: WorkspaceTreeProvider;
   public workspacePath: string;
   public isRecent: boolean;
+  public isLoading: boolean = false;
+  public uniqueId: string;
 
-  constructor(options: { workspacePath: string; provider: WorkspaceTreeProvider; isRecent?: boolean }) {
+  constructor(options: { workspacePath: string; provider: WorkspaceTreeProvider; isRecent?: boolean; isLoading?: boolean }) {
     // Extract just the xcodeproj name from the full path
     const match = options.workspacePath.match(/([^/]+)\.xcodeproj/);
     
@@ -51,30 +54,46 @@ export class WorkspaceGroupTreeItem extends vscode.TreeItem {
       displayName = match ? match[1] : path.basename(options.workspacePath);
     }
 
+    // Set collapsible state based on whether it's in the Recents section
+    // Only Recents should be expandable to show schemes
+    const isRecent = !!options.isRecent;
+    const isCurrentWorkspace = options.provider.defaultWorkspacePath === options.workspacePath;
+    
+    // Items in Recents are expandable, others are not
+    const collapsibleState = isRecent 
+      ? vscode.TreeItemCollapsibleState.Expanded
+      : vscode.TreeItemCollapsibleState.None;
+
     // What constructs the display of the tree item
-    super(displayName, vscode.TreeItemCollapsibleState.Expanded);
+    super(displayName, collapsibleState);
 
     this.workspacePath = options.workspacePath;
     this.provider = options.provider;
-    this.isRecent = !!options.isRecent;
+    this.isRecent = isRecent;
+    this.isLoading = !!options.isLoading;
+    
+    // Create a unique ID that combines path and whether it's a recent item
+    this.uniqueId = `${this.workspacePath}:${this.isRecent ? 'recent' : 'regular'}`;
 
     let description = "";
-    let color: vscode.ThemeColor;
+    let color: vscode.ThemeColor = new vscode.ThemeColor("foreground");
 
-    if (this.workspacePath === this.provider.defaultWorkspacePath) {
+    // Only show checkmark on selected workspace
+    if (isCurrentWorkspace) {
       description = `${description} ✓`;
       color = new vscode.ThemeColor("sweetpad.workspace");
-      this.collapsibleState = vscode.TreeItemCollapsibleState.Expanded; // if the workspace is the current workspace, show it expanded
-    } else {
-      color = new vscode.ThemeColor("foreground");
-      this.collapsibleState = vscode.TreeItemCollapsibleState.None; // if the workspace is not the current workspace, show it collapsed
+    }
+    
+    // Add loading indicator
+    if (this.isLoading) {
+      description = `${description} (loading...)`;
     }
 
     if (description) {
       this.description = description;
     }
     
-    // Set icon based on file type
+    // Set icon based on file type - keep original icon system
     if (this.workspacePath.includes("DoorDash.xcodeproj")) {
       // Special case for DoorDash xcodeproj
       this.iconPath = vscode.Uri.joinPath(vscode.Uri.file(this.provider.context?.extensionPath || ""), "images", "bazel.png");
@@ -98,6 +117,15 @@ export class WorkspaceGroupTreeItem extends vscode.TreeItem {
 
     this.contextValue = "workspace-group";
     this.tooltip = this.workspacePath;
+  }
+  
+  // Set loading state and refresh the UI
+  setLoading(loading: boolean): void {
+    this.isLoading = loading;
+    // Update the loading state in the provider
+    if (this.provider) {
+      this.provider.setItemLoading(this, loading);
+    }
   }
 }
 
@@ -146,6 +174,8 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   private isLoadingWorkspaces: boolean = false;
   private readonly MAX_RECENT_ITEMS = 5;
   private recentWorkspacesStorage: string[] = [];
+  private loadingItems = new Map<string, boolean>();
+  private loadingItem: WorkspaceGroupTreeItem | null = null;
 
   constructor(options: { context: ExtensionContext; buildManager: BuildManager}) {
     this.context = options.context;
@@ -161,7 +191,6 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         this.addToRecentWorkspaces(workspacePath);
       }
       this.buildManager.clearSchemesCache();
-      this.buildManager.refresh();
       this.refresh();
     });
     this.buildManager.on("defaultSchemeForBuildUpdated", (scheme) => {
@@ -179,7 +208,16 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     this.loadWorkspacesStreamingly();
   }
 
+  // Public method to refresh a specific tree item
+  refreshTreeItem(item: WorkspaceGroupTreeItem | null): void {
+    // Only refresh the specific item, not the entire tree
+    this._onDidChangeTreeData.fire(item);
+  }
+
   private refresh(): void {
+    // Clear any loading states before refreshing
+    this.clearAllLoadingStates();
+    
     this._onDidChangeTreeData.fire(null);
     this.getChildren();
   }
@@ -196,27 +234,42 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     this.recentWorkspacesStorage = this.recentWorkspacesStorage.slice(0, this.MAX_RECENT_ITEMS);
     
     // Update our instance variable with tree items
-    this.recentWorkspaces = this.recentWorkspacesStorage.map(path => 
-      new WorkspaceGroupTreeItem({
+    this.recentWorkspaces = this.recentWorkspacesStorage.map(path => {
+      // Determine if this recent item is the current workspace
+      const isCurrentWorkspace = path === this.defaultWorkspacePath;
+      
+      return new WorkspaceGroupTreeItem({
         workspacePath: path,
         provider: this,
-        isRecent: true
-      })
-    );
+        isRecent: true,
+      });
+    });
   }
 
   // Add a workspace to the tree and refresh the UI immediately
   private addWorkspace(workspacePath: string): void {
-    // Check for duplicates - don't add if already exists
+    // First check if this workspace is already in the main list
     if (this.workspaces.some(w => w.workspacePath === workspacePath)) {
       return;
     }
     
+    // Create the new workspace item
+    const isCurrentWorkspace = workspacePath === this.defaultWorkspacePath;
+    const loadingStateKey = `${workspacePath}:regular`;
+    
+    // Only show loading indicator for current workspace or items in recents section
+    const shouldShowLoading = isCurrentWorkspace && this.loadingItems.get(loadingStateKey);
+    
+    // Check if this is the currently selected workspace (for folder icon)
+    const isSelectedWorkspace = workspacePath === this.defaultWorkspacePath;
+    
     const workspaceItem = new WorkspaceGroupTreeItem({
       workspacePath: workspacePath,
       provider: this,
+      isLoading: shouldShowLoading || false,
     });
     
+    // Add the new item to the regular workspaces list
     this.workspaces.push(workspaceItem);
     
     // Sort workspaces by type and name
@@ -226,7 +279,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     this._onDidChangeTreeData.fire(undefined);
     
     // If this is the current workspace, add it to recents
-    if (workspacePath === this.defaultWorkspacePath) {
+    if (isCurrentWorkspace) {
       this.addToRecentWorkspaces(workspacePath);
     }
   }
@@ -349,7 +402,8 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       }
       
       // Start streaming search for workspaces without awaiting completion
-      this.streamingWorkspaceSearch();
+      // Don't block UI while searching for workspaces
+      void this.streamingWorkspaceSearch();
       
       // Update context variable for welcome screen
       void vscode.commands.executeCommand(
@@ -452,7 +506,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       // Add a loading indicator if we're still searching
       const results: vscode.TreeItem[] = [...sections];
       if (this.isLoadingWorkspaces) {
-        results.push(new vscode.TreeItem("Searching for more workspaces...", vscode.TreeItemCollapsibleState.None));
+        const loadingItem = new vscode.TreeItem("Searching for more builds...", vscode.TreeItemCollapsibleState.None);
+        loadingItem.iconPath = new vscode.ThemeIcon("loading~spin");
+        results.push(loadingItem);
       }
       
       void vscode.commands.executeCommand(
@@ -469,9 +525,16 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       return element.workspaces;
     }
 
-    // For workspace items, return schemes
+    // For workspace items, return schemes ONLY if in Recents and for the specific workspace
     if (element instanceof WorkspaceGroupTreeItem) {
-      return await this.getSchemes();
+      // Only load schemes for items in the Recents section
+      if (element.isRecent) {
+        // Load schemes directly for this specific workspace without using the cache
+        return await this.getSchemesDirectly(element.workspacePath);
+      } else {
+        // Return empty array for non-recent items to prevent them from expanding
+        return [];
+      }
     }
 
     return [];
@@ -488,9 +551,16 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     return this.workspaces;
   }
 
-  async getSchemes(): Promise<BuildTreeItem[]> {
+  async getSchemes(workspacePath?: string): Promise<BuildTreeItem[]> {
+    // If a specific workspace path is provided, load schemes directly for that workspace
+    if (workspacePath) {
+      return this.getSchemesDirectly(workspacePath);
+    }
+    
+    // Otherwise, use the regular method with the current workspace path
     let schemes: XcodeScheme[] = [];
     try {
+      // This will get schemes for the current workspace path
       schemes = await this.buildManager.getSchemas();
     } catch (error) {
       commonLogger.error("Failed to get schemes", {
@@ -504,37 +574,115 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       vscode.commands.executeCommand("setContext", "sweetpad.build.noSchemes", true);
     }
 
-    // return list of schemes
+    // return list of schemes with the specific workspace path
     return schemes.map(
       (scheme) =>
         new BuildTreeItem({
           scheme: scheme.name,
           collapsibleState: vscode.TreeItemCollapsibleState.None,
           provider: this,
+          workspacePath: workspacePath || this.defaultWorkspacePath,
         }),
     );
+  }
+
+  // Get schemes directly from xcodebuild without using the cache
+  async getSchemesDirectly(workspacePath: string): Promise<BuildTreeItem[]> {
+    if (!workspacePath) {
+      return [];
+    }
+    
+    let schemes: XcodeScheme[] = [];
+    try {
+      // Call getSchemes directly with this workspace path
+      schemes = await getSchemes({
+        xcworkspace: workspacePath,
+      });
+    } catch (error) {
+      commonLogger.error("Failed to get schemes for workspace", {
+        workspacePath,
+        error,
+      });
+      return [];
+    }
+
+    // Create scheme items with explicit workspace path
+    return schemes.map(
+      (scheme) =>
+        new BuildTreeItem({
+          scheme: scheme.name,
+          collapsibleState: vscode.TreeItemCollapsibleState.None,
+          provider: this,
+          workspacePath: workspacePath,
+        }),
+    );
+  }
+
+  // Track loading state for workspace items - updated to use the tree item directly
+  setItemLoading(item: WorkspaceGroupTreeItem, isLoading: boolean): void {
+    // Clear previous loading item if exists
+    if (this.loadingItem && this.loadingItem !== item) {
+      this.loadingItem.isLoading = false;
+      this.refreshTreeItem(this.loadingItem);
+    }
+    
+    // Only allow loading state for recent items
+    if (!item.isRecent) {
+      return;
+    }
+    
+    // Update the loading state just for this specific item
+    item.isLoading = isLoading;
+    
+    if (isLoading) {
+      // Set this as the current loading item
+      this.loadingItem = item;
+      this.loadingItems.set(item.uniqueId, true);
+    } else {
+      // Clear current loading item
+      this.loadingItem = null;
+      this.loadingItems.delete(item.uniqueId);
+    }
+    
+    // Only refresh the specific item that was changed
+    this.refreshTreeItem(item);
+  }
+  
+  // Clear all loading states
+  clearAllLoadingStates(): void {
+    if (this.loadingItem) {
+      this.loadingItem.isLoading = false;
+      this.refreshTreeItem(this.loadingItem);
+      this.loadingItem = null;
+    }
+    this.loadingItems.clear();
   }
 }
 
 export class BuildTreeItem extends vscode.TreeItem {
   public provider: WorkspaceTreeProvider;
   public scheme: string;
-
+  public workspacePath: string;
+  
   constructor(options: {
     scheme: string;
     collapsibleState: vscode.TreeItemCollapsibleState;
     provider: WorkspaceTreeProvider;
+    workspacePath?: string;
   }) {
     super(options.scheme, options.collapsibleState);
     this.provider = options.provider;
     this.scheme = options.scheme;
+    this.workspacePath = options.workspacePath || this.provider.defaultWorkspacePath || '';
 
     const color = new vscode.ThemeColor("sweetpad.scheme");
     this.iconPath = new vscode.ThemeIcon("sweetpad-package", color);
     this.contextValue = "sweetpad.build.view.item";
 
     let description = "";
-    if (this.scheme === this.provider.defaultSchemeForBuild) {
+    // Only show checkmark if this is the default scheme for this specific workspace
+    if (this.scheme === this.provider.defaultSchemeForBuild && 
+        this.workspacePath === this.provider.defaultWorkspacePath) {
       description = `${description} ✓`;
     }
     if (this.scheme === this.provider.defaultSchemeForTesting) {
@@ -543,5 +691,23 @@ export class BuildTreeItem extends vscode.TreeItem {
     if (description) {
       this.description = description;
     }
+    
+    // Add workspace name to tooltip for clarity
+    if (this.workspacePath) {
+      const workspaceName = path.basename(this.workspacePath);
+      this.tooltip = `Scheme: ${this.scheme}\nWorkspace: ${workspaceName}`;
+      
+      // Add workspace info to the label for clarity
+      this.description = `${description || ''} (${workspaceName})`.trim();
+    } else {
+      this.tooltip = `Scheme: ${this.scheme}`;
+    }
+    
+    // Store command with the correct arguments that point to this specific scheme and workspace
+    this.command = {
+      command: 'sweetpad.build.launch',
+      title: 'Launch',
+      arguments: [this]
+    };
   }
 }

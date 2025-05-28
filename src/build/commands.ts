@@ -610,33 +610,14 @@ export async function buildApp(
 /**
  * Build app without running
  */
-export async function buildCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Starting build command");
-  // Notify user that build is starting
-  vscode.window.showInformationMessage("Building is starting... This may take a while.");
-  commonLogger.log("Building is starting... This may take a while.");
-  
-  return commonBuildCommand(context, item, { debug: false });
-}
-
-/**
- * Build app in debug mode without running
- */
-export async function debuggingBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Building the app (debug mode)");
-  return commonBuildCommand(context, item, { debug: true });
-}
-
-/**
- * Build app without running
- */
 async function commonBuildCommand(
   context: ExtensionContext,
   item: BuildTreeItem | undefined,
   options: { debug: boolean },
 ) {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  // If item has a workspace path, use it directly
+  const xcworkspace = await askXcodeWorkspacePath(context, item?.workspacePath);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
@@ -683,30 +664,14 @@ async function commonBuildCommand(
 /**
  * Build and run application on the simulator or device
  */
-export async function launchCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  // Notify user that build is starting
-  vscode.window.showInformationMessage("Launching application... This may take a while.");
-  return commonLaunchCommand(context, item, { debug: false });
-}
-
-/**
- * Builds and launches the application in debug mode
- * This is a convenience wrapper around launchCommand that sets the debug flag
- */
-export async function debuggingLaunchCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  return commonLaunchCommand(context, item, { debug: true });
-}
-
-/**
- * Build and run application on the simulator or device
- */
 async function commonLaunchCommand(
   context: ExtensionContext,
   item: BuildTreeItem | undefined,
   options: { debug: boolean },
 ) {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  // If item has a workspace path, use it directly
+  const xcworkspace = await askXcodeWorkspacePath(context, item?.workspacePath);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
@@ -799,6 +764,23 @@ async function commonLaunchCommand(
       }
     },
   });
+}
+
+/**
+ * Build and run application on the simulator or device
+ */
+export async function launchCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  // Notify user that build is starting
+  vscode.window.showInformationMessage("Launching application... This may take a while.");
+  return commonLaunchCommand(context, item, { debug: false });
+}
+
+/**
+ * Builds and launches the application in debug mode
+ * This is a convenience wrapper around launchCommand that sets the debug flag
+ */
+export async function debuggingLaunchCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  return commonLaunchCommand(context, item, { debug: true });
 }
 
 /**
@@ -1136,19 +1118,42 @@ export async function openXcodeCommand(context: ExtensionContext) {
  */
 export async function selectXcodeWorkspaceCommand(context: ExtensionContext, item?: WorkspaceGroupTreeItem) {
   context.updateProgressStatus("Searching for workspace");
-  vscode.window.showInformationMessage("Selecting Xcode workspace...");
   
   if (item) {
-    let path = item.workspacePath;
-    if (path) {
-      context.buildManager.setCurrentWorkspacePath(path); // set the current workspace path and emit an event
-      context.updateWorkspaceState("build.xcodeWorkspacePath", path);
+    // Set loading state on this specific item only
+    item.setLoading(true);
+    
+    try {
+      let path = item.workspacePath;
+      if (path) {
+        // Update the workspace path without triggering a full refresh
+        context.buildManager.setCurrentWorkspacePath(path, true); // Skip refresh
+        context.updateWorkspaceState("build.xcodeWorkspacePath", path);
+      }
+      
+      // Short delay to allow UI to update with loading state
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Show success message
+      vscode.window.showInformationMessage(`Workspace path updated`);
+    } finally {
+      // Allow a moment for the success message to be seen
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Clear loading state
+      item.setLoading(false);
+      
+      // Add a small delay to ensure UI has time to update
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Now refresh the build manager
+      context.buildManager.refresh();
     }
-    context.buildManager.refresh();
-    vscode.window.showInformationMessage(`Workspace path updated`);
     return;
   }
 
+  // Manual selection via quick pick
+  vscode.window.showInformationMessage("Selecting Xcode workspace...");
   const workspace = await selectXcodeWorkspace({
     autoselect: false,
   });
