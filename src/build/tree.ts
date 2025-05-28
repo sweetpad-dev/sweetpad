@@ -70,13 +70,22 @@ export class WorkspaceGroupTreeItem extends vscode.TreeItem {
       this.description = description;
     }
     
-    //is bazel project
+    // Set icon based on file type
     if (this.workspacePath.includes("DoorDash.xcodeproj")) {
+      // Special case for DoorDash xcodeproj
       this.iconPath = vscode.Uri.joinPath(vscode.Uri.file(this.provider.context?.extensionPath || ""), "images", "bazel.png");
     } 
-    // Use Swift icon for Package.swift files
+    // Use Swift Package Manager icon for Package.swift files
     else if (path.basename(this.workspacePath) === "Package.swift") {
-      this.iconPath = new vscode.ThemeIcon("package", color); // Package icon for Swift Package Manager
+      this.iconPath = vscode.Uri.joinPath(vscode.Uri.file(this.provider.context?.extensionPath || ""), "images", "spm.png");
+    }
+    // Use xcodeproj icon for .xcodeproj files
+    else if (this.workspacePath.endsWith(".xcodeproj") || this.workspacePath.includes(".xcodeproj/")) {
+      this.iconPath = vscode.Uri.joinPath(vscode.Uri.file(this.provider.context?.extensionPath || ""), "images", "xcodeproj.png");
+    }
+    // Use xcworkspace icon for .xcworkspace files
+    else if (this.workspacePath.endsWith(".xcworkspace") || this.workspacePath.includes(".xcworkspace/") || this.workspacePath.includes("project.xcworkspace")) {
+      this.iconPath = vscode.Uri.joinPath(vscode.Uri.file(this.provider.context?.extensionPath || ""), "images", "xcworkspace.png");
     }
     // Default folder icon for other items
     else {
