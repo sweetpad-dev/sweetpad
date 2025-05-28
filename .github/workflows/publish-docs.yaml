@@ -77,7 +77,7 @@ jobs:
           <body>
           EOF
           
-          markdown-it --html README.md >> _site/index.html
+          markdown-it README.md >> _site/index.html
           
           cat >> _site/index.html << EOF
           </body>
