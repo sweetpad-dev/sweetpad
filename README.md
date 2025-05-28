@@ -1,61 +1,84 @@
-# SweetPad DoorDash (iOS/Swift development) <img valign="middle" alt="" width="40" src="./images/logo.png" />
+# SweetPad (iOS/Swift development) <img valign="middle" alt="" width="40" src="./images/logo.png" />
 
 📚 [Documentation](https://sweetpad.hyzyla.dev/) | 📦
 [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad) | 🐞
 [Github Issues](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/issues) | 🏔️ [Roadmap](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/blob/main/TODO.md)
 
-<!-- [![Discord](https://img.shields.io/badge/SweetPad-Discord-blue?logo=discord&logoColor=white&link=https%3A%2F%2Fdiscord.gg%2FXZwRtQ5dew)](https://discord.gg/XZwRtQ5dew) -->
-
-<hr/>
-
-
-<!-- [![Twitter](https://img.shields.io/twitter/follow/sweetpad_dev?style=social&logo=twitter)](https://twitter.com/sweetpad_dev) -->
-<hr/>
-
-Develop Swift/iOS projects using VSCode or Cursor.
-
-The long-term goal is to make VSCode/Cursor a viable alternative to Xcode for iOS development by integrating open-source
-tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcode-build-server**, **sourcekit-lsp**.
+Develop Swift/iOS projects efficiently using VSCode or Cursor. SweetPad integrates essential iOS development tools to make VSCode/Cursor a viable alternative to Xcode.
 
 ![iOS simulator](./docs/images/build-demo.gif)
 
-## Feature
+## Features
 
-- ✅ **[Autocomplete](https://sweetpad.hyzyla.dev/docs/autocomplete)** — setup autocomplete using
-  [xcode-build-server](https://github.com/SolaWing/xcode-build-server)
-  
-- 🛠️ **[Build & Run](https://sweetpad.hyzyla.dev/docs/build)** — build and run application using
-  [xcodebuild](https://developer.apple.com/library/archive/technotes/tn2339/_index.html)
-  
-- 💅🏼 **[Format](https://sweetpad.hyzyla.dev/docs/format)** — format files using
-  [swift-format](https://github.com/apple/swift-format) or other formatter of your choice
-  
-- 📱 **[Simulator](https://sweetpad.hyzyla.dev/docs/simulators)** — manage iOS simulators
-  
-- 📱 **[Devices](https://sweetpad.hyzyla.dev/docs/devices)** — run iOS applications on iPhone or iPad
- 
-- 🛠️ **[Tools](https://sweetpad.hyzyla.dev/docs/tools)** — manage essential iOS development tools using
-  [Homebrew](https://brew.sh/)
-  
-- 🪲 **[Debug](https://sweetpad.hyzyla.dev/docs/debug)** — debug iOS applications using
-  [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
-  
-- ✅ **[Tests](https://sweetpad.hyzyla.dev/docs/tests)** — run tests on simulators and devices
-  
+### Development
+- ✅ **[Autocomplete](https://sweetpad.hyzyla.dev/docs/autocomplete)** — Intelligent code completion using [xcode-build-server](https://github.com/SolaWing/xcode-build-server)
+- 💅🏼 **[Format](https://sweetpad.hyzyla.dev/docs/format)** — Format Swift files using [swift-format](https://github.com/apple/swift-format) or other formatters
+- 📦 **Swift Package Manager** — Full support for SPM package development and dependencies
 
-> 💡 If you have any ideas, please open an issue or start a discussion on the
-> [SweetPad](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad) GitHub repository.
+### Build & Run
+- 🛠️ **[Build & Run](https://sweetpad.hyzyla.dev/docs/build)** — Build and run applications using [xcodebuild](https://developer.apple.com/library/archive/technotes/tn2339/_index.html)
+- 📱 **[Simulator](https://sweetpad.hyzyla.dev/docs/simulators)** — Create, manage and control iOS simulators
+- 📱 **[Devices](https://sweetpad.hyzyla.dev/docs/devices)** — Deploy and run iOS applications on physical iPhone or iPad devices
+
+### Testing & Debugging
+- 🪲 **[Debug](https://sweetpad.hyzyla.dev/docs/debug)** — Debug iOS applications using [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
+- ✅ **[Tests](https://sweetpad.hyzyla.dev/docs/tests)** — Run tests on simulators and devices with visual feedback
+
+### Tools
+- 🛠️ **[Tools](https://sweetpad.hyzyla.dev/docs/tools)** — Manage essential iOS development tools using [Homebrew](https://brew.sh/)
+
+> 💡 Have ideas or found issues? Please open an issue or start a discussion on the [SweetPad GitHub repository](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad).
 
 ## Requirements
 
-1. 🍏 MacOS — other platforms are currently not supported
-2. 📱 Xcode — required for building and running iOS apps via `xcodebuild`
+1. 🍏 MacOS — Other platforms are currently not supported
+2. 📱 Xcode — Required for building and running iOS apps via `xcodebuild`
+
+## Installation
+
+### VSCode Marketplace
+Install directly from the [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad).
+
+### Manual Installation
+Download the latest `.vsix` file from [GitHub Releases](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/releases) and install with:
+
+```shell
+code --install-extension sweetpad-[version].vsix
+# or for Cursor
+cursor --install-extension sweetpad-[version].vsix
+```
 
 ## Development
 
 ### 🛠️ **Local Development Setup**
 
-If you want to contribute to SweetPad or test changes locally, you can use the provided installation script:
+1. Clone the repository:
+```shell
+git clone git@github.com:KayodeOgundimu-DoorDashSWE/sweetpad.git
+cd sweetpad
+```
+
+2. Install dependencies:
+```shell
+npm install
+```
+
+3. Open the project in Visual Studio Code:
+```shell
+code .
+```
+
+4. Press **F5** to build and run the extension in a new development window.
+
+5. Add breakpoints to the code where you want to debug.
+
+6. When you perform actions that trigger those breakpoints, the extension will pause, allowing you to inspect variables and the call stack.
+
+![Debugging](./docs/dev/debug-demo.png)
+
+## ��‍🔥 Build Locally
+
+To build and test changes locally:
 
 ```bash
 # Clone the repository
@@ -69,45 +92,15 @@ npm install
 ./scripts/install-and-test.sh
 ```
 
-#### **What the script does:**
-1. 🔨 **Builds** the extension from source using `npm run build`
-2. 📦 **Creates** a VSIX package with dynamic versioning from `package.json`
-3. 🚀 **Installs** the extension automatically in VS Code or Cursor (whichever is available)
-4. 🔄 **Reloads** the editor window to activate the new extension
-5. ✅ **Ready** to test your changes immediately
-
-#### **Manual Installation (Alternative):**
-```bash
-# Build the extension
-npm run build
-
-# The install script creates the VSIX package automatically, but you can install manually:
-code --install-extension sweetpad-<version>.vsix
-# or for Cursor
-cursor --install-extension sweetpad-<version>.vsix
-```
-
-#### **Available Scripts:**
-- `npm run build` - Build the extension
-- `npm run watch` - Build and watch for changes during development
-- `npm test` - Run tests
-- `npm run check:all` - Run all code quality checks (format, lint, types)
-
-#### **Testing with SPM Projects:**
-The extension now supports Swift Package Manager projects. You can test with the included example:
-
-```bash
-# Open the SPM test project
-code tests/examples/sweetpad-spm
-# or
-cursor tests/examples/sweetpad-spm
-```
-
-> 💡 **Tip:** After making changes to the source code, run `./scripts/install-and-test.sh` again to rebuild and reinstall the extension with your latest changes.
+#### **What the build script does:**
+1. 🔨 **Builds** the extension from source
+2. 📦 **Creates** a VSIX package with dynamic versioning
+3. 🚀 **Installs** the extension automatically in VS Code or Cursor
+4. 🔄 **Reloads** the editor window to activate the extension
 
 ## Changelog
 
-The [CHANGELOG.md](./CHANGELOG.md) contains all notable changes to the "sweet pad" extension.
+See [CHANGELOG.md](./CHANGELOG.md) for all notable changes to the extension.
 
 ## License
 
