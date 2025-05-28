@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - maatheusgois-dd/feature/integrate-all-the-code
     paths:
       - 'README.md'
       - 'docs/**'
