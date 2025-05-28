@@ -76,7 +76,7 @@ code .
 
 ![Debugging](./docs/dev/debug-demo.png)
 
-## ��‍🔥 Build Locally
+## 🔥 Build Locally
 
 To build and test changes locally:
 
