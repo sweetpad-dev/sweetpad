@@ -87,8 +87,11 @@ export class SwiftFormattingProvider
     command: string;
     args: string[];
   }> {
+    // Get configuration directly from VS Code to avoid property registration issues
+    const config = vscode.workspace.getConfiguration("sweetpad");
+    
     // User might specify a custom arguments and path for swift-format in the workspace settings.
-    const rawArgs = getWorkspaceConfig("format.args");
+    const rawArgs = config.get<string[] | null>("format.args");
     const filename = document.fileName;
     let args: string[];
     if (rawArgs && Array.isArray(rawArgs)) {
@@ -100,7 +103,7 @@ export class SwiftFormattingProvider
       args = ["--in-place", filename];
     }
 
-    const path = getWorkspaceConfig("format.path");
+    const path = config.get<string>("format.path");
     if (path) {
       args.push(...this.getCustomRangeArgument(document, ranges));
       return { command: path, args: args };
@@ -119,8 +122,10 @@ export class SwiftFormattingProvider
   }
 
   private getCustomRangeArgument(document: vscode.TextDocument, ranges: vscode.Range[]): string[] {
-    const selectionArgs = getWorkspaceConfig("format.selectionArgs");
-    if (!selectionArgs) {
+    // Get configuration directly from VS Code to avoid property registration issues
+    const config = vscode.workspace.getConfiguration("sweetpad");
+    const selectionArgs = config.get<string[] | null>("format.selectionArgs");
+    if (!selectionArgs || !Array.isArray(selectionArgs)) {
       return [];
     }
 
@@ -131,7 +136,7 @@ export class SwiftFormattingProvider
       const startLine = document.lineAt(range.start).lineNumber;
       const endLine = document.lineAt(range.end).lineNumber;
       args.push(
-        ...selectionArgs.map((arg) =>
+        ...selectionArgs.map((arg: string) =>
           arg
             .replace(/\${startOffset}/g, String(startOffset))
             .replace(/\${endOffset}/g, String(endOffset))

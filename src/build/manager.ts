@@ -16,6 +16,7 @@ type IEventMap = {
   updated: [];
   defaultSchemeForBuildUpdated: [scheme: string | undefined];
   defaultSchemeForTestingUpdated: [scheme: string | undefined];
+  currentWorkspacePathUpdated: [workspacePath: string | undefined];
 };
 type IEventKey = keyof IEventMap;
 
@@ -79,6 +80,11 @@ export class BuildManager {
     this.emitter.emit("defaultSchemeForBuildUpdated", scheme);
   }
 
+  setCurrentWorkspacePath(workspacePath: string | undefined): void {
+    this.context.updateWorkspaceState("build.xcodeWorkspacePath", workspacePath);
+    this.emitter.emit("currentWorkspacePathUpdated", workspacePath);
+  }
+
   setDefaultSchemeForTesting(scheme: string | undefined): void {
     this.context.updateWorkspaceState("testing.xcodeScheme", scheme);
     this.emitter.emit("defaultSchemeForTestingUpdated", scheme);
@@ -98,6 +104,10 @@ export class BuildManager {
 
   setDefaultConfigurationForTesting(configuration: string | undefined): void {
     this.context.updateWorkspaceState("testing.xcodeConfiguration", configuration);
+  }
+
+  clearSchemesCache(): void {
+    this.cache = undefined;
   }
 
   /**

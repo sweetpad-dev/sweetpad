@@ -586,7 +586,7 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
 
   await exec({
     command: "xcode-build-server",
-    args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme],
+    args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme]
   });
 }
 

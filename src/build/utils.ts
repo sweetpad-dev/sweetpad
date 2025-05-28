@@ -212,14 +212,25 @@ export async function askSchemeForBuild(
 }
 
 /**
- * It's absolute path to current opened workspace
+ * Get the path of the current workspace
+ * @throws {ExtensionError} If no workspace is open
  */
 export function getWorkspacePath(): string {
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
-  if (!workspaceFolder) {
-    throw new ExtensionError("No workspace folder found");
+  try {
+    if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+      throw new ExtensionError("No workspace folder found. Please open a folder or workspace first.");
+    }
+    
+    const workspaceFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
+    if (!workspaceFolder) {
+      throw new ExtensionError("Invalid workspace folder path");
+    }
+    return workspaceFolder;
+  } catch (error) {
+    // Log the error for debugging purposes
+    commonLogger.error("Failed to get workspace path", { error });
+    throw new ExtensionError("No workspace folder found. Please open a folder or workspace first.");
   }
-  return workspaceFolder;
 }
 
 /**
@@ -338,7 +349,7 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
     directory: workspace,
     depth: 4,
     matcher: (file) => {
-      return file.name.endsWith(".xcworkspace");
+      return file.name.endsWith("project.xcworkspace");
     },
   });
 

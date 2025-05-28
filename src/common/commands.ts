@@ -13,6 +13,7 @@ import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting
 import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
 import { QuickPickCancelledError } from "./quick-pick";
+import * as path from "path";
 
 export type LastLaunchedAppDeviceContext = {
   type: "device";
@@ -105,6 +106,23 @@ export class ExtensionContext {
       }
     });
   }
+
+  // --- Simple Global Emitter for Task Completion --- 
+  public simpleTaskCompletionEmitter = new vscode.EventEmitter<void>();
+  // ---------------------------------------------------
+
+  // --- Define path for the UI log --- \
+  public UI_LOG_PATH = (): string => {
+    var workspaceFolders = vscode.workspace.workspaceFolders;
+    if (workspaceFolders && workspaceFolders.length > 0) {
+      // Construct the path relative to the first workspace folder
+      return path.join(workspaceFolders[0].uri.fsPath, '.cursor', 'task_output.log');
+    }
+    // No workspace folder is open, cannot determine log path
+    commonLogger.warn("Cannot determine UI log path: No workspace folder open.");
+    return ""; // TODO: Handle this better
+  };
+  // ---------------------------------
 
   get storageUri() {
     return this._context.storageUri;

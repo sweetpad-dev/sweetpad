@@ -12,6 +12,7 @@ const isMinify = args.includes("--minify");
 const isSourcemap = args.includes("--sourcemap");
 const isProduction = args.includes("--production");
 
+// Read package.json using fs.readFileSync directly to avoid import assertions
 const packageJsonPath = path.resolve(process.cwd(), "package.json");
 const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
 const version = pkg.version;

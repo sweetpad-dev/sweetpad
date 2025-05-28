@@ -6,6 +6,9 @@ import type { ExtensionContext } from "./commands";
 import { getWorkspaceConfig } from "./config";
 import { TaskError } from "./errors";
 import { prepareEnvVars } from "./helpers";
+import { commonLogger } from "./logger";
+import * as fs from 'fs';
+import * as path from 'path';
 
 type TaskExecutor = "v1" | "v2";
 
@@ -123,13 +126,21 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   private writeEmitter = new vscode.EventEmitter<string>();
   private closeEmitter = new vscode.EventEmitter<number>();
   private process: ChildProcess | null = null;
+  private uiLogListenerDisposable: vscode.Disposable | undefined;
+
+  public context: ExtensionContext;
 
   constructor(
-    private context: ExtensionContext,
+    context: ExtensionContext,
     private options: {
       callback: (terminal: TaskTerminalV2) => Promise<void>;
     },
-  ) {}
+  ) {
+    this.context = context;
+    // --- ADD Listener in Constructor --- 
+    this.uiLogListenerDisposable = this.setupUiLogListener();
+    // -----------------------------------
+  }
 
   onDidWrite = this.writeEmitter.event;
   onDidClose = this.closeEmitter.event;
@@ -194,6 +205,9 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
    * This method you can call in your callback to execute a command in the terminal.
    */
   async execute(options: CommandOptions): Promise<void> {
+    //Clear the UI log file
+    fs.writeFileSync(this.context.UI_LOG_PATH(), "");
+
     const command = await this.createCommandLine(options);
 
     const args = cleanCommandArgs(options.args);
@@ -296,7 +310,12 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
   private closeTerminal(code: number, message: string, options?: TerminalWriteOptions): void {
     this.writeLine(message, options);
+    // --- Log the message to the UI log --- 
+    this.writeLine("Logging-Completion");
     this.writeLine();
+
+    // --- Fire the simple global event --- 
+    this.context.simpleTaskCompletionEmitter.fire();
     this.closeEmitter.fire(code);
   }
 
@@ -327,6 +346,31 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       return;
     }
     this.closeSuccessfully();
+  }
+
+  /**
+   * Sets up a listener to write terminal output to a UI log file
+   */
+  private setupUiLogListener(): vscode.Disposable | undefined {
+    try {
+        // Ensure directory exists synchronously for simplicity here
+        fs.mkdirSync(path.dirname(this.context.UI_LOG_PATH()), { recursive: true }); 
+        commonLogger.log(`Setting up onDidWrite listener to log to: ${this.context.UI_LOG_PATH()}`);
+        
+        return this.onDidWrite((output) => {
+            try {
+                // Append the exact output string (already formatted with CRLF)
+                fs.appendFileSync(this.context.UI_LOG_PATH(), output);
+            } catch (err: unknown) {
+                commonLogger.error(`Failed to write to UI log file: ${this.context.UI_LOG_PATH()}`, { err });
+                // Log error to console to avoid infinite loop if terminal write fails
+                console.error(`[TaskTerminalV2] Error writing to UI log: ${err}`); 
+            }
+        });
+    } catch (err: unknown) {
+         commonLogger.error(`Failed setup UI log listener/directory: ${this.context.UI_LOG_PATH()}`, { err });
+         return undefined;
+    }
   }
 }
 
