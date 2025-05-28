@@ -14,10 +14,14 @@ jobs:
   build-and-deploy:
     name: Convert and Deploy Documentation
     runs-on: ubuntu-latest
+    # These permissions are needed for GitHub Pages deployment
     permissions:
       contents: read
       pages: write
       id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     
     steps:
       - name: Checkout Source Code
@@ -35,6 +39,13 @@ jobs:
         uses: actions/configure-pages@v4
         with:
           enablement: true
+      
+      - name: Check GitHub Pages Status
+        run: |
+          echo "IMPORTANT: Before this workflow can succeed, you need to manually enable GitHub Pages in repository settings."
+          echo "Please go to https://github.com/maatheusgois-dd/sweetpad/settings/pages"
+          echo "Set the 'Source' to 'GitHub Actions' and save the changes."
+          echo "Then re-run this workflow."
       
       - name: Create docs directory
         run: mkdir -p _site
@@ -92,6 +103,7 @@ jobs:
           cp -r images/* _site/images/ 2>/dev/null || true
       
       - name: Upload Pages Artifact
+        id: pages-artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
