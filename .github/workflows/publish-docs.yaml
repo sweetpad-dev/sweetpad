@@ -33,6 +33,8 @@ jobs:
       
       - name: Setup Pages
         uses: actions/configure-pages@v4
+        with:
+          enablement: true
       
       - name: Create docs directory
         run: mkdir -p _site
