@@ -17,4 +17,4 @@ git push origin $VERSION
 
 # Step 5: Open GitHub Actions page
 echo "Opening GitHub Actions page..."
-echo "-> https://github.com/sweetpad-dev/sweetpad/actions"
+echo "-> https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/actions"

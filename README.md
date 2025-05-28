@@ -1,15 +1,15 @@
-# SweetPad (iOS/Swift development) <img valign="middle" alt="SweetPad logo" width="40" src="./images/logo.png" />
+# SweetPad DoorDash (iOS/Swift development) <img valign="middle" alt="" width="40" src="./images/logo.png" />
 
 📚 [Documentation](https://sweetpad.hyzyla.dev/) | 📦
 [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad) | 🐞
-[Github Issues](https://github.com/sweetpad-dev/sweetpad/issues) | 🏔️ [Roadmap](https://github.com/sweetpad-dev/sweetpad/blob/main/TODO.md)
+[Github Issues](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/issues) | 🏔️ [Roadmap](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/blob/main/TODO.md)
 
 <!-- [![Discord](https://img.shields.io/badge/SweetPad-Discord-blue?logo=discord&logoColor=white&link=https%3A%2F%2Fdiscord.gg%2FXZwRtQ5dew)](https://discord.gg/XZwRtQ5dew) -->
 
 <hr/>
 You can support this project by giving a star on GitHub ⭐️ or by becoming an official sponsor 💰
 
-[![GitHub](https://img.shields.io/github/stars/sweetpad-dev/sweetpad?style=social)](https://github.com/sweetpad-dev/sweetpad)
+[![GitHub](https://img.shields.io/github/stars/sweetpad-dev/sweetpad?style=social)](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad)
 [![Github Sponsors](https://img.shields.io/badge/Github%20Sponsors-%E2%9D%A4-red?style=flat&logo=github)](https://github.com/sponsors/sweetpad-dev)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee%20-%E2%9D%A4-red?style=flat&logo=buy-me-a-coffee&link=https%3A%2F%2Fgithub.com%2Fsponsors%2Fsweetpad-dev)](https://www.buymeacoffee.com/hyzyla)
 
@@ -48,7 +48,7 @@ tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcod
   
 
 > 💡 If you have any ideas, please open an issue or start a discussion on the
-> [SweetPad](https://github.com/sweetpad-dev/sweetpad) GitHub repository.
+> [SweetPad](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad) GitHub repository.
 
 ## Requirements
 
@@ -63,7 +63,7 @@ If you want to contribute to SweetPad or test changes locally, you can use the p
 
 ```bash
 # Clone the repository
-git clone https://github.com/sweetpad-dev/sweetpad.git
+git clone https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad.git
 cd sweetpad
 
 # Install dependencies

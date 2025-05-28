@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import type { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 
-const DEBUG_DOCUMENTATION_URL = "https://github.com/sweetpad-dev/sweetpad/blob/main/docs/wiki/debug.md";
+const DEBUG_DOCUMENTATION_URL = "https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/blob/main/docs/wiki/debug.md";
 
 /**
  * This function is deprecated. Previously we use "lldb" as the debugger type and

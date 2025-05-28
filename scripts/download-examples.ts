@@ -30,7 +30,7 @@ const repos: Repository[] = [
     folder: "tests/examples/sweetpad-demo-xcodegen",
   },
   {
-    url: "https://github.com/sweetpad-dev/sweetpad-multiproject.git",
+    url: "https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad-multiproject.git",
     hash: "dea36db3affd000e3893bb9f14805cb043565d09",
     folder: "tests/examples/sweetpad-multiproject",
   },

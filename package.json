@@ -9,7 +9,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sweetpad-dev/sweetpad.git"
+    "url": "https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad.git"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -262,7 +262,7 @@
       "activitybar": [
         {
           "id": "sweetpad-view",
-          "title": "SweetPad",
+          "title": "SweetPad Doordash",
           "icon": "images/logo-panel.png",
           "when": "sweetpad.enabled"
         }
@@ -1183,9 +1183,9 @@
     "vadimcn.vscode-lldb"
   ],
   "scripts": {
-    "build": "node esbuild.config.mjs --sourcemap",
-    "watch": "node esbuild.config.mjs --sourcemap --watch",
-    "vscode:prepublish": "node esbuild.config.mjs --minify --sourcemap --production",
+    "build": "export NODE_OPTIONS=--no-warnings && node esbuild.config.mjs --sourcemap",
+    "watch": "export NODE_OPTIONS=--no-warnings && node esbuild.config.mjs --sourcemap --watch",
+    "vscode:prepublish": "export NODE_OPTIONS=--no-warnings && node esbuild.config.mjs --minify --sourcemap --production",
     "test": "vscode-test",
     "jest": "jest",
     "check:format:code": "biome format --write",

@@ -4,14 +4,14 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 ## [0.1.67] - 2025-05-17
 
-- Add support for range formatting [#149](https://github.com/sweetpad-dev/sweetpad/pull/149)
-- Do not bring simulator to front after builds [#150](https://github.com/sweetpad-dev/sweetpad/pull/150) 
-- Add Status Items when running commands [#147](https://github.com/sweetpad-dev/sweetpad/pull/147)
-- Simulator Debugger stability improvements [#138](https://github.com/sweetpad-dev/sweetpad/pull/138)
+- Add support for range formatting [#149](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/pull/149)
+- Do not bring simulator to front after builds [#150](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/pull/150) 
+- Add Status Items when running commands [#147](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/pull/147)
+- Simulator Debugger stability improvements [#138](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/pull/138)
 
 ## [0.1.65] - 2025-04-27
 
-- Use swift-format from the Xcode toolchain by default [#136](https://github.com/sweetpad-dev/sweetpad/issues/136)
+- Use swift-format from the Xcode toolchain by default [#136](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/issues/136)
 
 ## [0.1.63-0.1.64] - 2025-04-27
 
@@ -27,8 +27,8 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 ## [0.1.57] - 2025-03-30
 
-- 🫵 Improve recent devices managment ([#130](https://github.com/sweetpad-dev/sweetpad/issues/130))
-- 👆 Make destination selection inline ([#128](https://github.com/sweetpad-dev/sweetpad/issues/128))
+- 🫵 Improve recent devices managment ([#130](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/issues/130))
+- 👆 Make destination selection inline ([#128](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/issues/128))
 
 ## [0.1.56] - 2025-03-09
 
@@ -126,7 +126,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 ## [0.1.35] - 2024-09-22
 
-- Update xcworkspace parsing to address issue [#30](https://github.com/sweetpad-dev/sweetpad/issues/30)
+- Update xcworkspace parsing to address issue [#30](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/issues/30)
 - Add problem matchers for build output. Thanks [Daniil Voidilov](https://github.com/dankinsoid) for the contribution.
 
 ## [0.1.34] - 2024-09-21
@@ -220,7 +220,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 - Add settings options for alternative formatter, like [swiftformat](https://github.com/nicklockwood/SwiftFormat).
   Thanks to [Rafael Pedretti](https://github.com/rafaelpedretti-toast) for the adding this feature.
-  [#8](https://github.com/sweetpad-dev/sweetpad/pull/8)
+  [#8](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/pull/8)
 
 ## [0.1.13] - 2024-05-12
 
@@ -229,7 +229,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 ## [0.1.12] - 2024-05-11
 
 - Add ability to attach debugger to running app. See
-  [documentation](https://github.com/sweetpad-dev/sweetpad/blob/main/docs/wiki/debug.md) for more details.
+  [documentation](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/blob/main/docs/wiki/debug.md) for more details.
 
 ## [0.1.11] - 2024-04-12
 

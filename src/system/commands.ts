@@ -9,7 +9,7 @@ export async function resetSweetpadCache(context: ExtensionContext) {
 }
 
 async function createIssue(options: { title: string; body: string; labels: string[] }) {
-  const url = new URL("https://github.com/sweetpad-dev/sweetpad/issues/new");
+  const url = new URL("https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/issues/new");
   url.searchParams.append("title", options.title);
   url.searchParams.append("body", options.body);
   url.searchParams.append("labels", options.labels.join(","));
