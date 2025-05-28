@@ -1,10 +1,11 @@
 import * as vscode from "vscode";
-import type { CommandExecution } from "../common/commands";
+import type { ExtensionContext } from "../common/commands";
 import { commonLogger } from "../common/logger";
 
-export async function resetSweetpadCache(execution: CommandExecution) {
-  execution.context.resetWorkspaceState();
-  vscode.window.showInformationMessage("Sweetpad cache has been reset");
+export async function resetSweetpadCache(context: ExtensionContext) {
+  context.updateProgressStatus("Resetting SweetPad cache");
+  context.resetWorkspaceState();
+  vscode.window.showInformationMessage("SweetPad cache has been reset");
 }
 
 async function createIssue(options: { title: string; body: string; labels: string[] }) {
@@ -16,9 +17,9 @@ async function createIssue(options: { title: string; body: string; labels: strin
   vscode.env.openExternal(vscode.Uri.parse(url.toString()));
 }
 
-export async function createIssueGenericCommand(execution: CommandExecution) {
+export async function createIssueGenericCommand(context: ExtensionContext) {
   await createIssue({
-    title: "Sweetpad issue",
+    title: "SweetPad issue",
     body: "Please describe your issue here",
     labels: ["bug"],
   });
@@ -28,7 +29,7 @@ export async function createIssueNoSchemesCommand() {
   const logs = commonLogger.lastFormatted(5);
   const logsBlock = `\`\`\`json\n${logs}\n\`\`\``;
   await createIssue({
-    title: "Sweetpad issue: No schemes",
+    title: "SweetPad issue: No schemes",
     body: `Please describe your issue here.\n\n\nLast logs:\n${logsBlock}`,
     labels: ["bug"],
   });
@@ -39,4 +40,8 @@ export async function testErrorReportingCommand() {
     contextKey: "Context value",
   });
   throw new Error("This is a test error");
+}
+
+export async function openTerminalPanel() {
+  vscode.window.terminals.at(-1)?.show();
 }

@@ -13,7 +13,7 @@ import {
   getIsXcodeBuildServerInstalled,
   getXcodeVersionInstalled,
 } from "../common/cli/scripts";
-import type { CommandExecution, ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
@@ -22,7 +22,9 @@ import { commonLogger } from "../common/logger";
 import { showInputBox } from "../common/quick-pick";
 import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
-import type { Destination, DestinationType } from "../destination/types";
+import type { Destination } from "../destination/types";
+import type { DeviceDestination } from "../devices/types";
+import type { SimulatorDestination } from "../simulators/types";
 import { getSimulatorByUdid } from "../simulators/utils";
 import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
 import {
@@ -41,8 +43,8 @@ import {
 } from "./utils";
 
 function writeWatchMarkers(terminal: TaskTerminal) {
-  terminal.write("🍭 Sweetpad: watch marker (start)\n");
-  terminal.write("🍩 Sweetpad: watch marker (end)\n\n");
+  terminal.write("🍭 SweetPad: watch marker (start)\n");
+  terminal.write("🍩 SweetPad: watch marker (end)\n\n");
 }
 
 async function ensureAppPathExists(appPath: string | undefined): Promise<string> {
@@ -69,6 +71,7 @@ export async function runOnMac(
     launchEnv: Record<string, string>;
   },
 ) {
+  context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToLaunch({
     scheme: options.scheme,
     configuration: options.configuration,
@@ -86,6 +89,7 @@ export async function runOnMac(
     writeWatchMarkers(terminal);
   }
 
+  context.updateProgressStatus(`Running "${options.scheme}" on Mac`);
   await terminal.execute({
     command: executablePath,
     env: options.launchEnv,
@@ -98,15 +102,19 @@ export async function runOniOSSimulator(
   terminal: TaskTerminal,
   options: {
     scheme: string;
-    simulatorId: string;
+    destination: SimulatorDestination;
     sdk: string;
     configuration: string;
     xcworkspace: string;
     watchMarker: boolean;
     launchArgs: string[];
     launchEnv: Record<string, string>;
+    debug: boolean;
   },
 ) {
+  const simulatorId = options.destination.udid;
+
+  context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToLaunch({
     scheme: options.scheme,
     configuration: options.configuration,
@@ -117,18 +125,21 @@ export async function runOniOSSimulator(
   const bundlerId = buildSettings.bundleIdentifier;
 
   // Open simulator
+  context.updateProgressStatus("Launching Simulator.app");
   await terminal.execute({
     command: "open",
-    args: ["-a", "Simulator"],
+    args: ["-g", "-a", "Simulator"],
   });
 
   // Get simulator with fresh state
+  context.updateProgressStatus(`Searching for simulator "${simulatorId}"`);
   const simulator = await getSimulatorByUdid(context, {
-    udid: options.simulatorId,
+    udid: simulatorId,
   });
 
   // Boot device
   if (!simulator.isBooted) {
+    context.updateProgressStatus(`Booting simulator "${simulator.name}"`);
     await terminal.execute({
       command: "xcrun",
       args: ["simctl", "boot", simulator.udid],
@@ -139,6 +150,7 @@ export async function runOniOSSimulator(
   }
 
   // Install app
+  context.updateProgressStatus(`Installing "${options.scheme}" on "${simulator.name}"`);
   await terminal.execute({
     command: "xcrun",
     args: ["simctl", "install", simulator.udid, appPath],
@@ -152,18 +164,24 @@ export async function runOniOSSimulator(
     writeWatchMarkers(terminal);
   }
 
+  const launchArgs = [
+    "simctl",
+    "launch",
+    "--console-pty",
+    // This instructs app to wait for the debugger to be attached before launching,
+    // ensuring you can debug issues happening early on.
+    ...(options.debug ? ["--wait-for-debugger"] : []),
+    "--terminate-running-process",
+    simulator.udid,
+    bundlerId,
+    ...options.launchArgs,
+  ];
+
   // Run app
+  context.updateProgressStatus(`Running "${options.scheme}" on "${simulator.name}"`);
   await terminal.execute({
     command: "xcrun",
-    args: [
-      "simctl",
-      "launch",
-      "--console-pty",
-      "--terminate-running-process",
-      simulator.udid,
-      bundlerId,
-      ...options.launchArgs,
-    ],
+    args: launchArgs,
     // should be prefixed with `SIMCTL_CHILD_` to pass to the child process
     env: Object.fromEntries(Object.entries(options.launchEnv).map(([key, value]) => [`SIMCTL_CHILD_${key}`, value])),
   });
@@ -175,8 +193,7 @@ export async function runOniOSDevice(
   option: {
     scheme: string;
     configuration: string;
-    destinationId: string;
-    destinationType: DestinationType;
+    destination: DeviceDestination;
     sdk: string;
     xcworkspace: string;
     watchMarker: boolean;
@@ -184,8 +201,10 @@ export async function runOniOSDevice(
     launchEnv: Record<string, string>;
   },
 ) {
-  const { scheme, configuration, destinationId: deviceId, destinationType } = option;
+  const { scheme, configuration, destination } = option;
+  const { udid: deviceId, type: destinationType, name: destinationName } = destination;
 
+  context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToLaunch({
     scheme: scheme,
     configuration: configuration,
@@ -197,6 +216,7 @@ export async function runOniOSDevice(
   const bundlerId = buildSettings.bundleIdentifier;
 
   // Install app on device
+  context.updateProgressStatus(`Installing "${scheme}" on "${destinationName}"`);
   await terminal.execute({
     command: "xcrun",
     args: ["devicectl", "device", "install", "app", "--device", deviceId, targetPath],
@@ -214,6 +234,7 @@ export async function runOniOSDevice(
     prefix: "json",
   });
 
+  context.updateProgressStatus("Extracting Xcode version");
   const xcodeVersion = await getXcodeVersionInstalled();
   const isConsoleOptionSupported = xcodeVersion.major >= 16;
 
@@ -221,27 +242,29 @@ export async function runOniOSDevice(
     writeWatchMarkers(terminal);
   }
 
+  // Prepare the launch arguments
+  const launchArgs = [
+    "devicectl",
+    "device",
+    "process",
+    "launch",
+    // Attaches the application to the console and waits for it to exit
+    isConsoleOptionSupported ? "--console" : null,
+    "--json-output",
+    jsonOuputPath.path,
+    // Terminates any already-running instances of the app prior to launch. Not supported on all platforms.
+    "--terminate-existing",
+    "--device",
+    deviceId,
+    bundlerId,
+    ...option.launchArgs,
+  ].filter((arg) => arg !== null); // Filter out null arguments
+
   // Launch app on device
+  context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
   await terminal.execute({
     command: "xcrun",
-    args: [
-      "devicectl",
-      "device",
-      "process",
-      "launch",
-      // Attaches the application to the console and waits for it to exit
-      isConsoleOptionSupported ? "--console" : null,
-      "--json-output",
-      jsonOuputPath.path,
-      // Launches the app in a suspended state, waiting for a debugger. (We want oposite)
-      // "--start-stopped",
-      // Terminates any already-running instances of the app prior to launch. Not supported on all platforms.
-      "--terminate-existing",
-      "--device",
-      deviceId,
-      bundlerId,
-      ...option.launchArgs,
-    ],
+    args: launchArgs,
     // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process
     env: Object.fromEntries(Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value])),
   });
@@ -321,6 +344,7 @@ class XcodeCommandBuilder {
     arg: string;
     value: string | "__NO_VALUE__";
   }[] = [];
+
   private buildSettings: { key: string; value: string }[] = [];
   private actions: string[] = [];
 
@@ -350,30 +374,8 @@ class XcodeCommandBuilder {
   }
 
   addAdditionalArgs(args: string[]) {
-    // Cases:
-    // ["-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
-    // ["xcodebuild", "-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
-    // ["ARG1=value1", "ARG2=value2", "ARG3", "ARG4=value4"]
-    // ["xcodebuild", "ARG1=value1", "ARG2=value2", "ARG3", "ARG4=value4"]
-    if (args.length === 0) {
-      return;
-    }
-
-    for (let i = 0; i < args.length; i++) {
-      const current = args[i];
-      const next = args[i + 1];
-      if (current && next && current.startsWith("-") && !next.startsWith("-")) {
-        this.parameters.push({
-          arg: current,
-          value: next,
-        });
-        i++;
-      } else if (current?.startsWith("-")) {
-        this.parameters.push({
-          arg: current,
-          value: this.NO_VALUE,
-        });
-      } else if (current?.includes("=")) {
+    for (const current of args) {
+      if (current.includes("=")) {
         const [arg, value] = current.split("=");
         this.buildSettings.push({
           key: arg,
@@ -461,6 +463,7 @@ export async function buildApp(
     shouldTest: boolean;
     xcworkspace: string;
     destinationRaw: string;
+    debug: boolean;
   },
 ) {
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
@@ -476,12 +479,76 @@ export async function buildApp(
   // ex: { "ARG1": "value1", "ARG2": null, "ARG3": "value3" }
   const env = getWorkspaceConfig("build.env") || {};
 
+  // Check if this is an SPM project
+  const isSPMProject = options.xcworkspace.endsWith("Package.swift");
+  
+  if (isSPMProject) {
+    // For SPM projects, we need to run xcodebuild from the package directory
+    const packageDir = path.dirname(options.xcworkspace);
+    const relativePath = path.relative(getWorkspacePath(), packageDir);
+    
+    context.updateProgressStatus(`Building SPM package "${options.scheme}"`);
+    
+    // Build the xcodebuild command for SPM
+    const xcodebuildArgs = [
+      "-scheme", options.scheme,
+      "-configuration", options.configuration,
+      "-destination", options.destinationRaw,
+    ];
+    
+    if (options.shouldClean) {
+      xcodebuildArgs.push("clean");
+    }
+    if (options.shouldBuild) {
+      xcodebuildArgs.push("build");
+    }
+    if (options.shouldTest) {
+      xcodebuildArgs.push("test");
+    }
+    
+    // Add additional args
+    xcodebuildArgs.push(...additionalArgs);
+    
+    let pipes: Command[] | undefined = undefined;
+    if (useXcbeatify) {
+      pipes = [{ command: "xcbeautify", args: [] }];
+    }
+    
+    // Execute the command in the package directory
+    await terminal.execute({
+      command: "sh",
+      args: ["-c", `cd "${packageDir}" && xcodebuild ${xcodebuildArgs.map(arg => `"${arg}"`).join(" ")}`],
+      pipes: pipes,
+      env: env,
+    });
+    
+    await restartSwiftLSP();
+    return;
+  }
+
+  // Original Xcode workspace logic
   const command = new XcodeCommandBuilder();
+  
   if (arch) {
     command.addBuildSettings("ARCHS", arch);
     command.addBuildSettings("VALID_ARCHS", arch);
     command.addBuildSettings("ONLY_ACTIVE_ARCH", "NO");
   }
+
+  // Add debug-specific build settings if in debug mode
+  if (options.debug) {
+    // This tells the compiler to generate debugging symbols and include them in the compiled binary.
+    // Without this, LLDB wont know how to match lines of code to machine instructions. This is normally
+    // set to YES on XCode debug builds, but forcing it here, ensures you'll always get them in
+    // sweetpad: debugging-launch
+    command.addBuildSettings("GCC_GENERATE_DEBUGGING_SYMBOLS", "YES");
+    // In Xcode, ONLY_ACTIVE_ARCH is a build setting that controls whether you compile for only the architecture
+    // of the machine (or simulator/device) you're currently targeting, or for all architectures listed in your
+    // project's ARCHS setting.
+    // It speeds up compile times, especially in Debug, because Xcode skips generating unused slices.
+    command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
+  }
+
   command.addParameters("-scheme", options.scheme);
   command.addParameters("-configuration", options.configuration);
   command.addParameters("-workspace", options.xcworkspace);
@@ -493,6 +560,7 @@ export async function buildApp(
   if (allowProvisioningUpdates) {
     command.addOption("-allowProvisioningUpdates");
   }
+
   if (options.shouldClean) {
     command.addAction("clean");
   }
@@ -509,6 +577,15 @@ export async function buildApp(
   if (useXcbeatify) {
     pipes = [{ command: "xcbeautify", args: [] }];
   }
+
+  if (options.shouldClean) {
+    context.updateProgressStatus(`Cleaning "${options.scheme}"`);
+  } else if (options.shouldBuild) {
+    context.updateProgressStatus(`Building "${options.scheme}"`);
+  } else if (options.shouldTest) {
+    context.updateProgressStatus(`Building "${options.scheme}"`);
+  }
+  
   await terminal.execute({
     command: commandParts[0],
     args: commandParts.slice(1),
@@ -522,13 +599,38 @@ export async function buildApp(
 /**
  * Build app without running
  */
-export async function buildCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  const scheme =
-    item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to build", xcworkspace: xcworkspace }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+export async function buildCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Starting build command");
+  return commonBuildCommand(context, item, { debug: false });
+}
 
+/**
+ * Build app in debug mode without running
+ */
+export async function debuggingBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Building the app (debug mode)");
+  return commonBuildCommand(context, item, { debug: true });
+}
+
+/**
+ * Build app without running
+ */
+async function commonBuildCommand(
+  context: ExtensionContext,
+  item: BuildTreeItem | undefined,
+  options: { debug: boolean },
+) {
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
+
+  context.updateProgressStatus("Searching for scheme");
+  const scheme =
+    item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to build", xcworkspace: xcworkspace }));
+
+  context.updateProgressStatus("Searching for configuration");
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+
+  context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
     configuration: configuration,
@@ -536,18 +638,19 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
     xcworkspace: xcworkspace,
   });
 
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  context.updateProgressStatus("Searching for destination");
+  const destination = await askDestinationToRunOn(context, buildSettings);
   const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
 
-  await runTask(execution.context, {
+  await runTask(context, {
     name: "Build",
     lock: "sweetpad.build",
     terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
-      await buildApp(execution.context, terminal, {
+      await buildApp(context, terminal, {
         scheme: scheme,
         sdk: sdk,
         configuration: configuration,
@@ -556,6 +659,7 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
         shouldTest: false,
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
+        debug: options.debug,
       });
     },
   });
@@ -564,14 +668,38 @@ export async function buildCommand(execution: CommandExecution, item?: BuildTree
 /**
  * Build and run application on the simulator or device
  */
-export async function launchCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+export async function launchCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  return commonLaunchCommand(context, item, { debug: false });
+}
 
+/**
+ * Builds and launches the application in debug mode
+ * This is a convenience wrapper around launchCommand that sets the debug flag
+ */
+export async function debuggingLaunchCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  return commonLaunchCommand(context, item, { debug: true });
+}
+
+/**
+ * Build and run application on the simulator or device
+ */
+async function commonLaunchCommand(
+  context: ExtensionContext,
+  item: BuildTreeItem | undefined,
+  options: { debug: boolean },
+) {
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
+
+  context.updateProgressStatus("Searching for scheme");
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+    (await askSchemeForBuild(context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
 
+  context.updateProgressStatus("Searching for configuration");
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+
+  context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
     configuration: configuration,
@@ -579,7 +707,9 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
     xcworkspace: xcworkspace,
   });
 
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  context.updateProgressStatus("Searching for destination");
+  const destination = await askDestinationToRunOn(context, buildSettings);
+
   const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
@@ -587,13 +717,13 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
   const launchArgs = getWorkspaceConfig("build.launchArgs") ?? [];
   const launchEnv = getWorkspaceConfig("build.launchEnv") ?? {};
 
-  await runTask(execution.context, {
-    name: "Launch",
+  await runTask(context, {
+    name: options.debug ? "Debug" : "Launch",
     lock: "sweetpad.build",
     terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
-      await buildApp(execution.context, terminal, {
+      await buildApp(context, terminal, {
         scheme: scheme,
         sdk: sdk,
         configuration: configuration,
@@ -602,10 +732,11 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         shouldTest: false,
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
+        debug: options.debug,
       });
 
       if (destination.type === "macOS") {
-        await runOnMac(execution.context, terminal, {
+        await runOnMac(context, terminal, {
           scheme: scheme,
           xcworkspace: xcworkspace,
           configuration: configuration,
@@ -619,15 +750,16 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         destination.type === "tvOSSimulator" ||
         destination.type === "visionOSSimulator"
       ) {
-        await runOniOSSimulator(execution.context, terminal, {
+        await runOniOSSimulator(context, terminal, {
           scheme: scheme,
-          simulatorId: destination.udid ?? "",
+          destination: destination,
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
           watchMarker: false,
           launchArgs: launchArgs,
           launchEnv: launchEnv,
+          debug: options.debug,
         });
       } else if (
         destination.type === "iOSDevice" ||
@@ -635,10 +767,9 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
         destination.type === "tvOSDevice" ||
         destination.type === "visionOSDevice"
       ) {
-        await runOniOSDevice(execution.context, terminal, {
+        await runOniOSDevice(context, terminal, {
           scheme: scheme,
-          destinationId: destination.udid,
-          destinationType: destination.type,
+          destination: destination,
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
@@ -656,14 +787,39 @@ export async function launchCommand(execution: CommandExecution, item?: BuildTre
 /**
  * Run application on the simulator or device without building
  */
-export async function runCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+export async function runCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Starting run command");
+  return commonRunCommand(context, item, { debug: false });
+}
 
+/**
+ * Run application on the simulator or device without building in debug mode
+ */
+export async function debuggingRunCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Starting debugging command");
+  return commonRunCommand(context, item, { debug: true });
+}
+
+/**
+ * Run application on the simulator or device without building
+ */
+async function commonRunCommand(
+  context: ExtensionContext,
+  item: BuildTreeItem | undefined,
+  options: { debug: boolean },
+) {
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
+
+  context.updateProgressStatus("Searching for scheme");
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+    (await askSchemeForBuild(context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
 
+  context.updateProgressStatus("Searching for configuration");
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+
+  context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
     configuration: configuration,
@@ -671,21 +827,22 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
     xcworkspace: xcworkspace,
   });
 
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  context.updateProgressStatus("Searching for destination");
+  const destination = await askDestinationToRunOn(context, buildSettings);
 
   const sdk = destination.platform;
 
   const launchArgs = getWorkspaceConfig("build.launchArgs") ?? [];
   const launchEnv = getWorkspaceConfig("build.launchEnv") ?? {};
 
-  await runTask(execution.context, {
+  await runTask(context, {
     name: "Run",
     lock: "sweetpad.build",
     terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
       if (destination.type === "macOS") {
-        await runOnMac(execution.context, terminal, {
+        await runOnMac(context, terminal, {
           scheme: scheme,
           xcworkspace: xcworkspace,
           configuration: configuration,
@@ -699,15 +856,16 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
         destination.type === "visionOSSimulator" ||
         destination.type === "tvOSSimulator"
       ) {
-        await runOniOSSimulator(execution.context, terminal, {
+        await runOniOSSimulator(context, terminal, {
           scheme: scheme,
-          simulatorId: destination.udid ?? "",
+          destination: destination,
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
           watchMarker: false,
           launchArgs: launchArgs,
           launchEnv: launchEnv,
+          debug: options.debug,
         });
       } else if (
         destination.type === "iOSDevice" ||
@@ -715,10 +873,9 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
         destination.type === "tvOSDevice" ||
         destination.type === "visionOSDevice"
       ) {
-        await runOniOSDevice(execution.context, terminal, {
+        await runOniOSDevice(context, terminal, {
           scheme: scheme,
-          destinationId: destination.udid,
-          destinationType: destination.type,
+          destination: destination,
           sdk: sdk,
           configuration: configuration,
           xcworkspace: xcworkspace,
@@ -736,13 +893,18 @@ export async function runCommand(execution: CommandExecution, item?: BuildTreeIt
 /**
  * Clean build artifacts
  */
-export async function cleanCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  const scheme =
-    item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to clean", xcworkspace: xcworkspace }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+export async function cleanCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
 
+  context.updateProgressStatus("Searching for scheme");
+  const scheme =
+    item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to clean", xcworkspace: xcworkspace }));
+
+  context.updateProgressStatus("Searching for configuration");
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+
+  context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
     configuration: configuration,
@@ -750,18 +912,19 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
     xcworkspace: xcworkspace,
   });
 
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  context.updateProgressStatus("Searching for destination");
+  const destination = await askDestinationToRunOn(context, buildSettings);
   const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
 
-  await runTask(execution.context, {
+  await runTask(context, {
     name: "Clean",
     lock: "sweetpad.build",
     terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
-      await buildApp(execution.context, terminal, {
+      await buildApp(context, terminal, {
         scheme: scheme,
         sdk: sdk,
         configuration: configuration,
@@ -770,18 +933,24 @@ export async function cleanCommand(execution: CommandExecution, item?: BuildTree
         shouldTest: false,
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
+        debug: false,
       });
     },
   });
 }
 
-export async function testCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  const scheme =
-    item?.scheme ??
-    (await askSchemeForBuild(execution.context, { title: "Select scheme to test", xcworkspace: xcworkspace }));
-  const configuration = await askConfiguration(execution.context, { xcworkspace: xcworkspace });
+export async function testCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
 
+  context.updateProgressStatus("Searching for scheme");
+  const scheme =
+    item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to test", xcworkspace: xcworkspace }));
+
+  context.updateProgressStatus("Searching for configuration");
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+
+  context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
     configuration: configuration,
@@ -789,18 +958,19 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
     xcworkspace: xcworkspace,
   });
 
-  const destination = await askDestinationToRunOn(execution.context, buildSettings);
+  context.updateProgressStatus("Searching for destination");
+  const destination = await askDestinationToRunOn(context, buildSettings);
   const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
   const sdk = destination.platform;
 
-  await runTask(execution.context, {
+  await runTask(context, {
     name: "Test",
     lock: "sweetpad.build",
     terminateLocked: true,
     problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
     callback: async (terminal) => {
-      await buildApp(execution.context, terminal, {
+      await buildApp(context, terminal, {
         scheme: scheme,
         sdk: sdk,
         configuration: configuration,
@@ -809,17 +979,37 @@ export async function testCommand(execution: CommandExecution, item?: BuildTreeI
         shouldTest: true,
         xcworkspace: xcworkspace,
         destinationRaw: destinationRaw,
+        debug: false,
       });
     },
   });
 }
 
-export async function resolveDependencies(context: ExtensionContext, options: { scheme: string; xcworkspace: string }) {
+export async function resolveDependencies(
+  context: ExtensionContext,
+  options: {
+    scheme: string;
+    xcworkspace: string;
+  },
+): Promise<void> {
+  context.updateProgressStatus("Resolving dependencies");
+
   await runTask(context, {
     name: "Resolve Dependencies",
     lock: "sweetpad.build",
     terminateLocked: true,
     callback: async (terminal) => {
+      // Handle SPM projects
+      if (options.xcworkspace.endsWith("Package.swift")) {
+        const packageDir = path.dirname(options.xcworkspace);
+        await terminal.execute({
+          command: "sh",
+          args: ["-c", `cd "${packageDir}" && swift package resolve`],
+        });
+        return;
+      }
+
+      // Original Xcode workspace logic
       await terminal.execute({
         command: "xcodebuild",
         args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],
@@ -831,17 +1021,19 @@ export async function resolveDependencies(context: ExtensionContext, options: { 
 /**
  * Resolve dependencies for the Xcode project
  */
-export async function resolveDependenciesCommand(execution: CommandExecution, item?: BuildTreeItem) {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+export async function resolveDependenciesCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
 
+  context.updateProgressStatus("Searching for scheme");
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, {
+    (await askSchemeForBuild(context, {
       title: "Select scheme to resolve dependencies",
       xcworkspace: xcworkspace,
     }));
 
-  await resolveDependencies(execution.context, {
+  await resolveDependencies(context, {
     scheme: scheme,
     xcworkspace: xcworkspace,
   });
@@ -852,8 +1044,9 @@ export async function resolveDependenciesCommand(execution: CommandExecution, it
  *
  * Context: we are storing build artifacts in the `build` directory in the storage path for support xcode-build-server.
  */
-export async function removeBundleDirCommand(execution: CommandExecution) {
-  const storagePath = await prepareStoragePath(execution.context);
+export async function removeBundleDirCommand(context: ExtensionContext) {
+  context.updateProgressStatus("Removing build artifacts directory");
+  const storagePath = await prepareStoragePath(context);
   const bundleDir = path.join(storagePath, "build");
 
   await removeDirectory(bundleDir);
@@ -864,40 +1057,48 @@ export async function removeBundleDirCommand(execution: CommandExecution) {
  * Generate buildServer.json in the workspace root for xcode-build-server —
  * a tool that enable LSP server to see packages from the Xcode project.
  */
-export async function generateBuildServerConfigCommand(execution: CommandExecution, item?: BuildTreeItem) {
+export async function generateBuildServerConfigCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Starting buildServer.json generation");
+
   const isServerInstalled = await getIsXcodeBuildServerInstalled();
   if (!isServerInstalled) {
     throw new ExtensionError("xcode-build-server is not installed");
   }
 
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
 
+  context.updateProgressStatus("Searching for scheme");
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(execution.context, {
+    (await askSchemeForBuild(context, {
       title: "Select scheme for build server",
       xcworkspace: xcworkspace,
     }));
+
+  context.updateProgressStatus("Generating buildServer.json");
   await generateBuildServerConfig({
     xcworkspace: xcworkspace,
     scheme: scheme,
   });
   await restartSwiftLSP();
 
-  const selected = await vscode.window.showInformationMessage("buildServer.json generated in workspace root", "Open");
-  if (selected === "Open") {
-    const workspacePath = getWorkspacePath();
-    const buildServerPath = vscode.Uri.file(path.join(workspacePath, "buildServer.json"));
-    await vscode.commands.executeCommand("vscode.open", buildServerPath);
-  }
+  vscode.window.showInformationMessage("buildServer.json generated in workspace root", "Open").then((selected) => {
+    if (selected === "Open") {
+      const workspacePath = getWorkspacePath();
+      const buildServerPath = vscode.Uri.file(path.join(workspacePath, "buildServer.json"));
+      vscode.commands.executeCommand("vscode.open", buildServerPath);
+    }
+  });
 }
 
 /**
  *
  * Open current project in Xcode
  */
-export async function openXcodeCommand(execution: CommandExecution) {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+export async function openXcodeCommand(context: ExtensionContext) {
+  context.updateProgressStatus("Opening project in Xcode");
+  const xcworkspace = await askXcodeWorkspacePath(context);
 
   await exec({
     command: "open",
@@ -908,7 +1109,8 @@ export async function openXcodeCommand(execution: CommandExecution) {
 /**
  * Select Xcode workspace and save it to the workspace state
  */
-export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
+export async function selectXcodeWorkspaceCommand(context: ExtensionContext) {
+  context.updateProgressStatus("Searching for workspace");
   const workspace = await selectXcodeWorkspace({
     autoselect: false,
   });
@@ -918,22 +1120,25 @@ export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
   if (updateAnswer) {
     const relative = getWorkspaceRelativePath(workspace);
     await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
-    execution.context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
+    context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
   } else {
-    execution.context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
+    context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
   }
 
-  execution.context.buildManager.refresh();
+  context.buildManager.refresh();
 }
 
-export async function selectXcodeSchemeForBuildCommand(execution: CommandExecution, item?: BuildTreeItem) {
+export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
   if (item) {
     item.provider.buildManager.setDefaultSchemeForBuild(item.scheme);
     return;
   }
 
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
-  await askSchemeForBuild(execution.context, {
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
+
+  context.updateProgressStatus("Searching for scheme");
+  await askSchemeForBuild(context, {
     title: "Select scheme to set as default",
     xcworkspace: xcworkspace,
     ignoreCache: true,
@@ -943,8 +1148,11 @@ export async function selectXcodeSchemeForBuildCommand(execution: CommandExecuti
 /**
  * Ask user to select configuration for build and save it to the build manager cache
  */
-export async function selectConfigurationForBuildCommand(execution: CommandExecution): Promise<void> {
-  const xcworkspace = await askXcodeWorkspacePath(execution.context);
+export async function selectConfigurationForBuildCommand(context: ExtensionContext): Promise<void> {
+  context.updateProgressStatus("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(context);
+
+  context.updateProgressStatus("Searching for configurations");
   const configurations = await getBuildConfigurations({
     xcworkspace: xcworkspace,
   });
@@ -968,14 +1176,14 @@ export async function selectConfigurationForBuildCommand(execution: CommandExecu
   });
   if (saveAnswer) {
     await updateWorkspaceConfig("build.configuration", selected);
-    execution.context.buildManager.setDefaultConfigurationForBuild(undefined);
+    context.buildManager.setDefaultConfigurationForBuild(undefined);
   } else {
-    execution.context.buildManager.setDefaultConfigurationForBuild(selected);
+    context.buildManager.setDefaultConfigurationForBuild(selected);
   }
 }
 
-export async function diagnoseBuildSetupCommand(execution: CommandExecution): Promise<void> {
-  const context = execution.context;
+export async function diagnoseBuildSetupCommand(context: ExtensionContext): Promise<void> {
+  context.updateProgressStatus("Diagnosing build setup");
 
   await runTask(context, {
     name: "Diagnose Build Setup",
@@ -994,7 +1202,7 @@ export async function diagnoseBuildSetupCommand(execution: CommandExecution): Pr
         }
       };
 
-      _write("Sweetpad: Diagnose Build Setup");
+      _write("SweetPad: Diagnose Build Setup");
       _write("================================");
 
       const hostPlatform = process.platform;

@@ -44,6 +44,11 @@ const repos: Repository[] = [
     hash: "4b59488af3766fd8735e15c6bf2e17f75707514d",
     folder: "tests/examples/terminal23",
   },
+  {
+    url: "https://github.com/maatheusgois-dd/sweetpad-spm.git",
+    hash: "f9807a6d3fd36a428caca48fb21c1bb13adeb1da",
+    folder: "tests/examples/sweetpad-spm",
+  },
 ];
 
 // Helper function to run shell commands using an array of arguments

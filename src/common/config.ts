@@ -2,7 +2,8 @@ import * as vscode from "vscode";
 
 type Config = {
   "format.path": string;
-  "format.args": string[];
+  "format.args": string[] | null;
+  "format.selectionArgs": string[] | null;
   "build.xcbeautifyEnabled": boolean;
   "build.xcodeWorkspacePath": string;
   "build.derivedDataPath": string;
@@ -16,6 +17,8 @@ type Config = {
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "system.enableSentry": boolean;
+  "system.autoRevealTerminal": boolean;
+  "system.showProgressStatusBar": boolean;
   "xcodegen.autogenerate": boolean;
   "xcodebuildserver.autogenerate": boolean;
   "tuist.autogenerate": boolean;

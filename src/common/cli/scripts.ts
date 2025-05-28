@@ -160,6 +160,60 @@ async function getBuildSettingsList(options: {
 }): Promise<XcodeBuildSettings[]> {
   const derivedDataPath = prepareDerivedDataPath();
 
+  // Handle SPM projects
+  if (options.xcworkspace.endsWith("Package.swift")) {
+    const packageDir = path.dirname(options.xcworkspace);
+    
+    const args = [
+      "-showBuildSettings",
+      "-scheme",
+      options.scheme,
+      "-configuration",
+      options.configuration,
+      ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
+      "-json",
+    ];
+
+    if (options.sdk !== undefined) {
+      args.push("-sdk", options.sdk);
+    }
+
+    const stdout = await exec({
+      command: "xcodebuild",
+      args: args,
+      cwd: packageDir,
+    });
+
+    // Parse the output same as before
+    const lines = stdout.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line) {
+        commonLogger.warn("Empty line in build settings output", {
+          stdout: stdout,
+          index: i,
+        });
+        continue;
+      }
+
+      if (line.startsWith("{") || line.startsWith("[")) {
+        const data = lines.slice(i).join("\n");
+        const output = JSON.parse(data) as BuildSettingsOutput;
+        if (output.length === 0) {
+          return [];
+        }
+        return output.map((output) => {
+          return new XcodeBuildSettings({
+            settings: output.buildSettings,
+            target: output.target,
+          });
+        });
+      }
+    }
+    return [];
+  }
+
+  // Original Xcode workspace logic
   const args = [
     "-showBuildSettings",
     "-scheme",
@@ -323,6 +377,19 @@ export async function getIsXcodeBuildServerInstalled() {
 
 export const getBasicProjectInfo = cache(
   async (options: { xcworkspace: string | undefined }): Promise<XcodebuildListOutput> => {
+    // Handle SPM projects
+    if (options.xcworkspace?.endsWith("Package.swift")) {
+      // For SPM projects, we create a mock workspace output since SPM doesn't have traditional schemes
+      // The schemes will be handled by the getSchemes function
+      return {
+        type: "workspace",
+        workspace: {
+          name: path.basename(path.dirname(options.xcworkspace)),
+          schemes: [], // Will be populated by getSchemes function
+        },
+      } as XcodebuildListWorkspaceOutput;
+    }
+
     const stdout = await exec({
       command: "xcodebuild",
       args: ["-list", "-json", ...(options?.xcworkspace ? ["-workspace", options?.xcworkspace] : [])],
@@ -342,6 +409,55 @@ export const getBasicProjectInfo = cache(
 );
 
 export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
+  // Handle SPM projects
+  if (options.xcworkspace?.endsWith("Package.swift")) {
+    try {
+      // For SPM projects, we need to get the package info to extract targets
+      const packageDir = path.dirname(options.xcworkspace);
+      const stdout = await exec({
+        command: "swift",
+        args: ["package", "dump-package"],
+        cwd: packageDir,
+      });
+      const packageInfo = JSON.parse(stdout);
+      
+      // Use a Set to avoid duplicates
+      const schemeNames = new Set<string>();
+      
+      // First, add products as schemes (these are the main buildable targets)
+      if (packageInfo.products) {
+        for (const product of packageInfo.products) {
+          if (product.type?.executable || product.type?.library) {
+            schemeNames.add(product.name);
+          }
+        }
+      }
+      
+      // Then, add executable targets that aren't already covered by products
+      if (packageInfo.targets) {
+        for (const target of packageInfo.targets) {
+          if (target.type === "executable" && !schemeNames.has(target.name)) {
+            schemeNames.add(target.name);
+          }
+        }
+      }
+      
+      // If no schemes found, try to use the package name
+      if (schemeNames.size === 0 && packageInfo.name) {
+        schemeNames.add(packageInfo.name);
+      }
+      
+      // Convert Set to array of XcodeScheme objects
+      return Array.from(schemeNames).map(name => ({ name }));
+    } catch (error) {
+      commonLogger.error("Failed to get SPM package info, falling back to xcodebuild", {
+        error: error,
+        packagePath: options.xcworkspace,
+      });
+      // Fall back to xcodebuild approach
+    }
+  }
+
   const output = await getBasicProjectInfo({
     xcworkspace: options?.xcworkspace,
   });
@@ -363,6 +479,36 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
 }
 
 export async function getTargets(options: { xcworkspace: string }): Promise<string[]> {
+  // Handle SPM projects
+  if (options.xcworkspace.endsWith("Package.swift")) {
+    try {
+      const packageDir = path.dirname(options.xcworkspace);
+      const stdout = await exec({
+        command: "swift",
+        args: ["package", "dump-package"],
+        cwd: packageDir,
+      });
+      const packageInfo = JSON.parse(stdout);
+      
+      const targets: string[] = [];
+      
+      // Add all targets
+      if (packageInfo.targets) {
+        for (const target of packageInfo.targets) {
+          targets.push(target.name);
+        }
+      }
+      
+      return targets;
+    } catch (error) {
+      commonLogger.error("Failed to get SPM targets", {
+        error: error,
+        packagePath: options.xcworkspace,
+      });
+      return [];
+    }
+  }
+
   const output = await getBasicProjectInfo({
     xcworkspace: options.xcworkspace,
   });
@@ -378,6 +524,15 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
 }
 
 export async function getBuildConfigurations(options: { xcworkspace: string }): Promise<XcodeConfiguration[]> {
+  // Handle SPM projects
+  if (options.xcworkspace.endsWith("Package.swift")) {
+    // SPM projects typically use Debug and Release configurations
+    return [
+      { name: "Debug" },
+      { name: "Release" },
+    ];
+  }
+
   const output = await getBasicProjectInfo({
     xcworkspace: options.xcworkspace,
   });
@@ -418,6 +573,17 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
  * Generate xcode-build-server config
  */
 export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
+  // Handle SPM projects
+  if (options.xcworkspace.endsWith("Package.swift")) {
+    const packageDir = path.dirname(options.xcworkspace);
+    await exec({
+      command: "xcode-build-server",
+      args: ["config", "-scheme", options.scheme],
+      cwd: packageDir,
+    });
+    return;
+  }
+
   await exec({
     command: "xcode-build-server",
     args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme],
@@ -500,8 +666,8 @@ export async function getXcodeVersionInstalled(): Promise<{
   // Xcode 16.0
   // Build version 16A242d
   const stdout = await exec({
-    command: "xcodebuild",
-    args: ["-version"],
+    command: "xcrun",
+    args: ["xcodebuild", "-version"],
   });
 
   const versionMatch = stdout.match(/Xcode (\d+)\./);

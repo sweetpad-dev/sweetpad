@@ -2,6 +2,25 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.67] - 2025-05-17
+
+- Add support for range formatting [#149](https://github.com/sweetpad-dev/sweetpad/pull/149)
+- Do not bring simulator to front after builds [#150](https://github.com/sweetpad-dev/sweetpad/pull/150) 
+- Add Status Items when running commands [#147](https://github.com/sweetpad-dev/sweetpad/pull/147)
+- Simulator Debugger stability improvements [#138](https://github.com/sweetpad-dev/sweetpad/pull/138)
+
+## [0.1.65] - 2025-04-27
+
+- Use swift-format from the Xcode toolchain by default [#136](https://github.com/sweetpad-dev/sweetpad/issues/136)
+
+## [0.1.63-0.1.64] - 2025-04-27
+
+- Better resolve debug configuration
+
+## [0.1.61-0.1.62] - 2025-04-24
+
+- (_just technical release_)
+
 ## [0.1.60] - 2025-04-23
 
 - Improve select build configuration
