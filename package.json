@@ -272,7 +272,7 @@
       "sweetpad-view": [
         {
           "id": "sweetpad.view.workspaces",
-          "name": "WORKSPACES",
+          "name": "BUILDS",
           "visibility": "visible"
         },
         {

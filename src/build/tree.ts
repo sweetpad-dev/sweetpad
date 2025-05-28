@@ -7,6 +7,8 @@ import type { BuildManager } from "./manager";
 import { getCurrentXcodeWorkspacePath, getWorkspacePath } from "./utils";
 import { detectXcodeWorkspacesPaths } from "./utils";
 import { ExtensionError } from "../common/errors";
+import * as fs from "node:fs/promises";
+import type { Dirent } from "node:fs";
 
 type WorkspaceEventData = WorkspaceGroupTreeItem | undefined | null;
 type BuildEventData = BuildTreeItem | undefined | null;
@@ -14,8 +16,9 @@ type BuildEventData = BuildTreeItem | undefined | null;
 export class WorkspaceGroupTreeItem extends vscode.TreeItem {
   public provider: WorkspaceTreeProvider;
   public workspacePath: string;
+  public isRecent: boolean;
 
-  constructor(options: { workspacePath: string; provider: WorkspaceTreeProvider }) {
+  constructor(options: { workspacePath: string; provider: WorkspaceTreeProvider; isRecent?: boolean }) {
     // Extract just the xcodeproj name from the full path
     const match = options.workspacePath.match(/([^/]+)\.xcodeproj/);
     
@@ -53,6 +56,7 @@ export class WorkspaceGroupTreeItem extends vscode.TreeItem {
 
     this.workspacePath = options.workspacePath;
     this.provider = options.provider;
+    this.isRecent = !!options.isRecent;
 
     let description = "";
     let color: vscode.ThemeColor;
@@ -97,6 +101,36 @@ export class WorkspaceGroupTreeItem extends vscode.TreeItem {
   }
 }
 
+// Section header for grouping workspaces
+export class WorkspaceSectionTreeItem extends vscode.TreeItem {
+  public readonly workspaces: WorkspaceGroupTreeItem[];
+  public readonly sectionType: string;
+  
+  constructor(sectionType: string, workspaces: WorkspaceGroupTreeItem[]) {
+    // Format the section title with first letter capitalized and make it plural
+    const label = sectionType.charAt(0).toUpperCase() + sectionType.slice(1) + (sectionType === "recent" ? "s" : "s");
+    
+    // Make sections collapsible and expanded by default
+    super(label, vscode.TreeItemCollapsibleState.Expanded);
+    
+    this.workspaces = workspaces;
+    this.sectionType = sectionType;
+    this.contextValue = "workspace-section";
+    
+    // Use an appropriate icon based on section type
+    if (sectionType === "recent") {
+      this.iconPath = new vscode.ThemeIcon("history");
+    } else if (sectionType === "workspace") {
+      this.iconPath = new vscode.ThemeIcon("multiple-windows");
+    } else if (sectionType === "project") {
+      this.iconPath = new vscode.ThemeIcon("package");
+    } else if (sectionType === "package") {
+      this.iconPath = new vscode.ThemeIcon("extensions");
+    } else {
+      this.iconPath = new vscode.ThemeIcon("folder");
+    }
+  }
+}
 
 export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<WorkspaceEventData>();
@@ -107,6 +141,11 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   public defaultWorkspacePath: string | undefined;
   public defaultSchemeForBuild: string | undefined;
   public defaultSchemeForTesting: string | undefined;
+  private workspaces: WorkspaceGroupTreeItem[] = [];
+  private recentWorkspaces: WorkspaceGroupTreeItem[] = [];
+  private isLoadingWorkspaces: boolean = false;
+  private readonly MAX_RECENT_ITEMS = 5;
+  private recentWorkspacesStorage: string[] = [];
 
   constructor(options: { context: ExtensionContext; buildManager: BuildManager}) {
     this.context = options.context;
@@ -118,6 +157,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     });
     this.buildManager.on("currentWorkspacePathUpdated", (workspacePath) => {
       this.defaultWorkspacePath = workspacePath;
+      if (workspacePath) {
+        this.addToRecentWorkspaces(workspacePath);
+      }
       this.buildManager.clearSchemesCache();
       this.buildManager.refresh();
       this.refresh();
@@ -132,6 +174,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     });
     this.defaultSchemeForBuild = this.buildManager.getDefaultSchemeForBuild();
     this.defaultSchemeForTesting = this.buildManager.getDefaultSchemeForTesting();
+
+    // Initial workspace loading
+    this.loadWorkspacesStreamingly();
   }
 
   private refresh(): void {
@@ -139,60 +184,308 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     this.getChildren();
   }
 
-  async getChildren(element?: WorkspaceGroupTreeItem | BuildTreeItem): Promise<vscode.TreeItem[]> {
-    // Root level - show all workspaces
-    if (!element) {
-      try {
-        const workspaces = await this.getWorkspacePaths();
-        if (workspaces.length === 0) {
-          void vscode.commands.executeCommand("setContext", "sweetpad.workspaces.noWorkspaces", true);
-          return [];
+  // Add a workspace to recents
+  private addToRecentWorkspaces(workspacePath: string): void {
+    // Remove if already exists to avoid duplicates
+    this.recentWorkspacesStorage = this.recentWorkspacesStorage.filter(path => path !== workspacePath);
+    
+    // Add to the front of the array
+    this.recentWorkspacesStorage.unshift(workspacePath);
+    
+    // Keep only the most recent MAX_RECENT_ITEMS
+    this.recentWorkspacesStorage = this.recentWorkspacesStorage.slice(0, this.MAX_RECENT_ITEMS);
+    
+    // Update our instance variable with tree items
+    this.recentWorkspaces = this.recentWorkspacesStorage.map(path => 
+      new WorkspaceGroupTreeItem({
+        workspacePath: path,
+        provider: this,
+        isRecent: true
+      })
+    );
+  }
+
+  // Add a workspace to the tree and refresh the UI immediately
+  private addWorkspace(workspacePath: string): void {
+    // Check for duplicates - don't add if already exists
+    if (this.workspaces.some(w => w.workspacePath === workspacePath)) {
+      return;
+    }
+    
+    const workspaceItem = new WorkspaceGroupTreeItem({
+      workspacePath: workspacePath,
+      provider: this,
+    });
+    
+    this.workspaces.push(workspaceItem);
+    
+    // Sort workspaces by type and name
+    this.sortWorkspaces();
+    
+    // Notify UI to refresh
+    this._onDidChangeTreeData.fire(undefined);
+    
+    // If this is the current workspace, add it to recents
+    if (workspacePath === this.defaultWorkspacePath) {
+      this.addToRecentWorkspaces(workspacePath);
+    }
+  }
+  
+  // Sort workspaces by type (workspace, project, package) and then by name
+  private sortWorkspaces(): void {
+    this.workspaces.sort((a, b) => {
+      // Define the category order
+      const getCategory = (item: WorkspaceGroupTreeItem): number => {
+        const path = item.workspacePath;
+        if (path.endsWith(".xcworkspace") || path.includes(".xcworkspace/")) {
+          return 1; // Workspaces first
+        } else if (path.endsWith(".xcodeproj") || path.includes(".xcodeproj/")) {
+          return 2; // Projects second
+        } else if (path.endsWith("Package.swift")) {
+          return 3; // Packages last
         }
-        void vscode.commands.executeCommand("setContext", "sweetpad.workspaces.noWorkspaces", false);
-        return workspaces;
-      } catch (error) {
-        commonLogger.error("Failed to get workspaces", { error });
-        void vscode.commands.executeCommand("setContext", "sweetpad.workspaces.noWorkspaces", true);
-        return [];
+        return 4; // Other files (should not happen)
+      };
+      
+      // Get categories for comparison
+      const catA = getCategory(a);
+      const catB = getCategory(b);
+      
+      // First sort by category
+      if (catA !== catB) {
+        return catA - catB;
+      }
+      
+      // Then sort alphabetically by display name
+      // Extract display names from paths for better sorting
+      const getDisplayName = (item: WorkspaceGroupTreeItem): string => {
+        const filePath = item.workspacePath;
+        
+        if (path.basename(filePath) === "Package.swift") {
+          return path.basename(path.dirname(filePath)).toLowerCase();
+        }
+        
+        // For Xcode projects and workspaces, extract the project name
+        const xcodeMatch = filePath.match(/([^/]+)\.(xcodeproj|xcworkspace)/);
+        if (xcodeMatch) {
+          return xcodeMatch[1].toLowerCase();
+        }
+        
+        return path.basename(filePath).toLowerCase();
+      };
+      
+      return getDisplayName(a).localeCompare(getDisplayName(b));
+    });
+  }
+
+  // Helper to get the category of a workspace
+  private getWorkspaceCategory(workspacePath: string): string {
+    if (workspacePath.endsWith(".xcworkspace") || workspacePath.includes(".xcworkspace/")) {
+      return "workspace";
+    } else if (workspacePath.endsWith(".xcodeproj") || workspacePath.includes(".xcodeproj/")) {
+      return "project";
+    } else if (workspacePath.endsWith("Package.swift")) {
+      return "package";
+    }
+    return "other";
+  }
+
+  // Group workspaces by type into collapsible sections
+  private getSectionedWorkspaces(): WorkspaceSectionTreeItem[] {
+    // Make sure workspaces are sorted
+    this.sortWorkspaces();
+
+    // Group by category
+    const workspacesByCategory = new Map<string, WorkspaceGroupTreeItem[]>();
+    
+    // Add recents section if we have any
+    if (this.recentWorkspaces.length > 0) {
+      workspacesByCategory.set("recent", [...this.recentWorkspaces]);
+    }
+    
+    // Process regular workspaces
+    for (const workspace of this.workspaces) {
+      const category = this.getWorkspaceCategory(workspace.workspacePath);
+      
+      if (!workspacesByCategory.has(category)) {
+        workspacesByCategory.set(category, []);
+      }
+      
+      workspacesByCategory.get(category)?.push(workspace);
+    }
+    
+    // Create section items for each category
+    const sections: WorkspaceSectionTreeItem[] = [];
+    
+    // Define the order we want categories to appear
+    const categoryOrder = ["recent", "workspace", "project", "package", "other"];
+    
+    for (const category of categoryOrder) {
+      const workspaces = workspacesByCategory.get(category);
+      if (workspaces && workspaces.length > 0) {
+        sections.push(new WorkspaceSectionTreeItem(category, workspaces));
       }
     }
+    
+    return sections;
+  }
 
+  // Load workspaces with streaming updates to the UI
+  private async loadWorkspacesStreamingly(): Promise<void> {
+    if (this.isLoadingWorkspaces) {
+      return; // Prevent multiple concurrent loading sessions
+    }
+    
+    this.isLoadingWorkspaces = true;
+    this.workspaces = []; // Reset workspaces list
+    
+    try {
+      // First check if we have cached workspaces from previous sessions
+      if (this.context) {
+        const cachedWorkspacePath = getCurrentXcodeWorkspacePath(this.context);
+        if (cachedWorkspacePath) {
+          this.addWorkspace(cachedWorkspacePath);
+        }
+      }
+      
+      // Start streaming search for workspaces without awaiting completion
+      this.streamingWorkspaceSearch();
+      
+      // Update context variable for welcome screen
+      void vscode.commands.executeCommand(
+        "setContext", 
+        "sweetpad.workspaces.noWorkspaces", 
+        this.workspaces.length === 0
+      );
+    } catch (error) {
+      commonLogger.error("Failed to load workspaces", { error });
+      void vscode.commands.executeCommand("setContext", "sweetpad.workspaces.noWorkspaces", true);
+      this.isLoadingWorkspaces = false;
+    }
+  }
+
+  // Perform workspace search with incremental updates
+  private async streamingWorkspaceSearch(): Promise<void> {
+    const workspace = getWorkspacePath();
+    
+    try {
+      // Start searching for Package.swift files
+      this.findFilesIncrementally({
+        directory: workspace,
+        depth: 4,
+        matcher: (file) => file.name === "Package.swift",
+        processFile: (filePath) => this.addWorkspace(filePath)
+      });
+      
+      // Start searching for xcworkspace files
+      this.findFilesIncrementally({
+        directory: workspace,
+        depth: 4,
+        matcher: (file) => file.name.endsWith("project.xcworkspace"),
+        processFile: (filePath) => this.addWorkspace(filePath)
+      });
+      
+      // Set a timeout to mark loading as complete after a reasonable time
+      // This ensures the loading indicator eventually disappears even if some
+      // directory operations are slow or fail silently
+      setTimeout(() => {
+        if (this.isLoadingWorkspaces) {
+          this.isLoadingWorkspaces = false;
+          this._onDidChangeTreeData.fire(undefined);
+        }
+      }, 10000); // 10 seconds timeout
+    } catch (error) {
+      commonLogger.error("Error in workspace search", { error });
+      this.isLoadingWorkspaces = false;
+      this._onDidChangeTreeData.fire(undefined);
+    }
+  }
+
+  // Helper method to incrementally find and process files
+  private async findFilesIncrementally(options: {
+    directory: string,
+    matcher: (file: Dirent) => boolean,
+    processFile: (filePath: string) => void,
+    ignore?: string[],
+    depth?: number
+  }): Promise<void> {
+    const ignore = options.ignore ?? [];
+    const depth = options.depth ?? 0;
+    
+    try {
+      const files = await fs.readdir(options.directory, { withFileTypes: true });
+      
+      // Process matching files immediately
+      for (const file of files) {
+        const fullPath = path.join(options.directory, file.name);
+        
+        if (options.matcher(file)) {
+          options.processFile(fullPath);
+        }
+        
+        // Queue up directory searches to run in parallel
+        if (file.isDirectory() && !ignore.includes(file.name) && depth > 0) {
+          void this.findFilesIncrementally({
+            directory: fullPath,
+            matcher: options.matcher,
+            processFile: options.processFile,
+            ignore: options.ignore,
+            depth: depth - 1
+          });
+        }
+      }
+    } catch (error) {
+      commonLogger.error(`Error searching directory: ${options.directory}`, { error });
+    }
+  }
+
+  async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+    // Start loading if needed
+    if (this.workspaces.length === 0 && !this.isLoadingWorkspaces && !element) {
+      this.loadWorkspacesStreamingly();
+    }
+    
+    // Root level - show sections
+    if (!element) {
+      const sections = this.getSectionedWorkspaces();
+      
+      // Add a loading indicator if we're still searching
+      const results: vscode.TreeItem[] = [...sections];
+      if (this.isLoadingWorkspaces) {
+        results.push(new vscode.TreeItem("Searching for more workspaces...", vscode.TreeItemCollapsibleState.None));
+      }
+      
+      void vscode.commands.executeCommand(
+        "setContext", 
+        "sweetpad.workspaces.noWorkspaces", 
+        this.workspaces.length === 0
+      );
+      
+      return results;
+    }
+    
+    // For section items, return their workspaces
+    if (element instanceof WorkspaceSectionTreeItem) {
+      return element.workspaces;
+    }
+
+    // For workspace items, return schemes
     if (element instanceof WorkspaceGroupTreeItem) {
-
-      const schemes = await this.getSchemes();
-
-      return schemes;
+      return await this.getSchemes();
     }
 
     return [];
   }
-
-  async getTreeItem(element: WorkspaceGroupTreeItem): Promise<WorkspaceGroupTreeItem> {
+  
+  async getTreeItem(element: vscode.TreeItem): Promise<vscode.TreeItem> {
     return element;
   }
 
   async getWorkspacePaths(): Promise<WorkspaceGroupTreeItem[]> {
-    // Get all files that end with .xcworkspace (4 depth)
-    const paths: string[] = await detectXcodeWorkspacesPaths();
-
-    // No files, nothing to do
-    if (paths.length === 0) {
-      throw new ExtensionError("No xcode workspaces found", {
-        context: {
-          cwd: getWorkspacePath(),
-        },
-      });
+    if (this.workspaces.length === 0 && !this.isLoadingWorkspaces) {
+      await this.loadWorkspacesStreamingly();
     }
-
-    // return list of workspace paths with just the xcodeproj name
-    return paths.map(
-      (workspacePath) => {
-        return new WorkspaceGroupTreeItem({
-          workspacePath: workspacePath,
-          provider: this,
-        });
-      },
-    );
+    return this.workspaces;
   }
 
   async getSchemes(): Promise<BuildTreeItem[]> {
@@ -252,77 +545,3 @@ export class BuildTreeItem extends vscode.TreeItem {
     }
   }
 }
-// export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem> {
-//   private _onDidChangeTreeData = new vscode.EventEmitter<BuildEventData>();
-//   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-//   public context: ExtensionContext | undefined;
-//   public buildManager: BuildManager;
-//   public defaultSchemeForBuild: string | undefined;
-//   public defaultSchemeForTesting: string | undefined;
-
-//   constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
-//     this.context = options.context;
-//     this.buildManager = options.buildManager;
-//     this.buildManager.on("updated", () => {
-//       this.refresh();
-//     });
-//     this.buildManager.on("currentWorkspacePathUpdated", (workspacePath) => {
-//       this.refresh();
-//     });
-//     this.buildManager.on("defaultSchemeForBuildUpdated", (scheme) => {
-//       this.defaultSchemeForBuild = scheme;
-//       this.refresh();
-//     });
-//     this.buildManager.on("defaultSchemeForTestingUpdated", (scheme) => {
-//       this.defaultSchemeForTesting = scheme;
-//       this.refresh();
-//     });
-//     this.defaultSchemeForBuild = this.buildManager.getDefaultSchemeForBuild();
-//     this.defaultSchemeForTesting = this.buildManager.getDefaultSchemeForTesting();
-//   }
-
-//   private refresh(): void {
-//     this._onDidChangeTreeData.fire(null);
-//   }
-
-//   async getChildren(element?: BuildTreeItem | undefined): Promise<BuildTreeItem[]> {
-//     // get elements only for root
-//     if (!element) {
-//       const schemes = await this.getSchemes();
-//       return schemes;
-//     }
-
-//     return [];
-//   }
-
-//   async getTreeItem(element: BuildTreeItem): Promise<BuildTreeItem> {
-//     return element;
-//   }
-
-//   async getSchemes(): Promise<BuildTreeItem[]> {
-//     let schemes: XcodeScheme[] = [];
-//     try {
-//       schemes = await this.buildManager.getSchemas();
-//     } catch (error) {
-//       commonLogger.error("Failed to get schemes", {
-//         error: error,
-//       });
-//     }
-
-//     if (schemes.length === 0) {
-//       // Display welcome screen with explanation what to do.
-//       // See "viewsWelcome": [ {"view": "sweetpad.build.view", ...} ] in package.json
-//       vscode.commands.executeCommand("setContext", "sweetpad.build.noSchemes", true);
-//     }
-
-//     // return list of schemes
-//     return schemes.map(
-//       (scheme) =>
-//         new BuildTreeItem({
-//           scheme: scheme.name,
-//           collapsibleState: vscode.TreeItemCollapsibleState.None,
-//           provider: this.provider,
-//         }),
-//     );
-//   }
-// }
