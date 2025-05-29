@@ -5,7 +5,7 @@ This guide explains how to install and debug the extension on your local machine
 1. Clone the repository:
 
 ```shell
-git clone git@github.com:sweetpad-dev/sweetpad.git
+git clone git@github.com:KayodeOgundimu-DoorDashSWE/sweetpad.git
 ```
 
 2. Go to the extension directory:

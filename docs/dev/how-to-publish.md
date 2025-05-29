@@ -15,4 +15,4 @@ npm run publish-patch
 ```
 
 3. Check publishing status on github actions page:
- - https://github.com/sweetpad-dev/sweetpad/actions
+ - https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad/actions

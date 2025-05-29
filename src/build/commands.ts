@@ -1,6 +1,6 @@
 import path from "node:path";
 import * as vscode from "vscode";
-import type { BuildTreeItem } from "./tree";
+import type { BuildTreeItem, WorkspaceGroupTreeItem } from "./tree";
 
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import {
@@ -72,6 +72,9 @@ export async function runOnMac(
   },
 ) {
   context.updateProgressStatus("Extracting build settings");
+  vscode.window.showInformationMessage(`Running application on macOS...`);
+  terminal.write("Preparing to execute runOnMac command...\n");
+  
   const buildSettings = await getBuildSettingsToLaunch({
     scheme: options.scheme,
     configuration: options.configuration,
@@ -115,6 +118,9 @@ export async function runOniOSSimulator(
   const simulatorId = options.destination.udid;
 
   context.updateProgressStatus("Extracting build settings");
+  vscode.window.showInformationMessage(`Running application on iOS Simulator...`);
+  terminal.write("Preparing to execute runOniOSSimulator command...\n");
+  
   const buildSettings = await getBuildSettingsToLaunch({
     scheme: options.scheme,
     configuration: options.configuration,
@@ -203,6 +209,9 @@ export async function runOniOSDevice(
 ) {
   const { scheme, configuration, destination } = option;
   const { udid: deviceId, type: destinationType, name: destinationName } = destination;
+
+  vscode.window.showInformationMessage(`Running application on iOS device...`);
+  terminal.write("Preparing to execute runOniOSDevice command...\n");
 
   context.updateProgressStatus("Extracting build settings");
   const buildSettings = await getBuildSettingsToLaunch({
@@ -466,6 +475,8 @@ export async function buildApp(
     debug: boolean;
   },
 ) {
+  vscode.window.showInformationMessage(`Building app for scheme: ${options.scheme}...`);
+  terminal.write("Preparing to execute buildApp command...\n");
   const useXcbeatify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
   const bundlePath = await prepareBundleDir(context, options.scheme);
   const derivedDataPath = prepareDerivedDataPath();
@@ -615,13 +626,14 @@ export async function debuggingBuildCommand(context: ExtensionContext, item?: Bu
 /**
  * Build app without running
  */
-async function commonBuildCommand(
+export async function commonBuildCommand(
   context: ExtensionContext,
   item: BuildTreeItem | undefined,
   options: { debug: boolean },
 ) {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  // If item has a workspace path, use it directly
+  const xcworkspace = await askXcodeWorkspacePath(context, item?.workspacePath);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
@@ -668,28 +680,14 @@ async function commonBuildCommand(
 /**
  * Build and run application on the simulator or device
  */
-export async function launchCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  return commonLaunchCommand(context, item, { debug: false });
-}
-
-/**
- * Builds and launches the application in debug mode
- * This is a convenience wrapper around launchCommand that sets the debug flag
- */
-export async function debuggingLaunchCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  return commonLaunchCommand(context, item, { debug: true });
-}
-
-/**
- * Build and run application on the simulator or device
- */
 async function commonLaunchCommand(
   context: ExtensionContext,
   item: BuildTreeItem | undefined,
   options: { debug: boolean },
 ) {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  // If item has a workspace path, use it directly
+  const xcworkspace = await askXcodeWorkspacePath(context, item?.workspacePath);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
@@ -785,10 +783,28 @@ async function commonLaunchCommand(
 }
 
 /**
+ * Build and run application on the simulator or device
+ */
+export async function launchCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  // Notify user that build is starting
+  vscode.window.showInformationMessage("Launching application... This may take a while.");
+  return commonLaunchCommand(context, item, { debug: false });
+}
+
+/**
+ * Builds and launches the application in debug mode
+ * This is a convenience wrapper around launchCommand that sets the debug flag
+ */
+export async function debuggingLaunchCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  return commonLaunchCommand(context, item, { debug: true });
+}
+
+/**
  * Run application on the simulator or device without building
  */
 export async function runCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Starting run command");
+  vscode.window.showInformationMessage("Running application without building...");
   return commonRunCommand(context, item, { debug: false });
 }
 
@@ -895,6 +911,8 @@ async function commonRunCommand(
  */
 export async function cleanCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Searching for workspace");
+  // Notify user that cleaning is starting
+  vscode.window.showInformationMessage("Cleaning build artifacts... This may take a while.");
   const xcworkspace = await askXcodeWorkspacePath(context);
 
   context.updateProgressStatus("Searching for scheme");
@@ -939,8 +957,12 @@ export async function cleanCommand(context: ExtensionContext, item?: BuildTreeIt
   });
 }
 
+/**
+ * Run tests for the selected scheme
+ */
 export async function testCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Searching for workspace");
+  vscode.window.showInformationMessage("Starting tests... This may take a while.");
   const xcworkspace = await askXcodeWorkspacePath(context);
 
   context.updateProgressStatus("Searching for scheme");
@@ -987,12 +1009,10 @@ export async function testCommand(context: ExtensionContext, item?: BuildTreeIte
 
 export async function resolveDependencies(
   context: ExtensionContext,
-  options: {
-    scheme: string;
-    xcworkspace: string;
-  },
-): Promise<void> {
+  options: { scheme: string; xcworkspace: string }
+) {
   context.updateProgressStatus("Resolving dependencies");
+  vscode.window.showInformationMessage(`Resolving dependencies for scheme: ${options.scheme}...`);
 
   await runTask(context, {
     name: "Resolve Dependencies",
@@ -1023,6 +1043,7 @@ export async function resolveDependencies(
  */
 export async function resolveDependenciesCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Searching for workspace");
+  vscode.window.showInformationMessage("Resolving dependencies... This may take a while.");
   const xcworkspace = await askXcodeWorkspacePath(context);
 
   context.updateProgressStatus("Searching for scheme");
@@ -1046,6 +1067,7 @@ export async function resolveDependenciesCommand(context: ExtensionContext, item
  */
 export async function removeBundleDirCommand(context: ExtensionContext) {
   context.updateProgressStatus("Removing build artifacts directory");
+  vscode.window.showInformationMessage("Removing bundle directory...");
   const storagePath = await prepareStoragePath(context);
   const bundleDir = path.join(storagePath, "build");
 
@@ -1054,11 +1076,12 @@ export async function removeBundleDirCommand(context: ExtensionContext) {
 }
 
 /**
- * Generate buildServer.json in the workspace root for xcode-build-server —
+ * Generate buildServer.json for xcode-build-server
  * a tool that enable LSP server to see packages from the Xcode project.
  */
 export async function generateBuildServerConfigCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Starting buildServer.json generation");
+  vscode.window.showInformationMessage("Generating build server configuration...");
 
   const isServerInstalled = await getIsXcodeBuildServerInstalled();
   if (!isServerInstalled) {
@@ -1083,21 +1106,21 @@ export async function generateBuildServerConfigCommand(context: ExtensionContext
   });
   await restartSwiftLSP();
 
-  vscode.window.showInformationMessage("buildServer.json generated in workspace root", "Open").then((selected) => {
-    if (selected === "Open") {
-      const workspacePath = getWorkspacePath();
-      const buildServerPath = vscode.Uri.file(path.join(workspacePath, "buildServer.json"));
-      vscode.commands.executeCommand("vscode.open", buildServerPath);
-    }
-  });
+  const selected = await vscode.window.showInformationMessage("buildServer.json generated in workspace root", "Open");
+  if (selected === "Open") {
+    const workspacePath = getWorkspacePath();
+    const buildServerPath = vscode.Uri.file(path.join(workspacePath, "buildServer.json"));
+    await vscode.commands.executeCommand("vscode.open", buildServerPath);
+  }
+  context.simpleTaskCompletionEmitter.fire();
 }
 
 /**
- *
  * Open current project in Xcode
  */
 export async function openXcodeCommand(context: ExtensionContext) {
   context.updateProgressStatus("Opening project in Xcode");
+  vscode.window.showInformationMessage("Opening project in Xcode...");
   const xcworkspace = await askXcodeWorkspacePath(context);
 
   await exec({
@@ -1109,26 +1132,59 @@ export async function openXcodeCommand(context: ExtensionContext) {
 /**
  * Select Xcode workspace and save it to the workspace state
  */
-export async function selectXcodeWorkspaceCommand(context: ExtensionContext) {
+export async function selectXcodeWorkspaceCommand(context: ExtensionContext, item?: WorkspaceGroupTreeItem) {
   context.updateProgressStatus("Searching for workspace");
+  
+  if (item) {
+    // Set loading state on this specific item only
+    item.setLoading(true);
+    
+    try {
+      let path = item.workspacePath;
+      if (path) {
+        // Update the workspace path without triggering a full refresh
+        context.buildManager.setCurrentWorkspacePath(path, true); // Skip refresh
+        context.updateWorkspaceState("build.xcodeWorkspacePath", path);
+      }
+      
+      // Short delay to allow UI to update with loading state
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Show success message
+      vscode.window.showInformationMessage(`Workspace path updated`);
+    } finally {
+      // Allow a moment for the success message to be seen
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Clear loading state
+      item.setLoading(false);
+      
+      // Add a small delay to ensure UI has time to update
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Now refresh the build manager
+      context.buildManager.refresh();
+    }
+    return;
+  }
+
+  // Manual selection via quick pick
+  vscode.window.showInformationMessage("Selecting Xcode workspace...");
   const workspace = await selectXcodeWorkspace({
     autoselect: false,
   });
-  const updateAnswer = await showYesNoQuestion({
-    title: "Do you want to update path to xcode workspace in the workspace settings (.vscode/settings.json)?",
-  });
-  if (updateAnswer) {
-    const relative = getWorkspaceRelativePath(workspace);
-    await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
-    context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
-  } else {
+
+  if (workspace) {
     context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
   }
-
+  
   context.buildManager.refresh();
+  context.simpleTaskCompletionEmitter.fire();
 }
 
 export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  vscode.window.showInformationMessage("Selecting Xcode scheme for build...");
+  
   if (item) {
     item.provider.buildManager.setDefaultSchemeForBuild(item.scheme);
     return;
@@ -1143,6 +1199,8 @@ export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext
     xcworkspace: xcworkspace,
     ignoreCache: true,
   });
+
+  context.simpleTaskCompletionEmitter.fire();
 }
 
 /**
@@ -1150,6 +1208,7 @@ export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext
  */
 export async function selectConfigurationForBuildCommand(context: ExtensionContext): Promise<void> {
   context.updateProgressStatus("Searching for workspace");
+  vscode.window.showInformationMessage("Selecting build configuration...");
   const xcworkspace = await askXcodeWorkspacePath(context);
 
   context.updateProgressStatus("Searching for configurations");
@@ -1184,6 +1243,7 @@ export async function selectConfigurationForBuildCommand(context: ExtensionConte
 
 export async function diagnoseBuildSetupCommand(context: ExtensionContext): Promise<void> {
   context.updateProgressStatus("Diagnosing build setup");
+  vscode.window.showInformationMessage("Diagnosing build setup...");
 
   await runTask(context, {
     name: "Diagnose Build Setup",
@@ -1226,6 +1286,11 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
       _write(`✅ Xcode workspace path: ${xcWorkspacePath ?? "<project-root>"}\n`);
       _write("================================");
 
+      const currentScheme = context.getWorkspaceState("build.xcodeScheme");
+      _write("🔎 Checking current xcode scheme");
+      _write(`✅ Xcode scheme: ${currentScheme ?? "<default>"}\n`);
+      _write("================================");
+
       _write("🔎 Getting schemes");
       let schemes: XcodeScheme[] = [];
       try {
@@ -1260,6 +1325,7 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
           if (strerr?.includes("does not contain an Xcode project, workspace or package")) {
             _write("❌ Xcode workspace not found");
             _write("❌ Error message from xcodebuild:");
+            context.simpleTaskCompletionEmitter.fire();
             _writeQuote(strerr);
             _write(
               "🌼 Check whether your project folder contains folders with the extensions .xcodeproj or .xcworkspace",
@@ -1274,15 +1340,18 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
             return;
           }
           _write("❌ Error message from xcodebuild:");
+          context.simpleTaskCompletionEmitter.fire();
           _writeQuote(strerr ?? "Unknown error");
           return;
         }
         _write("❌ Error message from xcodebuild:");
+        context.simpleTaskCompletionEmitter.fire();
         _writeQuote(e instanceof Error ? e.message : String(e));
         return;
       }
       if (schemes.length === 0) {
         _write("❌ No schemes found");
+        context.simpleTaskCompletionEmitter.fire();
         return;
       }
 
@@ -1294,6 +1363,7 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
       _write("================================");
 
       _write("✅ Everything looks good!");
+      context.simpleTaskCompletionEmitter.fire();
     },
   });
 }

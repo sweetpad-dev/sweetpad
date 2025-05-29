@@ -86,7 +86,7 @@ export class XcodeScheme {
 
     /**
      * <LaunchAction> configures the Run phase of the scheme (the action that launches the app).
-     * In Xcode’s UI this is labeled “Run” in the scheme editor, but in the file it’s called
+     * In Xcode's UI this is labeled "Run" in the scheme editor, but in the file it's called
      * LaunchAction​. This element defines how the app or executable is launched when you run
      * the scheme.
      */
@@ -112,8 +112,8 @@ export class XcodeScheme {
     }
 
     /**
-     * <BuildableReference> is the glue between the scheme and the project’s targets, ensuring the scheme
-     * knows which target it’s referring to. The BlueprintName attribute is the name of the target.
+     * <BuildableReference> is the glue between the scheme and the project's targets, ensuring the scheme
+     * knows which target it's referring to. The BlueprintName attribute is the name of the target.
      *
      * This target is the one that will be launched when you run the scheme in Xcode.
      */

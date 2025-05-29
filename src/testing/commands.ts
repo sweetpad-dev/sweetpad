@@ -10,6 +10,7 @@ import { askSchemeForTesting, askTestingTarget } from "./utils";
 
 export async function selectTestingTargetCommand(context: ExtensionContext): Promise<void> {
   context.updateProgressStatus("Searching for workspace");
+  vscode.window.showInformationMessage("Selecting testing target...");
   const xcworkspace = await askXcodeWorkspacePath(context);
 
   context.updateProgressStatus("Selecting testing target");
@@ -22,6 +23,7 @@ export async function selectTestingTargetCommand(context: ExtensionContext): Pro
 
 export async function buildForTestingCommand(context: ExtensionContext): Promise<void> {
   context.updateProgressStatus("Building for testing");
+  vscode.window.showInformationMessage("Building for testing... This may take a while.");
   return await context.testingManager.buildForTestingCommand(context);
 }
 
@@ -30,6 +32,7 @@ export async function testWithoutBuildingCommand(
   ...items: vscode.TestItem[]
 ): Promise<void> {
   context.updateProgressStatus("Running tests without building");
+  vscode.window.showInformationMessage("Running tests without building...");
   const request = new vscode.TestRunRequest(items, [], undefined, undefined);
   const tokenSource = new vscode.CancellationTokenSource();
   await context.testingManager.runTestsWithoutBuilding(request, tokenSource.token);
@@ -37,6 +40,7 @@ export async function testWithoutBuildingCommand(
 
 export async function selectXcodeSchemeForTestingCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Selecting scheme for testing");
+  vscode.window.showInformationMessage("Selecting Xcode scheme for testing...");
 
   if (item) {
     item.provider.buildManager.setDefaultSchemeForTesting(item.scheme);
@@ -56,6 +60,7 @@ export async function selectXcodeSchemeForTestingCommand(context: ExtensionConte
  */
 export async function selectConfigurationForTestingCommand(context: ExtensionContext): Promise<void> {
   context.updateProgressStatus("Searching for workspace");
+  vscode.window.showInformationMessage("Selecting configuration for testing...");
   const xcworkspace = await askXcodeWorkspacePath(context);
 
   context.updateProgressStatus("Searching for configurations");
