@@ -610,7 +610,23 @@ export async function buildApp(
 /**
  * Build app without running
  */
-async function commonBuildCommand(
+export async function buildCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Starting build command");
+  return commonBuildCommand(context, item, { debug: false });
+}
+
+/**
+ * Build app in debug mode without running
+ */
+export async function debuggingBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Building the app (debug mode)");
+  return commonBuildCommand(context, item, { debug: true });
+}
+
+/**
+ * Build app without running
+ */
+export async function commonBuildCommand(
   context: ExtensionContext,
   item: BuildTreeItem | undefined,
   options: { debug: boolean },
