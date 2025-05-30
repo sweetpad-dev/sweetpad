@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import type { ExtensionContext } from "../common/commands";
 import { commonLogger } from "../common/logger";
 
-export async function resetSweetpadCache(context: ExtensionContext) {
+export async function resetSweetPadCache(context: ExtensionContext) {
   context.updateProgressStatus("Resetting SweetPad cache");
   context.resetWorkspaceState();
   vscode.window.showInformationMessage("SweetPad cache has been reset");

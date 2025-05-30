@@ -1,19 +1,13 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-import * as crypto from "node:crypto";
-import * as events from "node:events";
 import * as vscode from "vscode";
 import type { BuildManager } from "../build/manager";
 import type { DestinationsManager } from "../destination/manager";
 import type { DestinationType, SelectedDestination } from "../destination/types";
-import type { SwiftFormattingProvider } from "../format/formatter";
-import type { ProgressStatusBar } from "../system/status-bar";
 import type { TestingManager } from "../testing/manager";
 import type { ToolsManager } from "../tools/manager";
 import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting";
 import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
-import { QuickPickCancelledError } from "./quick-pick";
-
+import * as path from "path";
 export type LastLaunchedAppDeviceContext = {
   type: "device";
   appPath: string; // Example: "/Users/username/Library/Developer/Xcode/DerivedData/MyApp-..."
@@ -37,6 +31,14 @@ export type LastLaunchedAppContext =
   | LastLaunchedAppSimulatorContext
   | LastLaunchedAppMacOSContext;
 
+export class TaskExecutionScope {
+  public action: string;
+  
+  constructor(options: { action: string }) {
+    this.action = options.action;
+  }
+}
+
 type WorkspaceTypes = {
   "build.xcodeWorkspacePath": string;
   "build.xcodeProjectPath": string;
@@ -57,29 +59,16 @@ type WorkspaceTypes = {
 type WorkspaceStateKey = keyof WorkspaceTypes;
 type SessionStateKey = "NONE_KEY";
 
-/**
- * Global events that extension can emit
- */
-type IEventMap = {
-  executionScopeClosed: [scope: ExecutionScope];
-  workspaceConfigChanged: [];
-};
-type IEventKey = keyof IEventMap;
-
 export class ExtensionContext {
   private _context: vscode.ExtensionContext;
   public destinationsManager: DestinationsManager;
   public toolsManager: ToolsManager;
   public buildManager: BuildManager;
   public testingManager: TestingManager;
-  public formatter: SwiftFormattingProvider;
-  public progressStatusBar: ProgressStatusBar;
   private _sessionState: Map<SessionStateKey, unknown> = new Map();
-
-  // Create for each command and task execution separate execution scope with unique ID
-  // to be able to track what is currently running
-  private executionScope = new AsyncLocalStorage<ExecutionScope | undefined>();
-  private emitter = new events.EventEmitter<IEventMap>();
+  private _currentExecutionScope: TaskExecutionScope | null = null;
+  private _executionScopeId: string | null = null;
+  private _eventEmitter = new vscode.EventEmitter<{ event: string; data?: any }>();
 
   constructor(options: {
     context: vscode.ExtensionContext;
@@ -87,23 +76,125 @@ export class ExtensionContext {
     buildManager: BuildManager;
     toolsManager: ToolsManager;
     testingManager: TestingManager;
-    formatter: SwiftFormattingProvider;
-    progressStatusBar: ProgressStatusBar;
   }) {
     this._context = options.context;
     this.destinationsManager = options.destinationsManager;
     this.buildManager = options.buildManager;
     this.toolsManager = options.toolsManager;
     this.testingManager = options.testingManager;
-    this.formatter = options.formatter;
-    this.progressStatusBar = options.progressStatusBar;
+  }
 
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      const affected = event.affectsConfiguration("sweetpad");
-      if (affected) {
-        this.emitter.emit("workspaceConfigChanged");
+  // --- Simple Global Emitter for Task Completion --- 
+  public simpleTaskCompletionEmitter = new vscode.EventEmitter<void>();
+  // ---------------------------------------------------
+
+  // --- Event system for execution scope tracking ---
+  on(event: string, listener: (data?: any) => void): vscode.Disposable {
+    return this._eventEmitter.event((e) => {
+      if (e.event === event) {
+        listener(e.data);
       }
     });
+  }
+
+  private emit(event: string, data?: any) {
+    this._eventEmitter.fire({ event, data });
+  }
+
+  // --- Execution scope methods ---
+  getExecutionScope(): TaskExecutionScope | null {
+    return this._currentExecutionScope;
+  }
+
+  getExecutionScopeId(): string | null {
+    return this._executionScopeId;
+  }
+
+  setExecutionScope<T>(scope: TaskExecutionScope | null, callback: () => T): T {
+    const previousScope = this._currentExecutionScope;
+    const previousScopeId = this._executionScopeId;
+    
+    this._currentExecutionScope = scope;
+    this._executionScopeId = scope ? `scope_${scope.action}_${Date.now()}` : null;
+    
+    try {
+      return callback();
+    } finally {
+      // Close the current scope and emit event
+      if (this._currentExecutionScope) {
+        this.emit("executionScopeClosed", {
+          id: this._executionScopeId,
+          scope: this._currentExecutionScope
+        });
+      }
+      
+      // Restore previous scope
+      this._currentExecutionScope = previousScope;
+      this._executionScopeId = previousScopeId;
+    }
+  }
+
+  async setExecutionScopeAsync<T>(scope: TaskExecutionScope | null, callback: () => Promise<T>): Promise<T> {
+    const previousScope = this._currentExecutionScope;
+    const previousScopeId = this._executionScopeId;
+    
+    this._currentExecutionScope = scope;
+    this._executionScopeId = scope ? `scope_${scope.action}_${Date.now()}` : null;
+    
+    try {
+      return await callback();
+    } finally {
+      // Close the current scope and emit event
+      if (this._currentExecutionScope) {
+        this.emit("executionScopeClosed", {
+          id: this._executionScopeId,
+          scope: this._currentExecutionScope
+        });
+      }
+      
+      // Restore previous scope
+      this._currentExecutionScope = previousScope;
+      this._executionScopeId = previousScopeId;
+    }
+  }
+
+  // --- Define path for the UI log --- \
+  public UI_LOG_PATH = (): string => {
+    var workspaceFolders = vscode.workspace.workspaceFolders;
+    if (workspaceFolders && workspaceFolders.length > 0) {
+      // Construct the path relative to the first workspace folder
+      return path.join(workspaceFolders[0].uri.fsPath, '.cursor', 'task_output.log');
+    }
+    // No workspace folder is open, cannot determine log path
+    commonLogger.warn("Cannot determine UI log path: No workspace folder open.");
+    return ""; // TODO: Handle this better
+  };
+  // ---------------------------------
+
+  async startExecutionScope<T>(scope: TaskExecutionScope, callback: () => Promise<T>): Promise<T> {
+    // Track the start of task execution
+    commonLogger.log(`🍭 Started task: ${scope.action}`);
+    
+    return await this.setExecutionScopeAsync(scope, async () => {
+      try {
+        const result = await callback();
+        
+        // Signal completion to MCP server
+        this.simpleTaskCompletionEmitter.fire();
+        commonLogger.log(`✅ Completed task: ${scope.action}`);
+        
+        return result;
+      } catch (error) {
+        commonLogger.error(`❌ Failed task: ${scope.action}`, { error });
+        throw error;
+      }
+    });
+  }
+
+  updateProgressStatus(message: string) {
+    // Show progress status to user in VS Code status bar
+    vscode.window.setStatusBarMessage(`SweetPad: ${message}`, 2000);
+    commonLogger.log(`Progress: ${message}`);
   }
 
   get storageUri() {
@@ -118,119 +209,11 @@ export class ExtensionContext {
     this._context.subscriptions.push(disposable);
   }
 
-  /**
-   * In case if you need to start propage execution scope manually you can use this method
-   */
-  setExecutionScope<T>(scope: ExecutionScope | undefined, callback: () => Promise<T>): Promise<T> {
-    return this.executionScope.run(scope, callback);
-  }
-
-  getExecutionScope(): ExecutionScope | undefined {
-    return this.executionScope.getStore();
-  }
-
-  getExecutionScopeId(): string | undefined {
-    return this.getExecutionScope()?.id;
-  }
-
-  /**
-   * Main method to start execution scope for command or task or other isolated execution context
-   */
-  startExecutionScope<T>(scope: ExecutionScope, callback: () => Promise<T>): Promise<T> {
-    return this.executionScope.run(scope, async () => {
-      try {
-        return await callback();
-      } finally {
-        this.emitter.emit("executionScopeClosed", scope);
-      }
+  registerCommand(command: string, callback: (context: CommandExecution, ...args: any[]) => Promise<unknown>) {
+    return vscode.commands.registerCommand(command, (...args: any[]) => {
+      const execution = new CommandExecution(command, callback, this);
+      return execution.run(...args);
     });
-  }
-
-  on<K extends IEventKey>(event: K, listener: (...args: IEventMap[K]) => void): void {
-    this.emitter.on(event, listener as any); // todo: fix this any
-  }
-
-  registerCommand(commandName: string, callback: (context: ExtensionContext, ...args: any[]) => Promise<unknown>) {
-    return vscode.commands.registerCommand(commandName, async (...args: any[]) => {
-      const commandContext = new CommandExecutionScope({ commandName: commandName });
-
-      return await errorReporting.withScope(async (scope) => {
-        return await this.startExecutionScope(commandContext, async () => {
-          scope.setTag("command", commandName);
-          try {
-            return await callback(this, ...args);
-          } catch (error) {
-            // User can cancel the quick pick dialog by pressing Escape or clicking outside of it.
-            // In this case, we just stop the execution of the command and throw a QuickPickCancelledError.
-            // Since it is more user action, then an error, we skip the error reporting.
-            if (error instanceof QuickPickCancelledError) {
-              return;
-            }
-
-            if (error instanceof ExtensionError) {
-              // Handle default error
-              commonLogger.error(error.message, {
-                command: commandName,
-                errorContext: error.options?.context,
-                error: error,
-              });
-              if (error instanceof TaskError) {
-                return; // do nothing
-              }
-
-              await this.showCommandErrorMessage(`SweetPad: ${error.message}`, {
-                actions: error.options?.actions,
-              });
-              return;
-            }
-
-            // Handle unexpected error
-            const errorMessage: string =
-              error instanceof Error ? error.message : (error?.toString() ?? "[unknown error]");
-            commonLogger.error(errorMessage, {
-              command: commandName,
-              error: error,
-            });
-            errorReporting.captureException(error);
-            await this.showCommandErrorMessage(`SweetPad: ${errorMessage}`);
-          }
-        });
-      });
-    });
-  }
-
-  /**
-   * Show error message with proper actions
-   */
-  async showCommandErrorMessage(
-    message: string,
-    options?: {
-      actions?: ErrorMessageAction[];
-    },
-  ): Promise<void> {
-    const closeAction: ErrorMessageAction = {
-      label: "Close",
-      callback: () => {},
-    };
-    const showLogsAction: ErrorMessageAction = {
-      label: "Show logs",
-      callback: () => commonLogger.show(),
-    };
-
-    const actions = [closeAction];
-    actions.unshift(...(options?.actions ?? [showLogsAction]));
-
-    const actionsLabels = actions.map((action) => action.label);
-
-    const finalMessage = `${message}`;
-    const action = await vscode.window.showErrorMessage(finalMessage, ...actionsLabels);
-
-    if (action) {
-      const callback = actions.find((a) => a.label === action)?.callback;
-      if (callback) {
-        callback();
-      }
-    }
   }
 
   registerTreeDataProvider<T extends vscode.TreeItem>(id: string, tree: vscode.TreeDataProvider<T>) {
@@ -276,34 +259,88 @@ export class ExtensionContext {
     void this.buildManager.refresh();
     void this.destinationsManager.refresh();
   }
-
-  updateProgressStatus(message: string) {
-    this.progressStatusBar.updateText(message);
-  }
 }
 
-export class CommandExecutionScope {
-  id: string;
-  type = "command" as const;
-  commandName: string;
+/**
+ * Class that represents a command execution with proper error handling
+ */
+export class CommandExecution {
+  constructor(
+    public readonly command: string,
+    public readonly callback: (context: CommandExecution, ...args: unknown[]) => Promise<unknown>,
+    public context: ExtensionContext,
+  ) {}
 
-  constructor(options: { commandName: string }) {
-    this.id = crypto.randomUUID();
-    this.type = "command";
-    this.commandName = options.commandName;
+  /**
+   * Show error message with proper actions
+   */
+  async showErrorMessage(
+    message: string,
+    options?: {
+      actions?: ErrorMessageAction[];
+    },
+  ): Promise<void> {
+    const closeAction: ErrorMessageAction = {
+      label: "Close",
+      callback: () => {},
+    };
+    const showLogsAction: ErrorMessageAction = {
+      label: "Show logs",
+      callback: () => commonLogger.show(),
+    };
+
+    const actions = [closeAction];
+    actions.unshift(...(options?.actions ?? [showLogsAction]));
+
+    const actionsLabels = actions.map((action) => action.label);
+
+    const finalMessage = `${message}`;
+    const action = await vscode.window.showErrorMessage(finalMessage, ...actionsLabels);
+
+    if (action) {
+      const callback = actions.find((a) => a.label === action)?.callback;
+      if (callback) {
+        callback();
+      }
+    }
+  }
+
+  /**
+   * Run the command with proper error handling. First argument passed to
+   * the callback is this instance itself.
+   */
+  async run(...args: unknown[]) {
+    return await errorReporting.withScope(async (scope) => {
+      scope.setTag("command", this.command);
+      try {
+        return await this.callback(this, ...args);
+      } catch (error) {
+        if (error instanceof ExtensionError) {
+          // Handle default error
+          commonLogger.error(error.message, {
+            command: this.command,
+            errorContext: error.options?.context,
+            error: error,
+          });
+          if (error instanceof TaskError) {
+            // do nothing
+          } else {
+            await this.showErrorMessage(`SweetPad: ${error.message}`, {
+              actions: error.options?.actions,
+            });
+          }
+        } else {
+          // Handle unexpected error
+          const errorMessage: string =
+            error instanceof Error ? error.message : (error?.toString() ?? "[unknown error]");
+          commonLogger.error(errorMessage, {
+            command: this.command,
+            error: error,
+          });
+          errorReporting.captureException(error);
+          await this.showErrorMessage(`SweetPad: ${errorMessage}`);
+        }
+      }
+    });
   }
 }
-
-export class TaskExecutionScope {
-  id: string;
-  type = "task" as const;
-  taskName: string;
-
-  constructor(options: { action: string }) {
-    this.id = crypto.randomUUID();
-    this.type = "task";
-    this.taskName = options.action;
-  }
-}
-
-export type ExecutionScope = CommandExecutionScope | TaskExecutionScope;

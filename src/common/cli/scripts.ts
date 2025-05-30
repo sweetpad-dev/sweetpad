@@ -420,7 +420,7 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
 export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
   await exec({
     command: "xcode-build-server",
-    args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme],
+    args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme]
   });
 }
 
