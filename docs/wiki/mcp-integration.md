@@ -14,6 +14,31 @@ SweetPad's MCP implementation uses:
 - **Server Name**: "SweetPadCommandRunner"
 - **Protocol Version**: Latest MCP specification
 
+### System Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   MCP Client    │────│   SweetPad MCP   │────│   VS Code API   │
+│   (Cursor)      │    │     Server       │    │   Commands      │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+    SSE + HTTP              Express Server           Command Bus
+                                 │                       │
+                          ┌──────┴──────┐        ┌──────┴──────┐
+                          │  Execution  │        │    Task     │
+                          │   Scope     │        │  Terminal   │
+                          │ Management  │        │  System     │
+                          └─────────────┘        └─────────────┘
+                                 │                       │
+                        ┌────────┴────────┐             │
+                        │   Xcode Tools   │─────────────┘
+                        │ (xcodebuild,    │
+                        │  simulators,    │
+                        │  devices, etc.) │
+                        └─────────────────┘
+```
+
 ### Endpoints
 
 | Endpoint | Method | Purpose |
@@ -55,7 +80,7 @@ Executes any VS Code command and waits for task completion.
 
 ### Cursor
 
-Add this configuration to your Cursor Desktop config file:
+Add this configuration to your Cursor MCP config file:
 
 ```json
 {
@@ -69,9 +94,9 @@ Add this configuration to your Cursor Desktop config file:
 
 #### Rule
 
-Add in your Cursor Rules: [sweetpad.server.mdc](cursor.rules/sweetpad.server.mdc)
+Add in your Cursor Rules: [sweetpad.server.mcp](cursor.rules/sweetpad.server.mcp)
 
-**Configuration File Locations:**
+**Configuration File Location:**
 - **macOS**: `~/.cursor/mcp.json`
 
 ### Other MCP Clients
@@ -95,6 +120,41 @@ Access Prometheus metrics at `http://localhost:61337/metrics` to monitor:
 - Response times
 - Connection status
 - Error rates
+
+## Usage Examples
+
+### Building a Project
+
+```json
+{
+  "tool": "execute_vscode_command",
+  "arguments": {
+    "commandId": "sweetpad.build.build"
+  }
+}
+```
+
+### Running Tests
+
+```json
+{
+  "tool": "execute_vscode_command", 
+  "arguments": {
+    "commandId": "sweetpad.build.test"
+  }
+}
+```
+
+### Formatting Code
+
+```json
+{
+  "tool": "execute_vscode_command",
+  "arguments": {
+    "commandId": "sweetpad.format.run"
+  }
+}
+```
 
 ## Security Considerations
 
