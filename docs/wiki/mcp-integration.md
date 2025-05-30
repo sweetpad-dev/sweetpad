@@ -53,9 +53,9 @@ Executes any VS Code command and waits for task completion.
 
 ## Client Configuration
 
-### Claude Desktop
+### Cursor
 
-Add this configuration to your Claude Desktop config file:
+Add this configuration to your Cursor Desktop config file:
 
 ```json
 {
@@ -66,6 +66,10 @@ Add this configuration to your Claude Desktop config file:
   }
 }
 ```
+
+#### Rule
+
+Add in your Cursor Rules: [sweetpad.server.mdc](cursor.rules/sweetpad.server.mdc)
 
 **Configuration File Locations:**
 - **macOS**: `~/.cursor/mcp.json`
