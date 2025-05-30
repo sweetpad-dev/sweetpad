@@ -21,16 +21,16 @@ SweetPad's MCP implementation uses:
 │   MCP Client    │────│   SweetPad MCP   │────│   VS Code API   │
 │   (Cursor)      │    │     Server       │    │   Commands      │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                       │                       │
-         │                       │                       │
-    SSE + HTTP              Express Server           Command Bus
-                                 │                       │
+         │                       │                      │
+         │                       │                      │
+    SSE + HTTP              Express Server          Command Bus
+                                 │                      │
                           ┌──────┴──────┐        ┌──────┴──────┐
                           │  Execution  │        │    Task     │
                           │   Scope     │        │  Terminal   │
                           │ Management  │        │  System     │
                           └─────────────┘        └─────────────┘
-                                 │                       │
+                                 │                      │
                         ┌────────┴────────┐             │
                         │   Xcode Tools   │─────────────┘
                         │ (xcodebuild,    │
