@@ -185,7 +185,7 @@ class SchemeWatcher {
     }, refreshDelay);
   }
 
-  stop() {
+  dispose() {
     if (this.throttle) {
       clearTimeout(this.throttle);
       this.throttle = null;
@@ -205,5 +205,5 @@ class SchemeWatcher {
 export function createSchemeWatcher(extension: ExtensionContext): vscode.Disposable {
   const watcher = new SchemeWatcher(extension);
   void watcher.start();
-  return new Disposable(() => watcher.stop());
+  return watcher;
 }
