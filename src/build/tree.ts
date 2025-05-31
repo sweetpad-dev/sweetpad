@@ -4,18 +4,7 @@ import type { ExtensionContext } from "../common/commands";
 import { commonLogger } from "../common/logger";
 import type { BuildManager } from "./manager";
 
-type EventData = BuildTreeItem | LoadingTreeItem | undefined | null | undefined;
-
-export class LoadingTreeItem extends vscode.TreeItem {
-  constructor(message = "Loading schemes...") {
-    super(message, vscode.TreeItemCollapsibleState.None);
-    this.iconPath = new vscode.ThemeIcon("gear~spin");
-    this.description = "";
-    this.contextValue = "loading";
-    // Make it non-selectable
-    this.command = undefined;
-  }
-}
+type EventData = BuildTreeItem | undefined | null | undefined;
 
 export class BuildTreeItem extends vscode.TreeItem {
   public provider: BuildTreeProvider;
@@ -44,7 +33,8 @@ export class BuildTreeItem extends vscode.TreeItem {
     }
   }
 }
-export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem | LoadingTreeItem> {
+
+export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<EventData>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   public context: ExtensionContext | undefined;
@@ -56,57 +46,63 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem 
   constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
     this.context = options.context;
     this.buildManager = options.buildManager;
-    this.buildManager.on("refreshStarted", () => {
-      this.setLoading(true);
+
+    this.buildManager.on("refreshSchemesStarted", () => {
+      this.isLoading = true;
+      this.updateView();
     });
-    this.buildManager.on("updated", () => {
-      this.setLoading(false);
-      this.refresh();
+    this.buildManager.on("refreshSchemesCompleted", () => {
+      this.isLoading = false;
+      this.updateView();
     });
-    this.buildManager.on("refreshError", (error) => {
-      this.setLoading(false);
-      this.refresh();
-      commonLogger.error("Failed to refresh schemes", { error });
+    this.buildManager.on("refreshSchemesFailed", () => {
+      this.isLoading = false;
+      this.updateView();
     });
+
     this.buildManager.on("defaultSchemeForBuildUpdated", (scheme) => {
       this.defaultSchemeForBuild = scheme;
-      this.refresh();
+      this.updateView();
     });
     this.buildManager.on("defaultSchemeForTestingUpdated", (scheme) => {
       this.defaultSchemeForTesting = scheme;
-      this.refresh();
+      this.updateView();
     });
     this.defaultSchemeForBuild = this.buildManager.getDefaultSchemeForBuild();
     this.defaultSchemeForTesting = this.buildManager.getDefaultSchemeForTesting();
   }
 
-  private setLoading(loading: boolean): void {
-    if (this.isLoading !== loading) {
-      this.isLoading = loading;
-      this.refresh();
-    }
-  }
-
-  private refresh(): void {
+  private updateView(): void {
     this._onDidChangeTreeData.fire(null);
   }
 
-  async getChildren(
-    element?: BuildTreeItem | LoadingTreeItem | undefined,
-  ): Promise<(BuildTreeItem | LoadingTreeItem)[]> {
-    // get elements only for root
-    if (!element) {
-      if (this.isLoading) {
-        return [new LoadingTreeItem("Updating schemes...")];
-      }
-      const schemes = await this.getSchemes();
-      return schemes;
+  async getChildren(element?: BuildTreeItem | undefined): Promise<BuildTreeItem[]> {
+    // we only have one level of children, so if element is defined, we return empty array
+    // to prevent vscode from expanding the item further
+    if (element !== undefined) {
+      return [];
     }
 
-    return [];
+    // If we have a refresh event in progress, we wait for it to finish.
+    // NOTE: it's prone to race conditions, but let's keep it simple for now and fix it later if needed.
+    if (this.isLoading) {
+      const deadline = Date.now() + 10 * 1000; // 10 seconds timeout
+      await new Promise<void>((resolve) => {
+        const interval = setInterval(() => {
+          if (!this.isLoading || Date.now() > deadline) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 100); // check every 100ms
+      });
+    }
+
+    // After loading is done, we already have the schemes in the build manager, so
+    // this operation should be fast and not require any additional processing.
+    return await this.getSchemes();
   }
 
-  async getTreeItem(element: BuildTreeItem | LoadingTreeItem): Promise<BuildTreeItem | LoadingTreeItem> {
+  async getTreeItem(element: BuildTreeItem): Promise<BuildTreeItem> {
     return element;
   }
 

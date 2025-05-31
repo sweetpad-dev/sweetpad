@@ -8,15 +8,17 @@ import {
   getIsXcodeBuildServerInstalled,
   getSchemes,
 } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
+import { BaseExecutionScope, type ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
+import { commonLogger } from "../common/logger";
 import { askXcodeWorkspacePath, getCurrentXcodeWorkspacePath, getWorkspacePath, restartSwiftLSP } from "./utils";
 
 type IEventMap = {
-  refreshStarted: [];
-  updated: [];
-  refreshError: [error: Error];
+  refreshSchemesStarted: [];
+  refreshSchemesCompleted: [XcodeScheme[]];
+  refreshSchemesFailed: [];
+
   defaultSchemeForBuildUpdated: [scheme: string | undefined];
   defaultSchemeForTestingUpdated: [scheme: string | undefined];
 };
@@ -50,32 +52,35 @@ export class BuildManager {
     return this._context;
   }
 
-  async refresh(): Promise<XcodeScheme[]> {
-    this.emitter.emit("refreshStarted");
-    try {
-      getBasicProjectInfo.clearCache();
+  async refreshSchemes(): Promise<XcodeScheme[]> {
+    const scope = new BaseExecutionScope();
+    return await this.context.startExecutionScope(scope, async () => {
+      this.context.updateProgressStatus("Refreshing Xcode schemes");
 
-      const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
+      this.emitter.emit("refreshSchemesStarted");
+      try {
+        getBasicProjectInfo.clearCache();
 
-      const scheme = await getSchemes({
-        xcworkspace: xcworkspace,
-      });
+        const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
 
-      this.cache = scheme;
+        const schemes = await getSchemes({ xcworkspace: xcworkspace });
 
-      await this.validateDefaultSchemes();
+        this.cache = schemes;
 
-      this.emitter.emit("updated");
-      return this.cache;
-    } catch (error) {
-      this.emitter.emit("refreshError", error as Error);
-      throw error;
-    }
+        await this.validateDefaultSchemes();
+        this.emitter.emit("refreshSchemesCompleted", schemes);
+        return this.cache;
+      } catch (error: unknown) {
+        commonLogger.error("Failed to refresh schemes", { error: error });
+        this.emitter.emit("refreshSchemesFailed");
+        throw error;
+      }
+    });
   }
 
   async getSchemes(options?: { refresh?: boolean }): Promise<XcodeScheme[]> {
     if (this.cache === undefined || options?.refresh) {
-      return await this.refresh();
+      return await this.refreshSchemes();
     }
     return this.cache;
   }

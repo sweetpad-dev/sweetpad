@@ -430,8 +430,8 @@
         "icon": "$(sweetpad-tools)"
       },
       {
-        "command": "sweetpad.build.refreshView",
-        "title": "SweetPad: Refresh view",
+        "command": "sweetpad.build.refreshSchemes",
+        "title": "SweetPad: Refresh schemes",
         "icon": "$(sweetpad-refresh)"
       },
       {
@@ -545,7 +545,7 @@
       "commandPalette": [],
       "view/title": [
                 {
-          "command": "sweetpad.build.refreshView",
+          "command": "sweetpad.build.refreshSchemes",
           "when": "view == sweetpad.build.view"
         },
         {

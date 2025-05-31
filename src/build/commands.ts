@@ -1085,7 +1085,7 @@ export async function selectXcodeWorkspaceCommand(context: ExtensionContext) {
     context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
   }
 
-  context.buildManager.refresh();
+  context.buildManager.refreshSchemes();
 }
 
 export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
@@ -1259,7 +1259,6 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
 }
 
 export async function refreshSchemesCommand(context: ExtensionContext): Promise<void> {
-  context.updateProgressStatus("Refreshing the view");
   const xcworkspace = getCurrentXcodeWorkspacePath(context);
 
   if (!xcworkspace) {
@@ -1268,5 +1267,5 @@ export async function refreshSchemesCommand(context: ExtensionContext): Promise<
     return;
   }
 
-  await context.buildManager.refresh();
+  await context.buildManager.refreshSchemes();
 }

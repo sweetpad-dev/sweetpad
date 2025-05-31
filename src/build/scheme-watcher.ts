@@ -9,6 +9,7 @@ import { getWorkspacePath, prepareDerivedDataPath } from "./utils";
 
 class SchemeWatcher {
   private watchers: vscode.FileSystemWatcher[] = [];
+  // todo: rename to debounce, or make it behave like throttle
   private throttle: NodeJS.Timeout | null = null;
   private derivedDataPath: string | null;
   private workspacePath: string;
@@ -52,7 +53,7 @@ class SchemeWatcher {
     const xcodeprojWatcher = vscode.workspace.createFileSystemWatcher(
       "**/*.xcodeproj",
       false, // ignoreCreateEvents
-      true,  // ignoreChangeEvents (these are directories)
+      true, // ignoreChangeEvents (these are directories)
       false, // ignoreDeleteEvents
     );
     xcodeprojWatcher.onDidCreate((e) => this.handleChange(e, ".xcodeproj created"));
@@ -63,7 +64,7 @@ class SchemeWatcher {
     const xcworkspaceWatcher = vscode.workspace.createFileSystemWatcher(
       "**/*.xcworkspace",
       false, // ignoreCreateEvents
-      true,  // ignoreChangeEvents (these are directories)
+      true, // ignoreChangeEvents (these are directories)
       false, // ignoreDeleteEvents
     );
     xcworkspaceWatcher.onDidCreate((e) => this.handleChange(e, ".xcworkspace created"));
@@ -101,7 +102,7 @@ class SchemeWatcher {
     // Watch for Tuist files (Project.swift, Workspace.swift)
     const isTuistProjectExists = await isFileExists(path.join(workspacePath, "Project.swift"));
     const isTuistWorkspaceExists = await isFileExists(path.join(workspacePath, "Workspace.swift"));
-    
+
     if (isTuistProjectExists || isTuistWorkspaceExists) {
       const tuistWatcher = vscode.workspace.createFileSystemWatcher(
         "**/{Project,Workspace}.swift",
@@ -145,8 +146,8 @@ class SchemeWatcher {
     }
 
     // Skip files in build output directories
-    const buildPaths = ['/build/', '/.build/', '/DerivedData/'];
-    if (buildPaths.some(buildPath => e.fsPath.includes(buildPath))) {
+    const buildPaths = ["/build/", "/.build/", "/DerivedData/"];
+    if (buildPaths.some((buildPath) => e.fsPath.includes(buildPath))) {
       commonLogger.debug("Skipping file in build output directory", {
         file: e.fsPath,
       });
@@ -158,13 +159,14 @@ class SchemeWatcher {
       clearTimeout(this.throttle);
     }
 
+    // Get the refresh delay from config (default: 500ms)
+    const refreshDelay = getWorkspaceConfig("build.schemes.autoRefreshDelay") ?? 500;
+
     this.throttle = setTimeout(() => {
       this.throttle = null;
-      
-      // Get the refresh delay from config (default: 500ms)
-      const refreshDelay = getWorkspaceConfig("build.schemes.autoRefreshDelay") ?? 500;
-      
-      this.extension.buildManager.refresh()
+
+      this.extension.buildManager
+        .refreshSchemes()
         .then(() => {
           commonLogger.log("Schemes auto-refreshed successfully", {
             workspacePath: this.workspacePath,
@@ -180,7 +182,7 @@ class SchemeWatcher {
             error: error,
           });
         });
-    }, 1000 /* 1s */);
+    }, refreshDelay);
   }
 
   stop() {
@@ -188,12 +190,12 @@ class SchemeWatcher {
       clearTimeout(this.throttle);
       this.throttle = null;
     }
-    
+
     for (const watcher of this.watchers) {
       watcher.dispose();
     }
     this.watchers = [];
-    
+
     commonLogger.log("Scheme watcher stopped", {
       workspacePath: this.workspacePath,
     });
@@ -204,4 +206,4 @@ export function createSchemeWatcher(extension: ExtensionContext): vscode.Disposa
   const watcher = new SchemeWatcher(extension);
   void watcher.start();
   return new Disposable(() => watcher.stop());
-} 
+}
