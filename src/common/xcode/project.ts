@@ -1,7 +1,7 @@
+import path from "node:path";
 import { XcodeProject as XcodeProjectParsed } from "@bacons/xcode";
 import { type XcodeProject as XcodeProjectRaw, parse as parseChevrotain } from "@bacons/xcode/json";
 import { type XmlDocument, XmlElement, type XmlNode, parseXml } from "@rgrove/parse-xml";
-import path from "node:path";
 import { findFiles, findFilesRecursive, isFileExists, readFile, readTextFile, statFile } from "../files";
 import { uniqueFilter } from "../helpers";
 
