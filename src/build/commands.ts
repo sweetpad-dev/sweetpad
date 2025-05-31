@@ -41,6 +41,7 @@ import {
   restartSwiftLSP,
   selectXcodeWorkspace,
 } from "./utils";
+import { getMacOSArchitecture } from "../destination/utils";
 
 function writeWatchMarkers(terminal: TaskTerminal) {
   terminal.write("🍭 SweetPad: watch marker (start)\n");
@@ -303,7 +304,10 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   const destination = options.destination;
 
   if (destination.type === "iOSSimulator") {
-    return `platform=iOS Simulator,id=${destination.udid}`;
+    const currentArch = getMacOSArchitecture() ?? "arm64";
+    const rosettaDestination = getWorkspaceConfig("build.rosettaDestination") ?? false;
+    destination.arch = rosettaDestination ? "x86_64" : currentArch;
+    return `platform=iOS Simulator,id=${destination.udid},arch=${destination.arch}`;
   }
   if (destination.type === "watchOSSimulator") {
     return `platform=watchOS Simulator,id=${destination.udid}`;
