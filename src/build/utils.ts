@@ -300,7 +300,7 @@ export async function askXcodeWorkspacePath(context: ExtensionContext): Promise<
   });
 
   context.updateWorkspaceState("build.xcodeWorkspacePath", selectedPath);
-  context.buildManager.refresh();
+  context.buildManager.refreshSchemes();
   return selectedPath;
 }
 
