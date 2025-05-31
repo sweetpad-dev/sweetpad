@@ -271,7 +271,7 @@ export async function getBuildSettingsToLaunch(options: {
 
   // > 1 target in the scheme
   // Looking for such pattern in the .xcscheme XML file:
-  // <Schema>
+  // <Scheme>
   //    <LaunchAction>
   //      <BuildableProductRunnable>
   //        <BuildableReference BlueprintName=...>
