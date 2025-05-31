@@ -246,7 +246,7 @@ export async function getBuildSettingsToAskDestination(options: {
  * Each scheme might have several targets. That's why -showBuildSettings might return different
  * build settings for each target. In the ideal scenario where there is a single target and settings
  * and I just can use first settings object. But there is a cases when there are several targets
- * for the scheme and I need to find which target is set to launch in .xcschema XML file.
+ * for the scheme and I need to find which target is set to launch in .xcscheme XML file.
  */
 export async function getBuildSettingsToLaunch(options: {
   scheme: string;
@@ -263,7 +263,7 @@ export async function getBuildSettingsToLaunch(options: {
   }
 
   // I think this is the most common case, when there is only one target in the scheme. Higly likely that
-  // this is the target to launch. Technically, schema mightn't have any target to launch, but I believe
+  // this is the target to launch. Technically, scheme mightn't have any target to launch, but I believe
   // this is a rare case.
   if (settings.length === 1) {
     return settings[0];

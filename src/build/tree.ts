@@ -7,7 +7,7 @@ import type { BuildManager } from "./manager";
 type EventData = BuildTreeItem | LoadingTreeItem | undefined | null | undefined;
 
 export class LoadingTreeItem extends vscode.TreeItem {
-  constructor(message: string = "Loading schemes...") {
+  constructor(message = "Loading schemes...") {
     super(message, vscode.TreeItemCollapsibleState.None);
     this.iconPath = new vscode.ThemeIcon("gear~spin");
     this.description = "";
@@ -51,7 +51,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem 
   public buildManager: BuildManager;
   public defaultSchemeForBuild: string | undefined;
   public defaultSchemeForTesting: string | undefined;
-  private isLoading: boolean = false;
+  private isLoading = false;
 
   constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
     this.context = options.context;
@@ -91,7 +91,9 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem 
     this._onDidChangeTreeData.fire(null);
   }
 
-  async getChildren(element?: BuildTreeItem | LoadingTreeItem | undefined): Promise<(BuildTreeItem | LoadingTreeItem)[]> {
+  async getChildren(
+    element?: BuildTreeItem | LoadingTreeItem | undefined,
+  ): Promise<(BuildTreeItem | LoadingTreeItem)[]> {
     // get elements only for root
     if (!element) {
       if (this.isLoading) {
@@ -111,7 +113,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem 
   async getSchemes(): Promise<BuildTreeItem[]> {
     let schemes: XcodeScheme[] = [];
     try {
-      schemes = await this.buildManager.getSchemas();
+      schemes = await this.buildManager.getSchemes();
     } catch (error) {
       commonLogger.error("Failed to get schemes", {
         error: error,

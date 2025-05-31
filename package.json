@@ -435,11 +435,6 @@
         "icon": "$(sweetpad-refresh)"
       },
       {
-        "command": "sweetpad.build.toggleAutoRefresh",
-        "title": "SweetPad: Toggle scheme auto-refresh",
-        "icon": "$(watch)"
-      },
-      {
         "command": "sweetpad.simulators.refresh",
         "title": "SweetPad: Refresh simulators list",
         "icon": "$(sweetpad-refresh)"
@@ -549,20 +544,14 @@
     "menus": {
       "commandPalette": [],
       "view/title": [
+                {
+          "command": "sweetpad.build.refreshView",
+          "when": "view == sweetpad.build.view"
+        },
         {
           "command": "sweetpad.build.openXcode",
           "when": "view == sweetpad.build.view",
-          "group": "navigation@3"
-        },
-        {
-          "command": "sweetpad.build.refreshView",
-          "when": "view == sweetpad.build.view",
           "group": "navigation@2"
-        },
-        {
-          "command": "sweetpad.build.toggleAutoRefresh",
-          "when": "view == sweetpad.build.view",
-          "group": "navigation@4"
         },
         {
           "command": "sweetpad.build.removeBundleDir",

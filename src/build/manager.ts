@@ -54,7 +54,7 @@ export class BuildManager {
     this.emitter.emit("refreshStarted");
     try {
       getBasicProjectInfo.clearCache();
-      
+
       const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
 
       const scheme = await getSchemes({
@@ -62,9 +62,9 @@ export class BuildManager {
       });
 
       this.cache = scheme;
-      
+
       await this.validateDefaultSchemes();
-      
+
       this.emitter.emit("updated");
       return this.cache;
     } catch (error) {
@@ -73,7 +73,7 @@ export class BuildManager {
     }
   }
 
-  async getSchemas(options?: { refresh?: boolean }): Promise<XcodeScheme[]> {
+  async getSchemes(options?: { refresh?: boolean }): Promise<XcodeScheme[]> {
     if (this.cache === undefined || options?.refresh) {
       return await this.refresh();
     }
@@ -167,12 +167,12 @@ export class BuildManager {
       return;
     }
 
-    const schemeNames = this.cache.map(scheme => scheme.name);
+    const schemeNames = this.cache.map((scheme) => scheme.name);
     const currentBuildScheme = this.getDefaultSchemeForBuild();
     if (currentBuildScheme && !schemeNames.includes(currentBuildScheme)) {
       this.setDefaultSchemeForBuild(undefined);
     }
-    
+
     const currentTestingScheme = this.getDefaultSchemeForTesting();
     if (currentTestingScheme && !schemeNames.includes(currentTestingScheme)) {
       this.setDefaultSchemeForTesting(undefined);

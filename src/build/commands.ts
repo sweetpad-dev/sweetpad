@@ -1189,7 +1189,7 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
       _write("🔎 Getting schemes");
       let schemes: XcodeScheme[] = [];
       try {
-        schemes = await context.buildManager.getSchemas({ refresh: true });
+        schemes = await context.buildManager.getSchemes({ refresh: true });
       } catch (e) {
         _write("❌ Getting schemes failed");
         if (e instanceof ExecBaseError) {
@@ -1258,10 +1258,10 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
   });
 }
 
-export async function refreshViewCommand(context: ExtensionContext): Promise<void> {
+export async function refreshSchemesCommand(context: ExtensionContext): Promise<void> {
   context.updateProgressStatus("Refreshing the view");
   const xcworkspace = getCurrentXcodeWorkspacePath(context);
-  
+
   if (!xcworkspace) {
     // If no workspace is set, ask user to select one first
     await askXcodeWorkspacePath(context);
@@ -1269,21 +1269,4 @@ export async function refreshViewCommand(context: ExtensionContext): Promise<voi
   }
 
   await context.buildManager.refresh();
-}
-
-export async function toggleAutoRefreshCommand(context: ExtensionContext): Promise<void> {
-  const currentValue = getWorkspaceConfig("build.schemes.autoRefresh") ?? true;
-  const newValue = !currentValue;
-  
-  await updateWorkspaceConfig("build.schemes.autoRefresh", newValue);
-  
-  const status = newValue ? "enabled" : "disabled";
-  vscode.window.showInformationMessage(
-    `Scheme auto-refresh ${status}. ${newValue ? "Schemes will automatically refresh when project files change." : "You'll need to manually refresh schemes using the refresh button."}`,
-    "Reload Window"
-  ).then((selection) => {
-    if (selection === "Reload Window") {
-      vscode.commands.executeCommand("workbench.action.reloadWindow");
-    }
-  });
 }

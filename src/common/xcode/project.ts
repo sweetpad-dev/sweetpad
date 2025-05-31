@@ -1,7 +1,7 @@
-import path from "node:path";
 import { XcodeProject as XcodeProjectParsed } from "@bacons/xcode";
 import { type XcodeProject as XcodeProjectRaw, parse as parseChevrotain } from "@bacons/xcode/json";
 import { type XmlDocument, XmlElement, type XmlNode, parseXml } from "@rgrove/parse-xml";
+import path from "node:path";
 import { findFiles, findFilesRecursive, isFileExists, readFile, readTextFile, statFile } from "../files";
 import { uniqueFilter } from "../helpers";
 
@@ -179,8 +179,8 @@ export class XcodeScheme {
 
     // Find shared schemes:
     // Ex: <projectPath>/xcshareddata/xcschemes/*.xcscheme
-    const sharedSchemasDir = path.join(project.projectPath, "xcshareddata");
-    schemes.push(...(await XcodeScheme.findSchemes(project, sharedSchemasDir)));
+    const sharedSchemesDir = path.join(project.projectPath, "xcshareddata");
+    schemes.push(...(await XcodeScheme.findSchemes(project, sharedSchemesDir)));
 
     // Then try to find user-specific schemes:
     // Ex: <projectPath>/xcuserdata/<username>.xcuserdatad/xcschemes/*.xcscheme
@@ -247,7 +247,7 @@ export class XcodeProjectBaconParser implements XcodeProject {
     return await XcodeScheme.getScheme(this, name);
   }
 
-  async getSchemasNames(): Promise<string[]> {
+  async getSchemesNames(): Promise<string[]> {
     const schemes = await this.getSchemes();
     return schemes.map((scheme) => scheme.name);
   }

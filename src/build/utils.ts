@@ -236,18 +236,18 @@ export async function prepareStoragePath(context: ExtensionContext): Promise<str
 }
 
 /**
- * Prepare bundle directory for the given schema in the storage path
+ * Prepare bundle directory for the given scheme in the storage path
  */
-export async function prepareBundleDir(context: ExtensionContext, schema: string): Promise<string> {
+export async function prepareBundleDir(context: ExtensionContext, scheme: string): Promise<string> {
   const storagePath = await prepareStoragePath(context);
 
-  const bundleDir = path.join(storagePath, "bundle", schema);
+  const bundleDir = path.join(storagePath, "bundle", scheme);
 
   // Remove old bundle if exists
   await removeDirectory(bundleDir);
 
   // Remove old .xcresult if exists
-  const xcresult = path.join(storagePath, "bundle", `${schema}.xcresult`);
+  const xcresult = path.join(storagePath, "bundle", `${scheme}.xcresult`);
   await removeDirectory(xcresult);
 
   return bundleDir;
