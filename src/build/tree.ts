@@ -80,7 +80,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   async getSchemes(): Promise<BuildTreeItem[]> {
     let schemes: XcodeScheme[] = [];
     try {
-      schemes = await this.buildManager.getSchemas();
+      schemes = await this.buildManager.getSchemes();
     } catch (error) {
       commonLogger.error("Failed to get schemes", {
         error: error,

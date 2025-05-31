@@ -1189,7 +1189,7 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
       _write("🔎 Getting schemes");
       let schemes: XcodeScheme[] = [];
       try {
-        schemes = await context.buildManager.getSchemas({ refresh: true });
+        schemes = await context.buildManager.getSchemes({ refresh: true });
       } catch (e) {
         _write("❌ Getting schemes failed");
         if (e instanceof ExecBaseError) {

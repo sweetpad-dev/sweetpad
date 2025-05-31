@@ -59,7 +59,7 @@ export class BuildManager {
     return this.cache;
   }
 
-  async getSchemas(options?: { refresh?: boolean }): Promise<XcodeScheme[]> {
+  async getSchemes(options?: { refresh?: boolean }): Promise<XcodeScheme[]> {
     if (this.cache === undefined || options?.refresh) {
       return await this.refresh();
     }
