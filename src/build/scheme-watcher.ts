@@ -1,6 +1,5 @@
 import path from "node:path";
 import * as vscode from "vscode";
-import { Disposable } from "vscode";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
@@ -19,14 +18,14 @@ class SchemeWatcher {
     this.workspacePath = getWorkspacePath();
   }
 
-  async start() {
+  async start(): Promise<void> {
     // Check if auto-refresh is enabled (default: true)
     const isEnabled = getWorkspaceConfig("build.autoRefreshSchemes") ?? true;
     if (!isEnabled) {
       commonLogger.log("Scheme auto-refresh is disabled", {
         workspacePath: this.workspacePath,
       });
-      return new Disposable(() => {});
+      return;
     }
 
     await this.setupWatchers();

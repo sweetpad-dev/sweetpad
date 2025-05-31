@@ -544,7 +544,7 @@
     "menus": {
       "commandPalette": [],
       "view/title": [
-                {
+        {
           "command": "sweetpad.build.refreshSchemes",
           "when": "view == sweetpad.build.view"
         },
