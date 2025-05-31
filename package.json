@@ -887,12 +887,12 @@
           "default": true,
           "description": "Watch if default scheme is changed and regenerate the build server config"
         },
-        "sweetpad.build.schemes.autoRefresh": {
+        "sweetpad.build.autoRefreshSchemes": {
           "type": "boolean",
           "default": true,
           "description": "Automatically refresh schemes when project files change (Package.swift, .xcodeproj, .xcworkspace, etc.)"
         },
-        "sweetpad.build.schemes.autoRefreshDelay": {
+        "sweetpad.build.autoRefreshSchemesDelay": {
           "type": "number",
           "default": 500,
           "minimum": 100,

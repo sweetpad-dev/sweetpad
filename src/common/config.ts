@@ -14,8 +14,8 @@ type Config = {
   "build.env": Record<string, string | null>;
   "build.launchArgs": string[];
   "build.launchEnv": { [key: string]: string };
-  "build.schemes.autoRefresh": boolean;
-  "build.schemes.autoRefreshDelay": number;
+  "build.autoRefreshSchemes": boolean;
+  "build.autoRefreshSchemesDelay": number;
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "system.enableSentry": boolean;

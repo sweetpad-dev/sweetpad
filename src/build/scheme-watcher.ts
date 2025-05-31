@@ -21,7 +21,7 @@ class SchemeWatcher {
 
   async start() {
     // Check if auto-refresh is enabled (default: true)
-    const isEnabled = getWorkspaceConfig("build.schemes.autoRefresh") ?? true;
+    const isEnabled = getWorkspaceConfig("build.autoRefreshSchemes") ?? true;
     if (!isEnabled) {
       commonLogger.log("Scheme auto-refresh is disabled", {
         workspacePath: this.workspacePath,
@@ -160,7 +160,7 @@ class SchemeWatcher {
     }
 
     // Get the refresh delay from config (default: 500ms)
-    const refreshDelay = getWorkspaceConfig("build.schemes.autoRefreshDelay") ?? 500;
+    const refreshDelay = getWorkspaceConfig("build.autoRefreshSchemesDelay") ?? 500;
 
     this.throttle = setTimeout(() => {
       this.throttle = null;

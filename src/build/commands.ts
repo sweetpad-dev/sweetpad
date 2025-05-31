@@ -1262,7 +1262,9 @@ export async function refreshSchemesCommand(context: ExtensionContext): Promise<
   const xcworkspace = getCurrentXcodeWorkspacePath(context);
 
   if (!xcworkspace) {
-    // If no workspace is set, ask user to select one first
+    // If there is no workspace, we should ask user to select it first.
+    // This function automatically refreshes schemes, so we can just call it and move on
+    // without calling to refresh schemes manually.
     await askXcodeWorkspacePath(context);
     return;
   }
