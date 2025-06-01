@@ -41,7 +41,6 @@ import {
   restartSwiftLSP,
   selectXcodeWorkspace,
 } from "./utils";
-import { getMacOSArchitecture } from "../destination/utils";
 
 function writeWatchMarkers(terminal: TaskTerminal) {
   terminal.write("🍭 SweetPad: watch marker (start)\n");
@@ -296,6 +295,43 @@ export function isXcbeautifyEnabled() {
 }
 
 /**
+ * Build destination string for xcodebuild command.
+ *
+ * Examples:
+ * - `platform=iOS Simulator,id=12345678-1234-1234-1234-123456789012,arch=x86_64`
+ * - `platform=macOS,arch=arm64`
+ * - `platform=iOS,arch=arm64`
+ */
+function buildDestinationString(options: {
+  platform: string;
+  id?: string;
+  arch?: string;
+}): string {
+  const { platform, id, arch } = options;
+  if (id && arch) {
+    return `platform=${platform},id=${id},arch=${arch}`;
+  }
+  if (id && !arch) {
+    return `platform=${platform},id=${id}`;
+  }
+  if (!id && arch) {
+    return `platform=${platform},arch=${arch}`;
+  }
+  return `platform=${platform}`; // no id and no arch
+}
+
+function getSimulatorArch(): string | undefined {
+  // Rosetta is technology that allows running x86_64 code on Apple Silicon Macs.
+  // This function instructs xcodebuild to build for x86_64 architecture when Rosetta destinations
+  // enabled in Xcode
+  const useRosetta = getWorkspaceConfig("build.rosettaDestination") ?? false;
+  if (useRosetta) {
+    return "x86_64";
+  }
+  return undefined; // let xcodebuild decide the architecture
+}
+
+/**
  * Prepare and return destination string for xcodebuild command.
  *
  * WARN: Do not use result of this function to anything else than xcodebuild command.
@@ -304,38 +340,40 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   const destination = options.destination;
 
   if (destination.type === "iOSSimulator") {
-    const currentArch = getMacOSArchitecture() ?? "arm64";
-    const rosettaDestination = getWorkspaceConfig("build.rosettaDestination") ?? false;
-    destination.arch = rosettaDestination ? "x86_64" : currentArch;
-    return `platform=iOS Simulator,id=${destination.udid},arch=${destination.arch}`;
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "iOS Simulator", id: destination.udid, arch: arch });
   }
   if (destination.type === "watchOSSimulator") {
-    return `platform=watchOS Simulator,id=${destination.udid}`;
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "watchOS Simulator", id: destination.udid, arch: arch });
   }
   if (destination.type === "tvOSSimulator") {
-    return `platform=tvOS Simulator,id=${destination.udid}`;
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "tvOS Simulator", id: destination.udid, arch: arch });
   }
   if (destination.type === "visionOSSimulator") {
-    return `platform=visionOS Simulator,id=${destination.udid}`;
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "visionOS Simulator", id: destination.udid, arch: arch });
   }
   if (destination.type === "macOS") {
     // note: without arch, xcodebuild will show warning like this:
     // --- xcodebuild: WARNING: Using the first of multiple matching destinations:
     // { platform:macOS, arch:arm64, id:00008103-000109910EC3001E, name:My Mac }
     // { platform:macOS, arch:x86_64, id:00008103-000109910EC3001E, name:My Mac }
-    return `platform=macOS,arch=${destination.arch}`;
+    // return `platform=macOS,arch=${destination.arch}`;
+    return buildDestinationString({ platform: "macOS", arch: destination.arch });
   }
   if (destination.type === "iOSDevice") {
-    return `platform=iOS,id=${destination.udid}`;
+    return buildDestinationString({ platform: "iOS", id: destination.udid });
   }
   if (destination.type === "watchOSDevice") {
-    return `platform=watchOS,id=${destination.udid}`;
+    return buildDestinationString({ platform: "watchOS", id: destination.udid });
   }
   if (destination.type === "tvOSDevice") {
-    return `platform=tvOS,id=${destination.udid}`;
+    return buildDestinationString({ platform: "tvOS", id: destination.udid });
   }
   if (destination.type === "visionOSDevice") {
-    return `platform=visionOS,id=${destination.udid}`;
+    return buildDestinationString({ platform: "visionOS", id: destination.udid });
   }
   return assertUnreachable(destination);
 }

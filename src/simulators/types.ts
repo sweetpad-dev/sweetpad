@@ -25,8 +25,6 @@ export class iOSSimulatorDestination implements IDestination {
   public rawDeviceTypeIdentifier: string;
   // ex. com.apple.CoreSimulator.SimRuntime.iOS-15-2
   public rawRuntime: string;
-  // simulator architecture, can be "arm64" or "x86_64"
-  public arch: "arm64" | "x86_64" = "arm64"; // Default to arm64, can be overridden if needed
 
   constructor(options: {
     udid: string;
@@ -38,7 +36,6 @@ export class iOSSimulatorDestination implements IDestination {
     osVersion: string;
     rawDeviceTypeIdentifier: string;
     rawRuntime: string;
-    arch?: "arm64" | "x86_64"; // Optional, defaults to "arm64"
   }) {
     this.udid = options.udid;
     this.isAvailable = options.isAvailable;
@@ -49,7 +46,6 @@ export class iOSSimulatorDestination implements IDestination {
     this.osVersion = options.osVersion;
     this.rawDeviceTypeIdentifier = options.rawDeviceTypeIdentifier;
     this.rawRuntime = options.rawRuntime;
-    this.arch = options.arch ?? "arm64";
   }
 
   get id(): string {
