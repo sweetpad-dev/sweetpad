@@ -817,6 +817,11 @@
           ],
           "description": "Environment variables to pass to the app on launch"
         },
+        "sweetpad.build.rosettaDestination": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use Rosetta Destination."
+        },
         "sweetpad.testing.configuration": {
           "type": "string",
           "default": null,
