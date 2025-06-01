@@ -430,8 +430,8 @@
         "icon": "$(sweetpad-tools)"
       },
       {
-        "command": "sweetpad.build.refreshView",
-        "title": "SweetPad: Refresh view",
+        "command": "sweetpad.build.refreshSchemes",
+        "title": "SweetPad: Refresh schemes",
         "icon": "$(sweetpad-refresh)"
       },
       {
@@ -545,9 +545,13 @@
       "commandPalette": [],
       "view/title": [
         {
+          "command": "sweetpad.build.refreshSchemes",
+          "when": "view == sweetpad.build.view"
+        },
+        {
           "command": "sweetpad.build.openXcode",
           "when": "view == sweetpad.build.view",
-          "group": "navigation@3"
+          "group": "navigation@2"
         },
         {
           "command": "sweetpad.build.removeBundleDir",
@@ -887,6 +891,18 @@
           "type": "boolean",
           "default": true,
           "description": "Watch if default scheme is changed and regenerate the build server config"
+        },
+        "sweetpad.build.autoRefreshSchemes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically refresh schemes when project files change (Package.swift, .xcodeproj, .xcworkspace, etc.)"
+        },
+        "sweetpad.build.autoRefreshSchemesDelay": {
+          "type": "number",
+          "default": 500,
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "Delay in milliseconds before auto-refreshing schemes after detecting file changes"
         }
       }
     },

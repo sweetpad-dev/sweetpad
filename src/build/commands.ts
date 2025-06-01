@@ -519,8 +519,8 @@ export async function buildApp(
     // sweetpad: debugging-launch
     command.addBuildSettings("GCC_GENERATE_DEBUGGING_SYMBOLS", "YES");
     // In Xcode, ONLY_ACTIVE_ARCH is a build setting that controls whether you compile for only the architecture
-    // of the machine (or simulator/device) you’re currently targeting, or for all architectures listed in your
-    // project’s ARCHS setting.
+    // of the machine (or simulator/device) you're currently targeting, or for all architectures listed in your
+    // project's ARCHS setting.
     // It speeds up compile times, especially in Debug, because Xcode skips generating unused slices.
     command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
   }
@@ -1089,7 +1089,7 @@ export async function selectXcodeWorkspaceCommand(context: ExtensionContext) {
     context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
   }
 
-  context.buildManager.refresh();
+  context.buildManager.refreshSchemes();
 }
 
 export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
@@ -1193,7 +1193,7 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
       _write("🔎 Getting schemes");
       let schemes: XcodeScheme[] = [];
       try {
-        schemes = await context.buildManager.getSchemas({ refresh: true });
+        schemes = await context.buildManager.getSchemes({ refresh: true });
       } catch (e) {
         _write("❌ Getting schemes failed");
         if (e instanceof ExecBaseError) {
@@ -1260,4 +1260,18 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
       _write("✅ Everything looks good!");
     },
   });
+}
+
+export async function refreshSchemesCommand(context: ExtensionContext): Promise<void> {
+  const xcworkspace = getCurrentXcodeWorkspacePath(context);
+
+  if (!xcworkspace) {
+    // If there is no workspace, we should ask user to select it first.
+    // This function automatically refreshes schemes, so we can just call it and move on
+    // without calling to refresh schemes manually.
+    await askXcodeWorkspacePath(context);
+    return;
+  }
+
+  await context.buildManager.refreshSchemes();
 }

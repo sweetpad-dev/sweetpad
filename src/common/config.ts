@@ -15,6 +15,8 @@ type Config = {
   "build.launchArgs": string[];
   "build.launchEnv": { [key: string]: string };
   "build.rosettaDestination": boolean;
+  "build.autoRefreshSchemes": boolean;
+  "build.autoRefreshSchemesDelay": number;
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "system.enableSentry": boolean;

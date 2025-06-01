@@ -4,16 +4,21 @@ import * as vscode from "vscode";
 import {
   type XcodeScheme,
   generateBuildServerConfig,
+  getBasicProjectInfo,
   getIsXcodeBuildServerInstalled,
   getSchemes,
 } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
+import { BaseExecutionScope, type ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
+import { commonLogger } from "../common/logger";
 import { askXcodeWorkspacePath, getCurrentXcodeWorkspacePath, getWorkspacePath, restartSwiftLSP } from "./utils";
 
 type IEventMap = {
-  updated: [];
+  refreshSchemesStarted: [];
+  refreshSchemesCompleted: [XcodeScheme[]];
+  refreshSchemesFailed: [];
+
   defaultSchemeForBuildUpdated: [scheme: string | undefined];
   defaultSchemeForTestingUpdated: [scheme: string | undefined];
 };
@@ -47,21 +52,35 @@ export class BuildManager {
     return this._context;
   }
 
-  async refresh(): Promise<XcodeScheme[]> {
-    const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
+  async refreshSchemes(): Promise<XcodeScheme[]> {
+    const scope = new BaseExecutionScope();
+    return await this.context.startExecutionScope(scope, async () => {
+      this.context.updateProgressStatus("Refreshing Xcode schemes");
 
-    const scheme = await getSchemes({
-      xcworkspace: xcworkspace,
+      this.emitter.emit("refreshSchemesStarted");
+      try {
+        getBasicProjectInfo.clearCache();
+
+        const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
+
+        const schemes = await getSchemes({ xcworkspace: xcworkspace });
+
+        this.cache = schemes;
+
+        await this.validateDefaultSchemes();
+        this.emitter.emit("refreshSchemesCompleted", schemes);
+        return this.cache;
+      } catch (error: unknown) {
+        commonLogger.error("Failed to refresh schemes", { error: error });
+        this.emitter.emit("refreshSchemesFailed");
+        throw error;
+      }
     });
-
-    this.cache = scheme;
-    this.emitter.emit("updated");
-    return this.cache;
   }
 
-  async getSchemas(options?: { refresh?: boolean }): Promise<XcodeScheme[]> {
+  async getSchemes(options?: { refresh?: boolean }): Promise<XcodeScheme[]> {
     if (this.cache === undefined || options?.refresh) {
-      return await this.refresh();
+      return await this.refreshSchemes();
     }
     return this.cache;
   }
@@ -141,6 +160,27 @@ export class BuildManager {
           INFO: "buildServer.json" file is automatically regenerated every time you change the scheme.
           If you want to disable this feature, you can do it in the settings. This message is shown only once.
       `);
+    }
+  }
+
+  /**
+   * Validates that the current default schemes still exist in the refreshed schemes list.
+   * If a default scheme no longer exists, it will be cleared.
+   */
+  private async validateDefaultSchemes(): Promise<void> {
+    if (!this.cache) {
+      return;
+    }
+
+    const schemeNames = this.cache.map((scheme) => scheme.name);
+    const currentBuildScheme = this.getDefaultSchemeForBuild();
+    if (currentBuildScheme && !schemeNames.includes(currentBuildScheme)) {
+      this.setDefaultSchemeForBuild(undefined);
+    }
+
+    const currentTestingScheme = this.getDefaultSchemeForTesting();
+    if (currentTestingScheme && !schemeNames.includes(currentTestingScheme)) {
+      this.setDefaultSchemeForTesting(undefined);
     }
   }
 }
