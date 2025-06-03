@@ -55,59 +55,37 @@ tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcod
 1. 🍏 MacOS — other platforms are currently not supported
 2. 📱 Xcode — required for building and running iOS apps via `xcodebuild`
 
-## Development
+## Local Development & Debugging
 
-### 🛠️ **Local Development Setup**
+To develop and debug the extension locally:
 
-If you want to contribute to SweetPad or test changes locally, you can use the provided installation script:
+1. Clone the repository:
+   ```shell
+   git clone git@github.com:sweetpad-dev/sweetpad.git
+   cd sweetpad
+   ```
 
-```bash
-# Clone the repository
-git clone https://github.com/sweetpad-dev/sweetpad.git
-cd sweetpad
+2. Install dependencies:
+   ```shell
+   npm install
+   ```
 
-# Install dependencies
-npm install
+3. Open in VSCode:
+   ```shell
+   code .
+   ```
 
-# Build and install the extension locally
-./scripts/install-and-test.sh
-```
+4. Press **F5** to build and run the extension in a new window. You'll see two VSCode windows:
+   - Source code window (for editing and debugging)
+   - **[Extension Development Host]** window (where the extension runs)
 
-#### **What the script does:**
-1. 🔨 **Builds** the extension from source using `npm run build`
-2. 📦 **Creates** a VSIX package with dynamic versioning from `package.json`
-3. 🚀 **Installs** the extension automatically in VS Code or Cursor (whichever is available)
-4. 🔄 **Reloads** the editor window to activate the new extension
-5. ✅ **Ready** to test your changes immediately
+5. Set breakpoints in the source code window where needed
 
-#### **Manual Installation (Alternative):**
-```bash
-# Build the extension
-npm run build
+6. In the extension window, press **Cmd+R** to restart the extension
 
-# The install script creates the VSIX package automatically, but you can install manually:
-code --install-extension sweetpad-<version>.vsix
-# or for Cursor
-cursor --install-extension sweetpad-<version>.vsix
-```
+7. When you trigger an action that hits a breakpoint, the debugger will pause and you can inspect variables and the call stack
 
-#### **Available Scripts:**
-- `npm run build` - Build the extension
-- `npm run watch` - Build and watch for changes during development
-- `npm test` - Run tests
-- `npm run check:all` - Run all code quality checks (format, lint, types)
-
-#### **Testing with SPM Projects:**
-The extension now supports Swift Package Manager projects. You can test with the included example:
-
-```bash
-# Open the SPM test project
-code tests/examples/sweetpad-spm
-# or
-cursor tests/examples/sweetpad-spm
-```
-
-> 💡 **Tip:** After making changes to the source code, run `./scripts/install-and-test.sh` again to rebuild and reinstall the extension with your latest changes.
+For more detailed debugging instructions, see the [development guide](./docs/dev/debug.md).
 
 ## Changelog
 
