@@ -18,6 +18,7 @@ import {
   selectXcodeSchemeForBuildCommand,
   selectXcodeWorkspaceCommand,
   testCommand,
+  testWithSwiftTestingCommand,
 } from "./build/commands.js";
 import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
@@ -163,6 +164,7 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.build.build", buildCommand));
     d(command("sweetpad.build.clean", cleanCommand));
     d(command("sweetpad.build.test", testCommand));
+    d(command("sweetpad.build.testWithSwiftTesting", testWithSwiftTestingCommand));
     d(command("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
     d(command("sweetpad.build.removeBundleDir", removeBundleDirCommand));
     d(command("sweetpad.build.generateBuildServerConfig", generateBuildServerConfigCommand));

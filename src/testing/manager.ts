@@ -126,12 +126,13 @@ function* getAncestorsPaths(options: {
   yield parentPath;
 }
 
-/*
- * Custom data for test items
+/**
+ * Context for each test item to store additional information
  */
 type TestItemContext = {
   type: "class" | "method";
   spmTarget?: string;
+  framework?: "xctest" | "swift-testing";
 };
 
 export class TestingManager {
@@ -248,25 +249,26 @@ export class TestingManager {
   }
 
   /**
-   * Create a new test item for the given document with additional context data
+   * Create a test item and store it in the controller
    */
   createTestItem(options: {
     id: string;
     label: string;
     uri: vscode.Uri;
     type: TestItemContext["type"];
+    framework?: TestItemContext["framework"];
   }): vscode.TestItem {
     const testItem = this.controller.createTestItem(options.id, options.label, options.uri);
     this.testItems.set(testItem, {
       type: options.type,
+      framework: options.framework,
     });
     return testItem;
   }
 
   /**
-   * Find all test methods in the given document and update the test items in test controller
-   *
-   * TODO: use a proper Swift parser to find test methods
+   * Update test items from the given document.
+   * Parses test code for test classes and methods and creates test items.
    */
   updateTestItems(document: vscode.TextDocument) {
     // Remove existing test items for this document
@@ -283,6 +285,7 @@ export class TestingManager {
 
     const text = document.getText();
 
+    // First, look for XCTest classes
     // Regex to find classes inheriting from XCTestCase
     const classRegex = /class\s+(\w+)\s*:\s*XCTestCase\s*\{/g;
     // let classMatch;
@@ -300,6 +303,7 @@ export class TestingManager {
         label: className,
         uri: document.uri,
         type: "class",
+        framework: "xctest",
       });
       classTestItem.range = new vscode.Range(classPosition, classPosition);
       this.controller.items.add(classTestItem);
@@ -327,10 +331,116 @@ export class TestingManager {
           label: testName,
           uri: document.uri,
           type: "method",
+          framework: "xctest",
         });
 
         testItem.range = new vscode.Range(position, position);
         classTestItem.children.add(testItem);
+      }
+    }
+
+    // Second, look for Swift Testing structures
+    // Regex to find structs/classes/actors with Swift Testing tests
+    const swiftTestingContainerRegex = /(struct|class|actor)\s+(\w+)\s*(?::[\s\w,]+)?\s*\{/g;
+    
+    while (true) {
+      const containerMatch = swiftTestingContainerRegex.exec(text);
+      if (containerMatch === null) {
+        break;
+      }
+      const containerType = containerMatch[1];
+      const containerName = containerMatch[2];
+      const containerStartIndex = containerMatch.index + containerMatch[0].length;
+      
+      const containerCode = extractCodeBlock(text, containerStartIndex - 1);
+      if (containerCode === null) {
+        continue;
+      }
+
+      // Look for @Test decorated functions
+      const swiftTestRegex = /@Test(?:\([^)]*\))?\s*(?:func\s+(\w+)|var\s+(\w+))/g;
+      let hasTests = false;
+      let containerTestItem: vscode.TestItem | null = null;
+
+      while (true) {
+        const testMatch = swiftTestRegex.exec(containerCode);
+        if (testMatch === null) {
+          break;
+        }
+
+        // Create container item on first test found
+        if (!hasTests) {
+          hasTests = true;
+          const containerPosition = document.positionAt(containerMatch.index);
+          
+          containerTestItem = this.createTestItem({
+            id: containerName,
+            label: `${containerName} (Swift Testing)`,
+            uri: document.uri,
+            type: "class",
+            framework: "swift-testing",
+          });
+          containerTestItem.range = new vscode.Range(containerPosition, containerPosition);
+          this.controller.items.add(containerTestItem);
+        }
+
+        const testName = testMatch[1] || testMatch[2]; // func name or var name
+        if (testName && containerTestItem) {
+          const testStartIndex = containerStartIndex + testMatch.index;
+          const position = document.positionAt(testStartIndex);
+
+          const testItem = this.createTestItem({
+            id: `${containerName}.${testName}`,
+            label: testName,
+            uri: document.uri,
+            type: "method",
+            framework: "swift-testing",
+          });
+
+          testItem.range = new vscode.Range(position, position);
+          containerTestItem.children.add(testItem);
+        }
+      }
+    }
+
+    // Third, look for standalone @Test functions (Swift Testing)
+    const standaloneTestRegex = /@Test(?:\([^)]*\))?\s*(?:func\s+(\w+)|var\s+(\w+))/g;
+    const processedTests = new Set<string>();
+
+    while (true) {
+      const testMatch = standaloneTestRegex.exec(text);
+      if (testMatch === null) {
+        break;
+      }
+
+      const testName = testMatch[1] || testMatch[2];
+      if (!testName || processedTests.has(testName)) {
+        continue;
+      }
+
+      // Check if this test is already part of a container
+      let isInsideContainer = false;
+      for (const [, item] of this.controller.items) {
+        if (item.children.get(`${item.id}.${testName}`)) {
+          isInsideContainer = true;
+          break;
+        }
+      }
+
+      if (!isInsideContainer) {
+        const position = document.positionAt(testMatch.index);
+        
+        const testItem = this.createTestItem({
+          id: testName,
+          label: `${testName} (Swift Testing)`,
+          uri: document.uri,
+          type: "method",
+          framework: "swift-testing",
+        });
+
+        testItem.range = new vscode.Range(position, position);
+        this.controller.items.add(testItem);
+        processedTests.add(testName);
       }
     }
   }
@@ -809,6 +919,8 @@ export class TestingManager {
       throw new Error("Test target is not defined");
     }
 
+    const testFramework = this.testItems.get(classTest)?.framework || "xctest";
+
     run.started(classTest);
 
     try {
@@ -820,9 +932,83 @@ export class TestingManager {
           // Handle SPM projects
           if (options.xcworkspace.endsWith("Package.swift")) {
             const packageDir = path.dirname(options.xcworkspace);
+            
+            if (testFramework === "swift-testing") {
+              // Use xcodebuild for Swift Testing in SPM with proper test identifier format
+              await terminal.execute({
+                command: "sh",
+                args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}"`],
+                onOutputLine: async (output) => {
+                  // Parse output for all methods in the class
+                  for (const [methodId, methodTest] of classTest.children) {
+                    await this.parseOutputLine({
+                      line: output.value,
+                      testRun: run,
+                      className: className,
+                      runContext: runContext,
+                    });
+                  }
+                },
+              });
+            } else {
+              // Use xcodebuild for XCTest in SPM
+              await terminal.execute({
+                command: "sh",
+                args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${classTest.id}"`],
+                onOutputLine: async (output) => {
+                  await this.parseOutputLine({
+                    line: output.value,
+                    testRun: run,
+                    className: className,
+                    runContext: runContext,
+                  });
+                },
+              });
+            }
+            return;
+          }
+
+          // Original Xcode workspace logic
+          if (testFramework === "swift-testing") {
+            // For Swift Testing in Xcode projects, use -only-testing: with proper format
             await terminal.execute({
-              command: "sh",
-              args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${classTest.id}"`],
+              command: "xcodebuild",
+              args: [
+                "test-without-building",
+                "-workspace",
+                options.xcworkspace,
+                "-destination",
+                destinationRaw,
+                "-scheme",
+                scheme,
+                `-only-testing:${testTarget}/${className}`,
+              ],
+              onOutputLine: async (output) => {
+                // Parse output for all methods in the class
+                for (const [methodId, methodTest] of classTest.children) {
+                  await this.parseOutputLine({
+                    line: output.value,
+                    testRun: run,
+                    className: className,
+                    runContext: runContext,
+                  });
+                }
+              },
+            });
+          } else {
+            // XCTest uses the existing logic
+            await terminal.execute({
+              command: "xcodebuild",
+              args: [
+                "test-without-building",
+                "-workspace",
+                options.xcworkspace,
+                "-destination",
+                destinationRaw,
+                "-scheme",
+                scheme,
+                `-only-testing:${testTarget}/${className}`,
+              ],
               onOutputLine: async (output) => {
                 await this.parseOutputLine({
                   line: output.value,
@@ -832,31 +1018,7 @@ export class TestingManager {
                 });
               },
             });
-            return;
           }
-
-          // Original Xcode workspace logic
-          await terminal.execute({
-            command: "xcodebuild",
-            args: [
-              "test-without-building",
-              "-workspace",
-              options.xcworkspace,
-              "-destination",
-              destinationRaw,
-              "-scheme",
-              scheme,
-              `-only-testing:${testTarget}/${classTest.id}`,
-            ],
-            onOutputLine: async (output) => {
-              await this.parseOutputLine({
-                line: output.value,
-                testRun: run,
-                className: className,
-                runContext: runContext,
-              });
-            },
-          });
         },
       });
     } catch (error) {
@@ -911,6 +1073,7 @@ export class TestingManager {
     }
 
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
+    const testFramework = this.testItems.get(methodTest)?.framework || "xctest";
 
     // Run "xcodebuild" command as a task to see the test output
     await runTask(this.context, {
@@ -922,9 +1085,54 @@ export class TestingManager {
           // Handle SPM projects
           if (options.xcworkspace.endsWith("Package.swift")) {
             const packageDir = path.dirname(options.xcworkspace);
+            
+            if (testFramework === "swift-testing") {
+              // Use xcodebuild for Swift Testing in SPM with proper test identifier format
+              await terminal.execute({
+                command: "sh",
+                args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}/${methodName}"`],
+                onOutputLine: async (output) => {
+                  await this.parseOutputLine({
+                    line: output.value,
+                    testRun: testRun,
+                    className: className,
+                    runContext: runContext,
+                  });
+                },
+              });
+            } else {
+              // Use xcodebuild for XCTest in SPM
+              await terminal.execute({
+                command: "sh",
+                args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}/${methodName}"`],
+                onOutputLine: async (output) => {
+                  await this.parseOutputLine({
+                    line: output.value,
+                    testRun: testRun,
+                    className: className,
+                    runContext: runContext,
+                  });
+                },
+              });
+            }
+            return;
+          }
+
+          // Original Xcode workspace logic
+          if (testFramework === "swift-testing") {
+            // For Swift Testing in Xcode projects, use -only-testing: with proper format
             await terminal.execute({
-              command: "sh",
-              args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}/${methodName}"`],
+              command: "xcodebuild",
+              args: [
+                "test-without-building",
+                "-workspace",
+                options.xcworkspace,
+                "-destination",
+                destinationRaw,
+                "-scheme",
+                scheme,
+                `-only-testing:${testTarget}/${className}/${methodName}`,
+              ],
               onOutputLine: async (output) => {
                 await this.parseOutputLine({
                   line: output.value,
@@ -934,31 +1142,30 @@ export class TestingManager {
                 });
               },
             });
-            return;
+          } else {
+            // XCTest uses the existing logic
+            await terminal.execute({
+              command: "xcodebuild",
+              args: [
+                "test-without-building",
+                "-workspace",
+                options.xcworkspace,
+                "-destination",
+                destinationRaw,
+                "-scheme",
+                scheme,
+                `-only-testing:${testTarget}/${className}/${methodName}`,
+              ],
+              onOutputLine: async (output) => {
+                await this.parseOutputLine({
+                  line: output.value,
+                  testRun: testRun,
+                  className: className,
+                  runContext: runContext,
+                });
+              },
+            });
           }
-
-          // Original Xcode workspace logic
-          await terminal.execute({
-            command: "xcodebuild",
-            args: [
-              "test-without-building",
-              "-workspace",
-              options.xcworkspace,
-              "-destination",
-              destinationRaw,
-              "-scheme",
-              scheme,
-              `-only-testing:${testTarget}/${className}/${methodName}`,
-            ],
-            onOutputLine: async (output) => {
-              await this.parseOutputLine({
-                line: output.value,
-                testRun: testRun,
-                className: className,
-                runContext: runContext,
-              });
-            },
-          });
         } catch (error) {
           // todo: ??? can we extract error message from error object?
           const errorMessage = error instanceof Error ? error.message : "Test failed";
