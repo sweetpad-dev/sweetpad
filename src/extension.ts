@@ -104,7 +104,7 @@ export async function activate(context: vscode.ExtensionContext) {
   testingManager.context = _context;
 
   // --- Perform initial refreshes AFTER context is set ---
-  void buildManager.refresh();
+  void buildManager.refreshSchemes();
   
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({
