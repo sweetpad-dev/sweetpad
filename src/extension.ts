@@ -1,10 +1,9 @@
 import * as vscode from "vscode";
+import * as http from 'http';
+import { Express } from 'express'; // Import Express type
 import {
   buildCommand,
   cleanCommand,
-  debuggingBuildCommand,
-  debuggingLaunchCommand,
-  debuggingRunCommand,
   diagnoseBuildSetupCommand,
   generateBuildServerConfigCommand,
   launchCommand,
@@ -25,7 +24,7 @@ import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
 import { ExtensionContext } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
-import { Logger } from "./common/logger.js";
+import { Logger, commonLogger } from "./common/logger.js";
 import { getAppPathCommand } from "./debugger/commands.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
 import {
@@ -38,7 +37,7 @@ import { DestinationStatusBar } from "./destination/status-bar.js";
 import { DestinationsTreeProvider } from "./destination/tree.js";
 import { DevicesManager } from "./devices/manager.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
-import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
+import { createFormatProvider } from "./format/provider.js";
 import { createFormatStatusItem } from "./format/status.js";
 import {
   openSimulatorCommand,
@@ -50,11 +49,9 @@ import { SimulatorsManager } from "./simulators/manager.js";
 import {
   createIssueGenericCommand,
   createIssueNoSchemesCommand,
-  openTerminalPanel,
-  resetSweetpadCache,
+  resetSweetPadCache,
   testErrorReportingCommand,
 } from "./system/commands.js";
-import { ProgressStatusBar } from "./system/status-bar.js";
 import {
   buildForTestingCommand,
   selectConfigurationForTestingCommand,
@@ -70,19 +67,19 @@ import { tuistCleanCommand, tuistEditComnmand, tuistGenerateCommand, tuistInstal
 import { createTuistWatcher } from "./tuist/watcher.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
+import { createMcpServer } from './mcp_server';
+import { McpServerInstance } from './types';
 
-export function activate(context: vscode.ExtensionContext) {
+// Keep track of the server instance
+let mcpInstance: McpServerInstance | null = null;
+
+export async function activate(context: vscode.ExtensionContext) {
   // Sentry 🚨
   errorReporting.logSetup();
 
   // 🪵🪓
   Logger.setup();
 
-  // Managers 💼
-  // These classes are responsible for managing the state of the specific domain. Other parts of the extension can
-  // interact with them to get the current state of the domain and subscribe to changes. For example
-  // "DestinationsManager" have methods to get the list of current ios devices and simulators, and it also have an
-  // event emitter that emits an event when the list of devices or simulators changes.
   const buildManager = new BuildManager();
   const devicesManager = new DevicesManager();
   const simulatorsManager = new SimulatorsManager();
@@ -92,26 +89,23 @@ export function activate(context: vscode.ExtensionContext) {
   });
   const toolsManager = new ToolsManager();
   const testingManager = new TestingManager();
-  const formatter = new SwiftFormattingProvider();
-  const progressStatusBar = new ProgressStatusBar();
-
-  // Main context object 🌍
   const _context = new ExtensionContext({
     context: context,
     destinationsManager: destinationsManager,
     buildManager: buildManager,
     toolsManager: toolsManager,
     testingManager: testingManager,
-    formatter: formatter,
-    progressStatusBar: progressStatusBar,
   });
+
   // Here is circular dependency, but I don't care
   buildManager.context = _context;
   devicesManager.context = _context;
   destinationsManager.context = _context;
   testingManager.context = _context;
-  progressStatusBar.context = _context;
 
+  // --- Perform initial refreshes AFTER context is set ---
+  void buildManager.refreshSchemes();
+  
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({
     context: _context,
@@ -131,6 +125,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   const buildTaskProvider = new XcodeBuildTaskProvider(_context);
 
+  // Debug
+  d(registerDebugConfigurationProvider(_context));
+  d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
+
   // Tasks
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
 
@@ -148,7 +146,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.test", testCommand));
   d(command("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
   d(command("sweetpad.build.removeBundleDir", removeBundleDirCommand));
-  d(command("sweetpad.build.generateBuildServerConfig", generateBuildServerConfigCommand));
+  d(command("sweetpad.build.genereateBuildServerConfig", generateBuildServerConfigCommand));
   d(command("sweetpad.build.openXcode", openXcodeCommand));
   d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
   d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeForBuildCommand));
@@ -161,13 +159,6 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.testing.selectTarget", selectTestingTargetCommand));
   d(command("sweetpad.testing.setDefaultScheme", selectXcodeSchemeForTestingCommand));
   d(command("sweetpad.testing.selectConfiguration", selectConfigurationForTestingCommand));
-
-  // Debugging
-  d(registerDebugConfigurationProvider(_context));
-  d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
-  d(command("sweetpad.debugger.debuggingLaunch", debuggingLaunchCommand));
-  d(command("sweetpad.debugger.debuggingRun", debuggingRunCommand));
-  d(command("sweetpad.debugger.debuggingBuild", debuggingBuildCommand));
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));
@@ -185,8 +176,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Format
   d(createFormatStatusItem());
-  d(registerFormatProvider(formatter));
-  d(registerRangeFormatProvider(formatter));
+  d(createFormatProvider());
   d(command("sweetpad.format.run", formatCommand));
   d(command("sweetpad.format.showLogs", showLogsCommand));
 
@@ -217,11 +207,42 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.tools.documentation", openDocumentationCommand));
 
   // System
-  d(command("sweetpad.system.resetSweetpadCache", resetSweetpadCache));
+  d(command("sweetpad.system.resetSweetPadCache", resetSweetPadCache));
   d(command("sweetpad.system.createIssue.generic", createIssueGenericCommand));
   d(command("sweetpad.system.createIssue.noSchemes", createIssueNoSchemesCommand));
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
-  d(command("sweetpad.system.openTerminalPanel", openTerminalPanel));
+
+  // --- MCP Server Setup --- 
+  commonLogger.log("Starting MCP Server setup...");
+  try {
+    mcpInstance = createMcpServer({
+        name: "SweetPadCommandRunner", 
+        version: context.extension.packageJSON.version,
+        port: 61337
+    }, _context);
+
+    // Start the server
+    await mcpInstance.start(); 
+    commonLogger.log("MCP Server setup complete and started.");
+
+    // Disposal
+    context.subscriptions.push({
+      dispose: () => {
+        commonLogger.log("Disposing MCP Server subscription...");
+        if (mcpInstance?.server) {
+             try { mcpInstance.server.close(); } catch(e) { /* log error */ }
+        }
+        mcpInstance = null;
+      }
+    });
+
+  } catch (error: any) {
+    commonLogger.error(`Failed during MCP Server setup`, { error });
+    vscode.window.showErrorMessage(`Failed to initialize MCP Server: ${error.message}`);
+  }
 }
 
-export function deactivate() {}
+export function deactivate() {
+    commonLogger.log("SweetPad deactivating...");
+    // Cleanup is handled by the disposable
+}
