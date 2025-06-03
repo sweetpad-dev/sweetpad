@@ -493,6 +493,51 @@ export async function buildApp(
   // Check if this is an SPM project
   const isSPMProject = options.xcworkspace.endsWith("Package.swift");
   
+  // Get testing framework preference
+  const testingFramework = getWorkspaceConfig("testing.framework") || "auto";
+  
+  // For tests with Swift Testing in SPM projects, use swift test command
+  if (isSPMProject && options.shouldTest && (testingFramework === "swift-testing" || testingFramework === "auto")) {
+    const packageDir = path.dirname(options.xcworkspace);
+    
+    context.updateProgressStatus(`Running Swift Testing tests for "${options.scheme}"`);
+    
+    // Build the swift test command
+    const swiftTestArgs = [
+      "test",
+      "--configuration", options.configuration.toLowerCase(),
+    ];
+    
+    // Add scheme/package target if needed
+    if (options.scheme !== "Package") {
+      swiftTestArgs.push("--target", options.scheme);
+    }
+    
+    // Add additional args that are compatible with swift test
+    const compatibleArgs = additionalArgs.filter(arg => 
+      !arg.startsWith("-destination") && 
+      !arg.startsWith("-resultBundlePath") &&
+      !arg.startsWith("-derivedDataPath")
+    );
+    swiftTestArgs.push(...compatibleArgs);
+    
+    let pipes: Command[] | undefined = undefined;
+    if (useXcbeatify) {
+      pipes = [{ command: "xcbeautify", args: [] }];
+    }
+    
+    // Execute swift test command
+    await terminal.execute({
+      command: "sh",
+      args: ["-c", `cd "${packageDir}" && swift ${swiftTestArgs.map(arg => `"${arg}"`).join(" ")}`],
+      pipes: pipes,
+      env: env,
+    });
+    
+    await restartSwiftLSP();
+    return;
+  }
+  
   if (isSPMProject) {
     // For SPM projects, we need to run xcodebuild from the package directory
     const packageDir = path.dirname(options.xcworkspace);
@@ -560,6 +605,12 @@ export async function buildApp(
     command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
   }
 
+  // For Swift Testing in Xcode projects, add the testing library flag
+  if (options.shouldTest && testingFramework === "swift-testing") {
+    command.addBuildSettings("SWIFT_TESTING_ENABLED", "YES");
+    command.addParameters("-enableTestability", "YES");
+  }
+
   command.addParameters("-scheme", options.scheme);
   command.addParameters("-configuration", options.configuration);
   command.addParameters("-workspace", options.xcworkspace);
@@ -594,7 +645,7 @@ export async function buildApp(
   } else if (options.shouldBuild) {
     context.updateProgressStatus(`Building "${options.scheme}"`);
   } else if (options.shouldTest) {
-    context.updateProgressStatus(`Building "${options.scheme}"`);
+    context.updateProgressStatus(`Testing "${options.scheme}" with ${testingFramework === "swift-testing" ? "Swift Testing" : "XCTest"}`);
   }
   
   await terminal.execute({
@@ -1005,6 +1056,102 @@ export async function testCommand(context: ExtensionContext, item?: BuildTreeIte
       });
     },
   });
+}
+
+/**
+ * Run tests using Swift Testing framework
+ */
+export async function testWithSwiftTestingCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Searching for workspace");
+  vscode.window.showInformationMessage("Starting Swift Testing tests... This may take a while.");
+  const xcworkspace = await askXcodeWorkspacePath(context);
+
+  context.updateProgressStatus("Searching for scheme");
+  const scheme =
+    item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to test with Swift Testing", xcworkspace: xcworkspace }));
+
+  context.updateProgressStatus("Searching for configuration");
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+
+  // For Swift Testing, we might not need a destination for SPM projects
+  const isSPMProject = xcworkspace.endsWith("Package.swift");
+  
+  if (!isSPMProject) {
+    context.updateProgressStatus("Extracting build settings");
+    const buildSettings = await getBuildSettingsToAskDestination({
+      scheme: scheme,
+      configuration: configuration,
+      sdk: undefined,
+      xcworkspace: xcworkspace,
+    });
+
+    context.updateProgressStatus("Searching for destination");
+    const destination = await askDestinationToRunOn(context, buildSettings);
+    const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
+
+    const sdk = destination.platform;
+
+    await runTask(context, {
+      name: "Test (Swift Testing)",
+      lock: "sweetpad.build",
+      terminateLocked: true,
+      problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+      callback: async (terminal) => {
+        // Temporarily override the testing framework config
+        const originalFramework = getWorkspaceConfig("testing.framework");
+        await updateWorkspaceConfig("testing.framework", "swift-testing");
+        
+        try {
+          await buildApp(context, terminal, {
+            scheme: scheme,
+            sdk: sdk,
+            configuration: configuration,
+            shouldBuild: false,
+            shouldClean: false,
+            shouldTest: true,
+            xcworkspace: xcworkspace,
+            destinationRaw: destinationRaw,
+            debug: false,
+          });
+        } finally {
+          // Restore original config
+          if (originalFramework !== undefined) {
+            await updateWorkspaceConfig("testing.framework", originalFramework);
+          }
+        }
+      },
+    });
+  } else {
+    // For SPM projects, run directly without destination
+    await runTask(context, {
+      name: "Test (Swift Testing)",
+      lock: "sweetpad.build",
+      terminateLocked: true,
+      problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+      callback: async (terminal) => {
+        const packageDir = path.dirname(xcworkspace);
+        
+        const swiftTestArgs = [
+          "test",
+          "--configuration", configuration.toLowerCase(),
+        ];
+        
+        if (scheme !== "Package") {
+          swiftTestArgs.push("--target", scheme);
+        }
+        
+        const env = getWorkspaceConfig("build.env") || {};
+        
+        await terminal.execute({
+          command: "sh",
+          args: ["-c", `cd "${packageDir}" && swift ${swiftTestArgs.map(arg => `"${arg}"`).join(" ")}`],
+          env: env,
+        });
+        
+        await restartSwiftLSP();
+      },
+    });
+  }
 }
 
 export async function resolveDependencies(

@@ -24,6 +24,7 @@ type Config = {
   "tuist.autogenerate": boolean;
   "tuist.generate.env": { [key: string]: string | null };
   "testing.configuration": string;
+  "testing.framework": "xctest" | "swift-testing" | "auto";
 };
 
 type ConfigKey = keyof Config;

@@ -346,6 +346,12 @@
         "icon": "$(beaker)"
       },
       {
+        "command": "sweetpad.build.testWithSwiftTesting",
+        "title": "SweetPad: Test with Swift Testing",
+        "icon": "$(beaker)",
+        "description": "Run tests using Swift Testing framework"
+      },
+      {
         "command": "sweetpad.build.resolveDependencies",
         "title": "SweetPad: Resolve dependencies",
         "icon": "$(sync)"
@@ -658,19 +664,24 @@
           "group": "context@4"
         },
         {
-          "command": "sweetpad.build.clean",
+          "command": "sweetpad.build.testWithSwiftTesting",
           "when": "viewItem == sweetpad.build.view.item",
           "group": "context@5"
         },
         {
-          "command": "sweetpad.build.resolveDependencies",
+          "command": "sweetpad.build.clean",
           "when": "viewItem == sweetpad.build.view.item",
           "group": "context@6"
         },
         {
-          "command": "sweetpad.build.setDefaultScheme",
+          "command": "sweetpad.build.resolveDependencies",
           "when": "viewItem == sweetpad.build.view.item",
           "group": "context@7"
+        },
+        {
+          "command": "sweetpad.build.setDefaultScheme",
+          "when": "viewItem == sweetpad.build.view.item",
+          "group": "context@8"
         }
       ],
       "testing/item/context": [
@@ -823,6 +834,21 @@
           "type": "string",
           "default": null,
           "description": "Configuration to build for testing."
+        },
+        "sweetpad.testing.framework": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "xctest",
+            "swift-testing",
+            "auto"
+          ],
+          "enumDescriptions": [
+            "Use XCTest framework for running tests",
+            "Use Swift Testing framework (requires Xcode 16+)",
+            "Automatically detect the testing framework based on test files"
+          ],
+          "description": "Select the testing framework to use for running tests"
         },
         "sweetpad.system.taskExecutor": {
           "type": "string",

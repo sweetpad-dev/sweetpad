@@ -23,6 +23,7 @@ Develop Swift/iOS projects efficiently using VSCode or Cursor. SweetPad integrat
 ### Testing & Debugging
 - 🪲 **[Debug](https://sweetpad.hyzyla.dev/docs/debug)** — Debug iOS applications using [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
 - ✅ **[Tests](https://sweetpad.hyzyla.dev/docs/tests)** — Run tests on simulators and devices with visual feedback
+- 🧪 **[Swift Testing](./docs/wiki/swift-testing.md)** — Support for Swift Testing framework (Xcode 16+) alongside XCTest
 
 ### Tools
 - 🛠️ **[Tools](https://sweetpad.hyzyla.dev/docs/tools)** — Manage essential iOS development tools using [Homebrew](https://brew.sh/)
