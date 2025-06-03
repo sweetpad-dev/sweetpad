@@ -272,6 +272,43 @@ export function isXcbeautifyEnabled() {
 }
 
 /**
+ * Build destination string for xcodebuild command.
+ *
+ * Examples:
+ * - `platform=iOS Simulator,id=12345678-1234-1234-1234-123456789012,arch=x86_64`
+ * - `platform=macOS,arch=arm64`
+ * - `platform=iOS,arch=arm64`
+ */
+function buildDestinationString(options: {
+  platform: string;
+  id?: string;
+  arch?: string;
+}): string {
+  const { platform, id, arch } = options;
+  if (id && arch) {
+    return `platform=${platform},id=${id},arch=${arch}`;
+  }
+  if (id && !arch) {
+    return `platform=${platform},id=${id}`;
+  }
+  if (!id && arch) {
+    return `platform=${platform},arch=${arch}`;
+  }
+  return `platform=${platform}`; // no id and no arch
+}
+
+function getSimulatorArch(): string | undefined {
+  // Rosetta is technology that allows running x86_64 code on Apple Silicon Macs.
+  // This function instructs xcodebuild to build for x86_64 architecture when Rosetta destinations
+  // enabled in Xcode
+  const useRosetta = getWorkspaceConfig("build.rosettaDestination") ?? false;
+  if (useRosetta) {
+    return "x86_64";
+  }
+  return undefined; // let xcodebuild decide the architecture
+}
+
+/**
  * Prepare and return destination string for xcodebuild command.
  *
  * WARN: Do not use result of this function to anything else than xcodebuild command.
@@ -280,35 +317,40 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   const destination = options.destination;
 
   if (destination.type === "iOSSimulator") {
-    return `platform=iOS Simulator,id=${destination.udid}`;
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "iOS Simulator", id: destination.udid, arch: arch });
   }
   if (destination.type === "watchOSSimulator") {
-    return `platform=watchOS Simulator,id=${destination.udid}`;
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "watchOS Simulator", id: destination.udid, arch: arch });
   }
   if (destination.type === "tvOSSimulator") {
-    return `platform=tvOS Simulator,id=${destination.udid}`;
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "tvOS Simulator", id: destination.udid, arch: arch });
   }
   if (destination.type === "visionOSSimulator") {
-    return `platform=visionOS Simulator,id=${destination.udid}`;
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "visionOS Simulator", id: destination.udid, arch: arch });
   }
   if (destination.type === "macOS") {
     // note: without arch, xcodebuild will show warning like this:
     // --- xcodebuild: WARNING: Using the first of multiple matching destinations:
     // { platform:macOS, arch:arm64, id:00008103-000109910EC3001E, name:My Mac }
     // { platform:macOS, arch:x86_64, id:00008103-000109910EC3001E, name:My Mac }
-    return `platform=macOS,arch=${destination.arch}`;
+    // return `platform=macOS,arch=${destination.arch}`;
+    return buildDestinationString({ platform: "macOS", arch: destination.arch });
   }
   if (destination.type === "iOSDevice") {
-    return `platform=iOS,id=${destination.udid}`;
+    return buildDestinationString({ platform: "iOS", id: destination.udid });
   }
   if (destination.type === "watchOSDevice") {
-    return `platform=watchOS,id=${destination.udid}`;
+    return buildDestinationString({ platform: "watchOS", id: destination.udid });
   }
   if (destination.type === "tvOSDevice") {
-    return `platform=tvOS,id=${destination.udid}`;
+    return buildDestinationString({ platform: "tvOS", id: destination.udid });
   }
   if (destination.type === "visionOSDevice") {
-    return `platform=visionOS,id=${destination.udid}`;
+    return buildDestinationString({ platform: "visionOS", id: destination.udid });
   }
   return assertUnreachable(destination);
 }
@@ -482,6 +524,22 @@ export async function buildApp(
     command.addBuildSettings("VALID_ARCHS", arch);
     command.addBuildSettings("ONLY_ACTIVE_ARCH", "NO");
   }
+
+  // Add debug-specific build settings if in debug mode
+  // TODO: The debug property needs to be added to the options type definition
+  // if (options.debug) {
+  //   // This tells the compiler to generate debugging symbols and include them in the compiled binary.
+  //   // Without this, LLDB wont know how to match lines of code to machine instructions. This is normally
+  //   // set to YES on XCode debug builds, but forcing it here, ensures you'll always get them in
+  //   // sweetpad: debugging-launch
+  //   command.addBuildSettings("GCC_GENERATE_DEBUGGING_SYMBOLS", "YES");
+  //   // In Xcode, ONLY_ACTIVE_ARCH is a build setting that controls whether you compile for only the architecture
+  //   // of the machine (or simulator/device) you're currently targeting, or for all architectures listed in your
+  //   // project's ARCHS setting.
+  //   // It speeds up compile times, especially in Debug, because Xcode skips generating unused slices.
+  //   command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
+  // }
+
   command.addParameters("-scheme", options.scheme);
   command.addParameters("-configuration", options.configuration);
   command.addParameters("-workspace", options.xcworkspace);
@@ -923,7 +981,7 @@ export async function selectXcodeWorkspaceCommand(execution: CommandExecution) {
     execution.context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
   }
 
-  execution.context.buildManager.refresh();
+  execution.context.buildManager.refreshSchemes();
 }
 
 export async function selectXcodeSchemeForBuildCommand(execution: CommandExecution, item?: BuildTreeItem) {
@@ -1021,7 +1079,7 @@ export async function diagnoseBuildSetupCommand(execution: CommandExecution): Pr
       _write("🔎 Getting schemes");
       let schemes: XcodeScheme[] = [];
       try {
-        schemes = await context.buildManager.getSchemas({ refresh: true });
+        schemes = await context.buildManager.getSchemes({ refresh: true });
       } catch (e) {
         _write("❌ Getting schemes failed");
         if (e instanceof ExecBaseError) {
@@ -1088,4 +1146,18 @@ export async function diagnoseBuildSetupCommand(execution: CommandExecution): Pr
       _write("✅ Everything looks good!");
     },
   });
+}
+
+export async function refreshSchemesCommand(context: ExtensionContext): Promise<void> {
+  const xcworkspace = getCurrentXcodeWorkspacePath(context);
+
+  if (!xcworkspace) {
+    // If there is no workspace, we should ask user to select it first.
+    // This function automatically refreshes schemes, so we can just call it and move on
+    // without calling to refresh schemes manually.
+    await askXcodeWorkspacePath(context);
+    return;
+  }
+
+  await context.buildManager.refreshSchemes();
 }

@@ -8,6 +8,7 @@ import {
   generateBuildServerConfigCommand,
   launchCommand,
   openXcodeCommand,
+  refreshSchemesCommand,
   removeBundleDirCommand,
   resolveDependenciesCommand,
   runCommand,
@@ -18,6 +19,7 @@ import {
 } from "./build/commands.js";
 import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
+import { createSchemeWatcher } from "./build/scheme-watcher.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
 import { ExtensionContext } from "./common/commands.js";
@@ -136,7 +138,7 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   d(schemeStatusBar);
   d(tree("sweetpad.build.view", buildTreeProvider));
-  d(command("sweetpad.build.refreshView", async () => buildManager.refresh()));
+  d(command("sweetpad.build.refreshSchemes", refreshSchemesCommand));
   d(command("sweetpad.build.launch", launchCommand));
   d(command("sweetpad.build.run", runCommand));
   d(command("sweetpad.build.build", buildCommand));
@@ -168,6 +170,9 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.tuist.clean", tuistCleanCommand));
   d(command("sweetpad.tuist.edit", tuistEditComnmand));
   d(createTuistWatcher(_context));
+
+  // Scheme Auto-Refresh Watcher
+  d(createSchemeWatcher(_context));
 
   // Format
   d(createFormatStatusItem());

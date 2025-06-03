@@ -32,10 +32,16 @@ export type LastLaunchedAppContext =
   | LastLaunchedAppMacOSContext;
 
 export class TaskExecutionScope {
+  public id: string;
+  public type = "task" as const;
   public action: string;
+  public taskName: string;
   
   constructor(options: { action: string }) {
+    this.id = crypto.randomUUID();
+    this.type = "task";
     this.action = options.action;
+    this.taskName = options.action;
   }
 }
 
@@ -256,7 +262,7 @@ export class ExtensionContext {
     this.buildManager.setDefaultConfigurationForBuild(undefined);
     this.buildManager.setDefaultConfigurationForTesting(undefined);
 
-    void this.buildManager.refresh();
+    void this.buildManager.refreshSchemes();
     void this.destinationsManager.refresh();
   }
 }
@@ -344,3 +350,27 @@ export class CommandExecution {
     });
   }
 }
+
+export class BaseExecutionScope {
+  id: string;
+  type = "base" as const;
+
+  constructor() {
+    this.id = crypto.randomUUID();
+    this.type = "base";
+  }
+}
+
+export class CommandExecutionScope {
+  id: string;
+  type = "command" as const;
+  commandName: string;
+
+  constructor(commandName: string) {
+    this.id = crypto.randomUUID();
+    this.type = "command";
+    this.commandName = commandName;
+  }
+}
+
+export type ExecutionScope = BaseExecutionScope | CommandExecutionScope | TaskExecutionScope;

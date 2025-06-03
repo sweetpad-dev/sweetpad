@@ -2,8 +2,6 @@ import * as vscode from "vscode";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 
-const DEFAULT_SCOPE_ID = "__DEFAULT_SCOPE_ID";
-
 /**
  * Status bar item for showing what currently sweetpad is doing
  *
@@ -11,6 +9,8 @@ const DEFAULT_SCOPE_ID = "__DEFAULT_SCOPE_ID";
  * and if it in the context of a command, it will be automatically removed when
  * the command is finished. Otherwise, you need to call `remove` method to remove it
  * from the status bar manually.
+ *
+ * todo: think how to make it more robus, so that it not requires to listen to event
  */
 export class ProgressStatusBar {
   _context: ExtensionContext | undefined = undefined;
@@ -47,7 +47,9 @@ export class ProgressStatusBar {
     // Every time a command or task is finished we remove message of the current scope
     // and update the status bar accordingly
     context.on("executionScopeClosed", (scope) => {
-      const scopeId = scope.id ?? DEFAULT_SCOPE_ID;
+      const scopeId = scope.id;
+      if (!scopeId) return;
+
       this.messageMapping.delete(scopeId);
       this.displayBar();
     });
@@ -58,7 +60,9 @@ export class ProgressStatusBar {
   }
 
   updateText(text: string) {
-    const scopeId = this.context.getExecutionScopeId() ?? DEFAULT_SCOPE_ID;
+    const scopeId = this.context.getExecutionScopeId();
+    if (!scopeId) return;
+
     this.messageMapping.set(scopeId, text);
     this.displayBar();
   }
