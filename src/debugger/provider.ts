@@ -13,7 +13,7 @@ const ATTACH_CONFIG: vscode.DebugConfiguration = {
   type: "sweetpad-lldb",
   request: "attach",
   name: "SweetPad: Build and Run (Wait for debugger)",
-  preLaunchTask: "sweetpad: debuging-launch",
+  preLaunchTask: "sweetpad: debugging-launch",
 };
 
 class InitialDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
