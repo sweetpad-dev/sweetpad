@@ -27,6 +27,7 @@ type Config = {
   "tuist.autogenerate": boolean;
   "tuist.generate.env": { [key: string]: string | null };
   "testing.configuration": string;
+  "xcode.useWorkspaceParser": boolean;
 };
 
 type ConfigKey = keyof Config;

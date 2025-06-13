@@ -903,6 +903,11 @@
           "minimum": 100,
           "maximum": 5000,
           "description": "Delay in milliseconds before auto-refreshing schemes after detecting file changes"
+        },
+        "sweetpad.xcode.useWorkspaceParser": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable using XcodeWorkspace.parseWorkspace for faster scheme fetching. If disabled, falls back to xcodebuild -list."
         }
       }
     },
