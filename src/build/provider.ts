@@ -90,6 +90,7 @@ class ActionDispatcher {
     definition: TaskDefinition;
     buildSettings: XcodeBuildSettings | null;
   }): Promise<Destination> {
+    // First try to get destination from task definition
     const destinationId: string | undefined =
       // ex: "00000000-0000-0000-0000-000000000000"
       options.definition.destinationId ??
@@ -103,9 +104,50 @@ class ActionDispatcher {
       return await getDestinationById(this.context, { destinationId: destinationId });
     }
 
+    // If not in task definition, try to get from workspace state
+    const selectedDestination = this.context.destinationsManager.getSelectedXcodeDestinationForBuild();
+    if (selectedDestination) {
+      return await getDestinationById(this.context, { destinationId: selectedDestination.id });
+    }
+
+    // If no destination found in either place, and no build settings, throw error
+    if (options.buildSettings === null) {
+      throw new Error("Build settings are required to determine the destination");
+    }
+
     // Otherwise, ask the user to select the destination (it will be cached for the next time)
     const destination = await askDestinationToRunOn(this.context, options.buildSettings);
     return destination;
+  }
+
+  private async getDestinationFromDefinition(options: {
+    definition: TaskDefinition;
+    scheme: string;
+    configuration: string;
+    xcworkspace: string;
+  }): Promise<Destination> {
+    // Try to get destination from task definition first
+    try {
+      return await this.getDestination({
+        definition: options.definition,
+        buildSettings: null,
+      });
+    } catch (error) {
+      // If we can't get destination from definition, we need to get build settings
+      this.context.updateProgressStatus("Extracting build settings");
+      const buildSettings = await getBuildSettingsToAskDestination({
+        scheme: options.scheme,
+        configuration: options.configuration,
+        sdk: undefined,
+        xcworkspace: options.xcworkspace,
+      });
+
+      this.context.updateProgressStatus("Searching for destination");
+      return await this.getDestination({
+        definition: options.definition,
+        buildSettings: buildSettings,
+      });
+    }
   }
 
   private async launchCallback(terminal: TaskTerminal, definition: TaskDefinition) {
@@ -139,19 +181,13 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Extracting build settings");
-    const buildSettings = await getBuildSettingsToAskDestination({
-      scheme: scheme,
-      configuration: configuration,
-      sdk: undefined,
-      xcworkspace: xcworkspace,
+    const destination = await this.getDestinationFromDefinition({
+      definition,
+      scheme,
+      configuration,
+      xcworkspace,
     });
 
-    this.context.updateProgressStatus("Searching for destination");
-    const destination = await this.getDestination({
-      definition: definition,
-      buildSettings: buildSettings,
-    });
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
@@ -248,19 +284,13 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Extracting build settings");
-    const buildSettings = await getBuildSettingsToAskDestination({
-      scheme: scheme,
-      configuration: configuration,
-      sdk: undefined,
-      xcworkspace: xcworkspace,
+    const destination = await this.getDestinationFromDefinition({
+      definition,
+      scheme,
+      configuration,
+      xcworkspace,
     });
 
-    this.context.updateProgressStatus("Searching for destination");
-    const destination = await this.getDestination({
-      definition: definition,
-      buildSettings: buildSettings,
-    });
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
@@ -308,18 +338,11 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Extracting build settings");
-    const buildSettings = await getBuildSettingsToAskDestination({
-      scheme: scheme,
-      configuration: configuration,
-      sdk: undefined,
-      xcworkspace: xcworkspace,
-    });
-
-    this.context.updateProgressStatus("Searching for destination");
-    const destination = await this.getDestination({
-      definition: definition,
-      buildSettings: buildSettings,
+    const destination = await this.getDestinationFromDefinition({
+      definition,
+      scheme,
+      configuration,
+      xcworkspace,
     });
 
     const sdk = destination.platform;
@@ -393,19 +416,13 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for build settings");
-    const buildSettings = await getBuildSettingsToAskDestination({
-      scheme: scheme,
-      configuration: configuration,
-      sdk: undefined,
-      xcworkspace: xcworkspace,
+    const destination = await this.getDestinationFromDefinition({
+      definition,
+      scheme,
+      configuration,
+      xcworkspace,
     });
 
-    this.context.updateProgressStatus("Searching for destination");
-    const destination = await this.getDestination({
-      definition: definition,
-      buildSettings: buildSettings,
-    });
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
@@ -439,19 +456,13 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Extracting build settings");
-    const buildSettings = await getBuildSettingsToAskDestination({
-      scheme: scheme,
-      configuration: configuration,
-      sdk: undefined,
-      xcworkspace: xcworkspace,
+    const destination = await this.getDestinationFromDefinition({
+      definition,
+      scheme,
+      configuration,
+      xcworkspace,
     });
 
-    this.context.updateProgressStatus("Searching for destination");
-    const destination = await this.getDestination({
-      definition: definition,
-      buildSettings: buildSettings,
-    });
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
