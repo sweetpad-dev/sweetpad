@@ -178,15 +178,30 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     if (data === "\x03") {
       // Handle Ctrl+C
       this.writeLine("^C");
-      // TODO: handle it better, bacause pid can be assigned
-      // to another process and we can kill it by mistake
-      const pid = this.process?.pid;
-      if (pid) {
-        // Kill whole process group
-        process.kill(-pid, "SIGINT");
-      }
+      this.terminateProcess();
     } else {
       this.write(data);
+    }
+  }
+
+  private terminateProcess(): void {
+    const pid = this.process?.pid;
+    if (pid) {
+      try {
+        // Kill the process group
+        process.kill(-pid, "SIGTERM");
+        // Give it a moment to terminate gracefully
+        setTimeout(() => {
+          try {
+            // If still running, force kill
+            process.kill(-pid, "SIGKILL");
+          } catch (e) {
+            // Process already terminated
+          }
+        }, 1000);
+      } catch (e) {
+        // Process already terminated
+      }
     }
   }
 
@@ -287,6 +302,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   }
 
   close(): void {
+    this.terminateProcess();
     this.closeSuccessfully();
   }
 
