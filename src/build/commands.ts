@@ -514,6 +514,68 @@ class XcodeCommandBuilder {
   }
 }
 
+/**
+ * Check if buildServer.json needs to be regenerated and regenerate it if needed
+ */
+async function checkAndRegenerateBuildServerConfig(
+  context: ExtensionContext,
+  options: {
+    scheme: string;
+    xcworkspace: string;
+  },
+) {
+  const isEnabled = getWorkspaceConfig("xcodebuildserver.autogenerate") ?? true;
+  if (!isEnabled) {
+    return;
+  }
+
+  const isServerInstalled = await getIsXcodeBuildServerInstalled();
+  if (!isServerInstalled) {
+    return;
+  }
+
+  const buildServerJsonPath = path.join(getWorkspacePath(), "buildServer.json");
+  const isBuildServerJsonExists = await isFileExists(buildServerJsonPath);
+
+  // If file doesn't exist, generate it
+  if (!isBuildServerJsonExists) {
+    await generateBuildServerConfig({
+      xcworkspace: options.xcworkspace,
+      scheme: options.scheme,
+    });
+    await restartSwiftLSP();
+    return;
+  }
+
+  // Read the current buildServer.json to check if it matches our scheme and workspace
+  try {
+    const currentConfig = await readJsonFile(buildServerJsonPath) as { 
+      scheme?: string; 
+      workspace?: string;
+      build_root?: string;
+    };
+    const needsRegeneration = 
+      currentConfig?.scheme !== options.scheme || // Scheme doesn't match
+      !currentConfig?.workspace || // No workspace path
+      !(await isFileExists(currentConfig.workspace)) || // Workspace file doesn't exist
+      !currentConfig?.build_root || // No build_root path
+      !(await isFileExists(currentConfig.build_root)); // build_root directory doesn't exist
+
+    if (!needsRegeneration) {
+      return; // Everything matches, no need to regenerate
+    }
+  } catch (e) {
+    // If we can't read the file, regenerate it
+  }
+
+  // Regenerate the config
+  await generateBuildServerConfig({
+    xcworkspace: options.xcworkspace,
+    scheme: options.scheme,
+  });
+  await restartSwiftLSP();
+}
+
 export async function buildApp(
   context: ExtensionContext,
   terminal: TaskTerminal,
@@ -599,6 +661,12 @@ export async function buildApp(
   } else if (options.shouldTest) {
     context.updateProgressStatus(`Building "${options.scheme}"`);
   }
+  // Check and regenerate buildServer.json if needed
+  await checkAndRegenerateBuildServerConfig(context, {
+    scheme: options.scheme,
+    xcworkspace: options.xcworkspace,
+  });
+
   await terminal.execute({
     command: commandParts[0],
     args: commandParts.slice(1),
@@ -639,6 +707,12 @@ async function commonBuildCommand(
   context.updateProgressStatus("Searching for scheme");
   const scheme =
     item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to build", xcworkspace: xcworkspace }));
+
+  // Check and regenerate buildServer.json if needed
+  await checkAndRegenerateBuildServerConfig(context, {
+    scheme: scheme,
+    xcworkspace: xcworkspace,
+  });
 
   context.updateProgressStatus("Searching for configuration");
   const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
@@ -708,6 +782,12 @@ async function commonLaunchCommand(
   const scheme =
     item?.scheme ??
     (await askSchemeForBuild(context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
+
+  // Check and regenerate buildServer.json if needed
+  await checkAndRegenerateBuildServerConfig(context, {
+    scheme: scheme,
+    xcworkspace: xcworkspace,
+  });
 
   context.updateProgressStatus("Searching for configuration");
   const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
