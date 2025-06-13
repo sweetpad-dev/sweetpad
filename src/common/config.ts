@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { expandEnvVars } from "./helpers";
 
 type Config = {
   "format.path": string;
@@ -33,7 +34,28 @@ type ConfigKey = keyof Config;
 
 export function getWorkspaceConfig<K extends ConfigKey>(key: K): Config[K] | undefined {
   const config = vscode.workspace.getConfiguration("sweetpad");
-  return config.get(key);
+  const value = config.get<Config[K]>(key);
+
+  // Expand environment variables in string values
+  if (typeof value === "string") {
+    return expandEnvVars(value) as Config[K];
+  }
+
+  // Expand environment variables in array values
+  if (Array.isArray(value)) {
+    return value.map(item => typeof item === "string" ? expandEnvVars(item) : item) as Config[K];
+  }
+
+  // Expand environment variables in object values
+  if (value && typeof value === "object") {
+    const expanded: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      expanded[k] = typeof v === "string" ? expandEnvVars(v) : v;
+    }
+    return expanded as Config[K];
+  }
+
+  return value;
 }
 
 export function isWorkspaceConfigIsDefined<K extends ConfigKey>(key: K): boolean {
