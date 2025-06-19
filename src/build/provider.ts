@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { type XcodeBuildSettings, getBuildSettingsToAskDestination } from "../common/cli/scripts";
 import { type ExtensionContext, TaskExecutionScope } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { errorReporting } from "../common/error-reporting";
+import { ExtensionError } from "../common/errors";
 import {
   type TaskTerminal,
   TaskTerminalV1,
@@ -22,13 +22,7 @@ import {
   runOniOSSimulator,
 } from "./commands";
 import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
-import {
-  askConfiguration,
-  askDestinationToRunOn,
-  askSchemeForBuild,
-  askXcodeWorkspacePath,
-  getDestinationById,
-} from "./utils";
+import { askConfiguration, askDestinationToRunOn, askSchemeForBuild, askXcodeWorkspacePath } from "./utils";
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -86,25 +80,74 @@ class ActionDispatcher {
     }
   }
 
-  private async getDestination(options: {
-    definition: TaskDefinition;
-    buildSettings: XcodeBuildSettings | null;
-  }): Promise<Destination> {
-    const destinationId: string | undefined =
-      // ex: "00000000-0000-0000-0000-000000000000"
+  private async getDestinationByUserInput(
+    context: ExtensionContext,
+    options: { definition: TaskDefinition },
+  ): Promise<Destination> {
+    // For simulators and devices, we try to find destination by ID
+    // ex: "00000000-0000-0000-0000-000000000000"
+    // ex: "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
+    const udidRaw: string | undefined =
       options.definition.destinationId ??
-      // ex: "00000000-0000-0000-0000-000000000000"
       options.definition.simulator ??
-      // ex: "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
       options.definition.destination?.match(/id=(.+)/)?.[1];
 
-    // If user has provided the ID of the destination, then use it directly
-    if (destinationId) {
-      return await getDestinationById(this.context, { destinationId: destinationId });
+    const udidLower = udidRaw?.trim()?.toLowerCase();
+
+    // For macOS, we just check if the destination string contains "macos"
+    const isMacOS = options.definition.destination?.toLowerCase().includes("macos") ?? false;
+
+    const destinations = await context.destinationsManager.getDestinations();
+    const destination = destinations.find((destination) => {
+      switch (destination.type) {
+        case "iOSSimulator":
+        case "watchOSSimulator":
+        case "visionOSSimulator":
+        case "tvOSSimulator":
+        case "iOSDevice":
+        case "watchOSDevice":
+        case "visionOSDevice":
+        case "tvOSDevice":
+          return destination.udid.toLowerCase() === udidLower;
+        case "macOS":
+          return isMacOS;
+        default:
+          assertUnreachable(destination);
+      }
+    });
+
+    if (destination) {
+      return destination;
     }
 
-    // Otherwise, ask the user to select the destination (it will be cached for the next time)
-    const destination = await askDestinationToRunOn(this.context, options.buildSettings);
+    throw new ExtensionError("Destination not found", {
+      context: {
+        destinationId: udidRaw,
+      },
+    });
+  }
+
+  private async getDestination(options: {
+    definition: TaskDefinition;
+    scheme: string;
+    configuration: string;
+    xcworkspace: string;
+  }): Promise<Destination> {
+    // If user has provided the ID of the destination, then use it directly
+    const inputDestination = await this.getDestinationByUserInput(this.context, {
+      definition: options.definition,
+    });
+    if (inputDestination) {
+      return inputDestination;
+    }
+
+    // If not in task definition, then ask user to select destination (or get from cache)
+    const destination = await askDestinationToRunOn(this.context, {
+      scheme: options.scheme,
+      configuration: options.configuration,
+      sdk: undefined,
+      xcworkspace: options.xcworkspace,
+    });
     return destination;
   }
 
@@ -139,19 +182,13 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Extracting build settings");
-    const buildSettings = await getBuildSettingsToAskDestination({
+    const destination = await this.getDestination({
+      definition: definition,
       scheme: scheme,
       configuration: configuration,
-      sdk: undefined,
       xcworkspace: xcworkspace,
     });
 
-    this.context.updateProgressStatus("Searching for destination");
-    const destination = await this.getDestination({
-      definition: definition,
-      buildSettings: buildSettings,
-    });
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
@@ -248,19 +285,13 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Extracting build settings");
-    const buildSettings = await getBuildSettingsToAskDestination({
+    const destination = await this.getDestination({
+      definition: definition,
       scheme: scheme,
       configuration: configuration,
-      sdk: undefined,
       xcworkspace: xcworkspace,
     });
 
-    this.context.updateProgressStatus("Searching for destination");
-    const destination = await this.getDestination({
-      definition: definition,
-      buildSettings: buildSettings,
-    });
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
@@ -308,18 +339,11 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Extracting build settings");
-    const buildSettings = await getBuildSettingsToAskDestination({
-      scheme: scheme,
-      configuration: configuration,
-      sdk: undefined,
-      xcworkspace: xcworkspace,
-    });
-
-    this.context.updateProgressStatus("Searching for destination");
     const destination = await this.getDestination({
       definition: definition,
-      buildSettings: buildSettings,
+      scheme: scheme,
+      configuration: configuration,
+      xcworkspace: xcworkspace,
     });
 
     const sdk = destination.platform;
@@ -393,19 +417,13 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for build settings");
-    const buildSettings = await getBuildSettingsToAskDestination({
+    const destination = await this.getDestination({
+      definition: definition,
       scheme: scheme,
       configuration: configuration,
-      sdk: undefined,
       xcworkspace: xcworkspace,
     });
 
-    this.context.updateProgressStatus("Searching for destination");
-    const destination = await this.getDestination({
-      definition: definition,
-      buildSettings: buildSettings,
-    });
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
@@ -439,19 +457,13 @@ class ActionDispatcher {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Extracting build settings");
-    const buildSettings = await getBuildSettingsToAskDestination({
+    const destination = await this.getDestination({
+      definition: definition,
       scheme: scheme,
       configuration: configuration,
-      sdk: undefined,
       xcworkspace: xcworkspace,
     });
 
-    this.context.updateProgressStatus("Searching for destination");
-    const destination = await this.getDestination({
-      definition: definition,
-      buildSettings: buildSettings,
-    });
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
     const sdk = destination.platform;
