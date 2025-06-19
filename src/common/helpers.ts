@@ -20,13 +20,3 @@ export function prepareEnvVars(env: ConfigEnv | undefined): PreparedEnv {
   }
   return result;
 }
-
-/**
- * Expands environment variables in a string
- * Example: "Hello ${env:USER}" -> "Hello john"
- */
-export function expandEnvVars(value: string): string {
-  return value.replace(/\${env:([^}]+)}/g, (match, name) => {
-    return process.env[name] ?? match;
-  });
-}
