@@ -186,23 +186,44 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
   private terminateProcess(): void {
     const pid = this.process?.pid;
-    if (pid) {
-      try {
-        // Kill the process group
-        process.kill(-pid, "SIGTERM");
-        // Give it a moment to terminate gracefully
-        setTimeout(() => {
-          try {
-            // If still running, force kill
-            process.kill(-pid, "SIGKILL");
-          } catch (e) {
-            // Process already terminated
-          }
-        }, 1000);
-      } catch (e) {
-        // Process already terminated
-      }
+    if (!pid) {
+      return;
     }
+
+    const _kill = (signal: string): void => {
+      try {
+        process.kill(-pid, signal);
+      } catch (e) {
+        // process does not exist, then it's already terminated
+        if ((e as NodeJS.ErrnoException).code === "ESRCH") {
+          return;
+        }
+        throw e;
+      }
+    };
+
+    // First try to terminate the process gracefully
+    _kill("SIGTERM");
+
+    // After 5 seconds, we will try to kill it with SIGKILL with backoff strategy
+    const maxAttempts = 3;
+    let attempt = 0;
+    let timeout = 5000; // 5 seconds
+
+    const _sigkill = () => {
+      if (!this.process || this.process.exitCode !== null) {
+        return; // the process is already terminated
+      }
+
+      _kill("SIGKILL");
+      attempt++;
+      if (attempt < maxAttempts) {
+        timeout = timeout * 2; // 10 seconds, 20 seconds, etc.
+        setTimeout(_sigkill, timeout);
+      }
+    };
+
+    setTimeout(_sigkill, timeout);
   }
 
   /**
