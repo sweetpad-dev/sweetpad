@@ -325,7 +325,7 @@ export const getBasicProjectInfo = cache(
   async (options: { xcworkspace: string | undefined }): Promise<XcodebuildListOutput> => {
     const stdout = await exec({
       command: "xcodebuild",
-      args: ["-list", "-json", ...(options?.xcworkspace ? ["-workspace", options?.xcworkspace] : [])],
+      args: ["-list", "-json", "-disableAutomaticPackageResolution", ...(options?.xcworkspace ? ["-workspace", options?.xcworkspace] : [])],
     });
     const parsed = JSON.parse(stdout);
     if (parsed.project) {

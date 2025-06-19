@@ -185,15 +185,18 @@ export class XcodeScheme {
     // Then try to find user-specific schemes:
     // Ex: <projectPath>/xcuserdata/<username>.xcuserdatad/xcschemes/*.xcscheme
     const userDataDir = path.join(project.projectPath, "xcuserdata");
-    const specificUserDataDir = await findFiles({
-      directory: userDataDir,
-      matcher: (file) => {
-        return file.isDirectory() && file.name.endsWith(".xcuserdatad");
-      },
-    });
-    if (specificUserDataDir.length > 0) {
-      for (const dir of specificUserDataDir) {
-        schemes.push(...(await XcodeScheme.findSchemes(project, dir)));
+    const userDataDirExists = await isFileExists(userDataDir);
+    if (userDataDirExists) {
+      const specificUserDataDir = await findFiles({
+        directory: userDataDir,
+        matcher: (file) => {
+          return file.isDirectory() && file.name.endsWith(".xcuserdatad");
+        },
+      });
+      if (specificUserDataDir.length > 0) {
+        for (const dir of specificUserDataDir) {
+          schemes.push(...(await XcodeScheme.findSchemes(project, dir)));
+        }
       }
     }
 
