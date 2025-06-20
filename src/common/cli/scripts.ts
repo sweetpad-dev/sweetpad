@@ -377,7 +377,50 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   assertUnreachable(output);
 }
 
-export async function getBuildConfigurations(options: { xcworkspace: string }): Promise<XcodeConfiguration[]> {
+export async function getBuildConfigurations(options: { xcworkspace: string | undefined }): Promise<XcodeConfiguration[]> {
+  commonLogger.log("Getting build configurations", { xcworkspace: options?.xcworkspace ?? "undefined" });
+
+  if (!options?.xcworkspace) {
+    return [];
+  }
+
+  const useWorkspaceParser = getWorkspaceConfig("xcode.useWorkspaceParser");
+
+  if (useWorkspaceParser) {
+    try {
+      const workspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+      const projects = await workspace.getProjects();
+
+      commonLogger.debug("Projects", {
+        paths: projects.map((project) => project.projectPath),
+      });
+
+      // Get configurations from all projects in the workspace
+      const configurations = projects
+        .flatMap((project) => {
+          commonLogger.debug("Project configurations", {
+            configurations: project.getConfigurations(),
+          });
+          return project.getConfigurations();
+        })
+        .filter(uniqueFilter)
+        .map((configuration) => {
+          return {
+            name: configuration,
+          };
+        });
+
+      return configurations;
+    } catch (error) {
+      commonLogger.error("Error getting build configurations with workspace parser, falling back to xcodebuild", { 
+        error,
+        xcworkspace: options.xcworkspace 
+      });
+      // Fall through to the original implementation
+    }
+  }
+
+  // Original implementation using xcodebuild -list
   const output = await getBasicProjectInfo({
     xcworkspace: options.xcworkspace,
   });
