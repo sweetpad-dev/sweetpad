@@ -1,10 +1,11 @@
 import path from "node:path";
-import { prepareDerivedDataPath } from "../../build/utils";
+import { getWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { cache } from "../cache";
 import { getWorkspaceConfig } from "../config";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
+import { readJsonFile } from "../files";
 import { uniqueFilter } from "../helpers";
 import { commonLogger } from "../logger";
 import { assertUnreachable } from "../types";
@@ -424,8 +425,23 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
   });
 }
 
+export type XcodeBuildServerConfig = {
+  scheme: string;
+  workspace: string;
+  build_root: string;
+  // there might be more properties, like "kind", "args", "name", but we don't need them for now
+};
+
 /**
- * Is XcodeGen installed?s
+ * Read xcode-build-server config with proper types
+ */
+export async function readXcodeBuildServerConfig(): Promise<XcodeBuildServerConfig> {
+  const buildServerJsonPath = path.join(getWorkspacePath(), "buildServer.json");
+  return await readJsonFile<XcodeBuildServerConfig>(buildServerJsonPath);
+}
+
+/**
+ * Is XcodeGen installed?
  */
 export async function getIsXcodeGenInstalled() {
   try {
