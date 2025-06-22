@@ -481,7 +481,7 @@
         "enablement": "view == sweetpad.tools.view"
       },
       {
-        "command": "sweetpad.system.resetSweetpadCache",
+        "command": "sweetpad.system.resetSweetPadCache",
         "title": "SweetPad: Reset Extension Cache",
         "icon": "$(clear-all)"
       },
@@ -860,11 +860,6 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically reveal the terminal when executing a command or task"
-        },
-        "sweetpad.system.customXcodeWorkspaceParser": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use custom workspace parser instead of the 'xcodebuild' command. This may speed up processing for large projects, but it might not work correctly in all cases."
         },
         "sweetpad.system.showProgressStatusBar": {
           "type": "boolean",

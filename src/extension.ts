@@ -51,7 +51,7 @@ import {
   createIssueGenericCommand,
   createIssueNoSchemesCommand,
   openTerminalPanel,
-  resetSweetpadCache,
+  resetSweetPadCache,
   testErrorReportingCommand,
 } from "./system/commands.js";
 import { ProgressStatusBar } from "./system/status-bar.js";
@@ -217,7 +217,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.tools.documentation", openDocumentationCommand));
 
   // System
-  d(command("sweetpad.system.resetSweetpadCache", resetSweetpadCache));
+  d(command("sweetpad.system.resetSweetPadCache", resetSweetPadCache));
   d(command("sweetpad.system.createIssue.generic", createIssueGenericCommand));
   d(command("sweetpad.system.createIssue.noSchemes", createIssueNoSchemesCommand));
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
