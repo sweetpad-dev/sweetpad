@@ -406,14 +406,10 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   assertUnreachable(output);
 }
 
-export async function getBuildConfigurations(options: { xcworkspace: string | undefined }): Promise<XcodeConfiguration[]> {
-  commonLogger.log("Getting build configurations", { xcworkspace: options?.xcworkspace ?? "undefined" });
+export async function getBuildConfigurations(options: { xcworkspace: string }): Promise<XcodeConfiguration[]> {
+  commonLogger.log("Getting build configurations", { xcworkspace: options?.xcworkspace });
 
-  if (!options?.xcworkspace) {
-    return [];
-  }
-
-  const useWorkspaceParser = getWorkspaceConfig("xcode.useWorkspaceParser");
+  const useWorkspaceParser = getWorkspaceConfig("system.customXcodeWorkspaceParser") ?? false;
 
   if (useWorkspaceParser) {
     try {
@@ -441,9 +437,9 @@ export async function getBuildConfigurations(options: { xcworkspace: string | un
 
       return configurations;
     } catch (error) {
-      commonLogger.error("Error getting build configurations with workspace parser, falling back to xcodebuild", { 
+      commonLogger.error("Error getting build configurations with workspace parser, falling back to xcodebuild", {
         error,
-        xcworkspace: options.xcworkspace 
+        xcworkspace: options.xcworkspace,
       });
       // Fall through to the original implementation
     }
