@@ -1,10 +1,11 @@
 import path from "node:path";
-import { prepareDerivedDataPath } from "../../build/utils";
+import { getWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { cache } from "../cache";
 import { getWorkspaceConfig } from "../config";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
+import { readJsonFile } from "../files";
 import { uniqueFilter } from "../helpers";
 import { commonLogger } from "../logger";
 import { assertUnreachable } from "../types";
@@ -342,6 +343,34 @@ export const getBasicProjectInfo = cache(
 );
 
 export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
+  commonLogger.log("Getting schemes", { xcworkspace: options?.xcworkspace ?? "undefined" });
+
+  const useWorkspaceParser = getWorkspaceConfig("system.customXcodeWorkspaceParser") ?? false;
+  if (options.xcworkspace && useWorkspaceParser) {
+    try {
+      const workspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+      const projects = await workspace.getProjects();
+
+      // Get schemes from all projects in the workspace
+      const schemes = await Promise.all(projects.map((project) => project.getSchemes()));
+
+      // Flatten and deduplicate schemes, only keep the names
+      const uniqueSchemes = schemes
+        .flat()
+        .map((scheme) => ({ name: scheme.name }))
+        .filter(uniqueFilter);
+
+      return uniqueSchemes;
+    } catch (error) {
+      commonLogger.error("Error getting schemes with workspace parser, falling back to xcodebuild", {
+        error,
+        xcworkspace: options.xcworkspace,
+      });
+      // Fall through to the original implementation
+    }
+  }
+
+  // Original implementation using xcodebuild -list
   const output = await getBasicProjectInfo({
     xcworkspace: options?.xcworkspace,
   });
@@ -467,8 +496,23 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
   });
 }
 
+export type XcodeBuildServerConfig = {
+  scheme: string;
+  workspace: string;
+  build_root: string;
+  // there might be more properties, like "kind", "args", "name", but we don't need them for now
+};
+
 /**
- * Is XcodeGen installed?s
+ * Read xcode-build-server config with proper types
+ */
+export async function readXcodeBuildServerConfig(): Promise<XcodeBuildServerConfig> {
+  const buildServerJsonPath = path.join(getWorkspacePath(), "buildServer.json");
+  return await readJsonFile<XcodeBuildServerConfig>(buildServerJsonPath);
+}
+
+/**
+ * Is XcodeGen installed?
  */
 export async function getIsXcodeGenInstalled() {
   try {

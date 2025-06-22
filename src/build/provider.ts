@@ -83,7 +83,7 @@ class ActionDispatcher {
   private async getDestinationByUserInput(
     context: ExtensionContext,
     options: { definition: TaskDefinition },
-  ): Promise<Destination> {
+  ): Promise<Destination | undefined> {
     // For simulators and devices, we try to find destination by ID
     // ex: "00000000-0000-0000-0000-000000000000"
     // ex: "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
@@ -116,15 +116,7 @@ class ActionDispatcher {
       }
     });
 
-    if (destination) {
-      return destination;
-    }
-
-    throw new ExtensionError("Destination not found", {
-      context: {
-        destinationId: udidRaw,
-      },
-    });
+    return destination;
   }
 
   private async getDestination(options: {
