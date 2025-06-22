@@ -22,6 +22,7 @@ type Config = {
   "system.enableSentry": boolean;
   "system.autoRevealTerminal": boolean;
   "system.showProgressStatusBar": boolean;
+  "system.customXcodeWorkspaceParser": boolean;
   "xcodegen.autogenerate": boolean;
   "xcodebuildserver.autogenerate": boolean;
   "tuist.autogenerate": boolean;
