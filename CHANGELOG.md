@@ -290,7 +290,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 ## [0.0.10] — 2024-03-03
 
 - Improve caching of schemes and configurations
-- Add command to reset cache "sweetpad.system.resetSweetpadCache"
+- Add command to reset cache "sweetpad.system.resetSweetPadCache"
 - Add command to open project in Xcode
 - Improve selection of workspaces and schemes
 - Propage errors when xcodebuild used with xcbeautify
