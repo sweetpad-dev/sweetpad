@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { type ExtensionContext, TaskExecutionScope } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { errorReporting } from "../common/error-reporting";
-import { ExtensionError } from "../common/errors";
 import {
   type TaskTerminal,
   TaskTerminalV1,
