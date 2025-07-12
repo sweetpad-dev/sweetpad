@@ -125,13 +125,6 @@ export async function runOniOSSimulator(
   const appPath = await ensureAppPathExists(buildSettings.appPath);
   const bundlerId = buildSettings.bundleIdentifier;
 
-  // Open simulator
-  context.updateProgressStatus("Launching Simulator.app");
-  await terminal.execute({
-    command: "open",
-    args: ["-g", "-a", "Simulator"],
-  });
-
   // Get simulator with fresh state
   context.updateProgressStatus(`Searching for simulator "${simulatorId}"`);
   const simulator = await getSimulatorByUdid(context, {
@@ -149,6 +142,13 @@ export async function runOniOSSimulator(
     // Refresh list of simulators after we start new simulator
     context.destinationsManager.refreshSimulators();
   }
+
+  // Open simulator
+  context.updateProgressStatus("Launching Simulator.app");
+  await terminal.execute({
+    command: "open",
+    args: ["-g", "-a", "Simulator"],
+  });
 
   // Install app
   context.updateProgressStatus(`Installing "${options.scheme}" on "${simulator.name}"`);
