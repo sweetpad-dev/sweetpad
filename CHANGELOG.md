@@ -2,7 +2,21 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [0.1.67] - 2025-05-17
+## [0.1.67] - 2025-07-12
+
+- Enhance Scheme Management with Auto-Refresh, Loading States, and Validation [#151](https://github.com/sweetpad-dev/sweetpad/pull/151)
+- Add support to run in rosetta Simulators [#156](https://github.com/sweetpad-dev/sweetpad/pull/156)
+- Add environment variable expansion in configuration [#163](https://github.com/sweetpad-dev/sweetpad/pull/163)
+- Fix typo in debugging-launch task name for vscode config [#158](https://github.com/sweetpad-dev/sweetpad/pull/158)
+- Properly terminate build process when terminal is killed [#160](https://github.com/sweetpad-dev/sweetpad/pull/160)
+- Optimize destination retrieval by avoiding unnecessary build settings extraction [#162](https://github.com/sweetpad-dev/sweetpad/pull/162)
+- Add buildServer.json Regeneration During Build/Run [#164](https://github.com/sweetpad-dev/sweetpad/pull/164)
+- Performance Optimization: Xcode Workspace Parsing [#161](https://github.com/sweetpad-dev/sweetpad/pull/161)
+- Load build configurations parsing xcworkspace [#168](https://github.com/sweetpad-dev/sweetpad/pull/168)
+-  Open simulator after boot
+
+
+## [0.1.66] - 2025-05-17
 
 - Add support for range formatting [#149](https://github.com/sweetpad-dev/sweetpad/pull/149)
 - Do not bring simulator to front after builds [#150](https://github.com/sweetpad-dev/sweetpad/pull/150) 
