@@ -897,6 +897,14 @@
           "default": true,
           "description": "Watch if default scheme is changed and regenerate the build server config"
         },
+        "sweetpad.xcodebuildserver.path": {
+          "type": "string",
+          "default": null,
+          "description": "Path to custom xcodebuildserver executable.",
+          "examples": [
+            "/opt/homebrew/bin/xcode-build-server"
+          ]
+        },
         "sweetpad.build.autoRefreshSchemes": {
           "type": "boolean",
           "default": true,
