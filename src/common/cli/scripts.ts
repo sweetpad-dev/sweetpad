@@ -308,13 +308,23 @@ export async function getIsXcbeautifyInstalled() {
 }
 
 /**
+ * Get the xcode-build-server command path from config or default
+ */
+function getXcodeBuildServerCommand(): string {
+  const customPath = getWorkspaceConfig("xcodebuildserver.path");
+  return customPath || "xcode-build-server";
+}
+
+/**
  * Find if xcode-build-server is installed
  */
 export async function getIsXcodeBuildServerInstalled() {
+  const command = getXcodeBuildServerCommand();
+
   try {
     await exec({
       command: "which",
-      args: ["xcode-build-server"],
+      args: [command],
     });
     return true;
   } catch (e) {
@@ -486,8 +496,10 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
  * Generate xcode-build-server config
  */
 export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
+  const command = getXcodeBuildServerCommand();
+
   await exec({
-    command: "xcode-build-server",
+    command: command,
     args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme],
   });
 }

@@ -25,6 +25,7 @@ type Config = {
   "system.customXcodeWorkspaceParser": boolean;
   "xcodegen.autogenerate": boolean;
   "xcodebuildserver.autogenerate": boolean;
+  "xcodebuildserver.path": string;
   "tuist.autogenerate": boolean;
   "tuist.generate.env": { [key: string]: string | null };
   "testing.configuration": string;
