@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.68] - 2025-07-13
+
+- Add configurable xcode-build-server path support [#176](https://github.com/sweetpad-dev/sweetpad/pull/176)
+
+
 ## [0.1.67] - 2025-07-12
 
 - Enhance Scheme Management with Auto-Refresh, Loading States, and Validation [#151](https://github.com/sweetpad-dev/sweetpad/pull/151)
