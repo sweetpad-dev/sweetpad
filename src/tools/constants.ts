@@ -117,4 +117,17 @@ export const TOOLS: Tool[] = [
     },
     documentation: "https://docs.tuist.io/",
   },
+  {
+    id: "periphery",
+    label: "Periphery",
+    check: {
+      command: "periphery",
+      args: ["version"],
+    },
+    install: {
+      command: "brew",
+      args: ["install", "periphery"],
+    },
+    documentation: "https://github.com/peripheryapp/periphery",
+  },
 ];

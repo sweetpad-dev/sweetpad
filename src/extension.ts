@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as http from 'http';
 import type { Express } from 'express'; // Fix the import to use type import
 import {
+  buildAndPeripheryScanCommand,
   buildCommand,
   cleanCommand,
   debuggingBuildCommand,
@@ -11,6 +12,7 @@ import {
   generateBuildServerConfigCommand,
   launchCommand,
   openXcodeCommand,
+  peripheryScanCommand,
   removeBundleDirCommand,
   resolveDependenciesCommand,
   runCommand,
@@ -173,6 +175,8 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeForBuildCommand));
     d(command("sweetpad.build.selectConfiguration", selectConfigurationForBuildCommand));
     d(command("sweetpad.build.diagnoseSetup", diagnoseBuildSetupCommand));
+    d(command("sweetpad.build.peripheryScan", peripheryScanCommand));
+    d(command("sweetpad.build.buildAndPeripheryScan", buildAndPeripheryScanCommand));
 
     // Testing
     d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));

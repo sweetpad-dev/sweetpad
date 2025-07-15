@@ -387,6 +387,18 @@
         "icon": "$(bug)"
       },
       {
+        "command": "sweetpad.build.peripheryScan",
+        "title": "SweetPad: Periphery Scan",
+        "icon": "$(search)",
+        "description": "Scan for unused code using Periphery"
+      },
+      {
+        "command": "sweetpad.build.buildAndPeripheryScan",
+        "title": "SweetPad: Build & Periphery Scan",
+        "icon": "$(search-save)",
+        "description": "Build project and scan for unused code"
+      },
+      {
         "command": "sweetpad.testing.selectTarget",
         "title": "SweetPad.Testing: Select testing target",
         "icon": "$(file-code)"
@@ -682,6 +694,16 @@
           "command": "sweetpad.build.setDefaultScheme",
           "when": "viewItem == sweetpad.build.view.item",
           "group": "context@8"
+        },
+        {
+          "command": "sweetpad.build.peripheryScan",
+          "when": "viewItem == sweetpad.build.view.item",
+          "group": "context@9"
+        },
+        {
+          "command": "sweetpad.build.buildAndPeripheryScan",
+          "when": "viewItem == sweetpad.build.view.item",
+          "group": "context@10"
         }
       ],
       "testing/item/context": [
