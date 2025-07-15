@@ -185,6 +185,7 @@ sweetpad.format.run
 sweetpad.tools.install
 sweetpad.build.peripheryScan
 sweetpad.build.buildAndPeripheryScan
+sweetpad.build.createPeripheryConfig
 ```
 
 ## Configuration Management
@@ -241,6 +242,7 @@ The periphery scan feature provides unused code detection using the Periphery to
 - **`runPeripheryScan()`**: Core function that executes periphery scan
 - **`peripheryScanCommand()`**: Standalone periphery scan command
 - **`buildAndPeripheryScanCommand()`**: Combined build and scan workflow
+- **`createPeripheryConfigCommand()`**: Creates `.periphery.yml` configuration file template
 
 #### 3. **Configuration Options**
 ```typescript
@@ -299,6 +301,12 @@ periphery scan \
 - Workspace-specific settings for different projects
 - Custom periphery configuration file support
 - Toggleable retention rules for different project types
+- **Configuration Priority System**:
+  1. `.periphery.yml` in project root (checked first)
+  2. Custom path specified in `periphery.config` setting
+  3. User-prompted path selection
+  4. Default settings if no configuration is found
+- **Template Generation**: Creates comprehensive `.periphery.yml` with project-specific defaults
 
 #### **Output Integration**
 - Xcode-compatible format for issue navigation

@@ -5,6 +5,7 @@ import {
   buildAndPeripheryScanCommand,
   buildCommand,
   cleanCommand,
+  createPeripheryConfigCommand,
   debuggingBuildCommand,
   debuggingLaunchCommand,
   debuggingRunCommand,
@@ -177,6 +178,7 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.build.diagnoseSetup", diagnoseBuildSetupCommand));
     d(command("sweetpad.build.peripheryScan", peripheryScanCommand));
     d(command("sweetpad.build.buildAndPeripheryScan", buildAndPeripheryScanCommand));
+    d(command("sweetpad.build.createPeripheryConfig", createPeripheryConfigCommand));
 
     // Testing
     d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));

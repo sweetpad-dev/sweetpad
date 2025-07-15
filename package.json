@@ -399,6 +399,12 @@
         "description": "Build project and scan for unused code"
       },
       {
+        "command": "sweetpad.build.createPeripheryConfig",
+        "title": "SweetPad: Create Periphery Config",
+        "icon": "$(file-add)",
+        "description": "Create .periphery.yml configuration file"
+      },
+      {
         "command": "sweetpad.testing.selectTarget",
         "title": "SweetPad.Testing: Select testing target",
         "icon": "$(file-code)"
@@ -704,6 +710,11 @@
           "command": "sweetpad.build.buildAndPeripheryScan",
           "when": "viewItem == sweetpad.build.view.item",
           "group": "context@10"
+        },
+        {
+          "command": "sweetpad.build.createPeripheryConfig",
+          "when": "viewItem == sweetpad.build.view.item",
+          "group": "context@11"
         }
       ],
       "testing/item/context": [

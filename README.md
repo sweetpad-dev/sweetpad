@@ -38,12 +38,19 @@ SweetPad integrates [Periphery](https://github.com/peripheryapp/periphery) to he
 - Right-click on any scheme in the workspace tree
 - Select **"Periphery Scan"** for quick analysis
 - Select **"Build & Periphery Scan"** for full build + scan workflow
+- Select **"Create Periphery Config"** to generate a `.periphery.yml` configuration file
 
 **Configuration Options:**
 - `periphery.runAfterBuild` — Automatically run scan after builds
 - `periphery.retainPublic` — Keep public APIs (enabled by default)
 - `periphery.retainObjcAccessible` — Keep Objective-C accessible code (enabled by default)
 - `periphery.format` — Output format (default: "xcode")
+
+**Configuration Priority:**
+1. `.periphery.yml` in project root (checked first)
+2. Custom path specified in `periphery.config` setting
+3. User-prompted path selection
+4. Default settings if no configuration is found
 
 **Installation:**
 Periphery is automatically managed through the Tools panel or install manually:

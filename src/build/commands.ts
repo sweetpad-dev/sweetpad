@@ -20,7 +20,7 @@ import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
 import { readdir } from "node:fs/promises";
 import { commonLogger } from "../common/logger";
-import { showInputBox } from "../common/quick-pick";
+
 import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
 import type { Destination } from "../destination/types";
@@ -1372,7 +1372,7 @@ export async function selectConfigurationForBuildCommand(context: ExtensionConte
 
   let selected: string | undefined;
   if (configurations.length === 0) {
-    selected = await showInputBox({
+    selected = await vscode.window.showInputBox({
       title: "No configurations found. Please enter configuration name manually",
     });
   } else {
@@ -1619,10 +1619,54 @@ export async function runPeripheryScan(
 
 
 
-  // Add any additional periphery configuration from workspace config
-  const peripheryConfig = getWorkspaceConfig("periphery.config");
-  if (peripheryConfig) {
-    peripheryArgs.push("--config", peripheryConfig);
+  // Check for .periphery.yml file in project root first
+  const projectRoot = getWorkspacePath();
+  const defaultPeripheryConfigPath = path.join(projectRoot, ".periphery.yml");
+  
+  let peripheryConfigPath: string | undefined;
+  
+  // First check if .periphery.yml exists in project root
+  const defaultConfigExists = await isFileExists(defaultPeripheryConfigPath);
+  if (defaultConfigExists) {
+    peripheryConfigPath = defaultPeripheryConfigPath;
+    terminal.write(`📋 Using .periphery.yml from project root\n`);
+  } else {
+    // Check workspace config for custom path
+    const workspaceConfig = getWorkspaceConfig("periphery.config");
+    if (workspaceConfig) {
+      peripheryConfigPath = workspaceConfig;
+      terminal.write(`📋 Using custom periphery config: ${peripheryConfigPath}\n`);
+    } else {
+      // Ask user for config path
+      const userConfigPath = await vscode.window.showInputBox({
+        title: "Periphery Configuration",
+        prompt: "Enter path to .periphery.yml file (or leave empty to use default settings)",
+        placeHolder: ".periphery.yml",
+        value: "",
+      });
+      
+      if (userConfigPath && userConfigPath.trim()) {
+        const resolvedPath = path.isAbsolute(userConfigPath) 
+          ? userConfigPath 
+          : path.join(projectRoot, userConfigPath);
+        
+        const configExists = await isFileExists(resolvedPath);
+        if (configExists) {
+          peripheryConfigPath = resolvedPath;
+          terminal.write(`📋 Using periphery config: ${peripheryConfigPath}\n`);
+        } else {
+          terminal.write(`⚠️  Config file not found: ${resolvedPath}\n`);
+          terminal.write(`📋 Using default settings\n`);
+        }
+      } else {
+        terminal.write(`📋 Using default settings\n`);
+      }
+    }
+  }
+  
+  // Add config parameter if we have a valid path
+  if (peripheryConfigPath) {
+    peripheryArgs.push("--config", peripheryConfigPath);
   }
 
   // Add format option if specified
@@ -1724,4 +1768,85 @@ export async function peripheryScanCommand(context: ExtensionContext, item?: Bui
       await runPeripheryScan(context, terminal);
     },
   });
+}
+
+/**
+ * Create a .periphery.yml configuration file template
+ */
+export async function createPeripheryConfigCommand(context: ExtensionContext) {
+  const projectRoot = getWorkspacePath();
+  const peripheryConfigPath = path.join(projectRoot, ".periphery.yml");
+  
+  // Check if .periphery.yml already exists
+  const configExists = await isFileExists(peripheryConfigPath);
+  if (configExists) {
+    const overwrite = await vscode.window.showWarningMessage(
+      ".periphery.yml already exists. Do you want to overwrite it?",
+      "Overwrite",
+      "Cancel"
+    );
+    
+    if (overwrite !== "Overwrite") {
+      return;
+    }
+  }
+  
+  // Get current workspace info for template
+  const xcworkspace = getCurrentXcodeWorkspacePath(context);
+  const workspaceName = xcworkspace ? path.basename(xcworkspace, path.extname(xcworkspace)) : "YourProject";
+  
+  // Create template content
+  const templateContent = `# Periphery Configuration File
+# See https://github.com/peripheryapp/periphery for more options
+
+# Project configuration
+workspace: ${xcworkspace || "YourProject.xcworkspace"}
+# project: YourProject.xcodeproj  # Use this for single project setup
+
+# Build configuration
+clean_build: true
+schemes:
+  - ${workspaceName}
+targets:
+  - ${workspaceName}
+
+# Retention options
+retain_public: true
+retain_objc_accessible: true
+retain_unused_protocol_func_params: true
+
+# Output configuration
+format: xcode
+quiet: false
+verbose: false
+
+# File exclusions (optional)
+# report_exclude:
+#   - "*/Generated/*"
+#   - "*/Pods/*"
+#   - "*/Tests/*"
+
+# Index exclusions (optional)
+# index_exclude:
+#   - "*/Generated/*"
+#   - "*/Pods/*"
+`;
+
+  try {
+    await vscode.workspace.fs.writeFile(
+      vscode.Uri.file(peripheryConfigPath),
+      Buffer.from(templateContent, 'utf8')
+    );
+    
+    vscode.window.showInformationMessage(
+      `✅ Created .periphery.yml configuration file at project root`
+    );
+    
+    // Open the created file
+    const document = await vscode.workspace.openTextDocument(peripheryConfigPath);
+    await vscode.window.showTextDocument(document);
+    
+  } catch (error) {
+    vscode.window.showErrorMessage(`❌ Failed to create .periphery.yml: ${error}`);
+  }
 }
