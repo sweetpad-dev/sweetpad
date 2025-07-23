@@ -13,6 +13,7 @@ Develop Swift/iOS projects efficiently using VSCode or Cursor. SweetPad integrat
 ### Development
 - ✅ **[Autocomplete](https://sweetpad.hyzyla.dev/docs/autocomplete)** — Intelligent code completion using [xcode-build-server](https://github.com/SolaWing/xcode-build-server)
 - 💅🏼 **[Format](https://sweetpad.hyzyla.dev/docs/format)** — Format Swift files using [swift-format](https://github.com/apple/swift-format) or other formatters
+- 🔍 **Periphery Scan** — Detect unused code using [Periphery](https://github.com/peripheryapp/periphery) with smart public API retention
 - 📦 **Swift Package Manager** — Full support for SPM package development and dependencies
 
 ### Build & Run
@@ -23,9 +24,39 @@ Develop Swift/iOS projects efficiently using VSCode or Cursor. SweetPad integrat
 ### Testing & Debugging
 - 🪲 **[Debug](https://sweetpad.hyzyla.dev/docs/debug)** — Debug iOS applications using [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
 - ✅ **[Tests](https://sweetpad.hyzyla.dev/docs/tests)** — Run tests on simulators and devices with visual feedback
+- 🧪 **[Swift Testing](./docs/wiki/swift-testing.md)** — Support for Swift Testing framework (Xcode 16+) alongside XCTest
 
 ### Tools
 - 🛠️ **[Tools](https://sweetpad.hyzyla.dev/docs/tools)** — Manage essential iOS development tools using [Homebrew](https://brew.sh/)
+- 🔍 **Periphery Integration** — Install and manage Periphery for unused code detection
+
+### Periphery Scan Usage
+
+SweetPad integrates [Periphery](https://github.com/peripheryapp/periphery) to help you identify unused code in your Swift projects:
+
+**Context Menu Integration:**
+- Right-click on any scheme in the workspace tree
+- Select **"Periphery Scan"** for quick analysis
+- Select **"Build & Periphery Scan"** for full build + scan workflow
+- Select **"Create Periphery Config"** to generate a `.periphery.yml` configuration file
+
+**Configuration Options:**
+- `periphery.runAfterBuild` — Automatically run scan after builds
+- `periphery.retainPublic` — Keep public APIs (enabled by default)
+- `periphery.retainObjcAccessible` — Keep Objective-C accessible code (enabled by default)
+- `periphery.format` — Output format (default: "xcode")
+
+**Configuration Priority:**
+1. `.periphery.yml` in project root (checked first)
+2. Custom path specified in `periphery.config` setting
+3. User-prompted path selection
+4. Default settings if no configuration is found
+
+**Installation:**
+Periphery is automatically managed through the Tools panel or install manually:
+```shell
+brew install periphery
+```
 
 > 💡 Have ideas or found issues? Please open an issue or start a discussion on the [SweetPad GitHub repository](https://github.com/KayodeOgundimu-DoorDashSWE/sweetpad).
 
