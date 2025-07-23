@@ -226,10 +226,28 @@ export async function runOniOSDevice(
 
   // Install app on device
   context.updateProgressStatus(`Installing "${scheme}" on "${destinationName}"`);
-  await terminal.execute({
-    command: "xcrun",
-    args: ["devicectl", "device", "install", "app", "--device", deviceId, targetPath],
-  });
+  try {
+    await terminal.execute({
+      command: "xcrun",
+      args: ["devicectl", "device", "install", "app", "--device", deviceId, targetPath],
+    });
+  } catch (error) {
+    // Check for passcode protection error
+    if (error instanceof Error && isPasscodeProtectionError(error)) {
+      const helpfulMessage = `🔒 Device is passcode protected or not trusted.\n\n` +
+        `Please follow these steps:\n` +
+        `1. 🔓 Unlock your iOS device (${destinationName})\n` +
+        `2. 🔌 If connected via USB, disconnect and reconnect the device\n` +
+        `3. 📱 When prompted on the device, tap "Trust This Computer"\n` +
+        `4. 🔑 Enter your device passcode if requested\n` +
+        `5. 🔄 Try running the command again\n\n` +
+        `💡 Tip: Keep your device unlocked during app installation and launch.`;
+      
+      terminal.write(helpfulMessage, { newLine: true, color: "yellow" });
+      throw new ExtensionError("Device passcode protection prevents app installation. Please unlock device and trust this computer.");
+    }
+    throw error; // Re-throw other errors
+  }
 
   context.updateWorkspaceState("build.lastLaunchedApp", {
     type: "device",
@@ -271,12 +289,27 @@ export async function runOniOSDevice(
 
   // Launch app on device
   context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
-  await terminal.execute({
-    command: "xcrun",
-    args: launchArgs,
-    // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process
-    env: Object.fromEntries(Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value])),
-  });
+  try {
+    await terminal.execute({
+      command: "xcrun",
+      args: launchArgs,
+      // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process
+      env: Object.fromEntries(Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value])),
+    });
+  } catch (error) {
+    // Check for passcode protection error during launch
+    if (error instanceof Error && isPasscodeProtectionError(error)) {
+      const helpfulMessage = `🔒 Device is passcode protected during app launch.\n\n` +
+        `Please:\n` +
+        `1. 🔓 Ensure your iOS device (${destinationName}) is unlocked\n` +
+        `2. 🔄 Try running the command again\n\n` +
+        `💡 Tip: Keep your device unlocked during app launch.`;
+      
+      terminal.write(helpfulMessage, { newLine: true, color: "yellow" });
+      throw new ExtensionError("Device passcode protection prevents app launch. Please unlock device.");
+    }
+    throw error; // Re-throw other errors
+  }
 
   let jsonOutput: any;
   try {
@@ -299,6 +332,70 @@ export async function runOniOSDevice(
   });
 }
 
+/**
+ * Check if an error is related to passcode protection on iOS devices
+ */
+function isPasscodeProtectionError(error: Error): boolean {
+  const errorMessage = error.message || "";
+  const errorString = error.toString();
+  
+  // Check for specific error patterns
+  const passcodeProtectionPatterns = [
+    "The device is passcode protected",
+    "DTDKRemoteDeviceConnection: Failed to start remote service",
+    "Code=811",
+    "Code=-402653158",
+    "MobileDeviceErrorCode=(0xE800001A)",
+    "com.apple.mobile.notification_proxy",
+    "passcode protected"
+  ];
+  
+  return passcodeProtectionPatterns.some(pattern => 
+    errorMessage.includes(pattern) || errorString.includes(pattern)
+  );
+}
+
+/**
+ * Handle passcode protection error with helpful user guidance
+ */
+function handlePasscodeProtectionError(terminal: TaskTerminal, destinationRaw: string): void {
+  // Check if this is a simulator destination
+  const isSimulatorBuild = destinationRaw.includes("Simulator");
+  
+  // Extract device name from destination string if possible
+  const deviceMatch = destinationRaw.match(/id=([^,]+)/);
+  const deviceInfo = deviceMatch ? ` (${deviceMatch[1]})` : "";
+  
+  let helpfulMessage: string;
+  
+  if (isSimulatorBuild) {
+    helpfulMessage = `🔒 Device passcode protection error during simulator build${deviceInfo}.\n\n` +
+      `This can happen when Xcode tries to communicate with connected devices even when building for simulator.\n\n` +
+      `Quick solutions:\n` +
+      `1. 🔓 Unlock any connected iOS devices\n` +
+      `2. 🔌 Disconnect all iOS devices temporarily\n` +
+      `3. 📱 If you need devices connected, trust them on each device\n` +
+      `4. ⚙️  Consider disabling automatic device detection in Xcode preferences\n` +
+      `5. 🔧 Enable 'sweetpad.build.skipDeviceConnectionForSimulator' in VS Code settings\n` +
+      `6. 🔄 Try building again\n\n` +
+      `💡 Tip: Xcode sometimes tries to connect to devices for background services even during simulator builds.\n` +
+      `💡 Alternative: Use 'xcodebuild -destination "platform=iOS Simulator,name=iPhone 15"' to avoid UDID-based selection.\n` +
+      `💡 Configuration: The new setting will add build flags to reduce device communication during simulator builds.`;
+  } else {
+    helpfulMessage = `🔒 Device is passcode protected or not trusted${deviceInfo}.\n\n` +
+      `Please follow these steps:\n` +
+      `1. 🔓 Unlock your iOS device\n` +
+      `2. 🔌 If connected via USB, disconnect and reconnect the device\n` +
+      `3. 📱 When prompted on the device, tap "Trust This Computer"\n` +
+      `4. 🔑 Enter your device passcode if requested\n` +
+      `5. 🔄 Try running the command again\n\n` +
+      `💡 Tip: Keep your device unlocked during build and deployment.\n` +
+      `💡 For wireless debugging, ensure both devices are on the same network.`;
+  }
+  
+  terminal.write(helpfulMessage, { newLine: true, color: "yellow" });
+}
+
 export function isXcbeautifyEnabled() {
   return getWorkspaceConfig("build.xcbeautifyEnabled") ?? true;
 }
@@ -312,16 +409,24 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   const destination = options.destination;
 
   if (destination.type === "iOSSimulator") {
-    return `platform=iOS Simulator,id=${destination.udid}`;
+    // Specify architecture to avoid ambiguity warnings and reduce device communication attempts
+    // Use arm64 for Apple Silicon Macs (M1/M2/M3) for better performance, fallback to x86_64
+    const arch = process.arch === "arm64" ? "arm64" : "x86_64";
+    return `platform=iOS Simulator,arch=${arch},id=${destination.udid}`;
   }
   if (destination.type === "watchOSSimulator") {
-    return `platform=watchOS Simulator,id=${destination.udid}`;
+    // watchOS simulators typically use the host architecture
+    const arch = process.arch === "arm64" ? "arm64" : "x86_64";
+    return `platform=watchOS Simulator,arch=${arch},id=${destination.udid}`;
   }
   if (destination.type === "tvOSSimulator") {
-    return `platform=tvOS Simulator,id=${destination.udid}`;
+    // tvOS simulators use arm64 on Apple Silicon, x86_64 on Intel
+    const arch = process.arch === "arm64" ? "arm64" : "x86_64";
+    return `platform=tvOS Simulator,arch=${arch},id=${destination.udid}`;
   }
   if (destination.type === "visionOSSimulator") {
-    return `platform=visionOS Simulator,id=${destination.udid}`;
+    // visionOS simulators use arm64 architecture
+    return `platform=visionOS Simulator,arch=arm64,id=${destination.udid}`;
   }
   if (destination.type === "macOS") {
     // note: without arch, xcodebuild will show warning like this:
@@ -571,12 +676,20 @@ export async function buildApp(
     }
     
     // Execute the command in the package directory
-    await terminal.execute({
-      command: "sh",
-      args: ["-c", `cd "${packageDir}" && xcodebuild ${xcodebuildArgs.map(arg => `"${arg}"`).join(" ")}`],
-      pipes: pipes,
-      env: env,
-    });
+    try {
+      await terminal.execute({
+        command: "sh",
+        args: ["-c", `cd "${packageDir}" && xcodebuild ${xcodebuildArgs.map(arg => `"${arg}"`).join(" ")}`],
+        pipes: pipes,
+        env: env,
+      });
+    } catch (error) {
+      if (error instanceof Error && isPasscodeProtectionError(error)) {
+        handlePasscodeProtectionError(terminal, options.destinationRaw);
+        throw new ExtensionError("Device passcode protection prevents build. Please unlock device and trust this computer.");
+      }
+      throw error;
+    }
     
     await restartSwiftLSP();
     return;
@@ -603,6 +716,21 @@ export async function buildApp(
     // project's ARCHS setting.
     // It speeds up compile times, especially in Debug, because Xcode skips generating unused slices.
     command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
+  }
+
+  // Add build settings to reduce device communication for simulator builds
+  const skipDeviceConnection = getWorkspaceConfig("build.skipDeviceConnectionForSimulator") ?? false;
+  const isSimulatorBuild = options.destinationRaw.includes("Simulator");
+  
+  if (skipDeviceConnection && isSimulatorBuild) {
+    // Disable automatic provisioning updates which can trigger device communication
+    command.addBuildSettings("PROVISIONING_PROFILE_SPECIFIER", "");
+    command.addBuildSettings("CODE_SIGN_IDENTITY", "");
+    command.addBuildSettings("CODE_SIGN_STYLE", "Manual");
+    // Skip device-specific entitlements that might trigger device checks
+    command.addBuildSettings("SKIP_INSTALL", "NO");
+    // Reduce network-based operations during build
+    command.addBuildSettings("ENABLE_BITCODE", "NO");
   }
 
   // For Swift Testing in Xcode projects, add the testing library flag
@@ -648,15 +776,25 @@ export async function buildApp(
     context.updateProgressStatus(`Testing "${options.scheme}" with ${testingFramework === "swift-testing" ? "Swift Testing" : "XCTest"}`);
   }
   
-  await terminal.execute({
-    command: commandParts[0],
-    args: commandParts.slice(1),
-    pipes: pipes,
-    env: env,
-  });
+  try {
+    await terminal.execute({
+      command: commandParts[0],
+      args: commandParts.slice(1),
+      pipes: pipes,
+      env: env,
+    });
+  } catch (error) {
+    if (error instanceof Error && isPasscodeProtectionError(error)) {
+      handlePasscodeProtectionError(terminal, options.destinationRaw);
+      throw new ExtensionError("Device passcode protection prevents build. Please unlock device and trust this computer.");
+    }
+    throw error;
+  }
 
   await restartSwiftLSP();
 }
+
+
 
 /**
  * Build app without running

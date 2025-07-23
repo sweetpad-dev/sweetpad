@@ -10,6 +10,7 @@ type Config = {
   "build.configuration": string;
   "build.arch": "x86_64" | "arm64";
   "build.allowProvisioningUpdates": boolean;
+  "build.skipDeviceConnectionForSimulator": boolean;
   "build.args": string[];
   "build.env": Record<string, string | null>;
   "build.launchArgs": string[];

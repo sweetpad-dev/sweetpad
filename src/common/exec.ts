@@ -64,7 +64,14 @@ export async function exec(options: {
 
     // Check for errors
     if (result.failed || result.exitCode !== 0) {
-      throw new ExecError(`Error executing "${options.command}" command (exit code: ${result.exitCode})`, {
+      // Enhance error message for devicectl passcode protection errors
+      let errorMessage = `Error executing "${options.command}" command (exit code: ${result.exitCode})`;
+      
+      if (isDeviceCtlPasscodeError(options, result.stderr)) {
+        errorMessage = `Device passcode protection error in "${options.command}" command (exit code: ${result.exitCode})`;
+      }
+      
+      throw new ExecError(errorMessage, {
         stderr: result.stderr,
         command: options.command,
         args: options.args,
@@ -109,4 +116,26 @@ export async function exec(options: {
       cwd: cwd,
     });
   }
+}
+
+/**
+ * Check if this is a devicectl command with a passcode protection error
+ */
+function isDeviceCtlPasscodeError(options: { command: string; args: string[] }, stderr: string): boolean {
+  const isDeviceCtlCommand = options.command === "xcrun" && options.args.includes("devicectl");
+  
+  if (!isDeviceCtlCommand) {
+    return false;
+  }
+  
+  const passcodeErrorPatterns = [
+    "The device is passcode protected",
+    "DTDKRemoteDeviceConnection: Failed to start remote service",
+    "Code=811",
+    "Code=-402653158",
+    "MobileDeviceErrorCode=(0xE800001A)",
+    "com.apple.mobile.notification_proxy"
+  ];
+  
+  return passcodeErrorPatterns.some(pattern => stderr.includes(pattern));
 }
