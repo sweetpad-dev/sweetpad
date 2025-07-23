@@ -4,6 +4,17 @@ on:
       - main
     tags:
       - "*"
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor  
+          - major
 
 name: Build and Release Extension
 jobs:
@@ -23,14 +34,23 @@ jobs:
       - name: Install Dependencies
         run: npm ci
         
-      - name: Bump minor version
+      - name: Bump version
         run: |
           # Get current version
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           echo "Current version: $CURRENT_VERSION"
           
-          # Bump minor version using npm (updates both package.json and package-lock.json)
-          npm version minor --no-git-tag-version
+          # Determine version type: patch for push, user input for manual trigger
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+          else
+            VERSION_TYPE="patch"
+          fi
+          
+          echo "Version bump type: $VERSION_TYPE"
+          
+          # Bump version using npm (updates both package.json and package-lock.json)
+          npm version $VERSION_TYPE --no-git-tag-version
           
           # Get new version
           NEW_VERSION=$(node -p "require('./package.json').version")
@@ -42,10 +62,19 @@ jobs:
           
       - name: Commit version bump
         run: |
+          # Determine version type for commit message
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+          else
+            VERSION_TYPE="patch"
+          fi
+          
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add package.json package-lock.json
-          git commit -m "Bump version to $(node -p "require('./package.json').version")" || exit 0
+          git commit -m "Bump $VERSION_TYPE version to $NEW_VERSION" || exit 0
           git push
           
       - name: Create and push tag
@@ -58,10 +87,16 @@ jobs:
   build-and-release:
     name: Build VSIX and Release
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: version-bump
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Pull latest changes
+        run: git pull origin ${{ github.ref_name }}
         
       - name: Install NodeJS
         uses: actions/setup-node@v4
@@ -76,9 +111,11 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           NAME=$(node -p "require('./package.json').name")
+          TAG_NAME="v$VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "name=$NAME" >> $GITHUB_OUTPUT
           echo "vsix_name=${NAME}-${VERSION}.vsix" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           
       - name: Generate VSIX package
         run: |
@@ -179,23 +216,13 @@ jobs:
               exit 1
           fi
           
-      - name: Create Release
-        uses: actions/create-release@v1
-        id: create_release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release with VSIX only
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: Release ${{ steps.version.outputs.tag_name }}
+          files: ${{ steps.version.outputs.vsix_name }}
           draft: false
           prerelease: false
-          
-      - name: Upload VSIX to Release
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./${{ steps.version.outputs.vsix_name }}
-          asset_name: ${{ steps.version.outputs.vsix_name }}
-          asset_content_type: application/zip
