@@ -179,21 +179,24 @@ export class XcodeScheme {
 
     // Find shared schemes:
     // Ex: <projectPath>/xcshareddata/xcschemes/*.xcscheme
-    const sharedSchemasDir = path.join(project.projectPath, "xcshareddata");
-    schemes.push(...(await XcodeScheme.findSchemes(project, sharedSchemasDir)));
+    const sharedSchemesDir = path.join(project.projectPath, "xcshareddata");
+    schemes.push(...(await XcodeScheme.findSchemes(project, sharedSchemesDir)));
 
     // Then try to find user-specific schemes:
     // Ex: <projectPath>/xcuserdata/<username>.xcuserdatad/xcschemes/*.xcscheme
     const userDataDir = path.join(project.projectPath, "xcuserdata");
-    const specificUserDataDir = await findFiles({
-      directory: userDataDir,
-      matcher: (file) => {
-        return file.isDirectory() && file.name.endsWith(".xcuserdatad");
-      },
-    });
-    if (specificUserDataDir.length > 0) {
-      for (const dir of specificUserDataDir) {
-        schemes.push(...(await XcodeScheme.findSchemes(project, dir)));
+    const userDataDirExists = await isFileExists(userDataDir);
+    if (userDataDirExists) {
+      const specificUserDataDir = await findFiles({
+        directory: userDataDir,
+        matcher: (file) => {
+          return file.isDirectory() && file.name.endsWith(".xcuserdatad");
+        },
+      });
+      if (specificUserDataDir.length > 0) {
+        for (const dir of specificUserDataDir) {
+          schemes.push(...(await XcodeScheme.findSchemes(project, dir)));
+        }
       }
     }
 
@@ -247,7 +250,7 @@ export class XcodeProjectBaconParser implements XcodeProject {
     return await XcodeScheme.getScheme(this, name);
   }
 
-  async getSchemasNames(): Promise<string[]> {
+  async getSchemesNames(): Promise<string[]> {
     const schemes = await this.getSchemes();
     return schemes.map((scheme) => scheme.name);
   }

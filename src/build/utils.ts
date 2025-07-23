@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 
 import { askConfigurationBase } from "../common/askers";
-import { type XcodeBuildSettings, getSchemes } from "../common/cli/scripts";
+import { getBuildSettingsToAskDestination, getSchemes } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
@@ -66,11 +66,13 @@ export async function askSimulator(
  */
 export async function askDestinationToRunOn(
   context: ExtensionContext,
-  buildSettings: XcodeBuildSettings | null,
+  options: {
+    scheme: string;
+    configuration: string;
+    sdk: string | undefined;
+    xcworkspace: string;
+  },
 ): Promise<Destination> {
-  // We can remove platforms that are not supported by the project
-  const supportedPlatforms = buildSettings?.supportedPlatforms;
-
   context.updateProgressStatus("Searching for destinations");
   const destinations = await context.destinationsManager.getDestinations({
     mostUsedSort: true,
@@ -86,6 +88,16 @@ export async function askDestinationToRunOn(
       return destination;
     }
   }
+
+  // We can remove platforms that are not supported by the build settings
+  // WARNING: if want to avoid refetching build settings, move this logic to build manager or build context (not exist yet)
+  const buildSettings = await getBuildSettingsToAskDestination({
+    scheme: options.scheme,
+    configuration: options.configuration,
+    sdk: options.sdk,
+    xcworkspace: options.xcworkspace,
+  });
+  const supportedPlatforms = buildSettings?.supportedPlatforms;
 
   return await selectDestinationForBuild(context, {
     destinations: destinations,
@@ -154,24 +166,6 @@ export async function selectDestinationForBuild(
   return destination;
 }
 
-export async function getDestinationById(
-  context: ExtensionContext,
-  options: { destinationId: string },
-): Promise<Destination> {
-  const desinations = await context.destinationsManager.getDestinations();
-  const destination = desinations.find((destination) => destination.id === options.destinationId);
-
-  if (destination) {
-    return destination;
-  }
-
-  throw new ExtensionError("Destination not found", {
-    context: {
-      destinationId: options.destinationId,
-    },
-  });
-}
-
 /**
  * Ask user to select scheme to build
  */
@@ -236,18 +230,18 @@ export async function prepareStoragePath(context: ExtensionContext): Promise<str
 }
 
 /**
- * Prepare bundle directory for the given schema in the storage path
+ * Prepare bundle directory for the given scheme in the storage path
  */
-export async function prepareBundleDir(context: ExtensionContext, schema: string): Promise<string> {
+export async function prepareBundleDir(context: ExtensionContext, scheme: string): Promise<string> {
   const storagePath = await prepareStoragePath(context);
 
-  const bundleDir = path.join(storagePath, "bundle", schema);
+  const bundleDir = path.join(storagePath, "bundle", scheme);
 
   // Remove old bundle if exists
   await removeDirectory(bundleDir);
 
   // Remove old .xcresult if exists
-  const xcresult = path.join(storagePath, "bundle", `${schema}.xcresult`);
+  const xcresult = path.join(storagePath, "bundle", `${scheme}.xcresult`);
   await removeDirectory(xcresult);
 
   return bundleDir;
@@ -300,7 +294,7 @@ export async function askXcodeWorkspacePath(context: ExtensionContext): Promise<
   });
 
   context.updateWorkspaceState("build.xcodeWorkspacePath", selectedPath);
-  context.buildManager.refresh();
+  context.buildManager.refreshSchemes();
   return selectedPath;
 }
 

@@ -273,12 +273,22 @@ export class ExtensionContext {
     this.buildManager.setDefaultConfigurationForBuild(undefined);
     this.buildManager.setDefaultConfigurationForTesting(undefined);
 
-    void this.buildManager.refresh();
+    void this.buildManager.refreshSchemes();
     void this.destinationsManager.refresh();
   }
 
   updateProgressStatus(message: string) {
     this.progressStatusBar.updateText(message);
+  }
+}
+
+export class BaseExecutionScope {
+  id: string;
+  type = "base" as const;
+
+  constructor() {
+    this.id = crypto.randomUUID();
+    this.type = "base";
   }
 }
 
@@ -306,4 +316,4 @@ export class TaskExecutionScope {
   }
 }
 
-export type ExecutionScope = CommandExecutionScope | TaskExecutionScope;
+export type ExecutionScope = BaseExecutionScope | CommandExecutionScope | TaskExecutionScope;

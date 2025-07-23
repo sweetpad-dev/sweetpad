@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.1.66",
+  "version": "0.1.68",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -431,8 +431,8 @@
         "icon": "$(sweetpad-tools)"
       },
       {
-        "command": "sweetpad.build.refreshView",
-        "title": "SweetPad: Refresh view",
+        "command": "sweetpad.build.refreshSchemes",
+        "title": "SweetPad: Refresh schemes",
         "icon": "$(sweetpad-refresh)"
       },
       {
@@ -482,7 +482,7 @@
         "enablement": "view == sweetpad.tools.view"
       },
       {
-        "command": "sweetpad.system.resetSweetpadCache",
+        "command": "sweetpad.system.resetSweetPadCache",
         "title": "SweetPad: Reset Extension Cache",
         "icon": "$(clear-all)"
       },
@@ -546,9 +546,13 @@
       "commandPalette": [],
       "view/title": [
         {
+          "command": "sweetpad.build.refreshSchemes",
+          "when": "view == sweetpad.build.view"
+        },
+        {
           "command": "sweetpad.build.openXcode",
           "when": "view == sweetpad.build.view",
-          "group": "navigation@3"
+          "group": "navigation@2"
         },
         {
           "command": "sweetpad.build.removeBundleDir",
@@ -814,6 +818,11 @@
           ],
           "description": "Environment variables to pass to the app on launch"
         },
+        "sweetpad.build.rosettaDestination": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use Rosetta Destination."
+        },
         "sweetpad.testing.configuration": {
           "type": "string",
           "default": null,
@@ -853,6 +862,11 @@
           "default": true,
           "description": "Automatically reveal the terminal when executing a command or task"
         },
+        "sweetpad.system.customXcodeWorkspaceParser": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use custom workspace parser instead of the 'xcodebuild' command. This may speed up processing for large projects, but it might not work correctly in all cases."
+        },
         "sweetpad.system.showProgressStatusBar": {
           "type": "boolean",
           "default": true,
@@ -883,6 +897,26 @@
           "type": "boolean",
           "default": true,
           "description": "Watch if default scheme is changed and regenerate the build server config"
+        },
+        "sweetpad.xcodebuildserver.path": {
+          "type": "string",
+          "default": null,
+          "description": "Path to custom xcodebuildserver executable.",
+          "examples": [
+            "/opt/homebrew/bin/xcode-build-server"
+          ]
+        },
+        "sweetpad.build.autoRefreshSchemes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically refresh schemes when project files change (Package.swift, .xcodeproj, .xcworkspace, etc.)"
+        },
+        "sweetpad.build.autoRefreshSchemesDelay": {
+          "type": "number",
+          "default": 500,
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "Delay in milliseconds before auto-refreshing schemes after detecting file changes"
         }
       }
     },

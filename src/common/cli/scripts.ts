@@ -1,10 +1,11 @@
 import path from "node:path";
-import { prepareDerivedDataPath } from "../../build/utils";
+import { getWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { cache } from "../cache";
 import { getWorkspaceConfig } from "../config";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
+import { readJsonFile } from "../files";
 import { uniqueFilter } from "../helpers";
 import { commonLogger } from "../logger";
 import { assertUnreachable } from "../types";
@@ -300,7 +301,7 @@ export async function getBuildSettingsToAskDestination(options: {
  * Each scheme might have several targets. That's why -showBuildSettings might return different
  * build settings for each target. In the ideal scenario where there is a single target and settings
  * and I just can use first settings object. But there is a cases when there are several targets
- * for the scheme and I need to find which target is set to launch in .xcschema XML file.
+ * for the scheme and I need to find which target is set to launch in .xcscheme XML file.
  */
 export async function getBuildSettingsToLaunch(options: {
   scheme: string;
@@ -317,7 +318,7 @@ export async function getBuildSettingsToLaunch(options: {
   }
 
   // I think this is the most common case, when there is only one target in the scheme. Higly likely that
-  // this is the target to launch. Technically, schema mightn't have any target to launch, but I believe
+  // this is the target to launch. Technically, scheme mightn't have any target to launch, but I believe
   // this is a rare case.
   if (settings.length === 1) {
     return settings[0];
@@ -325,7 +326,7 @@ export async function getBuildSettingsToLaunch(options: {
 
   // > 1 target in the scheme
   // Looking for such pattern in the .xcscheme XML file:
-  // <Schema>
+  // <Scheme>
   //    <LaunchAction>
   //      <BuildableProductRunnable>
   //        <BuildableReference BlueprintName=...>
@@ -361,13 +362,23 @@ export async function getIsXcbeautifyInstalled() {
 }
 
 /**
+ * Get the xcode-build-server command path from config or default
+ */
+function getXcodeBuildServerCommand(): string {
+  const customPath = getWorkspaceConfig("xcodebuildserver.path");
+  return customPath || "xcode-build-server";
+}
+
+/**
  * Find if xcode-build-server is installed
  */
 export async function getIsXcodeBuildServerInstalled() {
+  const command = getXcodeBuildServerCommand();
+
   try {
     await exec({
       command: "which",
-      args: ["xcode-build-server"],
+      args: [command],
     });
     return true;
   } catch (e) {
@@ -408,11 +419,13 @@ export const getBasicProjectInfo = cache(
   },
 );
 
-export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
-  // Handle SPM projects
+export async function getSchemes(options: { xcworkspace?: string }): Promise<XcodeScheme[]> {
+  // Always log what workspace/path we’re inspecting
+  commonLogger.log("Getting schemes", { xcworkspace: options?.xcworkspace ?? "undefined" });
+
+  // 1. Handle SwiftPM (Package.swift) projects
   if (options.xcworkspace?.endsWith("Package.swift")) {
     try {
-      // For SPM projects, we need to get the package info to extract targets
       const packageDir = path.dirname(options.xcworkspace);
       const stdout = await exec({
         command: "swift",
@@ -420,11 +433,10 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
         cwd: packageDir,
       });
       const packageInfo = JSON.parse(stdout);
-      
-      // Use a Set to avoid duplicates
+
       const schemeNames = new Set<string>();
-      
-      // First, add products as schemes (these are the main buildable targets)
+
+      // Add all library/executable products
       if (packageInfo.products) {
         for (const product of packageInfo.products) {
           if (product.type?.executable || product.type?.library) {
@@ -432,8 +444,8 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
           }
         }
       }
-      
-      // Then, add executable targets that aren't already covered by products
+
+      // Add standalone executable targets not already covered
       if (packageInfo.targets) {
         for (const target of packageInfo.targets) {
           if (target.type === "executable" && !schemeNames.has(target.name)) {
@@ -441,40 +453,60 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
           }
         }
       }
-      
-      // If no schemes found, try to use the package name
+
+      // Fallback to the package name if nothing else found
       if (schemeNames.size === 0 && packageInfo.name) {
         schemeNames.add(packageInfo.name);
       }
-      
-      // Convert Set to array of XcodeScheme objects
+
       return Array.from(schemeNames).map(name => ({ name }));
     } catch (error) {
       commonLogger.error("Failed to get SPM package info, falling back to xcodebuild", {
-        error: error,
+        error,
         packagePath: options.xcworkspace,
       });
-      // Fall back to xcodebuild approach
+      // continue on to next approach
     }
   }
 
+  // 2. Use custom workspace parser if enabled
+  const useWorkspaceParser = getWorkspaceConfig("system.customXcodeWorkspaceParser") ?? false;
+  if (options.xcworkspace && useWorkspaceParser) {
+    try {
+      const workspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+      const projects = await workspace.getProjects();
+
+      const schemes = await Promise.all(
+        projects.map(project => project.getSchemes())
+      );
+
+      // Flatten, map to { name } and dedupe
+      return schemes
+        .flat()
+        .map(s => ({ name: s.name }))
+        .filter(uniqueFilter);
+    } catch (error) {
+      commonLogger.error("Error getting schemes with workspace parser, falling back to xcodebuild", {
+        error,
+        xcworkspace: options.xcworkspace,
+      });
+      // continue on to xcodebuild fallback
+    }
+  }
+
+  // 3. Fallback to xcodebuild -list (via getBasicProjectInfo)
   const output = await getBasicProjectInfo({
     xcworkspace: options?.xcworkspace,
   });
+
   if (output.type === "project") {
-    return output.project.schemes.map((scheme) => {
-      return {
-        name: scheme,
-      };
-    });
+    return output.project.schemes.map(scheme => ({ name: scheme }));
   }
+
   if (output.type === "workspace") {
-    return output.workspace.schemes.map((scheme) => {
-      return {
-        name: scheme,
-      };
-    });
+    return output.workspace.schemes.map(scheme => ({ name: scheme }));
   }
+
   assertUnreachable(output);
 }
 
@@ -533,6 +565,45 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
     ];
   }
 
+  commonLogger.log("Getting build configurations", { xcworkspace: options?.xcworkspace });
+
+  const useWorkspaceParser = getWorkspaceConfig("system.customXcodeWorkspaceParser") ?? false;
+
+  if (useWorkspaceParser) {
+    try {
+      const workspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+      const projects = await workspace.getProjects();
+
+      commonLogger.debug("Projects", {
+        paths: projects.map((project) => project.projectPath),
+      });
+
+      // Get configurations from all projects in the workspace
+      const configurations = projects
+        .flatMap((project) => {
+          commonLogger.debug("Project configurations", {
+            configurations: project.getConfigurations(),
+          });
+          return project.getConfigurations();
+        })
+        .filter(uniqueFilter)
+        .map((configuration) => {
+          return {
+            name: configuration,
+          };
+        });
+
+      return configurations;
+    } catch (error) {
+      commonLogger.error("Error getting build configurations with workspace parser, falling back to xcodebuild", {
+        error,
+        xcworkspace: options.xcworkspace,
+      });
+      // Fall through to the original implementation
+    }
+  }
+
+  // Original implementation using xcodebuild -list
   const output = await getBasicProjectInfo({
     xcworkspace: options.xcworkspace,
   });
@@ -573,6 +644,7 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
  * Generate xcode-build-server config
  */
 export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
+
   // Handle SPM projects
   if (options.xcworkspace.endsWith("Package.swift")) {
     const packageDir = path.dirname(options.xcworkspace);
@@ -583,15 +655,31 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
     });
     return;
   }
+  const command = getXcodeBuildServerCommand();
 
   await exec({
-    command: "xcode-build-server",
+    command: command,
     args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme],
   });
 }
 
+export type XcodeBuildServerConfig = {
+  scheme: string;
+  workspace: string;
+  build_root: string;
+  // there might be more properties, like "kind", "args", "name", but we don't need them for now
+};
+
 /**
- * Is XcodeGen installed?s
+ * Read xcode-build-server config with proper types
+ */
+export async function readXcodeBuildServerConfig(): Promise<XcodeBuildServerConfig> {
+  const buildServerJsonPath = path.join(getWorkspacePath(), "buildServer.json");
+  return await readJsonFile<XcodeBuildServerConfig>(buildServerJsonPath);
+}
+
+/**
+ * Is XcodeGen installed?
  */
 export async function getIsXcodeGenInstalled() {
   try {

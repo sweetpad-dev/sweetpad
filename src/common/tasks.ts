@@ -178,16 +178,52 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     if (data === "\x03") {
       // Handle Ctrl+C
       this.writeLine("^C");
-      // TODO: handle it better, bacause pid can be assigned
-      // to another process and we can kill it by mistake
-      const pid = this.process?.pid;
-      if (pid) {
-        // Kill whole process group
-        process.kill(-pid, "SIGINT");
-      }
+      this.terminateProcess();
     } else {
       this.write(data);
     }
+  }
+
+  private terminateProcess(): void {
+    const pid = this.process?.pid;
+    if (!pid) {
+      return;
+    }
+
+    const _kill = (signal: string): void => {
+      try {
+        process.kill(-pid, signal);
+      } catch (e) {
+        // process does not exist, then it's already terminated
+        if ((e as NodeJS.ErrnoException).code === "ESRCH") {
+          return;
+        }
+        throw e;
+      }
+    };
+
+    // First try to terminate the process gracefully
+    _kill("SIGTERM");
+
+    // After 5 seconds, we will try to kill it with SIGKILL with backoff strategy
+    const maxAttempts = 3;
+    let attempt = 0;
+    let timeout = 5000; // 5 seconds
+
+    const _sigkill = () => {
+      if (!this.process || this.process.exitCode !== null) {
+        return; // the process is already terminated
+      }
+
+      _kill("SIGKILL");
+      attempt++;
+      if (attempt < maxAttempts) {
+        timeout = timeout * 2; // 10 seconds, 20 seconds, etc.
+        setTimeout(_sigkill, timeout);
+      }
+    };
+
+    setTimeout(_sigkill, timeout);
   }
 
   /**
@@ -287,6 +323,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   }
 
   close(): void {
+    this.terminateProcess();
     this.closeSuccessfully();
   }
 

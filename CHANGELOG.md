@@ -2,7 +2,26 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [0.1.67] - 2025-05-17
+## [0.1.68] - 2025-07-13
+
+- Add configurable xcode-build-server path support [#176](https://github.com/sweetpad-dev/sweetpad/pull/176)
+
+
+## [0.1.67] - 2025-07-12
+
+- Enhance Scheme Management with Auto-Refresh, Loading States, and Validation [#151](https://github.com/sweetpad-dev/sweetpad/pull/151)
+- Add support to run in rosetta Simulators [#156](https://github.com/sweetpad-dev/sweetpad/pull/156)
+- Add environment variable expansion in configuration [#163](https://github.com/sweetpad-dev/sweetpad/pull/163)
+- Fix typo in debugging-launch task name for vscode config [#158](https://github.com/sweetpad-dev/sweetpad/pull/158)
+- Properly terminate build process when terminal is killed [#160](https://github.com/sweetpad-dev/sweetpad/pull/160)
+- Optimize destination retrieval by avoiding unnecessary build settings extraction [#162](https://github.com/sweetpad-dev/sweetpad/pull/162)
+- Add buildServer.json Regeneration During Build/Run [#164](https://github.com/sweetpad-dev/sweetpad/pull/164)
+- Performance Optimization: Xcode Workspace Parsing [#161](https://github.com/sweetpad-dev/sweetpad/pull/161)
+- Load build configurations parsing xcworkspace [#168](https://github.com/sweetpad-dev/sweetpad/pull/168)
+-  Open simulator after boot
+
+
+## [0.1.66] - 2025-05-17
 
 - Add support for range formatting [#149](https://github.com/sweetpad-dev/sweetpad/pull/149)
 - Do not bring simulator to front after builds [#150](https://github.com/sweetpad-dev/sweetpad/pull/150) 
@@ -290,7 +309,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 ## [0.0.10] — 2024-03-03
 
 - Improve caching of schemes and configurations
-- Add command to reset cache "sweetpad.system.resetSweetpadCache"
+- Add command to reset cache "sweetpad.system.resetSweetPadCache"
 - Add command to open project in Xcode
 - Improve selection of workspaces and schemes
 - Propage errors when xcodebuild used with xcbeautify
