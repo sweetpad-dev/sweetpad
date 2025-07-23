@@ -25,6 +25,12 @@ type Config = {
   "tuist.generate.env": { [key: string]: string | null };
   "testing.configuration": string;
   "testing.framework": "xctest" | "swift-testing" | "auto";
+  "periphery.config": string;
+  "periphery.format": string;
+  "periphery.quiet": boolean;
+  "periphery.runAfterBuild": boolean;
+  "periphery.retainPublic": boolean;
+  "periphery.retainObjcAccessible": boolean;
 };
 
 type ConfigKey = keyof Config;

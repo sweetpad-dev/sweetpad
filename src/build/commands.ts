@@ -18,8 +18,9 @@ import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
+import { readdir } from "node:fs/promises";
 import { commonLogger } from "../common/logger";
-import { showInputBox } from "../common/quick-pick";
+
 import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
 import type { Destination } from "../destination/types";
@@ -656,6 +657,12 @@ export async function buildApp(
   });
 
   await restartSwiftLSP();
+
+  // Check if periphery scan should run after build
+  const runPeripheryAfterBuild = getWorkspaceConfig("periphery.runAfterBuild") ?? false;
+  if (runPeripheryAfterBuild && options.shouldBuild) {
+    await runPeripheryScan(context, terminal);
+  }
 }
 
 /**
@@ -1365,7 +1372,7 @@ export async function selectConfigurationForBuildCommand(context: ExtensionConte
 
   let selected: string | undefined;
   if (configurations.length === 0) {
-    selected = await showInputBox({
+    selected = await vscode.window.showInputBox({
       title: "No configurations found. Please enter configuration name manually",
     });
   } else {
@@ -1513,4 +1520,333 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
       context.simpleTaskCompletionEmitter.fire();
     },
   });
+}
+
+/**
+ * Run periphery scan to detect unused code
+ */
+export async function runPeripheryScan(
+  context: ExtensionContext,
+  terminal: TaskTerminal,
+) {
+  context.updateProgressStatus("Running Periphery scan");
+  terminal.write("🔍 Starting Periphery scan for unused code...\n");
+  terminal.write("📋 Default rules enabled: retain public, objc-accessible\n");
+
+  // Check if periphery is installed
+  try {
+    await exec({
+      command: "periphery",
+      args: ["version"],
+    });
+  } catch (error) {
+    terminal.write("❌ Periphery is not installed. Install it using: brew install periphery\n");
+    throw new ExtensionError("Periphery is not installed");
+  }
+
+  // Get derived data path and construct index store path
+  const derivedDataPath = prepareDerivedDataPath();
+  let indexStorePath: string;
+  
+  if (derivedDataPath) {
+    indexStorePath = path.join(derivedDataPath, "Index.noindex", "DataStore");
+  } else {
+    // Use default Xcode derived data location - look for project-specific folder
+    const defaultDerivedDataPath = path.join(process.env.HOME || "~", "Library", "Developer", "Xcode", "DerivedData");
+    
+    // Try to find project-specific derived data folder
+    try {
+      const derivedDataFolders = await readdir(defaultDerivedDataPath);
+      const projectFolders = derivedDataFolders.filter((folder: string) => 
+        folder.includes("DoordashAttestation") || folder.includes("Package")
+      );
+      
+      if (projectFolders.length > 0) {
+        // Use the first matching project folder
+        indexStorePath = path.join(defaultDerivedDataPath, projectFolders[0], "Index.noindex", "DataStore");
+      } else {
+        // Fallback to generic path
+        indexStorePath = path.join(defaultDerivedDataPath, "Index.noindex", "DataStore");
+      }
+    } catch (error) {
+      // If we can't read the derived data folder, use generic path
+      indexStorePath = path.join(defaultDerivedDataPath, "Index.noindex", "DataStore");
+    }
+  }
+
+  // Check if index store path exists
+  const indexStoreExists = await isFileExists(indexStorePath);
+  if (!indexStoreExists) {
+    terminal.write(`❌ Index store path does not exist: ${indexStorePath}\n`);
+    terminal.write("💡 Make sure you have built the project first to generate the index store.\n");
+    terminal.write("💡 You can run 'Build' first, then 'Periphery Scan', or use 'Build & Periphery Scan'.\n");
+    
+    // Show available derived data folders if possible
+    try {
+      const defaultDerivedDataPath = path.join(process.env.HOME || "~", "Library", "Developer", "Xcode", "DerivedData");
+      const derivedDataFolders = await readdir(defaultDerivedDataPath);
+      if (derivedDataFolders.length > 0) {
+        terminal.write("📁 Available derived data folders:\n");
+        derivedDataFolders.slice(0, 5).forEach((folder: string) => {
+          terminal.write(`   - ${folder}\n`);
+        });
+      }
+    } catch (error) {
+      // Ignore error in showing available folders
+    }
+    
+    throw new ExtensionError("Index store path does not exist. Build the project first.");
+  }
+
+  // Build periphery scan command
+  const peripheryArgs = [
+    "scan",
+    "--skip-build",
+    "--index-store-path", indexStorePath,
+  ];
+
+  // Add default rules to retain public declarations (can be overridden by config)
+  const retainPublic = getWorkspaceConfig("periphery.retainPublic") ?? true;
+  if (retainPublic) {
+    peripheryArgs.push("--retain-public");
+  }
+
+  // Add rule to retain objc accessible declarations
+  const retainObjcAccessible = getWorkspaceConfig("periphery.retainObjcAccessible") ?? true;
+  if (retainObjcAccessible) {
+    peripheryArgs.push("--retain-objc-accessible");
+  }
+
+
+
+  // Check for .periphery.yml file in project root first
+  const projectRoot = getWorkspacePath();
+  const defaultPeripheryConfigPath = path.join(projectRoot, ".periphery.yml");
+  
+  let peripheryConfigPath: string | undefined;
+  
+  // First check if .periphery.yml exists in project root
+  const defaultConfigExists = await isFileExists(defaultPeripheryConfigPath);
+  if (defaultConfigExists) {
+    peripheryConfigPath = defaultPeripheryConfigPath;
+    terminal.write(`📋 Using .periphery.yml from project root\n`);
+  } else {
+    // Check workspace config for custom path
+    const workspaceConfig = getWorkspaceConfig("periphery.config");
+    if (workspaceConfig) {
+      peripheryConfigPath = workspaceConfig;
+      terminal.write(`📋 Using custom periphery config: ${peripheryConfigPath}\n`);
+    } else {
+      // Ask user for config path
+      const userConfigPath = await vscode.window.showInputBox({
+        title: "Periphery Configuration",
+        prompt: "Enter path to .periphery.yml file (or leave empty to use default settings)",
+        placeHolder: ".periphery.yml",
+        value: "",
+      });
+      
+      if (userConfigPath && userConfigPath.trim()) {
+        const resolvedPath = path.isAbsolute(userConfigPath) 
+          ? userConfigPath 
+          : path.join(projectRoot, userConfigPath);
+        
+        const configExists = await isFileExists(resolvedPath);
+        if (configExists) {
+          peripheryConfigPath = resolvedPath;
+          terminal.write(`📋 Using periphery config: ${peripheryConfigPath}\n`);
+        } else {
+          terminal.write(`⚠️  Config file not found: ${resolvedPath}\n`);
+          terminal.write(`📋 Using default settings\n`);
+        }
+      } else {
+        terminal.write(`📋 Using default settings\n`);
+      }
+    }
+  }
+  
+  // Add config parameter if we have a valid path
+  if (peripheryConfigPath) {
+    peripheryArgs.push("--config", peripheryConfigPath);
+  }
+
+  // Add format option if specified
+  const outputFormat = getWorkspaceConfig("periphery.format") || "xcode";
+  peripheryArgs.push("--format", outputFormat);
+
+  // Add quiet option if specified
+  const quiet = getWorkspaceConfig("periphery.quiet") ?? false;
+  if (quiet) {
+    peripheryArgs.push("--quiet");
+  }
+
+  try {
+    await terminal.execute({
+      command: "periphery",
+      args: peripheryArgs,
+    });
+    terminal.write("✅ Periphery scan completed successfully!\n");
+  } catch (error) {
+    terminal.write("⚠️  Periphery scan completed with findings\n");
+    // Don't throw error as periphery exits with non-zero code when it finds unused code
+  }
+}
+
+/**
+ * Build and run periphery scan
+ */
+export async function buildAndPeripheryScanCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Starting build and periphery scan");
+  
+  // Get build configuration
+  const xcworkspace = await askXcodeWorkspacePath(context, item?.workspacePath);
+  const scheme = item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme for periphery scan", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+  
+  const buildSettings = await getBuildSettingsToAskDestination({
+    scheme: scheme,
+    configuration: configuration,
+    sdk: undefined,
+    xcworkspace: xcworkspace,
+  });
+
+  const destination = await askDestinationToRunOn(context, buildSettings);
+  const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
+  const sdk = destination.platform;
+
+  await runTask(context, {
+    name: "Build & Periphery Scan",
+    lock: "sweetpad.build",
+    terminateLocked: true,
+    problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+    callback: async (terminal) => {
+      // First build the project
+      await buildApp(context, terminal, {
+        scheme: scheme,
+        sdk: sdk,
+        configuration: configuration,
+        shouldBuild: true,
+        shouldClean: false,
+        shouldTest: false,
+        xcworkspace: xcworkspace,
+        destinationRaw: destinationRaw,
+        debug: false,
+      });
+
+      // Then run periphery scan
+      await runPeripheryScan(context, terminal);
+    },
+  });
+}
+
+/**
+ * Run periphery scan only (without building)
+ */
+export async function peripheryScanCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  context.updateProgressStatus("Starting periphery scan");
+  
+  // Get build configuration  
+  const xcworkspace = await askXcodeWorkspacePath(context, item?.workspacePath);
+  const scheme = item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme for periphery scan", xcworkspace: xcworkspace }));
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+  
+  const buildSettings = await getBuildSettingsToAskDestination({
+    scheme: scheme,
+    configuration: configuration,
+    sdk: undefined,
+    xcworkspace: xcworkspace,
+  });
+
+  const destination = await askDestinationToRunOn(context, buildSettings);
+  const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
+  const sdk = destination.platform;
+
+  await runTask(context, {
+    name: "Periphery Scan",
+    lock: "sweetpad.periphery",
+    terminateLocked: true,
+    callback: async (terminal) => {
+      await runPeripheryScan(context, terminal);
+    },
+  });
+}
+
+/**
+ * Create a .periphery.yml configuration file template
+ */
+export async function createPeripheryConfigCommand(context: ExtensionContext) {
+  const projectRoot = getWorkspacePath();
+  const peripheryConfigPath = path.join(projectRoot, ".periphery.yml");
+  
+  // Check if .periphery.yml already exists
+  const configExists = await isFileExists(peripheryConfigPath);
+  if (configExists) {
+    const overwrite = await vscode.window.showWarningMessage(
+      ".periphery.yml already exists. Do you want to overwrite it?",
+      "Overwrite",
+      "Cancel"
+    );
+    
+    if (overwrite !== "Overwrite") {
+      return;
+    }
+  }
+  
+  // Get current workspace info for template
+  const xcworkspace = getCurrentXcodeWorkspacePath(context);
+  const workspaceName = xcworkspace ? path.basename(xcworkspace, path.extname(xcworkspace)) : "YourProject";
+  
+  // Create template content
+  const templateContent = `# Periphery Configuration File
+# See https://github.com/peripheryapp/periphery for more options
+
+# Project configuration
+workspace: ${xcworkspace || "YourProject.xcworkspace"}
+# project: YourProject.xcodeproj  # Use this for single project setup
+
+# Build configuration
+clean_build: true
+schemes:
+  - ${workspaceName}
+targets:
+  - ${workspaceName}
+
+# Retention options
+retain_public: true
+retain_objc_accessible: true
+retain_unused_protocol_func_params: true
+
+# Output configuration
+format: xcode
+quiet: false
+verbose: false
+
+# File exclusions (optional)
+# report_exclude:
+#   - "*/Generated/*"
+#   - "*/Pods/*"
+#   - "*/Tests/*"
+
+# Index exclusions (optional)
+# index_exclude:
+#   - "*/Generated/*"
+#   - "*/Pods/*"
+`;
+
+  try {
+    await vscode.workspace.fs.writeFile(
+      vscode.Uri.file(peripheryConfigPath),
+      Buffer.from(templateContent, 'utf8')
+    );
+    
+    vscode.window.showInformationMessage(
+      `✅ Created .periphery.yml configuration file at project root`
+    );
+    
+    // Open the created file
+    const document = await vscode.workspace.openTextDocument(peripheryConfigPath);
+    await vscode.window.showTextDocument(document);
+    
+  } catch (error) {
+    vscode.window.showErrorMessage(`❌ Failed to create .periphery.yml: ${error}`);
+  }
 }
