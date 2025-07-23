@@ -2,7 +2,6 @@ on:
   push:
     branches:
       - main
-      - create-ci-update
     tags:
       - "*"
   workflow_dispatch:
@@ -22,7 +21,7 @@ jobs:
   version-bump:
     name: Bump Version and Create Tag
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/create-ci-update'
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -89,7 +88,7 @@ jobs:
     name: Build VSIX and Release
     runs-on: ubuntu-latest
     needs: version-bump
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/create-ci-update'
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
