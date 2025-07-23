@@ -179,23 +179,13 @@ jobs:
               exit 1
           fi
           
-      - name: Create Release
-        uses: actions/create-release@v1
-        id: create_release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release with VSIX only
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          files: ${{ steps.version.outputs.vsix_name }}
           draft: false
           prerelease: false
-          
-      - name: Upload VSIX to Release
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./${{ steps.version.outputs.vsix_name }}
-          asset_name: ${{ steps.version.outputs.vsix_name }}
-          asset_content_type: application/zip
