@@ -4,6 +4,17 @@ on:
       - main
     tags:
       - "*"
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor  
+          - major
 
 name: Build and Release Extension
 jobs:
@@ -23,14 +34,23 @@ jobs:
       - name: Install Dependencies
         run: npm ci
         
-      - name: Bump minor version
+      - name: Bump version
         run: |
           # Get current version
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           echo "Current version: $CURRENT_VERSION"
           
-          # Bump minor version using npm (updates both package.json and package-lock.json)
-          npm version minor --no-git-tag-version
+          # Determine version type: patch for push, user input for manual trigger
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+          else
+            VERSION_TYPE="patch"
+          fi
+          
+          echo "Version bump type: $VERSION_TYPE"
+          
+          # Bump version using npm (updates both package.json and package-lock.json)
+          npm version $VERSION_TYPE --no-git-tag-version
           
           # Get new version
           NEW_VERSION=$(node -p "require('./package.json').version")
@@ -42,10 +62,19 @@ jobs:
           
       - name: Commit version bump
         run: |
+          # Determine version type for commit message
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+          else
+            VERSION_TYPE="patch"
+          fi
+          
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add package.json package-lock.json
-          git commit -m "Bump version to $(node -p "require('./package.json').version")" || exit 0
+          git commit -m "Bump $VERSION_TYPE version to $NEW_VERSION" || exit 0
           git push
           
       - name: Create and push tag
