@@ -58,7 +58,8 @@ jobs:
   build-and-release:
     name: Build VSIX and Release
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: version-bump
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
