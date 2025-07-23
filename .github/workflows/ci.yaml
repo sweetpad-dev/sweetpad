@@ -1,7 +1,8 @@
 on:
   push:
     branches:
-      - main, create-ci-update
+      - main
+      - create-ci-update
     tags:
       - "*"
   workflow_dispatch:
@@ -21,7 +22,7 @@ jobs:
   version-bump:
     name: Bump Version and Create Tag
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/create-ci-update'
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -88,10 +89,15 @@ jobs:
     name: Build VSIX and Release
     runs-on: ubuntu-latest
     needs: version-bump
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/create-ci-update'
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Pull latest changes
+        run: git pull origin ${{ github.ref_name }}
         
       - name: Install NodeJS
         uses: actions/setup-node@v4
@@ -106,9 +112,11 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           NAME=$(node -p "require('./package.json').name")
+          TAG_NAME="v$VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "name=$NAME" >> $GITHUB_OUTPUT
           echo "vsix_name=${NAME}-${VERSION}.vsix" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           
       - name: Generate VSIX package
         run: |
@@ -212,8 +220,8 @@ jobs:
       - name: Create Release with VSIX only
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: Release ${{ steps.version.outputs.tag_name }}
           files: ${{ steps.version.outputs.vsix_name }}
           draft: false
           prerelease: false
