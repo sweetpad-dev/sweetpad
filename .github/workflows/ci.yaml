@@ -1,44 +1,228 @@
 on:
   push:
+    branches:
+      - main
     tags:
       - "*"
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor  
+          - major
 
-name: Deploy Extension
+name: Build and Release Extension
 jobs:
-  deploy-ovsx:
-    name: Deploy to Open VSX
+  version-bump:
+    name: Bump Version and Create Tag
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+        
       - name: Install NodeJS
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          
       - name: Install Dependencies
         run: npm ci
-      - name: Publish to Open VSX Registry
-        uses: HaaLeo/publish-vscode-extension@v2
-        with:
-          skipDuplicate: true
-          pat: ${{ secrets.OPEN_VSX_TOKEN }}
-          registryUrl: https://open-vsx.org
+        
+      - name: Bump version
+        run: |
+          # Get current version
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Determine version type: patch for push, user input for manual trigger
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+          else
+            VERSION_TYPE="patch"
+          fi
+          
+          echo "Version bump type: $VERSION_TYPE"
+          
+          # Bump version using npm (updates both package.json and package-lock.json)
+          npm version $VERSION_TYPE --no-git-tag-version
+          
+          # Get new version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "New version: $NEW_VERSION"
+          
+          # Verify both files were updated
+          echo "package.json version: $(node -p "require('./package.json').version")"
+          echo "package-lock.json version: $(node -p "require('./package-lock.json').version")"
+          
+      - name: Commit version bump
+        run: |
+          # Determine version type for commit message
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+          else
+            VERSION_TYPE="patch"
+          fi
+          
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json package-lock.json
+          git commit -m "Bump $VERSION_TYPE version to $NEW_VERSION" || exit 0
+          git push
+          
+      - name: Create and push tag
+        run: |
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "Creating tag: v$NEW_VERSION"
+          git tag "v$NEW_VERSION"
+          git push origin "v$NEW_VERSION"
 
-  deploy-vsmarketplace:
-    name: Deploy to Visual Studio Marketplace
+  build-and-release:
+    name: Build VSIX and Release
     runs-on: ubuntu-latest
+    needs: version-bump
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Pull latest changes
+        run: git pull origin ${{ github.ref_name }}
+        
       - name: Install NodeJS
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          
       - name: Install Dependencies
         run: npm ci
-      - name: Publish to Visual Studio Marketplace
-        uses: HaaLeo/publish-vscode-extension@v2
+        
+      - name: Extract version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          NAME=$(node -p "require('./package.json').name")
+          TAG_NAME="v$VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "vsix_name=${NAME}-${VERSION}.vsix" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          
+      - name: Generate VSIX package
+        run: |
+          # Make script executable
+          chmod +x ./scripts/install-and-test.sh
+          
+          # Run build
+          npm run build
+          
+          # Extract the VSIX generation part from install-and-test.sh
+          VERSION=$(node -p "require('./package.json').version")
+          NAME=$(node -p "require('./package.json').name")
+          
+          echo "📋 Using version: $VERSION"
+          echo "📋 Using name: $NAME"
+          echo "🍭 Creating VSIX package..."
+          
+          # Clean up any existing VSIX files
+          rm -f *.vsix
+          
+          # Create temporary directory for VSIX structure
+          TEMP_DIR=$(mktemp -d)
+          VSIX_DIR="$TEMP_DIR/vsix"
+          mkdir -p "$VSIX_DIR"
+          
+          echo "📦 Preparing VSIX structure..."
+          
+          # Create extension directory structure
+          mkdir -p "$VSIX_DIR/extension"
+          
+          # Copy extension files to the extension subdirectory
+          cp -r out "$VSIX_DIR/extension/"
+          cp package.json "$VSIX_DIR/extension/"
+          cp README.md "$VSIX_DIR/extension/"
+          cp LICENSE.md "$VSIX_DIR/extension/"
+          cp CHANGELOG.md "$VSIX_DIR/extension/"
+          cp -r images "$VSIX_DIR/extension/"
+          
+          # Create [Content_Types].xml
+          cat > "$VSIX_DIR/[Content_Types].xml" << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+            <Default Extension="json" ContentType="application/json" />
+            <Default Extension="js" ContentType="application/javascript" />
+            <Default Extension="png" ContentType="image/png" />
+            <Default Extension="md" ContentType="text/markdown" />
+            <Default Extension="txt" ContentType="text/plain" />
+            <Default Extension="vsixmanifest" ContentType="text/xml" />
+          </Types>
+          EOF
+          
+          # Create extension.vsixmanifest with dynamic version
+          cat > "$VSIX_DIR/extension.vsixmanifest" << EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+            <Metadata>
+              <Identity Language="en-US" Id="$NAME" Version="$VERSION" Publisher="doordash" />
+              <DisplayName>SweetPad-Doordash (iOS/Swift development)</DisplayName>
+              <Description xml:space="preserve">Develop Swift/iOS projects in VS Code</Description>
+              <Tags>swift,ios,xcode,development,mobile</Tags>
+              <Categories>Formatters,Linters,Extension Packs,Programming Languages,Other</Categories>
+              <GalleryFlags>Preview</GalleryFlags>
+              <License>extension/LICENSE.md</License>
+              <Icon>extension/images/logo.png</Icon>
+            </Metadata>
+            <Installation>
+              <InstallationTarget Id="Microsoft.VisualStudio.Code" Version="[1.85.0,)" />
+            </Installation>
+            <Dependencies />
+            <Assets>
+              <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
+              <Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/images/logo.png" Addressable="true" />
+            </Assets>
+          </PackageManifest>
+          EOF
+          
+          echo "📦 Creating ZIP archive..."
+          
+          # Create the VSIX file (which is just a ZIP with .vsix extension)
+          cd "$VSIX_DIR"
+          zip -r "../${NAME}-${VERSION}.vsix" . > /dev/null
+          cd - > /dev/null
+          
+          # Move the VSIX file to the project root
+          mv "$TEMP_DIR/${NAME}-${VERSION}.vsix" ./
+          
+          # Clean up
+          rm -rf "$TEMP_DIR"
+          
+          echo "✅ VSIX package created: ${NAME}-${VERSION}.vsix"
+          
+          # Verify the file exists and show its size
+          if [ -f "${NAME}-${VERSION}.vsix" ]; then
+              SIZE=$(ls -lh "${NAME}-${VERSION}.vsix" | awk '{print $5}')
+              echo "📊 Package size: $SIZE"
+          else    
+              echo "❌ Failed to create VSIX package"
+              exit 1
+          fi
+          
+      - name: Create Release with VSIX only
+        uses: softprops/action-gh-release@v1
         with:
-          skipDuplicate: true
-          pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
-          registryUrl: https://marketplace.visualstudio.com
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: Release ${{ steps.version.outputs.tag_name }}
+          files: ${{ steps.version.outputs.vsix_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

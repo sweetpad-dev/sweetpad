@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad-Doordash (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.1.66",
+  "version": "0.1.68",
   "publisher": "doordash",
   "icon": "images/logo.png",
   "license": "MIT",
