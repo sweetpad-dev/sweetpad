@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/context";
 import { commonLogger } from "../common/logger";
 
 export async function resetSweetPadCache(context: ExtensionContext) {

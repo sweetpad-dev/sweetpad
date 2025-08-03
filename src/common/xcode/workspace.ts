@@ -1,30 +1,17 @@
-import path from "node:path";
 import { XmlElement, type XmlNode, parseXml } from "@rgrove/parse-xml";
+import path from "node:path";
 import { readFile } from "../files";
 import { commonLogger } from "../logger";
 import { assertUnreachable, isNotNull } from "../types";
-import { type XcodeProject, type XcodeScheme, parseXcodeProject } from "./project";
-
+import { XcodeProject, type XcodeScheme } from "./project";
 const XCODE_WORKSPACE_LOCATIONS_TYPES = ["self", "container", "group", "developer", "absolute"] as const;
 type XcodeWorkspaceLocationType = (typeof XCODE_WORKSPACE_LOCATIONS_TYPES)[number];
 
-interface IXcodeWorksaceItem {
-  type: "group" | "fileref";
-}
-
-export class XcodeWorkspaceFileRef implements IXcodeWorksaceItem {
-  public readonly type = "fileref" as const;
-  public location: XcodeWorkspaceLocation;
-
-  constructor(options: { location: XcodeWorkspaceLocation }) {
-    this.location = options.location;
-  }
-}
-
-function isXMLElement(obj: XmlNode): obj is XmlElement {
-  return obj instanceof XmlElement;
-}
-
+/**
+ * Convert location string to XcodeWorkspaceLocation object:
+ * - "group:Test1/test1.xcodeproj" -> { obj: "group", path: "Test1/test1.xcodeproj" }
+ * - "container:" -> { obj: "container", path: "" }
+ */
 function parseLocation(location: string): XcodeWorkspaceLocation {
   const [rawObj, path] = location.split(":", 2);
   const obj = rawObj as XcodeWorkspaceLocationType;
@@ -35,16 +22,30 @@ function parseLocation(location: string): XcodeWorkspaceLocation {
   };
 }
 
-export class XcodeWorkspaceGroup implements IXcodeWorksaceItem {
+/** Helper function to narrow XmlNode type */
+function isXMLElement(obj: XmlNode): obj is XmlElement {
+  return obj instanceof XmlElement;
+}
+
+export class XcodeWorkspaceFileRef {
+  public readonly type = "fileref" as const;
+  public location: XcodeWorkspaceLocation;
+
+  constructor(options: { location: XcodeWorkspaceLocation }) {
+    this.location = options.location;
+  }
+}
+
+export class XcodeWorkspaceGroup {
   public readonly type = "group" as const;
   public name: string | undefined;
   public location: XcodeWorkspaceLocation | undefined;
-  public children: XcodeWorksaceItem[];
+  public children: XcodeWorkspaceItem[];
 
   constructor(options: {
     name: string | undefined;
     location: XcodeWorkspaceLocation | undefined;
-    children: XcodeWorksaceItem[];
+    children: XcodeWorkspaceItem[];
   }) {
     this.name = options.name;
     this.location = options.location;
@@ -52,7 +53,7 @@ export class XcodeWorkspaceGroup implements IXcodeWorksaceItem {
   }
 }
 
-export type XcodeWorksaceItem = XcodeWorkspaceFileRef | XcodeWorkspaceGroup;
+export type XcodeWorkspaceItem = XcodeWorkspaceFileRef | XcodeWorkspaceGroup;
 
 type XcodeWorkspaceLocation = {
   obj: XcodeWorkspaceLocationType;
@@ -65,53 +66,49 @@ type XcodeWorkspaceLocation = {
  */
 export class XcodeWorkspace {
   // path to ".xcworkspace" (not "contents.xcworkspacedata", which is inside of this directory)
-  public xcworkspacePath: string;
+  public path: string;
 
-  // Items represent tree structure of workspace:
-  // - FileRef: reference to xcodeproject or other files
-  // - Group: group of FileRefs or other groups
-  public children: XcodeWorksaceItem[];
+  // Cached projects parsed from workspace
+  private _projects: XcodeProject[] | undefined;
+  private _schemes: XcodeScheme[] | undefined;
 
-  /**
-   * Directory where ".xcworkspace" is located
-   */
-  get xcworkspaceParentPath(): string {
-    return path.dirname(this.xcworkspacePath);
-  }
+  private parser: XcodeWorkspaceParser;
 
-  constructor(options: { xcworkspacePath: string; children: XcodeWorksaceItem[] }) {
-    this.xcworkspacePath = options.xcworkspacePath;
-    this.children = options.children;
-  }
-
-  async parseProject(projectPath: string): Promise<XcodeProject | null> {
-    try {
-      return await parseXcodeProject(projectPath);
-    } catch (error) {
-      commonLogger.error("Failed to parse xcode project", {
-        error: error,
-        projectPath: projectPath,
-      });
-      return null;
-    }
+  constructor(options: { path: string }) {
+    this.path = options.path;
+    this.parser = new XcodeWorkspaceParser({
+      path: this.path,
+    });
   }
 
   /**
    * Get all projects from workspace as flat list (unlike tree structure in workspace)
    */
   async getProjects(): Promise<XcodeProject[]> {
-    const projects: XcodeProject[] = []; // doing illegal things, but i'm ok 🚨
-    await this.getGroupChildrenProjects({
-      ancestors: [],
-      children: this.children,
-      projects: projects,
-    });
+    if (this._projects) {
+      return this._projects;
+    }
+    const projects = await this.parser.getProjects();
+
+    this._projects = projects;
     return projects;
+  }
+
+  async getSchemes(): Promise<XcodeScheme[]> {
+    if (this._schemes) {
+      return this._schemes;
+    }
+
+    const projects = await this.getProjects();
+    const schemes = await Promise.all(projects.map((project) => project.getSchemes()));
+    const flatSchemes = schemes.flat();
   }
 
   async getScheme(options: {
     name: string;
   }): Promise<XcodeScheme | null> {
+    if (this._schemes) {
+    }
     const projects = await this.getProjects();
     for (const project of projects) {
       const scheme = await project.getScheme(options.name);
@@ -121,15 +118,90 @@ export class XcodeWorkspace {
     }
     return null;
   }
+}
+
+/**
+ * Parser for ".xcworkspace" file.
+ */
+class XcodeWorkspaceParser {
+  private path: string;
+  private parentPath: string;
+  private items: XcodeWorkspaceItem[] | undefined;
+
+  constructor(options: { path: string }) {
+    this.path = options.path;
+    this.parentPath = path.dirname(this.path);
+    this.items = undefined;
+  }
 
   /**
-   * Get projects from children of the group
+   * Parse contents.xcworkspacedata file and return parsed workspace structure
+   *
+   * Parsed items are stored cached in `this.children` property to avoid re-parsing
+   * if this method is called multiple times.
    */
-  async getGroupChildrenProjects(options: {
+  async parse(): Promise<XcodeWorkspaceItem[]> {
+    if (this.items) {
+      return this.items;
+    }
+    commonLogger.debug("Parsing contents.xcworkspacedata", { xcWorkspacePath: this.path });
+
+    // contents.xcworkspacedata is just XML file wich contains workspace structure
+    // of FileRefs and Groups. Example of the file:
+    // <Workspace
+    //   version = "1.0">
+    //   <FileRef
+    //     location = "group:TestContainer.xcodeproj">
+    //   </FileRef>
+    //   <Group
+    //     location = "group:Test1/test1.xcodeproj"
+    //     name = "Test1">
+    //     <FileRef
+    //       location = "group:Test1/SomeFile.swift">
+    //     </FileRef>
+    //   </Group>
+    // </Workspace>
+    // Read contents file
+    const contentsPath = path.join(this.path, "contents.xcworkspacedata");
+    const contentsData = await readFile(contentsPath);
+    const contentsString = contentsData.toString();
+    const contentsParsed = parseXml(contentsString);
+    const contentsRoot = contentsParsed.root;
+    if (!contentsRoot) {
+      throw Error(`No root node found in ${contentsPath}`);
+    }
+
+    // Parse children of root node (FileRefs and Groups)
+    const children = contentsRoot.children
+      .filter((n) => n instanceof XmlElement)
+      .map((item) => this.parseWorkspaceItem({ element: item }))
+      .filter(isNotNull);
+    this.items = children;
+    return children;
+  }
+
+  async getProjects(): Promise<XcodeProject[]> {
+    const items = await this.parse();
+    const projects: XcodeProject[] = [];
+    this.collectGroupProjects({
+      ancestors: [],
+      children: items,
+      projects: projects,
+    });
+    return projects;
+  }
+
+  /**
+   * Recursively collect projects from groups and FileRefs in the workspace.
+   *
+   * This function will traverse the workspace tree structure and collect all projects
+   * referenced by FileRefs. It will also handle nested groups.
+   */
+  collectGroupProjects(options: {
     ancestors: XcodeWorkspaceGroup[];
-    children: XcodeWorksaceItem[];
+    children: XcodeWorkspaceItem[];
     projects: XcodeProject[];
-  }): Promise<void> {
+  }): void {
     const { ancestors, children, projects } = options;
 
     for (const child of children) {
@@ -137,7 +209,7 @@ export class XcodeWorkspace {
         // With new group we need to go deeper by calling this function again
         const group = child;
         const newAncestors = [...ancestors, group];
-        await this.getGroupChildrenProjects({
+        this.collectGroupProjects({
           ancestors: newAncestors,
           children: group.children,
           projects: projects,
@@ -145,7 +217,7 @@ export class XcodeWorkspace {
       } else if (child.type === "fileref") {
         // FileRef is actully can be a reference to project, so we need to resolve it
         const fileRef = child;
-        const projectPath = await this.resolveProjectPath(ancestors, fileRef);
+        const projectPath = this.resolveProjectPath(ancestors, fileRef);
         commonLogger.debug("Resolved project path", { projectPath: projectPath });
         if (!projectPath) continue;
 
@@ -154,7 +226,9 @@ export class XcodeWorkspace {
           continue;
         }
 
-        const project = await this.parseProject(projectPath);
+        // Project will be lazy loaded later, so we just create instance of it
+        // and add it to the list of projects
+        const project = new XcodeProject({ projectPath: projectPath });
         if (!project) continue;
 
         projects.push(project);
@@ -168,7 +242,7 @@ export class XcodeWorkspace {
    * Recursivelly build path to the of the Group or FileRef. Relative path should be later resolved to full path
    * by joining it with xcworkspaceParentPath
    */
-  buildLocation(item: XcodeWorksaceItem, ancestors: XcodeWorkspaceGroup[]): string | null {
+  buildLocation(item: XcodeWorkspaceItem, ancestors: XcodeWorkspaceGroup[]): string | null {
     /* self: workspace is inside the project
      * container: relative to workspace dir
      * group: relative to group
@@ -197,7 +271,7 @@ export class XcodeWorkspace {
     // Relative path to the parent directory of ".xcworkspace"
     if (location.obj === "container") {
       commonLogger.debug("Location is container", { location: location });
-      return path.join(this.xcworkspaceParentPath, location.path);
+      return path.join(this.parentPath, location.path);
     }
 
     // Relative path to the group
@@ -230,7 +304,7 @@ export class XcodeWorkspace {
       if (path.isAbsolute(location.path)) {
         return location.path;
       }
-      return path.join(this.xcworkspaceParentPath, location.path);
+      return path.join(this.parentPath, location.path);
     }
     commonLogger.debug("Unknown location type", { location: location });
     assertUnreachable(location.obj);
@@ -242,12 +316,12 @@ export class XcodeWorkspace {
    * Additional info:
    *  - https://github.com/microsoft/WinObjC/blob/master/tools/vsimporter/src/PBX/XCWorkspace.cpp#L114
    */
-  async resolveProjectPath(ancestors: XcodeWorkspaceGroup[], fileRef: XcodeWorkspaceFileRef): Promise<string | null> {
+  resolveProjectPath(ancestors: XcodeWorkspaceGroup[], fileRef: XcodeWorkspaceFileRef): string | null {
     // We are looking for ".xcodeproj" files only (It's Xcode project file)
     const projectExtension = ".xcodeproj";
 
     // Ex: "./MyApp/TestWorkspace.xcworkspace" -> "./MyApp"
-    const xcworkspaceParent = this.xcworkspaceParentPath;
+    const xcworkspaceParent = this.parentPath;
 
     // In most basic form ".xcodeproj" directory contains "project.workspace" directory. For example:
     // "./Test1/test1.xcodeproj/project.workspace". In this case we can just check if parent directory of the
@@ -287,7 +361,7 @@ export class XcodeWorkspace {
 
     // Make it absolute path by joining the parent directory of ".xcworkspace"
     if (!path.isAbsolute(resolvedPath)) {
-      resolvedPath = path.normalize(path.join(this.xcworkspaceParentPath, resolvedPath));
+      resolvedPath = path.normalize(path.join(this.parentPath, resolvedPath));
     }
     if (resolvedPath.endsWith(projectExtension)) {
       return resolvedPath;
@@ -303,7 +377,7 @@ export class XcodeWorkspace {
    *  - <FileRef location="group:Test1/test1.xcodeproj" />
    *  - <FileRef location="container:" />
    */
-  static parseWorkspaceFileRef(options: { element: XmlElement }): XcodeWorkspaceFileRef | null {
+  parseWorkspaceFileRef(options: { element: XmlElement }): XcodeWorkspaceFileRef | null {
     // Example:
     //  - "group:Test1/test1.xcodeproj"
     //  - "container:"
@@ -334,13 +408,13 @@ export class XcodeWorkspace {
    *    </Group>
    *  </Group>
    */
-  static parseWorkspaceItemGroup(options: { element: XmlElement }): XcodeWorkspaceGroup | null {
+  parseWorkspaceItemGroup(options: { element: XmlElement }): XcodeWorkspaceGroup | null {
     const { element } = options;
 
     // Parse children, which can be either FileRef or Group
-    const items: XcodeWorksaceItem[] = element.children
+    const items: XcodeWorkspaceItem[] = element.children
       .filter(isXMLElement)
-      .map((obj) => XcodeWorkspace.parseWorkspaceItem({ element: obj }))
+      .map((obj) => this.parseWorkspaceItem({ element: obj }))
       .filter(isNotNull);
 
     // Example:
@@ -360,76 +434,18 @@ export class XcodeWorkspace {
   /**
    * Recursivelly parse either <FileRef /> or <Group /> element from XML
    */
-  static parseWorkspaceItem(options: { element: XmlElement }): XcodeWorksaceItem | null {
+  parseWorkspaceItem(options: { element: XmlElement }): XcodeWorkspaceItem | null {
     const { element } = options;
 
     // FileRef contains reference to xcodeproject or other files
     if (element.name === "FileRef") {
-      return XcodeWorkspace.parseWorkspaceFileRef(options);
+      return this.parseWorkspaceFileRef(options);
     }
 
     // Groups can contain other groups or FileRefs
     if (element.name === "Group") {
-      return XcodeWorkspace.parseWorkspaceItemGroup(options);
+      return this.parseWorkspaceItemGroup(options);
     }
     return null;
-  }
-
-  /**
-   * Given path to ".xcworkspace" directory, parse it and return parsed workspace structure
-   */
-  static async parseWorkspace(xcworkspacePath: string): Promise<XcodeWorkspace> {
-    // Xcode store workspace structure in *.xcworkspace/contents.xcworkspacedata
-    // It's XML fil with structure like:
-    // <Workspace
-    //   version = "1.0">
-    //   <FileRef
-    //     location = "group:TestContainer.xcodeproj">
-    //   </FileRef>
-    //   <Group
-    //     location = "group:Test1/test1.xcodeproj"
-    //     name = "Test1">
-    //     <FileRef
-    //       location = "group:Test1/SomeFile.swift">
-    //     </FileRef>
-    //   </Group>
-    // </Workspace>
-    // Read contents file
-
-    // Currently only "contents.xcworkspacedata" is needed to parse workspace
-    const contentsPath = path.join(xcworkspacePath, "contents.xcworkspacedata");
-    return XcodeWorkspace.parseContentsWorkspaceData(contentsPath);
-  }
-
-  /**
-   * Parse "contents.xcworkspacedata" file from ".xcworkspace" directory
-   * and return parsed workspace structure
-   */
-  static async parseContentsWorkspaceData(contentsPath: string): Promise<XcodeWorkspace> {
-    commonLogger.debug("Parsing contents.xcworkspacedata", { contentsPath: contentsPath });
-
-    // Parent directory of contents.xcworkspacedata is .xcworkspace directory
-    const xcworkspacePath = path.dirname(contentsPath);
-
-    // contents.xcworkspacedata is just XML file wich contains workspace structure
-    // of FileRefs and Groups
-    const contentsData = await readFile(contentsPath);
-    const contentsString = contentsData.toString();
-    const contentsParsed = parseXml(contentsString);
-    const contentsRoot = contentsParsed.root;
-    if (!contentsRoot) {
-      throw Error(`No root node found in ${contentsPath}`);
-    }
-
-    // Parse children of root node (FileRefs and Groups)
-    const children = contentsRoot.children
-      .filter(isXMLElement)
-      .map((item) => XcodeWorkspace.parseWorkspaceItem({ element: item }))
-      .filter(isNotNull);
-
-    return new XcodeWorkspace({
-      xcworkspacePath: xcworkspacePath,
-      children: children,
-    });
   }
 }

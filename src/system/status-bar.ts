@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
+import type { ExtensionContext } from "../common/context";
 
 /**
  * Status bar item for showing what currently sweetpad is doing
@@ -13,40 +13,25 @@ import { getWorkspaceConfig } from "../common/config";
  * todo: think how to make it more robus, so that it not requires to listen to event
  */
 export class ProgressStatusBar {
-  _context: ExtensionContext | undefined = undefined;
+  context: ExtensionContext;
   statusBar: vscode.StatusBarItem;
   enabled = true;
 
   messageMapping: Map<string, string> = new Map();
 
-  constructor() {
+  constructor(options: { context: ExtensionContext }) {
+    this.context = options.context;
     // Status bar ID allows to separate the different status bar items from the same extension
     const statusBarId = "sweetpad.system.progressStatusBar";
     this.statusBar = vscode.window.createStatusBarItem(statusBarId, vscode.StatusBarAlignment.Left, 0);
     this.statusBar.command = "sweetpad.system.openTerminalPanel";
     this.statusBar.name = "SweetPad: Command Status";
-  }
-
-  dispose() {
-    this.statusBar.dispose();
-    this.messageMapping.clear();
-  }
-
-  get context(): ExtensionContext {
-    if (!this._context) {
-      throw new Error("Context is not set");
-    }
-    return this._context;
-  }
-
-  set context(context: ExtensionContext) {
-    this._context = context;
 
     this.updateConfig();
 
     // Every time a command or task is finished we remove message of the current scope
     // and update the status bar accordingly
-    context.on("executionScopeClosed", (scope) => {
+    this.context.on("executionScopeClosed", (scope) => {
       const scopeId = scope.id;
       if (!scopeId) return;
 
@@ -54,13 +39,18 @@ export class ProgressStatusBar {
       this.displayBar();
     });
 
-    context.on("workspaceConfigChanged", () => {
+    this.context.on("workspaceConfigChanged", () => {
       this.updateConfig();
     });
   }
 
+  dispose() {
+    this.statusBar.dispose();
+    this.messageMapping.clear();
+  }
+
   updateText(text: string) {
-    const scopeId = this.context.getExecutionScopeId();
+    const scopeId = this.context.executionScope.getCurrentId();
     if (!scopeId) return;
 
     this.messageMapping.set(scopeId, text);

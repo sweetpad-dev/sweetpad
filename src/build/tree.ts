@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { XcodeScheme } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/context";
 import { commonLogger } from "../common/logger";
 import type { BuildManager } from "./manager";
 

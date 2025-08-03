@@ -4,7 +4,7 @@ import type {
   LastLaunchedAppDeviceContext,
   LastLaunchedAppMacOSContext,
   LastLaunchedAppSimulatorContext,
-} from "../common/commands";
+} from "../common/context";
 import { commonLogger } from "../common/logger";
 import { checkUnreachable } from "../common/types";
 import { waitForProcessToLaunch } from "./utils";

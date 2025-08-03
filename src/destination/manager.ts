@@ -1,5 +1,5 @@
 import events from "node:events";
-import type { ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/context";
 import { checkUnreachable } from "../common/types";
 import type { DevicesManager } from "../devices/manager";
 import type {
@@ -39,15 +39,19 @@ type IEventKey = keyof IEventMap;
 export class DestinationsManager {
   private simulatorsManager: SimulatorsManager;
   private devicesManager: DevicesManager;
-  private _context: ExtensionContext | undefined;
+  private context: ExtensionContext;
 
   // Event emitter to signal changes in the destinations
   private emitter = new events.EventEmitter<IEventMap>();
 
-  constructor(options: { simulatorsManager: SimulatorsManager; devicesManager: DevicesManager }) {
+  constructor(options: {
+    simulatorsManager: SimulatorsManager;
+    devicesManager: DevicesManager;
+    context: ExtensionContext;
+  }) {
     this.simulatorsManager = options.simulatorsManager;
     this.devicesManager = options.devicesManager;
-    this._context = undefined;
+    this.context = options.context;
 
     // Forward events from simulators and devices managers
     this.simulatorsManager.on("updated", () => {
@@ -60,17 +64,6 @@ export class DestinationsManager {
 
   on<K extends IEventKey>(event: K, listener: (...args: IEventMap[K]) => void): void {
     this.emitter.on(event, listener as any); // todo: fix this any
-  }
-
-  get context() {
-    if (!this._context) {
-      throw new Error("Context is not set");
-    }
-    return this._context;
-  }
-
-  set context(context: ExtensionContext) {
-    this._context = context;
   }
 
   async refreshSimulators(): Promise<SimulatorDestination[]> {

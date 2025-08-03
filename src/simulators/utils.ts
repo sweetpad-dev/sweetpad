@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/context";
 import { ExtensionError } from "../common/errors";
 import type { SimulatorDestination, SimulatorOS, SimulatorType } from "./types";
 

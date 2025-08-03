@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/context";
 import { ExtensionError } from "../common/errors";
 
 const DEBUG_DOCUMENTATION_URL = "https://github.com/sweetpad-dev/sweetpad/blob/main/docs/wiki/debug.md";

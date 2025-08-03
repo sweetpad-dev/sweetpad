@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { restartSwiftLSP } from "../build/utils";
 import { generateXcodeGen, getIsXcodeGenInstalled } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/context";
 import { ExtensionError } from "../common/errors";
 
 export async function xcodgenGenerateCommand(context: ExtensionContext): Promise<void> {

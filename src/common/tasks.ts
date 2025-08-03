@@ -2,8 +2,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { quote } from "shell-quote";
 import * as vscode from "vscode";
 import { getWorkspacePath } from "../build/utils";
-import type { ExtensionContext } from "./commands";
 import { getWorkspaceConfig } from "./config";
+import type { ExtensionContext } from "./context";
 import { TaskError } from "./errors";
 import { prepareEnvVars } from "./helpers";
 
@@ -506,7 +506,7 @@ async function runTaskV2(
     }
   }
 
-  const currentScope = context.getExecutionScope();
+  const currentScope = context.executionScope.getCurrent();
   const task = new vscode.Task(
     {
       type: "custom",
@@ -520,7 +520,7 @@ async function runTaskV2(
         callback: (terminal) => {
           // we propagate current command to the callback because vscode.CustomExecution
           // breaks the context that we use to show progress
-          return context.setExecutionScope(currentScope, () => {
+          return context.executionScope.setCurrent(currentScope, () => {
             return options.callback(terminal);
           });
         },

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/context";
 import { type DeviceCtlProcess, getRunningProcesses } from "../common/xcode/devicectl";
 
 /**

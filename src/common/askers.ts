@@ -1,5 +1,6 @@
 import { type XcodeConfiguration, getBuildConfigurations } from "./cli/scripts";
 import { showQuickPick } from "./quick-pick";
+import type { XcodeWorkspace } from "./xcode/workspace";
 
 export const DEFAULT_DEBUG_CONFIGURATION = "Debug";
 export const DEFAULT_RELEASE_CONFIGURATION = "Release";
@@ -10,7 +11,8 @@ export const DEFAULT_RELEASE_CONFIGURATION = "Release";
  * "Debug" configuration is used as default
  */
 export async function askConfigurationBase(options: {
-  xcworkspace: string;
+  xcworkspace: XcodeWorkspace;
+  scheme: string;
 }) {
   // Fetch all configurations
   const configurations = await getBuildConfigurations({
@@ -18,7 +20,6 @@ export async function askConfigurationBase(options: {
   });
 
   // Use default configuration if no configurations found
-  // todo: we can try to parse configurations from schemes files or ask user to enter configuration name manually
   if (configurations.length === 0) {
     return DEFAULT_DEBUG_CONFIGURATION;
   }

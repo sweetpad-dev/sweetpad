@@ -14,8 +14,8 @@ import {
   getXcodeVersionInstalled,
   readXcodeBuildServerConfig,
 } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
+import type { ExtensionContext } from "../common/context";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, readJsonFile, removeDirectory, tempFilePath } from "../common/files";
@@ -23,6 +23,7 @@ import { commonLogger } from "../common/logger";
 import { showInputBox } from "../common/quick-pick";
 import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
+import type { XcodeWorkspace } from "../common/xcode/workspace";
 import type { Destination } from "../destination/types";
 import type { DeviceDestination } from "../devices/types";
 import type { SimulatorDestination } from "../simulators/types";
@@ -32,7 +33,7 @@ import {
   askConfiguration,
   askDestinationToRunOn,
   askSchemeForBuild,
-  askXcodeWorkspacePath,
+  askXcodeWorkspace,
   detectXcodeWorkspacesPaths,
   getCurrentXcodeWorkspacePath,
   getWorkspacePath,
@@ -65,7 +66,7 @@ export async function runOnMac(
   terminal: TaskTerminal,
   options: {
     scheme: string;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
     configuration: string;
     watchMarker: boolean;
     launchArgs: string[];
@@ -106,7 +107,7 @@ export async function runOniOSSimulator(
     destination: SimulatorDestination;
     sdk: string;
     configuration: string;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
     watchMarker: boolean;
     launchArgs: string[];
     launchEnv: Record<string, string>;
@@ -196,7 +197,7 @@ export async function runOniOSDevice(
     configuration: string;
     destination: DeviceDestination;
     sdk: string;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
     watchMarker: boolean;
     launchArgs: string[];
     launchEnv: Record<string, string>;
@@ -520,7 +521,7 @@ class XcodeCommandBuilder {
  */
 async function generateBuildServerConfigOnBuild(options: {
   scheme: string;
-  xcworkspace: string;
+  xcworkspace: XcodeWorkspace;
 }): Promise<void> {
   const isEnabled = getWorkspaceConfig("xcodebuildserver.autogenerate") ?? true;
   if (!isEnabled) {
@@ -570,7 +571,7 @@ export async function buildApp(
     shouldBuild: boolean;
     shouldClean: boolean;
     shouldTest: boolean;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
     destinationRaw: string;
     debug: boolean;
   },
@@ -611,7 +612,7 @@ export async function buildApp(
 
   command.addParameters("-scheme", options.scheme);
   command.addParameters("-configuration", options.configuration);
-  command.addParameters("-workspace", options.xcworkspace);
+  command.addParameters("-workspace", options.xcworkspace.path);
   command.addParameters("-destination", options.destinationRaw);
   command.addParameters("-resultBundlePath", bundlePath);
   if (derivedDataPath) {
@@ -686,7 +687,7 @@ async function commonBuildCommand(
   options: { debug: boolean },
 ) {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
@@ -698,7 +699,7 @@ async function commonBuildCommand(
   });
 
   context.updateProgressStatus("Searching for configuration");
-  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace, scheme: scheme });
 
   context.updateProgressStatus("Searching for destination");
   const destination = await askDestinationToRunOn(context, {
@@ -756,7 +757,7 @@ async function commonLaunchCommand(
   options: { debug: boolean },
 ) {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
@@ -769,7 +770,7 @@ async function commonLaunchCommand(
   });
 
   context.updateProgressStatus("Searching for configuration");
-  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace, scheme: scheme });
 
   context.updateProgressStatus("Searching for destination");
   const destination = await askDestinationToRunOn(context, {
@@ -878,7 +879,7 @@ async function commonRunCommand(
   options: { debug: boolean },
 ) {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
@@ -886,7 +887,7 @@ async function commonRunCommand(
     (await askSchemeForBuild(context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
 
   context.updateProgressStatus("Searching for configuration");
-  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace, scheme: scheme });
 
   context.updateProgressStatus("Searching for destination");
   const destination = await askDestinationToRunOn(context, {
@@ -961,14 +962,14 @@ async function commonRunCommand(
  */
 export async function cleanCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
     item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to clean", xcworkspace: xcworkspace }));
 
   context.updateProgressStatus("Searching for configuration");
-  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace, scheme: scheme });
 
   context.updateProgressStatus("Searching for destination");
   const destination = await askDestinationToRunOn(context, {
@@ -1004,14 +1005,14 @@ export async function cleanCommand(context: ExtensionContext, item?: BuildTreeIt
 
 export async function testCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
     item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to test", xcworkspace: xcworkspace }));
 
   context.updateProgressStatus("Searching for configuration");
-  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+  const configuration = await askConfiguration(context, { xcworkspace: xcworkspace, scheme: scheme });
 
   context.updateProgressStatus("Searching for destination");
   const destination = await askDestinationToRunOn(context, {
@@ -1049,7 +1050,7 @@ export async function resolveDependencies(
   context: ExtensionContext,
   options: {
     scheme: string;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
   },
 ): Promise<void> {
   context.updateProgressStatus("Resolving dependencies");
@@ -1061,7 +1062,7 @@ export async function resolveDependencies(
     callback: async (terminal) => {
       await terminal.execute({
         command: "xcodebuild",
-        args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],
+        args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace.path],
       });
     },
   });
@@ -1072,7 +1073,7 @@ export async function resolveDependencies(
  */
 export async function resolveDependenciesCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
@@ -1115,7 +1116,7 @@ export async function generateBuildServerConfigCommand(context: ExtensionContext
   }
 
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
@@ -1147,11 +1148,11 @@ export async function generateBuildServerConfigCommand(context: ExtensionContext
  */
 export async function openXcodeCommand(context: ExtensionContext) {
   context.updateProgressStatus("Opening project in Xcode");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   await exec({
     command: "open",
-    args: [xcworkspace],
+    args: [xcworkspace.path],
   });
 }
 
@@ -1184,7 +1185,7 @@ export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext
   }
 
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Searching for scheme");
   await askSchemeForBuild(context, {
@@ -1199,7 +1200,7 @@ export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext
  */
 export async function selectConfigurationForBuildCommand(context: ExtensionContext): Promise<void> {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Searching for configurations");
   const configurations = await getBuildConfigurations({
@@ -1354,7 +1355,7 @@ export async function refreshSchemesCommand(context: ExtensionContext): Promise<
     // If there is no workspace, we should ask user to select it first.
     // This function automatically refreshes schemes, so we can just call it and move on
     // without calling to refresh schemes manually.
-    await askXcodeWorkspacePath(context);
+    await askXcodeWorkspace(context);
     return;
   }
 

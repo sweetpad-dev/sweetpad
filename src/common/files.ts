@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { promises as fs, type Dirent, type Stats } from "node:fs";
 import * as path from "node:path";
 import { getWorkspacePath, prepareStoragePath } from "../build/utils";
-import type { ExtensionContext } from "./commands";
+import type { ExtensionContext } from "./context";
 
 /**
  * Find files or directories in a given directory

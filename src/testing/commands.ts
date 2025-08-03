@@ -1,16 +1,16 @@
 import * as vscode from "vscode";
 import type { BuildTreeItem } from "../build/tree";
-import { askXcodeWorkspacePath } from "../build/utils";
+import { askXcodeWorkspace } from "../build/utils";
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import { getBuildConfigurations } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
 import { updateWorkspaceConfig } from "../common/config";
+import type { ExtensionContext } from "../common/context";
 import { showInputBox } from "../common/quick-pick";
 import { askSchemeForTesting, askTestingTarget } from "./utils";
 
 export async function selectTestingTargetCommand(context: ExtensionContext): Promise<void> {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Selecting testing target");
   await askTestingTarget(context, {
@@ -43,7 +43,7 @@ export async function selectXcodeSchemeForTestingCommand(context: ExtensionConte
     return;
   }
 
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
   await askSchemeForTesting(context, {
     title: "Select scheme to set as default",
     xcworkspace: xcworkspace,
@@ -56,7 +56,7 @@ export async function selectXcodeSchemeForTestingCommand(context: ExtensionConte
  */
 export async function selectConfigurationForTestingCommand(context: ExtensionContext): Promise<void> {
   context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  const xcworkspace = await askXcodeWorkspace(context);
 
   context.updateProgressStatus("Searching for configurations");
   const configurations = await getBuildConfigurations({

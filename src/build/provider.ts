@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
-import { type ExtensionContext, TaskExecutionScope } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
+import type { ExtensionContext } from "../common/context";
 import { errorReporting } from "../common/error-reporting";
+import { TaskExecutionScope } from "../common/execution-scope";
 import {
   type TaskTerminal,
   TaskTerminalV1,
@@ -11,6 +12,7 @@ import {
   setTaskPresentationOptions,
 } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
+import { XcodeWorkspace } from "../common/xcode/workspace";
 import type { Destination } from "../destination/types";
 import {
   buildApp,
@@ -21,7 +23,7 @@ import {
   runOniOSSimulator,
 } from "./commands";
 import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
-import { askConfiguration, askDestinationToRunOn, askSchemeForBuild, askXcodeWorkspacePath } from "./utils";
+import { askConfiguration, askDestinationToRunOn, askSchemeForBuild, askXcodeWorkspace } from "./utils";
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -122,7 +124,7 @@ class ActionDispatcher {
     definition: TaskDefinition;
     scheme: string;
     configuration: string;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
   }): Promise<Destination> {
     // If user has provided the ID of the destination, then use it directly
     const inputDestination = await this.getDestinationByUserInput(this.context, {
@@ -156,7 +158,7 @@ class ActionDispatcher {
 
   private async commonLaunchCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
     this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const xcworkspace = await askXcodeWorkspace(this.context);
 
     this.context.updateProgressStatus("Searching for scheme");
     const scheme =
@@ -171,6 +173,7 @@ class ActionDispatcher {
       definition.configuration ??
       (await askConfiguration(this.context, {
         xcworkspace: xcworkspace,
+        scheme: scheme,
       }));
 
     const destination = await this.getDestination({
@@ -260,7 +263,7 @@ class ActionDispatcher {
 
   private async commonBuildCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
     this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const xcworkspace = await askXcodeWorkspace(this.context);
 
     this.context.updateProgressStatus("Searching for scheme");
     const scheme =
@@ -274,6 +277,7 @@ class ActionDispatcher {
       definition.configuration ??
       (await askConfiguration(this.context, {
         xcworkspace: xcworkspace,
+        scheme: scheme,
       }));
 
     const destination = await this.getDestination({
@@ -314,7 +318,7 @@ class ActionDispatcher {
 
   private async commonRunCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
     this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const xcworkspace = await askXcodeWorkspace(this.context);
 
     this.context.updateProgressStatus("Searching for scheme");
     const scheme =
@@ -328,6 +332,7 @@ class ActionDispatcher {
       definition.configuration ??
       (await askConfiguration(this.context, {
         xcworkspace: xcworkspace,
+        scheme: scheme,
       }));
 
     const destination = await this.getDestination({
@@ -392,7 +397,7 @@ class ActionDispatcher {
 
   private async cleanCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const xcworkspace = await askXcodeWorkspace(this.context);
 
     this.context.updateProgressStatus("Searching for scheme");
     const scheme =
@@ -406,6 +411,7 @@ class ActionDispatcher {
       definition.configuration ??
       (await askConfiguration(this.context, {
         xcworkspace: xcworkspace,
+        scheme: scheme,
       }));
 
     const destination = await this.getDestination({
@@ -434,7 +440,7 @@ class ActionDispatcher {
 
   private async testCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const xcworkspace = await askXcodeWorkspace(this.context);
 
     this.context.updateProgressStatus("Searching for scheme");
     const scheme =
@@ -446,6 +452,7 @@ class ActionDispatcher {
       definition.configuration ??
       (await askConfiguration(this.context, {
         xcworkspace: xcworkspace,
+        scheme: scheme,
       }));
 
     const destination = await this.getDestination({
@@ -474,7 +481,9 @@ class ActionDispatcher {
 
   private async resolveDependenciesCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspacePath = definition.workspace ?? (await askXcodeWorkspacePath(this.context));
+    const xcworkspacePath = definition.workspace
+      ? new XcodeWorkspace({ path: definition.workspace })
+      : await askXcodeWorkspace(this.context);
 
     this.context.updateProgressStatus("Searching for scheme");
     const scheme =
@@ -577,7 +586,7 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
   async dispatchTask(terminal: TaskTerminal, definition: TaskDefinition): Promise<void> {
     const taskScope = new TaskExecutionScope({ action: definition.action });
     return await errorReporting.withScope(async () => {
-      return await this.context.startExecutionScope(taskScope, async () => {
+      return await this.context.executionScope.start(taskScope, async () => {
         await this.dispathcer.do(terminal, definition);
       });
     });

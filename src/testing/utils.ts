@@ -1,9 +1,10 @@
 import * as vscode from "vscode";
 import { askConfigurationBase } from "../common/askers";
 import { type XcodeBuildSettings, getSchemes, getTargets } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
+import type { ExtensionContext } from "../common/context";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
+import type { XcodeWorkspace } from "../common/xcode/workspace";
 import type { DestinationPlatform } from "../destination/constants";
 import type { Destination } from "../destination/types";
 import { splitSupportedDestinatinos } from "../destination/utils";
@@ -15,7 +16,7 @@ export async function askTestingTarget(
   context: ExtensionContext,
   options: {
     title: string;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
     force?: boolean;
   },
 ): Promise<string | null> {
@@ -67,7 +68,8 @@ export async function askTestingTarget(
 export async function askConfigurationForTesting(
   context: ExtensionContext,
   options: {
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
+    scheme: string;
   },
 ): Promise<string> {
   const fromConfig = getWorkspaceConfig("testing.configuration");
@@ -80,6 +82,7 @@ export async function askConfigurationForTesting(
   }
   const selected = await askConfigurationBase({
     xcworkspace: options.xcworkspace,
+    scheme: options.scheme,
   });
   context.buildManager.setDefaultConfigurationForTesting(selected);
   return selected;
@@ -187,7 +190,7 @@ export async function askSchemeForTesting(
   context: ExtensionContext,
   options: {
     title?: string;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
     ignoreCache?: boolean;
   },
 ): Promise<string> {

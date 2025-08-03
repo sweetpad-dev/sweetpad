@@ -18,12 +18,11 @@ import {
   selectXcodeWorkspaceCommand,
   testCommand,
 } from "./build/commands.js";
-import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { createSchemeWatcher } from "./build/scheme-watcher.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
-import { ExtensionContext } from "./common/commands.js";
+import { ExtensionContext } from "./common/context.js";
 import { errorReporting } from "./common/error-reporting.js";
 import { Logger } from "./common/logger.js";
 import { getAppPathCommand } from "./debugger/commands.js";
@@ -33,12 +32,10 @@ import {
   selectDestinationForBuildCommand,
   selectDestinationForTestingCommand,
 } from "./destination/commands.js";
-import { DestinationsManager } from "./destination/manager.js";
 import { DestinationStatusBar } from "./destination/status-bar.js";
 import { DestinationsTreeProvider } from "./destination/tree.js";
-import { DevicesManager } from "./devices/manager.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
-import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
+import { registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
 import { createFormatStatusItem } from "./format/status.js";
 import {
   openSimulatorCommand,
@@ -46,7 +43,6 @@ import {
   startSimulatorCommand,
   stopSimulatorCommand,
 } from "./simulators/commands.js";
-import { SimulatorsManager } from "./simulators/manager.js";
 import {
   createIssueGenericCommand,
   createIssueNoSchemesCommand,
@@ -54,7 +50,6 @@ import {
   resetSweetPadCache,
   testErrorReportingCommand,
 } from "./system/commands.js";
-import { ProgressStatusBar } from "./system/status-bar.js";
 import {
   buildForTestingCommand,
   selectConfigurationForTestingCommand,
@@ -62,9 +57,7 @@ import {
   selectXcodeSchemeForTestingCommand,
   testWithoutBuildingCommand,
 } from "./testing/commands.js";
-import { TestingManager } from "./testing/manager.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
-import { ToolsManager } from "./tools/manager.js";
 import { ToolTreeProvider } from "./tools/tree.js";
 import { tuistCleanCommand, tuistEditComnmand, tuistGenerateCommand, tuistInstallCommand } from "./tuist/command.js";
 import { createTuistWatcher } from "./tuist/watcher.js";
@@ -78,39 +71,14 @@ export function activate(context: vscode.ExtensionContext) {
   // 🪵🪓
   Logger.setup();
 
-  // Managers 💼
-  // These classes are responsible for managing the state of the specific domain. Other parts of the extension can
-  // interact with them to get the current state of the domain and subscribe to changes. For example
-  // "DestinationsManager" have methods to get the list of current ios devices and simulators, and it also have an
-  // event emitter that emits an event when the list of devices or simulators changes.
-  const buildManager = new BuildManager();
-  const devicesManager = new DevicesManager();
-  const simulatorsManager = new SimulatorsManager();
-  const destinationsManager = new DestinationsManager({
-    simulatorsManager: simulatorsManager,
-    devicesManager: devicesManager,
-  });
-  const toolsManager = new ToolsManager();
-  const testingManager = new TestingManager();
-  const formatter = new SwiftFormattingProvider();
-  const progressStatusBar = new ProgressStatusBar();
-
   // Main context object 🌍
   const _context = new ExtensionContext({
     context: context,
-    destinationsManager: destinationsManager,
-    buildManager: buildManager,
-    toolsManager: toolsManager,
-    testingManager: testingManager,
-    formatter: formatter,
-    progressStatusBar: progressStatusBar,
   });
-  // Here is circular dependency, but I don't care
-  buildManager.context = _context;
-  devicesManager.context = _context;
-  destinationsManager.context = _context;
-  testingManager.context = _context;
-  progressStatusBar.context = _context;
+  const buildManager = _context.buildManager;
+  const toolsManager = _context.toolsManager;
+  const destinationsManager = _context.destinationsManager;
+  const formatter = _context.formatter;
 
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({

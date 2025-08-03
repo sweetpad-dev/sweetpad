@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { XcodeProject } from "./project";
+import type { IXcodeProject } from "./project";
 import { XcodeWorkspace, XcodeWorkspaceFileRef, XcodeWorkspaceGroup } from "./workspace";
 
 describe("parse *.xcworkspace/contents.xml", () => {
@@ -162,7 +162,7 @@ describe("get projects *.xcworkspace/contents.xcworkspacedata", () => {
       } as any;
     });
     const projects = await workspace.getProjects();
-    const projectsPaths = projects.map((project) => (project as XcodeProject).projectPath);
+    const projectsPaths = projects.map((project) => (project as IXcodeProject).projectPath);
     expect(projectsPaths).toHaveLength(options.expectedPaths.length);
     expect(projectsPaths.sort()).toEqual(options.expectedPaths.sort());
   }
@@ -242,13 +242,13 @@ describe("parse full projects", () => {
     const projects = await workspace.getProjects();
     expect(projects).toHaveLength(3);
 
-    const project1 = projects[0] as XcodeProject;
+    const project1 = projects[0] as IXcodeProject;
     expect(project1.projectPath).toBe(path.join(PROJECT_PATH, "Meteor.xcodeproj"));
 
-    const project2 = projects[1] as XcodeProject;
+    const project2 = projects[1] as IXcodeProject;
     expect(project2.projectPath).toBe(path.join(PROJECT_PATH, "Examples", "Todos", "Todos.xcodeproj"));
 
-    const project3 = projects[2] as XcodeProject;
+    const project3 = projects[2] as IXcodeProject;
     expect(project3.projectPath).toBe(path.join(PROJECT_PATH, "Examples", "Leaderboard", "Leaderboard.xcodeproj"));
   });
 
@@ -260,10 +260,10 @@ describe("parse full projects", () => {
     const projects = await workspace.getProjects();
     expect(projects).toHaveLength(2);
 
-    const project1 = projects[0] as XcodeProject;
+    const project1 = projects[0] as IXcodeProject;
     expect(project1.projectPath).toBe(path.join(PROJECT_PATH, "sweetpad-demo-cocoapods.xcodeproj"));
 
-    const project2 = projects[1] as XcodeProject;
+    const project2 = projects[1] as IXcodeProject;
     expect(project2.projectPath).toBe(path.join(PROJECT_PATH, "Pods", "Pods.xcodeproj"));
   });
 
@@ -275,7 +275,7 @@ describe("parse full projects", () => {
     const projects = await workspace.getProjects();
     expect(projects).toHaveLength(1);
 
-    const project1 = projects[0] as XcodeProject;
+    const project1 = projects[0] as IXcodeProject;
     expect(project1.projectPath).toBe(path.join(PROJECT_PATH, "sweetpad-demo-xcodegen.xcodeproj"));
   });
 
@@ -287,7 +287,7 @@ describe("parse full projects", () => {
     const projects = await workspace.getProjects();
     expect(projects).toHaveLength(1);
 
-    const project1 = projects[0] as XcodeProject;
+    const project1 = projects[0] as IXcodeProject;
     expect(project1.projectPath).toBe(path.join(PROJECT_PATH, "terminal23.xcodeproj"));
   });
 
@@ -297,10 +297,10 @@ describe("parse full projects", () => {
     const projects = await workspace.getProjects();
     expect(projects).toHaveLength(2);
 
-    const project1 = projects[0] as XcodeProject;
+    const project1 = projects[0] as IXcodeProject;
     expect(project1.projectPath).toBe(path.join(PROJECT_PATH, "Projects", "AFramework", "AFramework.xcodeproj"));
 
-    const project2 = projects[1] as XcodeProject;
+    const project2 = projects[1] as IXcodeProject;
     expect(project2.projectPath).toBe(path.join(PROJECT_PATH, "Projects", "App", "sweetpad-test.xcodeproj"));
   });
 
@@ -310,7 +310,7 @@ describe("parse full projects", () => {
     const projects = await workspace.getProjects();
     expect(projects).toHaveLength(1);
 
-    const project1 = projects[0] as XcodeProject;
+    const project1 = projects[0] as IXcodeProject;
     expect(project1.projectPath).toBe(path.join(PROJECT_PATH, "Ampol.xcodeproj"));
   });
 
@@ -320,7 +320,7 @@ describe("parse full projects", () => {
     const projects = await workspace.getProjects();
     expect(projects).toHaveLength(1);
 
-    const project1 = projects[0] as XcodeProject;
+    const project1 = projects[0] as IXcodeProject;
     expect(project1.projectPath).toBe(path.join(PROJECT_PATH, "ios", "Runner.xcodeproj"));
   });
 });

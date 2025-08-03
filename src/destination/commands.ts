@@ -1,5 +1,5 @@
 import { selectDestinationForBuild } from "../build/utils";
-import type { ExtensionContext } from "../common/commands";
+import type { ExtensionContext } from "../common/context";
 import { selectDestinationForTesting } from "../testing/utils";
 import type { DestinationTreeItem } from "./tree";
 

@@ -1,7 +1,7 @@
-import path from "node:path";
 import { XcodeProject as XcodeProjectParsed } from "@bacons/xcode";
 import { type XcodeProject as XcodeProjectRaw, parse as parseChevrotain } from "@bacons/xcode/json";
 import { type XmlDocument, XmlElement, type XmlNode, parseXml } from "@rgrove/parse-xml";
+import path from "node:path";
 import { findFiles, findFilesRecursive, isFileExists, readFile, readTextFile, statFile } from "../files";
 import { uniqueFilter } from "../helpers";
 
@@ -9,7 +9,7 @@ function isXMLElement(obj: XmlNode): obj is XmlElement {
   return obj instanceof XmlElement;
 }
 
-export interface XcodeProject {
+export interface IXcodeProject {
   projectPath: string;
   getConfigurations(): string[];
   getTargets(): string[];
@@ -20,12 +20,12 @@ export interface XcodeProject {
 export class XcodeScheme {
   public name: string;
   public path: string;
-  public project: XcodeProject;
+  public project: IXcodeProject;
 
   public _cache: XmlDocument | null = null;
   public _cacheModified: number | null = null;
 
-  constructor(options: { name: string; path: string; project: XcodeProject }) {
+  constructor(options: { name: string; path: string; project: IXcodeProject }) {
     this.name = options.name;
     this.path = options.path;
     this.project = options.project;
@@ -129,7 +129,7 @@ export class XcodeScheme {
     return buildableReference.attributes.BlueprintName || "";
   }
 
-  static fromFile(options: { schemePath: string; project: XcodeProject }): XcodeScheme {
+  static fromFile(options: { schemePath: string; project: IXcodeProject }): XcodeScheme {
     let name: string;
     const match = options.schemePath.match(/xcschemes\/(.+)\.xcscheme$/);
     if (match) {
@@ -150,7 +150,7 @@ export class XcodeScheme {
    * Start looking for ".xcscheme" in "xcschemes" directory.
    * It's common function for searching both shared and user-specific schemes
    */
-  static async findSchemes(project: XcodeProject, startPath: string): Promise<XcodeScheme[]> {
+  static async findSchemes(project: IXcodeProject, startPath: string): Promise<XcodeScheme[]> {
     const schemes = [];
 
     const schemesDir = path.join(startPath, "xcschemes");
@@ -174,7 +174,7 @@ export class XcodeScheme {
     return schemes;
   }
 
-  static async getSchemes(project: XcodeProject): Promise<XcodeScheme[]> {
+  async getSchemes(project: IXcodeProject): Promise<XcodeScheme[]> {
     const schemes = [];
 
     // Find shared schemes:
@@ -215,13 +215,13 @@ export class XcodeScheme {
     return schemes;
   }
 
-  static async getScheme(project: XcodeProject, name: string): Promise<XcodeScheme | null> {
+  static async getScheme(project: IXcodeProject, name: string): Promise<XcodeScheme | null> {
     const schemes = await XcodeScheme.getSchemes(project);
     return schemes.find((scheme) => scheme.name === name) || null;
   }
 }
 
-export class XcodeProjectBaconParser implements XcodeProject {
+export class XcodeProjectBaconParser implements IXcodeProject {
   private parsed: XcodeProjectParsed;
   // path to .xcodeproj (not .pbxproj)
   public projectPath: string;
@@ -256,7 +256,7 @@ export class XcodeProjectBaconParser implements XcodeProject {
   }
 }
 
-export class XcodeProjectFallbackParser implements XcodeProject {
+export class XcodeProjectFallbackParser implements IXcodeProject {
   // path to .xcodeproj (not .pbxproj)
   public projectPath: string;
 
@@ -298,7 +298,19 @@ export class XcodeProjectFallbackParser implements XcodeProject {
   }
 }
 
-export async function parseXcodeProject(projectPath: string): Promise<XcodeProject> {
+export class XcodeProject {
+  public projectPath: string;
+
+  constructor(options: { projectPath: string }) {
+    this.projectPath = options.projectPath;
+  }
+
+  getScheme(name: string): Promise<XcodeScheme | null> {
+    return XcodeScheme.getScheme(this, name);
+  }
+}
+
+export async function parseXcodeProject(projectPath: string): Promise<IXcodeProject> {
   const pbxprojPath = path.join(projectPath, "project.pbxproj");
   try {
     const parsed = XcodeProjectParsed.open(pbxprojPath);

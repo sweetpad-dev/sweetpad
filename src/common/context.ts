@@ -1,16 +1,17 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-import * as crypto from "node:crypto";
 import * as events from "node:events";
 import * as vscode from "vscode";
-import type { BuildManager } from "../build/manager";
-import type { DestinationsManager } from "../destination/manager";
+import { BuildManager } from "../build/manager";
+import { DestinationsManager } from "../destination/manager";
 import type { DestinationType, SelectedDestination } from "../destination/types";
-import type { SwiftFormattingProvider } from "../format/formatter";
-import type { ProgressStatusBar } from "../system/status-bar";
-import type { TestingManager } from "../testing/manager";
-import type { ToolsManager } from "../tools/manager";
+import { DevicesManager } from "../devices/manager";
+import { SwiftFormattingProvider } from "../format/formatter";
+import { SimulatorsManager } from "../simulators/manager";
+import { ProgressStatusBar } from "../system/status-bar";
+import { TestingManager } from "../testing/manager";
+import { ToolsManager } from "../tools/manager";
 import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting";
 import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
+import { CommandExecutionScope, type ExecutionScope, ExecutionScopeManager } from "./execution-scope";
 import { commonLogger } from "./logger";
 import { QuickPickCancelledError } from "./quick-pick";
 
@@ -38,6 +39,7 @@ export type LastLaunchedAppContext =
   | LastLaunchedAppMacOSContext;
 
 type WorkspaceTypes = {
+  _version: undefined | 1;
   "build.xcodeWorkspacePath": string;
   "build.xcodeProjectPath": string;
   "build.xcodeScheme": string;
@@ -55,7 +57,6 @@ type WorkspaceTypes = {
 };
 
 type WorkspaceStateKey = keyof WorkspaceTypes;
-type SessionStateKey = "NONE_KEY";
 
 /**
  * Global events that extension can emit
@@ -66,37 +67,51 @@ type IEventMap = {
 };
 type IEventKey = keyof IEventMap;
 
+/**
+ * Global extension context that is used to manage the state of the extension.
+ *
+ * You can pass it everywhere in the extension to access full state of the extension.
+ */
 export class ExtensionContext {
   private _context: vscode.ExtensionContext;
+
+  // Managers 💼
+  // These classes are responsible for managing the state of the specific domain. Other parts of the extension can
+  // interact with them to get the current state of the domain and subscribe to changes. For example
+  // "DestinationsManager" have methods to get the list of current ios devices and simulators, and it also have an
+  // event emitter that emits an event when the list of devices or simulators changes.
   public destinationsManager: DestinationsManager;
   public toolsManager: ToolsManager;
   public buildManager: BuildManager;
   public testingManager: TestingManager;
   public formatter: SwiftFormattingProvider;
   public progressStatusBar: ProgressStatusBar;
-  private _sessionState: Map<SessionStateKey, unknown> = new Map();
+  public devicesManager: DevicesManager;
+  public simulatorsManager: SimulatorsManager;
 
-  // Create for each command and task execution separate execution scope with unique ID
-  // to be able to track what is currently running
-  private executionScope = new AsyncLocalStorage<ExecutionScope | undefined>();
-  private emitter = new events.EventEmitter<IEventMap>();
+  public executionScope: ExecutionScopeManager;
+
+  public emitter = new events.EventEmitter<IEventMap>();
 
   constructor(options: {
     context: vscode.ExtensionContext;
-    destinationsManager: DestinationsManager;
-    buildManager: BuildManager;
-    toolsManager: ToolsManager;
-    testingManager: TestingManager;
-    formatter: SwiftFormattingProvider;
-    progressStatusBar: ProgressStatusBar;
   }) {
     this._context = options.context;
-    this.destinationsManager = options.destinationsManager;
-    this.buildManager = options.buildManager;
-    this.toolsManager = options.toolsManager;
-    this.testingManager = options.testingManager;
-    this.formatter = options.formatter;
-    this.progressStatusBar = options.progressStatusBar;
+
+    this.buildManager = new BuildManager({ context: this });
+    this.devicesManager = new DevicesManager({ context: this });
+    this.simulatorsManager = new SimulatorsManager();
+    this.destinationsManager = new DestinationsManager({
+      simulatorsManager: this.simulatorsManager,
+      devicesManager: this.devicesManager,
+      context: this,
+    });
+    this.toolsManager = new ToolsManager();
+    this.testingManager = new TestingManager({ context: this });
+    this.formatter = new SwiftFormattingProvider();
+    this.progressStatusBar = new ProgressStatusBar({ context: this });
+
+    this.executionScope = new ExecutionScopeManager({ context: this });
 
     vscode.workspace.onDidChangeConfiguration((event) => {
       const affected = event.affectsConfiguration("sweetpad");
@@ -118,34 +133,6 @@ export class ExtensionContext {
     this._context.subscriptions.push(disposable);
   }
 
-  /**
-   * In case if you need to start propage execution scope manually you can use this method
-   */
-  setExecutionScope<T>(scope: ExecutionScope | undefined, callback: () => Promise<T>): Promise<T> {
-    return this.executionScope.run(scope, callback);
-  }
-
-  getExecutionScope(): ExecutionScope | undefined {
-    return this.executionScope.getStore();
-  }
-
-  getExecutionScopeId(): string | undefined {
-    return this.getExecutionScope()?.id;
-  }
-
-  /**
-   * Main method to start execution scope for command or task or other isolated execution context
-   */
-  startExecutionScope<T>(scope: ExecutionScope, callback: () => Promise<T>): Promise<T> {
-    return this.executionScope.run(scope, async () => {
-      try {
-        return await callback();
-      } finally {
-        this.emitter.emit("executionScopeClosed", scope);
-      }
-    });
-  }
-
   on<K extends IEventKey>(event: K, listener: (...args: IEventMap[K]) => void): void {
     this.emitter.on(event, listener as any); // todo: fix this any
   }
@@ -155,7 +142,7 @@ export class ExtensionContext {
       const commandContext = new CommandExecutionScope({ commandName: commandName });
 
       return await errorReporting.withScope(async (scope) => {
-        return await this.startExecutionScope(commandContext, async () => {
+        return await this.executionScope.start(commandContext, async () => {
           scope.setTag("command", commandName);
           try {
             return await callback(this, ...args);
@@ -239,14 +226,19 @@ export class ExtensionContext {
   }
 
   /**
-   * State local to the running instance of the extension. It is not persisted across sessions.
+   * Migrate workspace state to the latest version
    */
-  updateSessionState(key: SessionStateKey, value: unknown | undefined) {
-    this._sessionState.set(key, value);
-  }
+  migrateWorkspaceState() {
+    const currentVersion = this._context.workspaceState.get<number>("_version") ?? 0;
+    let nextVersion = currentVersion + 1;
 
-  getSessionState<T = any>(key: SessionStateKey): T | undefined {
-    return this._sessionState.get(key) as T | undefined;
+    // from version 0 to version 1
+    if (nextVersion === 1) {
+      // Nothing to migrate yet, but show how to update version
+      this._context.workspaceState.update("_version", nextVersion);
+
+      nextVersion += 1;
+    }
   }
 
   updateWorkspaceState<T extends WorkspaceStateKey>(key: T, value: WorkspaceTypes[T] | undefined) {
@@ -281,39 +273,3 @@ export class ExtensionContext {
     this.progressStatusBar.updateText(message);
   }
 }
-
-export class BaseExecutionScope {
-  id: string;
-  type = "base" as const;
-
-  constructor() {
-    this.id = crypto.randomUUID();
-    this.type = "base";
-  }
-}
-
-export class CommandExecutionScope {
-  id: string;
-  type = "command" as const;
-  commandName: string;
-
-  constructor(options: { commandName: string }) {
-    this.id = crypto.randomUUID();
-    this.type = "command";
-    this.commandName = options.commandName;
-  }
-}
-
-export class TaskExecutionScope {
-  id: string;
-  type = "task" as const;
-  taskName: string;
-
-  constructor(options: { action: string }) {
-    this.id = crypto.randomUUID();
-    this.type = "task";
-    this.taskName = options.action;
-  }
-}
-
-export type ExecutionScope = BaseExecutionScope | CommandExecutionScope | TaskExecutionScope;

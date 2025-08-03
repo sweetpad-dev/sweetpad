@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { ExtensionContext } from "../common/commands.js";
+import type { ExtensionContext } from "../common/context.js";
 import { runTask } from "../common/tasks.js";
 import type { ToolTreeItem } from "./tree.js";
 import { askTool } from "./utils.js";

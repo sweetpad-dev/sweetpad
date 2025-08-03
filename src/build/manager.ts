@@ -8,11 +8,13 @@ import {
   getIsXcodeBuildServerInstalled,
   getSchemes,
 } from "../common/cli/scripts";
-import { BaseExecutionScope, type ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
+import type { ExtensionContext } from "../common/context";
+import { BaseExecutionScope } from "../common/execution-scope";
 import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
-import { askXcodeWorkspacePath, getCurrentXcodeWorkspacePath, getWorkspacePath, restartSwiftLSP } from "./utils";
+import { XcodeWorkspace } from "../common/xcode/workspace";
+import { askXcodeWorkspace, getCurrentXcodeWorkspacePath, getWorkspacePath, restartSwiftLSP } from "./utils";
 
 type IEventMap = {
   refreshSchemesStarted: [];
@@ -24,12 +26,20 @@ type IEventMap = {
 };
 type IEventKey = keyof IEventMap;
 
+/**
+ * Scheme manager for managing Xcode schemes in the workspace.
+ *
+ * In Xcode, a scheme is a collection of settings that specify how to build, run, test, and archive a project.
+ */
 export class BuildManager {
   private cache: XcodeScheme[] | undefined = undefined;
   private emitter = new events.EventEmitter<IEventMap>();
-  public _context: ExtensionContext | undefined = undefined;
+  public context: ExtensionContext;
 
-  constructor() {
+  constructor(options: {
+    context: ExtensionContext;
+  }) {
+    this.context = options.context;
     this.on("defaultSchemeForBuildUpdated", (scheme: string | undefined) => {
       void this.generateXcodeBuildServerSettingsOnSchemeChange({
         scheme: scheme,
@@ -41,20 +51,9 @@ export class BuildManager {
     this.emitter.on(event, listener as any); // todo: fix this any
   }
 
-  set context(context: ExtensionContext) {
-    this._context = context;
-  }
-
-  get context(): ExtensionContext {
-    if (!this._context) {
-      throw new Error("Context is not set");
-    }
-    return this._context;
-  }
-
   async refreshSchemes(): Promise<XcodeScheme[]> {
     const scope = new BaseExecutionScope();
-    return await this.context.startExecutionScope(scope, async () => {
+    return await this.context.executionScope.start(scope, async () => {
       this.context.updateProgressStatus("Refreshing Xcode schemes");
 
       this.emitter.emit("refreshSchemesStarted");
@@ -63,7 +62,13 @@ export class BuildManager {
 
         const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
 
-        const schemes = await getSchemes({ xcworkspace: xcworkspace });
+        const schemes = await getSchemes({
+          xcworkspace: xcworkspace
+            ? new XcodeWorkspace({
+                path: xcworkspace,
+              })
+            : undefined,
+        });
 
         this.cache = schemes;
 
@@ -146,7 +151,7 @@ export class BuildManager {
       return;
     }
 
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const xcworkspace = await askXcodeWorkspace(this.context);
     await generateBuildServerConfig({
       xcworkspace: xcworkspace,
       scheme: options.scheme,

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { ExtensionContext } from "../common/commands.js";
+import type { ExtensionContext } from "../common/context.js";
 
 export class DefaultSchemeStatusBar {
   context: ExtensionContext;

@@ -1,14 +1,15 @@
 import path from "node:path";
 import * as vscode from "vscode";
 import { getXcodeBuildDestinationString } from "../build/commands.js";
-import { askXcodeWorkspacePath, getWorkspacePath } from "../build/utils.js";
+import { askXcodeWorkspace, getWorkspacePath } from "../build/utils.js";
 import { getBuildSettingsToAskDestination } from "../common/cli/scripts.js";
-import type { ExtensionContext } from "../common/commands.js";
+import type { ExtensionContext } from "../common/context.js";
 import { errorReporting } from "../common/error-reporting.js";
 import { exec } from "../common/exec.js";
 import { isFileExists } from "../common/files.js";
 import { commonLogger } from "../common/logger.js";
 import { runTask } from "../common/tasks.js";
+import type { XcodeWorkspace } from "../common/xcode/workspace.js";
 import type { Destination } from "../destination/types.js";
 import { askConfigurationForTesting, askDestinationToTestOn, askSchemeForTesting, askTestingTarget } from "./utils.js";
 
@@ -136,7 +137,7 @@ type TestItemContext = {
 
 export class TestingManager {
   controller: vscode.TestController;
-  private _context: ExtensionContext | undefined;
+  private context: ExtensionContext;
 
   // Inline error messages, usually is between "passed" and "failed" lines. Seems like only macOS apps have this line.
   // Example output:
@@ -164,7 +165,8 @@ export class TestingManager {
   // Root folder of the workspace (VSCode, not Xcode)
   readonly workspacePath: string;
 
-  constructor() {
+  constructor(options: { context: ExtensionContext }) {
+    this.context = options.context;
     this.workspacePath = getWorkspacePath();
 
     this.controller = vscode.tests.createTestController("sweetpad", "SweetPad");
@@ -222,17 +224,6 @@ export class TestingManager {
       },
       options.isDefault,
     );
-  }
-
-  set context(context: ExtensionContext) {
-    this._context = context;
-  }
-
-  get context(): ExtensionContext {
-    if (!this._context) {
-      throw new Error("Context is not set");
-    }
-    return this._context;
   }
 
   dispose() {
@@ -339,7 +330,7 @@ export class TestingManager {
    * Ask common configuration options for running tests
    */
   async askTestingConfigurations(): Promise<{
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
     scheme: string;
     configuration: string;
     destination: Destination;
@@ -347,13 +338,14 @@ export class TestingManager {
     // todo: consider to have separate configuration for testing and building. currently we use the
     // configuration for building the project
 
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const xcworkspace = await askXcodeWorkspace(this.context);
     const scheme = await askSchemeForTesting(this.context, {
       xcworkspace: xcworkspace,
       title: "Select a scheme to run tests",
     });
     const configuration = await askConfigurationForTesting(this.context, {
       xcworkspace: xcworkspace,
+      scheme: scheme,
     });
     const buildSettings = await getBuildSettingsToAskDestination({
       scheme: scheme,
@@ -391,7 +383,7 @@ export class TestingManager {
   async buildForTesting(options: {
     scheme: string;
     destination: Destination;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
   }) {
     this.context.updateProgressStatus("Building for testing");
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
@@ -413,7 +405,7 @@ export class TestingManager {
             "-scheme",
             options.scheme,
             "-workspace",
-            options.xcworkspace,
+            options.xcworkspace.path,
           ],
         });
       },
@@ -557,7 +549,7 @@ export class TestingManager {
    */
   async resolveSPMTestingTarget(options: {
     queue: vscode.TestItem[];
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
   }) {
     const { queue, xcworkspace } = options;
     const workscePath = getWorkspacePath();
@@ -662,7 +654,7 @@ export class TestingManager {
   async runTests(options: {
     request: vscode.TestRunRequest;
     run: vscode.TestRun;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
     destination: Destination;
     scheme: string;
     token: vscode.CancellationToken;
@@ -778,7 +770,7 @@ export class TestingManager {
     run: vscode.TestRun;
     classTest: vscode.TestItem;
     scheme: string;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
     destination: Destination;
     defaultTarget: string | null;
   }): Promise<void> {
@@ -811,7 +803,7 @@ export class TestingManager {
             args: [
               "test-without-building",
               "-workspace",
-              options.xcworkspace,
+              options.xcworkspace.path,
               "-destination",
               destinationRaw,
               "-scheme",
@@ -860,7 +852,7 @@ export class TestingManager {
   async runMethodTest(options: {
     run: vscode.TestRun;
     methodTest: vscode.TestItem;
-    xcworkspace: string;
+    xcworkspace: XcodeWorkspace;
     scheme: string;
     destination: Destination;
     defaultTarget: string | null;
@@ -894,7 +886,7 @@ export class TestingManager {
             args: [
               "test-without-building",
               "-workspace",
-              options.xcworkspace,
+              options.xcworkspace.path,
               "-destination",
               destinationRaw,
               "-scheme",

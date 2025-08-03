@@ -1,7 +1,7 @@
 import path from "node:path";
 import * as vscode from "vscode";
-import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
+import type { ExtensionContext } from "../common/context";
 import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { getWorkspacePath, prepareDerivedDataPath } from "./utils";
