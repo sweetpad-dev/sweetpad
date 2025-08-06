@@ -603,7 +603,8 @@ export async function buildApp(
   const testingFramework = getWorkspaceConfig("testing.framework") || "auto";
   
   // For tests with Swift Testing in SPM projects, use swift test command
-  if (isSPMProject && options.shouldTest && (testingFramework === "swift-testing" || testingFramework === "auto")) {
+  // Only use swift test when explicitly set to "swift-testing", not on "auto"
+  if (isSPMProject && options.shouldTest && testingFramework === "swift-testing") {
     const packageDir = path.dirname(options.xcworkspace);
     
     context.updateProgressStatus(`Running Swift Testing tests for "${options.scheme}"`);
