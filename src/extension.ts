@@ -77,7 +77,7 @@ import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
 import { createMcpServer } from './mcp_server';
 import { McpServerInstance } from './types';
-import { addScreenshotContextImplementation, AddScreenshotContextArgs } from './tools/screenshotTool';
+
 
 // Keep track of the server instance
 let mcpInstance: McpServerInstance | null = null;
@@ -221,15 +221,6 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.simulators.start", startSimulatorCommand));
     d(command("sweetpad.simulators.stop", stopSimulatorCommand));
     d(command("sweetpad.simulators.screenshot", takeSimulatorScreenshotCommand));
-    
-    // Screenshot context handler for MCP
-    d(command("sweetpad.screenshot.addToContext", async (args: AddScreenshotContextArgs) => {
-      try {
-        await addScreenshotContextImplementation(args, { extensionContext: _context });
-      } catch (error) {
-        commonLogger.error('Error handling screenshot context command', { error });
-      }
-    }));
 
     // // Devices
     d(command("sweetpad.devices.refresh", async () => await destinationsManager.refreshDevices()));

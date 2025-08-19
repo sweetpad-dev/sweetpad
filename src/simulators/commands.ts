@@ -176,18 +176,8 @@ export async function takeSimulatorScreenshotCommand(context: ExtensionContext, 
         
         terminal.write(`Screenshot saved successfully (${stats.size} bytes)\n`);
         
-        // Store screenshot data for MCP access
-        await vscode.commands.executeCommand('sweetpad.screenshot.addToContext', {
-          simulatorName,
-          simulatorUdid,
-          filename,
-          path: screenshotPath,
-          base64: base64Image,
-          timestamp: new Date().toISOString()
-        });
-        
-        // Notify user that screenshot is available for AI analysis
-        terminal.write(`Screenshot available for AI analysis. Ask: "Show me the simulator screenshot"\n`);
+        // Notify user that screenshot is available for AI analysis via MCP
+        terminal.write(`Screenshot saved! Use MCP tool 'take_simulator_screenshot' to access via AI\n`);
 
         vscode.window.showInformationMessage(
           `Screenshot taken of ${simulatorName} (${Math.round(stats.size / 1024)}KB) and added to AI context`,

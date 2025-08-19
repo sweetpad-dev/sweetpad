@@ -11,9 +11,6 @@ import { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.j
 import http from 'http';
 import { executeCommandSchema, executeCommandImplementation, ExecuteCommandArgs } from './tools/executeCommand'; 
 import { 
-  addScreenshotContextSchema, 
-  addScreenshotContextImplementation, 
-  AddScreenshotContextArgs,
   takeScreenshotSchema,
   takeScreenshotImplementation,
   TakeScreenshotArgs
@@ -99,15 +96,6 @@ export function createMcpServer(options: McpServerOptions, extensionContext: Ext
       executeCommandSchema.shape,
       async (args: ExecuteCommandArgs, frameworkExtra: RequestHandlerExtra<any, any>): Promise<CallToolResult> => {
         return executeCommandImplementation(args, { extensionContext: extensionContext });
-      }
-  );
-
-  server.tool(
-      "add_screenshot_context",
-      "Adds a simulator screenshot to the AI context for visual analysis and debugging assistance.",
-      addScreenshotContextSchema.shape,
-      async (args: AddScreenshotContextArgs, frameworkExtra: RequestHandlerExtra<any, any>): Promise<CallToolResult> => {
-        return addScreenshotContextImplementation(args, { extensionContext: extensionContext });
       }
   );
 

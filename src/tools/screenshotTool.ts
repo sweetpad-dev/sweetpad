@@ -8,81 +8,9 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { prepareStoragePath } from '../build/utils';
 
-export const addScreenshotContextSchema = z.object({
-  simulatorName: z.string(),
-  simulatorUdid: z.string(),
-  filename: z.string(),
-  path: z.string(),
-  base64: z.string(),
-  timestamp: z.string(),
-});
-
-export type AddScreenshotContextArgs = z.infer<typeof addScreenshotContextSchema>;
-
 export type ScreenshotToolExtra = {
   extensionContext: ExtensionContext;
 };
-
-// Store screenshot context in memory (could be persisted if needed)
-const screenshotContext: Map<string, AddScreenshotContextArgs> = new Map();
-
-export async function addScreenshotContextImplementation(
-  args: AddScreenshotContextArgs,
-  extra: ScreenshotToolExtra
-): Promise<CallToolResult> {
-  try {
-    commonLogger.log('Adding screenshot to AI context', {
-      simulatorName: args.simulatorName,
-      filename: args.filename,
-      timestamp: args.timestamp
-    });
-
-    // Store screenshot data for AI context
-    const contextKey = `${args.simulatorUdid}-${args.timestamp}`;
-    screenshotContext.set(contextKey, args);
-
-    // Clean up old screenshots (keep only last 5)
-    const entries = Array.from(screenshotContext.entries());
-    if (entries.length > 5) {
-      const toRemove = entries.slice(0, entries.length - 5);
-      toRemove.forEach(([key]) => screenshotContext.delete(key));
-    }
-
-    // Return image directly to AI as context - following MCP pattern
-    return {
-      content: [
-        {
-          type: "image",
-          data: args.base64,
-          mimeType: "image/png",
-        },
-        {
-          type: 'text',
-          text: `iOS Simulator screenshot from ${args.simulatorName} captured at ${args.timestamp}. This shows the current UI state of the running iOS app for analysis and debugging.`
-        }
-      ],
-    };
-  } catch (error) {
-    commonLogger.error('Error adding screenshot to context', { error, args });
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Failed to add screenshot to AI context: ${error instanceof Error ? error.message : String(error)}`
-        }
-      ],
-      isError: true,
-    };
-  }
-}
-
-export function getScreenshotContext(): AddScreenshotContextArgs[] {
-  return Array.from(screenshotContext.values());
-}
-
-export function clearScreenshotContext(): void {
-  screenshotContext.clear();
-}
 
 // Direct screenshot tool - takes screenshot and returns as context
 export const takeScreenshotSchema = z.object({
