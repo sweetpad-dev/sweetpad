@@ -4,12 +4,20 @@ import { ExtensionContext } from './common/commands';
 import { McpServer, ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js"; 
 import { ZodRawShape, z } from 'zod';
-import express, { Express, Request, Response } from 'express';
+import express, { type Express, type Request, type Response } from 'express';
 import { McpServerOptions, McpServerInstance, McpToolDefinition } from './types'; 
 import { setupMetrics } from './metrics';
 import { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import http from 'http';
 import { executeCommandSchema, executeCommandImplementation, ExecuteCommandArgs } from './tools/executeCommand'; 
+import { 
+  addScreenshotContextSchema, 
+  addScreenshotContextImplementation, 
+  AddScreenshotContextArgs,
+  takeScreenshotSchema,
+  takeScreenshotImplementation,
+  TakeScreenshotArgs
+} from './tools/screenshotTool';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 const SSE_ENDPOINT = '/sse';
@@ -91,6 +99,24 @@ export function createMcpServer(options: McpServerOptions, extensionContext: Ext
       executeCommandSchema.shape,
       async (args: ExecuteCommandArgs, frameworkExtra: RequestHandlerExtra<any, any>): Promise<CallToolResult> => {
         return executeCommandImplementation(args, { extensionContext: extensionContext });
+      }
+  );
+
+  server.tool(
+      "add_screenshot_context",
+      "Adds a simulator screenshot to the AI context for visual analysis and debugging assistance.",
+      addScreenshotContextSchema.shape,
+      async (args: AddScreenshotContextArgs, frameworkExtra: RequestHandlerExtra<any, any>): Promise<CallToolResult> => {
+        return addScreenshotContextImplementation(args, { extensionContext: extensionContext });
+      }
+  );
+
+  server.tool(
+      "take_simulator_screenshot",
+      "Takes a screenshot of running iOS simulator and returns as image context.",
+      takeScreenshotSchema.shape,
+      async (args: TakeScreenshotArgs, frameworkExtra: RequestHandlerExtra<any, any>): Promise<CallToolResult> => {
+        return takeScreenshotImplementation(args, { extensionContext: extensionContext });
       }
   );
 

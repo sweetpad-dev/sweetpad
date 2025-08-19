@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
-import { askSimulator } from "../build/utils.js";
+import * as path from "path";
+import * as fs from "fs/promises";
+import { askSimulator, prepareStoragePath } from "../build/utils.js";
 import type { ExtensionContext } from "../common/commands.js";
 import { runTask } from "../common/tasks.js";
 import type { iOSSimulatorDestinationTreeItem } from "../destination/tree.js";
@@ -111,4 +113,99 @@ export async function removeSimulatorCacheCommand(context: ExtensionContext) {
       vscode.commands.executeCommand("sweetpad.simulators.refresh");
     },
   });
+}
+
+/**
+ * Command to take a screenshot of a running simulator and pass it to Cursor/AI as context
+ */
+export async function takeSimulatorScreenshotCommand(context: ExtensionContext, item?: iOSSimulatorDestinationTreeItem) {
+  let simulatorUdid: string;
+  let simulatorName: string;
+
+  if (item) {
+    simulatorUdid = item.simulator.udid;
+    simulatorName = item.simulator.name;
+  } else {
+    context.updateProgressStatus("Searching for running simulator");
+    const simulator = await askSimulator(context, {
+      title: "Select simulator to screenshot",
+      state: "Booted",
+      error: "No running simulators found for screenshot",
+    });
+    simulatorUdid = simulator.udid;
+    simulatorName = simulator.name;
+  }
+
+  // Generate temporary filename
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `simulator-screenshot-${timestamp}.png`;
+  
+  // Get proper storage path using the extension's storage system
+  const tempDir = await prepareStoragePath(context);
+  const screenshotPath = path.resolve(tempDir, filename);
+
+  context.updateProgressStatus(`Taking screenshot of ${simulatorName}`);
+  
+  try {
+    await runTask(context, {
+      name: "Take Simulator Screenshot",
+      lock: "sweetpad.simulators",
+      terminateLocked: true,
+      callback: async (terminal) => {
+        // Log paths for debugging
+        terminal.write(`Taking screenshot to: ${screenshotPath}\n`);
+        
+        // Ensure directory exists
+        await fs.mkdir(tempDir, { recursive: true });
+        
+        // Take screenshot using simctl with absolute path
+        await terminal.execute({
+          command: "xcrun",
+          args: ["simctl", "io", simulatorUdid, "screenshot", screenshotPath],
+        });
+
+        // Verify file was created and has content
+        const stats = await fs.stat(screenshotPath);
+        if (stats.size === 0) {
+          throw new Error("Screenshot file was created but is empty");
+        }
+
+        // Read the screenshot file as base64
+        const imageBuffer = await fs.readFile(screenshotPath);
+        const base64Image = imageBuffer.toString('base64');
+        
+        terminal.write(`Screenshot saved successfully (${stats.size} bytes)\n`);
+        
+        // Store screenshot data for MCP access
+        await vscode.commands.executeCommand('sweetpad.screenshot.addToContext', {
+          simulatorName,
+          simulatorUdid,
+          filename,
+          path: screenshotPath,
+          base64: base64Image,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Notify user that screenshot is available for AI analysis
+        terminal.write(`Screenshot available for AI analysis. Ask: "Show me the simulator screenshot"\n`);
+
+        vscode.window.showInformationMessage(
+          `Screenshot taken of ${simulatorName} (${Math.round(stats.size / 1024)}KB) and added to AI context`,
+          "Open Screenshot"
+        ).then(selection => {
+          if (selection === "Open Screenshot") {
+            vscode.commands.executeCommand('vscode.open', vscode.Uri.file(screenshotPath));
+          }
+        });
+      },
+    });
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to take screenshot: ${error}`);
+    // Clean up file if it exists
+    try {
+      await fs.unlink(screenshotPath);
+    } catch (cleanupError) {
+      // Ignore cleanup errors
+    }
+  }
 }
