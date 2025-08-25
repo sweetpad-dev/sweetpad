@@ -162,6 +162,9 @@ export function createMcpServer(options: McpServerOptions, extensionContext: Ext
   const buildSelectConfiguration = createCommandTool("sweetpad.build.selectConfiguration", "select_build_configuration", "Select build configuration (Debug/Release)", extensionContext);
   server.tool(buildSelectConfiguration.toolName, "Select build configuration (Debug/Release)", buildSelectConfiguration.schema, buildSelectConfiguration.implementation);
 
+  const buildDiagnoseSetup = createCommandTool("sweetpad.build.diagnoseSetup", "diagnose_build_issues", "Diagnose iOS build setup issues", extensionContext);
+  server.tool(buildDiagnoseSetup.toolName, "Diagnose iOS build setup issues", buildDiagnoseSetup.schema, buildDiagnoseSetup.implementation);
+
   const buildPeripheryScan = createCommandTool("sweetpad.build.peripheryScan", "scan_unused_code", "Run Periphery scan to find unused Swift code", extensionContext);
   server.tool(buildPeripheryScan.toolName, "Run Periphery scan to find unused Swift code", buildPeripheryScan.schema, buildPeripheryScan.implementation);
 
