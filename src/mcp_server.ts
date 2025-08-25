@@ -16,6 +16,7 @@ import {
   TakeScreenshotArgs
 } from './tools/screenshotTool';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import * as fs from 'fs';
 
 const SSE_ENDPOINT = '/sse';
 const MESSAGES_ENDPOINT = '/messages';
@@ -61,7 +62,38 @@ const createCommandTool = (
     if (raceResult === "timeout") {
       return { content: [{ type: 'text', text: `TIMEOUT after ${timeoutSeconds}s waiting for command ${commandId} to signal completion.` }], isError: true };
     } else {
-      return { content: [{ type: 'text', text: `Command ${commandId} completed successfully. Check output: ${extensionContext.UI_LOG_PATH()}` }], isError: false };
+      // Read the actual command output from the UI log file
+      try {
+        const logPath = extensionContext.UI_LOG_PATH();
+        const logContent = fs.readFileSync(logPath, 'utf-8').trim();
+        
+        if (logContent.length > 0) {
+          return { 
+            content: [{ 
+              type: 'text', 
+              text: `Command ${commandId} completed successfully.\n\nOutput:\n${logContent}` 
+            }], 
+            isError: false 
+          };
+        } else {
+          return { 
+            content: [{ 
+              type: 'text', 
+              text: `Command ${commandId} completed successfully with no output.` 
+            }], 
+            isError: false 
+          };
+        }
+      } catch (readError) {
+        commonLogger.error(`Error reading UI log file for ${commandId}`, { readError });
+        return { 
+          content: [{ 
+            type: 'text', 
+            text: `Command ${commandId} completed successfully but could not read output log.` 
+          }], 
+          isError: false 
+        };
+      }
     }
   };
 
