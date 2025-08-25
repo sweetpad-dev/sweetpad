@@ -569,6 +569,11 @@
         "command": "sweetpad.destinations.selectForTesting",
         "title": "SweetPad.Testing: Select destination for testing",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "sweetpad.simulators.screenshot",
+        "title": "SweetPad: Take Simulator Screenshot",
+        "icon": "$(camera)"
       }
     ],
     "menus": {
@@ -620,6 +625,11 @@
           "command": "sweetpad.simulators.stop",
           "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*&status=booted.*/",
           "group": "inline@2"
+        },
+        {
+          "command": "sweetpad.simulators.screenshot",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*&status=booted.*/",
+          "group": "context@1"
         },
         {
           "command": "sweetpad.destinations.select",

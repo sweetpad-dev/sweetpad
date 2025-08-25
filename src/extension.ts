@@ -49,6 +49,7 @@ import {
   removeSimulatorCacheCommand,
   startSimulatorCommand,
   stopSimulatorCommand,
+  takeSimulatorScreenshotCommand,
 } from "./simulators/commands.js";
 import { SimulatorsManager } from "./simulators/manager.js";
 import {
@@ -76,6 +77,7 @@ import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
 import { createMcpServer } from './mcp_server';
 import { McpServerInstance } from './types';
+
 
 // Keep track of the server instance
 let mcpInstance: McpServerInstance | null = null;
@@ -218,6 +220,7 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
     d(command("sweetpad.simulators.start", startSimulatorCommand));
     d(command("sweetpad.simulators.stop", stopSimulatorCommand));
+    d(command("sweetpad.simulators.screenshot", takeSimulatorScreenshotCommand));
 
     // // Devices
     d(command("sweetpad.devices.refresh", async () => await destinationsManager.refreshDevices()));
