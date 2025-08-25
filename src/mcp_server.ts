@@ -138,164 +138,164 @@ export function createMcpServer(options: McpServerOptions, extensionContext: Ext
   });
 
   // === BUILD COMMANDS ===
-  const buildLaunch = createCommandTool("sweetpad.build.launch", "build_launch", "Build and launch the app", extensionContext);
-  server.tool(buildLaunch.toolName, "Build and launch the app", buildLaunch.schema, buildLaunch.implementation);
+  const buildLaunch = createCommandTool("sweetpad.build.launch", "launch_ios_app", "Build and launch the iOS app", extensionContext);
+  server.tool(buildLaunch.toolName, "Build and launch the iOS app", buildLaunch.schema, buildLaunch.implementation);
 
-  const buildRun = createCommandTool("sweetpad.build.run", "build_run", "Build and run the app", extensionContext);
-  server.tool(buildRun.toolName, "Build and run the app", buildRun.schema, buildRun.implementation);
+  const buildRun = createCommandTool("sweetpad.build.run", "run_ios_app", "Build and run the iOS app", extensionContext);
+  server.tool(buildRun.toolName, "Build and run the iOS app", buildRun.schema, buildRun.implementation);
 
-  const buildBuild = createCommandTool("sweetpad.build.build", "build_build", "Build the app without running", extensionContext);
-  server.tool(buildBuild.toolName, "Build the app without running", buildBuild.schema, buildBuild.implementation);
+  const buildBuild = createCommandTool("sweetpad.build.build", "build_ios_project", "Build the iOS project without running", extensionContext);
+  server.tool(buildBuild.toolName, "Build the iOS project without running", buildBuild.schema, buildBuild.implementation);
 
-  const buildClean = createCommandTool("sweetpad.build.clean", "build_clean", "Clean build artifacts", extensionContext);
-  server.tool(buildClean.toolName, "Clean build artifacts", buildClean.schema, buildClean.implementation);
+  const buildClean = createCommandTool("sweetpad.build.clean", "clean_build_artifacts", "Clean iOS build artifacts", extensionContext);
+  server.tool(buildClean.toolName, "Clean iOS build artifacts", buildClean.schema, buildClean.implementation);
 
-  const buildTest = createCommandTool("sweetpad.build.test", "build_test", "Run tests", extensionContext);
-  server.tool(buildTest.toolName, "Run tests", buildTest.schema, buildTest.implementation);
+  const buildTest = createCommandTool("sweetpad.build.test", "run_unit_tests", "Run unit tests", extensionContext);
+  server.tool(buildTest.toolName, "Run unit tests", buildTest.schema, buildTest.implementation);
 
-  const buildTestSwiftTesting = createCommandTool("sweetpad.build.testWithSwiftTesting", "build_test_swift_testing", "Run tests with Swift Testing framework", extensionContext);
+  const buildTestSwiftTesting = createCommandTool("sweetpad.build.testWithSwiftTesting", "run_swift_testing_tests", "Run tests with Swift Testing framework", extensionContext);
   server.tool(buildTestSwiftTesting.toolName, "Run tests with Swift Testing framework", buildTestSwiftTesting.schema, buildTestSwiftTesting.implementation);
 
-  const buildResolveDependencies = createCommandTool("sweetpad.build.resolveDependencies", "build_resolve_dependencies", "Resolve package dependencies", extensionContext);
-  server.tool(buildResolveDependencies.toolName, "Resolve package dependencies", buildResolveDependencies.schema, buildResolveDependencies.implementation);
+  const buildResolveDependencies = createCommandTool("sweetpad.build.resolveDependencies", "resolve_swift_packages", "Resolve Swift Package Manager dependencies", extensionContext);
+  server.tool(buildResolveDependencies.toolName, "Resolve Swift Package Manager dependencies", buildResolveDependencies.schema, buildResolveDependencies.implementation);
 
-  const buildRemoveBundleDir = createCommandTool("sweetpad.build.removeBundleDir", "build_remove_bundle_dir", "Remove build bundle directory", extensionContext);
-  server.tool(buildRemoveBundleDir.toolName, "Remove build bundle directory", buildRemoveBundleDir.schema, buildRemoveBundleDir.implementation);
+  const buildRemoveBundleDir = createCommandTool("sweetpad.build.removeBundleDir", "clean_app_bundle", "Remove app bundle directory", extensionContext);
+  server.tool(buildRemoveBundleDir.toolName, "Remove app bundle directory", buildRemoveBundleDir.schema, buildRemoveBundleDir.implementation);
 
-  const buildGenerateBuildServerConfig = createCommandTool("sweetpad.build.generateBuildServerConfig", "build_generate_build_server_config", "Generate build server configuration", extensionContext);
-  server.tool(buildGenerateBuildServerConfig.toolName, "Generate build server configuration", buildGenerateBuildServerConfig.schema, buildGenerateBuildServerConfig.implementation);
+  const buildGenerateBuildServerConfig = createCommandTool("sweetpad.build.generateBuildServerConfig", "setup_build_server", "Generate Xcode build server configuration", extensionContext);
+  server.tool(buildGenerateBuildServerConfig.toolName, "Generate Xcode build server configuration", buildGenerateBuildServerConfig.schema, buildGenerateBuildServerConfig.implementation);
 
-  const buildOpenXcode = createCommandTool("sweetpad.build.openXcode", "build_open_xcode", "Open project in Xcode", extensionContext);
-  server.tool(buildOpenXcode.toolName, "Open project in Xcode", buildOpenXcode.schema, buildOpenXcode.implementation);
+  const buildOpenXcode = createCommandTool("sweetpad.build.openXcode", "open_project_in_xcode", "Open iOS project in Xcode", extensionContext);
+  server.tool(buildOpenXcode.toolName, "Open iOS project in Xcode", buildOpenXcode.schema, buildOpenXcode.implementation);
 
-  const buildSelectXcodeWorkspace = createCommandTool("sweetpad.build.selectXcodeWorkspace", "build_select_xcode_workspace", "Select Xcode workspace", extensionContext);
-  server.tool(buildSelectXcodeWorkspace.toolName, "Select Xcode workspace", buildSelectXcodeWorkspace.schema, buildSelectXcodeWorkspace.implementation);
+  const buildSelectXcodeWorkspace = createCommandTool("sweetpad.build.selectXcodeWorkspace", "select_xcode_workspace", "Select Xcode workspace file", extensionContext);
+  server.tool(buildSelectXcodeWorkspace.toolName, "Select Xcode workspace file", buildSelectXcodeWorkspace.schema, buildSelectXcodeWorkspace.implementation);
 
-  const buildSetDefaultScheme = createCommandTool("sweetpad.build.setDefaultScheme", "build_set_default_scheme", "Set default build scheme", extensionContext);
+  const buildSetDefaultScheme = createCommandTool("sweetpad.build.setDefaultScheme", "set_build_scheme", "Set default build scheme", extensionContext);
   server.tool(buildSetDefaultScheme.toolName, "Set default build scheme", buildSetDefaultScheme.schema, buildSetDefaultScheme.implementation);
 
-  const buildSelectConfiguration = createCommandTool("sweetpad.build.selectConfiguration", "build_select_configuration", "Select build configuration", extensionContext);
-  server.tool(buildSelectConfiguration.toolName, "Select build configuration", buildSelectConfiguration.schema, buildSelectConfiguration.implementation);
+  const buildSelectConfiguration = createCommandTool("sweetpad.build.selectConfiguration", "select_build_configuration", "Select build configuration (Debug/Release)", extensionContext);
+  server.tool(buildSelectConfiguration.toolName, "Select build configuration (Debug/Release)", buildSelectConfiguration.schema, buildSelectConfiguration.implementation);
 
-  const buildDiagnoseSetup = createCommandTool("sweetpad.build.diagnoseSetup", "build_diagnose_setup", "Diagnose build setup issues", extensionContext);
-  server.tool(buildDiagnoseSetup.toolName, "Diagnose build setup issues", buildDiagnoseSetup.schema, buildDiagnoseSetup.implementation);
+  const buildDiagnoseSetup = createCommandTool("sweetpad.build.diagnoseSetup", "diagnose_build_issues", "Diagnose iOS build setup issues", extensionContext);
+  server.tool(buildDiagnoseSetup.toolName, "Diagnose iOS build setup issues", buildDiagnoseSetup.schema, buildDiagnoseSetup.implementation);
 
-  const buildPeripheryScan = createCommandTool("sweetpad.build.peripheryScan", "build_periphery_scan", "Run Periphery scan for unused code", extensionContext);
-  server.tool(buildPeripheryScan.toolName, "Run Periphery scan for unused code", buildPeripheryScan.schema, buildPeripheryScan.implementation);
+  const buildPeripheryScan = createCommandTool("sweetpad.build.peripheryScan", "scan_unused_code", "Run Periphery scan to find unused Swift code", extensionContext);
+  server.tool(buildPeripheryScan.toolName, "Run Periphery scan to find unused Swift code", buildPeripheryScan.schema, buildPeripheryScan.implementation);
 
-  const buildBuildAndPeripheryScan = createCommandTool("sweetpad.build.buildAndPeripheryScan", "build_build_and_periphery_scan", "Build and run Periphery scan", extensionContext);
-  server.tool(buildBuildAndPeripheryScan.toolName, "Build and run Periphery scan", buildBuildAndPeripheryScan.schema, buildBuildAndPeripheryScan.implementation);
+  const buildBuildAndPeripheryScan = createCommandTool("sweetpad.build.buildAndPeripheryScan", "build_and_scan_unused_code", "Build project and run Periphery scan", extensionContext);
+  server.tool(buildBuildAndPeripheryScan.toolName, "Build project and run Periphery scan", buildBuildAndPeripheryScan.schema, buildBuildAndPeripheryScan.implementation);
 
-  const buildCreatePeripheryConfig = createCommandTool("sweetpad.build.createPeripheryConfig", "build_create_periphery_config", "Create Periphery configuration file", extensionContext);
+  const buildCreatePeripheryConfig = createCommandTool("sweetpad.build.createPeripheryConfig", "create_periphery_config", "Create Periphery configuration file", extensionContext);
   server.tool(buildCreatePeripheryConfig.toolName, "Create Periphery configuration file", buildCreatePeripheryConfig.schema, buildCreatePeripheryConfig.implementation);
 
   // === TESTING COMMANDS ===
-  const testingBuildForTesting = createCommandTool("sweetpad.testing.buildForTesting", "testing_build_for_testing", "Build for testing without running tests", extensionContext);
-  server.tool(testingBuildForTesting.toolName, "Build for testing without running tests", testingBuildForTesting.schema, testingBuildForTesting.implementation);
+  const testingBuildForTesting = createCommandTool("sweetpad.testing.buildForTesting", "build_for_testing", "Build iOS project for testing without running tests", extensionContext);
+  server.tool(testingBuildForTesting.toolName, "Build iOS project for testing without running tests", testingBuildForTesting.schema, testingBuildForTesting.implementation);
 
-  const testingTestWithoutBuilding = createCommandTool("sweetpad.testing.testWithoutBuilding", "testing_test_without_building", "Run tests without building", extensionContext);
-  server.tool(testingTestWithoutBuilding.toolName, "Run tests without building", testingTestWithoutBuilding.schema, testingTestWithoutBuilding.implementation);
+  const testingTestWithoutBuilding = createCommandTool("sweetpad.testing.testWithoutBuilding", "run_tests_without_building", "Run tests without building project", extensionContext);
+  server.tool(testingTestWithoutBuilding.toolName, "Run tests without building project", testingTestWithoutBuilding.schema, testingTestWithoutBuilding.implementation);
 
-  const testingSelectTarget = createCommandTool("sweetpad.testing.selectTarget", "testing_select_target", "Select testing target", extensionContext);
-  server.tool(testingSelectTarget.toolName, "Select testing target", testingSelectTarget.schema, testingSelectTarget.implementation);
+  const testingSelectTarget = createCommandTool("sweetpad.testing.selectTarget", "select_test_target", "Select iOS testing target", extensionContext);
+  server.tool(testingSelectTarget.toolName, "Select iOS testing target", testingSelectTarget.schema, testingSelectTarget.implementation);
 
-  const testingSetDefaultScheme = createCommandTool("sweetpad.testing.setDefaultScheme", "testing_set_default_scheme", "Set default testing scheme", extensionContext);
-  server.tool(testingSetDefaultScheme.toolName, "Set default testing scheme", testingSetDefaultScheme.schema, testingSetDefaultScheme.implementation);
+  const testingSetDefaultScheme = createCommandTool("sweetpad.testing.setDefaultScheme", "set_testing_scheme", "Set default scheme for testing", extensionContext);
+  server.tool(testingSetDefaultScheme.toolName, "Set default scheme for testing", testingSetDefaultScheme.schema, testingSetDefaultScheme.implementation);
 
-  const testingSelectConfiguration = createCommandTool("sweetpad.testing.selectConfiguration", "testing_select_configuration", "Select testing configuration", extensionContext);
-  server.tool(testingSelectConfiguration.toolName, "Select testing configuration", testingSelectConfiguration.schema, testingSelectConfiguration.implementation);
+  const testingSelectConfiguration = createCommandTool("sweetpad.testing.selectConfiguration", "select_testing_configuration", "Select configuration for testing (Debug/Release)", extensionContext);
+  server.tool(testingSelectConfiguration.toolName, "Select configuration for testing (Debug/Release)", testingSelectConfiguration.schema, testingSelectConfiguration.implementation);
 
   // === DEBUGGING COMMANDS ===
-  const debuggerGetAppPath = createCommandTool("sweetpad.debugger.getAppPath", "debugger_get_app_path", "Get app path for debugging", extensionContext);
-  server.tool(debuggerGetAppPath.toolName, "Get app path for debugging", debuggerGetAppPath.schema, debuggerGetAppPath.implementation);
+  const debuggerGetAppPath = createCommandTool("sweetpad.debugger.getAppPath", "get_debug_app_path", "Get iOS app path for debugging", extensionContext);
+  server.tool(debuggerGetAppPath.toolName, "Get iOS app path for debugging", debuggerGetAppPath.schema, debuggerGetAppPath.implementation);
 
-  const debuggerDebuggingLaunch = createCommandTool("sweetpad.debugger.debuggingLaunch", "debugger_debugging_launch", "Launch app with debugger", extensionContext);
-  server.tool(debuggerDebuggingLaunch.toolName, "Launch app with debugger", debuggerDebuggingLaunch.schema, debuggerDebuggingLaunch.implementation);
+  const debuggerDebuggingLaunch = createCommandTool("sweetpad.debugger.debuggingLaunch", "launch_app_with_debugger", "Launch iOS app with debugger attached", extensionContext);
+  server.tool(debuggerDebuggingLaunch.toolName, "Launch iOS app with debugger attached", debuggerDebuggingLaunch.schema, debuggerDebuggingLaunch.implementation);
 
-  const debuggerDebuggingRun = createCommandTool("sweetpad.debugger.debuggingRun", "debugger_debugging_run", "Run app with debugger", extensionContext);
-  server.tool(debuggerDebuggingRun.toolName, "Run app with debugger", debuggerDebuggingRun.schema, debuggerDebuggingRun.implementation);
+  const debuggerDebuggingRun = createCommandTool("sweetpad.debugger.debuggingRun", "run_app_with_debugger", "Run iOS app with debugger attached", extensionContext);
+  server.tool(debuggerDebuggingRun.toolName, "Run iOS app with debugger attached", debuggerDebuggingRun.schema, debuggerDebuggingRun.implementation);
 
-  const debuggerDebuggingBuild = createCommandTool("sweetpad.debugger.debuggingBuild", "debugger_debugging_build", "Build app for debugging", extensionContext);
-  server.tool(debuggerDebuggingBuild.toolName, "Build app for debugging", debuggerDebuggingBuild.schema, debuggerDebuggingBuild.implementation);
+  const debuggerDebuggingBuild = createCommandTool("sweetpad.debugger.debuggingBuild", "build_for_debugging", "Build iOS app for debugging", extensionContext);
+  server.tool(debuggerDebuggingBuild.toolName, "Build iOS app for debugging", debuggerDebuggingBuild.schema, debuggerDebuggingBuild.implementation);
 
   // === PROJECT GENERATION COMMANDS ===
-  const xcodegenGenerate = createCommandTool("sweetpad.xcodegen.generate", "xcodegen_generate", "Generate Xcode project using XcodeGen", extensionContext);
+  const xcodegenGenerate = createCommandTool("sweetpad.xcodegen.generate", "generate_xcode_project_xcodegen", "Generate Xcode project using XcodeGen", extensionContext);
   server.tool(xcodegenGenerate.toolName, "Generate Xcode project using XcodeGen", xcodegenGenerate.schema, xcodegenGenerate.implementation);
 
-  const tuistGenerate = createCommandTool("sweetpad.tuist.generate", "tuist_generate", "Generate Xcode project using Tuist", extensionContext);
+  const tuistGenerate = createCommandTool("sweetpad.tuist.generate", "generate_xcode_project_tuist", "Generate Xcode project using Tuist", extensionContext);
   server.tool(tuistGenerate.toolName, "Generate Xcode project using Tuist", tuistGenerate.schema, tuistGenerate.implementation);
 
-  const tuistInstall = createCommandTool("sweetpad.tuist.install", "tuist_install", "Install Tuist dependencies", extensionContext);
+  const tuistInstall = createCommandTool("sweetpad.tuist.install", "install_tuist_dependencies", "Install Tuist dependencies", extensionContext);
   server.tool(tuistInstall.toolName, "Install Tuist dependencies", tuistInstall.schema, tuistInstall.implementation);
 
-  const tuistClean = createCommandTool("sweetpad.tuist.clean", "tuist_clean", "Clean Tuist cache", extensionContext);
-  server.tool(tuistClean.toolName, "Clean Tuist cache", tuistClean.schema, tuistClean.implementation);
+  const tuistClean = createCommandTool("sweetpad.tuist.clean", "clean_tuist_cache", "Clean Tuist cache and artifacts", extensionContext);
+  server.tool(tuistClean.toolName, "Clean Tuist cache and artifacts", tuistClean.schema, tuistClean.implementation);
 
-  const tuistEdit = createCommandTool("sweetpad.tuist.edit", "tuist_edit", "Edit Tuist project", extensionContext);
-  server.tool(tuistEdit.toolName, "Edit Tuist project", tuistEdit.schema, tuistEdit.implementation);
+  const tuistEdit = createCommandTool("sweetpad.tuist.edit", "edit_tuist_project", "Edit Tuist project configuration", extensionContext);
+  server.tool(tuistEdit.toolName, "Edit Tuist project configuration", tuistEdit.schema, tuistEdit.implementation);
 
   // === FORMAT COMMANDS ===
-  const formatRun = createCommandTool("sweetpad.format.run", "format_run", "Format Swift code", extensionContext);
-  server.tool(formatRun.toolName, "Format Swift code", formatRun.schema, formatRun.implementation);
+  const formatRun = createCommandTool("sweetpad.format.run", "format_swift_code", "Format Swift code using swift-format", extensionContext);
+  server.tool(formatRun.toolName, "Format Swift code using swift-format", formatRun.schema, formatRun.implementation);
 
-  const formatShowLogs = createCommandTool("sweetpad.format.showLogs", "format_show_logs", "Show formatter logs", extensionContext);
-  server.tool(formatShowLogs.toolName, "Show formatter logs", formatShowLogs.schema, formatShowLogs.implementation);
+  const formatShowLogs = createCommandTool("sweetpad.format.showLogs", "show_formatter_logs", "Show Swift formatter logs", extensionContext);
+  server.tool(formatShowLogs.toolName, "Show Swift formatter logs", formatShowLogs.schema, formatShowLogs.implementation);
 
   // === SIMULATOR COMMANDS ===
-  const simulatorsRefresh = createCommandTool("sweetpad.simulators.refresh", "simulators_refresh", "Refresh simulator list", extensionContext);
-  server.tool(simulatorsRefresh.toolName, "Refresh simulator list", simulatorsRefresh.schema, simulatorsRefresh.implementation);
+  const simulatorsRefresh = createCommandTool("sweetpad.simulators.refresh", "refresh_ios_simulators", "Refresh iOS simulator list", extensionContext);
+  server.tool(simulatorsRefresh.toolName, "Refresh iOS simulator list", simulatorsRefresh.schema, simulatorsRefresh.implementation);
 
-  const simulatorsOpenSimulator = createCommandTool("sweetpad.simulators.openSimulator", "simulators_open_simulator", "Open iOS Simulator", extensionContext);
-  server.tool(simulatorsOpenSimulator.toolName, "Open iOS Simulator", simulatorsOpenSimulator.schema, simulatorsOpenSimulator.implementation);
+  const simulatorsOpenSimulator = createCommandTool("sweetpad.simulators.openSimulator", "open_ios_simulator", "Open iOS Simulator app", extensionContext);
+  server.tool(simulatorsOpenSimulator.toolName, "Open iOS Simulator app", simulatorsOpenSimulator.schema, simulatorsOpenSimulator.implementation);
 
-  const simulatorsRemoveCache = createCommandTool("sweetpad.simulators.removeCache", "simulators_remove_cache", "Remove simulator cache", extensionContext);
-  server.tool(simulatorsRemoveCache.toolName, "Remove simulator cache", simulatorsRemoveCache.schema, simulatorsRemoveCache.implementation);
+  const simulatorsRemoveCache = createCommandTool("sweetpad.simulators.removeCache", "clear_simulator_cache", "Clear iOS simulator cache", extensionContext);
+  server.tool(simulatorsRemoveCache.toolName, "Clear iOS simulator cache", simulatorsRemoveCache.schema, simulatorsRemoveCache.implementation);
 
-  const simulatorsStart = createCommandTool("sweetpad.simulators.start", "simulators_start", "Start iOS Simulator", extensionContext);
-  server.tool(simulatorsStart.toolName, "Start iOS Simulator", simulatorsStart.schema, simulatorsStart.implementation);
+  const simulatorsStart = createCommandTool("sweetpad.simulators.start", "start_ios_simulator", "Start specific iOS Simulator", extensionContext);
+  server.tool(simulatorsStart.toolName, "Start specific iOS Simulator", simulatorsStart.schema, simulatorsStart.implementation);
 
-  const simulatorsStop = createCommandTool("sweetpad.simulators.stop", "simulators_stop", "Stop iOS Simulator", extensionContext);
+  const simulatorsStop = createCommandTool("sweetpad.simulators.stop", "stop_ios_simulator", "Stop iOS Simulator", extensionContext);
   server.tool(simulatorsStop.toolName, "Stop iOS Simulator", simulatorsStop.schema, simulatorsStop.implementation);
 
   // === DEVICE COMMANDS ===
-  const devicesRefresh = createCommandTool("sweetpad.devices.refresh", "devices_refresh", "Refresh device list", extensionContext);
-  server.tool(devicesRefresh.toolName, "Refresh device list", devicesRefresh.schema, devicesRefresh.implementation);
+  const devicesRefresh = createCommandTool("sweetpad.devices.refresh", "refresh_ios_devices", "Refresh connected iOS device list", extensionContext);
+  server.tool(devicesRefresh.toolName, "Refresh connected iOS device list", devicesRefresh.schema, devicesRefresh.implementation);
 
   // === DESTINATION COMMANDS ===
-  const destinationsSelect = createCommandTool("sweetpad.destinations.select", "destinations_select", "Select build destination", extensionContext);
-  server.tool(destinationsSelect.toolName, "Select build destination", destinationsSelect.schema, destinationsSelect.implementation);
+  const destinationsSelect = createCommandTool("sweetpad.destinations.select", "select_build_destination", "Select build destination (device or simulator)", extensionContext);
+  server.tool(destinationsSelect.toolName, "Select build destination (device or simulator)", destinationsSelect.schema, destinationsSelect.implementation);
 
-  const destinationsRemoveRecent = createCommandTool("sweetpad.destinations.removeRecent", "destinations_remove_recent", "Remove recent destination", extensionContext);
-  server.tool(destinationsRemoveRecent.toolName, "Remove recent destination", destinationsRemoveRecent.schema, destinationsRemoveRecent.implementation);
+  const destinationsRemoveRecent = createCommandTool("sweetpad.destinations.removeRecent", "remove_recent_destination", "Remove recent build destination", extensionContext);
+  server.tool(destinationsRemoveRecent.toolName, "Remove recent build destination", destinationsRemoveRecent.schema, destinationsRemoveRecent.implementation);
 
-  const destinationsSelectForTesting = createCommandTool("sweetpad.destinations.selectForTesting", "destinations_select_for_testing", "Select destination for testing", extensionContext);
+  const destinationsSelectForTesting = createCommandTool("sweetpad.destinations.selectForTesting", "select_testing_destination", "Select destination for testing", extensionContext);
   server.tool(destinationsSelectForTesting.toolName, "Select destination for testing", destinationsSelectForTesting.schema, destinationsSelectForTesting.implementation);
 
   // === TOOL COMMANDS ===
-  const toolsInstall = createCommandTool("sweetpad.tools.install", "tools_install", "Install development tool", extensionContext);
-  server.tool(toolsInstall.toolName, "Install development tool", toolsInstall.schema, toolsInstall.implementation);
+  const toolsInstall = createCommandTool("sweetpad.tools.install", "install_development_tool", "Install iOS development tool", extensionContext);
+  server.tool(toolsInstall.toolName, "Install iOS development tool", toolsInstall.schema, toolsInstall.implementation);
 
-  const toolsRefresh = createCommandTool("sweetpad.tools.refresh", "tools_refresh", "Refresh tools list", extensionContext);
-  server.tool(toolsRefresh.toolName, "Refresh tools list", toolsRefresh.schema, toolsRefresh.implementation);
+  const toolsRefresh = createCommandTool("sweetpad.tools.refresh", "refresh_development_tools", "Refresh development tools list", extensionContext);
+  server.tool(toolsRefresh.toolName, "Refresh development tools list", toolsRefresh.schema, toolsRefresh.implementation);
 
-  const toolsDocumentation = createCommandTool("sweetpad.tools.documentation", "tools_documentation", "Open tool documentation", extensionContext);
-  server.tool(toolsDocumentation.toolName, "Open tool documentation", toolsDocumentation.schema, toolsDocumentation.implementation);
+  const toolsDocumentation = createCommandTool("sweetpad.tools.documentation", "open_tool_documentation", "Open development tool documentation", extensionContext);
+  server.tool(toolsDocumentation.toolName, "Open development tool documentation", toolsDocumentation.schema, toolsDocumentation.implementation);
 
   // === SYSTEM COMMANDS ===
-  const systemResetSweetpadCache = createCommandTool("sweetpad.system.resetSweetpadCache", "system_reset_sweetpad_cache", "Reset SweetPad cache", extensionContext);
-  server.tool(systemResetSweetpadCache.toolName, "Reset SweetPad cache", systemResetSweetpadCache.schema, systemResetSweetpadCache.implementation);
+  const systemResetSweetpadCache = createCommandTool("sweetpad.system.resetSweetpadCache", "reset_sweetpad_cache", "Reset SweetPad extension cache", extensionContext);
+  server.tool(systemResetSweetpadCache.toolName, "Reset SweetPad extension cache", systemResetSweetpadCache.schema, systemResetSweetpadCache.implementation);
 
-  const systemCreateIssueGeneric = createCommandTool("sweetpad.system.createIssue.generic", "system_create_issue_generic", "Create generic GitHub issue", extensionContext);
-  server.tool(systemCreateIssueGeneric.toolName, "Create generic GitHub issue", systemCreateIssueGeneric.schema, systemCreateIssueGeneric.implementation);
+  const systemCreateIssueGeneric = createCommandTool("sweetpad.system.createIssue.generic", "create_github_issue", "Create GitHub issue for SweetPad", extensionContext);
+  server.tool(systemCreateIssueGeneric.toolName, "Create GitHub issue for SweetPad", systemCreateIssueGeneric.schema, systemCreateIssueGeneric.implementation);
 
-  const systemCreateIssueNoSchemes = createCommandTool("sweetpad.system.createIssue.noSchemes", "system_create_issue_no_schemes", "Create GitHub issue for no schemes found", extensionContext);
-  server.tool(systemCreateIssueNoSchemes.toolName, "Create GitHub issue for no schemes found", systemCreateIssueNoSchemes.schema, systemCreateIssueNoSchemes.implementation);
+  const systemCreateIssueNoSchemes = createCommandTool("sweetpad.system.createIssue.noSchemes", "create_no_schemes_issue", "Create GitHub issue for missing schemes", extensionContext);
+  server.tool(systemCreateIssueNoSchemes.toolName, "Create GitHub issue for missing schemes", systemCreateIssueNoSchemes.schema, systemCreateIssueNoSchemes.implementation);
 
-  const systemTestErrorReporting = createCommandTool("sweetpad.system.testErrorReporting", "system_test_error_reporting", "Test error reporting system", extensionContext);
-  server.tool(systemTestErrorReporting.toolName, "Test error reporting system", systemTestErrorReporting.schema, systemTestErrorReporting.implementation);
+  const systemTestErrorReporting = createCommandTool("sweetpad.system.testErrorReporting", "test_error_reporting", "Test SweetPad error reporting system", extensionContext);
+  server.tool(systemTestErrorReporting.toolName, "Test SweetPad error reporting system", systemTestErrorReporting.schema, systemTestErrorReporting.implementation);
 
-  const systemOpenTerminalPanel = createCommandTool("sweetpad.system.openTerminalPanel", "system_open_terminal_panel", "Open terminal panel", extensionContext);
-  server.tool(systemOpenTerminalPanel.toolName, "Open terminal panel", systemOpenTerminalPanel.schema, systemOpenTerminalPanel.implementation);
+  const systemOpenTerminalPanel = createCommandTool("sweetpad.system.openTerminalPanel", "open_terminal_panel", "Open VSCode terminal panel", extensionContext);
+  server.tool(systemOpenTerminalPanel.toolName, "Open VSCode terminal panel", systemOpenTerminalPanel.schema, systemOpenTerminalPanel.implementation);
 
   server.tool(
       "take_simulator_screenshot",
