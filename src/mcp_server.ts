@@ -257,9 +257,6 @@ export function createMcpServer(options: McpServerOptions, extensionContext: Ext
   const simulatorsStop = createCommandTool("sweetpad.simulators.stop", "simulators_stop", "Stop iOS Simulator", extensionContext);
   server.tool(simulatorsStop.toolName, "Stop iOS Simulator", simulatorsStop.schema, simulatorsStop.implementation);
 
-  const simulatorsScreenshot = createCommandTool("sweetpad.simulators.screenshot", "simulators_screenshot", "Take simulator screenshot", extensionContext);
-  server.tool(simulatorsScreenshot.toolName, "Take simulator screenshot", simulatorsScreenshot.schema, simulatorsScreenshot.implementation);
-
   // === DEVICE COMMANDS ===
   const devicesRefresh = createCommandTool("sweetpad.devices.refresh", "devices_refresh", "Refresh device list", extensionContext);
   server.tool(devicesRefresh.toolName, "Refresh device list", devicesRefresh.schema, devicesRefresh.implementation);
