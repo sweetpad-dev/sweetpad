@@ -14,3 +14,5 @@ node_modules
 
 tests/examples/*
 !tests/examples/README.md
+
+task_output.log
