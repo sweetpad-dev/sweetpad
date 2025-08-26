@@ -186,8 +186,8 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.build.peripheryScan", peripheryScanCommand));
     d(command("sweetpad.build.buildAndPeripheryScan", buildAndPeripheryScanCommand));
     d(command("sweetpad.build.createPeripheryConfig", createPeripheryConfigCommand));
-    d(command("sweetpad.build.search", (context) => searchBuildsCommand(context, workspaceTreeProvider)));
-    d(command("sweetpad.build.clearSearch", (context) => clearBuildsSearchCommand(context, workspaceTreeProvider)));
+    d(command("sweetpad.build.search", () => searchBuildsCommand(_context, workspaceTreeProvider)));
+    d(command("sweetpad.build.clearSearch", () => clearBuildsSearchCommand(_context, workspaceTreeProvider)));
 
     // Testing
     d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));

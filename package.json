@@ -471,8 +471,8 @@
       },
       {
         "command": "sweetpad.build.clearSearch",
-        "title": "Clear Search",
-        "icon": "$(clear-all)"
+        "title": "Clear Search (Active)",
+        "icon": "$(search-stop)"
       },
       {
         "command": "sweetpad.simulators.refresh",
@@ -606,13 +606,13 @@
         },
         {
           "command": "sweetpad.build.search",
-          "when": "view == sweetpad.view.workspaces",
+          "when": "view == sweetpad.view.workspaces && !sweetpad.builds.searchActive",
           "group": "navigation@1"
         },
         {
           "command": "sweetpad.build.clearSearch",
-          "when": "view == sweetpad.view.workspaces",
-          "group": "navigation@2"
+          "when": "view == sweetpad.view.workspaces && sweetpad.builds.searchActive",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -679,6 +679,11 @@
         {
           "command": "sweetpad.build.selectXcodeWorkspace",
           "when": "view == sweetpad.view.workspaces && viewItem == workspace-group",
+          "group": "inline@1"
+        },
+        {
+          "command": "sweetpad.build.clearSearch",
+          "when": "view == sweetpad.view.workspaces && viewItem == search-status",
           "group": "inline@1"
         },
         {
