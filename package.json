@@ -465,6 +465,16 @@
         "icon": "$(sweetpad-refresh)"
       },
       {
+        "command": "sweetpad.build.search",
+        "title": "Search Builds",
+        "icon": "$(search)"
+      },
+      {
+        "command": "sweetpad.build.clearSearch",
+        "title": "Clear Search",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "sweetpad.simulators.refresh",
         "title": "SweetPad: Refresh simulators list",
         "icon": "$(sweetpad-refresh)"
@@ -593,6 +603,16 @@
           "command": "sweetpad.tools.refresh",
           "when": "view == sweetpad.tools.view",
           "group": "navigation"
+        },
+        {
+          "command": "sweetpad.build.search",
+          "when": "view == sweetpad.view.workspaces",
+          "group": "navigation@1"
+        },
+        {
+          "command": "sweetpad.build.clearSearch",
+          "when": "view == sweetpad.view.workspaces",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
