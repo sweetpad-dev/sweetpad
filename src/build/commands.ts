@@ -1,6 +1,6 @@
 import path from "node:path";
 import * as vscode from "vscode";
-import type { BuildTreeItem, WorkspaceGroupTreeItem } from "./tree";
+import type { BuildTreeItem, WorkspaceGroupTreeItem, WorkspaceTreeProvider } from "./tree";
 
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import {
@@ -1988,4 +1988,36 @@ verbose: false
   } catch (error) {
     vscode.window.showErrorMessage(`❌ Failed to create .periphery.yml: ${error}`);
   }
+}
+
+/**
+ * Command to search builds tree
+ */
+export async function searchBuildsCommand(context: ExtensionContext, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {
+  if (!workspaceTreeProvider) {
+    vscode.window.showErrorMessage("Workspace tree provider not available");
+    return;
+  }
+
+  const searchTerm = await vscode.window.showInputBox({
+    prompt: "Search builds and schemes",
+    placeHolder: "Enter search term...",
+    value: workspaceTreeProvider.getSearchTerm(),
+  });
+
+  if (searchTerm !== undefined) {
+    workspaceTreeProvider.setSearchTerm(searchTerm);
+  }
+}
+
+/**
+ * Command to clear builds search
+ */
+export async function clearBuildsSearchCommand(context: ExtensionContext, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {
+  if (!workspaceTreeProvider) {
+    vscode.window.showErrorMessage("Workspace tree provider not available");
+    return;
+  }
+
+  workspaceTreeProvider.clearSearch();
 }
