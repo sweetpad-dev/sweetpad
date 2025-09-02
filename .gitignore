@@ -16,3 +16,5 @@ tests/examples/*
 !tests/examples/README.md
 
 task_output.log
+
+.DS_Store
