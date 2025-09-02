@@ -1,5 +1,6 @@
 import { type XcodeConfiguration, getBuildConfigurations } from "./cli/scripts";
 import { showQuickPick } from "./quick-pick";
+import { type ExtensionContext } from "./commands";
 
 export const DEFAULT_DEBUG_CONFIGURATION = "Debug";
 export const DEFAULT_RELEASE_CONFIGURATION = "Release";
@@ -9,10 +10,11 @@ export const DEFAULT_RELEASE_CONFIGURATION = "Release";
  *
  * "Debug" configuration is used as default
  */
-export async function askConfigurationBase(options: {
+export async function askConfigurationBase(context: ExtensionContext, options: {
   xcworkspace: string;
 }) {
   // Fetch all configurations
+  context.updateProgressStatus("Fetching configurations");
   const configurations = await getBuildConfigurations({
     xcworkspace: options.xcworkspace,
   });
@@ -20,11 +22,13 @@ export async function askConfigurationBase(options: {
   // Use default configuration if no configurations found
   // todo: we can try to parse configurations from schemes files or ask user to enter configuration name manually
   if (configurations.length === 0) {
+    context.updateProgressStatus("Using default configuration");
     return DEFAULT_DEBUG_CONFIGURATION;
   }
 
   // When we have only one configuration let's use it as default
   if (configurations.length === 1) {
+    context.updateProgressStatus("Using default configuration");
     return configurations[0].name;
   }
 
@@ -36,6 +40,7 @@ export async function askConfigurationBase(options: {
     configurations.some((c) => c.name === DEFAULT_DEBUG_CONFIGURATION) &&
     configurations.some((c) => c.name === DEFAULT_RELEASE_CONFIGURATION)
   ) {
+    context.updateProgressStatus("Using default configuration");
     return DEFAULT_DEBUG_CONFIGURATION;
   }
 
@@ -45,13 +50,14 @@ export async function askConfigurationBase(options: {
   // Path: /Scheme/LaunchAction[buildConfiguration]
 
   // Give user a choice to select configuration if we don't know wich one to use
-  return await showConfigurationPicker(configurations);
+  context.updateProgressStatus("Showing configuration picker");
+  return await showConfigurationPicker(context, configurations);
 }
 
 /**
  * Just show quick pick with all configurations and return selected configuration name
  */
-export async function showConfigurationPicker(configurations: XcodeConfiguration[]): Promise<string> {
+export async function showConfigurationPicker(context: ExtensionContext, configurations: XcodeConfiguration[]): Promise<string> {
   const selected = await showQuickPick({
     title: "Select configuration",
     items: configurations.map((configuration) => {
@@ -63,7 +69,8 @@ export async function showConfigurationPicker(configurations: XcodeConfiguration
       };
     }),
   });
-  return selected.context.configuration.name;
+  context.updateProgressStatus("Configuration selected");
+  return selected.context.configuration.name; 
 }
 
 export async function showYesNoQuestion(options: {
