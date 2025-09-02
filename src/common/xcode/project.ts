@@ -1,6 +1,7 @@
 import path from "node:path";
+import fs from 'fs';
 import { XcodeProject as XcodeProjectParsed } from "@bacons/xcode";
-import { type XcodeProject as XcodeProjectRaw, parse as parseChevrotain } from "@bacons/xcode/json";
+import { parseOptimized, type XcodeProject as XcodeProjectRaw, parse as parseChevrotain } from "@bacons/xcode/json";
 import { type XmlDocument, XmlElement, type XmlNode, parseXml } from "@rgrove/parse-xml";
 import { findFiles, findFilesRecursive, isFileExists, readFile, readTextFile, statFile } from "../files";
 import { uniqueFilter } from "../helpers";
@@ -297,18 +298,61 @@ export class XcodeProjectFallbackParser implements XcodeProject {
 
 export async function parseXcodeProject(projectPath: string): Promise<XcodeProject> {
   const pbxprojPath = path.join(projectPath, "project.pbxproj");
+  
+  // Get file size for strategy selection
+  const stats = fs.statSync(pbxprojPath);
+  const fileSizeMB = stats.size / 1024 / 1024;
+  
   try {
-    const parsed = XcodeProjectParsed.open(pbxprojPath);
-    return new XcodeProjectBaconParser({
-      parsed: parsed,
-      projectPath: projectPath,
-    });
+         // Strategy 1: Optimized lazy loading (fastest for most cases)
+     console.log(`📊 Opening ${fileSizeMB.toFixed(2)}MB project with optimizations...`);
+     
+     const project = XcodeProjectParsed.openLazy(pbxprojPath, {
+       skipFullInflation: true,
+       progressCallback: (message: string) => console.log(`   ${message}`)
+     });
+     
+     console.log('✅ Optimized parsing successful');
+     return new XcodeProjectBaconParser({
+       parsed: project,
+       projectPath: projectPath,
+     });
+    
   } catch (error) {
-    const projectRaw = await readTextFile(pbxprojPath);
-    const parsed = parseChevrotain(projectRaw);
-    return new XcodeProjectFallbackParser({
-      parsed: parsed,
-      projectPath: projectPath,
-    });
+    console.log('⚠️  Optimized parser failed, trying streaming fallback...');
+    
+    try {
+      // Strategy 2: Streaming parser for large files
+      const contents = fs.readFileSync(pbxprojPath, 'utf8');
+      const parsedData = parseOptimized(contents, {
+        progressCallback: (processed, total, stage) => {
+          if (processed % 5000 === 0) {
+            console.log(`   ${stage}: ${processed.toLocaleString()}/${total.toLocaleString()}`);
+          }
+        }
+      });
+      
+             const project = new XcodeProjectParsed(pbxprojPath, parsedData, { 
+         skipFullInflation: true 
+       });
+       
+       console.log('✅ Streaming parser successful');
+       return new XcodeProjectBaconParser({
+         parsed: project,
+         projectPath: projectPath,
+       });
+      
+    } catch (streamingError) {
+      // Strategy 3: Original fallback
+      console.log('❌ Streaming failed, using original parser...');
+      
+             const contents = fs.readFileSync(pbxprojPath, 'utf8');
+       const parsedData = parseChevrotain(contents);
+       
+       return new XcodeProjectFallbackParser({
+         parsed: parsedData,
+         projectPath: projectPath,
+       });
+    }
   }
 }
