@@ -1515,7 +1515,7 @@ export async function selectConfigurationForBuildCommand(context: ExtensionConte
       title: "No configurations found. Please enter configuration name manually",
     });
   } else {
-    selected = await showConfigurationPicker(configurations);
+    selected = await showConfigurationPicker(context, configurations);
   }
 
   if (!selected) {

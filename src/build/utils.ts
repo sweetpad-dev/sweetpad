@@ -337,11 +337,15 @@ export async function askConfiguration(
   if (fromConfig) {
     return fromConfig;
   }
+
+  context.updateProgressStatus("Searching for cached configuration");
   const cached = context.buildManager.getDefaultConfigurationForBuild();
   if (cached) {
     return cached;
   }
-  const selected = await askConfigurationBase({
+
+  context.updateProgressStatus("Asking user to select configuration");
+  const selected = await askConfigurationBase(context, {
     xcworkspace: options.xcworkspace,
   });
   context.buildManager.setDefaultConfigurationForBuild(selected);
