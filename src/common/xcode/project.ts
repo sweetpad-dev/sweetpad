@@ -1,5 +1,5 @@
 import path from "node:path";
-import fs from 'fs';
+import fs from "fs";
 import { XcodeProject as XcodeProjectParsed } from "@bacons/xcode";
 import { parseOptimized, type XcodeProject as XcodeProjectRaw, parse as parseChevrotain } from "@bacons/xcode/json";
 import { type XmlDocument, XmlElement, type XmlNode, parseXml } from "@rgrove/parse-xml";
@@ -260,10 +260,7 @@ export class XcodeProjectFallbackParser implements XcodeProject {
 
   private parsed: Partial<XcodeProjectRaw>;
 
-  constructor(options: {
-    parsed: Partial<XcodeProjectRaw>;
-    projectPath: string;
-  }) {
+  constructor(options: { parsed: Partial<XcodeProjectRaw>; projectPath: string }) {
     this.parsed = options.parsed;
     this.projectPath = options.projectPath;
   }
@@ -298,61 +295,59 @@ export class XcodeProjectFallbackParser implements XcodeProject {
 
 export async function parseXcodeProject(projectPath: string): Promise<XcodeProject> {
   const pbxprojPath = path.join(projectPath, "project.pbxproj");
-  
+
   // Get file size for strategy selection
   const stats = fs.statSync(pbxprojPath);
   const fileSizeMB = stats.size / 1024 / 1024;
-  
+
   try {
-         // Strategy 1: Optimized lazy loading (fastest for most cases)
-     console.log(`📊 Opening ${fileSizeMB.toFixed(2)}MB project with optimizations...`);
-     
-     const project = XcodeProjectParsed.openLazy(pbxprojPath, {
-       skipFullInflation: true,
-       progressCallback: (message: string) => console.log(`   ${message}`)
-     });
-     
-     console.log('✅ Optimized parsing successful');
-     return new XcodeProjectBaconParser({
-       parsed: project,
-       projectPath: projectPath,
-     });
-    
+    // Strategy 1: Optimized lazy loading (fastest for most cases)
+    console.log(`📊 Opening ${fileSizeMB.toFixed(2)}MB project with optimizations...`);
+
+    const project = XcodeProjectParsed.openLazy(pbxprojPath, {
+      skipFullInflation: true,
+      progressCallback: (message: string) => console.log(`   ${message}`),
+    });
+
+    console.log("✅ Optimized parsing successful");
+    return new XcodeProjectBaconParser({
+      parsed: project,
+      projectPath: projectPath,
+    });
   } catch (error) {
-    console.log('⚠️  Optimized parser failed, trying streaming fallback...');
-    
+    console.log("⚠️  Optimized parser failed, trying streaming fallback...");
+
     try {
       // Strategy 2: Streaming parser for large files
-      const contents = fs.readFileSync(pbxprojPath, 'utf8');
+      const contents = fs.readFileSync(pbxprojPath, "utf8");
       const parsedData = parseOptimized(contents, {
         progressCallback: (processed, total, stage) => {
           if (processed % 5000 === 0) {
             console.log(`   ${stage}: ${processed.toLocaleString()}/${total.toLocaleString()}`);
           }
-        }
+        },
       });
-      
-             const project = new XcodeProjectParsed(pbxprojPath, parsedData, { 
-         skipFullInflation: true 
-       });
-       
-       console.log('✅ Streaming parser successful');
-       return new XcodeProjectBaconParser({
-         parsed: project,
-         projectPath: projectPath,
-       });
-      
+
+      const project = new XcodeProjectParsed(pbxprojPath, parsedData, {
+        skipFullInflation: true,
+      });
+
+      console.log("✅ Streaming parser successful");
+      return new XcodeProjectBaconParser({
+        parsed: project,
+        projectPath: projectPath,
+      });
     } catch (streamingError) {
       // Strategy 3: Original fallback
-      console.log('❌ Streaming failed, using original parser...');
-      
-             const contents = fs.readFileSync(pbxprojPath, 'utf8');
-       const parsedData = parseChevrotain(contents);
-       
-       return new XcodeProjectFallbackParser({
-         parsed: parsedData,
-         projectPath: projectPath,
-       });
+      console.log("❌ Streaming failed, using original parser...");
+
+      const contents = fs.readFileSync(pbxprojPath, "utf8");
+      const parsedData = parseChevrotain(contents);
+
+      return new XcodeProjectFallbackParser({
+        parsed: parsedData,
+        projectPath: projectPath,
+      });
     }
   }
 }
