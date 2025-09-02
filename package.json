@@ -1318,7 +1318,7 @@
     "zod": "^3.25.32"
   },
   "dependencies": {
-    "@bacons/xcode": "^1.0.0-alpha.15",
+    "@bacons/xcode": "1.0.0-alpha.15",
     "@rgrove/parse-xml": "^4.1.0",
     "@sentry/node": "^8.34.0",
     "add": "^2.0.6",
