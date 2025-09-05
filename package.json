@@ -368,7 +368,7 @@
       },
       {
         "command": "sweetpad.build.selectXcodeWorkspace",
-        "title": "SweetPad: Select Xcode workspace",
+        "title": "SweetPad: Select",
         "icon": "$(file-directory)"
       },
       {
