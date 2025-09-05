@@ -135,11 +135,8 @@ export async function activate(context: vscode.ExtensionContext) {
     testingManager.context = _context;
     progressStatusBar.context = _context;
 
-    // --- Defer initial refreshes to prevent activation loops ---
-    // Schedule refresh after activation completes to avoid circular workspace detection
-    setTimeout(() => {
-      void buildManager.refresh();
-    }, 1000);
+    // Start loading immediately when extension activates
+    void buildManager.refresh();
     
     // Trees 🎄
     // const buildTreeProvider = new BuildTreeProvider({

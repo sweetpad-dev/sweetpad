@@ -513,7 +513,10 @@ export function findBazelWorkspaceRoot(startPath: string): string {
   return path.dirname(startPath);
 }
 
-// Bazel-related types and functions
+// Import new comprehensive Bazel parser
+import { BazelParser, type BazelTarget as NewBazelTarget, type BazelParseResult } from './bazel';
+
+// Legacy compatibility types - keeping for backwards compatibility
 export interface BazelTarget {
   name: string;
   type: "library" | "test" | "binary";
@@ -529,7 +532,8 @@ export interface BazelPackage {
 }
 
 /**
- * Parse a BUILD.bazel file and extract dd_ios_package targets
+ * Parse a BUILD.bazel file using the new comprehensive Bazel parser
+ * (Maintains backwards compatibility with legacy interface)
  */
 export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelPackage | null> {
   // Validate input
@@ -554,247 +558,29 @@ export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelP
     
     const content = await fs.readFile(buildFilePath, "utf-8");
     
-    // Extract the package name from the path (parent directory of BUILD.bazel)
+    // Use the new comprehensive parser
+    const parseResult = BazelParser.parse(content, buildFilePath);
+    
+    // Convert to legacy format for backwards compatibility
     const packagePath = path.dirname(buildFilePath);
     const packageName = path.basename(packagePath);
     
-    // Find different types of Bazel iOS rules in the file
-    const targets: BazelTarget[] = [];
+    // Combine both regular targets and test targets into legacy format
+    const allNewTargets = [...parseResult.targets, ...parseResult.targetsTest];
     
-    // 1. Try dd_ios_package rules (original format) - more flexible regex
-    const ddPackageRegex = /dd_ios_package\s*\(\s*[\s\S]*?name\s*=\s*"([^"]+)"[\s\S]*?targets\s*=\s*\[([\s\S]*?)\]\s*[\s\S]*?\)/g;
-    let ddPackageMatch;
-    
-    while ((ddPackageMatch = ddPackageRegex.exec(content)) !== null) {
-      const [, packageTargetName, targetsBlock] = ddPackageMatch;
-      
-      // Parse targets more carefully by finding balanced parentheses
-      let targetCount = 0;
-      
-      // Find all target.xxx( patterns and parse each one
-      const targetStartRegex = /target\.(\w+)\s*\(/g;
-      let targetStartMatch;
-      
-      while ((targetStartMatch = targetStartRegex.exec(targetsBlock)) !== null) {
-        const targetType = targetStartMatch[1];
-        const startPos = targetStartMatch.index + targetStartMatch[0].length - 1; // Position of opening (
-        
-        // Find the matching closing parenthesis
-        let parenCount = 1;
-        let endPos = startPos + 1;
-        
-        while (endPos < targetsBlock.length && parenCount > 0) {
-          if (targetsBlock[endPos] === '(') parenCount++;
-          if (targetsBlock[endPos] === ')') parenCount--;
-          endPos++;
-        }
-        
-        if (parenCount === 0) {
-          // Extract the content between the parentheses
-          const targetContent = targetsBlock.substring(startPos + 1, endPos - 1);
-          
-          // Extract the name from the target content
-          const nameMatch = targetContent.match(/name\s*=\s*"([^"]+)"/);
-          
-          if (nameMatch) {
-            targetCount++;
-            const targetName = nameMatch[1];
-            
-            // Extract dependencies if present - search in the target content
-            const deps: string[] = [];
-            const depsRegex = /deps\s*=\s*\[([\s\S]*?)\]/;
-            const depsMatch = depsRegex.exec(targetContent);
-            
-            if (depsMatch) {
-              const depsContent = depsMatch[1];
-              const depRegex = /"([^"]+)"/g;
-              let depMatch;
-              while ((depMatch = depRegex.exec(depsContent)) !== null) {
-                deps.push(depMatch[1]);
-              }
-            }
-            
-            // Create target with build and test labels
-            const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
-            const buildLabel = `//${relativePath}:${targetName}`;
-            
-            targets.push({
-              name: targetName,
-              type: targetType as "library" | "test" | "binary",
-              buildLabel,
-              testLabel: targetType === "test" ? buildLabel : undefined,
-              deps,
-            });
-          }
-        }
-      }
-    }
-    
-    // 2. Try cx_module and dx_module rules (DoorDash specific formats)
-    const moduleRegex = /(cx_module|dx_module)\s*\(\s*([\s\S]*?)\s*\)/g;
-    let moduleMatch;
-    
-    while ((moduleMatch = moduleRegex.exec(content)) !== null) {
-      const [, moduleType, moduleConfig] = moduleMatch;
-      
-      // For cx_module/dx_module, create a library target with the package name
-      const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
-      const buildLabel = `//${relativePath}:${packageName}`;
-      
-      // Extract dependencies if present
-      const deps: string[] = [];
-      const depsRegex = /deps\s*=\s*\[([\s\S]*?)\]/;
-      const depsMatch = depsRegex.exec(moduleConfig);
-      
-      if (depsMatch) {
-        const depsContent = depsMatch[1];
-        const depRegex = /"([^"]+)"/g;
-        let depMatch;
-        while ((depMatch = depRegex.exec(depsContent)) !== null) {
-          deps.push(depMatch[1]);
-        }
-      }
-      
-      targets.push({
-        name: packageName, // Use directory name as target name
-        type: "library", // cx_module/dx_module are typically libraries
-        buildLabel,
-        testLabel: undefined, // Module rules typically don't include test targets
-        deps,
-      });
-      
-      // Also look for potential test targets
-      const testRegex = /(test_deps|test_srcs|test_resources)\s*=/g;
-      if (testRegex.test(moduleConfig)) {
-        const testLabel = `//${relativePath}:${packageName}Tests`;
-        targets.push({
-          name: `${packageName}Tests`,
-          type: "test", 
-          buildLabel: testLabel,
-          testLabel: testLabel,
-          deps: [`:${packageName}`], // Depend on main target
-        });
-      }
-    }
-    
-    // 3. Try xcodeproj and other iOS-related rules
-    const xcodeprojRegex = /(xcodeproj|top_level_target|ios_application|ios_framework|swift_library|ios_unit_test|ios_ui_test)\s*\(\s*[\s\S]*?name\s*=\s*"([^"]+)"[\s\S]*?\)/g;
-    let xcodeprojMatch;
-    
-    while ((xcodeprojMatch = xcodeprojRegex.exec(content)) !== null) {
-      const [, ruleType, ruleName] = xcodeprojMatch;
-      
-      const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
-      const buildLabel = `//${relativePath}:${ruleName}`;
-      
-      let targetType: "library" | "test" | "binary";
-      if (ruleType === "ios_application" || ruleType === "xcodeproj") {
-        targetType = "binary";
-      } else if (ruleType.includes("test")) {
-        targetType = "test"; 
-      } else {
-        targetType = "library";
-      }
-      
-      targets.push({
-        name: ruleName,
-        type: targetType,
-        buildLabel,
-        testLabel: targetType === "test" ? buildLabel : undefined,
-        deps: [], // Could extract deps if needed
-      });
-    }
-    
-    // 4. Generic target extraction - look for any named targets as fallback
-    if (targets.length === 0) {
-      // Look for any rule with a name parameter - more flexible patterns
-      const genericPatterns = [
-        /([a-zA-Z]\w*)\s*\(\s*[\s\S]*?name\s*=\s*"([^"]+)"[\s\S]*?\)/g,  // Standard pattern
-        /([a-zA-Z]\w*)\s*\(\s*name\s*=\s*"([^"]+)"[\s\S]*?\)/g,          // Name first pattern
-      ];
-      
-      for (const pattern of genericPatterns) {
-        let genericMatch;
-        let genericCount = 0;
-        
-        while ((genericMatch = pattern.exec(content)) !== null && genericCount < 10) { // Increased limit
-          const [, ruleType, ruleName] = genericMatch;
-          
-          // Skip load statements and other non-target rules
-          if (ruleType === "load" || 
-              ruleType.startsWith("@") || 
-              ruleType === "glob" ||
-              ruleType === "select" ||
-              ruleType === "config_setting" ||
-              ruleType === "filegroup" ||
-              ruleType.length < 3) {
-            continue;
-          }
-          
-          const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
-          const buildLabel = `//${relativePath}:${ruleName}`;
-          
-          // Try to infer type from rule name or target name
-          let targetType: "library" | "test" | "binary";
-          if (ruleType.includes("test") || ruleName.includes("Test") || ruleName.includes("test")) {
-            targetType = "test";
-          } else if (ruleType.includes("app") || ruleType.includes("binary") || ruleName.includes("App")) {
-            targetType = "binary";
-          } else {
-            targetType = "library";
-          }
-          
-          // Avoid duplicates
-          const existing = targets.find(t => t.name === ruleName);
-          if (!existing) {
-            targets.push({
-              name: ruleName,
-              type: targetType,
-              buildLabel,
-              testLabel: targetType === "test" ? buildLabel : undefined,
-              deps: [],
-            });
-            
-            genericCount++;
-          }
-        }
-        
-        // If we found targets with this pattern, stop trying other patterns
-        if (targets.length > 0) {
-          break;
-        }
-      }
-    }
-    
-    // 5. If still no targets after ALL parsing attempts, create default targets
-    if (targets.length === 0) {
-      const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
-      const buildLabel = `//${relativePath}:${packageName}`;
-      
-      // Create a generic library target using the directory name
-      targets.push({
-        name: packageName,
-        type: "library",
-        buildLabel,
-        testLabel: undefined,
-        deps: [],
-      });
-      
-      // Also create a potential test target
-      const testLabel = `//${relativePath}:${packageName}Tests`;
-      targets.push({
-        name: `${packageName}Tests`,
-        type: "test", 
-        buildLabel: testLabel,
-        testLabel: testLabel,
-        deps: [`:${packageName}`],
-      });
-    }
+    // Convert new format to legacy format
+    const legacyTargets: BazelTarget[] = allNewTargets.map((newTarget: NewBazelTarget) => ({
+      name: newTarget.name,
+      type: newTarget.type,
+      buildLabel: newTarget.buildLabel,
+      testLabel: newTarget.testLabel,
+      deps: newTarget.deps
+    }));
     
     return {
       name: packageName,
       path: packagePath,
-      targets,
+      targets: legacyTargets,
     };
   } catch (error) {
     commonLogger.warn("Failed to parse BUILD.bazel file", {
@@ -805,8 +591,10 @@ export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelP
   }
 }
 
+
 /**
  * Get all Bazel packages and their targets from the workspace
+ * Now uses the new comprehensive parser
  */
 export async function getBazelPackages(targetWorkspace?: string): Promise<BazelPackage[]> {
   // Use provided workspace or fall back to current workspace
@@ -819,12 +607,13 @@ export async function getBazelPackages(targetWorkspace?: string): Promise<BazelP
   const buildFiles = await findFilesRecursive({
     directory: workspace,
     depth: 10, // Allow deeper search for Bazel projects
+    maxResults: 100, // Prevent performance issues
     matcher: (file) => {
       return file.name === "BUILD.bazel" || file.name === "BUILD";
     },
   });
   
-  console.log(`  - Found ${buildFiles.length} BUILD files (parsing all - slow!)`);
+  console.log(`  - Found ${buildFiles.length} BUILD files (parsing with new comprehensive parser)`);
   
   const packages: BazelPackage[] = [];
   

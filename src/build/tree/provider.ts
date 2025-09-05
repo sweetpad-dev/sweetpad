@@ -1093,11 +1093,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         this._onDidChangeTreeData.fire(undefined);
       }
       
-      // 2. THEN: Always run background search to update cache
+      // Start background search immediately to discover new workspaces
       // This ensures cache stays fresh and discovers new workspaces
-      setTimeout(() => {
-        void this.loadWorkspacesStreamingly();
-      }, 100); // Small delay to let UI render cache first
+      void this.loadWorkspacesStreamingly();
       
     } catch (error) {
       console.error('Failed to initialize workspaces:', error);
