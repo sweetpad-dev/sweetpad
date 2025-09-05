@@ -2006,10 +2006,10 @@ export async function bazelBuildCommand(context: ExtensionContext, bazelItem?: B
     callback: async (terminal) => {
       terminal.write(`Building Bazel target: ${bazelItem.target.buildLabel}\n\n`);
       
-      await exec({
+      // Use terminal.execute for streaming output
+      await terminal.execute({
         command: "bazel",
         args: ["build", bazelItem.target.buildLabel],
-        cwd: getWorkspacePath(),
       });
       
       terminal.write(`\n✅ Build completed for ${bazelItem.target.name}\n`);
@@ -2038,10 +2038,10 @@ export async function bazelTestCommand(context: ExtensionContext, bazelItem?: Ba
     callback: async (terminal) => {
       terminal.write(`Running Bazel tests: ${bazelItem.target.testLabel}\n\n`);
       
-      await exec({
+      // Use terminal.execute for streaming output
+      await terminal.execute({
         command: "bazel",
         args: ["test", bazelItem.target.testLabel!, "--test_output=all"],
-        cwd: getWorkspacePath(),
       });
       
       terminal.write(`\n✅ Tests completed for ${bazelItem.target.name}\n`);
