@@ -437,7 +437,7 @@
       {
         "command": "sweetpad.build.clearCache",
         "title": "SweetPad: Clear Workspace Cache",
-        "icon": "$(clear-all)",
+        "icon": "$(refresh)",
         "description": "Clear persistent workspace cache and reload"
       },
       {
