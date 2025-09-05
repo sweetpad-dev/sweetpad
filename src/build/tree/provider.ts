@@ -456,6 +456,19 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     const workspaceRoot = getWorkspacePath();
     const relativePath = path.relative(workspaceRoot, workspacePath);
     
+    // Skip .xcodeproj files
+    if (workspacePath.endsWith('.xcodeproj') || workspacePath.includes('.xcodeproj/')) {
+      if (workspacePath.includes('.xcodeproj/project.xcworkspace')) {
+        return false; // Don't skip project.xcworkspace files
+      }
+      return true; // Skip .xcodeproj files
+    }
+    
+    // Skip standalone .xcworkspace files
+    if (workspacePath.includes('.xcworkspace')) {
+      return true; // Skip all other .xcworkspace files
+    }
+    
     // Skip workspaces that are too deep (likely test fixtures or dependencies)
     if (relativePath.split(path.sep).length > 6) {
       return true;
