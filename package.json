@@ -417,6 +417,12 @@
         "description": "Test Bazel target"
       },
       {
+        "command": "sweetpad.build.clearCache",
+        "title": "SweetPad: Clear Workspace Cache",
+        "icon": "$(clear-all)",
+        "description": "Clear persistent workspace cache and reload"
+      },
+      {
         "command": "sweetpad.testing.selectTarget",
         "title": "SweetPad.Testing: Select testing target",
         "icon": "$(file-code)"
@@ -625,6 +631,11 @@
           "command": "sweetpad.build.clearSearch",
           "when": "view == sweetpad.view.workspaces && sweetpad.builds.searchActive",
           "group": "navigation@1"
+        },
+        {
+          "command": "sweetpad.build.clearCache",
+          "when": "view == sweetpad.view.workspaces",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [

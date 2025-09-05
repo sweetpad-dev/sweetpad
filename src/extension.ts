@@ -21,6 +21,7 @@ import {
   runCommand,
   searchBuildsCommand,
   clearBuildsSearchCommand,
+  clearWorkspaceCacheCommand,
   selectConfigurationForBuildCommand,
   selectXcodeSchemeForBuildCommand,
   selectXcodeWorkspaceCommand,
@@ -190,6 +191,7 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.build.createPeripheryConfig", createPeripheryConfigCommand));
     d(command("sweetpad.build.search", () => searchBuildsCommand(_context, workspaceTreeProvider)));
     d(command("sweetpad.build.clearSearch", () => clearBuildsSearchCommand(_context, workspaceTreeProvider)));
+    d(command("sweetpad.build.clearCache", () => clearWorkspaceCacheCommand(_context, workspaceTreeProvider)));
     d(command("sweetpad.bazel.build", bazelBuildCommand));
     d(command("sweetpad.bazel.test", bazelTestCommand));
 

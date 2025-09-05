@@ -2006,15 +2006,10 @@ export async function bazelBuildCommand(context: ExtensionContext, bazelItem?: B
     callback: async (terminal) => {
       terminal.write(`Building Bazel target: ${bazelItem.target.buildLabel}\n\n`);
       
-      const command: Command = {
-        program: "bazel",
+      await exec({
+        command: "bazel",
         args: ["build", bazelItem.target.buildLabel],
         cwd: getWorkspacePath(),
-      };
-
-      await exec(command, {
-        output: (data) => terminal.write(data),
-        error: (data) => terminal.write(data),
       });
       
       terminal.write(`\n✅ Build completed for ${bazelItem.target.name}\n`);
@@ -2043,20 +2038,37 @@ export async function bazelTestCommand(context: ExtensionContext, bazelItem?: Ba
     callback: async (terminal) => {
       terminal.write(`Running Bazel tests: ${bazelItem.target.testLabel}\n\n`);
       
-      const command: Command = {
-        program: "bazel",
-        args: ["test", bazelItem.target.testLabel, "--test_output=all"],
+      await exec({
+        command: "bazel",
+        args: ["test", bazelItem.target.testLabel!, "--test_output=all"],
         cwd: getWorkspacePath(),
-      };
-
-      await exec(command, {
-        output: (data) => terminal.write(data),
-        error: (data) => terminal.write(data),
       });
       
       terminal.write(`\n✅ Tests completed for ${bazelItem.target.name}\n`);
     },
   });
+}
+
+/**
+ * Clear persistent workspace cache and reload
+ */
+export async function clearWorkspaceCacheCommand(context: ExtensionContext, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {
+  if (!workspaceTreeProvider) {
+    vscode.window.showErrorMessage("Workspace tree provider not available");
+    return;
+  }
+
+  try {
+    // Clear the persistent cache
+    await workspaceTreeProvider.clearPersistentCache();
+    
+    // Refresh workspaces
+    await workspaceTreeProvider.loadWorkspacesStreamingly();
+    
+    vscode.window.showInformationMessage("✅ Workspace cache cleared and reloaded");
+  } catch (error) {
+    vscode.window.showErrorMessage(`❌ Failed to clear workspace cache: ${error}`);
+  }
 }
 
 /**

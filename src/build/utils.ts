@@ -358,6 +358,7 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
   const xcworkspacePaths = await findFilesRecursive({
     directory: workspace,
     depth: 4,
+    maxResults: 20, // Limit workspace files
     matcher: (file) => {
       return file.name.endsWith(".xcworkspace");
     },
@@ -367,6 +368,7 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
   const packageSwiftPaths = await findFilesRecursive({
     directory: workspace,
     depth: 4,
+    maxResults: 30, // Limit Package.swift files
     matcher: (file) => {
       return file.name === "Package.swift";
     },
@@ -376,6 +378,7 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
   const bazelBuildPaths = await findFilesRecursive({
     directory: workspace,
     depth: 4,
+    maxResults: 50, // Limit Bazel files to prevent performance issues
     matcher: (file) => {
       return file.name === "BUILD.bazel" || file.name === "BUILD";
     },
