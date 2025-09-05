@@ -201,9 +201,17 @@ export class WorkspaceSectionTreeItem extends vscode.TreeItem {
     } else if (sectionType === "recent") {
       this.iconPath = new vscode.ThemeIcon("history");
     } else if (sectionType === "workspace") {
-      this.iconPath = new vscode.ThemeIcon("multiple-windows");
+      if (workspaces.length > 0 && workspaces[0]?.provider?.context?.extensionPath) {
+        this.iconPath = vscode.Uri.joinPath(vscode.Uri.file(workspaces[0].provider.context.extensionPath), "images", "xcodeproj.png");
+      } else {
+        this.iconPath = new vscode.ThemeIcon("multiple-windows");
+      }
     } else if (sectionType === "package") {
-      this.iconPath = new vscode.ThemeIcon("extensions");
+      if (workspaces.length > 0 && workspaces[0]?.provider?.context?.extensionPath) {
+        this.iconPath = vscode.Uri.joinPath(vscode.Uri.file(workspaces[0].provider.context.extensionPath), "images", "spm.png");
+      } else {
+        this.iconPath = new vscode.ThemeIcon("extensions");
+      }
     } else if (sectionType === "bazel") {
       // Use bazel.png icon from images folder, fallback to gear icon if no workspaces
       if (workspaces.length > 0 && workspaces[0]?.provider?.context?.extensionPath) {
