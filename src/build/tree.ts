@@ -193,8 +193,6 @@ export class WorkspaceSectionTreeItem extends vscode.TreeItem {
       this.iconPath = new vscode.ThemeIcon("history");
     } else if (sectionType === "workspace") {
       this.iconPath = new vscode.ThemeIcon("multiple-windows");
-    } else if (sectionType === "project") {
-      this.iconPath = new vscode.ThemeIcon("package");
     } else if (sectionType === "package") {
       this.iconPath = new vscode.ThemeIcon("extensions");
     } else if (sectionType === "bazel") {
@@ -234,8 +232,15 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   private cachedFilteredRecentWorkspaces: WorkspaceGroupTreeItem[] | null = null;
   private cachedSchemesForWorkspaces = new Map<string, BuildTreeItem[]>();
   
-  // Track loading state for each section type
-  private sectionsLoading = new Set<string>(["workspace", "project", "package", "bazel"]);
+  // Track loading state for each section type  
+  private sectionsLoading = new Set<string>(["workspace", "package", "bazel"]);
+  
+  // Track individual searches within sections (for workspace section which has multiple searches)
+  private subsectionLoadingCount = new Map<string, number>([
+    ["workspace", 2], // xcworkspace + xcodeproj searches
+    ["package", 1],   // Package.swift search
+    ["bazel", 1]      // BUILD.bazel search
+  ]);
   
   // Throttled UI refresh for better performance during bulk loading
   private refreshThrottleTimer: NodeJS.Timeout | null = null;
@@ -467,21 +472,68 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       this.addToRecentWorkspaces(workspacePath);
     }
   }
+
+  // Add workspace to specific section and trigger immediate UI update for that section
+  private addWorkspaceToSection(workspacePath: string, expectedSection: string): void {
+    // First check if this workspace is already in the main list
+    if (this.workspaces.some(w => w.workspacePath === workspacePath)) {
+      return;
+    }
+
+    // Verify the workspace actually belongs to the expected section
+    const actualSection = this.getWorkspaceCategory(workspacePath);
+    if (actualSection !== expectedSection) {
+      // If it doesn't match, use the regular addWorkspace method
+      this.addWorkspace(workspacePath);
+      return;
+    }
+
+    // Create the new workspace item
+    const isCurrentWorkspace = workspacePath === this.defaultWorkspacePath;
+    const loadingStateKey = `${workspacePath}:regular`;
+    
+    // Only show loading indicator for current workspace or items in recents section
+    const shouldShowLoading = isCurrentWorkspace && this.loadingItems.get(loadingStateKey);
+    
+    const workspaceItem = new WorkspaceGroupTreeItem({
+      workspacePath: workspacePath,
+      provider: this,
+      isLoading: shouldShowLoading || false,
+    });
+    
+    // Add the new item to the regular workspaces list
+    this.workspaces.push(workspaceItem);
+    
+    // Sort workspaces by type and name
+    this.sortWorkspaces();
+    
+    // Invalidate cache since workspace list changed
+    this.invalidateFilterCache();
+    
+    // Trigger immediate UI refresh to show the new item in its section
+    this._onDidChangeTreeData.fire(undefined);
+    
+    // If this is the current workspace, add it to recents
+    if (isCurrentWorkspace) {
+      this.addToRecentWorkspaces(workspacePath);
+    }
+  }
   
-  // Sort workspaces by type (workspace, project, package) and then by name
+  // Sort workspaces by type (workspace, package, bazel) and then by name
   private sortWorkspaces(): void {
     this.workspaces.sort((a, b) => {
       // Define the category order
       const getCategory = (item: WorkspaceGroupTreeItem): number => {
         const path = item.workspacePath;
-        if (path.endsWith(".xcworkspace") || path.includes(".xcworkspace/")) {
-          return 1; // Workspaces first
-        } else if (path.endsWith(".xcodeproj") || path.includes(".xcodeproj/")) {
-          return 2; // Projects second
+        if (path.endsWith(".xcworkspace") || path.includes(".xcworkspace/") ||
+            path.endsWith(".xcodeproj") || path.includes(".xcodeproj/")) {
+          return 1; // Workspaces (including projects) first
         } else if (path.endsWith("Package.swift")) {
-          return 3; // Packages last
+          return 2; // Packages second
+        } else if (path.endsWith("BUILD.bazel") || path.endsWith("BUILD")) {
+          return 3; // Bazel third
         }
-        return 4; // Other files (should not happen)
+        return 4; // Other files last
       };
       
       // Get categories for comparison
@@ -517,10 +569,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
 
   // Helper to get the category of a workspace
   private getWorkspaceCategory(workspacePath: string): string {
-    if (workspacePath.endsWith(".xcworkspace") || workspacePath.includes(".xcworkspace/")) {
+    if (workspacePath.endsWith(".xcworkspace") || workspacePath.includes(".xcworkspace/") ||
+        workspacePath.endsWith(".xcodeproj") || workspacePath.includes(".xcodeproj/")) {
       return "workspace";
-    } else if (workspacePath.endsWith(".xcodeproj") || workspacePath.includes(".xcodeproj/")) {
-      return "project";
     } else if (workspacePath.endsWith("Package.swift")) {
       return "package";
     } else if (workspacePath.endsWith("BUILD.bazel") || workspacePath.endsWith("BUILD")) {
@@ -574,7 +625,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     const sections: WorkspaceSectionTreeItem[] = [];
     
     // Define the order we want categories to appear
-    const categoryOrder = ["recent", "workspace", "project", "package", "bazel", "other"];
+    const categoryOrder = ["recent", "workspace", "package", "bazel", "other"];
     
     for (const category of categoryOrder) {
       const workspaces = workspacesByCategory.get(category) || [];
@@ -612,7 +663,12 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     this.workspaces = []; // Reset workspaces list
     
     // Reset sections loading state
-    this.sectionsLoading = new Set<string>(["workspace", "project", "package", "bazel"]);
+    this.sectionsLoading = new Set<string>(["workspace", "package", "bazel"]);
+    this.subsectionLoadingCount = new Map<string, number>([
+      ["workspace", 2], // xcworkspace + xcodeproj searches
+      ["package", 1],   // Package.swift search  
+      ["bazel", 1]      // BUILD.bazel search
+    ]);
     
     try {
       // First check if we have cached workspaces from previous sessions
@@ -648,6 +704,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       // Immediately show empty sections with loading indicators
       this._onDidChangeTreeData.fire(undefined);
       
+      console.log(`🚀 Starting parallel searches for sections:`, Array.from(this.sectionsLoading));
+      console.log(`📊 Subsection counts:`, Object.fromEntries(this.subsectionLoadingCount));
+      
       // Start all searches in parallel and track their completion
       const searchPromises = [
         // Search for Package.swift files (SPM packages)
@@ -655,26 +714,35 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
           directory: workspace,
           depth: 4,
           matcher: (file) => file.name === "Package.swift",
-          processFile: (filePath) => this.addWorkspace(filePath),
-          onComplete: () => this.onSectionLoadComplete("package")
+          processFile: (filePath) => this.addWorkspaceToSection(filePath, "package"),
+          onComplete: () => {
+            console.log(`📦 Package search completed`);
+            this.onSectionLoadComplete("package");
+          }
         }),
         
-        // Search for xcworkspace files
+        // Search for .xcworkspace files
         this.findFilesIncrementallyWithCallback({
           directory: workspace,
           depth: 4,
           matcher: (file) => file.name.endsWith("project.xcworkspace") || file.name.endsWith(".xcworkspace"),
-          processFile: (filePath) => this.addWorkspace(filePath),
-          onComplete: () => this.onSectionLoadComplete("workspace")
+          processFile: (filePath) => this.addWorkspaceToSection(filePath, "workspace"),
+          onComplete: () => {
+            console.log(`🏢 Workspace (.xcworkspace) search completed`);
+            this.onSectionLoadComplete("workspace"); // Will decrement workspace counter
+          }
         }),
-        
-        // Search for xcodeproj files
+
+        // Search for .xcodeproj files  
         this.findFilesIncrementallyWithCallback({
           directory: workspace,
           depth: 4,
           matcher: (file) => file.name.endsWith(".xcodeproj"),
-          processFile: (filePath) => this.addWorkspace(filePath),
-          onComplete: () => this.onSectionLoadComplete("project")
+          processFile: (filePath) => this.addWorkspaceToSection(filePath, "workspace"),
+          onComplete: () => {
+            console.log(`🏗️ Project (.xcodeproj) search completed`);
+            this.onSectionLoadComplete("workspace"); // Will decrement workspace counter
+          }
         }),
         
         // Search for Bazel BUILD files
@@ -682,8 +750,11 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
           directory: workspace,
           depth: 4,
           matcher: (file) => file.name === "BUILD.bazel" || file.name === "BUILD",
-          processFile: (filePath) => this.addWorkspace(filePath),
-          onComplete: () => this.onSectionLoadComplete("bazel")
+          processFile: (filePath) => this.addWorkspaceToSection(filePath, "bazel"),
+          onComplete: () => {
+            console.log(`⚙️ Bazel search completed`);
+            this.onSectionLoadComplete("bazel");
+          }
         })
       ];
       
@@ -693,6 +764,16 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       // Mark overall loading as complete
       this.isLoadingWorkspaces = false;
       this._onDidChangeTreeData.fire(undefined);
+      
+      // Safety mechanism: Force complete any remaining sections after a timeout
+      setTimeout(() => {
+        if (this.sectionsLoading.size > 0) {
+          console.warn(`⚠️ Forcing completion of stuck sections:`, Array.from(this.sectionsLoading));
+          this.sectionsLoading.clear();
+          this.subsectionLoadingCount.clear();
+          this._onDidChangeTreeData.fire(undefined);
+        }
+      }, 15000); // 15 second safety timeout
       
     } catch (error) {
       commonLogger.error("Error in workspace search", { error });
@@ -704,9 +785,20 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   
   // Called when a specific section type has finished loading
   private onSectionLoadComplete(sectionType: string): void {
-    this.sectionsLoading.delete(sectionType);
-    // Trigger UI update to refresh the specific section
-    this._onDidChangeTreeData.fire(undefined);
+    // Decrement the count of remaining subsections for this section
+    const currentCount = this.subsectionLoadingCount.get(sectionType) || 0;
+    const newCount = Math.max(0, currentCount - 1);
+    this.subsectionLoadingCount.set(sectionType, newCount);
+    
+    console.log(`🔍 Section ${sectionType} completed search: ${currentCount} -> ${newCount} remaining`);
+    
+    // Only mark section as complete when all its subsections are done
+    if (newCount === 0) {
+      this.sectionsLoading.delete(sectionType);
+      console.log(`✅ Section ${sectionType} fully loaded, removing loading indicator`);
+      // Trigger UI update to remove loading indicator for this section
+      this._onDidChangeTreeData.fire(undefined);
+    }
   }
 
   // Helper method to incrementally find and process files with completion callback
@@ -718,17 +810,22 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     ignore?: string[],
     depth?: number
   }): Promise<void> {
-    await this.findFilesIncrementally({
-      directory: options.directory,
-      matcher: options.matcher,
-      processFile: options.processFile,
-      ignore: options.ignore,
-      depth: options.depth
-    });
-    
-    // Call completion callback if provided
-    if (options.onComplete) {
-      options.onComplete();
+    try {
+      await this.findFilesIncrementally({
+        directory: options.directory,
+        matcher: options.matcher,
+        processFile: options.processFile,
+        ignore: options.ignore,
+        depth: options.depth
+      });
+    } catch (error) {
+      console.error(`🚫 Search failed for directory ${options.directory}:`, error);
+    } finally {
+      // Always call completion callback, even if search failed
+      if (options.onComplete) {
+        console.log(`🔄 Calling completion callback for ${options.directory}`);
+        options.onComplete();
+      }
     }
   }
 
