@@ -532,8 +532,26 @@ export interface BazelPackage {
  * Parse a BUILD.bazel file and extract dd_ios_package targets
  */
 export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelPackage | null> {
+  // Validate input
+  if (!buildFilePath || typeof buildFilePath !== 'string' || buildFilePath.length === 0) {
+    return null;
+  }
+  
+  // Check for suspicious path patterns
+  if (buildFilePath.startsWith('@') || buildFilePath.includes('undefined') || buildFilePath.includes('null')) {
+    return null;
+  }
+  
   try {
     const fs = await import("node:fs/promises");
+    
+    // Check if file exists first
+    try {
+      await fs.access(buildFilePath);
+    } catch (accessError) {
+      return null;
+    }
+    
     const content = await fs.readFile(buildFilePath, "utf-8");
     
     // Extract the package name from the path (parent directory of BUILD.bazel)
@@ -550,38 +568,65 @@ export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelP
     while ((ddPackageMatch = ddPackageRegex.exec(content)) !== null) {
       const [, packageTargetName, targetsBlock] = ddPackageMatch;
       
-      // Extract individual target definitions - more flexible regex
-      const targetRegex = /target\.(\w+)\s*\(\s*[\s\S]*?name\s*=\s*"([^"]+)"[\s\S]*?\)/g;
-      let targetMatch;
+      // Parse targets more carefully by finding balanced parentheses
+      let targetCount = 0;
       
-      while ((targetMatch = targetRegex.exec(targetsBlock)) !== null) {
-        const [fullTargetMatch, targetType, targetName] = targetMatch;
+      // Find all target.xxx( patterns and parse each one
+      const targetStartRegex = /target\.(\w+)\s*\(/g;
+      let targetStartMatch;
+      
+      while ((targetStartMatch = targetStartRegex.exec(targetsBlock)) !== null) {
+        const targetType = targetStartMatch[1];
+        const startPos = targetStartMatch.index + targetStartMatch[0].length - 1; // Position of opening (
         
-        // Extract dependencies if present - search in the full target match
-        const deps: string[] = [];
-        const depsRegex = /deps\s*=\s*\[([\s\S]*?)\]/;
-        const depsMatch = depsRegex.exec(fullTargetMatch);
+        // Find the matching closing parenthesis
+        let parenCount = 1;
+        let endPos = startPos + 1;
         
-        if (depsMatch) {
-          const depsContent = depsMatch[1];
-          const depRegex = /"([^"]+)"/g;
-          let depMatch;
-          while ((depMatch = depRegex.exec(depsContent)) !== null) {
-            deps.push(depMatch[1]);
-          }
+        while (endPos < targetsBlock.length && parenCount > 0) {
+          if (targetsBlock[endPos] === '(') parenCount++;
+          if (targetsBlock[endPos] === ')') parenCount--;
+          endPos++;
         }
         
-        // Create target with build and test labels
-        const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
-        const buildLabel = `//${relativePath}:${targetName}`;
-        
-        targets.push({
-          name: targetName,
-          type: targetType as "library" | "test" | "binary",
-          buildLabel,
-          testLabel: targetType === "test" ? buildLabel : undefined,
-          deps,
-        });
+        if (parenCount === 0) {
+          // Extract the content between the parentheses
+          const targetContent = targetsBlock.substring(startPos + 1, endPos - 1);
+          
+          // Extract the name from the target content
+          const nameMatch = targetContent.match(/name\s*=\s*"([^"]+)"/);
+          
+          if (nameMatch) {
+            targetCount++;
+            const targetName = nameMatch[1];
+            
+            // Extract dependencies if present - search in the target content
+            const deps: string[] = [];
+            const depsRegex = /deps\s*=\s*\[([\s\S]*?)\]/;
+            const depsMatch = depsRegex.exec(targetContent);
+            
+            if (depsMatch) {
+              const depsContent = depsMatch[1];
+              const depRegex = /"([^"]+)"/g;
+              let depMatch;
+              while ((depMatch = depRegex.exec(depsContent)) !== null) {
+                deps.push(depMatch[1]);
+              }
+            }
+            
+            // Create target with build and test labels
+            const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
+            const buildLabel = `//${relativePath}:${targetName}`;
+            
+            targets.push({
+              name: targetName,
+              type: targetType as "library" | "test" | "binary",
+              buildLabel,
+              testLabel: targetType === "test" ? buildLabel : undefined,
+              deps,
+            });
+          }
+        }
       }
     }
     

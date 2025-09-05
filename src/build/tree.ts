@@ -7,6 +7,7 @@ import { commonLogger } from "../common/logger";
 import type { BuildManager } from "./manager";
 import { getCurrentXcodeWorkspacePath, getWorkspacePath } from "./utils";
 import { detectXcodeWorkspacesPaths, parseBazelBuildFile, findBazelWorkspaceRoot, type BazelTarget, type BazelPackage } from "./utils";
+import type { SelectedBazelTargetData } from "./manager";
 import { ExtensionError } from "../common/errors";
 import * as fs from "node:fs/promises";
 import type { Dirent } from "node:fs";
@@ -255,6 +256,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   private cachedBazelFiles = new Map<string, BazelPackage | null>();
   private bazelFileCacheTimestamps = new Map<string, number>();
   
+  // Cache of currently displayed Bazel targets for command lookup
+  public currentBazelTargets = new Map<string, BazelTreeItem>();
+  
   // Persistent workspace cache for instant loading
   private persistentCacheKey = "sweetpad.workspaces.cache";
   private persistentCacheVersion = "1.1.0"; // Bumped version to invalidate old large caches
@@ -275,6 +279,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   
   // Track if workspaces need sorting
   private workspacesSorted = true;
+  
+  // Bazel status bar reference for updates
+  private bazelStatusBar: any = null; // BazelTargetStatusBar reference
   
   // Throttled UI refresh for better performance during bulk loading
   private refreshThrottleTimer: NodeJS.Timeout | null = null;
@@ -337,6 +344,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     // Also invalidate Bazel file cache when workspace data changes
     this.cachedBazelFiles.clear();
     this.bazelFileCacheTimestamps.clear();
+    
+    // Clear current Bazel targets cache
+    this.currentBazelTargets.clear();
     
     // Clear workspace metadata cache to ensure consistency
     this.workspaceMetadataCache.clear();
@@ -469,6 +479,50 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
 
   public isSearching(): boolean {
     return this.isSearchActive;
+  }
+
+  // Selected Bazel target management - delegate to BuildManager
+  public getSelectedBazelTarget(): BazelTreeItem | null {
+    // We can't return the full BazelTreeItem since it's not stored
+    // This method is mainly for compatibility with icon checking
+    return null; // Will be determined by comparing build labels
+  }
+
+  public getSelectedBazelTargetData(): SelectedBazelTargetData | undefined {
+    return this.buildManager.getSelectedBazelTargetData();
+  }
+
+  public setSelectedBazelTarget(target: BazelTreeItem | null): void {
+    // Update BuildManager (primary source of truth)
+    this.buildManager.setSelectedBazelTarget(target);
+    
+    // Refresh the tree to update selection indicators
+    this._onDidChangeTreeData.fire(null);
+    
+    // Update context for command availability
+    const targetData = this.buildManager.getSelectedBazelTargetData();
+    void vscode.commands.executeCommand('setContext', 'sweetpad.bazel.hasSelectedTarget', !!targetData);
+    void vscode.commands.executeCommand('setContext', 'sweetpad.bazel.selectedTargetType', targetData?.targetType || null);
+  }
+
+  public clearSelectedBazelTarget(): void {
+    this.setSelectedBazelTarget(null);
+  }
+
+  public setBazelStatusBar(statusBar: any): void {
+    this.bazelStatusBar = statusBar;
+    
+    // Listen for BuildManager events to update status bar
+    this.buildManager.on("selectedBazelTargetUpdated", () => {
+      if (this.bazelStatusBar) {
+        this.bazelStatusBar.update();
+      }
+    });
+  }
+
+  // Get a cached Bazel target by build label
+  public getBazelTargetByLabel(buildLabel: string): BazelTreeItem | null {
+    return this.currentBazelTargets.get(buildLabel) || null;
   }
 
   // Filter workspaces based on search term - optimized version
@@ -1228,16 +1282,21 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   }
 
   // Parse individual BUILD.bazel file on-demand with caching
-  private async getCachedBazelPackage(buildFilePath: string): Promise<BazelPackage | null> {
+  public async getCachedBazelPackage(buildFilePath: string): Promise<BazelPackage | null> {
     const now = Date.now();
     const cacheMaxAge = 30000; // 30 seconds cache per file
+    
+    // Validate file path
+    if (!buildFilePath || typeof buildFilePath !== 'string' || buildFilePath.length === 0) {
+      return null;
+    }
     
     // Check if we have a cached version
     const cachedTimestamp = this.bazelFileCacheTimestamps.get(buildFilePath);
     const cachedPackage = this.cachedBazelFiles.get(buildFilePath);
     
     if (cachedPackage !== undefined && cachedTimestamp && (now - cachedTimestamp) < cacheMaxAge) {
-      return cachedPackage; // Return cached result silently
+      return cachedPackage; // Return cached result
     }
     
     try {
@@ -1579,14 +1638,19 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         
         if (bazelPackage) {
           // Create tree items for each target
-          const targetItems = bazelPackage.targets.map(target => 
-            new BazelTreeItem({
+          const targetItems = bazelPackage.targets.map(target => {
+            const bazelTreeItem = new BazelTreeItem({
               target,
               package: bazelPackage,
               provider: this,
               workspacePath: element.workspacePath
-            })
-          );
+            });
+            
+            // Cache the target for command lookup
+            this.currentBazelTargets.set(target.buildLabel, bazelTreeItem);
+            
+            return bazelTreeItem;
+          });
           
           // Apply search filter if active - optimized
           if (this.isSearchActive && this.searchTerm.length > 0) {
@@ -1820,14 +1884,33 @@ export class BazelTreeItem extends vscode.TreeItem {
     provider: WorkspaceTreeProvider;
     workspacePath: string;
   }) {
+    // Validate required properties
+    if (!options.target) {
+      throw new Error("BazelTreeItem requires target");
+    }
+    if (!options.target.name) {
+      throw new Error("BazelTreeItem target requires name");
+    }
+    if (!options.package) {
+      throw new Error("BazelTreeItem requires package");
+    }
+    if (!options.workspacePath || typeof options.workspacePath !== 'string') {
+      throw new Error("BazelTreeItem requires valid workspacePath string");
+    }
+
     super(options.target.name, vscode.TreeItemCollapsibleState.None);
     this.provider = options.provider;
     this.target = options.target;
     this.package = options.package;
     this.workspacePath = options.workspacePath;
 
-    // Set icon based on target type
+    // Check if this target is currently selected by comparing build labels
+    const selectedTargetData = this.provider.getSelectedBazelTargetData();
+    const isSelected = selectedTargetData?.buildLabel === this.target.buildLabel;
+    
+    // Set icon based on target type and selection state
     const color = new vscode.ThemeColor("sweetpad.scheme");
+    
     if (this.target.type === "test") {
       this.iconPath = new vscode.ThemeIcon("beaker", color);
     } else {
@@ -1836,8 +1919,12 @@ export class BazelTreeItem extends vscode.TreeItem {
     
     this.contextValue = "sweetpad.bazel.target";
     
-    // Add type and package info to description
-    this.description = `${this.target.type} • ${this.package.name}`;
+    // Add type, package info, and selection indicator to description
+    let description = `${this.target.type} • ${this.package.name}`;
+    if (isSelected) {
+      description = `${description} ✓`; // Add checkmark for selected target
+    }
+    this.description = description;
     
     // Set tooltip with build and test commands
     let tooltip = `Target: ${this.target.name}\nType: ${this.target.type}\nPackage: ${this.package.name}`;
@@ -1845,13 +1932,19 @@ export class BazelTreeItem extends vscode.TreeItem {
     if (this.target.testLabel) {
       tooltip += `\nTest: bazel test ${this.target.testLabel}`;
     }
+    if (isSelected) {
+      tooltip += `\n\n✓ Currently selected target`;
+    }
     this.tooltip = tooltip;
     
-    // Set command to build the target
+    // Set command to select the target - pass only serializable data
     this.command = {
-      command: 'sweetpad.bazel.build',
-      title: 'Build Bazel Target',
-      arguments: [this]
+      command: 'sweetpad.bazel.selectTarget',
+      title: 'Select Bazel Target',
+      arguments: [{
+        buildLabel: this.target.buildLabel,
+        workspacePath: this.workspacePath
+      }]
     };
   }
 }

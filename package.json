@@ -417,6 +417,24 @@
         "description": "Test Bazel target"
       },
       {
+        "command": "sweetpad.bazel.selectTarget",
+        "title": "SweetPad: Select Bazel Target",
+        "icon": "$(target)",
+        "description": "Select Bazel target for build/test commands"
+      },
+      {
+        "command": "sweetpad.bazel.buildSelected",
+        "title": "SweetPad: Build Selected Bazel Target",
+        "icon": "$(sweetpad-tool)",
+        "description": "Build currently selected Bazel target"
+      },
+      {
+        "command": "sweetpad.bazel.testSelected",
+        "title": "SweetPad: Test Selected Bazel Target", 
+        "icon": "$(beaker)",
+        "description": "Test currently selected Bazel target"
+      },
+      {
         "command": "sweetpad.build.clearCache",
         "title": "SweetPad: Clear Workspace Cache",
         "icon": "$(clear-all)",
@@ -636,6 +654,16 @@
           "command": "sweetpad.build.clearCache",
           "when": "view == sweetpad.view.workspaces",
           "group": "navigation@2"
+        },
+        {
+          "command": "sweetpad.bazel.buildSelected",
+          "when": "view == sweetpad.view.workspaces && sweetpad.bazel.hasSelectedTarget",
+          "group": "navigation@3"
+        },
+        {
+          "command": "sweetpad.bazel.testSelected",
+          "when": "view == sweetpad.view.workspaces && sweetpad.bazel.hasSelectedTarget && sweetpad.bazel.selectedTargetType == test",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -775,24 +803,34 @@
           "group": "context@11"
         },
         {
-          "command": "sweetpad.bazel.build",
+          "command": "sweetpad.bazel.selectTarget",
           "when": "viewItem == sweetpad.bazel.target",
           "group": "inline@1"
         },
         {
-          "command": "sweetpad.bazel.test",
+          "command": "sweetpad.bazel.build",
           "when": "viewItem == sweetpad.bazel.target",
           "group": "inline@2"
         },
         {
-          "command": "sweetpad.bazel.build",
+          "command": "sweetpad.bazel.test",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "inline@3"
+        },
+        {
+          "command": "sweetpad.bazel.selectTarget",
           "when": "viewItem == sweetpad.bazel.target",
           "group": "context@1"
         },
         {
-          "command": "sweetpad.bazel.test",
+          "command": "sweetpad.bazel.build",
           "when": "viewItem == sweetpad.bazel.target",
           "group": "context@2"
+        },
+        {
+          "command": "sweetpad.bazel.test",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "context@3"
         }
       ],
       "testing/item/context": [

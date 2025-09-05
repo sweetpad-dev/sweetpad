@@ -6,6 +6,9 @@ import {
   buildCommand,
   bazelBuildCommand,
   bazelTestCommand,
+  buildSelectedBazelTargetCommand,
+  testSelectedBazelTargetCommand,
+  selectBazelTargetCommand,
   cleanCommand,
   createPeripheryConfigCommand,
   debuggingBuildCommand,
@@ -30,7 +33,7 @@ import {
 } from "./build/commands.js";
 import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
-import { DefaultSchemeStatusBar } from "./build/status-bar.js";
+import { DefaultSchemeStatusBar, BazelTargetStatusBar } from "./build/status-bar.js";
 import { WorkspaceTreeProvider } from "./build/tree.js";
 import { ExtensionContext } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
@@ -169,6 +172,15 @@ export async function activate(context: vscode.ExtensionContext) {
       context: _context,
     });
     d(schemeStatusBar);
+    
+    const bazelTargetStatusBar = new BazelTargetStatusBar({
+      context: _context,
+    });
+    d(bazelTargetStatusBar);
+    
+    // Connect status bar to tree provider for updates
+    workspaceTreeProvider.setBazelStatusBar(bazelTargetStatusBar);
+    
     //d(tree("sweetpad.build.view", workspaceTreeProvider));
     d(tree("sweetpad.view.workspaces", workspaceTreeProvider));
     d(command("sweetpad.build.refreshView", async () => buildManager.refresh()));
@@ -194,6 +206,9 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.build.clearCache", () => clearWorkspaceCacheCommand(_context, workspaceTreeProvider)));
     d(command("sweetpad.bazel.build", bazelBuildCommand));
     d(command("sweetpad.bazel.test", bazelTestCommand));
+    d(command("sweetpad.bazel.selectTarget", (context, targetInfo) => selectBazelTargetCommand(context, targetInfo, workspaceTreeProvider)));
+    d(command("sweetpad.bazel.buildSelected", () => buildSelectedBazelTargetCommand(_context, workspaceTreeProvider)));
+    d(command("sweetpad.bazel.testSelected", () => testSelectedBazelTargetCommand(_context, workspaceTreeProvider)));
 
     // Testing
     d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));

@@ -2050,6 +2050,154 @@ export async function bazelTestCommand(context: ExtensionContext, bazelItem?: Ba
 }
 
 /**
+ * Select a Bazel target as the active target for build/test commands
+ */
+export async function selectBazelTargetCommand(context: ExtensionContext, targetInfo?: { buildLabel: string; workspacePath: string } | BazelTreeItem, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {
+  
+  if (!targetInfo) {
+    vscode.window.showErrorMessage("No Bazel target provided");
+    return;
+  }
+
+  if (!workspaceTreeProvider) {
+    vscode.window.showErrorMessage("Workspace tree provider not available");
+    return;
+  }
+
+  // Handle both old format (BazelTreeItem) and new format (target info)
+  let bazelItem: any; // Mock BazelTreeItem
+  
+  if ('target' in targetInfo && 'package' in targetInfo) {
+    // Old format - direct BazelTreeItem
+    bazelItem = targetInfo as BazelTreeItem;
+  } else {
+    // New format - parse BUILD.bazel file to get target data
+    const { buildLabel, workspacePath } = targetInfo as { buildLabel: string; workspacePath: string };
+    
+    // Handle case where workspacePath might be undefined due to VSCode serialization
+    let actualWorkspacePath = workspacePath;
+    
+    if (!actualWorkspacePath || actualWorkspacePath === 'undefined' || actualWorkspacePath === 'null') {
+      // Try to find the workspace path from currentBazelTargets cache
+      for (const [cachedBuildLabel, cachedTarget] of workspaceTreeProvider.currentBazelTargets) {
+        if (cachedBuildLabel === buildLabel) {
+          actualWorkspacePath = cachedTarget.workspacePath;
+          break;
+        }
+      }
+      
+      if (!actualWorkspacePath) {
+        vscode.window.showErrorMessage(`Cannot determine workspace path for target: ${buildLabel}`);
+        return;
+      }
+    }
+    
+    // Parse the BUILD.bazel file to get full target data
+    const bazelPackage = await workspaceTreeProvider.getCachedBazelPackage(actualWorkspacePath);
+    if (!bazelPackage) {
+      vscode.window.showErrorMessage(`Failed to parse Bazel BUILD file`);
+      return;
+    }
+
+    const target = bazelPackage.targets.find(t => t.buildLabel === buildLabel);
+    if (!target) {
+      vscode.window.showErrorMessage(`Target ${buildLabel} not found in BUILD file`);
+      return;
+    }
+
+    // Create a simple object with the data we need
+    bazelItem = {
+      target,
+      package: bazelPackage,
+      provider: workspaceTreeProvider,
+      workspacePath: workspacePath,
+    };
+  }
+
+  // Validate the final bazelItem
+  if (!bazelItem || !bazelItem.target || !bazelItem.target.name || !bazelItem.package) {
+    vscode.window.showErrorMessage("Invalid Bazel target data");
+    return;
+  }
+
+  // Store selection
+  context.buildManager.setSelectedBazelTarget(bazelItem);
+  
+  if (workspaceTreeProvider) {
+    workspaceTreeProvider.setSelectedBazelTarget(bazelItem);
+  }
+  
+  vscode.window.showInformationMessage(`✅ Selected Bazel target: ${bazelItem.target.name} (${bazelItem.target.type})`);
+}
+
+/**
+ * Build the currently selected Bazel target
+ */
+export async function buildSelectedBazelTargetCommand(context: ExtensionContext, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {
+  const selectedTargetData = context.buildManager.getSelectedBazelTargetData();
+  if (!selectedTargetData) {
+    vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+    return;
+  }
+
+  // Create a mock BazelTreeItem for the build command
+  const mockBazelItem = {
+    target: {
+      name: selectedTargetData.targetName,
+      type: selectedTargetData.targetType,
+      buildLabel: selectedTargetData.buildLabel,
+      testLabel: selectedTargetData.testLabel,
+      deps: [],
+    },
+    package: {
+      name: selectedTargetData.packageName,
+      path: selectedTargetData.packagePath,
+      targets: [],
+    },
+    workspacePath: selectedTargetData.workspacePath,
+  } as any; // Mock BazelTreeItem
+
+  // Use the existing build command with the selected target
+  await bazelBuildCommand(context, mockBazelItem);
+}
+
+/**
+ * Test the currently selected Bazel target  
+ */
+export async function testSelectedBazelTargetCommand(context: ExtensionContext, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {
+  const selectedTargetData = context.buildManager.getSelectedBazelTargetData();
+  if (!selectedTargetData) {
+    vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+    return;
+  }
+
+  if (!selectedTargetData.testLabel) {
+    vscode.window.showErrorMessage(`Target ${selectedTargetData.targetName} is not a test target`);
+    return;
+  }
+
+  // Create a mock BazelTreeItem for the test command
+  const mockBazelItem = {
+    target: {
+      name: selectedTargetData.targetName,
+      type: selectedTargetData.targetType,
+      buildLabel: selectedTargetData.buildLabel,
+      testLabel: selectedTargetData.testLabel,
+      deps: [],
+    },
+    package: {
+      name: selectedTargetData.packageName,
+      path: selectedTargetData.packagePath,
+      targets: [],
+    },
+    workspacePath: selectedTargetData.workspacePath,
+  } as any; // Mock BazelTreeItem
+
+  // Use the existing test command with the selected target
+  await bazelTestCommand(context, mockBazelItem);
+}
+
+/**
  * Clear persistent workspace cache and reload
  */
 export async function clearWorkspaceCacheCommand(context: ExtensionContext, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {

@@ -18,7 +18,19 @@ type IEventMap = {
   defaultSchemeForBuildUpdated: [scheme: string | undefined];
   defaultSchemeForTestingUpdated: [scheme: string | undefined];
   currentWorkspacePathUpdated: [workspacePath: string | undefined];
+  selectedBazelTargetUpdated: [target: SelectedBazelTargetData | undefined];
 };
+
+// Serializable data for selected Bazel target (no circular references)
+export interface SelectedBazelTargetData {
+  targetName: string;
+  targetType: "library" | "test" | "binary";
+  buildLabel: string;
+  testLabel?: string;
+  packageName: string;
+  packagePath: string;
+  workspacePath: string;
+}
 type IEventKey = keyof IEventMap;
 
 export class BuildManager {
@@ -175,5 +187,58 @@ export class BuildManager {
           If you want to disable this feature, you can do it in the settings. This message is shown only once.
       `);
     }
+  }
+
+  // Bazel target management
+  getSelectedBazelTargetData(): SelectedBazelTargetData | undefined {
+    try {
+      const storedData = this.context.getWorkspaceState("bazel.selectedTarget");
+      if (!storedData) {
+        return undefined;
+      }
+      
+      // If it's a string, parse it back to object
+      if (typeof storedData === 'string') {
+        return JSON.parse(storedData) as SelectedBazelTargetData;
+      }
+      
+      // If it's already an object, return it (backward compatibility)
+      return storedData as SelectedBazelTargetData;
+    } catch (error) {
+      console.error("Failed to get selected Bazel target data:", error);
+      return undefined;
+    }
+  }
+
+  setSelectedBazelTarget(bazelItem: any): void { // BazelTreeItem type
+    if (!bazelItem || !bazelItem.target || !bazelItem.package) {
+      this.clearSelectedBazelTarget();
+      return;
+    }
+
+    try {
+      // Convert BazelTreeItem to serializable data - avoid any circular references
+      const targetData: SelectedBazelTargetData = {
+        targetName: String(bazelItem.target.name || ''),
+        targetType: String(bazelItem.target.type || 'library'),
+        buildLabel: String(bazelItem.target.buildLabel || ''),
+        testLabel: bazelItem.target.testLabel ? String(bazelItem.target.testLabel) : undefined,
+        packageName: String(bazelItem.package.name || ''),
+        packagePath: String(bazelItem.package.path || ''),
+        workspacePath: String(bazelItem.workspacePath || ''),
+      };
+
+      // Use a simple string-based storage to avoid circular references
+      this.context.updateWorkspaceState("bazel.selectedTarget", JSON.stringify(targetData));
+      this.emitter.emit("selectedBazelTargetUpdated", targetData);
+    } catch (error) {
+      console.error("❌ Failed to store Bazel target:", error);
+      this.clearSelectedBazelTarget();
+    }
+  }
+
+  clearSelectedBazelTarget(): void {
+    this.context.updateWorkspaceState("bazel.selectedTarget", null); // Use null instead of undefined
+    this.emitter.emit("selectedBazelTargetUpdated", undefined);
   }
 }
