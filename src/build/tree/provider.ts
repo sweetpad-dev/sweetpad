@@ -63,7 +63,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   
   // Track individual searches within sections (for workspace section which has multiple searches)
   private subsectionLoadingCount = new Map<string, number>([
-    ["workspace", 2], // xcworkspace + xcodeproj searches
+    ["workspace", 2], // project.xcworkspace search (counts as 2 for compatibility)
     ["package", 1],   // Package.swift search
     ["bazel", 1]      // BUILD.bazel search
   ]);
@@ -148,6 +148,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   
   public setSearchTerm(searchTerm: string): void {
     const previousSearchTerm = this.searchTerm;
+    const wasSearchActive = this.isSearchActive;
     this.searchTerm = searchTerm.toLowerCase();
     this.isSearchActive = searchTerm.length > 0;
     
@@ -166,6 +167,11 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       this.computeFilteredCache();
       this._onDidChangeTreeData.fire(null);
         return;
+      }
+      
+      // If this is the start of a new search, preload content for better results
+      if (!wasSearchActive && this.isSearchActive) {
+        this.preloadContentForSearch();
       }
       
       // For instant feedback, show search UI changes immediately
@@ -324,7 +330,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     return this.filterWorkspacesOptimized(workspaces);
   }
 
-  // Highly optimized workspace filtering with pre-computed values
+  // Enhanced workspace filtering that checks both workspace names and their content (schemes/targets)
   private filterWorkspacesOptimized(workspaces: WorkspaceGroupTreeItem[]): WorkspaceGroupTreeItem[] {
     if (!this.isSearchActive || !this.searchTerm) {
       return workspaces;
@@ -338,25 +344,149 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     
     for (let i = 0; i < len; i++) {
       const workspace = workspaces[i];
+      let shouldInclude = false;
       
       // Quick label check first (most common case)
       const label = workspace.label;
       if (label && typeof label === 'string') {
         // Use indexOf for better performance than includes
         if (label.toLowerCase().indexOf(searchTerm) !== -1) {
-          filteredWorkspaces.push(workspace);
-          continue;
+          shouldInclude = true;
         }
       }
       
       // Check workspace path only if label didn't match
-      const workspacePath = workspace.workspacePath;
-      if (workspacePath.toLowerCase().indexOf(searchTerm) !== -1) {
+      if (!shouldInclude) {
+        const workspacePath = workspace.workspacePath;
+        if (workspacePath.toLowerCase().indexOf(searchTerm) !== -1) {
+          shouldInclude = true;
+        }
+      }
+      
+      // If workspace name doesn't match, check if it contains matching schemes/targets
+      if (!shouldInclude) {
+        shouldInclude = this.workspaceContainsMatchingContent(workspace);
+      }
+      
+      if (shouldInclude) {
         filteredWorkspaces.push(workspace);
       }
     }
     
     return filteredWorkspaces;
+  }
+
+  // Check if workspace contains schemes/targets matching the search term (synchronous)
+  private workspaceContainsMatchingContent(workspace: WorkspaceGroupTreeItem): boolean {
+    if (!this.isSearchActive || !this.searchTerm) {
+      return false;
+    }
+
+    const searchTerm = this.searchTerm;
+    
+    // Check if this is a Bazel workspace
+    const isBazelWorkspace = workspace.workspacePath.endsWith("BUILD.bazel") || workspace.workspacePath.endsWith("BUILD");
+    
+    if (isBazelWorkspace) {
+      // For Bazel workspaces, check cached targets
+      const bazelPackage = this.cachedBazelFiles.get(workspace.workspacePath);
+      if (bazelPackage && bazelPackage.targets) {
+        return bazelPackage.targets.some(target => 
+          target.name.toLowerCase().indexOf(searchTerm) !== -1 ||
+          (target.buildLabel && target.buildLabel.toLowerCase().indexOf(searchTerm) !== -1)
+        );
+      }
+    } else {
+      // For Xcode/SPM workspaces, check cached schemes
+      // Try different cache keys that might exist
+      const cacheKeys = [
+        `${workspace.workspacePath}:${searchTerm}`,
+        `${workspace.workspacePath}:`,
+        workspace.workspacePath
+      ];
+      
+      for (const cacheKey of cacheKeys) {
+        const cachedSchemes = this.cachedSchemesForWorkspaces.get(cacheKey);
+        if (cachedSchemes) {
+          // Check if any scheme name contains the search term
+          return cachedSchemes.some(scheme => {
+            const schemeName = scheme.label;
+            return schemeName && typeof schemeName === 'string' && 
+                   schemeName.toLowerCase().indexOf(searchTerm) !== -1;
+          });
+        }
+      }
+    }
+    
+    // If not in cache, we can't determine without async operations
+    // For now, return false to keep filtering fast
+    // The content will be checked when the workspace is expanded
+    return false;
+  }
+
+  // Preload content for workspaces when search starts for better search results
+  private preloadContentForSearch(): void {
+    // Run preloading in background without blocking UI
+    setTimeout(() => {
+      this.preloadContentForSearchAsync();
+    }, 0);
+  }
+
+  private async preloadContentForSearchAsync(): Promise<void> {
+    // Only preload a limited number of workspaces to avoid performance issues
+    const workspacesToPreload = [...this.recentWorkspaces, ...this.workspaces.slice(0, 10)];
+    const promises: Promise<void>[] = [];
+    
+    for (const workspace of workspacesToPreload) {
+      // Skip if already cached
+      const cacheKey = `${workspace.workspacePath}:`;
+      if (this.cachedSchemesForWorkspaces.has(cacheKey)) {
+        continue;
+      }
+      
+      // Check if this is a Bazel workspace
+      const isBazelWorkspace = workspace.workspacePath.endsWith("BUILD.bazel") || workspace.workspacePath.endsWith("BUILD");
+      
+      if (isBazelWorkspace) {
+        // For Bazel workspaces, preload targets if not cached
+        if (!this.cachedBazelFiles.has(workspace.workspacePath)) {
+          promises.push(
+            this.getCachedBazelPackage(workspace.workspacePath).then(() => {
+              // Target data is now cached
+            }).catch(() => {
+              // Ignore errors during preloading
+            })
+          );
+        }
+      } else {
+        // For Xcode/SPM workspaces, preload schemes
+        promises.push(
+          this.getSchemesDirectly(workspace.workspacePath).then(schemes => {
+            // Cache the schemes with empty search term for future use
+            this.cachedSchemesForWorkspaces.set(`${workspace.workspacePath}:`, schemes);
+          }).catch(() => {
+            // Ignore errors during preloading
+          })
+        );
+      }
+      
+      // Limit concurrent operations to avoid overwhelming the system
+      if (promises.length >= 3) {
+        await Promise.all(promises);
+        promises.length = 0; // Clear the array
+      }
+    }
+    
+    // Wait for any remaining promises
+    if (promises.length > 0) {
+      await Promise.all(promises);
+    }
+    
+    // Refresh search results now that we have more cached content
+    if (this.isSearchActive) {
+      this.computeFilteredCache();
+      this._onDidChangeTreeData.fire(null);
+    }
   }
 
   // Filter schemes based on search term - highly optimized version
@@ -1153,7 +1283,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       // Reset sections loading state for real search
       this.sectionsLoading = new Set<string>(["workspace", "package", "bazel"]);
       this.subsectionLoadingCount = new Map<string, number>([
-        ["workspace", 2], // xcworkspace + xcodeproj searches
+        ["workspace", 2], // project.xcworkspace search (counts as 2 for compatibility)
         ["package", 1],   // Package.swift search  
         ["bazel", 1]      // BUILD.bazel search
       ]);
@@ -1214,29 +1344,23 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
           }
         }),
         
-        // Search for .xcworkspace files
+        // Search for project.xcworkspace files inside .xcodeproj directories only
         this.findFilesIncrementallyWithCallback({
         directory: workspace,
         depth: 4,
           maxResults: 20, // Limit workspace files
-          matcher: (file) => file.name.endsWith("project.xcworkspace") || file.name.endsWith(".xcworkspace"),
-          processFile: (filePath) => this.addWorkspaceToSection(filePath, "workspace", discoveredWorkspaces),
+          matcher: (file) => file.name === "project.xcworkspace",
+          processFile: (filePath) => {
+            // Only process if it's inside a .xcodeproj directory
+            if (filePath.includes('.xcodeproj/project.xcworkspace')) {
+              this.addWorkspaceToSection(filePath, "workspace", discoveredWorkspaces);
+            }
+          },
           onComplete: () => {
-            // console.log(`🏢 Workspace (.xcworkspace) search completed`);
-            this.onSectionLoadComplete("workspace"); // Will decrement workspace counter
-          }
-        }),
-
-        // Search for .xcodeproj files  
-        this.findFilesIncrementallyWithCallback({
-          directory: workspace,
-          depth: 4,
-          maxResults: 20, // Limit project files
-          matcher: (file) => file.name.endsWith(".xcodeproj"),
-          processFile: (filePath) => this.addWorkspaceToSection(filePath, "workspace", discoveredWorkspaces),
-          onComplete: () => {
-            // console.log(`🏗️ Project (.xcodeproj) search completed`);
-            this.onSectionLoadComplete("workspace"); // Will decrement workspace counter
+            // console.log(`🏢 Workspace (project.xcworkspace) search completed`);
+            // Since we removed the .xcodeproj search, we need to decrement twice
+            this.onSectionLoadComplete("workspace");
+            this.onSectionLoadComplete("workspace"); 
           }
         }),
         
