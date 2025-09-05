@@ -666,16 +666,6 @@
           "command": "sweetpad.build.clearCache",
           "when": "view == sweetpad.view.workspaces",
           "group": "navigation@2"
-        },
-        {
-          "command": "sweetpad.bazel.buildSelected",
-          "when": "view == sweetpad.view.workspaces && sweetpad.bazel.hasSelectedTarget",
-          "group": "navigation@3"
-        },
-        {
-          "command": "sweetpad.bazel.testSelected",
-          "when": "view == sweetpad.view.workspaces && sweetpad.bazel.hasSelectedTarget && sweetpad.bazel.selectedTargetType == test",
-          "group": "navigation@4"
         }
       ],
       "view/item/context": [
