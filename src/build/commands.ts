@@ -13,7 +13,11 @@ import {
   getIsXcodeBuildServerInstalled,
   getXcodeVersionInstalled,
 } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
+import type { 
+  ExtensionContext, 
+  LastLaunchedAppBazelSimulatorContext,
+  LastLaunchedAppBazelDeviceContext 
+} from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
@@ -2189,6 +2193,215 @@ export async function bazelRunCommand(context: ExtensionContext, bazelItem?: Baz
       terminal.write(`\n✅ Launch completed for ${bazelItem.target.name}\n`);
     },
   });
+}
+
+/**
+ * Debug a Bazel target (launch app with debug support)
+ */
+export async function bazelDebugCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  if (!bazelItem) {
+    vscode.window.showErrorMessage("No Bazel target selected");
+    return;
+  }
+
+  // Only allow debugging binary targets (apps)
+  if (bazelItem.target.type !== 'binary') {
+    vscode.window.showErrorMessage(`Target ${bazelItem.target.name} is not a runnable target (must be a binary/app)`);
+    return;
+  }
+
+  // Use the same destination selection pattern as launchCommand
+  context.updateProgressStatus("Searching for destination");
+  const destination = await askDestinationToRunOn(context, null);
+
+  await runTask(context, {
+    name: `Bazel Debug: ${bazelItem.target.name}`,
+    lock: "sweetpad.bazel.debug",
+    terminateLocked: true,
+    callback: async (terminal) => {
+      terminal.write(`Debugging Bazel target: ${bazelItem.target.buildLabel}\n\n`);
+
+      // Go to the workspace path first
+      await terminal.execute({
+        command: "cd",
+        args: [bazelItem.package.path],
+      });
+
+      if (destination.type === 'iOSSimulator') {
+        // Build with debug symbols first
+        terminal.write(`🔨 Building with debug symbols...\n`);
+        await terminal.execute({
+          command: "bazel",
+          args: ["build", bazelItem.target.buildLabel, "--compilation_mode=dbg"],
+        });
+
+        // Get the bundle path
+        const packagePath = bazelItem.target.buildLabel.replace('//', '').replace(':', '/');
+        const appPath = `bazel-bin/${packagePath}/${bazelItem.target.name}.app`;
+        
+        terminal.write(`🎯 Using iOS Simulator: ${destination.name}\n`);
+        terminal.write(`📦 App bundle: ${appPath}\n`);
+        terminal.write(`⏳ Launching with wait-for-debugger...\n\n`);
+
+        // Get the bundle identifier (we'll need to extract this from the app)
+        const bundleId = await getBundleIdentifierFromApp(appPath);
+        if (!bundleId) {
+          terminal.write(`⚠️  Could not determine bundle identifier, using target name as fallback\n`);
+        }
+        const finalBundleId = bundleId || bazelItem.target.name;
+
+        // Launch with wait for debugger
+        await terminal.execute({
+          command: "xcrun",
+          args: [
+            "simctl",
+            "launch",
+            "--console-pty",
+            "--wait-for-debugger",
+            "--terminate-running-process",
+            destination.udid,
+            finalBundleId,
+          ],
+        });
+
+        // Store launch context for debugger
+        const fullAppPath = path.resolve(bazelItem.package.path, appPath);
+        context.updateWorkspaceState("build.lastLaunchedApp", {
+          type: "bazel-simulator",
+          appPath: fullAppPath,
+          targetName: bazelItem.target.name,
+          buildLabel: bazelItem.target.buildLabel,
+          simulatorId: destination.udid,
+          simulatorName: destination.name,
+        } satisfies LastLaunchedAppBazelSimulatorContext);
+
+        terminal.write(`🐛 App launched with debugger support. You can now attach the debugger.\n`);
+        terminal.write(`💡 Use the "SweetPad: Build and Run (Wait for debugger)" debug configuration.\n`);
+
+      } else if (destination.type === 'iOSDevice') {
+        terminal.write(`📱 Using iOS Device: ${destination.name} (${destination.udid})\n\n`);
+        terminal.write(`🔨 Building for device with debug symbols...\n`);
+        
+        // Build for device with debug symbols
+        const buildArgs = ["build", bazelItem.target.buildLabel, "--ios_multi_cpus=arm64", "--compilation_mode=dbg"];
+        await terminal.execute({
+          command: "bazel",
+          args: buildArgs,
+        });
+
+        // Get the bundle path
+        const packagePath = bazelItem.target.buildLabel.replace('//', '').replace(':', '/');
+        const ipaPath = `bazel-bin/${packagePath}.ipa`;
+        const appPath = `bazel-bin/${packagePath}.app`;
+
+        // Install and launch with debugger support
+        terminal.write(`📲 Installing and launching with debug support...\n`);
+        
+        let bundlePath = ipaPath;
+        try {
+          await terminal.execute({
+            command: "test", 
+            args: ["-e", ipaPath],
+          });
+          bundlePath = ipaPath;
+          terminal.write(`📦 Found bundle: ${ipaPath}\n`);
+        } catch {
+          try {
+            await terminal.execute({
+              command: "test", 
+              args: ["-e", appPath],
+            });
+            bundlePath = appPath;
+            terminal.write(`📦 Found bundle: ${appPath}\n`);
+          } catch {
+            terminal.write(`⚠️  Bundle not found at expected paths, using: ${ipaPath}\n`);
+            bundlePath = ipaPath;
+          }
+        }
+
+        // Use devicectl for debugging support on devices
+        try {
+          const fullAppPath = path.resolve(bazelItem.package.path, bundlePath);
+          
+          // Install the app
+          await terminal.execute({
+            command: "xcrun",
+            args: ["devicectl", "device", "install", "app", "--device", destination.udid, bundlePath],
+          });
+
+          // Get bundle identifier
+          const bundleId = await getBundleIdentifierFromApp(bundlePath);
+          if (!bundleId) {
+            throw new Error("Could not determine bundle identifier");
+          }
+
+          // Launch with debugger support
+          await terminal.execute({
+            command: "xcrun", 
+            args: ["devicectl", "device", "process", "launch", "--device", destination.udid, "--start-stopped", bundleId],
+          });
+
+          // Store launch context for debugger
+          context.updateWorkspaceState("build.lastLaunchedApp", {
+            type: "bazel-device",
+            appPath: fullAppPath,
+            targetName: bazelItem.target.name,
+            buildLabel: bazelItem.target.buildLabel,
+            destinationId: destination.udid,
+            destinationType: destination.type,
+          } satisfies LastLaunchedAppBazelDeviceContext);
+
+          terminal.write(`🐛 App launched with debugger support on device.\n`);
+          terminal.write(`💡 Use the "SweetPad: Build and Run (Wait for debugger)" debug configuration.\n`);
+
+        } catch (error) {
+          terminal.write(`⚠️  Failed to launch with devicectl, falling back to ios-deploy\n`);
+          // Fallback to ios-deploy without debugger support
+          await terminal.execute({
+            command: "ios-deploy",
+            args: ["--id", destination.udid, "--bundle", bundlePath, "--debug"],
+          });
+        }
+
+      } else {
+        terminal.write(`ℹ️  Selected destination: ${destination.typeLabel} (${destination.name}). Note: Bazel debug may not support this destination type.\n\n`);
+        
+        // Build with debug symbols
+        await terminal.execute({
+          command: "bazel",
+          args: ["build", bazelItem.target.buildLabel, "--compilation_mode=dbg"],
+        });
+
+        // Fallback to regular bazel run
+        await terminal.execute({
+          command: "bazel",
+          args: ["run", bazelItem.target.buildLabel],
+        });
+      }
+      
+      terminal.write(`\n✅ Debug launch completed for ${bazelItem.target.name}\n`);
+    },
+  });
+}
+
+/**
+ * Helper function to extract bundle identifier from an app bundle
+ */
+async function getBundleIdentifierFromApp(appPath: string): Promise<string | null> {
+  try {
+    const { execSync } = require('child_process');
+    const plistPath = path.join(appPath, 'Info.plist');
+    
+    // Use PlistBuddy to read the bundle identifier
+    const result = execSync(`/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "${plistPath}"`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    
+    return result.trim();
+  } catch (error) {
+    return null;
+  }
 }
 
 /**

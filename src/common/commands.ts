@@ -33,10 +33,30 @@ export type LastLaunchedAppMacOSContext = {
   appPath: string;
 };
 
+export type LastLaunchedAppBazelSimulatorContext = {
+  type: "bazel-simulator";
+  appPath: string;
+  targetName: string;
+  buildLabel: string;
+  simulatorId: string;
+  simulatorName: string;
+};
+
+export type LastLaunchedAppBazelDeviceContext = {
+  type: "bazel-device";
+  appPath: string;
+  targetName: string;
+  buildLabel: string;
+  destinationId: string;
+  destinationType: DestinationType;
+};
+
 export type LastLaunchedAppContext =
   | LastLaunchedAppDeviceContext
   | LastLaunchedAppSimulatorContext
-  | LastLaunchedAppMacOSContext;
+  | LastLaunchedAppMacOSContext
+  | LastLaunchedAppBazelSimulatorContext
+  | LastLaunchedAppBazelDeviceContext;
 
 type WorkspaceTypes = {
   "build.xcodeWorkspacePath": string;
