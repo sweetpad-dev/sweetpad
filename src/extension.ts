@@ -4,6 +4,8 @@ import type { Express } from 'express'; // Fix the import to use type import
 import {
   buildAndPeripheryScanCommand,
   buildCommand,
+  bazelBuildCommand,
+  bazelTestCommand,
   cleanCommand,
   createPeripheryConfigCommand,
   debuggingBuildCommand,
@@ -188,6 +190,8 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.build.createPeripheryConfig", createPeripheryConfigCommand));
     d(command("sweetpad.build.search", () => searchBuildsCommand(_context, workspaceTreeProvider)));
     d(command("sweetpad.build.clearSearch", () => clearBuildsSearchCommand(_context, workspaceTreeProvider)));
+    d(command("sweetpad.bazel.build", bazelBuildCommand));
+    d(command("sweetpad.bazel.test", bazelTestCommand));
 
     // Testing
     d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));

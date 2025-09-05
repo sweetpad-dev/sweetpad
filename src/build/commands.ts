@@ -1,6 +1,6 @@
 import path from "node:path";
 import * as vscode from "vscode";
-import type { BuildTreeItem, WorkspaceGroupTreeItem, WorkspaceTreeProvider } from "./tree";
+import type { BuildTreeItem, WorkspaceGroupTreeItem, WorkspaceTreeProvider, BazelTreeItem } from "./tree";
 
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import {
@@ -1988,6 +1988,75 @@ verbose: false
   } catch (error) {
     vscode.window.showErrorMessage(`❌ Failed to create .periphery.yml: ${error}`);
   }
+}
+
+/**
+ * Build a Bazel target
+ */
+export async function bazelBuildCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  if (!bazelItem) {
+    vscode.window.showErrorMessage("No Bazel target selected");
+    return;
+  }
+
+  await runTask(context, {
+    name: `Bazel Build: ${bazelItem.target.name}`,
+    lock: "sweetpad.bazel.build",
+    terminateLocked: true,
+    callback: async (terminal) => {
+      terminal.write(`Building Bazel target: ${bazelItem.target.buildLabel}\n\n`);
+      
+      const command: Command = {
+        program: "bazel",
+        args: ["build", bazelItem.target.buildLabel],
+        cwd: getWorkspacePath(),
+      };
+
+      await exec(command, {
+        output: (data) => terminal.write(data),
+        error: (data) => terminal.write(data),
+      });
+      
+      terminal.write(`\n✅ Build completed for ${bazelItem.target.name}\n`);
+    },
+  });
+}
+
+/**
+ * Test a Bazel target
+ */
+export async function bazelTestCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  if (!bazelItem) {
+    vscode.window.showErrorMessage("No Bazel target selected");
+    return;
+  }
+
+  if (!bazelItem.target.testLabel) {
+    vscode.window.showErrorMessage(`Target ${bazelItem.target.name} is not a test target`);
+    return;
+  }
+
+  await runTask(context, {
+    name: `Bazel Test: ${bazelItem.target.name}`,
+    lock: "sweetpad.bazel.test",
+    terminateLocked: true,
+    callback: async (terminal) => {
+      terminal.write(`Running Bazel tests: ${bazelItem.target.testLabel}\n\n`);
+      
+      const command: Command = {
+        program: "bazel",
+        args: ["test", bazelItem.target.testLabel, "--test_output=all"],
+        cwd: getWorkspacePath(),
+      };
+
+      await exec(command, {
+        output: (data) => terminal.write(data),
+        error: (data) => terminal.write(data),
+      });
+      
+      terminal.write(`\n✅ Tests completed for ${bazelItem.target.name}\n`);
+    },
+  });
 }
 
 /**

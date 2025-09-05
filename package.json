@@ -405,6 +405,18 @@
         "description": "Create .periphery.yml configuration file"
       },
       {
+        "command": "sweetpad.bazel.build",
+        "title": "SweetPad: Bazel Build",
+        "icon": "$(sweetpad-tool)",
+        "description": "Build Bazel target"
+      },
+      {
+        "command": "sweetpad.bazel.test",
+        "title": "SweetPad: Bazel Test",
+        "icon": "$(beaker)",
+        "description": "Test Bazel target"
+      },
+      {
         "command": "sweetpad.testing.selectTarget",
         "title": "SweetPad.Testing: Select testing target",
         "icon": "$(file-code)"
@@ -750,6 +762,26 @@
           "command": "sweetpad.build.createPeripheryConfig",
           "when": "viewItem == sweetpad.build.view.item",
           "group": "context@11"
+        },
+        {
+          "command": "sweetpad.bazel.build",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "inline@1"
+        },
+        {
+          "command": "sweetpad.bazel.test",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "inline@2"
+        },
+        {
+          "command": "sweetpad.bazel.build",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "context@1"
+        },
+        {
+          "command": "sweetpad.bazel.test",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "context@2"
         }
       ],
       "testing/item/context": [

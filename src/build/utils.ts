@@ -372,8 +372,17 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
     },
   });
 
-  // Combine both types of paths
-  return [...xcworkspacePaths, ...packageSwiftPaths];
+  // Look for BUILD.bazel files for Bazel projects
+  const bazelBuildPaths = await findFilesRecursive({
+    directory: workspace,
+    depth: 4,
+    matcher: (file) => {
+      return file.name === "BUILD.bazel" || file.name === "BUILD";
+    },
+  });
+
+  // Combine all types of paths
+  return [...xcworkspacePaths, ...packageSwiftPaths, ...bazelBuildPaths];
 }
 
 /**
@@ -382,12 +391,12 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
 export async function selectXcodeWorkspace(options: { autoselect: boolean }): Promise<string> {
   const workspacePath = getWorkspacePath();
 
-  // Get all files that end with .xcworkspace (4 depth) and Package.swift files
+  // Get all files that end with .xcworkspace (4 depth), Package.swift files, and BUILD.bazel files
   const paths = await detectXcodeWorkspacesPaths();
 
   // No files, nothing to do
   if (paths.length === 0) {
-    throw new ExtensionError("No xcode workspaces or SPM packages found", {
+    throw new ExtensionError("No xcode workspaces, SPM packages, or Bazel projects found", {
       context: {
         cwd: workspacePath,
       },
@@ -397,7 +406,14 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
   // One file, use it and save it to the cache
   if (paths.length === 1 && options.autoselect) {
     const path = paths[0];
-    const projectType = path.endsWith("Package.swift") ? "SPM package" : "Xcode workspace";
+    let projectType: string;
+    if (path.endsWith("Package.swift")) {
+      projectType = "SPM package";
+    } else if (path.endsWith("BUILD.bazel") || path.endsWith("BUILD")) {
+      projectType = "Bazel project";
+    } else {
+      projectType = "Xcode workspace";
+    }
     commonLogger.log(`${projectType} was detected`, {
       workspace: workspacePath,
       path: path,
@@ -410,7 +426,7 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
 
   // More then one, ask user to select
   const selected = await showQuickPick({
-    title: "Select xcode workspace or SPM package",
+    title: "Select xcode workspace, SPM package, or Bazel project",
     items: paths
       .sort((a, b) => {
         // Sort by depth to show less nested paths first
@@ -426,10 +442,13 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
         const isInRootDir = parentDir === ".";
         const isCocoaPods = isInRootDir && isCocoaProject;
         const isSPMPackage = xwPath.endsWith("Package.swift");
+        const isBazelProject = xwPath.endsWith("BUILD.bazel") || xwPath.endsWith("BUILD");
 
         let detail: string | undefined;
         if (isSPMPackage) {
           detail = "Swift Package Manager";
+        } else if (isBazelProject) {
+          detail = "Bazel";
         } else if (isCocoaPods && isInRootDir) {
           detail = "CocoaPods (recommended)";
         } else if (!isInRootDir && parentDir.endsWith(".xcodeproj")) {
@@ -458,4 +477,121 @@ export async function restartSwiftLSP() {
       error: error,
     });
   }
+}
+
+// Bazel-related types and functions
+export interface BazelTarget {
+  name: string;
+  type: "library" | "test" | "binary";
+  buildLabel: string;
+  testLabel?: string;
+  deps: string[];
+}
+
+export interface BazelPackage {
+  name: string;
+  path: string;
+  targets: BazelTarget[];
+}
+
+/**
+ * Parse a BUILD.bazel file and extract dd_ios_package targets
+ */
+export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelPackage | null> {
+  try {
+    const fs = await import("node:fs/promises");
+    const content = await fs.readFile(buildFilePath, "utf-8");
+    
+    // Extract the package name from the path (parent directory of BUILD.bazel)
+    const packagePath = path.dirname(buildFilePath);
+    const packageName = path.basename(packagePath);
+    
+    // Find dd_ios_package rules in the file
+    const targets: BazelTarget[] = [];
+    
+    // Basic regex to match dd_ios_package blocks
+    const packageRegex = /dd_ios_package\s*\(\s*name\s*=\s*"([^"]+)"\s*,\s*targets\s*=\s*\[([\s\S]*?)\]\s*,?\s*\)/g;
+    let packageMatch;
+    
+    while ((packageMatch = packageRegex.exec(content)) !== null) {
+      const [, packageTargetName, targetsBlock] = packageMatch;
+      
+      // Extract individual target definitions
+      const targetRegex = /target\.(\w+)\s*\(\s*name\s*=\s*"([^"]+)"\s*,\s*([\s\S]*?)\s*\)/g;
+      let targetMatch;
+      
+      while ((targetMatch = targetRegex.exec(targetsBlock)) !== null) {
+        const [, targetType, targetName, targetConfig] = targetMatch;
+        
+        // Extract dependencies if present
+        const deps: string[] = [];
+        const depsRegex = /deps\s*=\s*\[([\s\S]*?)\]/;
+        const depsMatch = depsRegex.exec(targetConfig);
+        
+        if (depsMatch) {
+          const depsContent = depsMatch[1];
+          const depRegex = /"([^"]+)"/g;
+          let depMatch;
+          while ((depMatch = depRegex.exec(depsContent)) !== null) {
+            deps.push(depMatch[1]);
+          }
+        }
+        
+        // Create target with build and test labels
+        const relativePath = path.relative(getWorkspacePath(), packagePath);
+        const buildLabel = `//${relativePath}:${targetName}`;
+        
+        targets.push({
+          name: targetName,
+          type: targetType as "library" | "test" | "binary",
+          buildLabel,
+          testLabel: targetType === "test" ? buildLabel : undefined,
+          deps,
+        });
+      }
+    }
+    
+    if (targets.length === 0) {
+      return null;
+    }
+    
+    return {
+      name: packageName,
+      path: packagePath,
+      targets,
+    };
+  } catch (error) {
+    commonLogger.warn("Failed to parse BUILD.bazel file", {
+      buildFilePath,
+      error,
+    });
+    return null;
+  }
+}
+
+/**
+ * Get all Bazel packages and their targets from the workspace
+ */
+export async function getBazelPackages(): Promise<BazelPackage[]> {
+  const workspace = getWorkspacePath();
+  
+  // Find all BUILD.bazel files
+  const buildFiles = await findFilesRecursive({
+    directory: workspace,
+    depth: 10, // Allow deeper search for Bazel projects
+    matcher: (file) => {
+      return file.name === "BUILD.bazel" || file.name === "BUILD";
+    },
+  });
+  
+  const packages: BazelPackage[] = [];
+  
+  for (const buildFile of buildFiles) {
+    const bazelPackage = await parseBazelBuildFile(buildFile);
+    if (bazelPackage) {
+      packages.push(bazelPackage);
+    }
+  }
+  
+  return packages;
 }
