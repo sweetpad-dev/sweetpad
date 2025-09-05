@@ -2090,25 +2090,100 @@ export async function bazelRunCommand(context: ExtensionContext, bazelItem?: Baz
       // Build the run command with destination targeting
       let runArgs = ["run", bazelItem.target.buildLabel];
       
-      // Add iOS simulator device argument if destination is iOS simulator
-      if (destination.type === 'iOSSimulator') {
-        runArgs.push("--ios_simulator_device", destination.name);
-        terminal.write(`🎯 Using iOS Simulator: ${destination.name}\n\n`);
-      } else {
-        terminal.write(`ℹ️  Selected destination: ${destination.typeLabel} (${destination.name}). Note: Bazel iOS apps typically run on simulators.\n\n`);
-      }
-
-      // Go to the workspace path
+      // Go to the workspace path first
       await terminal.execute({
         command: "cd",
         args: [bazelItem.package.path],
       });
-      
-      // Use terminal.execute for streaming output
-      await terminal.execute({
-        command: "bazel",
-        args: runArgs,
-      });
+
+      // Handle iOS device vs simulator differently
+      if (destination.type === 'iOSSimulator') {
+        // For simulators: use bazel run directly
+        runArgs.push("--ios_simulator_device", destination.name);
+        terminal.write(`🎯 Using iOS Simulator: ${destination.name}\n\n`);
+        
+        await terminal.execute({
+          command: "bazel",
+          args: runArgs,
+        });
+      } else if (destination.type === 'iOSDevice') {
+        // For physical devices: build then deploy with ios-deploy
+        terminal.write(`📱 Using iOS Device: ${destination.name} (${destination.udid})\n\n`);
+        terminal.write(`ℹ️  Physical devices require a 2-step process: build + deploy\n`);
+        terminal.write(`ℹ️  Note: Device builds require valid provisioning profiles and code signing\n\n`);
+        
+        // Step 1: Build for device (arm64)
+        terminal.write(`🔨 Step 1: Building for device (arm64)...\n`);
+        const buildArgs = ["build", bazelItem.target.buildLabel, "--ios_multi_cpus=arm64"];
+        await terminal.execute({
+          command: "bazel",
+          args: buildArgs,
+        });
+        
+        // Step 2: Deploy with ios-deploy
+        terminal.write(`\n📲 Step 2: Installing on device with ios-deploy...\n`);
+        
+        // Construct the expected path to the bundle (try both .ipa and .app)
+        // Bazel typically puts outputs in bazel-bin/<path>/<target>.{ipa,app}
+        const packagePath = bazelItem.target.buildLabel.replace('//', '').replace(':', '/');
+        const ipaPath = `bazel-bin/${packagePath}.ipa`;
+        const appPath = `bazel-bin/${packagePath}.app`;
+        
+        // Check if ios-deploy is available
+        try {
+          await terminal.execute({
+            command: "which",
+            args: ["ios-deploy"],
+          });
+          
+          // Check which bundle format exists
+          let bundlePath = ipaPath;
+          try {
+            await terminal.execute({
+              command: "test", 
+              args: ["-e", ipaPath],
+            });
+            bundlePath = ipaPath;
+            terminal.write(`📦 Found bundle: ${ipaPath}\n`);
+          } catch {
+            try {
+              await terminal.execute({
+                command: "test", 
+                args: ["-e", appPath],
+              });
+              bundlePath = appPath;
+              terminal.write(`📦 Found bundle: ${appPath}\n`);
+            } catch {
+              terminal.write(`⚠️  Bundle not found at expected paths:\n`);
+              terminal.write(`   - ${ipaPath}\n`);
+              terminal.write(`   - ${appPath}\n`);
+              terminal.write(`\nTrying with .ipa path anyway...\n`);
+              bundlePath = ipaPath;
+            }
+          }
+          
+          // Deploy with ios-deploy
+          await terminal.execute({
+            command: "ios-deploy",
+            args: ["--id", destination.udid, "--bundle", bundlePath],
+          });
+        } catch (error) {
+          terminal.write(`\n⚠️  ios-deploy not found. Please install it first:\n`);
+          terminal.write(`   npm install -g ios-deploy\n\n`);
+          terminal.write(`Then manually deploy with:\n`);
+          terminal.write(`   ios-deploy --id ${destination.udid} --bundle ${ipaPath}\n`);
+          terminal.write(`   # or if .app format:\n`);
+          terminal.write(`   ios-deploy --id ${destination.udid} --bundle ${appPath}\n`);
+        }
+      } else {
+        terminal.write(`ℹ️  Selected destination: ${destination.typeLabel} (${destination.name}). Note: Bazel iOS apps may not support this destination type.\n\n`);
+        
+        // Fallback to regular bazel run
+        await terminal.execute({
+          command: "bazel",
+          args: runArgs,
+        });
+      }
       
       terminal.write(`\n✅ Launch completed for ${bazelItem.target.name}\n`);
     },
