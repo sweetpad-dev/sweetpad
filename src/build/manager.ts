@@ -218,9 +218,13 @@ export class BuildManager {
 
     try {
       // Convert BazelTreeItem to serializable data - avoid any circular references
+      const targetType = bazelItem.target.type || 'library';
+      const validTargetType: "library" | "test" | "binary" = 
+        targetType === 'test' || targetType === 'binary' ? targetType : 'library';
+      
       const targetData: SelectedBazelTargetData = {
         targetName: String(bazelItem.target.name || ''),
-        targetType: String(bazelItem.target.type || 'library'),
+        targetType: validTargetType,
         buildLabel: String(bazelItem.target.buildLabel || ''),
         testLabel: bazelItem.target.testLabel ? String(bazelItem.target.testLabel) : undefined,
         packageName: String(bazelItem.package.name || ''),
@@ -238,7 +242,7 @@ export class BuildManager {
   }
 
   clearSelectedBazelTarget(): void {
-    this.context.updateWorkspaceState("bazel.selectedTarget", null); // Use null instead of undefined
+    this.context.updateWorkspaceState("bazel.selectedTarget", undefined); // Clear the selected target
     this.emitter.emit("selectedBazelTargetUpdated", undefined);
   }
 }

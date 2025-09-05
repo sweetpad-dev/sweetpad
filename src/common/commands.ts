@@ -53,6 +53,7 @@ type WorkspaceTypes = {
   "testing.xcodeConfiguration": string;
   "testing.xcodeDestination": SelectedDestination;
   "testing.xcodeScheme": string;
+  "bazel.selectedTarget": string;
 };
 
 type WorkspaceStateKey = keyof WorkspaceTypes;
