@@ -85,9 +85,7 @@ export class BazelParser {
             schemes.push({
               name: nameMatch[1],
               type: 'doordash_scheme',
-              buildTargets: ['//Apps/Consumer/ConsumerApp:DoorDash'], // Inferred
-              launchTarget: '//Apps/Consumer/ConsumerApp:DoorDash',
-              testTargets: ['//Apps/Consumer/ConsumerApp/Tests:DoorDashTests'],
+              buildTargets: [],
               env
             });
           }
@@ -107,8 +105,7 @@ export class BazelParser {
             schemes.push({
               name: nameMatch[1],
               type: 'doordash_appclip_scheme',
-              buildTargets: [`//Apps/Consumer/ConsumerApp/AppClip:${nameMatch[1]}`],
-              launchTarget: `//Apps/Consumer/ConsumerApp/AppClip:${nameMatch[1]}`
+              buildTargets: []
             });
           }
         }

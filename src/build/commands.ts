@@ -2162,18 +2162,19 @@ export async function bazelRunCommand(context: ExtensionContext, bazelItem?: Baz
             }
           }
           
-          // Deploy with ios-deploy
+          // Deploy and launch with ios-deploy
+          terminal.write(`🚀 Installing and launching app...\n`);
           await terminal.execute({
             command: "ios-deploy",
-            args: ["--id", destination.udid, "--bundle", bundlePath],
+            args: ["--id", destination.udid, "--bundle", bundlePath, "--justlaunch"],
           });
         } catch (error) {
           terminal.write(`\n⚠️  ios-deploy not found. Please install it first:\n`);
           terminal.write(`   npm install -g ios-deploy\n\n`);
-          terminal.write(`Then manually deploy with:\n`);
-          terminal.write(`   ios-deploy --id ${destination.udid} --bundle ${ipaPath}\n`);
+          terminal.write(`Then manually deploy and launch with:\n`);
+          terminal.write(`   ios-deploy --id ${destination.udid} --bundle ${ipaPath} --justlaunch\n`);
           terminal.write(`   # or if .app format:\n`);
-          terminal.write(`   ios-deploy --id ${destination.udid} --bundle ${appPath}\n`);
+          terminal.write(`   ios-deploy --id ${destination.udid} --bundle ${appPath} --justlaunch\n`);
         }
       } else {
         terminal.write(`ℹ️  Selected destination: ${destination.typeLabel} (${destination.name}). Note: Bazel iOS apps may not support this destination type.\n\n`);

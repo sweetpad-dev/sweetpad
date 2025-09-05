@@ -1,130 +1,130 @@
 load("//bazel_support/rules:dd_ios_package.bzl", "dd_ios_package", "target")
 
 dd_ios_package(
-    name = "Topaz",
+    name = "ExampleSDK",
     targets = [
         target.library(
-            name = "TopazCaching",
+            name = "ExampleCaching",
             deps = [
-                ":TopazDataStructures",
+                ":ExampleDataStructures",
             ],
             path = "Sources/Caching",
         ),
         target.library(
-            name = "TopazCombineExtensions",
+            name = "ExampleCombineExtensions",
             deps = [
-                ":TopazCommandExecutor",
-                ":TopazDomainLogic",
+                ":ExampleCommandExecutor",
+                ":ExampleDomainLogic",
             ],
             path = "Sources/CombineExtensions",
         ),
         target.library(
-            name = "TopazCommandExecutor",
+            name = "ExampleCommandExecutor",
             deps = [
-                ":TopazThreading",
+                ":ExampleThreading",
             ],
             path = "Sources/CommandExecutor",
         ),
         target.library(
-            name = "TopazDataStructures",
+            name = "ExampleDataStructures",
             deps = [
                 "@swiftpkg_swift_collections//:OrderedCollections",
             ],
             path = "Sources/DataStructures",
         ),
         target.library(
-            name = "TopazDomainLogic",
+            name = "ExampleDomainLogic",
             deps = [
-                ":TopazCommandExecutor",
+                ":ExampleCommandExecutor",
                 "@swiftpkg_combine_schedulers//:CombineSchedulers",
             ],
             path = "Sources/DomainLogic",
         ),
         target.library(
-            name = "TopazFoundationExtensions",
+            name = "ExampleFoundationExtensions",
             path = "Sources/FoundationExtensions",
         ),
         target.library(
-            name = "TopazKeychain",
+            name = "ExampleKeychain",
             path = "Sources/Keychain",
         ),
         target.library(
-            name = "TopazLinkHandling",
+            name = "ExampleLinkHandling",
             deps = [
-                ":TopazNetworking",
+                ":ExampleNetworking",
                 "@swiftpkg_swift_dependencies//:Dependencies",
             ],
             path = "Sources/LinkHandling",
         ),
         target.library(
-            name = "TopazLocation",
+            name = "ExampleLocation",
             deps = [
-                ":TopazDataStructures",
-                ":TopazFoundationExtensions",
+                ":ExampleDataStructures",
+                ":ExampleFoundationExtensions",
                 "@swiftpkg_swift_dependencies//:Dependencies",
             ],
             path = "Sources/Location",
         ),
         target.library(
-            name = "TopazLogging",
+            name = "ExampleLogging",
             deps = [
-                ":TopazThreading",
+                ":ExampleThreading",
             ],
             path = "Sources/Logging",
         ),
         target.library(
-            name = "TopazMath",
+            name = "ExampleMath",
             deps = [
-                ":TopazDataStructures",
-                ":TopazFoundationExtensions",
+                ":ExampleDataStructures",
+                ":ExampleFoundationExtensions",
             ],
             path = "Sources/Math",
         ),
         target.library(
-            name = "TopazNetworking",
+            name = "ExampleNetworking",
             deps = [
-                ":TopazFoundationExtensions",
-                ":TopazLogging",
-                ":TopazSerialization",
+                ":ExampleFoundationExtensions",
+                ":ExampleLogging",
+                ":ExampleSerialization",
                 "@swiftpkg_combine_schedulers//:CombineSchedulers",
                 "@swiftpkg_swift_dependencies//:Dependencies",
             ],
             path = "Sources/Networking",
         ),
         target.library(
-            name = "TopazNotificationSupport",
+            name = "ExampleNotificationSupport",
             deps = [
-                ":TopazNetworking",
+                ":ExampleNetworking",
             ],
             path = "Sources/NotificationSupport",
         ),
         target.library(
-            name = "TopazPresentation",
+            name = "ExamplePresentation",
             deps = [
-                ":TopazCommandExecutor",
-                ":TopazDataStructures",
-                ":TopazDomainLogic",
-                ":TopazNetworking",
-                ":TopazThreading",
+                ":ExampleCommandExecutor",
+                ":ExampleDataStructures",
+                ":ExampleDomainLogic",
+                ":ExampleNetworking",
+                ":ExampleThreading",
                 "@swiftpkg_combine_schedulers//:CombineSchedulers",
             ],
             path = "Sources/Presentation",
         ),
         target.library(
-            name = "TopazSerialization",
+            name = "ExampleSerialization",
             deps = [
-                ":TopazFoundationExtensions",
-                ":TopazSwiftUIExtensions",
+                ":ExampleFoundationExtensions",
+                ":ExampleSwiftUIExtensions",
                 "@swiftpkg_swift_dependencies//:Dependencies",
             ],
             path = "Sources/Serialization",
         ),
         target.library(
-            name = "TopazSwiftUIExtensions",
+            name = "ExampleSwiftUIExtensions",
             path = "Sources/SwiftUIExtensions",
         ),
         target.library(
-            name = "TopazThreading",
+            name = "ExampleThreading",
             deps = [
                 "@swiftpkg_combine_schedulers//:CombineSchedulers",
                 "@swiftpkg_swift_dependencies//:Dependencies",
@@ -132,10 +132,10 @@ dd_ios_package(
             path = "Sources/Threading",
         ),
         target.library(
-            name = "TopazUnitTestHelpers",
+            name = "ExampleUnitTestHelpers",
             deps = [
-                ":TopazCaching",
-                ":TopazPresentation",
+                ":ExampleCaching",
+                ":ExamplePresentation",
             ],
             path = "Sources/UnitTestHelpers",
             resources = [
@@ -148,109 +148,109 @@ dd_ios_package(
         target.test(
             name = "AsyncCommandExecutorTests",
             deps = [
-                ":TopazUnitTestHelpers",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/AsyncCommandExecutorTests",
         ),
         target.test(
-            name = "TopazCachingTests",
+            name = "ExampleCachingTests",
             deps = [
-                ":TopazUnitTestHelpers",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/CachingTests",
         ),
         target.test(
-            name = "TopazCommandExecutorTests",
+            name = "ExampleCommandExecutorTests",
             deps = [
-                ":TopazUnitTestHelpers",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/CommandExecutorTests",
         ),
         target.test(
-            name = "TopazDataStructuresTests",
+            name = "ExampleDataStructuresTests",
             deps = [
-                ":TopazUnitTestHelpers",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/DataStructuresTests",
         ),
         target.test(
-            name = "TopazDomainLogicTests",
+            name = "ExampleDomainLogicTests",
             deps = [
-                ":TopazUnitTestHelpers",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/DomainLogicTests",
         ),
         target.test(
-            name = "TopazFoundationExtensionsTests",
+            name = "ExampleFoundationExtensionsTests",
             deps = [
-                ":TopazFoundationExtensions",
-                ":TopazUnitTestHelpers",
+                ":ExampleFoundationExtensions",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/FoundationExtensionsTests",
         ),
         target.test(
-            name = "TopazLocationTests",
+            name = "ExampleLocationTests",
             deps = [
-                ":TopazLocation",
-                ":TopazUnitTestHelpers",
+                ":ExampleLocation",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/LocationTests",
         ),
         target.test(
-            name = "TopazLoggingTests",
+            name = "ExampleLoggingTests",
             deps = [
-                ":TopazLogging",
-                ":TopazUnitTestHelpers",
+                ":ExampleLogging",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/LoggingTests",
         ),
         target.test(
-            name = "TopazMathTests",
+            name = "ExampleMathTests",
             deps = [
-                ":TopazMath",
-                ":TopazUnitTestHelpers",
+                ":ExampleMath",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/MathTests",
         ),
         target.test(
-            name = "TopazNetworkingTests",
+            name = "ExampleNetworkingTests",
             deps = [
-                ":TopazNetworking",
-                ":TopazSerialization",
-                ":TopazUnitTestHelpers",
+                ":ExampleNetworking",
+                ":ExampleSerialization",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/NetworkingTests",
         ),
         target.test(
-            name = "TopazNotificationSupportTests",
+            name = "ExampleNotificationSupportTests",
             deps = [
-                ":TopazNotificationSupport",
-                ":TopazUnitTestHelpers",
+                ":ExampleNotificationSupport",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/NotificationSupportTests",
         ),
         target.test(
-            name = "TopazPresentationTests",
+            name = "ExamplePresentationTests",
             deps = [
-                ":TopazDomainLogic",
-                ":TopazPresentation",
-                ":TopazUnitTestHelpers",
+                ":ExampleDomainLogic",
+                ":ExamplePresentation",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/PresentationTests",
         ),
         target.test(
-            name = "TopazSerializationTests",
+            name = "ExampleSerializationTests",
             deps = [
-                ":TopazSerialization",
-                ":TopazUnitTestHelpers",
+                ":ExampleSerialization",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/SerializationTests",
         ),
         target.test(
-            name = "TopazThreadingTests",
+            name = "ExampleThreadingTests",
             deps = [
-                ":TopazThreading",
-                ":TopazUnitTestHelpers",
+                ":ExampleThreading",
+                ":ExampleUnitTestHelpers",
             ],
             path = "Tests/ThreadingTests",
         ),
