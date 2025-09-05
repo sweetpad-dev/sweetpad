@@ -2062,6 +2062,60 @@ export async function bazelTestCommand(context: ExtensionContext, bazelItem?: Ba
 }
 
 /**
+ * Run a Bazel target (launch app on iOS simulator)
+ */
+export async function bazelRunCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  if (!bazelItem) {
+    vscode.window.showErrorMessage("No Bazel target selected");
+    return;
+  }
+
+  // Only allow running binary targets (apps)
+  if (bazelItem.target.type !== 'binary') {
+    vscode.window.showErrorMessage(`Target ${bazelItem.target.name} is not a runnable target (must be a binary/app)`);
+    return;
+  }
+
+  // Use the same destination selection pattern as launchCommand
+  context.updateProgressStatus("Searching for destination");
+  const destination = await askDestinationToRunOn(context, null);
+
+  await runTask(context, {
+    name: `Bazel Run: ${bazelItem.target.name}`,
+    lock: "sweetpad.bazel.run",
+    terminateLocked: true,
+    callback: async (terminal) => {
+      terminal.write(`Running Bazel target: ${bazelItem.target.buildLabel}\n\n`);
+
+      // Build the run command with destination targeting
+      let runArgs = ["run", bazelItem.target.buildLabel];
+      
+      // Add iOS simulator device argument if destination is iOS simulator
+      if (destination.type === 'iOSSimulator') {
+        runArgs.push("--ios_simulator_device", destination.name);
+        terminal.write(`🎯 Using iOS Simulator: ${destination.name}\n\n`);
+      } else {
+        terminal.write(`ℹ️  Selected destination: ${destination.typeLabel} (${destination.name}). Note: Bazel iOS apps typically run on simulators.\n\n`);
+      }
+
+      // Go to the workspace path
+      await terminal.execute({
+        command: "cd",
+        args: [bazelItem.package.path],
+      });
+      
+      // Use terminal.execute for streaming output
+      await terminal.execute({
+        command: "bazel",
+        args: runArgs,
+      });
+      
+      terminal.write(`\n✅ Launch completed for ${bazelItem.target.name}\n`);
+    },
+  });
+}
+
+/**
  * Select a Bazel target as the active target for build/test commands
  */
 export async function selectBazelTargetCommand(context: ExtensionContext, targetInfo?: { buildLabel: string; workspacePath: string } | BazelTreeItem, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {
@@ -2207,6 +2261,42 @@ export async function testSelectedBazelTargetCommand(context: ExtensionContext, 
 
   // Use the existing test command with the selected target
   await bazelTestCommand(context, mockBazelItem);
+}
+
+/**
+ * Run the currently selected Bazel target
+ */
+export async function runSelectedBazelTargetCommand(context: ExtensionContext, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {
+  const selectedTargetData = context.buildManager.getSelectedBazelTargetData();
+  if (!selectedTargetData) {
+    vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+    return;
+  }
+
+  if (selectedTargetData.targetType !== 'binary') {
+    vscode.window.showErrorMessage(`Target ${selectedTargetData.targetName} is not a runnable target (must be a binary/app)`);
+    return;
+  }
+
+  // Create a mock BazelTreeItem for the run command
+  const mockBazelItem = {
+    target: {
+      name: selectedTargetData.targetName,
+      type: selectedTargetData.targetType,
+      buildLabel: selectedTargetData.buildLabel,
+      testLabel: selectedTargetData.testLabel,
+      deps: [],
+    },
+    package: {
+      name: selectedTargetData.packageName,
+      path: selectedTargetData.packagePath,
+      targets: [],
+    },
+    workspacePath: selectedTargetData.workspacePath,
+  } as any; // Mock BazelTreeItem
+
+  // Use the existing run command with the selected target
+  await bazelRunCommand(context, mockBazelItem);
 }
 
 /**

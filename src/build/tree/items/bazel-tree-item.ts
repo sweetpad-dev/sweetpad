@@ -61,11 +61,14 @@ export class BazelTreeItem extends vscode.TreeItem {
     }
     this.description = description;
     
-    // Set tooltip with build and test commands
+    // Set tooltip with build, test, and run commands
     let tooltip = `Target: ${this.target.name}\nType: ${this.target.type}\nPackage: ${this.package.name}`;
     tooltip += `\nBuild: bazel build ${this.target.buildLabel}`;
     if (this.target.testLabel) {
       tooltip += `\nTest: bazel test ${this.target.testLabel}`;
+    }
+    if (this.target.type === 'binary') {
+      tooltip += `\nRun: bazel run ${this.target.buildLabel} --ios_simulator_device="<device>"`;
     }
     if (isSelected) {
       tooltip += `\n\n✓ Currently selected target`;

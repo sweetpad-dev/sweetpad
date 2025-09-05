@@ -8,6 +8,7 @@ describe('BazelParser', () => {
   let xcodeprojContent: string;
   let ddIosPackageContent: string;
   let cxModuleContent: string;
+  let identityIntelligenceDemoContent: string;
 
   beforeAll(async () => {
     const samplesDir = path.join(__dirname, 'samples');
@@ -15,6 +16,7 @@ describe('BazelParser', () => {
     xcodeprojContent = await readFile(path.join(samplesDir, 'xcodeproj.BUILD'), 'utf-8');
     ddIosPackageContent = await readFile(path.join(samplesDir, 'dd_ios_package.BUILD'), 'utf-8');
     cxModuleContent = await readFile(path.join(samplesDir, 'cx_module.BUILD'), 'utf-8');
+    identityIntelligenceDemoContent = await readFile(path.join(samplesDir, 'identity_intelligence_demo.BUILD'), 'utf-8');
   });
 
   describe('xcodeproj parsing', () => {
@@ -169,6 +171,60 @@ describe('BazelParser', () => {
     });
   });
 
+  describe('swift_library and dd_ios_application parsing', () => {
+    test('should parse swift_library and dd_ios_application targets', () => {
+      const result = BazelParser.parse(identityIntelligenceDemoContent, '/IdentityIntelligenceDemo/BUILD.bazel');
+      
+      expect(result.targets.length).toBe(2);
+      expect(result.targetsTest.length).toBe(0);
+      
+      // Check swift_library target
+      const libraryTarget = result.targets.find(t => t.name === 'IdentityIntelligenceDemo.library');
+      expect(libraryTarget).toBeDefined();
+      expect(libraryTarget?.type).toBe('library');
+      expect(libraryTarget?.buildLabel).toBe('//IdentityIntelligenceDemo:IdentityIntelligenceDemo.library');
+      expect(libraryTarget?.deps).toContain('//Packages/DoordashAttestation:DoordashAttestation');
+      expect(libraryTarget?.deps).toContain('//Packages/DeviceIntelligence:DeviceIntelligence');
+      expect(libraryTarget?.deps).toContain('//Packages/BotDetector:BotDetector');
+      
+      // Check dd_ios_application target
+      const appTarget = result.targets.find(t => t.name === 'IdentityIntelligenceDemo');
+      expect(appTarget).toBeDefined();
+      expect(appTarget?.type).toBe('binary');
+      expect(appTarget?.buildLabel).toBe('//IdentityIntelligenceDemo:IdentityIntelligenceDemo');
+      expect(appTarget?.deps).toContain(':IdentityIntelligenceDemo.library');
+    });
+
+    test('should parse application properties correctly', () => {
+      const result = BazelParser.parse(identityIntelligenceDemoContent, '/IdentityIntelligenceDemo/BUILD.bazel');
+      
+      const appTarget = result.targets.find(t => t.name === 'IdentityIntelligenceDemo');
+      expect(appTarget).toBeDefined();
+      expect(appTarget?.type).toBe('binary');
+      
+      // Verify it's identified as a runnable binary target
+      expect(appTarget?.buildLabel).toBe('//IdentityIntelligenceDemo:IdentityIntelligenceDemo');
+    });
+
+    test('should create correct target structure for ios application', () => {
+      const result = BazelParser.parse(identityIntelligenceDemoContent, '/IdentityIntelligenceDemo/BUILD.bazel');
+      
+      // Should have both library and application targets
+      const libraryTarget = result.targets.find(t => t.name === 'IdentityIntelligenceDemo.library');
+      const appTarget = result.targets.find(t => t.name === 'IdentityIntelligenceDemo');
+      
+      expect(libraryTarget).toBeDefined();
+      expect(appTarget).toBeDefined();
+      
+      // Application should depend on library
+      expect(appTarget?.deps).toContain(':IdentityIntelligenceDemo.library');
+      
+      // Library should have external dependencies
+      expect(libraryTarget?.deps?.length).toBeGreaterThan(0);
+      expect(libraryTarget?.deps).toContain('//Packages/DoordashAttestation:DoordashAttestation');
+    });
+  });
+
   describe('parsePackage', () => {
     test('should parse complete package info', () => {
       const packageInfo = BazelParser.parsePackage(
@@ -313,7 +369,7 @@ describe('BazelParserUtils', () => {
 describe('Integration Tests', () => {
   test('should parse all sample files without errors', async () => {
     const samplesDir = path.join(__dirname, 'samples');
-    const files = ['xcodeproj.BUILD', 'dd_ios_package.BUILD', 'cx_module.BUILD'];
+    const files = ['xcodeproj.BUILD', 'dd_ios_package.BUILD', 'cx_module.BUILD', 'identity_intelligence_demo.BUILD'];
     
     for (const file of files) {
       const content = await readFile(path.join(samplesDir, file), 'utf-8');

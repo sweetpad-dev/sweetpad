@@ -6,8 +6,10 @@ import {
   buildCommand,
   bazelBuildCommand,
   bazelTestCommand,
+  bazelRunCommand,
   buildSelectedBazelTargetCommand,
   testSelectedBazelTargetCommand,
+  runSelectedBazelTargetCommand,
   selectBazelTargetCommand,
   cleanCommand,
   createPeripheryConfigCommand,
@@ -203,9 +205,11 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.build.clearCache", () => clearWorkspaceCacheCommand(_context, workspaceTreeProvider)));
     d(command("sweetpad.bazel.build", bazelBuildCommand));
     d(command("sweetpad.bazel.test", bazelTestCommand));
+    d(command("sweetpad.bazel.run", bazelRunCommand));
     d(command("sweetpad.bazel.selectTarget", (context, targetInfo) => selectBazelTargetCommand(context, targetInfo, workspaceTreeProvider)));
     d(command("sweetpad.bazel.buildSelected", () => buildSelectedBazelTargetCommand(_context, workspaceTreeProvider)));
     d(command("sweetpad.bazel.testSelected", () => testSelectedBazelTargetCommand(_context, workspaceTreeProvider)));
+    d(command("sweetpad.bazel.runSelected", () => runSelectedBazelTargetCommand(_context, workspaceTreeProvider)));
 
     // Testing
     d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));

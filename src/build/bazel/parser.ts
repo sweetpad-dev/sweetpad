@@ -226,6 +226,12 @@ export class BazelParser {
     // Parse cx_module targets
     this.parseCxModuleTargets(content, filePath, targets, testTargets);
     
+    // Parse swift_library targets
+    this.parseSwiftLibraryTargets(content, filePath, targets);
+    
+    // Parse dd_ios_application targets
+    this.parseDdIosApplicationTargets(content, filePath, targets);
+    
     // Parse top_level_target entries from xcodeproj
     this.parseTopLevelTargets(content, filePath, targets, testTargets);
     
@@ -369,6 +375,96 @@ export class BazelParser {
       } else {
         targets.push(target);
       }
+    }
+  }
+
+  /**
+   * Parse swift_library targets
+   */
+  private static parseSwiftLibraryTargets(
+    content: string, 
+    filePath: string | undefined, 
+    targets: BazelTarget[]
+  ): void {
+    const swiftLibraryRegex = /swift_library\s*\(/g;
+    let libraryMatch;
+    
+    while ((libraryMatch = swiftLibraryRegex.exec(content)) !== null) {
+      const startPos = libraryMatch.index + libraryMatch[0].length - 1; // Position of opening (
+      const libraryContent = BazelParserUtils.findBalancedParens(content, startPos);
+      if (!libraryContent) continue;
+      
+      // Extract name
+      const nameMatch = /name\s*=\s*"([^"]+)"/.exec(libraryContent);
+      if (!nameMatch) continue;
+      
+      const targetName = nameMatch[1];
+      
+      // Extract deps
+      const deps: string[] = [];
+      const depsMatch = /deps\s*=\s*\[([\s\S]*?)\]/gm.exec(libraryContent);
+      if (depsMatch) {
+        const depsList = BazelParserUtils.extractStringArray(`[${depsMatch[1]}]`);
+        deps.push(...depsList);
+      }
+      
+      // Create build label
+      const packagePath = this.getPackagePath(filePath);
+      const buildLabel = `//${packagePath}:${targetName}`;
+      
+      const target: BazelTarget = {
+        name: targetName,
+        type: 'library',
+        deps,
+        buildLabel
+      };
+      
+      targets.push(target);
+    }
+  }
+
+  /**
+   * Parse dd_ios_application targets
+   */
+  private static parseDdIosApplicationTargets(
+    content: string, 
+    filePath: string | undefined, 
+    targets: BazelTarget[]
+  ): void {
+    const ddIosApplicationRegex = /dd_ios_application\s*\(/g;
+    let appMatch;
+    
+    while ((appMatch = ddIosApplicationRegex.exec(content)) !== null) {
+      const startPos = appMatch.index + appMatch[0].length - 1; // Position of opening (
+      const appContent = BazelParserUtils.findBalancedParens(content, startPos);
+      if (!appContent) continue;
+      
+      // Extract name
+      const nameMatch = /name\s*=\s*"([^"]+)"/.exec(appContent);
+      if (!nameMatch) continue;
+      
+      const targetName = nameMatch[1];
+      
+      // Extract deps
+      const deps: string[] = [];
+      const depsMatch = /deps\s*=\s*\[([\s\S]*?)\]/gm.exec(appContent);
+      if (depsMatch) {
+        const depsList = BazelParserUtils.extractStringArray(`[${depsMatch[1]}]`);
+        deps.push(...depsList);
+      }
+      
+      // Create build label
+      const packagePath = this.getPackagePath(filePath);
+      const buildLabel = `//${packagePath}:${targetName}`;
+      
+      const target: BazelTarget = {
+        name: targetName,
+        type: 'binary',
+        deps,
+        buildLabel
+      };
+      
+      targets.push(target);
     }
   }
 

@@ -435,6 +435,18 @@
         "description": "Test currently selected Bazel target"
       },
       {
+        "command": "sweetpad.bazel.run",
+        "title": "SweetPad: Bazel Run",
+        "icon": "$(run)",
+        "description": "Run Bazel target on iOS simulator"
+      },
+      {
+        "command": "sweetpad.bazel.runSelected",
+        "title": "SweetPad: Run Selected Bazel Target",
+        "icon": "$(run)",
+        "description": "Run currently selected Bazel target on iOS simulator"
+      },
+      {
         "command": "sweetpad.build.clearCache",
         "title": "SweetPad: Clear Workspace Cache",
         "icon": "$(refresh)",
@@ -818,6 +830,11 @@
           "group": "inline@3"
         },
         {
+          "command": "sweetpad.bazel.run",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "inline@4"
+        },
+        {
           "command": "sweetpad.bazel.selectTarget",
           "when": "viewItem == sweetpad.bazel.target",
           "group": "context@1"
@@ -831,6 +848,11 @@
           "command": "sweetpad.bazel.test",
           "when": "viewItem == sweetpad.bazel.target",
           "group": "context@3"
+        },
+        {
+          "command": "sweetpad.bazel.run",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "context@4"
         }
       ],
       "testing/item/context": [
