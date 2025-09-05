@@ -482,6 +482,37 @@ export async function restartSwiftLSP() {
   }
 }
 
+/**
+ * Find the Bazel workspace root by looking for WORKSPACE files
+ */
+export function findBazelWorkspaceRoot(startPath: string): string {
+  let currentPath = path.dirname(startPath);
+  const fs = require('fs');
+  
+  // Walk up the directory tree looking for Bazel workspace indicators
+  while (currentPath !== path.dirname(currentPath)) { // Stop at filesystem root
+    // Check for Bazel workspace files
+    const workspaceFiles = ['WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel'];
+    
+    for (const workspaceFile of workspaceFiles) {
+      const workspaceFilePath = path.join(currentPath, workspaceFile);
+      try {
+        if (fs.existsSync(workspaceFilePath)) {
+          return currentPath;
+        }
+      } catch (error) {
+        // Ignore permission errors and continue
+      }
+    }
+    
+    // Move up one directory
+    currentPath = path.dirname(currentPath);
+  }
+  
+  // If no WORKSPACE file found, use the directory of the BUILD.bazel file itself
+  return path.dirname(startPath);
+}
+
 // Bazel-related types and functions
 export interface BazelTarget {
   name: string;
@@ -509,27 +540,27 @@ export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelP
     const packagePath = path.dirname(buildFilePath);
     const packageName = path.basename(packagePath);
     
-    // Find dd_ios_package rules in the file
+    // Find different types of Bazel iOS rules in the file
     const targets: BazelTarget[] = [];
     
-    // Basic regex to match dd_ios_package blocks
-    const packageRegex = /dd_ios_package\s*\(\s*name\s*=\s*"([^"]+)"\s*,\s*targets\s*=\s*\[([\s\S]*?)\]\s*,?\s*\)/g;
-    let packageMatch;
+    // 1. Try dd_ios_package rules (original format) - more flexible regex
+    const ddPackageRegex = /dd_ios_package\s*\(\s*[\s\S]*?name\s*=\s*"([^"]+)"[\s\S]*?targets\s*=\s*\[([\s\S]*?)\]\s*[\s\S]*?\)/g;
+    let ddPackageMatch;
     
-    while ((packageMatch = packageRegex.exec(content)) !== null) {
-      const [, packageTargetName, targetsBlock] = packageMatch;
+    while ((ddPackageMatch = ddPackageRegex.exec(content)) !== null) {
+      const [, packageTargetName, targetsBlock] = ddPackageMatch;
       
-      // Extract individual target definitions
-      const targetRegex = /target\.(\w+)\s*\(\s*name\s*=\s*"([^"]+)"\s*,\s*([\s\S]*?)\s*\)/g;
+      // Extract individual target definitions - more flexible regex
+      const targetRegex = /target\.(\w+)\s*\(\s*[\s\S]*?name\s*=\s*"([^"]+)"[\s\S]*?\)/g;
       let targetMatch;
       
       while ((targetMatch = targetRegex.exec(targetsBlock)) !== null) {
-        const [, targetType, targetName, targetConfig] = targetMatch;
+        const [fullTargetMatch, targetType, targetName] = targetMatch;
         
-        // Extract dependencies if present
+        // Extract dependencies if present - search in the full target match
         const deps: string[] = [];
         const depsRegex = /deps\s*=\s*\[([\s\S]*?)\]/;
-        const depsMatch = depsRegex.exec(targetConfig);
+        const depsMatch = depsRegex.exec(fullTargetMatch);
         
         if (depsMatch) {
           const depsContent = depsMatch[1];
@@ -541,7 +572,7 @@ export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelP
         }
         
         // Create target with build and test labels
-        const relativePath = path.relative(getWorkspacePath(), packagePath);
+        const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
         const buildLabel = `//${relativePath}:${targetName}`;
         
         targets.push({
@@ -554,8 +585,165 @@ export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelP
       }
     }
     
+    // 2. Try cx_module and dx_module rules (DoorDash specific formats)
+    const moduleRegex = /(cx_module|dx_module)\s*\(\s*([\s\S]*?)\s*\)/g;
+    let moduleMatch;
+    
+    while ((moduleMatch = moduleRegex.exec(content)) !== null) {
+      const [, moduleType, moduleConfig] = moduleMatch;
+      
+      // For cx_module/dx_module, create a library target with the package name
+      const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
+      const buildLabel = `//${relativePath}:${packageName}`;
+      
+      // Extract dependencies if present
+      const deps: string[] = [];
+      const depsRegex = /deps\s*=\s*\[([\s\S]*?)\]/;
+      const depsMatch = depsRegex.exec(moduleConfig);
+      
+      if (depsMatch) {
+        const depsContent = depsMatch[1];
+        const depRegex = /"([^"]+)"/g;
+        let depMatch;
+        while ((depMatch = depRegex.exec(depsContent)) !== null) {
+          deps.push(depMatch[1]);
+        }
+      }
+      
+      targets.push({
+        name: packageName, // Use directory name as target name
+        type: "library", // cx_module/dx_module are typically libraries
+        buildLabel,
+        testLabel: undefined, // Module rules typically don't include test targets
+        deps,
+      });
+      
+      // Also look for potential test targets
+      const testRegex = /(test_deps|test_srcs|test_resources)\s*=/g;
+      if (testRegex.test(moduleConfig)) {
+        const testLabel = `//${relativePath}:${packageName}Tests`;
+        targets.push({
+          name: `${packageName}Tests`,
+          type: "test", 
+          buildLabel: testLabel,
+          testLabel: testLabel,
+          deps: [`:${packageName}`], // Depend on main target
+        });
+      }
+    }
+    
+    // 3. Try xcodeproj and other iOS-related rules
+    const xcodeprojRegex = /(xcodeproj|top_level_target|ios_application|ios_framework|swift_library|ios_unit_test|ios_ui_test)\s*\(\s*[\s\S]*?name\s*=\s*"([^"]+)"[\s\S]*?\)/g;
+    let xcodeprojMatch;
+    
+    while ((xcodeprojMatch = xcodeprojRegex.exec(content)) !== null) {
+      const [, ruleType, ruleName] = xcodeprojMatch;
+      
+      const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
+      const buildLabel = `//${relativePath}:${ruleName}`;
+      
+      let targetType: "library" | "test" | "binary";
+      if (ruleType === "ios_application" || ruleType === "xcodeproj") {
+        targetType = "binary";
+      } else if (ruleType.includes("test")) {
+        targetType = "test"; 
+      } else {
+        targetType = "library";
+      }
+      
+      targets.push({
+        name: ruleName,
+        type: targetType,
+        buildLabel,
+        testLabel: targetType === "test" ? buildLabel : undefined,
+        deps: [], // Could extract deps if needed
+      });
+    }
+    
+    // 4. Generic target extraction - look for any named targets as fallback
     if (targets.length === 0) {
-      return null;
+      // Look for any rule with a name parameter - more flexible patterns
+      const genericPatterns = [
+        /([a-zA-Z]\w*)\s*\(\s*[\s\S]*?name\s*=\s*"([^"]+)"[\s\S]*?\)/g,  // Standard pattern
+        /([a-zA-Z]\w*)\s*\(\s*name\s*=\s*"([^"]+)"[\s\S]*?\)/g,          // Name first pattern
+      ];
+      
+      for (const pattern of genericPatterns) {
+        let genericMatch;
+        let genericCount = 0;
+        
+        while ((genericMatch = pattern.exec(content)) !== null && genericCount < 10) { // Increased limit
+          const [, ruleType, ruleName] = genericMatch;
+          
+          // Skip load statements and other non-target rules
+          if (ruleType === "load" || 
+              ruleType.startsWith("@") || 
+              ruleType === "glob" ||
+              ruleType === "select" ||
+              ruleType === "config_setting" ||
+              ruleType === "filegroup" ||
+              ruleType.length < 3) {
+            continue;
+          }
+          
+          const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
+          const buildLabel = `//${relativePath}:${ruleName}`;
+          
+          // Try to infer type from rule name or target name
+          let targetType: "library" | "test" | "binary";
+          if (ruleType.includes("test") || ruleName.includes("Test") || ruleName.includes("test")) {
+            targetType = "test";
+          } else if (ruleType.includes("app") || ruleType.includes("binary") || ruleName.includes("App")) {
+            targetType = "binary";
+          } else {
+            targetType = "library";
+          }
+          
+          // Avoid duplicates
+          const existing = targets.find(t => t.name === ruleName);
+          if (!existing) {
+            targets.push({
+              name: ruleName,
+              type: targetType,
+              buildLabel,
+              testLabel: targetType === "test" ? buildLabel : undefined,
+              deps: [],
+            });
+            
+            genericCount++;
+          }
+        }
+        
+        // If we found targets with this pattern, stop trying other patterns
+        if (targets.length > 0) {
+          break;
+        }
+      }
+    }
+    
+    // 5. If still no targets after ALL parsing attempts, create default targets
+    if (targets.length === 0) {
+      const relativePath = path.relative(findBazelWorkspaceRoot(packagePath), packagePath);
+      const buildLabel = `//${relativePath}:${packageName}`;
+      
+      // Create a generic library target using the directory name
+      targets.push({
+        name: packageName,
+        type: "library",
+        buildLabel,
+        testLabel: undefined,
+        deps: [],
+      });
+      
+      // Also create a potential test target
+      const testLabel = `//${relativePath}:${packageName}Tests`;
+      targets.push({
+        name: `${packageName}Tests`,
+        type: "test", 
+        buildLabel: testLabel,
+        testLabel: testLabel,
+        deps: [`:${packageName}`],
+      });
     }
     
     return {
@@ -575,8 +763,12 @@ export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelP
 /**
  * Get all Bazel packages and their targets from the workspace
  */
-export async function getBazelPackages(): Promise<BazelPackage[]> {
-  const workspace = getWorkspacePath();
+export async function getBazelPackages(targetWorkspace?: string): Promise<BazelPackage[]> {
+  // Use provided workspace or fall back to current workspace
+  const workspace = targetWorkspace || getWorkspacePath();
+  
+  // NOTE: This function should only be used for bulk operations, not on-demand parsing
+  console.log(`⚠️ getBazelPackages called - this should be rare! Use getCachedBazelPackage for individual files`);
   
   // Find all BUILD.bazel files
   const buildFiles = await findFilesRecursive({
@@ -586,6 +778,8 @@ export async function getBazelPackages(): Promise<BazelPackage[]> {
       return file.name === "BUILD.bazel" || file.name === "BUILD";
     },
   });
+  
+  console.log(`  - Found ${buildFiles.length} BUILD files (parsing all - slow!)`);
   
   const packages: BazelPackage[] = [];
   
