@@ -1,0 +1,173 @@
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+name: PR Build and Tag
+jobs:
+  build-and-tag:
+    name: Build VSIX and Create PR Tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Install NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          
+      - name: Install Dependencies
+        run: npm ci
+        
+      - name: Extract version and PR info
+        id: info
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          NAME=$(node -p "require('./package.json').name")
+          PR_NUMBER="${{ github.event.number }}"
+          TAG_NAME="current-${PR_NUMBER}"
+          VSIX_NAME="${NAME}-${VERSION}-pr${PR_NUMBER}.vsix"
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "vsix_name=$VSIX_NAME" >> $GITHUB_OUTPUT
+          
+      - name: Delete existing tag if exists
+        run: |
+          TAG_NAME="${{ steps.info.outputs.tag_name }}"
+          
+          # Delete local tag if it exists
+          git tag -d "$TAG_NAME" 2>/dev/null || true
+          
+          # Delete remote tag if it exists
+          git push origin --delete "$TAG_NAME" 2>/dev/null || true
+          
+      - name: Generate VSIX package
+        run: |
+          # Make script executable
+          chmod +x ./scripts/install-and-test.sh
+          
+          # Run build
+          npm run build
+          
+          # Extract the VSIX generation part from the existing workflow
+          VERSION="${{ steps.info.outputs.version }}"
+          NAME="${{ steps.info.outputs.name }}"
+          PR_NUMBER="${{ steps.info.outputs.pr_number }}"
+          
+          echo "📋 Using version: $VERSION"
+          echo "📋 Using name: $NAME"
+          echo "📋 Using PR number: $PR_NUMBER"
+          echo "🍭 Creating VSIX package..."
+          
+          # Clean up any existing VSIX files
+          rm -f *.vsix
+          
+          # Create temporary directory for VSIX structure
+          TEMP_DIR=$(mktemp -d)
+          VSIX_DIR="$TEMP_DIR/vsix"
+          mkdir -p "$VSIX_DIR"
+          
+          echo "📦 Preparing VSIX structure..."
+          
+          # Create extension directory structure
+          mkdir -p "$VSIX_DIR/extension"
+          
+          # Copy extension files to the extension subdirectory
+          cp -r out "$VSIX_DIR/extension/"
+          cp package.json "$VSIX_DIR/extension/"
+          cp README.md "$VSIX_DIR/extension/"
+          cp LICENSE.md "$VSIX_DIR/extension/"
+          cp CHANGELOG.md "$VSIX_DIR/extension/"
+          cp -r images "$VSIX_DIR/extension/"
+          
+          # Create [Content_Types].xml
+          cat > "$VSIX_DIR/[Content_Types].xml" << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+            <Default Extension="json" ContentType="application/json" />
+            <Default Extension="js" ContentType="application/javascript" />
+            <Default Extension="png" ContentType="image/png" />
+            <Default Extension="md" ContentType="text/markdown" />
+            <Default Extension="txt" ContentType="text/plain" />
+            <Default Extension="vsixmanifest" ContentType="text/xml" />
+          </Types>
+          EOF
+          
+          # Create extension.vsixmanifest with dynamic version
+          cat > "$VSIX_DIR/extension.vsixmanifest" << EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+            <Metadata>
+              <Identity Language="en-US" Id="$NAME" Version="$VERSION" Publisher="doordash" />
+              <DisplayName>SweetPad-Doordash (iOS/Swift development) - PR #$PR_NUMBER</DisplayName>
+              <Description xml:space="preserve">Develop Swift/iOS projects in VS Code - PR Build #$PR_NUMBER</Description>
+              <Tags>swift,ios,xcode,development,mobile</Tags>
+              <Categories>Formatters,Linters,Extension Packs,Programming Languages,Other</Categories>
+              <GalleryFlags>Preview</GalleryFlags>
+              <License>extension/LICENSE.md</License>
+              <Icon>extension/images/logo.png</Icon>
+            </Metadata>
+            <Installation>
+              <InstallationTarget Id="Microsoft.VisualStudio.Code" Version="[1.85.0,)" />
+            </Installation>
+            <Dependencies />
+            <Assets>
+              <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
+              <Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/images/logo.png" Addressable="true" />
+            </Assets>
+          </PackageManifest>
+          EOF
+          
+          echo "📦 Creating ZIP archive..."
+          
+          # Create the VSIX file (which is just a ZIP with .vsix extension)
+          cd "$VSIX_DIR"
+          zip -r "../${{ steps.info.outputs.vsix_name }}" . > /dev/null
+          cd - > /dev/null
+          
+          # Move the VSIX file to the project root
+          mv "$TEMP_DIR/${{ steps.info.outputs.vsix_name }}" ./
+          
+          # Clean up
+          rm -rf "$TEMP_DIR"
+          
+          echo "✅ VSIX package created: ${{ steps.info.outputs.vsix_name }}"
+          
+          # Verify the file exists and show its size
+          if [ -f "${{ steps.info.outputs.vsix_name }}" ]; then
+              SIZE=$(ls -lh "${{ steps.info.outputs.vsix_name }}" | awk '{print $5}')
+              echo "📊 Package size: $SIZE"
+          else    
+              echo "❌ Failed to create VSIX package"
+              exit 1
+          fi
+          
+      - name: Create and push PR tag
+        run: |
+          TAG_NAME="${{ steps.info.outputs.tag_name }}"
+          PR_NUMBER="${{ steps.info.outputs.pr_number }}"
+          
+          echo "Creating tag: $TAG_NAME"
+          
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Create annotated tag with message
+          git tag -a "$TAG_NAME" -m "PR #$PR_NUMBER build - $(date '+%Y-%m-%d %H:%M:%S')"
+          git push origin "$TAG_NAME"
+          
+          echo "✅ Tag $TAG_NAME created and pushed"
+          
+      - name: Upload VSIX as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.info.outputs.vsix_name }}
+          path: ${{ steps.info.outputs.vsix_name }}
+          retention-days: 30
