@@ -1990,7 +1990,7 @@ verbose: false
     await vscode.window.showTextDocument(document);
     
   } catch (error) {
-    vscode.window.showErrorMessage(`❌ Failed to create .periphery.yml: ${error}`);
+    vscode.window.showErrorMessage(`Failed to create .periphery.yml: ${error}`);
   }
 }
 
@@ -1998,31 +1998,53 @@ verbose: false
  * Build a Bazel target
  */
 export async function bazelBuildCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  // If no bazelItem provided, get from saved target
   if (!bazelItem) {
-    vscode.window.showErrorMessage("No Bazel target selected");
-    return;
+    const selectedTargetData = context.buildManager.getSelectedBazelTargetData();
+    
+    if (!selectedTargetData) {
+      vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+      return;
+    }
+
+    // Create a mock BazelTreeItem from cached data
+    bazelItem = {
+      target: {
+        name: selectedTargetData.targetName,
+        type: selectedTargetData.targetType,
+        buildLabel: selectedTargetData.buildLabel,
+        testLabel: selectedTargetData.testLabel,
+        deps: [],
+      },
+      package: {
+        name: selectedTargetData.packageName,
+        path: selectedTargetData.packagePath,
+        targets: [],
+      },
+      workspacePath: selectedTargetData.workspacePath,
+    } as any; // Mock BazelTreeItem
   }
 
   await runTask(context, {
-    name: `Bazel Build: ${bazelItem.target.name}`,
+    name: `Bazel Build: ${bazelItem!.target.name}`,
     lock: "sweetpad.bazel.build",
     terminateLocked: true,
     callback: async (terminal) => {
-      terminal.write(`Building Bazel target: ${bazelItem.target.buildLabel}\n\n`);
+      terminal.write(`Building Bazel target: ${bazelItem!.target.buildLabel}\n\n`);
       
       // Go to the workspace path
       await terminal.execute({
         command: "cd",
-        args: [bazelItem.package.path],
+        args: [bazelItem!.package.path],
       });
       
       // Use terminal.execute for streaming output
       await terminal.execute({
         command: "bazel",
-        args: ["build", bazelItem.target.buildLabel],
+        args: ["build", bazelItem!.target.buildLabel],
       });
       
-      terminal.write(`\n✅ Build completed for ${bazelItem.target.name}\n`);
+      terminal.write(`\n✅ Build completed for ${bazelItem!.target.name}\n`);
     },
   });
 }
@@ -2031,36 +2053,58 @@ export async function bazelBuildCommand(context: ExtensionContext, bazelItem?: B
  * Test a Bazel target
  */
 export async function bazelTestCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  // If no bazelItem provided, get from saved target
   if (!bazelItem) {
-    vscode.window.showErrorMessage("No Bazel target selected");
-    return;
+    const selectedTargetData = context.buildManager.getSelectedBazelTargetData();
+    
+    if (!selectedTargetData) {
+      vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+      return;
+    }
+
+    // Create a mock BazelTreeItem from cached data
+    bazelItem = {
+      target: {
+        name: selectedTargetData.targetName,
+        type: selectedTargetData.targetType,
+        buildLabel: selectedTargetData.buildLabel,
+        testLabel: selectedTargetData.testLabel,
+        deps: [],
+      },
+      package: {
+        name: selectedTargetData.packageName,
+        path: selectedTargetData.packagePath,
+        targets: [],
+      },
+      workspacePath: selectedTargetData.workspacePath,
+    } as any; // Mock BazelTreeItem
   }
 
-  if (!bazelItem.target.testLabel) {
-    vscode.window.showErrorMessage(`Target ${bazelItem.target.name} is not a test target`);
+  if (!bazelItem!.target.testLabel) {
+    vscode.window.showErrorMessage(`Target ${bazelItem!.target.name} is not a test target`);
     return;
   }
 
   await runTask(context, {
-    name: `Bazel Test: ${bazelItem.target.name}`,
+    name: `Bazel Test: ${bazelItem!.target.name}`,
     lock: "sweetpad.bazel.test",
     terminateLocked: true,
     callback: async (terminal) => {
-      terminal.write(`Running Bazel tests: ${bazelItem.target.testLabel}\n\n`);
+      terminal.write(`Running Bazel tests: ${bazelItem!.target.testLabel}\n\n`);
 
       // Go to the workspace path
       await terminal.execute({
         command: "cd",
-        args: [bazelItem.package.path],
+        args: [bazelItem!.package.path],
       });
       
       // Use terminal.execute for streaming output
       await terminal.execute({
         command: "bazel",
-        args: ["test", bazelItem.target.testLabel!, "--test_output=all"],
+        args: ["test", bazelItem!.target.testLabel!, "--test_output=all"],
       });
       
-      terminal.write(`\n✅ Tests completed for ${bazelItem.target.name}\n`);
+      terminal.write(`\n✅ Tests completed for ${bazelItem!.target.name}\n`);
     },
   });
 }
@@ -2069,14 +2113,36 @@ export async function bazelTestCommand(context: ExtensionContext, bazelItem?: Ba
  * Run a Bazel target (launch app on iOS simulator)
  */
 export async function bazelRunCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  // If no bazelItem provided, get from saved target
   if (!bazelItem) {
-    vscode.window.showErrorMessage("No Bazel target selected");
-    return;
+    const selectedTargetData = context.buildManager.getSelectedBazelTargetData();
+    
+    if (!selectedTargetData) {
+      vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+      return;
+    }
+
+    // Create a mock BazelTreeItem from cached data
+    bazelItem = {
+      target: {
+        name: selectedTargetData.targetName,
+        type: selectedTargetData.targetType,
+        buildLabel: selectedTargetData.buildLabel,
+        testLabel: selectedTargetData.testLabel,
+        deps: [],
+      },
+      package: {
+        name: selectedTargetData.packageName,
+        path: selectedTargetData.packagePath,
+        targets: [],
+      },
+      workspacePath: selectedTargetData.workspacePath,
+    } as any; // Mock BazelTreeItem
   }
 
   // Only allow running binary targets (apps)
-  if (bazelItem.target.type !== 'binary') {
-    vscode.window.showErrorMessage(`Target ${bazelItem.target.name} is not a runnable target (must be a binary/app)`);
+  if (bazelItem!.target.type !== 'binary') {
+    vscode.window.showErrorMessage(`Target ${bazelItem!.target.name} is not a runnable target (must be a binary/app)`);
     return;
   }
 
@@ -2085,19 +2151,19 @@ export async function bazelRunCommand(context: ExtensionContext, bazelItem?: Baz
   const destination = await askDestinationToRunOn(context, null);
 
   await runTask(context, {
-    name: `Bazel Run: ${bazelItem.target.name}`,
+    name: `Bazel Run: ${bazelItem!.target.name}`,
     lock: "sweetpad.bazel.run",
     terminateLocked: true,
     callback: async (terminal) => {
-      terminal.write(`Running Bazel target: ${bazelItem.target.buildLabel}\n\n`);
+      terminal.write(`Running Bazel target: ${bazelItem!.target.buildLabel}\n\n`);
 
       // Build the run command with destination targeting
-      let runArgs = ["run", bazelItem.target.buildLabel];
+      let runArgs = ["run", bazelItem!.target.buildLabel];
       
       // Go to the workspace path first
       await terminal.execute({
         command: "cd",
-        args: [bazelItem.package.path],
+        args: [bazelItem!.package.path],
       });
 
       // Handle iOS device vs simulator differently
@@ -2118,7 +2184,7 @@ export async function bazelRunCommand(context: ExtensionContext, bazelItem?: Baz
         
         // Step 1: Build for device (arm64)
         terminal.write(`🔨 Step 1: Building for device (arm64)...\n`);
-        const buildArgs = ["build", bazelItem.target.buildLabel, "--ios_multi_cpus=arm64"];
+        const buildArgs = ["build", bazelItem!.target.buildLabel, "--ios_multi_cpus=arm64"];
         await terminal.execute({
           command: "bazel",
           args: buildArgs,
@@ -2129,7 +2195,7 @@ export async function bazelRunCommand(context: ExtensionContext, bazelItem?: Baz
         
         // Construct the expected path to the bundle (try both .ipa and .app)
         // Bazel typically puts outputs in bazel-bin/<path>/<target>.{ipa,app}
-        const packagePath = bazelItem.target.buildLabel.replace('//', '').replace(':', '/');
+        const packagePath = bazelItem!.target.buildLabel.replace('//', '').replace(':', '/');
         const ipaPath = `bazel-bin/${packagePath}.ipa`;
         const appPath = `bazel-bin/${packagePath}.app`;
         
@@ -2190,7 +2256,7 @@ export async function bazelRunCommand(context: ExtensionContext, bazelItem?: Baz
         });
       }
       
-      terminal.write(`\n✅ Launch completed for ${bazelItem.target.name}\n`);
+      terminal.write(`\n✅ Launch completed for ${bazelItem!.target.name}\n`);
     },
   });
 }
@@ -2465,7 +2531,7 @@ export async function selectBazelTargetCommand(context: ExtensionContext, target
       target,
       package: bazelPackage,
       provider: workspaceTreeProvider,
-      workspacePath: workspacePath,
+      workspacePath: actualWorkspacePath,
     };
   }
 
@@ -2482,7 +2548,7 @@ export async function selectBazelTargetCommand(context: ExtensionContext, target
     workspaceTreeProvider.setSelectedBazelTarget(bazelItem);
   }
   
-  vscode.window.showInformationMessage(`✅ Selected Bazel target: ${bazelItem.target.name} (${bazelItem.target.type})`);
+  vscode.window.showInformationMessage(`Selected Bazel target: ${bazelItem.target.name} (${bazelItem.target.type})`);
 }
 
 /**
@@ -2606,7 +2672,7 @@ export async function clearWorkspaceCacheCommand(context: ExtensionContext, work
     
     vscode.window.showInformationMessage("✅ Workspace cache cleared and reloaded");
   } catch (error) {
-    vscode.window.showErrorMessage(`❌ Failed to clear workspace cache: ${error}`);
+    vscode.window.showErrorMessage(`Failed to clear workspace cache: ${error}`);
   }
 }
 

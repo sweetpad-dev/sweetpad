@@ -311,6 +311,7 @@ export class ExtensionContext {
     this.buildManager.setDefaultSchemeForTesting(undefined);
     this.buildManager.setDefaultConfigurationForBuild(undefined);
     this.buildManager.setDefaultConfigurationForTesting(undefined);
+    this.buildManager.clearSelectedBazelTarget();
 
     void this.buildManager.refresh();
     void this.destinationsManager.refresh();
