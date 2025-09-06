@@ -39,15 +39,15 @@ export class BazelTargetStatusBar {
 
   constructor(options: { context: ExtensionContext }) {
     this.context = options.context;
-    
+
     const itemId = "sweetpad.bazel.statusBar";
     this.item = vscode.window.createStatusBarItem(itemId, vscode.StatusBarAlignment.Left, -1);
     this.item.name = "SweetPad: Selected Bazel Target";
     this.item.tooltip = "Currently selected Bazel target";
-    
+
     this.update();
     this.item.show();
-    
+
     // Listen for target selection changes from BuildManager
     this.context.buildManager.on("selectedBazelTargetUpdated", () => {
       this.update();
@@ -56,17 +56,17 @@ export class BazelTargetStatusBar {
 
   update() {
     const selectedTargetData = this.context.buildManager.getSelectedBazelTargetData();
-    
+
     if (selectedTargetData) {
       const targetType = selectedTargetData.targetType;
       let icon = "$(package)";
-      
+
       if (targetType === "test") {
         icon = "$(beaker)";
       } else if (targetType === "binary") {
         icon = "$(gear)";
       }
-      
+
       this.item.text = `${icon} ${selectedTargetData.targetName}`;
       this.item.tooltip = `Selected Bazel Target: ${selectedTargetData.targetName} (${targetType})\nPackage: ${selectedTargetData.packageName}\nBuild: Ctrl+Shift+P → "Bazel Build Selected"`;
       this.item.command = "sweetpad.bazel.buildSelected"; // Allow clicking to build

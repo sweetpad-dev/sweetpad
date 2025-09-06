@@ -164,8 +164,8 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     config.waitFor = true;
     config.request = "attach";
     config.program = launchContext.appPath;
-    
-    commonLogger.log("Resolved Bazel simulator debug configuration", { 
+
+    commonLogger.log("Resolved Bazel simulator debug configuration", {
       config: config,
       targetName: launchContext.targetName,
       buildLabel: launchContext.buildLabel,
@@ -233,8 +233,8 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
 
     // LLDB commands executed after the debuggee process has been created/attached.
     config.postRunCommands = [
-      ...(config.postRunCommands || []), 
-      `script print("SweetPad: Happy debugging Bazel target '${targetName}'!")`
+      ...(config.postRunCommands || []),
+      `script print("SweetPad: Happy debugging Bazel target '${targetName}'!")`,
     ];
 
     config.type = "lldb";
@@ -242,7 +242,7 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     config.program = hostAppPath;
     config.pid = processId.toString();
 
-    commonLogger.log("Resolved Bazel device debug configuration", { 
+    commonLogger.log("Resolved Bazel device debug configuration", {
       config: config,
       targetName: launchContext.targetName,
       buildLabel: launchContext.buildLabel,

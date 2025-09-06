@@ -128,7 +128,7 @@ export class ExtensionContext {
     });
   }
 
-  // --- Simple Global Emitter for Task Completion --- 
+  // --- Simple Global Emitter for Task Completion ---
   public simpleTaskCompletionEmitter = new vscode.EventEmitter<void>();
   // ---------------------------------------------------
 
@@ -137,7 +137,7 @@ export class ExtensionContext {
     var workspaceFolders = vscode.workspace.workspaceFolders;
     if (workspaceFolders && workspaceFolders.length > 0) {
       // Construct the path relative to the first workspace folder
-      return path.join(workspaceFolders[0].uri.fsPath, '.cursor', 'task_output.log');
+      return path.join(workspaceFolders[0].uri.fsPath, ".cursor", "task_output.log");
     }
     // No workspace folder is open, cannot determine log path
     commonLogger.warn("Cannot determine UI log path: No workspace folder open.");

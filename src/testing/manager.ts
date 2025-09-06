@@ -342,7 +342,7 @@ export class TestingManager {
     // Second, look for Swift Testing structures
     // Regex to find structs/classes/actors with Swift Testing tests
     const swiftTestingContainerRegex = /(struct|class|actor)\s+(\w+)\s*(?::[\s\w,]+)?\s*\{/g;
-    
+
     while (true) {
       const containerMatch = swiftTestingContainerRegex.exec(text);
       if (containerMatch === null) {
@@ -351,7 +351,7 @@ export class TestingManager {
       const containerType = containerMatch[1];
       const containerName = containerMatch[2];
       const containerStartIndex = containerMatch.index + containerMatch[0].length;
-      
+
       const containerCode = extractCodeBlock(text, containerStartIndex - 1);
       if (containerCode === null) {
         continue;
@@ -372,7 +372,7 @@ export class TestingManager {
         if (!hasTests) {
           hasTests = true;
           const containerPosition = document.positionAt(containerMatch.index);
-          
+
           containerTestItem = this.createTestItem({
             id: containerName,
             label: `${containerName} (Swift Testing)`,
@@ -429,7 +429,7 @@ export class TestingManager {
 
       if (!isInsideContainer) {
         const position = document.positionAt(testMatch.index);
-        
+
         const testItem = this.createTestItem({
           id: testName,
           label: `${testName} (Swift Testing)`,
@@ -518,7 +518,10 @@ export class TestingManager {
           const packageDir = path.dirname(options.xcworkspace);
           await terminal.execute({
             command: "sh",
-            args: ["-c", `cd "${packageDir}" && xcodebuild build-for-testing -destination "${destinationRaw}" -allowProvisioningUpdates -scheme "${options.scheme}"`],
+            args: [
+              "-c",
+              `cd "${packageDir}" && xcodebuild build-for-testing -destination "${destinationRaw}" -allowProvisioningUpdates -scheme "${options.scheme}"`,
+            ],
           });
           return;
         }
@@ -932,12 +935,15 @@ export class TestingManager {
           // Handle SPM projects
           if (options.xcworkspace.endsWith("Package.swift")) {
             const packageDir = path.dirname(options.xcworkspace);
-            
+
             if (testFramework === "swift-testing") {
               // Use xcodebuild for Swift Testing in SPM with proper test identifier format
               await terminal.execute({
                 command: "sh",
-                args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}"`],
+                args: [
+                  "-c",
+                  `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}"`,
+                ],
                 onOutputLine: async (output) => {
                   // Parse output for all methods in the class
                   for (const [methodId, methodTest] of classTest.children) {
@@ -954,7 +960,10 @@ export class TestingManager {
               // Use xcodebuild for XCTest in SPM
               await terminal.execute({
                 command: "sh",
-                args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${classTest.id}"`],
+                args: [
+                  "-c",
+                  `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${classTest.id}"`,
+                ],
                 onOutputLine: async (output) => {
                   await this.parseOutputLine({
                     line: output.value,
@@ -1085,12 +1094,15 @@ export class TestingManager {
           // Handle SPM projects
           if (options.xcworkspace.endsWith("Package.swift")) {
             const packageDir = path.dirname(options.xcworkspace);
-            
+
             if (testFramework === "swift-testing") {
               // Use xcodebuild for Swift Testing in SPM with proper test identifier format
               await terminal.execute({
                 command: "sh",
-                args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}/${methodName}"`],
+                args: [
+                  "-c",
+                  `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}/${methodName}"`,
+                ],
                 onOutputLine: async (output) => {
                   await this.parseOutputLine({
                     line: output.value,
@@ -1104,7 +1116,10 @@ export class TestingManager {
               // Use xcodebuild for XCTest in SPM
               await terminal.execute({
                 command: "sh",
-                args: ["-c", `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}/${methodName}"`],
+                args: [
+                  "-c",
+                  `cd "${packageDir}" && xcodebuild test-without-building -destination "${destinationRaw}" -scheme "${scheme}" -only-testing:"${testTarget}/${className}/${methodName}"`,
+                ],
                 onOutputLine: async (output) => {
                   await this.parseOutputLine({
                     line: output.value,

@@ -1387,8 +1387,7 @@
   },
   "lint-staged": {
     "*.{ts,js,mjs,json,jsonc}": [
-      "biome format --write",
-      "biome check --fix --unsafe"
+      "biome format --write"
     ],
     "docs/**/*.md": [
       "prettier --write"

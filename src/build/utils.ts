@@ -220,7 +220,7 @@ export function getWorkspacePath(): string {
     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
       throw new ExtensionError("No workspace folder found. Please open a folder or workspace first.");
     }
-    
+
     const workspaceFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
     if (!workspaceFolder) {
       throw new ExtensionError("Invalid workspace folder path");
@@ -305,12 +305,12 @@ export function getCurrentXcodeWorkspacePath(context: ExtensionContext): string 
  */
 export async function askXcodeWorkspacePath(context: ExtensionContext, specificPath?: string): Promise<string> {
   context.updateProgressStatus("Searching for workspace");
-  
+
   // If a specific path is provided, use it directly
   if (specificPath) {
     return specificPath;
   }
-  
+
   const xcworkspace = getCurrentXcodeWorkspacePath(context);
   if (xcworkspace) {
     return xcworkspace;
@@ -487,13 +487,14 @@ export async function restartSwiftLSP() {
  */
 export function findBazelWorkspaceRoot(startPath: string): string {
   let currentPath = path.dirname(startPath);
-  const fs = require('fs');
-  
+  const fs = require("fs");
+
   // Walk up the directory tree looking for Bazel workspace indicators
-  while (currentPath !== path.dirname(currentPath)) { // Stop at filesystem root
+  while (currentPath !== path.dirname(currentPath)) {
+    // Stop at filesystem root
     // Check for Bazel workspace files
-    const workspaceFiles = ['WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel'];
-    
+    const workspaceFiles = ["WORKSPACE", "WORKSPACE.bazel", "MODULE.bazel"];
+
     for (const workspaceFile of workspaceFiles) {
       const workspaceFilePath = path.join(currentPath, workspaceFile);
       try {
@@ -504,17 +505,17 @@ export function findBazelWorkspaceRoot(startPath: string): string {
         // Ignore permission errors and continue
       }
     }
-    
+
     // Move up one directory
     currentPath = path.dirname(currentPath);
   }
-  
+
   // If no WORKSPACE file found, use the directory of the BUILD.bazel file itself
   return path.dirname(startPath);
 }
 
 // Import new comprehensive Bazel parser
-import { BazelParser, type BazelTarget as NewBazelTarget, type BazelParseResult } from './bazel';
+import { BazelParser, type BazelTarget as NewBazelTarget, type BazelParseResult } from "./bazel";
 
 // Legacy compatibility types - keeping for backwards compatibility
 export interface BazelTarget {
@@ -537,46 +538,46 @@ export interface BazelPackage {
  */
 export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelPackage | null> {
   // Validate input
-  if (!buildFilePath || typeof buildFilePath !== 'string' || buildFilePath.length === 0) {
+  if (!buildFilePath || typeof buildFilePath !== "string" || buildFilePath.length === 0) {
     return null;
   }
-  
+
   // Check for suspicious path patterns
-  if (buildFilePath.startsWith('@') || buildFilePath.includes('undefined') || buildFilePath.includes('null')) {
+  if (buildFilePath.startsWith("@") || buildFilePath.includes("undefined") || buildFilePath.includes("null")) {
     return null;
   }
-  
+
   try {
     const fs = await import("node:fs/promises");
-    
+
     // Check if file exists first
     try {
       await fs.access(buildFilePath);
     } catch (accessError) {
       return null;
     }
-    
+
     const content = await fs.readFile(buildFilePath, "utf-8");
-    
+
     // Use the new comprehensive parser
     const parseResult = BazelParser.parse(content, buildFilePath);
-    
+
     // Convert to legacy format for backwards compatibility
     const packagePath = path.dirname(buildFilePath);
     const packageName = path.basename(packagePath);
-    
+
     // Combine both regular targets and test targets into legacy format
     const allNewTargets = [...parseResult.targets, ...parseResult.targetsTest];
-    
+
     // Convert new format to legacy format
     const legacyTargets: BazelTarget[] = allNewTargets.map((newTarget: NewBazelTarget) => ({
       name: newTarget.name,
       type: newTarget.type,
       buildLabel: newTarget.buildLabel,
       testLabel: newTarget.testLabel,
-      deps: newTarget.deps
+      deps: newTarget.deps,
     }));
-    
+
     return {
       name: packageName,
       path: packagePath,
@@ -591,7 +592,6 @@ export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelP
   }
 }
 
-
 /**
  * Get all Bazel packages and their targets from the workspace
  * Now uses the new comprehensive parser
@@ -599,10 +599,10 @@ export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelP
 export async function getBazelPackages(targetWorkspace?: string): Promise<BazelPackage[]> {
   // Use provided workspace or fall back to current workspace
   const workspace = targetWorkspace || getWorkspacePath();
-  
+
   // NOTE: This function should only be used for bulk operations, not on-demand parsing
   console.log(`⚠️ getBazelPackages called - this should be rare! Use getCachedBazelPackage for individual files`);
-  
+
   // Find all BUILD.bazel files
   const buildFiles = await findFilesRecursive({
     directory: workspace,
@@ -612,17 +612,17 @@ export async function getBazelPackages(targetWorkspace?: string): Promise<BazelP
       return file.name === "BUILD.bazel" || file.name === "BUILD";
     },
   });
-  
+
   console.log(`  - Found ${buildFiles.length} BUILD files (parsing with new comprehensive parser)`);
-  
+
   const packages: BazelPackage[] = [];
-  
+
   for (const buildFile of buildFiles) {
     const bazelPackage = await parseBazelBuildFile(buildFile);
     if (bazelPackage) {
       packages.push(bazelPackage);
     }
   }
-  
+
   return packages;
 }

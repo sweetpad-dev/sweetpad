@@ -7,8 +7,8 @@ import { getWorkspaceConfig } from "./config";
 import { TaskError } from "./errors";
 import { prepareEnvVars } from "./helpers";
 import { commonLogger } from "./logger";
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "fs";
+import * as path from "path";
 
 type TaskExecutor = "v1" | "v2";
 
@@ -137,7 +137,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     },
   ) {
     this.context = context;
-    // --- ADD Listener in Constructor --- 
+    // --- ADD Listener in Constructor ---
     this.uiLogListenerDisposable = this.setupUiLogListener();
     // -----------------------------------
   }
@@ -310,11 +310,11 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
   private closeTerminal(code: number, message: string, options?: TerminalWriteOptions): void {
     this.writeLine(message, options);
-    // --- Log the message to the UI log --- 
+    // --- Log the message to the UI log ---
     this.writeLine("Logging-Completion");
     this.writeLine();
 
-    // --- Fire the simple global event --- 
+    // --- Fire the simple global event ---
     this.context.simpleTaskCompletionEmitter.fire();
     this.closeEmitter.fire(code);
   }
@@ -353,23 +353,23 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
    */
   private setupUiLogListener(): vscode.Disposable | undefined {
     try {
-        // Ensure directory exists synchronously for simplicity here
-        fs.mkdirSync(path.dirname(this.context.UI_LOG_PATH()), { recursive: true }); 
-        commonLogger.log(`Setting up onDidWrite listener to log to: ${this.context.UI_LOG_PATH()}`);
-        
-        return this.onDidWrite((output) => {
-            try {
-                // Append the exact output string (already formatted with CRLF)
-                fs.appendFileSync(this.context.UI_LOG_PATH(), output);
-            } catch (err: unknown) {
-                commonLogger.error(`Failed to write to UI log file: ${this.context.UI_LOG_PATH()}`, { err });
-                // Log error to console to avoid infinite loop if terminal write fails
-                console.error(`[TaskTerminalV2] Error writing to UI log: ${err}`); 
-            }
-        });
+      // Ensure directory exists synchronously for simplicity here
+      fs.mkdirSync(path.dirname(this.context.UI_LOG_PATH()), { recursive: true });
+      commonLogger.log(`Setting up onDidWrite listener to log to: ${this.context.UI_LOG_PATH()}`);
+
+      return this.onDidWrite((output) => {
+        try {
+          // Append the exact output string (already formatted with CRLF)
+          fs.appendFileSync(this.context.UI_LOG_PATH(), output);
+        } catch (err: unknown) {
+          commonLogger.error(`Failed to write to UI log file: ${this.context.UI_LOG_PATH()}`, { err });
+          // Log error to console to avoid infinite loop if terminal write fails
+          console.error(`[TaskTerminalV2] Error writing to UI log: ${err}`);
+        }
+      });
     } catch (err: unknown) {
-         commonLogger.error(`Failed setup UI log listener/directory: ${this.context.UI_LOG_PATH()}`, { err });
-         return undefined;
+      commonLogger.error(`Failed setup UI log listener/directory: ${this.context.UI_LOG_PATH()}`, { err });
+      return undefined;
     }
   }
 }

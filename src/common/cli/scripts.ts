@@ -163,7 +163,7 @@ async function getBuildSettingsList(options: {
   // Handle SPM projects
   if (options.xcworkspace.endsWith("Package.swift")) {
     const packageDir = path.dirname(options.xcworkspace);
-    
+
     const args = [
       "-showBuildSettings",
       "-scheme",
@@ -420,10 +420,10 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
         cwd: packageDir,
       });
       const packageInfo = JSON.parse(stdout);
-      
+
       // Use a Set to avoid duplicates
       const schemeNames = new Set<string>();
-      
+
       // First, add products as schemes (these are the main buildable targets)
       if (packageInfo.products) {
         for (const product of packageInfo.products) {
@@ -432,7 +432,7 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
           }
         }
       }
-      
+
       // Then, add executable targets that aren't already covered by products
       if (packageInfo.targets) {
         for (const target of packageInfo.targets) {
@@ -441,14 +441,14 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
           }
         }
       }
-      
+
       // If no schemes found, try to use the package name
       if (schemeNames.size === 0 && packageInfo.name) {
         schemeNames.add(packageInfo.name);
       }
-      
+
       // Convert Set to array of XcodeScheme objects
-      return Array.from(schemeNames).map(name => ({ name }));
+      return Array.from(schemeNames).map((name) => ({ name }));
     } catch (error) {
       commonLogger.error("Failed to get SPM package info, falling back to xcodebuild", {
         error: error,
@@ -489,16 +489,16 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
         cwd: packageDir,
       });
       const packageInfo = JSON.parse(stdout);
-      
+
       const targets: string[] = [];
-      
+
       // Add all targets
       if (packageInfo.targets) {
         for (const target of packageInfo.targets) {
           targets.push(target.name);
         }
       }
-      
+
       return targets;
     } catch (error) {
       commonLogger.error("Failed to get SPM targets", {
@@ -527,10 +527,7 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
   // Handle SPM projects
   if (options.xcworkspace.endsWith("Package.swift")) {
     // SPM projects typically use Debug and Release configurations
-    return [
-      { name: "Debug" },
-      { name: "Release" },
-    ];
+    return [{ name: "Debug" }, { name: "Release" }];
   }
 
   const output = await getBasicProjectInfo({
@@ -586,7 +583,7 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
 
   await exec({
     command: "xcode-build-server",
-    args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme]
+    args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme],
   });
 }
 

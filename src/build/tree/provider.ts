@@ -8,7 +8,13 @@ import type { ExtensionContext } from "../../common/commands";
 import { commonLogger } from "../../common/logger";
 import type { BuildManager } from "../manager";
 import { getCurrentXcodeWorkspacePath, getWorkspacePath } from "../utils";
-import { detectXcodeWorkspacesPaths, parseBazelBuildFile, findBazelWorkspaceRoot, type BazelTarget, type BazelPackage } from "../utils";
+import {
+  detectXcodeWorkspacesPaths,
+  parseBazelBuildFile,
+  findBazelWorkspaceRoot,
+  type BazelTarget,
+  type BazelPackage,
+} from "../utils";
 import type { SelectedBazelTargetData } from "../manager";
 import { ExtensionError } from "../../common/errors";
 import type { WorkspaceEventData, WorkspaceCacheData } from "./types";
@@ -17,7 +23,9 @@ import { WorkspaceSectionTreeItem } from "./items/workspace-section-tree-item";
 import { BuildTreeItem, type IBuildTreeProvider } from "./items/build-tree-item";
 import { BazelTreeItem, type IBazelTreeProvider } from "./items/bazel-tree-item";
 
-export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem>, IWorkspaceTreeProvider, IBuildTreeProvider, IBazelTreeProvider {
+export class WorkspaceTreeProvider
+  implements vscode.TreeDataProvider<vscode.TreeItem>, IWorkspaceTreeProvider, IBuildTreeProvider, IBazelTreeProvider
+{
   private _onDidChangeTreeData = new vscode.EventEmitter<WorkspaceEventData>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   public context: ExtensionContext | undefined;
@@ -34,53 +42,53 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   private loadingItem: WorkspaceGroupTreeItem | null = null;
   private searchTerm: string = "";
   private isSearchActive: boolean = false;
-  
+
   // Cached filtered data to avoid recomputation
   private cachedFilteredWorkspaces: WorkspaceGroupTreeItem[] | null = null;
   private cachedFilteredRecentWorkspaces: WorkspaceGroupTreeItem[] | null = null;
   private cachedSchemesForWorkspaces = new Map<string, BuildTreeItem[]>();
-  
+
   // Track last computed search term to avoid recomputation
   private lastComputedSearchTerm: string = "";
-  
+
   // Cache individual parsed BUILD.bazel files to avoid re-parsing on each click
   private cachedBazelFiles = new Map<string, BazelPackage | null>();
   private bazelFileCacheTimestamps = new Map<string, number>();
-  
+
   // Cache of currently displayed Bazel targets for command lookup
   public currentBazelTargets = new Map<string, BazelTreeItem>();
-  
+
   // Persistent workspace cache for instant loading
   private persistentCacheKey = "sweetpad.workspaces.cache";
   private persistentCacheVersion = "1.1.0"; // Bumped version to invalidate old large caches
-  
+
   // Limits to prevent performance issues
   private readonly MAX_WORKSPACES = 1000; // Reasonable limit
   private readonly MAX_RECENT_WORKSPACES = 3;
-  
-  // Track loading state for each section type  
+
+  // Track loading state for each section type
   private sectionsLoading = new Set<string>(["workspace", "package", "bazel"]);
-  
+
   // Track individual searches within sections (for workspace section which has multiple searches)
   private subsectionLoadingCount = new Map<string, number>([
     ["workspace", 2], // project.xcworkspace search (counts as 2 for compatibility)
-    ["package", 1],   // Package.swift search
-    ["bazel", 1]      // BUILD.bazel search
+    ["package", 1], // Package.swift search
+    ["bazel", 1], // BUILD.bazel search
   ]);
-  
+
   // Track if workspaces need sorting
   private workspacesSorted = true;
-  
+
   // Bazel status bar reference for updates
   private bazelStatusBar: any = null; // BazelTargetStatusBar reference
-  
+
   // Throttled UI refresh for better performance during bulk loading
   private refreshThrottleTimer: NodeJS.Timeout | null = null;
-  
+
   // Throttled cache save to avoid excessive disk writes
   private cacheSaveTimer: NodeJS.Timeout | null = null;
 
-  constructor(options: { context: ExtensionContext; buildManager: BuildManager}) {
+  constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
     this.context = options.context;
     this.buildManager = options.buildManager;
     this.defaultWorkspacePath = getCurrentXcodeWorkspacePath(this.context);
@@ -135,59 +143,59 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     // Also invalidate Bazel file cache when workspace data changes
     this.cachedBazelFiles.clear();
     this.bazelFileCacheTimestamps.clear();
-    
+
     // Clear current Bazel targets cache
     this.currentBazelTargets.clear();
-    
+
     // Clear workspace metadata cache to ensure consistency
     this.workspaceMetadataCache.clear();
   }
 
   // Debounced search functionality with caching
   private searchDebounceTimer: NodeJS.Timeout | null = null;
-  
+
   public setSearchTerm(searchTerm: string): void {
     const previousSearchTerm = this.searchTerm;
     const wasSearchActive = this.isSearchActive;
     this.searchTerm = searchTerm.toLowerCase();
     this.isSearchActive = searchTerm.length > 0;
-    
+
     // Update context for conditional UI elements immediately
     this.updateSearchContext();
-    
+
     // Clear existing debounce timer
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
     }
-    
+
     // Only recompute filtered cache if search term actually changed
     if (previousSearchTerm !== this.searchTerm) {
       // Fast path: If clearing search (empty term), update immediately
       if (!this.searchTerm || this.searchTerm.length === 0) {
-      this.computeFilteredCache();
-      this._onDidChangeTreeData.fire(null);
+        this.computeFilteredCache();
+        this._onDidChangeTreeData.fire(null);
         return;
       }
-      
+
       // If this is the start of a new search, preload content for better results
       if (!wasSearchActive && this.isSearchActive) {
         this.preloadContentForSearch();
       }
-      
+
       // For instant feedback, show search UI changes immediately
       this._onDidChangeTreeData.fire(null);
-      
+
       // Then debounce the actual filtering work for non-empty searches
       this.searchDebounceTimer = setTimeout(() => {
         const start = performance.now();
         this.computeFilteredCache();
         const end = performance.now();
-        
+
         // Log performance only for slow operations
         if (end - start > 200) {
           console.warn(`Slow filter: ${Math.round(end - start)}ms`);
         }
-        
+
         // Update UI with filtered results
         this._onDidChangeTreeData.fire(null);
         this.searchDebounceTimer = null;
@@ -202,18 +210,18 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         clearTimeout(this.searchDebounceTimer);
         this.searchDebounceTimer = null;
       }
-      
+
       this.searchTerm = "";
       this.isSearchActive = false;
-      
+
       // Fast path: Clear filter cache immediately - no computation needed
       this.cachedFilteredWorkspaces = null;
       this.cachedFilteredRecentWorkspaces = null;
       this.lastComputedSearchTerm = "";
-      
+
       // Update context for conditional UI elements (async to not block)
       this.updateSearchContext();
-      
+
       // Use immediate update when clearing search - no debounce needed
       this._onDidChangeTreeData.fire(null);
     }
@@ -222,9 +230,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   private updateSearchContext(): void {
     // Set context variables for conditional UI elements (completely async to not block)
     Promise.all([
-      vscode.commands.executeCommand('setContext', 'sweetpad.builds.searchActive', this.isSearchActive),
-      vscode.commands.executeCommand('setContext', 'sweetpad.builds.searchTerm', this.searchTerm || '')
-    ]).catch(error => console.warn('Failed to update search context:', error));
+      vscode.commands.executeCommand("setContext", "sweetpad.builds.searchActive", this.isSearchActive),
+      vscode.commands.executeCommand("setContext", "sweetpad.builds.searchTerm", this.searchTerm || ""),
+    ]).catch((error) => console.warn("Failed to update search context:", error));
   }
 
   private computeFilteredCache(): void {
@@ -237,9 +245,11 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     }
 
     // Skip recomputation if search term hasn't changed
-    if (this.searchTerm === this.lastComputedSearchTerm && 
-        this.cachedFilteredWorkspaces !== null && 
-        this.cachedFilteredRecentWorkspaces !== null) {
+    if (
+      this.searchTerm === this.lastComputedSearchTerm &&
+      this.cachedFilteredWorkspaces !== null &&
+      this.cachedFilteredRecentWorkspaces !== null
+    ) {
       return; // Cache is still valid
     }
 
@@ -256,14 +266,15 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
 
     // Cache filtered workspaces - use highly optimized filtering
     this.cachedFilteredWorkspaces = this.workspaces.length > 0 ? this.filterWorkspacesOptimized(this.workspaces) : [];
-    this.cachedFilteredRecentWorkspaces = this.recentWorkspaces.length > 0 ? this.filterWorkspacesOptimized(this.recentWorkspaces) : [];
+    this.cachedFilteredRecentWorkspaces =
+      this.recentWorkspaces.length > 0 ? this.filterWorkspacesOptimized(this.recentWorkspaces) : [];
 
     // Mark this search term as computed
     this.lastComputedSearchTerm = this.searchTerm;
 
     const end = performance.now();
     const duration = Math.round(end - start);
-    
+
     // Only log slow operations to reduce noise
     if (duration > 100) {
       console.warn(`Slow filtering: ${duration}ms for ${this.workspaces.length} workspaces`);
@@ -292,14 +303,18 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   public setSelectedBazelTarget(target: BazelTreeItem | null): void {
     // Update BuildManager (primary source of truth)
     this.buildManager.setSelectedBazelTarget(target);
-    
+
     // Refresh the tree to update selection indicators
     this._onDidChangeTreeData.fire(null);
-    
+
     // Update context for command availability
     const targetData = this.buildManager.getSelectedBazelTargetData();
-    void vscode.commands.executeCommand('setContext', 'sweetpad.bazel.hasSelectedTarget', !!targetData);
-    void vscode.commands.executeCommand('setContext', 'sweetpad.bazel.selectedTargetType', targetData?.targetType || null);
+    void vscode.commands.executeCommand("setContext", "sweetpad.bazel.hasSelectedTarget", !!targetData);
+    void vscode.commands.executeCommand(
+      "setContext",
+      "sweetpad.bazel.selectedTargetType",
+      targetData?.targetType || null,
+    );
   }
 
   public clearSelectedBazelTarget(): void {
@@ -308,7 +323,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
 
   public setBazelStatusBar(statusBar: any): void {
     this.bazelStatusBar = statusBar;
-    
+
     // Listen for BuildManager events to update status bar
     this.buildManager.on("selectedBazelTargetUpdated", () => {
       if (this.bazelStatusBar) {
@@ -338,23 +353,23 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
 
     const searchTerm = this.searchTerm;
     const filteredWorkspaces: WorkspaceGroupTreeItem[] = [];
-    
+
     // Pre-allocate array for better performance
     const len = workspaces.length;
-    
+
     for (let i = 0; i < len; i++) {
       const workspace = workspaces[i];
       let shouldInclude = false;
-      
+
       // Quick label check first (most common case)
       const label = workspace.label;
-      if (label && typeof label === 'string') {
+      if (label && typeof label === "string") {
         // Use indexOf for better performance than includes
         if (label.toLowerCase().indexOf(searchTerm) !== -1) {
           shouldInclude = true;
         }
       }
-      
+
       // Check workspace path only if label didn't match
       if (!shouldInclude) {
         const workspacePath = workspace.workspacePath;
@@ -362,17 +377,17 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
           shouldInclude = true;
         }
       }
-      
+
       // If workspace name doesn't match, check if it contains matching schemes/targets
       if (!shouldInclude) {
         shouldInclude = this.workspaceContainsMatchingContent(workspace);
       }
-      
+
       if (shouldInclude) {
         filteredWorkspaces.push(workspace);
       }
     }
-    
+
     return filteredWorkspaces;
   }
 
@@ -383,17 +398,19 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     }
 
     const searchTerm = this.searchTerm;
-    
+
     // Check if this is a Bazel workspace
-    const isBazelWorkspace = workspace.workspacePath.endsWith("BUILD.bazel") || workspace.workspacePath.endsWith("BUILD");
-    
+    const isBazelWorkspace =
+      workspace.workspacePath.endsWith("BUILD.bazel") || workspace.workspacePath.endsWith("BUILD");
+
     if (isBazelWorkspace) {
       // For Bazel workspaces, check cached targets
       const bazelPackage = this.cachedBazelFiles.get(workspace.workspacePath);
       if (bazelPackage && bazelPackage.targets) {
-        return bazelPackage.targets.some(target => 
-          target.name.toLowerCase().indexOf(searchTerm) !== -1 ||
-          (target.buildLabel && target.buildLabel.toLowerCase().indexOf(searchTerm) !== -1)
+        return bazelPackage.targets.some(
+          (target) =>
+            target.name.toLowerCase().indexOf(searchTerm) !== -1 ||
+            (target.buildLabel && target.buildLabel.toLowerCase().indexOf(searchTerm) !== -1),
         );
       }
     } else {
@@ -402,22 +419,21 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       const cacheKeys = [
         `${workspace.workspacePath}:${searchTerm}`,
         `${workspace.workspacePath}:`,
-        workspace.workspacePath
+        workspace.workspacePath,
       ];
-      
+
       for (const cacheKey of cacheKeys) {
         const cachedSchemes = this.cachedSchemesForWorkspaces.get(cacheKey);
         if (cachedSchemes) {
           // Check if any scheme name contains the search term
-          return cachedSchemes.some(scheme => {
+          return cachedSchemes.some((scheme) => {
             const schemeName = scheme.label;
-            return schemeName && typeof schemeName === 'string' && 
-                   schemeName.toLowerCase().indexOf(searchTerm) !== -1;
+            return schemeName && typeof schemeName === "string" && schemeName.toLowerCase().indexOf(searchTerm) !== -1;
           });
         }
       }
     }
-    
+
     // If not in cache, we can't determine without async operations
     // For now, return false to keep filtering fast
     // The content will be checked when the workspace is expanded
@@ -436,52 +452,57 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     // Only preload a limited number of workspaces to avoid performance issues
     const workspacesToPreload = [...this.recentWorkspaces, ...this.workspaces.slice(0, 10)];
     const promises: Promise<void>[] = [];
-    
+
     for (const workspace of workspacesToPreload) {
       // Skip if already cached
       const cacheKey = `${workspace.workspacePath}:`;
       if (this.cachedSchemesForWorkspaces.has(cacheKey)) {
         continue;
       }
-      
+
       // Check if this is a Bazel workspace
-      const isBazelWorkspace = workspace.workspacePath.endsWith("BUILD.bazel") || workspace.workspacePath.endsWith("BUILD");
-      
+      const isBazelWorkspace =
+        workspace.workspacePath.endsWith("BUILD.bazel") || workspace.workspacePath.endsWith("BUILD");
+
       if (isBazelWorkspace) {
         // For Bazel workspaces, preload targets if not cached
         if (!this.cachedBazelFiles.has(workspace.workspacePath)) {
           promises.push(
-            this.getCachedBazelPackage(workspace.workspacePath).then(() => {
-              // Target data is now cached
-            }).catch(() => {
-              // Ignore errors during preloading
-            })
+            this.getCachedBazelPackage(workspace.workspacePath)
+              .then(() => {
+                // Target data is now cached
+              })
+              .catch(() => {
+                // Ignore errors during preloading
+              }),
           );
         }
       } else {
         // For Xcode/SPM workspaces, preload schemes
         promises.push(
-          this.getSchemesDirectly(workspace.workspacePath).then(schemes => {
-            // Cache the schemes with empty search term for future use
-            this.cachedSchemesForWorkspaces.set(`${workspace.workspacePath}:`, schemes);
-          }).catch(() => {
-            // Ignore errors during preloading
-          })
+          this.getSchemesDirectly(workspace.workspacePath)
+            .then((schemes) => {
+              // Cache the schemes with empty search term for future use
+              this.cachedSchemesForWorkspaces.set(`${workspace.workspacePath}:`, schemes);
+            })
+            .catch(() => {
+              // Ignore errors during preloading
+            }),
         );
       }
-      
+
       // Limit concurrent operations to avoid overwhelming the system
       if (promises.length >= 3) {
         await Promise.all(promises);
         promises.length = 0; // Clear the array
       }
     }
-    
+
     // Wait for any remaining promises
     if (promises.length > 0) {
       await Promise.all(promises);
     }
-    
+
     // Refresh search results now that we have more cached content
     if (this.isSearchActive) {
       this.computeFilteredCache();
@@ -499,30 +520,30 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     const searchTerm = this.searchTerm;
     const filteredSchemes: BuildTreeItem[] = [];
     const len = schemes.length;
-    
+
     // Pre-allocate for better performance
     for (let i = 0; i < len; i++) {
       const scheme = schemes[i];
       const schemeName = scheme.label;
-      
-      if (schemeName && typeof schemeName === 'string') {
+
+      if (schemeName && typeof schemeName === "string") {
         // Use indexOf for better performance than includes
         if (schemeName.toLowerCase().indexOf(searchTerm) !== -1) {
           filteredSchemes.push(scheme);
         }
       }
     }
-    
+
     return filteredSchemes;
   }
 
   private refresh(): void {
     // Clear any loading states before refreshing
     this.clearAllLoadingStates();
-    
+
     // Invalidate cache since underlying data is changing
     this.invalidateDataCache();
-    
+
     this._onDidChangeTreeData.fire(null);
     this.getChildren();
   }
@@ -530,29 +551,29 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   // Add a workspace to recents
   private addToRecentWorkspaces(workspacePath: string): void {
     // Remove if already exists to avoid duplicates
-    this.recentWorkspacesStorage = this.recentWorkspacesStorage.filter(path => path !== workspacePath);
-    
+    this.recentWorkspacesStorage = this.recentWorkspacesStorage.filter((path) => path !== workspacePath);
+
     // Add to the front of the array
     this.recentWorkspacesStorage.unshift(workspacePath);
-    
+
     // Keep only the most recent workspaces with our new limit
     this.recentWorkspacesStorage = this.recentWorkspacesStorage.slice(0, this.MAX_RECENT_WORKSPACES);
-    
+
     // Update our instance variable with tree items
-    this.recentWorkspaces = this.recentWorkspacesStorage.map(path => {
+    this.recentWorkspaces = this.recentWorkspacesStorage.map((path) => {
       // Determine if this recent item is the current workspace
       const isCurrentWorkspace = path === this.defaultWorkspacePath;
-      
+
       return new WorkspaceGroupTreeItem({
         workspacePath: path,
         provider: this,
         isRecent: true,
       });
     });
-    
+
     // Invalidate cache since recent workspaces changed
     this.invalidateFilterCache();
-    
+
     // Save updated recent workspaces to persistent cache
     this.throttledCacheSave();
   }
@@ -562,48 +583,48 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     if (this.refreshThrottleTimer) {
       return; // Already scheduled
     }
-    
+
     this.refreshThrottleTimer = setTimeout(() => {
       this._onDidChangeTreeData.fire(undefined);
       this.refreshThrottleTimer = null;
     }, 100); // 100ms throttle
   }
-  
+
   // Throttled cache save to avoid excessive disk writes during workspace discovery
   private throttledCacheSave(): void {
     if (this.cacheSaveTimer) {
       return; // Already scheduled
     }
-    
+
     this.cacheSaveTimer = setTimeout(() => {
       void this.saveToPersistentCache();
       this.cacheSaveTimer = null;
     }, 2000); // Save cache every 2 seconds max during active discovery
   }
-  
+
   // Check if we should skip this workspace to improve quality and performance
   private shouldSkipWorkspace(workspacePath: string): boolean {
     const workspaceRoot = getWorkspacePath();
     const relativePath = path.relative(workspaceRoot, workspacePath);
-    
+
     // Skip .xcodeproj files
-    if (workspacePath.endsWith('.xcodeproj') || workspacePath.includes('.xcodeproj/')) {
-      if (workspacePath.includes('.xcodeproj/project.xcworkspace')) {
+    if (workspacePath.endsWith(".xcodeproj") || workspacePath.includes(".xcodeproj/")) {
+      if (workspacePath.includes(".xcodeproj/project.xcworkspace")) {
         return false; // Don't skip project.xcworkspace files
       }
       return true; // Skip .xcodeproj files
     }
-    
+
     // Skip standalone .xcworkspace files
-    if (workspacePath.includes('.xcworkspace')) {
+    if (workspacePath.includes(".xcworkspace")) {
       return true; // Skip all other .xcworkspace files
     }
-    
+
     // Skip workspaces that are too deep (likely test fixtures or dependencies)
     if (relativePath.split(path.sep).length > 6) {
       return true;
     }
-    
+
     // Skip obvious dependency/vendor directories
     const skipPatterns = [
       /\/node_modules\//,
@@ -626,13 +647,13 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       /\/temp\//i,
       /\/tmp\//i,
     ];
-    
+
     for (const pattern of skipPatterns) {
       if (pattern.test(workspacePath)) {
         return true;
       }
     }
-    
+
     // For Bazel files, only keep ones in reasonable locations
     if (workspacePath.endsWith("BUILD") || workspacePath.endsWith("BUILD.bazel")) {
       // Skip if the parent directory is too generic
@@ -641,21 +662,21 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         return true;
       }
     }
-    
+
     return false;
   }
 
   // Prioritize workspaces by relevance - keep the most important ones
   private prioritizeWorkspaces(workspacePaths: string[]): string[] {
     const workspaceRoot = getWorkspacePath();
-    
+
     return workspacePaths
-      .map(workspacePath => ({
+      .map((workspacePath) => ({
         path: workspacePath,
-        score: this.getWorkspaceRelevanceScore(workspacePath, workspaceRoot)
+        score: this.getWorkspaceRelevanceScore(workspacePath, workspaceRoot),
       }))
       .sort((a, b) => b.score - a.score) // Higher scores first
-      .map(item => item.path);
+      .map((item) => item.path);
   }
 
   // Calculate relevance score for workspace prioritization
@@ -665,43 +686,43 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     const pathParts = relativePath.split(path.sep);
     const depth = pathParts.length;
     const parentDir = path.basename(path.dirname(workspacePath));
-    
+
     // Higher score = more relevant
-    
+
     // Prefer shallower paths
     score += Math.max(0, 10 - depth);
-    
+
     // Boost main workspace files
     if (depth === 1) {
       score += 20; // Root level files are most important
     }
-    
+
     // Boost if it's the current workspace
     if (workspacePath === this.defaultWorkspacePath) {
       score += 50;
     }
-    
+
     // Boost common important patterns
     if (relativePath.match(/^(Sources?|Packages?|Apps?|Projects?)\//i)) {
       score += 15;
     }
-    
+
     // Boost if parent directory suggests it's a main component
-    const importantNames = ['main', 'core', 'app', 'lib', 'framework', 'service'];
-    if (importantNames.some(name => parentDir.toLowerCase().includes(name))) {
+    const importantNames = ["main", "core", "app", "lib", "framework", "service"];
+    if (importantNames.some((name) => parentDir.toLowerCase().includes(name))) {
       score += 10;
     }
-    
+
     // Penalize test/example directories
     if (relativePath.match(/test|spec|example|demo|sample/i)) {
       score -= 5;
     }
-    
+
     // Prefer .xcworkspace over .xcodeproj
-    if (workspacePath.includes('.xcworkspace')) {
+    if (workspacePath.includes(".xcworkspace")) {
       score += 5;
     }
-    
+
     return score;
   }
 
@@ -713,51 +734,55 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     }
 
     // First check if this workspace is already in the main list
-    if (this.workspaces.some(w => w.workspacePath === workspacePath)) {
+    if (this.workspaces.some((w) => w.workspacePath === workspacePath)) {
       return;
     }
-    
+
     // Filter out irrelevant workspaces
     if (this.shouldSkipWorkspace(workspacePath)) {
       return;
     }
-    
+
     // Create the new workspace item
     const isCurrentWorkspace = workspacePath === this.defaultWorkspacePath;
     const loadingStateKey = `${workspacePath}:regular`;
-    
+
     // Only show loading indicator for current workspace or items in recents section
     const shouldShowLoading = isCurrentWorkspace && this.loadingItems.get(loadingStateKey);
-    
+
     // Check if this is the currently selected workspace (for folder icon)
     const isSelectedWorkspace = workspacePath === this.defaultWorkspacePath;
-    
+
     const workspaceItem = new WorkspaceGroupTreeItem({
       workspacePath: workspacePath,
       provider: this,
       isLoading: shouldShowLoading || false,
     });
-    
+
     // Add the new item to the regular workspaces list
     this.workspaces.push(workspaceItem);
-    
+
     // Mark workspaces as needing sort (defer sorting until needed)
     this.workspacesSorted = false;
-    
+
     // Invalidate cache since workspace list changed
     this.invalidateFilterCache();
-    
+
     // Use throttled refresh for better performance
     this.throttledRefresh();
-    
+
     // If this is the current workspace, add it to recents
     if (isCurrentWorkspace) {
       this.addToRecentWorkspaces(workspacePath);
     }
   }
-  
+
   // Add workspace to specific section and trigger immediate UI update for that section
-  private addWorkspaceToSection(workspacePath: string, expectedSection: string, discoveredWorkspaces?: Set<string>): void {
+  private addWorkspaceToSection(
+    workspacePath: string,
+    expectedSection: string,
+    discoveredWorkspaces?: Set<string>,
+  ): void {
     // Check workspace limit first to prevent performance issues
     if (this.workspaces.length >= this.MAX_WORKSPACES) {
       console.warn(`🚫 Workspace limit reached (${this.MAX_WORKSPACES}), skipping: ${workspacePath}`);
@@ -765,20 +790,20 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     }
 
     // First check if this workspace is already in the main list
-    if (this.workspaces.some(w => w.workspacePath === workspacePath)) {
+    if (this.workspaces.some((w) => w.workspacePath === workspacePath)) {
       return;
     }
-    
+
     // Check if this workspace was already discovered in this session
     if (discoveredWorkspaces?.has(workspacePath)) {
       return;
     }
-    
+
     // Filter out obviously irrelevant workspaces to improve quality
     if (this.shouldSkipWorkspace(workspacePath)) {
       return;
     }
-    
+
     // Add to discovered set for this session
     if (discoveredWorkspaces) {
       discoveredWorkspaces.add(workspacePath);
@@ -795,45 +820,45 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     // Create the new workspace item
     const isCurrentWorkspace = workspacePath === this.defaultWorkspacePath;
     const loadingStateKey = `${workspacePath}:regular`;
-    
+
     // Only show loading indicator for current workspace or items in recents section
     const shouldShowLoading = isCurrentWorkspace && this.loadingItems.get(loadingStateKey);
-    
+
     const workspaceItem = new WorkspaceGroupTreeItem({
       workspacePath: workspacePath,
       provider: this,
       isLoading: shouldShowLoading || false,
     });
-    
+
     // Add the new item to the regular workspaces list
     this.workspaces.push(workspaceItem);
-    
+
     // Mark workspaces as needing sort (defer sorting until needed)
     this.workspacesSorted = false;
-    
+
     // Invalidate cache since workspace list changed
     this.invalidateFilterCache();
-    
+
     // Use throttled refresh to avoid excessive UI updates during bulk loading
     this.throttledRefresh();
-    
+
     // If this is the current workspace, add it to recents
     if (isCurrentWorkspace) {
       this.addToRecentWorkspaces(workspacePath);
     }
-    
+
     // Save to cache periodically as we discover new workspaces
     // Throttled to avoid too many disk writes
     this.throttledCacheSave();
   }
-  
+
   // Sort workspaces by type (workspace, package, bazel) and then by name - HIGHLY OPTIMIZED
   private sortWorkspaces(): void {
     const len = this.workspaces.length;
     if (len === 0) {
       return; // No need to sort empty array
     }
-    
+
     if (len === 1) {
       return; // Single item doesn't need sorting
     }
@@ -849,7 +874,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       workspaceData[i] = {
         workspace,
         category: metadata.category,
-        displayName: metadata.displayName
+        displayName: metadata.displayName,
       };
     }
 
@@ -864,7 +889,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         if (categoryDiff !== 0) {
           return categoryDiff;
         }
-        
+
         // Then sort alphabetically by display name
         return a.displayName.localeCompare(b.displayName);
       });
@@ -883,10 +908,15 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   }
 
   // Bucket sort optimization for very large workspace lists
-  private bucketSortWorkspaces(workspaceData: Array<{workspace: WorkspaceGroupTreeItem, category: number, displayName: string}>): void {
+  private bucketSortWorkspaces(
+    workspaceData: Array<{ workspace: WorkspaceGroupTreeItem; category: number; displayName: string }>,
+  ): void {
     // Create buckets for each category
-    const buckets: Map<number, Array<{workspace: WorkspaceGroupTreeItem, category: number, displayName: string}>> = new Map();
-    
+    const buckets: Map<
+      number,
+      Array<{ workspace: WorkspaceGroupTreeItem; category: number; displayName: string }>
+    > = new Map();
+
     // Distribute items into buckets
     for (const item of workspaceData) {
       let bucket = buckets.get(item.category);
@@ -896,15 +926,16 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       }
       bucket.push(item);
     }
-    
+
     // Sort each bucket and concatenate
     let index = 0;
-    for (const category of [1, 2, 3, 4]) { // category order
+    for (const category of [1, 2, 3, 4]) {
+      // category order
       const bucket = buckets.get(category);
       if (bucket) {
         // Sort bucket alphabetically
         bucket.sort((a, b) => a.displayName.localeCompare(b.displayName));
-        
+
         // Copy back to original array
         for (const item of bucket) {
           workspaceData[index++] = item;
@@ -914,9 +945,9 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   }
 
   // Optimized caching system for workspace metadata
-  private workspaceMetadataCache = new Map<string, {category: number, displayName: string}>();
-  
-  private getCachedWorkspaceMetadata(workspacePath: string): {category: number, displayName: string} {
+  private workspaceMetadataCache = new Map<string, { category: number; displayName: string }>();
+
+  private getCachedWorkspaceMetadata(workspacePath: string): { category: number; displayName: string } {
     let metadata = this.workspaceMetadataCache.get(workspacePath);
     if (metadata) {
       return metadata;
@@ -925,7 +956,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     // Calculate both category and display name in one pass for efficiency
     let category: number;
     let displayName: string;
-    
+
     // Fast path checks using efficient string operations
     if (workspacePath.endsWith("Package.swift")) {
       category = 2; // Packages second
@@ -935,15 +966,19 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       displayName = path.basename(path.dirname(workspacePath)).toLowerCase();
     } else {
       // Check for Xcode workspaces/projects
-      const lastDot = workspacePath.lastIndexOf('.');
+      const lastDot = workspacePath.lastIndexOf(".");
       if (lastDot !== -1) {
         const extension = workspacePath.slice(lastDot);
-        if (extension === '.xcworkspace' || extension === '.xcodeproj' || 
-            workspacePath.includes('.xcworkspace/') || workspacePath.includes('.xcodeproj/')) {
+        if (
+          extension === ".xcworkspace" ||
+          extension === ".xcodeproj" ||
+          workspacePath.includes(".xcworkspace/") ||
+          workspacePath.includes(".xcodeproj/")
+        ) {
           category = 1; // Workspaces (including projects) first
-          
+
           // Extract project name more efficiently
-          const lastSlash = workspacePath.lastIndexOf('/', lastDot);
+          const lastSlash = workspacePath.lastIndexOf("/", lastDot);
           if (lastSlash !== -1) {
             displayName = workspacePath.slice(lastSlash + 1, lastDot).toLowerCase();
           } else {
@@ -960,7 +995,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     }
 
     metadata = { category, displayName };
-    
+
     // Cache for future use - limit cache size to prevent memory issues
     if (this.workspaceMetadataCache.size > 2000) {
       // Clear oldest entries (simple LRU)
@@ -969,15 +1004,19 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         this.workspaceMetadataCache.delete(key);
       }
     }
-    
+
     this.workspaceMetadataCache.set(workspacePath, metadata);
     return metadata;
   }
 
   // Helper to get the category of a workspace
   private getWorkspaceCategory(workspacePath: string): string {
-    if (workspacePath.endsWith(".xcworkspace") || workspacePath.includes(".xcworkspace/") ||
-        workspacePath.endsWith(".xcodeproj") || workspacePath.includes(".xcodeproj/")) {
+    if (
+      workspacePath.endsWith(".xcworkspace") ||
+      workspacePath.includes(".xcworkspace/") ||
+      workspacePath.endsWith(".xcodeproj") ||
+      workspacePath.includes(".xcodeproj/")
+    ) {
       return "workspace";
     } else if (workspacePath.endsWith("Package.swift")) {
       return "package";
@@ -990,23 +1029,27 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   // Group workspaces by type into collapsible sections
   private getSectionedWorkspaces(): WorkspaceSectionTreeItem[] {
     const start = performance.now();
-    
+
     // Make sure workspaces are sorted (only if needed) - skip for small lists or when already sorted
     if (!this.workspacesSorted && this.workspaces.length > 1) {
-    this.sortWorkspaces();
+      this.sortWorkspaces();
       this.workspacesSorted = true;
     }
 
     // Group by category
     const workspacesByCategory = new Map<string, WorkspaceGroupTreeItem[]>();
-    
+
     // Use cached filtered data if available, otherwise compute
     let filteredRecentWorkspaces: WorkspaceGroupTreeItem[];
     let filteredWorkspaces: WorkspaceGroupTreeItem[];
-    
+
     if (this.isSearchActive) {
       // Ensure filtered cache is computed efficiently
-      if (this.searchTerm !== this.lastComputedSearchTerm || this.cachedFilteredRecentWorkspaces === null || this.cachedFilteredWorkspaces === null) {
+      if (
+        this.searchTerm !== this.lastComputedSearchTerm ||
+        this.cachedFilteredRecentWorkspaces === null ||
+        this.cachedFilteredWorkspaces === null
+      ) {
         this.computeFilteredCache();
       }
       filteredRecentWorkspaces = this.cachedFilteredRecentWorkspaces || [];
@@ -1016,33 +1059,33 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       filteredRecentWorkspaces = this.recentWorkspaces;
       filteredWorkspaces = this.workspaces;
     }
-    
+
     // Add recents section if we have any
     if (filteredRecentWorkspaces.length > 0) {
       workspacesByCategory.set("recent", [...filteredRecentWorkspaces]);
     }
-    
+
     // Process regular workspaces efficiently - batch by category for better performance
     const len = filteredWorkspaces.length;
     for (let i = 0; i < len; i++) {
       const workspace = filteredWorkspaces[i];
       const category = this.getWorkspaceCategory(workspace.workspacePath);
-      
+
       let categoryWorkspaces = workspacesByCategory.get(category);
       if (!categoryWorkspaces) {
         categoryWorkspaces = [];
         workspacesByCategory.set(category, categoryWorkspaces);
       }
-      
+
       categoryWorkspaces.push(workspace);
     }
-    
+
     // Create section items for each category
     const sections: WorkspaceSectionTreeItem[] = [];
-    
+
     // Define the order we want categories to appear
     const categoryOrder = ["recent", "workspace", "package", "bazel", "other"];
-    
+
     // Pre-compute category counts only if needed (during search)
     const categoryTotalCounts = new Map<string, number>();
     if (this.isSearchActive) {
@@ -1052,33 +1095,33 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         categoryTotalCounts.set(category, (categoryTotalCounts.get(category) || 0) + 1);
       }
     }
-    
+
     for (const category of categoryOrder) {
       const workspaces = workspacesByCategory.get(category) || [];
-      
+
       // Show sections even if empty during loading (except "recent")
-      const shouldShowEmptySection = (category !== "recent") && this.sectionsLoading.has(category);
-      
+      const shouldShowEmptySection = category !== "recent" && this.sectionsLoading.has(category);
+
       if (workspaces.length > 0 || shouldShowEmptySection) {
         // Get total count efficiently
         let totalCount: number | undefined;
         if (this.isSearchActive) {
           totalCount = category === "recent" ? this.recentWorkspaces.length : categoryTotalCounts.get(category);
         }
-        
+
         const isLoading = this.sectionsLoading.has(category);
         sections.push(new WorkspaceSectionTreeItem(category, workspaces, this.searchTerm, totalCount, isLoading));
       }
     }
-    
+
     const end = performance.now();
     const duration = Math.round(end - start);
-    
+
     // Only log very slow operations
     if (duration > 200) {
       console.warn(`Slow getSectionedWorkspaces: ${duration}ms for ${this.workspaces.length} workspaces`);
     }
-    
+
     return sections;
   }
 
@@ -1087,18 +1130,17 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     try {
       // 1. FIRST: Try to load from cache immediately for instant display
       const cacheLoaded = await this.loadFromPersistentCache();
-      
+
       if (cacheLoaded) {
         // Update UI immediately with cached data
         this._onDidChangeTreeData.fire(undefined);
       }
-      
+
       // Start background search immediately to discover new workspaces
       // This ensures cache stays fresh and discovers new workspaces
       void this.loadWorkspacesStreamingly();
-      
     } catch (error) {
-      console.error('Failed to initialize workspaces:', error);
+      console.error("Failed to initialize workspaces:", error);
       // Fallback to normal loading
       void this.loadWorkspacesStreamingly();
     }
@@ -1109,7 +1151,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     try {
       const globalState = (this.context as any)?._context?.globalState;
       const cachedData = globalState?.get(this.persistentCacheKey) as WorkspaceCacheData | undefined;
-      
+
       if (!cachedData || cachedData.version !== this.persistentCacheVersion) {
         return false; // Cache is invalid or wrong version
       }
@@ -1127,33 +1169,39 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       }
 
       // If cache is too large, prioritize and truncate
-      let workspacePathsToLoad = cachedData.workspacePaths.filter((path: string) => path && !this.shouldSkipWorkspace(path));
-      
+      let workspacePathsToLoad = cachedData.workspacePaths.filter(
+        (path: string) => path && !this.shouldSkipWorkspace(path),
+      );
+
       if (workspacePathsToLoad.length > this.MAX_WORKSPACES) {
         workspacePathsToLoad = this.prioritizeWorkspaces(workspacePathsToLoad).slice(0, this.MAX_WORKSPACES);
-        
+
         // Auto-save the optimized cache to prevent this issue next time
         setTimeout(() => void this.saveToPersistentCache(), 5000);
       }
 
       // Create workspace items from cached paths
-      this.workspaces = workspacePathsToLoad.map((workspacePath: string) => new WorkspaceGroupTreeItem({
-        workspacePath,
-        provider: this,
-        isRecent: false
-      }));
+      this.workspaces = workspacePathsToLoad.map(
+        (workspacePath: string) =>
+          new WorkspaceGroupTreeItem({
+            workspacePath,
+            provider: this,
+            isRecent: false,
+          }),
+      );
 
       // Restore recent workspaces with limit
       this.recentWorkspacesStorage = cachedData.recentWorkspacePaths
         .filter((path: string) => path)
         .slice(0, this.MAX_RECENT_WORKSPACES); // Limit recent workspaces too
-        
-      this.recentWorkspaces = this.recentWorkspacesStorage.map((path: string) => 
-        new WorkspaceGroupTreeItem({
-          workspacePath: path,
-          provider: this,
-          isRecent: true,
-        })
+
+      this.recentWorkspaces = this.recentWorkspacesStorage.map(
+        (path: string) =>
+          new WorkspaceGroupTreeItem({
+            workspacePath: path,
+            provider: this,
+            isRecent: true,
+          }),
       );
 
       // Sort workspaces
@@ -1165,9 +1213,8 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       this._onDidChangeTreeData.fire(undefined);
 
       return true;
-
     } catch (error) {
-      console.error('Failed to load persistent cache:', error);
+      console.error("Failed to load persistent cache:", error);
       return false;
     }
   }
@@ -1180,10 +1227,12 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       }
 
       // Prioritize and limit workspaces before saving to cache
-      let workspacePathsToSave = this.workspaces.map(w => w.workspacePath);
-      
+      let workspacePathsToSave = this.workspaces.map((w) => w.workspacePath);
+
       if (workspacePathsToSave.length > this.MAX_WORKSPACES) {
-        console.log(`🔧 Optimizing cache: reducing ${workspacePathsToSave.length} workspaces to best ${this.MAX_WORKSPACES}`);
+        console.log(
+          `🔧 Optimizing cache: reducing ${workspacePathsToSave.length} workspaces to best ${this.MAX_WORKSPACES}`,
+        );
         workspacePathsToSave = this.prioritizeWorkspaces(workspacePathsToSave).slice(0, this.MAX_WORKSPACES);
       }
 
@@ -1192,13 +1241,12 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         timestamp: Date.now(),
         workspacePaths: workspacePathsToSave,
         recentWorkspacePaths: this.recentWorkspacesStorage.slice(0, this.MAX_RECENT_WORKSPACES),
-        workspaceRoot: getWorkspacePath()
+        workspaceRoot: getWorkspacePath(),
       };
 
       await (this.context as any)._context.globalState.update(this.persistentCacheKey, cacheData);
-
     } catch (error) {
-      console.error('Failed to save persistent cache:', error);
+      console.error("Failed to save persistent cache:", error);
     }
   }
 
@@ -1209,7 +1257,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         await (this.context as any)._context.globalState.update(this.persistentCacheKey, undefined);
       }
     } catch (error) {
-      console.error('Failed to clear persistent cache:', error);
+      console.error("Failed to clear persistent cache:", error);
     }
   }
 
@@ -1217,35 +1265,35 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   public async getCachedBazelPackage(buildFilePath: string): Promise<BazelPackage | null> {
     const now = Date.now();
     const cacheMaxAge = 30000; // 30 seconds cache per file
-    
+
     // Validate file path
-    if (!buildFilePath || typeof buildFilePath !== 'string' || buildFilePath.length === 0) {
+    if (!buildFilePath || typeof buildFilePath !== "string" || buildFilePath.length === 0) {
       return null;
     }
-    
+
     // Check if we have a cached version
     const cachedTimestamp = this.bazelFileCacheTimestamps.get(buildFilePath);
     const cachedPackage = this.cachedBazelFiles.get(buildFilePath);
-    
-    if (cachedPackage !== undefined && cachedTimestamp && (now - cachedTimestamp) < cacheMaxAge) {
+
+    if (cachedPackage !== undefined && cachedTimestamp && now - cachedTimestamp < cacheMaxAge) {
       return cachedPackage; // Return cached result
     }
-    
+
     try {
       const bazelPackage = await parseBazelBuildFile(buildFilePath);
-      
+
       // Cache the result (even if null)
       this.cachedBazelFiles.set(buildFilePath, bazelPackage);
       this.bazelFileCacheTimestamps.set(buildFilePath, now);
-      
+
       return bazelPackage;
     } catch (error) {
       console.error(`Failed to parse BUILD.bazel file: ${buildFilePath}`, error);
-      
+
       // Cache the failure to avoid repeated attempts
       this.cachedBazelFiles.set(buildFilePath, null);
       this.bazelFileCacheTimestamps.set(buildFilePath, now);
-      
+
       return null;
     }
   }
@@ -1255,47 +1303,46 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     if (this.isLoadingWorkspaces) {
       return; // Prevent multiple concurrent loading sessions
     }
-    
+
     this.isLoadingWorkspaces = true;
-    
+
     try {
       // 1. FIRST: Try to load from persistent cache for instant display
       const cacheLoaded = await this.loadFromPersistentCache();
-      
+
       if (!cacheLoaded) {
         // No cache available, reset workspaces list
         this.workspaces = [];
-        
+
         // Add current workspace if available
-      if (this.context) {
-        const cachedWorkspacePath = getCurrentXcodeWorkspacePath(this.context);
-        if (cachedWorkspacePath) {
-          this.addWorkspace(cachedWorkspacePath);
+        if (this.context) {
+          const cachedWorkspacePath = getCurrentXcodeWorkspacePath(this.context);
+          if (cachedWorkspacePath) {
+            this.addWorkspace(cachedWorkspacePath);
           }
         }
       }
-      
+
       // 2. THEN: Start real search in background (always, even if cache loaded)
       console.log(`🔄 Starting background workspace discovery...`);
-      
+
       // Reset sections loading state for real search
       this.sectionsLoading = new Set<string>(["workspace", "package", "bazel"]);
       this.subsectionLoadingCount = new Map<string, number>([
         ["workspace", 2], // project.xcworkspace search (counts as 2 for compatibility)
-        ["package", 1],   // Package.swift search  
-        ["bazel", 1]      // BUILD.bazel search
+        ["package", 1], // Package.swift search
+        ["bazel", 1], // BUILD.bazel search
       ]);
-      
+
       // Start real search without awaiting - this runs in background
       void this.streamingWorkspaceSearchAndCache();
-      
+
       // Update context variable for welcome screen
       void vscode.commands.executeCommand(
-        "setContext", 
-        "sweetpad.workspaces.noWorkspaces", 
-        this.workspaces.length === 0
+        "setContext",
+        "sweetpad.workspaces.noWorkspaces",
+        this.workspaces.length === 0,
       );
-
     } catch (error) {
       commonLogger.error("Failed to load workspaces", { error });
       void vscode.commands.executeCommand("setContext", "sweetpad.workspaces.noWorkspaces", true);
@@ -1306,11 +1353,11 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   // Perform workspace search and save to cache when complete
   private async streamingWorkspaceSearchAndCache(): Promise<void> {
     // First, collect all discovered workspaces in a temporary set to avoid duplicates
-    const discoveredWorkspaces = new Set<string>(this.workspaces.map(w => w.workspacePath));
-    
+    const discoveredWorkspaces = new Set<string>(this.workspaces.map((w) => w.workspacePath));
+
     // Perform the real search
     await this.streamingWorkspaceSearch(discoveredWorkspaces);
-    
+
     // Save updated cache after search completes
     await this.saveToPersistentCache();
   }
@@ -1318,39 +1365,39 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   // Perform workspace search with parallel loading and immediate UI updates
   private async streamingWorkspaceSearch(discoveredWorkspaces?: Set<string>): Promise<void> {
     const workspace = getWorkspacePath();
-    
+
     try {
       // Immediately show empty sections with loading indicators
       this._onDidChangeTreeData.fire(undefined);
-      
+
       // Debug logging can be enabled if needed
       // console.log(`🚀 Starting parallel searches for sections:`, Array.from(this.sectionsLoading));
       // console.log(`📊 Subsection counts:`, Object.fromEntries(this.subsectionLoadingCount));
-      
+
       // Start all searches in parallel and track their completion
       const searchPromises = [
         // Search for Package.swift files (SPM packages)
         this.findFilesIncrementallyWithCallback({
-        directory: workspace,
-        depth: 4,
+          directory: workspace,
+          depth: 4,
           maxResults: 30, // Limit to prevent performance issues
-        matcher: (file) => file.name === "Package.swift",
+          matcher: (file) => file.name === "Package.swift",
           processFile: (filePath) => this.addWorkspaceToSection(filePath, "package", discoveredWorkspaces),
           onComplete: () => {
             // console.log(`📦 Package search completed`);
             this.onSectionLoadComplete("package");
-          }
+          },
         }),
-        
+
         // Search for project.xcworkspace files inside .xcodeproj directories only
         this.findFilesIncrementallyWithCallback({
-        directory: workspace,
-        depth: 4,
+          directory: workspace,
+          depth: 4,
           maxResults: 20, // Limit workspace files
           matcher: (file) => file.name === "project.xcworkspace",
           processFile: (filePath) => {
             // Only process if it's inside a .xcodeproj directory
-            if (filePath.includes('.xcodeproj/project.xcworkspace')) {
+            if (filePath.includes(".xcodeproj/project.xcworkspace")) {
               this.addWorkspaceToSection(filePath, "workspace", discoveredWorkspaces);
             }
           },
@@ -1358,10 +1405,10 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
             // console.log(`🏢 Workspace (project.xcworkspace) search completed`);
             // Since we removed the .xcodeproj search, we need to decrement twice
             this.onSectionLoadComplete("workspace");
-            this.onSectionLoadComplete("workspace"); 
-          }
+            this.onSectionLoadComplete("workspace");
+          },
         }),
-        
+
         // Search for Bazel BUILD files
         this.findFilesIncrementallyWithCallback({
           directory: workspace,
@@ -1372,17 +1419,17 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
           onComplete: () => {
             // console.log(`⚙️ Bazel search completed`);
             this.onSectionLoadComplete("bazel");
-          }
-        })
+          },
+        }),
       ];
-      
+
       // Wait for all searches to complete
       await Promise.all(searchPromises);
-      
+
       // Mark overall loading as complete
-          this.isLoadingWorkspaces = false;
+      this.isLoadingWorkspaces = false;
       this._onDidChangeTreeData.fire(undefined);
-      
+
       // Safety mechanism: Force complete any remaining sections after a timeout
       setTimeout(() => {
         if (this.sectionsLoading.size > 0) {
@@ -1392,7 +1439,6 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
           this._onDidChangeTreeData.fire(undefined);
         }
       }, 15000); // 15 second safety timeout
-      
     } catch (error) {
       commonLogger.error("Error in workspace search", { error });
       this.isLoadingWorkspaces = false;
@@ -1400,16 +1446,16 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       this._onDidChangeTreeData.fire(undefined);
     }
   }
-  
+
   // Called when a specific section type has finished loading
   private onSectionLoadComplete(sectionType: string): void {
     // Decrement the count of remaining subsections for this section
     const currentCount = this.subsectionLoadingCount.get(sectionType) || 0;
     const newCount = Math.max(0, currentCount - 1);
     this.subsectionLoadingCount.set(sectionType, newCount);
-    
+
     // console.log(`🔍 Section ${sectionType} completed search: ${currentCount} -> ${newCount} remaining`);
-    
+
     // Only mark section as complete when all its subsections are done
     if (newCount === 0) {
       this.sectionsLoading.delete(sectionType);
@@ -1421,13 +1467,13 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
 
   // Helper method to incrementally find and process files with completion callback
   private async findFilesIncrementallyWithCallback(options: {
-    directory: string,
-    matcher: (file: Dirent) => boolean,
-    processFile: (filePath: string) => void,
-    onComplete?: () => void,
-    ignore?: string[],
-    depth?: number,
-    maxResults?: number
+    directory: string;
+    matcher: (file: Dirent) => boolean;
+    processFile: (filePath: string) => void;
+    onComplete?: () => void;
+    ignore?: string[];
+    depth?: number;
+    maxResults?: number;
   }): Promise<void> {
     try {
       await this.findFilesIncrementally({
@@ -1436,7 +1482,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         processFile: options.processFile,
         ignore: options.ignore,
         depth: options.depth,
-        maxResults: options.maxResults
+        maxResults: options.maxResults,
       });
     } catch (error) {
       // console.error(`🚫 Search failed for directory ${options.directory}:`, error);
@@ -1452,20 +1498,20 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
 
   // Helper method to incrementally find and process files
   private async findFilesIncrementally(options: {
-    directory: string,
-    matcher: (file: Dirent) => boolean,
-    processFile: (filePath: string) => void,
-    ignore?: string[],
-    depth?: number,
-    maxResults?: number
+    directory: string;
+    matcher: (file: Dirent) => boolean;
+    processFile: (filePath: string) => void;
+    ignore?: string[];
+    depth?: number;
+    maxResults?: number;
   }): Promise<void> {
     const ignore = options.ignore ?? [];
     const depth = options.depth ?? 0;
     let processedCount = 0;
-    
+
     try {
       const files = await fs.readdir(options.directory, { withFileTypes: true });
-      
+
       // Process matching files immediately with limit check
       for (const file of files) {
         // Stop if we've hit the max results limit
@@ -1474,26 +1520,26 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
         }
 
         const fullPath = path.join(options.directory, file.name);
-        
+
         if (options.matcher(file)) {
           options.processFile(fullPath);
           processedCount++;
         }
-        
+
         // Queue up directory searches to run in parallel
         if (file.isDirectory() && !ignore.includes(file.name) && depth > 0) {
           const remainingResults = options.maxResults ? Math.max(0, options.maxResults - processedCount) : undefined;
-          
+
           // Only continue searching subdirectories if we haven't hit the limit
           if (!options.maxResults || processedCount < options.maxResults) {
-          void this.findFilesIncrementally({
-            directory: fullPath,
-            matcher: options.matcher,
-            processFile: options.processFile,
-            ignore: options.ignore,
+            void this.findFilesIncrementally({
+              directory: fullPath,
+              matcher: options.matcher,
+              processFile: options.processFile,
+              ignore: options.ignore,
               depth: depth - 1,
-              maxResults: remainingResults
-          });
+              maxResults: remainingResults,
+            });
           }
         }
       }
@@ -1507,112 +1553,115 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     if (this.workspaces.length === 0 && !this.isLoadingWorkspaces && !element) {
       this.initializeWorkspaces();
     }
-    
+
     // Root level - show sections
     if (!element) {
       const sections = this.getSectionedWorkspaces();
       const results: vscode.TreeItem[] = [];
-      
+
       // Add search status indicator at the top when filtering is active
       if (this.isSearchActive && this.searchTerm.length > 0) {
-        const searchStatusItem = new vscode.TreeItem(`🔍 Filtering: "${this.searchTerm}"`, vscode.TreeItemCollapsibleState.None);
+        const searchStatusItem = new vscode.TreeItem(
+          `🔍 Filtering: "${this.searchTerm}"`,
+          vscode.TreeItemCollapsibleState.None,
+        );
         searchStatusItem.iconPath = new vscode.ThemeIcon("search-stop");
         searchStatusItem.contextValue = "search-status";
         searchStatusItem.tooltip = `Click to clear search filter`;
         searchStatusItem.command = {
-          command: 'sweetpad.build.clearSearch',
-          title: 'Clear Search',
-          arguments: []
+          command: "sweetpad.build.clearSearch",
+          title: "Clear Search",
+          arguments: [],
         };
         results.push(searchStatusItem);
       }
-      
+
       // Add sections
       results.push(...sections);
-      
+
       // Add a loading indicator if we're still searching
       if (this.isLoadingWorkspaces) {
         const loadingItem = new vscode.TreeItem("Searching for more builds...", vscode.TreeItemCollapsibleState.None);
         loadingItem.iconPath = new vscode.ThemeIcon("loading~spin");
         results.push(loadingItem);
       }
-      
+
       void vscode.commands.executeCommand(
-        "setContext", 
-        "sweetpad.workspaces.noWorkspaces", 
-        this.workspaces.length === 0
+        "setContext",
+        "sweetpad.workspaces.noWorkspaces",
+        this.workspaces.length === 0,
       );
-      
+
       return results;
     }
-    
+
     // For section items, return their workspaces
     if (element instanceof WorkspaceSectionTreeItem) {
       return element.workspaces;
     }
 
-    // For workspace items, return schemes/targets  
+    // For workspace items, return schemes/targets
     if (element instanceof WorkspaceGroupTreeItem) {
       // Check if this is a Bazel workspace first
       const isBazelWorkspace = element.workspacePath.endsWith("BUILD.bazel") || element.workspacePath.endsWith("BUILD");
-      
-      // For Bazel workspaces, allow expansion even if not in Recents  
+
+      // For Bazel workspaces, allow expansion even if not in Recents
       if (isBazelWorkspace) {
         // Parse the specific BUILD.bazel file on-demand (only when clicked)
         const buildFile = element.workspacePath;
         const bazelPackage = await this.getCachedBazelPackage(buildFile);
-        
+
         if (bazelPackage) {
           // Create tree items for each target
-          const targetItems = bazelPackage.targets.map(target => {
+          const targetItems = bazelPackage.targets.map((target) => {
             const bazelTreeItem = new BazelTreeItem({
               target,
               package: bazelPackage,
               provider: this,
-              workspacePath: element.workspacePath
+              workspacePath: element.workspacePath,
             });
-            
+
             // Cache the target for command lookup
             this.currentBazelTargets.set(target.buildLabel, bazelTreeItem);
-            
+
             return bazelTreeItem;
           });
-          
+
           // Apply search filter if active - optimized
           if (this.isSearchActive && this.searchTerm.length > 0) {
             const searchTerm = this.searchTerm;
             const filteredTargets: BazelTreeItem[] = [];
-            
+
             for (const item of targetItems) {
               if (item.target.name.toLowerCase().indexOf(searchTerm) !== -1) {
                 filteredTargets.push(item);
               }
             }
-            
+
             return filteredTargets;
           }
-          
+
           return targetItems;
         } else {
           return [];
         }
       }
-      
-      // For non-Bazel workspaces, only load schemes if in Recents section  
+
+      // For non-Bazel workspaces, only load schemes if in Recents section
       else if (element.isRecent) {
         // Handle regular Xcode/SPM workspaces with schemes
         const cacheKey = `${element.workspacePath}:${this.searchTerm}`;
         let schemes = this.cachedSchemesForWorkspaces.get(cacheKey);
-        
+
         if (!schemes) {
           // Load schemes directly for this specific workspace without using the cache
           const allSchemes = await this.getSchemesDirectly(element.workspacePath);
           schemes = await this.filterSchemes(allSchemes);
-          
+
           // Cache the filtered results
           this.cachedSchemesForWorkspaces.set(cacheKey, schemes);
         }
-        
+
         return schemes;
       } else {
         // Return empty array for non-recent items to prevent them from expanding
@@ -1622,7 +1671,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
 
     return [];
   }
-  
+
   async getTreeItem(element: vscode.TreeItem): Promise<vscode.TreeItem> {
     return element;
   }
@@ -1640,7 +1689,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       const schemes = await this.getSchemesDirectly(workspacePath);
       return await this.filterSchemes(schemes);
     }
-    
+
     // Otherwise, use the regular method with the current workspace path
     let schemes: XcodeScheme[] = [];
     try {
@@ -1668,7 +1717,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
           workspacePath: workspacePath || this.defaultWorkspacePath,
         }),
     );
-    
+
     return await this.filterSchemes(buildTreeItems);
   }
 
@@ -1677,7 +1726,7 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     if (!workspacePath) {
       return [];
     }
-    
+
     let schemes: XcodeScheme[] = [];
     try {
       // Call getSchemes directly with this workspace path
@@ -1711,15 +1760,15 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       this.loadingItem.isLoading = false;
       this.refreshTreeItem(this.loadingItem);
     }
-    
+
     // Only allow loading state for recent items
     if (!item.isRecent) {
       return;
     }
-    
+
     // Update the loading state just for this specific item
     item.isLoading = isLoading;
-    
+
     if (isLoading) {
       // Set this as the current loading item
       this.loadingItem = item;
@@ -1729,11 +1778,11 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       this.loadingItem = null;
       this.loadingItems.delete(item.uniqueId);
     }
-    
+
     // Only refresh the specific item that was changed
     this.refreshTreeItem(item);
   }
-  
+
   // Clear all loading states
   clearAllLoadingStates(): void {
     if (this.loadingItem) {

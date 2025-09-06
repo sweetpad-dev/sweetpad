@@ -7,8 +7,8 @@ import type { ExtensionContext } from "./commands";
 /**
  * Find files or directories in a given directory
  */
-export async function findFiles(options: { 
-  directory: string; 
+export async function findFiles(options: {
+  directory: string;
   matcher: (file: Dirent) => boolean;
   maxResults?: number;
 }): Promise<string[]> {
@@ -31,8 +31,7 @@ export async function findFiles(options: {
     return matchedFiles;
   } catch (error) {
     // Handle permission errors gracefully
-    if ((error as NodeJS.ErrnoException).code === 'EACCES' || 
-        (error as NodeJS.ErrnoException).code === 'EPERM') {
+    if ((error as NodeJS.ErrnoException).code === "EACCES" || (error as NodeJS.ErrnoException).code === "EPERM") {
       return [];
     }
     throw error;
@@ -92,7 +91,7 @@ export async function findFilesRecursive(options: {
         if (options.maxResults && matchedFiles.length >= options.maxResults) {
           break;
         }
-        
+
         if (options.maxResults) {
           const remainingSlots = options.maxResults - matchedFiles.length;
           matchedFiles.push(...subFiles.slice(0, remainingSlots));
@@ -105,8 +104,7 @@ export async function findFilesRecursive(options: {
     return matchedFiles;
   } catch (error) {
     // Handle permission errors gracefully - common in filesystem traversal
-    if ((error as NodeJS.ErrnoException).code === 'EACCES' || 
-        (error as NodeJS.ErrnoException).code === 'EPERM') {
+    if ((error as NodeJS.ErrnoException).code === "EACCES" || (error as NodeJS.ErrnoException).code === "EPERM") {
       return []; // Skip inaccessible directories
     }
     throw error;
@@ -119,7 +117,7 @@ export async function isFileExists(filePath: string): Promise<boolean> {
     return true;
   } catch (error) {
     // Only return false for ENOENT (file not found), re-throw other errors
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return false;
     }
     // For permission errors or other issues, still return false but could log
@@ -149,7 +147,7 @@ export async function statFile(filePath: string): Promise<Stats> {
   }
 }
 
-export async function readTextFile(filePath: string, encoding: BufferEncoding = 'utf8'): Promise<string> {
+export async function readTextFile(filePath: string, encoding: BufferEncoding = "utf8"): Promise<string> {
   try {
     // Read as text directly instead of buffer -> string conversion
     return await fs.readFile(filePath, encoding);
@@ -160,7 +158,7 @@ export async function readTextFile(filePath: string, encoding: BufferEncoding = 
   }
 }
 
-export async function readJsonFile<T = unknown>(filePath: string, encoding: BufferEncoding = 'utf8'): Promise<T> {
+export async function readJsonFile<T = unknown>(filePath: string, encoding: BufferEncoding = "utf8"): Promise<T> {
   try {
     // Read as text directly for better performance
     const rawString = await fs.readFile(filePath, encoding);
@@ -202,10 +200,10 @@ export async function tempFilePath(
     // Generate more secure random file name with timestamp for uniqueness
     const timestamp = Date.now().toString(36); // Base36 for shorter string
     const random = randomBytes(6).toString("hex"); // Increased randomness
-    const extension = options.extension ? `.${options.extension}` : '';
+    const extension = options.extension ? `.${options.extension}` : "";
     const fileName = `${options.prefix}_${timestamp}_${random}${extension}`;
     const filePath = path.join(tempPath, fileName);
-    
+
     return {
       path: filePath,
       [Symbol.asyncDispose]: async () => {
@@ -214,7 +212,7 @@ export async function tempFilePath(
         } catch (error) {
           // Ignore errors during cleanup - file might already be deleted
           const err = error as NodeJS.ErrnoException;
-          if (err.code !== 'ENOENT') {
+          if (err.code !== "ENOENT") {
             console.warn(`Failed to cleanup temp file ${filePath}:`, err.message);
           }
         }
@@ -232,7 +230,7 @@ export async function createDirectory(directory: string): Promise<string | undef
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     // Ignore if directory already exists
-    if (err.code === 'EEXIST') {
+    if (err.code === "EEXIST") {
       return undefined;
     }
     err.message = `Failed to create directory '${directory}': ${err.message}`;
@@ -250,7 +248,7 @@ export async function removeDirectory(directory: string): Promise<void> {
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     // Only throw if it's not a "not found" error
-    if (err.code !== 'ENOENT') {
+    if (err.code !== "ENOENT") {
       err.message = `Failed to remove directory '${directory}': ${err.message}`;
       throw err;
     }
@@ -263,7 +261,7 @@ export async function removeFile(filePath: string): Promise<void> {
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     // Only throw if it's not a "not found" error
-    if (err.code !== 'ENOENT') {
+    if (err.code !== "ENOENT") {
       err.message = `Failed to remove file '${filePath}': ${err.message}`;
       throw err;
     }
@@ -279,7 +277,7 @@ export async function isDirectory(filePath: string): Promise<boolean> {
     return stats.isDirectory();
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
-    if (err.code === 'ENOENT') {
+    if (err.code === "ENOENT") {
       return false;
     }
     throw err;
@@ -309,7 +307,7 @@ export async function copyFile(source: string, destination: string, overwrite: b
     await fs.copyFile(source, destination, flags);
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
-    if (err.code === 'EEXIST' && !overwrite) {
+    if (err.code === "EEXIST" && !overwrite) {
       throw new Error(`Destination file '${destination}' already exists and overwrite is disabled`);
     }
     err.message = `Failed to copy file from '${source}' to '${destination}': ${err.message}`;

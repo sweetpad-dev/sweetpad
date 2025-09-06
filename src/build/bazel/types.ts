@@ -1,7 +1,7 @@
 // Types for Bazel parser output
 export interface BazelTarget {
   name: string;
-  type: 'library' | 'test' | 'binary';
+  type: "library" | "test" | "binary";
   deps: string[];
   path?: string;
   resources?: string[];
@@ -11,7 +11,7 @@ export interface BazelTarget {
 
 export interface BazelScheme {
   name: string;
-  type: 'doordash_scheme' | 'doordash_appclip_scheme' | 'xcschemes_scheme' | 'custom';
+  type: "doordash_scheme" | "doordash_appclip_scheme" | "xcschemes_scheme" | "custom";
   buildTargets: string[];
   launchTarget?: string;
   testTargets?: string[];

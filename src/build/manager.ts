@@ -108,16 +108,16 @@ export class BuildManager {
     if (currentPath === workspacePath) {
       return;
     }
-    
+
     // Since workspace is changing, clear the scheme cache to prevent mixing schemes
     this.clearSchemesCache();
-    
+
     // Clear any selected Bazel target when workspace changes
     this.clearSelectedBazelTarget();
-    
+
     this.context.updateWorkspaceState("build.xcodeWorkspacePath", workspacePath);
     this.emitter.emit("currentWorkspacePathUpdated", workspacePath);
-    
+
     // Allow skipping the automatic refresh when needed
     if (!skipRefresh) {
       this.refresh();
@@ -200,12 +200,12 @@ export class BuildManager {
       if (!storedData) {
         return undefined;
       }
-      
+
       // If it's a string, parse it back to object
-      if (typeof storedData === 'string') {
+      if (typeof storedData === "string") {
         return JSON.parse(storedData) as SelectedBazelTargetData;
       }
-      
+
       // If it's already an object, return it (backward compatibility)
       return storedData as SelectedBazelTargetData;
     } catch (error) {
@@ -238,7 +238,8 @@ export class BuildManager {
     } as any; // Mock BazelTreeItem
   }
 
-  setSelectedBazelTarget(bazelItem: any): void { // BazelTreeItem type
+  setSelectedBazelTarget(bazelItem: any): void {
+    // BazelTreeItem type
     if (!bazelItem || !bazelItem.target || !bazelItem.package) {
       this.clearSelectedBazelTarget();
       return;
@@ -246,18 +247,18 @@ export class BuildManager {
 
     try {
       // Convert BazelTreeItem to serializable data - avoid any circular references
-      const targetType = bazelItem.target.type || 'library';
-      const validTargetType: "library" | "test" | "binary" = 
-        targetType === 'test' || targetType === 'binary' ? targetType : 'library';
-      
+      const targetType = bazelItem.target.type || "library";
+      const validTargetType: "library" | "test" | "binary" =
+        targetType === "test" || targetType === "binary" ? targetType : "library";
+
       const targetData: SelectedBazelTargetData = {
-        targetName: String(bazelItem.target.name || ''),
+        targetName: String(bazelItem.target.name || ""),
         targetType: validTargetType,
-        buildLabel: String(bazelItem.target.buildLabel || ''),
+        buildLabel: String(bazelItem.target.buildLabel || ""),
         testLabel: bazelItem.target.testLabel ? String(bazelItem.target.testLabel) : undefined,
-        packageName: String(bazelItem.package.name || ''),
-        packagePath: String(bazelItem.package.path || ''),
-        workspacePath: String(bazelItem.workspacePath || ''),
+        packageName: String(bazelItem.package.name || ""),
+        packagePath: String(bazelItem.package.path || ""),
+        workspacePath: String(bazelItem.workspacePath || ""),
       };
 
       // Use a simple string-based storage to avoid circular references

@@ -1,13 +1,13 @@
 // Main exports for Bazel parser
-export { BazelParser, BazelParserUtils } from './parser';
+export { BazelParser, BazelParserUtils } from "./parser";
 export type {
   BazelTarget,
   BazelScheme,
   BazelXcodeConfiguration,
   BazelParseResult,
-  BazelPackageInfo
-} from './types';
+  BazelPackageInfo,
+} from "./types";
 
 // Re-export for convenience
-export * from './parser';
-export * from './types';
+export * from "./parser";
+export * from "./types";

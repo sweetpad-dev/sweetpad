@@ -492,16 +492,16 @@ class ActionDispatcher {
   private async bazelDebugCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     // This callback is triggered by the "sweetpad: bazel-debug" task
     // which should be called when launching a Bazel target in debug mode
-    
+
     // The actual Bazel debug command execution happens in bazelDebugCommand in commands.ts
     // This callback is just a placeholder for the task system integration
-    
+
     this.context.updateProgressStatus("Running Bazel debug command");
-    
+
     // Since this is typically triggered by the debug configuration's preLaunchTask,
     // we don't need to do much here - the debug command has already been executed
     // through the bazelDebugCommand function in commands.ts
-    
+
     terminal.write("🐛 Bazel debug task completed. Ready for debugger attachment.\n");
   }
 }

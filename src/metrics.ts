@@ -1,24 +1,24 @@
-import { Counter, Histogram, Registry } from 'prom-client';
-import { commonLogger } from './common/logger'; // Use commonLogger
-import { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
-import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { ZodRawShape, ZodTypeAny, z } from 'zod';
+import { Counter, Histogram, Registry } from "prom-client";
+import { commonLogger } from "./common/logger"; // Use commonLogger
+import { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { ZodRawShape, ZodTypeAny, z } from "zod";
 
 // Create a registry for MCP-specific metrics
 const registry = new Registry();
 
 // Define the metrics
 export const TOOL_CALLS = new Counter({
-  name: 'mcp_tool_calls_total',
-  help: 'Number of tool calls',
-  labelNames: ['tool_name', 'status'],
+  name: "mcp_tool_calls_total",
+  help: "Number of tool calls",
+  labelNames: ["tool_name", "status"],
   registers: [registry],
 });
 
 export const TOOL_LATENCY = new Histogram({
-  name: 'mcp_tool_latency_seconds',
-  help: 'Tool execution latency in seconds',
-  labelNames: ['tool_name'],
+  name: "mcp_tool_latency_seconds",
+  help: "Tool execution latency in seconds",
+  labelNames: ["tool_name"],
   registers: [registry],
 });
 
@@ -56,30 +56,28 @@ export function withMetrics<S extends ZodRawShape>(
   toolName: string,
   fn: (
     args: z.objectOutputType<S, ZodTypeAny>,
-    extra: RequestHandlerExtra<any, any> 
-  ) => Promise<CallToolResult> | CallToolResult
+    extra: RequestHandlerExtra<any, any>,
+  ) => Promise<CallToolResult> | CallToolResult,
 ): (args: z.objectOutputType<S, ZodTypeAny>, extra: RequestHandlerExtra<any, any>) => Promise<CallToolResult> {
   return async (
     args: z.objectOutputType<S, ZodTypeAny>,
-    extra: RequestHandlerExtra<any, any>
+    extra: RequestHandlerExtra<any, any>,
   ): Promise<CallToolResult> => {
     const start = process.hrtime.bigint();
     try {
       const result = await Promise.resolve(fn(args, extra));
       // Using commonLogger here instead of the internal one
-      commonLogger.log(
-        `Tool call ${toolName} with args ${JSON.stringify(args)} succeeded`
-      );
-      TOOL_CALLS.labels(toolName, 'success').inc();
+      commonLogger.log(`Tool call ${toolName} with args ${JSON.stringify(args)} succeeded`);
+      TOOL_CALLS.labels(toolName, "success").inc();
       return result;
     } catch (error) {
-      TOOL_CALLS.labels(toolName, 'error').inc();
-      commonLogger.error(`Tool execution failed: ${toolName}`, { error, toolName }); 
+      TOOL_CALLS.labels(toolName, "error").inc();
+      commonLogger.error(`Tool execution failed: ${toolName}`, { error, toolName });
       throw error;
     } finally {
       const end = process.hrtime.bigint();
       const duration = Number(end - start) / 1_000_000_000;
       TOOL_LATENCY.labels(toolName).observe(duration);
     }
-  }
-} 
+  };
+}
