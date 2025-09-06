@@ -5,6 +5,12 @@ on:
     types: [opened, synchronize, reopened]
 
 name: PR Build and Tag
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: read
+
 jobs:
   build-and-tag:
     name: Build VSIX and Create PR Tag
@@ -14,6 +20,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Install NodeJS
         uses: actions/setup-node@v4
@@ -45,8 +52,12 @@ jobs:
           # Delete local tag if it exists
           git tag -d "$TAG_NAME" 2>/dev/null || true
           
-          # Delete remote tag if it exists
-          git push origin --delete "$TAG_NAME" 2>/dev/null || true
+          # Try to delete remote tag if it exists (may fail on forks)
+          if git push origin --delete "$TAG_NAME" 2>/dev/null; then
+            echo "✅ Deleted existing remote tag: $TAG_NAME"
+          else
+            echo "ℹ️ No existing remote tag to delete or insufficient permissions"
+          fi
           
       - name: Generate VSIX package
         run: |
@@ -161,9 +172,14 @@ jobs:
           
           # Create annotated tag with message
           git tag -a "$TAG_NAME" -m "PR #$PR_NUMBER build - $(date '+%Y-%m-%d %H:%M:%S')"
-          git push origin "$TAG_NAME"
           
-          echo "✅ Tag $TAG_NAME created and pushed"
+          # Try to push the tag, but don't fail the workflow if it doesn't work (e.g., in forks)
+          if git push origin "$TAG_NAME" 2>/dev/null; then
+            echo "✅ Tag $TAG_NAME created and pushed"
+          else
+            echo "⚠️ Could not push tag (likely running on fork) - tag created locally: $TAG_NAME"
+            echo "VSIX package is still available as artifact"
+          fi
           
       - name: Upload VSIX as artifact
         uses: actions/upload-artifact@v4
