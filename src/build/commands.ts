@@ -1439,9 +1439,9 @@ export async function selectXcodeWorkspaceCommand(context: ExtensionContext, ite
     try {
       let path = item.workspacePath;
       if (path) {
-        // Update the workspace path without triggering a full refresh
-        context.buildManager.setCurrentWorkspacePath(path, true); // Skip refresh
-        context.updateWorkspaceState("build.xcodeWorkspacePath", path);
+      // Update the workspace path without triggering a full refresh
+      context.buildManager.setCurrentWorkspacePath(path, true); // Skip refresh
+      context.updateWorkspaceState("build.xcodeWorkspacePath", path);
       }
       
       // Short delay to allow UI to update with loading state
@@ -1472,10 +1472,10 @@ export async function selectXcodeWorkspaceCommand(context: ExtensionContext, ite
   });
 
   if (workspace) {
-    context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
+    context.buildManager.setCurrentWorkspacePath(workspace);
+  } else {
+    context.buildManager.refresh();
   }
-  
-  context.buildManager.refresh();
   context.simpleTaskCompletionEmitter.fire();
 }
 

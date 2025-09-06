@@ -112,6 +112,9 @@ export class BuildManager {
     // Since workspace is changing, clear the scheme cache to prevent mixing schemes
     this.clearSchemesCache();
     
+    // Clear any selected Bazel target when workspace changes
+    this.clearSelectedBazelTarget();
+    
     this.context.updateWorkspaceState("build.xcodeWorkspacePath", workspacePath);
     this.emitter.emit("currentWorkspacePathUpdated", workspacePath);
     
