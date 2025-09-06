@@ -115,7 +115,17 @@ export class WorkspaceGroupTreeItem extends vscode.TreeItem {
       this.description = description;
     }
 
-    if (path.basename(this.workspacePath) === "Package.swift") {
+    // Set icon based on file type - keep original icon system
+    if (this.workspacePath.includes("DoorDash.xcodeproj")) {
+      // Special case for DoorDash xcodeproj
+      this.iconPath = vscode.Uri.joinPath(
+        vscode.Uri.file(this.provider.context?.extensionPath || ""),
+        "images",
+        "bazel.png",
+      );
+    }
+    // Use Swift Package Manager icon for Package.swift files
+    else if (path.basename(this.workspacePath) === "Package.swift") {
       this.iconPath = vscode.Uri.joinPath(
         vscode.Uri.file(this.provider.context?.extensionPath || ""),
         "images",
