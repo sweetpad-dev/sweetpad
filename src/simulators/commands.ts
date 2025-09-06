@@ -180,7 +180,7 @@ export async function takeSimulatorScreenshotCommand(context: ExtensionContext, 
         terminal.write(`Screenshot saved! Use MCP tool 'take_simulator_screenshot' to access via AI\n`);
 
         vscode.window.showInformationMessage(
-          `Screenshot taken of ${simulatorName} (${Math.round(stats.size / 1024)}KB) and added to AI context`,
+          `✅ Screenshot taken of ${simulatorName} (${Math.round(stats.size / 1024)}KB) and added to AI context`,
           "Open Screenshot"
         ).then(selection => {
           if (selection === "Open Screenshot") {

@@ -207,6 +207,16 @@ export function createMcpServer(options: McpServerOptions, extensionContext: Ext
   const destinationsSelect = createCommandTool("sweetpad.destinations.select", "select_build_destination", "Select build destination (device or simulator)", extensionContext);
   server.tool(destinationsSelect.toolName, "Select build destination (device or simulator)", destinationsSelect.schema, destinationsSelect.implementation);
 
+  // === BAZEL COMMANDS ===
+  const bazelBuild = createCommandTool("sweetpad.bazel.build", "bazel_build", "Build Bazel target", extensionContext);
+  server.tool(bazelBuild.toolName, "Build Bazel target", bazelBuild.schema, bazelBuild.implementation);
+
+  const bazelTest = createCommandTool("sweetpad.bazel.test", "bazel_test", "Test Bazel target", extensionContext);
+  server.tool(bazelTest.toolName, "Test Bazel target", bazelTest.schema, bazelTest.implementation);
+
+  const bazelRun = createCommandTool("sweetpad.bazel.run", "bazel_run", "Run Bazel target on iOS simulator", extensionContext);
+  server.tool(bazelRun.toolName, "Run Bazel target on iOS simulator", bazelRun.schema, bazelRun.implementation);
+
   // === SCREENSHOT COMMANDS ===
   server.tool(
       "take_simulator_screenshot",

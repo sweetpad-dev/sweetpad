@@ -23,7 +23,7 @@ export async function tuistGenerateCommand(context: ExtensionContext) {
 
   await restartSwiftLSP();
 
-  vscode.window.showInformationMessage("The Xcode project was successfully generated using Tuist.");
+  vscode.window.showInformationMessage("✅ The Xcode project was successfully generated using Tuist.");
 }
 
 export async function tuistInstallCommand(context: ExtensionContext) {
@@ -34,7 +34,7 @@ export async function tuistInstallCommand(context: ExtensionContext) {
 
   await restartSwiftLSP();
 
-  vscode.window.showInformationMessage("The Swift Package was successfully installed using Tuist.");
+  vscode.window.showInformationMessage("✅ The Swift Package was successfully installed using Tuist.");
 }
 
 export async function tuistCleanCommand(context: ExtensionContext) {
@@ -43,7 +43,7 @@ export async function tuistCleanCommand(context: ExtensionContext) {
 
   await tuistClean();
 
-  vscode.window.showInformationMessage("Tuist cleaned.");
+  vscode.window.showInformationMessage("✅ Tuist cleaned.");
 }
 
 export async function tuistEditComnmand(context: ExtensionContext) {

@@ -12,6 +12,7 @@ import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
 import { askXcodeWorkspacePath, getCurrentXcodeWorkspacePath, getWorkspacePath, restartSwiftLSP } from "./utils";
 import { commonLogger } from "../common/logger";
+import { BazelTreeItem } from "./tree";
 
 type IEventMap = {
   updated: [];
@@ -208,6 +209,30 @@ export class BuildManager {
       console.error("Failed to get selected Bazel target data:", error);
       return undefined;
     }
+  }
+
+  getSelectedBazelTarget(): BazelTreeItem | undefined {
+    const selectedTargetData = this.getSelectedBazelTargetData();
+    if (!selectedTargetData) {
+      return undefined;
+    }
+
+    // Create a mock BazelTreeItem from cached data
+    return {
+      target: {
+        name: selectedTargetData.targetName,
+        type: selectedTargetData.targetType,
+        buildLabel: selectedTargetData.buildLabel,
+        testLabel: selectedTargetData.testLabel,
+        deps: [],
+      },
+      package: {
+        name: selectedTargetData.packageName,
+        path: selectedTargetData.packagePath,
+        targets: [],
+      },
+      workspacePath: selectedTargetData.workspacePath,
+    } as any; // Mock BazelTreeItem
   }
 
   setSelectedBazelTarget(bazelItem: any): void { // BazelTreeItem type
