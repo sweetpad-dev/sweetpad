@@ -160,12 +160,16 @@ jobs:
               exit 1
           fi
           
-      - name: Create and push PR tag
+      - name: Create PR tag (when possible)
         run: |
           TAG_NAME="${{ steps.info.outputs.tag_name }}"
           PR_NUMBER="${{ steps.info.outputs.pr_number }}"
+          HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
+          BASE_REPO="${{ github.event.pull_request.base.repo.full_name }}"
           
           echo "Creating tag: $TAG_NAME"
+          echo "Head repo: $HEAD_REPO"
+          echo "Base repo: $BASE_REPO"
           
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
@@ -173,13 +177,28 @@ jobs:
           # Create annotated tag with message
           git tag -a "$TAG_NAME" -m "PR #$PR_NUMBER build - $(date '+%Y-%m-%d %H:%M:%S')"
           
-          # Try to push the tag, but don't fail the workflow if it doesn't work (e.g., in forks)
-          if git push origin "$TAG_NAME" 2>/dev/null; then
-            echo "✅ Tag $TAG_NAME created and pushed"
+          # Check if this is a fork PR
+          if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "🔄 Fork PR detected: $HEAD_REPO"
+            echo "⚠️ Cannot create tags on forks due to GitHub permissions"
+            echo "ℹ️ Tag created locally: $TAG_NAME (not pushed)"
+            echo ""
+            echo "🎯 Alternative: You can manually create the tag '$TAG_NAME' on your fork if needed"
+            echo "   git tag -a '$TAG_NAME' -m 'PR #$PR_NUMBER build'"
+            echo "   git push origin '$TAG_NAME'"
           else
-            echo "⚠️ Could not push tag (likely running on fork) - tag created locally: $TAG_NAME"
-            echo "VSIX package is still available as artifact"
+            echo "🏠 Main repository PR - creating tag on: $BASE_REPO"
+            
+            # For main repo, try to push to origin
+            if git push origin "$TAG_NAME" 2>/dev/null; then
+              echo "✅ Tag $TAG_NAME created and pushed to main repo"
+            else
+              echo "⚠️ Could not push tag to main repo - tag created locally: $TAG_NAME"
+            fi
           fi
+          
+          echo ""
+          echo "📦 VSIX package '${{ steps.info.outputs.vsix_name }}' will be available as downloadable artifact"
           
       - name: Upload VSIX as artifact
         uses: actions/upload-artifact@v4
@@ -187,3 +206,39 @@ jobs:
           name: ${{ steps.info.outputs.vsix_name }}
           path: ${{ steps.info.outputs.vsix_name }}
           retention-days: 30
+          
+      - name: Add PR comment with artifact info
+        uses: actions/github-script@v7
+        if: github.event.pull_request
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const runId = context.runId;
+            const vsixName = '${{ steps.info.outputs.vsix_name }}';
+            const tagName = '${{ steps.info.outputs.tag_name }}';
+            const headRepo = '${{ github.event.pull_request.head.repo.full_name }}';
+            const baseRepo = '${{ github.event.pull_request.base.repo.full_name }}';
+            const isFromFork = headRepo !== baseRepo;
+            
+            let tagInfo = '';
+            if (isFromFork) {
+              tagInfo = `⚠️ **Tag ${tagName}**: Cannot be created on fork due to permissions. You can manually create it on your fork if needed.`;
+            } else {
+              tagInfo = `✅ **Tag ${tagName}**: Created on main repository.`;
+            }
+            
+            const comment = `🍭 **SweetPad PR Build Complete!**
+            
+            📦 **VSIX Package**: \`${vsixName}\`
+            📍 **Download**: [Artifacts from this run](https://github.com/${baseRepo}/actions/runs/${runId})
+            🏷️ ${tagInfo}
+            
+            ---
+            *This VSIX contains the latest changes from this PR and can be installed directly in VS Code.*`;
+            
+            github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
