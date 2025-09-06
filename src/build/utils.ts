@@ -9,6 +9,7 @@ import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
+import { superCache } from "../common/super-cache";
 import type { DestinationPlatform } from "../destination/constants";
 import type { Destination } from "../destination/types";
 import { splitSupportedDestinatinos } from "../destination/utils";
@@ -594,14 +595,40 @@ export async function parseBazelBuildFile(buildFilePath: string): Promise<BazelP
 
 /**
  * Get all Bazel packages and their targets from the workspace
- * Now uses the new comprehensive parser
+ * Now uses the new comprehensive parser with super cache integration
  */
-export async function getBazelPackages(targetWorkspace?: string): Promise<BazelPackage[]> {
+export async function getBazelPackages(
+  targetWorkspace?: string,
+  options?: { refresh?: boolean },
+): Promise<BazelPackage[]> {
   // Use provided workspace or fall back to current workspace
   const workspace = targetWorkspace || getWorkspacePath();
 
-  // NOTE: This function should only be used for bulk operations, not on-demand parsing
-  console.log(`⚠️ getBazelPackages called - this should be rare! Use getCachedBazelPackage for individual files`);
+  // Check super cache first (unless refresh is forced)
+  if (!options?.refresh) {
+    const cachedPackages = superCache.getBazelPackages(workspace);
+    if (cachedPackages.length > 0) {
+      console.log(`📦 Using cached Bazel packages for ${workspace}: ${cachedPackages.length} packages`);
+
+      // Convert BazelPackageInfo to BazelPackage for backwards compatibility
+      const legacyPackages: BazelPackage[] = cachedPackages.map((pkg) => ({
+        name: pkg.name,
+        path: pkg.path,
+        targets: [...pkg.parseResult.targets, ...pkg.parseResult.targetsTest].map((target) => ({
+          name: target.name,
+          type: target.type,
+          buildLabel: target.buildLabel,
+          testLabel: target.testLabel,
+          deps: target.deps,
+        })),
+      }));
+
+      return legacyPackages;
+    }
+  }
+
+  // Not cached or refresh forced - scan and parse
+  console.log(`🔍 Scanning Bazel BUILD files in ${workspace}...`);
 
   // Find all BUILD.bazel files
   const buildFiles = await findFilesRecursive({
@@ -616,12 +643,47 @@ export async function getBazelPackages(targetWorkspace?: string): Promise<BazelP
   console.log(`  - Found ${buildFiles.length} BUILD files (parsing with new comprehensive parser)`);
 
   const packages: BazelPackage[] = [];
+  const bazelPackageInfos: any[] = []; // Using any to match BazelPackageInfo from super-cache
 
   for (const buildFile of buildFiles) {
-    const bazelPackage = await parseBazelBuildFile(buildFile);
-    if (bazelPackage) {
-      packages.push(bazelPackage);
+    try {
+      const content = await (await import("node:fs/promises")).readFile(buildFile, "utf-8");
+      const packagePath = path.dirname(buildFile);
+
+      // Parse using new comprehensive parser
+      const parseResult = BazelParser.parse(content, buildFile);
+
+      // Create BazelPackageInfo for super cache
+      const bazelPackageInfo = {
+        name: path.basename(packagePath),
+        path: packagePath,
+        parseResult,
+      };
+      bazelPackageInfos.push(bazelPackageInfo);
+
+      // Create legacy BazelPackage for backwards compatibility
+      const allTargets = [...parseResult.targets, ...parseResult.targetsTest];
+      const legacyTargets: BazelTarget[] = allTargets.map((target) => ({
+        name: target.name,
+        type: target.type,
+        buildLabel: target.buildLabel,
+        testLabel: target.testLabel,
+        deps: target.deps,
+      }));
+
+      packages.push({
+        name: path.basename(packagePath),
+        path: packagePath,
+        targets: legacyTargets,
+      });
+    } catch (error) {
+      console.error(`Failed to parse BUILD file ${buildFile}:`, error);
     }
+  }
+
+  // Cache all packages in super cache
+  if (bazelPackageInfos.length > 0) {
+    await superCache.cacheBazelWorkspace(workspace, bazelPackageInfos);
   }
 
   return packages;

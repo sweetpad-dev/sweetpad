@@ -131,14 +131,12 @@ export async function activate(context: vscode.ExtensionContext) {
     });
 
     // Here is circular dependency, but I don't care
-    buildManager.context = _context;
+    // Initialize buildManager with proper cache loading
+    await buildManager.initializeWithContext(_context);
     devicesManager.context = _context;
     destinationsManager.context = _context;
     testingManager.context = _context;
     progressStatusBar.context = _context;
-
-    // Start loading immediately when extension activates
-    void buildManager.refresh();
 
     // Trees 🎄
     // const buildTreeProvider = new BuildTreeProvider({

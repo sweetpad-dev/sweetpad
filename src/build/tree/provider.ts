@@ -6,6 +6,7 @@ import type { XcodeScheme } from "../../common/cli/scripts";
 import { getSchemes } from "../../common/cli/scripts";
 import type { ExtensionContext } from "../../common/commands";
 import { commonLogger } from "../../common/logger";
+import { superCache } from "../../common/super-cache";
 import type { BuildManager } from "../manager";
 import { getCurrentXcodeWorkspacePath, getWorkspacePath } from "../utils";
 import {
@@ -1654,8 +1655,8 @@ export class WorkspaceTreeProvider
         let schemes = this.cachedSchemesForWorkspaces.get(cacheKey);
 
         if (!schemes) {
-          // Load schemes directly for this specific workspace without using the cache
-          const allSchemes = await this.getSchemesDirectly(element.workspacePath);
+          // Try super cache first, then fall back to direct loading
+          const allSchemes = await this.getSchemesWithCache(element.workspacePath);
           schemes = await this.filterSchemes(allSchemes);
 
           // Cache the filtered results
@@ -1684,16 +1685,16 @@ export class WorkspaceTreeProvider
   }
 
   async getSchemes(workspacePath?: string): Promise<BuildTreeItem[]> {
-    // If a specific workspace path is provided, load schemes directly for that workspace
+    // If a specific workspace path is provided, use cache-first approach
     if (workspacePath) {
-      const schemes = await this.getSchemesDirectly(workspacePath);
+      const schemes = await this.getSchemesWithCache(workspacePath);
       return await this.filterSchemes(schemes);
     }
 
-    // Otherwise, use the regular method with the current workspace path
+    // Otherwise, use the regular method with the current workspace path (already cache-first)
     let schemes: XcodeScheme[] = [];
     try {
-      // This will get schemes for the current workspace path
+      // This will get schemes for the current workspace path using cache first
       schemes = await this.buildManager.getSchemas();
     } catch (error) {
       commonLogger.error("Failed to get schemes", {
@@ -1721,11 +1722,40 @@ export class WorkspaceTreeProvider
     return await this.filterSchemes(buildTreeItems);
   }
 
-  // Get schemes directly from xcodebuild without using the cache
+  // Get schemes using super cache first, then direct loading as fallback
+  async getSchemesWithCache(workspacePath: string): Promise<BuildTreeItem[]> {
+    if (!workspacePath) {
+      return [];
+    }
+
+    // First try super cache
+    const cachedSchemes = superCache.getWorkspaceSchemes(workspacePath);
+    if (cachedSchemes.length > 0) {
+      commonLogger.log(`📦 Tree provider using cached schemes for ${workspacePath}: ${cachedSchemes.length} schemes`);
+
+      // Create scheme items with explicit workspace path
+      return cachedSchemes.map(
+        (scheme) =>
+          new BuildTreeItem({
+            scheme: scheme.name,
+            collapsibleState: vscode.TreeItemCollapsibleState.None,
+            provider: this,
+            workspacePath: workspacePath,
+          }),
+      );
+    }
+
+    // Fallback: Load directly and cache it
+    return await this.getSchemesDirectly(workspacePath);
+  }
+
+  // Get schemes directly from xcodebuild without using the cache (fallback only)
   async getSchemesDirectly(workspacePath: string): Promise<BuildTreeItem[]> {
     if (!workspacePath) {
       return [];
     }
+
+    commonLogger.log(`🔄 Tree provider loading schemes directly for ${workspacePath} (not in cache)`);
 
     let schemes: XcodeScheme[] = [];
     try {
@@ -1733,6 +1763,24 @@ export class WorkspaceTreeProvider
       schemes = await getSchemes({
         xcworkspace: workspacePath,
       });
+
+      // Cache the result for future use
+      if (schemes.length > 0) {
+        const workspaceName = path.basename(workspacePath);
+        const workspaceType = workspacePath.endsWith(".xcworkspace")
+          ? "xcworkspace"
+          : workspacePath.endsWith(".xcodeproj")
+            ? "xcodeproj"
+            : "spm";
+
+        await superCache.cacheWorkspace({
+          path: workspacePath,
+          name: workspaceName,
+          type: workspaceType,
+          schemes,
+          configurations: [], // TODO: Add configuration discovery later
+        });
+      }
     } catch (error) {
       commonLogger.error("Failed to get schemes for workspace", {
         workspacePath,

@@ -30,11 +30,7 @@ export async function findFiles(options: {
 
     return matchedFiles;
   } catch (error) {
-    // Handle permission errors gracefully
-    if ((error as NodeJS.ErrnoException).code === "EACCES" || (error as NodeJS.ErrnoException).code === "EPERM") {
-      return [];
-    }
-    throw error;
+    return [];
   }
 }
 
@@ -103,11 +99,7 @@ export async function findFilesRecursive(options: {
 
     return matchedFiles;
   } catch (error) {
-    // Handle permission errors gracefully - common in filesystem traversal
-    if ((error as NodeJS.ErrnoException).code === "EACCES" || (error as NodeJS.ErrnoException).code === "EPERM") {
-      return []; // Skip inaccessible directories
-    }
-    throw error;
+    return [];
   }
 }
 

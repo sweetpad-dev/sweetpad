@@ -1466,8 +1466,8 @@ export async function selectXcodeWorkspaceCommand(context: ExtensionContext, ite
       // Add a small delay to ensure UI has time to update
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Now refresh the build manager
-      context.buildManager.refresh();
+      // Now get schemas (this will check cache first, then refresh if needed)
+      await context.buildManager.getSchemas();
     }
     return;
   }
@@ -1481,7 +1481,8 @@ export async function selectXcodeWorkspaceCommand(context: ExtensionContext, ite
   if (workspace) {
     context.buildManager.setCurrentWorkspacePath(workspace);
   } else {
-    context.buildManager.refresh();
+    // Get schemas (will use cache if available, otherwise refresh)
+    await context.buildManager.getSchemas();
   }
   context.simpleTaskCompletionEmitter.fire();
 }
@@ -2576,7 +2577,7 @@ export async function runSelectedBazelTargetCommand(
 }
 
 /**
- * Clear persistent workspace cache and reload
+ * Clear persistent workspace cache and super cache, then reload
  */
 export async function clearWorkspaceCacheCommand(
   context: ExtensionContext,
@@ -2588,13 +2589,25 @@ export async function clearWorkspaceCacheCommand(
   }
 
   try {
-    // Clear the persistent cache
+    // Clear the legacy persistent cache
     await workspaceTreeProvider.clearPersistentCache();
+
+    // Clear the new super cache
+    const { superCache } = await import("../common/super-cache.js");
+    await superCache.clearCache();
+
+    // Clear build manager cache as well for good measure
+    context.buildManager.clearSchemesCache();
 
     // Refresh workspaces
     await workspaceTreeProvider.loadWorkspacesStreamingly();
 
-    vscode.window.showInformationMessage("Workspace cache cleared and reloaded");
+    // Get cache statistics to show user
+    const stats = superCache.getCacheStats();
+    vscode.window.showInformationMessage(
+      `✅ All workspace caches cleared and reloaded!\n` +
+        `📊 Cache was storing ${stats.workspaceCount} workspaces and ${stats.bazelWorkspaceCount} Bazel workspaces.`,
+    );
   } catch (error) {
     vscode.window.showErrorMessage(`Failed to clear workspace cache: ${error}`);
   }
