@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.70] - 2025-09-07
+
+- Reduce font size [#188](https://github.com/sweetpad-dev/sweetpad/pull/188)
+
 ## [0.1.69] - 2025-09-07
 
 - feature: Add Tuist Test command [#187](https://github.com/sweetpad-dev/sweetpad/pull/187)
