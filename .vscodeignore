@@ -24,3 +24,5 @@ tests/
 *.spec.ts
 eslint.config.mjs
 jest.config.js
+
+images/icons/tabler-icons.original.woff

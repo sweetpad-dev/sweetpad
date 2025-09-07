@@ -3,11 +3,15 @@
 # Exit on error
 set -e
 
-# Step 1: Bump the version
+# Step 1: Verify font optimization is correct
+echo "Verifying font optimization..."
+npm run verify-font
+
+# Step 2: Bump the version
 echo "Bumping version..."
 VERSION=$(npm version patch)
 
-# Step 2: Push changes to main
+# Step 3: Push changes to main
 echo "Pushing to main..."
 git push origin main
 
