@@ -66,7 +66,7 @@ import { TestingManager } from "./testing/manager.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { ToolsManager } from "./tools/manager.js";
 import { ToolTreeProvider } from "./tools/tree.js";
-import { tuistCleanCommand, tuistEditComnmand, tuistGenerateCommand, tuistInstallCommand } from "./tuist/command.js";
+import { tuistCleanCommand, tuistEditComnmand, tuistGenerateCommand, tuistInstallCommand, tuistTestComnmand } from "./tuist/command.js";
 import { createTuistWatcher } from "./tuist/watcher.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
@@ -178,6 +178,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.tuist.install", tuistInstallCommand));
   d(command("sweetpad.tuist.clean", tuistCleanCommand));
   d(command("sweetpad.tuist.edit", tuistEditComnmand));
+  d(command("sweetpad.tuist.test", tuistTestComnmand));
   d(createTuistWatcher(_context));
 
   // Scheme Auto-Refresh Watcher
