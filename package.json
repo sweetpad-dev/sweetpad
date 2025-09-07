@@ -1220,7 +1220,9 @@
     "check:all": "npm run check:format:code && npm run check:lint && npm run check:types",
     "publish-patch": "./scripts/publish-patch.sh",
     "find-deadcode": "ts-prune --error --skip spec.ts?",
-    "download-examples": "tsx ./scripts/download-examples.ts"
+    "download-examples": "tsx ./scripts/download-examples.ts",
+    "optimize-font": "tsx ./scripts/font-tools.ts optimize",
+    "verify-font": "tsx ./scripts/font-tools.ts verify"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.3",
