@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.69] - 2025-09-07
+
+- feature: Add Tuist Test command [#187](https://github.com/sweetpad-dev/sweetpad/pull/187)
+
 ## [0.1.68] - 2025-07-13
 
 - Add configurable xcode-build-server path support [#176](https://github.com/sweetpad-dev/sweetpad/pull/176)
@@ -18,7 +22,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 - Add buildServer.json Regeneration During Build/Run [#164](https://github.com/sweetpad-dev/sweetpad/pull/164)
 - Performance Optimization: Xcode Workspace Parsing [#161](https://github.com/sweetpad-dev/sweetpad/pull/161)
 - Load build configurations parsing xcworkspace [#168](https://github.com/sweetpad-dev/sweetpad/pull/168)
--  Open simulator after boot
+- Open simulator after boot
 
 
 ## [0.1.66] - 2025-05-17
