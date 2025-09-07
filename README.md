@@ -55,6 +55,38 @@ tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcod
 1. 🍏 MacOS — other platforms are currently not supported
 2. 📱 Xcode — required for building and running iOS apps via `xcodebuild`
 
+## Local Development & Debugging
+
+To develop and debug the extension locally:
+
+1. Clone the repository:
+   ```shell
+   git clone git@github.com:sweetpad-dev/sweetpad.git
+   cd sweetpad
+   ```
+
+2. Install dependencies:
+   ```shell
+   npm install
+   ```
+
+3. Open in VSCode:
+   ```shell
+   code .
+   ```
+
+4. Press **F5** to build and run the extension in a new window. You'll see two VSCode windows:
+   - Source code window (for editing and debugging)
+   - **[Extension Development Host]** window (where the extension runs)
+
+5. Set breakpoints in the source code window where needed
+
+6. In the extension window, press **Cmd+R** to restart the extension
+
+7. When you trigger an action that hits a breakpoint, the debugger will pause and you can inspect variables and the call stack
+
+For more detailed debugging instructions, see the [development guide](./docs/dev/debug.md).
+
 ## Changelog
 
 The [CHANGELOG.md](./CHANGELOG.md) contains all notable changes to the "sweet pad" extension.
