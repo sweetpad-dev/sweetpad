@@ -28,6 +28,11 @@ const ORIGINAL_FONT_PATH = path.join(__dirname, '..', 'images', 'icons', 'tabler
 const OPTIMIZED_FONT_PATH = path.join(__dirname, '..', 'images', 'icons', 'tabler-icons.woff');
 
 // Shared utility functions
+function parseUnicodeCharacter(char: string): string {
+  // Remove leading backslash if present
+  return char.startsWith('\\') ? char.substring(1) : char;
+}
+
 function checkDependencies(): { pyftsubsetCommand: string } {
   console.log('🔧 Checking dependencies...');
   // Use uv tool run to run pyftsubset from Python fonttools
@@ -83,12 +88,7 @@ function createFontSubset(characters: string[], pyftsubsetCommand: string): void
   
   // Convert unicode escape sequences to actual unicode codepoints
   const unicodes = characters.map(char => {
-    // Remove the \\ prefix and convert hex to decimal
-    // Characters in package.json look like "\\f491"
-    let hex = char;
-    if (hex.startsWith('\\')) {
-      hex = hex.substring(1); // Remove the backslash
-    }
+    const hex = parseUnicodeCharacter(char);
     const codepoint = parseInt(hex, 16);
     if (isNaN(codepoint)) {
       throw new Error(`Invalid unicode character: ${char} (hex: ${hex})`);
@@ -226,7 +226,7 @@ function verifyPackageJsonConfiguration(): boolean {
   return false;
 }
 
-function getFontInfo(fontPath: string, pyftsubsetCommand: string): any {
+function getFontInfo(fontPath: string): { unicodes: string[] } | null {
   console.log(`🔍 Analyzing font: ${path.basename(fontPath)}`);
   
   try {
@@ -255,19 +255,14 @@ function getFontInfo(fontPath: string, pyftsubsetCommand: string): any {
 function verifyFontContent(expectedCharacters: string[], pyftsubsetCommand: string): boolean {
   console.log('🔬 Verifying font content...');
   
-  const fontInfo = getFontInfo(OPTIMIZED_FONT_PATH, pyftsubsetCommand);
+  const fontInfo = getFontInfo(OPTIMIZED_FONT_PATH);
   if (!fontInfo) {
     console.warn('⚠️  Cannot verify font content without fonttools');
     return true; // Assume it's correct if we can't verify
   }
   
   const expectedUnicodes = expectedCharacters.map(char => {
-    // Remove the \ prefix and get the hex value
-    let hex = char;
-    if (hex.startsWith('\\')) {
-      hex = hex.substring(1);
-    }
-    return hex.toLowerCase();
+    return parseUnicodeCharacter(char).toLowerCase();
   });
   
   const fontUnicodes = new Set(fontInfo.unicodes);
