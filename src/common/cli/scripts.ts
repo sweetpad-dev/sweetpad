@@ -583,6 +583,13 @@ export async function tuistEdit() {
   });
 }
 
+export async function tuistTest() {
+  await exec({
+    command: "tuist",
+    args: ["test"],
+  });
+}
+
 /**
  * Get the Xcode version installed on the system using xcodebuild
  *

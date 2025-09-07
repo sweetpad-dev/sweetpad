@@ -424,6 +424,11 @@
         "title": "SweetPad: Edit Tuist project (Open project in Xcode)",
         "icon": "$(file-code)"
       },
+            {
+        "command": "sweetpad.tuist.test",
+        "title": "SweetPad: Test Generated project using Tuist",
+        "icon": "$(file-code)"
+      },
       {
         "command": "sweetpad.build.openXcode",
         "title": "SweetPad: Open Xcode",
