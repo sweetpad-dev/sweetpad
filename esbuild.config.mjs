@@ -1,8 +1,10 @@
-import fs from "node:fs";
-import path from "node:path";
 import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 import dotenv from "dotenv";
 import esbuild from "esbuild";
+import { copy } from 'esbuild-plugin-copy';
+import fs from "node:fs";
+import path from "node:path";
+
 
 dotenv.config();
 
@@ -47,6 +49,14 @@ const config = {
         });
       },
     },
+    copy({
+      resolveFrom: 'cwd',
+        assets: {
+          from: ["./src/debugger/sweetpadlldb.py"],
+          to: ['./out/sweetpadlldb.py']
+        },
+        watch: isWatch,
+    })
   ],
 };
 

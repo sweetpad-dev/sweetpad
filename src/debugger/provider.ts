@@ -1,3 +1,4 @@
+import path from "path";
 import vscode from "vscode";
 import type {
   ExtensionContext,
@@ -112,11 +113,20 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
 
     const continueOnAttach = config.continueOnAttach ?? true;
 
+    const lldbLibraryPath = vscode.workspace.getConfiguration("lldb").get<string>("library");
+    
+    const scriptPath = path.join(this.context.extensionPath, "out", "sweetpadlldb.py");
+
+
     // LLDB commands executed upon debugger startup.
     config.initCommands = [
+
       ...(config.initCommands || []),
       // By default, LLDB runs against the local host platform. This command switches LLDB to a remote
       // iOS environment, necessary for debugging iOS apps on a device.
+            `command script import ${scriptPath}`,
+            // "sweetpad first",
+            "script lldb.debugger.HandleCommand('sweetpad first')",
       "platform select remote-ios",
       // Don't stop after attaching to the process:
       // -n false — Should LLDB print a “stopped with SIGSTOP” message in the UI? Be silent—no notification to you
@@ -125,9 +135,12 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
       ...(continueOnAttach ? ["process handle SIGSTOP -p true -s false -n false"] : []),
     ];
 
+    
     // LLDB commands executed just before launching of attaching to the debuggee.
     config.preRunCommands = [
+
       ...(config.preRunCommands || []),
+      // "sweetpad second",
       // Adjusts the loaded module’s file specification to point to the actual location of the binary on the remote device.
       // This ensures symbol resolution and breakpoints align correctly with the actual remote binary.
       `script lldb.target.module[0].SetPlatformFileSpec(lldb.SBFileSpec('${deviceAppPath}'))`,
@@ -143,7 +156,7 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     ];
 
     // LLDB commands executed after the debuggee process has been created/attached.
-    config.postRunCommands = [...(config.postRunCommands || []), `script print("SweetPad: Happy debugging!")`];
+    config.postRunCommands = [...(config.postRunCommands || [])];
 
     config.type = "lldb";
     config.request = "attach";
