@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.1.68",
+  "version": "0.1.69",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -424,7 +424,7 @@
         "title": "SweetPad: Edit Tuist project (Open project in Xcode)",
         "icon": "$(file-code)"
       },
-            {
+      {
         "command": "sweetpad.tuist.test",
         "title": "SweetPad: Test Generated project using Tuist",
         "icon": "$(file-code)"
