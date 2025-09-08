@@ -178,10 +178,7 @@ export class WorkspaceTreeProvider
         return;
       }
 
-      // If this is the start of a new search, preload content for better results
-      if (!wasSearchActive && this.isSearchActive) {
-        this.preloadContentForSearch();
-      }
+      // Filter uses only cached data - no preloading
 
       // For instant feedback, show search UI changes immediately
       this._onDidChangeTreeData.fire(null);
@@ -216,9 +213,7 @@ export class WorkspaceTreeProvider
       this.isSearchActive = false;
 
       // Fast path: Clear filter cache immediately - no computation needed
-      this.cachedFilteredWorkspaces = null;
-      this.cachedFilteredRecentWorkspaces = null;
-      this.lastComputedSearchTerm = "";
+      this.computeFilteredCache();
 
       // Update context for conditional UI elements (async to not block)
       this.updateSearchContext();
@@ -441,75 +436,7 @@ export class WorkspaceTreeProvider
     return false;
   }
 
-  // Preload content for workspaces when search starts for better search results
-  private preloadContentForSearch(): void {
-    // Run preloading in background without blocking UI
-    setTimeout(() => {
-      this.preloadContentForSearchAsync();
-    }, 0);
-  }
-
-  private async preloadContentForSearchAsync(): Promise<void> {
-    // Only preload a limited number of workspaces to avoid performance issues
-    const workspacesToPreload = [...this.recentWorkspaces, ...this.workspaces.slice(0, 10)];
-    const promises: Promise<void>[] = [];
-
-    for (const workspace of workspacesToPreload) {
-      // Skip if already cached
-      const cacheKey = `${workspace.workspacePath}:`;
-      if (this.cachedSchemesForWorkspaces.has(cacheKey)) {
-        continue;
-      }
-
-      // Check if this is a Bazel workspace
-      const isBazelWorkspace =
-        workspace.workspacePath.endsWith("BUILD.bazel") || workspace.workspacePath.endsWith("BUILD");
-
-      if (isBazelWorkspace) {
-        // For Bazel workspaces, preload targets if not cached
-        if (!this.cachedBazelFiles.has(workspace.workspacePath)) {
-          promises.push(
-            this.getCachedBazelPackage(workspace.workspacePath)
-              .then(() => {
-                // Target data is now cached
-              })
-              .catch(() => {
-                // Ignore errors during preloading
-              }),
-          );
-        }
-      } else {
-        // For Xcode/SPM workspaces, preload schemes
-        promises.push(
-          this.getSchemesDirectly(workspace.workspacePath)
-            .then((schemes) => {
-              // Cache the schemes with empty search term for future use
-              this.cachedSchemesForWorkspaces.set(`${workspace.workspacePath}:`, schemes);
-            })
-            .catch(() => {
-              // Ignore errors during preloading
-            }),
-        );
-      }
-
-      // Limit concurrent operations to avoid overwhelming the system
-      if (promises.length >= 3) {
-        await Promise.all(promises);
-        promises.length = 0; // Clear the array
-      }
-    }
-
-    // Wait for any remaining promises
-    if (promises.length > 0) {
-      await Promise.all(promises);
-    }
-
-    // Refresh search results now that we have more cached content
-    if (this.isSearchActive) {
-      this.computeFilteredCache();
-      this._onDidChangeTreeData.fire(null);
-    }
-  }
+  // Filter uses only cached data - no preloading needed
 
   // Filter schemes based on search term - highly optimized version
   private async filterSchemes(schemes: BuildTreeItem[]): Promise<BuildTreeItem[]> {
