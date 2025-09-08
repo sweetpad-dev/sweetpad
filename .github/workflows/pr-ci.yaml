@@ -36,7 +36,7 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           NAME=$(node -p "require('./package.json').name")
           PR_NUMBER="${{ github.event.number }}"
-          TAG_NAME="current-${PR_NUMBER}"
+          TAG_NAME="beta-${VERSION}-${PR_NUMBER}"
           VSIX_NAME="${NAME}-${VERSION}-pr${PR_NUMBER}.vsix"
           
           echo "version=$VERSION" >> $GITHUB_OUTPUT
