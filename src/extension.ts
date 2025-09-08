@@ -1,9 +1,17 @@
 import * as vscode from "vscode";
-import * as http from 'http';
-import type { Express } from 'express'; // Fix the import to use type import
+import * as http from "http";
+import type { Express } from "express"; // Fix the import to use type import
 import {
   buildAndPeripheryScanCommand,
   buildCommand,
+  bazelBuildCommand,
+  bazelTestCommand,
+  bazelRunCommand,
+  bazelDebugCommand,
+  buildSelectedBazelTargetCommand,
+  testSelectedBazelTargetCommand,
+  runSelectedBazelTargetCommand,
+  selectBazelTargetCommand,
   cleanCommand,
   createPeripheryConfigCommand,
   debuggingBuildCommand,
@@ -19,6 +27,7 @@ import {
   runCommand,
   searchBuildsCommand,
   clearBuildsSearchCommand,
+  clearWorkspaceCacheCommand,
   selectConfigurationForBuildCommand,
   selectXcodeSchemeForBuildCommand,
   selectXcodeWorkspaceCommand,
@@ -27,7 +36,7 @@ import {
 } from "./build/commands.js";
 import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
-import { DefaultSchemeStatusBar } from "./build/status-bar.js";
+import { DefaultSchemeStatusBar, BazelTargetStatusBar } from "./build/status-bar.js";
 import { WorkspaceTreeProvider } from "./build/tree.js";
 import { ExtensionContext } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
@@ -77,9 +86,8 @@ import { tuistCleanCommand, tuistEditComnmand, tuistGenerateCommand, tuistInstal
 import { createTuistWatcher } from "./tuist/watcher.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
-import { createMcpServer } from './mcp_server';
-import { McpServerInstance } from './types';
-
+import { createMcpServer } from "./mcp_server";
+import { McpServerInstance } from "./types";
 
 // Keep track of the server instance
 let mcpInstance: McpServerInstance | null = null;
@@ -98,7 +106,7 @@ export async function activate(context: vscode.ExtensionContext) {
       commonLogger.warn("No workspace folder found. Limited functionality available.");
       return;
     }
-    
+
     const buildManager = new BuildManager();
     const devicesManager = new DevicesManager();
     const simulatorsManager = new SimulatorsManager();
@@ -123,18 +131,13 @@ export async function activate(context: vscode.ExtensionContext) {
     });
 
     // Here is circular dependency, but I don't care
-    buildManager.context = _context;
+    // Initialize buildManager with proper cache loading
+    await buildManager.initializeWithContext(_context);
     devicesManager.context = _context;
     destinationsManager.context = _context;
     testingManager.context = _context;
     progressStatusBar.context = _context;
 
-    // --- Defer initial refreshes to prevent activation loops ---
-    // Schedule refresh after activation completes to avoid circular workspace detection
-    setTimeout(() => {
-      void buildManager.refresh();
-    }, 1000);
-    
     // Trees 🎄
     // const buildTreeProvider = new BuildTreeProvider({
     //   context: _context,
@@ -166,6 +169,15 @@ export async function activate(context: vscode.ExtensionContext) {
       context: _context,
     });
     d(schemeStatusBar);
+
+    const bazelTargetStatusBar = new BazelTargetStatusBar({
+      context: _context,
+    });
+    d(bazelTargetStatusBar);
+
+    // Connect status bar to tree provider for updates
+    workspaceTreeProvider.setBazelStatusBar(bazelTargetStatusBar);
+
     //d(tree("sweetpad.build.view", workspaceTreeProvider));
     d(tree("sweetpad.view.workspaces", workspaceTreeProvider));
     d(command("sweetpad.build.refreshView", async () => buildManager.refresh()));
@@ -188,6 +200,19 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.build.createPeripheryConfig", createPeripheryConfigCommand));
     d(command("sweetpad.build.search", () => searchBuildsCommand(_context, workspaceTreeProvider)));
     d(command("sweetpad.build.clearSearch", () => clearBuildsSearchCommand(_context, workspaceTreeProvider)));
+    d(command("sweetpad.build.clearCache", () => clearWorkspaceCacheCommand(_context, workspaceTreeProvider)));
+    d(command("sweetpad.bazel.build", bazelBuildCommand));
+    d(command("sweetpad.bazel.test", bazelTestCommand));
+    d(command("sweetpad.bazel.run", bazelRunCommand));
+    d(command("sweetpad.bazel.debug", bazelDebugCommand));
+    d(
+      command("sweetpad.bazel.selectTarget", (context, targetInfo) =>
+        selectBazelTargetCommand(_context, targetInfo, workspaceTreeProvider),
+      ),
+    );
+    d(command("sweetpad.bazel.buildSelected", () => buildSelectedBazelTargetCommand(_context, workspaceTreeProvider)));
+    d(command("sweetpad.bazel.testSelected", () => testSelectedBazelTargetCommand(_context, workspaceTreeProvider)));
+    d(command("sweetpad.bazel.runSelected", () => runSelectedBazelTargetCommand(_context, workspaceTreeProvider)));
 
     // Testing
     d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));
@@ -255,17 +280,20 @@ export async function activate(context: vscode.ExtensionContext) {
     d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
     d(command("sweetpad.system.openTerminalPanel", openTerminalPanel));
 
-    // --- MCP Server Setup --- 
+    // --- MCP Server Setup ---
     commonLogger.log("Starting MCP Server setup...");
     try {
-      mcpInstance = createMcpServer({
-          name: "SweetpadCommandRunner", 
+      mcpInstance = createMcpServer(
+        {
+          name: "SweetpadCommandRunner",
           version: context.extension.packageJSON.version,
-          port: 61337
-      }, _context);
+          port: 61337,
+        },
+        _context,
+      );
 
       // Start the server
-      await mcpInstance.start(); 
+      await mcpInstance.start();
       commonLogger.log("MCP Server setup complete and started.");
 
       // Disposal
@@ -273,12 +301,15 @@ export async function activate(context: vscode.ExtensionContext) {
         dispose: () => {
           commonLogger.log("Disposing MCP Server subscription...");
           if (mcpInstance?.server) {
-               try { mcpInstance.server.close(); } catch(e) { /* log error */ }
+            try {
+              mcpInstance.server.close();
+            } catch (e) {
+              /* log error */
+            }
           }
           mcpInstance = null;
-        }
+        },
       });
-
     } catch (error: unknown) {
       commonLogger.error(`Failed during MCP Server setup`, { error });
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -292,6 +323,6 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-    commonLogger.log("Sweetpad deactivating...");
-    // Cleanup is handled by the disposable
+  commonLogger.log("Sweetpad deactivating...");
+  // Cleanup is handled by the disposable
 }

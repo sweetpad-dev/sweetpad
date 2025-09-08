@@ -33,10 +33,30 @@ export type LastLaunchedAppMacOSContext = {
   appPath: string;
 };
 
+export type LastLaunchedAppBazelSimulatorContext = {
+  type: "bazel-simulator";
+  appPath: string;
+  targetName: string;
+  buildLabel: string;
+  simulatorId: string;
+  simulatorName: string;
+};
+
+export type LastLaunchedAppBazelDeviceContext = {
+  type: "bazel-device";
+  appPath: string;
+  targetName: string;
+  buildLabel: string;
+  destinationId: string;
+  destinationType: DestinationType;
+};
+
 export type LastLaunchedAppContext =
   | LastLaunchedAppDeviceContext
   | LastLaunchedAppSimulatorContext
-  | LastLaunchedAppMacOSContext;
+  | LastLaunchedAppMacOSContext
+  | LastLaunchedAppBazelSimulatorContext
+  | LastLaunchedAppBazelDeviceContext;
 
 type WorkspaceTypes = {
   "build.xcodeWorkspacePath": string;
@@ -53,6 +73,7 @@ type WorkspaceTypes = {
   "testing.xcodeConfiguration": string;
   "testing.xcodeDestination": SelectedDestination;
   "testing.xcodeScheme": string;
+  "bazel.selectedTarget": string;
 };
 
 type WorkspaceStateKey = keyof WorkspaceTypes;
@@ -107,7 +128,7 @@ export class ExtensionContext {
     });
   }
 
-  // --- Simple Global Emitter for Task Completion --- 
+  // --- Simple Global Emitter for Task Completion ---
   public simpleTaskCompletionEmitter = new vscode.EventEmitter<void>();
   // ---------------------------------------------------
 
@@ -116,7 +137,7 @@ export class ExtensionContext {
     var workspaceFolders = vscode.workspace.workspaceFolders;
     if (workspaceFolders && workspaceFolders.length > 0) {
       // Construct the path relative to the first workspace folder
-      return path.join(workspaceFolders[0].uri.fsPath, '.cursor', 'task_output.log');
+      return path.join(workspaceFolders[0].uri.fsPath, ".cursor", "task_output.log");
     }
     // No workspace folder is open, cannot determine log path
     commonLogger.warn("Cannot determine UI log path: No workspace folder open.");
@@ -290,6 +311,7 @@ export class ExtensionContext {
     this.buildManager.setDefaultSchemeForTesting(undefined);
     this.buildManager.setDefaultConfigurationForBuild(undefined);
     this.buildManager.setDefaultConfigurationForTesting(undefined);
+    this.buildManager.clearSelectedBazelTarget();
 
     void this.buildManager.refresh();
     void this.destinationsManager.refresh();

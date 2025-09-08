@@ -1,6 +1,6 @@
 import path from "node:path";
 import * as vscode from "vscode";
-import type { BuildTreeItem, WorkspaceGroupTreeItem, WorkspaceTreeProvider } from "./tree";
+import type { BuildTreeItem, WorkspaceGroupTreeItem, WorkspaceTreeProvider, BazelTreeItem } from "./tree";
 
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import {
@@ -13,7 +13,11 @@ import {
   getIsXcodeBuildServerInstalled,
   getXcodeVersionInstalled,
 } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
+import type {
+  ExtensionContext,
+  LastLaunchedAppBazelSimulatorContext,
+  LastLaunchedAppBazelDeviceContext,
+} from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
@@ -75,7 +79,7 @@ export async function runOnMac(
   context.updateProgressStatus("Extracting build settings");
   vscode.window.showInformationMessage(`Running application on macOS...`);
   terminal.write("Preparing to execute runOnMac command...\n");
-  
+
   const buildSettings = await getBuildSettingsToLaunch({
     scheme: options.scheme,
     configuration: options.configuration,
@@ -121,7 +125,7 @@ export async function runOniOSSimulator(
   context.updateProgressStatus("Extracting build settings");
   vscode.window.showInformationMessage(`Running application on iOS Simulator...`);
   terminal.write("Preparing to execute runOniOSSimulator command...\n");
-  
+
   const buildSettings = await getBuildSettingsToLaunch({
     scheme: options.scheme,
     configuration: options.configuration,
@@ -235,7 +239,8 @@ export async function runOniOSDevice(
   } catch (error) {
     // Check for passcode protection error
     if (error instanceof Error && isPasscodeProtectionError(error)) {
-      const helpfulMessage = `🔒 Device is passcode protected or not trusted.\n\n` +
+      const helpfulMessage =
+        `🔒 Device is passcode protected or not trusted.\n\n` +
         `Please follow these steps:\n` +
         `1. 🔓 Unlock your iOS device (${destinationName})\n` +
         `2. 🔌 If connected via USB, disconnect and reconnect the device\n` +
@@ -243,9 +248,11 @@ export async function runOniOSDevice(
         `4. 🔑 Enter your device passcode if requested\n` +
         `5. 🔄 Try running the command again\n\n` +
         `💡 Tip: Keep your device unlocked during app installation and launch.`;
-      
+
       terminal.write(helpfulMessage, { newLine: true, color: "yellow" });
-      throw new ExtensionError("Device passcode protection prevents app installation. Please unlock device and trust this computer.");
+      throw new ExtensionError(
+        "Device passcode protection prevents app installation. Please unlock device and trust this computer.",
+      );
     }
     throw error; // Re-throw other errors
   }
@@ -295,17 +302,20 @@ export async function runOniOSDevice(
       command: "xcrun",
       args: launchArgs,
       // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process
-      env: Object.fromEntries(Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value])),
+      env: Object.fromEntries(
+        Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value]),
+      ),
     });
   } catch (error) {
     // Check for passcode protection error during launch
     if (error instanceof Error && isPasscodeProtectionError(error)) {
-      const helpfulMessage = `🔒 Device is passcode protected during app launch.\n\n` +
+      const helpfulMessage =
+        `🔒 Device is passcode protected during app launch.\n\n` +
         `Please:\n` +
         `1. 🔓 Ensure your iOS device (${destinationName}) is unlocked\n` +
         `2. 🔄 Try running the command again\n\n` +
         `💡 Tip: Keep your device unlocked during app launch.`;
-      
+
       terminal.write(helpfulMessage, { newLine: true, color: "yellow" });
       throw new ExtensionError("Device passcode protection prevents app launch. Please unlock device.");
     }
@@ -339,7 +349,7 @@ export async function runOniOSDevice(
 function isPasscodeProtectionError(error: Error): boolean {
   const errorMessage = error.message || "";
   const errorString = error.toString();
-  
+
   // Check for specific error patterns
   const passcodeProtectionPatterns = [
     "The device is passcode protected",
@@ -348,12 +358,10 @@ function isPasscodeProtectionError(error: Error): boolean {
     "Code=-402653158",
     "MobileDeviceErrorCode=(0xE800001A)",
     "com.apple.mobile.notification_proxy",
-    "passcode protected"
+    "passcode protected",
   ];
-  
-  return passcodeProtectionPatterns.some(pattern => 
-    errorMessage.includes(pattern) || errorString.includes(pattern)
-  );
+
+  return passcodeProtectionPatterns.some((pattern) => errorMessage.includes(pattern) || errorString.includes(pattern));
 }
 
 /**
@@ -362,15 +370,16 @@ function isPasscodeProtectionError(error: Error): boolean {
 function handlePasscodeProtectionError(terminal: TaskTerminal, destinationRaw: string): void {
   // Check if this is a simulator destination
   const isSimulatorBuild = destinationRaw.includes("Simulator");
-  
+
   // Extract device name from destination string if possible
   const deviceMatch = destinationRaw.match(/id=([^,]+)/);
   const deviceInfo = deviceMatch ? ` (${deviceMatch[1]})` : "";
-  
+
   let helpfulMessage: string;
-  
+
   if (isSimulatorBuild) {
-    helpfulMessage = `🔒 Device passcode protection error during simulator build${deviceInfo}.\n\n` +
+    helpfulMessage =
+      `🔒 Device passcode protection error during simulator build${deviceInfo}.\n\n` +
       `This can happen when Xcode tries to communicate with connected devices even when building for simulator.\n\n` +
       `Quick solutions:\n` +
       `1. 🔓 Unlock any connected iOS devices\n` +
@@ -383,7 +392,8 @@ function handlePasscodeProtectionError(terminal: TaskTerminal, destinationRaw: s
       `💡 Alternative: Use 'xcodebuild -destination "platform=iOS Simulator,name=iPhone 15"' to avoid UDID-based selection.\n` +
       `💡 Configuration: The new setting will add build flags to reduce device communication during simulator builds.`;
   } else {
-    helpfulMessage = `🔒 Device is passcode protected or not trusted${deviceInfo}.\n\n` +
+    helpfulMessage =
+      `🔒 Device is passcode protected or not trusted${deviceInfo}.\n\n` +
       `Please follow these steps:\n` +
       `1. 🔓 Unlock your iOS device\n` +
       `2. 🔌 If connected via USB, disconnect and reconnect the device\n` +
@@ -393,7 +403,7 @@ function handlePasscodeProtectionError(terminal: TaskTerminal, destinationRaw: s
       `💡 Tip: Keep your device unlocked during build and deployment.\n` +
       `💡 For wireless debugging, ensure both devices are on the same network.`;
   }
-  
+
   terminal.write(helpfulMessage, { newLine: true, color: "yellow" });
 }
 
@@ -598,67 +608,66 @@ export async function buildApp(
 
   // Check if this is an SPM project
   const isSPMProject = options.xcworkspace.endsWith("Package.swift");
-  
+
   // Get testing framework preference
   const testingFramework = getWorkspaceConfig("testing.framework") || "auto";
-  
+
   // For tests with Swift Testing in SPM projects, use swift test command
   // Only use swift test when explicitly set to "swift-testing", not on "auto"
   if (isSPMProject && options.shouldTest && testingFramework === "swift-testing") {
     const packageDir = path.dirname(options.xcworkspace);
-    
+
     context.updateProgressStatus(`Running Swift Testing tests for "${options.scheme}"`);
-    
+
     // Build the swift test command
-    const swiftTestArgs = [
-      "test",
-      "--configuration", options.configuration.toLowerCase(),
-    ];
-    
+    const swiftTestArgs = ["test", "--configuration", options.configuration.toLowerCase()];
+
     // Add scheme/package target if needed
     if (options.scheme !== "Package") {
       swiftTestArgs.push("--target", options.scheme);
     }
-    
+
     // Add additional args that are compatible with swift test
-    const compatibleArgs = additionalArgs.filter(arg => 
-      !arg.startsWith("-destination") && 
-      !arg.startsWith("-resultBundlePath") &&
-      !arg.startsWith("-derivedDataPath")
+    const compatibleArgs = additionalArgs.filter(
+      (arg) =>
+        !arg.startsWith("-destination") && !arg.startsWith("-resultBundlePath") && !arg.startsWith("-derivedDataPath"),
     );
     swiftTestArgs.push(...compatibleArgs);
-    
+
     let pipes: Command[] | undefined = undefined;
     if (useXcbeatify) {
       pipes = [{ command: "xcbeautify", args: [] }];
     }
-    
+
     // Execute swift test command
     await terminal.execute({
       command: "sh",
-      args: ["-c", `cd "${packageDir}" && swift ${swiftTestArgs.map(arg => `"${arg}"`).join(" ")}`],
+      args: ["-c", `cd "${packageDir}" && swift ${swiftTestArgs.map((arg) => `"${arg}"`).join(" ")}`],
       pipes: pipes,
       env: env,
     });
-    
+
     await restartSwiftLSP();
     return;
   }
-  
+
   if (isSPMProject) {
     // For SPM projects, we need to run xcodebuild from the package directory
     const packageDir = path.dirname(options.xcworkspace);
     const relativePath = path.relative(getWorkspacePath(), packageDir);
-    
+
     context.updateProgressStatus(`Building SPM package "${options.scheme}"`);
-    
+
     // Build the xcodebuild command for SPM
     const xcodebuildArgs = [
-      "-scheme", options.scheme,
-      "-configuration", options.configuration,
-      "-destination", options.destinationRaw,
+      "-scheme",
+      options.scheme,
+      "-configuration",
+      options.configuration,
+      "-destination",
+      options.destinationRaw,
     ];
-    
+
     if (options.shouldClean) {
       xcodebuildArgs.push("clean");
     }
@@ -668,38 +677,40 @@ export async function buildApp(
     if (options.shouldTest) {
       xcodebuildArgs.push("test");
     }
-    
+
     // Add additional args
     xcodebuildArgs.push(...additionalArgs);
-    
+
     let pipes: Command[] | undefined = undefined;
     if (useXcbeatify) {
       pipes = [{ command: "xcbeautify", args: [] }];
     }
-    
+
     // Execute the command in the package directory
     try {
       await terminal.execute({
         command: "sh",
-        args: ["-c", `cd "${packageDir}" && xcodebuild ${xcodebuildArgs.map(arg => `"${arg}"`).join(" ")}`],
+        args: ["-c", `cd "${packageDir}" && xcodebuild ${xcodebuildArgs.map((arg) => `"${arg}"`).join(" ")}`],
         pipes: pipes,
         env: env,
       });
     } catch (error) {
       if (error instanceof Error && isPasscodeProtectionError(error)) {
         handlePasscodeProtectionError(terminal, options.destinationRaw);
-        throw new ExtensionError("Device passcode protection prevents build. Please unlock device and trust this computer.");
+        throw new ExtensionError(
+          "Device passcode protection prevents build. Please unlock device and trust this computer.",
+        );
       }
       throw error;
     }
-    
+
     await restartSwiftLSP();
     return;
   }
 
   // Original Xcode workspace logic
   const command = new XcodeCommandBuilder();
-  
+
   if (arch) {
     command.addBuildSettings("ARCHS", arch);
     command.addBuildSettings("VALID_ARCHS", arch);
@@ -723,7 +734,7 @@ export async function buildApp(
   // Add build settings to reduce device communication for simulator builds
   const skipDeviceConnection = getWorkspaceConfig("build.skipDeviceConnectionForSimulator") ?? false;
   const isSimulatorBuild = options.destinationRaw.includes("Simulator");
-  
+
   if (skipDeviceConnection && isSimulatorBuild) {
     // Disable automatic provisioning updates which can trigger device communication
     command.addBuildSettings("PROVISIONING_PROFILE_SPECIFIER", "");
@@ -775,9 +786,11 @@ export async function buildApp(
   } else if (options.shouldBuild) {
     context.updateProgressStatus(`Building "${options.scheme}"`);
   } else if (options.shouldTest) {
-    context.updateProgressStatus(`Testing "${options.scheme}" with ${testingFramework === "swift-testing" ? "Swift Testing" : "XCTest"}`);
+    context.updateProgressStatus(
+      `Testing "${options.scheme}" with ${testingFramework === "swift-testing" ? "Swift Testing" : "XCTest"}`,
+    );
   }
-  
+
   try {
     await terminal.execute({
       command: commandParts[0],
@@ -788,7 +801,9 @@ export async function buildApp(
   } catch (error) {
     if (error instanceof Error && isPasscodeProtectionError(error)) {
       handlePasscodeProtectionError(terminal, options.destinationRaw);
-      throw new ExtensionError("Device passcode protection prevents build. Please unlock device and trust this computer.");
+      throw new ExtensionError(
+        "Device passcode protection prevents build. Please unlock device and trust this computer.",
+      );
     }
     throw error;
   }
@@ -801,8 +816,6 @@ export async function buildApp(
     await runPeripheryScan(context, terminal);
   }
 }
-
-
 
 /**
  * Build app without running
@@ -1214,14 +1227,15 @@ export async function testWithSwiftTestingCommand(context: ExtensionContext, ite
 
   context.updateProgressStatus("Searching for scheme");
   const scheme =
-    item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to test with Swift Testing", xcworkspace: xcworkspace }));
+    item?.scheme ??
+    (await askSchemeForBuild(context, { title: "Select scheme to test with Swift Testing", xcworkspace: xcworkspace }));
 
   context.updateProgressStatus("Searching for configuration");
   const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
 
   // For Swift Testing, we might not need a destination for SPM projects
   const isSPMProject = xcworkspace.endsWith("Package.swift");
-  
+
   if (!isSPMProject) {
     context.updateProgressStatus("Extracting build settings");
     const buildSettings = await getBuildSettingsToAskDestination({
@@ -1246,7 +1260,7 @@ export async function testWithSwiftTestingCommand(context: ExtensionContext, ite
         // Temporarily override the testing framework config
         const originalFramework = getWorkspaceConfig("testing.framework");
         await updateWorkspaceConfig("testing.framework", "swift-testing");
-        
+
         try {
           await buildApp(context, terminal, {
             scheme: scheme,
@@ -1276,34 +1290,28 @@ export async function testWithSwiftTestingCommand(context: ExtensionContext, ite
       problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
       callback: async (terminal) => {
         const packageDir = path.dirname(xcworkspace);
-        
-        const swiftTestArgs = [
-          "test",
-          "--configuration", configuration.toLowerCase(),
-        ];
-        
+
+        const swiftTestArgs = ["test", "--configuration", configuration.toLowerCase()];
+
         if (scheme !== "Package") {
           swiftTestArgs.push("--target", scheme);
         }
-        
+
         const env = getWorkspaceConfig("build.env") || {};
-        
+
         await terminal.execute({
           command: "sh",
-          args: ["-c", `cd "${packageDir}" && swift ${swiftTestArgs.map(arg => `"${arg}"`).join(" ")}`],
+          args: ["-c", `cd "${packageDir}" && swift ${swiftTestArgs.map((arg) => `"${arg}"`).join(" ")}`],
           env: env,
         });
-        
+
         await restartSwiftLSP();
       },
     });
   }
 }
 
-export async function resolveDependencies(
-  context: ExtensionContext,
-  options: { scheme: string; xcworkspace: string }
-) {
+export async function resolveDependencies(context: ExtensionContext, options: { scheme: string; xcworkspace: string }) {
   context.updateProgressStatus("Resolving dependencies");
   vscode.window.showInformationMessage(`Resolving dependencies for scheme: ${options.scheme}...`);
 
@@ -1365,7 +1373,7 @@ export async function removeBundleDirCommand(context: ExtensionContext) {
   const bundleDir = path.join(storagePath, "build");
 
   await removeDirectory(bundleDir);
-  vscode.window.showInformationMessage(`Bundle directory was removed: ${bundleDir}`);
+  vscode.window.showInformationMessage(`✅ Bundle directory was removed: ${bundleDir}`);
 }
 
 /**
@@ -1399,7 +1407,10 @@ export async function generateBuildServerConfigCommand(context: ExtensionContext
   });
   await restartSwiftLSP();
 
-  const selected = await vscode.window.showInformationMessage("buildServer.json generated in workspace root", "Open");
+  const selected = await vscode.window.showInformationMessage(
+    "✅ buildServer.json generated in workspace root",
+    "Open",
+  );
   if (selected === "Open") {
     const workspacePath = getWorkspacePath();
     const buildServerPath = vscode.Uri.file(path.join(workspacePath, "buildServer.json"));
@@ -1427,11 +1438,11 @@ export async function openXcodeCommand(context: ExtensionContext) {
  */
 export async function selectXcodeWorkspaceCommand(context: ExtensionContext, item?: WorkspaceGroupTreeItem) {
   context.updateProgressStatus("Searching for workspace");
-  
+
   if (item) {
     // Set loading state on this specific item only
     item.setLoading(true);
-    
+
     try {
       let path = item.workspacePath;
       if (path) {
@@ -1439,24 +1450,24 @@ export async function selectXcodeWorkspaceCommand(context: ExtensionContext, ite
         context.buildManager.setCurrentWorkspacePath(path, true); // Skip refresh
         context.updateWorkspaceState("build.xcodeWorkspacePath", path);
       }
-      
+
       // Short delay to allow UI to update with loading state
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
       // Show success message
-      vscode.window.showInformationMessage(`Workspace path updated`);
+      vscode.window.showInformationMessage(`✅ Workspace path updated`);
     } finally {
       // Allow a moment for the success message to be seen
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       // Clear loading state
       item.setLoading(false);
-      
+
       // Add a small delay to ensure UI has time to update
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Now refresh the build manager
-      context.buildManager.refresh();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Now get schemas (this will check cache first, then refresh if needed)
+      await context.buildManager.getSchemas();
     }
     return;
   }
@@ -1468,16 +1479,17 @@ export async function selectXcodeWorkspaceCommand(context: ExtensionContext, ite
   });
 
   if (workspace) {
-    context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
+    context.buildManager.setCurrentWorkspacePath(workspace);
+  } else {
+    // Get schemas (will use cache if available, otherwise refresh)
+    await context.buildManager.getSchemas();
   }
-  
-  context.buildManager.refresh();
   context.simpleTaskCompletionEmitter.fire();
 }
 
 export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
   vscode.window.showInformationMessage("Selecting Xcode scheme for build...");
-  
+
   if (item) {
     item.provider.buildManager.setDefaultSchemeForBuild(item.scheme);
     return;
@@ -1664,10 +1676,7 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
 /**
  * Run periphery scan to detect unused code
  */
-export async function runPeripheryScan(
-  context: ExtensionContext,
-  terminal: TaskTerminal,
-) {
+export async function runPeripheryScan(context: ExtensionContext, terminal: TaskTerminal) {
   context.updateProgressStatus("Running Periphery scan");
   terminal.write("🔍 Starting Periphery scan for unused code...\n");
   terminal.write("📋 Default rules enabled: retain public, objc-accessible\n");
@@ -1686,20 +1695,20 @@ export async function runPeripheryScan(
   // Get derived data path and construct index store path
   const derivedDataPath = prepareDerivedDataPath();
   let indexStorePath: string;
-  
+
   if (derivedDataPath) {
     indexStorePath = path.join(derivedDataPath, "Index.noindex", "DataStore");
   } else {
     // Use default Xcode derived data location - look for project-specific folder
     const defaultDerivedDataPath = path.join(process.env.HOME || "~", "Library", "Developer", "Xcode", "DerivedData");
-    
+
     // Try to find project-specific derived data folder
     try {
       const derivedDataFolders = await readdir(defaultDerivedDataPath);
-      const projectFolders = derivedDataFolders.filter((folder: string) => 
-        folder.includes("DoordashAttestation") || folder.includes("Package")
+      const projectFolders = derivedDataFolders.filter(
+        (folder: string) => folder.includes("DoordashAttestation") || folder.includes("Package"),
       );
-      
+
       if (projectFolders.length > 0) {
         // Use the first matching project folder
         indexStorePath = path.join(defaultDerivedDataPath, projectFolders[0], "Index.noindex", "DataStore");
@@ -1719,7 +1728,7 @@ export async function runPeripheryScan(
     terminal.write(`❌ Index store path does not exist: ${indexStorePath}\n`);
     terminal.write("💡 Make sure you have built the project first to generate the index store.\n");
     terminal.write("💡 You can run 'Build' first, then 'Periphery Scan', or use 'Build & Periphery Scan'.\n");
-    
+
     // Show available derived data folders if possible
     try {
       const defaultDerivedDataPath = path.join(process.env.HOME || "~", "Library", "Developer", "Xcode", "DerivedData");
@@ -1733,16 +1742,12 @@ export async function runPeripheryScan(
     } catch (error) {
       // Ignore error in showing available folders
     }
-    
+
     throw new ExtensionError("Index store path does not exist. Build the project first.");
   }
 
   // Build periphery scan command
-  const peripheryArgs = [
-    "scan",
-    "--skip-build",
-    "--index-store-path", indexStorePath,
-  ];
+  const peripheryArgs = ["scan", "--skip-build", "--index-store-path", indexStorePath];
 
   // Add default rules to retain public declarations (can be overridden by config)
   const retainPublic = getWorkspaceConfig("periphery.retainPublic") ?? true;
@@ -1756,14 +1761,12 @@ export async function runPeripheryScan(
     peripheryArgs.push("--retain-objc-accessible");
   }
 
-
-
   // Check for .periphery.yml file in project root first
   const projectRoot = getWorkspacePath();
   const defaultPeripheryConfigPath = path.join(projectRoot, ".periphery.yml");
-  
+
   let peripheryConfigPath: string | undefined;
-  
+
   // First check if .periphery.yml exists in project root
   const defaultConfigExists = await isFileExists(defaultPeripheryConfigPath);
   if (defaultConfigExists) {
@@ -1783,12 +1786,10 @@ export async function runPeripheryScan(
         placeHolder: ".periphery.yml",
         value: "",
       });
-      
+
       if (userConfigPath && userConfigPath.trim()) {
-        const resolvedPath = path.isAbsolute(userConfigPath) 
-          ? userConfigPath 
-          : path.join(projectRoot, userConfigPath);
-        
+        const resolvedPath = path.isAbsolute(userConfigPath) ? userConfigPath : path.join(projectRoot, userConfigPath);
+
         const configExists = await isFileExists(resolvedPath);
         if (configExists) {
           peripheryConfigPath = resolvedPath;
@@ -1802,7 +1803,7 @@ export async function runPeripheryScan(
       }
     }
   }
-  
+
   // Add config parameter if we have a valid path
   if (peripheryConfigPath) {
     peripheryArgs.push("--config", peripheryConfigPath);
@@ -1835,12 +1836,14 @@ export async function runPeripheryScan(
  */
 export async function buildAndPeripheryScanCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Starting build and periphery scan");
-  
+
   // Get build configuration
   const xcworkspace = await askXcodeWorkspacePath(context, item?.workspacePath);
-  const scheme = item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme for periphery scan", xcworkspace: xcworkspace }));
+  const scheme =
+    item?.scheme ??
+    (await askSchemeForBuild(context, { title: "Select scheme for periphery scan", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
-  
+
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
     configuration: configuration,
@@ -1882,12 +1885,14 @@ export async function buildAndPeripheryScanCommand(context: ExtensionContext, it
  */
 export async function peripheryScanCommand(context: ExtensionContext, item?: BuildTreeItem) {
   context.updateProgressStatus("Starting periphery scan");
-  
-  // Get build configuration  
+
+  // Get build configuration
   const xcworkspace = await askXcodeWorkspacePath(context, item?.workspacePath);
-  const scheme = item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme for periphery scan", xcworkspace: xcworkspace }));
+  const scheme =
+    item?.scheme ??
+    (await askSchemeForBuild(context, { title: "Select scheme for periphery scan", xcworkspace: xcworkspace }));
   const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
-  
+
   const buildSettings = await getBuildSettingsToAskDestination({
     scheme: scheme,
     configuration: configuration,
@@ -1915,25 +1920,25 @@ export async function peripheryScanCommand(context: ExtensionContext, item?: Bui
 export async function createPeripheryConfigCommand(context: ExtensionContext) {
   const projectRoot = getWorkspacePath();
   const peripheryConfigPath = path.join(projectRoot, ".periphery.yml");
-  
+
   // Check if .periphery.yml already exists
   const configExists = await isFileExists(peripheryConfigPath);
   if (configExists) {
     const overwrite = await vscode.window.showWarningMessage(
       ".periphery.yml already exists. Do you want to overwrite it?",
       "Overwrite",
-      "Cancel"
+      "Cancel",
     );
-    
+
     if (overwrite !== "Overwrite") {
       return;
     }
   }
-  
+
   // Get current workspace info for template
   const xcworkspace = getCurrentXcodeWorkspacePath(context);
   const workspaceName = xcworkspace ? path.basename(xcworkspace, path.extname(xcworkspace)) : "YourProject";
-  
+
   // Create template content
   const templateContent = `# Periphery Configuration File
 # See https://github.com/peripheryapp/periphery for more options
@@ -1972,28 +1977,649 @@ verbose: false
 `;
 
   try {
-    await vscode.workspace.fs.writeFile(
-      vscode.Uri.file(peripheryConfigPath),
-      Buffer.from(templateContent, 'utf8')
-    );
-    
-    vscode.window.showInformationMessage(
-      `✅ Created .periphery.yml configuration file at project root`
-    );
-    
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(peripheryConfigPath), Buffer.from(templateContent, "utf8"));
+
+    vscode.window.showInformationMessage(`✅ Created .periphery.yml configuration file at project root`);
+
     // Open the created file
     const document = await vscode.workspace.openTextDocument(peripheryConfigPath);
     await vscode.window.showTextDocument(document);
-    
   } catch (error) {
-    vscode.window.showErrorMessage(`❌ Failed to create .periphery.yml: ${error}`);
+    vscode.window.showErrorMessage(`Failed to create .periphery.yml: ${error}`);
+  }
+}
+
+/**
+ * Build a Bazel target
+ */
+export async function bazelBuildCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  // If no bazelItem provided, get from saved target
+  if (!bazelItem) {
+    const selectedTargetData = context.buildManager.getSelectedBazelTarget();
+
+    if (!selectedTargetData) {
+      vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+      return;
+    }
+
+    bazelItem = selectedTargetData;
+  }
+
+  await runTask(context, {
+    name: `Bazel Build: ${bazelItem!.target.name}`,
+    lock: "sweetpad.bazel.build",
+    terminateLocked: true,
+    callback: async (terminal) => {
+      terminal.write(`Building Bazel target: ${bazelItem!.target.buildLabel}\n\n`);
+
+      // Go to the workspace path
+      await terminal.execute({
+        command: "cd",
+        args: [bazelItem!.package.path],
+      });
+
+      // Use terminal.execute for streaming output
+      await terminal.execute({
+        command: "bazel",
+        args: ["build", bazelItem!.target.buildLabel],
+      });
+
+      terminal.write(`\n✅ Build completed for ${bazelItem!.target.name}\n`);
+    },
+  });
+}
+
+/**
+ * Test a Bazel target
+ */
+export async function bazelTestCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  // If no bazelItem provided, get from saved target
+  if (!bazelItem) {
+    const selectedTargetData = context.buildManager.getSelectedBazelTarget();
+
+    if (!selectedTargetData) {
+      vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+      return;
+    }
+
+    bazelItem = selectedTargetData;
+  }
+
+  if (!bazelItem!.target.testLabel) {
+    vscode.window.showErrorMessage(`Target ${bazelItem!.target.name} is not a test target`);
+    return;
+  }
+
+  await runTask(context, {
+    name: `Bazel Test: ${bazelItem!.target.name}`,
+    lock: "sweetpad.bazel.test",
+    terminateLocked: true,
+    callback: async (terminal) => {
+      terminal.write(`Running Bazel tests: ${bazelItem!.target.testLabel}\n\n`);
+
+      // Go to the workspace path
+      await terminal.execute({
+        command: "cd",
+        args: [bazelItem!.package.path],
+      });
+
+      // Use terminal.execute for streaming output
+      await terminal.execute({
+        command: "bazel",
+        args: ["test", bazelItem!.target.testLabel!, "--test_output=all"],
+      });
+
+      terminal.write(`\n✅ Tests completed for ${bazelItem!.target.name}\n`);
+    },
+  });
+}
+
+/**
+ * Run a Bazel target (launch app on iOS simulator)
+ */
+export async function bazelRunCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  // If no bazelItem provided, get from saved target
+  if (!bazelItem) {
+    const selectedTargetData = context.buildManager.getSelectedBazelTarget();
+
+    if (!selectedTargetData) {
+      vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+      return;
+    }
+
+    bazelItem = selectedTargetData;
+  }
+
+  // Only allow running binary targets (apps)
+  if (bazelItem!.target.type !== "binary") {
+    vscode.window.showErrorMessage(`Target ${bazelItem!.target.name} is not a runnable target (must be a binary/app)`);
+    return;
+  }
+
+  // Use the same destination selection pattern as launchCommand
+  context.updateProgressStatus("Searching for destination");
+  const destination = await askDestinationToRunOn(context, null);
+
+  await runTask(context, {
+    name: `Bazel Run: ${bazelItem!.target.name}`,
+    lock: "sweetpad.bazel.run",
+    terminateLocked: true,
+    callback: async (terminal) => {
+      terminal.write(`Running Bazel target: ${bazelItem!.target.buildLabel}\n\n`);
+
+      // Build the run command with destination targeting
+      let runArgs = ["run", bazelItem!.target.buildLabel];
+
+      // Go to the workspace path first
+      await terminal.execute({
+        command: "cd",
+        args: [bazelItem!.package.path],
+      });
+
+      // Handle iOS device vs simulator differently
+      if (destination.type === "iOSSimulator") {
+        // For simulators: use bazel run directly
+        runArgs.push("--ios_simulator_device", destination.name);
+        terminal.write(`🎯 Using iOS Simulator: ${destination.name}\n\n`);
+
+        await terminal.execute({
+          command: "bazel",
+          args: runArgs,
+        });
+      } else if (destination.type === "iOSDevice") {
+        // For physical devices: build then deploy with ios-deploy
+        terminal.write(`📱 Using iOS Device: ${destination.name} (${destination.udid})\n\n`);
+        terminal.write(`ℹ️  Physical devices require a 2-step process: build + deploy\n`);
+        terminal.write(`ℹ️  Note: Device builds require valid provisioning profiles and code signing\n\n`);
+
+        // Step 1: Build for device (arm64)
+        terminal.write(`🔨 Step 1: Building for device (arm64)...\n`);
+        const buildArgs = ["build", bazelItem!.target.buildLabel, "--ios_multi_cpus=arm64"];
+        await terminal.execute({
+          command: "bazel",
+          args: buildArgs,
+        });
+
+        // Step 2: Deploy with ios-deploy
+        terminal.write(`\n📲 Step 2: Installing on device with ios-deploy...\n`);
+
+        // Construct the expected path to the bundle (try both .ipa and .app)
+        // Bazel typically puts outputs in bazel-bin/<path>/<target>.{ipa,app}
+        const packagePath = bazelItem!.target.buildLabel.replace("//", "").replace(":", "/");
+        const ipaPath = `bazel-bin/${packagePath}.ipa`;
+        const appPath = `bazel-bin/${packagePath}.app`;
+
+        // Check if ios-deploy is available
+        try {
+          await terminal.execute({
+            command: "which",
+            args: ["ios-deploy"],
+          });
+
+          // Check which bundle format exists
+          let bundlePath = ipaPath;
+          try {
+            await terminal.execute({
+              command: "test",
+              args: ["-e", ipaPath],
+            });
+            bundlePath = ipaPath;
+            terminal.write(`📦 Found bundle: ${ipaPath}\n`);
+          } catch {
+            try {
+              await terminal.execute({
+                command: "test",
+                args: ["-e", appPath],
+              });
+              bundlePath = appPath;
+              terminal.write(`📦 Found bundle: ${appPath}\n`);
+            } catch {
+              terminal.write(`⚠️  Bundle not found at expected paths:\n`);
+              terminal.write(`   - ${ipaPath}\n`);
+              terminal.write(`   - ${appPath}\n`);
+              terminal.write(`\nTrying with .ipa path anyway...\n`);
+              bundlePath = ipaPath;
+            }
+          }
+
+          // Deploy and launch with ios-deploy
+          terminal.write(`🚀 Installing and launching app...\n`);
+          await terminal.execute({
+            command: "ios-deploy",
+            args: ["--id", destination.udid, "--bundle", bundlePath, "--justlaunch"],
+          });
+        } catch (error) {
+          terminal.write(`\n⚠️  ios-deploy not found. Please install it first:\n`);
+          terminal.write(`   npm install -g ios-deploy\n\n`);
+          terminal.write(`Then manually deploy and launch with:\n`);
+          terminal.write(`   ios-deploy --id ${destination.udid} --bundle ${ipaPath} --justlaunch\n`);
+          terminal.write(`   # or if .app format:\n`);
+          terminal.write(`   ios-deploy --id ${destination.udid} --bundle ${appPath} --justlaunch\n`);
+        }
+      } else {
+        terminal.write(
+          `ℹ️  Selected destination: ${destination.typeLabel} (${destination.name}). Note: Bazel iOS apps may not support this destination type.\n\n`,
+        );
+
+        // Fallback to regular bazel run
+        await terminal.execute({
+          command: "bazel",
+          args: runArgs,
+        });
+      }
+
+      terminal.write(`\n✅ Launch completed for ${bazelItem!.target.name}\n`);
+    },
+  });
+}
+
+/**
+ * Debug a Bazel target (launch app with debug support)
+ */
+export async function bazelDebugCommand(context: ExtensionContext, bazelItem?: BazelTreeItem): Promise<void> {
+  var bazelItem = bazelItem || context.buildManager.getSelectedBazelTarget();
+  if (!bazelItem) {
+    vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+    return;
+  }
+
+  // Only allow debugging binary targets (apps)
+  if (bazelItem.target.type !== "binary") {
+    vscode.window.showErrorMessage(`Target ${bazelItem.target.name} is not a runnable target (must be a binary/app)`);
+    return;
+  }
+
+  // Use the same destination selection pattern as launchCommand
+  context.updateProgressStatus("Searching for destination");
+  const destination = await askDestinationToRunOn(context, null);
+
+  await runTask(context, {
+    name: `Bazel Debug: ${bazelItem.target.name}`,
+    lock: "sweetpad.bazel.debug",
+    terminateLocked: true,
+    callback: async (terminal) => {
+      terminal.write(`Debugging Bazel target: ${bazelItem.target.buildLabel}\n\n`);
+
+      // Go to the workspace path first
+      await terminal.execute({
+        command: "cd",
+        args: [bazelItem.package.path],
+      });
+
+      if (destination.type === "iOSSimulator") {
+        // Build with debug symbols first
+        terminal.write(`🔨 Building with debug symbols...\n`);
+        await terminal.execute({
+          command: "bazel",
+          args: ["build", bazelItem.target.buildLabel, "--compilation_mode=dbg"],
+        });
+
+        // Get the bundle path
+        const packagePath = bazelItem.target.buildLabel.replace("//", "").replace(":", "/");
+        const appPath = `bazel-bin/${packagePath}/${bazelItem.target.name}.app`;
+
+        terminal.write(`🎯 Using iOS Simulator: ${destination.name}\n`);
+        terminal.write(`📦 App bundle: ${appPath}\n`);
+        terminal.write(`⏳ Launching with wait-for-debugger...\n\n`);
+
+        // Get the bundle identifier (we'll need to extract this from the app)
+        const bundleId = await getBundleIdentifierFromApp(appPath);
+        if (!bundleId) {
+          terminal.write(`⚠️  Could not determine bundle identifier, using target name as fallback\n`);
+        }
+        const finalBundleId = bundleId || bazelItem.target.name;
+
+        // Launch with wait for debugger
+        await terminal.execute({
+          command: "xcrun",
+          args: [
+            "simctl",
+            "launch",
+            "--console-pty",
+            "--wait-for-debugger",
+            "--terminate-running-process",
+            destination.udid,
+            finalBundleId,
+          ],
+        });
+
+        // Store launch context for debugger
+        const fullAppPath = path.resolve(bazelItem.package.path, appPath);
+        context.updateWorkspaceState("build.lastLaunchedApp", {
+          type: "bazel-simulator",
+          appPath: fullAppPath,
+          targetName: bazelItem.target.name,
+          buildLabel: bazelItem.target.buildLabel,
+          simulatorId: destination.udid,
+          simulatorName: destination.name,
+        } satisfies LastLaunchedAppBazelSimulatorContext);
+
+        terminal.write(`🐛 App launched with debugger support. You can now attach the debugger.\n`);
+        terminal.write(`💡 Use the "SweetPad: Build and Run (Wait for debugger)" debug configuration.\n`);
+      } else if (destination.type === "iOSDevice") {
+        terminal.write(`📱 Using iOS Device: ${destination.name} (${destination.udid})\n\n`);
+        terminal.write(`🔨 Building for device with debug symbols...\n`);
+
+        // Build for device with debug symbols
+        const buildArgs = ["build", bazelItem.target.buildLabel, "--ios_multi_cpus=arm64", "--compilation_mode=dbg"];
+        await terminal.execute({
+          command: "bazel",
+          args: buildArgs,
+        });
+
+        // Get the bundle path
+        const packagePath = bazelItem.target.buildLabel.replace("//", "").replace(":", "/");
+        const ipaPath = `bazel-bin/${packagePath}.ipa`;
+        const appPath = `bazel-bin/${packagePath}.app`;
+
+        // Install and launch with debugger support
+        terminal.write(`📲 Installing and launching with debug support...\n`);
+
+        let bundlePath = ipaPath;
+        try {
+          await terminal.execute({
+            command: "test",
+            args: ["-e", ipaPath],
+          });
+          bundlePath = ipaPath;
+          terminal.write(`📦 Found bundle: ${ipaPath}\n`);
+        } catch {
+          try {
+            await terminal.execute({
+              command: "test",
+              args: ["-e", appPath],
+            });
+            bundlePath = appPath;
+            terminal.write(`📦 Found bundle: ${appPath}\n`);
+          } catch {
+            terminal.write(`⚠️  Bundle not found at expected paths, using: ${ipaPath}\n`);
+            bundlePath = ipaPath;
+          }
+        }
+
+        // Use devicectl for debugging support on devices
+        try {
+          const fullAppPath = path.resolve(bazelItem.package.path, bundlePath);
+
+          // Install the app
+          await terminal.execute({
+            command: "xcrun",
+            args: ["devicectl", "device", "install", "app", "--device", destination.udid, bundlePath],
+          });
+
+          // Get bundle identifier
+          const bundleId = await getBundleIdentifierFromApp(bundlePath);
+          if (!bundleId) {
+            throw new Error("Could not determine bundle identifier");
+          }
+
+          // Launch with debugger support
+          await terminal.execute({
+            command: "xcrun",
+            args: [
+              "devicectl",
+              "device",
+              "process",
+              "launch",
+              "--device",
+              destination.udid,
+              "--start-stopped",
+              bundleId,
+            ],
+          });
+
+          // Store launch context for debugger
+          context.updateWorkspaceState("build.lastLaunchedApp", {
+            type: "bazel-device",
+            appPath: fullAppPath,
+            targetName: bazelItem.target.name,
+            buildLabel: bazelItem.target.buildLabel,
+            destinationId: destination.udid,
+            destinationType: destination.type,
+          } satisfies LastLaunchedAppBazelDeviceContext);
+
+          terminal.write(`🐛 App launched with debugger support on device.\n`);
+          terminal.write(`💡 Use the "SweetPad: Build and Run (Wait for debugger)" debug configuration.\n`);
+        } catch (error) {
+          terminal.write(`⚠️  Failed to launch with devicectl, falling back to ios-deploy\n`);
+          // Fallback to ios-deploy without debugger support
+          await terminal.execute({
+            command: "ios-deploy",
+            args: ["--id", destination.udid, "--bundle", bundlePath, "--debug"],
+          });
+        }
+      } else {
+        terminal.write(
+          `ℹ️  Selected destination: ${destination.typeLabel} (${destination.name}). Note: Bazel debug may not support this destination type.\n\n`,
+        );
+
+        // Build with debug symbols
+        await terminal.execute({
+          command: "bazel",
+          args: ["build", bazelItem.target.buildLabel, "--compilation_mode=dbg"],
+        });
+
+        // Fallback to regular bazel run
+        await terminal.execute({
+          command: "bazel",
+          args: ["run", bazelItem.target.buildLabel],
+        });
+      }
+
+      terminal.write(`\n✅ Debug launch completed for ${bazelItem.target.name}\n`);
+    },
+  });
+}
+
+/**
+ * Helper function to extract bundle identifier from an app bundle
+ */
+async function getBundleIdentifierFromApp(appPath: string): Promise<string | null> {
+  try {
+    const { execSync } = require("child_process");
+    const plistPath = path.join(appPath, "Info.plist");
+
+    // Use PlistBuddy to read the bundle identifier
+    const result = execSync(`/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "${plistPath}"`, {
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+
+    return result.trim();
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Select a Bazel target as the active target for build/test commands
+ */
+export async function selectBazelTargetCommand(
+  context: ExtensionContext,
+  targetInfo?: { buildLabel: string; workspacePath: string } | BazelTreeItem,
+  workspaceTreeProvider?: WorkspaceTreeProvider,
+): Promise<void> {
+  if (!targetInfo) {
+    vscode.window.showErrorMessage("No Bazel target provided");
+    return;
+  }
+
+  if (!workspaceTreeProvider) {
+    vscode.window.showErrorMessage("Workspace tree provider not available");
+    return;
+  }
+
+  // Handle both old format (BazelTreeItem) and new format (target info)
+  let bazelItem: any; // Mock BazelTreeItem
+
+  if ("target" in targetInfo && "package" in targetInfo) {
+    // Old format - direct BazelTreeItem
+    bazelItem = targetInfo as BazelTreeItem;
+  } else {
+    // New format - parse BUILD.bazel file to get target data
+    const { buildLabel, workspacePath } = targetInfo as { buildLabel: string; workspacePath: string };
+
+    // Handle case where workspacePath might be undefined due to VSCode serialization
+    let actualWorkspacePath = workspacePath;
+
+    if (!actualWorkspacePath || actualWorkspacePath === "undefined" || actualWorkspacePath === "null") {
+      // Try to find the workspace path from currentBazelTargets cache
+      for (const [cachedBuildLabel, cachedTarget] of workspaceTreeProvider.currentBazelTargets) {
+        if (cachedBuildLabel === buildLabel) {
+          actualWorkspacePath = cachedTarget.workspacePath;
+          break;
+        }
+      }
+
+      if (!actualWorkspacePath) {
+        vscode.window.showErrorMessage(`Cannot determine workspace path for target: ${buildLabel}`);
+        return;
+      }
+    }
+
+    // Parse the BUILD.bazel file to get full target data
+    const bazelPackage = await workspaceTreeProvider.getCachedBazelPackage(actualWorkspacePath);
+    if (!bazelPackage) {
+      vscode.window.showErrorMessage(`Failed to parse Bazel BUILD file`);
+      return;
+    }
+
+    const target = bazelPackage.targets.find((t) => t.buildLabel === buildLabel);
+    if (!target) {
+      vscode.window.showErrorMessage(`Target ${buildLabel} not found in BUILD file`);
+      return;
+    }
+
+    // Create a simple object with the data we need
+    bazelItem = {
+      target,
+      package: bazelPackage,
+      provider: workspaceTreeProvider,
+      workspacePath: actualWorkspacePath,
+    };
+  }
+
+  // Validate the final bazelItem
+  if (!bazelItem || !bazelItem.target || !bazelItem.target.name || !bazelItem.package) {
+    vscode.window.showErrorMessage("Invalid Bazel target data");
+    return;
+  }
+
+  // Store selection
+  context.buildManager.setSelectedBazelTarget(bazelItem);
+
+  if (workspaceTreeProvider) {
+    workspaceTreeProvider.setSelectedBazelTarget(bazelItem);
+  }
+
+  vscode.window.showInformationMessage(`✅ Selected Bazel target: ${bazelItem.target.name} (${bazelItem.target.type})`);
+}
+
+/**
+ * Build the currently selected Bazel target
+ */
+export async function buildSelectedBazelTargetCommand(
+  context: ExtensionContext,
+  workspaceTreeProvider?: WorkspaceTreeProvider,
+): Promise<void> {
+  const bazelItem = context.buildManager.getSelectedBazelTarget();
+  if (!bazelItem) {
+    vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+    return;
+  }
+
+  // Use the existing build command with the selected target
+  await bazelBuildCommand(context, bazelItem);
+}
+
+/**
+ * Test the currently selected Bazel target
+ */
+export async function testSelectedBazelTargetCommand(
+  context: ExtensionContext,
+  workspaceTreeProvider?: WorkspaceTreeProvider,
+): Promise<void> {
+  const bazelItem = context.buildManager.getSelectedBazelTarget();
+  if (!bazelItem) {
+    vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+    return;
+  }
+
+  if (!bazelItem.target.testLabel) {
+    vscode.window.showErrorMessage(`Target ${bazelItem.target.name} is not a test target`);
+    return;
+  }
+
+  // Use the existing test command with the selected target
+  await bazelTestCommand(context, bazelItem);
+}
+
+/**
+ * Run the currently selected Bazel target
+ */
+export async function runSelectedBazelTargetCommand(
+  context: ExtensionContext,
+  workspaceTreeProvider?: WorkspaceTreeProvider,
+): Promise<void> {
+  const bazelItem = context.buildManager.getSelectedBazelTarget();
+  if (!bazelItem) {
+    vscode.window.showErrorMessage("No Bazel target selected. Please select a target first.");
+    return;
+  }
+
+  if (bazelItem.target.type !== "binary") {
+    vscode.window.showErrorMessage(`Target ${bazelItem.target.name} is not a runnable target (must be a binary/app)`);
+    return;
+  }
+
+  // Use the existing run command with the selected target
+  await bazelRunCommand(context, bazelItem);
+}
+
+/**
+ * Clear persistent workspace cache and super cache, then reload
+ */
+export async function clearWorkspaceCacheCommand(
+  context: ExtensionContext,
+  workspaceTreeProvider?: WorkspaceTreeProvider,
+): Promise<void> {
+  if (!workspaceTreeProvider) {
+    vscode.window.showErrorMessage("Workspace tree provider not available");
+    return;
+  }
+
+  try {
+    // Clear the legacy persistent cache
+    await workspaceTreeProvider.clearPersistentCache();
+
+    // Clear the new super cache
+    const { superCache } = await import("../common/super-cache.js");
+    await superCache.clearCache();
+
+    // Clear build manager cache as well for good measure
+    context.buildManager.clearSchemesCache();
+
+    // Refresh workspaces
+    await workspaceTreeProvider.loadWorkspacesStreamingly();
+
+    // Get cache statistics to show user
+    const stats = superCache.getCacheStats();
+    vscode.window.showInformationMessage(
+      `✅ All workspace caches cleared and reloaded!\n` +
+        `📊 Cache was storing ${stats.workspaceCount} workspaces and ${stats.bazelWorkspaceCount} Bazel workspaces.`,
+    );
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to clear workspace cache: ${error}`);
   }
 }
 
 /**
  * Command to search builds tree
  */
-export async function searchBuildsCommand(context: ExtensionContext, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {
+export async function searchBuildsCommand(
+  context: ExtensionContext,
+  workspaceTreeProvider?: WorkspaceTreeProvider,
+): Promise<void> {
   if (!workspaceTreeProvider) {
     vscode.window.showErrorMessage("Workspace tree provider not available");
     return;
@@ -2013,7 +2639,10 @@ export async function searchBuildsCommand(context: ExtensionContext, workspaceTr
 /**
  * Command to clear builds search
  */
-export async function clearBuildsSearchCommand(context: ExtensionContext, workspaceTreeProvider?: WorkspaceTreeProvider): Promise<void> {
+export async function clearBuildsSearchCommand(
+  context: ExtensionContext,
+  workspaceTreeProvider?: WorkspaceTreeProvider,
+): Promise<void> {
   if (!workspaceTreeProvider) {
     vscode.window.showErrorMessage("Workspace tree provider not available");
     return;

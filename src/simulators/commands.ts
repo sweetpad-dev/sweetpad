@@ -118,7 +118,10 @@ export async function removeSimulatorCacheCommand(context: ExtensionContext) {
 /**
  * Command to take a screenshot of a running simulator and pass it to Cursor/AI as context
  */
-export async function takeSimulatorScreenshotCommand(context: ExtensionContext, item?: iOSSimulatorDestinationTreeItem) {
+export async function takeSimulatorScreenshotCommand(
+  context: ExtensionContext,
+  item?: iOSSimulatorDestinationTreeItem,
+) {
   let simulatorUdid: string;
   let simulatorName: string;
 
@@ -137,15 +140,15 @@ export async function takeSimulatorScreenshotCommand(context: ExtensionContext, 
   }
 
   // Generate temporary filename
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `simulator-screenshot-${timestamp}.png`;
-  
+
   // Get proper storage path using the extension's storage system
   const tempDir = await prepareStoragePath(context);
   const screenshotPath = path.resolve(tempDir, filename);
 
   context.updateProgressStatus(`Taking screenshot of ${simulatorName}`);
-  
+
   try {
     await runTask(context, {
       name: "Take Simulator Screenshot",
@@ -154,10 +157,10 @@ export async function takeSimulatorScreenshotCommand(context: ExtensionContext, 
       callback: async (terminal) => {
         // Log paths for debugging
         terminal.write(`Taking screenshot to: ${screenshotPath}\n`);
-        
+
         // Ensure directory exists
         await fs.mkdir(tempDir, { recursive: true });
-        
+
         // Take screenshot using simctl with absolute path
         await terminal.execute({
           command: "xcrun",
@@ -172,21 +175,23 @@ export async function takeSimulatorScreenshotCommand(context: ExtensionContext, 
 
         // Read the screenshot file as base64
         const imageBuffer = await fs.readFile(screenshotPath);
-        const base64Image = imageBuffer.toString('base64');
-        
+        const base64Image = imageBuffer.toString("base64");
+
         terminal.write(`Screenshot saved successfully (${stats.size} bytes)\n`);
-        
+
         // Notify user that screenshot is available for AI analysis via MCP
         terminal.write(`Screenshot saved! Use MCP tool 'take_simulator_screenshot' to access via AI\n`);
 
-        vscode.window.showInformationMessage(
-          `Screenshot taken of ${simulatorName} (${Math.round(stats.size / 1024)}KB) and added to AI context`,
-          "Open Screenshot"
-        ).then(selection => {
-          if (selection === "Open Screenshot") {
-            vscode.commands.executeCommand('vscode.open', vscode.Uri.file(screenshotPath));
-          }
-        });
+        vscode.window
+          .showInformationMessage(
+            `✅ Screenshot taken of ${simulatorName} (${Math.round(stats.size / 1024)}KB) and added to AI context`,
+            "Open Screenshot",
+          )
+          .then((selection) => {
+            if (selection === "Open Screenshot") {
+              vscode.commands.executeCommand("vscode.open", vscode.Uri.file(screenshotPath));
+            }
+          });
       },
     });
   } catch (error) {

@@ -5,7 +5,7 @@ import { commonLogger } from "../common/logger";
 export async function resetSweetpadCache(context: ExtensionContext) {
   context.updateProgressStatus("Resetting SweetPad cache");
   context.resetWorkspaceState();
-  vscode.window.showInformationMessage("SweetPad cache has been reset");
+  vscode.window.showInformationMessage("✅ SweetPad cache has been reset");
 }
 
 async function createIssue(options: { title: string; body: string; labels: string[] }) {

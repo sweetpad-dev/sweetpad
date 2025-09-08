@@ -18,6 +18,7 @@ src/
 ├── metrics.ts               # Metrics and analytics
 ├── common/                  # Shared utilities and infrastructure
 ├── build/                   # Build system functionality
+│   └── bazel/               # Bazel integration and parsing
 ├── testing/                 # Test execution and management
 ├── debugger/                # Debug configuration and provider
 ├── simulators/              # iOS simulator management
@@ -73,6 +74,24 @@ Comprehensive build management:
 - **provider.ts**: VSCode task provider for Xcode builds
 - **tree.ts**: Workspace tree view provider
 - **utils.ts**: Build utilities and helpers
+- **bazel/**: Bazel build system integration
+
+#### Bazel Integration (`build/bazel/`)
+
+Comprehensive Bazel build support for iOS projects:
+
+- **parser.ts**: Functional BUILD file parser for extracting structured data
+  - Supports `xcodeproj`, `dd_ios_package`, `cx_module`, and `swift_library` rules
+  - Extracts schemes, configurations, targets, and test targets
+  - Handles DoorDash-specific Bazel rules (`doordash_scheme`, `doordash_appclip_scheme`)
+- **types.ts**: Type definitions for Bazel entities
+  - `BazelTarget`: Target definitions with build labels and dependencies
+  - `BazelScheme`: Scheme definitions with launch configurations
+  - `BazelXcodeConfiguration`: Xcode build configuration references
+  - `BazelParseResult`: Complete parsing output structure
+- **index.ts**: Main exports and public API
+  - Provides `BazelParser` and utilities for BUILD file analysis
+  - Backwards-compatible legacy format conversion
 
 ### 5. Testing Framework (`testing/`)
 
@@ -134,6 +153,14 @@ Development tools management:
 - Build task provider integration
 - Clean and rebuild operations
 
+### Bazel Integration
+- BUILD file parsing and target discovery
+- Bazel scheme and configuration support
+- Target selection and execution (build, test, run)
+- DoorDash-specific Bazel rules support
+- Multi-rule type parsing (`dd_ios_package`, `cx_module`, `xcodeproj`)
+- Automatic build label generation and dependency resolution
+
 ### Testing
 - XCTest and Swift Testing support
 - Test target selection
@@ -186,6 +213,13 @@ sweetpad.tools.install
 sweetpad.build.peripheryScan
 sweetpad.build.buildAndPeripheryScan
 sweetpad.build.createPeripheryConfig
+sweetpad.bazel.build
+sweetpad.bazel.test
+sweetpad.bazel.run
+sweetpad.bazel.selectTarget
+sweetpad.bazel.buildSelected
+sweetpad.bazel.testSelected
+sweetpad.bazel.runSelected
 ```
 
 ## Configuration Management
@@ -338,5 +372,96 @@ periphery scan \
 - **xcodebuild**: iOS build system
 - **swift-format**: Code formatting
 - **devicectl**: Device management
+- **bazel**: Bazel build system
+
+### Runtime Dependencies
+- **@bacons/xcode**: Xcode project manipulation
+- **@rgrove/parse-xml**: XML parsing for project files
+- **@sentry/node**: Error reporting and monitoring
+- **execa**: Process execution utilities
+- **shell-quote**: Shell command escaping
+- **vscode-languageclient**: Language server integration
+
+## Bazel Implementation Architecture
+
+### Overview
+
+The Bazel integration provides comprehensive support for iOS projects using Bazel as the build system. It consists of a robust parsing system, target management, and seamless integration with the existing VSCode workflow.
+
+### Bazel Parser System
+
+#### Core Components
+
+1. **BazelParser Class** (`src/build/bazel/parser.ts`)
+   - **Static Parsing API**: Functional approach using static methods
+   - **Multi-Rule Support**: Handles various Bazel rule types
+   - **Balanced Parsing**: Uses sophisticated parentheses and bracket matching for nested structures
+   - **Error Resilience**: Graceful handling of malformed BUILD files
+
+2. **Supported Bazel Rules**
+   - **`xcodeproj`**: Extracts schemes and configurations from Xcode project definitions
+   - **`dd_ios_package`**: DoorDash-specific package definitions with target specifications
+   - **`cx_module`**: Module definitions with automatic test target generation
+   - **`swift_library`**: Standard Swift library targets
+   - **`dd_ios_application`**: DoorDash application target definitions
+
+3. **Parsing Strategy**
+   - **Regex-Based Extraction**: Uses advanced regex patterns for rule identification
+   - **Context-Aware Parsing**: Maintains file path context for accurate label generation
+   - **Dependency Resolution**: Extracts and processes target dependencies
+   - **Resource Mapping**: Identifies and catalogues resource dependencies
+
+### Target Management
+
+#### Target Types and Labels
+
+1. **Build Labels**: Automatic generation of Bazel build labels (`//path/to/package:target`)
+2. **Test Labels**: Special handling for test targets with appropriate labeling
+3. **Dependency Mapping**: Cross-references between targets and their dependencies
+
+#### Scheme Integration
+
+- **DoorDash Schemes**: Special handling for `doordash_scheme()` and `doordash_appclip_scheme()`
+- **Environment Variables**: Extraction and management of scheme-specific environment variables
+- **Launch Configurations**: Mapping of schemes to their corresponding launch targets
+
+### Workspace Integration
+
+#### Tree View Integration
+
+- **BazelTreeItem**: Specialized tree items for Bazel targets
+- **WorkspaceTreeProvider**: Enhanced to display Bazel packages and targets
+- **BazelTargetStatusBar**: Status bar integration for selected Bazel targets
+
+#### Command Integration
+
+- **Target Selection**: Interactive target selection with filtering capabilities
+- **Build Commands**: Direct integration with `bazel build` commands
+- **Test Execution**: Support for `bazel test` with proper target resolution
+- **Run Commands**: Application launch via `bazel run`
+
+### Execution Flow
+
+1. **Discovery Phase**
+   - Scan workspace for `BUILD.bazel` files
+   - Parse each file using the comprehensive parser
+   - Build internal target database
+
+2. **Resolution Phase**
+   - Resolve target dependencies
+   - Generate appropriate build labels
+   - Map schemes to targets
+
+3. **Execution Phase**
+   - Convert user selections to Bazel commands
+   - Execute with appropriate flags and configurations
+   - Handle output and error reporting
+
+### Backwards Compatibility
+
+The system maintains backwards compatibility through:
+- **Legacy Format Conversion**: Automatic conversion between old and new target formats
+- **API Preservation**: Existing interfaces remain unchanged
+- **Gradual Migration**: Seamless transition from legacy parsing to new comprehensive system
 
 This architecture provides a robust foundation for iOS development in VSCode while maintaining extensibility and AI integration capabilities. 

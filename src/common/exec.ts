@@ -43,13 +43,13 @@ export async function exec(options: {
     const result = await execa(options.command, options.args, {
       cwd: cwd,
       env: env,
-    }).catch(error => {
+    }).catch((error) => {
       // Handle rejection manually
       return {
         failed: true,
         exitCode: error.exitCode || 1,
-        stdout: error.stdout || '',
-        stderr: error.stderr || error.message || 'Unknown error',
+        stdout: error.stdout || "",
+        stderr: error.stderr || error.message || "Unknown error",
       };
     });
 
@@ -66,11 +66,11 @@ export async function exec(options: {
     if (result.failed || result.exitCode !== 0) {
       // Enhance error message for devicectl passcode protection errors
       let errorMessage = `Error executing "${options.command}" command (exit code: ${result.exitCode})`;
-      
+
       if (isDeviceCtlPasscodeError(options, result.stderr)) {
         errorMessage = `Device passcode protection error in "${options.command}" command (exit code: ${result.exitCode})`;
       }
-      
+
       throw new ExecError(errorMessage, {
         stderr: result.stderr,
         command: options.command,
@@ -93,7 +93,7 @@ export async function exec(options: {
   } catch (e: any) {
     const errorMessage: string = e?.shortMessage ?? e?.message ?? "[unknown error]";
     const stderr: string | undefined = e?.stderr;
-    
+
     commonLogger.error(`Error executing command "${options.command}"`, {
       errorMessage,
       stderr,
@@ -101,12 +101,12 @@ export async function exec(options: {
       args: options.args,
       cwd: cwd,
     });
-    
+
     // If this is already our error type, just re-throw it
     if (e instanceof ExecBaseError || e instanceof ExecError) {
       throw e;
     }
-    
+
     // Otherwise, wrap it in our error type
     throw new ExecBaseError(`Error executing "${options.command}" command`, {
       errorMessage: errorMessage,
@@ -123,19 +123,19 @@ export async function exec(options: {
  */
 function isDeviceCtlPasscodeError(options: { command: string; args: string[] }, stderr: string): boolean {
   const isDeviceCtlCommand = options.command === "xcrun" && options.args.includes("devicectl");
-  
+
   if (!isDeviceCtlCommand) {
     return false;
   }
-  
+
   const passcodeErrorPatterns = [
     "The device is passcode protected",
     "DTDKRemoteDeviceConnection: Failed to start remote service",
     "Code=811",
     "Code=-402653158",
     "MobileDeviceErrorCode=(0xE800001A)",
-    "com.apple.mobile.notification_proxy"
+    "com.apple.mobile.notification_proxy",
   ];
-  
-  return passcodeErrorPatterns.some(pattern => stderr.includes(pattern));
+
+  return passcodeErrorPatterns.some((pattern) => stderr.includes(pattern));
 }

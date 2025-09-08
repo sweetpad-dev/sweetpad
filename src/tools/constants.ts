@@ -130,4 +130,17 @@ export const TOOLS: Tool[] = [
     },
     documentation: "https://github.com/peripheryapp/periphery",
   },
+  {
+    id: "bazel",
+    label: "Bazel",
+    check: {
+      command: "bazel",
+      args: ["--version"],
+    },
+    install: {
+      command: "brew",
+      args: ["install", "bazel"],
+    },
+    documentation: "https://bazel.build/",
+  },
 ];

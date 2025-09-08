@@ -368,7 +368,7 @@
       },
       {
         "command": "sweetpad.build.selectXcodeWorkspace",
-        "title": "SweetPad: Select Xcode workspace",
+        "title": "SweetPad: Select",
         "icon": "$(file-directory)"
       },
       {
@@ -403,6 +403,54 @@
         "title": "SweetPad: Create Periphery Config",
         "icon": "$(file-add)",
         "description": "Create .periphery.yml configuration file"
+      },
+      {
+        "command": "sweetpad.bazel.build",
+        "title": "SweetPad: Bazel Build",
+        "icon": "$(sweetpad-tool)",
+        "description": "Build Bazel target"
+      },
+      {
+        "command": "sweetpad.bazel.test",
+        "title": "SweetPad: Bazel Test",
+        "icon": "$(beaker)",
+        "description": "Test Bazel target"
+      },
+      {
+        "command": "sweetpad.bazel.selectTarget",
+        "title": "SweetPad: Select Bazel Target",
+        "icon": "$(target)",
+        "description": "Select Bazel target for build/test commands"
+      },
+      {
+        "command": "sweetpad.bazel.buildSelected",
+        "title": "SweetPad: Build Selected Bazel Target",
+        "icon": "$(sweetpad-tool)",
+        "description": "Build currently selected Bazel target"
+      },
+      {
+        "command": "sweetpad.bazel.testSelected",
+        "title": "SweetPad: Test Selected Bazel Target",
+        "icon": "$(beaker)",
+        "description": "Test currently selected Bazel target"
+      },
+      {
+        "command": "sweetpad.bazel.run",
+        "title": "SweetPad: Bazel Run",
+        "icon": "$(run)",
+        "description": "Run Bazel target on iOS simulator"
+      },
+      {
+        "command": "sweetpad.bazel.runSelected",
+        "title": "SweetPad: Run Selected Bazel Target",
+        "icon": "$(run)",
+        "description": "Run currently selected Bazel target on iOS simulator"
+      },
+      {
+        "command": "sweetpad.build.clearCache",
+        "title": "SweetPad: Clear Workspace Cache",
+        "icon": "$(refresh)",
+        "description": "Clear persistent workspace cache and reload"
       },
       {
         "command": "sweetpad.testing.selectTarget",
@@ -613,6 +661,11 @@
           "command": "sweetpad.build.clearSearch",
           "when": "view == sweetpad.view.workspaces && sweetpad.builds.searchActive",
           "group": "navigation@1"
+        },
+        {
+          "command": "sweetpad.build.clearCache",
+          "when": "view == sweetpad.view.workspaces",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -750,6 +803,46 @@
           "command": "sweetpad.build.createPeripheryConfig",
           "when": "viewItem == sweetpad.build.view.item",
           "group": "context@11"
+        },
+        {
+          "command": "sweetpad.bazel.selectTarget",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "inline@1"
+        },
+        {
+          "command": "sweetpad.bazel.build",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "inline@2"
+        },
+        {
+          "command": "sweetpad.bazel.test",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "inline@3"
+        },
+        {
+          "command": "sweetpad.bazel.run",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "inline@4"
+        },
+        {
+          "command": "sweetpad.bazel.selectTarget",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "context@1"
+        },
+        {
+          "command": "sweetpad.bazel.build",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "context@2"
+        },
+        {
+          "command": "sweetpad.bazel.test",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "context@3"
+        },
+        {
+          "command": "sweetpad.bazel.run",
+          "when": "viewItem == sweetpad.bazel.target",
+          "group": "context@4"
         }
       ],
       "testing/item/context": [
@@ -1289,7 +1382,16 @@
     "check:all": "npm run check:format:code && npm run check:lint && npm run check:types",
     "publish-patch": "./scripts/publish-patch.sh",
     "find-deadcode": "ts-prune --error --skip spec.ts?",
-    "download-examples": "tsx ./scripts/download-examples.ts"
+    "download-examples": "tsx ./scripts/download-examples.ts",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs,json,jsonc}": [
+      "biome format --write"
+    ],
+    "docs/**/*.md": [
+      "prettier --write"
+    ]
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.3",
@@ -1308,7 +1410,9 @@
     "esbuild-plugin-env": "^1.1.1",
     "express": "^5.1.0",
     "globals": "^15.11.0",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
+    "lint-staged": "^16.1.6",
     "prettier": "3.3.3",
     "prom-client": "^15.1.3",
     "ts-jest": "^29.2.5",

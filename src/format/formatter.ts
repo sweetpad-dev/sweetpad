@@ -89,7 +89,7 @@ export class SwiftFormattingProvider
   }> {
     // Get configuration directly from VS Code to avoid property registration issues
     const config = vscode.workspace.getConfiguration("sweetpad");
-    
+
     // User might specify a custom arguments and path for swift-format in the workspace settings.
     const rawArgs = config.get<string[] | null>("format.args");
     const filename = document.fileName;
