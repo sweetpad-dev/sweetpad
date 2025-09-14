@@ -556,11 +556,6 @@
         {
           "command": "sweetpad.build.openXcode",
           "when": "view == sweetpad.build.view",
-          "group": "navigation@2"
-        },
-        {
-          "command": "sweetpad.build.removeBundleDir",
-          "when": "view == sweetpad.build.view",
           "group": "navigation@1"
         },
         {
