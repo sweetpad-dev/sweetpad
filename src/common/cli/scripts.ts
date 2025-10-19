@@ -54,12 +54,32 @@ export type XcodeConfiguration = {
   name: string;
 };
 
+function parseCliJsonOutput<T>(output: string): T {
+  try {
+    return JSON.parse(output) as T;
+  } catch (e) {
+    // Parsing might fail if there are some warnings printed before or after the JSON output
+    commonLogger.debug("Output contains invalid JSON, attempting to extract JSON part", {
+      output: output,
+      error: e,
+    });
+
+    const firstBraceIndex = output.indexOf("{");
+    const lastBraceIndex = output.lastIndexOf("}");
+    if (firstBraceIndex !== -1 && lastBraceIndex !== -1) {
+      const jsonString = output.slice(firstBraceIndex, lastBraceIndex + 1);
+      return JSON.parse(jsonString) as T;
+    }
+    throw e;
+  }
+}
+
 export async function getSimulators(): Promise<SimulatorsOutput> {
   const simulatorsRaw = await exec({
     command: "xcrun",
     args: ["simctl", "list", "--json", "devices"],
   });
-  return JSON.parse(simulatorsRaw) as SimulatorsOutput;
+  return parseCliJsonOutput<SimulatorsOutput>(simulatorsRaw);
 }
 
 export type BuildSettingsOutput = BuildSettingOutput[];
@@ -196,7 +216,7 @@ async function getBuildSettingsList(options: {
 
     if (line.startsWith("{") || line.startsWith("[")) {
       const data = lines.slice(i).join("\n");
-      const output = JSON.parse(data) as BuildSettingsOutput;
+      const output = parseCliJsonOutput<BuildSettingsOutput>(data);
       if (output.length === 0) {
         return [];
       }
@@ -338,7 +358,7 @@ export const getBasicProjectInfo = cache(
       command: "xcodebuild",
       args: ["-list", "-json", ...(options?.xcworkspace ? ["-workspace", options?.xcworkspace] : [])],
     });
-    const parsed = JSON.parse(stdout);
+    const parsed = parseCliJsonOutput<any>(stdout);
     if (parsed.project) {
       return {
         type: "project",
