@@ -3,6 +3,7 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Font optimization and verification tool for SweetPad VS Code extension.
@@ -22,6 +23,9 @@ interface PackageJson {
     icons: Record<string, IconDefinition>;
   };
 }
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const PACKAGE_JSON_PATH = path.join(__dirname, "..", "package.json");
 const ORIGINAL_FONT_PATH = path.join(__dirname, "..", "images", "icons", "tabler-icons.original.woff");
@@ -385,6 +389,4 @@ function main(): void {
   }
 }
 
-if (require.main === module) {
-  main();
-}
+main();
