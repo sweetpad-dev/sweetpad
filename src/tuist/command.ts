@@ -1,6 +1,13 @@
 import * as vscode from "vscode";
 import { restartSwiftLSP } from "../build/utils";
-import { getIsTuistInstalled, tuistClean, tuistEdit, tuistGenerate, tuistInstall, tuistTest } from "../common/cli/scripts";
+import {
+  getIsTuistInstalled,
+  tuistClean,
+  tuistEdit,
+  tuistGenerate,
+  tuistInstall,
+  tuistTest,
+} from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 

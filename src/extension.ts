@@ -66,7 +66,13 @@ import { TestingManager } from "./testing/manager.js";
 import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { ToolsManager } from "./tools/manager.js";
 import { ToolTreeProvider } from "./tools/tree.js";
-import { tuistCleanCommand, tuistEditComnmand, tuistGenerateCommand, tuistInstallCommand, tuistTestComnmand } from "./tuist/command.js";
+import {
+  tuistCleanCommand,
+  tuistEditComnmand,
+  tuistGenerateCommand,
+  tuistInstallCommand,
+  tuistTestComnmand,
+} from "./tuist/command.js";
 import { createTuistWatcher } from "./tuist/watcher.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
