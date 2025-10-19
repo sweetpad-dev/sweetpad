@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.71] - 2025-10-19
+
+- Ignore warning when parse JSON output [#195](https://github.com/sweetpad-dev/sweetpad/issues/195)
+
 ## [0.1.70] - 2025-09-07
 
 - Reduce font size [#188](https://github.com/sweetpad-dev/sweetpad/pull/188)
