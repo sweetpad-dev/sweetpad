@@ -147,7 +147,7 @@ export async function runOniOSSimulator(
   context.updateProgressStatus("Launching Simulator.app");
   await terminal.execute({
     command: "open",
-    args: ["-g", "-a", "Simulator"],
+    args: ["-a", "Simulator"],
   });
 
   // Install app
