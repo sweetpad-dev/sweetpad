@@ -822,6 +822,11 @@
           "default": false,
           "description": "Use Rosetta Destination."
         },
+        "sweetpad.build.bringSimulatorToForeground": {
+          "type": "boolean",
+          "default": true,
+          "description": "Bring Simulator to foreground on launch"
+        },
         "sweetpad.testing.configuration": {
           "type": "string",
           "default": null,

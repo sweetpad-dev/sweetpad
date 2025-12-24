@@ -15,6 +15,7 @@ type Config = {
   "build.launchArgs": string[];
   "build.launchEnv": { [key: string]: string };
   "build.rosettaDestination": boolean;
+  "build.bringSimulatorToForeground": boolean;
   "build.autoRefreshSchemes": boolean;
   "build.autoRefreshSchemesDelay": number;
   "system.taskExecutor": "v1" | "v2";
