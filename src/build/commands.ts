@@ -145,9 +145,11 @@ export async function runOniOSSimulator(
 
   // Open simulator
   context.updateProgressStatus("Launching Simulator.app");
+  const bringToForeground = getWorkspaceConfig("build.bringSimulatorToForeground") ?? true;
+  const openArgs = bringToForeground ? ["-a", "Simulator"] : ["-g", "-a", "Simulator"];
   await terminal.execute({
     command: "open",
-    args: ["-g", "-a", "Simulator"],
+    args: openArgs,
   });
 
   // Install app
