@@ -202,6 +202,7 @@ export async function runOniOSDevice(
     watchMarker: boolean;
     launchArgs: string[];
     launchEnv: Record<string, string>;
+    debug?: boolean;
   },
 ) {
   const { scheme, configuration, destination } = option;
@@ -252,7 +253,8 @@ export async function runOniOSDevice(
     "process",
     "launch",
     // Attaches the application to the console and waits for it to exit
-    isConsoleOptionSupported ? "--console" : null,
+    // Don't use --console in debug mode as it causes the process to exit immediately
+    isConsoleOptionSupported && !option.debug ? "--console" : null,
     "--json-output",
     jsonOuputPath.path,
     // Terminates any already-running instances of the app prior to launch. Not supported on all platforms.
@@ -847,6 +849,7 @@ async function commonLaunchCommand(
           watchMarker: false,
           launchArgs: launchArgs,
           launchEnv: launchEnv,
+          debug: options.debug,
         });
       } else {
         assertUnreachable(destination);
@@ -950,6 +953,7 @@ async function commonRunCommand(
           watchMarker: false,
           launchArgs: launchArgs,
           launchEnv: launchEnv,
+          debug: options.debug,
         });
       } else {
         assertUnreachable(destination);
