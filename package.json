@@ -27,6 +27,7 @@
     "workspaceContains:**/*.xcodeproj",
     "workspaceContains:**/project.yml",
     "workspaceContains:**/Podfile",
+    "workspaceContains:**/Package.swift",
     "onLanguage:swift",
     "onDebug"
   ],
