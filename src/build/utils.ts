@@ -3,12 +3,21 @@ import * as vscode from "vscode";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 
 import { askConfigurationBase } from "../common/askers";
-import { getBuildSettingsToAskDestination, getSchemes } from "../common/cli/scripts";
+import {
+  type XcodeBuildServerConfig,
+  generateBuildServerConfig,
+  getBuildSettingsToAskDestination,
+  getIsXcodeBuildServerInstalled,
+  getSchemes,
+  readXcodeBuildServerConfig,
+} from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
+import type { TaskTerminal } from "../common/tasks";
+import { assertUnreachable } from "../common/types";
 import type { DestinationPlatform } from "../destination/constants";
 import type { Destination } from "../destination/types";
 import { splitSupportedDestinatinos } from "../destination/utils";
@@ -322,6 +331,51 @@ export async function askConfiguration(
 }
 
 /**
+ * Check if buildServer.json needs to be regenerated and regenerate it if needed
+ */
+export async function generateBuildServerConfigOnBuild(options: {
+  scheme: string;
+  xcworkspace: string;
+}): Promise<void> {
+  const isEnabled = getWorkspaceConfig("xcodebuildserver.autogenerate") ?? true;
+  if (!isEnabled) {
+    return;
+  }
+
+  const isServerInstalled = await getIsXcodeBuildServerInstalled();
+  if (!isServerInstalled) {
+    return;
+  }
+
+  let config: XcodeBuildServerConfig | undefined = undefined;
+  try {
+    config = await readXcodeBuildServerConfig();
+  } catch (e) {
+    // regenerate config in case of errors like JSON invalid or file does not exist
+  }
+
+  // regenegerate config only if something is wrong with config:
+  // - scheme does not match
+  // - workspace does not exist
+  // - build_root does not exist
+  const isConfigValid =
+    config &&
+    config.scheme === options.scheme &&
+    config.workspace &&
+    config.build_root &&
+    (await isFileExists(config.build_root)) &&
+    (await isFileExists(config.workspace));
+
+  if (!isConfigValid) {
+    await generateBuildServerConfig({
+      xcworkspace: options.xcworkspace,
+      scheme: options.scheme,
+    });
+    await restartSwiftLSP();
+  }
+}
+
+/**
  * Detect xcode workspace in the given directory
  */
 export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
@@ -416,4 +470,245 @@ export async function restartSwiftLSP() {
       error: error,
     });
   }
+}
+
+export function isXcbeautifyEnabled() {
+  return getWorkspaceConfig("build.xcbeautifyEnabled") ?? true;
+}
+
+export class XcodeCommandBuilder {
+  NO_VALUE = "__NO_VALUE__";
+
+  private xcodebuild = "xcodebuild";
+  private parameters: {
+    arg: string;
+    value: string | "__NO_VALUE__";
+  }[] = [];
+  private buildSettings: { key: string; value: string }[] = [];
+  private actions: string[] = [];
+
+  addBuildSettings(key: string, value: string) {
+    this.buildSettings.push({
+      key: key,
+      value: value,
+    });
+  }
+
+  addOption(flag: string) {
+    this.parameters.push({
+      arg: flag,
+      value: this.NO_VALUE,
+    });
+  }
+
+  addParameters(arg: string, value: string) {
+    this.parameters.push({
+      arg: arg,
+      value: value,
+    });
+  }
+
+  addAction(action: string) {
+    this.actions.push(action);
+  }
+
+  addAdditionalArgs(args: string[]) {
+    // Cases:
+    // ["-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
+    // ["xcodebuild", "-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
+    // ["ARG1=value1", "ARG2=value2", "ARG3", "ARG4=value4"]
+    // ["xcodebuild", "ARG1=value1", "ARG2=value2", "ARG3", "ARG4=value4"]
+    if (args.length === 0) {
+      return;
+    }
+
+    for (let i = 0; i < args.length; i++) {
+      const current = args[i];
+      const next = args[i + 1];
+      if (current && next && current.startsWith("-") && !next.startsWith("-")) {
+        this.parameters.push({
+          arg: current,
+          value: next,
+        });
+        i++;
+      } else if (current?.startsWith("-")) {
+        this.parameters.push({
+          arg: current,
+          value: this.NO_VALUE,
+        });
+      } else if (current?.includes("=")) {
+        const [arg, value] = current.split("=");
+        this.buildSettings.push({
+          key: arg,
+          value: value,
+        });
+      } else if (["clean", "build", "test"].includes(current)) {
+        this.actions.push(current);
+      } else {
+        commonLogger.warn("Unknown argument", {
+          argument: current,
+          args: args,
+        });
+      }
+    }
+
+    // Remove duplicates, with higher priority for the last occurrence
+    const seenParameters = new Set<string>();
+    this.parameters = this.parameters
+      .slice()
+      .reverse()
+      .filter((param) => {
+        if (seenParameters.has(param.arg)) {
+          return false;
+        }
+        seenParameters.add(param.arg);
+        return true;
+      })
+      .reverse();
+
+    // Remove duplicates, with higher priority for the last occurrence
+    const seenActions = new Set<string>();
+    this.actions = this.actions.filter((action) => {
+      if (seenActions.has(action)) {
+        return false;
+      }
+      seenActions.add(action);
+      return true;
+    });
+
+    // Remove duplicates, with higher priority for the last occurrence
+    const seenSettings = new Set<string>();
+    this.buildSettings = this.buildSettings
+      .slice()
+      .reverse()
+      .filter((setting) => {
+        if (seenSettings.has(setting.key)) {
+          return false;
+        }
+        seenSettings.add(setting.key);
+        return true;
+      })
+      .reverse();
+  }
+
+  build(): string[] {
+    const commandParts = [this.xcodebuild];
+
+    for (const { key, value } of this.buildSettings) {
+      commandParts.push(`${key}=${value}`);
+    }
+
+    for (const { arg, value } of this.parameters) {
+      commandParts.push(arg);
+      if (value !== this.NO_VALUE) {
+        commandParts.push(value);
+      }
+    }
+
+    for (const action of this.actions) {
+      commandParts.push(action);
+    }
+    return commandParts;
+  }
+}
+
+/**
+ * Prepare and return destination string for xcodebuild command.
+ *
+ * WARN: Do not use result of this function to anything else than xcodebuild command.
+ */
+export function getXcodeBuildDestinationString(options: { destination: Destination }): string {
+  const destination = options.destination;
+
+  if (destination.type === "iOSSimulator") {
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "iOS Simulator", id: destination.udid, arch: arch });
+  }
+  if (destination.type === "watchOSSimulator") {
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "watchOS Simulator", id: destination.udid, arch: arch });
+  }
+  if (destination.type === "tvOSSimulator") {
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "tvOS Simulator", id: destination.udid, arch: arch });
+  }
+  if (destination.type === "visionOSSimulator") {
+    const arch = getSimulatorArch();
+    return buildDestinationString({ platform: "visionOS Simulator", id: destination.udid, arch: arch });
+  }
+  if (destination.type === "macOS") {
+    // note: without arch, xcodebuild will show warning like this:
+    // --- xcodebuild: WARNING: Using the first of multiple matching destinations:
+    // { platform:macOS, arch:arm64, id:00008103-000109910EC3001E, name:My Mac }
+    // { platform:macOS, arch:x86_64, id:00008103-000109910EC3001E, name:My Mac }
+    // return `platform=macOS,arch=${destination.arch}`;
+    return buildDestinationString({ platform: "macOS", arch: destination.arch });
+  }
+  if (destination.type === "iOSDevice") {
+    return buildDestinationString({ platform: "iOS", id: destination.udid });
+  }
+  if (destination.type === "watchOSDevice") {
+    return buildDestinationString({ platform: "watchOS", id: destination.udid });
+  }
+  if (destination.type === "tvOSDevice") {
+    return buildDestinationString({ platform: "tvOS", id: destination.udid });
+  }
+  if (destination.type === "visionOSDevice") {
+    return buildDestinationString({ platform: "visionOS", id: destination.udid });
+  }
+  return assertUnreachable(destination);
+}
+
+/**
+ * Build destination string for xcodebuild command.
+ *
+ * Examples:
+ * - `platform=iOS Simulator,id=12345678-1234-1234-1234-123456789012,arch=x86_64`
+ * - `platform=macOS,arch=arm64`
+ * - `platform=iOS,arch=arm64`
+ */
+function buildDestinationString(options: {
+  platform: string;
+  id?: string;
+  arch?: string;
+}): string {
+  const { platform, id, arch } = options;
+  if (id && arch) {
+    return `platform=${platform},id=${id},arch=${arch}`;
+  }
+  if (id && !arch) {
+    return `platform=${platform},id=${id}`;
+  }
+  if (!id && arch) {
+    return `platform=${platform},arch=${arch}`;
+  }
+  return `platform=${platform}`; // no id and no arch
+}
+
+function getSimulatorArch(): string | undefined {
+  // Rosetta is technology that allows running x86_64 code on Apple Silicon Macs.
+  // This function instructs xcodebuild to build for x86_64 architecture when Rosetta destinations
+  // enabled in Xcode
+  const useRosetta = getWorkspaceConfig("build.rosettaDestination") ?? false;
+  if (useRosetta) {
+    return "x86_64";
+  }
+  return undefined; // let xcodebuild decide the architecture
+}
+
+export function writeWatchMarkers(terminal: TaskTerminal) {
+  terminal.write("🍭 SweetPad: watch marker (start)\n");
+  terminal.write("🍩 SweetPad: watch marker (end)\n\n");
+}
+
+export async function ensureAppPathExists(appPath: string | undefined): Promise<string> {
+  if (!appPath) {
+    throw new ExtensionError("App path is empty. Something went wrong.");
+  }
+
+  const isExists = await isFileExists(appPath);
+  if (!isExists) {
+    throw new ExtensionError(`App path does not exist. Have you built the app? Path: ${appPath}`);
+  }
+  return appPath;
 }

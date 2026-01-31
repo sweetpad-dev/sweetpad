@@ -1,7 +1,6 @@
 import path from "node:path";
 import * as vscode from "vscode";
-import { getXcodeBuildDestinationString } from "../build/commands.js";
-import { askXcodeWorkspacePath, getWorkspacePath } from "../build/utils.js";
+import { askXcodeWorkspacePath, getWorkspacePath, getXcodeBuildDestinationString } from "../build/utils.js";
 import { getBuildSettingsToAskDestination } from "../common/cli/scripts.js";
 import type { ExtensionContext } from "../common/commands.js";
 import { errorReporting } from "../common/error-reporting.js";
