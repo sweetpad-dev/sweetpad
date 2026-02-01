@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.73] - 2026-02-01
+
+- Add stop command to stop scheme action [#198](https://github.com/sweetpad-dev/sweetpad/issues/198)
+
 ## [0.1.72] - 2025-12-26
 
 - Add setting bringSimulatorToForeground [#202](https://github.com/sweetpad-dev/sweetpad/pull/202)

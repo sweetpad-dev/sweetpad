@@ -440,6 +440,11 @@
         "icon": "$(sweetpad-refresh)"
       },
       {
+        "command": "sweetpad.build.stop",
+        "title": "SweetPad: Stop build",
+        "icon": "$(debug-stop)"
+      },
+      {
         "command": "sweetpad.simulators.refresh",
         "title": "SweetPad: Refresh simulators list",
         "icon": "$(sweetpad-refresh)"
@@ -586,43 +591,48 @@
           "group": "inline@1"
         },
         {
-          "command": "sweetpad.build.launch",
-          "when": "view == sweetpad.build.view",
-          "group": "inline@2"
-        },
-        {
-          "command": "sweetpad.build.build",
-          "when": "view == sweetpad.build.view",
+          "command": "sweetpad.build.stop",
+          "when": "view == sweetpad.build.view && viewItem =~ /build-item.*&status=running.*/",
           "group": "inline@1"
         },
         {
+          "command": "sweetpad.build.build",
+          "when": "view == sweetpad.build.view && viewItem =~ /build-item.*&status=idle.*/",
+          "group": "inline@2"
+        },
+        {
           "command": "sweetpad.build.launch",
-          "when": "view == sweetpad.build.view",
+          "when": "view == sweetpad.build.view && viewItem =~ /build-item.*&status=idle.*/",
+          "group": "inline@3"
+        },
+        {
+          "command": "sweetpad.build.launch",
+          "when": "view == sweetpad.build.view && viewItem =~ /build-item.*&status=idle.*/",
           "group": "context@2"
         },
         {
           "command": "sweetpad.build.build",
-          "when": "view == sweetpad.build.view",
+          "when": "view == sweetpad.build.view && viewItem =~ /build-item.*&status=idle.*/",
           "group": "context@3"
         },
         {
           "command": "sweetpad.build.run",
-          "when": "view == sweetpad.build.view",
+          "when": "view == sweetpad.build.view && viewItem =~ /build-item.*&status=idle.*/",
           "group": "context@4"
         },
         {
           "command": "sweetpad.build.test",
-          "when": "view == sweetpad.build.view",
+          "when": "view == sweetpad.build.view && viewItem =~ /build-item.*&status=idle.*/",
           "group": "context@5"
         },
         {
           "command": "sweetpad.build.clean",
-          "when": "view == sweetpad.build.view",
+          "when": "view == sweetpad.build.view && viewItem =~ /build-item.*&status=idle.*/",
           "group": "context@6"
         },
         {
           "command": "sweetpad.build.resolveDependencies",
-          "when": "view == sweetpad.build.view",
+          "when": "view == sweetpad.build.view && viewItem =~ /build-item.*&status=idle.*/",
           "group": "context@7"
         },
         {

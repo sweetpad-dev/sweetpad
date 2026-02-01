@@ -48,6 +48,9 @@ type IEventMap = {
 
   defaultSchemeForBuildUpdated: [scheme: string | undefined];
   defaultSchemeForTestingUpdated: [scheme: string | undefined];
+
+  schemeBuildStarted: [scheme: string];
+  schemeBuildStopped: [scheme: string];
 };
 type IEventKey = keyof IEventMap;
 
@@ -55,6 +58,7 @@ export class BuildManager {
   private cache: XcodeScheme[] | undefined = undefined;
   private emitter = new events.EventEmitter<IEventMap>();
   public _context: ExtensionContext | undefined = undefined;
+  private runningSchemes: Set<string> = new Set();
 
   constructor() {
     this.on("defaultSchemeForBuildUpdated", (scheme: string | undefined) => {
@@ -66,6 +70,20 @@ export class BuildManager {
 
   on<K extends IEventKey>(event: K, listener: (...args: IEventMap[K]) => void): void {
     this.emitter.on(event, listener as any); // todo: fix this any
+  }
+
+  startSchemeBuild(scheme: string): void {
+    this.runningSchemes.add(scheme);
+    this.emitter.emit("schemeBuildStarted", scheme);
+  }
+
+  stopSchemeBuild(scheme: string): void {
+    this.runningSchemes.delete(scheme);
+    this.emitter.emit("schemeBuildStopped", scheme);
+  }
+
+  isSchemeRunning(scheme: string): boolean {
+    return this.runningSchemes.has(scheme);
   }
 
   set context(context: ExtensionContext) {
@@ -212,6 +230,31 @@ export class BuildManager {
   }
 
   /**
+   * Wrap "runTask" common options for all scheme-related tasks/actions like build, run, test,
+   * etc to avoid code duplication and have a single place to update common options in the
+   * future
+   */
+  async runSchemeTask(options: {
+    name: string;
+    scheme: string;
+    callback: (terminal: TaskTerminal) => Promise<void>;
+  }): Promise<void> {
+    this.startSchemeBuild(options.scheme);
+    try {
+      await runTask(this.context, {
+        name: options.name,
+        lock: "sweetpad.build",
+        terminateLocked: true,
+        problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+        metadata: { scheme: options.scheme },
+        callback: options.callback,
+      });
+    } finally {
+      this.stopSchemeBuild(options.scheme);
+    }
+  }
+
+  /**
    * Build app without running
    */
   async buildCommand(item: BuildTreeItem | undefined, options: { debug: boolean }) {
@@ -243,11 +286,9 @@ export class BuildManager {
 
     const sdk = destination.platform;
 
-    await runTask(context, {
+    await this.runSchemeTask({
       name: "Build",
-      lock: "sweetpad.build",
-      terminateLocked: true,
-      problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+      scheme: scheme,
       callback: async (terminal) => {
         await this.buildApp(terminal, {
           scheme: scheme,
@@ -293,11 +334,9 @@ export class BuildManager {
     const launchArgs = getWorkspaceConfig("build.launchArgs") ?? [];
     const launchEnv = getWorkspaceConfig("build.launchEnv") ?? {};
 
-    await runTask(context, {
+    await this.runSchemeTask({
       name: "Run",
-      lock: "sweetpad.build",
-      terminateLocked: true,
-      problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+      scheme: scheme,
       callback: async (terminal) => {
         if (destination.type === "macOS") {
           await this.runOnMac(terminal, {
@@ -384,11 +423,9 @@ export class BuildManager {
     const launchArgs = getWorkspaceConfig("build.launchArgs") ?? [];
     const launchEnv = getWorkspaceConfig("build.launchEnv") ?? {};
 
-    await runTask(context, {
+    await this.runSchemeTask({
       name: options.debug ? "Debug" : "Launch",
-      lock: "sweetpad.build",
-      terminateLocked: true,
-      problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+      scheme: scheme,
       callback: async (terminal) => {
         await this.buildApp(terminal, {
           scheme: scheme,
@@ -812,11 +849,9 @@ export class BuildManager {
 
     const sdk = destination.platform;
 
-    await runTask(context, {
+    await this.runSchemeTask({
       name: "Clean",
-      lock: "sweetpad.build",
-      terminateLocked: true,
-      problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+      scheme: scheme,
       callback: async (terminal) => {
         await this.buildApp(terminal, {
           scheme: scheme,
@@ -857,11 +892,9 @@ export class BuildManager {
 
     const sdk = destination.platform;
 
-    await runTask(context, {
+    await this.runSchemeTask({
       name: "Test",
-      lock: "sweetpad.build",
-      terminateLocked: true,
-      problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+      scheme: scheme,
       callback: async (terminal) => {
         await this.buildApp(terminal, {
           scheme: scheme,
@@ -885,10 +918,9 @@ export class BuildManager {
     const context = this.context;
     context.updateProgressStatus("Resolving dependencies");
 
-    await runTask(context, {
+    await this.runSchemeTask({
       name: "Resolve Dependencies",
-      lock: "sweetpad.build",
-      terminateLocked: true,
+      scheme: options.scheme,
       callback: async (terminal) => {
         await terminal.execute({
           command: "xcodebuild",
@@ -896,5 +928,21 @@ export class BuildManager {
         });
       },
     });
+  }
+
+  async stopSchemeCommand(item: BuildTreeItem | undefined): Promise<void> {
+    const context = this.context;
+
+    const scheme = item?.scheme;
+    if (!scheme) return;
+
+    const tasks = vscode.tasks.taskExecutions.filter(
+      ({ task }) => task.definition.lockId === "sweetpad.build" && task.definition.metadata?.scheme === scheme,
+    );
+    for (const task of tasks) {
+      task.terminate();
+    }
+    // Ensure the scheme is marked as stopped in the manager
+    context.buildManager.stopSchemeBuild(scheme);
   }
 }

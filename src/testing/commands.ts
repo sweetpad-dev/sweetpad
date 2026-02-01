@@ -39,7 +39,7 @@ export async function selectXcodeSchemeForTestingCommand(context: ExtensionConte
   context.updateProgressStatus("Selecting scheme for testing");
 
   if (item) {
-    item.provider.buildManager.setDefaultSchemeForTesting(item.scheme);
+    context.buildManager.setDefaultSchemeForTesting(item.scheme);
     return;
   }
 
