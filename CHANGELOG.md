@@ -5,6 +5,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 ## [0.1.73] - 2026-02-01
 
 - Add stop command to stop scheme action [#198](https://github.com/sweetpad-dev/sweetpad/issues/198)
+- Try to fix issue with parsing JSON output with array at top level [#206](https://github.com/sweetpad-dev/sweetpad/issues/206)
 
 ## [0.1.72] - 2025-12-26
 

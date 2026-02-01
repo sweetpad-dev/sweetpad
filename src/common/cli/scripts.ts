@@ -54,23 +54,45 @@ export type XcodeConfiguration = {
   name: string;
 };
 
-function parseCliJsonOutput<T>(output: string): T {
+export function parseCliJsonOutput<T>(output: string): T {
   try {
     return JSON.parse(output) as T;
-  } catch (e) {
+  } catch (error1) {
     // Parsing might fail if there are some warnings printed before or after the JSON output
     commonLogger.debug("Output contains invalid JSON, attempting to extract JSON part", {
       output: output,
-      error: e,
+      error: error1,
     });
 
-    const firstBraceIndex = output.indexOf("{");
-    const lastBraceIndex = output.lastIndexOf("}");
-    if (firstBraceIndex !== -1 && lastBraceIndex !== -1) {
-      const jsonString = output.slice(firstBraceIndex, lastBraceIndex + 1);
-      return JSON.parse(jsonString) as T;
+    try {
+      const startObject = output.indexOf("{");
+      const endObject = output.lastIndexOf("}");
+      const startArray = output.indexOf("[");
+      const endArray = output.lastIndexOf("]");
+      const isObjectFound = startObject !== -1 && endObject !== -1;
+      const isArrayFound = startArray !== -1 && endArray !== -1;
+
+      if (isObjectFound && (!isArrayFound || startObject < startArray)) {
+        const jsonString = output.slice(startObject, endObject + 1);
+        return JSON.parse(jsonString) as T;
+      }
+
+      if (isArrayFound && (!isObjectFound || startArray < startObject)) {
+        const jsonString = output.slice(startArray, endArray + 1);
+        return JSON.parse(jsonString) as T;
+      }
+    } catch (error2) {
+      commonLogger.debug("Failed to extract JSON part from output", {
+        output: output,
+        error: error2,
+      });
     }
-    throw e;
+    throw new ExtensionError("No valid JSON found in CLI output", {
+      context: {
+        output: output,
+        error1: error1,
+      },
+    });
   }
 }
 
