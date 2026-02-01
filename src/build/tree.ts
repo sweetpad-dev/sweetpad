@@ -7,30 +7,33 @@ import type { BuildManager } from "./manager";
 type EventData = BuildTreeItem | undefined | null | undefined;
 
 export class BuildTreeItem extends vscode.TreeItem {
-  public provider: BuildTreeProvider;
   public scheme: string;
 
   constructor(options: {
     scheme: string;
     collapsibleState: vscode.TreeItemCollapsibleState;
-    provider: BuildTreeProvider;
+    isRunning: boolean;
+    isDefaultForBuild: boolean;
+    isDefaultForTesting: boolean;
   }) {
     super(options.scheme, options.collapsibleState);
-    this.provider = options.provider;
     this.scheme = options.scheme;
     const color = new vscode.ThemeColor("sweetpad.scheme");
     this.iconPath = new vscode.ThemeIcon("sweetpad-package", color);
 
     let description = "";
-    if (this.scheme === this.provider.defaultSchemeForBuild) {
+    if (options.isDefaultForBuild) {
       description = `${description} ✓`;
     }
-    if (this.scheme === this.provider.defaultSchemeForTesting) {
+    if (options.isDefaultForTesting) {
       description = `${description} (t)`;
     }
     if (description) {
       this.description = description;
     }
+
+    const status = options.isRunning ? "running" : "idle";
+    this.contextValue = `build-item&status=${status}`;
   }
 }
 
@@ -57,6 +60,12 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     });
     this.buildManager.on("refreshSchemesFailed", () => {
       this.isLoading = false;
+      this.updateView();
+    });
+    this.buildManager.on("schemeBuildStarted", () => {
+      this.updateView();
+    });
+    this.buildManager.on("schemeBuildStopped", () => {
       this.updateView();
     });
 
@@ -123,13 +132,17 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     }
 
     // return list of schemes
-    return schemes.map(
-      (scheme) =>
-        new BuildTreeItem({
-          scheme: scheme.name,
-          collapsibleState: vscode.TreeItemCollapsibleState.None,
-          provider: this,
-        }),
-    );
+    return schemes.map((scheme) => {
+      const isRunning = this.buildManager.isSchemeRunning(scheme.name);
+      const isDefaultForBuild = scheme.name === this.defaultSchemeForBuild;
+      const isDefaultForTesting = scheme.name === this.defaultSchemeForTesting;
+      return new BuildTreeItem({
+        scheme: scheme.name,
+        collapsibleState: vscode.TreeItemCollapsibleState.None,
+        isRunning: isRunning,
+        isDefaultForBuild: isDefaultForBuild,
+        isDefaultForTesting: isDefaultForTesting,
+      });
+    });
   }
 }

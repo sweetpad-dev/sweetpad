@@ -486,7 +486,7 @@ async function runTaskV1(
  * just adds a new command to the same terminal, it allows to have a single terminal for all
  * commands and cancel them all at once.
  */
-async function runTaskV2(
+async function runTaskV2<TMetadata>(
   context: ExtensionContext,
   options: {
     name: string;
@@ -495,6 +495,7 @@ async function runTaskV2(
     callback: (terminal: TaskTerminal) => Promise<void>;
     problemMatchers?: string[];
     lock: string;
+    metadata?: TMetadata;
     terminateLocked: boolean;
   },
 ): Promise<void> {
@@ -511,6 +512,7 @@ async function runTaskV2(
     {
       type: "custom",
       lockId: options.lock,
+      metadata: options.metadata,
     },
     vscode.TaskScope.Workspace,
     options.name,
@@ -555,7 +557,7 @@ async function runTaskV2(
 /**
  * Run a tasks in the terminal
  */
-export async function runTask(
+export async function runTask<TMetadata>(
   context: ExtensionContext,
   options: {
     name: string;
@@ -563,6 +565,7 @@ export async function runTask(
     error?: string;
     problemMatchers?: string[];
     lock: string;
+    metadata?: TMetadata;
     terminateLocked: boolean;
     callback: (terminal: TaskTerminal) => Promise<void>;
   },

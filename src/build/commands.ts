@@ -85,16 +85,6 @@ export async function testCommand(context: ExtensionContext, item?: BuildTreeIte
   return context.buildManager.testCommand(item);
 }
 
-export async function resolveDependencies(
-  context: ExtensionContext,
-  options: {
-    scheme: string;
-    xcworkspace: string;
-  },
-): Promise<void> {
-  context.buildManager.resolveDependenciesCommand(options);
-}
-
 /**
  * Resolve dependencies for the Xcode project
  */
@@ -110,9 +100,9 @@ export async function resolveDependenciesCommand(context: ExtensionContext, item
       xcworkspace: xcworkspace,
     }));
 
-  await resolveDependencies(context, {
-    scheme: scheme,
+  context.buildManager.resolveDependenciesCommand({
     xcworkspace: xcworkspace,
+    scheme: scheme,
   });
 }
 
@@ -207,7 +197,7 @@ export async function selectXcodeWorkspaceCommand(context: ExtensionContext) {
 
 export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
   if (item) {
-    item.provider.buildManager.setDefaultSchemeForBuild(item.scheme);
+    context.buildManager.setDefaultSchemeForBuild(item.scheme);
     return;
   }
 
@@ -387,4 +377,8 @@ export async function refreshSchemesCommand(context: ExtensionContext): Promise<
   }
 
   await context.buildManager.refreshSchemes();
+}
+
+export async function stopSchemeCommand(context: ExtensionContext, item?: BuildTreeItem) {
+  return context.buildManager.stopSchemeCommand(item);
 }
