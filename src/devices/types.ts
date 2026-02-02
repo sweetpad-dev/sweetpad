@@ -1,5 +1,6 @@
 import type { DeviceCtlDevice } from "../common/xcode/devicectl";
 import type { IDestination } from "../destination/types";
+import { supportsDevicectl } from "./utils";
 
 export class iOSDeviceDestination implements IDestination {
   type = "iOSDevice" as const;
@@ -16,7 +17,11 @@ export class iOSDeviceDestination implements IDestination {
 
   get label(): string {
     // iPhone 12 Pro Max (14.5)
-    return `${this.name} (${this.osVersion})`;
+    const osVersion = this.osVersion;
+    if (osVersion === "Unknown") {
+      return this.name;
+    }
+    return `${this.name} (${osVersion})`;
   }
 
   get quickPickDetails(): string {
@@ -43,16 +48,33 @@ export class iOSDeviceDestination implements IDestination {
     return "sweetpad-device-mobile";
   }
 
+  /**
+   * The legacy UDID format used by xcodebuild destination
+   * For older devices, this comes from xcdevice; for newer devices, from devicectl
+   */
   get udid() {
-    return this.device.hardwareProperties.udid;
+    return this.device.hardwareProperties.udid ?? this.device.identifier;
+  }
+
+  /**
+   * The devicectl identifier used for devicectl commands
+   * This is always the identifier from devicectl list
+   */
+  get devicectlId() {
+    return this.device.identifier;
   }
 
   get name() {
-    return this.device.deviceProperties.name;
+    return (
+      this.device.deviceProperties.name ??
+      this.device.hardwareProperties.marketingName ??
+      this.device.hardwareProperties.productType ??
+      "Unknown Device"
+    );
   }
 
   get osVersion() {
-    return this.device.deviceProperties.osVersionNumber;
+    return this.device.deviceProperties.osVersionNumber ?? "Unknown";
   }
 
   get state(): "connected" | "disconnected" | "unavailable" {
@@ -61,6 +83,14 @@ export class iOSDeviceDestination implements IDestination {
 
   get deviceType() {
     return this.device.hardwareProperties.deviceType;
+  }
+
+  /**
+   * Check if the device supports devicectl (iOS 17+)
+   * Older devices (iOS < 17) need to use ios-deploy instead
+   */
+  get supportsDevicectl(): boolean {
+    return supportsDevicectl(this.device.deviceProperties.osVersionNumber, 17);
   }
 }
 
@@ -84,20 +114,41 @@ export class watchOSDeviceDestination implements IDestination {
     return "sweetpad-device-watch-pause";
   }
 
+  /**
+   * The legacy UDID format used by xcodebuild destination
+   * For older devices, this comes from xcdevice; for newer devices, from devicectl
+   */
   get udid() {
-    return this.device.hardwareProperties.udid;
+    return this.device.hardwareProperties.udid ?? this.device.identifier;
+  }
+
+  /**
+   * The devicectl identifier used for devicectl commands
+   * This is always the identifier from devicectl list
+   */
+  get devicectlId() {
+    return this.device.identifier;
   }
 
   get name() {
-    return this.device.deviceProperties.name;
+    return (
+      this.device.deviceProperties.name ??
+      this.device.hardwareProperties.marketingName ??
+      this.device.hardwareProperties.productType ??
+      "Unknown Device"
+    );
   }
 
   get label(): string {
-    return `${this.name} (${this.osVersion})`;
+    const osVersion = this.osVersion;
+    if (osVersion === "Unknown") {
+      return this.name;
+    }
+    return `${this.name} (${osVersion})`;
   }
 
   get osVersion() {
-    return this.device.deviceProperties.osVersionNumber;
+    return this.device.deviceProperties.osVersionNumber ?? "Unknown";
   }
 
   get quickPickDetails(): string {
@@ -110,6 +161,14 @@ export class watchOSDeviceDestination implements IDestination {
 
   get isConnected(): boolean {
     return this.state === "connected";
+  }
+
+  /**
+   * Check if the device supports devicectl (watchOS 10+)
+   * Older devices (watchOS < 10) need to use alternative methods
+   */
+  get supportsDevicectl(): boolean {
+    return supportsDevicectl(this.device.deviceProperties.osVersionNumber, 10);
   }
 }
 
@@ -130,20 +189,41 @@ export class tvOSDeviceDestination implements IDestination {
     return "sweetpad-device-tv-old";
   }
 
+  /**
+   * The legacy UDID format used by xcodebuild destination
+   * For older devices, this comes from xcdevice; for newer devices, from devicectl
+   */
   get udid() {
-    return this.device.hardwareProperties.udid;
+    return this.device.hardwareProperties.udid ?? this.device.identifier;
+  }
+
+  /**
+   * The devicectl identifier used for devicectl commands
+   * This is always the identifier from devicectl list
+   */
+  get devicectlId() {
+    return this.device.identifier;
   }
 
   get name() {
-    return this.device.deviceProperties.name;
+    return (
+      this.device.deviceProperties.name ??
+      this.device.hardwareProperties.marketingName ??
+      this.device.hardwareProperties.productType ??
+      "Unknown Device"
+    );
   }
 
   get label(): string {
-    return `${this.name} (${this.osVersion})`;
+    const osVersion = this.osVersion;
+    if (osVersion === "Unknown") {
+      return this.name;
+    }
+    return `${this.name} (${osVersion})`;
   }
 
   get osVersion() {
-    return this.device.deviceProperties.osVersionNumber;
+    return this.device.deviceProperties.osVersionNumber ?? "Unknown";
   }
 
   get quickPickDetails(): string {
@@ -156,6 +236,14 @@ export class tvOSDeviceDestination implements IDestination {
 
   get isConnected(): boolean {
     return this.state === "connected";
+  }
+
+  /**
+   * Check if the device supports devicectl (tvOS 17+)
+   * Older devices (tvOS < 17) need to use alternative methods
+   */
+  get supportsDevicectl(): boolean {
+    return supportsDevicectl(this.device.deviceProperties.osVersionNumber, 17);
   }
 }
 
@@ -176,20 +264,41 @@ export class visionOSDeviceDestination implements IDestination {
     return "sweetpad-cardboards";
   }
 
+  /**
+   * The legacy UDID format used by xcodebuild destination
+   * For older devices, this comes from xcdevice; for newer devices, from devicectl
+   */
   get udid() {
-    return this.device.hardwareProperties.udid;
+    return this.device.hardwareProperties.udid ?? this.device.identifier;
+  }
+
+  /**
+   * The devicectl identifier used for devicectl commands
+   * This is always the identifier from devicectl list
+   */
+  get devicectlId() {
+    return this.device.identifier;
   }
 
   get name() {
-    return this.device.deviceProperties.name;
+    return (
+      this.device.deviceProperties.name ??
+      this.device.hardwareProperties.marketingName ??
+      this.device.hardwareProperties.productType ??
+      "Unknown Device"
+    );
   }
 
   get label(): string {
-    return `${this.name} (${this.osVersion})`;
+    const osVersion = this.osVersion;
+    if (osVersion === "Unknown") {
+      return this.name;
+    }
+    return `${this.name} (${osVersion})`;
   }
 
   get osVersion() {
-    return this.device.deviceProperties.osVersionNumber;
+    return this.device.deviceProperties.osVersionNumber ?? "Unknown";
   }
 
   get quickPickDetails(): string {
@@ -202,6 +311,14 @@ export class visionOSDeviceDestination implements IDestination {
 
   get isConnected(): boolean {
     return this.state === "connected";
+  }
+
+  /**
+   * Check if the device supports devicectl (visionOS 1+)
+   * All visionOS devices support devicectl as it's a newer platform
+   */
+  get supportsDevicectl(): boolean {
+    return supportsDevicectl(this.device.deviceProperties.osVersionNumber, 1);
   }
 }
 

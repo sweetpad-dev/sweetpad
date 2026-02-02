@@ -19,14 +19,14 @@ export type DeviceCtlDevice = {
 };
 
 type DeviceCtlConnectionProperties = {
-  authenticationType: "manualPairing";
-  isMobileDeviceOnly: boolean;
-  lastConnectionDate: string;
-  pairingState: "paired";
-  potentialHostnames: string[];
-  transportType: "localNetwork" | "wired";
+  authenticationType?: "manualPairing";
+  isMobileDeviceOnly?: boolean;
+  lastConnectionDate?: string;
+  pairingState: "paired" | "unsupported";
+  potentialHostnames?: string[];
+  transportType?: "localNetwork" | "wired";
   tunnelState: "disconnected" | "connected" | "unavailable";
-  tunnelTransportProtocol: "tcp";
+  tunnelTransportProtocol?: "tcp";
 };
 
 type DeviceCtlCpuType = {
@@ -36,35 +36,35 @@ type DeviceCtlCpuType = {
 };
 
 type DeviceCtlDeviceProperties = {
-  bootedFromSnapshot: boolean;
-  bootedSnapshotName: string;
-  ddiServicesAvailable: boolean;
-  developerModeStatus: "enabled";
-  hasInternalOSBuild: boolean;
-  name: string;
-  osBuildUpdate: string;
-  osVersionNumber: string;
-  rootFileSystemIsWritable: boolean;
+  bootedFromSnapshot?: boolean;
+  bootedSnapshotName?: string;
+  ddiServicesAvailable?: boolean;
+  developerModeStatus?: "enabled";
+  hasInternalOSBuild?: boolean;
+  name?: string;
+  osBuildUpdate?: string;
+  osVersionNumber?: string;
+  rootFileSystemIsWritable?: boolean;
 };
 
 export type DeviceCtlDeviceType = "iPhone" | "iPad" | "appleWatch" | "appleTV" | "appleVision";
 
 type DeviceCtlHardwareProperties = {
-  cpuType: DeviceCtlCpuType;
+  cpuType?: DeviceCtlCpuType;
   deviceType: DeviceCtlDeviceType;
-  ecid: number;
-  hardwareModel: string;
-  internalStorageCapacity: number;
-  isProductionFused: boolean;
-  marketingName: string;
+  ecid?: number;
+  hardwareModel?: string;
+  internalStorageCapacity?: number;
+  isProductionFused?: boolean;
+  marketingName?: string;
   platform: "iOS";
-  productType: "iPhone13,4" | "iPhone15,3";
-  reality: "physical";
-  serialNumber: string;
-  supportedCPUTypes: DeviceCtlCpuType[];
-  supportedDeviceFamilies: number[];
-  thinningProductType: "iPhone15,3";
-  udid: string;
+  productType: string;
+  reality?: "physical";
+  serialNumber?: string;
+  supportedCPUTypes?: DeviceCtlCpuType[];
+  supportedDeviceFamilies?: number[];
+  thinningProductType?: string;
+  udid?: string;
 };
 
 type DeviceCtlDeviceCapability = {

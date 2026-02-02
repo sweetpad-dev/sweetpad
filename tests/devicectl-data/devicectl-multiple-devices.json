@@ -1,0 +1,106 @@
+{
+  "result": {
+    "devices": [
+      {
+        "capabilities": [],
+        "connectionProperties": {
+          "tunnelState": "connected",
+          "pairingState": "paired"
+        },
+        "deviceProperties": {
+          "name": "iPhone 15 Pro",
+          "osVersionNumber": "17.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "iPhone",
+          "marketingName": "iPhone 15 Pro",
+          "productType": "iPhone16,1",
+          "udid": "00008110-000123456789001E",
+          "platform": "iOS"
+        },
+        "identifier": "urn:x-ios-devicectl:device-CS1234567-1234567890123456",
+        "visibilityClass": "default"
+      },
+      {
+        "capabilities": [],
+        "connectionProperties": {
+          "tunnelState": "connected",
+          "pairingState": "paired"
+        },
+        "deviceProperties": {
+          "name": "iPad Pro",
+          "osVersionNumber": "17.1"
+        },
+        "hardwareProperties": {
+          "deviceType": "iPad",
+          "marketingName": "iPad Pro 12.9-inch",
+          "productType": "iPad14,5",
+          "udid": "00008120-000987654321002E",
+          "platform": "iOS"
+        },
+        "identifier": "urn:x-ios-devicectl:device-CSABCD123-ABCDEF123456789",
+        "visibilityClass": "default"
+      },
+      {
+        "capabilities": [],
+        "connectionProperties": {
+          "tunnelState": "connected",
+          "pairingState": "paired"
+        },
+        "deviceProperties": {
+          "name": "Apple Watch",
+          "osVersionNumber": "10.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "appleWatch",
+          "marketingName": "Apple Watch Series 9",
+          "productType": "Watch10,1",
+          "udid": "00003010-000111111111111E",
+          "platform": "iOS"
+        },
+        "identifier": "urn:x-ios-devicectl:device-CSWATCH01-1111111111111111",
+        "visibilityClass": "default"
+      },
+      {
+        "capabilities": [],
+        "connectionProperties": {
+          "tunnelState": "connected",
+          "pairingState": "paired"
+        },
+        "deviceProperties": {
+          "name": "Apple TV",
+          "osVersionNumber": "17.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "appleTV",
+          "marketingName": "Apple TV 4K",
+          "productType": "AppleTV14,1",
+          "udid": "00004010-000222222222222E",
+          "platform": "iOS"
+        },
+        "identifier": "urn:x-ios-devicectl:device-CSTV0001-2222222222222222",
+        "visibilityClass": "default"
+      },
+      {
+        "capabilities": [],
+        "connectionProperties": {
+          "tunnelState": "connected",
+          "pairingState": "paired"
+        },
+        "deviceProperties": {
+          "name": "Vision Pro",
+          "osVersionNumber": "1.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "appleVision",
+          "marketingName": "Apple Vision Pro",
+          "productType": "VisionPro,1",
+          "udid": "1C2B3C4D-5E6F-7A8B-9C0D-1E2F3A4B5C6D",
+          "platform": "iOS"
+        },
+        "identifier": "urn:x-ios-devicectl:device-CSVISION0-3333333333333333",
+        "visibilityClass": "default"
+      }
+    ]
+  }
+}
