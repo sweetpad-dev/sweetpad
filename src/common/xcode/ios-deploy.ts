@@ -1,8 +1,8 @@
 import type { ExtensionContext } from "../commands";
 import { exec } from "../exec";
+import { tempFilePath } from "../files";
 import { commonLogger } from "../logger";
 import type { TaskTerminal } from "../tasks";
-import { tempFilePath } from "../files";
 
 /**
  * Install and launch app on device using ios-deploy
@@ -87,12 +87,16 @@ export async function installAndLaunchApp(
   // --output and --error_output redirect ios-deploy output to files
   // Note: LLDB output (including app console logs) goes to stderr
   const args = [
-    "--id", options.deviceId,
-    "--bundle", options.appPath,
+    "--id",
+    options.deviceId,
+    "--bundle",
+    options.appPath,
     "--debug",
     "--unbuffered",
-    "--output", stdoutPath.path,
-    "--error_output", stderrPath.path,
+    "--output",
+    stdoutPath.path,
+    "--error_output",
+    stderrPath.path,
   ];
 
   // Add launch arguments if provided

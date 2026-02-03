@@ -2,10 +2,10 @@
  * Unit tests for ios-deploy integration
  */
 
+import { createMockContext, createMockTerminal } from "../../__mocks__/devices";
 import { exec } from "../exec";
 import { tempFilePath } from "../files";
 import * as iosDeploy from "./ios-deploy";
-import { createMockContext, createMockTerminal } from "../../../tests/__mocks__/devices";
 
 // Mock dependencies
 jest.mock("../exec", () => ({
@@ -69,7 +69,8 @@ describe("ios-deploy", () => {
         if (options.command === "ios-deploy") {
           iosDeployExecuteCalls.push(options);
           return Promise.resolve();
-        } else if (options.command === "tail") {
+        }
+        if (options.command === "tail") {
           return Promise.resolve();
         }
         return Promise.resolve();
@@ -277,7 +278,8 @@ describe("ios-deploy", () => {
         if (options.command === "ios-deploy") {
           iosDeployExecuteCalls.push(options);
           return Promise.resolve();
-        } else if (options.command === "tail") {
+        }
+        if (options.command === "tail") {
           tailCalled = true;
           return Promise.resolve();
         }

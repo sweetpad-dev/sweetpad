@@ -2,9 +2,10 @@
  * Unit tests for xcdevice fallback device listing
  */
 
-import { exec } from "../exec";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createMockContext } from "../../__mocks__/devices";
+import { exec } from "../exec";
 import {
   createNameLookup,
   createOsVersionLookup,
@@ -14,7 +15,6 @@ import {
   getUdidForDevice,
   listDevicesWithXcdevice,
 } from "./xcdevice";
-import { createMockContext } from "../../../tests/__mocks__/devices";
 
 // Mock the exec function
 jest.mock("../exec", () => ({

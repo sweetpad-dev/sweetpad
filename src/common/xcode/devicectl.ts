@@ -58,7 +58,7 @@ type DeviceCtlHardwareProperties = {
   isProductionFused?: boolean;
   marketingName?: string;
   platform: "iOS";
-  productType: string;
+  productType?: string;
   reality?: "physical";
   serialNumber?: string;
   supportedCPUTypes?: DeviceCtlCpuType[];

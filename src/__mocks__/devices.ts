@@ -3,10 +3,10 @@
  * Provides helper functions to generate mock device objects and test contexts
  */
 
-import type { DeviceCtlDevice } from "../../src/common/xcode/devicectl";
-import type { XcdeviceDevice } from "../../src/common/xcode/xcdevice";
-import type { ExtensionContext } from "../../src/common/commands";
-import type { TaskTerminal } from "../../src/common/tasks";
+import type { ExtensionContext } from "../common/commands";
+import type { TaskTerminal } from "../common/tasks";
+import type { DeviceCtlDevice } from "../common/xcode/devicectl";
+import type { XcdeviceDevice } from "../common/xcode/xcdevice";
 
 /**
  * Create a mock DeviceCtlDevice object with optional overrides
@@ -102,7 +102,7 @@ export function createMockDeviceOfType(
     },
     iPad: {
       deviceType: "iPad",
-      marketingName: "iPad Pro 12.9\"",
+      marketingName: 'iPad Pro 12.9"',
       productType: "iPad14,5",
     },
     appleWatch: {

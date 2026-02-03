@@ -2,20 +2,19 @@
  * Integration tests for build manager deployment logic
  */
 
-import { exec } from "../common/exec";
+import {
+  createMockContext,
+  createMockDevice,
+  createMockDeviceOfType,
+  createMockDeviceWithOS,
+  createMockTerminal,
+} from "../__mocks__/devices";
 import { getXcodeVersionInstalled } from "../common/cli/scripts";
-import { tempFilePath } from "../common/files";
+import { isFileExists, readJsonFile, tempFilePath } from "../common/files";
 import * as iosDeploy from "../common/xcode/ios-deploy";
-import { BuildManager } from "./manager";
 import type { DeviceDestination } from "../devices/types";
 import { iOSDeviceDestination } from "../devices/types";
-import {
-  createMockDevice,
-  createMockDeviceWithOS,
-  createMockDeviceOfType,
-  createMockContext,
-  createMockTerminal,
-} from "../../tests/__mocks__/devices";
+import { BuildManager } from "./manager";
 
 // Mock dependencies
 jest.mock("../common/exec", () => ({
@@ -67,6 +66,19 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       path: "/tmp/test-output",
       [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
     });
+    // Mock file existence checks to return true
+    (isFileExists as jest.Mock).mockResolvedValue(true);
+    // Mock readJsonFile for devicectl launch output
+    (readJsonFile as jest.Mock).mockResolvedValue({
+      info: {
+        outcome: "success",
+      },
+      result: {
+        process: {
+          processIdentifier: 12345,
+        },
+      },
+    });
   });
 
   describe("runOniOSDevice", () => {
@@ -88,10 +100,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         bundleIdentifier: "com.example.testapp",
         appName: "TestApp",
       };
-      jest.resetModules();
-      jest.unmock("../common/cli/scripts");
-      const scripts = require("../common/cli/scripts");
-      scripts.getBuildSettingsToLaunch = jest.fn().mockResolvedValue(mockBuildSettings);
+      (require("../common/cli/scripts").getBuildSettingsToLaunch as jest.Mock).mockResolvedValue(mockBuildSettings);
     });
 
     describe("with iOS 17+ device (uses devicectl)", () => {

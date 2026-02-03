@@ -2,13 +2,12 @@
  * Unit tests for device manager with dual-source fetching
  */
 
-import { exec } from "../common/exec";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { createMockContext } from "../__mocks__/devices";
 import { listDevices } from "../common/xcode/devicectl";
 import { listDevicesWithXcdevice } from "../common/xcode/xcdevice";
 import { DevicesManager } from "./manager";
-import { createMockContext } from "../../tests/__mocks__/devices";
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 // Mock dependencies
 jest.mock("../common/exec", () => ({
@@ -384,10 +383,7 @@ describe("DevicesManager", () => {
 
     it("creates correct device type instances", async () => {
       const mockDevicectlData = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "../../tests/devicectl-data/devicectl-multiple-devices.json"),
-          "utf8",
-        ),
+        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-multiple-devices.json"), "utf8"),
       );
 
       (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
@@ -428,10 +424,7 @@ describe("DevicesManager", () => {
 
     it("caches device list after refresh", async () => {
       const mockDevicectlData = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"),
-          "utf8",
-        ),
+        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
       );
 
       (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
@@ -451,10 +444,7 @@ describe("DevicesManager", () => {
 
     it("emits updated event after refresh", async () => {
       const mockDevicectlData = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"),
-          "utf8",
-        ),
+        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
       );
 
       (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
@@ -475,10 +465,7 @@ describe("DevicesManager", () => {
   describe("getDevices", () => {
     it("returns cached devices without refresh", async () => {
       const mockDevicectlData = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"),
-          "utf8",
-        ),
+        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
       );
 
       (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
@@ -496,10 +483,7 @@ describe("DevicesManager", () => {
 
     it("forces refresh when options.refresh is true", async () => {
       const mockDevicectlData = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"),
-          "utf8",
-        ),
+        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
       );
 
       (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
@@ -516,10 +500,7 @@ describe("DevicesManager", () => {
 
     it("fetches devices when cache is empty", async () => {
       const mockDevicectlData = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"),
-          "utf8",
-        ),
+        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
       );
 
       (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);

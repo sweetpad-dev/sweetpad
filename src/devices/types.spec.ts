@@ -2,21 +2,20 @@
  * Unit tests for device destination classes
  */
 
-import type { DeviceCtlDevice } from "../common/xcode/devicectl";
-import {
-  iOSDeviceDestination,
-  watchOSDeviceDestination,
-  tvOSDeviceDestination,
-  visionOSDeviceDestination,
-} from "./types";
 import {
   createMockDevice,
-  createMockDeviceWithOS,
   createMockDeviceOfType,
+  createMockDeviceWithOS,
   createMockDeviceWithoutName,
   createMockDeviceWithoutOS,
   createMockDeviceWithoutUDID,
-} from "../../tests/__mocks__/devices";
+} from "../__mocks__/devices";
+import {
+  iOSDeviceDestination,
+  tvOSDeviceDestination,
+  visionOSDeviceDestination,
+  watchOSDeviceDestination,
+} from "./types";
 
 describe("iOSDeviceDestination", () => {
   describe("type and platform", () => {
@@ -305,9 +304,7 @@ describe("iOSDeviceDestination", () => {
       });
       const destination = new iOSDeviceDestination(device);
 
-      expect(destination.quickPickDetails).toBe(
-        "Type: iOS Device, Version: 17.0, ID: 00008110-001234567890001e",
-      );
+      expect(destination.quickPickDetails).toBe("Type: iOS Device, Version: 17.0, ID: 00008110-001234567890001e");
     });
   });
 });

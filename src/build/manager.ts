@@ -754,9 +754,7 @@ export class BuildManager {
       // Check if ios-deploy is installed before attempting to use it
       const isInstalled = await iosDeploy.isIosDeployInstalled();
       if (!isInstalled) {
-        throw new ExtensionError(
-          "ios-deploy is required for iOS < 17. Install it with: brew install ios-deploy",
-        );
+        throw new ExtensionError("ios-deploy is required for iOS < 17. Install it with: brew install ios-deploy");
       }
 
       if (option.watchMarker) {
