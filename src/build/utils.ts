@@ -9,6 +9,7 @@ import {
   getBuildSettingsToAskDestination,
   getIsXcodeBuildServerInstalled,
   getSchemes,
+  getXcodeBuildCommand,
   readXcodeBuildServerConfig,
 } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
@@ -479,7 +480,7 @@ export function isXcbeautifyEnabled() {
 export class XcodeCommandBuilder {
   NO_VALUE = "__NO_VALUE__";
 
-  private xcodebuild = "xcodebuild";
+  private xcodebuild = getXcodeBuildCommand();
   private parameters: {
     arg: string;
     value: string | "__NO_VALUE__";

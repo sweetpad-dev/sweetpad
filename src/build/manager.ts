@@ -9,6 +9,7 @@ import {
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
   getSchemes,
+  getXcodeBuildCommand,
   getXcodeVersionInstalled,
 } from "../common/cli/scripts";
 import { BaseExecutionScope, type ExtensionContext } from "../common/commands";
@@ -923,7 +924,7 @@ export class BuildManager {
       scheme: options.scheme,
       callback: async (terminal) => {
         await terminal.execute({
-          command: "xcodebuild",
+          command: getXcodeBuildCommand(),
           args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],
         });
       },
