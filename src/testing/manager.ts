@@ -1,7 +1,7 @@
 import path from "node:path";
 import * as vscode from "vscode";
 import { askXcodeWorkspacePath, getWorkspacePath, getXcodeBuildDestinationString } from "../build/utils.js";
-import { getBuildSettingsToAskDestination } from "../common/cli/scripts.js";
+import { getBuildSettingsToAskDestination, getXcodeBuildCommand } from "../common/cli/scripts.js";
 import type { ExtensionContext } from "../common/commands.js";
 import { errorReporting } from "../common/error-reporting.js";
 import { exec } from "../common/exec.js";
@@ -403,7 +403,7 @@ export class TestingManager {
       terminateLocked: true,
       callback: async (terminal) => {
         await terminal.execute({
-          command: "xcodebuild",
+          command: getXcodeBuildCommand(),
           args: [
             "build-for-testing",
             "-destination",
@@ -806,7 +806,7 @@ export class TestingManager {
         terminateLocked: true,
         callback: async (terminal) => {
           await terminal.execute({
-            command: "xcodebuild",
+            command: getXcodeBuildCommand(),
             args: [
               "test-without-building",
               "-workspace",
@@ -889,7 +889,7 @@ export class TestingManager {
       callback: async (terminal) => {
         try {
           await terminal.execute({
-            command: "xcodebuild",
+            command: getXcodeBuildCommand(),
             args: [
               "test-without-building",
               "-workspace",

@@ -6,6 +6,7 @@ type Config = {
   "format.selectionArgs": string[] | null;
   "build.xcbeautifyEnabled": boolean;
   "build.xcodeWorkspacePath": string;
+  "build.xcodebuildCommand": string;
   "build.derivedDataPath": string;
   "build.configuration": string;
   "build.arch": "x86_64" | "arm64";

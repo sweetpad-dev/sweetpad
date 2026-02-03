@@ -753,6 +753,15 @@
           "required": false,
           "description": "Path to Xcode workspace. Can be absolute or relative to the workspace root."
         },
+        "sweetpad.build.xcodebuildCommand": {
+          "type": "string",
+          "default": null,
+          "description": "Custom xcodebuild command or path. Supports environment variable expansion via ${env:VAR_NAME} syntax.",
+          "examples": [
+            "/Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild",
+            "${env:XCODEBUILD_PATH}"
+          ]
+        },
         "sweetpad.build.derivedDataPath": {
           "type": "string",
           "default": null,

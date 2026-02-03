@@ -220,7 +220,7 @@ async function getBuildSettingsList(options: {
   }
 
   const stdout = await exec({
-    command: "xcodebuild",
+    command: getXcodeBuildCommand(),
     args: args,
   });
 
@@ -358,6 +358,14 @@ function getXcodeBuildServerCommand(): string {
 }
 
 /**
+ * Get the xcodebuild command from config or default
+ */
+export function getXcodeBuildCommand(): string {
+  const customCommand = getWorkspaceConfig("build.xcodebuildCommand");
+  return customCommand || "xcodebuild";
+}
+
+/**
  * Find if xcode-build-server is installed
  */
 export async function getIsXcodeBuildServerInstalled() {
@@ -377,7 +385,7 @@ export async function getIsXcodeBuildServerInstalled() {
 export const getBasicProjectInfo = cache(
   async (options: { xcworkspace: string | undefined }): Promise<XcodebuildListOutput> => {
     const stdout = await exec({
-      command: "xcodebuild",
+      command: getXcodeBuildCommand(),
       args: ["-list", "-json", ...(options?.xcworkspace ? ["-workspace", options?.xcworkspace] : [])],
     });
     const parsed = parseCliJsonOutput<any>(stdout);
