@@ -1,6 +1,6 @@
-import * as vscode from "vscode";
 import { ExtensionError } from "../errors";
 import { getXcodeBuildCommand, parseCliJsonOutput } from "./scripts";
+import * as vscode from "vscode";
 
 jest.mock("vscode");
 
@@ -63,7 +63,7 @@ describe("getXcodeBuildCommand", () => {
   });
 
   it("keeps original placeholder when environment variable is not set", () => {
-    process.env.NONEXISTENT_VAR = undefined;
+    delete process.env.NONEXISTENT_VAR;
     mockGetConfiguration.mockReturnValue({
       get: jest.fn().mockReturnValue("${env:NONEXISTENT_VAR}"),
     });
