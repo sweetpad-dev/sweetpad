@@ -18,6 +18,7 @@ export type LastLaunchedAppDeviceContext = {
   type: "device";
   appPath: string; // Example: "/Users/username/Library/Developer/Xcode/DerivedData/MyApp-..."
   appName: string; // Example: "MyApp.app"
+  bundleIdentifier: string; // Example: "com.example.MyApp"
   destinationId: string; // Example: "00008030-001A0A3E0A68002E"
   destinationType: DestinationType; // Example: "iOS"
 };
@@ -25,11 +26,14 @@ export type LastLaunchedAppDeviceContext = {
 export type LastLaunchedAppSimulatorContext = {
   type: "simulator";
   appPath: string;
+  bundleIdentifier: string; // Example: "com.example.MyApp"
+  simulatorUdid: string; // Example: "00000000-0000-0000-0000-000000000000"
 };
 
 export type LastLaunchedAppMacOSContext = {
   type: "macos";
   appPath: string;
+  bundleIdentifier: string; // Example: "com.example.MyApp"
 };
 
 export type LastLaunchedAppContext =
