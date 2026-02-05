@@ -940,6 +940,21 @@
           "minimum": 100,
           "maximum": 5000,
           "description": "Delay in milliseconds before auto-refreshing schemes after detecting file changes"
+        },
+        "sweetpad.build.logStreamEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable log streaming during debug sessions. Captures os_log/Logger/NSLog output in the 'SweetPad: App Logs' output channel. print() output is also captured via stdout."
+        },
+        "sweetpad.build.logStreamPredicate": {
+          "type": "string",
+          "default": null,
+          "description": "Custom predicate for log stream filtering. Use ${bundleId} for the bundle identifier and ${processName} for the process name. Default: captures os_log/Logger (by subsystem) and NSLog (via Foundation sender).",
+          "examples": [
+            "subsystem BEGINSWITH \"${bundleId}\" OR (process == \"${processName}\" AND sender == \"Foundation\")",
+            "subsystem BEGINSWITH \"${bundleId}\"",
+            "process == \"${processName}\""
+          ]
         }
       }
     },

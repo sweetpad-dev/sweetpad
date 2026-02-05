@@ -19,6 +19,7 @@ import { isFileExists, readJsonFile, tempFilePath } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
+import { getLogStreamManager } from "../debugger/log-stream";
 import type { DeviceDestination } from "../devices/types";
 import type { SimulatorDestination } from "../simulators/types";
 import { getSimulatorByUdid } from "../simulators/utils";
@@ -515,16 +516,25 @@ export class BuildManager {
     context.updateWorkspaceState("build.lastLaunchedApp", {
       type: "macos",
       appPath: executablePath,
+      bundleIdentifier: buildSettings.bundleIdentifier,
     });
     if (options.watchMarker) {
       writeWatchMarkers(terminal);
     }
+
+    // Prepare log stream output channel for stdout/stderr capture
+    const logStreamManager = getLogStreamManager(context);
+    logStreamManager.prepareForLaunch(buildSettings.bundleIdentifier);
 
     context.updateProgressStatus(`Running "${options.scheme}" on Mac`);
     await terminal.execute({
       command: executablePath,
       env: options.launchEnv,
       args: options.launchArgs,
+      // Forward stdout/stderr to the log stream output channel
+      onOutputLine: async (data) => {
+        logStreamManager.appendOutput(data.value, data.type);
+      },
     });
   }
 
@@ -592,10 +602,16 @@ export class BuildManager {
     context.updateWorkspaceState("build.lastLaunchedApp", {
       type: "simulator",
       appPath: appPath,
+      bundleIdentifier: bundlerId,
+      simulatorUdid: simulator.udid,
     });
     if (options.watchMarker) {
       writeWatchMarkers(terminal);
     }
+
+    // Prepare log stream output channel for stdout/stderr capture
+    const logStreamManager = getLogStreamManager(context);
+    logStreamManager.prepareForLaunch(bundlerId);
 
     const launchArgs = [
       "simctl",
@@ -617,6 +633,10 @@ export class BuildManager {
       args: launchArgs,
       // should be prefixed with `SIMCTL_CHILD_` to pass to the child process
       env: Object.fromEntries(Object.entries(options.launchEnv).map(([key, value]) => [`SIMCTL_CHILD_${key}`, value])),
+      // Forward stdout/stderr to the log stream output channel
+      onOutputLine: async (data) => {
+        logStreamManager.appendOutput(data.value, data.type);
+      },
     });
   }
 
@@ -659,6 +679,7 @@ export class BuildManager {
       type: "device",
       appPath: targetPath,
       appName: buildSettings.appName,
+      bundleIdentifier: bundlerId,
       destinationId: deviceId,
       destinationType: destinationType,
     });
@@ -674,6 +695,10 @@ export class BuildManager {
     if (option.watchMarker) {
       writeWatchMarkers(terminal);
     }
+
+    // Prepare log stream output channel for stdout/stderr capture
+    const logStreamManager = getLogStreamManager(context);
+    logStreamManager.prepareForLaunch(bundlerId);
 
     // Prepare the launch arguments
     const launchArgs = [
@@ -702,6 +727,10 @@ export class BuildManager {
       env: Object.fromEntries(
         Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value]),
       ),
+      // Forward stdout/stderr to the log stream output channel
+      onOutputLine: async (data) => {
+        logStreamManager.appendOutput(data.value, data.type);
+      },
     });
 
     let jsonOutput: any;

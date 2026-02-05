@@ -7,6 +7,7 @@ import type {
 } from "../common/commands";
 import { commonLogger } from "../common/logger";
 import { checkUnreachable } from "../common/types";
+import { getLogStreamManager } from "./log-stream";
 import { waitForProcessToLaunch } from "./utils";
 
 const ATTACH_CONFIG: vscode.DebugConfiguration = {
@@ -38,6 +39,7 @@ class InitialDebugConfigurationProvider implements vscode.DebugConfigurationProv
 
 class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
   context: ExtensionContext;
+
   constructor(options: { context: ExtensionContext }) {
     this.context = options.context;
   }
@@ -168,6 +170,10 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
       throw new Error("No last launched app found, please launch the app first using the SweetPad extension");
     }
 
+    // Start log streaming for the launched app (fire and forget)
+    const logStreamManager = getLogStreamManager(this.context);
+    void logStreamManager.startLogStream(launchContext);
+
     // Pass the "codelldbAttributes" to the lldb debugger
     const codelldbAttributes = config.codelldbAttributes || {};
     for (const [key, value] of Object.entries(codelldbAttributes)) {
@@ -190,6 +196,10 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     checkUnreachable(launchContext);
     return config;
   }
+
+  dispose(): void {
+    // LogStreamManager is a singleton, disposed separately
+  }
 }
 
 export function registerDebugConfigurationProvider(context: ExtensionContext) {
@@ -210,6 +220,7 @@ export function registerDebugConfigurationProvider(context: ExtensionContext) {
     dispose() {
       disposable1.dispose();
       disposable2.dispose();
+      dynamicProvider.dispose();
     },
   };
 }

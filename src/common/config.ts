@@ -19,6 +19,8 @@ type Config = {
   "build.bringSimulatorToForeground": boolean;
   "build.autoRefreshSchemes": boolean;
   "build.autoRefreshSchemesDelay": number;
+  "build.logStreamEnabled": boolean;
+  "build.logStreamPredicate": string;
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "system.enableSentry": boolean;
