@@ -53,7 +53,7 @@ export class iOSDeviceDestination implements IDestination {
    * For older devices, this comes from xcdevice; for newer devices, from devicectl
    */
   get udid() {
-    return this.device.hardwareProperties.udid ?? this.device.identifier;
+    return this.device.hardwareProperties.udid ?? this.device.identifier ?? "unknown";
   }
 
   /**
@@ -119,7 +119,7 @@ export class watchOSDeviceDestination implements IDestination {
    * For older devices, this comes from xcdevice; for newer devices, from devicectl
    */
   get udid() {
-    return this.device.hardwareProperties.udid ?? this.device.identifier;
+    return this.device.hardwareProperties.udid ?? this.device.identifier ?? "unknown";
   }
 
   /**
@@ -194,7 +194,7 @@ export class tvOSDeviceDestination implements IDestination {
    * For older devices, this comes from xcdevice; for newer devices, from devicectl
    */
   get udid() {
-    return this.device.hardwareProperties.udid ?? this.device.identifier;
+    return this.device.hardwareProperties.udid ?? this.device.identifier ?? "unknown";
   }
 
   /**
@@ -269,7 +269,7 @@ export class visionOSDeviceDestination implements IDestination {
    * For older devices, this comes from xcdevice; for newer devices, from devicectl
    */
   get udid() {
-    return this.device.hardwareProperties.udid ?? this.device.identifier;
+    return this.device.hardwareProperties.udid ?? this.device.identifier ?? "unknown";
   }
 
   /**

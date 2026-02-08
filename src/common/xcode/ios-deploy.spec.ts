@@ -2,6 +2,7 @@
  * Unit tests for ios-deploy integration
  */
 
+import { EventEmitter } from "node:events";
 import { createMockContext, createMockTerminal } from "../../__mocks__/devices";
 import { exec } from "../exec";
 import { tempFilePath } from "../files";
@@ -22,6 +23,20 @@ jest.mock("../logger", () => ({
     error: jest.fn(),
   },
 }));
+
+// Mock child_process.spawn for the tail -f streaming
+const mockSpawn = jest.fn();
+jest.mock("node:child_process", () => ({
+  spawn: (...args: any[]) => mockSpawn(...args),
+}));
+
+function createMockChildProcess() {
+  const proc = new EventEmitter() as any;
+  proc.stdout = new EventEmitter();
+  proc.stderr = new EventEmitter();
+  proc.kill = jest.fn();
+  return proc;
+}
 
 describe("ios-deploy", () => {
   describe("isIosDeployInstalled", () => {
@@ -80,6 +95,9 @@ describe("ios-deploy", () => {
     beforeEach(() => {
       jest.clearAllMocks();
       setupExecuteMock();
+
+      // Setup spawn mock for tail -f streaming
+      mockSpawn.mockReturnValue(createMockChildProcess());
 
       // Setup tempFilePath mock to return disposable objects
       (tempFilePath as jest.Mock).mockImplementation(async () => {
@@ -252,7 +270,7 @@ describe("ios-deploy", () => {
       expect(iosDeployExecuteCalls).toHaveLength(1);
     });
 
-    it("ignores exit code when stderr does not contain device errors", async () => {
+    it("throws error when process is interrupted by signal (exit code 130)", async () => {
       (mockTerminal.execute as jest.Mock).mockImplementation(async (options: any) => {
         if (options.command === "ios-deploy") {
           const error: any = new Error("Process interrupted");
@@ -269,32 +287,43 @@ describe("ios-deploy", () => {
           appPath: "/path/to/app.app",
           bundleId: "com.example.app",
         }),
-      ).resolves.not.toThrow();
+      ).rejects.toThrow("Process interrupted");
     });
 
-    it("starts log file streaming in background", async () => {
-      let tailCalled = false;
+    it("throws error when process is killed by SIGTERM (exit code 143)", async () => {
       (mockTerminal.execute as jest.Mock).mockImplementation(async (options: any) => {
         if (options.command === "ios-deploy") {
-          iosDeployExecuteCalls.push(options);
-          return Promise.resolve();
-        }
-        if (options.command === "tail") {
-          tailCalled = true;
-          return Promise.resolve();
+          const error: any = new Error("Process terminated");
+          error.exitCode = 143;
+          error.stderr = "";
+          throw error;
         }
         return Promise.resolve();
       });
 
+      await expect(
+        iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+          deviceId: "00008110-001234567890001E",
+          appPath: "/path/to/app.app",
+          bundleId: "com.example.app",
+        }),
+      ).rejects.toThrow("Process terminated");
+    });
+
+    it("streams log file using spawn instead of terminal.execute", async () => {
+      // streamLogFile now uses child_process.spawn directly instead of terminal.execute
+      // so it won't appear as a terminal.execute call for tail
       await iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
         deviceId: "00008110-001234567890001E",
         appPath: "/path/to/app.app",
         bundleId: "com.example.app",
       });
 
-      // Should have ios-deploy call and tail -f call
+      // Only ios-deploy should be called through terminal.execute, not tail
       expect(iosDeployExecuteCalls).toHaveLength(1);
-      expect(tailCalled).toBe(true);
+      const allExecuteCalls = (mockTerminal.execute as jest.Mock).mock.calls;
+      const tailCalls = allExecuteCalls.filter((call: any) => call[0]?.command === "tail");
+      expect(tailCalls).toHaveLength(0);
     });
 
     it("handles empty launch arguments array", async () => {

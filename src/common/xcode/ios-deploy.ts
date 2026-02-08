@@ -14,17 +14,27 @@ import type { TaskTerminal } from "../tasks";
 /**
  * Helper to execute ios-deploy and ignore non-zero exit codes from safequit
  * ios-deploy's safequit often returns non-zero even when the app launches successfully
- * However, we should NOT ignore real errors like command not found or device not found
+ * However, we should NOT ignore real errors like command not found, device not found,
+ * or signal-based terminations (user pressed Ctrl+C)
  */
 async function executeIgnoringExitCode(terminal: TaskTerminal, command: string, args: string[]): Promise<void> {
   try {
     await terminal.execute({ command, args });
   } catch (error) {
     // Check if this is a real error we should re-throw
-    const execError = error as { exitCode?: number; stderr?: string; message?: string };
+    const execError = error as { exitCode?: number; errorCode?: number | null; stderr?: string; message?: string };
+    const exitCode = execError.exitCode ?? execError.errorCode;
 
     // Exit code 127 = command not found
-    if (execError.exitCode === 127) {
+    if (exitCode === 127) {
+      throw error;
+    }
+
+    // Exit code null = process killed by signal (SIGTERM/SIGKILL from Ctrl+C)
+    // Exit code 130 = SIGINT (Ctrl+C)
+    // Exit code 143 = SIGTERM
+    // These indicate user-initiated cancellation and must propagate
+    if (exitCode === null || exitCode === 130 || exitCode === 143) {
       throw error;
     }
 
@@ -43,17 +53,37 @@ async function executeIgnoringExitCode(terminal: TaskTerminal, command: string, 
  * Stream log file contents to terminal using tail -f
  * This provides real-time console log streaming from ios-deploy output files
  * LLDB output (including app console logs) goes to stderr
+ *
+ * Returns a cleanup function that terminates the tail process when called.
  */
-async function streamLogFile(terminal: TaskTerminal, logFilePath: string): Promise<void> {
-  const tailCommand = "tail";
-  const tailArgs = ["-f", logFilePath];
+async function streamLogFile(terminal: TaskTerminal, logFilePath: string): Promise<() => void> {
+  // We need to start tail -f in a way that we can cancel it when ios-deploy exits.
+  // Instead of calling terminal.execute() (which would race with ios-deploy for
+  // this.process ownership), we use a separate spawn to avoid the race condition.
+  const { spawn } = await import("node:child_process");
+  const tailProcess = spawn("tail", ["-f", logFilePath], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 
-  try {
-    await terminal.execute({ command: tailCommand, args: tailArgs });
-  } catch (error) {
-    // If tail fails (e.g., file doesn't exist yet), just log and continue
+  tailProcess.stdout?.on("data", (data: Buffer) => {
+    terminal.write(data.toString());
+  });
+
+  tailProcess.stderr?.on("data", (data: Buffer) => {
+    terminal.write(data.toString(), { color: "yellow" });
+  });
+
+  tailProcess.on("error", (error) => {
     commonLogger.debug("Failed to stream log file", { error, logFilePath });
-  }
+  });
+
+  return () => {
+    try {
+      tailProcess.kill("SIGTERM");
+    } catch {
+      // Process already terminated
+    }
+  };
 }
 
 /**
@@ -111,11 +141,16 @@ export async function installAndLaunchApp(
     }
   }
 
-  // Start streaming the stderr file in background
+  // Start streaming the stderr file in background and get cleanup function
   // Note: LLDB output (including app console logs) goes to stderr, not stdout
-  void streamLogFile(terminal, stderrPath.path);
+  const stopStreaming = await streamLogFile(terminal, stderrPath.path);
 
-  await executeIgnoringExitCode(terminal, "ios-deploy", args);
+  try {
+    await executeIgnoringExitCode(terminal, "ios-deploy", args);
+  } finally {
+    // Always stop the tail process when ios-deploy exits (success, error, or Ctrl+C)
+    stopStreaming();
+  }
 }
 
 /**
