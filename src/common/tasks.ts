@@ -123,7 +123,7 @@ class LineBuffer {
 export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   private writeEmitter = new vscode.EventEmitter<string>();
   private closeEmitter = new vscode.EventEmitter<number>();
-  private process: ChildProcess | null = null;
+  private processes: Set<ChildProcess> = new Set();
 
   constructor(
     private context: ExtensionContext,
@@ -186,12 +186,23 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   }
 
   private terminateProcess(): void {
-    const pid = this.process?.pid;
-    if (!pid) {
+    if (this.processes.size === 0) {
       return;
     }
 
-    const _kill = (signal: string): void => {
+    // Collect all PIDs before iterating, since the set may be modified during termination
+    const pids: number[] = [];
+    for (const proc of this.processes) {
+      if (proc.pid) {
+        pids.push(proc.pid);
+      }
+    }
+
+    if (pids.length === 0) {
+      return;
+    }
+
+    const _kill = (pid: number, signal: string): void => {
       try {
         process.kill(-pid, signal);
       } catch (e) {
@@ -203,20 +214,34 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       }
     };
 
-    // First try to terminate the process gracefully
-    _kill("SIGTERM");
+    // First try to terminate all processes gracefully
+    for (const pid of pids) {
+      _kill(pid, "SIGTERM");
+    }
 
-    // After 5 seconds, we will try to kill it with SIGKILL with backoff strategy
+    // After 5 seconds, we will try to kill remaining processes with SIGKILL with backoff strategy
     const maxAttempts = 3;
     let attempt = 0;
     let timeout = 5000; // 5 seconds
 
     const _sigkill = () => {
-      if (!this.process || this.process.exitCode !== null) {
-        return; // the process is already terminated
+      // Filter to only processes that are still running
+      const stillRunning = pids.filter((pid) => {
+        for (const proc of this.processes) {
+          if (proc.pid === pid && proc.exitCode === null) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (stillRunning.length === 0) {
+        return; // all processes are terminated
       }
 
-      _kill("SIGKILL");
+      for (const pid of stillRunning) {
+        _kill(pid, "SIGKILL");
+      }
       attempt++;
       if (attempt < maxAttempts) {
         timeout = timeout * 2; // 10 seconds, 20 seconds, etc.
@@ -261,7 +286,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       });
 
       const env = { ...process.env, ...prepareEnvVars(options.env) };
-      this.process = spawn(command, {
+      const childProcess = spawn(command, {
         // run command in shell to support pipes
         shell: true,
         // in order to be able to kill the whole process group
@@ -270,26 +295,27 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
         env: env,
         cwd: workspacePath,
       });
-      this.process.stderr?.on("data", (data: string | Buffer): void => {
+      this.processes.add(childProcess);
+      childProcess.stderr?.on("data", (data: string | Buffer): void => {
         const output = data.toString();
         this.write(output, { color: "yellow" });
         hasOutput = true;
 
         stderrBuffer.append(output);
       });
-      this.process.stdout?.on("data", (data: string | Buffer): void => {
+      childProcess.stdout?.on("data", (data: string | Buffer): void => {
         const output = data.toString();
         this.write(output);
         hasOutput = true;
 
         stdouBuffer.append(output);
       });
-      this.process.stdin?.on("data", (data: string | Buffer): void => {
+      childProcess.stdin?.on("data", (data: string | Buffer): void => {
         const input = data.toString();
         this.write(input);
         hasOutput = true;
       });
-      this.process.on("close", (code) => {
+      childProcess.on("close", (code) => {
         // make space between command output and next command or error message
         // when we don't have any output, we already have a new line after command
         if (hasOutput) {
@@ -299,7 +325,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
         stdouBuffer.flush();
         stderrBuffer.flush();
 
-        this.process = null;
+        this.processes.delete(childProcess);
         if (code !== 0) {
           reject(
             new ExecuteTaskError("Command returned non-zero exit code", { command: commandPrint, errorCode: code }),
@@ -308,13 +334,13 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
           resolve();
         }
       });
-      this.process.on("error", (error) => {
+      childProcess.on("error", (error) => {
         if (hasOutput) {
           this.writeLine();
         }
 
+        this.processes.delete(childProcess);
         reject(new ExecuteTaskError("Error running command", { command: commandPrint, errorCode: null }));
-        this.process = null;
       });
     });
   }

@@ -20,6 +20,7 @@ import { isFileExists, readJsonFile, tempFilePath } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
+import * as iosDeploy from "../common/xcode/ios-deploy";
 import { getLogStreamManager } from "../debugger/log-stream";
 import type { DeviceDestination } from "../devices/types";
 import type { SimulatorDestination } from "../simulators/types";
@@ -658,7 +659,7 @@ export class BuildManager {
   ) {
     const context = this.context;
     const { scheme, configuration, destination } = option;
-    const { udid: deviceId, type: destinationType, name: destinationName } = destination;
+    const { type: destinationType, name: destinationName } = destination;
 
     context.updateProgressStatus("Extracting build settings");
     const buildSettings = await getBuildSettingsToLaunch({
@@ -671,12 +672,21 @@ export class BuildManager {
     const targetPath = await ensureAppPathExists(buildSettings.appPath);
     const bundlerId = buildSettings.bundleIdentifier;
 
-    // Install app on device
+    // Determine which deployment method to use based on device capabilities
+    const useDevicectl = destination.supportsDevicectl;
+
+    // Use appropriate device ID format for the deployment method
+    // - devicectl uses the devicectl identifier format
+    // - ios-deploy uses the legacy UDID format
+    const deviceId = useDevicectl ? destination.devicectlId : destination.udid;
+
+    // Validate that we have a device ID
+    if (!deviceId) {
+      throw new ExtensionError(`Could not determine device ID for ${destinationName}`);
+    }
+
+    // Install and launch app on device
     context.updateProgressStatus(`Installing "${scheme}" on "${destinationName}"`);
-    await terminal.execute({
-      command: "xcrun",
-      args: ["devicectl", "device", "install", "app", "--device", deviceId, targetPath],
-    });
 
     context.updateWorkspaceState("build.lastLaunchedApp", {
       type: "device",
@@ -687,14 +697,6 @@ export class BuildManager {
       destinationType: destinationType,
     });
 
-    await using jsonOutputPath = await tempFilePath(context, {
-      prefix: "json",
-    });
-
-    context.updateProgressStatus("Extracting Xcode version");
-    const xcodeVersion = await getXcodeVersionInstalled();
-    const isConsoleOptionSupported = xcodeVersion.major >= 16;
-
     if (option.watchMarker) {
       writeWatchMarkers(terminal);
     }
@@ -703,58 +705,104 @@ export class BuildManager {
     const logStreamManager = getLogStreamManager(context);
     logStreamManager.prepareForLaunch(bundlerId);
 
-    // Prepare the launch arguments
-    const launchArgs = [
-      "devicectl",
-      "device",
-      "process",
-      "launch",
-      // Attaches the application to the console and waits for it to exit
-      isConsoleOptionSupported ? "--console" : null,
-      "--json-output",
-      jsonOutputPath.path,
-      // Terminates any already-running instances of the app prior to launch. Not supported on all platforms.
-      "--terminate-existing",
-      "--device",
-      deviceId,
-      bundlerId,
-      ...option.launchArgs,
-    ].filter((arg) => arg !== null); // Filter out null arguments
-
     // Launch app on device
     context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
-    await terminal.execute({
-      command: "xcrun",
-      args: launchArgs,
-      // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process
-      env: Object.fromEntries(
-        Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value]),
-      ),
-      // Forward stdout/stderr to the log stream output channel
-      onOutputLine: async (data) => {
-        logStreamManager.appendOutput(data.value, data.type);
-      },
-    });
 
-    let jsonOutput: any;
-    try {
-      jsonOutput = await readJsonFile(jsonOutputPath.path);
-    } catch (e) {
-      throw new ExtensionError("Error reading json output");
-    }
+    if (useDevicectl) {
+      // Use devicectl for iOS 17+ devices - separate install and launch
+      await terminal.execute({
+        command: "xcrun",
+        args: ["devicectl", "device", "install", "app", "--device", deviceId, targetPath],
+      });
 
-    if (jsonOutput.info.outcome !== "success") {
-      terminal.write("Error launching app on device", {
+      await using jsonOutputPath = await tempFilePath(context, {
+        prefix: "json",
+      });
+
+      context.updateProgressStatus("Extracting Xcode version");
+      const xcodeVersion = await getXcodeVersionInstalled();
+      const isConsoleOptionSupported = xcodeVersion.major >= 16;
+
+      // Prepare the launch arguments
+      const launchArgs = [
+        "devicectl",
+        "device",
+        "process",
+        "launch",
+        // Attaches the application to the console and waits for it to exit
+        isConsoleOptionSupported ? "--console" : null,
+        "--json-output",
+        jsonOutputPath.path,
+        // Terminates any already-running instances of the app prior to launch. Not supported on all platforms.
+        "--terminate-existing",
+        "--device",
+        deviceId,
+        bundlerId,
+        ...option.launchArgs,
+      ].filter((arg) => arg !== null); // Filter out null arguments
+
+      await terminal.execute({
+        command: "xcrun",
+        args: launchArgs,
+        // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process
+        env: Object.fromEntries(
+          Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value]),
+        ),
+        // Forward stdout/stderr to the log stream output channel
+        onOutputLine: async (data) => {
+          logStreamManager.appendOutput(data.value, data.type);
+        },
+      });
+
+      let jsonOutput: any;
+      try {
+        jsonOutput = await readJsonFile(jsonOutputPath.path);
+      } catch (e) {
+        throw new ExtensionError("Error reading json output");
+      }
+
+      if (jsonOutput.info.outcome !== "success") {
+        terminal.write("Error launching app on device", {
+          newLine: true,
+        });
+        terminal.write(JSON.stringify(jsonOutput.result, null, 2), {
+          newLine: true,
+        });
+        return;
+      }
+      terminal.write(`App launched on device with PID: ${jsonOutput.result.process.processIdentifier}`, {
         newLine: true,
       });
-      terminal.write(JSON.stringify(jsonOutput.result, null, 2), {
+    } else {
+      // Use ios-deploy for older devices (iOS < 17)
+      // ios-deploy handles both install and launch in one command with --debug
+      commonLogger.debug("Using ios-deploy for older device", {
+        deviceId: deviceId,
+        osVersion: destination.osVersion,
+      });
+
+      // Check if ios-deploy is installed before attempting to use it
+      const isInstalled = await iosDeploy.isIosDeployInstalled();
+      if (!isInstalled) {
+        throw new ExtensionError("ios-deploy is required for iOS < 17. Install it with: brew install ios-deploy");
+      }
+
+      if (option.watchMarker) {
+        writeWatchMarkers(terminal);
+      }
+
+      await iosDeploy.installAndLaunchApp(context, terminal, {
+        deviceId: deviceId,
+        appPath: targetPath,
+        bundleId: bundlerId,
+        launchArgs: option.launchArgs,
+        launchEnv: option.launchEnv,
+      });
+
+      terminal.write("App launched on device", {
         newLine: true,
       });
-      return;
     }
-    terminal.write(`App launched on device with PID: ${jsonOutput.result.process.processIdentifier}`, {
-      newLine: true,
-    });
   }
 
   async buildApp(

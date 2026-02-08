@@ -1,0 +1,40 @@
+{
+  "result": {
+    "devices": [
+      {
+        "capabilities": [],
+        "connectionProperties": {
+          "tunnelState": "connected",
+          "pairingState": "paired"
+        },
+        "deviceProperties": {
+          "name": "Device Without Identifier"
+        },
+        "hardwareProperties": {
+          "deviceType": "iPhone",
+          "marketingName": "Invalid Device",
+          "productType": "iPhone99,9",
+          "platform": "iOS"
+        },
+        "visibilityClass": "default"
+      },
+      {
+        "capabilities": [],
+        "connectionProperties": {
+          "tunnelState": "connected",
+          "pairingState": "paired"
+        },
+        "deviceProperties": {
+          "name": "Device Without DeviceType"
+        },
+        "hardwareProperties": {
+          "marketingName": "Another Invalid Device",
+          "productType": "iPhone88,8",
+          "platform": "iOS"
+        },
+        "identifier": "urn:x-ios-devicectl:device-CSNO TYPE-NODEVICEPATHHERE",
+        "visibilityClass": "default"
+      }
+    ]
+  }
+}

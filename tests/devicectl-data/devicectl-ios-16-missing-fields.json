@@ -1,0 +1,24 @@
+{
+  "result": {
+    "devices": [
+      {
+        "capabilities": [],
+        "connectionProperties": {
+          "tunnelState": "connected",
+          "pairingState": "paired"
+        },
+        "deviceProperties": {
+          "name": "iPhone 13"
+        },
+        "hardwareProperties": {
+          "deviceType": "iPhone",
+          "marketingName": "iPhone 13",
+          "productType": "iPhone14,5",
+          "platform": "iOS"
+        },
+        "identifier": "urn:x-ios-devicectl:device-CS9876543-0987654321098765",
+        "visibilityClass": "default"
+      }
+    ]
+  }
+}

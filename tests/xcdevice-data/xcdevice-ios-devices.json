@@ -1,0 +1,23 @@
+[
+  {
+    "identifier": "00008110-001234567890001E",
+    "modelCode": "iPhone15,2",
+    "name": "iPhone 14 Pro",
+    "operatingSystemVersion": "16.7.12",
+    "platform": "com.apple.platform.iphoneos"
+  },
+  {
+    "identifier": "00008120-001234567890002E",
+    "modelCode": "iPhone14,8",
+    "name": "iPhone 14 Plus",
+    "operatingSystemVersion": "16.6.1",
+    "platform": "com.apple.platform.iphoneos"
+  },
+  {
+    "identifier": "00008130-001234567890003E",
+    "modelCode": "iPad14,5",
+    "name": "iPad Pro 12.9-inch",
+    "operatingSystemVersion": "16.5",
+    "platform": "com.apple.platform.iphoneos"
+  }
+]
