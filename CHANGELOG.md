@@ -2,6 +2,15 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.74] - 2026-02-08
+
+- Add SPM support ([#213](https://github.com/sweetpad-dev/sweetpad/pull/213)) - originally proposed by
+  [Matheus Gois](https://github.com/maatheusgois-dd) in [#152](https://github.com/sweetpad-dev/sweetpad/pull/152)
+- App Logs output support (os_log+print+NSLog) ([#212](https://github.com/sweetpad-dev/sweetpad/pull/212)) - by
+  [squad-person](https://github.com/squad-person)
+- Allow override of the default xcodebuild command ([#210](https://github.com/sweetpad-dev/sweetpad/pull/210)) - by
+  [Aliaksei Siauko](https://github.com/asevko)
+
 ## [0.1.73] - 2026-02-01
 
 - Add stop command to stop scheme action [#198](https://github.com/sweetpad-dev/sweetpad/issues/198)
