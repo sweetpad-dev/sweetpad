@@ -9,6 +9,7 @@ import {
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
   getSchemes,
+  getSwiftCommand,
   getXcodeBuildCommand,
   getXcodeVersionInstalled,
 } from "../common/cli/scripts";
@@ -31,9 +32,11 @@ import {
   askDestinationToRunOn,
   askSchemeForBuild,
   askXcodeWorkspacePath,
+  detectWorkspaceType,
   ensureAppPathExists,
   generateBuildServerConfigOnBuild,
   getCurrentXcodeWorkspacePath,
+  getSwiftPMDirectory,
   getWorkspacePath,
   getXcodeBuildDestinationString,
   isXcbeautifyEnabled,
@@ -783,6 +786,8 @@ export class BuildManager {
     // ex: { "ARG1": "value1", "ARG2": null, "ARG3": "value3" }
     const env = getWorkspaceConfig("build.env") || {};
 
+    const workspaceType = detectWorkspaceType(options.xcworkspace);
+
     const command = new XcodeCommandBuilder();
     if (arch) {
       command.addBuildSettings("ARCHS", arch);
@@ -806,7 +811,6 @@ export class BuildManager {
 
     command.addParameters("-scheme", options.scheme);
     command.addParameters("-configuration", options.configuration);
-    command.addParameters("-workspace", options.xcworkspace);
     command.addParameters("-destination", options.destinationRaw);
     command.addParameters("-resultBundlePath", bundlePath);
     if (derivedDataPath) {
@@ -814,6 +818,11 @@ export class BuildManager {
     }
     if (allowProvisioningUpdates) {
       command.addOption("-allowProvisioningUpdates");
+    }
+
+    // Add workspace parameter only for Xcode projects
+    if (workspaceType === "xcode") {
+      command.addParameters("-workspace", options.xcworkspace);
     }
 
     if (options.shouldClean) {
@@ -846,11 +855,21 @@ export class BuildManager {
       xcworkspace: options.xcworkspace,
     });
 
+    let cwd: string;
+    if (workspaceType === "spm") {
+      cwd = getSwiftPMDirectory(options.xcworkspace);
+    } else if (workspaceType === "xcode") {
+      cwd = getWorkspacePath();
+    } else {
+      assertUnreachable(workspaceType);
+    }
+
     await terminal.execute({
       command: commandParts[0],
       args: commandParts.slice(1),
       pipes: pipes,
       env: env,
+      cwd: cwd,
     });
 
     await restartSwiftLSP();
@@ -941,10 +960,7 @@ export class BuildManager {
     });
   }
 
-  async resolveDependenciesCommand(options: {
-    scheme: string;
-    xcworkspace: string;
-  }): Promise<void> {
+  async resolveDependenciesCommand(options: { scheme: string; xcworkspace: string }): Promise<void> {
     const context = this.context;
     context.updateProgressStatus("Resolving dependencies");
 
@@ -952,10 +968,22 @@ export class BuildManager {
       name: "Resolve Dependencies",
       scheme: options.scheme,
       callback: async (terminal) => {
-        await terminal.execute({
-          command: getXcodeBuildCommand(),
-          args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],
-        });
+        const workspaceType = detectWorkspaceType(options.xcworkspace);
+        if (workspaceType === "spm") {
+          const packageDir = getSwiftPMDirectory(options.xcworkspace);
+          await terminal.execute({
+            command: getSwiftCommand(),
+            args: ["package", "resolve"],
+            cwd: packageDir,
+          });
+        } else if (workspaceType === "xcode") {
+          await terminal.execute({
+            command: getXcodeBuildCommand(),
+            args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],
+          });
+        } else {
+          assertUnreachable(workspaceType);
+        }
       },
     });
   }

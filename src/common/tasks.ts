@@ -19,6 +19,7 @@ export type CommandOptions = {
   args?: (string | null)[];
   pipes?: Command[];
   env?: { [key: string]: string | null };
+  cwd?: string;
   onOutputLine?: (data: { value: string; type: "stdout" | "stderr" }) => Promise<void>;
 };
 
@@ -242,7 +243,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     let hasOutput = false;
 
     return new Promise<void>((resolve, reject) => {
-      const workspacePath = getWorkspacePath();
+      const workspacePath = options.cwd ?? getWorkspacePath();
 
       // Collect lines and send them to the callback
       // This is usefull when you need to listen to task output and make some actions based on it
@@ -411,7 +412,7 @@ export class TaskTerminalV1 implements TaskTerminal {
       vscode.TaskScope.Workspace,
       this.options.name,
       this.options.source ?? "sweetpad",
-      new vscode.ShellExecution(command),
+      new vscode.ShellExecution(command, { cwd: options.cwd }),
       this.options.problemMatchers,
     );
     setTaskPresentationOptions(task);

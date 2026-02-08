@@ -27,6 +27,7 @@
     "workspaceContains:**/*.xcodeproj",
     "workspaceContains:**/project.yml",
     "workspaceContains:**/Podfile",
+    "workspaceContains:**/Package.swift",
     "onLanguage:swift",
     "onDebug"
   ],
@@ -760,6 +761,15 @@
           "examples": [
             "/Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild",
             "${env:XCODEBUILD_PATH}"
+          ]
+        },
+        "sweetpad.build.swiftCommand": {
+          "type": "string",
+          "default": null,
+          "description": "Custom swift command or path. Supports environment variable expansion via ${env:VAR_NAME} syntax.",
+          "examples": [
+            "/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift",
+            "${env:SWIFT_PATH}"
           ]
         },
         "sweetpad.build.derivedDataPath": {
