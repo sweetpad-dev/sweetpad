@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.1.73",
+  "version": "0.1.74",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -27,6 +27,7 @@
     "workspaceContains:**/*.xcodeproj",
     "workspaceContains:**/project.yml",
     "workspaceContains:**/Podfile",
+    "workspaceContains:**/Package.swift",
     "onLanguage:swift",
     "onDebug"
   ],
@@ -753,6 +754,24 @@
           "required": false,
           "description": "Path to Xcode workspace. Can be absolute or relative to the workspace root."
         },
+        "sweetpad.build.xcodebuildCommand": {
+          "type": "string",
+          "default": null,
+          "description": "Custom xcodebuild command or path. Supports environment variable expansion via ${env:VAR_NAME} syntax.",
+          "examples": [
+            "/Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild",
+            "${env:XCODEBUILD_PATH}"
+          ]
+        },
+        "sweetpad.build.swiftCommand": {
+          "type": "string",
+          "default": null,
+          "description": "Custom swift command or path. Supports environment variable expansion via ${env:VAR_NAME} syntax.",
+          "examples": [
+            "/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift",
+            "${env:SWIFT_PATH}"
+          ]
+        },
         "sweetpad.build.derivedDataPath": {
           "type": "string",
           "default": null,
@@ -931,6 +950,21 @@
           "minimum": 100,
           "maximum": 5000,
           "description": "Delay in milliseconds before auto-refreshing schemes after detecting file changes"
+        },
+        "sweetpad.build.logStreamEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable log streaming during debug sessions. Captures os_log/Logger/NSLog output in the 'SweetPad: App Logs' output channel. print() output is also captured via stdout."
+        },
+        "sweetpad.build.logStreamPredicate": {
+          "type": "string",
+          "default": null,
+          "description": "Custom predicate for log stream filtering. Use ${bundleId} for the bundle identifier and ${processName} for the process name. Default: captures os_log/Logger (by subsystem) and NSLog (via Foundation sender).",
+          "examples": [
+            "subsystem BEGINSWITH \"${bundleId}\" OR (process == \"${processName}\" AND sender == \"Foundation\")",
+            "subsystem BEGINSWITH \"${bundleId}\"",
+            "process == \"${processName}\""
+          ]
         }
       }
     },

@@ -1,13 +1,20 @@
 import path from "node:path";
 import * as vscode from "vscode";
-import { askXcodeWorkspacePath, getWorkspacePath, getXcodeBuildDestinationString } from "../build/utils.js";
-import { getBuildSettingsToAskDestination } from "../common/cli/scripts.js";
+import {
+  askXcodeWorkspacePath,
+  detectWorkspaceType,
+  getSwiftPMDirectory,
+  getWorkspacePath,
+  getXcodeBuildDestinationString,
+} from "../build/utils.js";
+import { getBuildSettingsToAskDestination, getXcodeBuildCommand } from "../common/cli/scripts.js";
 import type { ExtensionContext } from "../common/commands.js";
 import { errorReporting } from "../common/error-reporting.js";
 import { exec } from "../common/exec.js";
 import { isFileExists } from "../common/files.js";
 import { commonLogger } from "../common/logger.js";
 import { runTask } from "../common/tasks.js";
+import { assertUnreachable } from "../common/types.js";
 import type { Destination } from "../destination/types.js";
 import { askConfigurationForTesting, askDestinationToTestOn, askSchemeForTesting, askTestingTarget } from "./utils.js";
 
@@ -28,9 +35,7 @@ class XcodebuildTestRunContext {
   private inlineErrorMap = new Map<string, TestingInlineError>();
   private methodTests: Map<string, vscode.TestItem>;
 
-  constructor(options: {
-    methodTests: Iterable<[string, vscode.TestItem]>;
-  }) {
+  constructor(options: { methodTests: Iterable<[string, vscode.TestItem]> }) {
     this.methodTests = new Map(options.methodTests);
   }
 
@@ -402,18 +407,30 @@ export class TestingManager {
       lock: "sweetpad.build",
       terminateLocked: true,
       callback: async (terminal) => {
+        const workspaceType = detectWorkspaceType(options.xcworkspace);
+        const args: string[] = [
+          "build-for-testing",
+          "-destination",
+          destinationRaw,
+          "-allowProvisioningUpdates",
+          "-scheme",
+          options.scheme,
+        ];
+
+        let cwd: string;
+        if (workspaceType === "spm") {
+          cwd = getSwiftPMDirectory(options.xcworkspace);
+        } else if (workspaceType === "xcode") {
+          cwd = getWorkspacePath();
+          args.push("-workspace", options.xcworkspace);
+        } else {
+          assertUnreachable(workspaceType);
+        }
+
         await terminal.execute({
-          command: "xcodebuild",
-          args: [
-            "build-for-testing",
-            "-destination",
-            destinationRaw,
-            "-allowProvisioningUpdates",
-            "-scheme",
-            options.scheme,
-            "-workspace",
-            options.xcworkspace,
-          ],
+          command: getXcodeBuildCommand(),
+          args: args,
+          cwd: cwd,
         });
       },
     });
@@ -805,18 +822,30 @@ export class TestingManager {
         lock: "sweetpad.build",
         terminateLocked: true,
         callback: async (terminal) => {
+          const workspaceType = detectWorkspaceType(options.xcworkspace);
+          const args: string[] = [
+            "test-without-building",
+            "-destination",
+            destinationRaw,
+            "-scheme",
+            scheme,
+            `-only-testing:${testTarget}/${classTest.id}`,
+          ];
+
+          let cwd: string;
+          if (workspaceType === "spm") {
+            cwd = getSwiftPMDirectory(options.xcworkspace);
+          } else if (workspaceType === "xcode") {
+            cwd = getWorkspacePath();
+            args.push("-workspace", options.xcworkspace);
+          } else {
+            assertUnreachable(workspaceType);
+          }
+
           await terminal.execute({
-            command: "xcodebuild",
-            args: [
-              "test-without-building",
-              "-workspace",
-              options.xcworkspace,
-              "-destination",
-              destinationRaw,
-              "-scheme",
-              scheme,
-              `-only-testing:${testTarget}/${classTest.id}`,
-            ],
+            command: getXcodeBuildCommand(),
+            args: args,
+            cwd: cwd,
             onOutputLine: async (output) => {
               await this.parseOutputLine({
                 line: output.value,
@@ -888,18 +917,29 @@ export class TestingManager {
       terminateLocked: true,
       callback: async (terminal) => {
         try {
+          const workspaceType = detectWorkspaceType(options.xcworkspace);
+          const args: string[] = [
+            "test-without-building",
+            "-destination",
+            destinationRaw,
+            "-scheme",
+            scheme,
+            `-only-testing:${testTarget}/${className}/${methodName}`,
+          ];
+
+          let cwd: string;
+          if (workspaceType === "spm") {
+            cwd = getSwiftPMDirectory(options.xcworkspace);
+          } else if (workspaceType === "xcode") {
+            cwd = getWorkspacePath();
+            args.push("-workspace", options.xcworkspace);
+          } else {
+            assertUnreachable(workspaceType);
+          }
           await terminal.execute({
-            command: "xcodebuild",
-            args: [
-              "test-without-building",
-              "-workspace",
-              options.xcworkspace,
-              "-destination",
-              destinationRaw,
-              "-scheme",
-              scheme,
-              `-only-testing:${testTarget}/${className}/${methodName}`,
-            ],
+            command: getXcodeBuildCommand(),
+            args: args,
+            cwd: cwd,
             onOutputLine: async (output) => {
               await this.parseOutputLine({
                 line: output.value,

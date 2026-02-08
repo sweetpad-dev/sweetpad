@@ -1,5 +1,5 @@
 import path from "node:path";
-import { getWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
+import { detectWorkspaceType, getSwiftPMDirectory, getWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { cache } from "../cache";
 import { getWorkspaceConfig } from "../config";
@@ -203,12 +203,11 @@ async function getBuildSettingsList(options: {
 }): Promise<XcodeBuildSettings[]> {
   const derivedDataPath = prepareDerivedDataPath();
 
+  // Build common arguments
   const args = [
     "-showBuildSettings",
     "-scheme",
     options.scheme,
-    "-workspace",
-    options.xcworkspace,
     "-configuration",
     options.configuration,
     ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
@@ -219,12 +218,25 @@ async function getBuildSettingsList(options: {
     args.push("-sdk", options.sdk);
   }
 
+  // Determine workspace type and set up execution context
+  const workspaceType = detectWorkspaceType(options.xcworkspace);
+  let cwd: string | undefined;
+
+  if (workspaceType === "spm") {
+    cwd = getSwiftPMDirectory(options.xcworkspace);
+  } else if (workspaceType === "xcode") {
+    args.push("-workspace", options.xcworkspace);
+  } else {
+    assertUnreachable(workspaceType);
+  }
+
   const stdout = await exec({
-    command: "xcodebuild",
+    command: getXcodeBuildCommand(),
     args: args,
+    cwd: cwd,
   });
 
-  // First few lines can be invalid json, so we need to skip them, untill we find "{" or "[" at the beginning of the line
+  // Parse the output - first few lines can be invalid json, so we need to skip them
   const lines = stdout.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -358,6 +370,19 @@ function getXcodeBuildServerCommand(): string {
 }
 
 /**
+ * Get the xcodebuild command from config or default
+ */
+export function getXcodeBuildCommand(): string {
+  const customCommand = getWorkspaceConfig("build.xcodebuildCommand");
+  return customCommand || "xcodebuild";
+}
+
+export function getSwiftCommand(): string {
+  const customCommand = getWorkspaceConfig("build.swiftCommand");
+  return customCommand || "swift";
+}
+
+/**
  * Find if xcode-build-server is installed
  */
 export async function getIsXcodeBuildServerInstalled() {
@@ -376,27 +401,90 @@ export async function getIsXcodeBuildServerInstalled() {
 
 export const getBasicProjectInfo = cache(
   async (options: { xcworkspace: string | undefined }): Promise<XcodebuildListOutput> => {
-    const stdout = await exec({
-      command: "xcodebuild",
-      args: ["-list", "-json", ...(options?.xcworkspace ? ["-workspace", options?.xcworkspace] : [])],
-    });
-    const parsed = parseCliJsonOutput<any>(stdout);
-    if (parsed.project) {
+    const workspaceType = detectWorkspaceType(options.xcworkspace ?? "");
+    if (workspaceType === "spm") {
+      // For SPM projects, we create a mock workspace output since SPM doesn't have traditional schemes
+      // The schemes will be handled by the getSchemes function
       return {
-        type: "project",
-        ...parsed,
-      } as XcodebuildListProjectOutput;
+        type: "workspace",
+        workspace: {
+          name: path.basename(path.dirname(options.xcworkspace ?? "")), // todo: understand that
+          schemes: [], // Will be populated by getSchemes function
+        },
+      } as XcodebuildListWorkspaceOutput;
     }
-    return {
-      type: "workspace",
-      ...parsed,
-    } as XcodebuildListWorkspaceOutput;
+
+    if (workspaceType === "xcode") {
+      const stdout = await exec({
+        command: getXcodeBuildCommand(),
+        args: ["-list", "-json", ...(options?.xcworkspace ? ["-workspace", options?.xcworkspace] : [])],
+      });
+      const parsed = parseCliJsonOutput<any>(stdout);
+      if (parsed.project) {
+        return {
+          type: "project",
+          ...parsed,
+        } as XcodebuildListProjectOutput;
+      }
+      return {
+        type: "workspace",
+        ...parsed,
+      } as XcodebuildListWorkspaceOutput;
+    }
+    assertUnreachable(workspaceType);
   },
 );
 
 export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
   commonLogger.log("Getting schemes", { xcworkspace: options?.xcworkspace ?? "undefined" });
 
+  const workspaceType = detectWorkspaceType(options.xcworkspace ?? "");
+  if (workspaceType === "spm") {
+    try {
+      const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
+      const stdout = await exec({
+        command: getSwiftCommand(),
+        args: ["package", "dump-package"],
+        cwd: packageDir,
+      });
+      const packageInfo = JSON.parse(stdout);
+
+      const schemeNames = new Set<string>();
+
+      // Add all library/executable products
+      if (packageInfo.products) {
+        for (const product of packageInfo.products) {
+          if (product.type?.executable || product.type?.library) {
+            schemeNames.add(product.name);
+          }
+        }
+      }
+
+      // Add standalone executable targets not already covered
+      if (packageInfo.targets) {
+        for (const target of packageInfo.targets) {
+          if (target.type === "executable" && !schemeNames.has(target.name)) {
+            schemeNames.add(target.name);
+          }
+        }
+      }
+
+      // Fallback to the package name if nothing else found
+      if (schemeNames.size === 0 && packageInfo.name) {
+        schemeNames.add(packageInfo.name);
+      }
+
+      return Array.from(schemeNames).map((name) => ({ name }));
+    } catch (error) {
+      commonLogger.error("Failed to get SPM package info, falling back to xcodebuild", {
+        error,
+        packagePath: options.xcworkspace,
+      });
+      // continue on to next approach
+    }
+  }
+
+  // 2. Use custom workspace parser if enabled
   const useWorkspaceParser = getWorkspaceConfig("system.customXcodeWorkspaceParser") ?? false;
   if (options.xcworkspace && useWorkspaceParser) {
     try {
@@ -418,62 +506,139 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
         error,
         xcworkspace: options.xcworkspace,
       });
-      // Fall through to the original implementation
+      // continue on to xcodebuild fallback
     }
   }
 
-  // Original implementation using xcodebuild -list
+  // 3. Fallback to xcodebuild -list (via getBasicProjectInfo)
   const output = await getBasicProjectInfo({
     xcworkspace: options?.xcworkspace,
   });
   if (output.type === "project") {
-    return output.project.schemes.map((scheme) => {
-      return {
-        name: scheme,
-      };
-    });
+    return output.project.schemes.map((scheme) => ({ name: scheme }));
   }
   if (output.type === "workspace") {
-    return output.workspace.schemes.map((scheme) => {
-      return {
-        name: scheme,
-      };
-    });
+    return output.workspace.schemes.map((scheme) => ({ name: scheme }));
   }
   assertUnreachable(output);
 }
 
 export async function getTargets(options: { xcworkspace: string }): Promise<string[]> {
-  const output = await getBasicProjectInfo({
-    xcworkspace: options.xcworkspace,
-  });
-  if (output.type === "project") {
-    return output.project.targets;
+  const workspaceType = detectWorkspaceType(options.xcworkspace);
+  if (workspaceType === "spm") {
+    try {
+      const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
+      const stdout = await exec({
+        command: getSwiftCommand(),
+        args: ["package", "dump-package"],
+        cwd: packageDir,
+      });
+      const packageInfo = JSON.parse(stdout);
+
+      const targets: string[] = [];
+
+      // Add all targets
+      if (packageInfo.targets) {
+        for (const target of packageInfo.targets) {
+          targets.push(target.name);
+        }
+      }
+
+      return targets;
+    } catch (error) {
+      commonLogger.error("Failed to get SPM targets", {
+        error: error,
+        packagePath: options.xcworkspace,
+      });
+      return [];
+    }
   }
-  if (output.type === "workspace") {
-    const xcworkspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
-    const projects = await xcworkspace.getProjects();
-    return projects.flatMap((project) => project.getTargets());
+
+  if (workspaceType === "xcode") {
+    const output = await getBasicProjectInfo({
+      xcworkspace: options.xcworkspace,
+    });
+    if (output.type === "project") {
+      return output.project.targets;
+    }
+    if (output.type === "workspace") {
+      const xcworkspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+      const projects = await xcworkspace.getProjects();
+      return projects.flatMap((project) => project.getTargets());
+    }
+    assertUnreachable(output);
   }
-  assertUnreachable(output);
+  assertUnreachable(workspaceType);
 }
 
 export async function getBuildConfigurations(options: { xcworkspace: string }): Promise<XcodeConfiguration[]> {
-  commonLogger.log("Getting build configurations", { xcworkspace: options?.xcworkspace });
+  const workspaceType = detectWorkspaceType(options.xcworkspace);
+  if (workspaceType === "spm") {
+    // SPM projects typically use Debug and Release configurations
+    // TODO: try to extract custom configurations from Package.swift if possible, but for now let's just return the defaults
+    return [{ name: "Debug" }, { name: "Release" }];
+  }
 
-  const useWorkspaceParser = getWorkspaceConfig("system.customXcodeWorkspaceParser") ?? false;
+  if (workspaceType === "xcode") {
+    commonLogger.log("Getting build configurations", { xcworkspace: options?.xcworkspace });
 
-  if (useWorkspaceParser) {
-    try {
-      const workspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
-      const projects = await workspace.getProjects();
+    const useWorkspaceParser = getWorkspaceConfig("system.customXcodeWorkspaceParser") ?? false;
+
+    if (useWorkspaceParser) {
+      try {
+        const workspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+        const projects = await workspace.getProjects();
+
+        commonLogger.debug("Projects", {
+          paths: projects.map((project) => project.projectPath),
+        });
+
+        // Get configurations from all projects in the workspace
+        const configurations = projects
+          .flatMap((project) => {
+            commonLogger.debug("Project configurations", {
+              configurations: project.getConfigurations(),
+            });
+            return project.getConfigurations();
+          })
+          .filter(uniqueFilter)
+          .map((configuration) => {
+            return {
+              name: configuration,
+            };
+          });
+
+        return configurations;
+      } catch (error) {
+        commonLogger.error("Error getting build configurations with workspace parser, falling back to xcodebuild", {
+          error,
+          xcworkspace: options.xcworkspace,
+        });
+        // Fallback to xcodebuild -list (via getBasicProjectInfo) if workspace parser fails
+      }
+    }
+
+    // Original implementation using xcodebuild -list
+    const output = await getBasicProjectInfo({
+      xcworkspace: options.xcworkspace,
+    });
+    if (output.type === "project") {
+      // todo: if workspace option is required, can this happen at all? 🤔
+      return output.project.configurations.map((configuration) => {
+        return {
+          name: configuration,
+        };
+      });
+    }
+    if (output.type === "workspace") {
+      const xcworkspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+      const projects = await xcworkspace.getProjects();
 
       commonLogger.debug("Projects", {
         paths: projects.map((project) => project.projectPath),
       });
 
-      // Get configurations from all projects in the workspace
-      const configurations = projects
+      return projects
         .flatMap((project) => {
           commonLogger.debug("Project configurations", {
             configurations: project.getConfigurations(),
@@ -486,63 +651,34 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
             name: configuration,
           };
         });
-
-      return configurations;
-    } catch (error) {
-      commonLogger.error("Error getting build configurations with workspace parser, falling back to xcodebuild", {
-        error,
-        xcworkspace: options.xcworkspace,
-      });
-      // Fall through to the original implementation
     }
+    return [];
   }
-
-  // Original implementation using xcodebuild -list
-  const output = await getBasicProjectInfo({
-    xcworkspace: options.xcworkspace,
-  });
-  if (output.type === "project") {
-    // todo: if workspace option is required, can this happen at all? 🤔
-    return output.project.configurations.map((configuration) => {
-      return {
-        name: configuration,
-      };
-    });
-  }
-  if (output.type === "workspace") {
-    const xcworkspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
-    const projects = await xcworkspace.getProjects();
-
-    commonLogger.debug("Projects", {
-      paths: projects.map((project) => project.projectPath),
-    });
-
-    return projects
-      .flatMap((project) => {
-        commonLogger.debug("Project configurations", {
-          configurations: project.getConfigurations(),
-        });
-        return project.getConfigurations();
-      })
-      .filter(uniqueFilter)
-      .map((configuration) => {
-        return {
-          name: configuration,
-        };
-      });
-  }
-  return [];
+  assertUnreachable(workspaceType);
 }
 
 /**
  * Generate xcode-build-server config
  */
 export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
+  const workspaceType = detectWorkspaceType(options.xcworkspace);
   const command = getXcodeBuildServerCommand();
+  let cwd: string;
+  let args: string[];
 
+  if (workspaceType === "spm") {
+    cwd = getSwiftPMDirectory(options.xcworkspace);
+    args = ["config", "-scheme", options.scheme];
+  } else if (workspaceType === "xcode") {
+    cwd = getWorkspacePath();
+    args = ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme];
+  } else {
+    assertUnreachable(workspaceType);
+  }
   await exec({
     command: command,
-    args: ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme],
+    args: args,
+    cwd: cwd,
   });
 }
 

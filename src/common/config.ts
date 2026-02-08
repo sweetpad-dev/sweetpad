@@ -6,6 +6,8 @@ type Config = {
   "format.selectionArgs": string[] | null;
   "build.xcbeautifyEnabled": boolean;
   "build.xcodeWorkspacePath": string;
+  "build.xcodebuildCommand": string;
+  "build.swiftCommand": string;
   "build.derivedDataPath": string;
   "build.configuration": string;
   "build.arch": "x86_64" | "arm64";
@@ -18,6 +20,8 @@ type Config = {
   "build.bringSimulatorToForeground": boolean;
   "build.autoRefreshSchemes": boolean;
   "build.autoRefreshSchemesDelay": number;
+  "build.logStreamEnabled": boolean;
+  "build.logStreamPredicate": string;
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "system.enableSentry": boolean;

@@ -28,6 +28,7 @@ import { ExtensionContext } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
 import { Logger } from "./common/logger.js";
 import { getAppPathCommand } from "./debugger/commands.js";
+import { disposeLogStreamManager } from "./debugger/log-stream.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
 import {
   removeRecentDestinationCommand,
@@ -233,4 +234,6 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.system.openTerminalPanel", openTerminalPanel));
 }
 
-export function deactivate() {}
+export function deactivate() {
+  disposeLogStreamManager();
+}

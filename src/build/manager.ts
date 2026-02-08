@@ -9,6 +9,8 @@ import {
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
   getSchemes,
+  getSwiftCommand,
+  getXcodeBuildCommand,
   getXcodeVersionInstalled,
 } from "../common/cli/scripts";
 import { BaseExecutionScope, type ExtensionContext } from "../common/commands";
@@ -19,6 +21,7 @@ import { commonLogger } from "../common/logger";
 import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
 import * as iosDeploy from "../common/xcode/ios-deploy";
+import { getLogStreamManager } from "../debugger/log-stream";
 import type { DeviceDestination } from "../devices/types";
 import type { SimulatorDestination } from "../simulators/types";
 import { getSimulatorByUdid } from "../simulators/utils";
@@ -30,9 +33,11 @@ import {
   askDestinationToRunOn,
   askSchemeForBuild,
   askXcodeWorkspacePath,
+  detectWorkspaceType,
   ensureAppPathExists,
   generateBuildServerConfigOnBuild,
   getCurrentXcodeWorkspacePath,
+  getSwiftPMDirectory,
   getWorkspacePath,
   getXcodeBuildDestinationString,
   isXcbeautifyEnabled,
@@ -515,16 +520,25 @@ export class BuildManager {
     context.updateWorkspaceState("build.lastLaunchedApp", {
       type: "macos",
       appPath: executablePath,
+      bundleIdentifier: buildSettings.bundleIdentifier,
     });
     if (options.watchMarker) {
       writeWatchMarkers(terminal);
     }
+
+    // Prepare log stream output channel for stdout/stderr capture
+    const logStreamManager = getLogStreamManager(context);
+    logStreamManager.prepareForLaunch(buildSettings.bundleIdentifier);
 
     context.updateProgressStatus(`Running "${options.scheme}" on Mac`);
     await terminal.execute({
       command: executablePath,
       env: options.launchEnv,
       args: options.launchArgs,
+      // Forward stdout/stderr to the log stream output channel
+      onOutputLine: async (data) => {
+        logStreamManager.appendOutput(data.value, data.type);
+      },
     });
   }
 
@@ -592,10 +606,16 @@ export class BuildManager {
     context.updateWorkspaceState("build.lastLaunchedApp", {
       type: "simulator",
       appPath: appPath,
+      bundleIdentifier: bundlerId,
+      simulatorUdid: simulator.udid,
     });
     if (options.watchMarker) {
       writeWatchMarkers(terminal);
     }
+
+    // Prepare log stream output channel for stdout/stderr capture
+    const logStreamManager = getLogStreamManager(context);
+    logStreamManager.prepareForLaunch(bundlerId);
 
     const launchArgs = [
       "simctl",
@@ -617,6 +637,10 @@ export class BuildManager {
       args: launchArgs,
       // should be prefixed with `SIMCTL_CHILD_` to pass to the child process
       env: Object.fromEntries(Object.entries(options.launchEnv).map(([key, value]) => [`SIMCTL_CHILD_${key}`, value])),
+      // Forward stdout/stderr to the log stream output channel
+      onOutputLine: async (data) => {
+        logStreamManager.appendOutput(data.value, data.type);
+      },
     });
   }
 
@@ -664,27 +688,33 @@ export class BuildManager {
     // Install and launch app on device
     context.updateProgressStatus(`Installing "${scheme}" on "${destinationName}"`);
 
+    context.updateWorkspaceState("build.lastLaunchedApp", {
+      type: "device",
+      appPath: targetPath,
+      appName: buildSettings.appName,
+      bundleIdentifier: bundlerId,
+      destinationId: deviceId,
+      destinationType: destinationType,
+    });
+
+    if (option.watchMarker) {
+      writeWatchMarkers(terminal);
+    }
+
+    // Prepare log stream output channel for stdout/stderr capture
+    const logStreamManager = getLogStreamManager(context);
+    logStreamManager.prepareForLaunch(bundlerId);
+
+    // Launch app on device
+    context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
+
     if (useDevicectl) {
       // Use devicectl for iOS 17+ devices - separate install and launch
       await terminal.execute({
         command: "xcrun",
         args: ["devicectl", "device", "install", "app", "--device", deviceId, targetPath],
       });
-    }
 
-    context.updateWorkspaceState("build.lastLaunchedApp", {
-      type: "device",
-      appPath: targetPath,
-      appName: buildSettings.appName,
-      destinationId: deviceId,
-      destinationType: destinationType,
-    });
-
-    // Launch app on device
-    context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
-
-    if (useDevicectl) {
-      // Use devicectl for iOS 17+ devices
       await using jsonOutputPath = await tempFilePath(context, {
         prefix: "json",
       });
@@ -692,10 +722,6 @@ export class BuildManager {
       context.updateProgressStatus("Extracting Xcode version");
       const xcodeVersion = await getXcodeVersionInstalled();
       const isConsoleOptionSupported = xcodeVersion.major >= 16;
-
-      if (option.watchMarker) {
-        writeWatchMarkers(terminal);
-      }
 
       // Prepare the launch arguments
       const launchArgs = [
@@ -722,6 +748,10 @@ export class BuildManager {
         env: Object.fromEntries(
           Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value]),
         ),
+        // Forward stdout/stderr to the log stream output channel
+        onOutputLine: async (data) => {
+          logStreamManager.appendOutput(data.value, data.type);
+        },
       });
 
       let jsonOutput: any;
@@ -804,6 +834,8 @@ export class BuildManager {
     // ex: { "ARG1": "value1", "ARG2": null, "ARG3": "value3" }
     const env = getWorkspaceConfig("build.env") || {};
 
+    const workspaceType = detectWorkspaceType(options.xcworkspace);
+
     const command = new XcodeCommandBuilder();
     if (arch) {
       command.addBuildSettings("ARCHS", arch);
@@ -827,7 +859,6 @@ export class BuildManager {
 
     command.addParameters("-scheme", options.scheme);
     command.addParameters("-configuration", options.configuration);
-    command.addParameters("-workspace", options.xcworkspace);
     command.addParameters("-destination", options.destinationRaw);
     command.addParameters("-resultBundlePath", bundlePath);
     if (derivedDataPath) {
@@ -835,6 +866,11 @@ export class BuildManager {
     }
     if (allowProvisioningUpdates) {
       command.addOption("-allowProvisioningUpdates");
+    }
+
+    // Add workspace parameter only for Xcode projects
+    if (workspaceType === "xcode") {
+      command.addParameters("-workspace", options.xcworkspace);
     }
 
     if (options.shouldClean) {
@@ -867,11 +903,21 @@ export class BuildManager {
       xcworkspace: options.xcworkspace,
     });
 
+    let cwd: string;
+    if (workspaceType === "spm") {
+      cwd = getSwiftPMDirectory(options.xcworkspace);
+    } else if (workspaceType === "xcode") {
+      cwd = getWorkspacePath();
+    } else {
+      assertUnreachable(workspaceType);
+    }
+
     await terminal.execute({
       command: commandParts[0],
       args: commandParts.slice(1),
       pipes: pipes,
       env: env,
+      cwd: cwd,
     });
 
     await restartSwiftLSP();
@@ -962,10 +1008,7 @@ export class BuildManager {
     });
   }
 
-  async resolveDependenciesCommand(options: {
-    scheme: string;
-    xcworkspace: string;
-  }): Promise<void> {
+  async resolveDependenciesCommand(options: { scheme: string; xcworkspace: string }): Promise<void> {
     const context = this.context;
     context.updateProgressStatus("Resolving dependencies");
 
@@ -973,10 +1016,22 @@ export class BuildManager {
       name: "Resolve Dependencies",
       scheme: options.scheme,
       callback: async (terminal) => {
-        await terminal.execute({
-          command: "xcodebuild",
-          args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],
-        });
+        const workspaceType = detectWorkspaceType(options.xcworkspace);
+        if (workspaceType === "spm") {
+          const packageDir = getSwiftPMDirectory(options.xcworkspace);
+          await terminal.execute({
+            command: getSwiftCommand(),
+            args: ["package", "resolve"],
+            cwd: packageDir,
+          });
+        } else if (workspaceType === "xcode") {
+          await terminal.execute({
+            command: getXcodeBuildCommand(),
+            args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],
+          });
+        } else {
+          assertUnreachable(workspaceType);
+        }
       },
     });
   }

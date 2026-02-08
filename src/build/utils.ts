@@ -9,6 +9,7 @@ import {
   getBuildSettingsToAskDestination,
   getIsXcodeBuildServerInstalled,
   getSchemes,
+  getXcodeBuildCommand,
   readXcodeBuildServerConfig,
 } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
@@ -381,12 +382,12 @@ export async function generateBuildServerConfigOnBuild(options: {
 export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
   const workspace = getWorkspacePath();
 
-  // Get all files that end with .xcworkspace (4 depth)
+  // Get all files that end with .xcworkspace or Package.swift (4 depth)
   const paths = await findFilesRecursive({
     directory: workspace,
     depth: 4,
     matcher: (file) => {
-      return file.name.endsWith(".xcworkspace");
+      return file.name.endsWith(".xcworkspace") || file.name === "Package.swift";
     },
   });
   return paths;
@@ -398,12 +399,12 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
 export async function selectXcodeWorkspace(options: { autoselect: boolean }): Promise<string> {
   const workspacePath = getWorkspacePath();
 
-  // Get all files that end with .xcworkspace (4 depth)
+  // Get all files that end with .xcworkspace (4 depth) and Package.swift files
   const paths = await detectXcodeWorkspacesPaths();
 
   // No files, nothing to do
   if (paths.length === 0) {
-    throw new ExtensionError("No xcode workspaces found", {
+    throw new ExtensionError("No xcode workspaces or SPM packages found", {
       context: {
         cwd: workspacePath,
       },
@@ -413,9 +414,11 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
   // One file, use it and save it to the cache
   if (paths.length === 1 && options.autoselect) {
     const path = paths[0];
-    commonLogger.log("Xcode workspace was detected", {
+    const projectType = detectWorkspaceType(path);
+    commonLogger.log("Project was detected", {
       workspace: workspacePath,
       path: path,
+      projectType: projectType,
     });
     return path;
   }
@@ -425,7 +428,7 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
 
   // More then one, ask user to select
   const selected = await showQuickPick({
-    title: "Select xcode workspace",
+    title: "Select Xcode workspace or SPM package",
     items: paths
       .sort((a, b) => {
         // Sort by depth to show less nested paths first
@@ -440,9 +443,12 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
 
         const isInRootDir = parentDir === ".";
         const isCocoaPods = isInRootDir && isCocoaProject;
+        const isSPMPackage = detectWorkspaceType(xwPath) === "spm";
 
         let detail: string | undefined;
-        if (isCocoaPods && isInRootDir) {
+        if (isSPMPackage) {
+          detail = "Swift Package Manager";
+        } else if (isCocoaPods && isInRootDir) {
           detail = "CocoaPods (recommended)";
         } else if (!isInRootDir && parentDir.endsWith(".xcodeproj")) {
           detail = "Xcode";
@@ -479,7 +485,7 @@ export function isXcbeautifyEnabled() {
 export class XcodeCommandBuilder {
   NO_VALUE = "__NO_VALUE__";
 
-  private xcodebuild = "xcodebuild";
+  private xcodebuild = getXcodeBuildCommand();
   private parameters: {
     arg: string;
     value: string | "__NO_VALUE__";
@@ -711,4 +717,29 @@ export async function ensureAppPathExists(appPath: string | undefined): Promise<
     throw new ExtensionError(`App path does not exist. Have you built the app? Path: ${appPath}`);
   }
   return appPath;
+}
+
+/**
+ * Is it SPM package or Xcode workspace?
+ *
+ * By default, we assume that it's Xcode workspace, but if the path ends with "Package.swift",
+ * then it's SPM package. Probably in the future we can add more sophisticated detection,
+ * but for now this should be enough
+ */
+export function detectWorkspaceType(xcworkspace: string): "xcode" | "spm" {
+  return xcworkspace.endsWith("Package.swift") ? "spm" : "xcode";
+}
+
+/**
+ * Get directory where SPM package is located based on the given path to "Package.swift"
+ *
+ * We do this because xcodebuild needs to be run from the directory where "Package.swift" is located.
+ * For example, if we have "MyPackage/Package.swift", we need to run xcodebuild from "MyPackage" directory,
+ * not from the root of the workspace or any other directory
+ */
+export function getSwiftPMDirectory(xcworkspace: string): string {
+  if (xcworkspace.endsWith("Package.swift")) {
+    return path.dirname(xcworkspace);
+  }
+  throw new ExtensionError("Not a SPM package");
 }
