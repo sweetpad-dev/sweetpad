@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.76] - 2026-02-24
+
+- Add release page
+
 ## [0.1.75] - 2026-02-22
 
 - Improve device handling with fallbacks for incomplete devicectl data and legacy devices, plus expanded tests ([#209](https://github.com/sweetpad-dev/sweetpad/pull/209))
