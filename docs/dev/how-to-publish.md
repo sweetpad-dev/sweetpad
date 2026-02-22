@@ -16,3 +16,6 @@ npm run publish-patch
 
 3. Check publishing status on github actions page:
  - https://github.com/sweetpad-dev/sweetpad/actions
+
+4. Verify the GitHub release page includes the VSIX asset and the changelog section for the tag:
+ - https://github.com/sweetpad-dev/sweetpad/releases
