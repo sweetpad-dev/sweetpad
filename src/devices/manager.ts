@@ -124,7 +124,7 @@ export class DevicesManager {
         if (deviceType === "iPhone" || deviceType === "iPad") {
           return new iOSDeviceDestination(safeDevice);
         }
-        if (deviceType === "appleVision") {
+        if (deviceType === "appleVision" || deviceType === "realityDevice") {
           return new visionOSDeviceDestination(safeDevice);
         }
         if (deviceType === "appleTV") {
