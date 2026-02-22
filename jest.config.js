@@ -4,6 +4,6 @@ module.exports = {
   testEnvironment: "node",
   setupFiles: ["<rootDir>/tests/setup.js"],
   moduleNameMapper: {
-    "^vscode$": "<rootDir>/tests/__mocks__/vscode",
+    "^vscode$": "<rootDir>/src/__mocks__/vscode",
   },
 };

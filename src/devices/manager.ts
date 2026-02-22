@@ -3,6 +3,15 @@ import type { ExtensionContext } from "../common/commands";
 import { checkUnreachable } from "../common/types";
 import { listDevices } from "../common/xcode/devicectl";
 import {
+  createNameLookup,
+  createOsVersionLookup,
+  createUdidLookup,
+  getNameForDevice,
+  getOsVersionForDevice,
+  getUdidForDevice,
+  listDevicesWithXcdevice,
+} from "../common/xcode/xcdevice";
+import {
   type DeviceDestination,
   iOSDeviceDestination,
   tvOSDeviceDestination,
@@ -37,21 +46,89 @@ export class DevicesManager {
   }
 
   private async fetchDevices(): Promise<DeviceDestination[]> {
-    const output = await listDevices(this.context);
+    // Fetch devices from both sources in parallel
+    const [output, xcdeviceList] = await Promise.all([
+      listDevices(this.context),
+      listDevicesWithXcdevice(this.context),
+    ]);
+
+    // Create lookup maps from modelCode to OS version, UDID, and name for fallback
+    const osVersionLookup = createOsVersionLookup(xcdeviceList);
+    const udidLookup = createUdidLookup(xcdeviceList);
+    const nameLookup = createNameLookup(xcdeviceList);
+
     return output.result.devices
+      .filter((device) => {
+        // Filter out devices without required fields
+        if (!device.identifier) {
+          return false;
+        }
+        if (!device.hardwareProperties?.deviceType) {
+          return false;
+        }
+        return true;
+      })
       .map((device) => {
-        const deviceType = device.hardwareProperties.deviceType;
+        // Get OS version from devicectl or fallback to xcdevice
+        let osVersionNumber = device.deviceProperties.osVersionNumber;
+        if (!osVersionNumber && device.hardwareProperties.productType) {
+          const xcdeviceVersion = getOsVersionForDevice(osVersionLookup, device.hardwareProperties.productType);
+          if (xcdeviceVersion) {
+            osVersionNumber = xcdeviceVersion;
+          }
+        }
+
+        // Get UDID from devicectl or fallback to xcdevice (for older devices)
+        // xcdevice provides the correct UDID format for xcodebuild
+        let udid = device.hardwareProperties.udid;
+        if (!udid && device.hardwareProperties.productType) {
+          const xcdeviceUdid = getUdidForDevice(udidLookup, device.hardwareProperties.productType);
+          if (xcdeviceUdid) {
+            udid = xcdeviceUdid;
+          }
+        }
+
+        // Get device name from devicectl or fallback to xcdevice (for iOS < 17 devices)
+        // devicectl may return marketing name instead of user-customized name for older devices
+        let deviceName = device.deviceProperties.name;
+        if (
+          (!deviceName || deviceName === device.hardwareProperties.marketingName) &&
+          device.hardwareProperties.productType
+        ) {
+          const xcdeviceName = getNameForDevice(nameLookup, device.hardwareProperties.productType);
+          if (xcdeviceName) {
+            deviceName = xcdeviceName;
+          }
+        }
+
+        // Apply safe defaults for missing data
+        const safeDevice = {
+          ...device,
+          hardwareProperties: {
+            ...device.hardwareProperties,
+            udid: udid ?? device.identifier,
+            marketingName: device.hardwareProperties.marketingName,
+            productType: device.hardwareProperties.productType ?? "Unknown",
+          },
+          deviceProperties: {
+            ...device.deviceProperties,
+            name: deviceName,
+            osVersionNumber: osVersionNumber,
+          },
+        };
+
+        const deviceType = safeDevice.hardwareProperties.deviceType;
         if (deviceType === "appleWatch") {
-          return new watchOSDeviceDestination(device);
+          return new watchOSDeviceDestination(safeDevice);
         }
         if (deviceType === "iPhone" || deviceType === "iPad") {
-          return new iOSDeviceDestination(device);
+          return new iOSDeviceDestination(safeDevice);
         }
         if (deviceType === "appleVision" || deviceType === "realityDevice") {
-          return new visionOSDeviceDestination(device);
+          return new visionOSDeviceDestination(safeDevice);
         }
         if (deviceType === "appleTV") {
-          return new tvOSDeviceDestination(device);
+          return new tvOSDeviceDestination(safeDevice);
         }
         checkUnreachable(deviceType);
         return null; // Unsupported device type

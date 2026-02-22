@@ -3,6 +3,7 @@ export const window = {
   createOutputChannel: jest.fn(() => ({
     appendLine: jest.fn(),
     show: jest.fn(),
+    clear: jest.fn(),
   })),
 };
 

@@ -1,0 +1,26 @@
+{
+  "result": {
+    "devices": [
+      {
+        "capabilities": [],
+        "connectionProperties": {
+          "tunnelState": "connected",
+          "pairingState": "paired"
+        },
+        "deviceProperties": {
+          "name": "iPhone 15 Pro",
+          "osVersionNumber": "17.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "iPhone",
+          "marketingName": "iPhone 15 Pro",
+          "productType": "iPhone16,1",
+          "udid": "00008110-000123456789001E",
+          "platform": "iOS"
+        },
+        "identifier": "urn:x-ios-devicectl:device-CS1234567-1234567890123456",
+        "visibilityClass": "default"
+      }
+    ]
+  }
+}

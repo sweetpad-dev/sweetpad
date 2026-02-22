@@ -1,0 +1,37 @@
+[
+  {
+    "identifier": "00008110-001234567890001E",
+    "modelCode": "iPhone15,2",
+    "name": "iPhone 14 Pro",
+    "operatingSystemVersion": "16.7.12",
+    "platform": "com.apple.platform.iphoneos"
+  },
+  {
+    "identifier": "00002010-001234567890001E",
+    "modelCode": "Watch10,1",
+    "name": "Apple Watch Series 9",
+    "operatingSystemVersion": "10.0",
+    "platform": "com.apple.platform.watchos"
+  },
+  {
+    "identifier": "00003010-001234567890001E",
+    "modelCode": "AppleTV14,1",
+    "name": "Apple TV 4K",
+    "operatingSystemVersion": "17.0",
+    "platform": "com.apple.platform.appletvos"
+  },
+  {
+    "identifier": "1C2B3C4D-5E6F-7A8B-9C0D-1E2F3A4B5C6D",
+    "modelCode": "VisionPro,1",
+    "name": "Apple Vision Pro",
+    "operatingSystemVersion": "1.0",
+    "platform": "com.apple.platform.xros"
+  },
+  {
+    "identifier": "00008120-001234567890002E",
+    "modelCode": "iPhone14,8",
+    "name": "iPhone 14 Plus",
+    "operatingSystemVersion": "16.6.1",
+    "platform": "com.apple.platform.iphoneos"
+  }
+]
