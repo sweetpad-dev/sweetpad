@@ -17,6 +17,7 @@ import {
   selectXcodeSchemeForBuildCommand,
   selectXcodeWorkspaceCommand,
   stopSchemeCommand,
+  switchWorktreeCommand,
   testCommand,
 } from "./build/commands.js";
 import { BuildManager } from "./build/manager.js";
@@ -163,6 +164,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.selectConfiguration", selectConfigurationForBuildCommand));
   d(command("sweetpad.build.diagnoseSetup", diagnoseBuildSetupCommand));
   d(command("sweetpad.build.stop", stopSchemeCommand));
+  d(command("sweetpad.build.switchWorktree", switchWorktreeCommand));
 
   // Testing
   d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));

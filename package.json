@@ -446,6 +446,11 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "sweetpad.build.switchWorktree",
+        "title": "SweetPad: Switch Git Worktree",
+        "icon": "$(git-branch)"
+      },
+      {
         "command": "sweetpad.simulators.refresh",
         "title": "SweetPad: Refresh simulators list",
         "icon": "$(sweetpad-refresh)"
