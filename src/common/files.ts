@@ -30,6 +30,7 @@ export async function findFilesRecursive(options: {
   matcher: (file: Dirent) => boolean;
   ignore?: string[];
   depth?: number;
+  maxResults?: number;
 }): Promise<string[]> {
   const ignore = options.ignore ?? [];
   const depth = options.depth ?? 0;
@@ -42,6 +43,9 @@ export async function findFilesRecursive(options: {
 
     if (options.matcher(file)) {
       matchedFiles.push(fullPath);
+      if (options.maxResults && matchedFiles.length >= options.maxResults) {
+        return matchedFiles;
+      }
     }
 
     if (file.isDirectory() && !ignore.includes(file.name) && depth > 0) {
@@ -50,8 +54,12 @@ export async function findFilesRecursive(options: {
         matcher: options.matcher,
         ignore: options.ignore,
         depth: depth - 1,
+        maxResults: options.maxResults ? options.maxResults - matchedFiles.length : undefined,
       });
       matchedFiles.push(...subFiles);
+      if (options.maxResults && matchedFiles.length >= options.maxResults) {
+        return matchedFiles;
+      }
     }
   }
 

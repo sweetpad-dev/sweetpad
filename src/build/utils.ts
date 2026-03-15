@@ -1,4 +1,5 @@
 import path from "node:path";
+import { execa } from "execa";
 import * as vscode from "vscode";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 
@@ -742,4 +743,85 @@ export function getSwiftPMDirectory(xcworkspace: string): string {
     return path.dirname(xcworkspace);
   }
   throw new ExtensionError("Not a SPM package");
+}
+
+export type GitWorktree = {
+  path: string;
+  branch: string;
+};
+
+/**
+ * Detect git worktrees by running `git worktree list --porcelain`.
+ * Returns an array of worktrees with their paths and branch names.
+ *
+ * Example output of `git worktree list --porcelain`:
+ *
+ *   worktree /Users/user/project
+ *   HEAD abc1234
+ *   branch refs/heads/main
+ *
+ *   worktree /Users/user/project-feature
+ *   HEAD def5678
+ *   branch refs/heads/feature/login
+ *
+ *   worktree /Users/user/project-detached
+ *   HEAD 9876543
+ *   detached
+ */
+export async function detectGitWorktrees(): Promise<GitWorktree[]> {
+  let output: string;
+  try {
+    // Use execa directly to avoid circular dependency with common/exec.ts
+    const result = await execa("git", ["worktree", "list", "--porcelain"], {
+      cwd: getWorkspacePath(),
+    });
+    output = result.stdout;
+  } catch {
+    commonLogger.warn("Failed to list git worktrees — git may not be available or this is not a git repo");
+    return [];
+  }
+
+  const worktrees: GitWorktree[] = [];
+  const blocks = output.trim().split("\n\n");
+
+  for (const block of blocks) {
+    const lines = block.trim().split("\n");
+    let worktreePath = "";
+    let branch = "";
+    let isBare = false;
+
+    for (const line of lines) {
+      if (line.startsWith("worktree ")) {
+        worktreePath = line.substring("worktree ".length);
+      } else if (line.startsWith("branch ")) {
+        const refPath = line.substring("branch ".length);
+        branch = refPath.replace("refs/heads/", "");
+      } else if (line === "bare") {
+        isBare = true;
+      } else if (line === "detached") {
+        branch = "(detached HEAD)";
+      }
+    }
+
+    if (worktreePath && !isBare) {
+      worktrees.push({ path: worktreePath, branch });
+    }
+  }
+
+  return worktrees;
+}
+
+/**
+ * Find Xcode workspace/project or SPM package files inside a given directory (up to 4 levels).
+ * Returns the first .xcworkspace or Package.swift path found, or undefined.
+ */
+export async function findXcodeWorkspaceInDirectory(directory: string): Promise<string | undefined> {
+  const paths = await findFilesRecursive({
+    directory,
+    depth: 4,
+    ignore: ["Pods", "DerivedData", ".build", "node_modules"],
+    maxResults: 1,
+    matcher: (file) => file.name.endsWith(".xcworkspace") || file.name === "Package.swift",
+  });
+  return paths.length > 0 ? paths[0] : undefined;
 }

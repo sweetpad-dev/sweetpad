@@ -14,12 +14,14 @@ import { updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, removeDirectory } from "../common/files";
-import { showInputBox } from "../common/quick-pick";
+import { showInputBox, showQuickPick } from "../common/quick-pick";
 import { runTask } from "../common/tasks";
 import {
   askSchemeForBuild,
   askXcodeWorkspacePath,
+  detectGitWorktrees,
   detectXcodeWorkspacesPaths,
+  findXcodeWorkspaceInDirectory,
   getCurrentXcodeWorkspacePath,
   getWorkspacePath,
   prepareStoragePath,
@@ -381,4 +383,60 @@ export async function refreshSchemesCommand(context: ExtensionContext): Promise<
 
 export async function stopSchemeCommand(context: ExtensionContext, item?: BuildTreeItem) {
   return context.buildManager.stopSchemeCommand(item);
+}
+
+/**
+ * Switch the Xcode workspace to a different git worktree.
+ * Detects worktrees via `git worktree list`, finds Xcode projects in each,
+ * and lets the user pick which one to build from.
+ */
+export async function switchWorktreeCommand(context: ExtensionContext) {
+  context.updateProgressStatus("Detecting git worktrees");
+
+  const worktrees = await detectGitWorktrees();
+  if (worktrees.length <= 1) {
+    vscode.window.showInformationMessage("No additional git worktrees found. Create one with `git worktree add`.");
+    return;
+  }
+
+  const currentWorkspace = getCurrentXcodeWorkspacePath(context);
+
+  type WorktreePickContext = { worktreePath: string; xcworkspace: string };
+  const items: { label: string; description: string; detail?: string; context: WorktreePickContext }[] = [];
+
+  for (const wt of worktrees) {
+    const xcworkspace = await findXcodeWorkspaceInDirectory(wt.path);
+    if (!xcworkspace) {
+      continue;
+    }
+
+    const isCurrent = currentWorkspace !== undefined && path.resolve(currentWorkspace) === path.resolve(xcworkspace);
+    const dirName = path.basename(wt.path);
+
+    items.push({
+      label: `${isCurrent ? "$(check) " : ""}${dirName}`,
+      description: wt.branch,
+      detail: wt.path,
+      context: { worktreePath: wt.path, xcworkspace },
+    });
+  }
+
+  if (items.length === 0) {
+    vscode.window.showWarningMessage("No Xcode projects found in any git worktree.");
+    return;
+  }
+
+  const selected = await showQuickPick<WorktreePickContext>({
+    title: "Select git worktree to build from",
+    items,
+  });
+
+  const relative = getWorkspaceRelativePath(selected.context.xcworkspace);
+  await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
+
+  context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
+  context.buildManager.refreshSchemes();
+
+  const dirName = path.basename(selected.context.worktreePath);
+  vscode.window.showInformationMessage(`SweetPad now builds from: ${dirName} (${selected.description ?? ""})`);
 }
