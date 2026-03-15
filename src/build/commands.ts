@@ -410,7 +410,7 @@ export async function switchWorktreeCommand(context: ExtensionContext) {
       continue;
     }
 
-    const isCurrent = currentWorkspace === xcworkspace;
+    const isCurrent = currentWorkspace !== undefined && path.resolve(currentWorkspace) === path.resolve(xcworkspace);
     const dirName = path.basename(wt.path);
 
     items.push({
@@ -431,15 +431,8 @@ export async function switchWorktreeCommand(context: ExtensionContext) {
     items,
   });
 
-  const workspacePath = getWorkspacePath();
-  const isMainWorkspace = selected.context.worktreePath === workspacePath;
-
-  if (isMainWorkspace) {
-    const relative = getWorkspaceRelativePath(selected.context.xcworkspace);
-    await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
-  } else {
-    await updateWorkspaceConfig("build.xcodeWorkspacePath", selected.context.xcworkspace);
-  }
+  const relative = getWorkspaceRelativePath(selected.context.xcworkspace);
+  await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
 
   context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
   context.buildManager.refreshSchemes();

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { execa } from "execa";
 import * as vscode from "vscode";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 
@@ -747,21 +748,34 @@ export function getSwiftPMDirectory(xcworkspace: string): string {
 export type GitWorktree = {
   path: string;
   branch: string;
-  isBare: boolean;
 };
 
 /**
  * Detect git worktrees by running `git worktree list --porcelain`.
  * Returns an array of worktrees with their paths and branch names.
+ *
+ * Example output of `git worktree list --porcelain`:
+ *
+ *   worktree /Users/user/project
+ *   HEAD abc1234
+ *   branch refs/heads/main
+ *
+ *   worktree /Users/user/project-feature
+ *   HEAD def5678
+ *   branch refs/heads/feature/login
+ *
+ *   worktree /Users/user/project-detached
+ *   HEAD 9876543
+ *   detached
  */
 export async function detectGitWorktrees(): Promise<GitWorktree[]> {
-  const { exec: execWorktree } = await import("../common/exec.js");
   let output: string;
   try {
-    output = await execWorktree({
-      command: "git",
-      args: ["worktree", "list", "--porcelain"],
+    // Use execa directly to avoid circular dependency with common/exec.ts
+    const result = await execa("git", ["worktree", "list", "--porcelain"], {
+      cwd: getWorkspacePath(),
     });
+    output = result.stdout;
   } catch {
     commonLogger.warn("Failed to list git worktrees — git may not be available or this is not a git repo");
     return [];
@@ -790,7 +804,7 @@ export async function detectGitWorktrees(): Promise<GitWorktree[]> {
     }
 
     if (worktreePath && !isBare) {
-      worktrees.push({ path: worktreePath, branch, isBare });
+      worktrees.push({ path: worktreePath, branch });
     }
   }
 
@@ -798,14 +812,16 @@ export async function detectGitWorktrees(): Promise<GitWorktree[]> {
 }
 
 /**
- * Find Xcode workspace/project files inside a given directory (non-recursive, up to 4 levels).
- * Returns the first .xcworkspace path found, or undefined.
+ * Find Xcode workspace/project or SPM package files inside a given directory (up to 4 levels).
+ * Returns the first .xcworkspace or Package.swift path found, or undefined.
  */
 export async function findXcodeWorkspaceInDirectory(directory: string): Promise<string | undefined> {
   const paths = await findFilesRecursive({
     directory,
     depth: 4,
-    matcher: (file) => file.name.endsWith(".xcworkspace"),
+    ignore: ["Pods", "DerivedData", ".build", "node_modules"],
+    maxResults: 1,
+    matcher: (file) => file.name.endsWith(".xcworkspace") || file.name === "Package.swift",
   });
   return paths.length > 0 ? paths[0] : undefined;
 }
