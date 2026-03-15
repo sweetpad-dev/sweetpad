@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.77] - 2026-03-15
+
+- Add "Switch Git Worktree" command for parallel development ([#218](https://github.com/sweetpad-dev/sweetpad/pull/218))
+
 ## [0.1.76] - 2026-02-24
 
 - Add release page
