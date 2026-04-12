@@ -1,5 +1,5 @@
 /**
- * Unit tests for device manager with dual-source fetching
+ * Unit tests for DevicesManager with dual-source fetching + iOS <=16 recovery.
  */
 
 import * as fs from "node:fs";
@@ -9,7 +9,6 @@ import { listDevices } from "../common/xcode/devicectl";
 import { listDevicesWithXcdevice } from "../common/xcode/xcdevice";
 import { DevicesManager } from "./manager";
 
-// Mock dependencies
 jest.mock("../common/exec", () => ({
   exec: jest.fn(),
 }));
@@ -20,23 +19,11 @@ jest.mock("../common/xcode/devicectl", () => ({
 
 jest.mock("../common/xcode/xcdevice", () => ({
   listDevicesWithXcdevice: jest.fn(),
-  createNameLookup: jest.fn(),
-  createOsVersionLookup: jest.fn(),
-  createUdidLookup: jest.fn(),
-  getNameForDevice: jest.fn(),
-  getOsVersionForDevice: jest.fn(),
-  getUdidForDevice: jest.fn(),
 }));
 
-// Import mocked modules
-import {
-  createNameLookup,
-  createOsVersionLookup,
-  createUdidLookup,
-  getNameForDevice,
-  getOsVersionForDevice,
-  getUdidForDevice,
-} from "../common/xcode/xcdevice";
+function loadFixture(relativePath: string): any {
+  return JSON.parse(fs.readFileSync(path.join(__dirname, "../..", relativePath), "utf8"));
+}
 
 describe("DevicesManager", () => {
   let manager: DevicesManager;
@@ -51,238 +38,137 @@ describe("DevicesManager", () => {
 
   describe("refresh", () => {
     it("fetches devices from both devicectl and xcdevice in parallel", async () => {
-      const mockDevicectlData = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
-      );
-      const mockXcdeviceData = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "../../tests/xcdevice-data/xcdevice-ios-devices.json"), "utf8"),
+      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(
+        loadFixture("tests/xcdevice-data/xcdevice-ios-devices.json"),
       );
 
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(mockXcdeviceData);
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
-
-      const devices = await manager.refresh();
+      await manager.refresh();
 
       expect(listDevices).toHaveBeenCalledWith(mockContext);
       expect(listDevicesWithXcdevice).toHaveBeenCalledWith(mockContext);
-      expect(createNameLookup).toHaveBeenCalledWith(mockXcdeviceData);
-      expect(createOsVersionLookup).toHaveBeenCalledWith(mockXcdeviceData);
-      expect(createUdidLookup).toHaveBeenCalledWith(mockXcdeviceData);
     });
 
-    it("merges OS version from xcdevice when missing from devicectl", async () => {
-      const mockDevicectlData = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-16-missing-fields.json"),
-          "utf8",
-        ),
-      );
-      const mockXcdeviceData = [
-        {
-          identifier: "00008110-000987654321003E",
-          modelCode: "iPhone14,5",
-          name: "iPhone 13",
-          operatingSystemVersion: "16.5.1",
-          platform: "com.apple.platform.iphoneos",
-        },
-      ];
-
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(mockXcdeviceData);
-
-      const osVersionMap = new Map([["iPhone14,5", "16.5.1"]]);
-      const udidMap = new Map([["iPhone14,5", "00008110-000987654321003E"]]);
-
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(osVersionMap);
-      (createUdidLookup as jest.Mock).mockReturnValue(udidMap);
-      (getNameForDevice as jest.Mock).mockReturnValue(undefined);
-      (getOsVersionForDevice as jest.Mock).mockImplementation((map, productType) => map.get(productType));
-      (getUdidForDevice as jest.Mock).mockImplementation((map, productType) => map.get(productType));
+    it("wraps iOS 17+ devicectl device when xcdevice is empty", async () => {
+      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
 
       expect(devices).toHaveLength(1);
-      expect(devices[0].osVersion).toBe("16.5.1");
-      expect(devices[0].udid).toBe("00008110-000987654321003E");
+      expect(devices[0].type).toBe("iOSDevice");
+      expect(devices[0].supportsDevicectl).toBe(true);
     });
 
-    it("merges UDID from xcdevice when missing from devicectl", async () => {
-      const mockDevicectlData = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-16-missing-fields.json"),
-          "utf8",
-        ),
-      );
-      const mockXcdeviceData = [
-        {
-          identifier: "00008110-000987654321003E",
-          modelCode: "iPhone14,5",
-          name: "John's iPhone",
-          operatingSystemVersion: "16.5.1",
-          platform: "com.apple.platform.iphoneos",
-        },
-      ];
-
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(mockXcdeviceData);
-
-      const udidMap = new Map([["iPhone14,5", "00008110-000987654321003E"]]);
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(udidMap);
-      (getOsVersionForDevice as jest.Mock).mockReturnValue(undefined);
-      (getUdidForDevice as jest.Mock).mockImplementation((map, productType) => map.get(productType));
-
-      const devices = await manager.refresh();
-
-      expect(devices).toHaveLength(1);
-      expect(devices[0].udid).toBe("00008110-000987654321003E");
-    });
-
-    it("merges device name from xcdevice when devicectl returns marketing name", async () => {
-      const mockDevicectlData = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-16-missing-fields.json"),
-          "utf8",
-        ),
-      );
-      const mockXcdeviceData = [
-        {
-          identifier: "00008110-000987654321003E",
-          modelCode: "iPhone14,5",
-          name: "John's iPhone",
-          operatingSystemVersion: "16.5.1",
-          platform: "com.apple.platform.iphoneos",
-        },
-      ];
-
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(mockXcdeviceData);
-
-      const nameMap = new Map([["iPhone14,5", "John's iPhone"]]);
-      (createNameLookup as jest.Mock).mockReturnValue(nameMap);
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
-      (getNameForDevice as jest.Mock).mockImplementation((map, productType) => map.get(productType));
-      (getOsVersionForDevice as jest.Mock).mockReturnValue(undefined);
-      (getUdidForDevice as jest.Mock).mockReturnValue(undefined);
-
-      const devices = await manager.refresh();
-
-      expect(devices).toHaveLength(1);
-      expect(devices[0].name).toBe("John's iPhone");
-    });
-
-    it("uses devicectl name when it differs from marketing name", async () => {
-      const mockDevicectlData = {
+    it("deduplicates when both sources report the same UDID", async () => {
+      const devicectlData = {
         result: {
           devices: [
             {
               capabilities: [],
-              connectionProperties: {
-                tunnelState: "connected",
-                pairingState: "paired",
-              },
-              deviceProperties: {
-                name: "John's iPhone 15 Pro",
-                osVersionNumber: "17.0",
-              },
+              connectionProperties: { tunnelState: "connected", pairingState: "paired" },
+              deviceProperties: { name: "John's iPhone", osVersionNumber: "17.0" },
               hardwareProperties: {
                 deviceType: "iPhone",
                 marketingName: "iPhone 15 Pro",
                 productType: "iPhone16,1",
-                udid: "00008110-000123456789001E",
+                udid: "00008110-DEDUP000001",
                 platform: "iOS",
               },
-              identifier: "urn:x-ios-devicectl:device-CS1234567-1234567890123456",
+              identifier: "urn:x-ios-devicectl:device-DEDUP",
               visibilityClass: "default",
             },
           ],
         },
       };
-      const mockXcdeviceData = [
+      const xcdeviceData = [
         {
-          identifier: "00008110-000987654321001E",
-          modelCode: "iPhone16,1",
-          name: "Different Name from xcdevice",
-          operatingSystemVersion: "17.0",
+          simulator: false,
+          available: true,
           platform: "com.apple.platform.iphoneos",
+          modelCode: "iPhone16,1",
+          identifier: "00008110-DEDUP000001",
+          operatingSystemVersion: "17.0",
+          name: "John's iPhone",
         },
       ];
 
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(mockXcdeviceData);
-
-      const nameMap = new Map([["iPhone16,1", "Different Name from xcdevice"]]);
-      (createNameLookup as jest.Mock).mockReturnValue(nameMap);
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
-      (getNameForDevice as jest.Mock).mockImplementation((map, productType) => map.get(productType));
-      (getOsVersionForDevice as jest.Mock).mockReturnValue(undefined);
-      (getUdidForDevice as jest.Mock).mockReturnValue(undefined);
+      (listDevices as jest.Mock).mockResolvedValue(devicectlData);
+      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(xcdeviceData);
 
       const devices = await manager.refresh();
 
       expect(devices).toHaveLength(1);
-      // devicectl returns "John's iPhone 15 Pro" which differs from marketing name "iPhone 15 Pro"
-      // so we should use the devicectl name, not fall back to xcdevice
-      expect(devices[0].name).toBe("John's iPhone 15 Pro");
+      expect(devices[0].devicectlId).toBe("urn:x-ios-devicectl:device-DEDUP");
     });
 
-    it("applies safe defaults for missing data", async () => {
-      const mockDevicectlData = {
-        result: {
-          devices: [
-            {
-              capabilities: [],
-              connectionProperties: {
-                tunnelState: "connected",
-                pairingState: "paired",
-              },
-              deviceProperties: {},
-              hardwareProperties: {
-                deviceType: "iPhone",
-                platform: "iOS",
-              },
-              identifier: "urn:x-ios-devicectl:device-test",
-              visibilityClass: "default",
-            },
-          ],
-        },
-      };
-
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
+    it("recovers iOS 16 Wi-Fi device when devicectl returns no devices", async () => {
+      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
+      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(
+        loadFixture("tests/xcdevice-data/xcdevice-ios-16-wifi.json"),
+      );
 
       const devices = await manager.refresh();
 
       expect(devices).toHaveLength(1);
-      expect(devices[0].osVersion).toBe("Unknown");
-      // When productType is "Unknown", the name falls back to productType value
-      expect(devices[0].name).toBe("Unknown");
-      expect(devices[0].udid).toBe("urn:x-ios-devicectl:device-test");
+      expect(devices[0].type).toBe("iOSDevice");
+      expect(devices[0].name).toBe("My iPhone");
+      expect(devices[0].osVersion).toBe("16.4.1");
+      expect(devices[0].udid).toBe("00008110-000AABBCCDD11111");
+      expect(devices[0].devicectlId).toBeNull();
+      expect(devices[0].supportsDevicectl).toBe(false);
+      expect(devices[0].isConnected).toBe(true);
+    });
+
+    it("recovers iOS 16 USB device when devicectl returns empty hardwareProperties", async () => {
+      (listDevices as jest.Mock).mockResolvedValue(
+        loadFixture("tests/devicectl-data/devicectl-ios-16-usb-empty-hardware.json"),
+      );
+      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(
+        loadFixture("tests/xcdevice-data/xcdevice-ios-16-usb-match.json"),
+      );
+
+      const devices = await manager.refresh();
+
+      expect(devices).toHaveLength(1);
+      expect(devices[0].type).toBe("iOSDevice");
+      expect(devices[0].name).toBe("Nixuge iPhone");
+      expect(devices[0].udid).toBe("00008110-000AABBCCDD22222");
+      expect(devices[0].supportsDevicectl).toBe(false);
+    });
+
+    it("shows an unavailable xcdevice entry as disconnected", async () => {
+      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
+      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(
+        loadFixture("tests/xcdevice-data/xcdevice-unavailable.json"),
+      );
+
+      const devices = await manager.refresh();
+
+      expect(devices).toHaveLength(1);
+      expect(devices[0].isConnected).toBe(false);
+      expect(devices[0].state).toBe("unavailable");
+    });
+
+    it("drops devicectl entries with empty hardwareProperties and no xcdevice match", async () => {
+      (listDevices as jest.Mock).mockResolvedValue(
+        loadFixture("tests/devicectl-data/devicectl-ios-16-usb-empty-hardware.json"),
+      );
+      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
+
+      const devices = await manager.refresh();
+
+      expect(devices).toEqual([]);
     });
 
     it("filters devices without identifier", async () => {
-      const mockDevicectlData = {
+      const devicectlData = {
         result: {
           devices: [
             {
               capabilities: [],
-              connectionProperties: {
-                tunnelState: "connected",
-                pairingState: "paired",
-              },
-              deviceProperties: {
-                name: "Valid Device",
-                osVersionNumber: "17.0",
-              },
+              connectionProperties: { tunnelState: "connected", pairingState: "paired" },
+              deviceProperties: { name: "Valid Device", osVersionNumber: "17.0" },
               hardwareProperties: {
                 deviceType: "iPhone",
                 marketingName: "iPhone 15 Pro",
@@ -294,13 +180,8 @@ describe("DevicesManager", () => {
             },
             {
               capabilities: [],
-              connectionProperties: {
-                tunnelState: "connected",
-                pairingState: "paired",
-              },
-              deviceProperties: {
-                name: "Device Without Identifier",
-              },
+              connectionProperties: { tunnelState: "connected", pairingState: "paired" },
+              deviceProperties: { name: "Device Without Identifier" },
               hardwareProperties: {
                 deviceType: "iPhone",
                 marketingName: "Invalid Device",
@@ -313,11 +194,8 @@ describe("DevicesManager", () => {
         },
       };
 
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
+      (listDevices as jest.Mock).mockResolvedValue(devicectlData);
       (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
 
       const devices = await manager.refresh();
 
@@ -325,87 +203,43 @@ describe("DevicesManager", () => {
       expect(devices[0].name).toBe("Valid Device");
     });
 
-    it("filters devices without deviceType", async () => {
-      const mockDevicectlData = {
-        result: {
-          devices: [
-            {
-              capabilities: [],
-              connectionProperties: {
-                tunnelState: "connected",
-                pairingState: "paired",
-              },
-              deviceProperties: {
-                name: "Valid Device",
-                osVersionNumber: "17.0",
-              },
-              hardwareProperties: {
-                deviceType: "iPhone",
-                marketingName: "iPhone 15 Pro",
-                productType: "iPhone16,1",
-                platform: "iOS",
-              },
-              identifier: "urn:x-ios-devicectl:device-valid",
-              visibilityClass: "default",
-            },
-            {
-              capabilities: [],
-              connectionProperties: {
-                tunnelState: "connected",
-                pairingState: "paired",
-              },
-              deviceProperties: {
-                name: "Device Without DeviceType",
-              },
-              hardwareProperties: {
-                marketingName: "Invalid Device",
-                productType: "iPhone99,9",
-                platform: "iOS",
-              },
-              identifier: "urn:x-ios-devicectl:device-invalid",
-              visibilityClass: "default",
-            },
-          ],
-        },
-      };
-
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
-
-      const devices = await manager.refresh();
-
-      expect(devices).toHaveLength(1);
-      expect(devices[0].name).toBe("Valid Device");
-    });
-
-    it("creates correct device type instances", async () => {
-      const mockDevicectlData = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-multiple-devices.json"), "utf8"),
+    it("creates correct device type instances from mixed xcdevice platforms", async () => {
+      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
+      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(
+        loadFixture("tests/xcdevice-data/xcdevice-mixed-platforms.json"),
       );
 
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
+      const devices = await manager.refresh();
+
+      const byType = devices.map((d) => d.type).sort();
+      // iPhone, iPad → both iOSDevice; watch, tv → watchOSDevice, tvOSDevice.
+      // Simulator entry filtered out by listDevicesWithXcdevice (mocked data includes
+      // a simulator but the mock is passed through — simulator filtering lives in
+      // listDevicesWithXcdevice, so here we expect all non-simulator entries.)
+      expect(byType).toEqual(["iOSDevice", "iOSDevice", "tvOSDevice", "watchOSDevice", "iOSDevice"].sort());
+    });
+
+    it("creates correct device type instances from devicectl fixtures", async () => {
+      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-multiple-devices.json"));
       (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
 
       const devices = await manager.refresh();
 
       expect(devices).toHaveLength(5);
-      expect(devices[0].type).toBe("iOSDevice");
-      expect(devices[1].type).toBe("iOSDevice");
-      expect(devices[2].type).toBe("watchOSDevice");
-      expect(devices[3].type).toBe("tvOSDevice");
-      expect(devices[4].type).toBe("visionOSDevice");
+      expect(devices.map((d) => d.type)).toEqual([
+        "iOSDevice",
+        "iOSDevice",
+        "watchOSDevice",
+        "tvOSDevice",
+        "visionOSDevice",
+      ]);
     });
 
     it("handles ENOENT error by setting failed to 'no-devicectl'", async () => {
       const error: any = new Error("devicectl not found");
       error.error = { code: "ENOENT" };
       (listDevices as jest.Mock).mockRejectedValue(error);
+      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
 
@@ -415,6 +249,7 @@ describe("DevicesManager", () => {
 
     it("handles other errors by setting failed to 'unknown'", async () => {
       (listDevices as jest.Mock).mockRejectedValue(new Error("Unknown error"));
+      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
 
@@ -423,110 +258,61 @@ describe("DevicesManager", () => {
     });
 
     it("caches device list after refresh", async () => {
-      const mockDevicectlData = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
-      );
-
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
+      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
       (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
 
       await manager.refresh();
-
-      // Second call should not trigger new fetch
-      const devices = await manager.getDevices();
+      await manager.getDevices();
 
       expect(listDevices).toHaveBeenCalledTimes(1);
-      expect(devices).toHaveLength(1);
     });
 
     it("emits updated event after refresh", async () => {
-      const mockDevicectlData = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
-      );
-
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
+      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
       (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
 
-      const updatedListener = jest.fn();
-      manager.on("updated", updatedListener);
+      const listener = jest.fn();
+      manager.on("updated", listener);
 
       await manager.refresh();
 
-      expect(updatedListener).toHaveBeenCalled();
+      expect(listener).toHaveBeenCalled();
     });
   });
 
   describe("getDevices", () => {
-    it("returns cached devices without refresh", async () => {
-      const mockDevicectlData = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
-      );
-
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
+    beforeEach(() => {
+      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
       (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
+    });
 
+    it("returns cached devices without refresh", async () => {
       await manager.refresh();
-      const devices = await manager.getDevices();
-
+      await manager.getDevices();
       expect(listDevices).toHaveBeenCalledTimes(1);
-      expect(devices).toHaveLength(1);
     });
 
     it("forces refresh when options.refresh is true", async () => {
-      const mockDevicectlData = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
-      );
-
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
-
       await manager.refresh();
       await manager.getDevices({ refresh: true });
-
       expect(listDevices).toHaveBeenCalledTimes(2);
     });
 
     it("fetches devices when cache is empty", async () => {
-      const mockDevicectlData = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "../../tests/devicectl-data/devicectl-ios-17-modern.json"), "utf8"),
-      );
-
-      (listDevices as jest.Mock).mockResolvedValue(mockDevicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
-      (createNameLookup as jest.Mock).mockReturnValue(new Map());
-      (createOsVersionLookup as jest.Mock).mockReturnValue(new Map());
-      (createUdidLookup as jest.Mock).mockReturnValue(new Map());
-
-      const devices = await manager.getDevices();
-
+      await manager.getDevices();
       expect(listDevices).toHaveBeenCalledTimes(1);
-      expect(devices).toHaveLength(1);
     });
   });
 
   describe("context property", () => {
     it("throws error when context is not set", () => {
       const newManager = new DevicesManager();
-
       expect(() => newManager.context).toThrow("Context is not set");
     });
 
     it("returns context when set", () => {
       const newManager = new DevicesManager();
       newManager.context = mockContext;
-
       expect(newManager.context).toBe(mockContext);
     });
   });

@@ -1,0 +1,55 @@
+[
+  {
+    "simulator": false,
+    "operatingSystemVersion": "16.7.12",
+    "interface": "usb",
+    "available": true,
+    "platform": "com.apple.platform.iphoneos",
+    "modelCode": "iPhone15,2",
+    "identifier": "00008110-000PHONE0000001",
+    "modelName": "iPhone 14 Pro",
+    "name": "iPhone"
+  },
+  {
+    "simulator": false,
+    "operatingSystemVersion": "16.5",
+    "interface": "usb",
+    "available": true,
+    "platform": "com.apple.platform.iphoneos",
+    "modelCode": "iPad14,5",
+    "identifier": "00008120-0000IPAD0000002",
+    "modelName": "iPad Pro 12.9-inch",
+    "name": "iPad"
+  },
+  {
+    "simulator": false,
+    "operatingSystemVersion": "10.0",
+    "interface": "usb",
+    "available": true,
+    "platform": "com.apple.platform.watchos",
+    "modelCode": "Watch6,1",
+    "identifier": "00003010-000WATCH0000003",
+    "modelName": "Apple Watch",
+    "name": "Watch"
+  },
+  {
+    "simulator": false,
+    "operatingSystemVersion": "17.0",
+    "interface": "network",
+    "available": true,
+    "platform": "com.apple.platform.appletvos",
+    "modelCode": "AppleTV11,1",
+    "identifier": "00004010-00000TV00000004",
+    "modelName": "Apple TV 4K",
+    "name": "Living Room"
+  },
+  {
+    "simulator": true,
+    "operatingSystemVersion": "17.0",
+    "platform": "com.apple.platform.iphoneos",
+    "modelCode": "iPhone15,2",
+    "identifier": "SIM000000-SIMULATORSKIP",
+    "modelName": "iPhone 14 Pro",
+    "name": "iPhone 14 Pro Simulator"
+  }
+]

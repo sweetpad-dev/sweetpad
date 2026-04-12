@@ -1,0 +1,17 @@
+{
+  "result": {
+    "devices": [
+      {
+        "capabilities": [],
+        "connectionProperties": {
+          "tunnelState": "unavailable",
+          "pairingState": "unsupported"
+        },
+        "deviceProperties": {},
+        "hardwareProperties": {},
+        "identifier": "urn:x-ios-devicectl:device-CS1600001-USB000000000000",
+        "visibilityClass": "default"
+      }
+    ]
+  }
+}

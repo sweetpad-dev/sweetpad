@@ -108,7 +108,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
 
       beforeEach(() => {
         const device = createMockDeviceWithOS("17.0");
-        modernDevice = new iOSDeviceDestination(device);
+        modernDevice = new iOSDeviceDestination({ devicectl: device });
       });
 
       it("uses devicectl for deployment", async () => {
@@ -195,7 +195,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
 
       beforeEach(() => {
         const device = createMockDeviceWithOS("16.7");
-        legacyDevice = new iOSDeviceDestination(device);
+        legacyDevice = new iOSDeviceDestination({ devicectl: device });
         (iosDeploy.isIosDeployInstalled as jest.Mock).mockResolvedValue(true);
       });
 
@@ -267,7 +267,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
     describe("error handling", () => {
       it("throws error when deviceId is missing", async () => {
         const device = createMockDevice();
-        const destination = new iOSDeviceDestination(device);
+        const destination = new iOSDeviceDestination({ devicectl: device });
         // Manually set properties to simulate missing deviceId
         Object.defineProperty(device, "identifier", { get: () => undefined });
         Object.defineProperty(device.hardwareProperties, "udid", { get: () => undefined });
@@ -287,7 +287,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
             osVersionNumber: "17.0",
           },
         });
-        const destination = new iOSDeviceDestination(device);
+        const destination = new iOSDeviceDestination({ devicectl: device });
         Object.defineProperty(device, "identifier", { get: () => undefined });
         Object.defineProperty(device.hardwareProperties, "udid", { get: () => undefined });
 
@@ -305,7 +305,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         const device = createMockDeviceOfType("appleWatch");
         device.deviceProperties.osVersionNumber = "10.0";
         const destination = require("../devices/types").watchOSDeviceDestination;
-        const watchDevice = new destination(device);
+        const watchDevice = new destination({ devicectl: device });
 
         // Should use devicectl for watchOS 10+
         expect(watchDevice.supportsDevicectl).toBe(true);
@@ -315,7 +315,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         const device = createMockDeviceOfType("appleTV");
         device.deviceProperties.osVersionNumber = "17.0";
         const destination = require("../devices/types").tvOSDeviceDestination;
-        const tvDevice = new destination(device);
+        const tvDevice = new destination({ devicectl: device });
 
         // Should use devicectl for tvOS 17+
         expect(tvDevice.supportsDevicectl).toBe(true);
@@ -325,7 +325,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         const device = createMockDeviceOfType("appleVision");
         device.deviceProperties.osVersionNumber = "1.0";
         const destination = require("../devices/types").visionOSDeviceDestination;
-        const visionDevice = new destination(device);
+        const visionDevice = new destination({ devicectl: device });
 
         // Should use devicectl for visionOS 1+
         expect(visionDevice.supportsDevicectl).toBe(true);
@@ -336,7 +336,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
   describe("deployment method selection", () => {
     it("selects devicectl for iOS 17+ devices", async () => {
       const device = createMockDeviceWithOS("17.0");
-      const destination = new iOSDeviceDestination(device);
+      const destination = new iOSDeviceDestination({ devicectl: device });
 
       expect(destination.supportsDevicectl).toBe(true);
       expect(destination.devicectlId).toBeDefined();
@@ -344,7 +344,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
 
     it("selects ios-deploy for iOS < 17 devices", async () => {
       const device = createMockDeviceWithOS("16.7");
-      const destination = new iOSDeviceDestination(device);
+      const destination = new iOSDeviceDestination({ devicectl: device });
 
       expect(destination.supportsDevicectl).toBe(false);
       expect(destination.udid).toBeDefined();
@@ -352,14 +352,14 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
 
     it("selects devicectl for iOS 18+ devices", async () => {
       const device = createMockDeviceWithOS("18.0");
-      const destination = new iOSDeviceDestination(device);
+      const destination = new iOSDeviceDestination({ devicectl: device });
 
       expect(destination.supportsDevicectl).toBe(true);
     });
 
     it("selects ios-deploy for iOS 15.x devices", async () => {
       const device = createMockDeviceWithOS("15.5");
-      const destination = new iOSDeviceDestination(device);
+      const destination = new iOSDeviceDestination({ devicectl: device });
 
       expect(destination.supportsDevicectl).toBe(false);
     });
@@ -370,7 +370,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       (getXcodeVersionInstalled as jest.Mock).mockResolvedValue({ major: 16, minor: 0, patch: 0 });
 
       const device = createMockDeviceWithOS("17.0");
-      const destination = new iOSDeviceDestination(device);
+      const destination = new iOSDeviceDestination({ devicectl: device });
 
       await buildManager.runOniOSDevice(mockTerminal, {
         scheme: "TestApp",
@@ -393,7 +393,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       (getXcodeVersionInstalled as jest.Mock).mockResolvedValue({ major: 15, minor: 0, patch: 0 });
 
       const device = createMockDeviceWithOS("17.0");
-      const destination = new iOSDeviceDestination(device);
+      const destination = new iOSDeviceDestination({ devicectl: device });
 
       await buildManager.runOniOSDevice(mockTerminal, {
         scheme: "TestApp",

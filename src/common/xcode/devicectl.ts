@@ -49,15 +49,20 @@ type DeviceCtlDeviceProperties = {
 
 export type DeviceCtlDeviceType = "iPhone" | "iPad" | "appleWatch" | "appleTV" | "appleVision" | "realityDevice";
 
+/**
+ * All fields are optional because devicectl returns "hardwareProperties": {} for
+ * some iOS <= 16 devices connected via USB (see sweetpad-dev/sweetpad#223). Callers
+ * must handle missing deviceType / platform / udid.
+ */
 type DeviceCtlHardwareProperties = {
   cpuType?: DeviceCtlCpuType;
-  deviceType: DeviceCtlDeviceType;
+  deviceType?: DeviceCtlDeviceType;
   ecid?: number;
   hardwareModel?: string;
   internalStorageCapacity?: number;
   isProductionFused?: boolean;
   marketingName?: string;
-  platform: "iOS";
+  platform?: "iOS";
   productType?: string;
   reality?: "physical";
   serialNumber?: string;
