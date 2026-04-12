@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.78] - 2026-04-12
+
+- Fix detection of iOS 16 and earlier physical devices ([#224](https://github.com/sweetpad-dev/sweetpad/pull/224))
+
 ## [0.1.77] - 2026-03-15
 
 - Add "Switch Git Worktree" command for parallel development ([#218](https://github.com/sweetpad-dev/sweetpad/pull/218))
