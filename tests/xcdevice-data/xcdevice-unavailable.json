@@ -1,0 +1,18 @@
+[
+  {
+    "simulator": false,
+    "operatingSystemVersion": "",
+    "interface": "usb",
+    "available": false,
+    "platform": "com.apple.platform.iphoneos",
+    "modelCode": "iPhone10,6",
+    "identifier": "00008101-000UNAVAIL11111",
+    "modelName": "iPhone X",
+    "name": "iPhone",
+    "error": {
+      "code": -9,
+      "domain": "com.apple.platform.iphoneos",
+      "failureReason": "iPhone is not paired with your computer. To use iPhone with Xcode, unlock it and choose to trust this computer when prompted."
+    }
+  }
+]

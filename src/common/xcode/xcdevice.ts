@@ -3,22 +3,62 @@ import { exec } from "../exec";
 import { commonLogger } from "../logger";
 
 /**
- * Represents a device from xcdevice list output
- * Note: xcdevice uses different field names than devicectl
+ * Represents a device from "xcrun xcdevice list" output.
+ *
+ * xcdevice returns physical devices (and simulators) across all Apple platforms.
+ * Fields come from Xcode's own device database and are more reliable than devicectl
+ * for iOS <= 16 devices, which devicectl either reports with empty hardwareProperties
+ * or omits entirely.
  */
 export type XcdeviceDevice = {
-  identifier: string; // Different from devicectl identifier - this is the UDID
-  modelCode: string; // Same as productType in devicectl (e.g., "iPhone10,6")
+  /** UDID in legacy format (e.g. "00008110-001234567890001E"). Same value as DeviceCtlDevice.hardwareProperties.udid when both sources report the device. */
+  identifier: string;
+  /** e.g. "iPhone15,2" — same as DeviceCtlDevice.hardwareProperties.productType. */
+  modelCode: string;
+  /** User-customized device name, or marketing name if never customized. */
   name: string;
-  operatingSystemVersion: string; // e.g., "16.7.12"
-  platform: "com.apple.platform.iphoneos" | string;
+  /** e.g. "16.7.12". May be an empty string for unavailable devices. */
+  operatingSystemVersion: string;
+  /** "com.apple.platform.iphoneos" | "com.apple.platform.watchos" | "com.apple.platform.appletvos" | "com.apple.platform.xros" | ... */
+  platform: string;
+  /** True for iOS/watchOS simulators. We filter these out. */
+  simulator?: boolean;
+  /** False when the device is not currently reachable/paired. Still listed, just with degraded info. */
+  available?: boolean;
+  /** Transport Xcode believes it would use. Note: Xcode 15+ lies here for iOS 17+ wireless devices. */
+  interface?: "usb" | "network" | string;
+  /** CPU architecture (e.g. "arm64e"). Not always present. */
+  architecture?: string;
+  /** Friendly model name (e.g. "iPhone 13 Pro"). Not always present. */
+  modelName?: string;
+  /** Present on unavailable entries. Common codes: -9 not paired, -10 locked, -14 dev-mode disabled. */
+  error?: {
+    code: number;
+    domain?: string;
+    failureReason?: string;
+    description?: string;
+  };
 };
 
 type XcdeviceListOutput = XcdeviceDevice[];
 
 /**
- * List devices using xcdevice command
- * This is a fallback for older devices that don't report OS version via devicectl
+ * Platform strings we accept as physical Apple devices. Anything else (simulators,
+ * macOS, driverkit, etc.) is filtered out.
+ */
+const SUPPORTED_PLATFORMS = new Set([
+  "com.apple.platform.iphoneos",
+  "com.apple.platform.watchos",
+  "com.apple.platform.appletvos",
+  "com.apple.platform.xros",
+]);
+
+/**
+ * List devices using "xcrun xcdevice list".
+ *
+ * Retains entries with "available: false" or an "error" payload — downstream code
+ * (DeviceDestinationBase.state) derives "unavailable" from those so the device still shows
+ * in the tree, just marked disconnected.
  */
 export async function listDevicesWithXcdevice(context: ExtensionContext): Promise<XcdeviceDevice[]> {
   try {
@@ -31,94 +71,14 @@ export async function listDevicesWithXcdevice(context: ExtensionContext): Promis
 
     const devices: XcdeviceListOutput = JSON.parse(stdout);
 
-    // Filter to only include iOS devices (not simulators)
     return devices.filter((device) => {
-      // Only include physical iOS devices
-      return device.platform === "com.apple.platform.iphoneos";
+      if (device.simulator === true) {
+        return false;
+      }
+      return SUPPORTED_PLATFORMS.has(device.platform);
     });
   } catch (error) {
     commonLogger.error("Failed to list devices with xcdevice", { error });
     return [];
   }
-}
-
-/**
- * Create a lookup map from modelCode to OS version
- * This allows us to match devices by productType/modelCode
- */
-export function createOsVersionLookup(devices: XcdeviceDevice[]): Map<string, string> {
-  const lookup = new Map<string, string>();
-
-  for (const device of devices) {
-    if (device.modelCode && device.operatingSystemVersion) {
-      // If multiple devices have the same modelCode, we keep the first one
-      // In practice, this shouldn't matter as they should have the same OS version
-      if (!lookup.has(device.modelCode)) {
-        lookup.set(device.modelCode, device.operatingSystemVersion);
-      }
-    }
-  }
-
-  return lookup;
-}
-
-/**
- * Get OS version for a device by its productType (modelCode in xcdevice)
- */
-export function getOsVersionForDevice(lookup: Map<string, string>, productType: string): string | undefined {
-  return lookup.get(productType);
-}
-
-/**
- * Create a lookup map from modelCode to UDID (identifier in xcdevice)
- * This provides the correct UDID format for xcodebuild for older devices
- */
-export function createUdidLookup(devices: XcdeviceDevice[]): Map<string, string> {
-  const lookup = new Map<string, string>();
-
-  for (const device of devices) {
-    if (device.modelCode && device.identifier) {
-      // If multiple devices have the same modelCode, we keep the first one
-      // In practice, this shouldn't matter as they should have the same UDID
-      if (!lookup.has(device.modelCode)) {
-        lookup.set(device.modelCode, device.identifier);
-      }
-    }
-  }
-
-  return lookup;
-}
-
-/**
- * Get UDID for a device by its productType (modelCode in xcdevice)
- */
-export function getUdidForDevice(lookup: Map<string, string>, productType: string): string | undefined {
-  return lookup.get(productType);
-}
-
-/**
- * Create a lookup map from modelCode to device name
- * This provides the user-customized name for older devices where devicectl returns marketing name
- */
-export function createNameLookup(devices: XcdeviceDevice[]): Map<string, string> {
-  const lookup = new Map<string, string>();
-
-  for (const device of devices) {
-    if (device.modelCode && device.name) {
-      // If multiple devices have the same modelCode, we keep the first one
-      // In practice, this shouldn't matter as they should have different names
-      if (!lookup.has(device.modelCode)) {
-        lookup.set(device.modelCode, device.name);
-      }
-    }
-  }
-
-  return lookup;
-}
-
-/**
- * Get device name for a device by its productType (modelCode in xcdevice)
- */
-export function getNameForDevice(lookup: Map<string, string>, productType: string): string | undefined {
-  return lookup.get(productType);
 }

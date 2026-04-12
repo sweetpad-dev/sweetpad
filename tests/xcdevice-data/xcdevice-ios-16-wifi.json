@@ -1,0 +1,14 @@
+[
+  {
+    "simulator": false,
+    "operatingSystemVersion": "16.4.1 (20E252)",
+    "interface": "network",
+    "available": true,
+    "platform": "com.apple.platform.iphoneos",
+    "modelCode": "iPhone14,2",
+    "identifier": "00008110-000AABBCCDD11111",
+    "architecture": "arm64e",
+    "modelName": "iPhone 13 Pro",
+    "name": "My iPhone"
+  }
+]
