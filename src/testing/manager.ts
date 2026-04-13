@@ -378,13 +378,14 @@ export class TestingManager {
    * Execute separate command to build the project before running tests
    */
   async buildForTestingCommand(context: ExtensionContext) {
-    const { scheme, destination, xcworkspace } = await this.askTestingConfigurations();
+    const { scheme, configuration, destination, xcworkspace } = await this.askTestingConfigurations();
 
     // before testing we need to build the project to avoid runnning tests on old code or
     // building every time we run selected tests
     await this.buildForTesting({
       destination: destination,
       scheme: scheme,
+      configuration: configuration,
       xcworkspace: xcworkspace,
     });
   }
@@ -394,6 +395,7 @@ export class TestingManager {
    */
   async buildForTesting(options: {
     scheme: string;
+    configuration: string;
     destination: Destination;
     xcworkspace: string;
   }) {
@@ -415,6 +417,8 @@ export class TestingManager {
           "-allowProvisioningUpdates",
           "-scheme",
           options.scheme,
+          "-configuration",
+          options.configuration,
         ];
 
         let cwd: string;
@@ -681,9 +685,10 @@ export class TestingManager {
     xcworkspace: string;
     destination: Destination;
     scheme: string;
+    configuration: string;
     token: vscode.CancellationToken;
   }) {
-    const { xcworkspace, scheme, token, run, request } = options;
+    const { xcworkspace, scheme, configuration, token, run, request } = options;
 
     const queue = this.prepareQueueForRun(request);
 
@@ -721,6 +726,7 @@ export class TestingManager {
           xcworkspace: xcworkspace,
           destination: options.destination,
           scheme: scheme,
+          configuration: configuration,
           defaultTarget: defaultTarget,
         });
       } else {
@@ -728,6 +734,7 @@ export class TestingManager {
           run: run,
           classTest: test,
           scheme: scheme,
+          configuration: configuration,
           xcworkspace: xcworkspace,
           destination: options.destination,
           defaultTarget: defaultTarget,
@@ -743,7 +750,7 @@ export class TestingManager {
   async runTestsWithoutBuilding(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
     const run = this.controller.createTestRun(request);
     try {
-      const { scheme, destination, xcworkspace } = await this.askTestingConfigurations();
+      const { scheme, configuration, destination, xcworkspace } = await this.askTestingConfigurations();
 
       // todo: add check if project is already built
 
@@ -754,6 +761,7 @@ export class TestingManager {
         xcworkspace: xcworkspace,
         destination: destination,
         scheme: scheme,
+        configuration: configuration,
         token: token,
       });
     } finally {
@@ -767,12 +775,13 @@ export class TestingManager {
   async buildAndRunTests(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
     const run = this.controller.createTestRun(request);
     try {
-      const { scheme, destination, xcworkspace } = await this.askTestingConfigurations();
+      const { scheme, configuration, destination, xcworkspace } = await this.askTestingConfigurations();
 
       // before testing we need to build the project to avoid runnning tests on old code or
       // building every time we run selected tests
       await this.buildForTesting({
         scheme: scheme,
+        configuration: configuration,
         destination: destination,
         xcworkspace: xcworkspace,
       });
@@ -783,6 +792,7 @@ export class TestingManager {
         xcworkspace: xcworkspace,
         destination: destination,
         scheme: scheme,
+        configuration: configuration,
         token: token,
       });
     } finally {
@@ -794,11 +804,12 @@ export class TestingManager {
     run: vscode.TestRun;
     classTest: vscode.TestItem;
     scheme: string;
+    configuration: string;
     xcworkspace: string;
     destination: Destination;
     defaultTarget: string | null;
   }): Promise<void> {
-    const { run, classTest, scheme, defaultTarget } = options;
+    const { run, classTest, scheme, configuration, defaultTarget } = options;
     const className = classTest.id;
 
     const runContext = new XcodebuildTestRunContext({
@@ -829,6 +840,8 @@ export class TestingManager {
             destinationRaw,
             "-scheme",
             scheme,
+            "-configuration",
+            configuration,
             `-only-testing:${testTarget}/${classTest.id}`,
           ];
 
@@ -890,10 +903,11 @@ export class TestingManager {
     methodTest: vscode.TestItem;
     xcworkspace: string;
     scheme: string;
+    configuration: string;
     destination: Destination;
     defaultTarget: string | null;
   }): Promise<void> {
-    const { run: testRun, methodTest, scheme, defaultTarget } = options;
+    const { run: testRun, methodTest, scheme, configuration, defaultTarget } = options;
     const [className, methodName] = methodTest.id.split(".");
 
     const runContext = new XcodebuildTestRunContext({
@@ -924,6 +938,8 @@ export class TestingManager {
             destinationRaw,
             "-scheme",
             scheme,
+            "-configuration",
+            configuration,
             `-only-testing:${testTarget}/${className}/${methodName}`,
           ];
 
