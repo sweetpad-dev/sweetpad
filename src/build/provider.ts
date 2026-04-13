@@ -346,7 +346,7 @@ class ActionDispatcher {
         scheme: scheme,
         configuration: configuration,
         xcworkspace: xcworkspace,
-        watchMarker: false,
+        watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
       });
@@ -362,7 +362,7 @@ class ActionDispatcher {
         sdk: sdk,
         configuration: configuration,
         xcworkspace: xcworkspace,
-        watchMarker: false,
+        watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
         debug: options.debug,
