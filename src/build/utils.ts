@@ -333,14 +333,26 @@ export async function askConfiguration(
 }
 
 /**
+ * Whether SweetPad should auto-(re)generate `buildServer.json` via xcode-build-server.
+ * Reads the current `build.autoGenerateBuildServerConfig` key, falling back to the
+ * deprecated `xcodebuildserver.autogenerate` when the new key is unset. Defaults to true.
+ */
+export function isAutoGenerateBuildServerConfigEnabled(): boolean {
+  const current = getWorkspaceConfig("build.autoGenerateBuildServerConfig");
+  if (current !== undefined) {
+    return current;
+  }
+  return getWorkspaceConfig("xcodebuildserver.autogenerate") ?? true;
+}
+
+/**
  * Check if buildServer.json needs to be regenerated and regenerate it if needed
  */
 export async function generateBuildServerConfigOnBuild(options: {
   scheme: string;
   xcworkspace: string;
 }): Promise<void> {
-  const isEnabled = getWorkspaceConfig("xcodebuildserver.autogenerate") ?? true;
-  if (!isEnabled) {
+  if (!isAutoGenerateBuildServerConfigEnabled()) {
     return;
   }
 
@@ -468,7 +480,22 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
   return selected.context.path;
 }
 
-export async function restartSwiftLSP() {
+/**
+ * Restart the Swift language server.
+ *
+ * Honors `sweetpad.build.autoRestartSwiftLSP` (default true). Pass `{ force: true }` from
+ * explicitly user-invoked commands (e.g. "Generate Build Server Config") that should
+ * always restart regardless of the setting.
+ */
+export async function restartSwiftLSP(options?: { force?: boolean }) {
+  if (!options?.force) {
+    const isEnabled = getWorkspaceConfig("build.autoRestartSwiftLSP") ?? true;
+    if (!isEnabled) {
+      commonLogger.debug("Skipping Swift LSP restart (build.autoRestartSwiftLSP is false)");
+      return;
+    }
+  }
+
   // Restart SourceKit Language Server
   try {
     await vscode.commands.executeCommand("swift.restartLSPServer");

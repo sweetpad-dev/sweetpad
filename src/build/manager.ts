@@ -36,6 +36,7 @@ import {
   detectWorkspaceType,
   ensureAppPathExists,
   generateBuildServerConfigOnBuild,
+  isAutoGenerateBuildServerConfigEnabled,
   getCurrentXcodeWorkspacePath,
   getSwiftPMDirectory,
   getWorkspacePath,
@@ -181,8 +182,7 @@ export class BuildManager {
       return;
     }
 
-    const isEnabled = getWorkspaceConfig("xcodebuildserver.autogenerate") ?? true;
-    if (!isEnabled) {
+    if (!isAutoGenerateBuildServerConfigEnabled()) {
       return;
     }
 
