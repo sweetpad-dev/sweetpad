@@ -741,6 +741,7 @@ export class BuildManager {
         ...option.launchArgs,
       ].filter((arg) => arg !== null); // Filter out null arguments
 
+      context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
       await terminal.execute({
         command: "xcrun",
         args: launchArgs,
