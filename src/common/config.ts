@@ -20,6 +20,8 @@ type Config = {
   "build.bringSimulatorToForeground": boolean;
   "build.autoRefreshSchemes": boolean;
   "build.autoRefreshSchemesDelay": number;
+  "build.autoGenerateBuildServerConfig": boolean;
+  "build.autoRestartSwiftLSP": boolean;
   "build.logStreamEnabled": boolean;
   "build.logStreamPredicate": string;
   "system.taskExecutor": "v1" | "v2";

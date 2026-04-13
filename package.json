@@ -934,7 +934,8 @@
         "sweetpad.xcodebuildserver.autogenerate": {
           "type": "boolean",
           "default": true,
-          "description": "Watch if default scheme is changed and regenerate the build server config"
+          "description": "Watch if default scheme is changed and regenerate the build server config",
+          "markdownDeprecationMessage": "Use `#sweetpad.build.autoGenerateBuildServerConfig#` instead. This setting is still honored as a fallback when the new one is unset."
         },
         "sweetpad.xcodebuildserver.path": {
           "type": "string",
@@ -955,6 +956,16 @@
           "minimum": 100,
           "maximum": 5000,
           "description": "Delay in milliseconds before auto-refreshing schemes after detecting file changes"
+        },
+        "sweetpad.build.autoGenerateBuildServerConfig": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically (re)generate `buildServer.json` via xcode-build-server on build and on scheme change. Disable when using a custom build server (e.g. one based on Swift Build) so SweetPad does not overwrite your config."
+        },
+        "sweetpad.build.autoRestartSwiftLSP": {
+          "type": "boolean",
+          "default": true,
+          "description": "Restart the Swift language server after every build and after `tuist generate` / `tuist install` / `xcodegen generate`. Disable when using a build server that does not require LSP restarts (e.g. one with background indexing). Has no effect on the explicit 'SweetPad: Generate Build Server Config' command, which always restarts."
         },
         "sweetpad.build.logStreamEnabled": {
           "type": "boolean",

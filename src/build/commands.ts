@@ -150,7 +150,8 @@ export async function generateBuildServerConfigCommand(context: ExtensionContext
     xcworkspace: xcworkspace,
     scheme: scheme,
   });
-  await restartSwiftLSP();
+  // User explicitly invoked this command — always restart, regardless of build.autoRestartSwiftLSP.
+  await restartSwiftLSP({ force: true });
 
   vscode.window.showInformationMessage("buildServer.json generated in workspace root", "Open").then((selected) => {
     if (selected === "Open") {
