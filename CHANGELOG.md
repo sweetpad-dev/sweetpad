@@ -2,6 +2,13 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.79] - 2026-04-13
+
+- Add opt-out flags `sweetpad.build.autoGenerateBuildServerConfig` and `sweetpad.build.autoRestartSwiftLSP` for users with a custom build server ([#228](https://github.com/sweetpad-dev/sweetpad/pull/228))
+- Pass `sweetpad.testing.configuration` to `xcodebuild` so it is no longer ignored ([#227](https://github.com/sweetpad-dev/sweetpad/pull/227))
+- Refresh the status bar so device runs no longer appear stuck on "Extracting Xcode version" ([#226](https://github.com/sweetpad-dev/sweetpad/pull/226))
+- Emit watch markers in debugging-run for macOS and simulators ([#225](https://github.com/sweetpad-dev/sweetpad/pull/225))
+
 ## [0.1.78] - 2026-04-12
 
 - Fix detection of iOS 16 and earlier physical devices ([#224](https://github.com/sweetpad-dev/sweetpad/pull/224))
