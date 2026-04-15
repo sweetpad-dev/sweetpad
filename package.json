@@ -3,7 +3,7 @@
   "type": "commonjs",
   "displayName": "SweetPad (iOS/Swift development)",
   "description": "Develop Swift/iOS projects in VS Code",
-  "version": "0.1.79",
+  "version": "0.1.80",
   "publisher": "sweetpad",
   "icon": "images/logo.png",
   "license": "MIT",
@@ -984,7 +984,11 @@
         },
         "sweetpad.build.deviceLogStreamBackend": {
           "type": "string",
-          "enum": ["off", "osActivityDtMode", "pymobiledevice3"],
+          "enum": [
+            "off",
+            "osActivityDtMode",
+            "pymobiledevice3"
+          ],
           "default": "off",
           "enumDescriptions": [
             "Do not stream os_log from physical devices (default).",
@@ -1001,7 +1005,10 @@
         "sweetpad.build.pymobiledevice3ExtraArgs": {
           "type": "array",
           "items": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "default": [],
           "description": "Extra CLI arguments appended to 'pymobiledevice3 syslog live'. By default SweetPad injects '--process-name <EXECUTABLE_NAME>' and '--match <CFBundleIdentifier>' to cut framework noise. Include '--match <regex>' or '--process-name <name>' here to override either preset with your own value, or pass null (e.g. [\"--match\", null]) to disable SweetPad's preset without adding a replacement. Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
