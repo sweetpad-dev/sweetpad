@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.80] - 2026-04-15
+
+- Stream os_log/Logger output from physical iOS devices via opt-in `sweetpad.build.deviceLogStreamBackend` (`osActivityDtMode` or `pymobiledevice3`) ([#230](https://github.com/sweetpad-dev/sweetpad/pull/230))
+
 ## [0.1.79] - 2026-04-13
 
 - Add opt-out flags `sweetpad.build.autoGenerateBuildServerConfig` and `sweetpad.build.autoRestartSwiftLSP` for users with a custom build server ([#228](https://github.com/sweetpad-dev/sweetpad/pull/228))
