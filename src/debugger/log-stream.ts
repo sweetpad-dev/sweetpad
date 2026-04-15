@@ -1,8 +1,16 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import * as vscode from "vscode";
-import type { ExtensionContext, LastLaunchedAppContext } from "../common/commands";
+import type { ExtensionContext, LastLaunchedAppContext, LastLaunchedAppDeviceContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
+import { exec } from "../common/exec";
 import { commonLogger } from "../common/logger";
+import { buildPymobiledevice3Args, formatCommandLine } from "./device-log-backend";
+
+type LogStreamSpec = {
+  command: string;
+  args: string[];
+  stderrPrefix: string;
+};
 
 /**
  * Builds the default predicate for filtering logs from the unified logging system.
@@ -129,19 +137,23 @@ export class LogStreamManager {
       ? customPredicate.replace(/\$\{bundleId\}/g, bundleIdentifier).replace(/\$\{processName\}/g, processName)
       : buildDefaultPredicate(bundleIdentifier, processName);
 
-    try {
-      this.spawnLogStreamProcess(launchContext, predicate);
-    } catch (error) {
-      commonLogger.error("Failed to start log stream", { error });
-    }
-
-    // Add separator between stdout and unified logging output
     const channel = this.getOutputChannel();
     channel.appendLine("");
     channel.appendLine("─".repeat(60));
-    channel.appendLine("[SweetPad] os_log / Logger / NSLog output:");
-    channel.appendLine(`[SweetPad] Predicate: ${predicate}`);
+    if (launchContext.type === "device") {
+      // Device backends don't use a `log stream` predicate. Each backend prints its own header below.
+      channel.appendLine("[SweetPad] Device log streaming:");
+    } else {
+      channel.appendLine("[SweetPad] os_log / Logger / NSLog output:");
+      channel.appendLine(`[SweetPad] Predicate: ${predicate}`);
+    }
     channel.appendLine("");
+
+    try {
+      await this.spawnLogStreamProcess(launchContext, predicate);
+    } catch (error) {
+      commonLogger.error("Failed to start log stream", { error });
+    }
 
     // Register handler to stop log stream when debug session ends
     this.sessionDisposable = vscode.debug.onDidTerminateDebugSession(() => {
@@ -155,63 +167,133 @@ export class LogStreamManager {
   /**
    * Spawn the log stream process based on the launch context type.
    */
-  private spawnLogStreamProcess(launchContext: LastLaunchedAppContext, predicate: string): void {
-    let command: string;
-    let args: string[];
-
-    switch (launchContext.type) {
-      case "simulator": {
-        // For simulators, use xcrun simctl spawn to run log stream inside the simulator
-        command = "xcrun";
-        args = [
-          "simctl",
-          "spawn",
-          launchContext.simulatorUdid,
-          "log",
-          "stream",
-          "--predicate",
-          predicate,
-          "--level",
-          "debug",
-          "--style",
-          "compact",
-        ];
-        break;
-      }
-      case "macos": {
-        // For macOS, run log stream directly
-        command = "log";
-        args = ["stream", "--predicate", predicate, "--level", "debug", "--style", "compact"];
-        break;
-      }
-      case "device": {
-        // For physical devices, log streaming via devicectl is not yet supported
-        // TODO: investigate devicectl device process log stream support
-        const channel = this.getOutputChannel();
-        channel.appendLine("[SweetPad] os_log streaming for physical devices is not yet supported.");
-        channel.appendLine("[SweetPad] Use Console.app or Xcode to view device logs.");
-        return;
-      }
+  private async spawnLogStreamProcess(launchContext: LastLaunchedAppContext, predicate: string): Promise<void> {
+    const channel = this.getOutputChannel();
+    const spec = await this.resolveLogStreamSpec(launchContext, predicate, channel);
+    if (!spec) {
+      return;
     }
 
-    commonLogger.debug("Starting log stream", { command, args });
-
-    const subprocess = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
+    commonLogger.debug("Starting log stream", { command: spec.command, args: spec.args });
+    const subprocess = spawn(spec.command, spec.args, { stdio: ["ignore", "pipe", "pipe"] });
     this.logStreamProcess = subprocess;
+    this.attachSubprocessHandlers(subprocess, channel, spec.stderrPrefix);
+  }
 
-    const channel = this.getOutputChannel();
+  private async resolveLogStreamSpec(
+    launchContext: LastLaunchedAppContext,
+    predicate: string,
+    channel: vscode.OutputChannel,
+  ): Promise<LogStreamSpec | null> {
+    switch (launchContext.type) {
+      case "simulator":
+        return this.buildSimulatorSpec(launchContext.simulatorUdid, predicate);
+      case "macos":
+        return this.buildMacOSSpec(predicate);
+      case "device":
+        return this.resolveDeviceSpec(launchContext, channel);
+    }
+  }
 
+  private buildSimulatorSpec(simulatorUdid: string, predicate: string): LogStreamSpec {
+    return {
+      command: "xcrun",
+      args: [
+        "simctl",
+        "spawn",
+        simulatorUdid,
+        "log",
+        "stream",
+        "--predicate",
+        predicate,
+        "--level",
+        "debug",
+        "--style",
+        "compact",
+      ],
+      stderrPrefix: "[log stream stderr]",
+    };
+  }
+
+  private buildMacOSSpec(predicate: string): LogStreamSpec {
+    return {
+      command: "log",
+      args: ["stream", "--predicate", predicate, "--level", "debug", "--style", "compact"],
+      stderrPrefix: "[log stream stderr]",
+    };
+  }
+
+  private async resolveDeviceSpec(
+    launchContext: LastLaunchedAppDeviceContext,
+    channel: vscode.OutputChannel,
+  ): Promise<LogStreamSpec | null> {
+    const backend = launchContext.logBackend ?? "off";
+    switch (backend) {
+      case "osActivityDtMode":
+        channel.appendLine(
+          "[SweetPad] os_log/Logger output is being mirrored to stderr via OS_ACTIVITY_DT_MODE=enable.",
+        );
+        channel.appendLine("[SweetPad] Messages appear in the stdout/stderr stream above.");
+        channel.appendLine(
+          "[SweetPad] Caveat: mirrors main-executable logs only; dynamically-loaded framework logs may be missing.",
+        );
+        return null;
+      case "pymobiledevice3":
+        return await this.buildPymobiledevice3Spec(launchContext, channel);
+      default:
+        channel.appendLine("[SweetPad] Device os_log streaming is disabled (build.deviceLogStreamBackend=off).");
+        channel.appendLine("[SweetPad] Use Console.app or Xcode to view device logs.");
+        return null;
+    }
+  }
+
+  private async buildPymobiledevice3Spec(
+    launchContext: LastLaunchedAppDeviceContext,
+    channel: vscode.OutputChannel,
+  ): Promise<LogStreamSpec | null> {
+    const binaryPath = getWorkspaceConfig("build.pymobiledevice3Path") ?? "pymobiledevice3";
+    if (!(await isPymobiledevice3Available(binaryPath))) {
+      channel.appendLine(`[SweetPad] '${binaryPath}' not found on PATH.`);
+      channel.appendLine("[SweetPad] Install with: pip install pymobiledevice3");
+      channel.appendLine("[SweetPad] Or set 'sweetpad.build.pymobiledevice3Path' to an absolute path.");
+      return null;
+    }
+    const rawExtraArgs = getWorkspaceConfig("build.pymobiledevice3ExtraArgs") ?? [];
+    const result = buildPymobiledevice3Args({
+      rawExtraArgs,
+      processName: launchContext.executableName,
+      bundleIdentifier: launchContext.bundleIdentifier,
+    });
+    if (result.kind === "missingProcessName") {
+      channel.appendLine(
+        "[SweetPad] Could not determine the process name for log filtering (EXECUTABLE_NAME missing).",
+      );
+      channel.appendLine(
+        "[SweetPad] Set 'sweetpad.build.pymobiledevice3ExtraArgs' to include '--process-name <name>'.",
+      );
+      return null;
+    }
+    channel.appendLine(`[SweetPad] Extra args: ${JSON.stringify(rawExtraArgs)}`);
+    channel.appendLine(`[SweetPad] Command: ${formatCommandLine(binaryPath, result.args)}`);
+    channel.appendLine("[SweetPad] On iOS 17+, requires a running tunnel: sudo pymobiledevice3 remote tunneld");
+    return {
+      command: binaryPath,
+      args: result.args,
+      stderrPrefix: "[pymobiledevice3]",
+    };
+  }
+
+  private attachSubprocessHandlers(
+    subprocess: ChildProcess,
+    channel: vscode.OutputChannel,
+    stderrPrefix: string,
+  ): void {
     subprocess.stdout?.on("data", (data: Buffer) => {
       channel.append(data.toString());
     });
-
     subprocess.stderr?.on("data", (data: Buffer) => {
-      channel.append(`[log stream stderr] ${data.toString()}`);
+      channel.append(`${stderrPrefix} ${data.toString()}`);
     });
-
     subprocess.on("exit", (code: number | null, signal: string | null) => {
       if (code !== null && code !== 0) {
         channel.appendLine(`\n[SweetPad] Log stream exited with code ${code}`);
@@ -220,7 +302,6 @@ export class LogStreamManager {
       }
       this.logStreamProcess = undefined;
     });
-
     subprocess.on("error", (error: Error) => {
       commonLogger.error("Log stream process error", { error });
       channel.appendLine(`\n[SweetPad] Log stream error: ${error.message}`);
@@ -253,6 +334,15 @@ export class LogStreamManager {
       this.outputChannel.dispose();
       this.outputChannel = undefined;
     }
+  }
+}
+
+async function isPymobiledevice3Available(binaryPath: string): Promise<boolean> {
+  try {
+    await exec({ command: binaryPath, args: ["version"] });
+    return true;
+  } catch {
+    return false;
   }
 }
 

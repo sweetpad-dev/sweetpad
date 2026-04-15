@@ -981,6 +981,30 @@
             "subsystem BEGINSWITH \"${bundleId}\"",
             "process == \"${processName}\""
           ]
+        },
+        "sweetpad.build.deviceLogStreamBackend": {
+          "type": "string",
+          "enum": ["off", "osActivityDtMode", "pymobiledevice3"],
+          "default": "off",
+          "enumDescriptions": [
+            "Do not stream os_log from physical devices (default).",
+            "Inject OS_ACTIVITY_DT_MODE=enable so os_log mirrors to stderr via devicectl --console. Zero external dependencies, requires Xcode 16+. Undocumented Apple behavior, may break on future iOS versions. Mirrors main-executable logs only; dynamically-loaded framework logs may be missing.",
+            "Spawn `pymobiledevice3 syslog live` to stream structured os_log (subsystem, category, level). Requires `pip install pymobiledevice3` and, on iOS 17+, a running tunnel (`sudo pymobiledevice3 remote tunneld`)."
+          ],
+          "description": "Backend for streaming os_log/Logger output from physical iOS devices during debug sessions."
+        },
+        "sweetpad.build.pymobiledevice3Path": {
+          "type": "string",
+          "default": "pymobiledevice3",
+          "description": "Path to the pymobiledevice3 binary. Leave as 'pymobiledevice3' to resolve via PATH. Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
+        },
+        "sweetpad.build.pymobiledevice3ExtraArgs": {
+          "type": "array",
+          "items": {
+            "type": ["string", "null"]
+          },
+          "default": [],
+          "description": "Extra CLI arguments appended to 'pymobiledevice3 syslog live'. By default SweetPad injects '--process-name <EXECUTABLE_NAME>' and '--match <CFBundleIdentifier>' to cut framework noise. Include '--match <regex>' or '--process-name <name>' here to override either preset with your own value, or pass null (e.g. [\"--match\", null]) to disable SweetPad's preset without adding a replacement. Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
         }
       }
     },

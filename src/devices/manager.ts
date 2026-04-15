@@ -70,8 +70,7 @@ export class DevicesManager {
       listDevicesWithXcdevice(this.context),
     ]);
 
-    const devicectlDevices =
-      devicectlResult.status === "fulfilled" ? devicectlResult.value.result.devices : [];
+    const devicectlDevices = devicectlResult.status === "fulfilled" ? devicectlResult.value.result.devices : [];
     const xcdeviceList = xcdeviceResult.status === "fulfilled" ? xcdeviceResult.value : [];
 
     const merged = mergeDeviceSources(devicectlDevices, xcdeviceList);

@@ -165,6 +165,18 @@ export class XcodeBuildSettings {
     return `${this.targetName}.app`;
   }
 
+  get executableName() {
+    // On iOS this is CFBundleExecutable — the string that appears as the process name in
+    // os_log / syslog output. Usually matches PRODUCT_NAME but can diverge (e.g. spaces stripped).
+    if (this.settings.EXECUTABLE_NAME) {
+      return this.settings.EXECUTABLE_NAME;
+    }
+    if (this.settings.PRODUCT_NAME) {
+      return this.settings.PRODUCT_NAME;
+    }
+    return this.targetName;
+  }
+
   private get targetName() {
     // Example:
     // - "ControlRoom"

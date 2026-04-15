@@ -21,6 +21,7 @@ import { commonLogger } from "../common/logger";
 import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
 import * as iosDeploy from "../common/xcode/ios-deploy";
+import { getDeviceLaunchEnvExtras, resolveDeviceLogBackend } from "../debugger/device-log-backend";
 import { getLogStreamManager } from "../debugger/log-stream";
 import type { DeviceDestination } from "../devices/types";
 import type { SimulatorDestination } from "../simulators/types";
@@ -36,11 +37,11 @@ import {
   detectWorkspaceType,
   ensureAppPathExists,
   generateBuildServerConfigOnBuild,
-  isAutoGenerateBuildServerConfigEnabled,
   getCurrentXcodeWorkspacePath,
   getSwiftPMDirectory,
   getWorkspacePath,
   getXcodeBuildDestinationString,
+  isAutoGenerateBuildServerConfigEnabled,
   isXcbeautifyEnabled,
   prepareBundleDir,
   prepareDerivedDataPath,
@@ -688,15 +689,6 @@ export class BuildManager {
     // Install and launch app on device
     context.updateProgressStatus(`Installing "${scheme}" on "${destinationName}"`);
 
-    context.updateWorkspaceState("build.lastLaunchedApp", {
-      type: "device",
-      appPath: targetPath,
-      appName: buildSettings.appName,
-      bundleIdentifier: bundlerId,
-      destinationId: deviceId,
-      destinationType: destinationType,
-    });
-
     if (option.watchMarker) {
       writeWatchMarkers(terminal);
     }
@@ -722,6 +714,18 @@ export class BuildManager {
       context.updateProgressStatus("Extracting Xcode version");
       const xcodeVersion = await getXcodeVersionInstalled();
       const isConsoleOptionSupported = xcodeVersion.major >= 16;
+      const logBackend = resolveDeviceLogBackend();
+
+      context.updateWorkspaceState("build.lastLaunchedApp", {
+        type: "device",
+        appPath: targetPath,
+        appName: buildSettings.appName,
+        executableName: buildSettings.executableName,
+        bundleIdentifier: bundlerId,
+        destinationId: deviceId,
+        destinationType: destinationType,
+        logBackend: logBackend,
+      });
 
       // Prepare the launch arguments
       const launchArgs = [
@@ -745,9 +749,13 @@ export class BuildManager {
       await terminal.execute({
         command: "xcrun",
         args: launchArgs,
-        // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process
+        // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process.
+        // Merge backend-provided defaults first so user-provided launchEnv values win.
         env: Object.fromEntries(
-          Object.entries(option.launchEnv).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value]),
+          Object.entries({ ...getDeviceLaunchEnvExtras(logBackend), ...option.launchEnv }).map(([key, value]) => [
+            `DEVICECTL_CHILD_${key}`,
+            value,
+          ]),
         ),
         // Forward stdout/stderr to the log stream output channel
         onOutputLine: async (data) => {
@@ -788,9 +796,15 @@ export class BuildManager {
         throw new ExtensionError("ios-deploy is required for iOS < 17. Install it with: brew install ios-deploy");
       }
 
-      if (option.watchMarker) {
-        writeWatchMarkers(terminal);
-      }
+      context.updateWorkspaceState("build.lastLaunchedApp", {
+        type: "device",
+        appPath: targetPath,
+        appName: buildSettings.appName,
+        executableName: buildSettings.executableName,
+        bundleIdentifier: bundlerId,
+        destinationId: deviceId,
+        destinationType: destinationType,
+      });
 
       await iosDeploy.installAndLaunchApp(context, terminal, {
         deviceId: deviceId,
