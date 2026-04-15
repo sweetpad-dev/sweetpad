@@ -24,6 +24,9 @@ type Config = {
   "build.autoRestartSwiftLSP": boolean;
   "build.logStreamEnabled": boolean;
   "build.logStreamPredicate": string;
+  "build.deviceLogStreamBackend": "off" | "osActivityDtMode" | "pymobiledevice3";
+  "build.pymobiledevice3Path": string;
+  "build.pymobiledevice3ExtraArgs": (string | null)[];
   "system.taskExecutor": "v1" | "v2";
   "system.logLevel": "debug" | "info" | "warn" | "error";
   "system.enableSentry": boolean;

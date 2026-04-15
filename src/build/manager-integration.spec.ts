@@ -99,6 +99,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         appPath: "/path/to/TestApp.app",
         bundleIdentifier: "com.example.testapp",
         appName: "TestApp",
+        executableName: "TestApp",
       };
       (require("../common/cli/scripts").getBuildSettingsToLaunch as jest.Mock).mockResolvedValue(mockBuildSettings);
     });
