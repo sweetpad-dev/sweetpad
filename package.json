@@ -1011,7 +1011,7 @@
             ]
           },
           "default": [],
-          "description": "Extra CLI arguments appended to 'pymobiledevice3 syslog live'. By default SweetPad injects '--process-name <EXECUTABLE_NAME>' and '--match <CFBundleIdentifier>' to cut framework noise. Include '--match <regex>' or '--process-name <name>' here to override either preset with your own value, or pass null (e.g. [\"--match\", null]) to disable SweetPad's preset without adding a replacement. Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
+          "description": "Extra CLI arguments appended to 'pymobiledevice3 syslog live'. By default SweetPad injects '--process-name <EXECUTABLE_NAME>' and '--regex <EXECUTABLE_NAME>\\\\{<EXECUTABLE_NAME>(\\\\.debug\\\\.dylib)?\\\\}\\[' to focus on the app's main image and optional debug dylib. Include '--regex <pattern>' or '--process-name <name>' here to override either preset with your own value, or pass null (e.g. [\"--regex\", null]) to disable SweetPad's preset without adding a replacement. Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
         }
       }
     },

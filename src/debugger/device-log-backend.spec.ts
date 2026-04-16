@@ -1,6 +1,8 @@
 import { getWorkspaceConfig } from "../common/config";
 import {
+  buildDefaultPymobiledevice3Regex,
   buildPymobiledevice3Args,
+  escapeRegex,
   formatCommandLine,
   getDeviceLaunchEnvExtras,
   resolveDeviceLogBackend,
@@ -54,15 +56,16 @@ describe("getDeviceLaunchEnvExtras", () => {
 });
 
 describe("buildPymobiledevice3Args", () => {
-  const base = { processName: "pulse_2050", bundleIdentifier: "dev.tuist.pulse-2050" };
+  const base = { processName: "pulse_2050" };
+  const defaultRegex = buildDefaultPymobiledevice3Regex(base.processName);
 
   it("uses SweetPad defaults when extras are empty", () => {
     const result = buildPymobiledevice3Args({ ...base, rawExtraArgs: [] });
     expect(result).toEqual({
       kind: "ok",
-      args: ["syslog", "live", "--label", "--process-name", "pulse_2050", "--match", "dev.tuist.pulse-2050"],
+      args: ["syslog", "live", "--label", "--process-name", "pulse_2050", "--regex", defaultRegex],
       hasProcessNameOverride: false,
-      hasMatchOverride: false,
+      hasRegexOverride: false,
     });
   });
 
@@ -78,8 +81,8 @@ describe("buildPymobiledevice3Args", () => {
       "--label",
       "--process-name",
       "pulse_2050",
-      "--match",
-      "dev.tuist.pulse-2050",
+      "--regex",
+      defaultRegex,
       "--verbose",
       "--color",
     ]);
@@ -96,49 +99,49 @@ describe("buildPymobiledevice3Args", () => {
       "syslog",
       "live",
       "--label",
-      "--match",
-      "dev.tuist.pulse-2050",
+      "--regex",
+      buildDefaultPymobiledevice3Regex("MyApp"),
       "--process-name",
       "MyApp",
     ]);
   });
 
-  it("replaces --match when overridden", () => {
+  it("replaces --regex when overridden", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--match", "com.example.custom"],
+      rawExtraArgs: ["--regex", "com.example.custom"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.hasMatchOverride).toBe(true);
+    expect(result.hasRegexOverride).toBe(true);
     expect(result.args).toEqual([
       "syslog",
       "live",
       "--label",
       "--process-name",
       "pulse_2050",
-      "--match",
+      "--regex",
       "com.example.custom",
     ]);
   });
 
-  it("accepts short aliases -p and -m", () => {
+  it("accepts short aliases -p and -e", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["-p", "Other", "-m", "foo"],
+      rawExtraArgs: ["-p", "Other", "-e", "foo"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.hasProcessNameOverride).toBe(true);
-    expect(result.hasMatchOverride).toBe(true);
-    expect(result.args).toEqual(["syslog", "live", "--label", "-p", "Other", "-m", "foo"]);
+    expect(result.hasRegexOverride).toBe(true);
+    expect(result.args).toEqual(["syslog", "live", "--label", "-p", "Other", "-e", "foo"]);
   });
 
-  it("suppresses --match when value is null", () => {
+  it("suppresses --regex when value is null", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--match", null],
+      rawExtraArgs: ["--regex", null],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.hasMatchOverride).toBe(true);
+    expect(result.hasRegexOverride).toBe(true);
     expect(result.args).toEqual(["syslog", "live", "--label", "--process-name", "pulse_2050"]);
   });
 
@@ -149,13 +152,13 @@ describe("buildPymobiledevice3Args", () => {
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.hasProcessNameOverride).toBe(true);
-    expect(result.args).toEqual(["syslog", "live", "--label", "--match", "dev.tuist.pulse-2050"]);
+    expect(result.args).toEqual(["syslog", "live", "--label", "--regex", defaultRegex]);
   });
 
   it("suppresses both with null values", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--process-name", null, "--match", null],
+      rawExtraArgs: ["--process-name", null, "--regex", null],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.args).toEqual(["syslog", "live", "--label"]);
@@ -181,8 +184,8 @@ describe("buildPymobiledevice3Args", () => {
       "syslog",
       "live",
       "--label",
-      "--match",
-      "dev.tuist.pulse-2050",
+      "--regex",
+      buildDefaultPymobiledevice3Regex("Explicit"),
       "--process-name",
       "Explicit",
     ]);
@@ -195,26 +198,55 @@ describe("buildPymobiledevice3Args", () => {
       rawExtraArgs: ["--process-name", null],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.args).toEqual(["syslog", "live", "--label", "--match", "dev.tuist.pulse-2050"]);
+    expect(result.args).toEqual(["syslog", "live", "--label"]);
+  });
+
+  it("escapes regex metacharacters in the default regex", () => {
+    const result = buildPymobiledevice3Args({
+      processName: "pulse_2050+beta",
+      rawExtraArgs: [],
+    });
+    if (result.kind !== "ok") throw new Error("expected ok");
+    expect(result.args).toEqual([
+      "syslog",
+      "live",
+      "--label",
+      "--process-name",
+      "pulse_2050+beta",
+      "--regex",
+      "pulse_2050\\+beta\\{pulse_2050\\+beta(\\.debug\\.dylib)?\\}\\[",
+    ]);
   });
 
   it("drops trailing flag with no value", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--match"],
+      rawExtraArgs: ["--regex"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.hasMatchOverride).toBe(true);
+    expect(result.hasRegexOverride).toBe(true);
     expect(result.args).toEqual(["syslog", "live", "--label", "--process-name", "pulse_2050"]);
   });
 
   it("preserves extras declared after a null-suppressed flag", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--match", null, "--verbose"],
+      rawExtraArgs: ["--regex", null, "--verbose"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.args).toEqual(["syslog", "live", "--label", "--process-name", "pulse_2050", "--verbose"]);
+  });
+});
+
+describe("buildDefaultPymobiledevice3Regex", () => {
+  it("matches the main executable and optional debug dylib image name", () => {
+    expect(buildDefaultPymobiledevice3Regex("pulse_2050")).toBe("pulse_2050\\{pulse_2050(\\.debug\\.dylib)?\\}\\[");
+  });
+});
+
+describe("escapeRegex", () => {
+  it("escapes regex metacharacters", () => {
+    expect(escapeRegex("pulse_2050+beta")).toBe("pulse_2050\\+beta");
   });
 });
 
@@ -250,5 +282,11 @@ describe("formatCommandLine", () => {
 
   it("quotes args that need it", () => {
     expect(formatCommandLine("pymobiledevice3", ["--match", "a b"])).toBe("pymobiledevice3 --match 'a b'");
+  });
+
+  it("quotes regex args with shell metacharacters", () => {
+    expect(formatCommandLine("pymobiledevice3", ["--regex", "pulse_2050\\{pulse_2050(\\.debug\\.dylib)?\\}\\["])).toBe(
+      "pymobiledevice3 --regex 'pulse_2050\\{pulse_2050(\\.debug\\.dylib)?\\}\\['",
+    );
   });
 });

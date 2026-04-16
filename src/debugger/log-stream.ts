@@ -262,7 +262,6 @@ export class LogStreamManager {
     const result = buildPymobiledevice3Args({
       rawExtraArgs,
       processName: launchContext.executableName,
-      bundleIdentifier: launchContext.bundleIdentifier,
     });
     if (result.kind === "missingProcessName") {
       channel.appendLine(
