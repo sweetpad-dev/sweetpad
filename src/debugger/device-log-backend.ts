@@ -15,7 +15,6 @@ export function getDeviceLaunchEnvExtras(backend: DeviceLogBackend): Record<stri
 export type Pymobiledevice3ArgsInput = {
   rawExtraArgs: (string | null)[];
   processName: string | undefined;
-  bundleIdentifier: string;
 };
 
 export type Pymobiledevice3ArgsResult =
@@ -23,33 +22,49 @@ export type Pymobiledevice3ArgsResult =
       kind: "ok";
       args: string[];
       hasProcessNameOverride: boolean;
-      hasMatchOverride: boolean;
     }
   | { kind: "missingProcessName" };
 
 /**
- * Merge SweetPad's default `pymobiledevice3 syslog live` arguments with user-supplied extras.
+ * Build the argv for `pymobiledevice3 syslog live`, merging SweetPad's defaults
+ * with user-supplied extras.
+ *
+ * SweetPad intentionally does NOT add `--match` / `--regex` any more — those
+ * flags filter on the rendered line and are prone to both false positives
+ * (framework chatter whose subsystem contains the bundle id) and false
+ * negatives (logs from a custom `Logger(subsystem:)` that doesn't mention the
+ * bundle id). Fine-grained filtering happens locally against the parsed
+ * {@link SyslogEntry}; see `syslog-parser.ts`.
+ *
+ * `--process-name` is still applied server-side as a cheap volume filter
+ * (the relay only sends entries from processes matching the name). It does
+ * NOT by itself exclude framework-emitted lines from *within* the app's
+ * process — that's what the local image-name filter is for.
+ *
+ * `--no-color` is prepended as a top-level option so that piped output never
+ * carries ANSI escape sequences; the parser tolerates them too, but stripping
+ * at the source keeps the output channel clean if a user ever disables the
+ * parser.
  *
  * Rules:
- * - `--process-name`/`-p` and `--match`/`-m` in extras fully replace SweetPad's defaults.
- * - A null value after either flag suppresses SweetPad's default without adding a replacement.
- * - Any other args are passed through in order.
- * - If the process name is missing AND no override was provided, returns `missingProcessName`.
+ * - `--process-name` / `-p` in extras fully replaces SweetPad's default.
+ * - A `null` value after the flag suppresses SweetPad's default without
+ *   adding a replacement.
+ * - Any other args pass through in order.
+ * - If the process name is missing AND no override was provided, returns
+ *   `missingProcessName`.
  */
 export function buildPymobiledevice3Args(input: Pymobiledevice3ArgsInput): Pymobiledevice3ArgsResult {
-  const { rawExtraArgs, processName, bundleIdentifier } = input;
+  const { rawExtraArgs, processName } = input;
 
   let hasProcessNameOverride = false;
-  let hasMatchOverride = false;
   const cleanedExtra: string[] = [];
 
   for (let i = 0; i < rawExtraArgs.length; i++) {
     const arg = rawExtraArgs[i];
     const isProcessName = arg === "--process-name" || arg === "-p";
-    const isMatch = arg === "--match" || arg === "-m";
-    if (isProcessName || isMatch) {
-      if (isProcessName) hasProcessNameOverride = true;
-      else hasMatchOverride = true;
+    if (isProcessName) {
+      hasProcessNameOverride = true;
       const value = rawExtraArgs[i + 1];
       if (typeof value === "string") {
         cleanedExtra.push(arg as string, value);
@@ -66,19 +81,17 @@ export function buildPymobiledevice3Args(input: Pymobiledevice3ArgsInput): Pymob
     return { kind: "missingProcessName" };
   }
 
-  const baseArgs: string[] = ["syslog", "live", "--label"];
+  // `--no-color` is a top-level option; it must precede the `syslog` subcommand.
+  // `--label` makes the CLI emit `[subsystem][category]` suffixes the parser reads.
+  const baseArgs: string[] = ["--no-color", "syslog", "live", "--label"];
   if (!hasProcessNameOverride) {
     baseArgs.push("--process-name", processName as string);
-  }
-  if (!hasMatchOverride) {
-    baseArgs.push("--match", bundleIdentifier);
   }
 
   return {
     kind: "ok",
     args: [...baseArgs, ...cleanedExtra],
     hasProcessNameOverride,
-    hasMatchOverride,
   };
 }
 

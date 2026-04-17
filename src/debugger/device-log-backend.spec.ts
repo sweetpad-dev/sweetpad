@@ -54,34 +54,32 @@ describe("getDeviceLaunchEnvExtras", () => {
 });
 
 describe("buildPymobiledevice3Args", () => {
-  const base = { processName: "pulse_2050", bundleIdentifier: "dev.tuist.pulse-2050" };
+  const base = { processName: "pulse_2050" };
 
   it("uses SweetPad defaults when extras are empty", () => {
     const result = buildPymobiledevice3Args({ ...base, rawExtraArgs: [] });
     expect(result).toEqual({
       kind: "ok",
-      args: ["syslog", "live", "--label", "--process-name", "pulse_2050", "--match", "dev.tuist.pulse-2050"],
+      args: ["--no-color", "syslog", "live", "--label", "--process-name", "pulse_2050"],
       hasProcessNameOverride: false,
-      hasMatchOverride: false,
     });
   });
 
   it("passes through unrelated extras in order", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--verbose", "--color"],
+      rawExtraArgs: ["--verbose", "--image-offset"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.args).toEqual([
+      "--no-color",
       "syslog",
       "live",
       "--label",
       "--process-name",
       "pulse_2050",
-      "--match",
-      "dev.tuist.pulse-2050",
       "--verbose",
-      "--color",
+      "--image-offset",
     ]);
   });
 
@@ -93,53 +91,23 @@ describe("buildPymobiledevice3Args", () => {
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.hasProcessNameOverride).toBe(true);
     expect(result.args).toEqual([
+      "--no-color",
       "syslog",
       "live",
       "--label",
-      "--match",
-      "dev.tuist.pulse-2050",
       "--process-name",
       "MyApp",
     ]);
   });
 
-  it("replaces --match when overridden", () => {
+  it("accepts short alias -p", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--match", "com.example.custom"],
-    });
-    if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.hasMatchOverride).toBe(true);
-    expect(result.args).toEqual([
-      "syslog",
-      "live",
-      "--label",
-      "--process-name",
-      "pulse_2050",
-      "--match",
-      "com.example.custom",
-    ]);
-  });
-
-  it("accepts short aliases -p and -m", () => {
-    const result = buildPymobiledevice3Args({
-      ...base,
-      rawExtraArgs: ["-p", "Other", "-m", "foo"],
+      rawExtraArgs: ["-p", "Other"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.hasProcessNameOverride).toBe(true);
-    expect(result.hasMatchOverride).toBe(true);
-    expect(result.args).toEqual(["syslog", "live", "--label", "-p", "Other", "-m", "foo"]);
-  });
-
-  it("suppresses --match when value is null", () => {
-    const result = buildPymobiledevice3Args({
-      ...base,
-      rawExtraArgs: ["--match", null],
-    });
-    if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.hasMatchOverride).toBe(true);
-    expect(result.args).toEqual(["syslog", "live", "--label", "--process-name", "pulse_2050"]);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label", "-p", "Other"]);
   });
 
   it("suppresses --process-name when value is null", () => {
@@ -149,16 +117,7 @@ describe("buildPymobiledevice3Args", () => {
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.hasProcessNameOverride).toBe(true);
-    expect(result.args).toEqual(["syslog", "live", "--label", "--match", "dev.tuist.pulse-2050"]);
-  });
-
-  it("suppresses both with null values", () => {
-    const result = buildPymobiledevice3Args({
-      ...base,
-      rawExtraArgs: ["--process-name", null, "--match", null],
-    });
-    if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.args).toEqual(["syslog", "live", "--label"]);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label"]);
   });
 
   it("returns missingProcessName when process name is undefined and no override", () => {
@@ -178,11 +137,10 @@ describe("buildPymobiledevice3Args", () => {
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.args).toEqual([
+      "--no-color",
       "syslog",
       "live",
       "--label",
-      "--match",
-      "dev.tuist.pulse-2050",
       "--process-name",
       "Explicit",
     ]);
@@ -195,26 +153,33 @@ describe("buildPymobiledevice3Args", () => {
       rawExtraArgs: ["--process-name", null],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.args).toEqual(["syslog", "live", "--label", "--match", "dev.tuist.pulse-2050"]);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label"]);
   });
 
-  it("drops trailing flag with no value", () => {
+  it("drops trailing --process-name flag with no value", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--match"],
+      rawExtraArgs: ["--process-name"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.hasMatchOverride).toBe(true);
-    expect(result.args).toEqual(["syslog", "live", "--label", "--process-name", "pulse_2050"]);
+    expect(result.hasProcessNameOverride).toBe(true);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label"]);
   });
 
   it("preserves extras declared after a null-suppressed flag", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--match", null, "--verbose"],
+      rawExtraArgs: ["--process-name", null, "--verbose"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.args).toEqual(["syslog", "live", "--label", "--process-name", "pulse_2050", "--verbose"]);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label", "--verbose"]);
+  });
+
+  it("does not inject any server-side message filter (--match / --regex)", () => {
+    const result = buildPymobiledevice3Args({ ...base, rawExtraArgs: [] });
+    if (result.kind !== "ok") throw new Error("expected ok");
+    expect(result.args).not.toContain("--match");
+    expect(result.args).not.toContain("--regex");
   });
 });
 
@@ -249,6 +214,8 @@ describe("formatCommandLine", () => {
   });
 
   it("quotes args that need it", () => {
-    expect(formatCommandLine("pymobiledevice3", ["--match", "a b"])).toBe("pymobiledevice3 --match 'a b'");
+    expect(formatCommandLine("pymobiledevice3", ["--process-name", "a b"])).toBe(
+      "pymobiledevice3 --process-name 'a b'",
+    );
   });
 });
