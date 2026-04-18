@@ -5,11 +5,13 @@ import { getWorkspaceConfig } from "../common/config";
 import { exec } from "../common/exec";
 import { commonLogger } from "../common/logger";
 import { buildPymobiledevice3Args, formatCommandLine } from "./device-log-backend";
+import { type LogPipe, PassthroughLogPipe, Pymobiledevice3LogPipe } from "./log-pipe";
 
 type LogStreamSpec = {
   command: string;
   args: string[];
   stderrPrefix: string;
+  lineProcessor: LogPipe;
 };
 
 /**
@@ -177,7 +179,7 @@ export class LogStreamManager {
     commonLogger.debug("Starting log stream", { command: spec.command, args: spec.args });
     const subprocess = spawn(spec.command, spec.args, { stdio: ["ignore", "pipe", "pipe"] });
     this.logStreamProcess = subprocess;
-    this.attachSubprocessHandlers(subprocess, channel, spec.stderrPrefix);
+    this.attachSubprocessHandlers(subprocess, channel, spec.stderrPrefix, spec.lineProcessor);
   }
 
   private async resolveLogStreamSpec(
@@ -187,15 +189,15 @@ export class LogStreamManager {
   ): Promise<LogStreamSpec | null> {
     switch (launchContext.type) {
       case "simulator":
-        return this.buildSimulatorSpec(launchContext.simulatorUdid, predicate);
+        return this.buildSimulatorSpec(launchContext.simulatorUdid, predicate, channel);
       case "macos":
-        return this.buildMacOSSpec(predicate);
+        return this.buildMacOSSpec(predicate, channel);
       case "device":
         return this.resolveDeviceSpec(launchContext, channel);
     }
   }
 
-  private buildSimulatorSpec(simulatorUdid: string, predicate: string): LogStreamSpec {
+  private buildSimulatorSpec(simulatorUdid: string, predicate: string, channel: vscode.OutputChannel): LogStreamSpec {
     return {
       command: "xcrun",
       args: [
@@ -212,14 +214,16 @@ export class LogStreamManager {
         "compact",
       ],
       stderrPrefix: "[log stream stderr]",
+      lineProcessor: new PassthroughLogPipe((text) => channel.append(text)),
     };
   }
 
-  private buildMacOSSpec(predicate: string): LogStreamSpec {
+  private buildMacOSSpec(predicate: string, channel: vscode.OutputChannel): LogStreamSpec {
     return {
       command: "log",
       args: ["stream", "--predicate", predicate, "--level", "debug", "--style", "compact"],
       stderrPrefix: "[log stream stderr]",
+      lineProcessor: new PassthroughLogPipe((text) => channel.append(text)),
     };
   }
 
@@ -262,7 +266,6 @@ export class LogStreamManager {
     const result = buildPymobiledevice3Args({
       rawExtraArgs,
       processName: launchContext.executableName,
-      bundleIdentifier: launchContext.bundleIdentifier,
     });
     if (result.kind === "missingProcessName") {
       channel.appendLine(
@@ -276,10 +279,50 @@ export class LogStreamManager {
     channel.appendLine(`[SweetPad] Extra args: ${JSON.stringify(rawExtraArgs)}`);
     channel.appendLine(`[SweetPad] Command: ${formatCommandLine(binaryPath, result.args)}`);
     channel.appendLine("[SweetPad] On iOS 17+, requires a running tunnel: sudo pymobiledevice3 remote tunneld");
+
+    // We drop "--match" / "--regex" at the CLI and instead parse each line into
+    // a structured entry locally, then filter by image name. This fixes the two
+    // gaps with server-side matching (see PR #231): framework-emitted lines
+    // whose subsystem happens to contain the bundle id, and app-emitted lines
+    // whose custom `Logger(subsystem:)` doesn't.
+    //
+    // When the override replaces "--process-name", prefer that for the filter
+    // — the user knows better than us what image names the app produces.
+    const filterExecutable = extractProcessNameOverride(rawExtraArgs) ?? launchContext.executableName;
+    const debugDylibOnly = getWorkspaceConfig("build.pymobiledevice3DebugDylibOnly") ?? true;
+    const subsystemDenyList = getWorkspaceConfig("build.pymobiledevice3SubsystemDenyList") ?? ["com.apple.*"];
+    const subsystemAllowList = getWorkspaceConfig("build.pymobiledevice3SubsystemAllowList") ?? [];
+
+    const output = (text: string) => channel.appendLine(text);
+    let lineProcessor: LogPipe;
+    if (filterExecutable) {
+      lineProcessor = new Pymobiledevice3LogPipe(output, {
+        executableName: filterExecutable,
+        debugDylibOnly,
+        subsystemDenyList,
+        subsystemAllowList,
+      });
+      if (debugDylibOnly) {
+        channel.appendLine(`[SweetPad] Image filter: only '${filterExecutable}.debug.dylib'.`);
+      } else {
+        channel.appendLine(`[SweetPad] Image filter: '${filterExecutable}' + '${filterExecutable}.debug.dylib'.`);
+      }
+      if (subsystemDenyList.length > 0) {
+        channel.appendLine(`[SweetPad] Subsystem deny-list: ${JSON.stringify(subsystemDenyList)}`);
+      }
+      if (subsystemAllowList.length > 0) {
+        channel.appendLine(`[SweetPad] Subsystem allow-list: ${JSON.stringify(subsystemAllowList)}`);
+      }
+    } else {
+      lineProcessor = new PassthroughLogPipe(output);
+      channel.appendLine("[SweetPad] Local filter disabled (no executable name available).");
+    }
+
     return {
       command: binaryPath,
       args: result.args,
       stderrPrefix: "[pymobiledevice3]",
+      lineProcessor,
     };
   }
 
@@ -287,10 +330,10 @@ export class LogStreamManager {
     subprocess: ChildProcess,
     channel: vscode.OutputChannel,
     stderrPrefix: string,
+    lineProcessor: LogPipe,
   ): void {
-    subprocess.stdout?.on("data", (data: Buffer) => {
-      channel.append(data.toString());
-    });
+    subprocess.stdout?.on("data", (data: Buffer) => lineProcessor.push(data.toString()));
+    subprocess.stdout?.on("end", () => lineProcessor.flush());
     subprocess.stderr?.on("data", (data: Buffer) => {
       channel.append(`${stderrPrefix} ${data.toString()}`);
     });
@@ -335,6 +378,25 @@ export class LogStreamManager {
       this.outputChannel = undefined;
     }
   }
+}
+
+/**
+ * When the user puts "--process-name NAME" / "-p NAME" into the extra args, we
+ * honor it for the local image-name filter too. A null value (used to suppress
+ * the default) yields undefined so we fall back to `launchContext.executableName`.
+ */
+function extractProcessNameOverride(rawExtraArgs: (string | null)[]): string | undefined {
+  for (let i = 0; i < rawExtraArgs.length; i++) {
+    const arg = rawExtraArgs[i];
+    if (arg === "--process-name" || arg === "-p") {
+      const value = rawExtraArgs[i + 1];
+      if (typeof value === "string") {
+        return value;
+      }
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 async function isPymobiledevice3Available(binaryPath: string): Promise<boolean> {
