@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.81] - 2026-04-18
+
+- Improve pymobiledevice3 log filtering to reduce framework noise and capture logs from custom Logger subsystems ([#231](https://github.com/sweetpad-dev/sweetpad/pull/231))
+
 ## [0.1.80] - 2026-04-15
 
 - Stream os_log/Logger output from physical iOS devices via opt-in `sweetpad.build.deviceLogStreamBackend` (`osActivityDtMode` or `pymobiledevice3`) ([#230](https://github.com/sweetpad-dev/sweetpad/pull/230))
