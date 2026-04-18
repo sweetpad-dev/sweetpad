@@ -1,8 +1,6 @@
 import { getWorkspaceConfig } from "../common/config";
 import {
-  buildDefaultPymobiledevice3Regex,
   buildPymobiledevice3Args,
-  escapeRegex,
   formatCommandLine,
   getDeviceLaunchEnvExtras,
   resolveDeviceLogBackend,
@@ -57,34 +55,31 @@ describe("getDeviceLaunchEnvExtras", () => {
 
 describe("buildPymobiledevice3Args", () => {
   const base = { processName: "pulse_2050" };
-  const defaultRegex = buildDefaultPymobiledevice3Regex(base.processName);
 
   it("uses SweetPad defaults when extras are empty", () => {
     const result = buildPymobiledevice3Args({ ...base, rawExtraArgs: [] });
     expect(result).toEqual({
       kind: "ok",
-      args: ["syslog", "live", "--label", "--process-name", "pulse_2050", "--regex", defaultRegex],
+      args: ["--no-color", "syslog", "live", "--label", "--process-name", "pulse_2050"],
       hasProcessNameOverride: false,
-      hasRegexOverride: false,
     });
   });
 
   it("passes through unrelated extras in order", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--verbose", "--color"],
+      rawExtraArgs: ["--verbose", "--image-offset"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.args).toEqual([
+      "--no-color",
       "syslog",
       "live",
       "--label",
       "--process-name",
       "pulse_2050",
-      "--regex",
-      defaultRegex,
       "--verbose",
-      "--color",
+      "--image-offset",
     ]);
   });
 
@@ -95,54 +90,17 @@ describe("buildPymobiledevice3Args", () => {
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.hasProcessNameOverride).toBe(true);
-    expect(result.args).toEqual([
-      "syslog",
-      "live",
-      "--label",
-      "--regex",
-      buildDefaultPymobiledevice3Regex("MyApp"),
-      "--process-name",
-      "MyApp",
-    ]);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label", "--process-name", "MyApp"]);
   });
 
-  it("replaces --regex when overridden", () => {
+  it("accepts short alias -p", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--regex", "com.example.custom"],
-    });
-    if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.hasRegexOverride).toBe(true);
-    expect(result.args).toEqual([
-      "syslog",
-      "live",
-      "--label",
-      "--process-name",
-      "pulse_2050",
-      "--regex",
-      "com.example.custom",
-    ]);
-  });
-
-  it("accepts short aliases -p and -e", () => {
-    const result = buildPymobiledevice3Args({
-      ...base,
-      rawExtraArgs: ["-p", "Other", "-e", "foo"],
+      rawExtraArgs: ["-p", "Other"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.hasProcessNameOverride).toBe(true);
-    expect(result.hasRegexOverride).toBe(true);
-    expect(result.args).toEqual(["syslog", "live", "--label", "-p", "Other", "-e", "foo"]);
-  });
-
-  it("suppresses --regex when value is null", () => {
-    const result = buildPymobiledevice3Args({
-      ...base,
-      rawExtraArgs: ["--regex", null],
-    });
-    if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.hasRegexOverride).toBe(true);
-    expect(result.args).toEqual(["syslog", "live", "--label", "--process-name", "pulse_2050"]);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label", "-p", "Other"]);
   });
 
   it("suppresses --process-name when value is null", () => {
@@ -152,16 +110,7 @@ describe("buildPymobiledevice3Args", () => {
     });
     if (result.kind !== "ok") throw new Error("expected ok");
     expect(result.hasProcessNameOverride).toBe(true);
-    expect(result.args).toEqual(["syslog", "live", "--label", "--regex", defaultRegex]);
-  });
-
-  it("suppresses both with null values", () => {
-    const result = buildPymobiledevice3Args({
-      ...base,
-      rawExtraArgs: ["--process-name", null, "--regex", null],
-    });
-    if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.args).toEqual(["syslog", "live", "--label"]);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label"]);
   });
 
   it("returns missingProcessName when process name is undefined and no override", () => {
@@ -180,15 +129,7 @@ describe("buildPymobiledevice3Args", () => {
       rawExtraArgs: ["--process-name", "Explicit"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.args).toEqual([
-      "syslog",
-      "live",
-      "--label",
-      "--regex",
-      buildDefaultPymobiledevice3Regex("Explicit"),
-      "--process-name",
-      "Explicit",
-    ]);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label", "--process-name", "Explicit"]);
   });
 
   it("accepts missing process name when --process-name is null-suppressed", () => {
@@ -198,55 +139,33 @@ describe("buildPymobiledevice3Args", () => {
       rawExtraArgs: ["--process-name", null],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.args).toEqual(["syslog", "live", "--label"]);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label"]);
   });
 
-  it("escapes regex metacharacters in the default regex", () => {
-    const result = buildPymobiledevice3Args({
-      processName: "pulse_2050+beta",
-      rawExtraArgs: [],
-    });
-    if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.args).toEqual([
-      "syslog",
-      "live",
-      "--label",
-      "--process-name",
-      "pulse_2050+beta",
-      "--regex",
-      "pulse_2050\\+beta\\{pulse_2050\\+beta(\\.debug\\.dylib)?\\}\\[",
-    ]);
-  });
-
-  it("drops trailing flag with no value", () => {
+  it("drops trailing --process-name flag with no value", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--regex"],
+      rawExtraArgs: ["--process-name"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.hasRegexOverride).toBe(true);
-    expect(result.args).toEqual(["syslog", "live", "--label", "--process-name", "pulse_2050"]);
+    expect(result.hasProcessNameOverride).toBe(true);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label"]);
   });
 
   it("preserves extras declared after a null-suppressed flag", () => {
     const result = buildPymobiledevice3Args({
       ...base,
-      rawExtraArgs: ["--regex", null, "--verbose"],
+      rawExtraArgs: ["--process-name", null, "--verbose"],
     });
     if (result.kind !== "ok") throw new Error("expected ok");
-    expect(result.args).toEqual(["syslog", "live", "--label", "--process-name", "pulse_2050", "--verbose"]);
+    expect(result.args).toEqual(["--no-color", "syslog", "live", "--label", "--verbose"]);
   });
-});
 
-describe("buildDefaultPymobiledevice3Regex", () => {
-  it("matches the main executable and optional debug dylib image name", () => {
-    expect(buildDefaultPymobiledevice3Regex("pulse_2050")).toBe("pulse_2050\\{pulse_2050(\\.debug\\.dylib)?\\}\\[");
-  });
-});
-
-describe("escapeRegex", () => {
-  it("escapes regex metacharacters", () => {
-    expect(escapeRegex("pulse_2050+beta")).toBe("pulse_2050\\+beta");
+  it("does not inject any server-side message filter (--match / --regex)", () => {
+    const result = buildPymobiledevice3Args({ ...base, rawExtraArgs: [] });
+    if (result.kind !== "ok") throw new Error("expected ok");
+    expect(result.args).not.toContain("--match");
+    expect(result.args).not.toContain("--regex");
   });
 });
 
@@ -281,12 +200,8 @@ describe("formatCommandLine", () => {
   });
 
   it("quotes args that need it", () => {
-    expect(formatCommandLine("pymobiledevice3", ["--match", "a b"])).toBe("pymobiledevice3 --match 'a b'");
-  });
-
-  it("quotes regex args with shell metacharacters", () => {
-    expect(formatCommandLine("pymobiledevice3", ["--regex", "pulse_2050\\{pulse_2050(\\.debug\\.dylib)?\\}\\["])).toBe(
-      "pymobiledevice3 --regex 'pulse_2050\\{pulse_2050(\\.debug\\.dylib)?\\}\\['",
+    expect(formatCommandLine("pymobiledevice3", ["--process-name", "a b"])).toBe(
+      "pymobiledevice3 --process-name 'a b'",
     );
   });
 });
