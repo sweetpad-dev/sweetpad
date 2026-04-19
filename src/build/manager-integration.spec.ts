@@ -172,6 +172,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         const env = launchCall[0].env;
 
         expect(env).toEqual({
+          DEVICECTL_CHILD_OS_ACTIVITY_DT_MODE: "enable",
           DEVICECTL_CHILD_TEST_VAR: "test_value",
         });
       });
