@@ -21,9 +21,8 @@ import { commonLogger } from "../common/logger";
 import { type Command, type TaskTerminal, runTask } from "../common/tasks";
 import { assertUnreachable } from "../common/types";
 import * as iosDeploy from "../common/xcode/ios-deploy";
-import { getDeviceLaunchEnvExtras, resolveDeviceLogBackend } from "../debugger/device-log-backend";
-import { getLogStreamManager } from "../debugger/log-stream";
 import type { DeviceDestination } from "../devices/types";
+import { LoggingManager, getDeviceLaunchEnvExtras, resolveDeviceLogBackend } from "../logging/manager";
 import type { SimulatorDestination } from "../simulators/types";
 import { getSimulatorByUdid } from "../simulators/utils";
 import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
@@ -527,20 +526,23 @@ export class BuildManager {
       writeWatchMarkers(terminal);
     }
 
-    // Prepare log stream output channel for stdout/stderr capture
-    const logStreamManager = getLogStreamManager(context);
-    logStreamManager.prepareForLaunch(buildSettings.bundleIdentifier);
+    // Start os_log/Logger streaming to the terminal
+    const loggingManager = new LoggingManager(terminal, {
+      type: "macos",
+      bundleIdentifier: buildSettings.bundleIdentifier,
+    });
+    await loggingManager.start();
 
     context.updateProgressStatus(`Running "${options.scheme}" on Mac`);
-    await terminal.execute({
-      command: executablePath,
-      env: options.launchEnv,
-      args: options.launchArgs,
-      // Forward stdout/stderr to the log stream output channel
-      onOutputLine: async (data) => {
-        logStreamManager.appendOutput(data.value, data.type);
-      },
-    });
+    try {
+      await terminal.execute({
+        command: executablePath,
+        env: options.launchEnv,
+        args: options.launchArgs,
+      });
+    } finally {
+      loggingManager.stop();
+    }
   }
 
   async runOniOSSimulator(
@@ -614,9 +616,13 @@ export class BuildManager {
       writeWatchMarkers(terminal);
     }
 
-    // Prepare log stream output channel for stdout/stderr capture
-    const logStreamManager = getLogStreamManager(context);
-    logStreamManager.prepareForLaunch(bundlerId);
+    // Start os_log/Logger streaming to the terminal
+    const loggingManager = new LoggingManager(terminal, {
+      type: "simulator",
+      bundleIdentifier: bundlerId,
+      simulatorUdid: simulator.udid,
+    });
+    await loggingManager.start();
 
     const launchArgs = [
       "simctl",
@@ -633,16 +639,18 @@ export class BuildManager {
 
     // Run app
     context.updateProgressStatus(`Running "${options.scheme}" on "${simulator.name}"`);
-    await terminal.execute({
-      command: "xcrun",
-      args: launchArgs,
-      // should be prefixed with `SIMCTL_CHILD_` to pass to the child process
-      env: Object.fromEntries(Object.entries(options.launchEnv).map(([key, value]) => [`SIMCTL_CHILD_${key}`, value])),
-      // Forward stdout/stderr to the log stream output channel
-      onOutputLine: async (data) => {
-        logStreamManager.appendOutput(data.value, data.type);
-      },
-    });
+    try {
+      await terminal.execute({
+        command: "xcrun",
+        args: launchArgs,
+        // should be prefixed with `SIMCTL_CHILD_` to pass to the child process
+        env: Object.fromEntries(
+          Object.entries(options.launchEnv).map(([key, value]) => [`SIMCTL_CHILD_${key}`, value]),
+        ),
+      });
+    } finally {
+      loggingManager.stop();
+    }
   }
 
   async runOniOSDevice(
@@ -693,10 +701,6 @@ export class BuildManager {
       writeWatchMarkers(terminal);
     }
 
-    // Prepare log stream output channel for stdout/stderr capture
-    const logStreamManager = getLogStreamManager(context);
-    logStreamManager.prepareForLaunch(bundlerId);
-
     // Launch app on device
     context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
 
@@ -724,8 +728,15 @@ export class BuildManager {
         bundleIdentifier: bundlerId,
         destinationId: deviceId,
         destinationType: destinationType,
-        logBackend: logBackend,
       });
+
+      // Start os_log/Logger streaming to the terminal
+      const loggingManager = new LoggingManager(terminal, {
+        type: "device",
+        bundleIdentifier: bundlerId,
+        executableName: buildSettings.executableName,
+      });
+      await loggingManager.start();
 
       // Prepare the launch arguments
       const launchArgs = [
@@ -746,22 +757,22 @@ export class BuildManager {
       ].filter((arg) => arg !== null); // Filter out null arguments
 
       context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
-      await terminal.execute({
-        command: "xcrun",
-        args: launchArgs,
-        // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process.
-        // Merge backend-provided defaults first so user-provided launchEnv values win.
-        env: Object.fromEntries(
-          Object.entries({ ...getDeviceLaunchEnvExtras(logBackend), ...option.launchEnv }).map(([key, value]) => [
-            `DEVICECTL_CHILD_${key}`,
-            value,
-          ]),
-        ),
-        // Forward stdout/stderr to the log stream output channel
-        onOutputLine: async (data) => {
-          logStreamManager.appendOutput(data.value, data.type);
-        },
-      });
+      try {
+        await terminal.execute({
+          command: "xcrun",
+          args: launchArgs,
+          // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process.
+          // Merge backend-provided defaults first so user-provided launchEnv values win.
+          env: Object.fromEntries(
+            Object.entries({
+              ...getDeviceLaunchEnvExtras(logBackend),
+              ...option.launchEnv,
+            }).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value]),
+          ),
+        });
+      } finally {
+        loggingManager.stop();
+      }
 
       let jsonOutput: any;
       try {

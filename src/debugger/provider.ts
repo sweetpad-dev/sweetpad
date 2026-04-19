@@ -7,7 +7,6 @@ import type {
 } from "../common/commands";
 import { commonLogger } from "../common/logger";
 import { checkUnreachable } from "../common/types";
-import { getLogStreamManager } from "./log-stream";
 import { waitForProcessToLaunch } from "./utils";
 
 const ATTACH_CONFIG: vscode.DebugConfiguration = {
@@ -169,10 +168,6 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     if (!launchContext) {
       throw new Error("No last launched app found, please launch the app first using the SweetPad extension");
     }
-
-    // Start log streaming for the launched app (fire and forget)
-    const logStreamManager = getLogStreamManager(this.context);
-    void logStreamManager.startLogStream(launchContext);
 
     // Pass the "codelldbAttributes" to the lldb debugger
     const codelldbAttributes = config.codelldbAttributes || {};

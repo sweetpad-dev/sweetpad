@@ -14,8 +14,6 @@ import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { commonLogger } from "./logger";
 import { QuickPickCancelledError } from "./quick-pick";
 
-export type DeviceLogBackend = "off" | "osActivityDtMode" | "pymobiledevice3";
-
 export type LastLaunchedAppDeviceContext = {
   type: "device";
   appPath: string; // Example: "/Users/username/Library/Developer/Xcode/DerivedData/MyApp-..."
@@ -24,7 +22,6 @@ export type LastLaunchedAppDeviceContext = {
   bundleIdentifier: string; // Example: "com.example.MyApp"
   destinationId: string; // Example: "00008030-001A0A3E0A68002E"
   destinationType: DestinationType; // Example: "iOS"
-  logBackend?: DeviceLogBackend;
 };
 
 export type LastLaunchedAppSimulatorContext = {
