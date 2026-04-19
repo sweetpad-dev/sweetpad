@@ -289,7 +289,7 @@ export class LogStreamManager {
     // When the override replaces "--process-name", prefer that for the filter
     // — the user knows better than us what image names the app produces.
     const filterExecutable = extractProcessNameOverride(rawExtraArgs) ?? launchContext.executableName;
-    const debugDylibOnly = getWorkspaceConfig("build.pymobiledevice3DebugDylibOnly") ?? true;
+    const debugDylibOnly = launchContext.enableDebugDylib ?? true;
     const subsystemDenyList = getWorkspaceConfig("build.pymobiledevice3SubsystemDenyList") ?? ["com.apple.*"];
     const subsystemAllowList = getWorkspaceConfig("build.pymobiledevice3SubsystemAllowList") ?? [];
 
