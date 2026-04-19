@@ -27,7 +27,6 @@ type Config = {
   "build.deviceLogStreamBackend": "off" | "osActivityDtMode" | "pymobiledevice3";
   "build.pymobiledevice3Path": string;
   "build.pymobiledevice3ExtraArgs": (string | null)[];
-  "build.pymobiledevice3DebugDylibOnly": boolean;
   "build.pymobiledevice3SubsystemDenyList": string[];
   "build.pymobiledevice3SubsystemAllowList": string[];
   "system.taskExecutor": "v1" | "v2";

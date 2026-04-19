@@ -1013,11 +1013,6 @@
           "default": [],
           "description": "Extra CLI arguments appended to 'pymobiledevice3 syslog live'. Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
         },
-        "sweetpad.build.pymobiledevice3DebugDylibOnly": {
-          "type": "boolean",
-          "default": true,
-          "description": "Only keep syslog entries from the .debug.dylib image, dropping noise from the main binary. Disable if not using ENABLE_DEBUG_DYLIB. Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
-        },
         "sweetpad.build.pymobiledevice3SubsystemDenyList": {
           "type": "array",
           "items": { "type": "string" },

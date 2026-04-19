@@ -21,6 +21,7 @@ export type LastLaunchedAppDeviceContext = {
   appPath: string; // Example: "/Users/username/Library/Developer/Xcode/DerivedData/MyApp-..."
   appName: string; // Example: "MyApp.app"
   executableName?: string; // Example: "MyApp" — CFBundleExecutable, process name in os_log
+  enableDebugDylib?: boolean; // Example: true - ENABLE_DEBUG_DYLIB in build settings
   bundleIdentifier: string; // Example: "com.example.MyApp"
   destinationId: string; // Example: "00008030-001A0A3E0A68002E"
   destinationType: DestinationType; // Example: "iOS"

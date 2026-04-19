@@ -189,6 +189,10 @@ export class XcodeBuildSettings {
     return this.settings.PRODUCT_BUNDLE_IDENTIFIER;
   }
 
+  get enableDebugDylib() {
+    return this.settings.ENABLE_DEBUG_DYLIB === "YES";
+  }
+
   get supportedPlatforms(): DestinationPlatform[] | undefined {
     // ex: ["iphonesimulator", "iphoneos"]
     const platformsRaw = this.settings.SUPPORTED_PLATFORMS; // ex: "iphonesimulator iphoneos"
