@@ -441,6 +441,16 @@
         "icon": "$(sweetpad-refresh)"
       },
       {
+        "command": "sweetpad.build.filterSchemes",
+        "title": "SweetPad: Filter schemes in Build view",
+        "icon": "$(search)"
+      },
+      {
+        "command": "sweetpad.build.clearSchemeFilter",
+        "title": "SweetPad: Clear scheme filter in Build view",
+        "icon": "$(close)"
+      },
+      {
         "command": "sweetpad.build.stop",
         "title": "SweetPad: Stop build",
         "icon": "$(debug-stop)"
@@ -565,9 +575,19 @@
           "when": "view == sweetpad.build.view"
         },
         {
-          "command": "sweetpad.build.openXcode",
+          "command": "sweetpad.build.filterSchemes",
           "when": "view == sweetpad.build.view",
           "group": "navigation@1"
+        },
+        {
+          "command": "sweetpad.build.clearSchemeFilter",
+          "when": "view == sweetpad.build.view && sweetpad.build.hasSchemeFilter",
+          "group": "navigation@2"
+        },
+        {
+          "command": "sweetpad.build.openXcode",
+          "when": "view == sweetpad.build.view",
+          "group": "navigation@3"
         },
         {
           "command": "sweetpad.tools.refresh",
