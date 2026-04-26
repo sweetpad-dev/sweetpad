@@ -27,7 +27,6 @@ type Config = {
   "build.deviceTunnelAutoStart": boolean;
   "build.pymobiledevice3Path": string;
   "build.pymobiledevice3ExtraArgs": (string | null)[];
-  "build.pymobiledevice3DebugDylibOnly": boolean;
   "build.pymobiledevice3SubsystemDenyList": string[];
   "build.pymobiledevice3SubsystemAllowList": string[];
   "system.taskExecutor": "v2" | "v3";

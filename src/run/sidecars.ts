@@ -225,6 +225,11 @@ export class SimulatorLogSidecar extends LogSidecar {
 
 export type Pymd3SidecarOptions = {
   executableName: string | undefined;
+  // ENABLE_DEBUG_DYLIB build setting. When true, app code lives in
+  // <EXECUTABLE>.debug.dylib and the main binary is a thin stub; the filter
+  // restricts to that image. When false, no .debug.dylib exists and the filter
+  // accepts the main image instead.
+  enableDebugDylib: boolean;
 };
 
 export class Pymd3Sidecar extends LogSidecar {
@@ -243,7 +248,7 @@ export class Pymd3Sidecar extends LogSidecar {
     this.filter = filterExecutable
       ? this.buildPymd3Filter({
           executableName: filterExecutable,
-          debugDylibOnly: getWorkspaceConfig("build.pymobiledevice3DebugDylibOnly") ?? true,
+          debugDylibOnly: options.enableDebugDylib,
           subsystemDenyList: getWorkspaceConfig("build.pymobiledevice3SubsystemDenyList") ?? ["com.apple.*"],
           subsystemAllowList: getWorkspaceConfig("build.pymobiledevice3SubsystemAllowList") ?? [],
         })
