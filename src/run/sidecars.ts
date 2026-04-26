@@ -97,12 +97,26 @@ abstract class LogSidecar {
     return getWorkspaceConfig("build.logStreamEnabled") ?? true;
   }
 
-  buildPredicate(bundleId: string): string {
-    const processName = bundleId.split(".").pop() ?? bundleId;
+  /**
+   * Builds the `log stream` predicate that selects which os_log/Logger entries reach the terminal.
+   *
+   * `bundleId` is the app's bundle identifier (e.g. "com.example.MyApp") and `executableName`
+   * is CFBundleExecutable — the process name as it appears in os_log (e.g. "MyApp").
+   *
+   * The default matches by image (process + sender) rather than by subsystem, so apps that don't
+   * set `Logger(subsystem:)` still show up while Apple framework chatter is filtered out. Both
+   * the bare executable and its `.debug.dylib` sidecar are accepted to cover Xcode 15+ Debug
+   * Dylib Support, which loads app code from a separate dylib in Debug builds.
+   *
+   * Users can override the whole predicate via `build.logStreamPredicate`, with `${bundleId}` and
+   * `${processName}` placeholders.
+   */
+  buildPredicate(bundleId: string, executableName: string): string {
     const custom = getWorkspaceConfig("build.logStreamPredicate");
-    return custom
-      ? custom.replace(/\$\{bundleId\}/g, bundleId).replace(/\$\{processName\}/g, processName)
-      : `subsystem BEGINSWITH "${bundleId}"`;
+    if (custom) {
+      return custom.replace(/\$\{bundleId\}/g, bundleId).replace(/\$\{processName\}/g, executableName);
+    }
+    return `process == "${executableName}" AND (sender == "${executableName}" OR sender == "${executableName}.debug.dylib")`;
   }
 
   async spawn(): Promise<void> {
@@ -136,10 +150,15 @@ abstract class LogSidecar {
   }
 }
 
+export type MacOSLogSidecarOptions = {
+  bundleId: string;
+  executableName: string;
+};
+
 export class MacOSLogSidecar extends LogSidecar {
   constructor(
     group: ProcessGroup,
-    readonly bundleId: string,
+    readonly options: MacOSLogSidecarOptions,
   ) {
     super(group);
   }
@@ -148,36 +167,10 @@ export class MacOSLogSidecar extends LogSidecar {
     if (!this.isLogStreamEnabled()) return null;
     return {
       command: "log",
-      args: ["stream", "--predicate", this.buildPredicate(this.bundleId), "--level", "debug", "--style", "ndjson"],
-    };
-  }
-
-  processStdoutLine(line: string): void {
-    renderNdjsonLine(line, this.terminal);
-  }
-}
-
-export class SimulatorLogSidecar extends LogSidecar {
-  constructor(
-    group: ProcessGroup,
-    readonly simulatorUdid: string,
-    readonly bundleId: string,
-  ) {
-    super(group);
-  }
-
-  async spec(): Promise<ProcessSpec | null> {
-    if (!this.isLogStreamEnabled()) return null;
-    return {
-      command: "xcrun",
       args: [
-        "simctl",
-        "spawn",
-        this.simulatorUdid,
-        "log",
         "stream",
         "--predicate",
-        this.buildPredicate(this.bundleId),
+        this.buildPredicate(this.options.bundleId, this.options.executableName),
         "--level",
         "debug",
         "--style",
@@ -191,6 +184,49 @@ export class SimulatorLogSidecar extends LogSidecar {
   }
 }
 
+export type SimulatorLogSidecarOptions = {
+  simulatorUdid: string;
+  bundleId: string;
+  executableName: string;
+};
+
+export class SimulatorLogSidecar extends LogSidecar {
+  constructor(
+    group: ProcessGroup,
+    readonly options: SimulatorLogSidecarOptions,
+  ) {
+    super(group);
+  }
+
+  async spec(): Promise<ProcessSpec | null> {
+    if (!this.isLogStreamEnabled()) return null;
+    return {
+      command: "xcrun",
+      args: [
+        "simctl",
+        "spawn",
+        this.options.simulatorUdid,
+        "log",
+        "stream",
+        "--predicate",
+        this.buildPredicate(this.options.bundleId, this.options.executableName),
+        "--level",
+        "debug",
+        "--style",
+        "ndjson",
+      ],
+    };
+  }
+
+  processStdoutLine(line: string): void {
+    renderNdjsonLine(line, this.terminal);
+  }
+}
+
+export type Pymd3SidecarOptions = {
+  executableName: string | undefined;
+};
+
 export class Pymd3Sidecar extends LogSidecar {
   readonly rawExtraArgs: (string | null)[];
   readonly filter: ((entry: SyslogEntry) => boolean) | null;
@@ -199,11 +235,11 @@ export class Pymd3Sidecar extends LogSidecar {
 
   constructor(
     group: ProcessGroup,
-    readonly executableName: string | undefined,
+    readonly options: Pymd3SidecarOptions,
   ) {
     super(group);
     this.rawExtraArgs = getWorkspaceConfig("build.pymobiledevice3ExtraArgs") ?? [];
-    const filterExecutable = this.extractProcessNameOverride(this.rawExtraArgs) ?? executableName;
+    const filterExecutable = this.extractProcessNameOverride(this.rawExtraArgs) ?? options.executableName;
     this.filter = filterExecutable
       ? this.buildPymd3Filter({
           executableName: filterExecutable,
@@ -237,7 +273,7 @@ export class Pymd3Sidecar extends LogSidecar {
 
     const args = this.buildPymobiledevice3Args({
       rawExtraArgs: this.rawExtraArgs,
-      processName: this.executableName,
+      processName: this.options.executableName,
     });
     if (args.kind === "missingProcessName") {
       writeErrorLine(
