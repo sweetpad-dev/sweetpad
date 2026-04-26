@@ -4,6 +4,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 ## [0.1.82] - 2026-04-26
 
+- Sort physical devices so the connected one appears above stale paired entries ([#234](https://github.com/sweetpad-dev/sweetpad/issues/234))
 - Move os_log streaming from the output channel to the task terminal ([#233](https://github.com/sweetpad-dev/sweetpad/pull/233))
 - New `v3` task executor (now default), backed by `node-pty` for real PTYs, ANSI/TUI output, and a shared login-shell environment; revert to the legacy executor via `sweetpad.system.taskExecutor: v2`
 - Resolve the login shell environment on activation so tasks see PATH/toolchains from `~/.zshrc`, `~/.zprofile`, mise, asdf, and direnv; tune via `sweetpad.shellEnv.shell` and `sweetpad.shellEnv.timeout`
