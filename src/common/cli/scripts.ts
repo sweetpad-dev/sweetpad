@@ -189,6 +189,12 @@ export class XcodeBuildSettings {
     return this.settings.PRODUCT_BUNDLE_IDENTIFIER;
   }
 
+  get enableDebugDylib(): boolean {
+    // Xcode 15+ Debug Dylib Support: when YES, app code is loaded from
+    // <EXECUTABLE>.debug.dylib instead of the main binary.
+    return this.settings.ENABLE_DEBUG_DYLIB === "YES";
+  }
+
   get supportedPlatforms(): DestinationPlatform[] | undefined {
     // ex: ["iphonesimulator", "iphoneos"]
     const platformsRaw = this.settings.SUPPORTED_PLATFORMS; // ex: "iphonesimulator iphoneos"

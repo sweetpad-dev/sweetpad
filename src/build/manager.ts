@@ -757,7 +757,10 @@ export class BuildManager {
         // a [sweetpad] warning when streaming is disabled, the binary is missing, or the
         // executable name is unknown; pymd3's own stderr (e.g. tunneld not running)
         // surfaces via [pymobiledevice3]. The launch proceeds either way.
-        const logSidecar = new Pymd3Sidecar(group, { executableName: buildSettings.executableName });
+        const logSidecar = new Pymd3Sidecar(group, {
+          executableName: buildSettings.executableName,
+          enableDebugDylib: buildSettings.enableDebugDylib,
+        });
         await logSidecar.spawn();
 
         const main = new MainExecutable(group, {
