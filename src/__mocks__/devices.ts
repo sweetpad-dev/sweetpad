@@ -4,7 +4,7 @@
  */
 
 import type { ExtensionContext } from "../common/commands";
-import type { TaskTerminal } from "../common/tasks";
+import type { ProcessGroup, ProcessHandle, ProcessSpec, TaskTerminal } from "../common/tasks/types";
 import type { DeviceCtlDevice } from "../common/xcode/devicectl";
 import type { XcdeviceDevice } from "../common/xcode/xcdevice";
 
@@ -62,18 +62,48 @@ export function createMockContext(overrides: Partial<ExtensionContext> = {}): Ex
     updateWorkspaceState: jest.fn(),
     buildManager: {} as any,
     destinationsManager: {} as any,
+    tunnelManager: { autoStart: jest.fn().mockResolvedValue(undefined) } as any,
     ...overrides,
   } as unknown as ExtensionContext;
 }
 
 /**
- * Create a mock TaskTerminal for testing
+ * Mock TaskTerminal for tests. `spawnedSpecs` captures every ProcessSpec passed
+ * to `runGroup`'s group.spawn — use it to assert against the launch path
+ * (which now goes through runGroup/spawn, not execute).
+ *
+ * Each spawned process resolves immediately with code: 0; tests that need a
+ * different exit code can override per-call by inspecting `spawnedSpecs` after
+ * the fact (the assertions don't depend on real exit codes).
  */
-export function createMockTerminal(): TaskTerminal {
-  return {
+export type MockTaskTerminal = TaskTerminal & {
+  spawnedSpecs: ProcessSpec[];
+};
+
+export function createMockTerminal(): MockTaskTerminal {
+  const spawnedSpecs: ProcessSpec[] = [];
+  const terminal = {
     execute: jest.fn().mockResolvedValue(undefined),
     write: jest.fn(),
-  } as unknown as TaskTerminal;
+    runGroup: jest.fn(async (callback: (group: ProcessGroup) => Promise<unknown>) => {
+      const group: ProcessGroup = {
+        terminal: terminal as TaskTerminal,
+        spawn: (spec: ProcessSpec): ProcessHandle => {
+          spawnedSpecs.push(spec);
+          return {
+            pid: 1234,
+            exit: Promise.resolve({ code: 0, signal: null }),
+            kill: () => {},
+            onData: () => {},
+            onError: () => {},
+          };
+        },
+      };
+      return await callback(group);
+    }),
+    spawnedSpecs,
+  };
+  return terminal as unknown as MockTaskTerminal;
 }
 
 /**

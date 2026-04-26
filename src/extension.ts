@@ -28,6 +28,7 @@ import { BuildTreeProvider } from "./build/tree.js";
 import { ExtensionContext } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
 import { Logger } from "./common/logger.js";
+import { warmShellEnv } from "./common/tasks/shell-env.js";
 import { getAppPathCommand } from "./debugger/commands.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
 import {
@@ -39,6 +40,7 @@ import { DestinationsManager } from "./destination/manager.js";
 import { DestinationStatusBar } from "./destination/status-bar.js";
 import { DestinationsTreeProvider } from "./destination/tree.js";
 import { DevicesManager } from "./devices/manager.js";
+import { TunnelManager } from "./devices/tunnel.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
 import { createFormatStatusItem } from "./format/status.js";
@@ -53,6 +55,7 @@ import {
   createIssueGenericCommand,
   createIssueNoSchemesCommand,
   openTerminalPanel,
+  refreshShellEnvCommand,
   resetSweetPadCache,
   testErrorReportingCommand,
 } from "./system/commands.js";
@@ -65,7 +68,7 @@ import {
   testWithoutBuildingCommand,
 } from "./testing/commands.js";
 import { TestingManager } from "./testing/manager.js";
-import { installToolCommand, openDocumentationCommand } from "./tools/commands.js";
+import { installPymobiledevice3Command, installToolCommand, openDocumentationCommand } from "./tools/commands.js";
 import { ToolsManager } from "./tools/manager.js";
 import { ToolTreeProvider } from "./tools/tree.js";
 import {
@@ -86,6 +89,8 @@ export function activate(context: vscode.ExtensionContext) {
   // 🪵🪓
   Logger.setup();
 
+  warmShellEnv();
+
   // Managers 💼
   // These classes are responsible for managing the state of the specific domain. Other parts of the extension can
   // interact with them to get the current state of the domain and subscribe to changes. For example
@@ -102,6 +107,7 @@ export function activate(context: vscode.ExtensionContext) {
   const testingManager = new TestingManager();
   const formatter = new SwiftFormattingProvider();
   const progressStatusBar = new ProgressStatusBar();
+  const tunnelManager = new TunnelManager();
 
   // Main context object 🌍
   const _context = new ExtensionContext({
@@ -112,6 +118,7 @@ export function activate(context: vscode.ExtensionContext) {
     testingManager: testingManager,
     formatter: formatter,
     progressStatusBar: progressStatusBar,
+    tunnelManager: tunnelManager,
   });
   // Here is circular dependency, but I don't care
   buildManager.context = _context;
@@ -210,6 +217,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // // Devices
   d(command("sweetpad.devices.refresh", async () => await destinationsManager.refreshDevices()));
+  d(tunnelManager);
 
   // Desintations
   const destinationBar = new DestinationStatusBar({
@@ -224,6 +232,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Tools
   d(tree("sweetpad.tools.view", toolsTreeProvider));
   d(command("sweetpad.tools.install", installToolCommand));
+  d(command("sweetpad.tools.installPymobiledevice3", installPymobiledevice3Command));
   d(command("sweetpad.tools.refresh", async () => toolsManager.refresh()));
   d(command("sweetpad.tools.documentation", openDocumentationCommand));
 
@@ -233,6 +242,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.system.createIssue.noSchemes", createIssueNoSchemesCommand));
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
   d(command("sweetpad.system.openTerminalPanel", openTerminalPanel));
+  d(command("sweetpad.system.refreshShellEnv", refreshShellEnvCommand));
 }
 
 export function deactivate() {}

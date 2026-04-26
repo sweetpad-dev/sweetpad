@@ -2,7 +2,7 @@ import type { ExtensionContext } from "../commands";
 import { exec } from "../exec";
 import { tempFilePath } from "../files";
 import { commonLogger } from "../logger";
-import type { TaskTerminal } from "../tasks";
+import type { TaskTerminal } from "../tasks/types";
 
 /**
  * Install and launch app on device using ios-deploy

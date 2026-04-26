@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { ExtensionContext } from "../common/commands";
 import { commonLogger } from "../common/logger";
+import { refreshShellEnv } from "../common/tasks/shell-env";
 
 export async function resetSweetPadCache(context: ExtensionContext) {
   context.updateProgressStatus("Resetting SweetPad cache");
@@ -44,4 +45,8 @@ export async function testErrorReportingCommand() {
 
 export async function openTerminalPanel() {
   vscode.window.terminals.at(-1)?.show();
+}
+
+export async function refreshShellEnvCommand(_context: ExtensionContext) {
+  await refreshShellEnv();
 }

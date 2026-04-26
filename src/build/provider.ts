@@ -2,14 +2,12 @@ import * as vscode from "vscode";
 import { type ExtensionContext, TaskExecutionScope } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { errorReporting } from "../common/error-reporting";
-import {
-  type TaskTerminal,
-  TaskTerminalV1,
-  TaskTerminalV1Parent,
-  TaskTerminalV2,
-  getTaskExecutorName,
-  setTaskPresentationOptions,
-} from "../common/tasks";
+import { setTaskPresentationOptions } from "../common/tasks/presentation";
+import { loadNodePty } from "../common/tasks/pty";
+import { getTaskExecutorName } from "../common/tasks/run";
+import type { TaskTerminal } from "../common/tasks/types";
+import { TaskTerminalV2 } from "../common/tasks/v2";
+import { TaskTerminalV3 } from "../common/tasks/v3";
 import { assertUnreachable } from "../common/types";
 import type { Destination } from "../destination/types";
 import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
@@ -599,25 +597,25 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
       "sweetpad", // source, before name`
       new vscode.CustomExecution(async (defition: vscode.TaskDefinition) => {
         const _defition = defition as TaskDefinition;
-        const executorName = getTaskExecutorName();
+        let executorName = getTaskExecutorName();
+        if (executorName === "v3" && loadNodePty() === null) {
+          // Fall back to v2 when node-pty cannot be loaded from VS Code's app
+          // root (e.g. on forks that don't bundle it). loadNodePty already logs.
+          executorName = "v2";
+        }
         switch (executorName) {
-          case "v1": {
-            // Each task will create a new vscode.Task for each script
-            // and one parent Terminal is used to show all tasks
-            const terminal = new TaskTerminalV1(this.context, {
-              name: options.name,
-              source: "sweetpad",
-            });
-            await this.dispatchTask(terminal, _defition);
-
-            // create a dummy terminal to show the task in the terminal panel
-            return new TaskTerminalV1Parent();
-          }
           case "v2": {
             // In the V2 executor, one terminal is created for all tasks.
             // The callback should call terminal.execute(command) to run the script
             // in the current terminal.
             return new TaskTerminalV2(this.context, {
+              callback: async (terminal) => {
+                await this.dispatchTask(terminal, _defition);
+              },
+            });
+          }
+          case "v3": {
+            return new TaskTerminalV3(this.context, {
               callback: async (terminal) => {
                 await this.dispatchTask(terminal, _defition);
               },

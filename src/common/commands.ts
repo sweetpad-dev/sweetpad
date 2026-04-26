@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import type { BuildManager } from "../build/manager";
 import type { DestinationsManager } from "../destination/manager";
 import type { DestinationType, SelectedDestination } from "../destination/types";
+import type { TunnelManager } from "../devices/tunnel";
 import type { SwiftFormattingProvider } from "../format/formatter";
 import type { ProgressStatusBar } from "../system/status-bar";
 import type { TestingManager } from "../testing/manager";
@@ -79,6 +80,7 @@ export class ExtensionContext {
   public testingManager: TestingManager;
   public formatter: SwiftFormattingProvider;
   public progressStatusBar: ProgressStatusBar;
+  public tunnelManager: TunnelManager;
   private _sessionState: Map<SessionStateKey, unknown> = new Map();
 
   // Create for each command and task execution separate execution scope with unique ID
@@ -94,6 +96,7 @@ export class ExtensionContext {
     testingManager: TestingManager;
     formatter: SwiftFormattingProvider;
     progressStatusBar: ProgressStatusBar;
+    tunnelManager: TunnelManager;
   }) {
     this._context = options.context;
     this.destinationsManager = options.destinationsManager;
@@ -102,6 +105,7 @@ export class ExtensionContext {
     this.testingManager = options.testingManager;
     this.formatter = options.formatter;
     this.progressStatusBar = options.progressStatusBar;
+    this.tunnelManager = options.tunnelManager;
 
     vscode.workspace.onDidChangeConfiguration((event) => {
       const affected = event.affectsConfiguration("sweetpad");

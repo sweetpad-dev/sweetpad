@@ -20,7 +20,7 @@ const config = {
   entryPoints: ["./src/extension.ts"],
   bundle: true,
   outfile: "out/extension.js",
-  external: ["vscode"],
+  external: ["vscode", "node-pty"],
   format: "cjs",
   platform: "node",
   target: "es6",

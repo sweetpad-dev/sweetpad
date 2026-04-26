@@ -481,6 +481,10 @@
         "icon": "$(sweetpad-refresh)"
       },
       {
+        "command": "sweetpad.tools.installPymobiledevice3",
+        "title": "SweetPad: Install pymobiledevice3"
+      },
+      {
         "command": "sweetpad.tools.install",
         "title": "SweetPad: Install tool",
         "icon": "$(sweetpad-terminal-2)"
@@ -520,6 +524,11 @@
         "command": "sweetpad.system.openTerminalPanel",
         "title": "SweetPad: Open Terminal Panel",
         "icon": "$(terminal)"
+      },
+      {
+        "command": "sweetpad.system.refreshShellEnv",
+        "title": "SweetPad: Refresh shell environment",
+        "icon": "$(refresh)"
       },
       {
         "command": "sweetpad.debugger.getAppPath",
@@ -868,16 +877,28 @@
         },
         "sweetpad.system.taskExecutor": {
           "type": "string",
-          "default": "v2",
+          "default": "v3",
           "enum": [
-            "v1",
-            "v2"
+            "v2",
+            "v3"
           ],
           "enumDescriptions": [
-            "Legacy executor, use this if you have issues with the new executor.",
-            "New executor, use this for better performance and better error handling."
+            "Child process + pipes. Use this if the v3 pty-based executor misbehaves.",
+            "node-pty executor: real pseudoterminal, colored output, TUI-friendly, shared shell env."
           ],
-          "description": "Use version task executor for build tasks."
+          "description": "Task executor used for SweetPad build/run/test/tool tasks."
+        },
+        "sweetpad.shellEnv.timeout": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 500,
+          "maximum": 60000,
+          "description": "Milliseconds to wait for the login shell to dump its environment. Increase if your shell startup files are slow."
+        },
+        "sweetpad.shellEnv.shell": {
+          "type": "string",
+          "default": null,
+          "description": "Override the shell used to resolve the environment (defaults to $SHELL). Example: /bin/zsh."
         },
         "sweetpad.system.logLevel": {
           "type": "string",
@@ -982,25 +1003,15 @@
             "process == \"${processName}\""
           ]
         },
-        "sweetpad.build.deviceLogStreamBackend": {
-          "type": "string",
-          "enum": [
-            "off",
-            "osActivityDtMode",
-            "pymobiledevice3"
-          ],
-          "default": "osActivityDtMode",
-          "enumDescriptions": [
-            "Do not stream os_log from physical devices.",
-            "Inject OS_ACTIVITY_DT_MODE=enable so os_log mirrors to stderr via devicectl --console. Zero external dependencies, requires Xcode 16+. Undocumented Apple behavior, may break on future iOS versions. Mirrors main-executable logs only; dynamically-loaded framework logs may be missing.",
-            "Spawn `pymobiledevice3 syslog live` to stream structured os_log (subsystem, category, level). Requires `pip install pymobiledevice3` and, on iOS 17+, a running tunnel (`sudo pymobiledevice3 remote tunneld`)."
-          ],
-          "description": "Backend for streaming os_log/Logger output from physical iOS devices during app launch."
+        "sweetpad.build.deviceTunnelAutoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-start `pymobiledevice3 remote tunneld` (sudo) in a terminal before launching on a physical iOS device, if it isn't already running."
         },
         "sweetpad.build.pymobiledevice3Path": {
           "type": "string",
           "default": "pymobiledevice3",
-          "description": "Path to the pymobiledevice3 binary. Leave as 'pymobiledevice3' to resolve via PATH. Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
+          "description": "Path to the pymobiledevice3 binary used to stream os_log/Logger output from physical iOS devices. Leave as 'pymobiledevice3' to resolve via PATH. Requires `pip install pymobiledevice3` and, on iOS 17+, a running tunnel (`sudo pymobiledevice3 remote tunneld`). Disable streaming entirely via build.logStreamEnabled."
         },
         "sweetpad.build.pymobiledevice3ExtraArgs": {
           "type": "array",
@@ -1011,24 +1022,30 @@
             ]
           },
           "default": [],
-          "description": "Extra CLI arguments appended to 'pymobiledevice3 syslog live'. Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
+          "description": "Extra CLI arguments appended to 'pymobiledevice3 syslog live'."
         },
         "sweetpad.build.pymobiledevice3DebugDylibOnly": {
           "type": "boolean",
           "default": true,
-          "description": "Only keep syslog entries from the .debug.dylib image, dropping noise from the main binary. Disable if not using ENABLE_DEBUG_DYLIB. Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
+          "description": "Only keep syslog entries from the .debug.dylib image, dropping noise from the main binary. Disable if not using ENABLE_DEBUG_DYLIB."
         },
         "sweetpad.build.pymobiledevice3SubsystemDenyList": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["com.apple.*"],
-          "description": "Glob patterns for subsystems to drop (e.g. 'com.apple.*'). Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "com.apple.*"
+          ],
+          "description": "Glob patterns for subsystems to drop (e.g. 'com.apple.*')."
         },
         "sweetpad.build.pymobiledevice3SubsystemAllowList": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
-          "description": "When non-empty, only keep entries whose subsystem matches a pattern (e.g. 'com.myapp.*'). Only used when build.deviceLogStreamBackend is 'pymobiledevice3'."
+          "description": "When non-empty, only keep entries whose subsystem matches a pattern (e.g. 'com.myapp.*')."
         }
       }
     },
@@ -1344,6 +1361,7 @@
     "esbuild-plugin-env": "^1.1.1",
     "globals": "^15.11.0",
     "jest": "^29.7.0",
+    "node-pty": "^1.1.0",
     "prettier": "3.3.3",
     "ts-jest": "^29.2.5",
     "ts-prune": "^0.10.3",

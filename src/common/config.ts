@@ -24,14 +24,16 @@ type Config = {
   "build.autoRestartSwiftLSP": boolean;
   "build.logStreamEnabled": boolean;
   "build.logStreamPredicate": string;
-  "build.deviceLogStreamBackend": "off" | "osActivityDtMode" | "pymobiledevice3";
+  "build.deviceTunnelAutoStart": boolean;
   "build.pymobiledevice3Path": string;
   "build.pymobiledevice3ExtraArgs": (string | null)[];
   "build.pymobiledevice3DebugDylibOnly": boolean;
   "build.pymobiledevice3SubsystemDenyList": string[];
   "build.pymobiledevice3SubsystemAllowList": string[];
-  "system.taskExecutor": "v1" | "v2";
+  "system.taskExecutor": "v2" | "v3";
   "system.logLevel": "debug" | "info" | "warn" | "error";
+  "shellEnv.timeout": number;
+  "shellEnv.shell": string | null;
   "system.enableSentry": boolean;
   "system.autoRevealTerminal": boolean;
   "system.showProgressStatusBar": boolean;

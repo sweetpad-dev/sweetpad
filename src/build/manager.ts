@@ -18,11 +18,13 @@ import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { isFileExists, readJsonFile, tempFilePath } from "../common/files";
 import { commonLogger } from "../common/logger";
-import { type Command, type TaskTerminal, runTask } from "../common/tasks";
+import { runTask } from "../common/tasks/run";
+import type { Command, TaskTerminal } from "../common/tasks/types";
 import { assertUnreachable } from "../common/types";
 import * as iosDeploy from "../common/xcode/ios-deploy";
 import type { DeviceDestination } from "../devices/types";
-import { LoggingManager, getDeviceLaunchEnvExtras, resolveDeviceLogBackend } from "../logging/manager";
+import { MainExecutable } from "../run/main";
+import { MacOSLogSidecar, Pymd3Sidecar, SimulatorLogSidecar } from "../run/sidecars";
 import type { SimulatorDestination } from "../simulators/types";
 import { getSimulatorByUdid } from "../simulators/utils";
 import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
@@ -526,23 +528,18 @@ export class BuildManager {
       writeWatchMarkers(terminal);
     }
 
-    // Start os_log/Logger streaming to the terminal
-    const loggingManager = new LoggingManager(terminal, {
-      type: "macos",
-      bundleIdentifier: buildSettings.bundleIdentifier,
-    });
-    await loggingManager.start();
-
     context.updateProgressStatus(`Running "${options.scheme}" on Mac`);
-    try {
-      await terminal.execute({
+    await terminal.runGroup(async (group) => {
+      await new MacOSLogSidecar(group, buildSettings.bundleIdentifier).spawn();
+
+      const main = new MainExecutable(group, {
         command: executablePath,
-        env: options.launchEnv,
         args: options.launchArgs,
+        env: options.launchEnv,
+        pty: true,
       });
-    } finally {
-      loggingManager.stop();
-    }
+      await main.wait();
+    });
   }
 
   async runOniOSSimulator(
@@ -616,14 +613,6 @@ export class BuildManager {
       writeWatchMarkers(terminal);
     }
 
-    // Start os_log/Logger streaming to the terminal
-    const loggingManager = new LoggingManager(terminal, {
-      type: "simulator",
-      bundleIdentifier: bundlerId,
-      simulatorUdid: simulator.udid,
-    });
-    await loggingManager.start();
-
     const launchArgs = [
       "simctl",
       "launch",
@@ -639,18 +628,18 @@ export class BuildManager {
 
     // Run app
     context.updateProgressStatus(`Running "${options.scheme}" on "${simulator.name}"`);
-    try {
-      await terminal.execute({
+    await terminal.runGroup(async (group) => {
+      await new SimulatorLogSidecar(group, simulator.udid, bundlerId).spawn();
+
+      const main = new MainExecutable(group, {
         command: "xcrun",
         args: launchArgs,
-        // should be prefixed with `SIMCTL_CHILD_` to pass to the child process
-        env: Object.fromEntries(
-          Object.entries(options.launchEnv).map(([key, value]) => [`SIMCTL_CHILD_${key}`, value]),
-        ),
+        // simctl strips SIMCTL_CHILD_ and passes the rest to the launched app.
+        env: Object.fromEntries(Object.entries(options.launchEnv).map(([k, v]) => [`SIMCTL_CHILD_${k}`, v])),
+        pty: true,
       });
-    } finally {
-      loggingManager.stop();
-    }
+      await main.wait();
+    });
   }
 
   async runOniOSDevice(
@@ -718,7 +707,6 @@ export class BuildManager {
       context.updateProgressStatus("Extracting Xcode version");
       const xcodeVersion = await getXcodeVersionInstalled();
       const isConsoleOptionSupported = xcodeVersion.major >= 16;
-      const logBackend = resolveDeviceLogBackend();
 
       context.updateWorkspaceState("build.lastLaunchedApp", {
         type: "device",
@@ -729,14 +717,6 @@ export class BuildManager {
         destinationId: deviceId,
         destinationType: destinationType,
       });
-
-      // Start os_log/Logger streaming to the terminal
-      const loggingManager = new LoggingManager(terminal, {
-        type: "device",
-        bundleIdentifier: bundlerId,
-        executableName: buildSettings.executableName,
-      });
-      await loggingManager.start();
 
       // Prepare the launch arguments
       const launchArgs = [
@@ -757,22 +737,26 @@ export class BuildManager {
       ].filter((arg) => arg !== null); // Filter out null arguments
 
       context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
-      try {
-        await terminal.execute({
+
+      await this.context.tunnelManager.autoStart();
+
+      await terminal.runGroup(async (group) => {
+        // pymobiledevice3 is the only device log backend; toggle the global
+        // build.logStreamEnabled to disable. Pymd3Sidecar.spec() returns null and writes
+        // a [sweetpad] warning when streaming is disabled, the binary is missing, or the
+        // executable name is unknown; pymd3's own stderr (e.g. tunneld not running)
+        // surfaces via [pymobiledevice3]. The launch proceeds either way.
+        await new Pymd3Sidecar(group, buildSettings.executableName).spawn();
+
+        const main = new MainExecutable(group, {
           command: "xcrun",
           args: launchArgs,
-          // Should be prefixed with `DEVICECTL_CHILD_` to pass to the child process.
-          // Merge backend-provided defaults first so user-provided launchEnv values win.
-          env: Object.fromEntries(
-            Object.entries({
-              ...getDeviceLaunchEnvExtras(logBackend),
-              ...option.launchEnv,
-            }).map(([key, value]) => [`DEVICECTL_CHILD_${key}`, value]),
-          ),
+          // devicectl strips DEVICECTL_CHILD_ and passes the rest to the launched app.
+          env: Object.fromEntries(Object.entries(option.launchEnv).map(([k, v]) => [`DEVICECTL_CHILD_${k}`, v])),
+          pty: true,
         });
-      } finally {
-        loggingManager.stop();
-      }
+        await main.wait();
+      });
 
       let jsonOutput: any;
       try {

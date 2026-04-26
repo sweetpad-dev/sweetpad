@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { askSimulator } from "../build/utils.js";
 import type { ExtensionContext } from "../common/commands.js";
-import { runTask } from "../common/tasks.js";
+import { runTask } from "../common/tasks/run.js";
 import type { iOSSimulatorDestinationTreeItem } from "../destination/tree.js";
 
 /**
