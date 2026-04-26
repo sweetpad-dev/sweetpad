@@ -228,6 +228,21 @@ export abstract class DeviceDestinationBase {
     const v = this.osVersion === "Unknown" ? undefined : this.osVersion;
     return supportsDevicectl(v, this.minDevicectlMajor);
   }
+
+  /**
+   * Timestamp of the device's most recent connection, from devicectl. Used by the
+   * destination sort to surface recently-used devices ahead of long-stale paired
+   * entries. Null for xcdevice-only devices (iOS <= 16) and when devicectl omits the
+   * field. Invalid date strings also yield null so callers can treat "unknown" as oldest.
+   */
+  get lastConnectionDate(): Date | null {
+    const raw = this.raw.devicectl?.connectionProperties?.lastConnectionDate;
+    if (!raw) {
+      return null;
+    }
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
 }
 
 export class iOSDeviceDestination extends DeviceDestinationBase implements IDestination {

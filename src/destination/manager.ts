@@ -2,11 +2,12 @@ import events from "node:events";
 import type { ExtensionContext } from "../common/commands";
 import { checkUnreachable } from "../common/types";
 import type { DevicesManager } from "../devices/manager";
-import type {
-  iOSDeviceDestination,
-  tvOSDeviceDestination,
-  visionOSDeviceDestination,
-  watchOSDeviceDestination,
+import {
+  DeviceDestinationBase,
+  type iOSDeviceDestination,
+  type tvOSDeviceDestination,
+  type visionOSDeviceDestination,
+  type watchOSDeviceDestination,
 } from "../devices/types";
 import type { SimulatorsManager } from "../simulators/manager";
 import type {
@@ -16,7 +17,12 @@ import type {
   visionOSSimulatorDestination,
   watchOSSimulatorDestination,
 } from "../simulators/types";
-import { DESTINATION_TYPE_PRIORITY, SIMULATOR_TYPE_PRIORITY, SUPPORTED_DESTINATION_PLATFORMS } from "./constants";
+import {
+  DESTINATION_TYPE_PRIORITY,
+  DEVICE_STATE_PRIORITY,
+  SIMULATOR_TYPE_PRIORITY,
+  SUPPORTED_DESTINATION_PLATFORMS,
+} from "./constants";
 import {
   ALL_DESTINATION_TYPES,
   type Destination,
@@ -144,24 +150,48 @@ export class DestinationsManager {
     return simulators.filter((simulator) => simulator.type === "visionOSSimulator");
   }
 
-  async getiOSDevices(): Promise<iOSDeviceDestination[]> {
+  async getiOSDevices(options?: { sort?: boolean }): Promise<iOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
-    return devices.filter((device) => device.type === "iOSDevice");
+    const items = [...devices];
+
+    if (options?.sort) {
+      items.sort((a, b) => this.sortCompareFn(a, b));
+    }
+
+    return items.filter((device) => device.type === "iOSDevice");
   }
 
-  async getWatchOSDevices(): Promise<watchOSDeviceDestination[]> {
+  async getWatchOSDevices(options?: { sort?: boolean }): Promise<watchOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
-    return devices.filter((device) => device.type === "watchOSDevice");
+    const items = [...devices];
+
+    if (options?.sort) {
+      items.sort((a, b) => this.sortCompareFn(a, b));
+    }
+
+    return items.filter((device) => device.type === "watchOSDevice");
   }
 
-  async gettvOSDevices(): Promise<tvOSDeviceDestination[]> {
+  async gettvOSDevices(options?: { sort?: boolean }): Promise<tvOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
-    return devices.filter((device) => device.type === "tvOSDevice");
+    const items = [...devices];
+
+    if (options?.sort) {
+      items.sort((a, b) => this.sortCompareFn(a, b));
+    }
+
+    return items.filter((device) => device.type === "tvOSDevice");
   }
 
-  async getVisionOSDevices(): Promise<visionOSDeviceDestination[]> {
+  async getVisionOSDevices(options?: { sort?: boolean }): Promise<visionOSDeviceDestination[]> {
     const devices = await this.devicesManager.getDevices();
-    return devices.filter((device) => device.type === "visionOSDevice");
+    const items = [...devices];
+
+    if (options?.sort) {
+      items.sort((a, b) => this.sortCompareFn(a, b));
+    }
+
+    return items.filter((device) => device.type === "visionOSDevice");
   }
 
   async getmacOSDevices(): Promise<macOSDestination[]> {
@@ -194,13 +224,19 @@ export class DestinationsManager {
       }
     }
 
-    // if (a.type === "iOSDevice" && b.type === "iOSDevice") {
-    //   const aPriority = DESTINATION_IOS_DEVICE_TYPE_PRIORITY.findIndex((type) => type === a.deviceType);
-    //   const bPriority = DESTINATION_IOS_DEVICE_TYPE_PRIORITY.findIndex((type) => type === b.deviceType);
-    //   if (aPriority !== bPriority) {
-    //     return aPriority - bPriority;
-    //   }
-    // }
+    // Show connected devices first so the one plugged in right now isn't buried under
+    // every iPhone this Mac has ever been paired with.
+    if (a instanceof DeviceDestinationBase && b instanceof DeviceDestinationBase) {
+      const stateDelta = DEVICE_STATE_PRIORITY.indexOf(a.state) - DEVICE_STATE_PRIORITY.indexOf(b.state);
+      if (stateDelta !== 0) {
+        return stateDelta;
+      }
+      const aDate = a.lastConnectionDate?.getTime() ?? 0;
+      const bDate = b.lastConnectionDate?.getTime() ?? 0;
+      if (aDate !== bDate) {
+        return bDate - aDate;
+      }
+    }
 
     // In any other cases, fallback to sorting by name
     return a.name.localeCompare(b.name);
