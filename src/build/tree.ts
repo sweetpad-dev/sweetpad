@@ -45,6 +45,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   public defaultSchemeForBuild: string | undefined;
   public defaultSchemeForTesting: string | undefined;
   private isLoading = false;
+  private schemeFilter: string | undefined;
 
   constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
     this.context = options.context;
@@ -79,10 +80,26 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     });
     this.defaultSchemeForBuild = this.buildManager.getDefaultSchemeForBuild();
     this.defaultSchemeForTesting = this.buildManager.getDefaultSchemeForTesting();
+    vscode.commands.executeCommand("setContext", "sweetpad.build.hasSchemeFilter", false);
   }
 
   private updateView(): void {
     this._onDidChangeTreeData.fire(null);
+  }
+
+  public getSchemeFilter(): string | undefined {
+    return this.schemeFilter;
+  }
+
+  public setSchemeFilter(value: string | undefined): void {
+    const normalizedValue = value?.trim() ? value.trim() : undefined;
+    if (this.schemeFilter === normalizedValue) {
+      return;
+    }
+
+    this.schemeFilter = normalizedValue;
+    vscode.commands.executeCommand("setContext", "sweetpad.build.hasSchemeFilter", Boolean(this.schemeFilter));
+    this.updateView();
   }
 
   async getChildren(element?: BuildTreeItem | undefined): Promise<BuildTreeItem[]> {
@@ -125,10 +142,17 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
       });
     }
 
+    vscode.commands.executeCommand("setContext", "sweetpad.build.noSchemes", schemes.length === 0);
+
     if (schemes.length === 0) {
       // Display welcome screen with explanation what to do.
       // See "viewsWelcome": [ {"view": "sweetpad.build.view", ...} ] in package.json
-      vscode.commands.executeCommand("setContext", "sweetpad.build.noSchemes", true);
+      return [];
+    }
+
+    const normalizedFilter = this.schemeFilter?.toLocaleLowerCase();
+    if (normalizedFilter) {
+      schemes = schemes.filter((scheme) => scheme.name.toLocaleLowerCase().includes(normalizedFilter));
     }
 
     // return list of schemes
