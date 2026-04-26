@@ -530,12 +530,18 @@ export class BuildManager {
 
     context.updateProgressStatus(`Running "${options.scheme}" on Mac`);
     await terminal.runGroup(async (group) => {
-      await new MacOSLogSidecar(group, buildSettings.bundleIdentifier).spawn();
+      const logSidecar = new MacOSLogSidecar(group, {
+        bundleId: buildSettings.bundleIdentifier,
+        executableName: buildSettings.executableName,
+      });
+      await logSidecar.spawn();
 
       const main = new MainExecutable(group, {
         command: executablePath,
         args: options.launchArgs,
-        env: options.launchEnv,
+        // NSUnbufferedIO is a no-op when stdout is a tty (the v3/node-pty path), but acts as a
+        // safety net for the v2 fallback where stdout is a plain pipe and Foundation block-buffers print().
+        env: { NSUnbufferedIO: "YES", ...options.launchEnv },
         pty: true,
       });
       await main.wait();
@@ -629,7 +635,12 @@ export class BuildManager {
     // Run app
     context.updateProgressStatus(`Running "${options.scheme}" on "${simulator.name}"`);
     await terminal.runGroup(async (group) => {
-      await new SimulatorLogSidecar(group, simulator.udid, bundlerId).spawn();
+      const logSidecar = new SimulatorLogSidecar(group, {
+        simulatorUdid: simulator.udid,
+        bundleId: bundlerId,
+        executableName: buildSettings.executableName,
+      });
+      await logSidecar.spawn();
 
       const main = new MainExecutable(group, {
         command: "xcrun",
@@ -746,7 +757,8 @@ export class BuildManager {
         // a [sweetpad] warning when streaming is disabled, the binary is missing, or the
         // executable name is unknown; pymd3's own stderr (e.g. tunneld not running)
         // surfaces via [pymobiledevice3]. The launch proceeds either way.
-        await new Pymd3Sidecar(group, buildSettings.executableName).spawn();
+        const logSidecar = new Pymd3Sidecar(group, { executableName: buildSettings.executableName });
+        await logSidecar.spawn();
 
         const main = new MainExecutable(group, {
           command: "xcrun",
