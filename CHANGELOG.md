@@ -2,16 +2,18 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [0.1.82] - 2026-04-26
+## [0.1.82] - 2026-04-27
 
 - Sort physical devices so the connected one appears above stale paired entries ([#234](https://github.com/sweetpad-dev/sweetpad/issues/234))
 - Move os_log streaming from the output channel to the task terminal ([#233](https://github.com/sweetpad-dev/sweetpad/pull/233))
+- Filter macOS and simulator app logs by process image instead of subsystem so apps without `Logger(subsystem:)` still surface, and accept the `.debug.dylib` sidecar; customize via `sweetpad.build.logStreamPredicate` ([#235](https://github.com/sweetpad-dev/sweetpad/pull/235))
 - New `v3` task executor (now default), backed by `node-pty` for real PTYs, ANSI/TUI output, and a shared login-shell environment; revert to the legacy executor via `sweetpad.system.taskExecutor: v2`
 - Resolve the login shell environment on activation so tasks see PATH/toolchains from `~/.zshrc`, `~/.zprofile`, mise, asdf, and direnv; tune via `sweetpad.shellEnv.shell` and `sweetpad.shellEnv.timeout`
 - Add command "SweetPad: Refresh shell environment"
 - Add opt-in auto-start of `pymobiledevice3 remote tunneld` for iOS-17+ device launches via `sweetpad.build.deviceTunnelAutoStart`
 - Add command "SweetPad: Install pymobiledevice3" with uv / pipx / pip options
 - Replace `sweetpad.build.deviceLogStreamBackend` with a single `pymobiledevice3` backend; toggle streaming via `sweetpad.build.logStreamEnabled`
+- Derive the pymobiledevice3 debug-dylib syslog filter from the `ENABLE_DEBUG_DYLIB` build setting; removes `sweetpad.build.pymobiledevice3DebugDylibOnly` ([#232](https://github.com/sweetpad-dev/sweetpad/pull/232))
 
 ## [0.1.81] - 2026-04-18
 
