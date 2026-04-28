@@ -68,6 +68,7 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
   private groupPipes = new Set<ChildProcess>();
   private dims: { cols: number; rows: number } = { cols: 80, rows: 30 };
   private closed = false;
+  private closeFired = false;
   // Set when the user types Ctrl+C (0x03) while a runGroup is active. Lets us surface
   // cancellation even when main exits cleanly (e.g. simctl handling SIGINT, or a Swift
   // app catching it and returning 0). Reset at every runGroup entry.
@@ -95,6 +96,15 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
     this.closed = true;
     this.killCurrentPty();
     this.killGroupChildren();
+    // VS Code only treats the task as ended once the close emitter fires. If close()
+    // arrives externally (user closed the terminal, vscode.tasks.terminate, etc.)
+    // before start() reaches its own closeTerminal call, the surrounding runTaskV3
+    // promise would otherwise wait for an onDidEndTaskProcess event that never
+    // comes, leaving the build hung.
+    if (!this.closeFired) {
+      this.closeFired = true;
+      this.closeEmitter.fire(-1);
+    }
   }
 
   setDimensions(dimensions: vscode.TerminalDimensions): void {
@@ -187,6 +197,15 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
       rows: this.dims.rows,
     });
     this.currentPty = pty;
+
+    // Send EOF (^D) on stdin so non-interactive consumers — xcodebuild scheme
+    // pre-actions, build phases, anything `read`-ing stdin or guarding behind
+    // `[ -t 0 ]` — don't sit waiting for input that will never come. Without
+    // this the build hangs silently when a pre-action errors instead of
+    // surfacing the failure (issue #240).
+    try {
+      pty.write("\x04");
+    } catch {}
 
     const observerBuffer = options.onOutputLine
       ? new LineBuffer({
@@ -539,6 +558,8 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
   private closeTerminal(code: number, message: string, options?: TerminalWriteOptions): void {
     this.writeLine(message, options);
     this.writeLine();
+    if (this.closeFired) return;
+    this.closeFired = true;
     this.closeEmitter.fire(code);
   }
 
