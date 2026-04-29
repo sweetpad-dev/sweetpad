@@ -171,6 +171,36 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.diagnoseSetup", diagnoseBuildSetupCommand));
   d(command("sweetpad.build.stop", stopSchemeCommand));
   d(command("sweetpad.build.switchWorktree", switchWorktreeCommand));
+  d(
+    command("sweetpad.build.filterSchemes", async () => {
+      const inputBox = vscode.window.createInputBox();
+      inputBox.title = "Filter schemes in Build view";
+      inputBox.prompt = "Type part of the scheme name";
+      inputBox.value = buildTreeProvider.getSchemeFilter() ?? "";
+      inputBox.placeholder = "e.g. DemoApp";
+      inputBox.valueSelection = [0, inputBox.value.length];
+
+      const valueSubscription = inputBox.onDidChangeValue((value) => {
+        buildTreeProvider.setSchemeFilter(value);
+      });
+      const acceptSubscription = inputBox.onDidAccept(() => {
+        inputBox.hide();
+      });
+
+      inputBox.onDidHide(() => {
+        valueSubscription.dispose();
+        acceptSubscription.dispose();
+        inputBox.dispose();
+      });
+
+      inputBox.show();
+    }),
+  );
+  d(
+    command("sweetpad.build.clearSchemeFilter", async () => {
+      buildTreeProvider.setSchemeFilter(undefined);
+    }),
+  );
 
   // Testing
   d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));
