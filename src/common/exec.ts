@@ -2,6 +2,7 @@ import { getWorkspacePath } from "../build/utils";
 import { ExecBaseError, ExecError } from "./errors";
 import { prepareEnvVars } from "./helpers";
 import { commonLogger } from "./logger";
+import { getShellEnv } from "./tasks/shell-env";
 
 import { execa } from "execa";
 
@@ -37,13 +38,19 @@ export async function exec(options: {
     env: options.env,
   });
 
-  const env = prepareEnvVars(options.env);
+  // Resolve via the user's login+interactive shell so spawned tools (xcbeautify,
+  // xcodegen, tuist, mise/asdf shims, …) are found on PATH the same way they are
+  // in Terminal. getShellEnv() is cached and warmed at activation; this awaits
+  // the warm-up promise if the first exec() lands before it resolves.
+  const shellEnv = await getShellEnv();
+  const env = { ...shellEnv, ...prepareEnvVars(options.env) };
 
   let result: any;
   try {
     result = await execa(options.command, options.args, {
       cwd: cwd,
       env: env,
+      extendEnv: false,
     });
   } catch (e: any) {
     const errorMessage: string = e?.shortMessage ?? e?.message ?? "[unknown error]";
