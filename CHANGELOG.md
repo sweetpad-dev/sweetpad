@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.83] - 2026-04-29
+
+- Resolve tool-detection PATH via the user's login shell ([#241](https://github.com/sweetpad-dev/sweetpad/issues/241))
+
 ## [0.1.82] - 2026-04-27
 
 - Sort physical devices so the connected one appears above stale paired entries ([#234](https://github.com/sweetpad-dev/sweetpad/issues/234))
