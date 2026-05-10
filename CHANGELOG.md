@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [Unreleased]
+
+- Filter schemes in the Build view with `sweetpad.build.schemes.include` / `.exclude` glob patterns, plus a toolbar toggle to peek at all schemes ([#236](https://github.com/sweetpad-dev/sweetpad/pull/236))
+
 ## [0.1.83] - 2026-04-29
 
 - Resolve tool-detection PATH via the user's login shell ([#241](https://github.com/sweetpad-dev/sweetpad/issues/241))

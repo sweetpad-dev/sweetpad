@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { XcodeScheme } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
+import { getWorkspaceConfig } from "../common/config";
 import { commonLogger } from "../common/logger";
 import type { BuildManager } from "./manager";
 
@@ -40,11 +41,14 @@ export class BuildTreeItem extends vscode.TreeItem {
 export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<EventData>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-  public context: ExtensionContext | undefined;
+  private _context: ExtensionContext | undefined;
   public buildManager: BuildManager;
   public defaultSchemeForBuild: string | undefined;
   public defaultSchemeForTesting: string | undefined;
   private isLoading = false;
+  private schemeFilterPaused = false;
+  private schemeIncludeRegexes: RegExp[] = [];
+  private schemeExcludeRegexes: RegExp[] = [];
 
   constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
     this.context = options.context;
@@ -79,10 +83,54 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
     });
     this.defaultSchemeForBuild = this.buildManager.getDefaultSchemeForBuild();
     this.defaultSchemeForTesting = this.buildManager.getDefaultSchemeForTesting();
+
+    this.updateSchemeFilterPausedContext();
+    this.recomputeSchemeFilterPatterns();
+  }
+
+  public get context(): ExtensionContext | undefined {
+    return this._context;
+  }
+
+  public set context(ctx: ExtensionContext | undefined) {
+    this._context = ctx;
+    if (ctx) {
+      ctx.on("workspaceConfigChanged", (event) => {
+        if (
+          event.affectsConfiguration("sweetpad.build.schemes.include") ||
+          event.affectsConfiguration("sweetpad.build.schemes.exclude")
+        ) {
+          this.recomputeSchemeFilterPatterns();
+          this.updateView();
+        }
+      });
+    }
   }
 
   private updateView(): void {
     this._onDidChangeTreeData.fire(null);
+  }
+
+  private recomputeSchemeFilterPatterns(): void {
+    const include = getWorkspaceConfig("build.schemes.include") ?? [];
+    const exclude = getWorkspaceConfig("build.schemes.exclude") ?? [];
+    this.schemeIncludeRegexes = include.map((p) => this.patternToRegex(p));
+    this.schemeExcludeRegexes = exclude.map((p) => this.patternToRegex(p));
+    const hasFilter = this.schemeIncludeRegexes.length > 0 || this.schemeExcludeRegexes.length > 0;
+    vscode.commands.executeCommand("setContext", "sweetpad.build.hasSchemeFilter", hasFilter);
+  }
+
+  private updateSchemeFilterPausedContext(): void {
+    vscode.commands.executeCommand("setContext", "sweetpad.build.schemeFilterPaused", this.schemeFilterPaused);
+  }
+
+  public toggleSchemeFilterPaused(paused: boolean): void {
+    if (this.schemeFilterPaused === paused) {
+      return;
+    }
+    this.schemeFilterPaused = paused;
+    this.updateSchemeFilterPausedContext();
+    this.updateView();
   }
 
   async getChildren(element?: BuildTreeItem | undefined): Promise<BuildTreeItem[]> {
@@ -125,10 +173,16 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
       });
     }
 
+    vscode.commands.executeCommand("setContext", "sweetpad.build.noSchemes", schemes.length === 0);
+
     if (schemes.length === 0) {
       // Display welcome screen with explanation what to do.
       // See "viewsWelcome": [ {"view": "sweetpad.build.view", ...} ] in package.json
-      vscode.commands.executeCommand("setContext", "sweetpad.build.noSchemes", true);
+      return [];
+    }
+
+    if (!this.schemeFilterPaused) {
+      schemes = this.applySchemeFilter(schemes);
     }
 
     // return list of schemes
@@ -143,6 +197,27 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
         isDefaultForBuild: isDefaultForBuild,
         isDefaultForTesting: isDefaultForTesting,
       });
+    });
+  }
+
+  /** Converts a `*`-wildcard glob pattern into an anchored regex (e.g. `Feature*` → `/^Feature.*$/`). */
+  private patternToRegex(pattern: string): RegExp {
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`^${escaped.replace(/\*/g, ".*")}$`);
+  }
+
+  private applySchemeFilter(schemes: XcodeScheme[]): XcodeScheme[] {
+    if (this.schemeIncludeRegexes.length === 0 && this.schemeExcludeRegexes.length === 0) {
+      return schemes;
+    }
+    return schemes.filter((scheme) => {
+      if (this.schemeIncludeRegexes.length > 0 && !this.schemeIncludeRegexes.some((re) => re.test(scheme.name))) {
+        return false;
+      }
+      if (this.schemeExcludeRegexes.some((re) => re.test(scheme.name))) {
+        return false;
+      }
+      return true;
     });
   }
 }
