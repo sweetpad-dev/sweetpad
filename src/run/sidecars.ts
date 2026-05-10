@@ -5,10 +5,10 @@ import { commonLogger } from "../common/logger";
 import type { ProcessGroup, ProcessSpec, TaskTerminal } from "../common/tasks/types";
 import {
   ANSI_ESCAPE_RE,
-  extractClockTime,
-  formatLogPrefix,
   LEVEL_COLOR,
   LEVEL_LETTER,
+  extractClockTime,
+  formatLogPrefix,
   renderNdjsonLine,
   writeErrorLine,
   writeInfoLine,
