@@ -9,9 +9,7 @@ export const DEFAULT_RELEASE_CONFIGURATION = "Release";
  *
  * "Debug" configuration is used as default
  */
-export async function askConfigurationBase(options: {
-  xcworkspace: string;
-}) {
+export async function askConfigurationBase(options: { xcworkspace: string }) {
   // Fetch all configurations
   const configurations = await getBuildConfigurations({
     xcworkspace: options.xcworkspace,
@@ -66,9 +64,7 @@ export async function showConfigurationPicker(configurations: XcodeConfiguration
   return selected.context.configuration.name;
 }
 
-export async function showYesNoQuestion(options: {
-  title: string;
-}): Promise<boolean> {
+export async function showYesNoQuestion(options: { title: string }): Promise<boolean> {
   const selected = await showQuickPick({
     title: options.title,
     items: [

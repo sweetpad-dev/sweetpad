@@ -1,27 +1,10 @@
+import { execa } from "execa";
+
 import { getWorkspacePath } from "../build/utils";
 import { ExecBaseError, ExecError } from "./errors";
 import { prepareEnvVars } from "./helpers";
 import { commonLogger } from "./logger";
 import { getShellEnv } from "./tasks/shell-env";
-
-import { execa } from "execa";
-
-type ExecaError = {
-  command: string;
-  escapedCommand: string;
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  failed: boolean;
-  timedOut: boolean;
-  killed: boolean;
-  signal?: string;
-  signalDescription?: string;
-  cwd: string;
-  message: string;
-  shortMessage: string;
-  originalMessage: string;
-};
 
 export async function exec(options: {
   command: string;

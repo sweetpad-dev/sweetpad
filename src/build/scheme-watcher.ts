@@ -1,5 +1,7 @@
 import path from "node:path";
+
 import * as vscode from "vscode";
+
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";

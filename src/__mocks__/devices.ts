@@ -54,15 +54,15 @@ export function createMockXcdeviceDevice(overrides: Partial<XcdeviceDevice> = {}
  */
 export function createMockContext(overrides: Partial<ExtensionContext> = {}): ExtensionContext {
   return {
-    startExecutionScope: jest.fn().mockImplementation(async (_scope, callback) => {
+    startExecutionScope: vi.fn().mockImplementation(async (_scope, callback) => {
       return await callback();
     }),
-    updateProgressStatus: jest.fn(),
-    getWorkspaceState: jest.fn().mockReturnValue(undefined),
-    updateWorkspaceState: jest.fn(),
+    updateProgressStatus: vi.fn(),
+    getWorkspaceState: vi.fn().mockReturnValue(undefined),
+    updateWorkspaceState: vi.fn(),
     buildManager: {} as any,
     destinationsManager: {} as any,
-    tunnelManager: { autoStart: jest.fn().mockResolvedValue(undefined) } as any,
+    tunnelManager: { autoStart: vi.fn().mockResolvedValue(undefined) } as any,
     ...overrides,
   } as unknown as ExtensionContext;
 }
@@ -83,9 +83,9 @@ export type MockTaskTerminal = TaskTerminal & {
 export function createMockTerminal(): MockTaskTerminal {
   const spawnedSpecs: ProcessSpec[] = [];
   const terminal = {
-    execute: jest.fn().mockResolvedValue(undefined),
-    write: jest.fn(),
-    runGroup: jest.fn(async (callback: (group: ProcessGroup) => Promise<unknown>) => {
+    execute: vi.fn().mockResolvedValue(undefined),
+    write: vi.fn(),
+    runGroup: vi.fn(async (callback: (group: ProcessGroup) => Promise<unknown>) => {
       const group: ProcessGroup = {
         terminal: terminal as TaskTerminal,
         spawn: (spec: ProcessSpec): ProcessHandle => {

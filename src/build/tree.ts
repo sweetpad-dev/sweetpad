@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import type { XcodeScheme } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
@@ -39,9 +40,9 @@ export class BuildTreeItem extends vscode.TreeItem {
 }
 
 export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<EventData>();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-  private _context: ExtensionContext | undefined;
+  #onDidChangeTreeData = new vscode.EventEmitter<EventData>();
+  readonly onDidChangeTreeData = this.#onDidChangeTreeData.event;
+  #context: ExtensionContext | undefined;
   public buildManager: BuildManager;
   public defaultSchemeForBuild: string | undefined;
   public defaultSchemeForTesting: string | undefined;
@@ -89,11 +90,11 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   }
 
   public get context(): ExtensionContext | undefined {
-    return this._context;
+    return this.#context;
   }
 
   public set context(ctx: ExtensionContext | undefined) {
-    this._context = ctx;
+    this.#context = ctx;
     if (ctx) {
       ctx.on("workspaceConfigChanged", (event) => {
         if (
@@ -108,7 +109,7 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   }
 
   private updateView(): void {
-    this._onDidChangeTreeData.fire(null);
+    this.#onDidChangeTreeData.fire(null);
   }
 
   private recomputeSchemeFilterPatterns(): void {

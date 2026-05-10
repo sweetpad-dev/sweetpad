@@ -1,4 +1,5 @@
 import vscode from "vscode";
+
 import type {
   ExtensionContext,
   LastLaunchedAppDeviceContext,

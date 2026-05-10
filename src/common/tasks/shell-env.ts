@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import * as crypto from "node:crypto";
+
 import * as vscode from "vscode";
+
 import { getWorkspaceConfig } from "../config";
 import { commonLogger } from "../logger";
 

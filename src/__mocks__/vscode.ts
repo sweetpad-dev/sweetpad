@@ -1,18 +1,18 @@
 export const window = {
-  showInformationMessage: jest.fn(),
-  createOutputChannel: jest.fn(() => ({
-    appendLine: jest.fn(),
-    show: jest.fn(),
-    clear: jest.fn(),
+  showInformationMessage: vi.fn(),
+  createOutputChannel: vi.fn(() => ({
+    appendLine: vi.fn(),
+    show: vi.fn(),
+    clear: vi.fn(),
   })),
 };
 
 export const commands = {
-  registerCommand: jest.fn(),
+  registerCommand: vi.fn(),
 };
 
 export const workspace = {
-  getConfiguration: jest.fn(() => ({
-    get: jest.fn(),
+  getConfiguration: vi.fn(() => ({
+    get: vi.fn(),
   })),
 };

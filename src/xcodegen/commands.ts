@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import { restartSwiftLSP } from "../build/utils";
 import { generateXcodeGen, getIsXcodeGenInstalled } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";

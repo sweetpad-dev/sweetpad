@@ -4,7 +4,8 @@ This document explains how SweetPad optimizes its icon font to reduce the extens
 
 ## Overview
 
-SweetPad uses a custom font subsetting process to include only the icons actually used by the extension, reducing the font file from ~1.2MB to ~7.6KB.
+SweetPad uses a custom font subsetting process to include only the icons actually used by the extension, reducing the
+font file from ~1.2MB to ~7.6KB.
 
 ## Workflow
 
@@ -48,10 +49,10 @@ npm run publish-patch
 
 ## Font Files
 
-| File | Purpose | Size |
-|------|---------|------|
+| File                                      | Purpose                | Size   |
+| ----------------------------------------- | ---------------------- | ------ |
 | `images/icons/tabler-icons.original.woff` | Original font (backup) | ~1.2MB |
-| `images/icons/tabler-icons.woff` | Optimized subset | ~7.6KB |
+| `images/icons/tabler-icons.woff`          | Optimized subset       | ~7.6KB |
 
 ## Implementation Details
 

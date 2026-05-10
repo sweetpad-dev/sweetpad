@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import { getXcodeVersionInstalled } from "../common/cli/scripts.js";
 import { getWorkspaceConfig } from "../common/config.js";
 import { exec } from "../common/exec.js";

@@ -1,5 +1,4 @@
 import { showQuickPick } from "../common/quick-pick";
-
 import { TOOLS, type Tool } from "./constants";
 
 /**

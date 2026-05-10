@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+
 import * as Sentry from "@sentry/node";
 import type * as vscode from "vscode";
+
 import { getWorkspaceConfig } from "./config";
 import { commonLogger } from "./logger";
 

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import { getWorkspaceConfig } from "../config";
 
 export function setTaskPresentationOptions(task: vscode.Task): void {

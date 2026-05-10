@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import type { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 

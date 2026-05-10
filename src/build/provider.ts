@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import { type ExtensionContext, TaskExecutionScope } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { errorReporting } from "../common/error-reporting";
@@ -93,8 +94,8 @@ class ActionDispatcher {
     const isMacOS = options.definition.destination?.toLowerCase().includes("macos") ?? false;
 
     const destinations = await context.destinationsManager.getDestinations();
-    const destination = destinations.find((destination) => {
-      switch (destination.type) {
+    const destination = destinations.find((d) => {
+      switch (d.type) {
         case "iOSSimulator":
         case "watchOSSimulator":
         case "visionOSSimulator":
@@ -103,11 +104,11 @@ class ActionDispatcher {
         case "watchOSDevice":
         case "visionOSDevice":
         case "tvOSDevice":
-          return destination.udid.toLowerCase() === udidLower;
+          return d.udid.toLowerCase() === udidLower;
         case "macOS":
           return isMacOS;
         default:
-          assertUnreachable(destination);
+          assertUnreachable(d);
       }
     });
 
@@ -596,7 +597,7 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
       options.name, // name, after source
       "sweetpad", // source, before name`
       new vscode.CustomExecution(async (defition: vscode.TaskDefinition) => {
-        const _defition = defition as TaskDefinition;
+        const taskDefinition = defition as TaskDefinition;
         let executorName = getTaskExecutorName();
         if (executorName === "v3" && loadNodePty() === null) {
           // Fall back to v2 when node-pty cannot be loaded from VS Code's app
@@ -610,14 +611,14 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
             // in the current terminal.
             return new TaskTerminalV2(this.context, {
               callback: async (terminal) => {
-                await this.dispatchTask(terminal, _defition);
+                await this.dispatchTask(terminal, taskDefinition);
               },
             });
           }
           case "v3": {
             return new TaskTerminalV3(this.context, {
               callback: async (terminal) => {
-                await this.dispatchTask(terminal, _defition);
+                await this.dispatchTask(terminal, taskDefinition);
               },
             });
           }

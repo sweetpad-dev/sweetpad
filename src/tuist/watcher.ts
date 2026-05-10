@@ -1,6 +1,8 @@
 import path from "node:path";
+
 import * as vscode from "vscode";
 import { Disposable } from "vscode";
+
 import { getWorkspacePath, prepareDerivedDataPath } from "../build/utils";
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";

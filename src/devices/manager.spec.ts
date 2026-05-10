@@ -1,24 +1,26 @@
+import * as fs from "node:fs";
 /**
  * Unit tests for DevicesManager with dual-source fetching + iOS <=16 recovery.
  */
-
-import * as fs from "node:fs";
 import * as path from "node:path";
+
+import type { Mock } from "vitest";
+
 import { createMockContext } from "../__mocks__/devices";
 import { listDevices } from "../common/xcode/devicectl";
 import { listDevicesWithXcdevice } from "../common/xcode/xcdevice";
 import { DevicesManager } from "./manager";
 
-jest.mock("../common/exec", () => ({
-  exec: jest.fn(),
+vi.mock("../common/exec", () => ({
+  exec: vi.fn(),
 }));
 
-jest.mock("../common/xcode/devicectl", () => ({
-  listDevices: jest.fn(),
+vi.mock("../common/xcode/devicectl", () => ({
+  listDevices: vi.fn(),
 }));
 
-jest.mock("../common/xcode/xcdevice", () => ({
-  listDevicesWithXcdevice: jest.fn(),
+vi.mock("../common/xcode/xcdevice", () => ({
+  listDevicesWithXcdevice: vi.fn(),
 }));
 
 function loadFixture(relativePath: string): any {
@@ -30,7 +32,7 @@ describe("DevicesManager", () => {
   let mockContext: ReturnType<typeof createMockContext>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     manager = new DevicesManager();
     mockContext = createMockContext();
     manager.context = mockContext;
@@ -38,10 +40,8 @@ describe("DevicesManager", () => {
 
   describe("refresh", () => {
     it("fetches devices from both devicectl and xcdevice in parallel", async () => {
-      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(
-        loadFixture("tests/xcdevice-data/xcdevice-ios-devices.json"),
-      );
+      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesWithXcdevice as Mock).mockResolvedValue(loadFixture("tests/xcdevice-data/xcdevice-ios-devices.json"));
 
       await manager.refresh();
 
@@ -50,8 +50,8 @@ describe("DevicesManager", () => {
     });
 
     it("wraps iOS 17+ devicectl device when xcdevice is empty", async () => {
-      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
+      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
 
@@ -93,8 +93,8 @@ describe("DevicesManager", () => {
         },
       ];
 
-      (listDevices as jest.Mock).mockResolvedValue(devicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(xcdeviceData);
+      (listDevices as Mock).mockResolvedValue(devicectlData);
+      (listDevicesWithXcdevice as Mock).mockResolvedValue(xcdeviceData);
 
       const devices = await manager.refresh();
 
@@ -103,10 +103,8 @@ describe("DevicesManager", () => {
     });
 
     it("recovers iOS 16 Wi-Fi device when devicectl returns no devices", async () => {
-      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(
-        loadFixture("tests/xcdevice-data/xcdevice-ios-16-wifi.json"),
-      );
+      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
+      (listDevicesWithXcdevice as Mock).mockResolvedValue(loadFixture("tests/xcdevice-data/xcdevice-ios-16-wifi.json"));
 
       const devices = await manager.refresh();
 
@@ -121,10 +119,10 @@ describe("DevicesManager", () => {
     });
 
     it("recovers iOS 16 USB device when devicectl returns empty hardwareProperties", async () => {
-      (listDevices as jest.Mock).mockResolvedValue(
+      (listDevices as Mock).mockResolvedValue(
         loadFixture("tests/devicectl-data/devicectl-ios-16-usb-empty-hardware.json"),
       );
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(
+      (listDevicesWithXcdevice as Mock).mockResolvedValue(
         loadFixture("tests/xcdevice-data/xcdevice-ios-16-usb-match.json"),
       );
 
@@ -138,10 +136,8 @@ describe("DevicesManager", () => {
     });
 
     it("shows an unavailable xcdevice entry as disconnected", async () => {
-      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(
-        loadFixture("tests/xcdevice-data/xcdevice-unavailable.json"),
-      );
+      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
+      (listDevicesWithXcdevice as Mock).mockResolvedValue(loadFixture("tests/xcdevice-data/xcdevice-unavailable.json"));
 
       const devices = await manager.refresh();
 
@@ -151,10 +147,10 @@ describe("DevicesManager", () => {
     });
 
     it("drops devicectl entries with empty hardwareProperties and no xcdevice match", async () => {
-      (listDevices as jest.Mock).mockResolvedValue(
+      (listDevices as Mock).mockResolvedValue(
         loadFixture("tests/devicectl-data/devicectl-ios-16-usb-empty-hardware.json"),
       );
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
+      (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
 
@@ -194,8 +190,8 @@ describe("DevicesManager", () => {
         },
       };
 
-      (listDevices as jest.Mock).mockResolvedValue(devicectlData);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
+      (listDevices as Mock).mockResolvedValue(devicectlData);
+      (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
 
@@ -204,24 +200,24 @@ describe("DevicesManager", () => {
     });
 
     it("creates correct device type instances from mixed xcdevice platforms", async () => {
-      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue(
+      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
+      (listDevicesWithXcdevice as Mock).mockResolvedValue(
         loadFixture("tests/xcdevice-data/xcdevice-mixed-platforms.json"),
       );
 
       const devices = await manager.refresh();
 
-      const byType = devices.map((d) => d.type).sort();
+      const byType = devices.map((d) => d.type).toSorted();
       // iPhone, iPad → both iOSDevice; watch, tv → watchOSDevice, tvOSDevice.
       // Simulator entry filtered out by listDevicesWithXcdevice (mocked data includes
       // a simulator but the mock is passed through — simulator filtering lives in
       // listDevicesWithXcdevice, so here we expect all non-simulator entries.)
-      expect(byType).toEqual(["iOSDevice", "iOSDevice", "tvOSDevice", "watchOSDevice", "iOSDevice"].sort());
+      expect(byType).toEqual(["iOSDevice", "iOSDevice", "tvOSDevice", "watchOSDevice", "iOSDevice"].toSorted());
     });
 
     it("creates correct device type instances from devicectl fixtures", async () => {
-      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-multiple-devices.json"));
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
+      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-multiple-devices.json"));
+      (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
 
@@ -238,8 +234,8 @@ describe("DevicesManager", () => {
     it("handles ENOENT error by setting failed to 'no-devicectl'", async () => {
       const error: any = new Error("devicectl not found");
       error.error = { code: "ENOENT" };
-      (listDevices as jest.Mock).mockRejectedValue(error);
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
+      (listDevices as Mock).mockRejectedValue(error);
+      (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
 
@@ -248,8 +244,8 @@ describe("DevicesManager", () => {
     });
 
     it("handles other errors by setting failed to 'unknown'", async () => {
-      (listDevices as jest.Mock).mockRejectedValue(new Error("Unknown error"));
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
+      (listDevices as Mock).mockRejectedValue(new Error("Unknown error"));
+      (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
 
@@ -258,8 +254,8 @@ describe("DevicesManager", () => {
     });
 
     it("caches device list after refresh", async () => {
-      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
+      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       await manager.refresh();
       await manager.getDevices();
@@ -268,10 +264,10 @@ describe("DevicesManager", () => {
     });
 
     it("emits updated event after refresh", async () => {
-      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
+      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
-      const listener = jest.fn();
+      const listener = vi.fn();
       manager.on("updated", listener);
 
       await manager.refresh();
@@ -282,8 +278,8 @@ describe("DevicesManager", () => {
 
   describe("getDevices", () => {
     beforeEach(() => {
-      (listDevices as jest.Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
-      (listDevicesWithXcdevice as jest.Mock).mockResolvedValue([]);
+      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
     });
 
     it("returns cached devices without refresh", async () => {

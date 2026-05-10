@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import type { ExtensionContext } from "../common/commands.js";
 import { runTask } from "../common/tasks/run.js";
 import type { ToolTreeItem } from "./tree.js";

@@ -1,4 +1,5 @@
 import events from "node:events";
+
 import type { ExtensionContext } from "../common/commands";
 import { checkUnreachable } from "../common/types";
 import { listDevices } from "../common/xcode/devicectl";
@@ -41,13 +42,13 @@ function buildDeviceDestination(raw: DeviceRaw): DeviceDestination | null {
 
 export class DevicesManager {
   private cache: DeviceDestination[] | undefined = undefined;
-  private _context: ExtensionContext | undefined = undefined;
+  #context: ExtensionContext | undefined = undefined;
   private emitter = new events.EventEmitter<DeviceManagerEventTypes>();
 
   public failed: "unknown" | "no-devicectl" | null = null;
 
   set context(context: ExtensionContext) {
-    this._context = context;
+    this.#context = context;
   }
 
   on(event: "updated", listener: () => void): void {
@@ -55,10 +56,10 @@ export class DevicesManager {
   }
 
   get context(): ExtensionContext {
-    if (!this._context) {
+    if (!this.#context) {
       throw new Error("Context is not set");
     }
-    return this._context;
+    return this.#context;
   }
 
   private async fetchDevices(): Promise<{ devices: DeviceDestination[]; devicectlError: unknown }> {

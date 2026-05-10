@@ -1,4 +1,5 @@
 import events from "node:events";
+
 import { type SimulatorOutput, getSimulators } from "../common/cli/scripts";
 import { commonLogger } from "../common/logger";
 import { assertUnreachable } from "../common/types";

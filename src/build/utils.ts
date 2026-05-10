@@ -1,7 +1,7 @@
 import path from "node:path";
+
 import { execa } from "execa";
 import * as vscode from "vscode";
-import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 
 import { askConfigurationBase } from "../common/askers";
 import {
@@ -18,6 +18,7 @@ import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
+import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { TaskTerminal } from "../common/tasks/types";
 import { assertUnreachable } from "../common/types";
 import type { DestinationPlatform } from "../destination/constants";
@@ -92,9 +93,7 @@ export async function askDestinationToRunOn(
   // If we have cached desination, use it
   const cachedDestination = context.destinationsManager.getSelectedXcodeDestinationForBuild();
   if (cachedDestination) {
-    const destination = destinations.find(
-      (destination) => destination.id === cachedDestination.id && destination.type === cachedDestination.type,
-    );
+    const destination = destinations.find((d) => d.id === cachedDestination.id && d.type === cachedDestination.type);
     if (destination) {
       return destination;
     }
@@ -201,11 +200,11 @@ export async function askSchemeForBuild(
 
   const scheme = await showQuickPick({
     title: options?.title ?? "Select scheme to build",
-    items: schemes.map((scheme) => {
+    items: schemes.map((s) => {
       return {
-        label: scheme.name,
+        label: s.name,
         context: {
-          scheme: scheme,
+          scheme: s,
         },
       };
     }),
@@ -426,14 +425,14 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
 
   // One file, use it and save it to the cache
   if (paths.length === 1 && options.autoselect) {
-    const path = paths[0];
-    const projectType = detectWorkspaceType(path);
+    const selectedPath = paths[0];
+    const projectType = detectWorkspaceType(selectedPath);
     commonLogger.log("Project was detected", {
       workspace: workspacePath,
-      path: path,
+      path: selectedPath,
       projectType: projectType,
     });
-    return path;
+    return selectedPath;
   }
 
   const podfilePath = path.join(workspacePath, "Podfile");
@@ -443,7 +442,7 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
   const selected = await showQuickPick({
     title: "Select Xcode workspace or SPM package",
     items: paths
-      .sort((a, b) => {
+      .toSorted((a, b) => {
         // Sort by depth to show less nested paths first
         const aDepth = a.split(path.sep).length;
         const bDepth = b.split(path.sep).length;
@@ -590,7 +589,7 @@ export class XcodeCommandBuilder {
     const seenParameters = new Set<string>();
     this.parameters = this.parameters
       .slice()
-      .reverse()
+      .toReversed()
       .filter((param) => {
         if (seenParameters.has(param.arg)) {
           return false;
@@ -598,7 +597,7 @@ export class XcodeCommandBuilder {
         seenParameters.add(param.arg);
         return true;
       })
-      .reverse();
+      .toReversed();
 
     // Remove duplicates, with higher priority for the last occurrence
     const seenActions = new Set<string>();
@@ -614,7 +613,7 @@ export class XcodeCommandBuilder {
     const seenSettings = new Set<string>();
     this.buildSettings = this.buildSettings
       .slice()
-      .reverse()
+      .toReversed()
       .filter((setting) => {
         if (seenSettings.has(setting.key)) {
           return false;
@@ -622,7 +621,7 @@ export class XcodeCommandBuilder {
         seenSettings.add(setting.key);
         return true;
       })
-      .reverse();
+      .toReversed();
   }
 
   build(): string[] {
@@ -701,11 +700,7 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
  * - `platform=macOS,arch=arm64`
  * - `platform=iOS,arch=arm64`
  */
-function buildDestinationString(options: {
-  platform: string;
-  id?: string;
-  arch?: string;
-}): string {
+function buildDestinationString(options: { platform: string; id?: string; arch?: string }): string {
   const { platform, id, arch } = options;
   if (id && arch) {
     return `platform=${platform},id=${id},arch=${arch}`;

@@ -1,7 +1,9 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
+
 import type * as NodePty from "node-pty";
 import * as vscode from "vscode";
+
 import { commonLogger } from "../logger";
 
 // Reference: vscode-swift uses the same pattern.

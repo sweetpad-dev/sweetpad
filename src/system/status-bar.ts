@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 
@@ -13,7 +14,7 @@ import { getWorkspaceConfig } from "../common/config";
  * todo: think how to make it more robus, so that it not requires to listen to event
  */
 export class ProgressStatusBar {
-  _context: ExtensionContext | undefined = undefined;
+  #context: ExtensionContext | undefined = undefined;
   statusBar: vscode.StatusBarItem;
   enabled = true;
 
@@ -33,14 +34,14 @@ export class ProgressStatusBar {
   }
 
   get context(): ExtensionContext {
-    if (!this._context) {
+    if (!this.#context) {
       throw new Error("Context is not set");
     }
-    return this._context;
+    return this.#context;
   }
 
   set context(context: ExtensionContext) {
-    this._context = context;
+    this.#context = context;
 
     this.updateConfig();
 

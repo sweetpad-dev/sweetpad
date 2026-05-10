@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import {
   applySchemeFilterCommand,
   buildCommand,
@@ -112,7 +113,7 @@ export function activate(context: vscode.ExtensionContext) {
   const tunnelManager = new TunnelManager();
 
   // Main context object 🌍
-  const _context = new ExtensionContext({
+  const extContext = new ExtensionContext({
     context: context,
     destinationsManager: destinationsManager,
     buildManager: buildManager,
@@ -123,15 +124,15 @@ export function activate(context: vscode.ExtensionContext) {
     tunnelManager: tunnelManager,
   });
   // Here is circular dependency, but I don't care
-  buildManager.context = _context;
-  devicesManager.context = _context;
-  destinationsManager.context = _context;
-  testingManager.context = _context;
-  progressStatusBar.context = _context;
+  buildManager.context = extContext;
+  devicesManager.context = extContext;
+  destinationsManager.context = extContext;
+  testingManager.context = extContext;
+  progressStatusBar.context = extContext;
 
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({
-    context: _context,
+    context: extContext,
     buildManager: buildManager,
   });
   const toolsTreeProvider = new ToolTreeProvider({
@@ -140,21 +141,21 @@ export function activate(context: vscode.ExtensionContext) {
   const destinationsTreeProvider = new DestinationsTreeProvider({
     manager: destinationsManager,
   });
-  _context.buildTreeProvider = buildTreeProvider;
+  extContext.buildTreeProvider = buildTreeProvider;
 
   // Shortcut to push disposable to context.subscriptions
-  const d = _context.disposable.bind(_context);
-  const command = _context.registerCommand.bind(_context);
-  const tree = _context.registerTreeDataProvider.bind(_context);
+  const d = extContext.disposable.bind(extContext);
+  const command = extContext.registerCommand.bind(extContext);
+  const tree = extContext.registerTreeDataProvider.bind(extContext);
 
-  const buildTaskProvider = new XcodeBuildTaskProvider(_context);
+  const buildTaskProvider = new XcodeBuildTaskProvider(extContext);
 
   // Tasks
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
 
   // Build
   const schemeStatusBar = new DefaultSchemeStatusBar({
-    context: _context,
+    context: extContext,
   });
   d(schemeStatusBar);
   d(tree("sweetpad.build.view", buildTreeProvider));
@@ -185,7 +186,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.testing.selectConfiguration", selectConfigurationForTestingCommand));
 
   // Debugging
-  d(registerDebugConfigurationProvider(_context));
+  d(registerDebugConfigurationProvider(extContext));
   d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
   d(command("sweetpad.debugger.debuggingLaunch", debuggingLaunchCommand));
   d(command("sweetpad.debugger.debuggingRun", debuggingRunCommand));
@@ -193,7 +194,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));
-  d(createXcodeGenWatcher(_context));
+  d(createXcodeGenWatcher(extContext));
 
   // Tuist
   d(command("sweetpad.tuist.generate", tuistGenerateCommand));
@@ -201,10 +202,10 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.tuist.clean", tuistCleanCommand));
   d(command("sweetpad.tuist.edit", tuistEditComnmand));
   d(command("sweetpad.tuist.test", tuistTestComnmand));
-  d(createTuistWatcher(_context));
+  d(createTuistWatcher(extContext));
 
   // Scheme Auto-Refresh Watcher
-  d(createSchemeWatcher(_context));
+  d(createSchemeWatcher(extContext));
 
   // Format
   d(createFormatStatusItem());
@@ -226,7 +227,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Desintations
   const destinationBar = new DestinationStatusBar({
-    context: _context,
+    context: extContext,
   });
   d(destinationBar);
   d(command("sweetpad.destinations.select", selectDestinationForBuildCommand));

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import type { Tool } from "./constants.js";
 import type { ToolsManager } from "./manager.js";
 
@@ -9,8 +10,8 @@ type EventData = ToolTreeItem | undefined | null | undefined;
  * tools are installed or empty state when it's not installed.
  */
 export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<EventData>();
-  readonly onDidChangeTreeData: vscode.Event<EventData> = this._onDidChangeTreeData.event;
+  #onDidChangeTreeData = new vscode.EventEmitter<EventData>();
+  readonly onDidChangeTreeData: vscode.Event<EventData> = this.#onDidChangeTreeData.event;
 
   manager: ToolsManager;
 
@@ -22,7 +23,7 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
   }
 
   private refresh(): void {
-    this._onDidChangeTreeData.fire(null);
+    this.#onDidChangeTreeData.fire(null);
   }
 
   async getChildren(element?: ToolTreeItem | undefined): Promise<ToolTreeItem[]> {

@@ -1,4 +1,5 @@
 import os from "node:os";
+
 import type { DestinationPlatform } from "./constants";
 import type { Destination } from "./types";
 

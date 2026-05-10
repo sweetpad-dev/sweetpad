@@ -1,32 +1,34 @@
+import { EventEmitter } from "node:events";
 /**
  * Unit tests for ios-deploy integration
  */
 
-import { EventEmitter } from "node:events";
+import type { Mock } from "vitest";
+
 import { createMockContext, createMockTerminal } from "../../__mocks__/devices";
 import { exec } from "../exec";
 import { tempFilePath } from "../files";
 import * as iosDeploy from "./ios-deploy";
 
 // Mock dependencies
-jest.mock("../exec", () => ({
-  exec: jest.fn(),
+vi.mock("../exec", () => ({
+  exec: vi.fn(),
 }));
 
-jest.mock("../files", () => ({
-  tempFilePath: jest.fn(),
+vi.mock("../files", () => ({
+  tempFilePath: vi.fn(),
 }));
 
-jest.mock("../logger", () => ({
+vi.mock("../logger", () => ({
   commonLogger: {
-    debug: jest.fn(),
-    error: jest.fn(),
+    debug: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
 // Mock child_process.spawn for the tail -f streaming
-const mockSpawn = jest.fn();
-jest.mock("node:child_process", () => ({
+const mockSpawn = vi.fn();
+vi.mock("node:child_process", () => ({
   spawn: (...args: any[]) => mockSpawn(...args),
 }));
 
@@ -34,18 +36,18 @@ function createMockChildProcess() {
   const proc = new EventEmitter() as any;
   proc.stdout = new EventEmitter();
   proc.stderr = new EventEmitter();
-  proc.kill = jest.fn();
+  proc.kill = vi.fn();
   return proc;
 }
 
 describe("ios-deploy", () => {
   describe("isIosDeployInstalled", () => {
     beforeEach(() => {
-      jest.clearAllMocks();
+      vi.clearAllMocks();
     });
 
     it("returns true when ios-deploy is installed", async () => {
-      (exec as jest.Mock).mockResolvedValue("1.12.0\n");
+      (exec as Mock).mockResolvedValue("1.12.0\n");
 
       const result = await iosDeploy.isIosDeployInstalled();
 
@@ -57,7 +59,7 @@ describe("ios-deploy", () => {
     });
 
     it("returns false when ios-deploy is not installed", async () => {
-      (exec as jest.Mock).mockRejectedValue(new Error("Command not found"));
+      (exec as Mock).mockRejectedValue(new Error("Command not found"));
 
       const result = await iosDeploy.isIosDeployInstalled();
 
@@ -65,7 +67,7 @@ describe("ios-deploy", () => {
     });
 
     it("returns false when ios-deploy command fails", async () => {
-      (exec as jest.Mock).mockRejectedValue(new Error("ENOENT"));
+      (exec as Mock).mockRejectedValue(new Error("ENOENT"));
 
       const result = await iosDeploy.isIosDeployInstalled();
 
@@ -80,7 +82,7 @@ describe("ios-deploy", () => {
 
     function setupExecuteMock() {
       iosDeployExecuteCalls = [];
-      (mockTerminal.execute as jest.Mock).mockImplementation(async (options: any) => {
+      (mockTerminal.execute as Mock).mockImplementation(async (options: any) => {
         if (options.command === "ios-deploy") {
           iosDeployExecuteCalls.push(options);
           return Promise.resolve();
@@ -93,17 +95,17 @@ describe("ios-deploy", () => {
     }
 
     beforeEach(() => {
-      jest.clearAllMocks();
+      vi.clearAllMocks();
       setupExecuteMock();
 
       // Setup spawn mock for tail -f streaming
       mockSpawn.mockReturnValue(createMockChildProcess());
 
       // Setup tempFilePath mock to return disposable objects
-      (tempFilePath as jest.Mock).mockImplementation(async () => {
+      (tempFilePath as Mock).mockImplementation(async () => {
         return {
           path: "/tmp/test-file",
-          [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
+          [Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
         };
       });
     });
@@ -189,7 +191,7 @@ describe("ios-deploy", () => {
     });
 
     it("throws error when command not found (exit code 127)", async () => {
-      (mockTerminal.execute as jest.Mock).mockImplementation(async (options: any) => {
+      (mockTerminal.execute as Mock).mockImplementation(async (options: any) => {
         if (options.command === "ios-deploy") {
           const error: any = new Error("Command not found");
           error.exitCode = 127;
@@ -208,7 +210,7 @@ describe("ios-deploy", () => {
     });
 
     it("throws error when device not found", async () => {
-      (mockTerminal.execute as jest.Mock).mockImplementation(async (options: any) => {
+      (mockTerminal.execute as Mock).mockImplementation(async (options: any) => {
         if (options.command === "ios-deploy") {
           const error: any = new Error("Could not connect to device");
           error.exitCode = 1;
@@ -228,7 +230,7 @@ describe("ios-deploy", () => {
     });
 
     it("throws error when stderr contains device not found message", async () => {
-      (mockTerminal.execute as jest.Mock).mockImplementation(async (options: any) => {
+      (mockTerminal.execute as Mock).mockImplementation(async (options: any) => {
         if (options.command === "ios-deploy") {
           const error: any = new Error("Device not found");
           error.exitCode = 255;
@@ -248,7 +250,7 @@ describe("ios-deploy", () => {
     });
 
     it("ignores non-zero exit code from safequit", async () => {
-      (mockTerminal.execute as jest.Mock).mockImplementation(async (options: any) => {
+      (mockTerminal.execute as Mock).mockImplementation(async (options: any) => {
         if (options.command === "ios-deploy") {
           iosDeployExecuteCalls.push(options);
           const error: any = new Error("ios-deploy exited with code 255");
@@ -271,7 +273,7 @@ describe("ios-deploy", () => {
     });
 
     it("throws error when process is interrupted by signal (exit code 130)", async () => {
-      (mockTerminal.execute as jest.Mock).mockImplementation(async (options: any) => {
+      (mockTerminal.execute as Mock).mockImplementation(async (options: any) => {
         if (options.command === "ios-deploy") {
           const error: any = new Error("Process interrupted");
           error.exitCode = 130;
@@ -291,7 +293,7 @@ describe("ios-deploy", () => {
     });
 
     it("throws error when process is killed by SIGTERM (exit code 143)", async () => {
-      (mockTerminal.execute as jest.Mock).mockImplementation(async (options: any) => {
+      (mockTerminal.execute as Mock).mockImplementation(async (options: any) => {
         if (options.command === "ios-deploy") {
           const error: any = new Error("Process terminated");
           error.exitCode = 143;
@@ -321,7 +323,7 @@ describe("ios-deploy", () => {
 
       // Only ios-deploy should be called through terminal.execute, not tail
       expect(iosDeployExecuteCalls).toHaveLength(1);
-      const allExecuteCalls = (mockTerminal.execute as jest.Mock).mock.calls;
+      const allExecuteCalls = (mockTerminal.execute as Mock).mock.calls;
       const tailCalls = allExecuteCalls.filter((call: any) => call[0]?.command === "tail");
       expect(tailCalls).toHaveLength(0);
     });

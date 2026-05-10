@@ -1,4 +1,5 @@
 import events from "node:events";
+
 import type { ExtensionContext } from "../common/commands";
 import { checkUnreachable } from "../common/types";
 import type { DevicesManager } from "../devices/manager";
@@ -45,7 +46,7 @@ type IEventKey = keyof IEventMap;
 export class DestinationsManager {
   private simulatorsManager: SimulatorsManager;
   private devicesManager: DevicesManager;
-  private _context: ExtensionContext | undefined;
+  #context: ExtensionContext | undefined;
 
   // Event emitter to signal changes in the destinations
   private emitter = new events.EventEmitter<IEventMap>();
@@ -53,7 +54,7 @@ export class DestinationsManager {
   constructor(options: { simulatorsManager: SimulatorsManager; devicesManager: DevicesManager }) {
     this.simulatorsManager = options.simulatorsManager;
     this.devicesManager = options.devicesManager;
-    this._context = undefined;
+    this.#context = undefined;
 
     // Forward events from simulators and devices managers
     this.simulatorsManager.on("updated", () => {
@@ -69,14 +70,14 @@ export class DestinationsManager {
   }
 
   get context() {
-    if (!this._context) {
+    if (!this.#context) {
       throw new Error("Context is not set");
     }
-    return this._context;
+    return this.#context;
   }
 
   set context(context: ExtensionContext) {
-    this._context = context;
+    this.#context = context;
   }
 
   async refreshSimulators(): Promise<SimulatorDestination[]> {
@@ -217,10 +218,10 @@ export class DestinationsManager {
 
     // todo: sort ipad/iPhone/xorOS
     if (a.type === "iOSSimulator" && b.type === "iOSSimulator") {
-      const aPriority = SIMULATOR_TYPE_PRIORITY.findIndex((type) => type === a.simulatorType);
-      const bPriority = SIMULATOR_TYPE_PRIORITY.findIndex((type) => type === b.simulatorType);
-      if (aPriority !== bPriority) {
-        return aPriority - bPriority;
+      const aSimPriority = SIMULATOR_TYPE_PRIORITY.findIndex((type) => type === a.simulatorType);
+      const bSimPriority = SIMULATOR_TYPE_PRIORITY.findIndex((type) => type === b.simulatorType);
+      if (aSimPriority !== bSimPriority) {
+        return aSimPriority - bSimPriority;
       }
     }
 
@@ -242,9 +243,7 @@ export class DestinationsManager {
     return a.name.localeCompare(b.name);
   }
 
-  async getDestinations(options?: {
-    mostUsedSort?: boolean;
-  }): Promise<Destination[]> {
+  async getDestinations(options?: { mostUsedSort?: boolean }): Promise<Destination[]> {
     const destinations: Destination[] = [];
 
     const platforms = SUPPORTED_DESTINATION_PLATFORMS;
@@ -301,10 +300,7 @@ export class DestinationsManager {
   /**
    * Find a destination by its udid and type
    */
-  async findDestination(options: {
-    destinationId: string;
-    type?: DestinationType;
-  }): Promise<Destination | undefined> {
+  async findDestination(options: { destinationId: string; type?: DestinationType }): Promise<Destination | undefined> {
     const types: DestinationType[] = options.type ? [options.type] : ALL_DESTINATION_TYPES;
 
     let destination: Destination | undefined = undefined;

@@ -1,5 +1,7 @@
 import path from "node:path";
+
 import { XmlElement, type XmlNode, parseXml } from "@rgrove/parse-xml";
+
 import { readFile } from "../files";
 import { commonLogger } from "../logger";
 import { assertUnreachable, isNotNull } from "../types";
@@ -26,12 +28,12 @@ function isXMLElement(obj: XmlNode): obj is XmlElement {
 }
 
 function parseLocation(location: string): XcodeWorkspaceLocation {
-  const [rawObj, path] = location.split(":", 2);
+  const [rawObj, locationPath] = location.split(":", 2);
   const obj = rawObj as XcodeWorkspaceLocationType;
 
   return {
     obj: obj,
-    path: path,
+    path: locationPath,
   };
 }
 
@@ -109,9 +111,7 @@ export class XcodeWorkspace {
     return projects;
   }
 
-  async getScheme(options: {
-    name: string;
-  }): Promise<XcodeScheme | null> {
+  async getScheme(options: { name: string }): Promise<XcodeScheme | null> {
     const projects = await this.getProjects();
     for (const project of projects) {
       const scheme = await project.getScheme(options.name);

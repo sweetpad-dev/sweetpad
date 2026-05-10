@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import { restartSwiftLSP } from "../build/utils";
 import {
   getIsTuistInstalled,

@@ -1,6 +1,8 @@
 import events from "node:events";
 import * as path from "node:path";
+
 import * as vscode from "vscode";
+
 import {
   type XcodeScheme,
   generateBuildServerConfig,
@@ -66,7 +68,7 @@ type IEventKey = keyof IEventMap;
 export class BuildManager {
   private cache: XcodeScheme[] | undefined = undefined;
   private emitter = new events.EventEmitter<IEventMap>();
-  public _context: ExtensionContext | undefined = undefined;
+  #context: ExtensionContext | undefined = undefined;
   private runningSchemes: Set<string> = new Set();
 
   constructor() {
@@ -96,14 +98,14 @@ export class BuildManager {
   }
 
   set context(context: ExtensionContext) {
-    this._context = context;
+    this.#context = context;
   }
 
   get context(): ExtensionContext {
-    if (!this._context) {
+    if (!this.#context) {
       throw new Error("Context is not set");
     }
-    return this._context;
+    return this.#context;
   }
 
   async refreshSchemes(): Promise<XcodeScheme[]> {
@@ -177,9 +179,7 @@ export class BuildManager {
    * Every time the scheme changes, we need to rebuild the buildServer.json file
    * for providing the correct build settings to the LSP server.
    */
-  async generateXcodeBuildServerSettingsOnSchemeChange(options: {
-    scheme: string | undefined;
-  }): Promise<void> {
+  async generateXcodeBuildServerSettingsOnSchemeChange(options: { scheme: string | undefined }): Promise<void> {
     if (!options.scheme) {
       return;
     }
@@ -225,14 +225,14 @@ export class BuildManager {
       return;
     }
 
-    const schemeNames = this.cache.map((scheme) => scheme.name);
+    const schemeNames = new Set(this.cache.map((scheme) => scheme.name));
     const currentBuildScheme = this.getDefaultSchemeForBuild();
-    if (currentBuildScheme && !schemeNames.includes(currentBuildScheme)) {
+    if (currentBuildScheme && !schemeNames.has(currentBuildScheme)) {
       this.setDefaultSchemeForBuild(undefined);
     }
 
     const currentTestingScheme = this.getDefaultSchemeForTesting();
-    if (currentTestingScheme && !schemeNames.includes(currentTestingScheme)) {
+    if (currentTestingScheme && !schemeNames.has(currentTestingScheme)) {
       this.setDefaultSchemeForTesting(undefined);
     }
   }

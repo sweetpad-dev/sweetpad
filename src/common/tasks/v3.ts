@@ -1,7 +1,9 @@
 import { type ChildProcess, spawn as childSpawn } from "node:child_process";
+
 import type { IPty } from "node-pty";
 import { quote } from "shell-quote";
 import * as vscode from "vscode";
+
 import { getWorkspacePath } from "../../build/utils";
 import type { ExtensionContext } from "../commands";
 import { TaskError } from "../errors";

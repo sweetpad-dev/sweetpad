@@ -49,10 +49,7 @@ export async function showQuickPick<T>(options: {
   });
 }
 
-export async function showInputBox(options: {
-  title: string;
-  value?: string;
-}): Promise<string | undefined> {
+export async function showInputBox(options: { title: string; value?: string }): Promise<string | undefined> {
   return vscode.window.showInputBox({
     title: options.title,
     value: options.value,

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import type { ExtensionContext } from "../common/commands";
 import { commonLogger } from "../common/logger";
 import { refreshShellEnv } from "../common/tasks/shell-env";

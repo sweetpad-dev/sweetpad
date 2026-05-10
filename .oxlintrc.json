@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "plugins": ["import", "node", "vitest", "eslint", "typescript", "unicorn", "oxc"],
+  "rules": {
+    "no-unused-vars": [
+      "error",
+      { "args": "none", "caughtErrors": "none", "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }
+    ],
+    "no-control-regex": "off",
+    "no-underscore-dangle": ["warn", { "allow": ["__filename", "__dirname"] }],
+    "no-await-in-loop": "off",
+    "vitest/require-mock-type-parameters": "off",
+    "vitest/expect-expect": "off"
+  },
+  "ignorePatterns": [
+    "out/**",
+    "node_modules/**",
+    "tests/contents-data/**",
+    "tests/devicectl-data/**",
+    "tests/examples/**",
+    "tests/xcdevice-data/**"
+  ]
+}

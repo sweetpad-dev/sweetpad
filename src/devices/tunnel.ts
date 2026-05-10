@@ -1,6 +1,8 @@
 import { createConnection } from "node:net";
+
 import { quote } from "shell-quote";
 import * as vscode from "vscode";
+
 import { getWorkspaceConfig } from "../common/config.js";
 import { exec } from "../common/exec.js";
 

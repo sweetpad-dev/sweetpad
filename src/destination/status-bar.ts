@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import type { ExtensionContext } from "../common/commands.js";
 
 export class DestinationStatusBar {

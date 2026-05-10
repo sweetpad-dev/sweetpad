@@ -1,6 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
+
 import { quote } from "shell-quote";
 import * as vscode from "vscode";
+
 import { getWorkspacePath } from "../../build/utils";
 import type { ExtensionContext } from "../commands";
 import { TaskError } from "../errors";
@@ -31,6 +33,18 @@ type V2GroupChild = {
 };
 
 const V2_GROUP_TERMINATE_TIMEOUT_MS = 2000;
+
+function killProcess(pid: number, signal: string): void {
+  try {
+    process.kill(-pid, signal);
+  } catch (e) {
+    // process does not exist, then it's already terminated
+    if ((e as NodeJS.ErrnoException).code === "ESRCH") {
+      return;
+    }
+    throw e;
+  }
+}
 
 export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   private writeEmitter = new vscode.EventEmitter<string>();
@@ -114,21 +128,9 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       return;
     }
 
-    const _kill = (pid: number, signal: string): void => {
-      try {
-        process.kill(-pid, signal);
-      } catch (e) {
-        // process does not exist, then it's already terminated
-        if ((e as NodeJS.ErrnoException).code === "ESRCH") {
-          return;
-        }
-        throw e;
-      }
-    };
-
     // First try to terminate all processes gracefully
     for (const pid of pids) {
-      _kill(pid, "SIGTERM");
+      killProcess(pid, "SIGTERM");
     }
 
     // After 5 seconds, we will try to kill remaining processes with SIGKILL with backoff strategy
@@ -136,7 +138,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     let attempt = 0;
     let timeout = 5000; // 5 seconds
 
-    const _sigkill = () => {
+    const sigkillProcess = () => {
       // Filter to only processes that are still running
       const stillRunning = pids.filter((pid) => {
         for (const proc of this.processes) {
@@ -152,16 +154,16 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       }
 
       for (const pid of stillRunning) {
-        _kill(pid, "SIGKILL");
+        killProcess(pid, "SIGKILL");
       }
       attempt++;
       if (attempt < maxAttempts) {
         timeout = timeout * 2; // 10 seconds, 20 seconds, etc.
-        setTimeout(_sigkill, timeout);
+        setTimeout(sigkillProcess, timeout);
       }
     };
 
-    setTimeout(_sigkill, timeout);
+    setTimeout(sigkillProcess, timeout);
   }
 
   // No node-pty in v2: `pty: true` is silently downgraded to plain pipes (no isatty, no TUI fidelity).

@@ -1,3 +1,4 @@
+import type { Mock } from "vitest";
 /**
  * Integration tests for build manager deployment logic
  */
@@ -9,42 +10,47 @@ import {
   createMockDeviceWithOS,
   createMockTerminal,
 } from "../__mocks__/devices";
-import { getXcodeVersionInstalled } from "../common/cli/scripts";
+import { getBuildSettingsToLaunch, getXcodeVersionInstalled } from "../common/cli/scripts";
 import { isFileExists, readJsonFile, tempFilePath } from "../common/files";
 import * as iosDeploy from "../common/xcode/ios-deploy";
 import type { DeviceDestination } from "../devices/types";
-import { iOSDeviceDestination } from "../devices/types";
+import {
+  iOSDeviceDestination,
+  tvOSDeviceDestination,
+  visionOSDeviceDestination,
+  watchOSDeviceDestination,
+} from "../devices/types";
 import { BuildManager } from "./manager";
 
 // Mock dependencies
-jest.mock("../common/exec", () => ({
-  exec: jest.fn(),
+vi.mock("../common/exec", () => ({
+  exec: vi.fn(),
 }));
 
-jest.mock("../common/cli/scripts", () => ({
-  getXcodeVersionInstalled: jest.fn(),
-  getBuildSettingsToLaunch: jest.fn(),
-  getIsXcbeautifyInstalled: jest.fn(),
-  getIsXcodeBuildServerInstalled: jest.fn(),
-  generateBuildServerConfig: jest.fn(),
-  getSchemes: jest.fn(),
-  getBasicProjectInfo: jest.fn(),
+vi.mock("../common/cli/scripts", () => ({
+  getXcodeVersionInstalled: vi.fn(),
+  getBuildSettingsToLaunch: vi.fn(),
+  getIsXcbeautifyInstalled: vi.fn(),
+  getIsXcodeBuildServerInstalled: vi.fn(),
+  generateBuildServerConfig: vi.fn(),
+  getSchemes: vi.fn(),
+  getBasicProjectInfo: vi.fn(),
 }));
 
-jest.mock("../common/files", () => ({
-  tempFilePath: jest.fn(),
-  isFileExists: jest.fn(),
-  readJsonFile: jest.fn(),
+vi.mock("../common/files", () => ({
+  tempFilePath: vi.fn(),
+  isFileExists: vi.fn(),
+  readJsonFile: vi.fn(),
 }));
 
-jest.mock("../common/xcode/ios-deploy", () => ({
-  installAndLaunchApp: jest.fn(),
-  isIosDeployInstalled: jest.fn(),
+vi.mock("../common/xcode/ios-deploy", () => ({
+  installAndLaunchApp: vi.fn(),
+  isIosDeployInstalled: vi.fn(),
 }));
 
-jest.mock("../devices/manager", () => ({
-  DevicesManager: jest.fn().mockImplementation(() => ({
-    getDevices: jest.fn().mockResolvedValue([]),
+vi.mock("../devices/manager", () => ({
+  DevicesManager: vi.fn().mockImplementation(() => ({
+    getDevices: vi.fn().mockResolvedValue([]),
   })),
 }));
 
@@ -54,22 +60,22 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
   let mockTerminal: ReturnType<typeof createMockTerminal>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     buildManager = new BuildManager();
     mockContext = createMockContext();
     mockTerminal = createMockTerminal();
     buildManager.context = mockContext;
 
     // Setup common mocks
-    (getXcodeVersionInstalled as jest.Mock).mockResolvedValue({ major: 16, minor: 0, patch: 0 });
-    (tempFilePath as jest.Mock).mockResolvedValue({
+    (getXcodeVersionInstalled as Mock).mockResolvedValue({ major: 16, minor: 0, patch: 0 });
+    (tempFilePath as Mock).mockResolvedValue({
       path: "/tmp/test-output",
-      [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
+      [Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
     });
     // Mock file existence checks to return true
-    (isFileExists as jest.Mock).mockResolvedValue(true);
+    (isFileExists as Mock).mockResolvedValue(true);
     // Mock readJsonFile for devicectl launch output
-    (readJsonFile as jest.Mock).mockResolvedValue({
+    (readJsonFile as Mock).mockResolvedValue({
       info: {
         outcome: "success",
       },
@@ -101,7 +107,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         appName: "TestApp",
         executableName: "TestApp",
       };
-      (require("../common/cli/scripts").getBuildSettingsToLaunch as jest.Mock).mockResolvedValue(mockBuildSettings);
+      (getBuildSettingsToLaunch as Mock).mockResolvedValue(mockBuildSettings);
     });
 
     describe("with iOS 17+ device (uses devicectl)", () => {
@@ -133,10 +139,10 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
           destination: modernDevice,
         });
 
-        const installCall = (mockTerminal.execute as jest.Mock).mock.calls.find((call) =>
-          call[0].args?.includes("install"),
-        );
-        const deviceId = installCall[0].args[installCall[0].args.indexOf("--device") + 1];
+        const installCall = (mockTerminal.execute as Mock).mock.calls.find((call) => call[0].args?.includes("install"));
+        expect(installCall).toBeDefined();
+        const args = installCall![0].args;
+        const deviceId = args[args.indexOf("--device") + 1];
 
         expect(deviceId).toBe(modernDevice.devicectlId);
       });
@@ -174,9 +180,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
           destination: modernDevice,
         });
 
-        const installCall = (mockTerminal.execute as jest.Mock).mock.calls.find((call) =>
-          call[0].args?.includes("install"),
-        );
+        const installCall = (mockTerminal.execute as Mock).mock.calls.find((call) => call[0].args?.includes("install"));
         const launchSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("launch"));
 
         expect(installCall).toBeDefined();
@@ -190,7 +194,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       beforeEach(() => {
         const device = createMockDeviceWithOS("16.7");
         legacyDevice = new iOSDeviceDestination({ devicectl: device });
-        (iosDeploy.isIosDeployInstalled as jest.Mock).mockResolvedValue(true);
+        (iosDeploy.isIosDeployInstalled as Mock).mockResolvedValue(true);
       });
 
       it("uses ios-deploy for deployment", async () => {
@@ -216,7 +220,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
           destination: legacyDevice,
         });
 
-        const callArgs = (iosDeploy.installAndLaunchApp as jest.Mock).mock.calls[0][2];
+        const callArgs = (iosDeploy.installAndLaunchApp as Mock).mock.calls[0][2];
         expect(callArgs.deviceId).toBe(legacyDevice.udid);
       });
 
@@ -227,7 +231,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
           launchArgs: ["--arg1", "value1", "--arg2"],
         });
 
-        const callArgs = (iosDeploy.installAndLaunchApp as jest.Mock).mock.calls[0][2];
+        const callArgs = (iosDeploy.installAndLaunchApp as Mock).mock.calls[0][2];
         expect(callArgs.launchArgs).toEqual(["--arg1", "value1", "--arg2"]);
       });
 
@@ -240,14 +244,14 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
           },
         });
 
-        const callArgs = (iosDeploy.installAndLaunchApp as jest.Mock).mock.calls[0][2];
+        const callArgs = (iosDeploy.installAndLaunchApp as Mock).mock.calls[0][2];
         expect(callArgs.launchEnv).toEqual({
           TEST_VAR: "test_value",
         });
       });
 
       it("throws error when ios-deploy is not installed", async () => {
-        (iosDeploy.isIosDeployInstalled as jest.Mock).mockResolvedValue(false);
+        (iosDeploy.isIosDeployInstalled as Mock).mockResolvedValue(false);
 
         await expect(
           buildManager.runOniOSDevice(mockTerminal, {
@@ -298,8 +302,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       it("supports watchOS devices with appropriate version check", async () => {
         const device = createMockDeviceOfType("appleWatch");
         device.deviceProperties.osVersionNumber = "10.0";
-        const destination = require("../devices/types").watchOSDeviceDestination;
-        const watchDevice = new destination({ devicectl: device });
+        const watchDevice = new watchOSDeviceDestination({ devicectl: device });
 
         // Should use devicectl for watchOS 10+
         expect(watchDevice.supportsDevicectl).toBe(true);
@@ -308,8 +311,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       it("supports tvOS devices with appropriate version check", async () => {
         const device = createMockDeviceOfType("appleTV");
         device.deviceProperties.osVersionNumber = "17.0";
-        const destination = require("../devices/types").tvOSDeviceDestination;
-        const tvDevice = new destination({ devicectl: device });
+        const tvDevice = new tvOSDeviceDestination({ devicectl: device });
 
         // Should use devicectl for tvOS 17+
         expect(tvDevice.supportsDevicectl).toBe(true);
@@ -318,8 +320,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       it("supports visionOS devices with appropriate version check", async () => {
         const device = createMockDeviceOfType("appleVision");
         device.deviceProperties.osVersionNumber = "1.0";
-        const destination = require("../devices/types").visionOSDeviceDestination;
-        const visionDevice = new destination({ devicectl: device });
+        const visionDevice = new visionOSDeviceDestination({ devicectl: device });
 
         // Should use devicectl for visionOS 1+
         expect(visionDevice.supportsDevicectl).toBe(true);
@@ -361,7 +362,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
 
   describe("Xcode version handling", () => {
     it("uses --console option for Xcode 16+", async () => {
-      (getXcodeVersionInstalled as jest.Mock).mockResolvedValue({ major: 16, minor: 0, patch: 0 });
+      (getXcodeVersionInstalled as Mock).mockResolvedValue({ major: 16, minor: 0, patch: 0 });
 
       const device = createMockDeviceWithOS("17.0");
       const destination = new iOSDeviceDestination({ devicectl: device });
@@ -382,7 +383,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
     });
 
     it("does not use --console option for Xcode < 16", async () => {
-      (getXcodeVersionInstalled as jest.Mock).mockResolvedValue({ major: 15, minor: 0, patch: 0 });
+      (getXcodeVersionInstalled as Mock).mockResolvedValue({ major: 15, minor: 0, patch: 0 });
 
       const device = createMockDeviceWithOS("17.0");
       const destination = new iOSDeviceDestination({ devicectl: device });

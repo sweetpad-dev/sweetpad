@@ -1,10 +1,10 @@
 import path from "node:path";
+
 import type { XcodeProject } from "./project";
 import { XcodeWorkspace, XcodeWorkspaceFileRef, XcodeWorkspaceGroup } from "./workspace";
 
 describe("parse *.xcworkspace/contents.xml", () => {
   const DATA_DIR = path.join(process.cwd(), "tests", "contents-data");
-  const TESTS_DIR = path.join(process.cwd(), "tests");
 
   it("should parse contents1.xml", async () => {
     const workspace = await XcodeWorkspace.parseContentsWorkspaceData(path.join(DATA_DIR, "content1.xml"));
@@ -148,23 +148,19 @@ describe("parse *.xcworkspace/contents.xml", () => {
 describe("get projects *.xcworkspace/contents.xcworkspacedata", () => {
   const DATA_DIR = path.join(process.cwd(), "tests", "contents-data");
 
-  async function testCase(options: {
-    contentsPath: string;
-    mockXcworkspacePath: string;
-    expectedPaths: string[];
-  }) {
+  async function testCase(options: { contentsPath: string; mockXcworkspacePath: string; expectedPaths: string[] }) {
     const workspace = await XcodeWorkspace.parseContentsWorkspaceData(path.join(DATA_DIR, options.contentsPath));
     workspace.xcworkspacePath = options.mockXcworkspacePath;
 
-    jest.spyOn(workspace, "parseProject").mockImplementation(async (path: string) => {
+    vi.spyOn(workspace, "parseProject").mockImplementation(async (projectPath: string) => {
       return {
-        projectPath: path,
+        projectPath: projectPath,
       } as any;
     });
     const projects = await workspace.getProjects();
     const projectsPaths = projects.map((project) => (project as XcodeProject).projectPath);
     expect(projectsPaths).toHaveLength(options.expectedPaths.length);
-    expect(projectsPaths.sort()).toEqual(options.expectedPaths.sort());
+    expect(projectsPaths.toSorted()).toEqual(options.expectedPaths.toSorted());
   }
 
   it("should get projects from content1.xml", async () => {
@@ -236,7 +232,7 @@ describe("parse full projects", () => {
   const TESTS_DIR = path.join(process.cwd(), "tests");
   const EXAMPLES_DIR = path.join(TESTS_DIR, "examples");
 
-  it("it should parse metheor-ios.xcworkspace", async () => {
+  it("should parse metheor-ios.xcworkspace", async () => {
     const PROJECT_PATH = path.join(EXAMPLES_DIR, "meteor-ios");
     const workspace = await XcodeWorkspace.parseWorkspace(path.join(PROJECT_PATH, "Meteor.xcworkspace"));
     const projects = await workspace.getProjects();
@@ -252,7 +248,7 @@ describe("parse full projects", () => {
     expect(project3.projectPath).toBe(path.join(PROJECT_PATH, "Examples", "Leaderboard", "Leaderboard.xcodeproj"));
   });
 
-  it("it should parse sweetpad-demo-cocoapods.xcworkspace", async () => {
+  it("should parse sweetpad-demo-cocoapods.xcworkspace", async () => {
     const PROJECT_PATH = path.join(EXAMPLES_DIR, "sweetpad-demo-cocoapods");
     const workspace = await XcodeWorkspace.parseWorkspace(
       path.join(PROJECT_PATH, "sweetpad-demo-cocoapods.xcworkspace"),
@@ -267,7 +263,7 @@ describe("parse full projects", () => {
     expect(project2.projectPath).toBe(path.join(PROJECT_PATH, "Pods", "Pods.xcodeproj"));
   });
 
-  it("it should parse sweetpad-demo-xcodegen.xcodeproj", async () => {
+  it("should parse sweetpad-demo-xcodegen.xcodeproj", async () => {
     const PROJECT_PATH = path.join(EXAMPLES_DIR, "sweetpad-demo-xcodegen");
     const workspace = await XcodeWorkspace.parseWorkspace(
       path.join(PROJECT_PATH, "sweetpad-demo-xcodegen.xcodeproj", "project.xcworkspace"),
@@ -279,7 +275,7 @@ describe("parse full projects", () => {
     expect(project1.projectPath).toBe(path.join(PROJECT_PATH, "sweetpad-demo-xcodegen.xcodeproj"));
   });
 
-  it("it should parse terminal23.xcworkspace", async () => {
+  it("should parse terminal23.xcworkspace", async () => {
     const PROJECT_PATH = path.join(EXAMPLES_DIR, "terminal23");
     const workspace = await XcodeWorkspace.parseWorkspace(
       path.join(PROJECT_PATH, "terminal23.xcodeproj", "project.xcworkspace"),
@@ -291,7 +287,7 @@ describe("parse full projects", () => {
     expect(project1.projectPath).toBe(path.join(PROJECT_PATH, "terminal23.xcodeproj"));
   });
 
-  it("it should parse sweetpad-test.xcworkspace", async () => {
+  it("should parse sweetpad-test.xcworkspace", async () => {
     const PROJECT_PATH = path.join(EXAMPLES_DIR, "sweetpad-multiproject");
     const workspace = await XcodeWorkspace.parseWorkspace(path.join(PROJECT_PATH, "sweetpad-test.xcworkspace"));
     const projects = await workspace.getProjects();
@@ -304,7 +300,7 @@ describe("parse full projects", () => {
     expect(project2.projectPath).toBe(path.join(PROJECT_PATH, "Projects", "App", "sweetpad-test.xcodeproj"));
   });
 
-  it("it should parse Ampol.xcworkspace", async () => {
+  it("should parse Ampol.xcworkspace", async () => {
     const PROJECT_PATH = path.join(EXAMPLES_DIR, "Ampol");
     const workspace = await XcodeWorkspace.parseWorkspace(path.join(PROJECT_PATH, "Ampol.xcworkspace"));
     const projects = await workspace.getProjects();
@@ -314,7 +310,7 @@ describe("parse full projects", () => {
     expect(project1.projectPath).toBe(path.join(PROJECT_PATH, "Ampol.xcodeproj"));
   });
 
-  it("it should parse Runner.xcworkspace", async () => {
+  it("should parse Runner.xcworkspace", async () => {
     const PROJECT_PATH = path.join(EXAMPLES_DIR, "take_notes");
     const workspace = await XcodeWorkspace.parseWorkspace(path.join(PROJECT_PATH, "ios", "Runner.xcworkspace"));
     const projects = await workspace.getProjects();

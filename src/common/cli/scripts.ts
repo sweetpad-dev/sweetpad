@@ -1,4 +1,5 @@
 import path from "node:path";
+
 import { detectWorkspaceType, getSwiftPMDirectory, getWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { cache } from "../cache";
@@ -118,10 +119,7 @@ export class XcodeBuildSettings {
   private settings: { [key: string]: string };
   public target: string;
 
-  constructor(options: {
-    settings: { [key: string]: string };
-    target: string;
-  }) {
+  constructor(options: { settings: { [key: string]: string }; target: string }) {
     this.settings = options.settings;
     this.target = options.target;
   }
@@ -272,10 +270,10 @@ async function getBuildSettingsList(options: {
       if (output.length === 0) {
         return [];
       }
-      return output.map((output) => {
+      return output.map((entry) => {
         return new XcodeBuildSettings({
-          settings: output.buildSettings,
-          target: output.target,
+          settings: entry.buildSettings,
+          target: entry.target,
         });
       });
     }
@@ -355,7 +353,7 @@ export async function getBuildSettingsToLaunch(options: {
   }
 
   const target = await scheme.getTargetToLaunch();
-  const targetSettings = settings.find((settings) => settings.target === target);
+  const targetSettings = settings.find((s) => s.target === target);
   if (targetSettings) {
     return targetSettings;
   }

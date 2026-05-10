@@ -1,14 +1,15 @@
 {
   "compilerOptions": {
     "module": "Node16",
-    "target": "ES6",
+    "target": "ES2022",
     "outDir": "out",
-    "lib": ["ES2022"],
-    "types": ["node", "jest"],
+    "lib": ["ES2023"],
+    "types": ["node", "vitest/globals"],
     "moduleResolution": "NodeNext",
     "sourceMap": true,
     "rootDir": "src",
     "esModuleInterop": true,
+    "skipLibCheck": true,
     "strict": true
   },
   "exclude": ["node_modules"],

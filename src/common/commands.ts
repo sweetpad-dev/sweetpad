@@ -1,7 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as crypto from "node:crypto";
 import * as events from "node:events";
+
 import * as vscode from "vscode";
+
 import type { BuildManager } from "../build/manager";
 import type { BuildTreeProvider } from "../build/tree";
 import type { DestinationsManager } from "../destination/manager";
@@ -74,7 +76,7 @@ type IEventMap = {
 type IEventKey = keyof IEventMap;
 
 export class ExtensionContext {
-  private _context: vscode.ExtensionContext;
+  #context: vscode.ExtensionContext;
   public destinationsManager: DestinationsManager;
   public toolsManager: ToolsManager;
   public buildManager: BuildManager;
@@ -83,7 +85,7 @@ export class ExtensionContext {
   public progressStatusBar: ProgressStatusBar;
   public tunnelManager: TunnelManager;
   public buildTreeProvider: BuildTreeProvider | undefined;
-  private _sessionState: Map<SessionStateKey, unknown> = new Map();
+  #sessionState: Map<SessionStateKey, unknown> = new Map();
 
   // Create for each command and task execution separate execution scope with unique ID
   // to be able to track what is currently running
@@ -100,7 +102,7 @@ export class ExtensionContext {
     progressStatusBar: ProgressStatusBar;
     tunnelManager: TunnelManager;
   }) {
-    this._context = options.context;
+    this.#context = options.context;
     this.destinationsManager = options.destinationsManager;
     this.buildManager = options.buildManager;
     this.toolsManager = options.toolsManager;
@@ -118,15 +120,15 @@ export class ExtensionContext {
   }
 
   get storageUri() {
-    return this._context.storageUri;
+    return this.#context.storageUri;
   }
 
   get extensionPath() {
-    return this._context.extensionPath;
+    return this.#context.extensionPath;
   }
 
   disposable(disposable: vscode.Disposable) {
-    this._context.subscriptions.push(disposable);
+    this.#context.subscriptions.push(disposable);
   }
 
   /**
@@ -253,28 +255,28 @@ export class ExtensionContext {
    * State local to the running instance of the extension. It is not persisted across sessions.
    */
   updateSessionState(key: SessionStateKey, value: unknown | undefined) {
-    this._sessionState.set(key, value);
+    this.#sessionState.set(key, value);
   }
 
   getSessionState<T = any>(key: SessionStateKey): T | undefined {
-    return this._sessionState.get(key) as T | undefined;
+    return this.#sessionState.get(key) as T | undefined;
   }
 
   updateWorkspaceState<T extends WorkspaceStateKey>(key: T, value: WorkspaceTypes[T] | undefined) {
-    this._context.workspaceState.update(`sweetpad.${key}`, value);
+    this.#context.workspaceState.update(`sweetpad.${key}`, value);
   }
 
   getWorkspaceState<T extends WorkspaceStateKey>(key: T): WorkspaceTypes[T] | undefined {
-    return this._context.workspaceState.get(`sweetpad.${key}`);
+    return this.#context.workspaceState.get(`sweetpad.${key}`);
   }
 
   /**
    * Remove all sweetpad.* keys from workspace state
    */
   resetWorkspaceState() {
-    for (const key of this._context.workspaceState.keys()) {
+    for (const key of this.#context.workspaceState.keys()) {
       if (key?.startsWith("sweetpad.")) {
-        this._context.workspaceState.update(key, undefined);
+        this.#context.workspaceState.update(key, undefined);
       }
     }
     this.destinationsManager.setWorkspaceDestinationForBuild(undefined);

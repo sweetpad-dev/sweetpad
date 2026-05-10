@@ -14,10 +14,10 @@
       "preLaunchTask": "npm: watch"
     },
     {
-      "name": "Debug Jest Tests",
+      "name": "Debug Vitest Tests",
       "type": "node",
       "request": "launch",
-      "runtimeArgs": ["--inspect-brk", "${workspaceRoot}/node_modules/.bin/jest", "--runInBand"],
+      "runtimeArgs": ["--inspect-brk", "${workspaceRoot}/node_modules/.bin/vitest", "run"],
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen"
     }

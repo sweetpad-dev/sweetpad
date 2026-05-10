@@ -11,7 +11,7 @@ import type { SimulatorsManager } from "../simulators/manager";
 import { DestinationsManager } from "./manager";
 
 function buildManager(): DestinationsManager {
-  const simulatorsManager = { on: jest.fn() } as unknown as SimulatorsManager;
+  const simulatorsManager = { on: vi.fn() } as unknown as SimulatorsManager;
   const devicesManager = new DevicesManager();
   return new DestinationsManager({ simulatorsManager, devicesManager });
 }
@@ -57,7 +57,7 @@ describe("DestinationsManager.sortCompareFn", () => {
       const disconnected = makeDevice({ name: "A phone", udid: "udid-d", state: "disconnected" });
       const unavailable = makeDevice({ name: "M phone", udid: "udid-u", state: "unavailable" });
 
-      const sorted = [unavailable, connected, disconnected].sort((a, b) => manager.sortCompareFn(a, b));
+      const sorted = [unavailable, connected, disconnected].toSorted((a, b) => manager.sortCompareFn(a, b));
 
       expect(sorted.map((d) => d.state)).toEqual(["connected", "disconnected", "unavailable"]);
     });
@@ -66,7 +66,7 @@ describe("DestinationsManager.sortCompareFn", () => {
       const connected = makeDevice({ name: "Z phone", udid: "udid-c", state: "connected" });
       const unavailable = makeDevice({ name: "A phone", udid: "udid-u", state: "unavailable" });
 
-      const sorted = [unavailable, connected].sort((a, b) => manager.sortCompareFn(a, b));
+      const sorted = [unavailable, connected].toSorted((a, b) => manager.sortCompareFn(a, b));
 
       expect(sorted[0].name).toBe("Z phone");
     });
@@ -87,7 +87,7 @@ describe("DestinationsManager.sortCompareFn", () => {
         lastConnectionDate: "2024-01-01T10:00:00Z",
       });
 
-      const sorted = [older, newer].sort((a, b) => manager.sortCompareFn(a, b));
+      const sorted = [older, newer].toSorted((a, b) => manager.sortCompareFn(a, b));
 
       expect(sorted.map((d) => d.udid)).toEqual(["udid-new", "udid-old"]);
     });
@@ -106,7 +106,7 @@ describe("DestinationsManager.sortCompareFn", () => {
         lastConnectionDate: null,
       });
 
-      const sorted = [undated, dated].sort((a, b) => manager.sortCompareFn(a, b));
+      const sorted = [undated, dated].toSorted((a, b) => manager.sortCompareFn(a, b));
 
       expect(sorted.map((d) => d.udid)).toEqual(["udid-dated", "udid-undated"]);
     });
@@ -118,7 +118,7 @@ describe("DestinationsManager.sortCompareFn", () => {
       const z = makeDevice({ name: "Z phone", udid: "udid-z", state: "connected", lastConnectionDate: sameDate });
       const a = makeDevice({ name: "A phone", udid: "udid-a", state: "connected", lastConnectionDate: sameDate });
 
-      const sorted = [z, a].sort((a, b) => manager.sortCompareFn(a, b));
+      const sorted = [z, a].toSorted((x, y) => manager.sortCompareFn(x, y));
 
       expect(sorted.map((d) => d.name)).toEqual(["A phone", "Z phone"]);
     });
@@ -127,7 +127,7 @@ describe("DestinationsManager.sortCompareFn", () => {
       const z = makeDevice({ name: "Z phone", udid: "udid-z", state: "connected", lastConnectionDate: null });
       const a = makeDevice({ name: "A phone", udid: "udid-a", state: "connected", lastConnectionDate: null });
 
-      const sorted = [z, a].sort((a, b) => manager.sortCompareFn(a, b));
+      const sorted = [z, a].toSorted((x, y) => manager.sortCompareFn(x, y));
 
       expect(sorted.map((d) => d.name)).toEqual(["A phone", "Z phone"]);
     });
@@ -149,7 +149,7 @@ describe("DestinationsManager.sortCompareFn", () => {
         state: "connected",
       });
 
-      const sorted = [...stale, connected].sort((a, b) => manager.sortCompareFn(a, b));
+      const sorted = [...stale, connected].toSorted((a, b) => manager.sortCompareFn(a, b));
 
       expect(sorted[0].udid).toBe("udid-connected");
     });

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import { errorReporting } from "./error-reporting";
 import { ExtensionError } from "./errors";
 
@@ -57,7 +58,7 @@ export class Logger {
    */
   private format(data: Message): string {
     const levelName = LogLevel[data.level].toUpperCase();
-    const { message, level, time, stackTrace, ...context } = data;
+    const { message, level: _level, time, stackTrace, ...context } = data;
 
     const lines: string[] = ["---"];
     lines.push(`time: ${time}`);

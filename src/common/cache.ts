@@ -7,18 +7,18 @@ export function cache<T, Args extends unknown[]>(
   (...args: Args): Promise<T>;
   clearCache: () => void;
 } {
-  const cache = new Map<string, T>();
+  const store = new Map<string, T>();
 
   const cachedFn = async (...args: Args): Promise<T> => {
     const key = JSON.stringify(args);
-    if (cache.has(key)) {
-      return cache.get(key) as T;
+    if (store.has(key)) {
+      return store.get(key) as T;
     }
     const result = await fn(...args);
-    cache.set(key, result);
+    store.set(key, result);
     return result;
   };
 
-  cachedFn.clearCache = () => cache.clear();
+  cachedFn.clearCache = () => store.clear();
   return cachedFn;
 }

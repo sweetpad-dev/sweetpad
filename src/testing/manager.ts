@@ -1,5 +1,7 @@
 import path from "node:path";
+
 import * as vscode from "vscode";
+
 import {
   askXcodeWorkspacePath,
   detectWorkspaceType,
@@ -112,10 +114,7 @@ function extractCodeBlock(text: string, startIndex: number): string | null {
 /**
  * Get all ancestor paths of a childPath that are within the parentPath (including the parentPath).
  */
-function* getAncestorsPaths(options: {
-  parentPath: string;
-  childPath: string;
-}): Generator<string> {
+function* getAncestorsPaths(options: { parentPath: string; childPath: string }): Generator<string> {
   const { parentPath, childPath } = options;
 
   if (!childPath.startsWith(parentPath)) {
@@ -140,7 +139,7 @@ type TestItemContext = {
 
 export class TestingManager {
   controller: vscode.TestController;
-  private _context: ExtensionContext | undefined;
+  #context: ExtensionContext | undefined;
 
   // Inline error messages, usually is between "passed" and "failed" lines. Seems like only macOS apps have this line.
   // Example output:
@@ -229,14 +228,14 @@ export class TestingManager {
   }
 
   set context(context: ExtensionContext) {
-    this._context = context;
+    this.#context = context;
   }
 
   get context(): ExtensionContext {
-    if (!this._context) {
+    if (!this.#context) {
       throw new Error("Context is not set");
     }
-    return this._context;
+    return this.#context;
   }
 
   dispose() {
@@ -444,10 +443,7 @@ export class TestingManager {
    * Extract error message from the test output and prepare vscode TestMessage object
    * to display it in the test results.
    */
-  getMethodError(options: {
-    methodTestId: string;
-    runContext: XcodebuildTestRunContext;
-  }) {
+  getMethodError(options: { methodTestId: string; runContext: XcodebuildTestRunContext }) {
     const { methodTestId, runContext } = options;
 
     // Inline error message are usually before the "failed" line
@@ -575,11 +571,8 @@ export class TestingManager {
    * from the Package.swift file. For some reason it doesn't use the target name
    * from xcode project
    */
-  async resolveSPMTestingTarget(options: {
-    queue: vscode.TestItem[];
-    xcworkspace: string;
-  }) {
-    const { queue, xcworkspace } = options;
+  async resolveSPMTestingTarget(options: { queue: vscode.TestItem[]; xcworkspace: string }) {
+    const { queue, xcworkspace: _xcworkspace } = options;
     const workscePath = getWorkspacePath();
 
     // Cache for resolved target names. Example:

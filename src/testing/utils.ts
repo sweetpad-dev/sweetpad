@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+
 import { askConfigurationBase } from "../common/askers";
 import { type XcodeBuildSettings, getSchemes, getTargets } from "../common/cli/scripts";
 import type { ExtensionContext } from "../common/commands";
@@ -45,12 +46,12 @@ export async function askTestingTarget(
   // Offer user to select target if multiple found
   const target = await showQuickPick({
     title: options.title,
-    items: targets.map((target) => {
+    items: targets.map((t) => {
       return {
-        label: target,
-        description: target === cachedTarget ? "(current)" : undefined,
+        label: t,
+        description: t === cachedTarget ? "(current)" : undefined,
         context: {
-          target: target,
+          target: t,
         },
       };
     }),
@@ -102,9 +103,7 @@ export async function askDestinationToTestOn(
   // If we have cached desination, use it
   const cachedDestination = context.destinationsManager.getSelectedXcodeDestinationForTesting();
   if (cachedDestination) {
-    const destination = destinations.find(
-      (destination) => destination.id === cachedDestination.id && destination.type === cachedDestination.type,
-    );
+    const destination = destinations.find((d) => d.id === cachedDestination.id && d.type === cachedDestination.type);
     if (destination) {
       return destination;
     }
@@ -203,11 +202,11 @@ export async function askSchemeForTesting(
 
   const scheme = await showQuickPick({
     title: options?.title ?? "Select scheme to test on",
-    items: schemes.map((scheme) => {
+    items: schemes.map((s) => {
       return {
-        label: scheme.name,
+        label: s.name,
         context: {
-          scheme: scheme,
+          scheme: s,
         },
       };
     }),

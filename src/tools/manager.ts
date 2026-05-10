@@ -1,4 +1,5 @@
 import events from "node:events";
+
 import { exec } from "../common/exec";
 import { TOOLS, type Tool } from "./constants";
 
@@ -20,25 +21,24 @@ export class ToolsManager {
   }
 
   async refresh(): Promise<ToolItem[]> {
-    const results = await Promise.all(
+    const checks = await Promise.all(
       TOOLS.map(async (item) => {
         try {
-          await exec({
-            command: item.check.command,
-            args: item.check.args,
-          });
-          return {
-            ...item,
-            isInstalled: true,
-          };
-        } catch (error) {
-          return {
-            ...item,
-            isInstalled: false,
-          };
+          await exec({ command: item.check.command, args: item.check.args });
+          return true;
+        } catch {
+          return false;
         }
       }),
     );
+    const results: ToolItem[] = TOOLS.map((item, i) => ({
+      id: item.id,
+      label: item.label,
+      check: item.check,
+      install: item.install,
+      documentation: item.documentation,
+      isInstalled: checks[i],
+    }));
     this.cache = results;
     this.emitter.emit("updated");
     return this.cache;

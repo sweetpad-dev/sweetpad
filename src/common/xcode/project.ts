@@ -1,7 +1,9 @@
 import path from "node:path";
+
 import { XcodeProject as XcodeProjectParsed } from "@bacons/xcode";
 import { type XcodeProject as XcodeProjectRaw, parse as parseChevrotain } from "@bacons/xcode/json";
 import { type XmlDocument, XmlElement, type XmlNode, parseXml } from "@rgrove/parse-xml";
+
 import { findFiles, findFilesRecursive, isFileExists, readFile, readTextFile, statFile } from "../files";
 import { uniqueFilter } from "../helpers";
 
@@ -22,8 +24,8 @@ export class XcodeScheme {
   public path: string;
   public project: XcodeProject;
 
-  public _cache: XmlDocument | null = null;
-  public _cacheModified: number | null = null;
+  #cache: XmlDocument | null = null;
+  #cacheModified: number | null = null;
 
   constructor(options: { name: string; path: string; project: XcodeProject }) {
     this.name = options.name;
@@ -38,15 +40,15 @@ export class XcodeScheme {
     }
 
     const stat = await statFile(this.path);
-    if (this._cache && this._cacheModified && stat.mtimeMs === this._cacheModified) {
-      return this._cache;
+    if (this.#cache && this.#cacheModified && stat.mtimeMs === this.#cacheModified) {
+      return this.#cache;
     }
 
     const content = await readFile(this.path);
     const contentString = content.toString();
     const contentParsed = parseXml(contentString);
-    this._cache = contentParsed;
-    this._cacheModified = stat.mtimeMs;
+    this.#cache = contentParsed;
+    this.#cacheModified = stat.mtimeMs;
     return contentParsed;
   }
 
@@ -262,10 +264,7 @@ export class XcodeProjectFallbackParser implements XcodeProject {
 
   private parsed: Partial<XcodeProjectRaw>;
 
-  constructor(options: {
-    parsed: Partial<XcodeProjectRaw>;
-    projectPath: string;
-  }) {
+  constructor(options: { parsed: Partial<XcodeProjectRaw>; projectPath: string }) {
     this.parsed = options.parsed;
     this.projectPath = options.projectPath;
   }

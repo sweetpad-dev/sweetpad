@@ -120,9 +120,7 @@ export async function getRunningProcesses(
   return await readJsonFile<DeviceCtlProcessResult>(tmpPath.path);
 }
 
-export async function pairDevice(options: {
-  deviceId: string;
-}): Promise<void> {
+export async function pairDevice(options: { deviceId: string }): Promise<void> {
   // xcrun devicectl manage pair --device 00008110-000559182E90401E
   await exec({
     command: "xcrun",

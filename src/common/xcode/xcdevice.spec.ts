@@ -1,21 +1,23 @@
+import * as fs from "node:fs";
 /**
  * Unit tests for listDevicesWithXcdevice.
  */
-
-import * as fs from "node:fs";
 import * as path from "node:path";
+
+import type { Mock } from "vitest";
+
 import { createMockContext } from "../../__mocks__/devices";
 import { exec } from "../exec";
 import { listDevicesWithXcdevice } from "./xcdevice";
 
-jest.mock("../exec", () => ({
-  exec: jest.fn(),
+vi.mock("../exec", () => ({
+  exec: vi.fn(),
 }));
 
-jest.mock("../logger", () => ({
+vi.mock("../logger", () => ({
   commonLogger: {
-    debug: jest.fn(),
-    error: jest.fn(),
+    debug: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
@@ -29,11 +31,11 @@ describe("listDevicesWithXcdevice", () => {
   const mockContext = createMockContext();
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it("returns iOS devices from xcdevice list output", async () => {
-    (exec as jest.Mock).mockResolvedValue(loadFixture("xcdevice-ios-devices.json"));
+    (exec as Mock).mockResolvedValue(loadFixture("xcdevice-ios-devices.json"));
 
     const devices = await listDevicesWithXcdevice(mockContext);
 
@@ -43,13 +45,13 @@ describe("listDevicesWithXcdevice", () => {
   });
 
   it("keeps devices from iphoneos, watchos, appletvos and xros platforms; drops simulators", async () => {
-    (exec as jest.Mock).mockResolvedValue(loadFixture("xcdevice-mixed-platforms.json"));
+    (exec as Mock).mockResolvedValue(loadFixture("xcdevice-mixed-platforms.json"));
 
     const devices = await listDevicesWithXcdevice(mockContext);
 
     // Fixture has 4 real devices + 1 simulator; simulator must be filtered out.
     expect(devices).toHaveLength(4);
-    const platforms = devices.map((d) => d.platform).sort();
+    const platforms = devices.map((d) => d.platform).toSorted();
     expect(platforms).toEqual([
       "com.apple.platform.appletvos",
       "com.apple.platform.iphoneos",
@@ -59,7 +61,7 @@ describe("listDevicesWithXcdevice", () => {
   });
 
   it("retains all supported physical-device platforms in mixed input", async () => {
-    (exec as jest.Mock).mockResolvedValue(loadFixture("xcdevice-mixed-devices.json"));
+    (exec as Mock).mockResolvedValue(loadFixture("xcdevice-mixed-devices.json"));
 
     const devices = await listDevicesWithXcdevice(mockContext);
 
@@ -77,7 +79,7 @@ describe("listDevicesWithXcdevice", () => {
   });
 
   it("retains entries with available:false / error so callers can render them as unavailable", async () => {
-    (exec as jest.Mock).mockResolvedValue(loadFixture("xcdevice-unavailable.json"));
+    (exec as Mock).mockResolvedValue(loadFixture("xcdevice-unavailable.json"));
 
     const devices = await listDevicesWithXcdevice(mockContext);
 
@@ -87,7 +89,7 @@ describe("listDevicesWithXcdevice", () => {
   });
 
   it("returns empty array when no devices found", async () => {
-    (exec as jest.Mock).mockResolvedValue(loadFixture("xcdevice-empty.json"));
+    (exec as Mock).mockResolvedValue(loadFixture("xcdevice-empty.json"));
 
     const devices = await listDevicesWithXcdevice(mockContext);
 
@@ -95,7 +97,7 @@ describe("listDevicesWithXcdevice", () => {
   });
 
   it("returns empty array and logs error for malformed JSON", async () => {
-    (exec as jest.Mock).mockResolvedValue(loadFixture("xcdevice-malformed.json"));
+    (exec as Mock).mockResolvedValue(loadFixture("xcdevice-malformed.json"));
 
     const devices = await listDevicesWithXcdevice(mockContext);
 
@@ -103,7 +105,7 @@ describe("listDevicesWithXcdevice", () => {
   });
 
   it("returns empty array when exec throws", async () => {
-    (exec as jest.Mock).mockRejectedValue(new Error("Command failed"));
+    (exec as Mock).mockRejectedValue(new Error("Command failed"));
 
     const devices = await listDevicesWithXcdevice(mockContext);
 
@@ -113,7 +115,7 @@ describe("listDevicesWithXcdevice", () => {
   it("returns empty array when xcdevice command not found (ENOENT)", async () => {
     const error: any = new Error("Command not found");
     error.code = "ENOENT";
-    (exec as jest.Mock).mockRejectedValue(error);
+    (exec as Mock).mockRejectedValue(error);
 
     const devices = await listDevicesWithXcdevice(mockContext);
 
