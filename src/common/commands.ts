@@ -3,6 +3,7 @@ import * as crypto from "node:crypto";
 import * as events from "node:events";
 import * as vscode from "vscode";
 import type { BuildManager } from "../build/manager";
+import type { BuildTreeProvider } from "../build/tree";
 import type { DestinationsManager } from "../destination/manager";
 import type { DestinationType, SelectedDestination } from "../destination/types";
 import type { SwiftFormattingProvider } from "../format/formatter";
@@ -67,7 +68,7 @@ type SessionStateKey = "NONE_KEY";
  */
 type IEventMap = {
   executionScopeClosed: [scope: ExecutionScope];
-  workspaceConfigChanged: [];
+  workspaceConfigChanged: [event: vscode.ConfigurationChangeEvent];
 };
 type IEventKey = keyof IEventMap;
 
@@ -79,6 +80,7 @@ export class ExtensionContext {
   public testingManager: TestingManager;
   public formatter: SwiftFormattingProvider;
   public progressStatusBar: ProgressStatusBar;
+  public buildTreeProvider: BuildTreeProvider | undefined;
   private _sessionState: Map<SessionStateKey, unknown> = new Map();
 
   // Create for each command and task execution separate execution scope with unique ID
@@ -106,7 +108,7 @@ export class ExtensionContext {
     vscode.workspace.onDidChangeConfiguration((event) => {
       const affected = event.affectsConfiguration("sweetpad");
       if (affected) {
-        this.emitter.emit("workspaceConfigChanged");
+        this.emitter.emit("workspaceConfigChanged", event);
       }
     });
   }

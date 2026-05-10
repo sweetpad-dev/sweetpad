@@ -441,14 +441,14 @@
         "icon": "$(sweetpad-refresh)"
       },
       {
-        "command": "sweetpad.build.filterSchemes",
-        "title": "SweetPad: Filter schemes in Build view",
-        "icon": "$(search)"
+        "command": "sweetpad.build.applySchemeFilter",
+        "title": "SweetPad: Apply scheme filter (Build view)",
+        "icon": "$(sweetpad-filter-pause)"
       },
       {
-        "command": "sweetpad.build.clearSchemeFilter",
-        "title": "SweetPad: Clear scheme filter in Build view",
-        "icon": "$(close)"
+        "command": "sweetpad.build.pauseSchemeFilter",
+        "title": "SweetPad: Pause scheme filter (Build view)",
+        "icon": "$(sweetpad-filter-check)"
       },
       {
         "command": "sweetpad.build.stop",
@@ -575,19 +575,19 @@
           "when": "view == sweetpad.build.view"
         },
         {
-          "command": "sweetpad.build.filterSchemes",
-          "when": "view == sweetpad.build.view",
+          "command": "sweetpad.build.pauseSchemeFilter",
+          "when": "view == sweetpad.build.view && sweetpad.build.hasSchemeFilter && !sweetpad.build.schemeFilterPaused",
           "group": "navigation@1"
         },
         {
-          "command": "sweetpad.build.clearSchemeFilter",
-          "when": "view == sweetpad.build.view && sweetpad.build.hasSchemeFilter",
-          "group": "navigation@2"
+          "command": "sweetpad.build.applySchemeFilter",
+          "when": "view == sweetpad.build.view && sweetpad.build.hasSchemeFilter && sweetpad.build.schemeFilterPaused",
+          "group": "navigation@1"
         },
         {
           "command": "sweetpad.build.openXcode",
           "when": "view == sweetpad.build.view",
-          "group": "navigation@3"
+          "group": "navigation@2"
         },
         {
           "command": "sweetpad.tools.refresh",
@@ -815,6 +815,34 @@
           "type": "string",
           "default": null,
           "description": "Configuration to build."
+        },
+        "sweetpad.build.schemes.include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "examples": [
+            [
+              "DemoApp",
+              "Feature*"
+            ]
+          ],
+          "description": "Only show schemes matching these patterns in the Build view. Supports `*` as a wildcard. Empty means show all."
+        },
+        "sweetpad.build.schemes.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "examples": [
+            [
+              "*Tests",
+              "*UITests"
+            ]
+          ],
+          "description": "Hide schemes matching these patterns in the Build view. Supports `*` as a wildcard. Applied after `include`."
         },
         "sweetpad.build.allowProvisioningUpdates": {
           "type": "boolean",
@@ -1261,6 +1289,20 @@
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
           "fontCharacter": "\\eaff"
+        }
+      },
+      "sweetpad-filter-pause": {
+        "description": "Filter Pause",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\fb84"
+        }
+      },
+      "sweetpad-filter-check": {
+        "description": "Filter Check",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\fb7e"
         }
       },
       "sweetpad-check": {

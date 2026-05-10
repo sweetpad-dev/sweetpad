@@ -10,6 +10,8 @@ type Config = {
   "build.swiftCommand": string;
   "build.derivedDataPath": string;
   "build.configuration": string;
+  "build.schemes.include": string[];
+  "build.schemes.exclude": string[];
   "build.arch": "x86_64" | "arm64";
   "build.allowProvisioningUpdates": boolean;
   "build.args": string[];

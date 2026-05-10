@@ -368,6 +368,14 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
   });
 }
 
+export async function pauseSchemeFilterCommand(context: ExtensionContext): Promise<void> {
+  context.buildTreeProvider?.toggleSchemeFilterPaused(true);
+}
+
+export async function applySchemeFilterCommand(context: ExtensionContext): Promise<void> {
+  context.buildTreeProvider?.toggleSchemeFilterPaused(false);
+}
+
 export async function refreshSchemesCommand(context: ExtensionContext): Promise<void> {
   const xcworkspace = getCurrentXcodeWorkspacePath(context);
 
