@@ -790,7 +790,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   async getiOSDevices(): Promise<DestinationTreeItem[]> {
-    const device = await this.manager.getiOSDevices();
+    const device = await this.manager.getiOSDevices({ sort: true });
 
     return device.map((device) => {
       return new iOSDeviceDestinationTreeItem({
@@ -801,7 +801,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   async getWatchOSDevices(): Promise<DestinationTreeItem[]> {
-    const devices = await this.manager.getWatchOSDevices();
+    const devices = await this.manager.getWatchOSDevices({ sort: true });
 
     return devices.map((device) => {
       return new watchOSDeviceDestinationTreeItem({
@@ -812,7 +812,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   async getVisionOSDevices(): Promise<DestinationTreeItem[]> {
-    const devices = await this.manager.getVisionOSDevices();
+    const devices = await this.manager.getVisionOSDevices({ sort: true });
 
     return devices.map((device) => {
       return new visionOSDeviceDestinationTreeItem({
@@ -823,7 +823,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   async gettvOSDevices(): Promise<DestinationTreeItem[]> {
-    const devices = await this.manager.gettvOSDevices();
+    const devices = await this.manager.gettvOSDevices({ sort: true });
 
     return devices.map((device) => {
       return new tvOSDeviceDestinationTreeItem({

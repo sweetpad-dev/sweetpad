@@ -18,7 +18,7 @@ import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
-import type { TaskTerminal } from "../common/tasks";
+import type { TaskTerminal } from "../common/tasks/types";
 import { assertUnreachable } from "../common/types";
 import type { DestinationPlatform } from "../destination/constants";
 import type { Destination } from "../destination/types";

@@ -21,6 +21,7 @@ declare module "execa" {
       cwd: string;
       buffer?: boolean;
       env?: { [key: string]: string | undefined };
+      extendEnv?: boolean;
     },
   ): Promise<ExecaReturnValue>;
 }

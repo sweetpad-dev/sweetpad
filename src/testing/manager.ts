@@ -13,7 +13,7 @@ import { errorReporting } from "../common/error-reporting.js";
 import { exec } from "../common/exec.js";
 import { isFileExists } from "../common/files.js";
 import { commonLogger } from "../common/logger.js";
-import { runTask } from "../common/tasks.js";
+import { runTask } from "../common/tasks/run.js";
 import { assertUnreachable } from "../common/types.js";
 import type { Destination } from "../destination/types.js";
 import { askConfigurationForTesting, askDestinationToTestOn, askSchemeForTesting, askTestingTarget } from "./utils.js";

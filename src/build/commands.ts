@@ -15,7 +15,7 @@ import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, removeDirectory } from "../common/files";
 import { showInputBox, showQuickPick } from "../common/quick-pick";
-import { runTask } from "../common/tasks";
+import { runTask } from "../common/tasks/run";
 import {
   askSchemeForBuild,
   askXcodeWorkspacePath,

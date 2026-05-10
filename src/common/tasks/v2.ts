@@ -1,124 +1,36 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { quote } from "shell-quote";
 import * as vscode from "vscode";
-import { getWorkspacePath } from "../build/utils";
-import type { ExtensionContext } from "./commands";
-import { getWorkspaceConfig } from "./config";
-import { TaskError } from "./errors";
-import { prepareEnvVars } from "./helpers";
+import { getWorkspacePath } from "../../build/utils";
+import type { ExtensionContext } from "../commands";
+import { TaskError } from "../errors";
+import { prepareEnvVars } from "../helpers";
+import { LineBuffer } from "./line-buffer";
+import { setTaskPresentationOptions } from "./presentation";
+import {
+  type CommandOptions,
+  ExecuteTaskError,
+  type ProcessExit,
+  type ProcessGroup,
+  type ProcessHandle,
+  type ProcessOutputSink,
+  type ProcessSpec,
+  TERMINAL_COLOR_MAP,
+  type TaskTerminal,
+  type TerminalWriteOptions,
+  cleanCommandArgs,
+} from "./types";
 
-type TaskExecutor = "v1" | "v2";
-
-export type Command = {
-  command: string;
-  args?: string[];
+type V2GroupChild = {
+  readonly pid: number | undefined;
+  readonly exit: Promise<ProcessExit>;
+  readonly alive: boolean;
+  signal: (sig: NodeJS.Signals) => void;
+  onData: (listener: ProcessOutputSink) => void;
+  onError: (listener: ProcessOutputSink) => void;
 };
 
-export type CommandOptions = {
-  command: string;
-  args?: (string | null)[];
-  pipes?: Command[];
-  env?: { [key: string]: string | null };
-  cwd?: string;
-  onOutputLine?: (data: { value: string; type: "stdout" | "stderr" }) => Promise<void>;
-};
-
-type TerminalTextColor = "green" | "red" | "blue" | "yellow" | "magenta" | "cyan" | "white";
-type TerminalWriteOptions = {
-  color?: TerminalTextColor;
-  newLine?: boolean;
-};
-
-class ExecuteTaskError extends Error {
-  public command: string;
-  public errorCode: number | null;
-
-  constructor(message: string, details: { command: string; errorCode: number | null }) {
-    super(message);
-    this.command = details.command;
-    this.errorCode = details.errorCode;
-  }
-}
-
-const TERMINAL_COLOR_MAP: Record<TerminalTextColor, string> = {
-  green: "32",
-  red: "31",
-  blue: "34",
-  yellow: "33",
-  magenta: "35",
-  cyan: "36",
-  white: "37",
-};
-
-/**
- * Interface that will be passed as argument to the
- * callback function in the `runTask` function.
- */
-export interface TaskTerminal {
-  execute(options: CommandOptions): Promise<void>;
-  write(data: string, options?: TerminalWriteOptions): void;
-}
-
-export function getTaskExecutorName(): TaskExecutor {
-  return getWorkspaceConfig("system.taskExecutor") ?? "v2";
-}
-
-/**
- * Remove all null values from the array of command arguments
- */
-function cleanCommandArgs(args: (string | null)[] | undefined | null): string[] {
-  if (!args) {
-    return [];
-  }
-  return args.filter((arg) => arg !== null);
-}
-
-export function setTaskPresentationOptions(task: vscode.Task): void {
-  const autoRevealTerminal = getWorkspaceConfig("system.autoRevealTerminal") ?? true;
-  task.presentationOptions = {
-    // terminal will be revealed, if auto reveal is enabled
-    reveal: autoRevealTerminal ? vscode.TaskRevealKind.Always : vscode.TaskRevealKind.Never,
-  };
-}
-
-/**
- * Collect stdout or stderr output and send it line by line to the callback
- */
-class LineBuffer {
-  public buffer = "";
-  public enabled = true;
-  public callback: (line: string) => void;
-
-  constructor(options: { enabled: boolean; callback: (line: string) => void }) {
-    this.enabled = options.enabled;
-    this.callback = options.callback;
-  }
-
-  append(data: string): void {
-    if (!this.enabled) return;
-
-    this.buffer += data;
-
-    const lines = this.buffer.split("\n");
-
-    // last line can be not finished yet, so we need to keep it and send to callback later
-    this.buffer = lines.pop() ?? "";
-
-    // send all lines in buffer to callback, except last one
-    for (const line of lines) {
-      this.callback(line);
-    }
-  }
-
-  flush(): void {
-    if (!this.enabled) return;
-
-    if (this.buffer) {
-      this.callback(this.buffer);
-      this.buffer = "";
-    }
-  }
-}
+const V2_GROUP_TERMINATE_TIMEOUT_MS = 2000;
 
 export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   private writeEmitter = new vscode.EventEmitter<string>();
@@ -250,6 +162,118 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     };
 
     setTimeout(_sigkill, timeout);
+  }
+
+  // No node-pty in v2: `pty: true` is silently downgraded to plain pipes (no isatty, no TUI fidelity).
+  async runGroup<T>(callback: (group: ProcessGroup) => Promise<T>): Promise<T> {
+    const children: V2GroupChild[] = [];
+    const group: ProcessGroup = {
+      terminal: this,
+      spawn: (spec) => this.spawnInGroup(spec, children),
+    };
+    try {
+      return await callback(group);
+    } finally {
+      await this.cleanupGroupChildren(children);
+    }
+  }
+
+  private spawnInGroup(spec: ProcessSpec, children: V2GroupChild[]): ProcessHandle {
+    const env = { ...process.env, ...prepareEnvVars(spec.env ?? {}) };
+    const cwd = spec.cwd ?? getWorkspacePath();
+    const args = spec.args ?? [];
+    const proc = spawn(spec.command, args, {
+      cwd,
+      env: env as { [key: string]: string },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
+    // Tracked in this.processes too so terminal close() kills the whole tree.
+    this.processes.add(proc);
+
+    const stdoutListeners: ProcessOutputSink[] = [];
+    const stderrListeners: ProcessOutputSink[] = [];
+    proc.stdout?.on("data", (data: string | Buffer) => {
+      const chunk = data.toString();
+      for (const l of stdoutListeners) l(chunk);
+    });
+    proc.stderr?.on("data", (data: string | Buffer) => {
+      const chunk = data.toString();
+      for (const l of stderrListeners) l(chunk);
+    });
+
+    let alive = true;
+    const exit = new Promise<ProcessExit>((resolve) => {
+      let resolved = false;
+      const finish = (result: ProcessExit) => {
+        if (resolved) return;
+        resolved = true;
+        alive = false;
+        this.processes.delete(proc);
+        resolve(result);
+      };
+      proc.on("close", (code, signal) => finish({ code: code ?? -1, signal }));
+      proc.on("error", () => finish({ code: -1, signal: null }));
+    });
+
+    const child: V2GroupChild = {
+      pid: proc.pid,
+      exit,
+      get alive() {
+        return alive;
+      },
+      signal: (sig) => {
+        if (!alive || !proc.pid) return;
+        try {
+          process.kill(-proc.pid, sig);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
+        }
+      },
+      onData: (l) => {
+        stdoutListeners.push(l);
+      },
+      onError: (l) => {
+        stderrListeners.push(l);
+      },
+    };
+    children.push(child);
+
+    return {
+      get pid() {
+        return child.pid;
+      },
+      get exit() {
+        return child.exit;
+      },
+      kill: (signal) => child.signal(signal ?? "SIGTERM"),
+      onData: child.onData,
+      onError: child.onError,
+    };
+  }
+
+  private async cleanupGroupChildren(children: V2GroupChild[]): Promise<void> {
+    const alive = children.filter((c) => c.alive);
+    if (alive.length === 0) return;
+
+    for (const c of alive) {
+      try {
+        c.signal("SIGTERM");
+      } catch {}
+    }
+
+    await Promise.race([
+      Promise.all(alive.map((c) => c.exit.catch(() => undefined))),
+      new Promise<void>((resolve) => setTimeout(resolve, V2_GROUP_TERMINATE_TIMEOUT_MS)),
+    ]);
+
+    for (const c of children) {
+      if (c.alive) {
+        try {
+          c.signal("SIGKILL");
+        } catch {}
+      }
+    }
   }
 
   /**
@@ -394,126 +418,12 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   }
 }
 
-export class TaskTerminalV1 implements TaskTerminal {
-  constructor(
-    private context: ExtensionContext,
-    private options: {
-      name: string;
-      source?: string;
-      error?: string;
-      problemMatchers?: string[];
-    },
-  ) {}
-
-  write(data: string, options?: TerminalWriteOptions): void {
-    this.execute({
-      command: "echo",
-      args: [data],
-    });
-  }
-
-  private command(command: string, args?: string[]): string {
-    return quote([command, ...(args ?? [])]);
-  }
-
-  private commandLine(options: CommandOptions): string {
-    const args = cleanCommandArgs(options.args);
-    const mainCommand = quote([options.command, ...args]);
-
-    if (!options.pipes) {
-      return mainCommand;
-    }
-
-    // Combine them into a big pipe with error propagation
-    const commands = [mainCommand];
-    commands.push(...options.pipes.map((pipe) => this.command(pipe.command, pipe.args)));
-    return `set -o pipefail;  ${commands.join(" | ")}`;
-  }
-
-  async execute(options: CommandOptions): Promise<void> {
-    const command = this.commandLine(options);
-
-    const task = new vscode.Task(
-      { type: "shell" },
-      vscode.TaskScope.Workspace,
-      this.options.name,
-      this.options.source ?? "sweetpad",
-      new vscode.ShellExecution(command, { cwd: options.cwd }),
-      this.options.problemMatchers,
-    );
-    setTaskPresentationOptions(task);
-
-    const execution = await vscode.tasks.executeTask(task);
-
-    return new Promise((resolve, reject) => {
-      const disposable = vscode.tasks.onDidEndTaskProcess((e) => {
-        if (e.execution === execution) {
-          disposable.dispose();
-          if (e.exitCode !== 0) {
-            const message = this.options.error ?? `Error running task '${this.options.name}'`;
-            const args = cleanCommandArgs(options.args);
-            const error = new TaskError(message, {
-              name: this.options.name,
-              soruce: this.options.source,
-              command: options.command,
-              args: args,
-              errorCode: e.exitCode,
-            });
-            reject(error);
-          } else {
-            resolve();
-          }
-        }
-      });
-    });
-  }
-}
-
-export class TaskTerminalV1Parent implements vscode.Pseudoterminal {
-  public writeEmitter = new vscode.EventEmitter<string>();
-  public closeEmitter = new vscode.EventEmitter<number>();
-
-  onDidWrite = this.writeEmitter.event;
-  onDidClose = this.closeEmitter.event;
-
-  writePlaceholderText(): void {
-    this.writeEmitter.fire("====> It's parent task, just ignore it\r\n");
-  }
-
-  open(): void {
-    this.writePlaceholderText();
-    this.closeEmitter.fire(0);
-  }
-
-  close(): void {
-    this.writeEmitter.dispose();
-    this.closeEmitter.fire(0);
-    this.closeEmitter.dispose();
-  }
-}
-
-/**
- * V1 version of the task runner that uses the `vscode.Task` API for each execution.
- */
-async function runTaskV1(
-  context: ExtensionContext,
-  options: {
-    name: string;
-    source?: string;
-    error?: string;
-    callback: (terminal: TaskTerminal) => Promise<void>;
-  },
-): Promise<void> {
-  const terminal = new TaskTerminalV1(context, options);
-  await options.callback(terminal);
-}
-
 /**
  * V2 version of the task runner that uses the `vscode.CustomExecution` API and each execution
  * just adds a new command to the same terminal, it allows to have a single terminal for all
  * commands and cancel them all at once.
  */
-async function runTaskV2<TMetadata>(
+export async function runTaskV2<TMetadata>(
   context: ExtensionContext,
   options: {
     name: string;
@@ -579,31 +489,4 @@ async function runTaskV2<TMetadata>(
       }
     });
   });
-}
-
-/**
- * Run a tasks in the terminal
- */
-export async function runTask<TMetadata>(
-  context: ExtensionContext,
-  options: {
-    name: string;
-    source?: string;
-    error?: string;
-    problemMatchers?: string[];
-    lock: string;
-    metadata?: TMetadata;
-    terminateLocked: boolean;
-    callback: (terminal: TaskTerminal) => Promise<void>;
-  },
-): Promise<void> {
-  const name = getTaskExecutorName();
-  switch (name) {
-    case "v1":
-      return await runTaskV1(context, options);
-    case "v2":
-      return await runTaskV2(context, options);
-    default:
-      throw new Error(`Unknown executor: ${name}`);
-  }
 }

@@ -148,13 +148,9 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
           launchArgs: ["--arg1", "value1"],
         });
 
-        const launchCall = (mockTerminal.execute as jest.Mock).mock.calls.find((call) =>
-          call[0].args?.includes("launch"),
-        );
-        const args = launchCall[0].args;
-
-        expect(args).toContain("--arg1");
-        expect(args).toContain("value1");
+        const launchSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("launch"));
+        expect(launchSpec?.args).toContain("--arg1");
+        expect(launchSpec?.args).toContain("value1");
       });
 
       it("passes environment variables with DEVICECTL_CHILD_ prefix", async () => {
@@ -166,13 +162,8 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
           },
         });
 
-        const launchCall = (mockTerminal.execute as jest.Mock).mock.calls.find((call) =>
-          call[0].args?.includes("launch"),
-        );
-        const env = launchCall[0].env;
-
-        expect(env).toEqual({
-          DEVICECTL_CHILD_OS_ACTIVITY_DT_MODE: "enable",
+        const launchSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("launch"));
+        expect(launchSpec?.env).toEqual({
           DEVICECTL_CHILD_TEST_VAR: "test_value",
         });
       });
@@ -183,12 +174,13 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
           destination: modernDevice,
         });
 
-        const calls = (mockTerminal.execute as jest.Mock).mock.calls;
-        const installCall = calls.find((call) => call[0].args?.includes("install"));
-        const launchCall = calls.find((call) => call[0].args?.includes("launch"));
+        const installCall = (mockTerminal.execute as jest.Mock).mock.calls.find((call) =>
+          call[0].args?.includes("install"),
+        );
+        const launchSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("launch"));
 
         expect(installCall).toBeDefined();
-        expect(launchCall).toBeDefined();
+        expect(launchSpec).toBeDefined();
       });
     });
 
@@ -385,10 +377,8 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         launchEnv: {},
       });
 
-      const launchCall = (mockTerminal.execute as jest.Mock).mock.calls.find((call) =>
-        call[0].args?.includes("launch"),
-      );
-      expect(launchCall[0].args).toContain("--console");
+      const launchSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("launch"));
+      expect(launchSpec?.args).toContain("--console");
     });
 
     it("does not use --console option for Xcode < 16", async () => {
@@ -408,10 +398,8 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         launchEnv: {},
       });
 
-      const launchCall = (mockTerminal.execute as jest.Mock).mock.calls.find((call) =>
-        call[0].args?.includes("launch"),
-      );
-      expect(launchCall[0].args).not.toContain("--console");
+      const launchSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("launch"));
+      expect(launchSpec?.args).not.toContain("--console");
     });
   });
 });

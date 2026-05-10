@@ -49,3 +49,5 @@ export const SIMULATOR_TYPE_PRIORITY: SimulatorType[] = [
   "AppleVision",
   "iPod",
 ];
+
+export const DEVICE_STATE_PRIORITY = ["connected", "disconnected", "unavailable"] as const;
