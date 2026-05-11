@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.89] - 2026-05-12
+
+- Re-release of 0.1.88 — CI now uses Node 24 which ships npm 11 natively, instead of trying to self-upgrade npm from 10 mid-job (which failed).
+
 ## [0.1.88] - 2026-05-12
 
 - Re-release of 0.1.87 — CI was still on npm 10, which can't read the npm-11-generated lockfile. The deploy workflow now installs npm 11 explicitly.
