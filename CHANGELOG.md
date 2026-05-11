@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.85] - 2026-05-11
+
+- Add a magnifier button to the Build and Destinations view toolbars that opens VS Code's built-in tree find ([microsoft/vscode#173742](https://github.com/microsoft/vscode/issues/173742))
+
 ## [0.1.84] - 2026-05-10
 
 - Filter schemes in the Build view with `sweetpad.build.schemes.include` / `.exclude` glob patterns, plus a toolbar toggle to peek at all schemes ([#236](https://github.com/sweetpad-dev/sweetpad/pull/236))
