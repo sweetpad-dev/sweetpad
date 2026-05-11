@@ -70,6 +70,7 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
   private groupPipes = new Set<ChildProcess>();
   private dims: { cols: number; rows: number } = { cols: 80, rows: 30 };
   private closed = false;
+  private closeFired = false;
   // Set when the user types Ctrl+C (0x03) while a runGroup is active. Lets us surface
   // cancellation even when main exits cleanly (e.g. simctl handling SIGINT, or a Swift
   // app catching it and returning 0). Reset at every runGroup entry.
@@ -96,6 +97,15 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
     this.closed = true;
     this.killCurrentPty();
     this.killGroupChildren();
+    // VS Code only treats the task as ended once the close emitter fires. If close()
+    // arrives externally (user closed the terminal, vscode.tasks.terminate, etc.)
+    // before start() reaches its own closeTerminal call, the surrounding runTaskV3
+    // promise would otherwise wait for an onDidEndTaskProcess event that never
+    // comes, leaving the build hung.
+    if (!this.closeFired) {
+      this.closeFired = true;
+      this.closeEmitter.fire(-1);
+    }
   }
 
   setDimensions(dimensions: vscode.TerminalDimensions): void {
@@ -169,16 +179,59 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
     const cwd = options.cwd ?? getWorkspacePath();
     const env = await this.buildExecuteEnv(options);
 
-    // bash -c only for the pipefail path; every other command is direct argv.
+    // Three ways to launch, selected by (pipes?, closeStdin?):
+    //
+    // 1. pipes + (closeStdin optional)
+    //    /bin/bash -c 'set -o pipefail; CMD ARGS [< /dev/null] | xcbeautify'
+    //    Bash orchestrates the pipeline and stays alive to apply pipefail
+    //    semantics. < /dev/null is injected only on the first stage when
+    //    closeStdin is set (B, C, … inherit stdin from the pipe regardless).
+    //
+    // 2. no pipes, closeStdin = true
+    //    /bin/bash -c '"$@" < /dev/null' bash CMD ARGS
+    //    Bash runs the single command with fd 0 → /dev/null, waits, exits.
+    //    We deliberately do NOT use `exec` here so bash stays alive as the
+    //    parent — same process topology as path 1. That keeps killCurrentPty
+    //    (which signals pty.pid via node-pty) uniform whether xcbeautify is
+    //    piped in or not. The `"$@"` form passes argv verbatim so paths with
+    //    spaces/quotes don't need shell-escaping.
+    //
+    // 3. no pipes, closeStdin = false
+    //    Direct execvp of CMD ARGS. No shell.
+    //
+    // Why closeStdin exists at all (issue #240): xcodebuild, when its own
+    // stdin looks like a TTY, opens an interactive pipe for scheme pre-action
+    // scripts and never writes to it. Any pre-action doing `read` hangs
+    // forever. Closing fd 0 on xcodebuild makes its isatty(0) check fail, so
+    // it doesn't set up that pipe in the first place — same path Xcode IDE
+    // takes when it invokes xcodebuild.
+    //
+    // Why a shell wrapper rather than per-fd stdio: node-pty's whole design
+    // is one bidirectional pty connected to fd 0, 1, and 2 of the child;
+    // there's no API to redirect fd 0 separately. A shell `<` redirect is the
+    // only way to split them while keeping the pty on stdout/stderr.
+    const closeStdin = options.closeStdin ?? false;
     let spawnCmd: string;
     let spawnArgs: string[];
     if (options.pipes && options.pipes.length > 0) {
       spawnCmd = "/bin/bash";
-      spawnArgs = ["-c", buildPipelineScript(options.command, args, options.pipes)];
+      spawnArgs = ["-c", buildPipelineScript(options.command, args, options.pipes, closeStdin)];
+    } else if (closeStdin) {
+      spawnCmd = "/bin/bash";
+      spawnArgs = ["-c", '"$@" < /dev/null', "bash", options.command, ...args];
     } else {
       spawnCmd = options.command;
       spawnArgs = args;
     }
+
+    commonLogger.debug("v3 spawn", {
+      command: spawnCmd,
+      args: spawnArgs,
+      cwd,
+      closeStdin,
+      hasPipes: !!options.pipes && options.pipes.length > 0,
+      original: { command: options.command, args },
+    });
 
     const pty = nodePty.spawn(spawnCmd, spawnArgs, {
       name: "xterm-256color",
@@ -510,6 +563,21 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
     return this.mergeEnv(shellEnv, options.env);
   }
 
+  // Terminate the pty's child with SIGTERM, then SIGKILL after a grace period.
+  // Only called from close() when VS Code tears the terminal down (user
+  // clicked trash, vscode.tasks.terminate, window shutdown, etc.) — the
+  // happy-path build completion does not go through here.
+  //
+  // pty.kill(sig) signals a SINGLE PID (pty.pid), not the process group. With
+  // closeStdin set (and always for the pipes path), pty.pid is the wrapper
+  // bash; SIGTERM hits bash, bash exits, the pty hangs up, and the kernel
+  // delivers SIGHUP to the foreground process group on the slave — that's
+  // what actually kills xcodebuild/xcbeautify in those cases. The 2s grace
+  // period gives them time to flush logs and shut down cleanly; SIGKILL is
+  // the uncatchable fallback if anything ignored the SIGTERM.
+  //
+  // try/catch swallows ESRCH (process already exited). Fire-and-forget: the
+  // actual exit is observed via the ProcessExit promise on the pty handle.
   private killCurrentPty(): void {
     if (!this.currentPty) return;
     const pty = this.currentPty;
@@ -540,6 +608,8 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
   private closeTerminal(code: number, message: string, options?: TerminalWriteOptions): void {
     this.writeLine(message, options);
     this.writeLine();
+    if (this.closeFired) return;
+    this.closeFired = true;
     this.closeEmitter.fire(code);
   }
 
@@ -561,9 +631,17 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
   }
 }
 
-// `set -o pipefail; A | B | C` with every token shell-quoted so user-supplied paths can't break out.
-function buildPipelineScript(command: string, args: string[], pipes: NonNullable<CommandOptions["pipes"]>): string {
-  const main = quote([command, ...args]);
+// `set -o pipefail; A | B | C` — every command token is shell-quoted (so user-supplied paths
+// can't break out), and the operators (`|`, `< /dev/null`) are plain shell syntax we splice in,
+// not quoted arguments. When closeStdin is set, A's stdin is redirected from /dev/null so it
+// sees EOF instead of waiting on the inherited TTY; B, C, … get their stdin from the pipe.
+function buildPipelineScript(
+  command: string,
+  args: string[],
+  pipes: NonNullable<CommandOptions["pipes"]>,
+  closeStdin: boolean,
+): string {
+  const main = quote([command, ...args]) + (closeStdin ? " < /dev/null" : "");
   const rest = pipes.map((p) => quote([p.command, ...(p.args ?? [])]));
   return `set -o pipefail; ${[main, ...rest].join(" | ")}`;
 }

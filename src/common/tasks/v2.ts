@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn, StdioOptions } from "node:child_process";
 
 import { quote } from "shell-quote";
 import * as vscode from "vscode";
@@ -50,6 +50,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   private writeEmitter = new vscode.EventEmitter<string>();
   private closeEmitter = new vscode.EventEmitter<number>();
   private processes: Set<ChildProcess> = new Set();
+  private closeFired = false;
 
   constructor(
     private options: {
@@ -311,6 +312,11 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
       });
 
       const env = { ...process.env, ...prepareEnvVars(options.env) };
+      // closeStdin: redirect fd 0 to /dev/null so children that probe stdin
+      // (e.g. xcodebuild scheme pre-actions doing `read`) see EOF instead of
+      // blocking on a pipe Node never writes to — issue #240. Otherwise leave
+      // stdin as the default pipe.
+      const stdio: StdioOptions = options.closeStdin ? ["ignore", "pipe", "pipe"] : ["pipe", "pipe", "pipe"];
       const childProcess = spawn(command, {
         // run command in shell to support pipes
         shell: true,
@@ -319,6 +325,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
         detached: true,
         env: env,
         cwd: workspacePath,
+        stdio: stdio,
       });
       this.processes.add(childProcess);
       childProcess.stderr?.on("data", (data: string | Buffer): void => {
@@ -376,7 +383,15 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
   close(): void {
     this.terminateProcess();
-    this.closeSuccessfully();
+    // VS Code only treats the task as ended once the close emitter fires. If close()
+    // arrives externally (user closed the terminal, vscode.tasks.terminate, etc.)
+    // we fire here so the surrounding runTaskV2 promise doesn't sit waiting on an
+    // onDidEndTaskProcess event that never comes. The guard also handles the normal
+    // path where start() already fired via closeTerminal() before VS Code called us.
+    if (!this.closeFired) {
+      this.closeFired = true;
+      this.closeEmitter.fire(-1);
+    }
   }
 
   private closeSuccessfully(): void {
@@ -386,6 +401,8 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   private closeTerminal(code: number, message: string, options?: TerminalWriteOptions): void {
     this.writeLine(message, options);
     this.writeLine();
+    if (this.closeFired) return;
+    this.closeFired = true;
     this.closeEmitter.fire(code);
   }
 

@@ -954,6 +954,7 @@ export class BuildManager {
       pipes: pipes,
       env: env,
       cwd: cwd,
+      closeStdin: true,
     });
 
     await restartSwiftLSP();
@@ -1062,6 +1063,7 @@ export class BuildManager {
           await terminal.execute({
             command: getXcodeBuildCommand(),
             args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],
+            closeStdin: true,
           });
         } else {
           assertUnreachable(workspaceType);
