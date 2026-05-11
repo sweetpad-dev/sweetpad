@@ -443,6 +443,7 @@ export class TestingManager {
           command: getXcodeBuildCommand(),
           args: args,
           cwd: cwd,
+          closeStdin: true,
         });
       },
     });
@@ -861,6 +862,7 @@ export class TestingManager {
             command: getXcodeBuildCommand(),
             args: args,
             cwd: cwd,
+            closeStdin: true,
             onOutputLine: async (output) => {
               await this.parseOutputLine({
                 line: output.value,
@@ -958,6 +960,7 @@ export class TestingManager {
             command: getXcodeBuildCommand(),
             args: args,
             cwd: cwd,
+            closeStdin: true,
             onOutputLine: async (output) => {
               await this.parseOutputLine({
                 line: output.value,

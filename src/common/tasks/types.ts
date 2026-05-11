@@ -12,6 +12,16 @@ export type CommandOptions = {
   env?: { [key: string]: string | null };
   cwd?: string;
   onOutputLine?: (data: { value: string; type: "stdout" | "stderr" }) => Promise<void>;
+  // Redirect the child's fd 0 to /dev/null. Set this for any command that
+  // (a) probes isatty(stdin) and changes behavior in unwanted ways under our
+  // pty, or (b) does anything that ends up `read`-ing stdin and would block
+  // forever because nothing on our side ever writes to it. Currently used for
+  // xcodebuild: when xcodebuild sees a TTY on fd 0 it opens an interactive
+  // pipe for scheme pre-action scripts and never writes to it, hanging any
+  // pre-action that does `read` (issue #240). Closing fd 0 makes xcodebuild
+  // take the non-interactive path, matching how Xcode IDE invokes it.
+  // Default false: stdin inherits the pty (v3) or Node's pipe (v2).
+  closeStdin?: boolean;
 };
 
 export type TerminalTextColor = "green" | "red" | "blue" | "yellow" | "magenta" | "cyan" | "white" | "gray";
