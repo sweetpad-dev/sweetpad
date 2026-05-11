@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.86] - 2026-05-11
+
+- Fix scheme pre-action build hang by closing xcodebuild's stdin so it doesn't open an interactive pipe for pre-action scripts that wait on input ([#240](https://github.com/sweetpad-dev/sweetpad/issues/240))
+
 ## [0.1.85] - 2026-05-11
 
 - Add a magnifier button to the Build and Destinations view toolbars that opens VS Code's built-in tree find ([microsoft/vscode#173742](https://github.com/microsoft/vscode/issues/173742))
