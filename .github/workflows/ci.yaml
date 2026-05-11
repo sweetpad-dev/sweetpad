@@ -17,9 +17,7 @@ jobs:
       - name: Install NodeJS
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - name: Upgrade npm to 11
-        run: npm install -g npm@11
+          node-version: 24
       - name: Install Dependencies
         run: npm ci
       - name: Publish to Open VSX Registry
@@ -38,9 +36,7 @@ jobs:
       - name: Install NodeJS
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - name: Upgrade npm to 11
-        run: npm install -g npm@11
+          node-version: 24
       - name: Install Dependencies
         run: npm ci
       - name: Publish to Visual Studio Marketplace
@@ -59,9 +55,7 @@ jobs:
       - name: Install NodeJS
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - name: Upgrade npm to 11
-        run: npm install -g npm@11
+          node-version: 24
       - name: Install Dependencies
         run: npm ci
       - name: Package VSIX
