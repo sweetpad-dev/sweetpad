@@ -510,6 +510,9 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
 
   constructor(options: { manager: DestinationsManager }) {
     this.manager = options.manager;
+  }
+
+  async start(): Promise<void> {
     this.manager.on("simulatorsUpdated", () => {
       this.#onDidChangeTreeData.fire(null);
     });

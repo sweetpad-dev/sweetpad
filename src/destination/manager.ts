@@ -1,7 +1,7 @@
 import events from "node:events";
 
-import type { ExtensionContext } from "../common/commands";
 import { checkUnreachable } from "../common/types";
+import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DevicesManager } from "../devices/manager";
 import {
   DeviceDestinationBase,
@@ -46,16 +46,22 @@ type IEventKey = keyof IEventMap;
 export class DestinationsManager {
   private simulatorsManager: SimulatorsManager;
   private devicesManager: DevicesManager;
-  #context: ExtensionContext | undefined;
+  private workspace: WorkspaceStateService;
 
   // Event emitter to signal changes in the destinations
   private emitter = new events.EventEmitter<IEventMap>();
 
-  constructor(options: { simulatorsManager: SimulatorsManager; devicesManager: DevicesManager }) {
+  constructor(options: {
+    simulatorsManager: SimulatorsManager;
+    devicesManager: DevicesManager;
+    workspace: WorkspaceStateService;
+  }) {
     this.simulatorsManager = options.simulatorsManager;
     this.devicesManager = options.devicesManager;
-    this.#context = undefined;
+    this.workspace = options.workspace;
+  }
 
+  async start(): Promise<void> {
     // Forward events from simulators and devices managers
     this.simulatorsManager.on("updated", () => {
       this.emitter.emit("simulatorsUpdated");
@@ -67,17 +73,6 @@ export class DestinationsManager {
 
   on<K extends IEventKey>(event: K, listener: (...args: IEventMap[K]) => void): void {
     this.emitter.on(event, listener as any); // todo: fix this any
-  }
-
-  get context() {
-    if (!this.#context) {
-      throw new Error("Context is not set");
-    }
-    return this.#context;
-  }
-
-  set context(context: ExtensionContext) {
-    this.#context = context;
   }
 
   async refreshSimulators(): Promise<SimulatorDestination[]> {
@@ -94,12 +89,12 @@ export class DestinationsManager {
   }
 
   isRecentExists(): boolean {
-    const recent = this.context.getWorkspaceState("build.xcodeDestinationsRecent");
+    const recent = this.workspace.get("build.xcodeDestinationsRecent");
     return Array.isArray(recent) && recent.length > 0;
   }
 
   async getRecentDestinations(): Promise<Destination[]> {
-    const rawDestinations = this.context.getWorkspaceState("build.xcodeDestinationsRecent") ?? [];
+    const rawDestinations = this.workspace.get("build.xcodeDestinationsRecent") ?? [];
 
     const destinations: Destination[] = [];
     for (const rawDestination of rawDestinations) {
@@ -283,7 +278,7 @@ export class DestinationsManager {
 
     // Most used destinations should be on top of the list
     if (options?.mostUsedSort) {
-      const usageStats = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
+      const usageStats = this.workspace.get("build.xcodeDestinationsUsageStatistics") ?? {};
       destinations.sort((a, b) => {
         const aCount = usageStats[a.id] ?? 0;
         const bCount = usageStats[b.id] ?? 0;
@@ -345,9 +340,9 @@ export class DestinationsManager {
    */
   trackDestinationUsage(destination: Destination) {
     // Incrmement usage statistics
-    const prevStat = this.context.getWorkspaceState("build.xcodeDestinationsUsageStatistics") ?? {};
+    const prevStat = this.workspace.get("build.xcodeDestinationsUsageStatistics") ?? {};
     const count: number = prevStat[destination.id] ?? 0;
-    this.context.updateWorkspaceState("build.xcodeDestinationsUsageStatistics", {
+    this.workspace.update("build.xcodeDestinationsUsageStatistics", {
       ...prevStat,
       [destination.id]: count + 1,
     });
@@ -355,7 +350,7 @@ export class DestinationsManager {
 
   trackRecentDestination(destination: Destination) {
     // Add to recent destinations
-    const recentDestinations = this.context.getWorkspaceState("build.xcodeDestinationsRecent") ?? [];
+    const recentDestinations = this.workspace.get("build.xcodeDestinationsRecent") ?? [];
     const recentDestination = recentDestinations.find((d) => d.id === destination.id);
     if (!recentDestination) {
       const newRecentDestination: SelectedDestination = {
@@ -363,20 +358,20 @@ export class DestinationsManager {
         type: destination.type,
         name: destination.name,
       };
-      this.context.updateWorkspaceState("build.xcodeDestinationsRecent", [...recentDestinations, newRecentDestination]);
+      this.workspace.update("build.xcodeDestinationsRecent", [...recentDestinations, newRecentDestination]);
     }
   }
 
   removeRecentDestination(destination: Destination) {
-    const recentDestinations = this.context.getWorkspaceState("build.xcodeDestinationsRecent") ?? [];
+    const recentDestinations = this.workspace.get("build.xcodeDestinationsRecent") ?? [];
     const newRecentDestinations = recentDestinations.filter((d) => d.id !== destination.id);
-    this.context.updateWorkspaceState("build.xcodeDestinationsRecent", newRecentDestinations);
+    this.workspace.update("build.xcodeDestinationsRecent", newRecentDestinations);
     this.emitter.emit("recentDestinationsUpdated");
   }
 
   setWorkspaceDestinationForBuild(destination: Destination | undefined) {
     if (!destination) {
-      this.context.updateWorkspaceState("build.xcodeDestination", undefined);
+      this.workspace.update("build.xcodeDestination", undefined);
       this.emitter.emit("xcodeDestinationForBuildUpdated", undefined);
       return;
     }
@@ -386,7 +381,7 @@ export class DestinationsManager {
       type: destination.type,
       name: destination.name,
     };
-    this.context.updateWorkspaceState("build.xcodeDestination", selectedDestination);
+    this.workspace.update("build.xcodeDestination", selectedDestination);
     this.trackSelectedDestination(destination);
 
     this.emitter.emit("xcodeDestinationForBuildUpdated", selectedDestination);
@@ -394,7 +389,7 @@ export class DestinationsManager {
 
   setWorkspaceDestinationForTesting(destination: Destination | undefined) {
     if (!destination) {
-      this.context.updateWorkspaceState("testing.xcodeDestination", undefined);
+      this.workspace.update("testing.xcodeDestination", undefined);
       this.emitter.emit("xcodeDestinationForTestingUpdated", undefined);
       return;
     }
@@ -404,7 +399,7 @@ export class DestinationsManager {
       type: destination.type,
       name: destination.name,
     };
-    this.context.updateWorkspaceState("testing.xcodeDestination", selectedDestination);
+    this.workspace.update("testing.xcodeDestination", selectedDestination);
     this.trackSelectedDestination(destination);
     this.emitter.emit("xcodeDestinationForTestingUpdated", selectedDestination);
   }
@@ -413,10 +408,10 @@ export class DestinationsManager {
    * Get selected destination from the workspace state
    */
   getSelectedXcodeDestinationForBuild(): SelectedDestination | undefined {
-    return this.context.getWorkspaceState("build.xcodeDestination");
+    return this.workspace.get("build.xcodeDestination");
   }
 
   getSelectedXcodeDestinationForTesting(): SelectedDestination | undefined {
-    return this.context.getWorkspaceState("testing.xcodeDestination");
+    return this.workspace.get("testing.xcodeDestination");
   }
 }

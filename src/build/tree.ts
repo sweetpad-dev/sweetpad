@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 
 import type { XcodeScheme } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { commonLogger } from "../common/logger";
 import type { BuildManager } from "./manager";
@@ -42,7 +41,6 @@ export class BuildTreeItem extends vscode.TreeItem {
 export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem> {
   #onDidChangeTreeData = new vscode.EventEmitter<EventData>();
   readonly onDidChangeTreeData = this.#onDidChangeTreeData.event;
-  #context: ExtensionContext | undefined;
   public buildManager: BuildManager;
   public defaultSchemeForBuild: string | undefined;
   public defaultSchemeForTesting: string | undefined;
@@ -51,10 +49,11 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
   private schemeIncludeRegexes: RegExp[] = [];
   private schemeExcludeRegexes: RegExp[] = [];
 
-  constructor(options: { context: ExtensionContext; buildManager: BuildManager }) {
-    this.context = options.context;
+  constructor(options: { buildManager: BuildManager }) {
     this.buildManager = options.buildManager;
+  }
 
+  async start(): Promise<void> {
     this.buildManager.on("refreshSchemesStarted", () => {
       this.isLoading = true;
       this.updateView();
@@ -87,25 +86,16 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
 
     this.updateSchemeFilterPausedContext();
     this.recomputeSchemeFilterPatterns();
-  }
 
-  public get context(): ExtensionContext | undefined {
-    return this.#context;
-  }
-
-  public set context(ctx: ExtensionContext | undefined) {
-    this.#context = ctx;
-    if (ctx) {
-      ctx.on("workspaceConfigChanged", (event) => {
-        if (
-          event.affectsConfiguration("sweetpad.build.schemes.include") ||
-          event.affectsConfiguration("sweetpad.build.schemes.exclude")
-        ) {
-          this.recomputeSchemeFilterPatterns();
-          this.updateView();
-        }
-      });
-    }
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (
+        event.affectsConfiguration("sweetpad.build.schemes.include") ||
+        event.affectsConfiguration("sweetpad.build.schemes.exclude")
+      ) {
+        this.recomputeSchemeFilterPatterns();
+        this.updateView();
+      }
+    });
   }
 
   private updateView(): void {

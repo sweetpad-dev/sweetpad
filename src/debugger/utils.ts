@@ -1,11 +1,12 @@
-import type { ExtensionContext } from "../common/commands";
+import type * as vscode from "vscode";
+
 import { type DeviceCtlProcess, getRunningProcesses } from "../common/xcode/devicectl";
 
 /**
  * Wait while the process is launched on the device and return the process information.
  */
 export async function waitForProcessToLaunch(
-  context: ExtensionContext,
+  vscodeContext: vscode.ExtensionContext,
   options: {
     deviceId: string;
     appName: string;
@@ -27,7 +28,7 @@ export async function waitForProcessToLaunch(
     }
 
     // Query the running processes on the device using the devicectl command
-    const result = await getRunningProcesses(context, { deviceId: deviceId });
+    const result = await getRunningProcesses(vscodeContext, { deviceId: deviceId });
     const runningProcesses = result?.result?.runningProcesses ?? [];
     if (runningProcesses.length === 0) {
       throw new Error("No running processes found on the device");

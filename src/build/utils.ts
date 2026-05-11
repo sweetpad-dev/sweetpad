@@ -13,7 +13,6 @@ import {
   getXcodeBuildCommand,
   readXcodeBuildServerConfig,
 } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
@@ -21,10 +20,14 @@ import { commonLogger } from "../common/logger";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { TaskTerminal } from "../common/tasks/types";
 import { assertUnreachable } from "../common/types";
+import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationPlatform } from "../destination/constants";
+import type { DestinationsManager } from "../destination/manager";
 import type { Destination } from "../destination/types";
 import { splitSupportedDestinatinos } from "../destination/utils";
 import type { SimulatorDestination } from "../simulators/types";
+import type { ProgressStatusBar } from "../system/status-bar";
+import type { BuildManager } from "./manager";
 
 export type SelectedDestination = {
   type: "simulator" | "device";
@@ -36,14 +39,14 @@ export type SelectedDestination = {
  * Ask user to select one of the Booted/Shutdown simulators
  */
 export async function askSimulator(
-  context: ExtensionContext,
+  destinationsManager: DestinationsManager,
   options: {
     title: string;
     state: "Booted" | "Shutdown";
     error: string;
   },
 ): Promise<SimulatorDestination> {
-  let simulators = await context.destinationsManager.getSimulators({
+  let simulators = await destinationsManager.getSimulators({
     sort: true,
   });
 
@@ -77,7 +80,8 @@ export async function askSimulator(
  * Ask user to select simulator or device to run on
  */
 export async function askDestinationToRunOn(
-  context: ExtensionContext,
+  progress: ProgressStatusBar,
+  destinationsManager: DestinationsManager,
   options: {
     scheme: string;
     configuration: string;
@@ -85,13 +89,13 @@ export async function askDestinationToRunOn(
     xcworkspace: string;
   },
 ): Promise<Destination> {
-  context.updateProgressStatus("Searching for destinations");
-  const destinations = await context.destinationsManager.getDestinations({
+  progress.updateText("Searching for destinations");
+  const destinations = await destinationsManager.getDestinations({
     mostUsedSort: true,
   });
 
   // If we have cached desination, use it
-  const cachedDestination = context.destinationsManager.getSelectedXcodeDestinationForBuild();
+  const cachedDestination = destinationsManager.getSelectedXcodeDestinationForBuild();
   if (cachedDestination) {
     const destination = destinations.find((d) => d.id === cachedDestination.id && d.type === cachedDestination.type);
     if (destination) {
@@ -109,14 +113,14 @@ export async function askDestinationToRunOn(
   });
   const supportedPlatforms = buildSettings?.supportedPlatforms;
 
-  return await selectDestinationForBuild(context, {
+  return await selectDestinationForBuild(destinationsManager, {
     destinations: destinations,
     supportedPlatforms: supportedPlatforms,
   });
 }
 
 export async function selectDestinationForBuild(
-  context: ExtensionContext,
+  destinationsManager: DestinationsManager,
   options: {
     destinations: Destination[];
     supportedPlatforms: DestinationPlatform[] | undefined;
@@ -172,7 +176,7 @@ export async function selectDestinationForBuild(
 
   const destination = selected.context;
 
-  context.destinationsManager.setWorkspaceDestinationForBuild(destination);
+  destinationsManager.setWorkspaceDestinationForBuild(destination);
   return destination;
 }
 
@@ -180,16 +184,17 @@ export async function selectDestinationForBuild(
  * Ask user to select scheme to build
  */
 export async function askSchemeForBuild(
-  context: ExtensionContext,
+  progress: ProgressStatusBar,
+  buildManager: BuildManager,
   options: {
     title?: string;
     xcworkspace: string;
     ignoreCache?: boolean;
   },
 ): Promise<string> {
-  context.updateProgressStatus("Searching for scheme");
+  progress.updateText("Searching for scheme");
 
-  const cachedScheme = context.buildManager.getDefaultSchemeForBuild();
+  const cachedScheme = buildManager.getDefaultSchemeForBuild();
   if (cachedScheme && !options.ignoreCache) {
     return cachedScheme;
   }
@@ -211,7 +216,7 @@ export async function askSchemeForBuild(
   });
 
   const schemeName = scheme.context.scheme.name;
-  context.buildManager.setDefaultSchemeForBuild(schemeName);
+  buildManager.setDefaultSchemeForBuild(schemeName);
   return schemeName;
 }
 
@@ -229,8 +234,8 @@ export function getWorkspacePath(): string {
 /**
  * Prepare storage path for the extension. It's a folder where we store all intermediate files
  */
-export async function prepareStoragePath(context: ExtensionContext): Promise<string> {
-  const storagePath = context.storageUri?.fsPath;
+export async function prepareStoragePath(vscodeContext: vscode.ExtensionContext): Promise<string> {
+  const storagePath = vscodeContext.storageUri?.fsPath;
   if (!storagePath) {
     throw new ExtensionError("No storage path found");
   }
@@ -242,8 +247,8 @@ export async function prepareStoragePath(context: ExtensionContext): Promise<str
 /**
  * Prepare bundle directory for the given scheme in the storage path
  */
-export async function prepareBundleDir(context: ExtensionContext, scheme: string): Promise<string> {
-  const storagePath = await prepareStoragePath(context);
+export async function prepareBundleDir(vscodeContext: vscode.ExtensionContext, scheme: string): Promise<string> {
+  const storagePath = await prepareStoragePath(vscodeContext);
 
   const bundleDir = path.join(storagePath, "bundle", scheme);
 
@@ -275,17 +280,17 @@ export function prepareDerivedDataPath(): string | null {
   return derivedDataPath;
 }
 
-export function getCurrentXcodeWorkspacePath(context: ExtensionContext): string | undefined {
+export function getCurrentXcodeWorkspacePath(workspace: WorkspaceStateService): string | undefined {
   const configPath = getWorkspaceConfig("build.xcodeWorkspacePath");
   if (configPath) {
-    context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
+    workspace.update("build.xcodeWorkspacePath", undefined);
     if (path.isAbsolute(configPath)) {
       return configPath;
     }
     return path.join(getWorkspacePath(), configPath);
   }
 
-  const cachedPath = context.getWorkspaceState("build.xcodeWorkspacePath");
+  const cachedPath = workspace.get("build.xcodeWorkspacePath");
   if (cachedPath) {
     return cachedPath;
   }
@@ -293,8 +298,11 @@ export function getCurrentXcodeWorkspacePath(context: ExtensionContext): string 
   return undefined;
 }
 
-export async function askXcodeWorkspacePath(context: ExtensionContext): Promise<string> {
-  const current = getCurrentXcodeWorkspacePath(context);
+export async function askXcodeWorkspacePath(
+  workspace: WorkspaceStateService,
+  buildManager: BuildManager,
+): Promise<string> {
+  const current = getCurrentXcodeWorkspacePath(workspace);
   if (current) {
     return current;
   }
@@ -303,31 +311,32 @@ export async function askXcodeWorkspacePath(context: ExtensionContext): Promise<
     autoselect: true,
   });
 
-  context.updateWorkspaceState("build.xcodeWorkspacePath", selectedPath);
-  context.buildManager.refreshSchemes();
+  workspace.update("build.xcodeWorkspacePath", selectedPath);
+  buildManager.refreshSchemes();
   return selectedPath;
 }
 
 export async function askConfiguration(
-  context: ExtensionContext,
+  progress: ProgressStatusBar,
+  buildManager: BuildManager,
   options: {
     xcworkspace: string;
   },
 ): Promise<string> {
-  context.updateProgressStatus("Searching for build configuration");
+  progress.updateText("Searching for build configuration");
 
   const fromConfig = getWorkspaceConfig("build.configuration");
   if (fromConfig) {
     return fromConfig;
   }
-  const cached = context.buildManager.getDefaultConfigurationForBuild();
+  const cached = buildManager.getDefaultConfigurationForBuild();
   if (cached) {
     return cached;
   }
   const selected = await askConfigurationBase({
     xcworkspace: options.xcworkspace,
   });
-  context.buildManager.setDefaultConfigurationForBuild(selected);
+  buildManager.setDefaultConfigurationForBuild(selected);
   return selected;
 }
 

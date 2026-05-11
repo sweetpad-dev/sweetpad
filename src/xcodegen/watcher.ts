@@ -1,32 +1,25 @@
 import path from "node:path";
 
 import * as vscode from "vscode";
-import { Disposable } from "vscode";
 
 import { getWorkspacePath } from "../build/utils";
-import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
-import { xcodgenGenerateCommand } from "./commands";
 
-class XcodeGenWatcher {
+export class XcodeGenWatcher implements vscode.Disposable {
   private watchers: vscode.FileSystemWatcher[] = [];
   private throttle: NodeJS.Timeout | null = null;
-  private derivedDataPath: string | null;
-  private workspacePath: string;
+  private derivedDataPath: string | null = null;
+  private workspacePath = "";
 
-  constructor(private extension: ExtensionContext) {
-    this.derivedDataPath = null;
+  async start(): Promise<void> {
     this.workspacePath = getWorkspacePath();
-  }
-
-  async start() {
     // Is config enabled?
     // TODO: add config to enable/disable watcher
     const isEnabled = getWorkspaceConfig("xcodegen.autogenerate");
     if (!isEnabled) {
-      return new Disposable(() => {});
+      return;
     }
 
     // Is project.yml exists?
@@ -36,7 +29,7 @@ class XcodeGenWatcher {
       commonLogger.log("project.yml not found, skipping xcodegen watcher", {
         workspacePath: getWorkspacePath(),
       });
-      return new Disposable(() => {});
+      return;
     }
 
     const swiftWatcher = vscode.workspace.createFileSystemWatcher("**/*.swift", false, true, false);
@@ -65,7 +58,7 @@ class XcodeGenWatcher {
 
     this.throttle = setTimeout(() => {
       this.throttle = null;
-      xcodgenGenerateCommand(this.extension)
+      Promise.resolve(vscode.commands.executeCommand("sweetpad.xcodegen.generate"))
         .then(() => {
           commonLogger.log("XcodeGen project was successfully generated", {
             workspacePath: this.workspacePath,
@@ -80,15 +73,9 @@ class XcodeGenWatcher {
     }, 1000 /* 1s */);
   }
 
-  stop() {
+  dispose(): void {
     for (const watcher of this.watchers) {
       watcher.dispose();
     }
   }
-}
-
-export function createXcodeGenWatcher(extension: ExtensionContext): vscode.Disposable {
-  const watcher = new XcodeGenWatcher(extension);
-  void watcher.start();
-  return new Disposable(() => watcher.stop());
 }

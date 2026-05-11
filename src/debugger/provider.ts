@@ -1,13 +1,13 @@
 import vscode from "vscode";
 
 import type {
-  ExtensionContext,
   LastLaunchedAppDeviceContext,
   LastLaunchedAppMacOSContext,
   LastLaunchedAppSimulatorContext,
 } from "../common/commands";
 import { commonLogger } from "../common/logger";
 import { checkUnreachable } from "../common/types";
+import type { WorkspaceStateService } from "../common/workspace-state";
 import { waitForProcessToLaunch } from "./utils";
 
 const ATTACH_CONFIG: vscode.DebugConfiguration = {
@@ -38,10 +38,12 @@ class InitialDebugConfigurationProvider implements vscode.DebugConfigurationProv
 }
 
 class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
-  context: ExtensionContext;
+  private workspace: WorkspaceStateService;
+  private vscodeContext: vscode.ExtensionContext;
 
-  constructor(options: { context: ExtensionContext }) {
-    this.context = options.context;
+  constructor(options: { workspace: WorkspaceStateService; vscodeContext: vscode.ExtensionContext }) {
+    this.workspace = options.workspace;
+    this.vscodeContext = options.vscodeContext;
   }
 
   async provideDebugConfigurations(
@@ -95,7 +97,7 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     const appName = launchContext.appName; // Example: "MyApp.app"
 
     // We need to find the device app path and the process id
-    const process = await waitForProcessToLaunch(this.context, {
+    const process = await waitForProcessToLaunch(this.vscodeContext, {
       deviceId: deviceUDID,
       appName: appName,
       timeoutMs: 15000, // wait for 15 seconds before giving up
@@ -165,7 +167,7 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     config: vscode.DebugConfiguration,
     token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration> {
-    const launchContext = this.context.getWorkspaceState("build.lastLaunchedApp");
+    const launchContext = this.workspace.get("build.lastLaunchedApp");
     if (!launchContext) {
       throw new Error("No last launched app found, please launch the app first using the SweetPad extension");
     }
@@ -198,8 +200,11 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
   }
 }
 
-export function registerDebugConfigurationProvider(context: ExtensionContext) {
-  const dynamicProvider = new DynamicDebugConfigurationProvider({ context });
+export function registerDebugConfigurationProvider(options: {
+  workspace: WorkspaceStateService;
+  vscodeContext: vscode.ExtensionContext;
+}) {
+  const dynamicProvider = new DynamicDebugConfigurationProvider(options);
   const initialProvider = new InitialDebugConfigurationProvider();
   const disposable1 = vscode.debug.registerDebugConfigurationProvider(
     "sweetpad-lldb",

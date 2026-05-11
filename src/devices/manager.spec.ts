@@ -33,9 +33,8 @@ describe("DevicesManager", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    manager = new DevicesManager();
     mockContext = createMockContext();
-    manager.context = mockContext;
+    manager = new DevicesManager({ vscodeContext: mockContext.vscodeContext });
   });
 
   describe("refresh", () => {
@@ -45,8 +44,8 @@ describe("DevicesManager", () => {
 
       await manager.refresh();
 
-      expect(listDevices).toHaveBeenCalledWith(mockContext);
-      expect(listDevicesWithXcdevice).toHaveBeenCalledWith(mockContext);
+      expect(listDevices).toHaveBeenCalledWith(mockContext.vscodeContext);
+      expect(listDevicesWithXcdevice).toHaveBeenCalledWith();
     });
 
     it("wraps iOS 17+ devicectl device when xcdevice is empty", async () => {
@@ -297,19 +296,6 @@ describe("DevicesManager", () => {
     it("fetches devices when cache is empty", async () => {
       await manager.getDevices();
       expect(listDevices).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("context property", () => {
-    it("throws error when context is not set", () => {
-      const newManager = new DevicesManager();
-      expect(() => newManager.context).toThrow("Context is not set");
-    });
-
-    it("returns context when set", () => {
-      const newManager = new DevicesManager();
-      newManager.context = mockContext;
-      expect(newManager.context).toBe(mockContext);
     });
   });
 });

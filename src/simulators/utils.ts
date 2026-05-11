@@ -1,14 +1,14 @@
-import type { ExtensionContext } from "../common/commands";
 import { ExtensionError } from "../common/errors";
+import type { DestinationsManager } from "../destination/manager";
 import type { SimulatorDestination, SimulatorOS, SimulatorType } from "./types";
 
 export async function getSimulatorByUdid(
-  context: ExtensionContext,
+  destinationsManager: DestinationsManager,
   options: {
     udid: string;
   },
 ): Promise<SimulatorDestination> {
-  const simulators = await context.destinationsManager.refreshSimulators();
+  const simulators = await destinationsManager.refreshSimulators();
 
   for (const simulator of simulators) {
     if (simulator.udid === options.udid) {

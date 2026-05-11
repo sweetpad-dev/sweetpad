@@ -25,13 +25,15 @@ import {
 } from "./build/commands.js";
 import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
-import { createSchemeWatcher } from "./build/scheme-watcher.js";
+import { SchemeWatcher } from "./build/scheme-watcher.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
-import { ExtensionContext } from "./common/commands.js";
+import { type AppDeps, registerCommand, registerTreeDataProvider } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
+import { ExecutionScopeService } from "./common/execution-scope.js";
 import { Logger } from "./common/logger.js";
 import { warmShellEnv } from "./common/tasks/shell-env.js";
+import { WorkspaceStateService } from "./common/workspace-state.js";
 import { getAppPathCommand } from "./debugger/commands.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
 import {
@@ -81,9 +83,9 @@ import {
   tuistInstallCommand,
   tuistTestComnmand,
 } from "./tuist/command.js";
-import { createTuistWatcher } from "./tuist/watcher.js";
+import { TuistGenWatcher } from "./tuist/watcher.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
-import { createXcodeGenWatcher } from "./xcodegen/watcher.js";
+import { XcodeGenWatcher } from "./xcodegen/watcher.js";
 
 export function activate(context: vscode.ExtensionContext) {
   // Sentry 🚨
@@ -94,45 +96,45 @@ export function activate(context: vscode.ExtensionContext) {
 
   warmShellEnv();
 
+  // Services 🔧
+  // Leaf services with no manager dependencies. Constructed first so managers can take them as deps.
+  const workspace = new WorkspaceStateService(context);
+  const execution = new ExecutionScopeService();
+
   // Managers 💼
   // These classes are responsible for managing the state of the specific domain. Other parts of the extension can
   // interact with them to get the current state of the domain and subscribe to changes. For example
   // "DestinationsManager" have methods to get the list of current ios devices and simulators, and it also have an
   // event emitter that emits an event when the list of devices or simulators changes.
-  const buildManager = new BuildManager();
-  const devicesManager = new DevicesManager();
+  const progressStatusBar = new ProgressStatusBar({ execution: execution });
+  const tunnelManager = new TunnelManager();
+  const devicesManager = new DevicesManager({ vscodeContext: context });
   const simulatorsManager = new SimulatorsManager();
   const destinationsManager = new DestinationsManager({
     simulatorsManager: simulatorsManager,
     devicesManager: devicesManager,
+    workspace: workspace,
+  });
+  const buildManager = new BuildManager({
+    workspace: workspace,
+    progress: progressStatusBar,
+    execution: execution,
+    tunnel: tunnelManager,
+    vscodeContext: context,
+    destinations: destinationsManager,
   });
   const toolsManager = new ToolsManager();
-  const testingManager = new TestingManager();
-  const formatter = new SwiftFormattingProvider();
-  const progressStatusBar = new ProgressStatusBar();
-  const tunnelManager = new TunnelManager();
-
-  // Main context object 🌍
-  const extContext = new ExtensionContext({
-    context: context,
-    destinationsManager: destinationsManager,
+  const testingManager = new TestingManager({
+    workspace: workspace,
+    progress: progressStatusBar,
+    execution: execution,
     buildManager: buildManager,
-    toolsManager: toolsManager,
-    testingManager: testingManager,
-    formatter: formatter,
-    progressStatusBar: progressStatusBar,
-    tunnelManager: tunnelManager,
+    destinations: destinationsManager,
   });
-  // Here is circular dependency, but I don't care
-  buildManager.context = extContext;
-  devicesManager.context = extContext;
-  destinationsManager.context = extContext;
-  testingManager.context = extContext;
-  progressStatusBar.context = extContext;
+  const formatter = new SwiftFormattingProvider();
 
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({
-    context: extContext,
     buildManager: buildManager,
   });
   const toolsTreeProvider = new ToolTreeProvider({
@@ -141,22 +143,63 @@ export function activate(context: vscode.ExtensionContext) {
   const destinationsTreeProvider = new DestinationsTreeProvider({
     manager: destinationsManager,
   });
-  extContext.buildTreeProvider = buildTreeProvider;
 
-  // Shortcut to push disposable to context.subscriptions
-  const d = extContext.disposable.bind(extContext);
-  const command = extContext.registerCommand.bind(extContext);
-  const tree = extContext.registerTreeDataProvider.bind(extContext);
+  // Status bars & providers 📊
+  const schemeStatusBar = new DefaultSchemeStatusBar({ buildManager: buildManager });
+  const destinationBar = new DestinationStatusBar({ destinationsManager: destinationsManager });
+  const buildTaskProvider = new XcodeBuildTaskProvider({
+    buildManager: buildManager,
+    destinationsManager: destinationsManager,
+    workspace: workspace,
+    progressStatusBar: progressStatusBar,
+    execution: execution,
+  });
 
-  const buildTaskProvider = new XcodeBuildTaskProvider(extContext);
+  // Watchers 👀
+  const schemeWatcher = new SchemeWatcher(buildManager);
+  const tuistWatcher = new TuistGenWatcher();
+  const xcodegenWatcher = new XcodeGenWatcher();
+
+  // Start everything that has side effects (subscriptions, calculations, .show(), etc.)
+  void progressStatusBar.start();
+  void tunnelManager.start();
+  void destinationsManager.start();
+  void buildManager.start();
+  void testingManager.start();
+  void buildTreeProvider.start();
+  void toolsTreeProvider.start();
+  void destinationsTreeProvider.start();
+  void schemeStatusBar.start();
+  void destinationBar.start();
+  void schemeWatcher.start();
+  void tuistWatcher.start();
+  void xcodegenWatcher.start();
+
+  // Main dependency bag for commands 🌍
+  const deps: AppDeps = {
+    destinationsManager: destinationsManager,
+    buildManager: buildManager,
+    toolsManager: toolsManager,
+    testingManager: testingManager,
+    formatter: formatter,
+    progressStatusBar: progressStatusBar,
+    tunnelManager: tunnelManager,
+    workspace: workspace,
+    execution: execution,
+    vscodeContext: context,
+    buildTreeProvider: buildTreeProvider,
+  };
+
+  // Shortcut helpers bound to the deps bag
+  const d = (disposable: vscode.Disposable) => context.subscriptions.push(disposable);
+  const command = <Args extends unknown[]>(name: string, cb: (deps: AppDeps, ...args: Args) => Promise<unknown>) =>
+    registerCommand(deps, name, cb);
+  const tree = registerTreeDataProvider;
 
   // Tasks
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));
 
   // Build
-  const schemeStatusBar = new DefaultSchemeStatusBar({
-    context: extContext,
-  });
   d(schemeStatusBar);
   d(tree("sweetpad.build.view", buildTreeProvider));
   d(command("sweetpad.build.refreshSchemes", refreshSchemesCommand));
@@ -186,7 +229,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.testing.selectConfiguration", selectConfigurationForTestingCommand));
 
   // Debugging
-  d(registerDebugConfigurationProvider(extContext));
+  d(registerDebugConfigurationProvider({ workspace: workspace, vscodeContext: context }));
   d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
   d(command("sweetpad.debugger.debuggingLaunch", debuggingLaunchCommand));
   d(command("sweetpad.debugger.debuggingRun", debuggingRunCommand));
@@ -194,7 +237,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // XcodeGen
   d(command("sweetpad.xcodegen.generate", xcodgenGenerateCommand));
-  d(createXcodeGenWatcher(extContext));
+  d(xcodegenWatcher);
 
   // Tuist
   d(command("sweetpad.tuist.generate", tuistGenerateCommand));
@@ -202,10 +245,10 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.tuist.clean", tuistCleanCommand));
   d(command("sweetpad.tuist.edit", tuistEditComnmand));
   d(command("sweetpad.tuist.test", tuistTestComnmand));
-  d(createTuistWatcher(extContext));
+  d(tuistWatcher);
 
   // Scheme Auto-Refresh Watcher
-  d(createSchemeWatcher(extContext));
+  d(schemeWatcher);
 
   // Format
   d(createFormatStatusItem());
@@ -226,9 +269,6 @@ export function activate(context: vscode.ExtensionContext) {
   d(tunnelManager);
 
   // Desintations
-  const destinationBar = new DestinationStatusBar({
-    context: extContext,
-  });
   d(destinationBar);
   d(command("sweetpad.destinations.select", selectDestinationForBuildCommand));
   d(command("sweetpad.destinations.removeRecent", removeRecentDestinationCommand));

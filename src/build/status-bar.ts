@@ -1,27 +1,30 @@
 import * as vscode from "vscode";
 
-import type { ExtensionContext } from "../common/commands.js";
+import type { BuildManager } from "./manager";
 
 export class DefaultSchemeStatusBar {
-  context: ExtensionContext;
+  private buildManager: BuildManager;
   item: vscode.StatusBarItem;
 
-  constructor(options: { context: ExtensionContext }) {
-    this.context = options.context;
+  constructor(options: { buildManager: BuildManager }) {
+    this.buildManager = options.buildManager;
     const itemId = "sweetpad.build.statusBar";
     this.item = vscode.window.createStatusBarItem(itemId, vscode.StatusBarAlignment.Left, 0);
     this.item.name = "SweetPad: Current Scheme";
     this.item.command = "sweetpad.build.setDefaultScheme";
     this.item.tooltip = "Select the default Xcode scheme for building";
+  }
+
+  async start(): Promise<void> {
     void this.update();
     this.item.show();
-    this.context.buildManager.on("defaultSchemeForBuildUpdated", () => {
+    this.buildManager.on("defaultSchemeForBuildUpdated", () => {
       void this.update();
     });
   }
 
   update() {
-    const scheme = this.context.buildManager.getDefaultSchemeForBuild();
+    const scheme = this.buildManager.getDefaultSchemeForBuild();
     if (scheme) {
       this.item.text = `$(sweetpad-hexagons) ${scheme}`;
     } else {

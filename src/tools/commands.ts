@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import type { ExtensionContext } from "../common/commands.js";
+import type { AppDeps } from "../common/commands.js";
 import { runTask } from "../common/tasks/run.js";
 import type { ToolTreeItem } from "./tree.js";
 import { askTool } from "./utils.js";
@@ -8,11 +8,11 @@ import { askTool } from "./utils.js";
 /**
  * Command to install tool from the tool tree view in the sidebar using brew
  */
-export async function installToolCommand(context: ExtensionContext, item?: ToolTreeItem) {
+export async function installToolCommand(deps: AppDeps, item?: ToolTreeItem) {
   const tool = item?.tool ?? (await askTool({ title: "Select tool to install" }));
 
-  context.updateProgressStatus("Installing tool");
-  await runTask(context, {
+  deps.progressStatusBar.updateText("Installing tool");
+  await runTask(deps.execution, {
     name: "Install Tool",
     error: "Error installing tool",
     terminateLocked: false,
@@ -28,7 +28,7 @@ export async function installToolCommand(context: ExtensionContext, item?: ToolT
         },
       });
 
-      context.toolsManager.refresh();
+      deps.toolsManager.refresh();
     },
   });
 }
@@ -36,7 +36,7 @@ export async function installToolCommand(context: ExtensionContext, item?: ToolT
 /**
  * Command to open documentation in the browser from the tool tree view in the sidebar
  */
-export async function openDocumentationCommand(context: ExtensionContext, item?: ToolTreeItem) {
+export async function openDocumentationCommand(deps: AppDeps, item?: ToolTreeItem) {
   const tool = item?.tool ?? (await askTool({ title: "Select tool to open documentation" }));
   await vscode.env.openExternal(vscode.Uri.parse(tool.documentation));
 }
@@ -70,7 +70,7 @@ const PYMOBILEDEVICE3_INSTALL_CHOICES: Pymobiledevice3InstallChoice[] = [
   },
 ];
 
-export async function installPymobiledevice3Command(_context: ExtensionContext): Promise<void> {
+export async function installPymobiledevice3Command(_deps: AppDeps): Promise<void> {
   const picked = await vscode.window.showQuickPick(PYMOBILEDEVICE3_INSTALL_CHOICES, {
     title: "Install pymobiledevice3",
     placeHolder: "Choose how to install pymobiledevice3",

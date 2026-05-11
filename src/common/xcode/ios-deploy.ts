@@ -1,4 +1,5 @@
-import type { ExtensionContext } from "../commands";
+import type * as vscode from "vscode";
+
 import { exec } from "../exec";
 import { tempFilePath } from "../files";
 import { commonLogger } from "../logger";
@@ -92,7 +93,7 @@ async function streamLogFile(terminal: TaskTerminal, logFilePath: string): Promi
  * User can press Ctrl+C to stop the debugging session when done
  */
 export async function installAndLaunchApp(
-  context: ExtensionContext,
+  vscodeContext: vscode.ExtensionContext,
   terminal: TaskTerminal,
   options: {
     deviceId: string;
@@ -109,8 +110,8 @@ export async function installAndLaunchApp(
   });
 
   // Create temporary files for capturing console output
-  await using stdoutPath = await tempFilePath(context, { prefix: "ios-deploy-stdout" });
-  await using stderrPath = await tempFilePath(context, { prefix: "ios-deploy-stderr" });
+  await using stdoutPath = await tempFilePath(vscodeContext, { prefix: "ios-deploy-stdout" });
+  await using stderrPath = await tempFilePath(vscodeContext, { prefix: "ios-deploy-stderr" });
 
   // Install and launch the app with output file redirection
   // --debug launches the app in lldb after installation

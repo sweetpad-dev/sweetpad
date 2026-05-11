@@ -19,12 +19,12 @@ const TUNNELD_PORT = 49_151;
  */
 export class TunnelManager implements vscode.Disposable {
   private terminal: vscode.Terminal | undefined;
-  private terminalListener: vscode.Disposable;
-  // Cached while a start() pass is mid-flight so concurrent callers see the same probe/spawn
+  private terminalListener: vscode.Disposable | undefined;
+  // Cached while a connect() pass is mid-flight so concurrent callers see the same probe/spawn
   // instead of racing past the probe and creating two terminals. Cleared once the call returns.
-  private starting: Promise<void> | undefined;
+  private connecting: Promise<void> | undefined;
 
-  constructor() {
+  async start(): Promise<void> {
     this.terminalListener = vscode.window.onDidCloseTerminal((closed) => {
       if (closed === this.terminal) {
         this.terminal = undefined;
@@ -32,21 +32,21 @@ export class TunnelManager implements vscode.Disposable {
     });
   }
 
-  /** Opt-in start gated by `build.deviceTunnelAutoStart`. */
-  async autoStart(): Promise<void> {
+  /** Opt-in tunnel connect gated by `build.deviceTunnelAutoStart`. */
+  async autoConnect(): Promise<void> {
     if (!getWorkspaceConfig("build.deviceTunnelAutoStart")) return;
-    await this.start();
+    await this.connect();
   }
 
-  async start(): Promise<void> {
-    if (this.starting) return this.starting;
-    this.starting = this.startInner().finally(() => {
-      this.starting = undefined;
+  async connect(): Promise<void> {
+    if (this.connecting) return this.connecting;
+    this.connecting = this.connectInner().finally(() => {
+      this.connecting = undefined;
     });
-    return this.starting;
+    return this.connecting;
   }
 
-  private async startInner(): Promise<void> {
+  private async connectInner(): Promise<void> {
     if (await this.probe()) {
       return;
     }
@@ -73,7 +73,7 @@ export class TunnelManager implements vscode.Disposable {
   }
 
   dispose(): void {
-    this.terminalListener.dispose();
+    this.terminalListener?.dispose();
     // Don't dispose the terminal — VS Code tears it down on reload, which sends SIGHUP
     // to tunneld via the pty, same as a manual close.
   }

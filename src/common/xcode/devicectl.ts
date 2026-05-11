@@ -1,4 +1,5 @@
-import type { ExtensionContext } from "../commands";
+import type * as vscode from "vscode";
+
 import { exec } from "../exec";
 import { readJsonFile, tempFilePath } from "../files";
 import { commonLogger } from "../logger";
@@ -77,8 +78,8 @@ type DeviceCtlDeviceCapability = {
   featureIdentifier: string;
 };
 
-export async function listDevices(context: ExtensionContext): Promise<DeviceCtlListCommandOutput> {
-  await using tmpPath = await tempFilePath(context, {
+export async function listDevices(vscodeContext: vscode.ExtensionContext): Promise<DeviceCtlListCommandOutput> {
+  await using tmpPath = await tempFilePath(vscodeContext, {
     prefix: "devices",
   });
 
@@ -103,12 +104,12 @@ export type DeviceCtlProcess = {
 };
 
 export async function getRunningProcesses(
-  context: ExtensionContext,
+  vscodeContext: vscode.ExtensionContext,
   options: {
     deviceId: string;
   },
 ): Promise<DeviceCtlProcessResult> {
-  await using tmpPath = await tempFilePath(context, {
+  await using tmpPath = await tempFilePath(vscodeContext, {
     prefix: "processes",
   });
   // xcrun devicectl device info processes -d 2782A5CE-797F-4EB9-BDF1-14AE4425C406 --json-output <path>

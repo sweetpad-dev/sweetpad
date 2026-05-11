@@ -1,4 +1,3 @@
-import type { ExtensionContext } from "../commands";
 import { exec } from "../exec";
 import { commonLogger } from "../logger";
 
@@ -60,7 +59,7 @@ const SUPPORTED_PLATFORMS = new Set([
  * (DeviceDestinationBase.state) derives "unavailable" from those so the device still shows
  * in the tree, just marked disconnected.
  */
-export async function listDevicesWithXcdevice(context: ExtensionContext): Promise<XcdeviceDevice[]> {
+export async function listDevicesWithXcdevice(): Promise<XcdeviceDevice[]> {
   try {
     const stdout = await exec({
       command: "xcrun",

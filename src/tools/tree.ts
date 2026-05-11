@@ -17,6 +17,9 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
 
   constructor(options: { manager: ToolsManager }) {
     this.manager = options.manager;
+  }
+
+  async start(): Promise<void> {
     this.manager.on("updated", () => {
       this.refresh();
     });

@@ -1,27 +1,30 @@
 import * as vscode from "vscode";
 
-import type { ExtensionContext } from "../common/commands.js";
+import type { DestinationsManager } from "./manager";
 
 export class DestinationStatusBar {
-  context: ExtensionContext;
+  private destinationsManager: DestinationsManager;
   item: vscode.StatusBarItem;
 
-  constructor(options: { context: ExtensionContext }) {
-    this.context = options.context;
+  constructor(options: { destinationsManager: DestinationsManager }) {
+    this.destinationsManager = options.destinationsManager;
     const itemId = "sweetpad.destinations.statusBar";
     this.item = vscode.window.createStatusBarItem(itemId, vscode.StatusBarAlignment.Left, 0);
     this.item.name = "SweetPad: Current Destination";
     this.item.command = "sweetpad.destinations.select";
     this.item.tooltip = "Select destination for debugging";
+  }
+
+  async start(): Promise<void> {
     void this.update();
     this.item.show();
-    this.context.destinationsManager.on("xcodeDestinationForBuildUpdated", () => {
+    this.destinationsManager.on("xcodeDestinationForBuildUpdated", () => {
       void this.update();
     });
   }
 
   update() {
-    const destination = this.context.destinationsManager.getSelectedXcodeDestinationForBuild();
+    const destination = this.destinationsManager.getSelectedXcodeDestinationForBuild();
     if (destination) {
       this.item.text = `$(sweetpad-device-mobile-check) ${destination.name}`;
     } else {

@@ -1,6 +1,7 @@
 import events from "node:events";
 
-import type { ExtensionContext } from "../common/commands";
+import type * as vscode from "vscode";
+
 import { checkUnreachable } from "../common/types";
 import { listDevices } from "../common/xcode/devicectl";
 import { listDevicesWithXcdevice } from "../common/xcode/xcdevice";
@@ -42,24 +43,17 @@ function buildDeviceDestination(raw: DeviceRaw): DeviceDestination | null {
 
 export class DevicesManager {
   private cache: DeviceDestination[] | undefined = undefined;
-  #context: ExtensionContext | undefined = undefined;
+  private vscodeContext: vscode.ExtensionContext;
   private emitter = new events.EventEmitter<DeviceManagerEventTypes>();
 
   public failed: "unknown" | "no-devicectl" | null = null;
 
-  set context(context: ExtensionContext) {
-    this.#context = context;
+  constructor(options: { vscodeContext: vscode.ExtensionContext }) {
+    this.vscodeContext = options.vscodeContext;
   }
 
   on(event: "updated", listener: () => void): void {
     this.emitter.on(event, listener);
-  }
-
-  get context(): ExtensionContext {
-    if (!this.#context) {
-      throw new Error("Context is not set");
-    }
-    return this.#context;
   }
 
   private async fetchDevices(): Promise<{ devices: DeviceDestination[]; devicectlError: unknown }> {
@@ -67,8 +61,8 @@ export class DevicesManager {
     // The iOS <= 16 recovery path relies on xcdevice — we must not drop xcdevice
     // results just because devicectl (ENOENT on old Xcode, sandboxed env) blew up.
     const [devicectlResult, xcdeviceResult] = await Promise.allSettled([
-      listDevices(this.context),
-      listDevicesWithXcdevice(this.context),
+      listDevices(this.vscodeContext),
+      listDevicesWithXcdevice(),
     ]);
 
     const devicectlDevices = devicectlResult.status === "fulfilled" ? devicectlResult.value.result.devices : [];

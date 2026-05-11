@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 
-import type { ExtensionContext } from "../common/commands";
+import { type AppDeps, resetSweetPadState } from "../common/commands";
 import { commonLogger } from "../common/logger";
 import { refreshShellEnv } from "../common/tasks/shell-env";
 
-export async function resetSweetPadCache(context: ExtensionContext) {
-  context.updateProgressStatus("Resetting SweetPad cache");
-  context.resetWorkspaceState();
+export async function resetSweetPadCache(deps: AppDeps) {
+  deps.progressStatusBar.updateText("Resetting SweetPad cache");
+  resetSweetPadState(deps);
   vscode.window.showInformationMessage("SweetPad cache has been reset");
 }
 
@@ -19,7 +19,7 @@ async function createIssue(options: { title: string; body: string; labels: strin
   vscode.env.openExternal(vscode.Uri.parse(url.toString()));
 }
 
-export async function createIssueGenericCommand(context: ExtensionContext) {
+export async function createIssueGenericCommand(deps: AppDeps) {
   await createIssue({
     title: "SweetPad issue",
     body: "Please describe your issue here",
@@ -48,6 +48,6 @@ export async function openTerminalPanel() {
   vscode.window.terminals.at(-1)?.show();
 }
 
-export async function refreshShellEnvCommand(_context: ExtensionContext) {
+export async function refreshShellEnvCommand(_deps: AppDeps) {
   await refreshShellEnv();
 }

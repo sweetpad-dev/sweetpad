@@ -2,25 +2,25 @@ import path from "node:path";
 
 import * as vscode from "vscode";
 
-import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
+import type { BuildManager } from "./manager";
 import { getWorkspacePath, prepareDerivedDataPath } from "./utils";
 
-class SchemeWatcher {
+export class SchemeWatcher implements vscode.Disposable {
   private watchers: vscode.FileSystemWatcher[] = [];
   // todo: rename to debounce, or make it behave like throttle
   private throttle: NodeJS.Timeout | null = null;
-  private derivedDataPath: string | null;
-  private workspacePath: string;
+  private derivedDataPath: string | null = null;
+  private workspacePath = "";
 
-  constructor(private extension: ExtensionContext) {
-    this.derivedDataPath = prepareDerivedDataPath();
-    this.workspacePath = getWorkspacePath();
-  }
+  constructor(private buildManager: BuildManager) {}
 
   async start(): Promise<void> {
+    this.derivedDataPath = prepareDerivedDataPath();
+    this.workspacePath = getWorkspacePath();
+
     // Check if auto-refresh is enabled (default: true)
     const isEnabled = getWorkspaceConfig("build.autoRefreshSchemes") ?? true;
     if (!isEnabled) {
@@ -166,7 +166,7 @@ class SchemeWatcher {
     this.throttle = setTimeout(() => {
       this.throttle = null;
 
-      this.extension.buildManager
+      this.buildManager
         .refreshSchemes()
         .then(() => {
           commonLogger.log("Schemes auto-refreshed successfully", {
@@ -201,10 +201,4 @@ class SchemeWatcher {
       workspacePath: this.workspacePath,
     });
   }
-}
-
-export function createSchemeWatcher(extension: ExtensionContext): vscode.Disposable {
-  const watcher = new SchemeWatcher(extension);
-  void watcher.start();
-  return watcher;
 }

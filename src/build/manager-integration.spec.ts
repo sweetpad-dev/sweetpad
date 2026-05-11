@@ -2,17 +2,20 @@ import type { Mock } from "vitest";
 /**
  * Integration tests for build manager deployment logic
  */
+import type * as vscode from "vscode";
 
 import {
-  createMockContext,
   createMockDevice,
   createMockDeviceOfType,
   createMockDeviceWithOS,
   createMockTerminal,
 } from "../__mocks__/devices";
 import { getBuildSettingsToLaunch, getXcodeVersionInstalled } from "../common/cli/scripts";
+import { ExecutionScopeService } from "../common/execution-scope";
 import { isFileExists, readJsonFile, tempFilePath } from "../common/files";
+import type { WorkspaceStateService } from "../common/workspace-state";
 import * as iosDeploy from "../common/xcode/ios-deploy";
+import type { TunnelManager } from "../devices/tunnel";
 import type { DeviceDestination } from "../devices/types";
 import {
   iOSDeviceDestination,
@@ -20,6 +23,7 @@ import {
   visionOSDeviceDestination,
   watchOSDeviceDestination,
 } from "../devices/types";
+import type { ProgressStatusBar } from "../system/status-bar";
 import { BuildManager } from "./manager";
 
 // Mock dependencies
@@ -56,15 +60,36 @@ vi.mock("../devices/manager", () => ({
 
 describe("BuildManager - iOS Device Deployment Integration", () => {
   let buildManager: BuildManager;
-  let mockContext: ReturnType<typeof createMockContext>;
   let mockTerminal: ReturnType<typeof createMockTerminal>;
+  let mockVscodeContext: vscode.ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    buildManager = new BuildManager();
-    mockContext = createMockContext();
+    const mockWorkspace = {
+      get: vi.fn().mockReturnValue(undefined),
+      update: vi.fn(),
+      reset: vi.fn(),
+    } as unknown as WorkspaceStateService;
+    const mockProgress = { updateText: vi.fn() } as unknown as ProgressStatusBar;
+    const execution = new ExecutionScopeService();
+    const mockTunnel = { autoConnect: vi.fn().mockResolvedValue(undefined) } as unknown as TunnelManager;
+    mockVscodeContext = {
+      storageUri: { fsPath: "/tmp/sweetpad-test" },
+      extensionPath: "/tmp/sweetpad-ext",
+    } as unknown as vscode.ExtensionContext;
+    const mockDestinations = {
+      refreshSimulators: vi.fn().mockResolvedValue([]),
+      getDestinations: vi.fn().mockResolvedValue([]),
+    } as any;
+    buildManager = new BuildManager({
+      workspace: mockWorkspace,
+      progress: mockProgress,
+      execution,
+      tunnel: mockTunnel,
+      vscodeContext: mockVscodeContext,
+      destinations: mockDestinations,
+    });
     mockTerminal = createMockTerminal();
-    buildManager.context = mockContext;
 
     // Setup common mocks
     (getXcodeVersionInstalled as Mock).mockResolvedValue({ major: 16, minor: 0, patch: 0 });
@@ -204,7 +229,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         });
 
         expect(iosDeploy.installAndLaunchApp).toHaveBeenCalledWith(
-          mockContext,
+          mockVscodeContext,
           mockTerminal,
           expect.objectContaining({
             deviceId: legacyDevice.udid,

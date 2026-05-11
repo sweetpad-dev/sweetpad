@@ -1,19 +1,22 @@
 import * as vscode from "vscode";
 
+import type { BuildManager } from "../build/manager";
 import { askConfigurationBase } from "../common/askers";
 import { type XcodeBuildSettings, getSchemes, getTargets } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { DestinationPlatform } from "../destination/constants";
+import type { DestinationsManager } from "../destination/manager";
 import type { Destination } from "../destination/types";
 import { splitSupportedDestinatinos } from "../destination/utils";
+import type { ProgressStatusBar } from "../system/status-bar";
+import type { TestingManager } from "./manager";
 
 /**
  * Ask user to select target to build
  */
 export async function askTestingTarget(
-  context: ExtensionContext,
+  testingManager: TestingManager,
   options: {
     title: string;
     xcworkspace: string;
@@ -21,7 +24,7 @@ export async function askTestingTarget(
   },
 ): Promise<string | null> {
   // Testing target can be cached
-  const cachedTarget = context.testingManager.getDefaultTestingTarget();
+  const cachedTarget = testingManager.getDefaultTestingTarget();
   if (cachedTarget && !options.force) {
     return cachedTarget;
   }
@@ -39,7 +42,7 @@ export async function askTestingTarget(
   // Auto select target if only one found
   if (targets.length === 1 && !options.force) {
     const targetName = targets[0];
-    context.testingManager.setDefaultTestingTarget(targetName);
+    testingManager.setDefaultTestingTarget(targetName);
     return targetName;
   }
 
@@ -58,7 +61,7 @@ export async function askTestingTarget(
   });
 
   const targetName = target.context.target;
-  context.testingManager.setDefaultTestingTarget(targetName);
+  testingManager.setDefaultTestingTarget(targetName);
   return targetName;
 }
 
@@ -66,7 +69,7 @@ export async function askTestingTarget(
  * Ask user to select configuration
  */
 export async function askConfigurationForTesting(
-  context: ExtensionContext,
+  buildManager: BuildManager,
   options: {
     xcworkspace: string;
   },
@@ -75,14 +78,14 @@ export async function askConfigurationForTesting(
   if (fromConfig) {
     return fromConfig;
   }
-  const cached = context.buildManager.getDefaultConfigurationForTesting();
+  const cached = buildManager.getDefaultConfigurationForTesting();
   if (cached) {
     return cached;
   }
   const selected = await askConfigurationBase({
     xcworkspace: options.xcworkspace,
   });
-  context.buildManager.setDefaultConfigurationForTesting(selected);
+  buildManager.setDefaultConfigurationForTesting(selected);
   return selected;
 }
 
@@ -90,18 +93,18 @@ export async function askConfigurationForTesting(
  * Ask user to select simulator or device to run on
  */
 export async function askDestinationToTestOn(
-  context: ExtensionContext,
+  destinationsManager: DestinationsManager,
   buildSettings: XcodeBuildSettings | null,
 ): Promise<Destination> {
   // We can remove platforms that are not supported by the project
   const supportedPlatforms = buildSettings?.supportedPlatforms;
 
-  const destinations = await context.destinationsManager.getDestinations({
+  const destinations = await destinationsManager.getDestinations({
     mostUsedSort: true,
   });
 
   // If we have cached desination, use it
-  const cachedDestination = context.destinationsManager.getSelectedXcodeDestinationForTesting();
+  const cachedDestination = destinationsManager.getSelectedXcodeDestinationForTesting();
   if (cachedDestination) {
     const destination = destinations.find((d) => d.id === cachedDestination.id && d.type === cachedDestination.type);
     if (destination) {
@@ -109,14 +112,14 @@ export async function askDestinationToTestOn(
     }
   }
 
-  return await selectDestinationForTesting(context, {
+  return await selectDestinationForTesting(destinationsManager, {
     destinations: destinations,
     supportedPlatforms: supportedPlatforms,
   });
 }
 
 export async function selectDestinationForTesting(
-  context: ExtensionContext,
+  destinationsManager: DestinationsManager,
   options: {
     destinations: Destination[];
     supportedPlatforms: DestinationPlatform[] | undefined;
@@ -175,7 +178,7 @@ export async function selectDestinationForTesting(
 
   const destination = selected.context;
 
-  context.destinationsManager.setWorkspaceDestinationForTesting(destination);
+  destinationsManager.setWorkspaceDestinationForTesting(destination);
   return destination;
 }
 
@@ -183,19 +186,20 @@ export async function selectDestinationForTesting(
  * Ask user to select scheme to build
  */
 export async function askSchemeForTesting(
-  context: ExtensionContext,
+  progress: ProgressStatusBar,
+  buildManager: BuildManager,
   options: {
     title?: string;
     xcworkspace: string;
     ignoreCache?: boolean;
   },
 ): Promise<string> {
-  const cachedScheme = context.buildManager.getDefaultSchemeForTesting();
+  const cachedScheme = buildManager.getDefaultSchemeForTesting();
   if (cachedScheme && !options.ignoreCache) {
     return cachedScheme;
   }
 
-  context.updateProgressStatus("Searching for scheme");
+  progress.updateText("Searching for scheme");
   const schemes = await getSchemes({
     xcworkspace: options.xcworkspace,
   });
@@ -213,6 +217,6 @@ export async function askSchemeForTesting(
   });
 
   const schemeName = scheme.context.scheme.name;
-  context.buildManager.setDefaultSchemeForTesting(schemeName);
+  buildManager.setDefaultSchemeForTesting(schemeName);
   return schemeName;
 }

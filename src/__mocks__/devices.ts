@@ -3,7 +3,7 @@
  * Provides helper functions to generate mock device objects and test contexts
  */
 
-import type { ExtensionContext } from "../common/commands";
+import type { AppDeps } from "../common/commands";
 import type { ProcessGroup, ProcessHandle, ProcessSpec, TaskTerminal } from "../common/tasks/types";
 import type { DeviceCtlDevice } from "../common/xcode/devicectl";
 import type { XcdeviceDevice } from "../common/xcode/xcdevice";
@@ -50,21 +50,40 @@ export function createMockXcdeviceDevice(overrides: Partial<XcdeviceDevice> = {}
 }
 
 /**
- * Create a mock ExtensionContext for testing
+ * Create a mock AppDeps for testing
  */
-export function createMockContext(overrides: Partial<ExtensionContext> = {}): ExtensionContext {
+export function createMockContext(overrides: Partial<AppDeps> = {}): AppDeps {
   return {
-    startExecutionScope: vi.fn().mockImplementation(async (_scope, callback) => {
-      return await callback();
-    }),
-    updateProgressStatus: vi.fn(),
-    getWorkspaceState: vi.fn().mockReturnValue(undefined),
-    updateWorkspaceState: vi.fn(),
+    workspace: {
+      get: vi.fn().mockReturnValue(undefined),
+      update: vi.fn(),
+      reset: vi.fn(),
+    },
+    execution: {
+      startScope: vi.fn().mockImplementation(async (_scope, callback) => callback()),
+      setScope: vi.fn().mockImplementation(async (_scope, callback) => callback()),
+      getScope: vi.fn().mockReturnValue(undefined),
+      getScopeId: vi.fn().mockReturnValue(undefined),
+      onClosed: vi.fn(),
+    },
+    progressStatusBar: { updateText: vi.fn() },
     buildManager: {} as any,
     destinationsManager: {} as any,
-    tunnelManager: { autoStart: vi.fn().mockResolvedValue(undefined) } as any,
+    tunnelManager: { autoConnect: vi.fn().mockResolvedValue(undefined) } as any,
+    vscodeContext: createMockVscodeContext(),
     ...overrides,
-  } as unknown as ExtensionContext;
+  } as unknown as AppDeps;
+}
+
+/**
+ * Minimal stand-in for vscode.ExtensionContext used in tests that call helpers
+ * which need storage paths (tempFilePath etc.). Most fields are stubs.
+ */
+export function createMockVscodeContext(): any {
+  return {
+    storageUri: { fsPath: "/tmp/sweetpad-test" },
+    extensionPath: "/tmp/sweetpad-ext",
+  };
 }
 
 /**

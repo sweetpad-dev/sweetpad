@@ -9,7 +9,7 @@ import {
   tuistInstall,
   tuistTest,
 } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
+import type { AppDeps } from "../common/commands";
 import { ExtensionError } from "../common/errors";
 
 async function tuistCheckInstalled() {
@@ -19,8 +19,8 @@ async function tuistCheckInstalled() {
   }
 }
 
-export async function tuistGenerateCommand(context: ExtensionContext) {
-  context.updateProgressStatus("Running 'tuist generate'");
+export async function tuistGenerateCommand(deps: AppDeps) {
+  deps.progressStatusBar.updateText("Running 'tuist generate'");
   await tuistCheckInstalled();
 
   const raw = await tuistGenerate();
@@ -34,8 +34,8 @@ export async function tuistGenerateCommand(context: ExtensionContext) {
   vscode.window.showInformationMessage("The Xcode project was successfully generated using Tuist.");
 }
 
-export async function tuistInstallCommand(context: ExtensionContext) {
-  context.updateProgressStatus("Running 'tuist install'");
+export async function tuistInstallCommand(deps: AppDeps) {
+  deps.progressStatusBar.updateText("Running 'tuist install'");
   await tuistCheckInstalled();
 
   await tuistInstall();
@@ -45,8 +45,8 @@ export async function tuistInstallCommand(context: ExtensionContext) {
   vscode.window.showInformationMessage("The Swift Package was successfully installed using Tuist.");
 }
 
-export async function tuistCleanCommand(context: ExtensionContext) {
-  context.updateProgressStatus("Running 'tuist clean'");
+export async function tuistCleanCommand(deps: AppDeps) {
+  deps.progressStatusBar.updateText("Running 'tuist clean'");
   await tuistCheckInstalled();
 
   await tuistClean();
@@ -54,15 +54,15 @@ export async function tuistCleanCommand(context: ExtensionContext) {
   vscode.window.showInformationMessage("Tuist cleaned.");
 }
 
-export async function tuistEditComnmand(context: ExtensionContext) {
-  context.updateProgressStatus("Running 'tuist edit'");
+export async function tuistEditComnmand(deps: AppDeps) {
+  deps.progressStatusBar.updateText("Running 'tuist edit'");
   await tuistCheckInstalled();
 
   await tuistEdit();
 }
 
-export async function tuistTestComnmand(context: ExtensionContext) {
-  context.updateProgressStatus("Running 'tuist test'");
+export async function tuistTestComnmand(deps: AppDeps) {
+  deps.progressStatusBar.updateText("Running 'tuist test'");
   await tuistCheckInstalled();
 
   await tuistTest();

@@ -15,20 +15,24 @@ import {
   getXcodeBuildCommand,
   getXcodeVersionInstalled,
 } from "../common/cli/scripts";
-import { BaseExecutionScope, type ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
+import { BaseExecutionScope, type ExecutionScopeService } from "../common/execution-scope";
 import { isFileExists, readJsonFile, tempFilePath } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { runTask } from "../common/tasks/run";
 import type { Command, TaskTerminal } from "../common/tasks/types";
 import { assertUnreachable } from "../common/types";
+import type { WorkspaceStateService } from "../common/workspace-state";
 import * as iosDeploy from "../common/xcode/ios-deploy";
+import type { DestinationsManager } from "../destination/manager";
+import type { TunnelManager } from "../devices/tunnel";
 import type { DeviceDestination } from "../devices/types";
 import { MainExecutable } from "../run/main";
 import { MacOSLogSidecar, Pymd3Sidecar, SimulatorLogSidecar } from "../run/sidecars";
 import type { SimulatorDestination } from "../simulators/types";
 import { getSimulatorByUdid } from "../simulators/utils";
+import type { ProgressStatusBar } from "../system/status-bar";
 import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
 import type { BuildTreeItem } from "./tree";
 import {
@@ -68,10 +72,31 @@ type IEventKey = keyof IEventMap;
 export class BuildManager {
   private cache: XcodeScheme[] | undefined = undefined;
   private emitter = new events.EventEmitter<IEventMap>();
-  #context: ExtensionContext | undefined = undefined;
+  private workspace: WorkspaceStateService;
+  private progress: ProgressStatusBar;
+  private execution: ExecutionScopeService;
+  private tunnel: TunnelManager;
+  private vscodeContext: vscode.ExtensionContext;
+  private destinations: DestinationsManager;
   private runningSchemes: Set<string> = new Set();
 
-  constructor() {
+  constructor(options: {
+    workspace: WorkspaceStateService;
+    progress: ProgressStatusBar;
+    execution: ExecutionScopeService;
+    tunnel: TunnelManager;
+    vscodeContext: vscode.ExtensionContext;
+    destinations: DestinationsManager;
+  }) {
+    this.workspace = options.workspace;
+    this.progress = options.progress;
+    this.execution = options.execution;
+    this.tunnel = options.tunnel;
+    this.vscodeContext = options.vscodeContext;
+    this.destinations = options.destinations;
+  }
+
+  async start(): Promise<void> {
     this.on("defaultSchemeForBuildUpdated", (scheme: string | undefined) => {
       void this.generateXcodeBuildServerSettingsOnSchemeChange({
         scheme: scheme,
@@ -97,27 +122,16 @@ export class BuildManager {
     return this.runningSchemes.has(scheme);
   }
 
-  set context(context: ExtensionContext) {
-    this.#context = context;
-  }
-
-  get context(): ExtensionContext {
-    if (!this.#context) {
-      throw new Error("Context is not set");
-    }
-    return this.#context;
-  }
-
   async refreshSchemes(): Promise<XcodeScheme[]> {
     const scope = new BaseExecutionScope();
-    return await this.context.startExecutionScope(scope, async () => {
-      this.context.updateProgressStatus("Refreshing Xcode schemes");
+    return await this.execution.startScope(scope, async () => {
+      this.progress.updateText("Refreshing Xcode schemes");
 
       this.emitter.emit("refreshSchemesStarted");
       try {
         getBasicProjectInfo.clearCache();
 
-        const xcworkspace = getCurrentXcodeWorkspacePath(this.context);
+        const xcworkspace = getCurrentXcodeWorkspacePath(this.workspace);
 
         const schemes = await getSchemes({ xcworkspace: xcworkspace });
 
@@ -142,37 +156,37 @@ export class BuildManager {
   }
 
   getDefaultSchemeForBuild(): string | undefined {
-    return this.context.getWorkspaceState("build.xcodeScheme");
+    return this.workspace.get("build.xcodeScheme");
   }
 
   getDefaultSchemeForTesting(): string | undefined {
-    return this.context.getWorkspaceState("testing.xcodeScheme");
+    return this.workspace.get("testing.xcodeScheme");
   }
 
   setDefaultSchemeForBuild(scheme: string | undefined): void {
-    this.context.updateWorkspaceState("build.xcodeScheme", scheme);
+    this.workspace.update("build.xcodeScheme", scheme);
     this.emitter.emit("defaultSchemeForBuildUpdated", scheme);
   }
 
   setDefaultSchemeForTesting(scheme: string | undefined): void {
-    this.context.updateWorkspaceState("testing.xcodeScheme", scheme);
+    this.workspace.update("testing.xcodeScheme", scheme);
     this.emitter.emit("defaultSchemeForTestingUpdated", scheme);
   }
 
   getDefaultConfigurationForBuild(): string | undefined {
-    return this.context.getWorkspaceState("build.xcodeConfiguration");
+    return this.workspace.get("build.xcodeConfiguration");
   }
 
   getDefaultConfigurationForTesting(): string | undefined {
-    return this.context.getWorkspaceState("testing.xcodeConfiguration");
+    return this.workspace.get("testing.xcodeConfiguration");
   }
 
   setDefaultConfigurationForBuild(configuration: string | undefined): void {
-    this.context.updateWorkspaceState("build.xcodeConfiguration", configuration);
+    this.workspace.update("build.xcodeConfiguration", configuration);
   }
 
   setDefaultConfigurationForTesting(configuration: string | undefined): void {
-    this.context.updateWorkspaceState("testing.xcodeConfiguration", configuration);
+    this.workspace.update("testing.xcodeConfiguration", configuration);
   }
 
   /**
@@ -199,16 +213,16 @@ export class BuildManager {
       return;
     }
 
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    const xcworkspace = await askXcodeWorkspacePath(this.workspace, this);
     await generateBuildServerConfig({
       xcworkspace: xcworkspace,
       scheme: options.scheme,
     });
     await restartSwiftLSP();
 
-    const isShown = this.context.getWorkspaceState("build.xcodeBuildServerAutogenreateInfoShown") ?? false;
+    const isShown = this.workspace.get("build.xcodeBuildServerAutogenreateInfoShown") ?? false;
     if (!isShown) {
-      this.context.updateWorkspaceState("build.xcodeBuildServerAutogenreateInfoShown", true);
+      this.workspace.update("build.xcodeBuildServerAutogenreateInfoShown", true);
       vscode.window.showInformationMessage(`
           INFO: "buildServer.json" file is automatically regenerated every time you change the scheme.
           If you want to disable this feature, you can do it in the settings. This message is shown only once.
@@ -249,7 +263,7 @@ export class BuildManager {
   }): Promise<void> {
     this.startSchemeBuild(options.scheme);
     try {
-      await runTask(this.context, {
+      await runTask(this.execution, {
         name: options.name,
         lock: "sweetpad.build",
         terminateLocked: true,
@@ -266,25 +280,24 @@ export class BuildManager {
    * Build app without running
    */
   async buildCommand(item: BuildTreeItem | undefined, options: { debug: boolean }) {
-    const context = this.context;
+    this.progress.updateText("Searching for workspace");
+    const xcworkspace = await askXcodeWorkspacePath(this.workspace, this);
 
-    context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(context);
-
-    context.updateProgressStatus("Searching for scheme");
+    this.progress.updateText("Searching for scheme");
     const scheme =
-      item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to build", xcworkspace: xcworkspace }));
+      item?.scheme ??
+      (await askSchemeForBuild(this.progress, this, { title: "Select scheme to build", xcworkspace: xcworkspace }));
 
     await generateBuildServerConfigOnBuild({
       scheme: scheme,
       xcworkspace: xcworkspace,
     });
 
-    context.updateProgressStatus("Searching for configuration");
-    const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+    this.progress.updateText("Searching for configuration");
+    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace });
 
-    context.updateProgressStatus("Searching for destination");
-    const destination = await askDestinationToRunOn(context, {
+    this.progress.updateText("Searching for destination");
+    const destination = await askDestinationToRunOn(this.progress, this.destinations, {
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -317,20 +330,22 @@ export class BuildManager {
    * Run application on the simulator or device without building
    */
   async runCommand(item: BuildTreeItem | undefined, options: { debug: boolean }) {
-    const context = this.context;
-    context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(context);
+    this.progress.updateText("Searching for workspace");
+    const xcworkspace = await askXcodeWorkspacePath(this.workspace, this);
 
-    context.updateProgressStatus("Searching for scheme");
+    this.progress.updateText("Searching for scheme");
     const scheme =
       item?.scheme ??
-      (await askSchemeForBuild(context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
+      (await askSchemeForBuild(this.progress, this, {
+        title: "Select scheme to build and run",
+        xcworkspace: xcworkspace,
+      }));
 
-    context.updateProgressStatus("Searching for configuration");
-    const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+    this.progress.updateText("Searching for configuration");
+    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace });
 
-    context.updateProgressStatus("Searching for destination");
-    const destination = await askDestinationToRunOn(context, {
+    this.progress.updateText("Searching for destination");
+    const destination = await askDestinationToRunOn(this.progress, this.destinations, {
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -399,25 +414,27 @@ export class BuildManager {
    * Build and run application on the simulator or device
    */
   async launchCommand(item: BuildTreeItem | undefined, options: { debug: boolean }) {
-    const context = this.context;
-    context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(context);
+    this.progress.updateText("Searching for workspace");
+    const xcworkspace = await askXcodeWorkspacePath(this.workspace, this);
 
-    context.updateProgressStatus("Searching for scheme");
+    this.progress.updateText("Searching for scheme");
     const scheme =
       item?.scheme ??
-      (await askSchemeForBuild(context, { title: "Select scheme to build and run", xcworkspace: xcworkspace }));
+      (await askSchemeForBuild(this.progress, this, {
+        title: "Select scheme to build and run",
+        xcworkspace: xcworkspace,
+      }));
 
     await generateBuildServerConfigOnBuild({
       scheme: scheme,
       xcworkspace: xcworkspace,
     });
 
-    context.updateProgressStatus("Searching for configuration");
-    const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+    this.progress.updateText("Searching for configuration");
+    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace });
 
-    context.updateProgressStatus("Searching for destination");
-    const destination = await askDestinationToRunOn(context, {
+    this.progress.updateText("Searching for destination");
+    const destination = await askDestinationToRunOn(this.progress, this.destinations, {
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -507,9 +524,7 @@ export class BuildManager {
       launchEnv: Record<string, string>;
     },
   ) {
-    const context = this.context;
-
-    context.updateProgressStatus("Extracting build settings");
+    this.progress.updateText("Extracting build settings");
     const buildSettings = await getBuildSettingsToLaunch({
       scheme: options.scheme,
       configuration: options.configuration,
@@ -519,7 +534,7 @@ export class BuildManager {
 
     const executablePath = await ensureAppPathExists(buildSettings.executablePath);
 
-    context.updateWorkspaceState("build.lastLaunchedApp", {
+    this.workspace.update("build.lastLaunchedApp", {
       type: "macos",
       appPath: executablePath,
       bundleIdentifier: buildSettings.bundleIdentifier,
@@ -528,7 +543,7 @@ export class BuildManager {
       writeWatchMarkers(terminal);
     }
 
-    context.updateProgressStatus(`Running "${options.scheme}" on Mac`);
+    this.progress.updateText(`Running "${options.scheme}" on Mac`);
     await terminal.runGroup(async (group) => {
       const logSidecar = new MacOSLogSidecar(group, {
         bundleId: buildSettings.bundleIdentifier,
@@ -562,10 +577,9 @@ export class BuildManager {
       debug: boolean;
     },
   ) {
-    const context = this.context;
     const simulatorId = options.destination.udid;
 
-    context.updateProgressStatus("Extracting build settings");
+    this.progress.updateText("Extracting build settings");
     const buildSettings = await getBuildSettingsToLaunch({
       scheme: options.scheme,
       configuration: options.configuration,
@@ -576,25 +590,25 @@ export class BuildManager {
     const bundlerId = buildSettings.bundleIdentifier;
 
     // Get simulator with fresh state
-    context.updateProgressStatus(`Searching for simulator "${simulatorId}"`);
-    const simulator = await getSimulatorByUdid(context, {
+    this.progress.updateText(`Searching for simulator "${simulatorId}"`);
+    const simulator = await getSimulatorByUdid(this.destinations, {
       udid: simulatorId,
     });
 
     // Boot device
     if (!simulator.isBooted) {
-      context.updateProgressStatus(`Booting simulator "${simulator.name}"`);
+      this.progress.updateText(`Booting simulator "${simulator.name}"`);
       await terminal.execute({
         command: "xcrun",
         args: ["simctl", "boot", simulator.udid],
       });
 
       // Refresh list of simulators after we start new simulator
-      context.destinationsManager.refreshSimulators();
+      this.destinations.refreshSimulators();
     }
 
     // Open simulator
-    context.updateProgressStatus("Launching Simulator.app");
+    this.progress.updateText("Launching Simulator.app");
     const bringToForeground = getWorkspaceConfig("build.bringSimulatorToForeground") ?? true;
     const openArgs = bringToForeground ? ["-a", "Simulator"] : ["-g", "-a", "Simulator"];
     await terminal.execute({
@@ -603,13 +617,13 @@ export class BuildManager {
     });
 
     // Install app
-    context.updateProgressStatus(`Installing "${options.scheme}" on "${simulator.name}"`);
+    this.progress.updateText(`Installing "${options.scheme}" on "${simulator.name}"`);
     await terminal.execute({
       command: "xcrun",
       args: ["simctl", "install", simulator.udid, appPath],
     });
 
-    context.updateWorkspaceState("build.lastLaunchedApp", {
+    this.workspace.update("build.lastLaunchedApp", {
       type: "simulator",
       appPath: appPath,
       bundleIdentifier: bundlerId,
@@ -633,7 +647,7 @@ export class BuildManager {
     ];
 
     // Run app
-    context.updateProgressStatus(`Running "${options.scheme}" on "${simulator.name}"`);
+    this.progress.updateText(`Running "${options.scheme}" on "${simulator.name}"`);
     await terminal.runGroup(async (group) => {
       const logSidecar = new SimulatorLogSidecar(group, {
         simulatorUdid: simulator.udid,
@@ -666,11 +680,10 @@ export class BuildManager {
       launchEnv: Record<string, string>;
     },
   ) {
-    const context = this.context;
     const { scheme, configuration, destination } = option;
     const { type: destinationType, name: destinationName } = destination;
 
-    context.updateProgressStatus("Extracting build settings");
+    this.progress.updateText("Extracting build settings");
     const buildSettings = await getBuildSettingsToLaunch({
       scheme: scheme,
       configuration: configuration,
@@ -695,14 +708,14 @@ export class BuildManager {
     }
 
     // Install and launch app on device
-    context.updateProgressStatus(`Installing "${scheme}" on "${destinationName}"`);
+    this.progress.updateText(`Installing "${scheme}" on "${destinationName}"`);
 
     if (option.watchMarker) {
       writeWatchMarkers(terminal);
     }
 
     // Launch app on device
-    context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
+    this.progress.updateText(`Running "${option.scheme}" on "${option.destination.name}"`);
 
     if (useDevicectl) {
       // Use devicectl for iOS 17+ devices - separate install and launch
@@ -711,15 +724,15 @@ export class BuildManager {
         args: ["devicectl", "device", "install", "app", "--device", deviceId, targetPath],
       });
 
-      await using jsonOutputPath = await tempFilePath(context, {
+      await using jsonOutputPath = await tempFilePath(this.vscodeContext, {
         prefix: "json",
       });
 
-      context.updateProgressStatus("Extracting Xcode version");
+      this.progress.updateText("Extracting Xcode version");
       const xcodeVersion = await getXcodeVersionInstalled();
       const isConsoleOptionSupported = xcodeVersion.major >= 16;
 
-      context.updateWorkspaceState("build.lastLaunchedApp", {
+      this.workspace.update("build.lastLaunchedApp", {
         type: "device",
         appPath: targetPath,
         appName: buildSettings.appName,
@@ -747,9 +760,9 @@ export class BuildManager {
         ...option.launchArgs,
       ].filter((arg) => arg !== null); // Filter out null arguments
 
-      context.updateProgressStatus(`Running "${option.scheme}" on "${option.destination.name}"`);
+      this.progress.updateText(`Running "${option.scheme}" on "${option.destination.name}"`);
 
-      await this.context.tunnelManager.autoStart();
+      await this.tunnel.autoConnect();
 
       await terminal.runGroup(async (group) => {
         // pymobiledevice3 is the only device log backend; toggle the global
@@ -806,7 +819,7 @@ export class BuildManager {
         throw new ExtensionError("ios-deploy is required for iOS < 17. Install it with: brew install ios-deploy");
       }
 
-      context.updateWorkspaceState("build.lastLaunchedApp", {
+      this.workspace.update("build.lastLaunchedApp", {
         type: "device",
         appPath: targetPath,
         appName: buildSettings.appName,
@@ -816,7 +829,7 @@ export class BuildManager {
         destinationType: destinationType,
       });
 
-      await iosDeploy.installAndLaunchApp(context, terminal, {
+      await iosDeploy.installAndLaunchApp(this.vscodeContext, terminal, {
         deviceId: deviceId,
         appPath: targetPath,
         bundleId: bundlerId,
@@ -844,10 +857,8 @@ export class BuildManager {
       debug: boolean;
     },
   ) {
-    const context = this.context;
-
     const useXcbeautify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
-    const bundlePath = await prepareBundleDir(context, options.scheme);
+    const bundlePath = await prepareBundleDir(this.vscodeContext, options.scheme);
     const derivedDataPath = prepareDerivedDataPath();
 
     const arch = getWorkspaceConfig("build.arch") || undefined;
@@ -916,11 +927,11 @@ export class BuildManager {
     }
 
     if (options.shouldClean) {
-      context.updateProgressStatus(`Cleaning "${options.scheme}"`);
+      this.progress.updateText(`Cleaning "${options.scheme}"`);
     } else if (options.shouldBuild) {
-      context.updateProgressStatus(`Building "${options.scheme}"`);
+      this.progress.updateText(`Building "${options.scheme}"`);
     } else if (options.shouldTest) {
-      context.updateProgressStatus(`Building "${options.scheme}"`);
+      this.progress.updateText(`Building "${options.scheme}"`);
     }
 
     await generateBuildServerConfigOnBuild({
@@ -949,19 +960,19 @@ export class BuildManager {
   }
 
   async cleanCommand(item: BuildTreeItem | undefined) {
-    const context = this.context;
-    context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(context);
+    this.progress.updateText("Searching for workspace");
+    const xcworkspace = await askXcodeWorkspacePath(this.workspace, this);
 
-    context.updateProgressStatus("Searching for scheme");
+    this.progress.updateText("Searching for scheme");
     const scheme =
-      item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to clean", xcworkspace: xcworkspace }));
+      item?.scheme ??
+      (await askSchemeForBuild(this.progress, this, { title: "Select scheme to clean", xcworkspace: xcworkspace }));
 
-    context.updateProgressStatus("Searching for configuration");
-    const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+    this.progress.updateText("Searching for configuration");
+    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace });
 
-    context.updateProgressStatus("Searching for destination");
-    const destination = await askDestinationToRunOn(context, {
+    this.progress.updateText("Searching for destination");
+    const destination = await askDestinationToRunOn(this.progress, this.destinations, {
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -991,20 +1002,19 @@ export class BuildManager {
   }
 
   async testCommand(item: BuildTreeItem | undefined) {
-    const context = this.context;
+    this.progress.updateText("Searching for workspace");
+    const xcworkspace = await askXcodeWorkspacePath(this.workspace, this);
 
-    context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(context);
-
-    context.updateProgressStatus("Searching for scheme");
+    this.progress.updateText("Searching for scheme");
     const scheme =
-      item?.scheme ?? (await askSchemeForBuild(context, { title: "Select scheme to test", xcworkspace: xcworkspace }));
+      item?.scheme ??
+      (await askSchemeForBuild(this.progress, this, { title: "Select scheme to test", xcworkspace: xcworkspace }));
 
-    context.updateProgressStatus("Searching for configuration");
-    const configuration = await askConfiguration(context, { xcworkspace: xcworkspace });
+    this.progress.updateText("Searching for configuration");
+    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace });
 
-    context.updateProgressStatus("Searching for destination");
-    const destination = await askDestinationToRunOn(context, {
+    this.progress.updateText("Searching for destination");
+    const destination = await askDestinationToRunOn(this.progress, this.destinations, {
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -1034,8 +1044,7 @@ export class BuildManager {
   }
 
   async resolveDependenciesCommand(options: { scheme: string; xcworkspace: string }): Promise<void> {
-    const context = this.context;
-    context.updateProgressStatus("Resolving dependencies");
+    this.progress.updateText("Resolving dependencies");
 
     await this.runSchemeTask({
       name: "Resolve Dependencies",
@@ -1062,8 +1071,6 @@ export class BuildManager {
   }
 
   async stopSchemeCommand(item: BuildTreeItem | undefined): Promise<void> {
-    const context = this.context;
-
     const scheme = item?.scheme;
     if (!scheme) return;
 
@@ -1074,6 +1081,6 @@ export class BuildManager {
       task.terminate();
     }
     // Ensure the scheme is marked as stopped in the manager
-    context.buildManager.stopSchemeBuild(scheme);
+    this.stopSchemeBuild(scheme);
   }
 }

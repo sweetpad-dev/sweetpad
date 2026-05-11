@@ -1,5 +1,5 @@
-import type { ExtensionContext } from "../commands";
 import { getWorkspaceConfig } from "../config";
+import type { ExecutionScopeService } from "../execution-scope";
 import type { TaskExecutor, TaskTerminal } from "./types";
 import { runTaskV2 } from "./v2";
 import { runTaskV3 } from "./v3";
@@ -13,7 +13,7 @@ export function getTaskExecutorName(): TaskExecutor {
 }
 
 export async function runTask<TMetadata>(
-  context: ExtensionContext,
+  execution: ExecutionScopeService,
   options: {
     name: string;
     source?: string;
@@ -28,9 +28,9 @@ export async function runTask<TMetadata>(
   const name = getTaskExecutorName();
   switch (name) {
     case "v2":
-      return await runTaskV2(context, options);
+      return await runTaskV2(execution, options);
     case "v3":
-      return await runTaskV3(context, options);
+      return await runTaskV3(execution, options);
     default:
       throw new Error(`Unknown executor: ${name}`);
   }

@@ -4,6 +4,7 @@
  */
 
 import { createMockDevice } from "../__mocks__/devices";
+import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DeviceCtlDevice } from "../common/xcode/devicectl";
 import { DevicesManager } from "../devices/manager";
 import { iOSDeviceDestination } from "../devices/types";
@@ -12,8 +13,13 @@ import { DestinationsManager } from "./manager";
 
 function buildManager(): DestinationsManager {
   const simulatorsManager = { on: vi.fn() } as unknown as SimulatorsManager;
-  const devicesManager = new DevicesManager();
-  return new DestinationsManager({ simulatorsManager, devicesManager });
+  const devicesManager = new DevicesManager({ vscodeContext: {} as any });
+  const workspace = {
+    get: vi.fn().mockReturnValue(undefined),
+    update: vi.fn(),
+    reset: vi.fn(),
+  } as unknown as WorkspaceStateService;
+  return new DestinationsManager({ simulatorsManager, devicesManager, workspace });
 }
 
 function makeDevice(overrides: {

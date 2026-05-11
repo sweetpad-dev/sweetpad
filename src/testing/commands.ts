@@ -4,48 +4,45 @@ import type { BuildTreeItem } from "../build/tree";
 import { askXcodeWorkspacePath } from "../build/utils";
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import { getBuildConfigurations } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
+import type { AppDeps } from "../common/commands";
 import { updateWorkspaceConfig } from "../common/config";
 import { showInputBox } from "../common/quick-pick";
 import { askSchemeForTesting, askTestingTarget } from "./utils";
 
-export async function selectTestingTargetCommand(context: ExtensionContext): Promise<void> {
-  context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+export async function selectTestingTargetCommand(deps: AppDeps): Promise<void> {
+  deps.progressStatusBar.updateText("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
 
-  context.updateProgressStatus("Selecting testing target");
-  await askTestingTarget(context, {
+  deps.progressStatusBar.updateText("Selecting testing target");
+  await askTestingTarget(deps.testingManager, {
     title: "Select default testing target",
     xcworkspace: xcworkspace,
     force: true,
   });
 }
 
-export async function buildForTestingCommand(context: ExtensionContext): Promise<void> {
-  context.updateProgressStatus("Building for testing");
-  return await context.testingManager.buildForTestingCommand(context);
+export async function buildForTestingCommand(deps: AppDeps): Promise<void> {
+  deps.progressStatusBar.updateText("Building for testing");
+  return await deps.testingManager.buildForTestingCommand();
 }
 
-export async function testWithoutBuildingCommand(
-  context: ExtensionContext,
-  ...items: vscode.TestItem[]
-): Promise<void> {
-  context.updateProgressStatus("Running tests without building");
+export async function testWithoutBuildingCommand(deps: AppDeps, ...items: vscode.TestItem[]): Promise<void> {
+  deps.progressStatusBar.updateText("Running tests without building");
   const request = new vscode.TestRunRequest(items, [], undefined, undefined);
   const tokenSource = new vscode.CancellationTokenSource();
-  await context.testingManager.runTestsWithoutBuilding(request, tokenSource.token);
+  await deps.testingManager.runTestsWithoutBuilding(request, tokenSource.token);
 }
 
-export async function selectXcodeSchemeForTestingCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Selecting scheme for testing");
+export async function selectXcodeSchemeForTestingCommand(deps: AppDeps, item?: BuildTreeItem) {
+  deps.progressStatusBar.updateText("Selecting scheme for testing");
 
   if (item) {
-    context.buildManager.setDefaultSchemeForTesting(item.scheme);
+    deps.buildManager.setDefaultSchemeForTesting(item.scheme);
     return;
   }
 
-  const xcworkspace = await askXcodeWorkspacePath(context);
-  await askSchemeForTesting(context, {
+  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  await askSchemeForTesting(deps.progressStatusBar, deps.buildManager, {
     title: "Select scheme to set as default",
     xcworkspace: xcworkspace,
     ignoreCache: true,
@@ -55,11 +52,11 @@ export async function selectXcodeSchemeForTestingCommand(context: ExtensionConte
 /**
  * Ask user to select configuration for testing
  */
-export async function selectConfigurationForTestingCommand(context: ExtensionContext): Promise<void> {
-  context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+export async function selectConfigurationForTestingCommand(deps: AppDeps): Promise<void> {
+  deps.progressStatusBar.updateText("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
 
-  context.updateProgressStatus("Searching for configurations");
+  deps.progressStatusBar.updateText("Searching for configurations");
   const configurations = await getBuildConfigurations({
     xcworkspace: xcworkspace,
   });
@@ -83,8 +80,8 @@ export async function selectConfigurationForTestingCommand(context: ExtensionCon
   });
   if (saveAnswer) {
     await updateWorkspaceConfig("testing.configuration", selected);
-    context.buildManager.setDefaultConfigurationForTesting(undefined);
+    deps.buildManager.setDefaultConfigurationForTesting(undefined);
   } else {
-    context.buildManager.setDefaultConfigurationForTesting(selected);
+    deps.buildManager.setDefaultConfigurationForTesting(selected);
   }
 }

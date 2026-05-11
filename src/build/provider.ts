@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
 
-import { type ExtensionContext, TaskExecutionScope } from "../common/commands";
+import { TaskExecutionScope } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { errorReporting } from "../common/error-reporting";
+import type { ExecutionScopeService } from "../common/execution-scope";
 import { setTaskPresentationOptions } from "../common/tasks/presentation";
 import { loadNodePty } from "../common/tasks/pty";
 import { getTaskExecutorName } from "../common/tasks/run";
@@ -10,8 +11,12 @@ import type { TaskTerminal } from "../common/tasks/types";
 import { TaskTerminalV2 } from "../common/tasks/v2";
 import { TaskTerminalV3 } from "../common/tasks/v3";
 import { assertUnreachable } from "../common/types";
+import type { WorkspaceStateService } from "../common/workspace-state";
+import type { DestinationsManager } from "../destination/manager";
 import type { Destination } from "../destination/types";
+import type { ProgressStatusBar } from "../system/status-bar";
 import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
+import type { BuildManager } from "./manager";
 import {
   askConfiguration,
   askDestinationToRunOn,
@@ -19,6 +24,17 @@ import {
   askXcodeWorkspacePath,
   getXcodeBuildDestinationString,
 } from "./utils";
+
+type DispatcherDeps = {
+  buildManager: BuildManager;
+  destinationsManager: DestinationsManager;
+  workspace: WorkspaceStateService;
+  progressStatusBar: ProgressStatusBar;
+};
+
+type ProviderDeps = DispatcherDeps & {
+  execution: ExecutionScopeService;
+};
 
 interface TaskDefinition extends vscode.TaskDefinition {
   type: string;
@@ -34,9 +50,9 @@ interface TaskDefinition extends vscode.TaskDefinition {
 }
 
 class ActionDispatcher {
-  context: ExtensionContext;
-  constructor(context: ExtensionContext) {
-    this.context = context;
+  deps: DispatcherDeps;
+  constructor(deps: DispatcherDeps) {
+    this.deps = deps;
   }
 
   async do(terminal: TaskTerminal, definition: TaskDefinition) {
@@ -77,7 +93,7 @@ class ActionDispatcher {
   }
 
   private async getDestinationByUserInput(
-    context: ExtensionContext,
+    destinationsManager: DestinationsManager,
     options: { definition: TaskDefinition },
   ): Promise<Destination | undefined> {
     // For simulators and devices, we try to find destination by ID
@@ -93,7 +109,7 @@ class ActionDispatcher {
     // For macOS, we just check if the destination string contains "macos"
     const isMacOS = options.definition.destination?.toLowerCase().includes("macos") ?? false;
 
-    const destinations = await context.destinationsManager.getDestinations();
+    const destinations = await destinationsManager.getDestinations();
     const destination = destinations.find((d) => {
       switch (d.type) {
         case "iOSSimulator":
@@ -122,7 +138,7 @@ class ActionDispatcher {
     xcworkspace: string;
   }): Promise<Destination> {
     // If user has provided the ID of the destination, then use it directly
-    const inputDestination = await this.getDestinationByUserInput(this.context, {
+    const inputDestination = await this.getDestinationByUserInput(this.deps.destinationsManager, {
       definition: options.definition,
     });
     if (inputDestination) {
@@ -130,7 +146,7 @@ class ActionDispatcher {
     }
 
     // If not in task definition, then ask user to select destination (or get from cache)
-    const destination = await askDestinationToRunOn(this.context, {
+    const destination = await askDestinationToRunOn(this.deps.progressStatusBar, this.deps.destinationsManager, {
       scheme: options.scheme,
       configuration: options.configuration,
       sdk: undefined,
@@ -152,21 +168,21 @@ class ActionDispatcher {
   }
 
   private async commonLaunchCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
-    this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    this.deps.progressStatusBar.updateText("Searching for workspace");
+    const xcworkspace = await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager);
 
-    this.context.updateProgressStatus("Searching for scheme");
+    this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
       definition.scheme ??
-      (await askSchemeForBuild(this.context, {
+      (await askSchemeForBuild(this.deps.progressStatusBar, this.deps.buildManager, {
         title: options.debug ? "Select scheme to debug" : "Select scheme to run",
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for configuration");
+    this.deps.progressStatusBar.updateText("Searching for configuration");
     const configuration =
       definition.configuration ??
-      (await askConfiguration(this.context, {
+      (await askConfiguration(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
       }));
 
@@ -184,7 +200,7 @@ class ActionDispatcher {
     const launchArgs: string[] = definition.launchArgs ?? getWorkspaceConfig("build.launchArgs") ?? [];
     const launchEnv: { [key: string]: string } = definition.launchEnv ?? getWorkspaceConfig("build.launchEnv") ?? {};
 
-    await this.context.buildManager.buildApp(terminal, {
+    await this.deps.buildManager.buildApp(terminal, {
       scheme: scheme,
       sdk: sdk,
       configuration: configuration,
@@ -197,7 +213,7 @@ class ActionDispatcher {
     });
 
     if (destination.type === "macOS") {
-      await this.context.buildManager.runOnMac(terminal, {
+      await this.deps.buildManager.runOnMac(terminal, {
         scheme: scheme,
         configuration: configuration,
         xcworkspace: xcworkspace,
@@ -211,7 +227,7 @@ class ActionDispatcher {
       destination.type === "visionOSSimulator" ||
       destination.type === "tvOSSimulator"
     ) {
-      await this.context.buildManager.runOniOSSimulator(terminal, {
+      await this.deps.buildManager.runOniOSSimulator(terminal, {
         scheme: scheme,
         destination: destination,
         sdk: sdk,
@@ -228,7 +244,7 @@ class ActionDispatcher {
       destination.type === "tvOSDevice" ||
       destination.type === "visionOSDevice"
     ) {
-      await this.context.buildManager.runOniOSDevice(terminal, {
+      await this.deps.buildManager.runOniOSDevice(terminal, {
         scheme: scheme,
         destination: destination,
         sdk: sdk,
@@ -256,20 +272,20 @@ class ActionDispatcher {
   }
 
   private async commonBuildCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
-    this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    this.deps.progressStatusBar.updateText("Searching for workspace");
+    const xcworkspace = await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager);
 
-    this.context.updateProgressStatus("Searching for scheme");
+    this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
       definition.scheme ??
-      (await askSchemeForBuild(this.context, {
+      (await askSchemeForBuild(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for configuration");
+    this.deps.progressStatusBar.updateText("Searching for configuration");
     const configuration =
       definition.configuration ??
-      (await askConfiguration(this.context, {
+      (await askConfiguration(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
       }));
 
@@ -284,7 +300,7 @@ class ActionDispatcher {
 
     const sdk = destination.platform;
 
-    await this.context.buildManager.buildApp(terminal, {
+    await this.deps.buildManager.buildApp(terminal, {
       scheme: scheme,
       sdk: sdk,
       configuration: configuration,
@@ -310,20 +326,20 @@ class ActionDispatcher {
   }
 
   private async commonRunCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
-    this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    this.deps.progressStatusBar.updateText("Searching for workspace");
+    const xcworkspace = await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager);
 
-    this.context.updateProgressStatus("Searching for scheme");
+    this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
       definition.scheme ??
-      (await askSchemeForBuild(this.context, {
+      (await askSchemeForBuild(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for configuration");
+    this.deps.progressStatusBar.updateText("Searching for configuration");
     const configuration =
       definition.configuration ??
-      (await askConfiguration(this.context, {
+      (await askConfiguration(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
       }));
 
@@ -341,7 +357,7 @@ class ActionDispatcher {
     const launchEnv: { [key: string]: string } = definition.launchEnv ?? getWorkspaceConfig("build.launchEnv") ?? {};
 
     if (destination.type === "macOS") {
-      await this.context.buildManager.runOnMac(terminal, {
+      await this.deps.buildManager.runOnMac(terminal, {
         scheme: scheme,
         configuration: configuration,
         xcworkspace: xcworkspace,
@@ -355,7 +371,7 @@ class ActionDispatcher {
       destination.type === "visionOSSimulator" ||
       destination.type === "tvOSSimulator"
     ) {
-      await this.context.buildManager.runOniOSSimulator(terminal, {
+      await this.deps.buildManager.runOniOSSimulator(terminal, {
         scheme: scheme,
         destination: destination,
         sdk: sdk,
@@ -372,7 +388,7 @@ class ActionDispatcher {
       destination.type === "tvOSDevice" ||
       destination.type === "visionOSDevice"
     ) {
-      await this.context.buildManager.runOniOSDevice(terminal, {
+      await this.deps.buildManager.runOniOSDevice(terminal, {
         scheme: scheme,
         destination: destination,
         sdk: sdk,
@@ -388,20 +404,20 @@ class ActionDispatcher {
   }
 
   private async cleanCallback(terminal: TaskTerminal, definition: TaskDefinition) {
-    this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    this.deps.progressStatusBar.updateText("Searching for workspace");
+    const xcworkspace = await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager);
 
-    this.context.updateProgressStatus("Searching for scheme");
+    this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
       definition.scheme ??
-      (await askSchemeForBuild(this.context, {
+      (await askSchemeForBuild(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
       }));
 
-    this.context.updateProgressStatus("Searching for configuration");
+    this.deps.progressStatusBar.updateText("Searching for configuration");
     const configuration =
       definition.configuration ??
-      (await askConfiguration(this.context, {
+      (await askConfiguration(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
       }));
 
@@ -416,7 +432,7 @@ class ActionDispatcher {
 
     const sdk = destination.platform;
 
-    await this.context.buildManager.buildApp(terminal, {
+    await this.deps.buildManager.buildApp(terminal, {
       scheme: scheme,
       sdk: sdk,
       configuration: configuration,
@@ -430,18 +446,18 @@ class ActionDispatcher {
   }
 
   private async testCallback(terminal: TaskTerminal, definition: TaskDefinition) {
-    this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
+    this.deps.progressStatusBar.updateText("Searching for workspace");
+    const xcworkspace = await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager);
 
-    this.context.updateProgressStatus("Searching for scheme");
+    this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
       definition.scheme ??
-      (await askSchemeForBuild(this.context, {
+      (await askSchemeForBuild(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
       }));
     const configuration =
       definition.configuration ??
-      (await askConfiguration(this.context, {
+      (await askConfiguration(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
       }));
 
@@ -456,7 +472,7 @@ class ActionDispatcher {
 
     const sdk = destination.platform;
 
-    await this.context.buildManager.buildApp(terminal, {
+    await this.deps.buildManager.buildApp(terminal, {
       scheme: scheme,
       sdk: sdk,
       configuration: configuration,
@@ -470,17 +486,18 @@ class ActionDispatcher {
   }
 
   private async resolveDependenciesCallback(terminal: TaskTerminal, definition: TaskDefinition) {
-    this.context.updateProgressStatus("Searching for workspace");
-    const xcworkspacePath = definition.workspace ?? (await askXcodeWorkspacePath(this.context));
+    this.deps.progressStatusBar.updateText("Searching for workspace");
+    const xcworkspacePath =
+      definition.workspace ?? (await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager));
 
-    this.context.updateProgressStatus("Searching for scheme");
+    this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
       definition.scheme ??
-      (await askSchemeForBuild(this.context, {
+      (await askSchemeForBuild(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspacePath,
       }));
 
-    await this.context.buildManager.resolveDependenciesCommand({
+    await this.deps.buildManager.resolveDependenciesCommand({
       scheme: scheme,
       xcworkspace: xcworkspacePath,
     });
@@ -489,12 +506,17 @@ class ActionDispatcher {
 
 export class XcodeBuildTaskProvider implements vscode.TaskProvider {
   public type = "sweetpad";
-  context: ExtensionContext;
+  deps: ProviderDeps;
   dispathcer: ActionDispatcher;
 
-  constructor(context: ExtensionContext) {
-    this.context = context;
-    this.dispathcer = new ActionDispatcher(context);
+  constructor(deps: ProviderDeps) {
+    this.deps = deps;
+    this.dispathcer = new ActionDispatcher({
+      buildManager: deps.buildManager,
+      destinationsManager: deps.destinationsManager,
+      workspace: deps.workspace,
+      progressStatusBar: deps.progressStatusBar,
+    });
   }
 
   async provideTasks(token: vscode.CancellationToken): Promise<vscode.Task[]> {
@@ -574,7 +596,7 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
   async dispatchTask(terminal: TaskTerminal, definition: TaskDefinition): Promise<void> {
     const taskScope = new TaskExecutionScope({ action: definition.action });
     return await errorReporting.withScope(async () => {
-      return await this.context.startExecutionScope(taskScope, async () => {
+      return await this.deps.execution.startScope(taskScope, async () => {
         await this.dispathcer.do(terminal, definition);
       });
     });
@@ -609,14 +631,14 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
             // In the V2 executor, one terminal is created for all tasks.
             // The callback should call terminal.execute(command) to run the script
             // in the current terminal.
-            return new TaskTerminalV2(this.context, {
+            return new TaskTerminalV2({
               callback: async (terminal) => {
                 await this.dispatchTask(terminal, taskDefinition);
               },
             });
           }
           case "v3": {
-            return new TaskTerminalV3(this.context, {
+            return new TaskTerminalV3({
               callback: async (terminal) => {
                 await this.dispatchTask(terminal, taskDefinition);
               },

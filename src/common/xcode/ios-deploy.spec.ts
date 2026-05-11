@@ -111,7 +111,7 @@ describe("ios-deploy", () => {
     });
 
     it("installs and launches app with correct arguments", async () => {
-      await iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+      await iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
         deviceId: "00008110-001234567890001E",
         appPath: "/path/to/app.app",
         bundleId: "com.example.app",
@@ -136,7 +136,7 @@ describe("ios-deploy", () => {
     });
 
     it("adds launch arguments when provided", async () => {
-      await iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+      await iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
         deviceId: "00008110-001234567890001E",
         appPath: "/path/to/app.app",
         bundleId: "com.example.app",
@@ -153,7 +153,7 @@ describe("ios-deploy", () => {
     });
 
     it("adds environment variables when provided", async () => {
-      await iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+      await iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
         deviceId: "00008110-001234567890001E",
         appPath: "/path/to/app.app",
         bundleId: "com.example.app",
@@ -172,7 +172,7 @@ describe("ios-deploy", () => {
     });
 
     it("adds both launch arguments and environment variables", async () => {
-      await iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+      await iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
         deviceId: "00008110-001234567890001E",
         appPath: "/path/to/app.app",
         bundleId: "com.example.app",
@@ -201,7 +201,7 @@ describe("ios-deploy", () => {
       });
 
       await expect(
-        iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+        iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
           deviceId: "00008110-001234567890001E",
           appPath: "/path/to/app.app",
           bundleId: "com.example.app",
@@ -221,7 +221,7 @@ describe("ios-deploy", () => {
       });
 
       await expect(
-        iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+        iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
           deviceId: "00008110-001234567890001E",
           appPath: "/path/to/app.app",
           bundleId: "com.example.app",
@@ -241,7 +241,7 @@ describe("ios-deploy", () => {
       });
 
       await expect(
-        iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+        iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
           deviceId: "00008110-001234567890001E",
           appPath: "/path/to/app.app",
           bundleId: "com.example.app",
@@ -262,7 +262,7 @@ describe("ios-deploy", () => {
       });
 
       await expect(
-        iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+        iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
           deviceId: "00008110-001234567890001E",
           appPath: "/path/to/app.app",
           bundleId: "com.example.app",
@@ -284,7 +284,7 @@ describe("ios-deploy", () => {
       });
 
       await expect(
-        iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+        iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
           deviceId: "00008110-001234567890001E",
           appPath: "/path/to/app.app",
           bundleId: "com.example.app",
@@ -304,7 +304,7 @@ describe("ios-deploy", () => {
       });
 
       await expect(
-        iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+        iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
           deviceId: "00008110-001234567890001E",
           appPath: "/path/to/app.app",
           bundleId: "com.example.app",
@@ -315,7 +315,7 @@ describe("ios-deploy", () => {
     it("streams log file using spawn instead of terminal.execute", async () => {
       // streamLogFile now uses child_process.spawn directly instead of terminal.execute
       // so it won't appear as a terminal.execute call for tail
-      await iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+      await iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
         deviceId: "00008110-001234567890001E",
         appPath: "/path/to/app.app",
         bundleId: "com.example.app",
@@ -329,7 +329,7 @@ describe("ios-deploy", () => {
     });
 
     it("handles empty launch arguments array", async () => {
-      await iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+      await iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
         deviceId: "00008110-001234567890001E",
         appPath: "/path/to/app.app",
         bundleId: "com.example.app",
@@ -342,7 +342,7 @@ describe("ios-deploy", () => {
     });
 
     it("handles empty launch env object", async () => {
-      await iosDeploy.installAndLaunchApp(mockContext, mockTerminal, {
+      await iosDeploy.installAndLaunchApp(mockContext.vscodeContext, mockTerminal, {
         deviceId: "00008110-001234567890001E",
         appPath: "/path/to/app.app",
         bundleId: "com.example.app",

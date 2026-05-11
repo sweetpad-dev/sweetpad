@@ -9,7 +9,7 @@ import {
   getBuildConfigurations,
   getIsXcodeBuildServerInstalled,
 } from "../common/cli/scripts";
-import type { ExtensionContext } from "../common/commands";
+import type { AppDeps } from "../common/commands";
 import { updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
@@ -33,77 +33,77 @@ import {
 /**
  * Build app without running
  */
-export async function buildCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Starting build command");
-  return context.buildManager.buildCommand(item, { debug: false });
+export async function buildCommand(deps: AppDeps, item?: BuildTreeItem) {
+  deps.progressStatusBar.updateText("Starting build command");
+  return deps.buildManager.buildCommand(item, { debug: false });
 }
 
 /**
  * Build app in debug mode without running
  */
-export async function debuggingBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Building the app (debug mode)");
-  return context.buildManager.buildCommand(item, { debug: true });
+export async function debuggingBuildCommand(deps: AppDeps, item?: BuildTreeItem) {
+  deps.progressStatusBar.updateText("Building the app (debug mode)");
+  return deps.buildManager.buildCommand(item, { debug: true });
 }
 
 /**
  * Build and run application on the simulator or device
  */
-export async function launchCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  return context.buildManager.launchCommand(item, { debug: false });
+export async function launchCommand(deps: AppDeps, item?: BuildTreeItem) {
+  return deps.buildManager.launchCommand(item, { debug: false });
 }
 
 /**
  * Builds and launches the application in debug mode
  * This is a convenience wrapper around launchCommand that sets the debug flag
  */
-export async function debuggingLaunchCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  return context.buildManager.launchCommand(item, { debug: true });
+export async function debuggingLaunchCommand(deps: AppDeps, item?: BuildTreeItem) {
+  return deps.buildManager.launchCommand(item, { debug: true });
 }
 
 /**
  * Run application on the simulator or device without building
  */
-export async function runCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Starting run command");
-  return context.buildManager.runCommand(item, { debug: false });
+export async function runCommand(deps: AppDeps, item?: BuildTreeItem) {
+  deps.progressStatusBar.updateText("Starting run command");
+  return deps.buildManager.runCommand(item, { debug: false });
 }
 
 /**
  * Run application on the simulator or device without building in debug mode
  */
-export async function debuggingRunCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Starting debugging command");
-  return context.buildManager.runCommand(item, { debug: true });
+export async function debuggingRunCommand(deps: AppDeps, item?: BuildTreeItem) {
+  deps.progressStatusBar.updateText("Starting debugging command");
+  return deps.buildManager.runCommand(item, { debug: true });
 }
 
 /**
  * Clean build artifacts
  */
-export async function cleanCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.buildManager.cleanCommand(item);
+export async function cleanCommand(deps: AppDeps, item?: BuildTreeItem) {
+  deps.buildManager.cleanCommand(item);
 }
 
-export async function testCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  return context.buildManager.testCommand(item);
+export async function testCommand(deps: AppDeps, item?: BuildTreeItem) {
+  return deps.buildManager.testCommand(item);
 }
 
 /**
  * Resolve dependencies for the Xcode project
  */
-export async function resolveDependenciesCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+export async function resolveDependenciesCommand(deps: AppDeps, item?: BuildTreeItem) {
+  deps.progressStatusBar.updateText("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
 
-  context.updateProgressStatus("Searching for scheme");
+  deps.progressStatusBar.updateText("Searching for scheme");
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(context, {
+    (await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
       title: "Select scheme to resolve dependencies",
       xcworkspace: xcworkspace,
     }));
 
-  context.buildManager.resolveDependenciesCommand({
+  deps.buildManager.resolveDependenciesCommand({
     xcworkspace: xcworkspace,
     scheme: scheme,
   });
@@ -114,9 +114,9 @@ export async function resolveDependenciesCommand(context: ExtensionContext, item
  *
  * Context: we are storing build artifacts in the `build` directory in the storage path for support xcode-build-server.
  */
-export async function removeBundleDirCommand(context: ExtensionContext) {
-  context.updateProgressStatus("Removing build artifacts directory");
-  const storagePath = await prepareStoragePath(context);
+export async function removeBundleDirCommand(deps: AppDeps) {
+  deps.progressStatusBar.updateText("Removing build artifacts directory");
+  const storagePath = await prepareStoragePath(deps.vscodeContext);
   const bundleDir = path.join(storagePath, "build");
 
   await removeDirectory(bundleDir);
@@ -127,26 +127,26 @@ export async function removeBundleDirCommand(context: ExtensionContext) {
  * Generate buildServer.json in the workspace root for xcode-build-server —
  * a tool that enable LSP server to see packages from the Xcode project.
  */
-export async function generateBuildServerConfigCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  context.updateProgressStatus("Starting buildServer.json generation");
+export async function generateBuildServerConfigCommand(deps: AppDeps, item?: BuildTreeItem) {
+  deps.progressStatusBar.updateText("Starting buildServer.json generation");
 
   const isServerInstalled = await getIsXcodeBuildServerInstalled();
   if (!isServerInstalled) {
     throw new ExtensionError("xcode-build-server is not installed");
   }
 
-  context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  deps.progressStatusBar.updateText("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
 
-  context.updateProgressStatus("Searching for scheme");
+  deps.progressStatusBar.updateText("Searching for scheme");
   const scheme =
     item?.scheme ??
-    (await askSchemeForBuild(context, {
+    (await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
       title: "Select scheme for build server",
       xcworkspace: xcworkspace,
     }));
 
-  context.updateProgressStatus("Generating buildServer.json");
+  deps.progressStatusBar.updateText("Generating buildServer.json");
   await generateBuildServerConfig({
     xcworkspace: xcworkspace,
     scheme: scheme,
@@ -167,9 +167,9 @@ export async function generateBuildServerConfigCommand(context: ExtensionContext
  *
  * Open current project in Xcode
  */
-export async function openXcodeCommand(context: ExtensionContext) {
-  context.updateProgressStatus("Opening project in Xcode");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+export async function openXcodeCommand(deps: AppDeps) {
+  deps.progressStatusBar.updateText("Opening project in Xcode");
+  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
 
   await exec({
     command: "open",
@@ -180,8 +180,8 @@ export async function openXcodeCommand(context: ExtensionContext) {
 /**
  * Select Xcode workspace and save it to the workspace state
  */
-export async function selectXcodeWorkspaceCommand(context: ExtensionContext) {
-  context.updateProgressStatus("Searching for workspace");
+export async function selectXcodeWorkspaceCommand(deps: AppDeps) {
+  deps.progressStatusBar.updateText("Searching for workspace");
   const workspace = await selectXcodeWorkspace({
     autoselect: false,
   });
@@ -191,25 +191,25 @@ export async function selectXcodeWorkspaceCommand(context: ExtensionContext) {
   if (updateAnswer) {
     const relative = getWorkspaceRelativePath(workspace);
     await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
-    context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
+    deps.workspace.update("build.xcodeWorkspacePath", undefined);
   } else {
-    context.updateWorkspaceState("build.xcodeWorkspacePath", workspace);
+    deps.workspace.update("build.xcodeWorkspacePath", workspace);
   }
 
-  context.buildManager.refreshSchemes();
+  deps.buildManager.refreshSchemes();
 }
 
-export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext, item?: BuildTreeItem) {
+export async function selectXcodeSchemeForBuildCommand(deps: AppDeps, item?: BuildTreeItem) {
   if (item) {
-    context.buildManager.setDefaultSchemeForBuild(item.scheme);
+    deps.buildManager.setDefaultSchemeForBuild(item.scheme);
     return;
   }
 
-  context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+  deps.progressStatusBar.updateText("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
 
-  context.updateProgressStatus("Searching for scheme");
-  await askSchemeForBuild(context, {
+  deps.progressStatusBar.updateText("Searching for scheme");
+  await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
     title: "Select scheme to set as default",
     xcworkspace: xcworkspace,
     ignoreCache: true,
@@ -219,11 +219,11 @@ export async function selectXcodeSchemeForBuildCommand(context: ExtensionContext
 /**
  * Ask user to select configuration for build and save it to the build manager cache
  */
-export async function selectConfigurationForBuildCommand(context: ExtensionContext): Promise<void> {
-  context.updateProgressStatus("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(context);
+export async function selectConfigurationForBuildCommand(deps: AppDeps): Promise<void> {
+  deps.progressStatusBar.updateText("Searching for workspace");
+  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
 
-  context.updateProgressStatus("Searching for configurations");
+  deps.progressStatusBar.updateText("Searching for configurations");
   const configurations = await getBuildConfigurations({
     xcworkspace: xcworkspace,
   });
@@ -247,16 +247,16 @@ export async function selectConfigurationForBuildCommand(context: ExtensionConte
   });
   if (saveAnswer) {
     await updateWorkspaceConfig("build.configuration", selected);
-    context.buildManager.setDefaultConfigurationForBuild(undefined);
+    deps.buildManager.setDefaultConfigurationForBuild(undefined);
   } else {
-    context.buildManager.setDefaultConfigurationForBuild(selected);
+    deps.buildManager.setDefaultConfigurationForBuild(selected);
   }
 }
 
-export async function diagnoseBuildSetupCommand(context: ExtensionContext): Promise<void> {
-  context.updateProgressStatus("Diagnosing build setup");
+export async function diagnoseBuildSetupCommand(deps: AppDeps): Promise<void> {
+  deps.progressStatusBar.updateText("Diagnosing build setup");
 
-  await runTask(context, {
+  await runTask(deps.execution, {
     name: "Diagnose Build Setup",
     lock: "sweetpad.build",
     terminateLocked: true,
@@ -292,7 +292,7 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
       diagWrite(`✅ VSCode workspace path: ${workspacePath}\n`);
       diagWrite("================================");
 
-      const xcWorkspacePath = getCurrentXcodeWorkspacePath(context);
+      const xcWorkspacePath = getCurrentXcodeWorkspacePath(deps.workspace);
       diagWrite("🔎 Checking current xcode worskpace path");
       diagWrite(`✅ Xcode workspace path: ${xcWorkspacePath ?? "<project-root>"}\n`);
       diagWrite("================================");
@@ -300,7 +300,7 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
       diagWrite("🔎 Getting schemes");
       let schemes: XcodeScheme[] = [];
       try {
-        schemes = await context.buildManager.getSchemes({ refresh: true });
+        schemes = await deps.buildManager.getSchemes({ refresh: true });
       } catch (e) {
         diagWrite("❌ Getting schemes failed");
         if (e instanceof ExecBaseError) {
@@ -369,30 +369,30 @@ export async function diagnoseBuildSetupCommand(context: ExtensionContext): Prom
   });
 }
 
-export async function pauseSchemeFilterCommand(context: ExtensionContext): Promise<void> {
-  context.buildTreeProvider?.toggleSchemeFilterPaused(true);
+export async function pauseSchemeFilterCommand(deps: AppDeps): Promise<void> {
+  deps.buildTreeProvider?.toggleSchemeFilterPaused(true);
 }
 
-export async function applySchemeFilterCommand(context: ExtensionContext): Promise<void> {
-  context.buildTreeProvider?.toggleSchemeFilterPaused(false);
+export async function applySchemeFilterCommand(deps: AppDeps): Promise<void> {
+  deps.buildTreeProvider?.toggleSchemeFilterPaused(false);
 }
 
-export async function refreshSchemesCommand(context: ExtensionContext): Promise<void> {
-  const xcworkspace = getCurrentXcodeWorkspacePath(context);
+export async function refreshSchemesCommand(deps: AppDeps): Promise<void> {
+  const xcworkspace = getCurrentXcodeWorkspacePath(deps.workspace);
 
   if (!xcworkspace) {
     // If there is no workspace, we should ask user to select it first.
     // This function automatically refreshes schemes, so we can just call it and move on
     // without calling to refresh schemes manually.
-    await askXcodeWorkspacePath(context);
+    await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
     return;
   }
 
-  await context.buildManager.refreshSchemes();
+  await deps.buildManager.refreshSchemes();
 }
 
-export async function stopSchemeCommand(context: ExtensionContext, item?: BuildTreeItem) {
-  return context.buildManager.stopSchemeCommand(item);
+export async function stopSchemeCommand(deps: AppDeps, item?: BuildTreeItem) {
+  return deps.buildManager.stopSchemeCommand(item);
 }
 
 /**
@@ -400,8 +400,8 @@ export async function stopSchemeCommand(context: ExtensionContext, item?: BuildT
  * Detects worktrees via `git worktree list`, finds Xcode projects in each,
  * and lets the user pick which one to build from.
  */
-export async function switchWorktreeCommand(context: ExtensionContext) {
-  context.updateProgressStatus("Detecting git worktrees");
+export async function switchWorktreeCommand(deps: AppDeps) {
+  deps.progressStatusBar.updateText("Detecting git worktrees");
 
   const worktrees = await detectGitWorktrees();
   if (worktrees.length <= 1) {
@@ -409,7 +409,7 @@ export async function switchWorktreeCommand(context: ExtensionContext) {
     return;
   }
 
-  const currentWorkspace = getCurrentXcodeWorkspacePath(context);
+  const currentWorkspace = getCurrentXcodeWorkspacePath(deps.workspace);
 
   type WorktreePickContext = { worktreePath: string; xcworkspace: string };
   const items: { label: string; description: string; detail?: string; context: WorktreePickContext }[] = [];
@@ -444,8 +444,8 @@ export async function switchWorktreeCommand(context: ExtensionContext) {
   const relative = getWorkspaceRelativePath(selected.context.xcworkspace);
   await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
 
-  context.updateWorkspaceState("build.xcodeWorkspacePath", undefined);
-  context.buildManager.refreshSchemes();
+  deps.workspace.update("build.xcodeWorkspacePath", undefined);
+  deps.buildManager.refreshSchemes();
 
   const dirName = path.basename(selected.context.worktreePath);
   vscode.window.showInformationMessage(`SweetPad now builds from: ${dirName} (${selected.description ?? ""})`);

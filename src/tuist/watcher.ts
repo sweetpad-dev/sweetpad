@@ -1,32 +1,26 @@
 import path from "node:path";
 
 import * as vscode from "vscode";
-import { Disposable } from "vscode";
 
 import { getWorkspacePath, prepareDerivedDataPath } from "../build/utils";
-import type { ExtensionContext } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
-import { tuistGenerateCommand } from "./command";
 
-class TuistGenWatcher {
+export class TuistGenWatcher implements vscode.Disposable {
   private watchers: vscode.FileSystemWatcher[] = [];
   private throttle: NodeJS.Timeout | null = null;
-  private derivedDataPath: string | null;
-  private workspacePath: string;
+  private derivedDataPath: string | null = null;
+  private workspacePath = "";
 
-  constructor(private extension: ExtensionContext) {
+  async start(): Promise<void> {
     this.derivedDataPath = prepareDerivedDataPath();
     this.workspacePath = getWorkspacePath();
-  }
-
-  async start() {
     // Is config enabled?
     // TODO: add config to enable/disable watcher
     const isEnabled = getWorkspaceConfig("tuist.autogenerate");
     if (!isEnabled) {
-      return new Disposable(() => {});
+      return;
     }
 
     // We don't even need to start the watcher if there is no tuist files in the workspace
@@ -38,7 +32,7 @@ class TuistGenWatcher {
       commonLogger.log("Project.swift or Workspace.swift not found, skipping tuist watcher", {
         workspacePath: getWorkspacePath(),
       });
-      return new Disposable(() => {});
+      return;
     }
 
     const swiftWatcher = vscode.workspace.createFileSystemWatcher(
@@ -72,7 +66,7 @@ class TuistGenWatcher {
 
     this.throttle = setTimeout(() => {
       this.throttle = null;
-      tuistGenerateCommand(this.extension)
+      Promise.resolve(vscode.commands.executeCommand("sweetpad.tuist.generate"))
         .then(() => {
           commonLogger.log("tuist project was successfully generated", {
             workspacePath: this.workspacePath,
@@ -87,15 +81,9 @@ class TuistGenWatcher {
     }, 1000 /* 1s */);
   }
 
-  stop() {
+  dispose(): void {
     for (const watcher of this.watchers) {
       watcher.dispose();
     }
   }
-}
-
-export function createTuistWatcher(extension: ExtensionContext): vscode.Disposable {
-  const watcher = new TuistGenWatcher(extension);
-  void watcher.start();
-  return new Disposable(() => watcher.stop());
 }

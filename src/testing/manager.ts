@@ -2,6 +2,7 @@ import path from "node:path";
 
 import * as vscode from "vscode";
 
+import type { BuildManager } from "../build/manager.js";
 import {
   askXcodeWorkspacePath,
   detectWorkspaceType,
@@ -10,14 +11,17 @@ import {
   getXcodeBuildDestinationString,
 } from "../build/utils.js";
 import { getBuildSettingsToAskDestination, getXcodeBuildCommand } from "../common/cli/scripts.js";
-import type { ExtensionContext } from "../common/commands.js";
 import { errorReporting } from "../common/error-reporting.js";
 import { exec } from "../common/exec.js";
+import type { ExecutionScopeService } from "../common/execution-scope.js";
 import { isFileExists } from "../common/files.js";
 import { commonLogger } from "../common/logger.js";
 import { runTask } from "../common/tasks/run.js";
 import { assertUnreachable } from "../common/types.js";
+import type { WorkspaceStateService } from "../common/workspace-state.js";
+import type { DestinationsManager } from "../destination/manager.js";
 import type { Destination } from "../destination/types.js";
+import type { ProgressStatusBar } from "../system/status-bar.js";
 import { askConfigurationForTesting, askDestinationToTestOn, askSchemeForTesting, askTestingTarget } from "./utils.js";
 
 type TestingInlineError = {
@@ -139,7 +143,11 @@ type TestItemContext = {
 
 export class TestingManager {
   controller: vscode.TestController;
-  #context: ExtensionContext | undefined;
+  private workspace: WorkspaceStateService;
+  private progress: ProgressStatusBar;
+  private execution: ExecutionScopeService;
+  private buildManager: BuildManager;
+  private destinations: DestinationsManager;
 
   // Inline error messages, usually is between "passed" and "failed" lines. Seems like only macOS apps have this line.
   // Example output:
@@ -167,11 +175,23 @@ export class TestingManager {
   // Root folder of the workspace (VSCode, not Xcode)
   readonly workspacePath: string;
 
-  constructor() {
+  constructor(options: {
+    workspace: WorkspaceStateService;
+    progress: ProgressStatusBar;
+    execution: ExecutionScopeService;
+    buildManager: BuildManager;
+    destinations: DestinationsManager;
+  }) {
+    this.workspace = options.workspace;
+    this.progress = options.progress;
+    this.execution = options.execution;
+    this.buildManager = options.buildManager;
+    this.destinations = options.destinations;
     this.workspacePath = getWorkspacePath();
-
     this.controller = vscode.tests.createTestController("sweetpad", "SweetPad");
+  }
 
+  async start(): Promise<void> {
     // Register event listeners for updating test items when documents change or open
     vscode.workspace.onDidOpenTextDocument((document) => this.updateTestItems(document));
     vscode.workspace.onDidChangeTextDocument((event) => this.updateTestItems(event.document));
@@ -227,27 +247,16 @@ export class TestingManager {
     );
   }
 
-  set context(context: ExtensionContext) {
-    this.#context = context;
-  }
-
-  get context(): ExtensionContext {
-    if (!this.#context) {
-      throw new Error("Context is not set");
-    }
-    return this.#context;
-  }
-
   dispose() {
     this.controller.dispose();
   }
 
   setDefaultTestingTarget(target: string | undefined) {
-    this.context.updateWorkspaceState("testing.xcodeTarget", target);
+    this.workspace.update("testing.xcodeTarget", target);
   }
 
   getDefaultTestingTarget(): string | undefined {
-    return this.context.getWorkspaceState("testing.xcodeTarget");
+    return this.workspace.get("testing.xcodeTarget");
   }
 
   /**
@@ -350,12 +359,12 @@ export class TestingManager {
     // todo: consider to have separate configuration for testing and building. currently we use the
     // configuration for building the project
 
-    const xcworkspace = await askXcodeWorkspacePath(this.context);
-    const scheme = await askSchemeForTesting(this.context, {
+    const xcworkspace = await askXcodeWorkspacePath(this.workspace, this.buildManager);
+    const scheme = await askSchemeForTesting(this.progress, this.buildManager, {
       xcworkspace: xcworkspace,
       title: "Select a scheme to run tests",
     });
-    const configuration = await askConfigurationForTesting(this.context, {
+    const configuration = await askConfigurationForTesting(this.buildManager, {
       xcworkspace: xcworkspace,
     });
     const buildSettings = await getBuildSettingsToAskDestination({
@@ -364,7 +373,7 @@ export class TestingManager {
       sdk: undefined,
       xcworkspace: xcworkspace,
     });
-    const destination = await askDestinationToTestOn(this.context, buildSettings);
+    const destination = await askDestinationToTestOn(this.destinations, buildSettings);
     return {
       xcworkspace: xcworkspace,
       scheme: scheme,
@@ -376,7 +385,7 @@ export class TestingManager {
   /**
    * Execute separate command to build the project before running tests
    */
-  async buildForTestingCommand(context: ExtensionContext) {
+  async buildForTestingCommand() {
     const { scheme, configuration, destination, xcworkspace } = await this.askTestingConfigurations();
 
     // before testing we need to build the project to avoid runnning tests on old code or
@@ -398,12 +407,12 @@ export class TestingManager {
     destination: Destination;
     xcworkspace: string;
   }) {
-    this.context.updateProgressStatus("Building for testing");
+    this.progress.updateText("Building for testing");
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
 
     // todo: add xcodebeautify command to format output
 
-    await runTask(this.context, {
+    await runTask(this.execution, {
       name: "sweetpad.build.build",
       lock: "sweetpad.build",
       terminateLocked: true,
@@ -707,7 +716,7 @@ export class TestingManager {
         continue;
       }
 
-      const defaultTarget = await askTestingTarget(this.context, {
+      const defaultTarget = await askTestingTarget(this, {
         xcworkspace: xcworkspace,
         title: "Select a target to run tests",
       });
@@ -747,7 +756,7 @@ export class TestingManager {
 
       // todo: add check if project is already built
 
-      this.context.updateProgressStatus("Running tests");
+      this.progress.updateText("Running tests");
       await this.runTests({
         run: run,
         request: request,
@@ -821,7 +830,7 @@ export class TestingManager {
     run.started(classTest);
 
     try {
-      await runTask(this.context, {
+      await runTask(this.execution, {
         name: "sweetpad.build.test",
         lock: "sweetpad.build",
         terminateLocked: true,
@@ -918,7 +927,7 @@ export class TestingManager {
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
 
     // Run "xcodebuild" command as a task to see the test output
-    await runTask(this.context, {
+    await runTask(this.execution, {
       name: "sweetpad.build.test",
       lock: "sweetpad.build",
       terminateLocked: true,

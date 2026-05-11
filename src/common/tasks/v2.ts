@@ -4,8 +4,8 @@ import { quote } from "shell-quote";
 import * as vscode from "vscode";
 
 import { getWorkspacePath } from "../../build/utils";
-import type { ExtensionContext } from "../commands";
 import { TaskError } from "../errors";
+import type { ExecutionScopeService } from "../execution-scope";
 import { prepareEnvVars } from "../helpers";
 import { LineBuffer } from "./line-buffer";
 import { setTaskPresentationOptions } from "./presentation";
@@ -52,7 +52,6 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   private processes: Set<ChildProcess> = new Set();
 
   constructor(
-    private context: ExtensionContext,
     private options: {
       callback: (terminal: TaskTerminalV2) => Promise<void>;
     },
@@ -426,7 +425,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
  * commands and cancel them all at once.
  */
 export async function runTaskV2<TMetadata>(
-  context: ExtensionContext,
+  executionScope: ExecutionScopeService,
   options: {
     name: string;
     source?: string;
@@ -446,7 +445,7 @@ export async function runTaskV2<TMetadata>(
     }
   }
 
-  const currentScope = context.getExecutionScope();
+  const currentScope = executionScope.getScope();
   const task = new vscode.Task(
     {
       type: "custom",
@@ -457,11 +456,11 @@ export async function runTaskV2<TMetadata>(
     options.name,
     options.source ?? "sweetpad",
     new vscode.CustomExecution(async () => {
-      return new TaskTerminalV2(context, {
+      return new TaskTerminalV2({
         callback: (terminal) => {
           // we propagate current command to the callback because vscode.CustomExecution
           // breaks the context that we use to show progress
-          return context.setExecutionScope(currentScope, () => {
+          return executionScope.setScope(currentScope, () => {
             return options.callback(terminal);
           });
         },
@@ -471,11 +470,11 @@ export async function runTaskV2<TMetadata>(
   );
   setTaskPresentationOptions(task);
 
-  const execution = await vscode.tasks.executeTask(task);
+  const taskExecution = await vscode.tasks.executeTask(task);
 
   return new Promise((resolve, reject) => {
     const disposable = vscode.tasks.onDidEndTaskProcess((e) => {
-      if (e.execution === execution) {
+      if (e.execution === taskExecution) {
         disposable.dispose();
         if (e.exitCode !== 0) {
           const message = options.error ?? `Error running task '${options.name}'`;
