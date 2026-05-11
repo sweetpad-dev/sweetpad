@@ -481,6 +481,11 @@
         "icon": "$(sweetpad-tools)"
       },
       {
+        "command": "sweetpad.build.search",
+        "title": "SweetPad: Search schemes (Build view)",
+        "icon": "$(sweetpad-search)"
+      },
+      {
         "command": "sweetpad.build.refreshSchemes",
         "title": "SweetPad: Refresh schemes",
         "icon": "$(sweetpad-refresh)"
@@ -616,6 +621,11 @@
         "icon": "$(sweetpad-trash-x)"
       },
       {
+        "command": "sweetpad.destinations.search",
+        "title": "SweetPad: Search destinations (Destinations view)",
+        "icon": "$(sweetpad-search)"
+      },
+      {
         "command": "sweetpad.destinations.selectForTesting",
         "title": "SweetPad.Testing: Select destination for testing",
         "icon": "$(file-code)"
@@ -627,6 +637,11 @@
         {
           "command": "sweetpad.build.refreshSchemes",
           "when": "view == sweetpad.build.view"
+        },
+        {
+          "command": "sweetpad.build.search",
+          "when": "view == sweetpad.build.view",
+          "group": "navigation@0"
         },
         {
           "command": "sweetpad.build.pauseSchemeFilter",
@@ -642,6 +657,11 @@
           "command": "sweetpad.build.openXcode",
           "when": "view == sweetpad.build.view",
           "group": "navigation@2"
+        },
+        {
+          "command": "sweetpad.destinations.search",
+          "when": "view == sweetpad.destinations.view",
+          "group": "navigation@0"
         },
         {
           "command": "sweetpad.tools.refresh",
@@ -1325,6 +1345,13 @@
         "default": {
           "fontPath": "images/icons/tabler-icons.woff",
           "fontCharacter": "\\eb13"
+        }
+      },
+      "sweetpad-search": {
+        "description": "Search",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\eb1c"
         }
       },
       "sweetpad-player-play": {

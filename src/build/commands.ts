@@ -164,6 +164,15 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
 }
 
 /**
+ * Trigger VS Code's built-in tree find on the Build view. Workaround until
+ * `showFindControl` lands in TreeViewOptions (microsoft/vscode#173742).
+ */
+export async function searchBuildViewCommand(_deps: AppDeps) {
+  await vscode.commands.executeCommand("sweetpad.build.view.focus");
+  await vscode.commands.executeCommand("list.find");
+}
+
+/**
  *
  * Open current project in Xcode
  */

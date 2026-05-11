@@ -1,7 +1,18 @@
+import * as vscode from "vscode";
+
 import { selectDestinationForBuild } from "../build/utils";
 import type { AppDeps } from "../common/commands";
 import { selectDestinationForTesting } from "../testing/utils";
 import type { DestinationTreeItem } from "./tree";
+
+/**
+ * Trigger VS Code's built-in tree find on the Destinations view. Workaround until
+ * `showFindControl` lands in TreeViewOptions (microsoft/vscode#173742).
+ */
+export async function searchDestinationsViewCommand(_deps: AppDeps) {
+  await vscode.commands.executeCommand("sweetpad.destinations.view.focus");
+  await vscode.commands.executeCommand("list.find");
+}
 
 export async function selectDestinationForBuildCommand(deps: AppDeps, item?: DestinationTreeItem) {
   if (item) {

@@ -16,6 +16,7 @@ import {
   removeBundleDirCommand,
   resolveDependenciesCommand,
   runCommand,
+  searchBuildViewCommand,
   selectConfigurationForBuildCommand,
   selectXcodeSchemeForBuildCommand,
   selectXcodeWorkspaceCommand,
@@ -38,6 +39,7 @@ import { getAppPathCommand } from "./debugger/commands.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
 import {
   removeRecentDestinationCommand,
+  searchDestinationsViewCommand,
   selectDestinationForBuildCommand,
   selectDestinationForTestingCommand,
 } from "./destination/commands.js";
@@ -220,6 +222,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.switchWorktree", switchWorktreeCommand));
   d(command("sweetpad.build.pauseSchemeFilter", pauseSchemeFilterCommand));
   d(command("sweetpad.build.applySchemeFilter", applySchemeFilterCommand));
+  d(command("sweetpad.build.search", searchBuildViewCommand));
 
   // Testing
   d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));
@@ -273,6 +276,7 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.destinations.select", selectDestinationForBuildCommand));
   d(command("sweetpad.destinations.removeRecent", removeRecentDestinationCommand));
   d(command("sweetpad.destinations.selectForTesting", selectDestinationForTestingCommand));
+  d(command("sweetpad.destinations.search", searchDestinationsViewCommand));
   d(tree("sweetpad.destinations.view", destinationsTreeProvider));
 
   // Tools
