@@ -42,6 +42,7 @@ type Config = {
   "xcodegen.autogenerate": boolean;
   "xcodebuildserver.autogenerate": boolean;
   "xcodebuildserver.path": string;
+  "xcodebuildserver.serverEnv": { [key: string]: string | null };
   "tuist.autogenerate": boolean;
   "tuist.generate.env": { [key: string]: string | null };
   "testing.configuration": string;

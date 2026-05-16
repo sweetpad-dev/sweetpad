@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import type { LspDiagnosticsService } from "../build/lsp-diagnostics";
 import type { BuildManager } from "../build/manager";
 import type { BuildTreeProvider } from "../build/tree";
 import type { DestinationsManager } from "../destination/manager";
@@ -41,6 +42,7 @@ export type AppDeps = {
   formatter: SwiftFormattingProvider;
   vscodeContext: vscode.ExtensionContext;
   buildTreeProvider: BuildTreeProvider;
+  lspDiagnostics: LspDiagnosticsService;
 };
 
 /**

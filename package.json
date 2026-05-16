@@ -405,6 +405,16 @@
         "icon": "$(file-code)"
       },
       {
+        "command": "sweetpad.build.enableLspDiagnostics",
+        "title": "SweetPad: Enable LSP Diagnostics",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "sweetpad.build.disableLspDiagnostics",
+        "title": "SweetPad: Disable LSP Diagnostics",
+        "icon": "$(debug-alt)"
+      },
+      {
         "command": "sweetpad.build.selectXcodeWorkspace",
         "title": "SweetPad: Select Xcode workspace",
         "icon": "$(file-directory)"
@@ -1081,6 +1091,16 @@
           "description": "Path to custom xcodebuildserver executable.",
           "examples": [
             "/opt/homebrew/bin/xcode-build-server"
+          ]
+        },
+        "sweetpad.xcodebuildserver.serverEnv": {
+          "type": "object",
+          "default": {},
+          "description": "Environment variables for the long-running xcode-build-server process that sourcekit-lsp spawns from `buildServer.json`. Injected by prefixing the generated `argv` with `/usr/bin/env KEY=VAL ...` (BSP has no env field).",
+          "examples": [
+            {
+              "XBS_LOGPATH": "/tmp/sweetpad-xbs.log"
+            }
           ]
         },
         "sweetpad.build.autoRefreshSchemes": {

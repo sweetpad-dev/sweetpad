@@ -5,7 +5,6 @@ import * as vscode from "vscode";
 
 import {
   type XcodeScheme,
-  generateBuildServerConfig,
   getBasicProjectInfo,
   getBuildSettingsToLaunch,
   getIsXcbeautifyInstalled,
@@ -52,6 +51,7 @@ import {
   isXcbeautifyEnabled,
   prepareBundleDir,
   prepareDerivedDataPath,
+  refreshBuildServer,
   restartSwiftLSP,
   writeWatchMarkers,
 } from "./utils";
@@ -214,11 +214,10 @@ export class BuildManager {
     }
 
     const xcworkspace = await askXcodeWorkspacePath(this.workspace, this);
-    await generateBuildServerConfig({
+    await refreshBuildServer({
       xcworkspace: xcworkspace,
       scheme: options.scheme,
     });
-    await restartSwiftLSP();
 
     const isShown = this.workspace.get("build.xcodeBuildServerAutogenreateInfoShown") ?? false;
     if (!isShown) {

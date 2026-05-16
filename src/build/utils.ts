@@ -354,6 +354,23 @@ export function isAutoGenerateBuildServerConfigEnabled(): boolean {
 }
 
 /**
+ * Standard regenerate cycle: (re)write buildServer.json and restart
+ * sourcekit-lsp. Used by the manual command, the scheme-change auto-regen, and
+ * the on-build auto-regen — keep them in sync.
+ */
+export async function refreshBuildServer(options: {
+  xcworkspace: string;
+  scheme: string;
+  forceRestartLSP?: boolean;
+}): Promise<void> {
+  await generateBuildServerConfig({
+    xcworkspace: options.xcworkspace,
+    scheme: options.scheme,
+  });
+  await restartSwiftLSP({ force: options.forceRestartLSP });
+}
+
+/**
  * Check if buildServer.json needs to be regenerated and regenerate it if needed
  */
 export async function generateBuildServerConfigOnBuild(options: {
@@ -389,11 +406,10 @@ export async function generateBuildServerConfigOnBuild(options: {
     (await isFileExists(config.workspace));
 
   if (!isConfigValid) {
-    await generateBuildServerConfig({
+    await refreshBuildServer({
       xcworkspace: options.xcworkspace,
       scheme: options.scheme,
     });
-    await restartSwiftLSP();
   }
 }
 

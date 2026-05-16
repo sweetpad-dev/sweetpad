@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { detectWorkspaceType, getSwiftPMDirectory, getWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
@@ -7,7 +8,7 @@ import { getWorkspaceConfig } from "../config";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { readJsonFile } from "../files";
-import { uniqueFilter } from "../helpers";
+import { uniqueFilter, prepareEnvVars } from "../helpers";
 import { commonLogger } from "../logger";
 import { assertUnreachable } from "../types";
 import { XcodeWorkspace } from "../xcode/workspace";
@@ -674,7 +675,14 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
 }
 
 /**
- * Generate xcode-build-server config
+ * Generate xcode-build-server config.
+ *
+ * `sweetpad.xcodebuildserver.serverEnv` is injected into the generated
+ * `buildServer.json` by prefixing `argv` with `/usr/bin/env KEY=VAL ...` so the
+ * long-running build server (later spawned by sourcekit-lsp) inherits them.
+ * The vars aren't passed to this short-lived `config` call itself — XBS's
+ * config phase only honors them in trivial ways, and the docs flag `argv` as
+ * the only stable way to pass env via BSP.
  */
 export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
   const workspaceType = detectWorkspaceType(options.xcworkspace);
@@ -696,6 +704,55 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
     args: args,
     cwd: cwd,
   });
+
+  const env = getWorkspaceConfig("xcodebuildserver.serverEnv") ?? {};
+  await injectEnvIntoBuildServerConfig(path.join(cwd, "buildServer.json"), env);
+}
+
+/**
+ * Bridge `sweetpad.xcodebuildserver.serverEnv` → the long-running XBS process.
+ *
+ * sourcekit-lsp reads buildServer.json on project open and execs whatever's in
+ * `argv` to be its build server. BSP defines no `env` field — `argv` is the
+ * only knob. We use the standard `/usr/bin/env` trick to set vars at exec
+ * time:
+ *
+ *   before:  "argv": ["/opt/homebrew/bin/xcode-build-server"]
+ *   after:   "argv": ["/usr/bin/env",
+ *                     "XBS_LOGPATH=/tmp/sweetpad-xbs.log",
+ *                     "/opt/homebrew/bin/xcode-build-server"]
+ *
+ * Bails out (no-op) when there's nothing to do: empty env, missing file, or
+ * already-wrapped argv. The last case shouldn't happen in practice because
+ * `xcode-build-server config` rewrites `argv` from scratch on every call (see
+ * upstream config/config.py), but the guard makes this function safe to call
+ * twice in a row without an intervening regen.
+ */
+async function injectEnvIntoBuildServerConfig(
+  buildServerJsonPath: string,
+  env: { [key: string]: string | null },
+): Promise<void> {
+  const prepared = prepareEnvVars(env);
+  const entries = Object.entries(prepared).filter(([, v]) => v !== undefined) as [string, string][];
+  if (entries.length === 0) return;
+
+  let config: { argv?: string[]; [key: string]: unknown };
+  try {
+    config = await readJsonFile<{ argv?: string[]; [key: string]: unknown }>(buildServerJsonPath);
+  } catch (e) {
+    commonLogger.debug("buildServer.json not found after generation, skipping env injection", {
+      path: buildServerJsonPath,
+    });
+    return;
+  }
+
+  if (!Array.isArray(config.argv) || config.argv.length === 0) return;
+  if (config.argv[0] === "/usr/bin/env") return;
+
+  const envArgs = entries.map(([k, v]) => `${k}=${v}`);
+  config.argv = ["/usr/bin/env", ...envArgs, ...config.argv];
+
+  await fs.writeFile(buildServerJsonPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
 export type XcodeBuildServerConfig = {

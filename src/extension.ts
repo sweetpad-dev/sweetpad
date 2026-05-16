@@ -8,6 +8,8 @@ import {
   debuggingLaunchCommand,
   debuggingRunCommand,
   diagnoseBuildSetupCommand,
+  disableLspDiagnosticsCommand,
+  enableLspDiagnosticsCommand,
   generateBuildServerConfigCommand,
   launchCommand,
   openXcodeCommand,
@@ -24,6 +26,7 @@ import {
   switchWorktreeCommand,
   testCommand,
 } from "./build/commands.js";
+import { LspDiagnosticsService } from "./build/lsp-diagnostics.js";
 import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { SchemeWatcher } from "./build/scheme-watcher.js";
@@ -117,6 +120,7 @@ export function activate(context: vscode.ExtensionContext) {
     devicesManager: devicesManager,
     workspace: workspace,
   });
+  const lspDiagnostics = new LspDiagnosticsService(workspace);
   const buildManager = new BuildManager({
     workspace: workspace,
     progress: progressStatusBar,
@@ -190,6 +194,7 @@ export function activate(context: vscode.ExtensionContext) {
     execution: execution,
     vscodeContext: context,
     buildTreeProvider: buildTreeProvider,
+    lspDiagnostics: lspDiagnostics,
   };
 
   // Shortcut helpers bound to the deps bag
@@ -213,6 +218,8 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.resolveDependencies", resolveDependenciesCommand));
   d(command("sweetpad.build.removeBundleDir", removeBundleDirCommand));
   d(command("sweetpad.build.generateBuildServerConfig", generateBuildServerConfigCommand));
+  d(command("sweetpad.build.enableLspDiagnostics", enableLspDiagnosticsCommand));
+  d(command("sweetpad.build.disableLspDiagnostics", disableLspDiagnosticsCommand));
   d(command("sweetpad.build.openXcode", openXcodeCommand));
   d(command("sweetpad.build.selectXcodeWorkspace", selectXcodeWorkspaceCommand));
   d(command("sweetpad.build.setDefaultScheme", selectXcodeSchemeForBuildCommand));
@@ -293,6 +300,10 @@ export function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
   d(command("sweetpad.system.openTerminalPanel", openTerminalPanel));
   d(command("sweetpad.system.refreshShellEnv", refreshShellEnvCommand));
+
+  lspDiagnostics.reattachIfEnabled();
+  lspDiagnostics.showPostReloadNotificationIfPending();
+  d(lspDiagnostics);
 }
 
 export function deactivate() {}

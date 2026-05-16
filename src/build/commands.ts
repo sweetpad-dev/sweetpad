@@ -3,12 +3,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
-import {
-  type XcodeScheme,
-  generateBuildServerConfig,
-  getBuildConfigurations,
-  getIsXcodeBuildServerInstalled,
-} from "../common/cli/scripts";
+import { type XcodeScheme, getBuildConfigurations, getIsXcodeBuildServerInstalled } from "../common/cli/scripts";
 import type { AppDeps } from "../common/commands";
 import { updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
@@ -26,7 +21,7 @@ import {
   getCurrentXcodeWorkspacePath,
   getWorkspacePath,
   prepareStoragePath,
-  restartSwiftLSP,
+  refreshBuildServer,
   selectXcodeWorkspace,
 } from "./utils";
 
@@ -147,12 +142,12 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
     }));
 
   deps.progressStatusBar.updateText("Generating buildServer.json");
-  await generateBuildServerConfig({
+  // User explicitly invoked this command — always restart, regardless of build.autoRestartSwiftLSP.
+  await refreshBuildServer({
     xcworkspace: xcworkspace,
     scheme: scheme,
+    forceRestartLSP: true,
   });
-  // User explicitly invoked this command — always restart, regardless of build.autoRestartSwiftLSP.
-  await restartSwiftLSP({ force: true });
 
   vscode.window.showInformationMessage("buildServer.json generated in workspace root", "Open").then((selected) => {
     if (selected === "Open") {
@@ -161,6 +156,68 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
       vscode.commands.executeCommand("vscode.open", buildServerPath);
     }
   });
+}
+
+/**
+ * Enable verbose LSP / build-server logging: set env vars on xcode-build-server
+ * (XBS_LOGPATH) and sourcekit-lsp (SOURCEKIT_LOGGING=3), regenerate
+ * buildServer.json with the env injection so the long-running build server
+ * picks it up, restart the Swift LSP, and stream the XBS log file into the
+ * "SweetPad: xcode-build-server logs" output channel.
+ */
+export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTreeItem) {
+  const isServerInstalled = await getIsXcodeBuildServerInstalled();
+  if (!isServerInstalled) {
+    throw new ExtensionError("xcode-build-server is not installed");
+  }
+
+  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const scheme =
+    item?.scheme ??
+    (await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
+      title: "Select scheme for build server",
+      xcworkspace: xcworkspace,
+    }));
+
+  await deps.lspDiagnostics.enable();
+  await refreshBuildServer({
+    xcworkspace: xcworkspace,
+    scheme: scheme,
+    forceRestartLSP: true,
+  });
+  // Env-var changes only take effect after a window reload — beat VS Code's
+  // own "Changing environment variables requires reload" prompt to it. The
+  // success notification is deferred to the next activation; see
+  // `LspDiagnosticsService.showPostReloadNotificationIfPending`.
+  await vscode.commands.executeCommand("workbench.action.reloadWindow");
+}
+
+/**
+ * Disable LSP / build-server logging: clear the env-var entries, regenerate
+ * buildServer.json so sourcekit-lsp re-spawns xcode-build-server without
+ * XBS_LOGPATH, restart the Swift LSP, and stop the log stream.
+ */
+export async function disableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTreeItem) {
+  const isServerInstalled = await getIsXcodeBuildServerInstalled();
+  if (!isServerInstalled) {
+    throw new ExtensionError("xcode-build-server is not installed");
+  }
+
+  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const scheme =
+    item?.scheme ??
+    (await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
+      title: "Select scheme for build server",
+      xcworkspace: xcworkspace,
+    }));
+
+  await deps.lspDiagnostics.disable();
+  await refreshBuildServer({
+    xcworkspace: xcworkspace,
+    scheme: scheme,
+    forceRestartLSP: true,
+  });
+  await vscode.commands.executeCommand("workbench.action.reloadWindow");
 }
 
 /**
