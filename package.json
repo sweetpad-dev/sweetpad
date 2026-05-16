@@ -506,7 +506,7 @@
       },
       {
         "command": "sweetpad.build.stop",
-        "title": "SweetPad: Stop build",
+        "title": "SweetPad: Stop build / running app",
         "icon": "$(debug-stop)"
       },
       {
