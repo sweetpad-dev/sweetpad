@@ -93,12 +93,15 @@ import { TuistGenWatcher } from "./tuist/watcher.js";
 import { xcodgenGenerateCommand } from "./xcodegen/commands.js";
 import { XcodeGenWatcher } from "./xcodegen/watcher.js";
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   // Sentry 🚨
   errorReporting.logSetup();
 
   // 🪵🪓
   Logger.setup();
+
+  // An activation event matched this workspace — reveal SweetPad UI.
+  await vscode.commands.executeCommand("setContext", "sweetpad.enabled", true);
 
   warmShellEnv();
 
