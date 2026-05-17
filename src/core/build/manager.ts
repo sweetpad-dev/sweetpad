@@ -364,6 +364,12 @@ export class BuildManager {
     destination: Destination;
     xcworkspace: string;
     debug: boolean;
+    /**
+     * Per-line sink for the xcodebuild process output. Invoked alongside the
+     * diagnostics collector so callers (the agent server) can tee the stream
+     * into a log file or push events to subscribers.
+     */
+    onOutputLine?: (line: string) => void;
   }): Promise<void> {
     const destinationRaw = getXcodeBuildDestinationString({
       destination: options.destination,
@@ -385,6 +391,7 @@ export class BuildManager {
           xcworkspace: options.xcworkspace,
           destinationRaw: destinationRaw,
           debug: options.debug,
+          onOutputLine: options.onOutputLine,
         });
       },
     });
@@ -927,6 +934,12 @@ export class BuildManager {
       xcworkspace: string;
       destinationRaw: string;
       debug: boolean;
+      /**
+       * Optional tee for every output line. Composed with the diagnostics
+       * collector — diagnostics still receive the line; the caller-provided
+       * sink runs after, so it sees the same raw text xcodebuild emits.
+       */
+      onOutputLine?: (line: string) => void;
     },
   ) {
     const useXcbeautify = isXcbeautifyEnabled(this.config) && (await getIsXcbeautifyInstalled(this.xcodeCli));
@@ -1017,6 +1030,7 @@ export class BuildManager {
     }
 
     const diagnostics = this.diagnostics.beginBuild({ mode: useXcbeautify ? "xcbeautify" : "xcodebuild" });
+    const externalSink = options.onOutputLine;
     try {
       await terminal.execute({
         command: commandParts[0],
@@ -1025,7 +1039,10 @@ export class BuildManager {
         env: env,
         cwd: cwd,
         closeStdin: true,
-        onOutputLine: async ({ value }) => diagnostics.recordLine(value),
+        onOutputLine: async ({ value }) => {
+          diagnostics.recordLine(value);
+          externalSink?.(value);
+        },
       });
     } finally {
       diagnostics.flush();

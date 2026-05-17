@@ -102,3 +102,160 @@ export type BuildResponseData = {
   warningCount: number;
   diagnostics: Diagnostic[];
 };
+
+// ---------------------------------------------------------------------------
+// Method: builds.list
+// ---------------------------------------------------------------------------
+
+export type BuildsListRequestParams = {
+  /** Cap on number of builds returned. Most recent first. */
+  limit?: number;
+  /** Filter to a single status. */
+  status?: BuildStatus;
+};
+
+export type BuildsListResponseData = {
+  builds: BuildResponseData[];
+};
+
+// ---------------------------------------------------------------------------
+// Method: build.get
+// ---------------------------------------------------------------------------
+
+export type BuildGetRequestParams = {
+  buildId: string;
+};
+
+export type BuildGetResponseData = BuildResponseData;
+
+// ---------------------------------------------------------------------------
+// Method: attach (streaming — not in MethodMap; handled by listener directly)
+// ---------------------------------------------------------------------------
+
+export type AttachRequestParams = {
+  buildId: string;
+  /** When the buildId is finished, replay recorded events. Default: true. */
+  replay?: boolean;
+};
+
+/**
+ * Names every event the server can emit. Keep this closed so the CLI's
+ * attach loop can switch on type without an `unknown` cast.
+ */
+export type BuildEventType = "build.started" | "log.line" | "build.finished" | "attach.complete";
+
+export type BuildStartedEventData = { build: BuildResponseData };
+export type LogLineEventData = { line: string };
+export type BuildFinishedEventData = { build: BuildResponseData };
+export type AttachCompleteEventData = {
+  reason: "build.finished" | "replay.complete" | "closed";
+};
+
+export type BuildEvent =
+  | (WireEvent<BuildStartedEventData> & { event: "build.started" })
+  | (WireEvent<LogLineEventData> & { event: "log.line" })
+  | (WireEvent<BuildFinishedEventData> & { event: "build.finished" })
+  | (WireEvent<AttachCompleteEventData> & { event: "attach.complete" });
+
+// ---------------------------------------------------------------------------
+// Method: logs.get
+// ---------------------------------------------------------------------------
+
+export type LogsGetRequestParams = {
+  buildId: string;
+  /** Return only the last N lines. Omit for the whole log. */
+  tail?: number;
+};
+
+export type LogsGetResponseData = {
+  buildId: string;
+  /** Raw lines joined with `\n`. No trailing newline. */
+  content: string;
+  /** Total lines in the file, even when `tail` truncated the response. */
+  lineCount: number;
+  /** True iff the returned content is a subset (tail was set and capped). */
+  truncated: boolean;
+};
+
+// ---------------------------------------------------------------------------
+// Method: schemes.list
+// ---------------------------------------------------------------------------
+
+export type SchemesListRequestParams = {
+  /** Override the auto-detected xcworkspace path. Optional. */
+  xcworkspace?: string;
+};
+
+export type SchemeSummary = {
+  name: string;
+};
+
+export type SchemesListResponseData = {
+  schemes: SchemeSummary[];
+  xcworkspace: string;
+};
+
+// ---------------------------------------------------------------------------
+// Method: destinations.list
+// ---------------------------------------------------------------------------
+
+// Redeclared here rather than imported from `core/destination/types` so the
+// protocol module stays free of engine deps and can be reused by any future
+// adapter (MCP, JSON-RPC, etc).
+export type DestinationKind =
+  | "iOSSimulator"
+  | "watchOSSimulator"
+  | "tvOSSimulator"
+  | "visionOSSimulator"
+  | "macOS"
+  | "iOSDevice"
+  | "watchOSDevice"
+  | "tvOSDevice"
+  | "visionOSDevice";
+
+export const ALL_DESTINATION_KINDS: DestinationKind[] = [
+  "iOSSimulator",
+  "watchOSSimulator",
+  "tvOSSimulator",
+  "visionOSSimulator",
+  "macOS",
+  "iOSDevice",
+  "watchOSDevice",
+  "tvOSDevice",
+  "visionOSDevice",
+];
+
+export type DestinationsListRequestParams = {
+  /** Filter to a single destination kind. Omit for everything. */
+  kind?: DestinationKind;
+  /** Refresh the underlying simctl / xctrace caches before listing. */
+  refresh?: boolean;
+};
+
+export type DestinationSummary = {
+  id: string;
+  kind: DestinationKind;
+  label: string;
+  /** Apple SDK platform name, e.g. "iphonesimulator", "macosx". */
+  platform: string;
+};
+
+export type DestinationsListResponseData = {
+  destinations: DestinationSummary[];
+};
+
+// ---------------------------------------------------------------------------
+// Method: usage
+// ---------------------------------------------------------------------------
+
+export type UsageRequestParams = Record<string, never>;
+
+export type MethodSummary = {
+  name: string;
+  description: string;
+};
+
+export type UsageResponseData = {
+  schemaVersion: string;
+  methods: MethodSummary[];
+};

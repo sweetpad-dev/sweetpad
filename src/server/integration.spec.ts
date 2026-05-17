@@ -16,7 +16,10 @@ import { Listener } from "./listener";
 // synthetic methods that aren't in the map; the casts here are an intentional
 // test-only escape from the static contract.
 type AnyDispatcher = {
-  register: (method: string, handler: (params: unknown) => Promise<unknown>) => void;
+  register: (
+    method: string,
+    options: { description: string; handler: (params: unknown) => Promise<unknown> },
+  ) => void;
 };
 type AnyClient = {
   request: <T = unknown>(method: string, params: Record<string, unknown>) => Promise<WireResponse<T>>;
@@ -39,14 +42,18 @@ describe("server wire protocol — integration", () => {
 
     const dispatcher = new MethodDispatcher(noopLogger);
     const anyDispatcher = dispatcher as unknown as AnyDispatcher;
-    anyDispatcher.register("echo", async (params) => {
-      return { echoed: (params as { value: unknown }).value };
+    anyDispatcher.register("echo", {
+      description: "test: echoes the value back",
+      handler: async (params) => ({ echoed: (params as { value: unknown }).value }),
     });
-    anyDispatcher.register("explode", async () => {
-      throw new ProtocolError("BUILD_FAILED", "boom", {
-        hint: "sweetpad attach b1",
-        extra: { running: [{ buildId: "b1" }] },
-      });
+    anyDispatcher.register("explode", {
+      description: "test: always throws",
+      handler: async () => {
+        throw new ProtocolError("BUILD_FAILED", "boom", {
+          hint: "sweetpad attach b1",
+          extra: { running: [{ buildId: "b1" }] },
+        });
+      },
     });
 
     listener = new Listener({ socketPath, dispatcher, logger: noopLogger });

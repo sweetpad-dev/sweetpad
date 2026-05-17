@@ -4,16 +4,23 @@ import * as path from "node:path";
 
 import type { Logger } from "../core/logger/types";
 import { MessageFramer, encodeMessage } from "../protocol/framing";
-import { isRequest, type WireMessage } from "../protocol/types";
+import { isRequest, type WireMessage, type WireRequest } from "../protocol/types";
 import type { MethodDispatcher } from "./dispatcher";
 
 const SOCKET_DIR_MODE = 0o700;
 const SOCKET_FILE_MODE = 0o600;
 
+/** Names of methods the listener routes to a streaming handler instead of the dispatcher. */
+const STREAMING_METHODS = new Set<string>(["attach"]);
+
+export type StreamingHandler = (socket: net.Socket, request: WireRequest) => Promise<void>;
+
 export type ListenerOptions = {
   socketPath: string;
   dispatcher: MethodDispatcher;
   logger: Logger;
+  /** Maps method name → handler that owns the connection lifecycle. */
+  streamingHandlers?: Record<string, StreamingHandler>;
   /** Notified when connection count transitions to or from zero. */
   onActiveChange?: (activeConnections: number) => void;
 };
@@ -110,6 +117,25 @@ export class Listener {
       // Server only consumes requests; ignore responses/events the client may have sent in error.
       return;
     }
+
+    // Streaming methods (attach) own the socket — they may emit any number
+    // of events and close it themselves. Skip the dispatcher in that case
+    // so we don't write a competing single-shot response.
+    if (STREAMING_METHODS.has(message.method)) {
+      const handler = this.options.streamingHandlers?.[message.method];
+      if (!handler) {
+        this.options.logger.error("No streaming handler registered for method", { method: message.method });
+        return;
+      }
+      try {
+        await handler(socket, message);
+      } catch (error) {
+        this.options.logger.error("Streaming handler crashed", { method: message.method, error });
+        if (socket.writable) socket.end();
+      }
+      return;
+    }
+
     const response = await this.options.dispatcher.handle(message);
     if (!socket.writable) return;
     socket.write(encodeMessage(response));

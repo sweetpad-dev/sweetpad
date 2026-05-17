@@ -1,15 +1,21 @@
-import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BuildManager } from "../../core/build/manager";
 import * as buildUtils from "../../core/build/utils";
 import type { ConfigProvider } from "../../core/config/types";
 import type { DestinationsManager } from "../../core/destination/manager";
 import type { Destination } from "../../core/destination/types";
+import { noopLogger } from "../../core/logger/types";
 import type { WorkspaceState } from "../../core/state/types";
 import { ExecuteTaskError } from "../../core/tasks/types";
 import type { WorkspaceRoot } from "../../core/workspace-root";
 import type { BuildRequestParams } from "../../protocol/types";
 import { JsonDiagnosticsCollector } from "../adapters/json-diagnostics";
+import { EventBus } from "../event-bus";
 import { BuildRegistry } from "../registry";
 import { createBuildMethod } from "./build";
 
@@ -28,6 +34,7 @@ type Harness = {
   registry: BuildRegistry;
   diagnostics: JsonDiagnosticsCollector;
   buildManager: { buildExplicit: Mock; getSchemes: Mock };
+  eventBus: EventBus;
   state: {
     get: Mock;
     update: Mock;
@@ -105,7 +112,9 @@ function makeHarness(options?: {
   };
 
   const diagnostics = new JsonDiagnosticsCollector();
-  const registry = new BuildRegistry();
+  const registry = new BuildRegistry({ buildsDir: makeTmpBuildsDir(), logger: noopLogger });
+
+  const eventBus = new EventBus();
 
   const buildMethod = createBuildMethod({
     buildManager: buildManager as unknown as BuildManager,
@@ -115,9 +124,19 @@ function makeHarness(options?: {
     workspaceRoot,
     config,
     state: state as unknown as WorkspaceState,
+    logger: noopLogger,
+    eventBus,
   });
 
-  return { buildMethod, registry, diagnostics, buildManager, state };
+  return { buildMethod, registry, diagnostics, buildManager, state, eventBus };
+}
+
+// Each harness gets its own tempdir so concurrent test runs don't share IDs.
+const _tmpDirs: string[] = [];
+function makeTmpBuildsDir(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sweetpad-build-test-"));
+  _tmpDirs.push(dir);
+  return dir;
 }
 
 const VALID_PARAMS: BuildRequestParams = {
@@ -129,6 +148,13 @@ const VALID_PARAMS: BuildRequestParams = {
 describe("build method", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    while (_tmpDirs.length) {
+      const dir = _tmpDirs.pop()!;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("succeeds: resolves scheme + destination + xcworkspace, returns Build envelope", async () => {
@@ -255,5 +281,20 @@ describe("build method", () => {
     expect(build.errorCount).toBe(1);
     expect(build.warningCount).toBe(1);
     expect(build.diagnostics).toHaveLength(2);
+  });
+
+  it("tees every output line into <buildId>/log.txt as the build runs", async () => {
+    const h = makeHarness();
+    // Hijack buildExplicit so it pretends to be xcodebuild emitting output
+    // through the onOutputLine callback the build method installs.
+    h.buildManager.buildExplicit.mockImplementationOnce(async (options: { onOutputLine?: (line: string) => void }) => {
+      options.onOutputLine?.("Compiling Foo.swift");
+      options.onOutputLine?.("Compiling Bar.swift");
+      options.onOutputLine?.("Build succeeded");
+    });
+
+    const build = await h.buildMethod({ ...VALID_PARAMS });
+    const logPath = h.registry.getLogPath(build.buildId);
+    expect(fs.readFileSync(logPath, "utf8")).toBe("Compiling Foo.swift\nCompiling Bar.swift\nBuild succeeded\n");
   });
 });

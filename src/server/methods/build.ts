@@ -1,16 +1,25 @@
 import type { BuildManager } from "../../core/build/manager";
-import { findXcodeWorkspaceInDirectory, getCurrentXcodeWorkspacePath } from "../../core/build/utils";
 import type { ConfigProvider } from "../../core/config/types";
 import type { DestinationsManager } from "../../core/destination/manager";
 import type { Destination } from "../../core/destination/types";
+import type { Logger } from "../../core/logger/types";
 import { ExecuteTaskError } from "../../core/tasks/types";
 import type { WorkspaceRoot } from "../../core/workspace-root";
 import type { ErrorCode } from "../../protocol/error-codes";
 import { ProtocolError } from "../../protocol/errors";
 import type { WorkspaceState } from "../../core/state/types";
-import type { BuildRequestParams, BuildResponseData } from "../../protocol/types";
+import {
+  type BuildEvent,
+  type BuildRequestParams,
+  type BuildResponseData,
+  SCHEMA_VERSION,
+} from "../../protocol/types";
 import type { JsonDiagnosticsCollector } from "../adapters/json-diagnostics";
+import type { EventBus } from "../event-bus";
+import { EventRecorder } from "../event-recorder";
+import { LogWriter } from "../log-writer";
 import type { BuildRegistry } from "../registry";
+import { resolveXcworkspace } from "./helpers";
 
 export type BuildMethodDeps = {
   buildManager: BuildManager;
@@ -20,6 +29,8 @@ export type BuildMethodDeps = {
   workspaceRoot: WorkspaceRoot;
   config: ConfigProvider;
   state: WorkspaceState;
+  logger: Logger;
+  eventBus: EventBus;
 };
 
 export function createBuildMethod(deps: BuildMethodDeps) {
@@ -34,7 +45,10 @@ export function createBuildMethod(deps: BuildMethodDeps) {
       });
     }
 
-    const xcworkspace = await resolveXcworkspace(deps, params.xcworkspace);
+    const xcworkspace = await resolveXcworkspace(
+      { workspaceRoot: deps.workspaceRoot, config: deps.config, state: deps.state },
+      params.xcworkspace,
+    );
     // Persist the resolved path so BuildManager.refreshSchemes() (and any
     // subsequent flow that calls getCurrentXcodeWorkspacePath) picks it up.
     deps.state.update("build.xcodeWorkspacePath", xcworkspace);
@@ -51,6 +65,28 @@ export function createBuildMethod(deps: BuildMethodDeps) {
     let status: BuildResponseData["status"] = "succeeded";
     let exitCode: number | null = 0;
 
+    const logWriter = LogWriter.open({
+      logger: deps.logger,
+      logPath: deps.registry.getLogPath(build.buildId),
+    });
+    const eventRecorder = EventRecorder.open({
+      logger: deps.logger,
+      eventsPath: deps.registry.getEventsPath(build.buildId),
+    });
+
+    const fanOut = (event: BuildEvent) => {
+      eventRecorder.record(event);
+      deps.eventBus.emit(build.buildId, event);
+    };
+
+    fanOut({
+      event: "build.started",
+      schemaVersion: SCHEMA_VERSION,
+      ts: new Date().toISOString(),
+      buildId: build.buildId,
+      data: { build },
+    });
+
     try {
       await deps.buildManager.buildExplicit({
         scheme: params.scheme,
@@ -58,17 +94,40 @@ export function createBuildMethod(deps: BuildMethodDeps) {
         destination,
         xcworkspace,
         debug: params.debug ?? false,
+        onOutputLine: (line) => {
+          logWriter.write(line);
+          fanOut({
+            event: "log.line",
+            schemaVersion: SCHEMA_VERSION,
+            ts: new Date().toISOString(),
+            buildId: build.buildId,
+            data: { line },
+          });
+        },
       });
     } catch (error) {
       status = "failed";
       exitCode = error instanceof ExecuteTaskError ? error.errorCode : null;
+    } finally {
+      await logWriter.close();
     }
 
-    return deps.registry.finish(build.buildId, {
+    const finalBuild = deps.registry.finish(build.buildId, {
       status,
       exitCode,
       diagnostics: deps.diagnostics.drain(),
     });
+
+    fanOut({
+      event: "build.finished",
+      schemaVersion: SCHEMA_VERSION,
+      ts: new Date().toISOString(),
+      buildId: finalBuild.buildId,
+      data: { build: finalBuild },
+    });
+    await eventRecorder.close();
+
+    return finalBuild;
   };
 }
 
@@ -103,24 +162,6 @@ function requireString(value: unknown, name: string): asserts value is string {
 
 function invalidArgument(message: string): ProtocolError {
   return new ProtocolError("INVALID_ARGUMENT", message);
-}
-
-async function resolveXcworkspace(deps: BuildMethodDeps, override: string | undefined): Promise<string> {
-  if (override) return override;
-
-  const fromConfigOrState = getCurrentXcodeWorkspacePath({
-    config: deps.config,
-    state: deps.state,
-    cwd: deps.workspaceRoot.getPath(),
-  });
-  if (fromConfigOrState) return fromConfigOrState;
-
-  const auto = await findXcodeWorkspaceInDirectory(deps.workspaceRoot.getPath());
-  if (auto) return auto;
-
-  throw new ProtocolError("WORKSPACE_NOT_DETECTED", "No .xcworkspace or Package.swift found in this workspace", {
-    hint: "Pass --workspace=<path>",
-  });
 }
 
 async function validateScheme(buildManager: BuildManager, scheme: string): Promise<void> {

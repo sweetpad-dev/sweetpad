@@ -1,3 +1,5 @@
+import * as path from "node:path";
+
 import { BuildManager } from "../core/build/manager";
 import { DestinationsManager } from "../core/destination/manager";
 import { DevicesManager } from "../core/devices/manager";
@@ -13,10 +15,18 @@ import { JsonConfigProvider } from "./adapters/json-config";
 import { JsonDiagnosticsCollector } from "./adapters/json-diagnostics";
 import { NodeTaskRunner } from "./adapters/node-task-runner";
 import { MethodDispatcher } from "./dispatcher";
+import { EventBus } from "./event-bus";
 import { Listener } from "./listener";
 import { removeLockfile, tryAcquireLock, writeLockfile } from "./lockfile";
 import { StderrJsonLogger } from "./logger";
+import { createAttachHandler } from "./methods/attach";
 import { createBuildMethod } from "./methods/build";
+import { createBuildGetMethod } from "./methods/build-get";
+import { createBuildsListMethod } from "./methods/builds-list";
+import { createDestinationsListMethod } from "./methods/destinations-list";
+import { createLogsGetMethod } from "./methods/logs-get";
+import { createSchemesListMethod } from "./methods/schemes-list";
+import { createUsageMethod } from "./methods/usage";
 import { BuildRegistry } from "./registry";
 
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -78,11 +88,14 @@ async function main(): Promise<void> {
   });
   await buildManager.start();
 
-  const registry = new BuildRegistry();
+  const buildsDir = path.join(workspacePath, ".sweetpad", "builds");
+  const registry = new BuildRegistry({ buildsDir, logger });
+  registry.recover();
+  const eventBus = new EventBus();
   const dispatcher = new MethodDispatcher(logger);
-  dispatcher.register(
-    "build",
-    createBuildMethod({
+  dispatcher.register("build", {
+    description: "Build a scheme for a destination. Blocks until xcodebuild settles.",
+    handler: createBuildMethod({
       buildManager,
       destinationsManager,
       registry,
@@ -90,8 +103,34 @@ async function main(): Promise<void> {
       workspaceRoot,
       config,
       state,
+      logger,
+      eventBus,
     }),
-  );
+  });
+  dispatcher.register("builds.list", {
+    description: "List recorded builds (most recent first). Filter with status; cap with limit.",
+    handler: createBuildsListMethod({ registry }),
+  });
+  dispatcher.register("build.get", {
+    description: "Fetch one build's full snapshot by buildId.",
+    handler: createBuildGetMethod({ registry }),
+  });
+  dispatcher.register("logs.get", {
+    description: "Read the raw xcodebuild log captured for a buildId. Use 'tail' for the last N lines.",
+    handler: createLogsGetMethod({ registry }),
+  });
+  dispatcher.register("schemes.list", {
+    description: "List schemes defined in the current xcworkspace.",
+    handler: createSchemesListMethod({ buildManager, workspaceRoot, config, state }),
+  });
+  dispatcher.register("destinations.list", {
+    description: "List simulators and devices available as build/run destinations.",
+    handler: createDestinationsListMethod({ destinationsManager }),
+  });
+  dispatcher.register("usage", {
+    description: "List every method this server exposes.",
+    handler: createUsageMethod({ dispatcher }),
+  });
 
   const idleTimeoutMs = readIdleTimeout();
   let idleTimer: NodeJS.Timeout | undefined;
@@ -117,10 +156,13 @@ async function main(): Promise<void> {
     }
   };
 
+  const attachHandler = createAttachHandler({ registry, eventBus, logger });
+
   const listener = new Listener({
     socketPath,
     dispatcher,
     logger,
+    streamingHandlers: { attach: attachHandler },
     onActiveChange: (n) => {
       if (n === 0) startIdleTimer();
       else clearIdleTimer();

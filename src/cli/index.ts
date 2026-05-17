@@ -3,7 +3,15 @@ import * as path from "node:path";
 import { ProtocolError } from "../protocol/errors";
 import { errorResponse } from "../protocol/envelope";
 import { parseArgv } from "./argv";
+import { runAttachCommand } from "./commands/attach";
 import { runBuildCommand } from "./commands/build";
+import { runBuildsCommand } from "./commands/builds";
+import { runDestinationsCommand } from "./commands/destinations";
+import { runErrorsCommand } from "./commands/errors";
+import { runLogsCommand } from "./commands/logs";
+import { runSchemesCommand } from "./commands/schemes";
+import { runShowCommand } from "./commands/show";
+import { runUsageCommand } from "./commands/usage";
 import { exitCodeForErrorCode } from "./exit-codes";
 
 const USAGE = `\
@@ -13,6 +21,17 @@ Usage:
   sweetpad build --scheme=<name> --destination=<id-or-name> --config=<name>
                  [--workspace=<root-dir>] [--xcworkspace=<file>] [--debug]
 
+  sweetpad builds       [--status=<status>] [--limit=<n>] [--workspace=...]
+  sweetpad show <buildId>                                  [--workspace=...]
+  sweetpad errors       [--build=<buildId>]                [--workspace=...]
+  sweetpad logs <buildId> [--tail=<n>]                     [--workspace=...]
+  sweetpad attach <buildId> [--no-replay]                  [--workspace=...]
+
+  sweetpad schemes      [--workspace=<root-dir>] [--xcworkspace=<file>]
+  sweetpad destinations [--workspace=<root-dir>] [--kind=<kind>] [--refresh]
+  sweetpad usage        [--workspace=<root-dir>]
+
+Common flags:
   --workspace      Override the project root (default: walk cwd up to the
                    first .xcworkspace / .xcodeproj / Package.swift /
                    Project.swift).
@@ -39,6 +58,54 @@ async function main(): Promise<void> {
   try {
     if (subcommand === "build") {
       const result = await runBuildCommand(rest, { cliEntryDir });
+      writeEnvelope(result.envelope);
+      process.exit(result.exitCode);
+    }
+
+    if (subcommand === "builds") {
+      const result = await runBuildsCommand(rest, { cliEntryDir });
+      writeEnvelope(result.envelope);
+      process.exit(result.exitCode);
+    }
+
+    if (subcommand === "show") {
+      const result = await runShowCommand(rest, { cliEntryDir });
+      writeEnvelope(result.envelope);
+      process.exit(result.exitCode);
+    }
+
+    if (subcommand === "errors") {
+      const result = await runErrorsCommand(rest, { cliEntryDir });
+      writeEnvelope(result.envelope);
+      process.exit(result.exitCode);
+    }
+
+    if (subcommand === "logs") {
+      const result = await runLogsCommand(rest, { cliEntryDir });
+      writeEnvelope(result.envelope);
+      process.exit(result.exitCode);
+    }
+
+    if (subcommand === "attach") {
+      const result = await runAttachCommand(rest, { cliEntryDir });
+      if (result.envelope !== null) writeEnvelope(result.envelope);
+      process.exit(result.exitCode);
+    }
+
+    if (subcommand === "schemes") {
+      const result = await runSchemesCommand(rest, { cliEntryDir });
+      writeEnvelope(result.envelope);
+      process.exit(result.exitCode);
+    }
+
+    if (subcommand === "destinations") {
+      const result = await runDestinationsCommand(rest, { cliEntryDir });
+      writeEnvelope(result.envelope);
+      process.exit(result.exitCode);
+    }
+
+    if (subcommand === "usage") {
+      const result = await runUsageCommand(rest, { cliEntryDir });
       writeEnvelope(result.envelope);
       process.exit(result.exitCode);
     }

@@ -1,12 +1,9 @@
-import { exitCodeForErrorCode } from "../exit-codes";
-import { ProtocolError } from "../../protocol/errors";
 import { isSuccess } from "../../protocol/envelope";
-import { getServerSocketPath } from "../../protocol/socket-path";
+import { ProtocolError } from "../../protocol/errors";
 import type { BuildRequestParams, BuildResponseData } from "../../protocol/types";
 import { type ParsedArgs, getBool, getString } from "../argv";
-import { ProtocolClient } from "../protocol";
-import { defaultServerEntryPath, ensureServerRunning } from "../spawn";
-import { resolveWorkspace } from "../workspace";
+import { exitCodeForErrorCode } from "../exit-codes";
+import { type CommandEnv, resolveSocketPath, withClient } from "../runner";
 //
 // `BuildRequestParams` / `BuildResponseData` here aren't re-exports — they're
 // the same shapes the server's `methods/build.ts` consumes via the shared
@@ -17,18 +14,7 @@ export type BuildCommandResult = {
   envelope: object;
 };
 
-export type BuildCommandEnv = {
-  /** Working directory used for workspace resolution. Defaults to `process.cwd()`. */
-  cwd?: string;
-  /** Directory containing `cli.js` (and `server.js`). Used to auto-spawn the server. */
-  cliEntryDir: string;
-  /**
-   * Pre-resolved socket path. When set, the workspace-root cwd-walk and
-   * server auto-spawn are skipped — tests use this to point at an in-process
-   * server bound to a tmp socket.
-   */
-  socketPathOverride?: string;
-};
+export type BuildCommandEnv = CommandEnv;
 
 /**
  * Drives a `sweetpad build` invocation: validates flags, ensures the server
@@ -39,10 +25,9 @@ export async function runBuildCommand(args: ParsedArgs, env: BuildCommandEnv): P
   const scheme = getString(args, "scheme");
   const destination = getString(args, "destination");
   const configuration = getString(args, "config") ?? getString(args, "configuration");
-  // `--workspace` overrides the *root* (cwd-walk target + socket key). Use
-  // `--xcworkspace` to point at a specific `.xcworkspace` / `Package.swift`
-  // when there are multiple inside the root.
-  const workspaceRootOverride = getString(args, "workspace");
+  // `--xcworkspace` points at a specific `.xcworkspace` / `Package.swift`
+  // when there are multiple inside the root. `--workspace` (handled by the
+  // shared runner) overrides the *root* (cwd-walk target + socket key).
   const xcworkspaceOverride = getString(args, "xcworkspace");
   const debug = getBool(args, "debug");
 
@@ -54,19 +39,8 @@ export async function runBuildCommand(args: ParsedArgs, env: BuildCommandEnv): P
     );
   }
 
-  let socketPath: string;
-  if (env.socketPathOverride) {
-    socketPath = env.socketPathOverride;
-  } else {
-    const cwd = env.cwd ?? process.cwd();
-    const workspacePath = resolveWorkspace(workspaceRootOverride ?? cwd);
-    socketPath = getServerSocketPath(workspacePath);
-    const serverEntryPath = defaultServerEntryPath(env.cliEntryDir);
-    await ensureServerRunning({ socketPath, serverEntryPath, workspacePath });
-  }
-
-  const client = await ProtocolClient.connect(socketPath);
-  try {
+  const socketPath = await resolveSocketPath(args, env);
+  return await withClient(socketPath, async (client) => {
     const params: BuildRequestParams = {
       scheme,
       destination,
@@ -82,9 +56,7 @@ export async function runBuildCommand(args: ParsedArgs, env: BuildCommandEnv): P
 
     const exitCode = exitCodeForBuildStatus(response.data);
     return { exitCode, envelope: response };
-  } finally {
-    client.close();
-  }
+  });
 }
 
 function exitCodeForBuildStatus(build: BuildResponseData): number {

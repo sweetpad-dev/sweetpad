@@ -27,7 +27,10 @@ describe("runBuildCommand — E2E against a stub server", () => {
     socketPath = path.join(dir, "server.sock");
 
     const dispatcher = new MethodDispatcher(noopLogger);
-    dispatcher.register("build", (params: unknown) => buildHandler(params));
+    dispatcher.register("build", {
+      description: "test: stub build handler",
+      handler: (params: unknown) => buildHandler(params),
+    });
 
     listener = new Listener({ socketPath, dispatcher, logger: noopLogger });
     await listener.listen();

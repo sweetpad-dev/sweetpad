@@ -120,6 +120,12 @@ class NodeTaskExecution implements TaskTerminal {
       this.completionResolve = resolve;
       this.completionReject = reject;
     });
+    // Only the cancel-then-restart path awaits this promise. For the normal
+    // path nobody attaches a `.catch`, so a rejection would surface as an
+    // unhandled rejection and (in Node 21+) crash the server. Attach a no-op
+    // — the main `start()` path still rethrows the same error to its caller,
+    // so this swallow is purely for the orphan-completion case.
+    this.completion.catch(() => {});
   }
 
   async start(callback: (terminal: TaskTerminal) => Promise<void>): Promise<void> {
