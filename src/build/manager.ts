@@ -32,7 +32,8 @@ import { MacOSLogSidecar, Pymd3Sidecar, SimulatorLogSidecar } from "../run/sidec
 import type { SimulatorDestination } from "../simulators/types";
 import { getSimulatorByUdid } from "../simulators/utils";
 import type { ProgressStatusBar } from "../system/status-bar";
-import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
+import { BUILD_TASK_PROBLEM_MATCHERS } from "./constants";
+import type { DiagnosticsManager } from "./diagnostics";
 import type { BuildTreeItem } from "./tree";
 import {
   XcodeCommandBuilder,
@@ -78,6 +79,7 @@ export class BuildManager {
   private tunnel: TunnelManager;
   private vscodeContext: vscode.ExtensionContext;
   private destinations: DestinationsManager;
+  private diagnostics: DiagnosticsManager;
   private runningSchemes: Set<string> = new Set();
 
   constructor(options: {
@@ -87,6 +89,7 @@ export class BuildManager {
     tunnel: TunnelManager;
     vscodeContext: vscode.ExtensionContext;
     destinations: DestinationsManager;
+    diagnostics: DiagnosticsManager;
   }) {
     this.workspace = options.workspace;
     this.progress = options.progress;
@@ -94,6 +97,7 @@ export class BuildManager {
     this.tunnel = options.tunnel;
     this.vscodeContext = options.vscodeContext;
     this.destinations = options.destinations;
+    this.diagnostics = options.diagnostics;
   }
 
   async start(): Promise<void> {
@@ -266,7 +270,7 @@ export class BuildManager {
         name: options.name,
         lock: "sweetpad.build",
         terminateLocked: true,
-        problemMatchers: DEFAULT_BUILD_PROBLEM_MATCHERS,
+        problemMatchers: BUILD_TASK_PROBLEM_MATCHERS,
         metadata: { scheme: options.scheme },
         callback: options.callback,
       });
@@ -947,14 +951,20 @@ export class BuildManager {
       assertUnreachable(workspaceType);
     }
 
-    await terminal.execute({
-      command: commandParts[0],
-      args: commandParts.slice(1),
-      pipes: pipes,
-      env: env,
-      cwd: cwd,
-      closeStdin: true,
-    });
+    const diagnostics = this.diagnostics.beginBuild({ mode: useXcbeautify ? "xcbeautify" : "xcodebuild" });
+    try {
+      await terminal.execute({
+        command: commandParts[0],
+        args: commandParts.slice(1),
+        pipes: pipes,
+        env: env,
+        cwd: cwd,
+        closeStdin: true,
+        onOutputLine: async ({ value }) => diagnostics.recordLine(value),
+      });
+    } finally {
+      diagnostics.flush();
+    }
 
     await restartSwiftLSP();
   }
