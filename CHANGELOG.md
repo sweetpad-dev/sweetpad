@@ -2,6 +2,12 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.90] - 2026-05-17
+
+- Apply a scheme's `<LaunchAction>` args, env vars, App Language and App Region when running apps ([#246](https://github.com/sweetpad-dev/sweetpad/issues/246))
+- Don't load the SweetPad UI in non-Swift workspaces ([#247](https://github.com/sweetpad-dev/sweetpad/issues/247))
+- Replace the `.xcscheme` XML reader with a typed parser/serializer that round-trips attribute/child order, comments, CDATA, declaration, and unknown elements
+
 ## [0.1.89] - 2026-05-12
 
 - Re-release of 0.1.88 — CI now uses Node 24 which ships npm 11 natively, instead of trying to self-upgrade npm from 10 mid-job (which failed).
