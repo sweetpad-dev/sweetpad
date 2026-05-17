@@ -1,0 +1,137 @@
+import { randomBytes } from "node:crypto";
+import { promises as fs, type Dirent, type Stats } from "node:fs";
+import * as path from "node:path";
+
+/**
+ * Find files or directories in a given directory
+ */
+export async function findFiles(options: { directory: string; matcher: (file: Dirent) => boolean }): Promise<string[]> {
+  const files = await fs.readdir(options.directory, { withFileTypes: true });
+  const matchedFiles: string[] = [];
+
+  for (const file of files) {
+    const fullPath = file.path;
+
+    if (options.matcher(file)) {
+      matchedFiles.push(fullPath);
+    }
+  }
+
+  return matchedFiles;
+}
+
+/**
+ * Find files or directories in a given directory recursively
+ */
+export async function findFilesRecursive(options: {
+  directory: string;
+  matcher: (file: Dirent) => boolean;
+  ignore?: string[];
+  depth?: number;
+  maxResults?: number;
+}): Promise<string[]> {
+  const ignore = options.ignore ?? [];
+  const depth = options.depth ?? 0;
+
+  const files = await fs.readdir(options.directory, { withFileTypes: true });
+  const matchedFiles: string[] = [];
+
+  for (const file of files) {
+    const fullPath = path.join(file.path, file.name);
+
+    if (options.matcher(file)) {
+      matchedFiles.push(fullPath);
+      if (options.maxResults && matchedFiles.length >= options.maxResults) {
+        return matchedFiles;
+      }
+    }
+
+    if (file.isDirectory() && !ignore.includes(file.name) && depth > 0) {
+      const subFiles = await findFilesRecursive({
+        directory: fullPath,
+        matcher: options.matcher,
+        ignore: options.ignore,
+        depth: depth - 1,
+        maxResults: options.maxResults ? options.maxResults - matchedFiles.length : undefined,
+      });
+      matchedFiles.push(...subFiles);
+      if (options.maxResults && matchedFiles.length >= options.maxResults) {
+        return matchedFiles;
+      }
+    }
+  }
+
+  return matchedFiles;
+}
+
+export async function isFileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+export async function readFile(filePath: string): Promise<Buffer> {
+  return await fs.readFile(filePath);
+}
+
+export async function statFile(filePath: string): Promise<Stats> {
+  return await fs.stat(filePath);
+}
+
+export async function readTextFile(filePath: string): Promise<string> {
+  const rawBuffer = await readFile(filePath);
+  return rawBuffer.toString();
+}
+
+export async function readJsonFile<T = unknown>(filePath: string): Promise<T> {
+  const rawBuffer = await readFile(filePath);
+  const rawString = rawBuffer.toString();
+  return JSON.parse(rawString);
+}
+
+export function getRelativePath(rootPath: string, filePath: string): string {
+  return path.relative(rootPath, filePath);
+}
+
+/**
+ * Allocate a randomly named, ephemeral file under `<storagePath>/_temp/`. The
+ * returned handle implements `Symbol.asyncDispose` so the file is removed
+ * automatically when used with `await using`.
+ */
+export async function tempFilePath(
+  storagePath: string,
+  options: {
+    prefix: string;
+  },
+) {
+  const tempPath = path.join(storagePath, "_temp");
+  await createDirectory(tempPath);
+
+  const random = randomBytes(4).toString("hex");
+  const filePath = path.join(tempPath, `${options.prefix}_${random}`);
+  return {
+    path: filePath,
+    [Symbol.asyncDispose]: async () => {
+      await removeFile(filePath);
+    },
+  };
+}
+
+export async function createDirectory(directory: string) {
+  return fs.mkdir(directory, { recursive: true });
+}
+
+export async function removeDirectory(directory: string) {
+  return fs.rm(directory, {
+    recursive: true,
+    // exceptions will be ignored if `path` does not exist.
+    force: true,
+  });
+}
+
+export async function removeFile(filePath: string) {
+  return fs.rm(filePath);
+}

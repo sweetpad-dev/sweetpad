@@ -9,7 +9,7 @@ export default defineConfig({
     include: ["src/**/*.spec.ts"],
     setupFiles: ["./tests/setup.js"],
     alias: {
-      vscode: path.resolve(__dirname, "src/__mocks__/vscode.ts"),
+      vscode: path.resolve(__dirname, "src/vscode/__mocks__/vscode.ts"),
     },
   },
   define: {

@@ -22,7 +22,7 @@ if (isProduction) {
 }
 
 export default defineConfig({
-  input: "./src/extension.ts",
+  input: "./src/vscode/extension.ts",
   output: {
     file: "out/extension.js",
     format: "cjs",
