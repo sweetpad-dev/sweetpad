@@ -81,6 +81,12 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       refreshSimulators: vi.fn().mockResolvedValue([]),
       getDestinations: vi.fn().mockResolvedValue([]),
     } as any;
+    const mockDiagnostics = {
+      beginBuild: vi.fn().mockReturnValue({
+        recordLine: vi.fn(),
+        flush: vi.fn(),
+      }),
+    } as any;
     buildManager = new BuildManager({
       workspace: mockWorkspace,
       progress: mockProgress,
@@ -88,6 +94,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       tunnel: mockTunnel,
       vscodeContext: mockVscodeContext,
       destinations: mockDestinations,
+      diagnostics: mockDiagnostics,
     });
     mockTerminal = createMockTerminal();
 

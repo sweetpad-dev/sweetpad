@@ -26,6 +26,7 @@ import {
   switchWorktreeCommand,
   testCommand,
 } from "./build/commands.js";
+import { DiagnosticsManager } from "./build/diagnostics.js";
 import { LspDiagnosticsService } from "./build/lsp-diagnostics.js";
 import { BuildManager } from "./build/manager.js";
 import { XcodeBuildTaskProvider } from "./build/provider.js";
@@ -121,6 +122,7 @@ export function activate(context: vscode.ExtensionContext) {
     workspace: workspace,
   });
   const lspDiagnostics = new LspDiagnosticsService(workspace);
+  const diagnostics = new DiagnosticsManager();
   const buildManager = new BuildManager({
     workspace: workspace,
     progress: progressStatusBar,
@@ -128,6 +130,7 @@ export function activate(context: vscode.ExtensionContext) {
     tunnel: tunnelManager,
     vscodeContext: context,
     destinations: destinationsManager,
+    diagnostics: diagnostics,
   });
   const toolsManager = new ToolsManager();
   const testingManager = new TestingManager({
@@ -304,6 +307,7 @@ export function activate(context: vscode.ExtensionContext) {
   lspDiagnostics.reattachIfEnabled();
   lspDiagnostics.showPostReloadNotificationIfPending();
   d(lspDiagnostics);
+  d(diagnostics);
 }
 
 export function deactivate() {}

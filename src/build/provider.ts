@@ -15,7 +15,7 @@ import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationsManager } from "../destination/manager";
 import type { Destination } from "../destination/types";
 import type { ProgressStatusBar } from "../system/status-bar";
-import { DEFAULT_BUILD_PROBLEM_MATCHERS } from "./constants";
+import { BUILD_TASK_PROBLEM_MATCHERS } from "./constants";
 import type { BuildManager } from "./manager";
 import {
   askConfiguration,
@@ -648,7 +648,7 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
             throw new Error(`Task executor ${executorName} is not supported`);
         }
       }),
-      DEFAULT_BUILD_PROBLEM_MATCHERS, // problemMatchers
+      BUILD_TASK_PROBLEM_MATCHERS, // problemMatchers
     );
     setTaskPresentationOptions(task);
 
