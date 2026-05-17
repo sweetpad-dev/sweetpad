@@ -2,14 +2,10 @@ import path from "node:path";
 
 import { XcodeProject as XcodeProjectParsed } from "@bacons/xcode";
 import { type XcodeProject as XcodeProjectRaw, parse as parseChevrotain } from "@bacons/xcode/json";
-import { type XmlDocument, XmlElement, type XmlNode, parseXml } from "@rgrove/parse-xml";
 
 import { findFiles, findFilesRecursive, isFileExists, readFile, readTextFile, statFile } from "../files";
 import { uniqueFilter } from "../helpers";
-
-function isXMLElement(obj: XmlNode): obj is XmlElement {
-  return obj instanceof XmlElement;
-}
+import { SchemeDocument } from "./xcscheme";
 
 export interface XcodeProject {
   projectPath: string;
@@ -24,7 +20,7 @@ export class XcodeScheme {
   public path: string;
   public project: XcodeProject;
 
-  #cache: XmlDocument | null = null;
+  #cache: SchemeDocument | null = null;
   #cacheModified: number | null = null;
 
   constructor(options: { name: string; path: string; project: XcodeProject }) {
@@ -33,102 +29,35 @@ export class XcodeScheme {
     this.project = options.project;
   }
 
-  async getXml(): Promise<XmlDocument | null> {
-    // If scheme file doesn't exist, it means that default scheme settings should be used
+  /**
+   * Parse the `.xcscheme` file into a typed SchemeDocument. Returns null if the
+   * scheme has no on-disk path (in which case Xcode's default scheme settings
+   * apply). Result is cached and invalidated by mtime.
+   */
+  async getScheme(): Promise<SchemeDocument | null> {
     if (!this.path) {
       return null;
     }
-
     const stat = await statFile(this.path);
-    if (this.#cache && this.#cacheModified && stat.mtimeMs === this.#cacheModified) {
+    if (this.#cache && this.#cacheModified === stat.mtimeMs) {
       return this.#cache;
     }
-
     const content = await readFile(this.path);
-    const contentString = content.toString();
-    const contentParsed = parseXml(contentString);
-    this.#cache = contentParsed;
+    const doc = SchemeDocument.parse(content.toString());
+    this.#cache = doc;
     this.#cacheModified = stat.mtimeMs;
-    return contentParsed;
+    return doc;
   }
 
   /**
-   * Get target name that should be used to lauch the app
+   * Name of the target that the scheme's Run action launches (the BlueprintName
+   * of the BuildableProductRunnable inside <LaunchAction>). Returns null when
+   * there is no scheme file, no LaunchAction, or only a RemoteRunnable /
+   * MacroExpansion (e.g. framework schemes).
    */
   async getTargetToLaunch(): Promise<string | null> {
-    /** Example:
-     * <Scheme ...>
-     *  <BuildAction ...> ... </BuildAction>
-     *  <TestAction ...> ... </TestAction>
-     *  <LaunchAction ...>
-     *   <BuildableProductRunnable ...>
-     *    <!-- This is the target that will be launched -->
-     *    <BuildableReference
-     *     BuildableName = "MyApp.app"
-     *     BlueprintName = "MyApp">
-     *    </BuildableReference>
-     *   </BuildableProductRunnable>
-     *  </LaunchAction>
-     *  <ProfileAction ...> ... </ProfileAction>
-     *  <AnalyzeAction ...> ... </AnalyzeAction>
-     *  <ArchiveAction ...> ... </ArchiveAction>
-     * </Scheme>
-     */
-    const schemeContent = await this.getXml();
-
-    // When there is no scheme file it means that it should use default target name
-    if (!schemeContent) {
-      return null;
-    }
-
-    const schemeRoot = schemeContent.root;
-    if (!schemeRoot) {
-      return null;
-    }
-
-    /**
-     * <LaunchAction> configures the Run phase of the scheme (the action that launches the app).
-     * In Xcode’s UI this is labeled “Run” in the scheme editor, but in the file it’s called
-     * LaunchAction​. This element defines how the app or executable is launched when you run
-     * the scheme.
-     */
-    const launchAction = schemeRoot.children.filter(isXMLElement).find((element) => element.name === "LaunchAction");
-    if (!launchAction) {
-      return null;
-    }
-
-    /**
-     * <BuildableProductRunnable> – This child element appears in LaunchAction and represents
-     * the executable to run. It contains the BuildableReference for the product that will be
-     * launched. Typically, for an app scheme, there will be one BuildableProductRunnable
-     * referencing the .app target.
-     *
-     * INFO: There are other types of runnable elements, such as RemoteRunnable and BuildableLocationRunnable,
-     * but these are not currently supported by this parser. Please open an issue if you need support for these.
-     */
-    const buildableProductRunnable = launchAction.children
-      .filter(isXMLElement)
-      .find((element) => element.name === "BuildableProductRunnable");
-    if (!buildableProductRunnable) {
-      return null;
-    }
-
-    /**
-     * <BuildableReference> is the glue between the scheme and the project’s targets, ensuring the scheme
-     * knows which target it’s referring to. The BlueprintName attribute is the name of the target.
-     *
-     * This target is the one that will be launched when you run the scheme in Xcode.
-     */
-    const buildableReference = buildableProductRunnable.children
-      .filter(isXMLElement)
-      .find((element) => element.name === "BuildableReference");
-
-    if (!buildableReference) {
-      return null;
-    }
-
-    // BlueprintName == TargetName
-    return buildableReference.attributes.BlueprintName || "";
+    const doc = await this.getScheme();
+    return doc?.targetToLaunch() ?? null;
   }
 
   static fromFile(options: { schemePath: string; project: XcodeProject }): XcodeScheme {
