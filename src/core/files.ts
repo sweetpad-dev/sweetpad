@@ -10,10 +10,8 @@ export async function findFiles(options: { directory: string; matcher: (file: Di
   const matchedFiles: string[] = [];
 
   for (const file of files) {
-    const fullPath = file.path;
-
     if (options.matcher(file)) {
-      matchedFiles.push(fullPath);
+      matchedFiles.push(path.join(options.directory, file.name));
     }
   }
 
@@ -37,7 +35,11 @@ export async function findFilesRecursive(options: {
   const matchedFiles: string[] = [];
 
   for (const file of files) {
-    const fullPath = path.join(file.path, file.name);
+    // Resolve via the caller-provided `directory` rather than `file.path`/
+    // `file.parentPath` — Dirent's parent-path field has churned across Node
+    // versions (path → parentPath → undefined in some 21+ builds) and joining
+    // from `directory` is always correct because readdir is non-recursive.
+    const fullPath = path.join(options.directory, file.name);
 
     if (options.matcher(file)) {
       matchedFiles.push(fullPath);

@@ -18,6 +18,7 @@ import {
 } from "../cli/scripts";
 import type { ConfigProvider } from "../config/types";
 import type { DestinationsManager } from "../destination/manager";
+import type { Destination } from "../destination/types";
 import type { DeviceDestination } from "../devices/types";
 import { ExtensionError } from "../errors";
 import { isFileExists, readJsonFile, tempFilePath } from "../files";
@@ -342,22 +343,46 @@ export class BuildManager {
       sdk: undefined,
       xcworkspace: xcworkspace,
     });
-    const destinationRaw = getXcodeBuildDestinationString({ destination: destination, config: this.config });
 
-    const sdk = destination.platform;
+    await this.buildExplicit({
+      scheme: scheme,
+      configuration: configuration,
+      destination: destination,
+      xcworkspace: xcworkspace,
+      debug: options.debug,
+    });
+  }
+
+  /**
+   * Build with all parameters pre-resolved — no asker prompts. Used by the
+   * agent CLI / server where scheme, configuration, and destination come in via
+   * flags or workspace state.
+   */
+  async buildExplicit(options: {
+    scheme: string;
+    configuration: string;
+    destination: Destination;
+    xcworkspace: string;
+    debug: boolean;
+  }): Promise<void> {
+    const destinationRaw = getXcodeBuildDestinationString({
+      destination: options.destination,
+      config: this.config,
+    });
+    const sdk = options.destination.platform;
 
     await this.runSchemeTask({
       name: "Build",
-      scheme: scheme,
+      scheme: options.scheme,
       callback: async (terminal) => {
         await this.buildApp(terminal, {
-          scheme: scheme,
+          scheme: options.scheme,
           sdk: sdk,
-          configuration: configuration,
+          configuration: options.configuration,
           shouldBuild: true,
           shouldClean: false,
           shouldTest: false,
-          xcworkspace: xcworkspace,
+          xcworkspace: options.xcworkspace,
           destinationRaw: destinationRaw,
           debug: options.debug,
         });

@@ -21,22 +21,51 @@ if (isProduction) {
   );
 }
 
-export default defineConfig({
-  input: "./src/vscode/extension.ts",
-  output: {
-    file: "out/extension.js",
-    format: "cjs",
-    sourcemap: isProduction ? "hidden" : true,
-    minify: isProduction,
+const sharedTransform = {
+  // rolldown requires `define` here, not at top level
+  define: {
+    GLOBAL_SENTRY_DSN: JSON.stringify(process.env.SENTRY_DSN ?? null),
+    GLOBAL_RELEASE_VERSION: isProduction ? JSON.stringify(pkg.version) : JSON.stringify("dev"),
   },
-  platform: "node",
-  external: ["vscode"],
-  transform: {
-    // rolldown requires `define` here, not at top level
-    define: {
-      GLOBAL_SENTRY_DSN: JSON.stringify(process.env.SENTRY_DSN ?? null),
-      GLOBAL_RELEASE_VERSION: isProduction ? JSON.stringify(pkg.version) : JSON.stringify("dev"),
+};
+
+export default defineConfig([
+  // VS Code extension. `vscode` is provided by the host at runtime.
+  {
+    input: "./src/vscode/extension.ts",
+    output: {
+      file: "out/extension.js",
+      format: "cjs",
+      sourcemap: isProduction ? "hidden" : true,
+      minify: isProduction,
     },
+    platform: "node",
+    external: ["vscode"],
+    transform: sharedTransform,
+    plugins,
   },
-  plugins,
-});
+  // sweetpad-server: standalone Node process. No `vscode` ever.
+  {
+    input: "./src/server/index.ts",
+    output: {
+      file: "out/server.js",
+      format: "cjs",
+      sourcemap: isProduction ? "hidden" : true,
+      minify: isProduction,
+    },
+    platform: "node",
+    transform: sharedTransform,
+  },
+  // sweetpad CLI: the entry the agents invoke. Auto-spawns the server.
+  {
+    input: "./src/cli/index.ts",
+    output: {
+      file: "out/cli.js",
+      format: "cjs",
+      sourcemap: isProduction ? "hidden" : true,
+      minify: isProduction,
+    },
+    platform: "node",
+    transform: sharedTransform,
+  },
+]);
