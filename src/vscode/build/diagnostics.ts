@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { type ParseMode, parseDiagnosticLine, type ParsedDiagnostic } from "../../core/build/diagnostics-parser";
+import type { Diagnostic as WireDiagnostic } from "../../protocol/types";
 import { commonLogger } from "../logger";
 
 /**
@@ -68,10 +69,53 @@ export class DiagnosticsManager implements vscode.Disposable {
     return new DiagnosticAccumulator(this.collection, options.mode);
   }
 
+  /**
+   * Apply diagnostics that have already been parsed server-side (the
+   * `diagnostics` array of a Build wire response). Replaces the existing
+   * collection in one go — matches the `beginBuild()` → `flush()` contract
+   * so the Problems panel resets per build.
+   */
+  applyWireDiagnostics(diagnostics: WireDiagnostic[]): void {
+    this.collection.clear();
+    if (diagnostics.length === 0) return;
+
+    const perFile = new Map<string, WireDiagnostic[]>();
+    for (const d of diagnostics) {
+      const bucket = perFile.get(d.file);
+      if (bucket) bucket.push(d);
+      else perFile.set(d.file, [d]);
+    }
+
+    for (const [file, diags] of perFile) {
+      const uri = vscode.Uri.file(file);
+      const surviving = diags.filter((d) => !isAlreadyReportedByLsp(uri, wireToParsed(d)));
+      if (surviving.length === 0) continue;
+      this.collection.set(uri, surviving.map(wireToVscodeDiagnostic));
+    }
+  }
+
   dispose(): void {
     for (const sub of this.subscriptions) sub.dispose();
     this.collection.dispose();
   }
+}
+
+function wireToVscodeDiagnostic(d: WireDiagnostic): vscode.Diagnostic {
+  return toVscodeDiagnostic(wireToParsed(d));
+}
+
+function wireToParsed(d: WireDiagnostic): ParsedDiagnostic {
+  // The wire shape carries the parser's `source` as a string for forward-
+  // compatibility, but the values it actually emits are always one of the
+  // existing union members.
+  return {
+    file: d.file,
+    line: d.line,
+    column: d.column,
+    severity: d.severity,
+    message: d.message,
+    source: d.source as ParsedDiagnostic["source"],
+  };
 }
 
 export class DiagnosticAccumulator {

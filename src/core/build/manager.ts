@@ -317,6 +317,29 @@ export class BuildManager {
    * Build app without running
    */
   async buildCommand(item: { scheme?: string } | undefined, options: { debug: boolean }) {
+    const spec = await this.resolveBuildSpec(item);
+    await this.buildExplicit({
+      scheme: spec.scheme,
+      configuration: spec.configuration,
+      destination: spec.destination,
+      xcworkspace: spec.xcworkspace,
+      debug: options.debug,
+    });
+  }
+
+  /**
+   * Ask for whatever is missing — workspace, scheme, configuration,
+   * destination — and return the fully resolved tuple. Split out of
+   * `buildCommand` so the VS Code extension can do the asking in-proc
+   * (needs QuickPick) and then dispatch execution via either the in-proc
+   * `buildExplicit` or the standalone server.
+   */
+  async resolveBuildSpec(item: { scheme?: string } | undefined): Promise<{
+    xcworkspace: string;
+    scheme: string;
+    configuration: string;
+    destination: Destination;
+  }> {
     this.progress.updateText("Searching for workspace");
     const xcworkspace = await askXcodeWorkspacePath(this.askDeps, this);
 
@@ -344,13 +367,7 @@ export class BuildManager {
       xcworkspace: xcworkspace,
     });
 
-    await this.buildExplicit({
-      scheme: scheme,
-      configuration: configuration,
-      destination: destination,
-      xcworkspace: xcworkspace,
-      debug: options.debug,
-    });
+    return { xcworkspace, scheme, configuration, destination };
   }
 
   /**

@@ -1008,6 +1008,11 @@
           "default": true,
           "description": "Show progress in the status bar when executing a command or task"
         },
+        "sweetpad.system.experimental.serverMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Experimental: route builds through the standalone sweetpad-server (Unix socket) instead of the in-process engine. Centralizes the build registry so CLI invocations and VS Code builds share buildIds + history. Requires reloading the window after toggling."
+        },
         "sweetpad.xcodegen.autogenerate": {
           "type": "boolean",
           "default": false,

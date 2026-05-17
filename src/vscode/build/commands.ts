@@ -17,9 +17,12 @@ import { type XcodeScheme, getBuildConfigurations, getIsXcodeBuildServerInstalle
 import { ExecBaseError, ExtensionError } from "../../core/errors";
 import { exec } from "../../core/exec";
 import { isFileExists, removeDirectory } from "../../core/files";
+import { isSuccess } from "../../protocol/envelope";
+import { ProtocolError } from "../../protocol/errors";
 import { type AppDeps, makeAskBuildDeps, makeXcodeCliDeps } from "../commands";
 import { updateWorkspaceConfig } from "../config";
 import { showInputBox, showQuickPick } from "../quick-pick";
+import { isServerModeEnabled } from "../server-client";
 import type { BuildTreeItem } from "./tree";
 
 /**
@@ -27,6 +30,9 @@ import type { BuildTreeItem } from "./tree";
  */
 export async function buildCommand(deps: AppDeps, item?: BuildTreeItem) {
   deps.progressStatusBar.updateText("Starting build command");
+  if (isServerModeEnabled(deps.config)) {
+    return await runBuildViaServer(deps, item, { debug: false });
+  }
   return deps.buildManager.buildCommand(item, { debug: false });
 }
 
@@ -35,7 +41,45 @@ export async function buildCommand(deps: AppDeps, item?: BuildTreeItem) {
  */
 export async function debuggingBuildCommand(deps: AppDeps, item?: BuildTreeItem) {
   deps.progressStatusBar.updateText("Building the app (debug mode)");
+  if (isServerModeEnabled(deps.config)) {
+    return await runBuildViaServer(deps, item, { debug: true });
+  }
   return deps.buildManager.buildCommand(item, { debug: true });
+}
+
+/**
+ * Phase 3 build path. Uses the in-proc engine to drive the UI askers
+ * (QuickPick for scheme / destination / configuration) since those need
+ * VS Code APIs, then dispatches execution to the standalone server. The
+ * server validates the spec, runs xcodebuild, and returns the snapshot
+ * (with parsed diagnostics inline) — we push those into the same
+ * `DiagnosticsManager` collection the in-proc path writes to, so the
+ * Problems panel looks identical regardless of mode.
+ */
+async function runBuildViaServer(deps: AppDeps, item: BuildTreeItem | undefined, options: { debug: boolean }) {
+  const spec = await deps.buildManager.resolveBuildSpec(item);
+
+  const response = await deps.serverClient.request("build", {
+    scheme: spec.scheme,
+    configuration: spec.configuration,
+    destination: spec.destination.id,
+    xcworkspace: spec.xcworkspace,
+    debug: options.debug,
+  });
+
+  if (!isSuccess(response)) {
+    throw new ProtocolError(response.error.code, response.error.message, {
+      hint: response.error.hint,
+    });
+  }
+
+  deps.diagnostics.applyWireDiagnostics(response.data.diagnostics);
+
+  if (response.data.status !== "succeeded") {
+    throw new ExtensionError(`Build ${response.data.status} (exit ${response.data.exitCode ?? "?"})`, {
+      context: { buildId: response.data.buildId },
+    });
+  }
 }
 
 /**

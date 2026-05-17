@@ -63,6 +63,7 @@ import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatPro
 import { createFormatStatusItem } from "./format/status.js";
 import { Logger } from "./logger.js";
 import { commonLogger } from "./logger.js";
+import { ServerClient, extensionOutDirFromContext } from "./server-client.js";
 import {
   openSimulatorCommand,
   removeSimulatorCacheCommand,
@@ -237,6 +238,17 @@ export async function activate(context: vscode.ExtensionContext) {
   void tuistWatcher.start();
   void xcodegenWatcher.start();
 
+  // Phase 3: standalone-server client. Always constructed so the
+  // `AppDeps` bag is uniform; `buildCommand` checks the
+  // `system.experimental.serverMode` flag at dispatch time to decide
+  // whether to use it.
+  const serverClient = new ServerClient({
+    logger: commonLogger,
+    workspaceRoot: workspaceRoot,
+    config: config,
+    extensionOutDir: extensionOutDirFromContext(context),
+  });
+
   // Main dependency bag for commands 🌍
   const deps: AppDeps = {
     destinationsManager: destinationsManager,
@@ -258,6 +270,8 @@ export async function activate(context: vscode.ExtensionContext) {
     lspRefresher: lspRefresher,
     taskRunner: taskRunner,
     workspaceRoot: workspaceRoot,
+    serverClient: serverClient,
+    diagnostics: diagnostics,
   };
   buildTaskProvider = new XcodeBuildTaskProvider(deps);
 
@@ -266,6 +280,8 @@ export async function activate(context: vscode.ExtensionContext) {
   const command = <Args extends unknown[]>(name: string, cb: (deps: AppDeps, ...args: Args) => Promise<unknown>) =>
     registerCommand(deps, name, cb);
   const tree = registerTreeDataProvider;
+
+  d(serverClient);
 
   // Tasks
   d(vscode.tasks.registerTaskProvider(buildTaskProvider.type, buildTaskProvider));

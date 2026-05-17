@@ -20,6 +20,8 @@ import type { TunnelManager } from "./devices/tunnel";
 import { addTreeProviderErrorReporting, errorReporting } from "./error-reporting";
 import type { SwiftFormattingProvider } from "./format/formatter";
 import { commonLogger } from "./logger";
+import type { DiagnosticsManager } from "./build/diagnostics";
+import type { ServerClient } from "./server-client";
 import type { ProgressStatusBar } from "./system/status-bar";
 import type { TestingManager } from "./testing/manager";
 
@@ -55,6 +57,10 @@ export type AppDeps = {
   lspRefresher: LspRefresher;
   taskRunner: TaskRunner;
   workspaceRoot: WorkspaceRoot;
+  /** Always present; only consulted when `system.experimental.serverMode` is on. */
+  serverClient: ServerClient;
+  /** Same `DiagnosticsManager` that the in-proc engine pushes to — shared so the Problems panel looks identical in either mode. */
+  diagnostics: DiagnosticsManager;
 };
 
 /**

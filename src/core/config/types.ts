@@ -37,6 +37,12 @@ export type ConfigSchema = {
   "system.autoRevealTerminal": boolean;
   "system.showProgressStatusBar": boolean;
   "system.customXcodeWorkspaceParser": boolean;
+  /**
+   * Phase 3: route builds through the standalone sweetpad-server (Unix socket)
+   * instead of the in-process engine. Same build artifacts; centralizes the
+   * registry so a CLI invocation and a VS Code build share buildIds + history.
+   */
+  "system.experimental.serverMode": boolean;
   "xcodegen.autogenerate": boolean;
   "xcodebuildserver.autogenerate": boolean;
   "xcodebuildserver.path": string;
