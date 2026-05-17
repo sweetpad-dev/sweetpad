@@ -125,7 +125,10 @@ export class DiagnosticAccumulator {
       const uri = vscode.Uri.file(file);
       const surviving = diags.filter((d) => !isAlreadyReportedByLsp(uri, d));
       if (surviving.length > 0) {
-        this.collection.set(uri, surviving.map((parsed) => toVscodeDiagnostic(parsed)));
+        this.collection.set(
+          uri,
+          surviving.map((parsed) => toVscodeDiagnostic(parsed)),
+        );
       }
     }
   }
