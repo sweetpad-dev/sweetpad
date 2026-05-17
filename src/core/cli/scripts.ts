@@ -466,8 +466,8 @@ export const getBasicProjectInfo = cache(
     }
     assertUnreachable(workspaceType);
   },
-  // Key the cache only on the workspace path. Stringifying `deps` would walk into the
-  // logger's vscode.OutputChannel internals (Timeout refs → circular structure error).
+  // Key only on the workspace path — `deps` holds a Logger/ConfigProvider whose
+  // adapters may carry non-serializable state (timer refs, event emitters).
   (_deps, options) => `xcworkspace:${options.xcworkspace ?? ""}`,
 );
 
