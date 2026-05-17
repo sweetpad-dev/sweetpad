@@ -25,7 +25,9 @@ import { createBuildGetMethod } from "./methods/build-get";
 import { createBuildsListMethod } from "./methods/builds-list";
 import { createDestinationsListMethod } from "./methods/destinations-list";
 import { createLogsGetMethod } from "./methods/logs-get";
+import { createRunMethod } from "./methods/run";
 import { createSchemesListMethod } from "./methods/schemes-list";
+import { createTestMethod } from "./methods/test";
 import { createUsageMethod } from "./methods/usage";
 import { BuildRegistry } from "./registry";
 
@@ -96,6 +98,34 @@ async function main(): Promise<void> {
   dispatcher.register("build", {
     description: "Build a scheme for a destination. Blocks until xcodebuild settles.",
     handler: createBuildMethod({
+      buildManager,
+      destinationsManager,
+      registry,
+      diagnostics,
+      workspaceRoot,
+      config,
+      state,
+      logger,
+      eventBus,
+    }),
+  });
+  dispatcher.register("run", {
+    description: "Build, install, and launch a scheme. Blocks until the launched app exits.",
+    handler: createRunMethod({
+      buildManager,
+      destinationsManager,
+      registry,
+      diagnostics,
+      workspaceRoot,
+      config,
+      state,
+      logger,
+      eventBus,
+    }),
+  });
+  dispatcher.register("test", {
+    description: "Build-for-testing + run tests for a scheme. Parses the produced .xcresult bundle.",
+    handler: createTestMethod({
       buildManager,
       destinationsManager,
       registry,

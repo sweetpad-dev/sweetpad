@@ -371,6 +371,140 @@ export class BuildManager {
   }
 
   /**
+   * Build, install, and launch with all parameters pre-resolved — no
+   * asker prompts. Used by the agent CLI / server's `run` method. Returns
+   * once the launched app exits (clean or otherwise). `onOutputLine` only
+   * tees the xcodebuild output; runtime app output flows through
+   * `terminal.write`, which the headless task runner sends to stderr
+   * today (capturing that into the same log file is a follow-up).
+   */
+  async launchExplicit(options: {
+    scheme: string;
+    configuration: string;
+    destination: Destination;
+    xcworkspace: string;
+    debug: boolean;
+    launchArgs: string[];
+    launchEnv: Record<string, string>;
+    onOutputLine?: (line: string) => void;
+  }): Promise<void> {
+    const destinationRaw = getXcodeBuildDestinationString({
+      destination: options.destination,
+      config: this.config,
+    });
+    const sdk = options.destination.platform;
+
+    await this.runSchemeTask({
+      name: options.debug ? "Debug" : "Launch",
+      scheme: options.scheme,
+      callback: async (terminal) => {
+        await this.buildApp(terminal, {
+          scheme: options.scheme,
+          sdk: sdk,
+          configuration: options.configuration,
+          shouldBuild: true,
+          shouldClean: false,
+          shouldTest: false,
+          xcworkspace: options.xcworkspace,
+          destinationRaw: destinationRaw,
+          debug: options.debug,
+          onOutputLine: options.onOutputLine,
+        });
+
+        if (options.destination.type === "macOS") {
+          await this.runOnMac(terminal, {
+            scheme: options.scheme,
+            xcworkspace: options.xcworkspace,
+            configuration: options.configuration,
+            watchMarker: false,
+            launchArgs: options.launchArgs,
+            launchEnv: options.launchEnv,
+          });
+        } else if (
+          options.destination.type === "iOSSimulator" ||
+          options.destination.type === "watchOSSimulator" ||
+          options.destination.type === "tvOSSimulator" ||
+          options.destination.type === "visionOSSimulator"
+        ) {
+          await this.runOniOSSimulator(terminal, {
+            scheme: options.scheme,
+            destination: options.destination,
+            sdk: sdk,
+            configuration: options.configuration,
+            xcworkspace: options.xcworkspace,
+            watchMarker: false,
+            launchArgs: options.launchArgs,
+            launchEnv: options.launchEnv,
+            debug: options.debug,
+          });
+        } else if (
+          options.destination.type === "iOSDevice" ||
+          options.destination.type === "watchOSDevice" ||
+          options.destination.type === "tvOSDevice" ||
+          options.destination.type === "visionOSDevice"
+        ) {
+          await this.runOniOSDevice(terminal, {
+            scheme: options.scheme,
+            destination: options.destination,
+            sdk: sdk,
+            configuration: options.configuration,
+            xcworkspace: options.xcworkspace,
+            watchMarker: false,
+            launchArgs: options.launchArgs,
+            launchEnv: options.launchEnv,
+          });
+        } else {
+          assertUnreachable(options.destination);
+        }
+      },
+    });
+  }
+
+  /**
+   * Build-and-test with all parameters pre-resolved — no asker prompts.
+   * Used by the agent CLI / server's `test` method. Produces an `.xcresult`
+   * bundle under the workspace storage path (`<storage>/bundle/<scheme>` —
+   * the directory variant; xcodebuild creates the actual bundle there).
+   * Returns the resolved bundle path so the caller can parse it.
+   */
+  async testExplicit(options: {
+    scheme: string;
+    configuration: string;
+    destination: Destination;
+    xcworkspace: string;
+    onOutputLine?: (line: string) => void;
+  }): Promise<{ bundlePath: string }> {
+    const destinationRaw = getXcodeBuildDestinationString({
+      destination: options.destination,
+      config: this.config,
+    });
+    const sdk = options.destination.platform;
+    const storagePath = await this.workspaceRoot.getStoragePath();
+    const bundlePath = path.join(storagePath, "bundle", options.scheme);
+
+    await this.runSchemeTask({
+      name: "Test",
+      scheme: options.scheme,
+      callback: async (terminal) => {
+        await this.buildApp(terminal, {
+          scheme: options.scheme,
+          sdk: sdk,
+          configuration: options.configuration,
+          shouldBuild: false,
+          shouldClean: false,
+          shouldTest: true,
+          xcworkspace: options.xcworkspace,
+          destinationRaw: destinationRaw,
+          debug: false,
+          onOutputLine: options.onOutputLine,
+        });
+      },
+    });
+
+    return { bundlePath };
+  }
+
+  /**
    * Build with all parameters pre-resolved — no asker prompts. Used by the
    * agent CLI / server where scheme, configuration, and destination come in via
    * flags or workspace state.

@@ -9,8 +9,10 @@ import { runBuildsCommand } from "./commands/builds";
 import { runDestinationsCommand } from "./commands/destinations";
 import { runErrorsCommand } from "./commands/errors";
 import { runLogsCommand } from "./commands/logs";
+import { runRunCommand } from "./commands/run";
 import { runSchemesCommand } from "./commands/schemes";
 import { runShowCommand } from "./commands/show";
+import { runTestCommand } from "./commands/test";
 import { runUsageCommand } from "./commands/usage";
 import { exitCodeForErrorCode } from "./exit-codes";
 
@@ -20,6 +22,10 @@ sweetpad — agent-facing CLI for SweetPad
 Usage:
   sweetpad build --scheme=<name> --destination=<id-or-name> --config=<name>
                  [--workspace=<root-dir>] [--xcworkspace=<file>] [--debug]
+  sweetpad run   --scheme=<name> --destination=<id-or-name> --config=<name>
+                 [--workspace=<root-dir>] [--xcworkspace=<file>] [--debug]
+  sweetpad test  --scheme=<name> --destination=<id-or-name> --config=<name>
+                 [--workspace=<root-dir>] [--xcworkspace=<file>]
 
   sweetpad builds       [--status=<status>] [--limit=<n>] [--workspace=...]
   sweetpad show <buildId>                                  [--workspace=...]
@@ -58,6 +64,18 @@ async function main(): Promise<void> {
   try {
     if (subcommand === "build") {
       const result = await runBuildCommand(rest, { cliEntryDir });
+      writeEnvelope(result.envelope);
+      process.exit(result.exitCode);
+    }
+
+    if (subcommand === "run") {
+      const result = await runRunCommand(rest, { cliEntryDir });
+      writeEnvelope(result.envelope);
+      process.exit(result.exitCode);
+    }
+
+    if (subcommand === "test") {
+      const result = await runTestCommand(rest, { cliEntryDir });
       writeEnvelope(result.envelope);
       process.exit(result.exitCode);
     }

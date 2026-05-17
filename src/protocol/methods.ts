@@ -9,8 +9,12 @@ import type {
   DestinationsListResponseData,
   LogsGetRequestParams,
   LogsGetResponseData,
+  RunRequestParams,
+  RunResponseData,
   SchemesListRequestParams,
   SchemesListResponseData,
+  TestRequestParams,
+  TestResponseData,
   UsageRequestParams,
   UsageResponseData,
 } from "./types";
@@ -26,6 +30,8 @@ import type {
  */
 export type MethodMap = {
   build: { params: BuildRequestParams; result: BuildResponseData };
+  run: { params: RunRequestParams; result: RunResponseData };
+  test: { params: TestRequestParams; result: TestResponseData };
   "builds.list": { params: BuildsListRequestParams; result: BuildsListResponseData };
   "build.get": { params: BuildGetRequestParams; result: BuildGetResponseData };
   "logs.get": { params: LogsGetRequestParams; result: LogsGetResponseData };

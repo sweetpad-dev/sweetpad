@@ -86,12 +86,14 @@ export type Diagnostic = {
 
 export type BuildStatus = "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
 
+export type CommandKind = "build" | "run" | "test";
+
 export type BuildResponseData = {
   buildId: string;
   scheme: string;
   destination: string;
   config: string;
-  command: "build";
+  command: CommandKind;
   status: BuildStatus;
   exitCode: number | null;
   originator: "cli" | "vscode";
@@ -101,6 +103,56 @@ export type BuildResponseData = {
   errorCount: number;
   warningCount: number;
   diagnostics: Diagnostic[];
+};
+
+// ---------------------------------------------------------------------------
+// Method: run (build + install + launch; waits for the app to exit)
+// ---------------------------------------------------------------------------
+
+export type RunRequestParams = {
+  scheme: string;
+  destination: string;
+  configuration: string;
+  xcworkspace?: string;
+  debug?: boolean;
+  /** Args passed to the launched app's `main()`. */
+  launchArgs?: string[];
+  /** Env vars merged into the launched app's environment. */
+  launchEnv?: Record<string, string>;
+};
+
+export type RunResponseData = BuildResponseData;
+
+// ---------------------------------------------------------------------------
+// Method: test (build-for-testing + xcodebuild test; returns xcresult summary)
+// ---------------------------------------------------------------------------
+
+export type TestRequestParams = {
+  scheme: string;
+  destination: string;
+  configuration: string;
+  xcworkspace?: string;
+  /** When provided, restrict to these test identifiers (e.g. `MyTests/testFoo`). */
+  testIdentifiers?: string[];
+};
+
+export type TestCaseStatus = "passed" | "failed" | "skipped";
+
+export type TestCaseSummary = {
+  identifier: string;
+  status: TestCaseStatus;
+  durationMs: number | null;
+  /** Failure message if `status === "failed"`. */
+  message?: string;
+};
+
+export type TestResponseData = BuildResponseData & {
+  /** Counts derived from the xcresult bundle. */
+  testsRun: number;
+  testsPassed: number;
+  testsFailed: number;
+  testsSkipped: number;
+  testCases: TestCaseSummary[];
 };
 
 // ---------------------------------------------------------------------------

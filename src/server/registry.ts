@@ -86,6 +86,7 @@ export class BuildRegistry {
     destination: string;
     configuration: string;
     originator: BuildResponseData["originator"];
+    command?: BuildResponseData["command"];
   }): BuildResponseData {
     const buildId = `b${this.nextId++}`;
     const startedAt = new Date().toISOString();
@@ -94,7 +95,7 @@ export class BuildRegistry {
       scheme: spec.scheme,
       destination: spec.destination,
       config: spec.configuration,
-      command: "build",
+      command: spec.command ?? "build",
       status: "running",
       exitCode: null,
       originator: spec.originator,

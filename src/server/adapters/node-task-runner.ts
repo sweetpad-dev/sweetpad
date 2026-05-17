@@ -10,13 +10,19 @@ import { getShellEnv } from "../../core/tasks/shell-env";
 import {
   type CommandOptions,
   ExecuteTaskError,
+  type ProcessExit,
   type ProcessGroup,
+  type ProcessHandle,
+  type ProcessOutputSink,
+  type ProcessSpec,
   type TaskRunner,
   type TaskTerminal,
   type TerminalWriteOptions,
   cleanCommandArgs,
 } from "../../core/tasks/types";
 import type { WorkspaceRoot } from "../../core/workspace-root";
+
+const GROUP_TERMINATE_TIMEOUT_MS = 5_000;
 
 export type NodeTaskRunnerDeps = {
   workspaceRoot: WorkspaceRoot;
@@ -276,13 +282,127 @@ class NodeTaskExecution implements TaskTerminal {
     process.stderr.write(data);
   }
 
-  async runGroup<T>(_callback: (group: ProcessGroup) => Promise<T>): Promise<T> {
-    // Only used by run/launch flows (runOnMac, runOniOSSimulator, runOniOSDevice).
-    // The CLI's first slice is `sweetpad build`, which never enters those paths.
-    // Implement when adding `sweetpad run`.
-    throw new ExecuteTaskError("runGroup is not implemented in the headless task runner yet", {
-      command: "<runGroup>",
-      errorCode: null,
+  async runGroup<T>(callback: (group: ProcessGroup) => Promise<T>): Promise<T> {
+    const children: GroupChild[] = [];
+    const group: ProcessGroup = {
+      terminal: this,
+      spawn: (spec) => this.spawnInGroup(spec, children),
+    };
+    try {
+      return await callback(group);
+    } finally {
+      await cleanupGroupChildren(children);
+    }
+  }
+
+  private spawnInGroup(spec: ProcessSpec, children: GroupChild[]): ProcessHandle {
+    const env = { ...process.env, ...prepareEnvVars(spec.env ?? {}) };
+    const cwd = spec.cwd ?? this.workspaceRoot.getPath();
+    const args = spec.args ?? [];
+
+    const proc = spawn(spec.command, args, {
+      cwd,
+      env: env as { [key: string]: string },
+      stdio: ["ignore", "pipe", "pipe"],
+      // Own process group so we can kill the whole subtree (xcrun simctl
+      // shells out to subprocesses; xcrun devicectl launches helpers; etc).
+      detached: true,
     });
+
+    const dataListeners: ProcessOutputSink[] = [];
+    const errorListeners: ProcessOutputSink[] = [];
+
+    // Honor the `pty: true` contract from `ProcessGroup.spawn`: under pty
+    // stdout and stderr merge onto `onData`, and `onError` is a no-op. We
+    // don't have a real pty in the headless server, but matching the
+    // merge semantics is enough for MainExecutable (which only reads from
+    // `onData` and expects to see NSLog/os_log on stderr).
+    const mergeStreams = spec.pty === true;
+
+    proc.stdout?.on("data", (data: string | Buffer) => {
+      const chunk = data.toString();
+      for (const l of dataListeners) l(chunk);
+    });
+    proc.stderr?.on("data", (data: string | Buffer) => {
+      const chunk = data.toString();
+      const sinks = mergeStreams ? dataListeners : errorListeners;
+      for (const l of sinks) l(chunk);
+    });
+
+    let alive = true;
+    const exit = new Promise<ProcessExit>((resolve) => {
+      let resolved = false;
+      const finish = (result: ProcessExit) => {
+        if (resolved) return;
+        resolved = true;
+        alive = false;
+        resolve(result);
+      };
+      proc.once("close", (code, signal) => finish({ code: code ?? -1, signal }));
+      proc.once("error", () => finish({ code: -1, signal: null }));
+    });
+
+    const signalGroup = (sig: NodeJS.Signals) => {
+      if (!alive || !proc.pid) return;
+      try {
+        // Negative PID = process group (we spawned detached above).
+        process.kill(-proc.pid, sig);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ESRCH") {
+          this.logger.debug("Process group signal failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    };
+
+    const child: GroupChild = {
+      pid: proc.pid,
+      exit,
+      get alive() {
+        return alive;
+      },
+      signal: signalGroup,
+    };
+    children.push(child);
+
+    return {
+      get pid() {
+        return child.pid;
+      },
+      get exit() {
+        return child.exit;
+      },
+      kill: (signal) => child.signal(signal ?? "SIGTERM"),
+      onData: (l) => {
+        dataListeners.push(l);
+      },
+      onError: (l) => {
+        errorListeners.push(l);
+      },
+    };
+  }
+}
+
+type GroupChild = {
+  pid: number | undefined;
+  exit: Promise<ProcessExit>;
+  readonly alive: boolean;
+  signal: (sig: NodeJS.Signals) => void;
+};
+
+async function cleanupGroupChildren(children: GroupChild[]): Promise<void> {
+  const alive = children.filter((c) => c.alive);
+  if (alive.length === 0) return;
+
+  for (const c of alive) c.signal("SIGTERM");
+
+  await Promise.race([
+    Promise.all(alive.map((c) => c.exit.catch(() => undefined))),
+    new Promise<void>((resolve) => setTimeout(resolve, GROUP_TERMINATE_TIMEOUT_MS)),
+  ]);
+
+  for (const c of children) {
+    if (c.alive) c.signal("SIGKILL");
   }
 }
