@@ -23,14 +23,13 @@
     "vscode": "^1.85.0"
   },
   "activationEvents": [
-    "onCommand:workbench.action.tasks.runTask",
-    "onDebug",
     "onLanguage:swift",
     "workspaceContains:**/*.xcodeproj",
     "workspaceContains:**/*.xcworkspace",
     "workspaceContains:**/Package.swift",
     "workspaceContains:**/Podfile",
-    "workspaceContains:**/project.yml"
+    "workspaceContains:**/project.yml",
+    "workspaceContains:**/Project.swift"
   ],
   "extensionDependencies": [
     "vadimcn.vscode-lldb"
