@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme
+   LastUpgradeVersion = "1400"
+   version = "1.7">
+   <BuildAction
+      parallelizeBuildables = "YES"
+      buildImplicitDependencies = "YES">
+      <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "63AA759A1EB8AEF500D153DE"
+               BuildableName = "Sentry.framework"
+               BlueprintName = "Sentry"
+               ReferencedContainer = "container:Sentry.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction
+      buildConfiguration = "Test"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      shouldUseLaunchSchemeArgsEnv = "NO"
+      codeCoverageEnabled = "YES">
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "63AA759A1EB8AEF500D153DE"
+            BuildableName = "Sentry.framework"
+            BlueprintName = "Sentry"
+            ReferencedContainer = "container:Sentry.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "TSAN_OPTIONS"
+            value = "suppressions=$(PROJECT_DIR)/Sources/Resources/ThreadSanitizer.sup"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
+      <TestPlans>
+         <TestPlanReference
+            reference = "container:Plans/Sentry_Base.xctestplan"
+            default = "YES">
+         </TestPlanReference>
+         <TestPlanReference
+            reference = "container:Plans/Sentry_TestServer.xctestplan">
+         </TestPlanReference>
+         <TestPlanReference
+            reference = "container:Plans/Sentry_Flaky.xctestplan">
+         </TestPlanReference>
+      </TestPlans>
+      <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "63AA76641EB8CB2F00D153DE"
+               BuildableName = "SentryTests.xctest"
+               BlueprintName = "SentryTests"
+               ReferencedContainer = "container:Sentry.xcodeproj">
+            </BuildableReference>
+            <SkippedTests>
+               <Test
+                  Identifier = "SentryANRTrackerTests/testANRButAppInBackground_NoANR()">
+               </Test>
+               <Test
+                  Identifier = "SentryANRTrackerTests/testMultipleListeners()">
+               </Test>
+               <Test
+                  Identifier = "SentryCoreDataTrackerTests/testFetchRequestBackgroundThread()">
+               </Test>
+               <Test
+                  Identifier = "SentryCoreDataTrackerTests/testSaveBackgroundThread()">
+               </Test>
+               <Test
+                  Identifier = "SentryCrashIntegrationTests/testStartUpCrash_CallsFlush()">
+               </Test>
+               <Test
+                  Identifier = "SentryCrashReportStore_Tests/testCrashReportCount1">
+               </Test>
+               <Test
+                  Identifier = "SentryCrashReportStore_Tests/testDeleteAllReports">
+               </Test>
+               <Test
+                  Identifier = "SentryCrashReportStore_Tests/testStoresLoadsMultipleReports">
+               </Test>
+               <Test
+                  Identifier = "SentryHttpTransportTests/testFlush_WhenNoInternet_BlocksAndFinishes()">
+               </Test>
+               <Test
+                  Identifier = "SentryNetworkTrackerIntegrationTests/testGetCaptureFailedRequestsEnabled()">
+               </Test>
+               <Test
+                  Identifier = "SentryNetworkTrackerIntegrationTests/testGetRequest_CompareSentryTraceHeader()">
+               </Test>
+               <Test
+                  Identifier = "SentryOnDemandReplayTests/testAddFrameIsThreadSafe()">
+               </Test>
+               <Test
+                  Identifier = "SentryProfilerSwiftTests/testConcurrentSpansWithTimeout()">
+               </Test>
+               <Test
+                  Identifier = "SentryReachabilityTest/testMultipleReachabilityObservers">
+               </Test>
+               <Test
+                  Identifier = "SentrySDKIntegrationTestsBase">
+               </Test>
+               <Test
+                  Identifier = "SentrySessionGeneratorTests/testSendSessions()">
+               </Test>
+               <Test
+                  Identifier = "SentrySubClassFinderTests/testActOnSubclassesOfViewController()">
+               </Test>
+               <Test
+                  Identifier = "SentryThreadInspectorTests/testGetCurrentThreadsWithStacktrace_WithSymbolication()">
+               </Test>
+               <Test
+                  Identifier = "SentryThreadInspectorTests/testStacktraceHasFrames_forEveryThread()">
+               </Test>
+            </SkippedTests>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "8431EECF29B27B1100D8DC56"
+               BuildableName = "SentryProfilerTests.xctest"
+               BlueprintName = "SentryProfilerTests"
+               ReferencedContainer = "container:Sentry.xcodeproj">
+            </BuildableReference>
+            <SkippedTests>
+               <Test
+                  Identifier = "SentryProfilerTests/testProfilerMutationDuringSlicing">
+               </Test>
+            </SkippedTests>
+         </TestableReference>
+      </Testables>
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      launchStyle = "0"
+      useCustomWorkingDirectory = "NO"
+      ignoresPersistentStateOnLaunch = "NO"
+      debugDocumentVersioning = "YES"
+      debugServiceExtension = "internal"
+      allowLocationSimulation = "YES">
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "63AA759A1EB8AEF500D153DE"
+            BuildableName = "Sentry.framework"
+            BlueprintName = "Sentry"
+            ReferencedContainer = "container:Sentry.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "TSAN_OPTIONS"
+            value = "suppressions=$(PROJECT_DIR)/Sources/Resources/ThreadSanitizer.sup"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
+   </LaunchAction>
+   <ProfileAction
+      buildConfiguration = "Release"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      savedToolIdentifier = ""
+      useCustomWorkingDirectory = "NO"
+      debugDocumentVersioning = "YES">
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "63AA759A1EB8AEF500D153DE"
+            BuildableName = "Sentry.framework"
+            BlueprintName = "Sentry"
+            ReferencedContainer = "container:Sentry.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
+   </ProfileAction>
+   <AnalyzeAction
+      buildConfiguration = "Debug">
+   </AnalyzeAction>
+   <ArchiveAction
+      buildConfiguration = "Release"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+</Scheme>

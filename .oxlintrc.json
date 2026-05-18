@@ -11,7 +11,22 @@
       { "args": "none", "caughtErrors": "none", "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }
     ],
     "no-control-regex": "off",
-    "no-underscore-dangle": ["warn", { "allow": ["__filename", "__dirname"] }],
+    "no-underscore-dangle": [
+      "warn",
+      {
+        "allow": [
+          "__filename",
+          "__dirname",
+          "_hydrateAttr",
+          "_appendParsedChild",
+          "_appendParsedComment",
+          "_appendParsedCdata",
+          "_appendParsedExtra",
+          "_slotsForSerialize",
+          "_childAt"
+        ]
+      }
+    ],
     "no-await-in-loop": "off",
     "vitest/require-mock-type-parameters": "off",
     "vitest/expect-expect": "off"
