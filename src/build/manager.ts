@@ -45,6 +45,7 @@ import {
   ensureAppPathExists,
   generateBuildServerConfigOnBuild,
   getCurrentXcodeWorkspacePath,
+  getSchemeLaunchSettings,
   getSwiftPMDirectory,
   getWorkspacePath,
   getXcodeBuildDestinationString,
@@ -357,8 +358,9 @@ export class BuildManager {
 
     const sdk = destination.platform;
 
-    const launchArgs = getWorkspaceConfig("build.launchArgs") ?? [];
-    const launchEnv = getWorkspaceConfig("build.launchEnv") ?? {};
+    const schemeSettings = await getSchemeLaunchSettings({ xcworkspace: xcworkspace, scheme: scheme });
+    const launchArgs = [...schemeSettings.args, ...(getWorkspaceConfig("build.launchArgs") ?? [])];
+    const launchEnv = { ...schemeSettings.env, ...getWorkspaceConfig("build.launchEnv") };
 
     await this.runSchemeTask({
       name: "Run",
@@ -448,8 +450,9 @@ export class BuildManager {
 
     const sdk = destination.platform;
 
-    const launchArgs = getWorkspaceConfig("build.launchArgs") ?? [];
-    const launchEnv = getWorkspaceConfig("build.launchEnv") ?? {};
+    const schemeSettings = await getSchemeLaunchSettings({ xcworkspace: xcworkspace, scheme: scheme });
+    const launchArgs = [...schemeSettings.args, ...(getWorkspaceConfig("build.launchArgs") ?? [])];
+    const launchEnv = { ...schemeSettings.env, ...getWorkspaceConfig("build.launchEnv") };
 
     await this.runSchemeTask({
       name: options.debug ? "Debug" : "Launch",

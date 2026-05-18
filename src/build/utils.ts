@@ -21,6 +21,8 @@ import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { TaskTerminal } from "../common/tasks/types";
 import { assertUnreachable } from "../common/types";
 import type { WorkspaceStateService } from "../common/workspace-state";
+import { XcodeWorkspace } from "../common/xcode/workspace";
+import { LaunchAction } from "../common/xcode/xcscheme";
 import type { DestinationPlatform } from "../destination/constants";
 import type { DestinationsManager } from "../destination/manager";
 import type { Destination } from "../destination/types";
@@ -871,4 +873,90 @@ export async function findXcodeWorkspaceInDirectory(directory: string): Promise<
     matcher: (file) => file.name.endsWith(".xcworkspace") || file.name === "Package.swift",
   });
   return paths.length > 0 ? paths[0] : undefined;
+}
+
+/**
+ * Translate a scheme's <LaunchAction> into launch-time argv + env, mirroring
+ * what Xcode itself injects when you press Run:
+ *
+ *  - enabled <CommandLineArgument>s are appended (whitespace-split, the way
+ *    Xcode tokenizes each row so that `-AppleLanguages (he)` becomes two argv)
+ *  - enabled <EnvironmentVariable>s become entries in `env`
+ *  - the `language` / `region` attrs (Edit Scheme → Options → App Language /
+ *    App Region) become argv flags Foundation reads at launch via
+ *    NSArgumentDomain:
+ *      - `language` alone     → `-AppleLanguages (<lang>)`
+ *      - `language + region`  → `-AppleLanguages (<lang>) -AppleLocale <lang>_<region>`
+ *      - `region` alone       → nothing (a bare region code like "IL" is not
+ *                                a valid POSIX locale identifier; Xcode would
+ *                                pair it with the device's system language,
+ *                                which we can't know here. The user can add
+ *                                an explicit `-AppleLocale` CLI arg if needed.)
+ *    Discussion #197 use case.
+ */
+export function launchActionToSettings(action: LaunchAction): {
+  args: string[];
+  env: Record<string, string>;
+} {
+  const args: string[] = [];
+
+  for (const arg of action.commandLineArguments()) {
+    if (arg.isEnabled === false) continue;
+    const raw = arg.argument;
+    if (!raw) continue;
+    // Xcode splits each row on whitespace (no shell-style quote handling), so
+    // `-AppleLanguages (he)` becomes `["-AppleLanguages", "(he)"]`.
+    for (const token of raw.trim().split(/\s+/)) {
+      if (token) args.push(token);
+    }
+  }
+
+  const language = action.language;
+  const region = action.region;
+  if (language) {
+    args.push("-AppleLanguages", `(${language})`);
+  }
+  if (language && region) {
+    args.push("-AppleLocale", `${language}_${region}`);
+  }
+
+  const env: Record<string, string> = {};
+  for (const ev of action.environmentVariables()) {
+    if (ev.isEnabled === false) continue;
+    const key = ev.key;
+    const value = ev.value;
+    if (key && value !== undefined) {
+      env[key] = value;
+    }
+  }
+
+  return { args, env };
+}
+
+/**
+ * Load the scheme file for `scheme` inside `xcworkspace` and extract its
+ * <LaunchAction> args/env. Returns empty values if the scheme can't be found,
+ * has no on-disk file (default scheme), or has no <LaunchAction>.
+ */
+export async function getSchemeLaunchSettings(options: {
+  xcworkspace: string;
+  scheme: string;
+}): Promise<{ args: string[]; env: Record<string, string> }> {
+  try {
+    const workspace = await XcodeWorkspace.parseWorkspace(options.xcworkspace);
+    const scheme = await workspace.getScheme({ name: options.scheme });
+    const doc = await scheme?.getScheme();
+    const action = doc?.launchAction();
+    if (!action) {
+      return { args: [], env: {} };
+    }
+    return launchActionToSettings(action);
+  } catch (error) {
+    commonLogger.warn("Failed to read scheme launch settings; continuing without them", {
+      error: error,
+      scheme: options.scheme,
+      xcworkspace: options.xcworkspace,
+    });
+    return { args: [], env: {} };
+  }
 }
