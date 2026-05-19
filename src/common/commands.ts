@@ -6,6 +6,7 @@ import type { BuildTreeProvider } from "../build/tree";
 import type { DestinationsManager } from "../destination/manager";
 import type { TunnelManager } from "../devices/tunnel";
 import type { SwiftFormattingProvider } from "../format/formatter";
+import type { ServerService } from "../server/service";
 import type { ProgressStatusBar } from "../system/status-bar";
 import type { TestingManager } from "../testing/manager";
 import type { ToolsManager } from "../tools/manager";
@@ -43,6 +44,7 @@ export type AppDeps = {
   vscodeContext: vscode.ExtensionContext;
   buildTreeProvider: BuildTreeProvider;
   lspDiagnostics: LspDiagnosticsService;
+  serverService: ServerService;
 };
 
 /**

@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import { commonLogger } from "../common/logger";
 import { type ParseMode, parseDiagnosticLine, type ParsedDiagnostic } from "./diagnostics-parser";
+export type { ParsedDiagnostic } from "./diagnostics-parser";
 
 /**
  * Source identifiers used by sourcekit-lsp (via the swiftlang.swift-vscode
@@ -96,22 +97,27 @@ export class DiagnosticAccumulator {
    * line. Two genuinely distinct diagnostics at the exact same column with
    * the same severity are vanishingly rare; the cost of collapsing them is
    * much lower than the cost of showing a near-duplicate in the panel.
+   *
+   * Returns the parsed diagnostic when one was added (not duplicate), or null
+   * otherwise. Callers that just want side-effects can ignore the return.
    */
-  recordLine(rawLine: string): void {
+  recordLine(rawLine: string): ParsedDiagnostic | null {
     const diag = parseDiagnosticLine(rawLine, this.mode);
-    if (!diag) return;
+    if (!diag) return null;
 
     const bucket = this.perFile.get(diag.file);
     if (!bucket) {
       this.perFile.set(diag.file, [diag]);
-      return;
+      return diag;
     }
 
     const isDuplicate = bucket.some(
       (existing) =>
         existing.line === diag.line && existing.column === diag.column && existing.severity === diag.severity,
     );
-    if (!isDuplicate) bucket.push(diag);
+    if (isDuplicate) return null;
+    bucket.push(diag);
+    return diag;
   }
 
   /**

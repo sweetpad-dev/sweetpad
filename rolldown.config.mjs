@@ -8,10 +8,10 @@ dotenv.config();
 
 const isProduction = process.env.NODE_ENV === "production";
 
-const plugins = [];
+const extensionPlugins = [];
 
 if (isProduction) {
-  plugins.push(
+  extensionPlugins.push(
     sentryRollupPlugin({
       org: "yevhenii-hyzyla",
       project: "sweetpad",
@@ -21,22 +21,43 @@ if (isProduction) {
   );
 }
 
-export default defineConfig({
-  input: "./src/extension.ts",
-  output: {
-    file: "out/extension.js",
-    format: "cjs",
-    sourcemap: isProduction ? "hidden" : true,
-    minify: isProduction,
+export default defineConfig([
+  {
+    input: "./src/extension.ts",
+    output: {
+      file: "out/extension.js",
+      format: "cjs",
+      sourcemap: isProduction ? "hidden" : true,
+      minify: isProduction,
+    },
+    platform: "node",
+    external: ["vscode"],
+    transform: {
+      define: {
+        GLOBAL_SENTRY_DSN: JSON.stringify(process.env.SENTRY_DSN ?? null),
+        GLOBAL_RELEASE_VERSION: isProduction ? JSON.stringify(pkg.version) : JSON.stringify("dev"),
+      },
+    },
+    plugins: extensionPlugins,
   },
-  platform: "node",
-  external: ["vscode"],
-  transform: {
-    // rolldown requires `define` here, not at top level
-    define: {
-      GLOBAL_SENTRY_DSN: JSON.stringify(process.env.SENTRY_DSN ?? null),
-      GLOBAL_RELEASE_VERSION: isProduction ? JSON.stringify(pkg.version) : JSON.stringify("dev"),
+  {
+    // Bundled CLI client that ships next to the extension. The
+    // `sweetpad.system.installCli` command symlinks this file to a directory
+    // on the user's PATH.
+    input: "./src/cli/index.ts",
+    output: {
+      file: "out/cli.js",
+      format: "cjs",
+      sourcemap: isProduction ? "hidden" : true,
+      minify: isProduction,
+      banner: "#!/usr/bin/env node",
+    },
+    platform: "node",
+    transform: {
+      define: {
+        GLOBAL_SENTRY_DSN: JSON.stringify(null),
+        GLOBAL_RELEASE_VERSION: JSON.stringify(pkg.version),
+      },
     },
   },
-  plugins,
-});
+]);

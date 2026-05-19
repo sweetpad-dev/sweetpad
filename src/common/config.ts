@@ -46,6 +46,7 @@ type Config = {
   "tuist.autogenerate": boolean;
   "tuist.generate.env": { [key: string]: string | null };
   "testing.configuration": string;
+  "server.enabled": boolean;
 };
 
 type ConfigKey = keyof Config;

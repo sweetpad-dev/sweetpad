@@ -55,6 +55,7 @@ import { TunnelManager } from "./devices/tunnel.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
 import { createFormatStatusItem } from "./format/status.js";
+import { ServerService } from "./server/service.js";
 import {
   openSimulatorCommand,
   removeSimulatorCacheCommand,
@@ -63,11 +64,15 @@ import {
 } from "./simulators/commands.js";
 import { SimulatorsManager } from "./simulators/manager.js";
 import {
+  copyServerNameCommand,
   createIssueGenericCommand,
   createIssueNoSchemesCommand,
+  installCliCommand,
   openTerminalPanel,
   refreshShellEnvCommand,
   resetSweetPadCache,
+  restartServerCommand,
+  showServerStatusCommand,
   testErrorReportingCommand,
 } from "./system/commands.js";
 import { ProgressStatusBar } from "./system/status-bar.js";
@@ -171,6 +176,13 @@ export async function activate(context: vscode.ExtensionContext) {
   const schemeWatcher = new SchemeWatcher(buildManager);
   const tuistWatcher = new TuistGenWatcher();
   const xcodegenWatcher = new XcodeGenWatcher();
+  const serverService = new ServerService({
+    buildManager: buildManager,
+    destinationsManager: destinationsManager,
+    workspace: workspace,
+    extensionVersion: context.extension?.packageJSON?.version ?? "unknown",
+    vscodeContext: context,
+  });
 
   // Start everything that has side effects (subscriptions, calculations, .show(), etc.)
   void progressStatusBar.start();
@@ -186,6 +198,7 @@ export async function activate(context: vscode.ExtensionContext) {
   void schemeWatcher.start();
   void tuistWatcher.start();
   void xcodegenWatcher.start();
+  void serverService.start();
 
   // Main dependency bag for commands 🌍
   const deps: AppDeps = {
@@ -201,6 +214,7 @@ export async function activate(context: vscode.ExtensionContext) {
     vscodeContext: context,
     buildTreeProvider: buildTreeProvider,
     lspDiagnostics: lspDiagnostics,
+    serverService: serverService,
   };
 
   // Shortcut helpers bound to the deps bag
@@ -306,6 +320,13 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
   d(command("sweetpad.system.openTerminalPanel", openTerminalPanel));
   d(command("sweetpad.system.refreshShellEnv", refreshShellEnvCommand));
+  d(command("sweetpad.system.installCli", installCliCommand));
+
+  // Server
+  d(command("sweetpad.server.copyName", copyServerNameCommand));
+  d(command("sweetpad.server.restart", restartServerCommand));
+  d(command("sweetpad.server.showStatus", showServerStatusCommand));
+  d({ dispose: () => void serverService.dispose() });
 
   lspDiagnostics.reattachIfEnabled();
   lspDiagnostics.showPostReloadNotificationIfPending();

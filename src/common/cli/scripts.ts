@@ -117,7 +117,7 @@ type BuildSettingOutput = {
 };
 
 export class XcodeBuildSettings {
-  private settings: { [key: string]: string };
+  public readonly settings: { [key: string]: string };
   public target: string;
 
   constructor(options: { settings: { [key: string]: string }; target: string }) {
@@ -212,7 +212,7 @@ export class XcodeBuildSettings {
  * Pay attention that this function can return an empty array, if the build settings are not available.
  * Also it can return several build settings, if there are several targets assigned to the scheme.
  */
-async function getBuildSettingsList(options: {
+export async function getBuildSettingsList(options: {
   scheme: string;
   configuration: string;
   sdk: string | undefined;

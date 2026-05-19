@@ -34,6 +34,7 @@ import { getSimulatorByUdid } from "../simulators/utils";
 import type { ProgressStatusBar } from "../system/status-bar";
 import { BUILD_TASK_PROBLEM_MATCHERS } from "./constants";
 import type { DiagnosticsManager } from "./diagnostics";
+import type { ParsedDiagnostic } from "./diagnostics-parser";
 import type { BuildTreeItem } from "./tree";
 import {
   XcodeCommandBuilder,
@@ -58,6 +59,19 @@ import {
   writeWatchMarkers,
 } from "./utils";
 
+// Stable category strings — exposed to CLI consumers, so keep the union narrow.
+export type BuildSessionCommand = "build" | "run" | "launch" | "test" | "clean" | "resolve-deps";
+
+export type BuildSessionStarted = {
+  scheme: string;
+  command: BuildSessionCommand;
+};
+
+export type BuildSessionEnded = {
+  scheme: string;
+  status: "succeeded" | "failed" | "cancelled";
+};
+
 type IEventMap = {
   refreshSchemesStarted: [];
   refreshSchemesCompleted: [XcodeScheme[]];
@@ -68,6 +82,14 @@ type IEventMap = {
 
   schemeBuildStarted: [scheme: string];
   schemeBuildStopped: [scheme: string];
+
+  // Emitted alongside schemeBuildStarted/Stopped but carry richer info —
+  // used by the RPC server's BuildSessionRegistry to build the persisted
+  // BuildEntity. Kept as separate events so the legacy schemeBuild* signature
+  // doesn't have to change.
+  buildSessionStarted: [info: BuildSessionStarted];
+  buildLogLine: [info: { line: string; diagnostic: ParsedDiagnostic | null }];
+  buildSessionEnded: [info: BuildSessionEnded];
 };
 type IEventKey = keyof IEventMap;
 
@@ -82,6 +104,7 @@ export class BuildManager {
   private destinations: DestinationsManager;
   private diagnostics: DiagnosticsManager;
   private runningSchemes: Set<string> = new Set();
+  private cancellingSchemes: Set<string> = new Set();
 
   constructor(options: {
     workspace: WorkspaceStateService;
@@ -111,6 +134,10 @@ export class BuildManager {
 
   on<K extends IEventKey>(event: K, listener: (...args: IEventMap[K]) => void): void {
     this.emitter.on(event, listener as any); // todo: fix this any
+  }
+
+  off<K extends IEventKey>(event: K, listener: (...args: IEventMap[K]) => void): void {
+    this.emitter.off(event, listener as any);
   }
 
   startSchemeBuild(scheme: string): void {
@@ -255,17 +282,18 @@ export class BuildManager {
     }
   }
 
-  /**
-   * Wrap "runTask" common options for all scheme-related tasks/actions like build, run, test,
-   * etc to avoid code duplication and have a single place to update common options in the
-   * future
-   */
+  // Wraps runTask with common options for every scheme task (build/run/test/...)
+  // and emits the buildSession* events the in-extension RPC server records.
   async runSchemeTask(options: {
     name: string;
     scheme: string;
+    command: BuildSessionCommand;
     callback: (terminal: TaskTerminal) => Promise<void>;
   }): Promise<void> {
+    this.cancellingSchemes.delete(options.scheme);
     this.startSchemeBuild(options.scheme);
+    this.emitter.emit("buildSessionStarted", { scheme: options.scheme, command: options.command });
+    let status: BuildSessionEnded["status"] = "succeeded";
     try {
       await runTask(this.execution, {
         name: options.name,
@@ -275,7 +303,12 @@ export class BuildManager {
         metadata: { scheme: options.scheme },
         callback: options.callback,
       });
+    } catch (error) {
+      status = this.cancellingSchemes.has(options.scheme) ? "cancelled" : "failed";
+      throw error;
     } finally {
+      this.emitter.emit("buildSessionEnded", { scheme: options.scheme, status });
+      this.cancellingSchemes.delete(options.scheme);
       this.stopSchemeBuild(options.scheme);
     }
   }
@@ -314,6 +347,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Build",
       scheme: scheme,
+      command: "build",
       callback: async (terminal) => {
         await this.buildApp(terminal, {
           scheme: scheme,
@@ -365,6 +399,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Run",
       scheme: scheme,
+      command: "run",
       callback: async (terminal) => {
         if (destination.type === "macOS") {
           await this.runOnMac(terminal, {
@@ -457,6 +492,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: options.debug ? "Debug" : "Launch",
       scheme: scheme,
+      command: "launch",
       callback: async (terminal) => {
         await this.buildApp(terminal, {
           scheme: scheme,
@@ -963,7 +999,10 @@ export class BuildManager {
         env: env,
         cwd: cwd,
         closeStdin: true,
-        onOutputLine: async ({ value }) => diagnostics.recordLine(value),
+        onOutputLine: async ({ value }) => {
+          const parsed = diagnostics.recordLine(value);
+          this.emitter.emit("buildLogLine", { line: value, diagnostic: parsed });
+        },
       });
     } finally {
       diagnostics.flush();
@@ -998,6 +1037,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Clean",
       scheme: scheme,
+      command: "clean",
       callback: async (terminal) => {
         await this.buildApp(terminal, {
           scheme: scheme,
@@ -1040,6 +1080,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Test",
       scheme: scheme,
+      command: "test",
       callback: async (terminal) => {
         await this.buildApp(terminal, {
           scheme: scheme,
@@ -1062,6 +1103,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Resolve Dependencies",
       scheme: options.scheme,
+      command: "resolve-deps",
       callback: async (terminal) => {
         const workspaceType = detectWorkspaceType(options.xcworkspace);
         if (workspaceType === "spm") {
@@ -1087,14 +1129,21 @@ export class BuildManager {
   async stopSchemeCommand(item: BuildTreeItem | undefined): Promise<void> {
     const scheme = item?.scheme;
     if (!scheme) return;
+    await this.stopScheme(scheme);
+  }
 
+  async stopScheme(scheme: string): Promise<void> {
+    this.cancellingSchemes.add(scheme);
     const tasks = vscode.tasks.taskExecutions.filter(
       ({ task }) => task.definition.lockId === "sweetpad.build" && task.definition.metadata?.scheme === scheme,
     );
     for (const task of tasks) {
       task.terminate();
     }
-    // Ensure the scheme is marked as stopped in the manager
     this.stopSchemeBuild(scheme);
+  }
+
+  getRunningScheme(): string | undefined {
+    return [...this.runningSchemes][0];
   }
 }

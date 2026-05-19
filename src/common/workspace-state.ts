@@ -32,6 +32,7 @@ export type LastLaunchedAppContext =
 
 export type WorkspaceTypes = {
   "build.xcodeWorkspacePath": string;
+  "build.xcodeWorkspacePathRecent": string[];
   "build.xcodeProjectPath": string;
   "build.xcodeScheme": string;
   "build.xcodeConfiguration": string;
@@ -62,6 +63,27 @@ export class WorkspaceStateService {
 
   update<K extends WorkspaceStateKey>(key: K, value: WorkspaceTypes[K] | undefined): void {
     this.vscodeContext.workspaceState.update(`${PREFIX}${key}`, value);
+  }
+
+  // Untyped raw* siblings exist so the RPC layer can read/write arbitrary
+  // sweetpad.<key> entries that aren't (yet) encoded in WorkspaceTypes.
+  rawGet(key: string): unknown {
+    return this.vscodeContext.workspaceState.get(`${PREFIX}${key}`);
+  }
+
+  rawUpdate(key: string, value: unknown): Thenable<void> {
+    // Skip no-op writes — VS Code persists on every update.
+    const prefixed = `${PREFIX}${key}`;
+    if (this.vscodeContext.workspaceState.get(prefixed) === value) {
+      return Promise.resolve();
+    }
+    return Promise.resolve(this.vscodeContext.workspaceState.update(prefixed, value));
+  }
+
+  rawKeys(): string[] {
+    return [...this.vscodeContext.workspaceState.keys()]
+      .filter((k) => k?.startsWith(PREFIX))
+      .map((k) => k.slice(PREFIX.length));
   }
 
   /**
