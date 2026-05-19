@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.91] - 2026-05-19
+
+- Add an opt-in agent CLI and in-extension JSON-RPC server
+
 ## [0.1.90] - 2026-05-17
 
 - Apply a scheme's `<LaunchAction>` args, env vars, App Language and App Region when running apps ([#246](https://github.com/sweetpad-dev/sweetpad/issues/246))
