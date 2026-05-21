@@ -33,6 +33,11 @@ export default defineConfig([
     platform: "node",
     external: ["vscode"],
     transform: {
+      // Lower ES2024 features (notably `await using`) so the bundle parses on
+      // older VS Code/Electron runtimes — V8 only gained the `using` parser in
+      // ~12.4 (VS Code 1.99). oxc inlines a tiny `_usingCtx` helper that
+      // also polyfills `Symbol.asyncDispose` / `SuppressedError`.
+      target: "es2022",
       define: {
         GLOBAL_SENTRY_DSN: JSON.stringify(process.env.SENTRY_DSN ?? null),
         GLOBAL_RELEASE_VERSION: isProduction ? JSON.stringify(pkg.version) : JSON.stringify("dev"),
@@ -54,6 +59,7 @@ export default defineConfig([
     },
     platform: "node",
     transform: {
+      target: "es2022",
       define: {
         GLOBAL_SENTRY_DSN: JSON.stringify(null),
         GLOBAL_RELEASE_VERSION: JSON.stringify(pkg.version),
