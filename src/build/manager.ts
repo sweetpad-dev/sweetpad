@@ -35,6 +35,12 @@ import type { ProgressStatusBar } from "../system/status-bar";
 import { BUILD_TASK_PROBLEM_MATCHERS } from "./constants";
 import type { DiagnosticsManager } from "./diagnostics";
 import type { ParsedDiagnostic } from "./diagnostics-parser";
+import {
+  ensureInjectionAppRunning,
+  isHotReloadEnabled,
+  sdkSupportsHotReload,
+  withHotReloadLaunchEnv,
+} from "./hot-reload";
 import type { BuildTreeItem } from "./tree";
 import {
   XcodeCommandBuilder,
@@ -586,6 +592,8 @@ export class BuildManager {
     }
 
     this.progress.updateText(`Running "${options.scheme}" on Mac`);
+    await ensureInjectionAppRunning();
+    const launchEnv = await withHotReloadLaunchEnv(terminal, this.workspace, options.launchEnv, "macOS");
     await terminal.runGroup(async (group) => {
       const logSidecar = new MacOSLogSidecar(group, {
         bundleId: buildSettings.bundleIdentifier,
@@ -598,7 +606,7 @@ export class BuildManager {
         args: options.launchArgs,
         // NSUnbufferedIO is a no-op when stdout is a tty (the v3/node-pty path), but acts as a
         // safety net for the v2 fallback where stdout is a plain pipe and Foundation block-buffers print().
-        env: { NSUnbufferedIO: "YES", ...options.launchEnv },
+        env: { NSUnbufferedIO: "YES", ...launchEnv },
         pty: true,
       });
       await main.wait();
@@ -690,6 +698,13 @@ export class BuildManager {
 
     // Run app
     this.progress.updateText(`Running "${options.scheme}" on "${simulator.name}"`);
+    await ensureInjectionAppRunning();
+    const childEnv = await withHotReloadLaunchEnv(
+      terminal,
+      this.workspace,
+      options.launchEnv,
+      options.destination.type,
+    );
     await terminal.runGroup(async (group) => {
       const logSidecar = new SimulatorLogSidecar(group, {
         simulatorUdid: simulator.udid,
@@ -702,7 +717,7 @@ export class BuildManager {
         command: "xcrun",
         args: launchArgs,
         // simctl strips SIMCTL_CHILD_ and passes the rest to the launched app.
-        env: Object.fromEntries(Object.entries(options.launchEnv).map(([k, v]) => [`SIMCTL_CHILD_${k}`, v])),
+        env: Object.fromEntries(Object.entries(childEnv).map(([k, v]) => [`SIMCTL_CHILD_${k}`, v])),
         pty: true,
       });
       await main.wait();
@@ -933,6 +948,17 @@ export class BuildManager {
       // project's ARCHS setting.
       // It speeds up compile times, especially in Debug, because Xcode skips generating unused slices.
       command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
+    }
+
+    // InjectionNext needs `-Xlinker -interposable` so dyld can swap symbols at runtime,
+    // and EMIT_FRONTEND_COMMAND_LINES=YES so it can recover compile commands from the
+    // build logs when no Xcode IDE is supervising the build (required for Xcode 16.3+).
+    // $(inherited) keeps whatever the project already sets for OTHER_LDFLAGS. Skipped
+    // for SDKs that InjectionNext can't inject into (physical devices, watchOS), so
+    // device builds don't pay for the extra relocations.
+    if (isHotReloadEnabled() && sdkSupportsHotReload(options.sdk)) {
+      command.addBuildSettings("OTHER_LDFLAGS", "$(inherited) -Xlinker -interposable");
+      command.addBuildSettings("EMIT_FRONTEND_COMMAND_LINES", "YES");
     }
 
     command.addParameters("-scheme", options.scheme);

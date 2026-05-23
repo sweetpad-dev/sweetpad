@@ -47,6 +47,8 @@ type Config = {
   "tuist.generate.env": { [key: string]: string | null };
   "testing.configuration": string;
   "server.enabled": boolean;
+  "hotReload.enabled": boolean;
+  "hotReload.dylibPath": string | null;
 };
 
 type ConfigKey = keyof Config;

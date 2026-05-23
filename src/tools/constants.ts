@@ -1,3 +1,7 @@
+export type ToolInstall =
+  | { type: "shell"; command: string; args: string[] }
+  | { type: "openUrl"; url: string };
+
 export type Tool = {
   id: string;
   label: string;
@@ -5,10 +9,7 @@ export type Tool = {
     command: string;
     args: string[];
   };
-  install: {
-    command: string;
-    args: string[];
-  };
+  install: ToolInstall;
   documentation: string;
 };
 
@@ -21,6 +22,7 @@ export const TOOLS: Tool[] = [
       args: ["--version"],
     },
     install: {
+      type: "shell",
       command: "/bin/bash",
       args: ["-c", "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"],
     },
@@ -34,6 +36,7 @@ export const TOOLS: Tool[] = [
       args: ["--version"],
     },
     install: {
+      type: "shell",
       command: "brew",
       args: ["install", "swift-format"],
     },
@@ -47,6 +50,7 @@ export const TOOLS: Tool[] = [
       args: ["--version"],
     },
     install: {
+      type: "shell",
       command: "brew",
       args: ["install", "xcodegen"],
     },
@@ -60,6 +64,7 @@ export const TOOLS: Tool[] = [
       args: ["--version"],
     },
     install: {
+      type: "shell",
       command: "brew",
       args: ["install", "swiftlint"],
     },
@@ -73,6 +78,7 @@ export const TOOLS: Tool[] = [
       args: ["--version"],
     },
     install: {
+      type: "shell",
       command: "brew",
       args: ["install", "xcbeautify"],
     },
@@ -86,6 +92,7 @@ export const TOOLS: Tool[] = [
       args: ["--help"],
     },
     install: {
+      type: "shell",
       command: "brew",
       args: ["install", "xcode-build-server"],
     },
@@ -99,6 +106,7 @@ export const TOOLS: Tool[] = [
       args: ["--version"],
     },
     install: {
+      type: "shell",
       command: "brew",
       args: ["install", "ios-deploy"],
     },
@@ -112,9 +120,25 @@ export const TOOLS: Tool[] = [
       args: ["version"],
     },
     install: {
+      type: "shell",
       command: "brew",
       args: ["install", "--cask", "tuist"],
     },
     documentation: "https://docs.tuist.io/",
+  },
+  {
+    id: "injectionnext",
+    label: "InjectionNext",
+    check: {
+      command: "test",
+      args: ["-d", "/Applications/InjectionNext.app"],
+    },
+    // InjectionNext is not on Homebrew; the install action opens the GitHub releases
+    // page so the user can grab the ZIP and drop InjectionNext.app into /Applications.
+    install: {
+      type: "openUrl",
+      url: "https://github.com/johnno1962/InjectionNext/releases/latest",
+    },
+    documentation: "https://github.com/johnno1962/InjectionNext",
   },
 ];

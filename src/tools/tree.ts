@@ -56,8 +56,6 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<ToolTreeItem> {
 }
 
 export class ToolTreeItem extends vscode.TreeItem {
-  commandName: string;
-  commandArgs: string[];
   documentation: string;
   tool: Tool;
 
@@ -71,8 +69,6 @@ export class ToolTreeItem extends vscode.TreeItem {
 
     this.contextValue = options.isInstalled ? "installed" : "notInstalled";
     this.documentation = options.tool.documentation;
-    this.commandName = options.tool.install.command;
-    this.commandArgs = options.tool.install.args;
     this.tool = options.tool;
 
     if (options.isInstalled) {
