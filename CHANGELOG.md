@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.93] - 2026-05-23
+
+- Add opt-in hot reload via InjectionNext for simulator and macOS builds — source edits refresh the running app without a rebuild
+
 ## [0.1.92] - 2026-05-21
 
 - Fix extension load failure on older VS Code versions by lowering ES2024 `await using` syntax in the bundle ([#252](https://github.com/sweetpad-dev/sweetpad/issues/252))
