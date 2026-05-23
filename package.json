@@ -1153,6 +1153,16 @@
           "type": "boolean",
           "default": false,
           "description": "Run the in-extension JSON-RPC server over a Unix socket so the bundled `sweetpad` CLI (and AI agents) can read state and trigger builds from outside VS Code. See docs/dev/agent-cli.md."
+        },
+        "sweetpad.hotReload.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Launch the simulator (or macOS) build with InjectionNext pre-injected so file saves hot-reload into the running app. Requires InjectionNext.app — install it via the Tools view (opens the GitHub releases page; drag the app to /Applications). Adds `-Xlinker -interposable` and `EMIT_FRONTEND_COMMAND_LINES=YES` to the build, and sets `DYLD_INSERT_LIBRARIES` plus `INJECTION_PROJECT_ROOT` on the launched process. watchOS and physical devices are not supported."
+        },
+        "sweetpad.hotReload.dylibPath": {
+          "type": "string",
+          "default": null,
+          "description": "Override the InjectionNext `lib*Injection.dylib` path used for `DYLD_INSERT_LIBRARIES`. By default SweetPad resolves the right per-platform dylib inside `/Applications/InjectionNext.app/Contents/Resources/` (e.g. `libiphonesimulatorInjection.dylib` for iOS Simulator)."
         }
       }
     },

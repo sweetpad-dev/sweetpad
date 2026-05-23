@@ -6,10 +6,19 @@ import type { ToolTreeItem } from "./tree.js";
 import { askTool } from "./utils.js";
 
 /**
- * Command to install tool from the tool tree view in the sidebar using brew
+ * Command to install a tool from the Tools view. Either runs an install command in a
+ * task terminal (for Homebrew-installable tools) or opens an external URL (for tools
+ * like InjectionNext that ship as a .app outside any package manager).
  */
 export async function installToolCommand(deps: AppDeps, item?: ToolTreeItem) {
   const tool = item?.tool ?? (await askTool({ title: "Select tool to install" }));
+  const install = tool.install;
+
+  if (install.type === "openUrl") {
+    await vscode.env.openExternal(vscode.Uri.parse(install.url));
+    deps.toolsManager.refresh();
+    return;
+  }
 
   deps.progressStatusBar.updateText("Installing tool");
   await runTask(deps.execution, {
@@ -19,8 +28,8 @@ export async function installToolCommand(deps: AppDeps, item?: ToolTreeItem) {
     lock: "sweetpad.tools.install",
     callback: async (terminal) => {
       await terminal.execute({
-        command: tool.install.command,
-        args: tool.install.args,
+        command: install.command,
+        args: install.args,
         env: {
           // We don't run the command in ptty, that's why we need to tell homebrew to use color
           // output explicitly

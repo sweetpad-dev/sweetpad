@@ -48,6 +48,7 @@ export type WorkspaceTypes = {
   "testing.xcodeConfiguration": string;
   "testing.xcodeDestination": SelectedDestination;
   "testing.xcodeScheme": string;
+  "hotReload.injectWarningShownCount": number;
 };
 
 export type WorkspaceStateKey = keyof WorkspaceTypes;
