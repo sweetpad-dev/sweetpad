@@ -251,15 +251,15 @@ async function warnIfInjectMissing(terminal: TaskTerminal, state: WorkspaceState
     color: "yellow",
     newLine: true,
   });
-  terminal.write(
-    "[sweetpad] SwiftUI views won't refresh on save until you add Inject as a Swift Package dependency",
-    { color: "yellow", newLine: true },
-  );
+  terminal.write("[sweetpad] SwiftUI views won't refresh on save until you add Inject as a Swift Package dependency", {
+    color: "yellow",
+    newLine: true,
+  });
   terminal.write(`[sweetpad]   ${INJECT_PACKAGE_URL}`, { color: "yellow", newLine: true });
-  terminal.write(
-    "[sweetpad] and annotate views with `@ObserveInjection var inject` + `.enableInjection()`.",
-    { color: "yellow", newLine: true },
-  );
+  terminal.write("[sweetpad] and annotate views with `@ObserveInjection var inject` + `.enableInjection()`.", {
+    color: "yellow",
+    newLine: true,
+  });
   terminal.write("[sweetpad] UIKit-only apps can ignore this warning.", {
     color: "yellow",
     newLine: true,

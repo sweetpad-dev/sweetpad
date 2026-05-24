@@ -37,7 +37,9 @@
   "scripts": {
     "build": "rolldown -c rolldown.config.mjs",
     "watch": "rolldown -c rolldown.config.mjs --watch",
-    "vscode:prepublish": "cross-env NODE_ENV=production rolldown -c rolldown.config.mjs",
+    "vscode:prepublish": "npm run fetch-sweetpad && cross-env NODE_ENV=production rolldown -c rolldown.config.mjs",
+    "fetch-sweetpad": "tsx ./scripts/fetch-sweetpad.ts",
+    "link-sweetpad-lib": "tsx ./scripts/link-sweetpad-lib.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "check:format": "oxfmt src scripts docs rolldown.config.mjs vitest.config.ts",
@@ -1022,6 +1024,11 @@
           "type": "boolean",
           "default": false,
           "description": "Use custom workspace parser instead of the 'xcodebuild' command. This may speed up processing for large projects, but it might not work correctly in all cases."
+        },
+        "sweetpad.system.useSweetpadLib": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use the experimental sweetpad-lib binary (bundled with the extension) for read-only operations (`-list`, `-showBuildSettings`, `-version`) instead of shelling out to `xcodebuild`. Significantly faster for large projects; behaviour should match xcodebuild but coverage isn't exhaustive yet. To iterate on local sweetpad-lib changes, run `npm run link-sweetpad-lib` to symlink your cargo build into the bundled location."
         },
         "sweetpad.system.showProgressStatusBar": {
           "type": "boolean",

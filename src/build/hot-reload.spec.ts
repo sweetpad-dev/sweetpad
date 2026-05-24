@@ -120,12 +120,7 @@ describe("pinsContainInject", () => {
   it("skips malformed pin entries and still finds a valid match later in the array", () => {
     expect(
       pinsContainInject({
-        pins: [
-          null,
-          "string",
-          { location: 42 },
-          { location: "https://github.com/krzysztofzablocki/Inject.git" },
-        ],
+        pins: [null, "string", { location: 42 }, { location: "https://github.com/krzysztofzablocki/Inject.git" }],
       }),
     ).toBe(true);
   });

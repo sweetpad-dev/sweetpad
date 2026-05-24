@@ -1,6 +1,4 @@
-export type ToolInstall =
-  | { type: "shell"; command: string; args: string[] }
-  | { type: "openUrl"; url: string };
+export type ToolInstall = { type: "shell"; command: string; args: string[] } | { type: "openUrl"; url: string };
 
 export type Tool = {
   id: string;

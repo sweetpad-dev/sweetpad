@@ -10,6 +10,7 @@ import { exec } from "../exec";
 import { readJsonFile } from "../files";
 import { uniqueFilter, prepareEnvVars } from "../helpers";
 import { commonLogger } from "../logger";
+import { getSweetpadBinPath } from "../sweetpad-bin";
 import { assertUnreachable } from "../types";
 import { XcodeWorkspace } from "../xcode/workspace";
 
@@ -219,38 +220,55 @@ export async function getBuildSettingsList(options: {
   xcworkspace: string;
 }): Promise<XcodeBuildSettings[]> {
   const derivedDataPath = prepareDerivedDataPath();
-
-  // Build common arguments
-  const args = [
-    "-showBuildSettings",
-    "-scheme",
-    options.scheme,
-    "-configuration",
-    options.configuration,
-    ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
-    "-json",
-  ];
-
-  if (options.sdk !== undefined) {
-    args.push("-sdk", options.sdk);
-  }
-
-  // Determine workspace type and set up execution context
   const workspaceType = detectWorkspaceType(options.xcworkspace);
   let cwd: string | undefined;
 
-  if (workspaceType === "spm") {
-    cwd = getSwiftPMDirectory(options.xcworkspace);
-  } else if (workspaceType === "xcode") {
-    args.push("-workspace", options.xcworkspace);
+  let command: string;
+  let args: string[];
+  if (isSweetpadLibEnabled() && workspaceType === "xcode") {
+    command = getSweetpadBinPath();
+    args = [
+      "build-settings",
+      "--json",
+      "--scheme",
+      options.scheme,
+      "--config",
+      options.configuration,
+      ...(derivedDataPath ? ["--derived-data-path", derivedDataPath] : []),
+      ...(options.sdk !== undefined ? ["--sdk", options.sdk] : []),
+    ];
+    if (options.xcworkspace.endsWith(".xcworkspace")) {
+      args.push("--workspace", options.xcworkspace);
+    } else {
+      args.push("--project", options.xcworkspace);
+    }
   } else {
-    assertUnreachable(workspaceType);
+    command = getXcodeBuildCommand();
+    args = [
+      "-showBuildSettings",
+      "-scheme",
+      options.scheme,
+      "-configuration",
+      options.configuration,
+      ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
+      "-json",
+    ];
+    if (options.sdk !== undefined) {
+      args.push("-sdk", options.sdk);
+    }
+    if (workspaceType === "spm") {
+      cwd = getSwiftPMDirectory(options.xcworkspace);
+    } else if (workspaceType === "xcode") {
+      args.push("-workspace", options.xcworkspace);
+    } else {
+      assertUnreachable(workspaceType);
+    }
   }
 
   const stdout = await exec({
-    command: getXcodeBuildCommand(),
-    args: args,
-    cwd: cwd,
+    command,
+    args,
+    cwd,
   });
 
   // Parse the output - first few lines can be invalid json, so we need to skip them
@@ -400,6 +418,17 @@ export function getSwiftCommand(): string {
 }
 
 /**
+ * Whether the experimental sweetpad-lib binary should be used for
+ * read-only Xcode operations (-list, -showBuildSettings, -version) in
+ * place of `xcodebuild`. Controlled by `sweetpad.system.useSweetpadLib`;
+ * disabled by default. The binary itself ships bundled with the
+ * extension under `bin/` — see `getSweetpadBinPath`.
+ */
+export function isSweetpadLibEnabled(): boolean {
+  return getWorkspaceConfig("system.useSweetpadLib") ?? false;
+}
+
+/**
  * Find if xcode-build-server is installed
  */
 export async function getIsXcodeBuildServerInstalled() {
@@ -432,10 +461,26 @@ export const getBasicProjectInfo = cache(
     }
 
     if (workspaceType === "xcode") {
-      const stdout = await exec({
-        command: getXcodeBuildCommand(),
-        args: ["-list", "-json", ...(options?.xcworkspace ? ["-workspace", options?.xcworkspace] : [])],
-      });
+      let command: string;
+      let args: string[];
+      if (isSweetpadLibEnabled()) {
+        command = getSweetpadBinPath();
+        args = ["list", "--json"];
+        if (options?.xcworkspace) {
+          if (options.xcworkspace.endsWith(".xcworkspace")) {
+            args.push("--workspace", options.xcworkspace);
+          } else {
+            args.push("--project", options.xcworkspace);
+          }
+        }
+      } else {
+        command = getXcodeBuildCommand();
+        args = ["-list", "-json"];
+        if (options?.xcworkspace) {
+          args.push("-workspace", options.xcworkspace);
+        }
+      }
+      const stdout = await exec({ command, args });
       const parsed = parseCliJsonOutput<any>(stdout);
       if (parsed.project) {
         return {
@@ -849,6 +894,21 @@ export async function tuistTest() {
 export async function getXcodeVersionInstalled(): Promise<{
   major: number;
 }> {
+  if (isSweetpadLibEnabled()) {
+    //~ sweetpad-lib xcode-version --json
+    // { "developerDir": "...", "shortVersion": "16.0", "buildVersion": "16A242d", "majorVersion": 16 }
+    const stdout = await exec({
+      command: getSweetpadBinPath(),
+      args: ["xcode-version", "--json"],
+    });
+    const parsed = parseCliJsonOutput<{ majorVersion: number }>(stdout);
+    if (typeof parsed.majorVersion !== "number") {
+      throw new ExtensionError("Error parsing sweetpad-lib xcode-version output", {
+        context: { stdout },
+      });
+    }
+    return { major: parsed.majorVersion };
+  }
   //~ xcodebuild -version
   // Xcode 16.0
   // Build version 16A242d

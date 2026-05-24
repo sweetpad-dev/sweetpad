@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.1.94] - 2026-05-24
+
+- Add opt-in `sweetpad.system.useSweetpadLib` flag to route read-only Xcode operations (`-list`, `-showBuildSettings`, `-version`) through the bundled [sweetpad-lib](https://github.com/sweetpad-dev/sweetpad-lib) Rust binary instead of `xcodebuild`
+
 ## [0.1.93] - 2026-05-23
 
 - Add opt-in hot reload via InjectionNext for simulator and macOS builds — source edits refresh the running app without a rebuild

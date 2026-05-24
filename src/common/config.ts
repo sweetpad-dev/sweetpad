@@ -39,6 +39,7 @@ type Config = {
   "system.autoRevealTerminal": boolean;
   "system.showProgressStatusBar": boolean;
   "system.customXcodeWorkspaceParser": boolean;
+  "system.useSweetpadLib": boolean;
   "xcodegen.autogenerate": boolean;
   "xcodebuildserver.autogenerate": boolean;
   "xcodebuildserver.path": string;
