@@ -48,6 +48,7 @@ import {
   askDestinationToRunOn,
   askSchemeForBuild,
   askXcodeWorkspacePath,
+  buildDestinationString,
   detectWorkspaceType,
   ensureAppPathExists,
   generateBuildServerConfigOnBuild,
@@ -573,11 +574,13 @@ export class BuildManager {
     },
   ) {
     this.progress.updateText("Extracting build settings");
+    const destinationRaw = buildDestinationString({ platform: "macOS" });
     const buildSettings = await getBuildSettingsToLaunch({
       scheme: options.scheme,
       configuration: options.configuration,
       sdk: "macosx",
       xcworkspace: options.xcworkspace,
+      destination: destinationRaw,
     });
 
     const executablePath = await ensureAppPathExists(buildSettings.executablePath);
@@ -630,11 +633,13 @@ export class BuildManager {
     const simulatorId = options.destination.udid;
 
     this.progress.updateText("Extracting build settings");
+    const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
     const buildSettings = await getBuildSettingsToLaunch({
       scheme: options.scheme,
       configuration: options.configuration,
       sdk: options.sdk,
       xcworkspace: options.xcworkspace,
+      destination: destinationRaw,
     });
     const appPath = await ensureAppPathExists(buildSettings.appPath);
     const bundlerId = buildSettings.bundleIdentifier;
@@ -741,11 +746,13 @@ export class BuildManager {
     const { type: destinationType, name: destinationName } = destination;
 
     this.progress.updateText("Extracting build settings");
+    const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
     const buildSettings = await getBuildSettingsToLaunch({
       scheme: scheme,
       configuration: configuration,
       sdk: option.sdk,
       xcworkspace: option.xcworkspace,
+      destination: destinationRaw,
     });
 
     const targetPath = await ensureAppPathExists(buildSettings.appPath);

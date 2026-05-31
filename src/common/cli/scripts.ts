@@ -218,6 +218,7 @@ export async function getBuildSettingsList(options: {
   configuration: string;
   sdk: string | undefined;
   xcworkspace: string;
+  destination?: string;
 }): Promise<XcodeBuildSettings[]> {
   const derivedDataPath = prepareDerivedDataPath();
   const workspaceType = detectWorkspaceType(options.xcworkspace);
@@ -227,6 +228,7 @@ export async function getBuildSettingsList(options: {
   let args: string[];
   if (isSweetpadLibEnabled() && workspaceType === "xcode") {
     command = getSweetpadBinPath();
+    const developerDir = await activeDeveloperDir.resolve();
     args = [
       "build-settings",
       "--json",
@@ -236,6 +238,8 @@ export async function getBuildSettingsList(options: {
       options.configuration,
       ...(derivedDataPath ? ["--derived-data-path", derivedDataPath] : []),
       ...(options.sdk !== undefined ? ["--sdk", options.sdk] : []),
+      ...(developerDir ? ["--xcode", developerDir] : []),
+      ...(options.destination ? ["--destination", options.destination] : []),
     ];
     if (options.xcworkspace.endsWith(".xcworkspace")) {
       args.push("--workspace", options.xcworkspace);
@@ -343,6 +347,7 @@ export async function getBuildSettingsToLaunch(options: {
   configuration: string;
   sdk: string | undefined;
   xcworkspace: string;
+  destination?: string;
 }): Promise<XcodeBuildSettings> {
   const settings = await getBuildSettingsList(options);
 
@@ -427,6 +432,29 @@ export function getSwiftCommand(): string {
 export function isSweetpadLibEnabled(): boolean {
   return getWorkspaceConfig("system.useSweetpadLib") ?? false;
 }
+
+/**
+ * Resolves the active Xcode developer dir via `xcode-select -p`, cached for the
+ * session. `null` if it can't be resolved (the binary then uses its embedded catalog).
+ */
+class ActiveDeveloperDir {
+  private cached: string | null | undefined;
+
+  async resolve(): Promise<string | null> {
+    if (this.cached !== undefined) {
+      return this.cached;
+    }
+    try {
+      const out = await exec({ command: "xcode-select", args: ["-p"] });
+      this.cached = out.trim() || null;
+    } catch {
+      this.cached = null;
+    }
+    return this.cached;
+  }
+}
+
+const activeDeveloperDir = new ActiveDeveloperDir();
 
 /**
  * Find if xcode-build-server is installed
