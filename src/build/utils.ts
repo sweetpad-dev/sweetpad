@@ -727,7 +727,7 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
  * - `platform=macOS,arch=arm64`
  * - `platform=iOS,arch=arm64`
  */
-function buildDestinationString(options: { platform: string; id?: string; arch?: string }): string {
+export function buildDestinationString(options: { platform: string; id?: string; arch?: string }): string {
   const { platform, id, arch } = options;
   if (id && arch) {
     return `platform=${platform},id=${id},arch=${arch}`;

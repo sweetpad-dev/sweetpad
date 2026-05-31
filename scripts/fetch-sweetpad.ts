@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { execa } from "execa";
 
-const VERSION = "v0.1.0";
+const VERSION = "v0.2.0";
 const REPO = "sweetpad-dev/sweetpad-lib";
 const BINARY = "sweetpad-darwin-universal";
 
