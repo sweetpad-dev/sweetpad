@@ -1,0 +1,68 @@
+/**
+    Copyright (c) 2006-2010 Apple Inc.
+    All rights reserved.
+*/
+(
+    // Headers
+    {   Type = BuildPhase;
+        Identifier = com.apple.buildphase.headers;
+        Name = "Headers Build Phase";
+        Description = "Processes the product's public and private headers.  This mainly involves copying them to the appropriate locations inside a wrapped product, but may also involve processing the headers in various ways.";
+    },
+
+    // Resources
+    {   Type = BuildPhase;
+        Identifier = com.apple.buildphase.resources;
+        Name = "Resources Build Phase";
+        Description = "Processes the product's localized and non-localized resources.  This mainly involves copying them to the appropriate locations inside a wrapped product, but may also involve processing the resources in various ways.";
+    },
+
+    // Sources
+    {   Type = BuildPhase;
+        Identifier = com.apple.buildphase.sources;
+        Name = "Build Phase";
+        Description = "Processes the product's source code.  This mainly involves compiling source files to object code, but may also involve generating source code from various other types of input files (such as lex and yacc files, mig files, etc).";
+    },
+
+    // Frameworks
+    {   Type = BuildPhase;
+        Identifier = com.apple.buildphase.frameworks;
+        Name = "Frameworks Build Phase";
+        Description = "Lists frameworks and libraries against which the product should be linked.";
+    },
+
+    // Rez
+    {   Type = BuildPhase;
+        Identifier = com.apple.buildphase.rez;
+        Name = "Rez Build Phase";
+        Description = "Processes any Carbon Rez files by running them through Rez and combining them using ResMerger.";
+    },
+
+    // Java Archive
+    {   Type = BuildPhase;
+        Identifier = com.apple.buildphase.java-archive;
+        Name = "Java Archive Build Phase";
+        Description = "Creates a Java archive (.jar)";
+    },
+
+    // Shell Script
+    {   Type = BuildPhase;
+        Identifier = com.apple.buildphase.shell-script;
+        Name = "Shell Script Build Phase";
+        Description = "Invokes a user-specified shell script to perform custom actions duing a build.";
+    },
+
+    // Copy Files
+    {   Type = BuildPhase;
+        Identifier = com.apple.buildphase.copy-files;
+        Name = "Copy Files Build Phase";
+        Description = "Copies one or more files or directories from the source directory to an arbitrary directory inside or outside of the product.";
+    },
+
+    // AppleScript
+    {   Type = BuildPhase;
+        Identifier = com.apple.buildphase.applescript;
+        Name = "AppleScript Build Phase";
+        Description = "Compiles AppleScript files and copies them to the product's Resources directory.";
+    },
+)

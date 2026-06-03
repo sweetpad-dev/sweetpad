@@ -1,0 +1,15 @@
+//  Copyright © 2015-2016 Apple Inc. All rights reserved.
+(
+    {
+        Type = BuildSettings;
+        Identifier = com.apple.build-settings.embedded-device;
+        Name = "Embedded (Device) Additional Core Build Settings";
+        Properties = (
+            {
+                Name = "EMBEDDED_PROFILE_NAME";
+                Type = String;
+                DefaultValue = "embedded.mobileprovision";
+            },
+        );
+    },
+)

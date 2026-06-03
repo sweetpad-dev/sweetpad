@@ -1,0 +1,19 @@
+(
+    // Swift stdlib tool
+    {   Identifier = com.apple.buildstep.swift-stdlib-tool;
+        Type = BuildStep;
+        Class = XCBuildStepSpecification_SwiftStdlibTool;
+        Name = "Swift Stdlib Tool Step";
+        Description = "Runs the Swift standard library copying tool.";
+        BuildStepType = "AdditionalBuildPhase";
+    },
+    
+    // Swift validation
+    {   Identifier = com.apple.buildstep.swift-validation;
+        Type = BuildStep;
+        Class = XCBuildStepSpecification_SwiftValidation;
+        Name = "Swift Validation Step";
+        Description = "Performs validation checks when building with Swift.";
+        BuildStepType = "AdditionalBuildPhase";
+    },
+)

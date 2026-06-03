@@ -34,12 +34,14 @@
   "extensionDependencies": [
     "vadimcn.vscode-lldb"
   ],
+  "workspaces": [
+    "sweetpad-lib"
+  ],
   "scripts": {
     "build": "rolldown -c rolldown.config.mjs",
     "watch": "rolldown -c rolldown.config.mjs --watch",
-    "vscode:prepublish": "npm run fetch-sweetpad && cross-env NODE_ENV=production rolldown -c rolldown.config.mjs",
-    "fetch-sweetpad": "tsx ./scripts/fetch-sweetpad.ts",
-    "link-sweetpad-lib": "tsx ./scripts/link-sweetpad-lib.ts",
+    "vscode:prepublish": "cross-env NODE_ENV=production rolldown -c rolldown.config.mjs",
+    "build:sweetpad-lib:debug": "npm run build:debug -w @sweetpad/lib",
     "test": "vitest run",
     "test:watch": "vitest",
     "check:format": "oxfmt src scripts docs rolldown.config.mjs vitest.config.ts",
@@ -52,10 +54,8 @@
     "verify-font": "tsx ./scripts/font-tools.ts verify"
   },
   "dependencies": {
-    "@bacons/xcode": "^1.0.0-alpha.15",
-    "@rgrove/parse-xml": "^4.1.0",
     "@sentry/node": "^8.34.0",
-    "add": "^2.0.6",
+    "@sweetpad/lib": "*",
     "execa": "npm:@esm2cjs/execa@^6.1.1-cjs.1",
     "shell-quote": "^1.8.1",
     "vscode-languageclient": "^9.0.1"
@@ -67,7 +67,6 @@
     "@types/vscode": "^1.85.0",
     "cross-env": "^7.0.3",
     "dotenv": "^16.4.5",
-    "globals": "^15.11.0",
     "node-pty": "^1.1.0",
     "oxfmt": "^0.48.0",
     "oxlint": "^1.63.0",
@@ -77,7 +76,6 @@
     "vitest": "^4.1.5"
   },
   "overrides": {
-    "@xmldom/xmldom": "^0.8.13",
     "vscode-languageclient": {
       "brace-expansion": "^2.0.3"
     }
@@ -1019,16 +1017,6 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically reveal the terminal when executing a command or task"
-        },
-        "sweetpad.system.customXcodeWorkspaceParser": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use custom workspace parser instead of the 'xcodebuild' command. This may speed up processing for large projects, but it might not work correctly in all cases."
-        },
-        "sweetpad.system.useSweetpadLib": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use the experimental sweetpad-lib binary (bundled with the extension) for read-only operations (`-list`, `-showBuildSettings`, `-version`) instead of shelling out to `xcodebuild`. Significantly faster for large projects; behaviour should match xcodebuild but coverage isn't exhaustive yet. To iterate on local sweetpad-lib changes, run `npm run link-sweetpad-lib` to symlink your cargo build into the bundled location."
         },
         "sweetpad.system.showProgressStatusBar": {
           "type": "boolean",

@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme
+   LastUpgradeVersion = "1010"
+   version = "1.3">
+   <BuildAction
+      parallelizeBuildables = "YES"
+      buildImplicitDependencies = "YES">
+      <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "93E9E330FC2CE7458D9C925F"
+               BuildableName = "App.app"
+               BlueprintName = "App"
+               ReferencedContainer = "container:App.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "99DCC7BD0ABB09C467644299"
+               BuildableName = "AppTests.xctest"
+               BlueprintName = "AppTests"
+               ReferencedContainer = "container:App.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "AFD864364A31671890232BA1"
+               BuildableName = "BigInt.framework"
+               BlueprintName = "BigInt"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/BigInt/BigInt.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "FFFA547CB1555B03F05B0338"
+               BuildableName = "Buy.framework"
+               BlueprintName = "Buy"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/Mobile Buy SDK/Mobile Buy SDK.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "0C402B96BBD3B71C0DF7855E"
+               BuildableName = "CCryptoBoringSSL.framework"
+               BlueprintName = "CCryptoBoringSSL"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-crypto/swift-crypto.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "0EE746172D7B13428C590074"
+               BuildableName = "CCryptoBoringSSLShims.framework"
+               BlueprintName = "CCryptoBoringSSLShims"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-crypto/swift-crypto.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "EFE8F0C7C1D24E25CAA7F815"
+               BuildableName = "Crypto.framework"
+               BlueprintName = "Crypto"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-crypto/swift-crypto.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "6FECC8B2C3C6F11523069529"
+               BuildableName = "CryptoBoringWrapper.framework"
+               BlueprintName = "CryptoBoringWrapper"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-crypto/swift-crypto.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "777E04E25BCBCE298AA6737B"
+               BuildableName = "JWTKit.framework"
+               BlueprintName = "JWTKit"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/jwt-kit/jwt-kit.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "48E2806771E11413F504D8E9"
+               BuildableName = "KSCrashCore.framework"
+               BlueprintName = "KSCrashCore"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "6EF9926F6C892BE4988B38A3"
+               BuildableName = "KSCrashDemangleFilter.framework"
+               BlueprintName = "KSCrashDemangleFilter"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "9E21A5245E0038D636F54B1B"
+               BuildableName = "KSCrashFilters.framework"
+               BlueprintName = "KSCrashFilters"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "66E14A1918E664609144D9E6"
+               BuildableName = "KSCrashInstallations.framework"
+               BlueprintName = "KSCrashInstallations"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "2DCAE312DB8A8162D6A25899"
+               BuildableName = "KSCrashRecording.framework"
+               BlueprintName = "KSCrashRecording"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "55D61B85130BEBBE677AC315"
+               BuildableName = "KSCrashRecordingCore.framework"
+               BlueprintName = "KSCrashRecordingCore"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "9302B56D5F98BC0DAA51FEEE"
+               BuildableName = "KSCrashReportingCore.framework"
+               BlueprintName = "KSCrashReportingCore"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A46D5FA4793DE32978218221"
+               BuildableName = "KSCrashSinks.framework"
+               BlueprintName = "KSCrashSinks"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "27448599E53E4C360EE0D13C"
+               BuildableName = "KSCrash_KSCrashCore.bundle"
+               BlueprintName = "KSCrash_KSCrashCore"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "DD5CCE0046156AEFDE861560"
+               BuildableName = "KSCrash_KSCrashDemangleFilter.bundle"
+               BlueprintName = "KSCrash_KSCrashDemangleFilter"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "723D0708F26DDF4785BB6C47"
+               BuildableName = "KSCrash_KSCrashFilters.bundle"
+               BlueprintName = "KSCrash_KSCrashFilters"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "13542517826A4634A3A3892C"
+               BuildableName = "KSCrash_KSCrashInstallations.bundle"
+               BlueprintName = "KSCrash_KSCrashInstallations"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "971CA8FE37F663A39D8A0621"
+               BuildableName = "KSCrash_KSCrashRecording.bundle"
+               BlueprintName = "KSCrash_KSCrashRecording"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "CDBC2383A90C00FAC6048783"
+               BuildableName = "KSCrash_KSCrashRecordingCore.bundle"
+               BlueprintName = "KSCrash_KSCrashRecordingCore"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "04CAEE343C71BC76CEE53715"
+               BuildableName = "KSCrash_KSCrashReportingCore.bundle"
+               BlueprintName = "KSCrash_KSCrashReportingCore"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "97E0B8E37E026A37D97D6398"
+               BuildableName = "KSCrash_KSCrashSinks.bundle"
+               BlueprintName = "KSCrash_KSCrashSinks"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/KSCrash/KSCrash.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "8404160130D5597062AB2060"
+               BuildableName = "Pay.framework"
+               BlueprintName = "Pay"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/Mobile Buy SDK/Mobile Buy SDK.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D510020B0587B40B98CC4C49"
+               BuildableName = "SwiftASN1.framework"
+               BlueprintName = "SwiftASN1"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-asn1/swift-asn1.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "01225C45B7EB5BCAD924B347"
+               BuildableName = "X509.framework"
+               BlueprintName = "X509"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-certificates/swift-certificates.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "FE062C0AA291A14CF975BA87"
+               BuildableName = "_CertificateInternals.framework"
+               BlueprintName = "_CertificateInternals"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-certificates/swift-certificates.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "4CB045221B0A8E88199D7A87"
+               BuildableName = "_CryptoExtras.framework"
+               BlueprintName = "_CryptoExtras"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-crypto/swift-crypto.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "C857B83BC95EC3AFE7206A1A"
+               BuildableName = "swift-crypto_CCryptoBoringSSL.bundle"
+               BlueprintName = "swift-crypto_CCryptoBoringSSL"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-crypto/swift-crypto.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "9B5DDC0F2D209F320FCE741D"
+               BuildableName = "swift-crypto_CCryptoBoringSSLShims.bundle"
+               BlueprintName = "swift-crypto_CCryptoBoringSSLShims"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-crypto/swift-crypto.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "80768BF23537BC72995D780E"
+               BuildableName = "swift-crypto_Crypto.bundle"
+               BlueprintName = "swift-crypto_Crypto"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-crypto/swift-crypto.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "40DC2E2DBA3C44B54E5C7BF9"
+               BuildableName = "swift-crypto_CryptoBoringWrapper.bundle"
+               BlueprintName = "swift-crypto_CryptoBoringWrapper"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-crypto/swift-crypto.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D78133E6C37712ADEA1A5F89"
+               BuildableName = "swift-crypto__CryptoExtras.bundle"
+               BlueprintName = "swift-crypto__CryptoExtras"
+               ReferencedContainer = "container:Tuist/.build/tuist-derived/swift-crypto/swift-crypto.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      shouldUseLaunchSchemeArgsEnv = "YES">
+      <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "99DCC7BD0ABB09C467644299"
+               BuildableName = "AppTests.xctest"
+               BlueprintName = "AppTests"
+               ReferencedContainer = "container:App.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      launchStyle = "0"
+      useCustomWorkingDirectory = "NO"
+      ignoresPersistentStateOnLaunch = "NO"
+      debugDocumentVersioning = "YES"
+      debugServiceExtension = "internal"
+      allowLocationSimulation = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "93E9E330FC2CE7458D9C925F"
+            BuildableName = "App.app"
+            BlueprintName = "App"
+            ReferencedContainer = "container:App.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+   <ProfileAction
+      buildConfiguration = "Release"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      savedToolIdentifier = ""
+      useCustomWorkingDirectory = "NO"
+      debugDocumentVersioning = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "93E9E330FC2CE7458D9C925F"
+            BuildableName = "App.app"
+            BlueprintName = "App"
+            ReferencedContainer = "container:App.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </ProfileAction>
+   <AnalyzeAction
+      buildConfiguration = "Debug">
+   </AnalyzeAction>
+   <ArchiveAction
+      buildConfiguration = "Release"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+</Scheme>

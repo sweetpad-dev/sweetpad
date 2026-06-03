@@ -1,0 +1,1 @@
+-list failed for /Users/hyzyla_home/Developer/sweetpad-lib/corpus/tuist-fixtures/examples/xcode/generated_command_line_tool_with_dynamic_library/CommandLineTool.xcworkspace

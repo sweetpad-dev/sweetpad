@@ -1,0 +1,42 @@
+{
+  "canonicalName": "watchsimulator11.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/WatchSimulator.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "11.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "22T572"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/WatchSimulator.platform/Developer/SDKs/WatchSimulator11.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "11.5"
+  },
+  "showsdks_entry": {
+    "buildID": "E6E57B42-2658-11F0-9FCE-F41B9CB81AAA",
+    "canonicalName": "watchsimulator11.5",
+    "displayName": "Simulator - watchOS 11.5",
+    "isBaseSdk": true,
+    "platform": "watchsimulator",
+    "platformPath": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/WatchSimulator.platform",
+    "platformVersion": "11.5",
+    "productBuildVersion": "22T572",
+    "productCopyright": "1983-2025 Apple Inc.",
+    "productName": "Watch OS",
+    "productVersion": "11.5",
+    "sdkPath": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/WatchSimulator.platform/Developer/SDKs/WatchSimulator11.5.sdk",
+    "sdkVersion": "11.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "WatchSimulator11.5.sdk - Simulator - watchOS 11.5 (watchsimulator11.5)\nSDKVersion: 11.5\nPath: /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/WatchSimulator.platform/Developer/SDKs/WatchSimulator11.5.sdk\nPlatformVersion: 11.5\nPlatformPath: /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/WatchSimulator.platform\nBuildID: E6E57B42-2658-11F0-9FCE-F41B9CB81AAA\nProductBuildVersion: 22T572\nProductCopyright: 1983-2025 Apple Inc.\nProductName: Watch OS\nProductVersion: 11.5\n\n"
+  }
+}

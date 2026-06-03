@@ -1,0 +1,32 @@
+/*
+    Copyright (c) 2014 Apple, Inc.
+    All rights reserved.
+*/
+(
+    {   Identifier = public.build-task.unifdef;
+        Type = Tool;
+        Name = "Unifdef";
+        ExecPath = "unifdef";
+        Description = "Copies files while optionally removing specified preprocessor conditionals.";
+        InputTypes = (
+            com.apple.iig-source,
+            public.c-header,
+            public.c-plus-plus-header,
+        );
+        ExecDescription = "Copy $(InputFileName) while removing preprocessor conditionals";
+        ProgressDescription = "Copying $(CommandProgressByType) files";
+        SuccessExitCodes = (
+            // unifdef(1) is quite unorthodox in having a non-zero exit code mean success
+            0,  // This means "succeeded but didn't actually change anything in the file"
+            1,  // This means "succeeded and did change something in the file"
+            // Anything else is a failure code
+        );
+        CommandOutputParser = (
+            ("()()(^[^:]+: [^:]+: No such file or directory)",  emit-error),
+            ("()()(^[^:]+: [^:]+: Permission denied)",  emit-error),
+            ("()()(^[^:]+: [^:]+: Is a directory)",  emit-error),
+        );
+        Options = (
+        );
+    }
+)

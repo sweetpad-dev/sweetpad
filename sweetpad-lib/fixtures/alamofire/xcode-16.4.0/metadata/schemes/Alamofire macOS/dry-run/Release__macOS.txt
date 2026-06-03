@@ -1,0 +1,46 @@
+Command line invocation:
+    /Applications/Xcode-16.4.0.app/Contents/Developer/usr/bin/xcodebuild -dry-run -scheme "Alamofire macOS" -configuration Release -destination platform=macOS -workspace /Users/hyzyla_home/Developer/sweetpad-lib/corpus/alamofire/Alamofire.xcworkspace
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'Alamofire macOS' in project 'Alamofire' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode-16.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode-16.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode-16.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode-16.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ExecuteExternalTool /Applications/Xcode-16.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch x86_64 -isysroot /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -x c -c /dev/null
+
+Build description signature: 33db36e7e05859b9e68ec1b899471e09
+Build description path: /Users/hyzyla_home/Library/Developer/Xcode/DerivedData/Alamofire-feaqvuepuyjdicgjemrbxfrsxmtp/Build/Intermediates.noindex/XCBuildData/33db36e7e05859b9e68ec1b899471e09.xcbuilddata
+error: -dry-run is not yet supported in the new build system
+/Users/hyzyla_home/Developer/sweetpad-lib/corpus/alamofire/Alamofire.xcodeproj: warning: The macOS deployment target 'MACOSX_DEPLOYMENT_TARGET' is set to 10.12, but the range of supported deployment target versions is 10.13 to 15.5.99. (in target 'Alamofire macOS' from project 'Alamofire')
+note: Disabling previews because SWIFT_VERSION is set and SWIFT_OPTIMIZATION_LEVEL=-O, expected -Onone (in target 'Alamofire macOS' from project 'Alamofire')
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00006030-0018296E1A28001C, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00006030-0018296E1A28001C, name:My Mac }
+** BUILD FAILED **
+
+
+The following build commands failed:
+	Building workspace Alamofire with scheme Alamofire macOS and configuration Release
+(1 failure)

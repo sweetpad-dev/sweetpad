@@ -1,0 +1,3 @@
+// Tests $(inherited) recursive layering.
+OTHER_SWIFT_FLAGS = $(inherited) -DMY_FLAG
+OTHER_LDFLAGS = $(inherited) -framework Foundation

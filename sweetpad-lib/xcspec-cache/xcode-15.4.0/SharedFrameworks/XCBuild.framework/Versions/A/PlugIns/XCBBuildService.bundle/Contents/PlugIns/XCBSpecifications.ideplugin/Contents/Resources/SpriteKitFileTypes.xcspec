@@ -1,0 +1,20 @@
+(
+    {   
+        Name = "SpriteKit Texture Atlas";
+        Type = FileType;
+        Identifier = folder.skatlas;
+        BasedOn = wrapper;
+        Extensions = (atlas);
+        IsTransparent = NO;
+        UTI = "com.apple.spritekit-atlas";
+    },
+    {   
+        Name = "SpriteKit Serialized Data";
+        Type = FileType;
+        Identifier = file.sks;
+        BasedOn = file;
+        Extensions = (sks);
+        IsTransparent = NO;
+        UTI = "com.apple.spritekit.serialized";
+    },
+)

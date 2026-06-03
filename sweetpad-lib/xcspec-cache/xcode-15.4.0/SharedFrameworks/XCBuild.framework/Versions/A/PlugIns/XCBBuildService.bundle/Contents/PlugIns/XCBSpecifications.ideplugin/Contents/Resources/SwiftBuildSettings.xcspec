@@ -1,0 +1,21 @@
+(
+    {
+        Type = BuildSettings;
+        Identifier = com.apple.build-settings.swift;
+        Name = "SwiftBuildSettings";
+        IsGlobalDomainInUI = YES;
+
+        Options = (
+            {   Name = ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES;
+                Type = Boolean;
+                DefaultValue = "$(EMBEDDED_CONTENT_CONTAINS_SWIFT)";
+                Category = "Build Options";
+            },
+            {   Name = EMBEDDED_CONTENT_CONTAINS_SWIFT;
+                Type = Boolean;
+                DefaultValue = NO;
+                // Deprecated - not exposed in UI
+            },
+        );
+    }
+)

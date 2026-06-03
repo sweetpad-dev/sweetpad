@@ -1,0 +1,123 @@
+(
+    {
+        Type = Compiler;
+        Identifier = "com.apple.compilers.appintentsmetadata";
+        Name = "App Intents Metadata Extractor";
+        Description = "Extracts app intents metadata";
+        CommandLine = "appintentsmetadataprocessor --output $(ProductResourcesDir) --toolchain-dir $(TOOLCHAIN_DIR) --module-name $(PRODUCT_MODULE_NAME) --sdk-root $(SDKROOT) --xcode-version $(XCODE_PRODUCT_BUILD_VERSION) --platform-family $(PLATFORM_FAMILY_NAME) --deployment-target $($(DEPLOYMENT_TARGET_SETTING_NAME)) [options]";
+        RuleName = "ExtractAppIntentsMetadata";
+        ExecDescription = "Extract app intents metadata";
+        ProgressDescription = "Extracting app intents metadata";
+        Outputs = (
+            /* rdar://93626172 (Re-enable AppIntentsMetadataProcessor outputs)
+            "$(ProductResourcesDir)/Metadata.appintents/objects.appintentsmanifest",
+            "$(ProductResourcesDir)/Metadata.appintents/version.json",
+            "$(ProductResourcesDir)/Metadata.appintents/extract.actionsdata"
+             */
+            "$(STRINGSDATA_DIR)/ExtractedAppShortcutsMetadata.stringsdata"
+        );
+        IsArchitectureNeutral = YES;
+        CommandOutputParser = XCGenericCommandOutputParser;
+        Options = (
+            {
+                Name = ARCHS;
+                Type = StringList;
+                DefaultValue = "";
+                CommandLineArgs = (
+                    "--target-triple",
+                    "$(value)-$(LLVM_TARGET_TRIPLE_VENDOR)-$(LLVM_TARGET_TRIPLE_OS_VERSION)$(LLVM_TARGET_TRIPLE_SUFFIX)"
+                );
+            },
+            {
+                Name = LM_BINARY_PATH;
+                Type = String;
+                DefaultValue = "";
+                CommandLineFlag = "--binary-file";
+            },
+            {
+                Name = LM_DEPENDENCY_FILES;
+                Type = StringList;
+                DefaultValue = "";
+                CommandLineFlag = "--dependency-file";
+            },
+            {
+                Name = LM_STRINGSDATA_FILES;
+                Type = StringList;
+                DefaultValue = "";
+                CommandLineFlag = "--stringsdata-file";
+            },
+            {
+                Name = LM_SOURCE_FILE_LIST_PATH;
+                Type = StringList;
+                CommandLineFlag = "--source-file-list";
+                IsInputDependency = Yes;
+            },
+            {
+                Name = LM_AUX_CONST_METADATA_LIST_PATH;
+                Type = Path;
+                DefaultValue = "$(LM_AUX_CONST_METADATA_LIST_PATH_$(variant)_$(arch))";
+                IsInputDependency = Yes;
+            },
+            {
+                Name = LM_SWIFT_CONST_VALS_LIST_PATH;
+                Type = StringList;
+                CommandLineFlag = "--swift-const-vals-list";
+                IsInputDependency = Yes;
+            },
+            {
+                Name = LM_IGNORE_QUERY_GENERICS_ERRORS;
+                Type = Boolean;
+                DefaultValue = NO;
+                CommandLineArgs = {
+                    YES = ( "--ignore-query-generics-errors" );
+                    NO = ();
+                };
+            },
+            {
+                Name = LM_FORCE_LINK_GENERATION;
+                Type = Boolean;
+                DefaultValue = NO;
+                CommandLineArgs = {
+                    YES = ( "--force" );
+                    NO = ();
+                };
+            },
+            {
+                Name = LM_COMPILE_TIME_EXTRACTION;
+                Type = Boolean;
+                DefaultValue = YES;
+                CommandLineArgs = {
+                    YES = ( "--compile-time-extraction" );
+                    NO = ();
+                };
+            },
+            {
+                Name = LM_LEGACY_EXTRACTION_OVERRIDE;
+                Type = Boolean;
+                DefaultValue = YES;
+                CommandLineArgs = {
+                    YES = ( "--legacy-extraction" );
+                    NO = ();
+                };
+            },
+            {
+                Name = LM_ENABLE_LINK_GENERATION;
+                Type = Boolean;
+                DefaultValue = YES;
+                CommandLineArgs = {
+                    YES = ();
+                    NO = ( "-d" );
+                };
+            },
+            {
+                Name = ENABLE_APPINTENTS_DEPLOYMENT_AWARE_PROCESSING;
+                Type = Boolean;
+                DefaultValue = YES;
+                CommandLineArgs = {
+                    YES = ( "--deployment-aware-processing" );
+                    NO = ();
+                };
+            }
+        );
+    },
+)

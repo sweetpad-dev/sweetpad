@@ -1,0 +1,33 @@
+[
+  {
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-appletvos:placeholder",
+    "name": "Any tvOS Device",
+    "platform": "tvOS"
+  },
+  {
+    "id": "dvtdevice-DVTiOSDeviceSimulatorPlaceholder-appletvsimulator:placeholder",
+    "name": "Any tvOS Simulator Device",
+    "platform": "tvOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "380A5E9B-D988-4247-A158-E035911EC67A",
+    "name": "Apple TV",
+    "platform": "tvOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "24D647A2-F72D-4488-B7AB-0DBABE73C3CD",
+    "name": "Apple TV 4K (3rd generation)",
+    "platform": "tvOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "35AC95B3-5459-4854-8249-11D5C404CC46",
+    "name": "Apple TV 4K (3rd generation) (at 1080p)",
+    "platform": "tvOS Simulator"
+  }
+]

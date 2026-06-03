@@ -1,0 +1,43 @@
+/*
+    Copyright (c) 2008-2010 Apple Inc.
+    All rights reserved.
+*/
+(
+    {
+        Identifier = "com.apple.compilers.osacompile";
+        Type = Compiler;
+        Name = "OSACompile";
+        Description = "AppleScript Compiler";
+        Vendor = "Apple";
+        CommandLine = "/usr/bin/osacompile -l AppleScript -d -o $(ProductResourcesDir)/$(InputFileBase).scpt [options] $(InputFileRelativePath)";
+        RuleName = "OSACompile $(InputFileRelativePath)";
+        ExecDescription = "Compile $(InputFileName)";
+        ProgressDescription = "Compiling $(CommandProgressByType) AppleScripts";
+        IsArchitectureNeutral = YES;
+        SynthesizeBuildRuleForBuildPhases = (
+            "com.apple.buildphase.sources"
+        );
+        InputFileTypes = (
+            "sourcecode.applescript",
+        );
+        Outputs = (
+            "$(ProductResourcesDir)/$(InputFileBase).scpt",
+        );
+        Options = (
+            {
+                Name = OSACOMPILE_EXECUTE_ONLY;
+                Type = Boolean;
+                DefaultValue = NO;
+                Category = BuildOptions;
+                CommandLineFlag = "-x";
+            },
+            {
+                Name = OTHER_OSACOMPILEFLAGS;
+                Type = StringList;
+                DefaultValue = "";
+                Category = BuildOptions;
+                CommandLinePrefixFlag = "";
+            },
+        );
+    }
+)

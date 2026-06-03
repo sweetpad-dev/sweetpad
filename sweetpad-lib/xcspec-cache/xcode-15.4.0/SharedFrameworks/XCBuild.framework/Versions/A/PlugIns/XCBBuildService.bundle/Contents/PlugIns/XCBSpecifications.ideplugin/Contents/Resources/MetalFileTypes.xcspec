@@ -1,0 +1,37 @@
+(
+    {
+        Type = FileType;
+        Identifier = "sourcecode.metal";
+        BasedOn = sourcecode;
+        Name = "Metal shader source files";
+        Extensions = (
+            metal,
+        );
+        ComputerLanguage = metal;
+        Language = "xcode.lang.metal";
+        AppliesToBuildRules = YES;
+        UTI = "com.apple.metal";
+    },
+    {
+        AppliesToBuildRules = YES;
+        Type = FileType;
+        Identifier = "compiled.air";
+        BasedOn = compiled;
+        Extensions = (
+            air,
+        );
+        Name = "Metal AIR files";
+        UTI = "com.apple.air";
+    },
+    {
+        Type = FileType;
+        Identifier = "archive.metal-library";
+        BasedOn = archive;
+        Name = "Metal library files";
+        Extensions = (
+            metallib,
+        );
+        "FallbackAutoroutingBuildPhase" = Resources;
+        UTI = "com.apple.metal-library";
+    },
+)

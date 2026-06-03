@@ -1,0 +1,41 @@
+# Corpus clones — recreated by scripts/01_clone_corpus.py
+corpus/*/
+!corpus/manifest.json
+
+# Build / IDE state
+DerivedData/
+.derived/
+*.xcuserstate
+xcuserdata/
+
+# Transient Xcodes installed by scripts/13_capture_version.py (one `rm -rf` cleans up)
+.xcodes/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Local-only state for build runner
+.cache/
+
+# Rust
+/target
+
+# Personal IDE/agent state
+.claude/
+
+# Xcode index store — large, IDE-internal, not used as oracle data
+**/index-store.tgz
+
+# Compressed activity log — redundant with xcactivitylog.parsed.json
+**/xcactivitylog.gz
+
+# napi node addon (generated build outputs)
+/node_modules/
+/*.node
+/index.js
+/index.d.ts

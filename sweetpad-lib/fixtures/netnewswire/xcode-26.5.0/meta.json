@@ -1,0 +1,148 @@
+{
+  "captured_at": "2026-05-30T19:30:55Z",
+  "host_macos": "26.5",
+  "slug": "netnewswire",
+  "subprojects": [
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "",
+      "project_kind": "project",
+      "project_path": "netnewswire/NetNewsWire.xcodeproj",
+      "raw_files": 57,
+      "scheme_count": 25,
+      "schemes": [
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Account"
+        },
+        {
+          "destinations_raw": 34,
+          "destinations_used": 5,
+          "scheme": "AccountTests"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Articles"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "ArticlesDatabase"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "CloudKitSync"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "ErrorLog"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "FeedFinder"
+        },
+        {
+          "destinations_raw": 2,
+          "destinations_used": 1,
+          "scheme": "NetNewsWire"
+        },
+        {
+          "destinations_raw": 14,
+          "destinations_used": 1,
+          "scheme": "NetNewsWire iOS Intents Extension"
+        },
+        {
+          "destinations_raw": 14,
+          "destinations_used": 1,
+          "scheme": "NetNewsWire iOS Share Extension"
+        },
+        {
+          "destinations_raw": 14,
+          "destinations_used": 1,
+          "scheme": "NetNewsWire iOS Widget Extension"
+        },
+        {
+          "destinations_raw": 2,
+          "destinations_used": 1,
+          "scheme": "NetNewsWire Share Extension"
+        },
+        {
+          "destinations_raw": 14,
+          "destinations_used": 1,
+          "scheme": "NetNewsWire-iOS"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "NewsBlur"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "RSCore"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "RSCoreObjC"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "RSCoreResources"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "RSDatabase"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "RSDatabaseObjC"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "RSParser"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "RSTree"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "RSWeb"
+        },
+        {
+          "destinations_raw": 34,
+          "destinations_used": 5,
+          "scheme": "RSWebTests"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Secrets"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "SyncDatabase"
+        }
+      ]
+    }
+  ],
+  "xcode_slot": "current",
+  "xcode_version": "26.5.0"
+}

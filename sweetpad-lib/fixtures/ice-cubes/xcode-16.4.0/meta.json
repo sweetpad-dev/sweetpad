@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-05-30T13:05:00Z",
+  "host_macos": "26.5",
+  "slug": "ice-cubes",
+  "subprojects": [
+    {
+      "label": "",
+      "project_kind": "project",
+      "project_path": "ice-cubes/IceCubesApp.xcodeproj",
+      "raw_files": 19,
+      "schemes": []
+    }
+  ],
+  "xcode_slot": "prev-major",
+  "xcode_version": "16.4.0"
+}

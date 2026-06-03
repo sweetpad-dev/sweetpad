@@ -1,0 +1,53 @@
+(
+    {
+        Type = Compiler;
+        Identifier = "com.apple.compilers.appshortcutstringsmetadata";
+        Name = "App Shortcut Strings Metadata Extractor";
+        Description = "Validate AppShortcuts.strings metadata";
+        CommandLine = "appshortcutstringsprocessor --source-file $(InputFileRelativePath) [options]";
+        RuleName = "ValidateAppShortcutStringsMetadata";
+        ExecDescription = "Validate app shortcut strings metadata";
+        ProgressDescription = "Validating app shortcut strings metadata";
+        Outputs = ();
+        IsArchitectureNeutral = YES;
+        Options = (
+            {
+                Name = APP_INTENTS_METADATA_PATH;
+                Type = String;
+                DefaultValue = "$(ProductResourcesDir)/Metadata.appintents";
+                CommandLineFlag = "--input-data-path";
+            },
+            {
+                Name = LM_ENABLE_STRING_VALIDATION;
+                Type = Boolean;
+                DefaultValue = YES;
+                CommandLineArgs = {
+                    YES = ();
+                    NO = ( "--disable" );
+                };
+            },
+            {
+                Name = LM_ENABLE_APP_NAME_OVERRIDE;
+                Type = Boolean;
+                DefaultValue = NO;
+                CommandLineArgs = {
+                    YES = ( "--app-name-override" );
+                    NO = ();
+                };
+            },
+            {
+                Name = APP_INTENTS_PLATFORM_FAMILY;
+                Type = String;
+                DefaultValue = "$(PLATFORM_FAMILY_NAME)";
+                CommandLineFlag = "--platform-family";
+            },
+            {
+                Name = APP_INTENTS_DEPLOYMENT_TARGET;
+                Type = String;
+                DefaultValue = "$($(DEPLOYMENT_TARGET_SETTING_NAME))";
+                CommandLineFlag = "--deployment-target";
+            }
+        );
+    },
+)
+

@@ -1,0 +1,5 @@
+// Tests [arch=...] conditional resolution.
+BAR = base
+BAR[arch=arm64] = arm64_val
+BAR[arch=arm64e] = arm64e_val
+BAR[arch=x86_64] = x86_64_val

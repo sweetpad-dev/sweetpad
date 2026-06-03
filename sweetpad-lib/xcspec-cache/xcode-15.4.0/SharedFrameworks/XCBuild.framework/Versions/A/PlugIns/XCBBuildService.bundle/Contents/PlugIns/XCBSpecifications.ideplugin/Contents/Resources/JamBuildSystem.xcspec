@@ -1,0 +1,40 @@
+/**
+    Copyright (c) 1999-2010 Apple Inc.
+    All rights reserved.
+
+    Defines the names, types, and default values of build properties that are specific to the Jam build system.  These are in addition to the ones defined in the Core Build System.
+*/
+(
+    {
+        Type = BuildSystem;
+        Identifier = com.apple.build-system.jam;
+        BasedOn = com.apple.build-system.core;
+        Name = "Jam Build System";
+        Options = (
+            {   Name = PER_STYLE_BUILD_DIRECTORIES;
+                Type = Boolean;
+                DefaultValue = YES;
+            },
+            {   Name = FILE_LIST;
+                Type = Path;
+                DefaultValue = "$(OBJECT_FILE_DIR)/LinkFileList";
+            },
+            {   Name = DO_HEADER_SCANNING_IN_JAM;       // This setting will be removed soon
+                Type = Boolean;
+                DefaultValue = NO;
+            },
+            {   Name = PRECOMP_DESTINATION_DIR;             // !!!:dewing:20050406 - jam build system only
+                Type = Path;
+                DefaultValue = "$(TARGET_TEMP_DIR)/PrefixHeaders";
+            },
+            {   Name = PREFIX_CFLAG_BASE;                   // !!!:dewing:20050406 - jam build system only
+                Type = String;
+                DefaultValue = "";
+            },
+            {   Name = PREFIX_REFERENCE;                    // !!!:dewing:20050406 - jam build system only
+                Type = String;
+                DefaultValue = "";
+            },
+        );
+    }
+)

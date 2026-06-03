@@ -1,0 +1,65 @@
+(
+    {
+        Identifier = "com.apple.build-tasks.compile-usdz.xcplugin";
+        Type = Compiler;
+        Name = "Compile USDZ";
+        Description = "Compile USDZ.";
+        Version = Default;
+        Vendor = Apple;
+        CommandLine = "rctool export [options] -o=$(ProductResourcesDir) $(InputFile)";
+        RuleName = "compileUSDZ $(ProductResourcesDir)/$(InputFileBase).rclink $(InputFile)";
+        ExecDescription = "Compile USDZ $(InputFileName)";
+        ProgressDescription = "Compiling $(CommandProgressByType) USDZ";
+        SynthesizeBuildRule = NO;
+        IsGlobalDomainInUI = YES;
+        InputFileTypes = (
+            "file.usdz",
+        );
+        Outputs = (
+            "$(ProductResourcesDir)/$(InputFileBase).reality",
+        );
+        Options = (
+            {
+                Name = "USDZ_ENABLE_WARNINGS";
+                DisplayName = "Enable USDZ Warnings";
+                Type = Enumeration;
+                Values = (
+                    {   Value = "Yes";
+                        CommandLineArgs = ( );
+                    },
+                    {   Value = "No";
+                        CommandLineArgs = ( "-g" );
+                    },
+                );
+                DefaultValue = "Yes";
+                Category = "USDZ Compiler Options";
+            },
+            {
+                Name = ENABLE_USDZ_COMPILATION;
+                DisplayName = "Enable USDZ Compilation";
+                Type = Boolean;
+                DefaultValue = NO;
+                CommandLineArgs = { YES = (); NO = (--skip); };
+                Category = "USDZ Compiler Options";
+            },
+            {
+                Name = "OTHER_USDZ_FLAGS";
+                DisplayName = "Other USDZ Compiler Flags";
+                Type = StringList;
+                DefaultValue = "";
+                CommandLineFlag = "";
+                Category = "USDZ Compiler Options";
+            }
+        );
+        CommandOutputParser = (
+            (
+                "^([^:]*):([^:]*)warning: (.*)$",
+                "emit-warning",
+            ),
+            (
+                "^([^:]*):([^:]*)error: (.*)$",
+                "emit-error",
+            ),
+        );
+    },
+)

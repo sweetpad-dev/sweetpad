@@ -1,0 +1,15 @@
+{
+  "workspace": {
+    "name": "App",
+    "schemes": [
+      "A",
+      "App",
+      "App-Workspace",
+      "AppTestsSupport",
+      "B",
+      "C",
+      "D",
+      "Generate Project"
+    ]
+  }
+}

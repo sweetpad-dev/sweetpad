@@ -1,0 +1,26 @@
+[
+  {
+    "arch": "arm64",
+    "id": "00006030-0018296E1A28001C",
+    "name": "My Mac",
+    "platform": "macOS",
+    "variant": "Mac Catalyst"
+  },
+  {
+    "name": "Any Mac",
+    "platform": "macOS",
+    "variant": "Mac Catalyst"
+  },
+  {
+    "error": "iOS 17.5 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder",
+    "name": "Any iOS Device",
+    "platform": "iOS"
+  },
+  {
+    "error": "visionOS 1.2 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-xros:placeholder",
+    "name": "Any visionOS Device",
+    "platform": "visionOS"
+  }
+]

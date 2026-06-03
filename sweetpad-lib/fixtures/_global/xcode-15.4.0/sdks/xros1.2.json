@@ -1,0 +1,43 @@
+{
+  "canonicalName": "xros1.2",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/XROS.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "1.2"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "21O5565d"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/XROS.platform/Developer/SDKs/XROS1.2.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "1.2"
+  },
+  "showsdks_entry": {
+    "buildID": "1754D77C-F7B2-11EE-9C08-3D74706A063E",
+    "canonicalName": "xros1.2",
+    "displayName": "visionOS 1.2",
+    "iOSSupportVersion": "17.5",
+    "isBaseSdk": true,
+    "platform": "xros",
+    "platformPath": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/XROS.platform",
+    "platformVersion": "1.2",
+    "productBuildVersion": "21O5565d",
+    "productCopyright": "1983-2024 Apple Inc.",
+    "productName": "xrOS",
+    "productVersion": "1.2",
+    "sdkPath": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/XROS.platform/Developer/SDKs/XROS1.2.sdk",
+    "sdkVersion": "1.2"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "XROS1.2.sdk - visionOS 1.2 (xros1.2)\nSDKVersion: 1.2\nPath: /Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/XROS.platform/Developer/SDKs/XROS1.2.sdk\nPlatformVersion: 1.2\nPlatformPath: /Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/XROS.platform\nBuildID: 1754D77C-F7B2-11EE-9C08-3D74706A063E\nProductBuildVersion: 21O5565d\nProductCopyright: 1983-2024 Apple Inc.\nProductName: xrOS\nProductVersion: 1.2\niOSSupportVersion: 17.5\n\n"
+  }
+}

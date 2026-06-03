@@ -1,0 +1,49 @@
+/**
+    Copyright (c) 2000-2013 Apple Inc.  All rights reserved.
+*/
+(
+    {   Identifier = com.apple.compilers.yacc;
+        Type = Tool;
+        Class = PBXCompilerSpecificationYacc;
+        Name = "Yacc";
+        Description = "Yacc Parser Generator";
+        InputFileTypes = (sourcecode.yacc);
+        ExecPath = "$(YACC)";
+        BuiltinJambaseRuleName = "ProcessUsingYacc";
+        ExecDescription = "Yacc $(InputFileName)";
+        ProgressDescription = "Yaccing $(CommandProgressByType) files";
+        IsArchitectureNeutral = YES;
+        EnvironmentVariables = {
+            DEVELOPER_DIR = "$(DEVELOPER_DIR)";
+        };
+        Options = (
+            // Defines options supported by Yacc.
+
+            // Build options
+            {   Name = YACC_GENERATED_FILE_STEM;
+                Type = enum;
+                Values = (Standard, InputFileStem);
+                DefaultValue = Standard;
+                Category = BuildOptions;
+            },
+            {   Name = YACC_INSERT_LINE_DIRECTIVES;
+                Type = bool;
+                DefaultValue = YES;
+                Category = BuildOptions;
+                CommandLineArgs = { YES = (); NO = (-l); };
+            },
+            {   Name = YACC_GENERATE_DEBUGGING_DIRECTIVES;
+                Type = bool;
+                DefaultValue = NO;
+                Category = BuildOptions;
+                CommandLineArgs = { YES = (-t); NO = (); };
+            },
+            {   Name = YACCFLAGS;
+                Type = StringList;
+                DefaultValue = "";
+                FileTypes = (sourcecode.yacc);
+                Category = BuildOptions;
+            },
+        );
+    }
+)

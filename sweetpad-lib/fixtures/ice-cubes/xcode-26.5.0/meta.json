@@ -1,0 +1,148 @@
+{
+  "captured_at": "2026-05-30T19:20:14Z",
+  "host_macos": "26.5",
+  "slug": "ice-cubes",
+  "subprojects": [
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "",
+      "project_kind": "project",
+      "project_path": "ice-cubes/IceCubesApp.xcodeproj",
+      "raw_files": 19,
+      "scheme_count": 27,
+      "schemes": [
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Account"
+        },
+        {
+          "destinations_raw": 34,
+          "destinations_used": 5,
+          "scheme": "AccountTests"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "AppAccount"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Conversations"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "DesignSystem"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Env"
+        },
+        {
+          "destinations_raw": 34,
+          "destinations_used": 5,
+          "scheme": "EnvTests"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Explore"
+        },
+        {
+          "destinations_raw": 19,
+          "destinations_used": 3,
+          "scheme": "IceCubesActionExtension"
+        },
+        {
+          "destinations_raw": 19,
+          "destinations_used": 3,
+          "scheme": "IceCubesApp"
+        },
+        {
+          "destinations_raw": 19,
+          "destinations_used": 3,
+          "scheme": "IceCubesAppWidgetsExtensionExtension"
+        },
+        {
+          "destinations_raw": 19,
+          "destinations_used": 3,
+          "scheme": "IceCubesNotifications"
+        },
+        {
+          "destinations_raw": 19,
+          "destinations_used": 3,
+          "scheme": "IceCubesShareExtension"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Lists"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "MediaUI"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Models"
+        },
+        {
+          "destinations_raw": 34,
+          "destinations_used": 5,
+          "scheme": "ModelsTests"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "NetworkClient"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Notifications"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "RevenueCatUI"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "StatusKit"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "StatusKit-Package"
+        },
+        {
+          "destinations_raw": 34,
+          "destinations_used": 5,
+          "scheme": "StatusKitTests"
+        },
+        {
+          "destinations_raw": 37,
+          "destinations_used": 5,
+          "scheme": "Timeline"
+        },
+        {
+          "destinations_raw": 34,
+          "destinations_used": 5,
+          "scheme": "TimelineTests"
+        }
+      ]
+    }
+  ],
+  "xcode_slot": "current",
+  "xcode_version": "26.5.0"
+}

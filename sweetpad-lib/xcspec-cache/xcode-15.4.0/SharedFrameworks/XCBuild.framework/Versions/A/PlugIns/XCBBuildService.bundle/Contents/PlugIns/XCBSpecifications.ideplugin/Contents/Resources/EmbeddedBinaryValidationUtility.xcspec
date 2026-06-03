@@ -1,0 +1,50 @@
+(
+    {
+        Type = Tool;
+        Identifier = "com.apple.tools.validate-embedded-binary-utility";
+        Name = "Embedded Binary Validation Utility";
+        IsAbstract = Yes;
+        "CommandInvocationClass" = "EmbeddedBinaryValidationUtility";
+        CommandLine = "builtin-embeddedBinaryValidationUtility [input] [options]";
+        RuleName = "ValidateEmbeddedBinary $(InputPath)";
+        ExecDescription = "Validate $(InputFileName)";
+        ProgressDescription = "Validating $(InputFile)";
+        Outputs = (
+            "$(OutputPath)",
+        );
+        Options = (
+            {
+                Name = SigningCert;
+                Type = string;
+                CommandLineFlag = "-signing-cert";
+            },
+            {
+                Name = InfoPlistPath;
+                Type = path;
+                CommandLineFlag = "-info-plist-path";
+            },
+        );
+        CommandOutputParser = (
+            (
+                "()()(^[^:]+: [^:]+: No such file or directory)",
+                "emit-error",
+            ),
+            (
+                "()()(^[^:]+: [^:]+: Permission denied)",
+                "emit-error",
+            ),
+            (
+                "()()(^[^:]+: [^:]+: Is a directory)",
+                "emit-error",
+            ),
+            (
+                "()()(error: .+)",
+                "emit-error",
+            ),
+            (
+                "()()(warning: .+)",
+                "emit-warning",
+            ),
+        );
+    },
+)

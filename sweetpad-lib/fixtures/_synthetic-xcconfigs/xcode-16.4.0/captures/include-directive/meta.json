@@ -1,0 +1,11 @@
+{
+  "configuration": "Debug",
+  "description": "xcconfig #include directive",
+  "destination": "platform=macOS",
+  "name": "include-directive",
+  "ok_with": true,
+  "ok_without": true,
+  "project": "project/Scratch.xcodeproj",
+  "target": "Scratch",
+  "xcconfig": "xcconfigs/include-directive.xcconfig"
+}

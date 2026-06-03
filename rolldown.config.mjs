@@ -1,6 +1,3 @@
-import { lstatSync } from "node:fs";
-import { join } from "node:path";
-
 import { sentryRollupPlugin } from "@sentry/rollup-plugin";
 import dotenv from "dotenv";
 import { defineConfig } from "rolldown";
@@ -11,33 +8,7 @@ dotenv.config();
 
 const isProduction = process.env.NODE_ENV === "production";
 
-/**
- * Fail fast if the bundled sweetpad-lib binary isn't present at
- * `out/bin/sweetpad-darwin-universal`. Catches the "ran `npm install` but
- * forgot to `npm run fetch-sweetpad` or `npm run link-sweetpad-lib`"
- * mistake before rolldown produces a VSIX that would crash at runtime
- * when `sweetpad.system.useSweetpadLib` is enabled.
- */
-function ensureSweetpadBin() {
-  return {
-    name: "ensure-sweetpad-bin",
-    buildStart() {
-      const binPath = join(process.cwd(), "out", "bin", "sweetpad-darwin-universal");
-      try {
-        lstatSync(binPath);
-      } catch {
-        throw new Error(
-          `Missing sweetpad-lib binary at ${binPath}.\n` +
-            "Run one of:\n" +
-            "  npm run fetch-sweetpad      # downloads the published release\n" +
-            "  npm run link-sweetpad-lib   # symlinks a local cargo build",
-        );
-      }
-    },
-  };
-}
-
-const extensionPlugins = [ensureSweetpadBin()];
+const extensionPlugins = [];
 
 if (isProduction) {
   extensionPlugins.push(
@@ -60,7 +31,10 @@ export default defineConfig([
       minify: isProduction,
     },
     platform: "node",
-    external: ["vscode"],
+    // `@sweetpad/lib` is a native N-API addon (a `.node` binary) — it can't be
+    // bundled into the JS, so it stays an external `require` resolved from
+    // node_modules at runtime (shipped in the VSIX as a dependency).
+    external: ["vscode", "@sweetpad/lib"],
     transform: {
       // Lower ES2024 features (notably `await using`) so the bundle parses on
       // older VS Code/Electron runtimes — V8 only gained the `using` parser in

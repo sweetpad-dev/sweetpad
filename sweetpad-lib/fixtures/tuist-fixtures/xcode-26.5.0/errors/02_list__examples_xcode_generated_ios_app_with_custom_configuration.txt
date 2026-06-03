@@ -1,0 +1,1 @@
+-list failed for /Users/hyzyla_home/Developer/sweetpad-lib/corpus/tuist-fixtures/examples/xcode/generated_ios_app_with_custom_configuration/Workspace.xcworkspace

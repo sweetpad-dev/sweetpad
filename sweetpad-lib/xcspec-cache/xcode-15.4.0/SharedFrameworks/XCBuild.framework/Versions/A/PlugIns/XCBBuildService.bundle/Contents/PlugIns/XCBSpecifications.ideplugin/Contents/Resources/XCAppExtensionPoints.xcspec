@@ -1,0 +1,36 @@
+(
+    {
+        Identifier = com.apple.compilers.process-xcappextensionpoints;
+        Type = Compiler;
+        Name = "Process XCAppExtensionPoints";
+        CommandLine = "builtin-copyPlist [options] --validate --convert binary1 --outdir $(OutputPath:dir) --outfilename $(OutputPath:file) -- $(InputFilePath)";
+        RuleName = "CopyAppExtensionPoints $(OutputPath) $(InputFilePath)";
+        ExecDescription = "Copy $(InputFileName)";
+        ProgressDescription = "Copying $(CommandProgressByType) resources to product";
+        SynthesizeBuildRule = Yes;
+        IsArchitectureNeutral = YES;
+        DontProcessOutputs = YES;
+        CommandOutputParser = XCGenericCommandOutputParser;
+        InputFileTypes = (
+            text.plist.xcappextensionpoints
+        );
+        Outputs = (
+            "$(TARGET_BUILD_DIR)/$(EXTENSIONS_FOLDER_PATH)/$(InputFileBase).appextensionpoints"
+        );
+        Options = (
+        );
+    },
+    
+    {
+        Name = "XCAppExtensionPoints";
+        Type = FileType;
+        Identifier = text.plist.xcappextensionpoints;
+        BasedOn = text.plist;
+        Extensions = (
+            xcappextensionpoints
+        );
+        IsTransparent = NO;
+        AppliesToBuildRules = YES;
+        UTI = "com.apple.dt.xcappextensionpoints";
+    },
+)

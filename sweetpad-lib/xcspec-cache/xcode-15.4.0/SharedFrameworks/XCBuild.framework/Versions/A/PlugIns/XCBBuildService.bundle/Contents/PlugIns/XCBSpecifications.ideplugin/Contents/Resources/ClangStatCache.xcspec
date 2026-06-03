@@ -1,0 +1,21 @@
+(
+    {
+        Type = Compiler;
+        Identifier = "com.apple.compilers.clang-stat-cache";
+        Name = "Apple Clang Stat Cache Builder";
+        Description = "Build a stat cache for a directory which can be consumed by Clang";
+        CommandLine = "clang-stat-cache $(SDKROOT) [options] -o $(OutputPath)";
+        RuleName = "ClangStatCache $(CLANG_STAT_CACHE_EXEC) $(SDKROOT) $(OutputPath)";
+        ExecDescription = "Build stat cache for $(SDKROOT)";
+        Outputs = ("$(OutputPath)");
+        IsArchitectureNeutral = YES;
+        Options = (
+            {
+                Name = SDK_STAT_CACHE_VERBOSE_LOGGING;
+                Type = Boolean;
+                DefaultValue = NO;
+                CommandLineFlag = "-v";
+            }
+        );
+    }
+)

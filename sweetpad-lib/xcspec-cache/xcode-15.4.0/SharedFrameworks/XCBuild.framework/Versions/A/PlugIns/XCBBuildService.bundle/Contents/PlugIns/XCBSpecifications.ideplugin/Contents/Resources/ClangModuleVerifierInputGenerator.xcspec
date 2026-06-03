@@ -1,0 +1,11 @@
+(
+    {
+        Identifier = "com.apple.build-tools.module-verifier-input-generator";
+        Type = Tool;
+        Name = "Apple Clang Module Verifier Input Generator";
+        ExecDescription = "Generate Module Verifier Input for $(FULL_PRODUCT_NAME)";
+        RuleName = "GenerateVerifyModuleInput $(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)";
+        CommandLine = "builtin-GenerateVerifyModuleInput $(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME) [special-args]";
+        IsArchitectureNeutral = YES;
+    }
+)

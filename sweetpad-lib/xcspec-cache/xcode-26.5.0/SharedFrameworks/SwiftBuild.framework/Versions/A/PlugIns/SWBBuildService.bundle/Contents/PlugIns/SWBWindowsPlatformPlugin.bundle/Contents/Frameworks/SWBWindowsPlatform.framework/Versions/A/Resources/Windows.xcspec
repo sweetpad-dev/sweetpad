@@ -1,0 +1,145 @@
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of the Swift open source project
+//
+// Copyright (c) 2025 Apple Inc. and the Swift project authors
+// Licensed under Apache License v2.0 with Runtime Library Exception
+//
+// See http://swift.org/LICENSE.txt for license information
+// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+//
+//===----------------------------------------------------------------------===//
+
+(
+    {
+        Domain = windows;
+        Type = Architecture;
+        Identifier = Standard;
+        Name = "Standard Architectures";
+        Description = "Standard architectures";
+        ArchitectureSetting = "ARCHS_STANDARD";
+        RealArchitectures = (
+            "$(HOST_ARCH)"
+        );
+        SortNumber = 0;
+    },
+
+    {
+        Domain = windows;
+        Type = ProductType;
+        Identifier = com.apple.product-type.tool;
+        BasedOn = default:com.apple.product-type.tool;
+        DefaultBuildProperties = {
+            EXECUTABLE_SUFFIX = ".$(EXECUTABLE_EXTENSION)";
+            EXECUTABLE_EXTENSION = "exe";
+        };
+    },
+
+    {
+        Domain = windows;
+        Type = ProductType;
+        Identifier = com.apple.product-type.tool.host-build;
+        BasedOn = com.apple.product-type.tool;
+    },
+
+    {
+        Domain = windows;
+        Type = ProductType;
+        Identifier = com.apple.product-type.bundle.unit-test;
+        BasedOn = com.apple.product-type.library.dynamic;
+        DefaultBuildProperties = {
+            ENABLE_TESTING_SEARCH_PATHS = YES;
+            // Index store data is required to discover XCTest tests
+            COMPILER_INDEX_STORE_ENABLE = YES;
+            SWIFT_INDEX_STORE_ENABLE = YES;
+            // Testability is needed to generate code to invoke discovered XCTest tests
+            SWIFT_ENABLE_TESTABILITY = YES;
+        };
+    },
+
+    {
+        Domain = windows;
+        Type = ProductType;
+        Identifier = com.apple.product-type.tool.swiftpm-test-runner;
+        BasedOn = default:com.apple.product-type.tool.swiftpm-test-runner;
+        DefaultBuildProperties = {
+            EXECUTABLE_SUFFIX = ".$(EXECUTABLE_EXTENSION)";
+            EXECUTABLE_EXTENSION = "exe";
+        };
+    },
+
+    {
+        Domain = windows;
+        Type = ProductType;
+        Identifier = com.apple.product-type.library.static;
+        BasedOn = default:com.apple.product-type.library.static;
+        DefaultBuildProperties = {
+            EXECUTABLE_PREFIX = "";
+            EXECUTABLE_EXTENSION = "lib";
+            PUBLIC_HEADERS_FOLDER_PATH = "";
+            PRIVATE_HEADERS_FOLDER_PATH = "";
+        };
+    },
+
+    {
+        Domain = windows;
+        Type = ProductType;
+        Identifier = com.apple.product-type.library.dynamic;
+        BasedOn = default:com.apple.product-type.library.dynamic;
+        HasInfoPlist = NO;
+        DefaultBuildProperties = {
+            EXECUTABLE_PREFIX = "";
+            PUBLIC_HEADERS_FOLDER_PATH = "";
+            PRIVATE_HEADERS_FOLDER_PATH = "";
+        };
+    },
+
+    {
+        Domain = windows;
+        Type = Compiler;
+        Identifier = com.apple.compilers.documentation;
+        BasedOn = default:com.apple.compilers.documentation;
+        Options = (
+            {
+                Name = "DOCC_EXEC";
+                Type = Path;
+                DefaultValue = docc.exe;
+            },
+        );
+    },
+    {
+        Domain = windows;
+        Type = ProductType;
+        Identifier = org.swift.product-type.common.object;
+        BasedOn = org.swift.product-type.library.object;
+    },
+
+    {
+        Domain = windows;
+        Type = ProductType;
+        Identifier = org.swift.product-type.library.static;
+        BasedOn = org.swift.product-type.library.object;
+    },
+
+
+    {
+        Domain = windows;
+        Type = FileType;
+        Identifier = archive.ar;
+        BasedOn = archive;
+        Extensions = (lib);
+        IsLibrary = YES;
+        IsStaticLibrary = YES;
+        ContainsNativeCode = YES;
+    },
+
+    {
+        Domain = windows;
+        Type = FileType;
+        Identifier = compiled.mach-o.dylib;
+        BasedOn = compiled.mach-o;
+        Extensions = (dll);
+        IsLibrary = YES;
+        IsDynamicLibrary = YES;
+    }
+)

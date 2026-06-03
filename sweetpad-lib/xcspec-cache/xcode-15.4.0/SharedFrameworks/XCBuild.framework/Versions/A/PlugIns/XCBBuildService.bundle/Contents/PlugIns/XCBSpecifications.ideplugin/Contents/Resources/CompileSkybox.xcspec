@@ -1,0 +1,58 @@
+(
+    {
+        Identifier = "com.apple.build-tasks.compile-skybox.xcplugin";
+        Type = Compiler;
+        Name = "Compile Skybox";
+        Description = "Compile Skybox.";
+        Version = Default;
+        Vendor = Apple;
+        CommandLine = "rctool create skybox [options] -skyboxPath=$(InputFile) -o=$(ProductResourcesDir)";
+        RuleName = "compileSkybox $(ProductResourcesDir)/$(InputFileBase).rclink $(InputFile)";
+        ExecDescription = "Compile Skybox $(InputFileName)";
+        ProgressDescription = "Compiling $(CommandProgressByType) Skybox";
+        SynthesizeBuildRule = YES;
+        "IsArchitectureNeutral" = YES;
+        "DeeplyStatInputDirectories" = Yes;
+        InputFileTypes = (
+            "file.skybox",
+        );
+        Outputs = (
+            "$(ProductResourcesDir)/$(InputFileBase).realityenv",
+        );
+        Options = (
+            {
+                Name = "SKYBOX_ENABLE_WARNINGS";
+                DisplayName = "Enable Skybox Warnings";
+                Type = Enumeration;
+                Values = (
+                    {   Value = "Yes";
+                        CommandLineArgs = ( );
+                    },
+                    {   Value = "No";
+                        CommandLineArgs = ( "-g" );
+                    },
+                );
+                DefaultValue = "Yes";
+                Category = "Skybox Compiler Options";
+            },
+            {
+                Name = "OTHER_SKYBOX_FLAGS";
+                DisplayName = "Other Skybox Compiler Flags";
+                Type = StringList;
+                DefaultValue = "";
+                CommandLineFlag = "";
+                Category = "Skybox Compiler Options";
+            }
+        );
+        CommandOutputParser = (
+            (
+                "^([^:]*):([^:]*)warning: (.*)$",
+                "emit-warning",
+            ),
+            (
+                "^([^:]*):([^:]*)error: (.*)$",
+                "emit-error",
+            ),
+        );
+    },
+)

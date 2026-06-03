@@ -1,0 +1,61 @@
+/**
+    Copyright (c) 1999-2010 Apple Inc.
+    All rights reserved.
+*/
+(
+    {   Identifier = com.apple.build-tools.strip;
+        Type = Tool;
+        Name = "StripSymbols";
+        Description = "Remove or modify the symbol table of a Mach-O binary";
+        RuleName = "Strip $(InputPath)";
+        ExecDescription = "Strip $(InputFileName)";
+        ProgressDescription = "Stripping symbols";
+        CommandLine = "strip [options] [input]";
+        Outputs = (
+            "$(OutputPath)",
+        );
+        Options = (
+            {
+                Name = STRIP_DETERMINISTIC_MODE;
+                Type = Boolean;
+                DefaultValue = YES;
+                CommandLineArgs = {
+                    YES = (
+                        "-D",
+                    );
+                    NO = ();
+                };
+            },
+            {   Name = STRIP_STYLE;
+                Type = Enumeration;
+                Values = (
+                    {   Value = "all";
+                        // no flag at all means to remove everything
+                    },
+                    {   Value = "non-global";
+                        CommandLineFlag = "-x";
+
+                    },
+                    {   Value = "debugging";
+                        CommandLineFlag = "-S";
+                    },
+                );
+            },
+            {   Name = STRIPFLAGS;
+                Type = StringList;
+                CommandLinePrefixFlag = "";
+            },
+            {
+                Name = "STRIP_SWIFT_SYMBOLS";
+                Type = Boolean;
+                Condition = "$(DEBUG_INFORMATION_FORMAT) == dwarf-with-dsym && $(STRIP_STYLE) != all";
+                CommandLineArgs = {
+                    YES = (
+                        "-T",
+                        );
+                    NO = ();
+                };
+            },
+        );
+    }
+)

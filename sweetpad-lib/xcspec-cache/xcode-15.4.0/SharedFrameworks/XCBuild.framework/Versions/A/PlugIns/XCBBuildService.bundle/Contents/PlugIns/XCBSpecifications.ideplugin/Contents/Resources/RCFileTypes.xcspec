@@ -1,0 +1,40 @@
+(
+    {
+        Name = "RC Project Document";
+        Type = FileType;
+        Identifier = "file.rcproject";
+        BasedOn = sourcecode;
+        Extensions = (
+            rcproject,
+        );
+        AppliesToBuildRules = YES;
+        IsWrapperFolder = YES;
+        IsFolder = NO;
+        IncludeInIndex = YES;
+        CanSetIncludeInIndex = YES;
+        IsTextFile = NO;
+        UTI = "com.apple.rcproject";
+    },
+    {
+        Name = "USDZ Document";
+        Type = FileType;
+        Identifier = "file.usdz";
+        BasedOn = file;
+        Extensions = (
+            usdz,
+        );
+        AppliesToBuildRules = NO;
+        UTI = "com.apple.usdz";
+    },
+    {
+        Name = "Skybox Document";
+        Type = FileType;
+        Identifier = "file.skybox";
+        BasedOn = file;
+        Extensions = (
+            skybox,
+        );
+        AppliesToBuildRules = YES;
+        UTI = "com.apple.skybox";
+    },
+)

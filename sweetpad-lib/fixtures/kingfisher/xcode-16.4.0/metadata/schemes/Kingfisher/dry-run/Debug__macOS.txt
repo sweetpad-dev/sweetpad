@@ -1,0 +1,42 @@
+Command line invocation:
+    /Applications/Xcode-16.4.0.app/Contents/Developer/usr/bin/xcodebuild -dry-run -scheme Kingfisher -configuration Debug -destination platform=macOS -workspace /Users/hyzyla_home/Developer/sweetpad-lib/corpus/kingfisher/Kingfisher.xcworkspace
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'Kingfisher' in project 'Kingfisher' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode-16.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode-16.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode-16.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode-16.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: c06b5a9db197ec030b2d2f97c1dc9ded
+Build description path: /Users/hyzyla_home/Library/Developer/Xcode/DerivedData/Kingfisher-bsyqrgpmdpgiztchzytjjxsrwpeh/Build/Intermediates.noindex/XCBuildData/c06b5a9db197ec030b2d2f97c1dc9ded.xcbuilddata
+error: -dry-run is not yet supported in the new build system
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00006030-0018296E1A28001C, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00006030-0018296E1A28001C, name:My Mac }
+** BUILD FAILED **
+
+
+The following build commands failed:
+	Building workspace Kingfisher with scheme Kingfisher and configuration Debug
+(1 failure)

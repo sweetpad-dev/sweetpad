@@ -1,0 +1,8 @@
+[
+  {
+    "error": "tvOS 17.5 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-appletvos:placeholder",
+    "name": "Any tvOS Device",
+    "platform": "tvOS"
+  }
+]

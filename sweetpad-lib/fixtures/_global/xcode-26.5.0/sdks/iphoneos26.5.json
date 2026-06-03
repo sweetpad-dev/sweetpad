@@ -1,0 +1,42 @@
+{
+  "canonicalName": "iphoneos26.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneOS.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "26.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "23F73"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "26.5"
+  },
+  "showsdks_entry": {
+    "buildID": "03DCB92E-437F-11F1-AFF5-054CFE640979",
+    "canonicalName": "iphoneos26.5",
+    "displayName": "iOS 26.5",
+    "isBaseSdk": true,
+    "platform": "iphoneos",
+    "platformPath": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneOS.platform",
+    "platformVersion": "26.5",
+    "productBuildVersion": "23F73",
+    "productCopyright": "1983-2026 Apple Inc.",
+    "productName": "iPhone OS",
+    "productVersion": "26.5",
+    "sdkPath": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk",
+    "sdkVersion": "26.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "iPhoneOS26.5.sdk - iOS 26.5 (iphoneos26.5)\nSDKVersion: 26.5\nPath: /Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk\nPlatformVersion: 26.5\nPlatformPath: /Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneOS.platform\nBuildID: 03DCB92E-437F-11F1-AFF5-054CFE640979\nProductBuildVersion: 23F73\nProductCopyright: 1983-2026 Apple Inc.\nProductName: iPhone OS\nProductVersion: 26.5\n\n"
+  }
+}

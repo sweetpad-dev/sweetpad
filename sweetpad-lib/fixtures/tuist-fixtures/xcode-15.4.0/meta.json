@@ -1,0 +1,370 @@
+{
+  "captured_at": "2026-05-30T16:34:08Z",
+  "host_macos": "26.5",
+  "slug": "tuist-fixtures",
+  "subprojects": [
+    {
+      "label": "examples_xcode_generated_app_with_buildable_folders",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_app_with_buildable_folders/App.xcworkspace",
+      "raw_files": 6,
+      "schemes": []
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "examples_xcode_generated_app_with_framework_and_tests",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_app_with_framework_and_tests/App.xcworkspace",
+      "raw_files": 11,
+      "scheme_count": 6,
+      "schemes": [
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App-Workspace"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "AppCustomScheme"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "AppExtension"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "Framework"
+        }
+      ]
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "examples_xcode_generated_ios_app_with_watchapp2",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_ios_app_with_watchapp2/App.xcworkspace",
+      "raw_files": 8,
+      "scheme_count": 5,
+      "schemes": [
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App-Workspace"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "WatchApp"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "WatchAppExtension"
+        }
+      ]
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "examples_xcode_generated_ios_app_with_static_frameworks",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_ios_app_with_static_frameworks/App.xcworkspace",
+      "raw_files": 29,
+      "scheme_count": 8,
+      "schemes": [
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "A"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App-Workspace"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "AppTestsSupport"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "B"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "C"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "D"
+        }
+      ]
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "examples_xcode_generated_ios_app_with_dynamic_frameworks_linking_static_frameworks",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/App.xcworkspace",
+      "raw_files": 7,
+      "scheme_count": 4,
+      "schemes": [
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App-Workspace"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "DynamicFrameworkA"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "DynamicFrameworkB"
+        }
+      ]
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "examples_xcode_generated_ios_app_with_static_framework_with_xcstrings",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_ios_app_with_static_framework_with_xcstrings/App.xcworkspace",
+      "raw_files": 10,
+      "scheme_count": 5,
+      "schemes": [
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App-Workspace"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "StaticFramework"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "StaticFramework_StaticFramework"
+        }
+      ]
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "examples_xcode_generated_ios_app_with_spm_dependencies",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_ios_app_with_spm_dependencies/App.xcworkspace",
+      "raw_files": 5,
+      "scheme_count": 2,
+      "schemes": [
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App-Workspace"
+        }
+      ]
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "examples_xcode_generated_app_with_custom_scheme",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_app_with_custom_scheme/App.xcworkspace",
+      "raw_files": 6,
+      "scheme_count": 3,
+      "schemes": [
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App-Workspace"
+        }
+      ]
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "debug",
+        "release"
+      ],
+      "label": "examples_xcode_generated_ios_app_with_custom_configuration",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_ios_app_with_custom_configuration/Workspace.xcworkspace",
+      "raw_files": 9,
+      "scheme_count": 4,
+      "schemes": [
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "FrameworkA"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "Workspace-Workspace"
+        }
+      ]
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "examples_xcode_generated_ios_app_with_static_libraries",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_ios_app_with_static_libraries/iOSAppWithTransistiveStaticLibraries.xcworkspace",
+      "raw_files": 15,
+      "scheme_count": 5,
+      "schemes": [
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "A"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "B"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "iOSAppWithTransistiveStaticLibraries-Workspace"
+        }
+      ]
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "examples_xcode_generated_command_line_tool_with_dynamic_library",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_command_line_tool_with_dynamic_library/CommandLineTool.xcworkspace",
+      "raw_files": 7,
+      "scheme_count": 4,
+      "schemes": [
+        {
+          "destinations_raw": 2,
+          "destinations_used": 1,
+          "scheme": "CommandLineTool"
+        },
+        {
+          "destinations_raw": 2,
+          "destinations_used": 1,
+          "scheme": "CommandLineTool-Workspace"
+        },
+        {
+          "destinations_raw": 2,
+          "destinations_used": 1,
+          "scheme": "DynamicLib"
+        }
+      ]
+    },
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "examples_xcode_generated_ios_app_with_coredata",
+      "project_kind": "workspace",
+      "project_path": "tuist-fixtures/examples/xcode/generated_ios_app_with_coredata/App.xcworkspace",
+      "raw_files": 7,
+      "scheme_count": 3,
+      "schemes": [
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "App-Workspace"
+        }
+      ]
+    }
+  ],
+  "xcode_slot": "prev-major-2",
+  "xcode_version": "15.4.0"
+}

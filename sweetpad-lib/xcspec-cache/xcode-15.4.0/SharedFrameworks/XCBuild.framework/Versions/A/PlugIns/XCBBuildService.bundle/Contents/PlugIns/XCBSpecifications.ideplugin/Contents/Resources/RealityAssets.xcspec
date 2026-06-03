@@ -1,0 +1,75 @@
+(
+    {
+        Identifier = "com.apple.build-tasks.compile-rk-assets.xcplugin";
+        Type = Compiler;
+        Name = "Compile Reality Assets";
+        Description = "Compile Reality Assets.";
+        Version = Default;
+        Vendor = Apple;
+        CommandLine = "realitytool export [options] -o=$(ProductResourcesDir) $(InputFile)";
+        RuleName = "CompileRealityAssets $(ProductResourcesDir)/$(InputFileBase).reality $(InputFile)";
+        ExecDescription = "Compile Reality Assets $(InputFileName)";
+        ProgressDescription = "Compiling $(CommandProgressByType) Reality Assets";
+        SynthesizeBuildRule = YES;
+        IsArchitectureNeutral = YES;
+        DeeplyStatInputDirectories = YES;
+        InputFileTypes = (
+            folder.rkassets,
+        );
+        Outputs = (
+            "$(ProductResourcesDir)/$(InputFileBase).reality",
+        );
+        Options = (
+            {
+                Name = "PLATFORM_NAME";
+                Type = String;
+                CommandLineFlag = "--platform";
+            },
+            {
+                Name = "REALITYASSET_DEPLOYMENT_TARGET";
+                Type = String;
+                DefaultValue = "$($(DEPLOYMENT_TARGET_SETTING_NAME))";
+                CommandLineFlag = "--deployment-target";
+            },
+            {
+                Name = "REALITYASSET_ENABLE_WARNINGS";
+                DisplayName = "Enable Reality Assets Generation Warnings";
+                Type = Enumeration;
+                Values = (
+                    {   Value = "Yes";
+                        CommandLineArgs = ( );
+                    },
+                    {   Value = "No";
+                        CommandLineArgs = ( "-g" );
+                    },
+                );
+                DefaultValue = "Yes";
+                Category = "Compiler Options";
+            },
+            {
+                Name = "OTHER_REALITYASSET_FLAGS";
+                DisplayName = "Other Reality Assets Compiler flags";
+                Type = StringList;
+                DefaultValue = "";
+                CommandLineFlag = "";
+                Category = "Compiler Options";
+            }
+        );
+    },
+
+    {
+        AppliesToBuildRules = YES;
+        CanSetIncludeInIndex = YES;
+        Extensions = (
+            rkassets,
+        );
+        Identifier = "folder.rkassets";
+        IncludeInIndex = YES;
+        IsFolder = YES;
+        IsTextFile = NO;
+        IsWrapperFolder = YES;
+        Name = "Reality Assets";
+        Type = FileType;
+        UTI = "com.apple.rkassets";
+    },
+)

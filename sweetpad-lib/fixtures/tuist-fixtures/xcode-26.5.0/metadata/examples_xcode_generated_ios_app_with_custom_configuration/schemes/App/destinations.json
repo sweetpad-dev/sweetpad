@@ -1,0 +1,95 @@
+[
+  {
+    "arch": "arm64",
+    "id": "00008110-000559182E90401E",
+    "name": "Iphone 13",
+    "platform": "iOS"
+  },
+  {
+    "id": "dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder",
+    "name": "Any iOS Device",
+    "platform": "iOS"
+  },
+  {
+    "id": "dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder",
+    "name": "Any iOS Simulator Device",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "1348984E-5870-4BE9-98DE-8D0B003CF48C",
+    "name": "iPad (A16)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "81616B22-CF03-4211-8073-A84518029418",
+    "name": "iPad Air 11-inch (M4)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "A6B29EF0-C637-473A-9359-F365F94A017A",
+    "name": "iPad Air 13-inch (M4)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "FF216C77-5DCB-4B1E-87C7-FC96F2440707",
+    "name": "iPad Pro 11-inch (M5)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "29D7748A-438A-4EF4-82DF-3E79BFB5347D",
+    "name": "iPad Pro 13-inch (M5)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "5F3D8816-2C52-4A83-8EDC-48FDC4BD8D62",
+    "name": "iPad mini (A17 Pro)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "FF71EE9F-E32F-4ABC-9E95-F840B2D282C7",
+    "name": "iPhone 17",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "6011A17B-46D1-4C85-9DBD-6537351C2380",
+    "name": "iPhone 17 Pro",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "566F1790-AD7B-487E-BCBE-30D22CA264A8",
+    "name": "iPhone 17 Pro Max",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "2F3588EF-E224-4116-9426-864682893980",
+    "name": "iPhone 17e",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "7D51C26C-FBFE-49A3-A334-443052173076",
+    "name": "iPhone Air",
+    "platform": "iOS Simulator"
+  }
+]

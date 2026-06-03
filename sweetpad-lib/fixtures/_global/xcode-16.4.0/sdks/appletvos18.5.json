@@ -1,0 +1,42 @@
+{
+  "canonicalName": "appletvos18.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/AppleTVOS.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "18.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "22L572"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "18.5"
+  },
+  "showsdks_entry": {
+    "buildID": "27C97DC0-2659-11F0-BD2F-2BAA836FDCD7",
+    "canonicalName": "appletvos18.5",
+    "displayName": "tvOS 18.5",
+    "isBaseSdk": true,
+    "platform": "appletvos",
+    "platformPath": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/AppleTVOS.platform",
+    "platformVersion": "18.5",
+    "productBuildVersion": "22L572",
+    "productCopyright": "1983-2025 Apple Inc.",
+    "productName": "Apple TVOS",
+    "productVersion": "18.5",
+    "sdkPath": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk",
+    "sdkVersion": "18.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "AppleTVOS18.5.sdk - tvOS 18.5 (appletvos18.5)\nSDKVersion: 18.5\nPath: /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk\nPlatformVersion: 18.5\nPlatformPath: /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/AppleTVOS.platform\nBuildID: 27C97DC0-2659-11F0-BD2F-2BAA836FDCD7\nProductBuildVersion: 22L572\nProductCopyright: 1983-2025 Apple Inc.\nProductName: Apple TVOS\nProductVersion: 18.5\n\n"
+  }
+}

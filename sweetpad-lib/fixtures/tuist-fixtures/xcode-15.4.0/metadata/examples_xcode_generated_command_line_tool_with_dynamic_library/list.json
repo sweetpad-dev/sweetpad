@@ -1,0 +1,11 @@
+{
+  "workspace": {
+    "name": "CommandLineTool",
+    "schemes": [
+      "CommandLineTool",
+      "CommandLineTool-Workspace",
+      "DynamicLib",
+      "Generate Project"
+    ]
+  }
+}

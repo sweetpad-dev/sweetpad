@@ -1,0 +1,16 @@
+/**
+    Copyright (c) 1999-2010 Apple Inc.
+    All rights reserved.
+
+    Defines the names, types, and default values of build properties that are specific to externally invoked build system.  These are in addition to the ones defined in the Core Build System.
+*/
+(
+    {
+        Type = BuildSystem;
+        Identifier = com.apple.build-system.external;
+        BasedOn = com.apple.build-system.core;
+        Name = "External Build System";
+        Options = (
+        );
+    }
+)

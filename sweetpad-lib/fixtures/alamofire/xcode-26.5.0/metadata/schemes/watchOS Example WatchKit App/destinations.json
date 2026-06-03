@@ -1,0 +1,68 @@
+[
+  {
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-watchos:placeholder",
+    "name": "Any watchOS Device",
+    "platform": "watchOS"
+  },
+  {
+    "id": "dvtdevice-DVTiOSDeviceSimulatorPlaceholder-watchsimulator:placeholder",
+    "name": "Any watchOS Simulator Device",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "EEED1197-1026-488D-B4DA-B94272F24D00",
+    "name": "Apple Watch SE 3 (40mm)",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "4F62D649-9B6E-49AB-8B9B-0045F71CF617",
+    "name": "Apple Watch SE 3 (44mm)",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "2706150B-25BD-4325-9CBA-B333ED96B03E",
+    "name": "Apple Watch Series 11 (42mm)",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "5DDF65B8-87D6-4C42-BE99-2FE5B0AF4E35",
+    "name": "Apple Watch Series 11 (46mm)",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "6CAA763B-28F2-4227-9F9A-AFDD432E0252",
+    "name": "Apple Watch Ultra 3 (49mm)",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "FF71EE9F-E32F-4ABC-9E95-F840B2D282C7",
+    "name": "iPhone 17",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "566F1790-AD7B-487E-BCBE-30D22CA264A8",
+    "name": "iPhone 17 Pro Max",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "7D51C26C-FBFE-49A3-A334-443052173076",
+    "name": "iPhone Air",
+    "platform": "iOS Simulator"
+  }
+]

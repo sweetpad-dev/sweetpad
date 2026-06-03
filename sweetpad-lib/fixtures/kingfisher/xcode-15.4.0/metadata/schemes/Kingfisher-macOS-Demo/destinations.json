@@ -1,0 +1,12 @@
+[
+  {
+    "arch": "arm64",
+    "id": "00006030-0018296E1A28001C",
+    "name": "My Mac",
+    "platform": "macOS"
+  },
+  {
+    "name": "Any Mac",
+    "platform": "macOS"
+  }
+]

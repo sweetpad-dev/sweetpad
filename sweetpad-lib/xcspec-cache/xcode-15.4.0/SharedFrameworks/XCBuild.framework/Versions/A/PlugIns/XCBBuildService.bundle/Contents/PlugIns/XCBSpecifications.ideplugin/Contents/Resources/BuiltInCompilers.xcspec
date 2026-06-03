@@ -1,0 +1,176 @@
+/**
+    Copyright © 2000-2023 Apple Inc.  All rights reserved.
+
+    Some of the compiler specifications that are built into Xcode.  Any or all of these could be overridden by separate compiler specification property lists.  Note that most of the more fashionable specifications each live in their own .xcspec file with a sensible base name.
+*/
+
+(
+    // Change global symbols not listed in input file to static symbols.
+    {   Type = Tool;
+        Identifier = com.apple.build-tools.nmedit;
+        Name = "Nmedit";
+        Description = "Nmedit Symbol Editor";
+        ExecPath = "nmedit";
+        ExecDescription = "Edit exported symbols in $(InputFileName)";
+        ProgressDescription = "Editing exported symbols";
+    },
+
+    // Abstract superspec for resource processing.  Subspecs can be implemented to process a resource in a particular way.  By default, resources are simply copied to their destination.  Subspecs need to be sure to set their IsAbstract attribute to NO.
+    {   Type = Tool;
+        Identifier = com.apple.compilers.resource-copier;
+        Name = "Resource Copier";
+        Description = "Abstract specification for resource copying";
+        ExecDescription = "Copy $(InputFileName)";
+        ProgressDescription = "Copying $(CommandProgressByType) resources to product";
+        IsAbstract = YES;
+        CommandOutputParser = (
+            ("()()(^[^:]+: [^:]+: No such file or directory)",  emit-error),
+            ("()()(^[^:]+: [^:]+: Permission denied)",  emit-error),
+            ("()()(^[^:]+: [^:]+: Is a directory)",  emit-error),
+        );
+    },
+
+    // Specification for shell scripts, just to provide output-parsing regexes.
+    {   Type = Tool;
+        Identifier = com.apple.commands.shell-script;
+        Name = "Shell Script Invocation";
+        IsAbstract = Yes;       // This is an internal tool, so we keep it out of the user interface
+        ExecDescription = "Run custom shell script '$(ShellScriptName)'";
+        ProgressDescription = "Running $(CommandProgressByType) custom shell scripts";
+        CommandOutputParser = (
+            XCShellScriptOutputParser,
+            (   ("()()^.+\.sh: (line.+)" , emit-error),
+            ),
+            (   ("()()(warning: [^:]+: No such file or directory)",  emit-error),
+                ("()()(^[^:]+: [^:]+: Permission denied)",  emit-error),
+                ("()()(^[^:]+: [^:]+: Is a directory)",  emit-error),
+            ),
+            XCGccCommandOutputParser,
+        );
+        // Never limit messages from user provided commands (0 == unlimited).
+        MessageLimit = 0;
+    },
+
+    // Headermap generator (a built-in tool).
+    {   Type = Tool;
+        Identifier = com.apple.commands.built-in.headermap-generator;
+        Class = XCToolSpecificationHeadermapGenerator;
+        Name = "Headermap Generator";
+        IsAbstract = Yes;       // This is an internal tool, so we keep it out of the user interface
+        CommandOutputParser = (
+            (   ("()()(^[^:]+: [^:]+: No such file or directory)",  emit-error),
+                ("()()(^[^:]+: [^:]+: Permission denied)",  emit-error),
+                ("()()(^[^:]+: [^:]+: Is a directory)",  emit-error),
+            ),
+        );
+    },
+    
+    // Compilation database generator (a built-in tool).
+    {   Type = Tool;
+        Identifier = com.apple.commands.built-in.compilation-database-generator;
+        Class = XCToolSpecificationCompilationDatabaseGenerator;
+        Name = "Compilation Database Generator";
+        IsAbstract = Yes;       // This is an internal tool, so we keep it out of the user interface
+        CommandOutputParser = (
+            (   ("()()(^[^:]+: [^:]+: No such file or directory)",  emit-error),
+                ("()()(^[^:]+: [^:]+: Permission denied)",  emit-error),
+                ("()()(^[^:]+: [^:]+: Is a directory)",  emit-error),
+            ),
+        );
+    },
+    
+    // dsymutil tool
+    {   Type = Tool;
+        Identifier = com.apple.tools.dsymutil;
+        Name = "dsymutil";
+        Description = "dsymutil dSYM file generator";
+        IsAbstract = YES;
+        CommandLine = "dsymutil [options] [input] -o $(OutputPath)";
+        RuleName = "GenerateDSYMFile $(OutputPath) $(InputPath)";
+        
+        ExecDescription = "Generate $(OutputFile:file)";
+        ProgressDescription = "Generating dSYM file";
+        
+        InputFileTypes = (compiled.mach-o.executable, compiled.mach-o.objfile, compiled.mach-o.dylib, compiled.mach-o.bundle, archive.ar);
+        Outputs = ( "$(OutputPath)" );
+        
+        Options = (
+            {   Name = DSYMUTIL_VERBOSE;
+                Type = Boolean;
+                DefaultValue = NO;
+                CommandLineFlag = "--verbose";
+            },
+            {   Name = DSYMUTIL_VARIANT_SUFFIX;
+                Type = String;
+                DefaultValue = "";
+                CommandLinePrefixFlag = "-build-variant-suffix=_";
+            },
+            {   Name = DSYMUTIL_DSYM_SEARCH_PATHS;
+                Type = StringList;
+                DefaultValue = "";
+                CommandLineFlag = "-D";
+            },
+        );
+    
+        CommandOutputParser = (
+            (   ("()()(warning: .+)",  emit-warning),
+                ("()()(error: .+)",  emit-error),
+            ),
+        );
+    },
+    
+    // Touch tool
+    {   Type = Tool;
+        Identifier = com.apple.tools.touch;
+        Name = "touch";
+        Description = "Touch";
+        IsAbstract = YES;
+        
+        ExecDescription = "Touch $(OutputFile:file)";
+        ProgressDescription = "Touch product";
+    },
+    
+    // Ditto tool
+    {   Type = Tool;
+        Identifier = com.apple.tools.ditto;
+        Name = "ditto";
+        Description = "Ditto";
+        IsAbstract = YES;
+        
+        ExecDescription = "Ditto $(InputFileName) to $(OutputFile:file)";
+        ProgressDescription = "Dittoing files";
+    },
+
+    // Plutil tool
+    {   Type = Tool;
+        Identifier = com.apple.tools.plutil;
+        Name = "plutil";
+        Description = "Plutil";
+        IsAbstract = YES;
+        
+        ExecDescription = "Plutil $(InputFileName) to $(OutputFile:file)";
+        ProgressDescription = "Dittoing files";
+    },
+    
+    // SymLink tool
+    {   Type = Tool;
+        Identifier = com.apple.tools.symlink;
+        Name = "ln";
+        Description = "SymLink";
+        IsAbstract = YES;
+        
+        ExecDescription = "Make symlink $(OutputFile:file)";
+        ProgressDescription = "Making $(CommandProgressByType) symlinks";
+    },
+    
+    // MkDir tool
+    {   Type = Tool;
+        Identifier = com.apple.tools.mkdir;
+        Name = "mkdir";
+        Description = "MkDir";
+        IsAbstract = YES;
+        
+        ExecDescription = "Create directory $(OutputFile:file)";
+        ProgressDescription = "Creating $(CommandProgressByType) directories";
+    },
+)

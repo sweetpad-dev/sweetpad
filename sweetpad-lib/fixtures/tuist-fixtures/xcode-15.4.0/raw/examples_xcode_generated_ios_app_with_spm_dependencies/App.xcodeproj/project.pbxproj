@@ -1,0 +1,991 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 55;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		04F5406EDD27113397D45EB4 /* SwiftASN1.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA3704968860D22EB8DE34B1 /* SwiftASN1.framework */; };
+		0926418F60CB6A6E7B92C759 /* KSCrash_KSCrashInstallations.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = D66DA11813FC43498091D6F7 /* KSCrash_KSCrashInstallations.bundle */; };
+		0EDB55FC7B9760C2620F9066 /* KSCrash_KSCrashSinks.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = C2C424608DA944CC8D3005BC /* KSCrash_KSCrashSinks.bundle */; };
+		10ED8049C186AF1B9F99289E /* KSCrash_KSCrashCore.bundle in Resources */ = {isa = PBXBuildFile; fileRef = C59727AF735D4F081C14A06D /* KSCrash_KSCrashCore.bundle */; };
+		1251938452685D7AF191F04C /* KSCrashCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2881F415B5CFA19DF3A4C4F3 /* KSCrashCore.framework */; };
+		197A11315BE24F8AA0D39712 /* swift-crypto_Crypto.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 57DFDAAB715B2A364C3CDB8B /* swift-crypto_Crypto.bundle */; };
+		26C3497C65D9B5C6DD828C44 /* KSCrash_KSCrashSinks.bundle in Resources */ = {isa = PBXBuildFile; fileRef = C2C424608DA944CC8D3005BC /* KSCrash_KSCrashSinks.bundle */; };
+		28EB9C426DBAD71EC76BB09E /* Buy.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C70C7F88A50D294A57CD4D01 /* Buy.framework */; };
+		2DB513EDCBF674D75DC5A228 /* swift-crypto_CryptoBoringWrapper.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 9C7831F88F1BB4DD5CC5AF21 /* swift-crypto_CryptoBoringWrapper.bundle */; };
+		2E743A6F76CCB6064D781210 /* TuistAssets+App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95D529DAAF6A9D59C44D9D68 /* TuistAssets+App.swift */; };
+		321C767EEE1FFCC7EF3F94D8 /* swift-crypto_CCryptoBoringSSLShims.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = 5487C08E0D0F60EA9CFEFF2C /* swift-crypto_CCryptoBoringSSLShims.bundle */; };
+		3E7D50B16ED51B00A1123FD2 /* KSCrashSinks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F408D6560704875AD13F9CBB /* KSCrashSinks.framework */; };
+		3FDFE7429571FF13A1C36948 /* KSCrash_KSCrashRecordingCore.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = E698400677A9FF7E6D2EAF56 /* KSCrash_KSCrashRecordingCore.bundle */; };
+		4391483534828A144D6B15A8 /* KSCrash_KSCrashFilters.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = 62FC4A698A3FC5667F42C935 /* KSCrash_KSCrashFilters.bundle */; };
+		4AFE35DBB747BF6B1D028FC7 /* KSCrash_KSCrashInstallations.bundle in Resources */ = {isa = PBXBuildFile; fileRef = D66DA11813FC43498091D6F7 /* KSCrash_KSCrashInstallations.bundle */; };
+		51A00C7A6D4AD5C6E6F4367A /* Crypto.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BD046F1D1A3AF2E4E0656524 /* Crypto.framework */; };
+		566CEB29E3A8E5E9D938AE99 /* AppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47E639D742727374923DF3B7 /* AppTests.swift */; };
+		58153FFA3E01C90E1A0ADB9B /* Pay.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6ED0B6E65A4B6D63AF28B74B /* Pay.framework */; };
+		582CF156B9E285D79A6FBBA7 /* swift-crypto_CCryptoBoringSSL.bundle in Resources */ = {isa = PBXBuildFile; fileRef = B9D062D5AC1EFE37D1D76E3B /* swift-crypto_CCryptoBoringSSL.bundle */; };
+		5B42DD02ABE7F15EBFD9D44D /* KSCrash_KSCrashCore.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = C59727AF735D4F081C14A06D /* KSCrash_KSCrashCore.bundle */; };
+		69EE5319507D8A3AACBD7E23 /* swift-crypto_CryptoBoringWrapper.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = 9C7831F88F1BB4DD5CC5AF21 /* swift-crypto_CryptoBoringWrapper.bundle */; };
+		6B396204452E8338DB1D59BE /* JWTKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C6C0432D5B9B4496EB14B731 /* JWTKit.framework */; };
+		771F53112C0A93A40A2121D7 /* X509.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 50B2CC9F304F090EFE407463 /* X509.framework */; };
+		7B9D79F307CE71AABA026844 /* KSCrash_KSCrashRecording.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = 2D339FA2438D8DFAC82C8C90 /* KSCrash_KSCrashRecording.bundle */; };
+		7D10B4F797610A00009C2837 /* KSCrashDemangleFilter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B47EE37CC7E0286CCAB4769 /* KSCrashDemangleFilter.framework */; };
+		7E59D81842699F4CA864D300 /* KSCrash_KSCrashRecording.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 2D339FA2438D8DFAC82C8C90 /* KSCrash_KSCrashRecording.bundle */; };
+		7F822456C55CFF4C7A251966 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15866952545E0585E1B6A38C /* ContentView.swift */; };
+		853C9776BDDE1964796775AE /* swift-crypto_CCryptoBoringSSL.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = B9D062D5AC1EFE37D1D76E3B /* swift-crypto_CCryptoBoringSSL.bundle */; };
+		89F3DA403503D0113F6AEE26 /* _CertificateInternals.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7D97C79AEB0A4E6280796DB9 /* _CertificateInternals.framework */; };
+		8DFEED91504493697FC142D1 /* KSCrash_KSCrashDemangleFilter.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 9199F64EE46AFBF93487213D /* KSCrash_KSCrashDemangleFilter.bundle */; };
+		95B1DF54F5D8FB6DAFBDF556 /* KSCrash_KSCrashReportingCore.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 18A1CDC7A838AB1D179F5F71 /* KSCrash_KSCrashReportingCore.bundle */; };
+		97166D922F911AA019B05E6C /* _CryptoExtras.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F3CC597F5BB2E2602AB0A6EA /* _CryptoExtras.framework */; };
+		A6A700287F86A6F7550C42F6 /* KSCrashFilters.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 61E8F127DD9084B07A8BBB48 /* KSCrashFilters.framework */; };
+		AD4A5D95FCB55FEA289698FF /* swift-crypto_CCryptoBoringSSLShims.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 5487C08E0D0F60EA9CFEFF2C /* swift-crypto_CCryptoBoringSSLShims.bundle */; };
+		B23DC8FA9BD6EED24D3C15F9 /* KSCrash_KSCrashRecordingCore.bundle in Resources */ = {isa = PBXBuildFile; fileRef = E698400677A9FF7E6D2EAF56 /* KSCrash_KSCrashRecordingCore.bundle */; };
+		B29BC5F0854AEBF2D3FE40D9 /* BigInt.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF46674CA681030937E8D0E5 /* BigInt.framework */; };
+		B60B5F26BAF7748F60E8CEE9 /* KSCrashInstallations.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 81474E6D4757701AA21E1D43 /* KSCrashInstallations.framework */; };
+		C2147A9C3C35B939C48A78D7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA45B3DB5250588961CBB00A /* Assets.xcassets */; };
+		C9E05D37962751D27D86CB41 /* KSCrash_KSCrashDemangleFilter.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = 9199F64EE46AFBF93487213D /* KSCrash_KSCrashDemangleFilter.bundle */; };
+		CAC446A037E92EEB1AA24B4B /* KSCrashReportingCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8C44C76926029BE4A209A2D9 /* KSCrashReportingCore.framework */; };
+		CB83237953FD89804277E262 /* CCryptoBoringSSL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DE16ADA05E161C0964825208 /* CCryptoBoringSSL.framework */; };
+		D901037C14A747B1D5DB253D /* AppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED88A279581C31A6BBFDAD81 /* AppApp.swift */; };
+		DB23E62EBDC79B1B80A989F2 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C583BE6E2797AC0DCD7E45B6 /* Preview Assets.xcassets */; };
+		DEB7B2D9DAC84BF98ED5F7AF /* swift-crypto__CryptoExtras.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = B5553E775FC7F089D6929B42 /* swift-crypto__CryptoExtras.bundle */; };
+		DEFFEB6FDB699CBBCEB181CF /* CCryptoBoringSSLShims.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 271BB721A8D80A85EB01879A /* CCryptoBoringSSLShims.framework */; };
+		E29E2E8892378A119AF5AC47 /* swift-crypto_Crypto.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = 57DFDAAB715B2A364C3CDB8B /* swift-crypto_Crypto.bundle */; };
+		E35CF07A21F12F73C78AC2C8 /* KSCrash_KSCrashReportingCore.bundle in Dependencies */ = {isa = PBXBuildFile; fileRef = 18A1CDC7A838AB1D179F5F71 /* KSCrash_KSCrashReportingCore.bundle */; };
+		E515C43236D182332E105658 /* KSCrashRecording.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 594151F7A386543123A18F4B /* KSCrashRecording.framework */; };
+		EF038CF1AF5BD087667DCB7E /* CryptoBoringWrapper.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8EB913276F650FF740AF38EF /* CryptoBoringWrapper.framework */; };
+		F1113AB299F42FEAAB55681C /* libc++.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = D5C086E361BFD0D4DF600B2D /* libc++.tbd */; };
+		F2ED8CE8BB3E1FD867810AD4 /* swift-crypto__CryptoExtras.bundle in Resources */ = {isa = PBXBuildFile; fileRef = B5553E775FC7F089D6929B42 /* swift-crypto__CryptoExtras.bundle */; };
+		FA7EC4F1B138F15D2A42F492 /* KSCrashRecordingCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4B7EF2D3C24E96D5ED171AA7 /* KSCrashRecordingCore.framework */; };
+		FB0DCB899387D4EA783219CA /* KSCrash_KSCrashFilters.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 62FC4A698A3FC5667F42C935 /* KSCrash_KSCrashFilters.bundle */; };
+		FE078F42728C23B77EE02A1B /* TuistBundle+App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083CD4D343ECF7F321C1905D /* TuistBundle+App.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		32EAB22E4CA94300DDDCDCCB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6B590BF25178DC7D824D09CE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 93E9E330FC2CE7458D9C925F;
+			remoteInfo = App;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		32C1016586DA85539DC02287 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8EFDE6013C818852098745E7 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FBDA11870C9384049F1DFEDD /* Dependencies */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 8;
+			dstSubfolderSpec = 16;
+			files = (
+				5B42DD02ABE7F15EBFD9D44D /* KSCrash_KSCrashCore.bundle in Dependencies */,
+				C9E05D37962751D27D86CB41 /* KSCrash_KSCrashDemangleFilter.bundle in Dependencies */,
+				4391483534828A144D6B15A8 /* KSCrash_KSCrashFilters.bundle in Dependencies */,
+				0926418F60CB6A6E7B92C759 /* KSCrash_KSCrashInstallations.bundle in Dependencies */,
+				7B9D79F307CE71AABA026844 /* KSCrash_KSCrashRecording.bundle in Dependencies */,
+				3FDFE7429571FF13A1C36948 /* KSCrash_KSCrashRecordingCore.bundle in Dependencies */,
+				E35CF07A21F12F73C78AC2C8 /* KSCrash_KSCrashReportingCore.bundle in Dependencies */,
+				0EDB55FC7B9760C2620F9066 /* KSCrash_KSCrashSinks.bundle in Dependencies */,
+				853C9776BDDE1964796775AE /* swift-crypto_CCryptoBoringSSL.bundle in Dependencies */,
+				321C767EEE1FFCC7EF3F94D8 /* swift-crypto_CCryptoBoringSSLShims.bundle in Dependencies */,
+				E29E2E8892378A119AF5AC47 /* swift-crypto_Crypto.bundle in Dependencies */,
+				69EE5319507D8A3AACBD7E23 /* swift-crypto_CryptoBoringWrapper.bundle in Dependencies */,
+				DEB7B2D9DAC84BF98ED5F7AF /* swift-crypto__CryptoExtras.bundle in Dependencies */,
+			);
+			name = Dependencies;
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		01E1AA015F9EE84780DE15E5 /* App-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "App-Info.plist"; sourceTree = "<group>"; };
+		05C205C150A8B60F0BF50551 /* AppTests-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "AppTests-Info.plist"; sourceTree = "<group>"; };
+		083CD4D343ECF7F321C1905D /* TuistBundle+App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TuistBundle+App.swift"; sourceTree = "<group>"; };
+		15866952545E0585E1B6A38C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		18A1CDC7A838AB1D179F5F71 /* KSCrash_KSCrashReportingCore.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KSCrash_KSCrashReportingCore.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		271BB721A8D80A85EB01879A /* CCryptoBoringSSLShims.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CCryptoBoringSSLShims.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		2881F415B5CFA19DF3A4C4F3 /* KSCrashCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = KSCrashCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B47EE37CC7E0286CCAB4769 /* KSCrashDemangleFilter.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = KSCrashDemangleFilter.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		2D339FA2438D8DFAC82C8C90 /* KSCrash_KSCrashRecording.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KSCrash_KSCrashRecording.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		47E639D742727374923DF3B7 /* AppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTests.swift; sourceTree = "<group>"; };
+		4B7EF2D3C24E96D5ED171AA7 /* KSCrashRecordingCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = KSCrashRecordingCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		50B2CC9F304F090EFE407463 /* X509.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = X509.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		5487C08E0D0F60EA9CFEFF2C /* swift-crypto_CCryptoBoringSSLShims.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "swift-crypto_CCryptoBoringSSLShims.bundle"; sourceTree = BUILT_PRODUCTS_DIR; };
+		571E08A9083FD4334E4B7D06 /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		57DFDAAB715B2A364C3CDB8B /* swift-crypto_Crypto.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "swift-crypto_Crypto.bundle"; sourceTree = BUILT_PRODUCTS_DIR; };
+		594151F7A386543123A18F4B /* KSCrashRecording.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = KSCrashRecording.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		61E8F127DD9084B07A8BBB48 /* KSCrashFilters.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = KSCrashFilters.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		62FC4A698A3FC5667F42C935 /* KSCrash_KSCrashFilters.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KSCrash_KSCrashFilters.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		6ED0B6E65A4B6D63AF28B74B /* Pay.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pay.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		7D97C79AEB0A4E6280796DB9 /* _CertificateInternals.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = _CertificateInternals.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		81474E6D4757701AA21E1D43 /* KSCrashInstallations.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = KSCrashInstallations.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		8C44C76926029BE4A209A2D9 /* KSCrashReportingCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = KSCrashReportingCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		8EB913276F650FF740AF38EF /* CryptoBoringWrapper.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CryptoBoringWrapper.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		9199F64EE46AFBF93487213D /* KSCrash_KSCrashDemangleFilter.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KSCrash_KSCrashDemangleFilter.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		95D529DAAF6A9D59C44D9D68 /* TuistAssets+App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TuistAssets+App.swift"; sourceTree = "<group>"; };
+		9C7831F88F1BB4DD5CC5AF21 /* swift-crypto_CryptoBoringWrapper.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "swift-crypto_CryptoBoringWrapper.bundle"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA45B3DB5250588961CBB00A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B5553E775FC7F089D6929B42 /* swift-crypto__CryptoExtras.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "swift-crypto__CryptoExtras.bundle"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B9D062D5AC1EFE37D1D76E3B /* swift-crypto_CCryptoBoringSSL.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "swift-crypto_CCryptoBoringSSL.bundle"; sourceTree = BUILT_PRODUCTS_DIR; };
+		BA3704968860D22EB8DE34B1 /* SwiftASN1.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = SwiftASN1.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		BAFF060C3D8E68253DF6AABA /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BD046F1D1A3AF2E4E0656524 /* Crypto.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Crypto.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		C2C424608DA944CC8D3005BC /* KSCrash_KSCrashSinks.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KSCrash_KSCrashSinks.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		C583BE6E2797AC0DCD7E45B6 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		C59727AF735D4F081C14A06D /* KSCrash_KSCrashCore.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KSCrash_KSCrashCore.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		C6C0432D5B9B4496EB14B731 /* JWTKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = JWTKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		C70C7F88A50D294A57CD4D01 /* Buy.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Buy.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		CF46674CA681030937E8D0E5 /* BigInt.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = BigInt.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		D5C086E361BFD0D4DF600B2D /* libc++.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libc++.tbd"; path = "Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk/usr/lib/libc++.tbd"; sourceTree = DEVELOPER_DIR; };
+		D66DA11813FC43498091D6F7 /* KSCrash_KSCrashInstallations.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KSCrash_KSCrashInstallations.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		DE16ADA05E161C0964825208 /* CCryptoBoringSSL.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CCryptoBoringSSL.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		E698400677A9FF7E6D2EAF56 /* KSCrash_KSCrashRecordingCore.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KSCrash_KSCrashRecordingCore.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		ED88A279581C31A6BBFDAD81 /* AppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppApp.swift; sourceTree = "<group>"; };
+		F3CC597F5BB2E2602AB0A6EA /* _CryptoExtras.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = _CryptoExtras.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		F408D6560704875AD13F9CBB /* KSCrashSinks.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = KSCrashSinks.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8CB8AEE85FC31EE4A826C233 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BC0DC3536DED64E0E8C9923E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F1113AB299F42FEAAB55681C /* libc++.tbd in Frameworks */,
+				B29BC5F0854AEBF2D3FE40D9 /* BigInt.framework in Frameworks */,
+				28EB9C426DBAD71EC76BB09E /* Buy.framework in Frameworks */,
+				CB83237953FD89804277E262 /* CCryptoBoringSSL.framework in Frameworks */,
+				DEFFEB6FDB699CBBCEB181CF /* CCryptoBoringSSLShims.framework in Frameworks */,
+				51A00C7A6D4AD5C6E6F4367A /* Crypto.framework in Frameworks */,
+				EF038CF1AF5BD087667DCB7E /* CryptoBoringWrapper.framework in Frameworks */,
+				6B396204452E8338DB1D59BE /* JWTKit.framework in Frameworks */,
+				1251938452685D7AF191F04C /* KSCrashCore.framework in Frameworks */,
+				7D10B4F797610A00009C2837 /* KSCrashDemangleFilter.framework in Frameworks */,
+				A6A700287F86A6F7550C42F6 /* KSCrashFilters.framework in Frameworks */,
+				B60B5F26BAF7748F60E8CEE9 /* KSCrashInstallations.framework in Frameworks */,
+				E515C43236D182332E105658 /* KSCrashRecording.framework in Frameworks */,
+				FA7EC4F1B138F15D2A42F492 /* KSCrashRecordingCore.framework in Frameworks */,
+				CAC446A037E92EEB1AA24B4B /* KSCrashReportingCore.framework in Frameworks */,
+				3E7D50B16ED51B00A1123FD2 /* KSCrashSinks.framework in Frameworks */,
+				58153FFA3E01C90E1A0ADB9B /* Pay.framework in Frameworks */,
+				04F5406EDD27113397D45EB4 /* SwiftASN1.framework in Frameworks */,
+				771F53112C0A93A40A2121D7 /* X509.framework in Frameworks */,
+				89F3DA403503D0113F6AEE26 /* _CertificateInternals.framework in Frameworks */,
+				97166D922F911AA019B05E6C /* _CryptoExtras.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4102E3E068508DD683953C7D = {
+			isa = PBXGroup;
+			children = (
+				E9C3DB3EC6D7655028A9C0D3 /* Products */,
+				52611B11A5E6A7198C4E57A3 /* Project */,
+				BDD1182E50DC622819F25364 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		41B78D6FC5EDDF6BF78E4764 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				ED88A279581C31A6BBFDAD81 /* AppApp.swift */,
+				15866952545E0585E1B6A38C /* ContentView.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		51031280B0E9566B5F39B299 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				C583BE6E2797AC0DCD7E45B6 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		52611B11A5E6A7198C4E57A3 /* Project */ = {
+			isa = PBXGroup;
+			children = (
+				F9AE8C25E3709C28DE1D073A /* App */,
+				D7AA02567C9EA8578F497E49 /* AppTests */,
+				B3BCDE38B26B330C9A04FADE /* Derived */,
+			);
+			name = Project;
+			sourceTree = "<group>";
+		};
+		66EB57D721CBB7D427955C21 /* InfoPlists */ = {
+			isa = PBXGroup;
+			children = (
+				01E1AA015F9EE84780DE15E5 /* App-Info.plist */,
+				05C205C150A8B60F0BF50551 /* AppTests-Info.plist */,
+			);
+			path = InfoPlists;
+			sourceTree = "<group>";
+		};
+		8919B428B639C6AF4BBFE002 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				95D529DAAF6A9D59C44D9D68 /* TuistAssets+App.swift */,
+				083CD4D343ECF7F321C1905D /* TuistBundle+App.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		AF9F6EE585CC8A23F5E39B7C /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				51031280B0E9566B5F39B299 /* Preview Content */,
+				AA45B3DB5250588961CBB00A /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		B3BCDE38B26B330C9A04FADE /* Derived */ = {
+			isa = PBXGroup;
+			children = (
+				66EB57D721CBB7D427955C21 /* InfoPlists */,
+				8919B428B639C6AF4BBFE002 /* Sources */,
+			);
+			path = Derived;
+			sourceTree = "<group>";
+		};
+		BDD1182E50DC622819F25364 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				D5C086E361BFD0D4DF600B2D /* libc++.tbd */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		D7AA02567C9EA8578F497E49 /* AppTests */ = {
+			isa = PBXGroup;
+			children = (
+				47E639D742727374923DF3B7 /* AppTests.swift */,
+			);
+			path = AppTests;
+			sourceTree = "<group>";
+		};
+		E9C3DB3EC6D7655028A9C0D3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7D97C79AEB0A4E6280796DB9 /* _CertificateInternals.framework */,
+				F3CC597F5BB2E2602AB0A6EA /* _CryptoExtras.framework */,
+				571E08A9083FD4334E4B7D06 /* App.app */,
+				BAFF060C3D8E68253DF6AABA /* AppTests.xctest */,
+				CF46674CA681030937E8D0E5 /* BigInt.framework */,
+				C70C7F88A50D294A57CD4D01 /* Buy.framework */,
+				DE16ADA05E161C0964825208 /* CCryptoBoringSSL.framework */,
+				271BB721A8D80A85EB01879A /* CCryptoBoringSSLShims.framework */,
+				BD046F1D1A3AF2E4E0656524 /* Crypto.framework */,
+				8EB913276F650FF740AF38EF /* CryptoBoringWrapper.framework */,
+				C6C0432D5B9B4496EB14B731 /* JWTKit.framework */,
+				C59727AF735D4F081C14A06D /* KSCrash_KSCrashCore.bundle */,
+				9199F64EE46AFBF93487213D /* KSCrash_KSCrashDemangleFilter.bundle */,
+				62FC4A698A3FC5667F42C935 /* KSCrash_KSCrashFilters.bundle */,
+				D66DA11813FC43498091D6F7 /* KSCrash_KSCrashInstallations.bundle */,
+				2D339FA2438D8DFAC82C8C90 /* KSCrash_KSCrashRecording.bundle */,
+				E698400677A9FF7E6D2EAF56 /* KSCrash_KSCrashRecordingCore.bundle */,
+				18A1CDC7A838AB1D179F5F71 /* KSCrash_KSCrashReportingCore.bundle */,
+				C2C424608DA944CC8D3005BC /* KSCrash_KSCrashSinks.bundle */,
+				2881F415B5CFA19DF3A4C4F3 /* KSCrashCore.framework */,
+				2B47EE37CC7E0286CCAB4769 /* KSCrashDemangleFilter.framework */,
+				61E8F127DD9084B07A8BBB48 /* KSCrashFilters.framework */,
+				81474E6D4757701AA21E1D43 /* KSCrashInstallations.framework */,
+				594151F7A386543123A18F4B /* KSCrashRecording.framework */,
+				4B7EF2D3C24E96D5ED171AA7 /* KSCrashRecordingCore.framework */,
+				8C44C76926029BE4A209A2D9 /* KSCrashReportingCore.framework */,
+				F408D6560704875AD13F9CBB /* KSCrashSinks.framework */,
+				6ED0B6E65A4B6D63AF28B74B /* Pay.framework */,
+				B5553E775FC7F089D6929B42 /* swift-crypto__CryptoExtras.bundle */,
+				B9D062D5AC1EFE37D1D76E3B /* swift-crypto_CCryptoBoringSSL.bundle */,
+				5487C08E0D0F60EA9CFEFF2C /* swift-crypto_CCryptoBoringSSLShims.bundle */,
+				57DFDAAB715B2A364C3CDB8B /* swift-crypto_Crypto.bundle */,
+				9C7831F88F1BB4DD5CC5AF21 /* swift-crypto_CryptoBoringWrapper.bundle */,
+				BA3704968860D22EB8DE34B1 /* SwiftASN1.framework */,
+				50B2CC9F304F090EFE407463 /* X509.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F9AE8C25E3709C28DE1D073A /* App */ = {
+			isa = PBXGroup;
+			children = (
+				AF9F6EE585CC8A23F5E39B7C /* Resources */,
+				41B78D6FC5EDDF6BF78E4764 /* Sources */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		93E9E330FC2CE7458D9C925F /* App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FFC1863BD4026D2C17CBE82B /* Build configuration list for PBXNativeTarget "App" */;
+			buildPhases = (
+				B77F0AF073564580D75A2CF1 /* Sources */,
+				37BFF6A8CB5CC7FA21AD3FA3 /* Resources */,
+				BC0DC3536DED64E0E8C9923E /* Frameworks */,
+				8EFDE6013C818852098745E7 /* Embed Frameworks */,
+				FBDA11870C9384049F1DFEDD /* Dependencies */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = App;
+			packageProductDependencies = (
+			);
+			productName = App;
+			productReference = 571E08A9083FD4334E4B7D06 /* App.app */;
+			productType = "com.apple.product-type.application";
+		};
+		99DCC7BD0ABB09C467644299 /* AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E5F9A71B7F6D259DCE5E1FD0 /* Build configuration list for PBXNativeTarget "AppTests" */;
+			buildPhases = (
+				F2209317AB8C886394D02ACA /* Sources */,
+				16B5BCA1617F96ED51DB718E /* Resources */,
+				8CB8AEE85FC31EE4A826C233 /* Frameworks */,
+				32C1016586DA85539DC02287 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				96AA6D50C1AA746282D306B3 /* PBXTargetDependency */,
+			);
+			name = AppTests;
+			packageProductDependencies = (
+			);
+			productName = AppTests;
+			productReference = BAFF060C3D8E68253DF6AABA /* AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6B590BF25178DC7D824D09CE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				TargetAttributes = {
+					99DCC7BD0ABB09C467644299 = {
+						TestTargetID = 93E9E330FC2CE7458D9C925F;
+					};
+				};
+			};
+			buildConfigurationList = B3FD05C59F197F398A0B04AB /* Build configuration list for PBXProject "App" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 4102E3E068508DD683953C7D;
+			productRefGroup = E9C3DB3EC6D7655028A9C0D3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				93E9E330FC2CE7458D9C925F /* App */,
+				99DCC7BD0ABB09C467644299 /* AppTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		16B5BCA1617F96ED51DB718E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		37BFF6A8CB5CC7FA21AD3FA3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C2147A9C3C35B939C48A78D7 /* Assets.xcassets in Resources */,
+				DB23E62EBDC79B1B80A989F2 /* Preview Assets.xcassets in Resources */,
+				10ED8049C186AF1B9F99289E /* KSCrash_KSCrashCore.bundle in Resources */,
+				8DFEED91504493697FC142D1 /* KSCrash_KSCrashDemangleFilter.bundle in Resources */,
+				FB0DCB899387D4EA783219CA /* KSCrash_KSCrashFilters.bundle in Resources */,
+				4AFE35DBB747BF6B1D028FC7 /* KSCrash_KSCrashInstallations.bundle in Resources */,
+				7E59D81842699F4CA864D300 /* KSCrash_KSCrashRecording.bundle in Resources */,
+				B23DC8FA9BD6EED24D3C15F9 /* KSCrash_KSCrashRecordingCore.bundle in Resources */,
+				95B1DF54F5D8FB6DAFBDF556 /* KSCrash_KSCrashReportingCore.bundle in Resources */,
+				26C3497C65D9B5C6DD828C44 /* KSCrash_KSCrashSinks.bundle in Resources */,
+				582CF156B9E285D79A6FBBA7 /* swift-crypto_CCryptoBoringSSL.bundle in Resources */,
+				AD4A5D95FCB55FEA289698FF /* swift-crypto_CCryptoBoringSSLShims.bundle in Resources */,
+				197A11315BE24F8AA0D39712 /* swift-crypto_Crypto.bundle in Resources */,
+				2DB513EDCBF674D75DC5A228 /* swift-crypto_CryptoBoringWrapper.bundle in Resources */,
+				F2ED8CE8BB3E1FD867810AD4 /* swift-crypto__CryptoExtras.bundle in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B77F0AF073564580D75A2CF1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D901037C14A747B1D5DB253D /* AppApp.swift in Sources */,
+				7F822456C55CFF4C7A251966 /* ContentView.swift in Sources */,
+				2E743A6F76CCB6064D781210 /* TuistAssets+App.swift in Sources */,
+				FE078F42728C23B77EE02A1B /* TuistBundle+App.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F2209317AB8C886394D02ACA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				566CEB29E3A8E5E9D938AE99 /* AppTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		96AA6D50C1AA746282D306B3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = App;
+			target = 93E9E330FC2CE7458D9C925F /* App */;
+			targetProxy = 32EAB22E4CA94300DDDCDCCB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2EF40DF1E108E618D0D1371B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/ADT",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/Config",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/Support",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/swift",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/swift/Basic",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashFilters/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashInstallations/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording/Monitors",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecordingCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashReportingCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashSinks/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/AppTests-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashCore/KSCrashCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashDemangleFilter/KSCrashDemangleFilter.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashFilters/KSCrashFilters.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashInstallations/KSCrashInstallations.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecording/KSCrashRecording.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecordingCore/KSCrashRecordingCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashReportingCore/KSCrashReportingCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashSinks/KSCrashSinks.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashCore/KSCrashCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashDemangleFilter/KSCrashDemangleFilter.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashFilters/KSCrashFilters.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashInstallations/KSCrashInstallations.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecording/KSCrashRecording.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecordingCore/KSCrashRecordingCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashReportingCore/KSCrashReportingCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashSinks/KSCrashSinks.modulemap",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.app.tests;
+				PRODUCT_NAME = AppTests;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/App";
+				TEST_TARGET_NAME = App;
+			};
+			name = Release;
+		};
+		4A0C935808978B5A7673E412 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/ADT",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/Config",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/Support",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/swift",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/swift/Basic",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashFilters/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashInstallations/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording/Monitors",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecordingCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashReportingCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashSinks/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/App-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashCore/KSCrashCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashDemangleFilter/KSCrashDemangleFilter.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashFilters/KSCrashFilters.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashInstallations/KSCrashInstallations.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecording/KSCrashRecording.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecordingCore/KSCrashRecordingCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashReportingCore/KSCrashReportingCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashSinks/KSCrashSinks.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashCore/KSCrashCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashDemangleFilter/KSCrashDemangleFilter.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashFilters/KSCrashFilters.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashInstallations/KSCrashInstallations.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecording/KSCrashRecording.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecordingCore/KSCrashRecordingCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashReportingCore/KSCrashReportingCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashSinks/KSCrashSinks.modulemap",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.app;
+				PRODUCT_NAME = App;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+					"$(inherited)",
+					DEBUG,
+				);
+				SWIFT_COMPILATION_MODE = singlefile;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5C9EF0E6AF4F9491454DE177 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		E8D703594B18D360433E4667 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/ADT",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/Config",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/Support",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/swift",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/swift/Basic",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashFilters/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashInstallations/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording/Monitors",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecordingCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashReportingCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashSinks/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/AppTests-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashCore/KSCrashCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashDemangleFilter/KSCrashDemangleFilter.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashFilters/KSCrashFilters.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashInstallations/KSCrashInstallations.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecording/KSCrashRecording.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecordingCore/KSCrashRecordingCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashReportingCore/KSCrashReportingCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashSinks/KSCrashSinks.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashCore/KSCrashCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashDemangleFilter/KSCrashDemangleFilter.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashFilters/KSCrashFilters.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashInstallations/KSCrashInstallations.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecording/KSCrashRecording.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecordingCore/KSCrashRecordingCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashReportingCore/KSCrashReportingCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashSinks/KSCrashSinks.modulemap",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.app.tests;
+				PRODUCT_NAME = AppTests;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+					"$(inherited)",
+					DEBUG,
+				);
+				SWIFT_COMPILATION_MODE = singlefile;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/App";
+				TEST_TARGET_NAME = App;
+			};
+			name = Debug;
+		};
+		EB1CC3A930E09FEBECF9195D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/ADT",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/Config",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/llvm/Support",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/swift",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashDemangleFilter/swift/Basic",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashFilters/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashInstallations/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording/Monitors",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecording/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashRecordingCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashReportingCore/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/KSCrash/Sources/KSCrashSinks/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/App-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashCore/KSCrashCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashDemangleFilter/KSCrashDemangleFilter.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashFilters/KSCrashFilters.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashInstallations/KSCrashInstallations.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecording/KSCrashRecording.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecordingCore/KSCrashRecordingCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashReportingCore/KSCrashReportingCore.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashSinks/KSCrashSinks.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSL/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-crypto/Sources/CCryptoBoringSSLShims/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashCore/KSCrashCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashDemangleFilter/KSCrashDemangleFilter.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashFilters/KSCrashFilters.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashInstallations/KSCrashInstallations.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecording/KSCrashRecording.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashRecordingCore/KSCrashRecordingCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashReportingCore/KSCrashReportingCore.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/KSCrashSinks/KSCrashSinks.modulemap",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.app;
+				PRODUCT_NAME = App;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F61063B78755D98B1B9C3697 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B3FD05C59F197F398A0B04AB /* Build configuration list for PBXProject "App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F61063B78755D98B1B9C3697 /* Debug */,
+				5C9EF0E6AF4F9491454DE177 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E5F9A71B7F6D259DCE5E1FD0 /* Build configuration list for PBXNativeTarget "AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E8D703594B18D360433E4667 /* Debug */,
+				2EF40DF1E108E618D0D1371B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FFC1863BD4026D2C17CBE82B /* Build configuration list for PBXNativeTarget "App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4A0C935808978B5A7673E412 /* Debug */,
+				EB1CC3A930E09FEBECF9195D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 6B590BF25178DC7D824D09CE /* Project object */;
+}

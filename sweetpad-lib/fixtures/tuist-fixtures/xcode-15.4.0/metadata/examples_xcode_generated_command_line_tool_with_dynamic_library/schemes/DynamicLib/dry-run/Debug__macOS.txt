@@ -1,0 +1,36 @@
+Command line invocation:
+    /Applications/Xcode-15.4.0.app/Contents/Developer/usr/bin/xcodebuild -dry-run -scheme DynamicLib -configuration Debug -destination platform=macOS -workspace /Users/hyzyla_home/Developer/sweetpad-lib/corpus/tuist-fixtures/examples/xcode/generated_command_line_tool_with_dynamic_library/CommandLineTool.xcworkspace
+
+User defaults from command line:
+    IDEPackageSupportUseBuiltinSCM = YES
+
+Prepare packages
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'DynamicLib' in project 'CommandLineTool' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode-15.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode-15.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -v
+
+ExecuteExternalTool /Applications/Xcode-15.4.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: fa287b45f915b90d46f780e75713773f
+Build description path: /Users/hyzyla_home/Library/Developer/Xcode/DerivedData/CommandLineTool-gyakwcnyifnjbvghoehdouolcfpy/Build/Intermediates.noindex/XCBuildData/fa287b45f915b90d46f780e75713773f.xcbuilddata
+error: -dry-run is not yet supported in the new build system
+objc[98846]: Class _TtC12DVTDownloads14DownloadsAsset is implemented in both /Applications/Xcode-15.4.0.app/Contents/SharedFrameworks/DVTDownloads.framework/Versions/A/DVTDownloads (0x107689ad8) and /Library/Developer/PrivateFrameworks/DVTDownloads.framework/Versions/A/DVTDownloads (0x10f928880). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[98846]: Class _TtC12DVTDownloads16CryptexDiskImage is implemented in both /Applications/Xcode-15.4.0.app/Contents/SharedFrameworks/DVTDownloads.framework/Versions/A/DVTDownloads (0x107688db8) and /Library/Developer/PrivateFrameworks/DVTDownloads.framework/Versions/A/DVTDownloads (0x10f928d68). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[98846]: Class _TtC12DVTDownloads15CommandLineTool is implemented in both /Applications/Xcode-15.4.0.app/Contents/SharedFrameworks/DVTDownloads.framework/Versions/A/DVTDownloads (0x107689988) and /Library/Developer/PrivateFrameworks/DVTDownloads.framework/Versions/A/DVTDownloads (0x10f929d30). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[98846]: Class _TtC12DVTDownloads14DiskImageTools is implemented in both /Applications/Xcode-15.4.0.app/Contents/SharedFrameworks/DVTDownloads.framework/Versions/A/DVTDownloads (0x1076897b8) and /Library/Developer/PrivateFrameworks/DVTDownloads.framework/Versions/A/DVTDownloads (0x10f929de0). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[98846]: Class _TtC12DVTDownloads23SimulatorRuntimeCryptex is implemented in both /Applications/Xcode-15.4.0.app/Contents/SharedFrameworks/DVTDownloads.framework/Versions/A/DVTDownloads (0x107689db0) and /Library/Developer/PrivateFrameworks/DVTDownloads.framework/Versions/A/DVTDownloads (0x10f92a560). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00006030-0018296E1A28001C, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00006030-0018296E1A28001C, name:My Mac }
+** BUILD FAILED **
+

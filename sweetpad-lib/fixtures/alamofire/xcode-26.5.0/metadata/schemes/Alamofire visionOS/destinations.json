@@ -1,0 +1,19 @@
+[
+  {
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-xros:placeholder",
+    "name": "Any visionOS Device",
+    "platform": "visionOS"
+  },
+  {
+    "id": "dvtdevice-DVTiOSDeviceSimulatorPlaceholder-xrsimulator:placeholder",
+    "name": "Any visionOS Simulator Device",
+    "platform": "visionOS Simulator"
+  },
+  {
+    "OS": "26.5",
+    "arch": "arm64",
+    "id": "81E01DEA-8C88-4261-BFD4-1A6C93CED12D",
+    "name": "Apple Vision Pro",
+    "platform": "visionOS Simulator"
+  }
+]

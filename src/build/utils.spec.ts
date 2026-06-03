@@ -1,83 +1,94 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
-import { LaunchAction, SchemeDocument } from "../common/xcode/xcscheme";
 import { launchActionToSettings } from "./utils";
 
-const FIXTURE_DIR = path.resolve(__dirname, "../../tests/xcscheme-data");
+type ArgInput = { argument: string; isEnabled?: boolean };
+type EnvInput = { key: string; value?: string; isEnabled?: boolean };
 
-function loadLaunchAction(fixture: string): LaunchAction {
-  const xml = readFileSync(path.join(FIXTURE_DIR, fixture), "utf8");
-  const doc = SchemeDocument.parse(xml);
-  const action = doc.launchAction();
-  if (!action) throw new Error(`Fixture ${fixture} has no <LaunchAction>`);
-  return action;
+// Build the subset of a parsed scheme (`sweetpadLib.SchemeInfo`) that
+// `launchActionToSettings` reads, defaulting each row to enabled.
+function launch(over: { args?: ArgInput[]; env?: EnvInput[]; language?: string; region?: string }) {
+  return {
+    launchArguments: (over.args ?? []).map((a) => ({ argument: a.argument, isEnabled: a.isEnabled ?? true })),
+    launchEnvironmentVariables: (over.env ?? []).map((e) => ({
+      key: e.key,
+      value: e.value,
+      isEnabled: e.isEnabled ?? true,
+    })),
+    launchLanguage: over.language,
+    launchRegion: over.region,
+  };
 }
 
 describe("launchActionToSettings", () => {
-  it("returns empty settings for a bare LaunchAction", () => {
-    const action = new LaunchAction();
-    expect(launchActionToSettings(action)).toEqual({ args: [], env: {} });
+  it("returns empty settings for a bare launch action", () => {
+    expect(launchActionToSettings(launch({}))).toEqual({ args: [], env: {} });
   });
 
   it("auto-injects -AppleLanguages and -AppleLocale from language + region", () => {
-    const action = new LaunchAction();
-    action.language = "he";
-    action.region = "IL";
-    expect(launchActionToSettings(action).args).toEqual(["-AppleLanguages", "(he)", "-AppleLocale", "he_IL"]);
+    expect(launchActionToSettings(launch({ language: "he", region: "IL" })).args).toEqual([
+      "-AppleLanguages",
+      "(he)",
+      "-AppleLocale",
+      "he_IL",
+    ]);
   });
 
   it("emits -AppleLanguages but not -AppleLocale when only language is set", () => {
-    const action = new LaunchAction();
-    action.language = "ar";
-    expect(launchActionToSettings(action).args).toEqual(["-AppleLanguages", "(ar)"]);
+    expect(launchActionToSettings(launch({ language: "ar" })).args).toEqual(["-AppleLanguages", "(ar)"]);
   });
 
   it("emits no locale flags when only region is set (bare region is not a valid locale id)", () => {
-    const action = new LaunchAction();
-    action.region = "JP";
-    expect(launchActionToSettings(action).args).toEqual([]);
+    expect(launchActionToSettings(launch({ region: "JP" })).args).toEqual([]);
   });
 
-  it("tokenizes <CommandLineArgument> rows on whitespace", () => {
-    const action = new LaunchAction();
-    action.addCommandLineArgument({ argument: "-AppleLanguages (he)" });
-    action.addCommandLineArgument({ argument: "--flag" });
-    expect(launchActionToSettings(action).args).toEqual(["-AppleLanguages", "(he)", "--flag"]);
+  it("tokenizes command-line argument rows on whitespace", () => {
+    expect(
+      launchActionToSettings(launch({ args: [{ argument: "-AppleLanguages (he)" }, { argument: "--flag" }] })).args,
+    ).toEqual(["-AppleLanguages", "(he)", "--flag"]);
   });
 
-  it("skips disabled CommandLineArguments", () => {
-    const action = new LaunchAction();
-    action.addCommandLineArgument({ argument: "--keep" });
-    action.addCommandLineArgument({ argument: "--skip", isEnabled: false });
-    expect(launchActionToSettings(action).args).toEqual(["--keep"]);
+  it("skips disabled command-line arguments", () => {
+    expect(
+      launchActionToSettings(launch({ args: [{ argument: "--keep" }, { argument: "--skip", isEnabled: false }] })).args,
+    ).toEqual(["--keep"]);
   });
 
-  it("collects enabled EnvironmentVariables and drops disabled ones", () => {
-    const action = new LaunchAction();
-    action.addEnvironmentVariable({ key: "KEEP", value: "1" });
-    action.addEnvironmentVariable({ key: "SKIP", value: "x", isEnabled: false });
-    expect(launchActionToSettings(action).env).toEqual({ KEEP: "1" });
+  it("collects enabled environment variables and drops disabled ones", () => {
+    expect(
+      launchActionToSettings(
+        launch({
+          env: [
+            { key: "KEEP", value: "1" },
+            { key: "SKIP", value: "x", isEnabled: false },
+          ],
+        }),
+      ).env,
+    ).toEqual({ KEEP: "1" });
   });
 
-  it("extracts the discussion #197 wikipedia-ios-rtl fixture end-to-end", () => {
-    const action = loadLaunchAction("wikipedia-ios-rtl.xcscheme");
-    const { args, env } = launchActionToSettings(action);
-    // The fixture has language="he" region="IL" *and* explicit -AppleLanguages /
-    // -AppleLocale CLI args. Both flow through (Xcode keeps both; Foundation
-    // reads the first match).
+  it("drops environment variables with no value (distinct from empty string)", () => {
+    expect(launchActionToSettings(launch({ env: [{ key: "NOVALUE" }, { key: "EMPTY", value: "" }] })).env).toEqual({
+      EMPTY: "",
+    });
+  });
+
+  it("keeps both explicit locale args and language/region attrs (discussion #197)", () => {
+    const { args } = launchActionToSettings(
+      launch({
+        args: [
+          { argument: "-AppleLanguages (he)" },
+          { argument: "-AppleLocale he_IL" },
+          { argument: "-WMFVisualTestBatchRecordMode" },
+        ],
+        language: "he",
+        region: "IL",
+      }),
+    );
+    // The explicit CLI args and the language/region attrs both flow through;
+    // Foundation reads the first match at launch.
     expect(args).toContain("-WMFVisualTestBatchRecordMode");
     expect(args.filter((a) => a === "-AppleLanguages")).toHaveLength(2);
     expect(args.filter((a) => a === "-AppleLocale")).toHaveLength(2);
     expect(args).toContain("(he)");
     expect(args).toContain("he_IL");
-    expect(env).toEqual({});
-  });
-
-  it("extracts EnvironmentVariables from the signal-ios-staging fixture", () => {
-    const action = loadLaunchAction("signal-ios-staging.xcscheme");
-    const { env } = launchActionToSettings(action);
-    expect(env.OS_ACTIVITY_MODE).toBe("disable");
-    expect(env.USE_STAGING).toBe("1");
   });
 });

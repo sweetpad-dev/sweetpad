@@ -1,0 +1,57 @@
+// Copyright © 2015-2023 Apple Inc.  All rights reserved.
+(
+
+    {
+        Type = ProductType;
+        Identifier = com.apple.product-type.application;
+        BasedOn = embedded:com.apple.product-type.application;
+        IsEmbeddable = YES;
+        BuildPhaseInjectionsWhenEmbedding = (
+            {
+                BuildPhase = "CopyFiles";
+                Name = "Embed Watch Content";
+                RunOnlyForDeploymentPostprocessing = NO;
+                DstSubFolderSpec = 16;
+                DstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+            }
+        );
+    },
+
+    // --- Architectures
+    {   Type = Architecture;
+        Identifier = Standard;
+        Name = "Standard Architectures";
+        Description = "Standard architectures";
+        ListInEnum = YES;
+        SortNumber = 0;
+        RealArchitectures = ( arm64, armv7k, arm64_32 );
+        ArchitectureSetting = "ARCHS_STANDARD";
+    },
+
+    {   Type = Architecture;
+        Identifier = armv7k;
+        Name = "armv7k";
+        DeploymentTargetRange = ( "0", "9" );
+        SupportsMergeableLibraries = NO;
+    },
+    {   Type = Architecture;
+        Identifier = arm64_32;
+        CompatibilityArchitectures = ( arm64 );
+    },
+    {   Type = Architecture;
+        Identifier = arm64;
+    },
+    {   Type = Architecture;
+        Identifier = arm64e;
+        CompatibilityArchitectures = ( arm64 );   // treat this one just like arm64 for toolchain compatibility
+    },
+
+    // DEPRECATED
+
+    {   Type = Architecture;
+        Identifier = Platform32_bit;
+        RealArchitectures = ( armv7k, arm64_32 );
+        ArchitectureSetting = "ARCHS_STANDARD_32_BIT";
+    },
+
+)

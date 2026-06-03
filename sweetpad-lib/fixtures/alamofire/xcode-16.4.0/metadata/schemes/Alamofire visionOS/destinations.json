@@ -1,0 +1,8 @@
+[
+  {
+    "error": "visionOS 2.5 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-xros:placeholder",
+    "name": "Any visionOS Device",
+    "platform": "visionOS"
+  }
+]

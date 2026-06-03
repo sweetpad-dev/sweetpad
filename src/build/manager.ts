@@ -5,7 +5,6 @@ import * as vscode from "vscode";
 
 import {
   type XcodeScheme,
-  getBasicProjectInfo,
   getBuildSettingsToLaunch,
   getIsXcbeautifyInstalled,
   getIsXcodeBuildServerInstalled,
@@ -168,8 +167,6 @@ export class BuildManager {
 
       this.emitter.emit("refreshSchemesStarted");
       try {
-        getBasicProjectInfo.clearCache();
-
         const xcworkspace = getCurrentXcodeWorkspacePath(this.workspace);
 
         const schemes = await getSchemes({ xcworkspace: xcworkspace });

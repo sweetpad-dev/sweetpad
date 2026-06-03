@@ -1,0 +1,36 @@
+{
+  "name": "@sweetpad/lib",
+  "version": "0.1.1",
+  "description": "Internal — do not use. Rust resolver for Xcode build settings, exposed to Node via N-API for the SweetPad VS Code extension.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sweetpad-dev/sweetpad-lib.git"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "sweetpad-lib.darwin-universal.node"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "napi": {
+    "binaryName": "sweetpad-lib",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "universal-apple-darwin"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release --features node",
+    "build:debug": "napi build --platform --features node",
+    "universalize": "napi universalize"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.0.0"
+  }
+}

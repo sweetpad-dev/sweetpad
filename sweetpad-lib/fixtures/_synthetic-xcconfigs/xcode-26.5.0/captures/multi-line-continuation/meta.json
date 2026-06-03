@@ -1,0 +1,11 @@
+{
+  "configuration": "Debug",
+  "description": "Multi-line continuation in xcconfig",
+  "destination": "platform=macOS",
+  "name": "multi-line-continuation",
+  "ok_with": true,
+  "ok_without": true,
+  "project": "project/Scratch.xcodeproj",
+  "target": "Scratch",
+  "xcconfig": "xcconfigs/multi-line-continuation.xcconfig"
+}

@@ -1,0 +1,3 @@
+// Tests #include directive.
+#include "conditional-sdk.xcconfig"
+EXTRA = layered

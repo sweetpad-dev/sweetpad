@@ -1,0 +1,33 @@
+/*
+    Copyright (c) 2000-2010 Apple Inc.  All Rights Reserved.
+*/
+(
+    {   Type = Linker;
+        Identifier = com.apple.pbx.linkers.resmerger;
+        Class = PBXLinkerSpecificationResMerger;
+        Name = "ResMerger";
+        Description = "Create a Carbon resource file using Apple's Carbon Resource Merger";
+        IsAbstract = Yes;       // This is an internal tool, so we keep it out of the user interface
+        BinaryFormats = (rsrc);
+        CommandLine = "$(DEVELOPER_BIN_DIR)/ResMerger [inputs] [options] -o $(OutputPath)";
+        RuleName = "ResMergerCollector $(OutputPath:file) $(variant) $(arch)";
+        ExecDescription = "Merge resources into $(OutputFile:file)";
+        ProgressDescription = "Merging resources";
+        InputFileTypes = (
+            archive.rsrc
+        );
+        InputFileGroupings = (
+            region
+        );
+        SynthesizeBuildRule = YES;
+        IsArchitectureNeutral = YES;
+        Outputs = (
+        );
+        CommandOutputParser = (
+            ("file (.*)() ### /.*/Tools/ResMerger - Warning: (.*)$", emit-warning),
+            ("file (.*)() ### /.*/Tools/ResMerger - ERROR: (.*)$", emit-error)
+        );
+        Options = (
+        );
+    }
+)

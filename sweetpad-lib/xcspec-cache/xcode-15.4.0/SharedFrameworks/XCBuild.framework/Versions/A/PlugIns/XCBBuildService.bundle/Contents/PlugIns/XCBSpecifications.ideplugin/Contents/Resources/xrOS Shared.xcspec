@@ -1,0 +1,28 @@
+// Copyright (c) 2018 Apple Inc. All rights reserved.
+(
+    {
+        Type = BuildStep;
+        Identifier = "com.apple.buildstep.copy-messages-application-stub";
+        BuildStepType = AdditionalBuildPhase;
+        Class = "XCBuildStepSpecification_CopyMessagesApplicationStub";
+    },
+
+    {
+        Type = BuildStep;
+        Identifier = "com.apple.buildstep.copy-messages-application-extension-stub";
+        BuildStepType = AdditionalBuildPhase;
+        Class = "XCBuildStepSpecification_CopyMessagesApplicationExtensionStub";
+    },
+    {
+        Type = Compiler;
+        Identifier = "com.apple.compilers.assetcatalog";
+        BasedOn = "default:com.apple.compilers.assetcatalog";
+        Options = (
+            {
+                Name = "ASSETCATALOG_COMPILER_FLATTENED_APP_ICON_PATH";
+                Type = String;
+                CommandLineFlag = "--flattened-app-icon-path";
+            },
+        );
+    },
+)

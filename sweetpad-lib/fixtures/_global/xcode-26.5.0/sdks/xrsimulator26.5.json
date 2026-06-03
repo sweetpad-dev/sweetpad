@@ -1,0 +1,43 @@
+{
+  "canonicalName": "xrsimulator26.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/XRSimulator.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "26.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "23O469"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/XRSimulator.platform/Developer/SDKs/XRSimulator26.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "26.5"
+  },
+  "showsdks_entry": {
+    "buildID": "90B58D26-4050-11F1-B599-6582232D8809",
+    "canonicalName": "xrsimulator26.5",
+    "displayName": "Simulator - visionOS 26.5",
+    "iOSSupportVersion": "26.5",
+    "isBaseSdk": true,
+    "platform": "xrsimulator",
+    "platformPath": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/XRSimulator.platform",
+    "platformVersion": "26.5",
+    "productBuildVersion": "23O469",
+    "productCopyright": "1983-2026 Apple Inc.",
+    "productName": "xrOS",
+    "productVersion": "26.5",
+    "sdkPath": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/XRSimulator.platform/Developer/SDKs/XRSimulator26.5.sdk",
+    "sdkVersion": "26.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "XRSimulator26.5.sdk - Simulator - visionOS 26.5 (xrsimulator26.5)\nSDKVersion: 26.5\nPath: /Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/XRSimulator.platform/Developer/SDKs/XRSimulator26.5.sdk\nPlatformVersion: 26.5\nPlatformPath: /Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/XRSimulator.platform\nBuildID: 90B58D26-4050-11F1-B599-6582232D8809\nProductBuildVersion: 23O469\nProductCopyright: 1983-2026 Apple Inc.\nProductName: xrOS\nProductVersion: 26.5\niOSSupportVersion: 26.5\n\n"
+  }
+}

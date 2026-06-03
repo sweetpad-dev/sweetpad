@@ -1,0 +1,42 @@
+{
+  "canonicalName": "watchos10.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/WatchOS.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "10.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "21T569"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/WatchOS.platform/Developer/SDKs/WatchOS10.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "10.5"
+  },
+  "showsdks_entry": {
+    "buildID": "6704BF24-02C2-11EF-BB7D-11853F84A89C",
+    "canonicalName": "watchos10.5",
+    "displayName": "watchOS 10.5",
+    "isBaseSdk": true,
+    "platform": "watchos",
+    "platformPath": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/WatchOS.platform",
+    "platformVersion": "10.5",
+    "productBuildVersion": "21T569",
+    "productCopyright": "1983-2024 Apple Inc.",
+    "productName": "Watch OS",
+    "productVersion": "10.5",
+    "sdkPath": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/WatchOS.platform/Developer/SDKs/WatchOS10.5.sdk",
+    "sdkVersion": "10.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "WatchOS10.5.sdk - watchOS 10.5 (watchos10.5)\nSDKVersion: 10.5\nPath: /Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/WatchOS.platform/Developer/SDKs/WatchOS10.5.sdk\nPlatformVersion: 10.5\nPlatformPath: /Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/WatchOS.platform\nBuildID: 6704BF24-02C2-11EF-BB7D-11853F84A89C\nProductBuildVersion: 21T569\nProductCopyright: 1983-2024 Apple Inc.\nProductName: Watch OS\nProductVersion: 10.5\n\n"
+  }
+}

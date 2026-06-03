@@ -1,0 +1,78 @@
+(
+    {
+        Identifier = "com.apple.build-tasks.compile-rc-project.xcplugin";
+        Type = Compiler;
+        Name = "Compile Reality Composer Project";
+        Description = "Compile Reality Composer project.";
+        Version = Default;
+        Vendor = Apple;
+        CommandLine = "rctool export [options] -o=$(ProductResourcesDir) $(InputFile)";
+        RuleName = "CompileRC $(OutputFile) $(InputFile)";
+        ExecDescription = "Compile RC Project $(InputFileName)";
+        ProgressDescription = "Compiling $(CommandProgressByType) RC Project";
+        SynthesizeBuildRule = YES;
+        "IsArchitectureNeutral" = YES;
+        "DeeplyStatInputDirectories" = Yes;
+        InputFileTypes = (
+            "file.rcproject",
+        );
+        Outputs = (
+            "$(ProductResourcesDir)/$(InputFileBase).reality",
+        );
+        Options = (
+            {
+                Name = "RCPROJECT_ENABLE_WARNINGS";
+                DisplayName = "Enable Reality Composer Generation Warnings";
+                Type = Enumeration;
+                Values = (
+                    {   Value = "Yes";
+                        CommandLineArgs = ( );
+                    },
+                    {   Value = "No";
+                        CommandLineArgs = ( "-g" );
+                    },
+                );
+                DefaultValue = "Yes";
+                Category = "Compiler Options";
+            },
+            {
+                Name = "RCPROJECT_CODEGEN_LANGUAGE";
+                DisplayName = "Reality Composer Generation Language";
+                Description = "The Source-code language to use for generated RC objects.  By default Xcode will generate Swift types that represent the objects in your scene.  Adjust this setting to explicitly select \"Swift\", or select \"None\" to disable RC object generation.";
+                Type = enum;
+                Values = (
+                    "Swift",
+                    "Automatic",
+                    "None"
+                );
+                DefaultValue = "Swift";
+                Category = "Code Generation";
+            },
+            {
+                Name = "RCPROJECT_CODEGEN_SWIFT_VERSION";
+                DisplayName = "Reality Composer Generation Swift Version";
+                Type = String;
+                DefaultValue = "$(SWIFT_VERSION)";
+                Category = "Code Generation";
+            },
+            {
+                Name = "OTHER_RCPROJECT_FLAGS";
+                DisplayName = "Other Reality Composer Project Compiler flags";
+                Type = StringList;
+                DefaultValue = "";
+                CommandLineFlag = "";
+                Category = "Compiler Options";
+            }
+        );
+        CommandOutputParser = (
+            (
+                "^([^:]*):([^:]*)warning: (.*)$",
+                "emit-warning",
+            ),
+            (
+                "^([^:]*):([^:]*)error: (.*)$",
+                "emit-error",
+            ),
+        );
+    },
+)

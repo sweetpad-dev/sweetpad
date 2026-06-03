@@ -1,0 +1,57 @@
+//  Copyright © 2015-2016 Apple Inc. All rights reserved.
+(
+
+
+    {
+        Type = BuildSystem;
+        Identifier = com.apple.build-system.core;
+        BasedOn = "embedded:com.apple.build-system.core";
+        DeletedProperties = ( PROVISIONING_PROFILE, CODE_SIGN_ENTITLEMENTS );
+        Properties = (
+        );
+    },
+
+    {
+        Type = BuildSystem;
+        Identifier = com.apple.build-system.native;
+        BasedOn = "embedded:com.apple.build-system.native";
+        DeletedProperties = ( PROVISIONING_PROFILE, CODE_SIGN_ENTITLEMENTS );
+        Properties = (
+            {
+                Name = "GCC_ENABLE_EXCEPTIONS";
+                Type = Boolean;
+                DefaultValue = YES;
+            },
+        );
+    },
+
+
+    {   Type = Linker;
+        Identifier = com.apple.pbx.linkers.ld;
+        BasedOn = "embedded:com.apple.pbx.linkers.ld";
+        Class = PBXLinkerSpecificationLd;
+        Name = "Apple Mach-O Linker";
+        Options = (
+            {
+                Name = "LD_ENTITLEMENTS_SECTION";
+                Type = String;
+                DefaultValue = "";
+                IsInputDependency = YES;
+                CommandLineArgs = {
+                    "" = ();
+                    "<<otherwise>>" = ( "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__entitlements", "-Xlinker", "$(value)" );
+                };
+            },
+            {
+                Name = "LD_ENTITLEMENTS_SECTION_DER";
+                Type = String;
+                DefaultValue = "";
+                IsInputDependency = YES;
+                CommandLineArgs = {
+                    "" = ();
+                    "<<otherwise>>" = ( "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__ents_der", "-Xlinker", "$(value)" );
+                };
+            },
+        );
+    },
+)

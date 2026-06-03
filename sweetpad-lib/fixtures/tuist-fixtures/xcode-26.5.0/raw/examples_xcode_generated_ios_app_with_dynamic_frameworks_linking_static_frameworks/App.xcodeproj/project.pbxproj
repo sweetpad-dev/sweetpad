@@ -1,0 +1,1117 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 55;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		019377F0BEA39BD672CEADFB /* UserMessagingPlatformTarget.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 397DAB563DB246A704B92B38 /* UserMessagingPlatformTarget.framework */; };
+		0D420CE53DC234D5CD2C2A57 /* AppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80B719819C3BA1EBB5DC8FD /* AppTests.swift */; };
+		0D8DFD23497748DF646A9EDF /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 669A7179719B0397CFA26563 /* App.swift */; };
+		15F382514E8A3CCFED2B6712 /* UserMessagingPlatform.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 451A7BFE114D7BE2407A0A54 /* UserMessagingPlatform.xcframework */; };
+		1B7FBD14909DD90D58E9A714 /* CasePaths.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1EEBEB53C8803AC8D44217FE /* CasePaths.framework */; };
+		2037A0D23B9FB33475980555 /* Choice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 763833139DDFFAE695B4B170 /* Choice.swift */; };
+		2FB81A2E7C266D5A70A41619 /* GoogleMobileAdsTarget.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C4E0B97D0401DD23C88D85F3 /* GoogleMobileAdsTarget.framework */; };
+		3CA1FCDDFCDA6CA79741ED1E /* Thing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C83A35CEC4CB86E01FB46B7 /* Thing.swift */; };
+		48108A1E223CD7FFA0199E6F /* DynamicFrameworkB.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 76FDE997675B379B9EBC1D44 /* DynamicFrameworkB.framework */; };
+		5765FE02832F1F2B1021DF12 /* DynamicFrameworkA.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AB35156A2E4E4624C53C048 /* DynamicFrameworkA.framework */; };
+		5A6831BCEFDD5D332F8A9A12 /* DynamicFrameworkA.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A35A04592875E0050C5F83 /* DynamicFrameworkA.swift */; };
+		609D1F648A3645B11689BE45 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 026AFE64A4BDFE3E90A8CD4F /* WebKit.framework */; };
+		66D029B686505E07CE8F6BBB /* GoogleMobileAds.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4122B47F87676CCA3E2BBB0C /* GoogleMobileAds.xcframework */; };
+		756692CBDF5A5A462764B460 /* XCTestDynamicOverlay.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09ABCE1D18ED04979D1840E1 /* XCTestDynamicOverlay.framework */; };
+		7F822456C55CFF4C7A251966 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15866952545E0585E1B6A38C /* ContentView.swift */; };
+		A5897FC92D60C5A6E9C38034 /* DynamicFrameworkA.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 5AB35156A2E4E4624C53C048 /* DynamicFrameworkA.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A7204A1CDC4F9FCE1B80AC0A /* CasePathsCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8EC18C8C02F198DC9C7A763A /* CasePathsCore.framework */; };
+		D2DD13A6D682D578D6C03A8F /* IssueReporting.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B023FB040C0F8B8E40B38390 /* IssueReporting.framework */; };
+		DC15101367854626C4E9041D /* DynamicFrameworkB.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 76FDE997675B379B9EBC1D44 /* DynamicFrameworkB.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		32EAB22E4CA94300DDDCDCCB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6B590BF25178DC7D824D09CE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 93E9E330FC2CE7458D9C925F;
+			remoteInfo = App;
+		};
+		81212FFD734C45B5EF5BCA39 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6B590BF25178DC7D824D09CE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 67D8A26495B66A5EB141E64D;
+			remoteInfo = DynamicFrameworkB;
+		};
+		C46DB1C7B4170F807A8ECD4A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6B590BF25178DC7D824D09CE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F10B8A05839EB58F63742A04;
+			remoteInfo = DynamicFrameworkA;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		32C1016586DA85539DC02287 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3EBC7E9DC9D47BCA520BAB2D /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8EFDE6013C818852098745E7 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				A5897FC92D60C5A6E9C38034 /* DynamicFrameworkA.framework in Embed Frameworks */,
+				DC15101367854626C4E9041D /* DynamicFrameworkB.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D25F49BFB28C87787A160520 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		01E1AA015F9EE84780DE15E5 /* App-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "App-Info.plist"; sourceTree = "<group>"; };
+		026AFE64A4BDFE3E90A8CD4F /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk/System/Library/Frameworks/WebKit.framework; sourceTree = DEVELOPER_DIR; };
+		05C205C150A8B60F0BF50551 /* AppTests-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "AppTests-Info.plist"; sourceTree = "<group>"; };
+		09ABCE1D18ED04979D1840E1 /* XCTestDynamicOverlay.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = XCTestDynamicOverlay.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		0C83A35CEC4CB86E01FB46B7 /* Thing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Thing.swift; sourceTree = "<group>"; };
+		15866952545E0585E1B6A38C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		1EEBEB53C8803AC8D44217FE /* CasePaths.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CasePaths.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		397DAB563DB246A704B92B38 /* UserMessagingPlatformTarget.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = UserMessagingPlatformTarget.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		4122B47F87676CCA3E2BBB0C /* GoogleMobileAds.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleMobileAds.xcframework; path = "/Users/hyzyla_home/Developer/sweetpad-lib/corpus/tuist-fixtures/examples/xcode/generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/Tuist/.build/artifacts/swift-package-manager-google-mobile-ads/GoogleMobileAds/GoogleMobileAds.xcframework"; sourceTree = "<absolute>"; };
+		451A7BFE114D7BE2407A0A54 /* UserMessagingPlatform.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = UserMessagingPlatform.xcframework; path = "/Users/hyzyla_home/Developer/sweetpad-lib/corpus/tuist-fixtures/examples/xcode/generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/Tuist/.build/artifacts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatform/UserMessagingPlatform.xcframework"; sourceTree = "<absolute>"; };
+		571E08A9083FD4334E4B7D06 /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5AB35156A2E4E4624C53C048 /* DynamicFrameworkA.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DynamicFrameworkA.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		669A7179719B0397CFA26563 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		763833139DDFFAE695B4B170 /* Choice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Choice.swift; sourceTree = "<group>"; };
+		76FDE997675B379B9EBC1D44 /* DynamicFrameworkB.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DynamicFrameworkB.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		81A35A04592875E0050C5F83 /* DynamicFrameworkA.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicFrameworkA.swift; sourceTree = "<group>"; };
+		8EC18C8C02F198DC9C7A763A /* CasePathsCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CasePathsCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		9C88CAF3D3F3467BBEC79A0A /* DynamicFrameworkA-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "DynamicFrameworkA-Info.plist"; sourceTree = "<group>"; };
+		B023FB040C0F8B8E40B38390 /* IssueReporting.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = IssueReporting.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		B284E2FE7D0C49474783FD63 /* DynamicFrameworkB-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "DynamicFrameworkB-Info.plist"; sourceTree = "<group>"; };
+		B80B719819C3BA1EBB5DC8FD /* AppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTests.swift; sourceTree = "<group>"; };
+		BAFF060C3D8E68253DF6AABA /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C4E0B97D0401DD23C88D85F3 /* GoogleMobileAdsTarget.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = GoogleMobileAdsTarget.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8CB8AEE85FC31EE4A826C233 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AD1385D66AF56C9D5A1E98D4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				609D1F648A3645B11689BE45 /* WebKit.framework in Frameworks */,
+				48108A1E223CD7FFA0199E6F /* DynamicFrameworkB.framework in Frameworks */,
+				2FB81A2E7C266D5A70A41619 /* GoogleMobileAdsTarget.framework in Frameworks */,
+				019377F0BEA39BD672CEADFB /* UserMessagingPlatformTarget.framework in Frameworks */,
+				66D029B686505E07CE8F6BBB /* GoogleMobileAds.xcframework in Frameworks */,
+				15F382514E8A3CCFED2B6712 /* UserMessagingPlatform.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B914D66F7B89086CB0AF5B9A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1B7FBD14909DD90D58E9A714 /* CasePaths.framework in Frameworks */,
+				A7204A1CDC4F9FCE1B80AC0A /* CasePathsCore.framework in Frameworks */,
+				D2DD13A6D682D578D6C03A8F /* IssueReporting.framework in Frameworks */,
+				756692CBDF5A5A462764B460 /* XCTestDynamicOverlay.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BC0DC3536DED64E0E8C9923E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5765FE02832F1F2B1021DF12 /* DynamicFrameworkA.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0E48F6E01F47BA828ED05900 /* DynamicFrameworkA */ = {
+			isa = PBXGroup;
+			children = (
+				81A35A04592875E0050C5F83 /* DynamicFrameworkA.swift */,
+				0C83A35CEC4CB86E01FB46B7 /* Thing.swift */,
+			);
+			path = DynamicFrameworkA;
+			sourceTree = "<group>";
+		};
+		28AD6AC137CB3F41F3DADE4F /* DynamicFrameworkB */ = {
+			isa = PBXGroup;
+			children = (
+				763833139DDFFAE695B4B170 /* Choice.swift */,
+			);
+			path = DynamicFrameworkB;
+			sourceTree = "<group>";
+		};
+		4102E3E068508DD683953C7D = {
+			isa = PBXGroup;
+			children = (
+				E9C3DB3EC6D7655028A9C0D3 /* Products */,
+				52611B11A5E6A7198C4E57A3 /* Project */,
+				BDD1182E50DC622819F25364 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		41B78D6FC5EDDF6BF78E4764 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				669A7179719B0397CFA26563 /* App.swift */,
+				15866952545E0585E1B6A38C /* ContentView.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		52611B11A5E6A7198C4E57A3 /* Project */ = {
+			isa = PBXGroup;
+			children = (
+				F9AE8C25E3709C28DE1D073A /* App */,
+				B3BCDE38B26B330C9A04FADE /* Derived */,
+				0E48F6E01F47BA828ED05900 /* DynamicFrameworkA */,
+				28AD6AC137CB3F41F3DADE4F /* DynamicFrameworkB */,
+			);
+			name = Project;
+			sourceTree = "<group>";
+		};
+		66EB57D721CBB7D427955C21 /* InfoPlists */ = {
+			isa = PBXGroup;
+			children = (
+				01E1AA015F9EE84780DE15E5 /* App-Info.plist */,
+				05C205C150A8B60F0BF50551 /* AppTests-Info.plist */,
+				9C88CAF3D3F3467BBEC79A0A /* DynamicFrameworkA-Info.plist */,
+				B284E2FE7D0C49474783FD63 /* DynamicFrameworkB-Info.plist */,
+			);
+			path = InfoPlists;
+			sourceTree = "<group>";
+		};
+		B3BCDE38B26B330C9A04FADE /* Derived */ = {
+			isa = PBXGroup;
+			children = (
+				66EB57D721CBB7D427955C21 /* InfoPlists */,
+			);
+			path = Derived;
+			sourceTree = "<group>";
+		};
+		BDD1182E50DC622819F25364 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				4122B47F87676CCA3E2BBB0C /* GoogleMobileAds.xcframework */,
+				451A7BFE114D7BE2407A0A54 /* UserMessagingPlatform.xcframework */,
+				026AFE64A4BDFE3E90A8CD4F /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		E9C3DB3EC6D7655028A9C0D3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				571E08A9083FD4334E4B7D06 /* App.app */,
+				BAFF060C3D8E68253DF6AABA /* AppTests.xctest */,
+				1EEBEB53C8803AC8D44217FE /* CasePaths.framework */,
+				8EC18C8C02F198DC9C7A763A /* CasePathsCore.framework */,
+				5AB35156A2E4E4624C53C048 /* DynamicFrameworkA.framework */,
+				76FDE997675B379B9EBC1D44 /* DynamicFrameworkB.framework */,
+				C4E0B97D0401DD23C88D85F3 /* GoogleMobileAdsTarget.framework */,
+				B023FB040C0F8B8E40B38390 /* IssueReporting.framework */,
+				397DAB563DB246A704B92B38 /* UserMessagingPlatformTarget.framework */,
+				09ABCE1D18ED04979D1840E1 /* XCTestDynamicOverlay.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F40CD9BF8AF8506FE9C5D467 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				B80B719819C3BA1EBB5DC8FD /* AppTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		F9AE8C25E3709C28DE1D073A /* App */ = {
+			isa = PBXGroup;
+			children = (
+				41B78D6FC5EDDF6BF78E4764 /* Sources */,
+				F40CD9BF8AF8506FE9C5D467 /* Tests */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		67D8A26495B66A5EB141E64D /* DynamicFrameworkB */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E2F3446A12F9B8E4B0EF4730 /* Build configuration list for PBXNativeTarget "DynamicFrameworkB" */;
+			buildPhases = (
+				10354147D6DC13EBD9900E93 /* Sources */,
+				058DE553BD36DE4196D6304E /* Resources */,
+				B914D66F7B89086CB0AF5B9A /* Frameworks */,
+				D25F49BFB28C87787A160520 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DynamicFrameworkB;
+			packageProductDependencies = (
+			);
+			productName = DynamicFrameworkB;
+			productReference = 76FDE997675B379B9EBC1D44 /* DynamicFrameworkB.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		93E9E330FC2CE7458D9C925F /* App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FFC1863BD4026D2C17CBE82B /* Build configuration list for PBXNativeTarget "App" */;
+			buildPhases = (
+				B77F0AF073564580D75A2CF1 /* Sources */,
+				37BFF6A8CB5CC7FA21AD3FA3 /* Resources */,
+				BC0DC3536DED64E0E8C9923E /* Frameworks */,
+				8EFDE6013C818852098745E7 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C37940A9E965741AAD65193C /* PBXTargetDependency */,
+			);
+			name = App;
+			packageProductDependencies = (
+			);
+			productName = App;
+			productReference = 571E08A9083FD4334E4B7D06 /* App.app */;
+			productType = "com.apple.product-type.application";
+		};
+		99DCC7BD0ABB09C467644299 /* AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E5F9A71B7F6D259DCE5E1FD0 /* Build configuration list for PBXNativeTarget "AppTests" */;
+			buildPhases = (
+				F2209317AB8C886394D02ACA /* Sources */,
+				16B5BCA1617F96ED51DB718E /* Resources */,
+				8CB8AEE85FC31EE4A826C233 /* Frameworks */,
+				32C1016586DA85539DC02287 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				96AA6D50C1AA746282D306B3 /* PBXTargetDependency */,
+			);
+			name = AppTests;
+			packageProductDependencies = (
+			);
+			productName = AppTests;
+			productReference = BAFF060C3D8E68253DF6AABA /* AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		F10B8A05839EB58F63742A04 /* DynamicFrameworkA */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D000335545B6F72D7D71FAF6 /* Build configuration list for PBXNativeTarget "DynamicFrameworkA" */;
+			buildPhases = (
+				9B38064B8004A5610701CF85 /* Sources */,
+				85CA9C53D215D5BC8EAFA44F /* Resources */,
+				AD1385D66AF56C9D5A1E98D4 /* Frameworks */,
+				3EBC7E9DC9D47BCA520BAB2D /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2A452A9144357FDA9E189771 /* PBXTargetDependency */,
+			);
+			name = DynamicFrameworkA;
+			packageProductDependencies = (
+			);
+			productName = DynamicFrameworkA;
+			productReference = 5AB35156A2E4E4624C53C048 /* DynamicFrameworkA.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6B590BF25178DC7D824D09CE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				TargetAttributes = {
+					99DCC7BD0ABB09C467644299 = {
+						TestTargetID = 93E9E330FC2CE7458D9C925F;
+					};
+				};
+			};
+			buildConfigurationList = B3FD05C59F197F398A0B04AB /* Build configuration list for PBXProject "App" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 4102E3E068508DD683953C7D;
+			productRefGroup = E9C3DB3EC6D7655028A9C0D3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				93E9E330FC2CE7458D9C925F /* App */,
+				99DCC7BD0ABB09C467644299 /* AppTests */,
+				F10B8A05839EB58F63742A04 /* DynamicFrameworkA */,
+				67D8A26495B66A5EB141E64D /* DynamicFrameworkB */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		058DE553BD36DE4196D6304E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		16B5BCA1617F96ED51DB718E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		37BFF6A8CB5CC7FA21AD3FA3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		85CA9C53D215D5BC8EAFA44F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		10354147D6DC13EBD9900E93 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2037A0D23B9FB33475980555 /* Choice.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9B38064B8004A5610701CF85 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A6831BCEFDD5D332F8A9A12 /* DynamicFrameworkA.swift in Sources */,
+				3CA1FCDDFCDA6CA79741ED1E /* Thing.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B77F0AF073564580D75A2CF1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0D8DFD23497748DF646A9EDF /* App.swift in Sources */,
+				7F822456C55CFF4C7A251966 /* ContentView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F2209317AB8C886394D02ACA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0D420CE53DC234D5CD2C2A57 /* AppTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2A452A9144357FDA9E189771 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = DynamicFrameworkB;
+			target = 67D8A26495B66A5EB141E64D /* DynamicFrameworkB */;
+			targetProxy = 81212FFD734C45B5EF5BCA39 /* PBXContainerItemProxy */;
+		};
+		96AA6D50C1AA746282D306B3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = App;
+			target = 93E9E330FC2CE7458D9C925F /* App */;
+			targetProxy = 32EAB22E4CA94300DDDCDCCB /* PBXContainerItemProxy */;
+		};
+		C37940A9E965741AAD65193C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = DynamicFrameworkA;
+			target = F10B8A05839EB58F63742A04 /* DynamicFrameworkA */;
+			targetProxy = C46DB1C7B4170F807A8ECD4A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2EF40DF1E108E618D0D1371B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-mobile-ads/GoogleMobileAdsTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatformTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/AppTests-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+					"-load-plugin-executable",
+					"$BUILD_DIR/Debug$EFFECTIVE_PLATFORM_NAME/CasePathsMacros#CasePathsMacros",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.AppTests;
+				PRODUCT_NAME = AppTests;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/App";
+				TEST_TARGET_NAME = App;
+			};
+			name = Release;
+		};
+		4A0C935808978B5A7673E412 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/artifacts/swift-package-manager-google-mobile-ads/GoogleMobileAds",
+					"$(SRCROOT)/Tuist/.build/artifacts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatform",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-mobile-ads/GoogleMobileAdsTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatformTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/App-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+					"-load-plugin-executable",
+					"$BUILD_DIR/Debug$EFFECTIVE_PLATFORM_NAME/CasePathsMacros#CasePathsMacros",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.App;
+				PRODUCT_NAME = App;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+					"$(inherited)",
+					DEBUG,
+				);
+				SWIFT_COMPILATION_MODE = singlefile;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		54C5D5C46D48796771B9CC7F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/DynamicFrameworkB-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-load-plugin-executable",
+					"$BUILD_DIR/Debug$EFFECTIVE_PLATFORM_NAME/CasePathsMacros#CasePathsMacros",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.DynamicFrameworkB;
+				PRODUCT_NAME = DynamicFrameworkB;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+					"$(inherited)",
+					DEBUG,
+				);
+				SWIFT_COMPILATION_MODE = singlefile;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		5C9EF0E6AF4F9491454DE177 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		7819AA05AF567FA46EED3A78 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/artifacts/swift-package-manager-google-mobile-ads/GoogleMobileAds",
+					"$(SRCROOT)/Tuist/.build/artifacts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatform",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-mobile-ads/GoogleMobileAdsTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatformTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/DynamicFrameworkA-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+					"-load-plugin-executable",
+					"$BUILD_DIR/Debug$EFFECTIVE_PLATFORM_NAME/CasePathsMacros#CasePathsMacros",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.DynamicFrameworkA;
+				PRODUCT_NAME = DynamicFrameworkA;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
+		88A2954062F9FBA38FA901B5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/DynamicFrameworkB-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-load-plugin-executable",
+					"$BUILD_DIR/Debug$EFFECTIVE_PLATFORM_NAME/CasePathsMacros#CasePathsMacros",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.DynamicFrameworkB;
+				PRODUCT_NAME = DynamicFrameworkB;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
+		A470C8EAD4CB47BC7C80DFBB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/artifacts/swift-package-manager-google-mobile-ads/GoogleMobileAds",
+					"$(SRCROOT)/Tuist/.build/artifacts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatform",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-mobile-ads/GoogleMobileAdsTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatformTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/DynamicFrameworkA-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+					"-load-plugin-executable",
+					"$BUILD_DIR/Debug$EFFECTIVE_PLATFORM_NAME/CasePathsMacros#CasePathsMacros",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.DynamicFrameworkA;
+				PRODUCT_NAME = DynamicFrameworkA;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+					"$(inherited)",
+					DEBUG,
+				);
+				SWIFT_COMPILATION_MODE = singlefile;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		E8D703594B18D360433E4667 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-mobile-ads/GoogleMobileAdsTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatformTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/AppTests-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+					"-load-plugin-executable",
+					"$BUILD_DIR/Debug$EFFECTIVE_PLATFORM_NAME/CasePathsMacros#CasePathsMacros",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.AppTests;
+				PRODUCT_NAME = AppTests;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+					"$(inherited)",
+					DEBUG,
+				);
+				SWIFT_COMPILATION_MODE = singlefile;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/App";
+				TEST_TARGET_NAME = App;
+			};
+			name = Debug;
+		};
+		EB1CC3A930E09FEBECF9195D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/artifacts/swift-package-manager-google-mobile-ads/GoogleMobileAds",
+					"$(SRCROOT)/Tuist/.build/artifacts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatform",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-mobile-ads/GoogleMobileAdsTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-package-manager-google-user-messaging-platform/UserMessagingPlatformTarget/include",
+					"$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include",
+				);
+				INFOPLIST_FILE = "Derived/InfoPlists/App-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+				);
+				OTHER_SWIFT_FLAGS = (
+					"$(inherited)",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxCShims/include/module.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/GoogleMobileAdsTarget/GoogleMobileAdsTarget.modulemap",
+					"-Xcc",
+					"-fmodule-map-file=$(SRCROOT)/Tuist/.build/tuist-derived/UserMessagingPlatformTarget/UserMessagingPlatformTarget.modulemap",
+					"-load-plugin-executable",
+					"$BUILD_DIR/Debug$EFFECTIVE_PLATFORM_NAME/CasePathsMacros#CasePathsMacros",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.App;
+				PRODUCT_NAME = App;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F61063B78755D98B1B9C3697 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B3FD05C59F197F398A0B04AB /* Build configuration list for PBXProject "App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F61063B78755D98B1B9C3697 /* Debug */,
+				5C9EF0E6AF4F9491454DE177 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D000335545B6F72D7D71FAF6 /* Build configuration list for PBXNativeTarget "DynamicFrameworkA" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A470C8EAD4CB47BC7C80DFBB /* Debug */,
+				7819AA05AF567FA46EED3A78 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E2F3446A12F9B8E4B0EF4730 /* Build configuration list for PBXNativeTarget "DynamicFrameworkB" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				54C5D5C46D48796771B9CC7F /* Debug */,
+				88A2954062F9FBA38FA901B5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E5F9A71B7F6D259DCE5E1FD0 /* Build configuration list for PBXNativeTarget "AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E8D703594B18D360433E4667 /* Debug */,
+				2EF40DF1E108E618D0D1371B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FFC1863BD4026D2C17CBE82B /* Build configuration list for PBXNativeTarget "App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4A0C935808978B5A7673E412 /* Debug */,
+				EB1CC3A930E09FEBECF9195D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 6B590BF25178DC7D824D09CE /* Project object */;
+}

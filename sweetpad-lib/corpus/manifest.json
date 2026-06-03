@@ -1,0 +1,122 @@
+{
+  "captured_at": "2026-05-23T17:38:04Z",
+  "host_macos": "26.5",
+  "manifest_version": 1,
+  "projects": {
+    "alamofire": {
+      "captured_at": "2026-05-23T15:30:59Z",
+      "pin_strategy": "latest-release",
+      "ref": "5.12.0",
+      "repo": "https://github.com/Alamofire/Alamofire.git",
+      "sha": "7595cbcf59809f9977c5f6378500de2ad73b7ddb",
+      "slug": "alamofire"
+    },
+    "ice-cubes": {
+      "captured_at": "2026-05-23T15:30:56Z",
+      "pin_strategy": "latest-release",
+      "ref": "2.1.3",
+      "repo": "https://github.com/Dimillian/IceCubesApp.git",
+      "sha": "99484408ca50d28f01363af45e3697c24bad412d",
+      "slug": "ice-cubes"
+    },
+    "kingfisher": {
+      "captured_at": "2026-05-23T15:31:26Z",
+      "pin_strategy": "latest-release",
+      "ref": "8.9.0",
+      "repo": "https://github.com/onevcat/Kingfisher.git",
+      "sha": "cf8be20d07654570554c8a8a4952bc8a5766a8b0",
+      "slug": "kingfisher"
+    },
+    "netnewswire": {
+      "captured_at": "2026-05-23T15:31:03Z",
+      "pin_strategy": "default-branch",
+      "ref": "main",
+      "repo": "https://github.com/Ranchero-Software/NetNewsWire.git",
+      "sha": "4d1cb6afae1aa7d52c51077f7f40d0d267e8cc4b",
+      "slug": "netnewswire"
+    },
+    "tuist-fixtures": {
+      "captured_at": "2026-05-23T15:31:22Z",
+      "fixtures_selected": [
+        {
+          "category": "basic-app",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_app_with_buildable_folders"
+        },
+        {
+          "category": "frameworks",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_app_with_framework_and_tests"
+        },
+        {
+          "category": "multiplatform",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_ios_app_with_watchapp2"
+        },
+        {
+          "category": "static-linkage",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_ios_app_with_static_frameworks"
+        },
+        {
+          "category": "dynamic-linkage",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_ios_app_with_dynamic_frameworks_linking_static_frameworks"
+        },
+        {
+          "category": "resources",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_ios_app_with_static_framework_with_xcstrings"
+        },
+        {
+          "category": "spm-deps",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_ios_app_with_spm_dependencies"
+        },
+        {
+          "category": "schemes",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_app_with_custom_scheme"
+        },
+        {
+          "category": "non-default-config",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_ios_app_with_custom_configuration"
+        },
+        {
+          "category": "static-library",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_ios_app_with_static_libraries"
+        },
+        {
+          "category": "dynamic-library",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_command_line_tool_with_dynamic_library"
+        },
+        {
+          "category": "coredata",
+          "error": "",
+          "generated": true,
+          "path": "examples/xcode/generated_ios_app_with_coredata"
+        }
+      ],
+      "pin_strategy": "latest-release",
+      "ref": "4.195.6",
+      "repo": "https://github.com/tuist/tuist.git",
+      "sha": "a5c5bbf867ba2dfc9d2ca5ec198e9ddbf1b0e963",
+      "slug": "tuist-fixtures",
+      "tuist_version": "4.158.2"
+    }
+  }
+}

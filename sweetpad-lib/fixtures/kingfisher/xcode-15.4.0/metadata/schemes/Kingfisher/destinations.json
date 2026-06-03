@@ -1,0 +1,36 @@
+[
+  {
+    "arch": "arm64",
+    "id": "00006030-0018296E1A28001C",
+    "name": "My Mac",
+    "platform": "macOS"
+  },
+  {
+    "name": "Any Mac",
+    "platform": "macOS"
+  },
+  {
+    "error": "iOS 17.5 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder",
+    "name": "Any iOS Device",
+    "platform": "iOS"
+  },
+  {
+    "error": "tvOS 17.5 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-appletvos:placeholder",
+    "name": "Any tvOS Device",
+    "platform": "tvOS"
+  },
+  {
+    "error": "visionOS 1.2 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-xros:placeholder",
+    "name": "Any visionOS Device",
+    "platform": "visionOS"
+  },
+  {
+    "error": "watchOS 10.5 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-watchos:placeholder",
+    "name": "Any watchOS Device",
+    "platform": "watchOS"
+  }
+]

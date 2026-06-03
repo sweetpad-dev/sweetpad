@@ -1,0 +1,8 @@
+[
+  {
+    "error": "iOS 17.5 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder",
+    "name": "Any iOS Device",
+    "platform": "iOS"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "appletvos18.5": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk",
+  "appletvsimulator18.5": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/AppleTVSimulator.platform/Developer/SDKs/AppleTVSimulator18.5.sdk",
+  "driverkit24.5": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/DriverKit.platform/Developer/SDKs/DriverKit24.5.sdk",
+  "iphoneos18.5": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk",
+  "iphonesimulator18.5": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk",
+  "macosx15.5": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk",
+  "watchos11.5": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/WatchOS.platform/Developer/SDKs/WatchOS11.5.sdk",
+  "watchsimulator11.5": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/WatchSimulator.platform/Developer/SDKs/WatchSimulator11.5.sdk",
+  "xros2.5": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/XROS.platform/Developer/SDKs/XROS2.5.sdk",
+  "xrsimulator2.5": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/XRSimulator.platform/Developer/SDKs/XRSimulator2.5.sdk"
+}

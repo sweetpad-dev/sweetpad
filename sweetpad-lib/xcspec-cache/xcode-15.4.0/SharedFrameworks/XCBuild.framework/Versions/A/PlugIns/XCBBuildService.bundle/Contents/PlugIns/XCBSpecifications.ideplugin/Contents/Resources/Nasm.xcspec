@@ -1,0 +1,55 @@
+/**
+    Copyright (c) 2006-2010 Apple Inc.
+    All rights reserved.
+*/
+(
+    {   Type = Compiler;
+        Identifier = com.apple.compilers.nasm;
+        Name = "Nasm";
+        Vendor = "Apple";
+        Description = "Assemble Using NASM (Netwide 80x86 Assembler)";
+        CommandLine = "$(DEVELOPER_BIN_DIR)/nasm $(InputFile) [options] -o $(ObjectsDir)/$(InputFileBase)$(InputFileBaseUniquefier).o";
+        RuleName = "Nasm $(ObjectsDir)/$(InputFileBase)$(InputFileBaseUniquefier).o $(InputFile)";
+        ExecDescription = "Assemble $(InputFileName)";
+        ProgressDescription = "Assembling $(CommandProgressByType) files";
+        Architectures = (i386);
+        Languages = (asm.i386);
+        InputFileTypes = (
+            sourcecode.nasm
+        );
+        SynthesizeBuildRule = Yes;
+        Outputs = (
+            "$(ObjectsDir)/$(InputFileBase)$(InputFileBaseUniquefier).o"
+        );
+        CommandOutputParser = XCGccCommandOutputParser;
+        Options = (
+            {   Name = NASM_OUTPUT_FILE_FORMAT;
+                Type = String;
+                DefaultValue = "macho";
+                CommandLinePrefixFlag = "-f";
+            },
+            {   Name = NASM_PREINCLUDE_FILE;
+                Type = String;
+                Category = BuildOptions;
+                DefaultValue = "";
+                CommandLineFlag = "-P";
+            },
+            {   Name = HEADER_SEARCH_PATHS;
+                Type = PathList;
+                DefaultValue = "";
+                CommandLinePrefixFlag = "-I";
+            },
+            {   Name = NASM_OTHER_FLAGS;
+                Type = StringList;
+                Category = BuildOptions;
+                DefaultValue = "";
+                CommandLinePrefixFlag = "";
+            },
+            {   Name = build_file_compiler_flags;
+                Type = StringList;
+                DefaultValue = "";
+                CommandLinePrefixFlag = "";
+            },
+        );
+    }
+)

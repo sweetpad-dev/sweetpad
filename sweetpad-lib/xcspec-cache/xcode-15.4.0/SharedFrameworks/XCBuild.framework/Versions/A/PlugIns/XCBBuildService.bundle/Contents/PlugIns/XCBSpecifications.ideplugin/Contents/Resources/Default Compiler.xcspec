@@ -1,0 +1,28 @@
+/**
+    Copyright (c) 2000-2012 Apple Inc.
+    All Rights Reserved.
+*/
+(
+    {   Type = Compiler;
+        Identifier = com.apple.compilers.gcc;
+        Class = PBXCompilerSpecificationGcc;
+        Name = "Default Compiler";
+        Description = "Default Compiler";
+        Version = "Default";
+        Vendor = "Apple";
+        InputFileTypes = (sourcecode.c.c, sourcecode.c.objc, sourcecode.cpp.cpp, sourcecode.cpp.objcpp, sourcecode.asm);
+        BuiltinJambaseRuleName = "ProcessC";   // <== is this still used?  A.B. 2004.09.20
+        CommandOutputParser = XCGccCommandOutputParser;
+        OptionConditionFlavors = (
+            arch,
+            sdk,
+        );
+        SupportsHeadermaps = Yes;
+        DashIFlagAcceptsHeadermaps = No;
+        SupportsIsysroot = NO;
+        ExecDescription = "Compile $(InputFileName)";
+        ProgressDescription = "Compiling $(CommandProgressByType) source files";
+        ExecDescriptionForPrecompile = "Precompile $(InputFileName)";
+        ProgressDescriptionForPrecompile = "Precompiling $(CommandProgressByType) prefix headers";
+    }
+)

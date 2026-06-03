@@ -1,0 +1,44 @@
+/**
+    Copyright (c) 2004-2007 Apple Inc. All rights reserved.
+*/
+(
+    // Interface Builder file types
+    {   Type = FileType;
+        Identifier = file.xib;
+        BasedOn = file;
+        Name = "Interface Builder files";
+        Extensions = (xib);
+        IncludeInIndex = YES;
+        CanSetIncludeInIndex = YES;
+        AppliesToBuildRules = YES;
+        UTI = "com.apple.interfacebuilder.document.cocoa";
+    },
+    {
+        AppliesToBuildRules = YES;
+        BasedOn = file;
+        CanSetIncludeInIndex = YES;
+        Extensions = (
+            storyboard,
+        );
+        Identifier = "file.storyboard";
+        IncludeInIndex = YES;
+        Name = "Interface Builder Storyboard files";
+        Type = FileType;
+        UTI = "com.apple.dt.interfacebuilder.document.storyboard";
+    },
+    {
+        AppliesToBuildRules = YES;
+        BasedOn = wrapper;
+        CanSetIncludeInIndex = YES;
+        IsWrapperFolder = YES;
+        IsFolder = NO;
+        Extensions = (
+            storyboardc,
+        );
+        Identifier = "wrapper.storyboardc";
+        IncludeInIndex = YES;
+        Name = "Interface Builder Storyboard Package";
+        Type = FileType;
+        UTI = "com.apple.dt.interfacebuilder.document.storyboard.package";
+    },
+)

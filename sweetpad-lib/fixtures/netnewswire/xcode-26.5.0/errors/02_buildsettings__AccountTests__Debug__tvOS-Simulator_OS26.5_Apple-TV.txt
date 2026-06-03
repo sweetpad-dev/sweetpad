@@ -1,0 +1,8 @@
+2026-05-30 21:31:24.795 xcodebuild[99490:80758582] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-05-30 21:31:24.798 xcodebuild[99490:80758582] Writing error result bundle to /var/folders/wq/kkdk740d68qcqvttr995x13w0000gq/T/ResultBundle_2026-30-05_21-31-0024.xcresult
+xcodebuild: error: Could not configure request to show build settings: Unable to find a destination matching the provided destination specifier:
+		{ platform:tvOS Simulator, id:380A5E9B-D988-4247-A158-E035911EC67A }
+
+	Available destinations for the "AccountTests" scheme:
+		{ platform:visionOS Simulator, arch:arm64, variant:Designed for [iPad,iPhone], id:81E01DEA-8C88-4261-BFD4-1A6C93CED12D, OS:26.5, name:Apple Vision Pro }
+

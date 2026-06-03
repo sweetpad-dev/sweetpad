@@ -1,0 +1,140 @@
+2026-05-30 21:14:48.195 xcodebuild[79680:80663533] Writing error result bundle to /var/folders/wq/kkdk740d68qcqvttr995x13w0000gq/T/ResultBundle_2026-30-05_21-14-0048.xcresult
+xcodebuild: error: option '-dry-run' is no longer supported
+
+Usage: xcodebuild [-project <projectname>] [[-target <targetname>]...|-alltargets] [-configuration <configurationname>] [-arch <architecture>]... [-sdk [<sdkname>|<sdkpath>]] [-showBuildSettings [-json]] [<buildsetting>=<value>]... [<buildaction>]...
+       xcodebuild [-project <projectname>] -scheme <schemeName> [-destination <destinationspecifier>]... [-configuration <configurationname>] [-arch <architecture>]... [-sdk [<sdkname>|<sdkpath>]] [-showBuildSettings [-json]] [-showdestinations] [<buildsetting>=<value>]... [<buildaction>]...
+       xcodebuild -workspace <workspacename> -scheme <schemeName> [-destination <destinationspecifier>]... [-configuration <configurationname>] [-arch <architecture>]... [-sdk [<sdkname>|<sdkpath>]] [-showBuildSettings] [-showdestinations] [<buildsetting>=<value>]... [<buildaction>]...
+       xcodebuild -version [-sdk [<sdkfullpath>|<sdkname>] [-json] [<infoitem>] ]
+       xcodebuild -list [[-project <projectname>]|[-workspace <workspacename>]] [-json]
+       xcodebuild -showsdks [-json]
+       xcodebuild -exportArchive -archivePath <xcarchivepath> [-exportPath <destinationpath>] -exportOptionsPlist <plistpath>
+       xcodebuild -exportNotarizedApp -archivePath <xcarchivepath> -exportPath <destinationpath>
+       xcodebuild -exportLocalizations -localizationPath <path> -project <projectname> [-defaultLanguage <language>] [-exportLanguage <targetlanguage>... [-includeScreenshots]]
+       xcodebuild -importLocalizations -localizationPath <path> -project <projectname> [-mergeImport]
+       xcodebuild -resolvePackageDependencies [-project <projectname>|-workspace <workspacename>] -clonedSourcePackagesDirPath <path>
+       xcodebuild -create-xcframework [-help] [-framework <path>] [-library <path> [-headers <path>]] -output <path>
+       xcodebuild -downloadPlatform <iOS|watchOS|tvOS|visionOS>  [-exportPath <destinationpath> -buildVersion <osversion> -architectureVariant <universal|arm64>]
+       xcodebuild -downloadAllPlatforms [-exportPath <destinationpath> -architectureVariant <universal|arm64>]
+       xcodebuild -importPlatform <simruntimedmgpath>
+       xcodebuild -downloadComponent <componenttype> [-exportPath <destinationpath> -buildVersion <assetversion>]
+       xcodebuild -importComponent <componenttype> -importPath <bundlepath>
+       xcodebuild -deleteComponent <componenttype>
+       xcodebuild -showComponent <componenttype> [-json]
+
+Options:
+    -usage                                                   print brief usage
+    -help                                                    print complete usage
+    -verbose                                                 provide additional status output
+    -license                                                 show the Xcode and SDK license agreements
+    -checkFirstLaunchStatus                                  Check if any First Launch tasks need to be performed
+    -runFirstLaunch                                          install packages and agree to the license. Add an `-checkForNewerComponents` flag to check for any additional Xcode Device support components.
+    -downloadAllPlatforms                                    downloads a matching simulator runtime for every platform in this Xcode
+    -prepareDeviceSupport                                    prepares the Device Support symbols folder for the device
+    -platform PLATFORM                                       specify the platform for device support (e.g. iOS, macOS)
+    -osVersion VERSION                                       specify the OS version for device support (e.g. 26.0, 26.2)
+    -modelCode CODE                                          specify the model code for device support - optional (e.g. 'iPhone16,1', 'iMac20,1')
+    -architecture ARCH                                       specify the architecture for device support - optional (e.g. arm64e)
+    -downloadPlatform NAME                                   download the platform NAME
+    -importPlatform DMG_Path                                 import the platform NAME
+    -downloadComponent NAME                                  downloads the specified component. Supported component: MetalToolchain.
+    -importComponent NAME                                    import the component NAME
+    -deleteComponent NAME                                    delete the component NAME
+    -showComponent NAME                                      show details for the specified component NAME
+    -project NAME                                            build the project NAME
+    -target NAME                                             build the target NAME
+    -alltargets                                              build all targets
+    -workspace NAME                                          build the workspace NAME
+    -scheme NAME                                             build the scheme NAME
+    -configuration NAME                                      use the build configuration NAME for building each target
+    -xcconfig PATH                                           apply the build settings defined in the file at PATH as overrides
+    -arch ARCH                                               build each target for the architecture ARCH; this will override architectures defined in the project
+    -sdk SDK                                                 use SDK as the name or path of the base SDK when building the project
+    -toolchain NAME                                          use the toolchain with identifier or name NAME
+    -destination DESTINATIONSPECIFIER                        use the destination described by DESTINATIONSPECIFIER (a comma-separated set of key=value pairs describing the destination to use)
+    -destination-timeout TIMEOUT                             wait for TIMEOUT seconds while searching for the destination device
+    -parallelizeTargets                                      build independent targets in parallel
+    -jobs NUMBER                                             specify the maximum number of concurrent build operations
+    -maximum-concurrent-test-device-destinations NUMBER      the maximum number of device destinations to test on concurrently
+    -maximum-concurrent-test-simulator-destinations NUMBER   the maximum number of simulator destinations to test on concurrently
+    -parallel-testing-enabled YES|NO                         overrides the per-target setting in the scheme
+    -parallel-testing-worker-count NUMBER                    the exact number of test runners that will be spawned during parallel testing
+    -maximum-parallel-testing-workers NUMBER                 the maximum number of test runners that will be spawned during parallel testing
+    -quiet                                                   do not print any output except for warnings and errors
+    -hideShellScriptEnvironment                              don't show shell script environment variables in build log
+    -showsdks                                                display a compact list of the installed SDKs
+    -showdestinations                                        display a list of destinations
+    -showTestPlans                                           display a list of test plans
+    -showBuildSettings                                       display a list of build settings and values
+    -showBuildSettingsForIndex                               display build settings for the index service
+    -list                                                    lists the targets and configurations in a project, or the schemes in a workspace
+    -find-executable NAME                                    display the full path to executable NAME in the provided SDK and toolchain
+    -find-library NAME                                       display the full path to library NAME in the provided SDK and toolchain
+    -version                                                 display the version of Xcode; with -sdk will display info about one or all installed SDKs
+    -enableAddressSanitizer YES|NO                           turn the address sanitizer on or off
+    -enableThreadSanitizer YES|NO                            turn the thread sanitizer on or off
+    -enableUndefinedBehaviorSanitizer YES|NO                 turn the undefined behavior sanitizer on or off
+    -resultBundlePath PATH                                   specifies the directory where a result bundle describing what occurred will be placed
+    -resultStreamPath PATH                                   specifies the file where a result stream will be written to (the file must already exist)
+    -resultBundleVersion 3 [default]                         specifies which result bundle version should be used
+    -clonedSourcePackagesDirPath PATH                        specifies the directory to which remote source packages are fetch or expected to be found
+    -derivedDataPath PATH                                    specifies the directory where build products and other derived data will go
+    -archivePath PATH                                        specifies the directory where any created archives will be placed, or the archive that should be exported
+    -exportArchive                                           specifies that an archive should be exported
+    -exportNotarizedApp                                      export an archive that has been notarized by Apple
+    -exportOptionsPlist PATH                                 specifies a path to a plist file that configures archive exporting
+    -enableCodeCoverage YES|NO                               turn code coverage on or off when testing
+    -exportPath PATH                                         specifies the destination for the product exported from an archive
+    -importPath PATH                                         specifies the source location for the product that will be imported
+    -skipUnavailableActions                                  specifies that scheme actions that cannot be performed should be skipped instead of causing a failure
+    -exportLocalizations                                     exports completed and outstanding project localizations
+    -importLocalizations                                     imports localizations for a project, assuming any necessary localized resources have been created in Xcode
+    -localizationPath                                        specifies a path to XLIFF localization files
+    -exportLanguage                                          specifies multiple optional ISO 639-1 languages included in a localization export
+    -defaultLanguage                                         specifies the default ISO 639-1 language to be used as the source language on export
+    -xctestrun                                               specifies a path to a test run specification
+    -testProductsPath                                        specifies a path for the test products
+    -enablePerformanceTestsDiagnostics YES|NO                enables performance trace and memgraph collection for performance XCTests
+    -testPlan                                                specifies the name of the test plan associated with the scheme to use for testing
+    -only-testing                                            constrains testing by specifying tests to include, and excluding other tests
+    -only-testing:TEST-IDENTIFIER                            constrains testing by specifying tests to include, and excluding other tests
+    -skip-testing                                            constrains testing by specifying tests to exclude, but including other tests
+    -skip-testing:TEST-IDENTIFIER                            constrains testing by specifying tests to exclude, but including other tests
+    -test-timeouts-enabled YES|NO                            enable or disable test timeout behavior
+    -default-test-execution-time-allowance SECONDS           the default execution time an individual test is given to execute, if test timeouts are enabled
+    -maximum-test-execution-time-allowance SECONDS           the maximum execution time an individual test is given to execute, regardless of the test's preferred allowance
+    -test-iterations <number>                                If specified, tests will run <number> times. May be used in conjunction with either -retry-tests-on-failure or -run-tests-until-failure, in which case this will become the maximum number of iterations.
+    -retry-tests-on-failure                                  If specified, tests will retry on failure. May be used in conjunction with -test-iterations <number>, in which case <number> will be the maximum number of iterations. Otherwise, a maximum of 3 is assumed. May not be used with -run-tests-until-failure.
+    -run-tests-until-failure                                 If specified, tests will run until they fail. May be used in conjunction with -test-iterations <number>, in which case <number> will be the maximum number of iterations. Otherwise, a maximum of 100 is assumed. May not be used with -retry-tests-on-failure.
+    -test-repetition-relaunch-enabled YES|NO                 Enable or disable, tests repeating in a new process for each repetition.  Must be used in conjunction with -test-iterations, -retry-tests-on-failure, or -run-tests-until-failure. If not specified, tests will repeat in the same process.
+    -only-test-configuration                                 constrains testing by specifying test configurations to include, and excluding other test configurations
+    -skip-test-configuration                                 constrains testing by specifying test configurations to exclude, but including other test configurations
+    -collect-test-diagnostics on-failure|never               Whether or not testing collects verbose diagnostics (like a sysdiagnose) when encountering a failure
+    -testLanguage                                            constrains testing by specifying ISO 639-1 language in which to run the tests
+    -testRegion                                              constrains testing by specifying ISO 3166-1 region in which to run the tests
+    -enumerate-tests                                         Enumerate the tests that would be executed by this command without actually executing them
+    -test-enumeration-style                                  The style in which to enumerate the tests. Valid styles: flat, hierarchical
+    -test-enumeration-format                                 The output format of the enumerated tests. Valid formats: text, json
+    -test-enumeration-output-path                            The path (relative or absolute) where the results of test enumeration should be written. If '-' is supplied, writes to standard out.
+    -resolvePackageDependencies                              resolves any Swift package dependencies referenced by the project or workspace
+    -disableAutomaticPackageResolution                       prevents packages from automatically being resolved to versions other than those recorded in the `Package.resolved` file
+    -onlyUsePackageVersionsFromResolvedFile                  prevents packages from automatically being resolved to versions other than those recorded in the `Package.resolved` file
+    -skipPackageUpdates                                      Skip updating package dependencies from their remote
+    -disablePackageRepositoryCache                           disable use of a local cache of remote package repositories
+    -skipPackagePluginValidation                             Skip validation of package plugins (this can be a security risk if they are not from trusted sources)
+    -skipMacroValidation                                     Skip validation of macros (this can be a security risk if they are not from trusted sources)
+    -packageCachePath                                        path of caches used for package support
+    -packageAuthorizationProvider keychain|netrc             Specify the credential store to be used when resolving packages
+    -defaultPackageRegistryURL                               URL of the default package registry
+    -packageDependencySCMToRegistryTransformation            specifies the transformation to apply to SCM-based package dependencies (none, useRegistryIdentity, or useRegistryIdentityAndSources)
+    -skipPackageSignatureValidation                          Skip validation of package signatures (this can be a security risk if they are not from trusted sources)
+    -packageFingerprintPolicy                                Package fingerprint checking policy (`warn` or `strict`)
+    -packageSigningEntityPolicy                              Package signing entity checking policy (`warn` or `strict`)
+    -json                                                    output as JSON (note: -json implies -quiet)
+    -allowProvisioningUpdates                                Allow xcodebuild to communicate with the Apple Developer website. For automatically signed targets, xcodebuild will create and update profiles, app IDs, and certificates. For manually signed targets, xcodebuild will download missing or updated provisioning profiles. Requires a developer account to have been added in Xcode's Accounts settings or an App Store Connect authentication key to be specified via the -authenticationKeyPath, -authenticationKeyID, and -authenticationKeyIssuerID parameters.
+    -allowProvisioningDeviceRegistration                     Allow xcodebuild to register your destination device on the developer portal if necessary. This flag only takes effect if -allowProvisioningUpdates is also passed.
+    -authenticationKeyPath                                   specifies the path to an authentication key issued by App Store Connect. If specified, xcodebuild will authenticate with the Apple Developer website using this credential. The -authenticationKeyID and -authenticationKeyIssuerID parameters are required.
+    -authenticationKeyID                                     specifies the key identifier associated with the App Store Conect authentication key at -authenticationKeyPath. This string can be located in the users and access details for your provider at "https://appstoreconnect.apple.com".
+    -authenticationKeyIssuerID                               specifies the App Store Connect issuer identifier associated with the authentication key at -authenticationKeyPath. This string can be located in the users and access details for your provider at "https://appstoreconnect.apple.com".
+    -scmProvider                                             which implementation to use for Git operations (system/xcode)
+    -showBuildTimingSummary                                  display a report of the timings of all the commands invoked during the build
+    -create-xcframework                                      create an xcframework from prebuilt libraries; -help for more information.

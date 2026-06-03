@@ -1,0 +1,7 @@
+{
+  "configuration": "Debug",
+  "destination": "platform=macOS",
+  "project": "NetNewsWire.xcodeproj",
+  "scheme": "NetNewsWire",
+  "xcconfig": "xcconfig/common/NetNewsWire_debug_identifiers.xcconfig"
+}

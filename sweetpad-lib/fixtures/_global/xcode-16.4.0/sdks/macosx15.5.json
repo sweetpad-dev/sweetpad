@@ -1,0 +1,44 @@
+{
+  "canonicalName": "macosx15.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "15.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "24F74"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "15.5"
+  },
+  "showsdks_entry": {
+    "buildID": "BFCF2A8A-28A1-11F0-9AFD-BCEF5F3A4767",
+    "canonicalName": "macosx15.5",
+    "displayName": "macOS 15.5",
+    "iOSSupportVersion": "18.5",
+    "isBaseSdk": true,
+    "platform": "macosx",
+    "platformPath": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform",
+    "platformVersion": "15.5",
+    "productBuildVersion": "24F74",
+    "productCopyright": "1983-2025 Apple Inc.",
+    "productName": "macOS",
+    "productUserVisibleVersion": "15.5",
+    "productVersion": "15.5",
+    "sdkPath": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk",
+    "sdkVersion": "15.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "MacOSX15.5.sdk - macOS 15.5 (macosx15.5)\nSDKVersion: 15.5\nPath: /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk\nPlatformVersion: 15.5\nPlatformPath: /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform\nBuildID: BFCF2A8A-28A1-11F0-9AFD-BCEF5F3A4767\nProductBuildVersion: 24F74\nProductCopyright: 1983-2025 Apple Inc.\nProductName: macOS\nProductUserVisibleVersion: 15.5\nProductVersion: 15.5\niOSSupportVersion: 18.5\n\n"
+  }
+}

@@ -1,7 +1,7 @@
 import type { RpcDispatch } from "../rpc";
 import { buildDiagnostics, buildList, buildLogs, buildStart, buildStatus, buildStop, buildWait } from "./build";
 import { buildConfigGet, buildConfigList, buildConfigSet } from "./build-config";
-import { appPathFind, bundleIdGet, buildSettingsGet, derivedDataPath, xcodebuildList } from "./build-settings";
+import { appPathFind, bundleIdGet, buildSettingsGet, derivedDataPath } from "./build-settings";
 import type { HandlerFn, RpcContext } from "./context";
 import { destinationGet, destinationList, destinationSet } from "./destination";
 import { deviceInstall, deviceLaunch, deviceTerminate } from "./device";
@@ -19,6 +19,7 @@ import {
   simulatorUninstall,
 } from "./simulator-app";
 import { stateGet } from "./state";
+import { targetList } from "./target";
 import {
   vscodeExecuteCommand,
   vscodeSettingsGet,
@@ -77,7 +78,7 @@ export function buildDispatch(ctx: RpcContext): RpcDispatch {
     "buildConfig.set": bind(buildConfigSet),
 
     "buildSettings.get": bind(buildSettingsGet),
-    "xcodebuild.list": bind(xcodebuildList),
+    "target.list": bind(targetList),
     "appPath.find": bind(appPathFind),
     "derivedData.path": bind(derivedDataPath),
     "bundleId.get": bind(bundleIdGet),

@@ -1,0 +1,37 @@
+[package]
+name = "sweetpad"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+description = "Resolver and tooling for Xcode project files (pbxproj, xcconfig, schemes) and build settings."
+authors = ["Yevhenii Hyzyla <hyzyla@gmail.com>"]
+publish = false
+
+# The resolver is interface-agnostic: every `src/*` module except `node.rs`
+# knows nothing about any binding technology. `rlib` for integration tests and
+# future bindings; `cdylib` for the N-API node addon. A second interface (e.g. a
+# PyO3 `python.rs`) would be another feature-gated thin module over the same core.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Compiles the `src/node.rs` N-API bindings into the cdylib. Off by default so
+# `cargo test` (and the interface-agnostic core) never link the Node runtime.
+node = ["dep:napi", "dep:napi-derive"]
+
+[dependencies]
+napi = { version = "3", default-features = false, features = ["napi8"], optional = true }
+napi-derive = { version = "3", optional = true }
+
+[build-dependencies]
+napi-build = "2"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+# Apple identifiers (ProductType, OpenStep, BuildSystem, etc.) appear in doc
+# comments in their natural casing; backtick-wrapping all of them is noise.
+doc_markdown = "allow"

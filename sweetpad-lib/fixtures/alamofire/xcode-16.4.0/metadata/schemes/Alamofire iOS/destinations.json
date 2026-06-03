@@ -1,0 +1,27 @@
+[
+  {
+    "arch": "arm64",
+    "id": "00006030-0018296E1A28001C",
+    "name": "My Mac",
+    "platform": "macOS",
+    "variant": "Mac Catalyst"
+  },
+  {
+    "name": "Any Mac",
+    "platform": "macOS",
+    "variant": "Mac Catalyst"
+  },
+  {
+    "arch": "arm64e",
+    "error": "iOS 18.5 is not installed. To use with Xcode",
+    "id": "00008110-000559182E90401E",
+    "name": "Iphone 13",
+    "platform": "iOS"
+  },
+  {
+    "error": "iOS 18.5 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder",
+    "name": "Any iOS Device",
+    "platform": "iOS"
+  }
+]

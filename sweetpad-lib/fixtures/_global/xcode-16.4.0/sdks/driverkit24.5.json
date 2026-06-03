@@ -1,0 +1,37 @@
+{
+  "canonicalName": "driverkit24.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/DriverKit.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "24.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": ""
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/DriverKit.platform/Developer/SDKs/DriverKit24.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "24.5"
+  },
+  "showsdks_entry": {
+    "canonicalName": "driverkit24.5",
+    "displayName": "DriverKit 24.5",
+    "isBaseSdk": true,
+    "platform": "driverkit",
+    "platformPath": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/DriverKit.platform",
+    "platformVersion": "24.5",
+    "sdkPath": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/DriverKit.platform/Developer/SDKs/DriverKit24.5.sdk",
+    "sdkVersion": "24.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "DriverKit24.5.sdk - DriverKit 24.5 (driverkit24.5)\nSDKVersion: 24.5\nPath: /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/DriverKit.platform/Developer/SDKs/DriverKit24.5.sdk\nPlatformVersion: 24.5\nPlatformPath: /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/DriverKit.platform\n\n"
+  }
+}

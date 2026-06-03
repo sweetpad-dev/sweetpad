@@ -1,0 +1,44 @@
+{
+  "canonicalName": "macosx26.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/MacOSX.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "26.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "25F70"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "26.5"
+  },
+  "showsdks_entry": {
+    "buildID": "68E32B32-42C6-11F1-B58E-42443597F508",
+    "canonicalName": "macosx26.5",
+    "displayName": "macOS 26.5",
+    "iOSSupportVersion": "26.5",
+    "isBaseSdk": true,
+    "platform": "macosx",
+    "platformPath": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/MacOSX.platform",
+    "platformVersion": "26.5",
+    "productBuildVersion": "25F70",
+    "productCopyright": "1983-2026 Apple Inc.",
+    "productName": "macOS",
+    "productUserVisibleVersion": "26.5",
+    "productVersion": "26.5",
+    "sdkPath": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.sdk",
+    "sdkVersion": "26.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "MacOSX26.5.sdk - macOS 26.5 (macosx26.5)\nSDKVersion: 26.5\nPath: /Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk\nPlatformVersion: 26.5\nPlatformPath: /Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/MacOSX.platform\nBuildID: 68E32B32-42C6-11F1-B58E-42443597F508\nProductBuildVersion: 25F70\nProductCopyright: 1983-2026 Apple Inc.\nProductName: macOS\nProductUserVisibleVersion: 26.5\nProductVersion: 26.5\niOSSupportVersion: 26.5\n\n"
+  }
+}

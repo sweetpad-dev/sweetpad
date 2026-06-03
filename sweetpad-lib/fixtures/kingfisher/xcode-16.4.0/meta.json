@@ -1,0 +1,48 @@
+{
+  "captured_at": "2026-05-30T13:04:21Z",
+  "host_macos": "26.5",
+  "slug": "kingfisher",
+  "subprojects": [
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "",
+      "project_kind": "workspace",
+      "project_path": "kingfisher/Kingfisher.xcworkspace",
+      "raw_files": 16,
+      "scheme_count": 5,
+      "schemes": [
+        {
+          "destinations_raw": 7,
+          "destinations_used": 1,
+          "scheme": "Kingfisher"
+        },
+        {
+          "destinations_raw": 5,
+          "destinations_used": 1,
+          "scheme": "Kingfisher-Demo"
+        },
+        {
+          "destinations_raw": 2,
+          "destinations_used": 1,
+          "scheme": "Kingfisher-macOS-Demo"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "Kingfisher-tvOS-Demo"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "Kingfisher-watchOS-Demo"
+        }
+      ]
+    }
+  ],
+  "xcode_slot": "prev-major",
+  "xcode_version": "16.4.0"
+}

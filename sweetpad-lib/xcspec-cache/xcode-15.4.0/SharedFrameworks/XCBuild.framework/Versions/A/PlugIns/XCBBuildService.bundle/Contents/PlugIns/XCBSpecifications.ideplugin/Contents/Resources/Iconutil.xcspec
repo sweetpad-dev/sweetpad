@@ -1,0 +1,28 @@
+/**
+    Copyright (c) 2012 Apple Inc.  All rights reserved.
+*/
+(
+    {   Identifier = com.apple.compilers.iconutil;
+        Type = Compiler;
+        Name = "Iconutil";
+        Description = "Icon conversion utility";
+        Version = "Default";
+        Vendor = "Apple";
+        CommandLine = "iconutil [options] --convert icns --output [output] [input]";
+        RuleName = "ConvertIconsetFile [output] [input]";
+        ExecDescription = "Convert iconset $(InputFileName)";
+        ProgressDescription = "Converting $(CommandProgressByType) iconsets";
+        InputFileTypes = (
+            folder.iconset
+        );
+        Outputs = (
+            "$(ProductResourcesDir)/$(InputFileBase).icns",
+        );
+        SynthesizeBuildRule = Yes;
+        CommandOutputParser = (
+            ("^([^:]+)():debug: (.*)$", emit-notice),
+            ("^([^:]+)():warning: (.*)$", emit-warning),
+            ("^([^:]+)():error: (.*)$", emit-error),
+        );
+    }
+)

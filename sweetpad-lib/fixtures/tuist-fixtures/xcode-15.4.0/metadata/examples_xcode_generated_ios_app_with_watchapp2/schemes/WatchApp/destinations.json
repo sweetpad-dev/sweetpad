@@ -1,0 +1,8 @@
+[
+  {
+    "error": "watchOS 10.5 is not installed. To use with Xcode",
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-watchos:placeholder",
+    "name": "Any watchOS Device",
+    "platform": "watchOS"
+  }
+]

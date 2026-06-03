@@ -1,0 +1,12 @@
+{
+  "workspace": {
+    "name": "Kingfisher",
+    "schemes": [
+      "Kingfisher",
+      "Kingfisher-Demo",
+      "Kingfisher-macOS-Demo",
+      "Kingfisher-tvOS-Demo",
+      "Kingfisher-watchOS-Demo"
+    ]
+  }
+}

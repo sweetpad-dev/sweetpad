@@ -1,0 +1,22 @@
+/**
+    Copyright (c) 2014 Apple Inc.  All rights reserved.
+*/
+(
+    {   Identifier = com.apple.build-tasks.ls-register-url;
+        Type = Compiler;
+        Name = "LSRegisterURL";
+        Description = "Registers the file at a URL with LaunchServices";
+        CommandLine = "/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -f -R -trusted [options] [input]";
+        RuleName = "RegisterWithLaunchServices $(InputFile)";
+        ExecDescription = "Register $(InputFileName)";
+        ProgressDescription = "Registering $(InputFile) with LaunchServices";
+        SynthesizeBuildRule = Yes;
+        CommandOutputParser = XCGenericCommandOutputParser;
+        Outputs = (
+            "$(OutputPath)",
+        );
+        Options = (
+            // None yet
+        );
+    }
+)

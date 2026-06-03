@@ -1,0 +1,12 @@
+{
+  "workspace": {
+    "name": "iOSAppWithTransistiveStaticLibraries",
+    "schemes": [
+      "A",
+      "App",
+      "B",
+      "Generate Project",
+      "iOSAppWithTransistiveStaticLibraries-Workspace"
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "captured_at": "2026-05-30T13:03:51Z",
+  "host_macos": "26.5",
+  "slug": "alamofire",
+  "subprojects": [
+    {
+      "config_count": 2,
+      "configs": [
+        "Debug",
+        "Release"
+      ],
+      "label": "",
+      "project_kind": "workspace",
+      "project_path": "alamofire/Alamofire.xcworkspace",
+      "raw_files": 19,
+      "scheme_count": 7,
+      "schemes": [
+        {
+          "destinations_raw": 4,
+          "destinations_used": 1,
+          "scheme": "Alamofire iOS"
+        },
+        {
+          "destinations_raw": 2,
+          "destinations_used": 1,
+          "scheme": "Alamofire macOS"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "Alamofire tvOS"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "Alamofire visionOS"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "Alamofire watchOS"
+        },
+        {
+          "destinations_raw": 2,
+          "destinations_used": 0,
+          "scheme": "iOS Example"
+        },
+        {
+          "destinations_raw": 1,
+          "destinations_used": 0,
+          "scheme": "watchOS Example WatchKit App"
+        }
+      ]
+    }
+  ],
+  "xcode_slot": "prev-major",
+  "xcode_version": "16.4.0"
+}

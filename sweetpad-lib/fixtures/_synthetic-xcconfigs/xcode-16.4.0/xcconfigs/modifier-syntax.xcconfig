@@ -1,0 +1,5 @@
+// Tests modifier syntax: ${VAR:lower}, ${VAR:upper}, ${VAR:default=...}.
+BASE_NAME = HelloWorld
+LOWER_NAME = ${BASE_NAME:lower}
+UPPER_NAME = ${BASE_NAME:upper}
+DEFAULTED = ${UNSET_VAR:default=fallback}

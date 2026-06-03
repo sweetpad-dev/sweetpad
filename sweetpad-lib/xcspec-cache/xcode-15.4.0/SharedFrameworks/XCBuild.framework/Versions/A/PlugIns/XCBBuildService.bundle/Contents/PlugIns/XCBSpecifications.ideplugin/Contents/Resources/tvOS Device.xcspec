@@ -1,0 +1,50 @@
+// Copyright © 2015-2020 Apple Inc.  All rights reserved.
+(
+
+    {   Type = Architecture;
+        Identifier = Standard;
+        Name = "Standard Architectures";
+        Description = "Standard architectures";
+        ListInEnum = YES;
+        SortNumber = 0;
+        RealArchitectures = ( arm64 );
+        ArchitectureSetting = "ARCHS_STANDARD";
+    },
+
+    {   Type = Architecture;
+        Identifier = arm64;
+        Name = "arm64";
+    },
+    {   Type = Architecture;
+        Identifier = arm64e;
+        Name = "arm64e";
+        CompatibilityArchitectures = ( arm64 );   // treat this one just like arm64 for toolchain compatibility
+    },
+
+    // DEPRECATED
+
+    {   Type = Architecture;
+        Identifier = Platform64_bit;
+        RealArchitectures = ( arm64, arm64e );
+        ArchitectureSetting = "ARCHS_STANDARD_64_BIT";
+    },
+
+    {   Type = Architecture;
+        Identifier = Platform32_64_bit;
+        RealArchitectures = ( arm64 );
+        ArchitectureSetting = "ARCHS_STANDARD_32_64_BIT";
+    },
+
+    {   Type = Architecture;
+        Identifier = PlatformStandardUniversal;
+        RealArchitectures = ( arm64, arm64e );
+        ArchitectureSetting = "ARCHS_UNIVERSAL_IPHONE_OS";
+    },
+
+    {   Type = Architecture;
+        Identifier = Standard_Including_64_bit;
+        RealArchitectures = ( "$(ARCHS_STANDARD)" );
+        ArchitectureSetting = "ARCHS_STANDARD_INCLUDING_64_BIT";
+    },
+
+)

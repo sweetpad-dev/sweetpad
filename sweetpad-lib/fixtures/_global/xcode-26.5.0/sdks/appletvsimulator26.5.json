@@ -1,0 +1,42 @@
+{
+  "canonicalName": "appletvsimulator26.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/AppleTVSimulator.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "26.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "23L470"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/AppleTVSimulator.platform/Developer/SDKs/AppleTVSimulator26.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "26.5"
+  },
+  "showsdks_entry": {
+    "buildID": "D1AB5206-404C-11F1-BDF5-636853E0A1B3",
+    "canonicalName": "appletvsimulator26.5",
+    "displayName": "Simulator - tvOS 26.5",
+    "isBaseSdk": true,
+    "platform": "appletvsimulator",
+    "platformPath": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/AppleTVSimulator.platform",
+    "platformVersion": "26.5",
+    "productBuildVersion": "23L470",
+    "productCopyright": "1983-2026 Apple Inc.",
+    "productName": "Apple TVOS",
+    "productVersion": "26.5",
+    "sdkPath": "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/AppleTVSimulator.platform/Developer/SDKs/AppleTVSimulator26.5.sdk",
+    "sdkVersion": "26.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "AppleTVSimulator26.5.sdk - Simulator - tvOS 26.5 (appletvsimulator26.5)\nSDKVersion: 26.5\nPath: /Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/AppleTVSimulator.platform/Developer/SDKs/AppleTVSimulator26.5.sdk\nPlatformVersion: 26.5\nPlatformPath: /Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/AppleTVSimulator.platform\nBuildID: D1AB5206-404C-11F1-BDF5-636853E0A1B3\nProductBuildVersion: 23L470\nProductCopyright: 1983-2026 Apple Inc.\nProductName: Apple TVOS\nProductVersion: 26.5\n\n"
+  }
+}

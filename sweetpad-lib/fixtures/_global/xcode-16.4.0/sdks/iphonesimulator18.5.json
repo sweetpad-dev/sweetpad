@@ -1,0 +1,42 @@
+{
+  "canonicalName": "iphonesimulator18.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "18.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "22F76"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "18.5"
+  },
+  "showsdks_entry": {
+    "buildID": "372EBB42-2AF3-11F0-90D2-821BAB17A0CD",
+    "canonicalName": "iphonesimulator18.5",
+    "displayName": "Simulator - iOS 18.5",
+    "isBaseSdk": true,
+    "platform": "iphonesimulator",
+    "platformPath": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform",
+    "platformVersion": "18.5",
+    "productBuildVersion": "22F76",
+    "productCopyright": "1983-2025 Apple Inc.",
+    "productName": "iPhone OS",
+    "productVersion": "18.5",
+    "sdkPath": "/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk",
+    "sdkVersion": "18.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "iPhoneSimulator18.5.sdk - Simulator - iOS 18.5 (iphonesimulator18.5)\nSDKVersion: 18.5\nPath: /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk\nPlatformVersion: 18.5\nPlatformPath: /Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform\nBuildID: 372EBB42-2AF3-11F0-90D2-821BAB17A0CD\nProductBuildVersion: 22F76\nProductCopyright: 1983-2025 Apple Inc.\nProductName: iPhone OS\nProductVersion: 18.5\n\n"
+  }
+}

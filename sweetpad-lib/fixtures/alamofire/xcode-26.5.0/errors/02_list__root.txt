@@ -1,0 +1,1 @@
+-list failed for /Users/hyzyla_home/Developer/sweetpad-lib/corpus/alamofire/Alamofire.xcworkspace

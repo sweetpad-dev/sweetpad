@@ -1,0 +1,47 @@
+{
+  "project": {
+    "configurations": [
+      "Debug",
+      "Release"
+    ],
+    "name": "NetNewsWire",
+    "schemes": [
+      "Account",
+      "AccountTests",
+      "Articles",
+      "ArticlesDatabase",
+      "CloudKitSync",
+      "ErrorLog",
+      "FeedFinder",
+      "NetNewsWire",
+      "NetNewsWire iOS Intents Extension",
+      "NetNewsWire iOS Share Extension",
+      "NetNewsWire iOS Widget Extension",
+      "NetNewsWire Share Extension",
+      "NetNewsWire-iOS",
+      "NewsBlur",
+      "RSCore",
+      "RSCoreObjC",
+      "RSCoreResources",
+      "RSDatabase",
+      "RSDatabaseObjC",
+      "RSParser",
+      "RSTree",
+      "RSWeb",
+      "RSWebTests",
+      "Secrets",
+      "SyncDatabase"
+    ],
+    "targets": [
+      "NetNewsWire",
+      "NetNewsWireTests",
+      "NetNewsWire-iOS",
+      "Subscribe to Feed",
+      "NetNewsWire iOS Share Extension",
+      "NetNewsWire iOS Intents Extension",
+      "NetNewsWire iOS Widget Extension",
+      "NetNewsWire-iOSTests",
+      "NetNewsWire Share Extension"
+    ]
+  }
+}

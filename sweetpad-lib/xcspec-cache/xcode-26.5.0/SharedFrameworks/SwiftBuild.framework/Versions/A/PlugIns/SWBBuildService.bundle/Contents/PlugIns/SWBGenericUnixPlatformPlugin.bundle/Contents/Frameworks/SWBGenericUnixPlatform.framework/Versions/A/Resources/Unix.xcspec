@@ -1,0 +1,94 @@
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of the Swift open source project
+//
+// Copyright (c) 2025 Apple Inc. and the Swift project authors
+// Licensed under Apache License v2.0 with Runtime Library Exception
+//
+// See http://swift.org/LICENSE.txt for license information
+// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+//
+//===----------------------------------------------------------------------===//
+
+(
+    {
+        Domain = generic-unix;
+        Type = Architecture;
+        Identifier = Standard;
+        Name = "Standard Architectures";
+        Description = "Standard architectures";
+        ArchitectureSetting = "ARCHS_STANDARD";
+        RealArchitectures = (
+            "$(VALID_ARCHS)"
+        );
+        SortNumber = 0;
+    },
+
+    {
+        Domain = generic-unix;
+        Type = ProductType;
+        Identifier = com.apple.product-type.bundle.unit-test;
+        BasedOn = com.apple.product-type.library.dynamic;
+        DefaultBuildProperties = {
+            // Index store data is required to discover XCTest tests
+            COMPILER_INDEX_STORE_ENABLE = YES;
+            SWIFT_INDEX_STORE_ENABLE = YES;
+            // Testability is needed to generate code to invoke discovered XCTest tests
+            SWIFT_ENABLE_TESTABILITY = YES;
+            EXECUTABLE_SUFFIX = ".$(EXECUTABLE_EXTENSION)";
+            EXECUTABLE_EXTENSION = "so";
+            LD_DYLIB_INSTALL_NAME = "$(EXECUTABLE_PATH)";
+        };
+    },
+
+    // Dynamic library (masquerading as a framework to placate Swift's project structure)
+    {
+        Domain = generic-unix;
+        Type = ProductType;
+        Identifier = com.apple.product-type.framework;
+        BasedOn = default:com.apple.product-type.framework;
+        Class = PBXDynamicLibraryProductType;
+        Name = "Dynamic Library";
+        Description = "Dynamic library";
+        DefaultTargetName = "Dynamic Library";
+        DefaultBuildProperties = {
+            FULL_PRODUCT_NAME = "$(EXECUTABLE_NAME)";
+            MACH_O_TYPE = "mh_dylib";
+            REZ_EXECUTABLE = YES;
+            EXECUTABLE_SUFFIX = ".$(EXECUTABLE_EXTENSION)";
+            EXECUTABLE_EXTENSION = "so";
+            INSTALL_PATH = "/usr/local/lib";
+            LD_DYLIB_INSTALL_NAME = "$(EXECUTABLE_PATH)";
+            FRAMEWORK_FLAG_PREFIX = "-framework";
+            GCC_DYNAMIC_NO_PIC = NO;
+            LD_NO_PIE = NO;
+            LIBRARY_FLAG_PREFIX = "-l";
+            LIBRARY_FLAG_NOSPACE = YES;
+            STRIP_STYLE = "debugging";
+            GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+            CODE_SIGNING_ALLOWED = NO;
+            MODULES_FOLDER_PATH = "";
+        };
+        PackageTypes = (
+            com.apple.package-type.mach-o-dylib   // default
+        );
+    },
+
+    {
+        Domain = generic-unix;
+        Type = ProductType;
+        Identifier = com.apple.product-type.framework.static;
+        BasedOn = com.apple.product-type.framework;
+    },
+
+    {
+        Domain = generic-unix;
+        Type = FileType;
+        Identifier = compiled.mach-o.dylib;
+        BasedOn = compiled.mach-o;
+        Prefix = lib;
+        Extensions = (so);
+        IsLibrary = YES;
+        IsDynamicLibrary = YES;
+    }
+)

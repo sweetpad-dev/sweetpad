@@ -1,0 +1,42 @@
+{
+  "canonicalName": "iphonesimulator17.5",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "17.5"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "21F77"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator17.5.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "17.5"
+  },
+  "showsdks_entry": {
+    "buildID": "8EFDDFDC-08C7-11EF-A0A9-DD3864AEFA1C",
+    "canonicalName": "iphonesimulator17.5",
+    "displayName": "Simulator - iOS 17.5",
+    "isBaseSdk": true,
+    "platform": "iphonesimulator",
+    "platformPath": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform",
+    "platformVersion": "17.5",
+    "productBuildVersion": "21F77",
+    "productCopyright": "1983-2024 Apple Inc.",
+    "productName": "iPhone OS",
+    "productVersion": "17.5",
+    "sdkPath": "/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator17.5.sdk",
+    "sdkVersion": "17.5"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "iPhoneSimulator17.5.sdk - Simulator - iOS 17.5 (iphonesimulator17.5)\nSDKVersion: 17.5\nPath: /Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator17.5.sdk\nPlatformVersion: 17.5\nPlatformPath: /Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform\nBuildID: 8EFDDFDC-08C7-11EF-A0A9-DD3864AEFA1C\nProductBuildVersion: 21F77\nProductCopyright: 1983-2024 Apple Inc.\nProductName: iPhone OS\nProductVersion: 17.5\n\n"
+  }
+}

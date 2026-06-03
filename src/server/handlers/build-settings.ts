@@ -1,7 +1,7 @@
 import * as path from "node:path";
 
 import { getCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
-import { getBasicProjectInfo, getBuildSettingsList, type XcodeBuildSettings } from "../../common/cli/scripts";
+import { getBuildSettingsList, type XcodeBuildSettings } from "../../common/cli/scripts";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES } from "../types";
 import type { HandlerFn, RpcContext } from "./context";
@@ -39,16 +39,6 @@ export const buildSettingsGet: HandlerFn<
     settings: allow ? Object.fromEntries(Object.entries(entry.settings).filter(([k]) => allow.has(k))) : entry.settings,
   }));
   return { targets };
-};
-
-export const xcodebuildList: HandlerFn<{ xcworkspace?: string }, { output: unknown }> = async (params, ctx) => {
-  const xcworkspace = params?.xcworkspace ?? getCurrentXcodeWorkspacePath(ctx.workspace);
-  try {
-    return { output: await getBasicProjectInfo({ xcworkspace }) };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new SweetpadRpcError(ERROR_CODES.XCODEBUILD_FAILED, message);
-  }
 };
 
 export const appPathFind: HandlerFn<GetParams, { appPath: string; target: string }> = async (params, ctx) => {
