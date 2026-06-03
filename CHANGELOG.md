@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [Unreleased]
+
+- Always route read-only Xcode operations (`-list`, `-showBuildSettings`, `-version`) through the bundled [sweetpad-lib](https://github.com/sweetpad-dev/sweetpad-lib) Rust resolver, and remove the opt-in `sweetpad.system.useSweetpadLib` flag
+- Remove the `scheme.write` agent RPC method — scheme files are now read-only over the agent API via `scheme.reveal`
+
 ## [0.1.94] - 2026-05-24
 
 - Add opt-in `sweetpad.system.useSweetpadLib` flag to route read-only Xcode operations (`-list`, `-showBuildSettings`, `-version`) through the bundled [sweetpad-lib](https://github.com/sweetpad-dev/sweetpad-lib) Rust binary instead of `xcodebuild`
