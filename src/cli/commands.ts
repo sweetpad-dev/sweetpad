@@ -1,5 +1,3 @@
-import { promises as fs } from "node:fs";
-
 import { getSocketPath } from "../server/paths";
 import { readActive, writeActive } from "./active";
 import type { ParsedArgv } from "./argv";
@@ -241,19 +239,6 @@ function methodParams(parsed: ParsedArgv): Mapped | undefined {
 
     case "scheme.reveal":
       return { method, params: { name: first } };
-    case "scheme.write": {
-      const params: Record<string, unknown> = { name: first };
-      const xmlInline = strFlag(parsed.flags.xml);
-      const xmlFile = strFlag(parsed.flags["xml-file"]);
-      if (xmlInline !== undefined) params.xml = xmlInline;
-      const customPath = strFlag(parsed.flags.path);
-      if (customPath !== undefined) params.path = customPath;
-      // dispatchCli reads the file and strips this sentinel before the wire call.
-      if (xmlFile !== undefined && params.xml === undefined) {
-        params.xmlFilePending = xmlFile;
-      }
-      return { method, params };
-    }
 
     case "simulator.install":
       return { method, params: { udid: first, appPath: parsed.positionals[1] } };
@@ -414,21 +399,6 @@ export async function dispatchCli(parsed: ParsedArgv): Promise<CliExit> {
   const mp = methodParams(parsed);
   if (!mp) return helpExit();
 
-  // Deferred file read for `scheme.write --xml-file <path>` — sync parser
-  // can't await, so resolve the body here before the wire call.
-  if (mp.method === "scheme.write" && mp.params && typeof mp.params === "object") {
-    const params = mp.params as Record<string, unknown> & { xmlFilePending?: string };
-    if (params.xmlFilePending && params.xml === undefined) {
-      try {
-        params.xml = await fs.readFile(params.xmlFilePending, "utf8");
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { code: 2, stderr: errorEnvelope("XML_FILE_READ_FAILED", message) };
-      }
-    }
-    delete params.xmlFilePending;
-  }
-
   return await callRpc(parsed.server, mp.method, mp.params, mp.timeoutMs);
 }
 
@@ -450,7 +420,6 @@ Methods (canonical dot-form; arguments listed after the method name):
   scheme.get
   scheme.set <name>
   scheme.reveal <name>
-  scheme.write <name> --xml-file <path>                          # or --xml '<inline>'
 
   destination.list [--type <t>] [--platform <p>] [--booted]
   destination.get

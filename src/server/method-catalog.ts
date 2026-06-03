@@ -163,16 +163,6 @@ export const METHOD_CATALOG: Record<string, MethodSchema> = {
     params: { name: { type: "string", required: true } },
     returns: "{ name: string; path: string; xml: string; allPaths: string[] }",
   },
-  "scheme.write": {
-    description:
-      "Overwrite the .xcscheme file for a scheme with raw XML. Pair with scheme.reveal to read-modify-write.",
-    params: {
-      name: { type: "string", required: true },
-      xml: { type: "string", required: true },
-      path: { type: "string", description: "Override the resolved path; useful for writing the user-specific copy." },
-    },
-    returns: "{ name: string; path: string }",
-  },
 
   // simulator app operations (xcrun simctl wrappers)
   "simulator.install": {

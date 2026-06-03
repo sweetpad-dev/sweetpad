@@ -8,7 +8,7 @@ import { deviceInstall, deviceLaunch, deviceTerminate } from "./device";
 import { logsTail } from "./logs";
 import { metaSchema, metaUsage, metaVersion, metaWorkspacePath } from "./meta";
 import { schemeGet, schemeList, schemeSet } from "./scheme";
-import { schemeReveal, schemeWrite } from "./scheme-file";
+import { schemeReveal } from "./scheme-file";
 import { simulatorList, simulatorRefresh, simulatorStart, simulatorStop } from "./simulator";
 import {
   simulatorInstall,
@@ -52,7 +52,6 @@ export function buildDispatch(ctx: RpcContext): RpcDispatch {
     "scheme.get": bind(schemeGet),
     "scheme.set": bind(schemeSet),
     "scheme.reveal": bind(schemeReveal),
-    "scheme.write": bind(schemeWrite),
 
     "destination.list": bind(destinationList),
     "destination.get": bind(destinationGet),
