@@ -38,10 +38,11 @@
     "sweetpad-lib"
   ],
   "scripts": {
-    "build": "rolldown -c rolldown.config.mjs",
-    "watch": "rolldown -c rolldown.config.mjs --watch",
-    "vscode:prepublish": "cross-env NODE_ENV=production rolldown -c rolldown.config.mjs",
+    "build": "npm run build:sweetpad-lib:debug && rolldown -c rolldown.config.mjs",
+    "watch": "npm run build:sweetpad-lib:debug && rolldown -c rolldown.config.mjs --watch",
+    "vscode:prepublish": "npm run build:sweetpad-lib:release && cross-env NODE_ENV=production rolldown -c rolldown.config.mjs",
     "build:sweetpad-lib:debug": "npm run build:debug -w @sweetpad/lib",
+    "build:sweetpad-lib:release": "npm run build:universal -w @sweetpad/lib",
     "test": "vitest run",
     "test:watch": "vitest",
     "check:format": "oxfmt src scripts docs rolldown.config.mjs vitest.config.ts",

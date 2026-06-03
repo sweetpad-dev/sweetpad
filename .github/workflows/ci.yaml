@@ -8,9 +8,9 @@ permissions:
 
 name: Deploy Extension
 jobs:
-  deploy-ovsx:
-    name: Deploy to Open VSX
-    runs-on: ubuntu-latest
+  build:
+    name: Build VSIX (macOS)
+    runs-on: macos-latest
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -18,48 +18,71 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Install Rust toolchain
+        working-directory: sweetpad-lib
+        # Installs the channel + Apple targets pinned in sweetpad-lib/rust-toolchain.toml
+        run: rustup show
       - name: Install Dependencies
         run: npm ci
+      - name: Package VSIX
+        # vscode:prepublish builds the universal .node addon, then bundles the extension
+        run: npx --yes @vscode/vsce package --no-dependencies
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: "*.vsix"
+          if-no-files-found: error
+
+  deploy-ovsx:
+    name: Deploy to Open VSX
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download VSIX
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      - name: Resolve VSIX path
+        id: vsix
+        run: echo "path=$(ls *.vsix)" >> "$GITHUB_OUTPUT"
       - name: Publish to Open VSX Registry
         uses: HaaLeo/publish-vscode-extension@v2
         with:
           skipDuplicate: true
           pat: ${{ secrets.OPEN_VSX_TOKEN }}
           registryUrl: https://open-vsx.org
+          extensionFile: ${{ steps.vsix.outputs.path }}
 
   deploy-vsmarketplace:
     name: Deploy to Visual Studio Marketplace
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-      - name: Install NodeJS
-        uses: actions/setup-node@v4
+      - name: Download VSIX
+        uses: actions/download-artifact@v4
         with:
-          node-version: 24
-      - name: Install Dependencies
-        run: npm ci
+          name: vsix
+      - name: Resolve VSIX path
+        id: vsix
+        run: echo "path=$(ls *.vsix)" >> "$GITHUB_OUTPUT"
       - name: Publish to Visual Studio Marketplace
         uses: HaaLeo/publish-vscode-extension@v2
         with:
           skipDuplicate: true
           pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
           registryUrl: https://marketplace.visualstudio.com
+          extensionFile: ${{ steps.vsix.outputs.path }}
 
   publish-github-release:
     name: Publish GitHub Release
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-      - name: Install NodeJS
-        uses: actions/setup-node@v4
+      - name: Download VSIX
+        uses: actions/download-artifact@v4
         with:
-          node-version: 24
-      - name: Install Dependencies
-        run: npm ci
-      - name: Package VSIX
-        run: npx --yes @vscode/vsce package
+          name: vsix
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -67,6 +90,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           append_body: |
-            
+
             [Full changelog](https://github.com/sweetpad-dev/sweetpad/blob/main/CHANGELOG.md)
           files: "*.vsix"

@@ -14,6 +14,9 @@ vsc-extension-quickstart.md
 .vscode/
 node_modules/
 src/
+# The sweetpad-lib workspace source/fixtures are build-only — the compiled addon
+# ships via out/lib/ (copied by rolldown), so the whole tree stays out of the VSIX.
+sweetpad-lib/
 .gitignore
 .prettierrc
 .vscodeignore
