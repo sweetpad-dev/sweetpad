@@ -29,3 +29,13 @@ eslint.config.mjs
 jest.config.js
 
 images/icons/tabler-icons.original.woff
+
+# Dev-only config / tooling — not referenced by the bundled extension at runtime.
+rolldown.config.mjs
+vitest.config.ts
+TODO.md
+.oxlintrc.json
+.oxfmtrc.json
+.env.example
+scripts/
+.github/
