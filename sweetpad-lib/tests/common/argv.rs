@@ -299,6 +299,11 @@ const GEOMETRY_FLAGS: &[&str] = &[
     "-MM",
     "--serialize-diagnostics",
     "-index-unit-output-path",
+    // clang SDK stat cache / VFS overlay — per-build cache files
+    "-ivfsstatcache",
+    "-ivfsoverlay",
+    // swiftc whole-module parallelism — host core count, not a decision (cf. -j<N>)
+    "-num-threads",
 ];
 
 /// Substrings that mark an item's value as a per-build intermediate/cache/output

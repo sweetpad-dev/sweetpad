@@ -230,8 +230,9 @@ _Validation:_ callable from TS; returns per-target `swift`/`clang`/`link` argv.
 
 ## Status (as built)
 
-Phases 0–4 are complete and validated; Phase 5 is in progress (corpus + clang +
-link); Phase 6 (the public API) is in place.
+Phases 0–4 and 6 are complete. Phase 5 (corpus + clang + link) covers the macOS
+oracles — a real ObjC target, a Release app, and the framework dylibs — with the
+non-macOS / multi-version matrix the main remaining capture work.
 
 - **Phase 0–1:** capture (`scripts/16_capture_compiler_args.py`, stdout-sourced)
   + the argv comparator (`tests/common/argv.rs`): flag-family multiset, three
@@ -245,18 +246,33 @@ link); Phase 6 (the public API) is in place.
   `CliArgs`, cached in the catalog), with the computed/build-system flags
   hand-coded. **Alamofire macOS and Kingfisher both score 100 % structural /
   100 % precision** (every semantic flag matches; geometry excluded).
-- **Phase 5:** `clang_arguments` (warning/codegen flags routed through the Clang
-  spec; ~90 % structural recall — precision is capped on the auto-generated
-  `*_vers.c` C stub, which excludes the ObjC/C++ warnings a real ObjC target
-  would use) and `link_arguments` (derivable core: triple, sdk, dylib, search
-  paths, runpaths, version stamps; ~63 % structural — autolinked frameworks,
-  the swift-runtime `-L`/`-fobjc-link-runtime`/`-rdynamic`, and `-dead_strip`
-  are the tracked gaps in the tally). Codified floors: **swift 95, clang 90,
-  link 60**.
-  - _Remaining (mechanical capture + iteration):_ NetNewsWire `RSDatabaseObjC`
-    (real per-file ObjC, to validate clang precision), an app target (ld +
-    `actool`), and the full 5 × 3 matrix (the non-macOS destinations need
-    simulator runtimes via `xcodebuild -downloadPlatform`).
+- **Phase 5:** `clang_arguments` and `link_arguments`, scored against real ObjC
+  (KingfisherTests' vendored Nocilla `.m`, reached via `--action
+  build-for-testing`), a Release app (executable link + whole-module Swift), and
+  the framework dylibs. The capture script expands clang `@*.resp` response files
+  (like swift/link) and keeps one compile per source, so the oracle carries
+  literal flag vectors.
+  - clang is **language-gated** against the xcspec `FileTypes` and
+    `Architectures` (a C++ `-std`/warning never reaches an ObjC `.m`; an
+    Intel-only `-fasm-blocks` never reaches arm64) and emits the per-file `-x
+    <dialect>`. **clang: 97 % precision / 95 % structural; the real-ObjC
+    KingfisherTests target is 100 % precision.**
+  - swift additionally handles whole-module Release builds
+    (`-whole-module-optimization` / `-no-emit-module-separately-wmo`) and the
+    `-import-objc-header` bridging header. **swift: 100 % precision / 97 %
+    structural** (every framework/app target 100 %).
+  - link adds the executable/bundle shapes (`-bundle`; the dylib identity +
+    version stamps gated to `mh_dylib`) and the modern link-driver defaults
+    grounded across every capture (`-Xlinker -reproducible` / `-dead_strip`,
+    Debug `-no_deduplicate`, `-fobjc-link-runtime`). **link: 93 % precision /
+    72 % structural;** the autolinked `-framework`, `-rdynamic`, the swift-runtime
+    toolchain `-L`, and coverage `-fprofile-instr-generate` are the tracked tally
+    gaps. Codified floors: **swift 95, clang 92, link 68**.
+  - _Remaining (mechanical capture + iteration):_ the full 5 × 3 matrix — the
+    non-macOS destinations need simulator runtimes (`xcodebuild
+    -downloadPlatform`), and the 15.4 / 16.4 oracles will surface version-gated
+    driver-default drift; more ObjC/C++ breadth (e.g. NetNewsWire); and a
+    static-library (`libtool`) link, which has no oracle yet.
 - **Phase 6:** `#[napi] compiler_arguments` (`node.rs`) →
   `compiler_args::target_arguments` via `build_settings::resolve_compiler_arguments`;
   the generated `index.d.ts` exposes `compilerArguments(...)` returning per-target

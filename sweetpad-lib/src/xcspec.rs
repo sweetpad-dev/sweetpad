@@ -114,6 +114,16 @@ pub struct CompilerOption {
     /// `CommandLineArgs` — a flat arg list (with `$(value)` substitution) or a
     /// per-value map (Boolean `YES`/`NO`, Enumeration values, `<<otherwise>>`).
     pub args: Option<CliArgs>,
+    /// `FileTypes` — the source languages this option applies to (e.g.
+    /// `sourcecode.cpp.cpp`, `sourcecode.c.objc`). Empty means it applies to
+    /// every C-family input; a non-empty set gates the option to matching
+    /// languages so a C++ flag never reaches an ObjC compile.
+    pub file_types: Vec<String>,
+    /// `Architectures` — the arches this option applies to (e.g. `i386`,
+    /// `x86_64`). Empty means every arch; a non-empty set gates the option so an
+    /// Intel-only flag (`GCC_CW_ASM_SYNTAX` → `-fasm-blocks`) never lands on an
+    /// arm64 compile.
+    pub architectures: Vec<String>,
 }
 
 /// The two shapes Apple's `CommandLineArgs` takes.
@@ -633,6 +643,8 @@ fn parse_compiler_option(opt: &Value) -> Option<CompilerOption> {
             .filter(|s| !s.is_empty())
             .map(String::from),
         args,
+        file_types: dict.get("FileTypes").map(value_to_strings).unwrap_or_default(),
+        architectures: dict.get("Architectures").map(value_to_strings).unwrap_or_default(),
     })
 }
 

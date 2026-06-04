@@ -89,6 +89,7 @@ class TargetArgs:
     link: dict | None = None
     # Names of clang sources seen, to keep the per-file list deterministic.
     _clang_files: list[dict] = field(default_factory=list)
+    _clang_seen: set[str] = field(default_factory=set)
 
 
 # --- build -----------------------------------------------------------------
@@ -115,6 +116,7 @@ def run_build(
     corpus_root: Path,
     xcode: common.XcodeInstall,
     *,
+    action: str,
     scheme: str,
     config: str,
     destination: str,
@@ -122,7 +124,12 @@ def run_build(
     workspace: str | None,
     keep_derived: bool,
 ) -> tuple[str, Path]:
-    """Full `xcodebuild build`; return (stdout, derived-data dir)."""
+    """Full `xcodebuild <action>`; return (stdout, derived-data dir).
+
+    `action` is `build` for product targets or `build-for-testing` to compile a
+    scheme's test bundle — the latter is how we reach test-only sources (e.g. the
+    vendored ObjC under a test target) that a plain `build` never touches.
+    """
     work = corpus_root / ".work"
     dd = work / "dd"
     common.ensure_dir(work)
@@ -131,7 +138,7 @@ def run_build(
 
     args = [
         "xcodebuild",
-        "build",
+        action,
         *discover_project_args(corpus_root, project, workspace),
         "-scheme",
         scheme,
@@ -263,14 +270,16 @@ def expand_swift(tokens: list[str], dd: Path) -> tuple[list[str], list[str]]:
     return args, inputs
 
 
-def expand_link(tokens: list[str]) -> list[str]:
-    """A linker argv (minus argv[0]) with `@*.resp` response files spliced in.
+def splice_responses(args: list[str]) -> list[str]:
+    """Splice `@<file>` response files inline; leave other tokens untouched.
 
-    `-filelist <path>` (the object-file list) is left as-is — it's pure build
-    geometry that the comparator scores out.
+    Clang and the linker both factor most flags into a `@<hash>.resp` /
+    `*-linker-args.resp`; expanding it yields the literal flag vector the tool
+    runs with. A `-filelist <path>` object list is not a `@` token, so it stays
+    raw geometry for the comparator to score out.
     """
     out: list[str] = []
-    for tok in tokens[1:]:
+    for tok in args:
         if tok.startswith("@"):
             expanded = read_response_file(Path(tok[1:]))
             if expanded is not None:
@@ -278,6 +287,11 @@ def expand_link(tokens: list[str]) -> list[str]:
                 continue
         out.append(tok)
     return out
+
+
+def expand_link(tokens: list[str]) -> list[str]:
+    """A linker argv (minus argv[0]) with its `@*.resp` response files spliced in."""
+    return splice_responses(tokens[1:])
 
 
 def clang_source(tokens: list[str]) -> str | None:
@@ -302,7 +316,13 @@ def classify(cmd: ToolCommand, dd: Path, by_target: dict[str, TargetArgs]) -> No
 
     if tool in CLANG_TOOLS and "-c" in cmd.tokens and clang_source(cmd.tokens):
         src = clang_source(cmd.tokens)
-        ta._clang_files.append({"file": src, "arguments": cmd.tokens[1:]})
+        # A scheme can echo the same CompileC twice (e.g. build-for-testing);
+        # there is one object per source, so keep the first compile per file
+        # (mirrors the first-wins rule for the swift/link invocations above).
+        if src in ta._clang_seen:
+            return
+        ta._clang_seen.add(src)
+        ta._clang_files.append({"file": src, "arguments": splice_responses(cmd.tokens[1:])})
         return
 
     # Anything else from clang/clang++/ld/libtool is a link step.
@@ -352,6 +372,7 @@ def build_oracle(
     *,
     slug: str,
     xcode_version: str,
+    action: str,
     scheme: str,
     config: str,
     destination: str,
@@ -374,6 +395,7 @@ def build_oracle(
     return {
         "slug": slug,
         "xcode_version": xcode_version,
+        "action": action,
         "scheme": scheme,
         "configuration": config,
         "destination": destination,
@@ -405,6 +427,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--slug", default="alamofire")
     ap.add_argument("--xcode", help="version or slot (default: newest installed)")
+    ap.add_argument(
+        "--action",
+        default="build",
+        choices=["build", "build-for-testing"],
+        help="xcodebuild action; build-for-testing reaches test-target sources",
+    )
     ap.add_argument("--scheme", required=True)
     ap.add_argument("--config", default="Debug")
     ap.add_argument("--destination", default="platform=macOS")
@@ -429,6 +457,7 @@ def main() -> int:
         stdout, dd = run_build(
             corpus_root,
             xcode,
+            action=args.action,
             scheme=args.scheme,
             config=args.config,
             destination=args.destination,
@@ -448,6 +477,7 @@ def main() -> int:
         by_target,
         slug=args.slug,
         xcode_version=xcode.version,
+        action=args.action,
         scheme=args.scheme,
         config=args.config,
         destination=args.destination,
@@ -457,7 +487,11 @@ def main() -> int:
     dest_slug = args.dest_slug or sdk_from_destination(args.destination)
     out_dir = common.fixture_dir(args.slug, xcode.version) / "compiler-args"
     common.ensure_dir(out_dir)
-    fname = f"{common.slug(args.scheme)}__{common.slug(args.config)}__{common.slug(dest_slug)}.json"
+    action_suffix = "" if args.action == "build" else f"__{common.slug(args.action)}"
+    fname = (
+        f"{common.slug(args.scheme)}__{common.slug(args.config)}"
+        f"__{common.slug(dest_slug)}{action_suffix}.json"
+    )
     out_path = out_dir / fname
     with out_path.open("w") as f:
         json.dump(oracle, f, indent=2)

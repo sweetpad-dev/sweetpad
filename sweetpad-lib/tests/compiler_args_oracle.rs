@@ -311,15 +311,20 @@ fn project_with_target(raw: &Path, target: &str) -> Option<PathBuf> {
     })
 }
 
-/// Codified structural floors per tool, from the first clean run minus a small
-/// margin. Swift is exact (Alamofire + Kingfisher both 100%). Clang and link are
-/// the early tool-by-tool generators (Phase 5): their floors reflect the
-/// derivable-flag coverage achieved so far, with the systematic tally documenting
-/// the not-yet-generated flags (autolinked frameworks, install_name, …). Judged
+/// Codified structural floors per tool, from the clean run minus a small margin.
+/// The corpus spans pure-Swift frameworks (Alamofire, Kingfisher), a real ObjC
+/// target (KingfisherTests' vendored Nocilla `.m`), and a Release app (executable
+/// link + whole-module). Swift is near-exact (every framework/app target 100%,
+/// the mixed ObjC+Swift test target lower for its bridged framework/header search
+/// paths). Clang is language-gated against the xcspec `FileTypes`/`Architectures`,
+/// so per-language flags land only on the files that accept them. Link is the
+/// foundational generator: its floor reflects derivable coverage, with the tally
+/// documenting the not-yet-generated flags (autolinked `-framework`, `-rdynamic`,
+/// the Swift-runtime toolchain `-L`, coverage `-fprofile-instr-generate`). Judged
 /// by structural % + the tally, never the geometry-capped exact %.
 const SWIFT_STRUCTURAL_FLOOR: u64 = 95;
-const CLANG_STRUCTURAL_FLOOR: u64 = 90;
-const LINK_STRUCTURAL_FLOOR: u64 = 60;
+const CLANG_STRUCTURAL_FLOOR: u64 = 92;
+const LINK_STRUCTURAL_FLOOR: u64 = 68;
 
 /// One tool's accumulated score plus its split missing/extra tallies.
 #[derive(Default)]
@@ -407,7 +412,13 @@ fn compiler_args_oracle_coverage() {
                 swift.record(&oracle.slug, &t.target, "swift", &sw.arguments, &ours);
             }
             if let Some(cl) = &t.clang {
-                let ours = compiler_args::clang_arguments(settings, &oracle.arch, clang_opts);
+                let files: Vec<String> = cl.files.iter().map(|f| f.file.clone()).collect();
+                let langs = compiler_args::clang_languages(&files);
+                let ours = compiler_args::clang_arguments(settings, &oracle.arch, clang_opts, &langs);
+                if std::env::var("ARGV_DUMP").is_ok() {
+                    eprintln!("--- ORACLE clang {} ---\n{}", t.target, cl.common_arguments.join("\n"));
+                    eprintln!("--- OURS clang {} ---\n{}", t.target, ours.join("\n"));
+                }
                 clang.record(&oracle.slug, &t.target, "clang", &cl.common_arguments, &ours);
             }
             if let Some(ln) = &t.link {

@@ -15,8 +15,8 @@
 //! (`fixtures/<slug>/.../compiler-args/`). Where a flag is a fixed build-system
 //! default rather than a function of a setting, that is noted at the emit site.
 
-use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
 
 use crate::xcspec::{CliArgs, CompilerOption};
 
@@ -46,6 +46,44 @@ pub struct TargetCompilerArguments {
 /// C-family source extensions a `clang`/`clang++` invocation compiles.
 const CLANG_EXTS: &[&str] = &["c", "m", "mm", "cc", "cpp", "cxx", "C"];
 
+/// The xcspec `FileTypes` language a C-family source extension belongs to. This
+/// is the value Apple's options gate on (`CLANG_CXX_*` → `sourcecode.cpp.*`,
+/// the ObjC warnings → `sourcecode.c.objc`/`sourcecode.cpp.objcpp`), so it lets
+/// us emit only the flags a file's language actually accepts.
+fn source_file_type(ext: &str) -> Option<&'static str> {
+    Some(match ext {
+        "c" => "sourcecode.c.c",
+        "m" => "sourcecode.c.objc",
+        "mm" => "sourcecode.cpp.objcpp",
+        "cc" | "cpp" | "cxx" | "C" => "sourcecode.cpp.cpp",
+        _ => return None,
+    })
+}
+
+/// The clang `-x <dialect>` token for an xcspec source `FileTypes` value.
+fn dialect_for(file_type: &str) -> Option<&'static str> {
+    Some(match file_type {
+        "sourcecode.c.c" => "c",
+        "sourcecode.c.objc" => "objective-c",
+        "sourcecode.cpp.cpp" => "c++",
+        "sourcecode.cpp.objcpp" => "objective-c++",
+        _ => return None,
+    })
+}
+
+/// The set of source `FileTypes` a list of C-family inputs covers — the
+/// languages a target's clang invocation compiles. Used to gate
+/// language-specific flags (a C++ `-std` never reaches an ObjC `.m`).
+#[must_use]
+pub fn clang_languages(paths: &[String]) -> BTreeSet<String> {
+    paths
+        .iter()
+        .filter_map(|p| Path::new(p).extension().and_then(|e| e.to_str()))
+        .filter_map(source_file_type)
+        .map(String::from)
+        .collect()
+}
+
 /// Assemble the full per-tool argv for one target from its resolved settings,
 /// arch, product type, and source files. The entry point the bindings call.
 #[must_use]
@@ -73,9 +111,10 @@ pub fn target_arguments(
         arguments: swift_arguments(settings, arch, swift_options),
         input_files: swift_inputs,
     });
+    let clang_langs = clang_languages(&clang_inputs);
     let clang = (!clang_inputs.is_empty()).then(|| ToolInvocation {
         tool: "clang".to_string(),
-        arguments: clang_arguments(settings, arch, clang_options),
+        arguments: clang_arguments(settings, arch, clang_options, &clang_langs),
         input_files: clang_inputs,
     });
     // A target links when it produces a binary from compiled sources. A
@@ -220,6 +259,17 @@ pub fn swift_arguments(settings: &Settings, arch: &str, options: &[CompilerOptio
     if get("SWIFT_INSTALL_OBJC_HEADER").is_none_or(|v| !v.eq_ignore_ascii_case("NO")) {
         a.flag("-emit-objc-header");
     }
+    // SWIFT_OBJC_BRIDGING_HEADER imports a target's ObjC declarations into Swift;
+    // the build system passes it as `-import-objc-header <path>` (the Swift
+    // xcspec carries the setting but not the flag mapping), resolved against
+    // SRCROOT when the project gives it relative.
+    if let Some(header) = get("SWIFT_OBJC_BRIDGING_HEADER").filter(|h| !h.is_empty()) {
+        let path = match get("SRCROOT") {
+            Some(root) if !Path::new(header).is_absolute() => format!("{root}/{header}"),
+            _ => header.to_string(),
+        };
+        a.pair("-import-objc-header", &path);
+    }
 
     // --- User passthrough --------------------------------------------------
     for f in ws(get("OTHER_SWIFT_FLAGS")) {
@@ -227,18 +277,45 @@ pub fn swift_arguments(settings: &Settings, arch: &str, options: &[CompilerOptio
     }
 
     // --- Compilation mode + build-system defaults --------------------------
+    emit_compilation_defaults(&mut a, settings);
+
+    a.into_vec()
+}
+
+/// Emit the compilation-mode flags (incremental batch vs whole-module) and the
+/// driver / clang-importer defaults a current Xcode always passes to swiftc.
+fn emit_compilation_defaults(a: &mut ArgBuilder, settings: &Settings) {
+    let get = |k: &str| settings.get(k).map(String::as_str);
     a.flag("-c");
-    // Debug builds use incremental batch mode; -O* whole-module builds don't.
-    let whole_module = get("SWIFT_COMPILATION_MODE")
-        .is_some_and(|m| m.eq_ignore_ascii_case("wholemodule"))
+    // Debug builds compile incrementally in batches; a whole-module build
+    // (explicit mode, or implied by -O/-Osize/-Owholemodule) compiles the module
+    // at once and emits it in-process rather than separately.
+    let mode_wmo =
+        get("SWIFT_COMPILATION_MODE").is_some_and(|m| m.eq_ignore_ascii_case("wholemodule"));
+    let opt_wmo =
+        get("SWIFT_OPTIMIZATION_LEVEL").is_some_and(|o| o.eq_ignore_ascii_case("-Owholemodule"));
+    let whole_module = mode_wmo
+        || opt_wmo
         || get("SWIFT_OPTIMIZATION_LEVEL").is_some_and(|o| o == "-O" || o == "-Osize");
-    if !whole_module {
+    if whole_module {
+        // -Owholemodule already carries -whole-module-optimization via the
+        // opt-level spec; an explicit compilation mode supplies it otherwise.
+        if mode_wmo && !opt_wmo {
+            a.flag("-whole-module-optimization");
+        }
+        a.flag("-no-emit-module-separately-wmo");
+    } else {
         a.flag("-enable-batch-mode");
         a.flag("-incremental");
         a.flag("-disable-cmo");
     }
-    // Defaults a current Xcode (16+/26) always passes to the Swift driver.
+    // Defaults a current Xcode (16+/26) always passes to the Swift driver;
+    // -experimental-emit-module-separately is incremental-only (a whole-module
+    // build emits the module in-process, via -no-emit-module-separately-wmo).
     for flag in MODERN_DRIVER_DEFAULTS {
+        if whole_module && *flag == "-experimental-emit-module-separately" {
+            continue;
+        }
         a.flag(flag);
     }
     // C++ standard-library hardening: Xcode injects this into the clang importer
@@ -246,8 +323,6 @@ pub fn swift_arguments(settings: &Settings, arch: &str, options: &[CompilerOptio
     if get("CONFIGURATION").is_some_and(|c| c.eq_ignore_ascii_case("Debug")) {
         a.pair("-Xcc", "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG");
     }
-
-    a.into_vec()
 }
 
 /// Build the `clang`/`clang++` per-target compile argv (the shared flag set, not
@@ -255,29 +330,69 @@ pub fn swift_arguments(settings: &Settings, arch: &str, options: &[CompilerOptio
 /// warning/codegen flags are routed through the Clang xcspec's option encodings
 /// (`options`, the `com.apple.compilers.llvm.clang.1_0` set); the platform flags
 /// are computed.
+///
+/// `file_types` are the source languages the target compiles (see
+/// [`clang_languages`]). An option is emitted only when its xcspec `FileTypes`
+/// include one of them — so a C++ dialect/warning flag never lands on an ObjC
+/// `.m`, and the ObjC warnings never land on a `.c`. A single-language target
+/// also gets the leading `-x <dialect>` clang passes per file.
 #[must_use]
-pub fn clang_arguments(settings: &Settings, arch: &str, options: &[CompilerOption]) -> Vec<String> {
+pub fn clang_arguments(
+    settings: &Settings,
+    arch: &str,
+    options: &[CompilerOption],
+    file_types: &BTreeSet<String>,
+) -> Vec<String> {
     let mut a = ArgBuilder::default();
     let get = |k: &str| settings.get(k).map(String::as_str);
+    // A homogeneous target compiles every file as one dialect, which clang
+    // selects with a leading `-x`; a mixed target sets `-x` per file (geometry).
+    if file_types.len() == 1
+        && let Some(dialect) = file_types.iter().next().and_then(|ft| dialect_for(ft))
+    {
+        a.pair("-x", dialect);
+    }
     if let Some(triple) = target_triple(settings, arch) {
         a.pair("-target", &triple);
     }
     if let Some(sdk) = get("SDKROOT") {
         a.pair("-isysroot", sdk);
     }
-    // Every Clang-spec option whose value resolved (and isn't a no-op default)
-    // contributes its encoded `-W…` / `-f…` flags.
+    // An option applies when its language gate and its arch gate both pass. A
+    // `FileTypes` is satisfied by a language the target compiles (or is empty, =
+    // every C-family input; or `file_types` is empty = no info, gate nothing); an
+    // `Architectures` is satisfied by the build arch (or is empty = every arch).
+    let applies = |opt: &CompilerOption| {
+        let lang_ok = file_types.is_empty()
+            || opt.file_types.is_empty()
+            || opt.file_types.iter().any(|ft| file_types.contains(ft));
+        let arch_ok =
+            opt.architectures.is_empty() || opt.architectures.iter().any(|a| a == arch);
+        lang_ok && arch_ok
+    };
+    // Every applicable Clang-spec option whose value resolved (and isn't a
+    // no-op default) contributes its encoded `-W…` / `-f…` flags.
     for opt in options {
         let Some(value) = settings.get(&opt.name) else {
             continue;
         };
-        if value.is_empty() || value.contains("$(") {
+        if value.is_empty() || value.contains("$(") || !applies(opt) {
             continue;
         }
         if opt.args.is_some() || opt.flag.is_some() || opt.prefix_flag.is_some() {
-            a.extend(emit_option(opt, value, settings));
+            let toks = emit_option(opt, value, settings);
+            // The platform triple and sysroot are computed above; an option that
+            // re-encodes them (CLANG_TARGET_TRIPLE_ARCHS → `-target`, the header
+            // symlink dir → `-isysroot`) would duplicate them, often with an
+            // unresolved `$(CURRENT_ARCH)`.
+            if toks.first().is_some_and(|t| t == "-target" || t == "-isysroot") {
+                continue;
+            }
+            a.extend(toks);
         }
     }
+    // The compile action every per-file clang runs (compile, don't link).
+    a.flag("-c");
     a.into_vec()
 }
 
@@ -296,8 +411,13 @@ pub fn link_arguments(settings: &Settings, arch: &str) -> Vec<String> {
     if let Some(sdk) = get("SDKROOT") {
         a.pair("-isysroot", sdk);
     }
-    if get("MACH_O_TYPE") == Some("mh_dylib") {
+    let mach_o = get("MACH_O_TYPE");
+    if mach_o == Some("mh_dylib") {
         a.flag("-dynamiclib");
+    }
+    // A loadable bundle (a unit-test `.xctest`, a plug-in) links with -bundle.
+    if mach_o == Some("mh_bundle") {
+        a.flag("-bundle");
     }
     if let Some(level) = get("GCC_OPTIMIZATION_LEVEL") {
         a.flag(&format!("-O{level}"));
@@ -316,18 +436,34 @@ pub fn link_arguments(settings: &Settings, arch: &str) -> Vec<String> {
         a.pair("-Xlinker", "-rpath");
         a.pair("-Xlinker", p);
     }
-    if let Some(name) = get("LD_DYLIB_INSTALL_NAME") {
-        a.pair("-install_name", name);
-    }
     if is_yes(get("APPLICATION_EXTENSION_API_ONLY").unwrap_or("")) {
         a.flag("-fapplication-extension");
     }
-    if let Some(v) = get("DYLIB_COMPATIBILITY_VERSION") {
-        a.pair("-compatibility_version", v);
+    // The dylib identity + version stamps only apply to a dylib link; an
+    // executable or bundle never carries them.
+    if mach_o == Some("mh_dylib") {
+        if let Some(name) = get("LD_DYLIB_INSTALL_NAME") {
+            a.pair("-install_name", name);
+        }
+        if let Some(v) = get("DYLIB_COMPATIBILITY_VERSION") {
+            a.pair("-compatibility_version", v);
+        }
+        if let Some(v) = get("DYLIB_CURRENT_VERSION") {
+            a.pair("-current_version", v);
+        }
     }
-    if let Some(v) = get("DYLIB_CURRENT_VERSION") {
-        a.pair("-current_version", v);
+    // Modern Xcode link-driver defaults, grounded across every captured macOS
+    // link: a reproducible link, dead-code stripping (on unless disabled), and
+    // the ObjC runtime (Swift uses ObjC interop on Apple platforms). A Debug
+    // build also disables dedup for link speed.
+    a.pair("-Xlinker", "-reproducible");
+    if get("DEAD_CODE_STRIPPING") != Some("NO") {
+        a.pair("-Xlinker", "-dead_strip");
     }
+    if get("CONFIGURATION").is_some_and(|c| c.eq_ignore_ascii_case("Debug")) {
+        a.pair("-Xlinker", "-no_deduplicate");
+    }
+    a.flag("-fobjc-link-runtime");
     for f in ws(get("OTHER_LDFLAGS")) {
         a.flag(f);
     }
@@ -606,6 +742,8 @@ mod tests {
                 )]),
                 otherwise: Some(vec!["$(value)".into()]),
             }),
+            file_types: vec![],
+            architectures: vec![],
         };
         let conds = CompilerOption {
             name: "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
@@ -613,6 +751,8 @@ mod tests {
             flag: None,
             prefix_flag: None,
             args: Some(CliArgs::List(vec!["-D$(value)".into()])),
+            file_types: vec![],
+            architectures: vec![],
         };
         let mut s = Settings::new();
         s.insert("SWIFT_OPTIMIZATION_LEVEL".into(), "-Owholemodule".into());

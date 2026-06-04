@@ -43,7 +43,7 @@ const MAGIC: &[u8; 4] = b"SPC1";
 /// Bump whenever the serialized layout (or the [`Catalog`] shape) changes, so a
 /// sweetpad upgrade transparently rebuilds disk caches and the embedded blob is
 /// rejected if stale.
-const FORMAT_VERSION: u8 = 2;
+const FORMAT_VERSION: u8 = 4;
 
 #[derive(Debug)]
 pub enum Error {
@@ -344,6 +344,8 @@ fn write_compiler_options(out: &mut Vec<u8>, opts: &[CompilerOption]) {
                 }
             }
         }
+        write_str_list(out, &o.file_types);
+        write_str_list(out, &o.architectures);
     }
 }
 
@@ -369,12 +371,16 @@ fn read_compiler_options(r: &mut Reader) -> Result<Vec<CompilerOption>, Error> {
             }
             _ => return Err(Error::Corrupt("bad CliArgs tag")),
         };
+        let file_types = read_str_list(r)?;
+        let architectures = read_str_list(r)?;
         v.push(CompilerOption {
             name,
             is_list,
             flag,
             prefix_flag,
             args,
+            file_types,
+            architectures,
         });
     }
     Ok(v)
@@ -625,6 +631,8 @@ mod tests {
                         )]),
                         otherwise: Some(vec!["$(value)".into()]),
                     }),
+                    file_types: vec![],
+                    architectures: vec![],
                 },
                 CompilerOption {
                     name: "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
@@ -632,6 +640,8 @@ mod tests {
                     flag: None,
                     prefix_flag: None,
                     args: Some(CliArgs::List(vec!["-D$(value)".into()])),
+                    file_types: vec!["sourcecode.c.objc".into(), "sourcecode.cpp.objcpp".into()],
+                    architectures: vec!["x86_64".into()],
                 },
                 CompilerOption {
                     name: "SWIFT_OBJC_BRIDGING_HEADER".into(),
@@ -639,6 +649,8 @@ mod tests {
                     flag: Some("-import-objc-header".into()),
                     prefix_flag: None,
                     args: None,
+                    file_types: vec![],
+                    architectures: vec![],
                 },
             ],
         );
