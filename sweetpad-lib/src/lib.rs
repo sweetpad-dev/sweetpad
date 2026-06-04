@@ -14,6 +14,7 @@ pub mod bplist;
 pub mod build_context;
 pub mod build_settings;
 pub mod catalog_cache;
+pub mod compiler_args;
 pub mod condition;
 pub mod destination;
 mod file_cache;

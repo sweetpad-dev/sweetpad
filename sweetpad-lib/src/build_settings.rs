@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::build_context::{BuildContext, ResolveQuery};
 use crate::destination::RunDestination;
 use crate::xcspec::Catalog;
-use crate::{catalog_cache, scheme, workspace, xcode};
+use crate::{catalog_cache, compiler_args, project, scheme, workspace, xcode};
 
 /// Inputs for a `build-settings` run — the resolved form of the CLI's
 /// `BuildSettingsArgs` / a `xcodebuild -showBuildSettings` invocation. The
@@ -123,6 +123,72 @@ pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetS
         project_keys(&mut out, opts.keys.as_deref());
         Ok(out)
     }
+}
+
+/// Resolve the per-tool compiler/linker argv for a scheme or target — the
+/// layer above [`resolve_build_settings`]. For each selected target it resolves
+/// the build settings, reads the target's source files, and generates the
+/// `swiftc` / `clang` / link argv (see [`compiler_args`]).
+pub fn resolve_compiler_arguments(
+    opts: &BuildSettingsOptions,
+) -> Result<Vec<compiler_args::TargetCompilerArguments>, String> {
+    let catalog = load_catalog(
+        opts.xcode.as_deref(),
+        opts.xcspec_root.as_deref(),
+        opts.sdksettings_root.as_deref(),
+        opts.catalog_cache.as_deref(),
+    )?;
+    let projects = resolve_project_paths(opts.project.as_deref(), opts.workspace.as_deref())?;
+    let want_scheme = opts.scheme.as_deref();
+    let want_target = opts.target.as_deref();
+
+    let swift_opts = catalog
+        .as_ref()
+        .and_then(|c| c.compiler_options.get("com.apple.xcode.tools.swift.compiler"))
+        .map_or(&[][..], Vec::as_slice);
+    let clang_opts = catalog
+        .as_ref()
+        .and_then(|c| c.compiler_options.get("com.apple.compilers.llvm.clang.1_0"))
+        .map_or(&[][..], Vec::as_slice);
+
+    let single = projects.len() == 1;
+    let mut out = Vec::new();
+    for project_path in &projects {
+        let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
+        for query in build_queries(&ctx, opts, want_scheme, want_target) {
+            match ctx.resolve(&query) {
+                Ok(resolved) => {
+                    let sources =
+                        project::target_source_files(&ctx.project.path, &query.target)
+                            .unwrap_or_default();
+                    out.push(compiler_args::target_arguments(
+                        &query.target,
+                        &resolved.settings,
+                        &query.arch,
+                        resolved.product_type.as_deref(),
+                        &sources,
+                        swift_opts,
+                        clang_opts,
+                    ));
+                }
+                // Single project: bubble the error (xcodebuild-equivalent wording).
+                // Workspace: the target just isn't in this project; keep trying.
+                Err(e) if single => return Err(e.to_string()),
+                Err(_) => {}
+            }
+        }
+        if !out.is_empty() && want_scheme.is_none() {
+            break;
+        }
+    }
+    if out.is_empty() {
+        let needle = want_target
+            .map(|t| format!("target {t}"))
+            .or_else(|| want_scheme.map(|s| format!("scheme {s}")))
+            .unwrap_or_default();
+        return Err(format!("no target matched {needle}"));
+    }
+    Ok(out)
 }
 
 /// Trim each target's settings to `keys` when a projection is requested. Keys

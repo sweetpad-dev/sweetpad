@@ -37,13 +37,13 @@ use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::UNIX_EPOCH;
 
 use crate::xcconfig::{Assignment, Condition};
-use crate::xcspec::{self, Catalog, ProductTypeDefaults};
+use crate::xcspec::{self, Catalog, CliArgs, CompilerOption, ProductTypeDefaults};
 
 const MAGIC: &[u8; 4] = b"SPC1";
 /// Bump whenever the serialized layout (or the [`Catalog`] shape) changes, so a
 /// sweetpad upgrade transparently rebuilds disk caches and the embedded blob is
 /// rejected if stale.
-const FORMAT_VERSION: u8 = 1;
+const FORMAT_VERSION: u8 = 2;
 
 #[derive(Debug)]
 pub enum Error {
@@ -301,6 +301,9 @@ fn write_catalog(out: &mut Vec<u8>, c: &Catalog) {
     write_str_map(out, &c.sdk_paths, |out, p| {
         write_str(out, &p.to_string_lossy());
     });
+    write_str_map(out, &c.compiler_options, |out, v| {
+        write_compiler_options(out, v);
+    });
 }
 
 fn read_catalog(r: &mut Reader) -> Result<Catalog, Error> {
@@ -312,7 +315,85 @@ fn read_catalog(r: &mut Reader) -> Result<Catalog, Error> {
         sdks: read_str_map(r, read_assignments)?,
         product_types: read_str_map(r, read_product_type)?,
         sdk_paths: read_str_map(r, |r| Ok(PathBuf::from(r.str()?)))?,
+        compiler_options: read_str_map(r, read_compiler_options)?,
     })
+}
+
+fn write_compiler_options(out: &mut Vec<u8>, opts: &[CompilerOption]) {
+    write_len(out, opts.len());
+    for o in opts {
+        write_str(out, &o.name);
+        out.push(u8::from(o.is_list));
+        write_opt_str(out, o.flag.as_deref());
+        write_opt_str(out, o.prefix_flag.as_deref());
+        match &o.args {
+            None => out.push(0),
+            Some(CliArgs::List(v)) => {
+                out.push(1);
+                write_str_list(out, v);
+            }
+            Some(CliArgs::ByValue { map, otherwise }) => {
+                out.push(2);
+                write_str_map(out, map, |out, v| write_str_list(out, v));
+                match otherwise {
+                    None => out.push(0),
+                    Some(v) => {
+                        out.push(1);
+                        write_str_list(out, v);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn read_compiler_options(r: &mut Reader) -> Result<Vec<CompilerOption>, Error> {
+    let n = r.u32()? as usize;
+    let mut v = Vec::with_capacity(n.min(1 << 14));
+    for _ in 0..n {
+        let name = r.str()?;
+        let is_list = r.u8()? != 0;
+        let flag = r.opt_str()?;
+        let prefix_flag = r.opt_str()?;
+        let args = match r.u8()? {
+            0 => None,
+            1 => Some(CliArgs::List(read_str_list(r)?)),
+            2 => {
+                let map = read_str_map(r, read_str_list)?;
+                let otherwise = if r.u8()? != 0 {
+                    Some(read_str_list(r)?)
+                } else {
+                    None
+                };
+                Some(CliArgs::ByValue { map, otherwise })
+            }
+            _ => return Err(Error::Corrupt("bad CliArgs tag")),
+        };
+        v.push(CompilerOption {
+            name,
+            is_list,
+            flag,
+            prefix_flag,
+            args,
+        });
+    }
+    Ok(v)
+}
+
+fn write_str_list(out: &mut Vec<u8>, items: &[String]) {
+    write_len(out, items.len());
+    for s in items {
+        write_str(out, s);
+    }
+}
+
+fn read_str_list(r: &mut Reader) -> Result<Vec<String>, Error> {
+    let n = r.u32()? as usize;
+    let mut v = Vec::with_capacity(n.min(1 << 12));
+    for _ in 0..n {
+        v.push(r.str()?);
+    }
+    Ok(v)
 }
 
 fn write_product_type(out: &mut Vec<u8>, pt: &ProductTypeDefaults) {
@@ -529,6 +610,38 @@ mod tests {
             "macosx".into(),
             PathBuf::from("/Applications/Xcode.app/Contents/.../MacOSX26.0.sdk"),
         );
+        c.compiler_options.insert(
+            "com.apple.xcode.tools.swift.compiler".into(),
+            vec![
+                CompilerOption {
+                    name: "SWIFT_OPTIMIZATION_LEVEL".into(),
+                    is_list: false,
+                    flag: None,
+                    prefix_flag: None,
+                    args: Some(CliArgs::ByValue {
+                        map: BTreeMap::from([(
+                            "-Owholemodule".into(),
+                            vec!["-O".into(), "-whole-module-optimization".into()],
+                        )]),
+                        otherwise: Some(vec!["$(value)".into()]),
+                    }),
+                },
+                CompilerOption {
+                    name: "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
+                    is_list: true,
+                    flag: None,
+                    prefix_flag: None,
+                    args: Some(CliArgs::List(vec!["-D$(value)".into()])),
+                },
+                CompilerOption {
+                    name: "SWIFT_OBJC_BRIDGING_HEADER".into(),
+                    is_list: false,
+                    flag: Some("-import-objc-header".into()),
+                    prefix_flag: None,
+                    args: None,
+                },
+            ],
+        );
         c
     }
 
@@ -539,6 +652,7 @@ mod tests {
         assert_eq!(a.domain_specific, b.domain_specific);
         assert_eq!(a.sdks, b.sdks);
         assert_eq!(a.sdk_paths, b.sdk_paths);
+        assert_eq!(a.compiler_options, b.compiler_options);
         assert_eq!(a.product_types.len(), b.product_types.len());
         for (k, av) in &a.product_types {
             let bv = b.product_types.get(k).expect("missing product type");

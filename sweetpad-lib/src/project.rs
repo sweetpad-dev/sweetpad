@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use crate::destination::RunDestination;
@@ -341,6 +341,152 @@ pub fn build_settings_layers(
     config_name: &str,
 ) -> Result<Vec<Vec<Assignment>>, Error> {
     build_settings(xcodeproj_path, target_name, config_name).map(|ctx| ctx.layers)
+}
+
+/// The ordered, absolute source paths a native target compiles: the file
+/// references of its `PBXSourcesBuildPhase`, each resolved through the
+/// `PBXGroup` tree to a concrete path. The order matches the pbxproj (which is
+/// the order xcodebuild feeds them to the compiler's filelist).
+///
+/// Every extension is returned — `.swift`, `.m`, `.c`, `.cpp`, … — because the
+/// caller decides which tool consumes which (`swiftc` takes the `.swift`s,
+/// `clang` the C-family). Auto-generated sources xcodebuild synthesizes at build
+/// time (`<Target>_vers.c`, the `*-Swift.h` bridge) are NOT here — they live in
+/// DerivedData, not the project graph.
+pub fn target_source_files(
+    xcodeproj_path: &Path,
+    target_name: &str,
+) -> Result<Vec<PathBuf>, Error> {
+    let value = parse_pbxproj(xcodeproj_path)?;
+    target_source_files_from_value(&value, xcodeproj_path, target_name)
+}
+
+/// Like [`target_source_files`] but driven by an already-parsed pbxproj value.
+pub fn target_source_files_from_value(
+    value: &Value,
+    xcodeproj_path: &Path,
+    target_name: &str,
+) -> Result<Vec<PathBuf>, Error> {
+    let (objects, project_obj) = project_root(value)?;
+    let project_dir = abs_project_dir(xcodeproj_path);
+
+    // Resolve every file reference to an absolute path with one DFS from the
+    // project's mainGroup, accumulating each `<group>`'s `path` as we descend.
+    let mut file_paths: BTreeMap<String, PathBuf> = BTreeMap::new();
+    if let Some(main_group_id) = project_obj.get("mainGroup").and_then(Value::as_str) {
+        resolve_group_paths(
+            objects,
+            main_group_id,
+            &project_dir,
+            &project_dir,
+            &mut file_paths,
+        );
+    }
+
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::BadProject(format!("no target named '{target_name}' in the project")))?;
+
+    let mut out = Vec::new();
+    let Some(phase_ids) = target.get("buildPhases").and_then(Value::as_array) else {
+        return Ok(out);
+    };
+    for phase_ref in phase_ids {
+        let Some(phase) = phase_ref.as_str().and_then(|id| objects.get(id)) else {
+            continue;
+        };
+        if phase.get("isa").and_then(Value::as_str) != Some("PBXSourcesBuildPhase") {
+            continue;
+        }
+        let Some(file_ids) = phase.get("files").and_then(Value::as_array) else {
+            continue;
+        };
+        for build_file_ref in file_ids {
+            let Some(file_ref_id) = build_file_ref
+                .as_str()
+                .and_then(|id| objects.get(id))
+                .and_then(|bf| bf.get("fileRef").and_then(Value::as_str))
+            else {
+                continue;
+            };
+            if let Some(p) = file_paths.get(file_ref_id) {
+                out.push(p.clone());
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The absolute directory containing the `.xcodeproj` — the anchor for
+/// `<group>` / `SOURCE_ROOT` source trees. Canonicalized when it exists (so the
+/// paths match xcodebuild's absolute output), falling back to the input.
+fn abs_project_dir(xcodeproj_path: &Path) -> PathBuf {
+    let abs = fs::canonicalize(xcodeproj_path).unwrap_or_else(|_| xcodeproj_path.to_path_buf());
+    abs.parent().map_or_else(PathBuf::new, Path::to_path_buf)
+}
+
+/// DFS the group tree, recording `file_id → absolute path` for every leaf. A
+/// group node contributes its own directory to its children; a leaf records its
+/// full path. `PBXVariantGroup` / `XCVersionGroup` (localized resources, Core
+/// Data model versions) are walked like groups so their members resolve.
+fn resolve_group_paths(
+    objects: &BTreeMap<String, Value>,
+    node_id: &str,
+    parent_base: &Path,
+    project_dir: &Path,
+    out: &mut BTreeMap<String, PathBuf>,
+) {
+    let Some(node) = objects.get(node_id) else {
+        return;
+    };
+    let base = node_base(node, parent_base, project_dir);
+    let isa = node.get("isa").and_then(Value::as_str).unwrap_or("");
+    if matches!(isa, "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup") {
+        if let Some(children) = node.get("children").and_then(Value::as_array) {
+            for child in children {
+                if let Some(cid) = child.as_str() {
+                    resolve_group_paths(objects, cid, &base, project_dir, out);
+                }
+            }
+        }
+    } else {
+        out.insert(node_id.to_string(), base);
+    }
+}
+
+/// The absolute path of one group/file node, from its `sourceTree` + `path` and
+/// the accumulated parent-group directory. `<group>` is parent-relative,
+/// `SOURCE_ROOT` is project-relative, `<absolute>` is literal; build-variable
+/// source trees (`BUILT_PRODUCTS_DIR`, …) anchor at the parent as a best effort
+/// (they rarely hold compiled sources).
+fn node_base(node: &Value, parent_base: &Path, project_dir: &Path) -> PathBuf {
+    let path = node.get("path").and_then(Value::as_str).unwrap_or("");
+    let source_tree = node
+        .get("sourceTree")
+        .and_then(Value::as_str)
+        .unwrap_or("<group>");
+    match source_tree {
+        "<absolute>" => PathBuf::from(path),
+        "SOURCE_ROOT" => join_normalized(project_dir, path),
+        _ if path.is_empty() => parent_base.to_path_buf(),
+        _ => join_normalized(parent_base, path),
+    }
+}
+
+/// Join `rel` onto `base`, collapsing `.` / `..` lexically (without touching the
+/// filesystem) so a group path like `../Shared` resolves cleanly.
+fn join_normalized(base: &Path, rel: &str) -> PathBuf {
+    let mut p = base.to_path_buf();
+    for comp in Path::new(rel).components() {
+        match comp {
+            Component::ParentDir => {
+                p.pop();
+            }
+            Component::CurDir => {}
+            Component::Normal(s) => p.push(s),
+            Component::RootDir | Component::Prefix(_) => p = PathBuf::from(comp.as_os_str()),
+        }
+    }
+    p
 }
 
 /// Produce the "built-in" settings that `xcodebuild` injects from the

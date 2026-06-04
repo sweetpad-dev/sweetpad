@@ -1,0 +1,442 @@
+//! Compiler-argument oracle: score generated `swiftc`/`clang`/`ld` argv against
+//! the literal commands a real build executed (captured under
+//! `fixtures/<slug>/xcode-<ver>/compiler-args/`).
+//!
+//! Phase 1 builds the comparator and proves it on the captured oracle itself
+//! (identity → 100%, injected defects classify correctly). The generate-and-
+//! score pass lands in later phases once the Swift generator exists; until then
+//! this guards the scoring core and the captured fixtures' integrity.
+
+#![allow(clippy::too_many_lines, clippy::case_sensitive_file_extension_comparisons)]
+
+mod common;
+
+use std::path::{Path, PathBuf};
+
+use common::argv::{self, ArgvStats, compare_argv, parse_argv, print_argv_summary};
+use common::{
+    CatalogCache, MismatchTally, canonicalize_value, capture_xcode_version,
+    find_compiler_args_oracles, fixtures_root,
+};
+use sweetpad::build_context::{BuildContext, ResolveQuery};
+use sweetpad::{compiler_args, project, scheme};
+
+// ----- comparator unit tests -----------------------------------------------
+
+fn argv(tokens: &[&str]) -> Vec<String> {
+    tokens.iter().map(|s| (*s).to_string()).collect()
+}
+
+#[test]
+fn parse_argv_pairs_attached_and_standalone() {
+    let items = parse_argv(&argv(&[
+        "-module-name",
+        "Alamofire",
+        "-Onone",
+        "-DDEBUG",
+        "-I/inc",
+        "-g",
+    ]));
+    // (-module-name Alamofire) pair, (-Onone) standalone, (-D DEBUG) split,
+    // (-I /inc) split, (-g) standalone.
+    assert_eq!(items.len(), 5);
+    assert_eq!(items[0].flag, "-module-name");
+    assert_eq!(items[0].value.as_deref(), Some("Alamofire"));
+    assert_eq!(items[1].flag, "-Onone");
+    assert_eq!(items[1].value, None);
+    assert_eq!(items[2].flag, "-D");
+    assert_eq!(items[2].value.as_deref(), Some("DEBUG"));
+    assert_eq!(items[3].flag, "-I");
+    assert_eq!(items[3].value.as_deref(), Some("/inc"));
+}
+
+#[test]
+fn identity_scores_all_exact() {
+    let a = argv(&["-module-name", "Alamofire", "-Onone", "-g", "-swift-version", "5"]);
+    let (mut miss, mut extra) = (MismatchTally::new(), MismatchTally::new());
+    let st = compare_argv(&a, &a, &mut miss, &mut extra);
+    assert_eq!(st.oracle_items, st.exact, "every item should be byte-exact");
+    assert_eq!(st.missing, 0);
+    assert_eq!(st.extra, 0);
+    assert_eq!(st.structural_pct(), 100);
+    assert!(miss.is_empty() && extra.is_empty());
+}
+
+#[test]
+fn detects_missing_and_extra() {
+    let oracle = argv(&["-module-name", "Alamofire", "-Onone", "-enable-testing"]);
+    // Drop -enable-testing (missing), add -Osize (extra), keep the rest.
+    let ours = argv(&["-module-name", "Alamofire", "-Onone", "-Osize"]);
+    let (mut miss, mut extra) = (MismatchTally::new(), MismatchTally::new());
+    let st = compare_argv(&oracle, &ours, &mut miss, &mut extra);
+    assert_eq!(st.missing, 1, "the dropped -enable-testing");
+    assert_eq!(st.extra, 1, "the spurious -Osize");
+    assert_eq!(miss.get("-enable-testing"), Some(&1));
+    assert_eq!(extra.get("-Osize"), Some(&1));
+}
+
+#[test]
+fn geometry_is_counted_not_scored() {
+    // -o and -output-file-map are pure geometry; .hmap-bearing -Xcc too.
+    let oracle = argv(&[
+        "-module-name",
+        "Alamofire",
+        "-o",
+        "/dd/out.o",
+        "-output-file-map",
+        "/dd/ofm.json",
+        "-Xcc",
+        "-I/dd/Build/Intermediates.noindex/x.hmap",
+    ]);
+    let ours = argv(&["-module-name", "Alamofire"]);
+    let (mut miss, mut extra) = (MismatchTally::new(), MismatchTally::new());
+    let st = compare_argv(&oracle, &ours, &mut miss, &mut extra);
+    // Only -module-name is scored; the three geometry items are excluded so
+    // omitting them is not a "missing" defect.
+    assert_eq!(st.oracle_items, 1);
+    assert_eq!(st.geometry_oracle, 3);
+    assert_eq!(st.missing, 0);
+    assert_eq!(st.structural_pct(), 100);
+}
+
+#[test]
+fn structural_credits_divergent_abs_paths() {
+    // Same search-path flag, paths anchored at different roots: the canonical
+    // tier fails (different roots) but the structural tier credits "both abs".
+    let oracle = argv(&["-I", "/Users/ci/corpus/alamofire/.work/dd/Build/Products/Debug"]);
+    let ours = argv(&[
+        "-I",
+        "/Users/dev/Library/Developer/Xcode/DerivedData/Alamofire-aaaaaaaaaaaaaaaaaaaaaaaaaaaa/Build/Products/Debug",
+    ]);
+    let (mut miss, mut extra) = (MismatchTally::new(), MismatchTally::new());
+    let st = compare_argv(&oracle, &ours, &mut miss, &mut extra);
+    assert_eq!(st.structural, 1);
+    assert_eq!(st.exact, 0);
+    assert_eq!(st.missing, 0);
+    assert_eq!(st.extra, 0);
+}
+
+#[test]
+fn canonical_credits_home_drift() {
+    // -sdk to the same SDK under two different users/Xcodes: canonicalizes equal.
+    let oracle = argv(&[
+        "-sdk",
+        "/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+    ]);
+    let ours = argv(&[
+        "-sdk",
+        "/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk",
+    ]);
+    let (mut miss, mut extra) = (MismatchTally::new(), MismatchTally::new());
+    let st = compare_argv(&oracle, &ours, &mut miss, &mut extra);
+    assert_eq!(st.canonical, 1, "same SDK modulo Xcode dir + SDK version");
+    assert_eq!(st.exact, 0);
+}
+
+// ----- pilot oracle integrity ----------------------------------------------
+
+/// Every captured oracle must self-score 100% structural with zero missing /
+/// extra — a comparator + capture sanity check (an argv always matches itself),
+/// and it exercises the reader on the real committed JSON.
+#[test]
+fn captured_oracles_self_score_100() {
+    let oracles = find_compiler_args_oracles();
+    assert!(
+        !oracles.is_empty(),
+        "no compiler-args oracle captured yet under fixtures/*/compiler-args/"
+    );
+    for path in &oracles {
+        let oracle = argv::read_compiler_args(path)
+            .unwrap_or_else(|| panic!("failed to read compiler-args oracle {}", path.display()));
+        println!(
+            "{}: {} target(s)",
+            path.file_name().unwrap().to_string_lossy(),
+            oracle.targets.len()
+        );
+        for t in &oracle.targets {
+            let self_check = |label: &str, a: &[String]| {
+                let (mut miss, mut extra) = (MismatchTally::new(), MismatchTally::new());
+                let st = compare_argv(a, a, &mut miss, &mut extra);
+                assert_eq!(
+                    st.missing, 0,
+                    "[{} {}] self-compare produced {} missing",
+                    t.target, label, st.missing
+                );
+                assert_eq!(st.extra, 0, "[{} {}] self-compare produced extra", t.target, label);
+                assert_eq!(
+                    st.exact, st.oracle_items,
+                    "[{} {}] self-compare not byte-exact",
+                    t.target, label
+                );
+            };
+            if let Some(sw) = &t.swift {
+                self_check("swift", &sw.arguments);
+                self_check("swift.inputFiles", &sw.input_files);
+                assert!(
+                    !sw.input_files.is_empty(),
+                    "[{}] swift invocation captured no input files",
+                    t.target
+                );
+            }
+            if let Some(cl) = &t.clang {
+                self_check("clang.common", &cl.common_arguments);
+            }
+            if let Some(ln) = &t.link {
+                self_check("link", &ln.arguments);
+            }
+        }
+    }
+}
+
+/// Sanity: the pilot Alamofire macOS oracle has the shape later phases rely on —
+/// a Swift module invocation carrying the semantic flags, 43 source inputs, and
+/// a link step. Guards against a capture regression silently emptying it.
+#[test]
+fn alamofire_pilot_oracle_is_complete() {
+    let path = common::fixtures_root()
+        .join("alamofire/xcode-26.5.0/compiler-args/Alamofire-macOS__Debug__macOS.json");
+    if !path.exists() {
+        // Tolerate absence on a checkout that hasn't captured the pilot.
+        eprintln!("pilot oracle absent ({}); skipping", path.display());
+        return;
+    }
+    let oracle = argv::read_compiler_args(&path).expect("read pilot oracle");
+    assert_eq!(oracle.sdk, "macosx");
+    assert_eq!(oracle.arch, "arm64");
+    let t = oracle
+        .targets
+        .iter()
+        .find(|t| t.target == "Alamofire macOS")
+        .expect("Alamofire macOS target");
+    let sw = t.swift.as_ref().expect("swift invocation");
+    assert!(sw.arguments.iter().any(|a| a == "-module-name"));
+    assert!(sw.arguments.iter().any(|a| a == "Alamofire"));
+    assert!(sw.arguments.iter().any(|a| a == "-Onone"));
+    assert!(sw.arguments.iter().any(|a| a == "-swift-version"));
+    assert_eq!(sw.input_files.len(), 43, "Alamofire's .swift source count");
+    let ln = t.link.as_ref().expect("link invocation");
+    assert_eq!(ln.tool.as_deref(), Some("clang"));
+    assert!(ln.arguments.iter().any(|a| a == "-dynamiclib"));
+}
+
+// ----- Phase 2: source-file extraction -------------------------------------
+
+/// `project::target_source_files` must yield exactly the target's `.swift`
+/// inputs — the same set the oracle's `SwiftFileList` carries (compared
+/// canonically, since our raw fixture and the captured checkout sit at
+/// different roots).
+#[test]
+fn alamofire_source_files_match_oracle() {
+    let oracle_path = fixtures_root()
+        .join("alamofire/xcode-26.5.0/compiler-args/Alamofire-macOS__Debug__macOS.json");
+    let xcodeproj = fixtures_root().join("alamofire/xcode-26.5.0/raw/Alamofire.xcodeproj");
+    if !oracle_path.exists() || !xcodeproj.exists() {
+        eprintln!("pilot oracle or raw fixture absent; skipping");
+        return;
+    }
+    let oracle = argv::read_compiler_args(&oracle_path).expect("read oracle");
+    let t = oracle
+        .targets
+        .iter()
+        .find(|t| t.target == "Alamofire macOS")
+        .expect("Alamofire macOS target");
+    let sw = t.swift.as_ref().expect("swift invocation");
+
+    let mut want: Vec<String> = sw.input_files.iter().map(|p| canonicalize_value(p)).collect();
+    want.sort();
+
+    let resolved =
+        project::target_source_files(&xcodeproj, "Alamofire macOS").expect("resolve sources");
+    let mut got: Vec<String> = resolved
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .filter(|p| p.ends_with(".swift"))
+        .map(|p| canonicalize_value(&p))
+        .collect();
+    got.sort();
+
+    let missing: Vec<&String> = want.iter().filter(|w| !got.contains(w)).collect();
+    let extra: Vec<&String> = got.iter().filter(|g| !want.contains(g)).collect();
+    assert!(
+        missing.is_empty() && extra.is_empty(),
+        "source-file mismatch\n  missing ({}): {:?}\n  extra ({}): {:?}",
+        missing.len(),
+        missing,
+        extra.len(),
+        extra
+    );
+    assert_eq!(got.len(), 43, "Alamofire macOS .swift source count");
+}
+
+// ----- Phase 3: Swift generator vs oracle ----------------------------------
+
+/// The `raw/` checkout sibling of a compiler-args oracle (…/xcode-<ver>/raw).
+fn raw_root_for(oracle: &Path) -> PathBuf {
+    oracle
+        .parent() // compiler-args/
+        .and_then(Path::parent) // xcode-<ver>/
+        .map(|p| p.join("raw"))
+        .unwrap_or_default()
+}
+
+/// Whether the named scheme instruments **all** built targets for coverage — a
+/// scheme-level fact that forces `CLANG_COVERAGE_MAPPING=YES` (hence the build's
+/// `-profile-generate` / `-profile-coverage-mapping`). It applies when
+/// `TestAction.codeCoverageEnabled` is set AND coverage is not scoped to a
+/// specific target list (`<CodeCoverageTargets>`); a scoped scheme (Alamofire's
+/// empty list) leaves the framework uninstrumented. Targeting a target inside a
+/// non-empty scope list is a tracked gap (no corpus case yet).
+fn scheme_coverage(raw: &Path, scheme_name: &str) -> bool {
+    let Some(path) = common::find_file_named(raw, &format!("{scheme_name}.xcscheme")) else {
+        return false;
+    };
+    let enabled = scheme::parse_file(&path)
+        .ok()
+        .and_then(|s| s.test_action)
+        .is_some_and(|ta| ta.code_coverage_enabled);
+    let scoped = std::fs::read_to_string(&path).is_ok_and(|t| t.contains("<CodeCoverageTargets"));
+    enabled && !scoped
+}
+
+/// Find the `.xcodeproj` under `raw` that declares `target`.
+fn project_with_target(raw: &Path, target: &str) -> Option<PathBuf> {
+    let mut projects = Vec::new();
+    common::walk(raw, &mut projects, &|p, out| {
+        if p.extension() == Some(std::ffi::OsStr::new("xcodeproj")) {
+            out.push(p.to_path_buf());
+        }
+    });
+    projects.into_iter().find(|proj| {
+        BuildContext::open(proj).is_ok_and(|ctx| ctx.project.targets.iter().any(|t| t.name == target))
+    })
+}
+
+/// Codified structural floors per tool, from the first clean run minus a small
+/// margin. Swift is exact (Alamofire + Kingfisher both 100%). Clang and link are
+/// the early tool-by-tool generators (Phase 5): their floors reflect the
+/// derivable-flag coverage achieved so far, with the systematic tally documenting
+/// the not-yet-generated flags (autolinked frameworks, install_name, …). Judged
+/// by structural % + the tally, never the geometry-capped exact %.
+const SWIFT_STRUCTURAL_FLOOR: u64 = 95;
+const CLANG_STRUCTURAL_FLOOR: u64 = 90;
+const LINK_STRUCTURAL_FLOOR: u64 = 60;
+
+/// One tool's accumulated score plus its split missing/extra tallies.
+#[derive(Default)]
+struct ToolScore {
+    stats: ArgvStats,
+    miss: MismatchTally,
+    extra: MismatchTally,
+    targets: u64,
+}
+
+impl ToolScore {
+    fn record(&mut self, slug: &str, target: &str, label: &str, oracle: &[String], ours: &[String]) {
+        let st = compare_argv(oracle, ours, &mut self.miss, &mut self.extra);
+        println!(
+            "  {slug:<12} {target:<16} {label:<5} struct={}% precision={}% (oracle={} ours={} missing={} extra={} geom_o={})",
+            st.structural_pct(),
+            st.precision_pct(),
+            st.oracle_items,
+            st.our_items,
+            st.missing,
+            st.extra,
+            st.geometry_oracle,
+        );
+        self.stats.merge(st);
+        self.targets += 1;
+    }
+}
+
+/// Resolve each captured target, generate its `swiftc`/`clang`/`ld` argv, and
+/// score each against the oracle. The systematic missing/extra tally per tool is
+/// the deliverable; the per-tool floors guard against a generation regression.
+#[test]
+fn compiler_args_oracle_coverage() {
+    let oracles = find_compiler_args_oracles();
+    assert!(!oracles.is_empty(), "no compiler-args oracles captured");
+    let mut catalogs = CatalogCache::new();
+    let mut swift = ToolScore::default();
+    let mut clang = ToolScore::default();
+    let mut link = ToolScore::default();
+
+    for path in &oracles {
+        let Some(version) = capture_xcode_version(path) else {
+            continue;
+        };
+        let Some(oracle) = argv::read_compiler_args(path) else {
+            continue;
+        };
+        let raw = raw_root_for(path);
+        let catalog = catalogs.get(&version).clone();
+        let swift_opts = catalog
+            .compiler_options
+            .get("com.apple.xcode.tools.swift.compiler")
+            .map_or(&[][..], Vec::as_slice);
+        let clang_opts = catalog
+            .compiler_options
+            .get("com.apple.compilers.llvm.clang.1_0")
+            .map_or(&[][..], Vec::as_slice);
+
+        for t in &oracle.targets {
+            let Some(xcodeproj) = project_with_target(&raw, &t.target) else {
+                eprintln!("no raw project for target {} under {}", t.target, raw.display());
+                continue;
+            };
+            let Ok(ctx) = BuildContext::open(&xcodeproj) else {
+                continue;
+            };
+            let ctx = ctx.with_xcspec(catalog.clone());
+            let mut query =
+                ResolveQuery::new(&t.target, &oracle.configuration, &oracle.sdk, &oracle.arch);
+            if scheme_coverage(&raw, &oracle.scheme) {
+                query = query.with_code_coverage_enabled(true);
+            }
+            let Ok(resolved) = ctx.resolve(&query) else {
+                eprintln!("resolve failed for {}", t.target);
+                continue;
+            };
+            let settings = &resolved.settings;
+
+            if let Some(sw) = &t.swift {
+                let ours = compiler_args::swift_arguments(settings, &oracle.arch, swift_opts);
+                if std::env::var("ARGV_DUMP").is_ok() {
+                    eprintln!("--- ORACLE swift {} ---\n{}", t.target, sw.arguments.join("\n"));
+                    eprintln!("--- OURS swift {} ---\n{}", t.target, ours.join("\n"));
+                }
+                swift.record(&oracle.slug, &t.target, "swift", &sw.arguments, &ours);
+            }
+            if let Some(cl) = &t.clang {
+                let ours = compiler_args::clang_arguments(settings, &oracle.arch, clang_opts);
+                clang.record(&oracle.slug, &t.target, "clang", &cl.common_arguments, &ours);
+            }
+            if let Some(ln) = &t.link {
+                let ours = compiler_args::link_arguments(settings, &oracle.arch);
+                link.record(&oracle.slug, &t.target, "link", &ln.arguments, &ours);
+            }
+        }
+    }
+
+    print_argv_summary("swift generator vs oracle", &swift.stats, &swift.miss, &swift.extra);
+    print_argv_summary("clang generator vs oracle", &clang.stats, &clang.miss, &clang.extra);
+    print_argv_summary("link generator vs oracle", &link.stats, &link.miss, &link.extra);
+    assert!(swift.targets > 0, "no swift targets scored");
+
+    if std::env::var("ARGV_DIAGNOSTIC").is_ok() {
+        return;
+    }
+    for (label, score, floor) in [
+        ("swift", &swift, SWIFT_STRUCTURAL_FLOOR),
+        ("clang", &clang, CLANG_STRUCTURAL_FLOOR),
+        ("link", &link, LINK_STRUCTURAL_FLOOR),
+    ] {
+        let pct = score.stats.structural_pct();
+        assert!(
+            score.targets == 0 || pct >= floor,
+            "{label} structural {pct}% < floor {floor}% (missing/extra tally above)"
+        );
+    }
+}
+
+// Keep ArgvStats referenced for the dead-code lint when only unit tests build.
+const _: fn() -> ArgvStats = ArgvStats::default;

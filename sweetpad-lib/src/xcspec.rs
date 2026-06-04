@@ -88,6 +88,46 @@ pub struct Catalog {
     /// capture resolves against the Xcode it was taken with, not whichever Xcode
     /// is `xcode-select`ed on the host. `None` falls back to the host install.
     pub developer_dir: Option<String>,
+    /// Command-line option encodings parsed from each `Type = Compiler` /
+    /// `Type = Linker` xcspec, keyed by the tool `Identifier` (e.g.
+    /// `com.apple.xcode.tools.swift.compiler`). The authoritative
+    /// "build setting → argv" mapping the compiler-argument generator routes
+    /// through (see [`crate::compiler_args`]).
+    pub compiler_options: BTreeMap<String, Vec<CompilerOption>>,
+}
+
+/// One compiler/linker option's command-line encoding, parsed from an xcspec
+/// `Options` entry. At most one of `args` / `flag` / `prefix_flag` is set; all
+/// `None` means the option contributes no argv (it only feeds other settings).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompilerOption {
+    /// The build-setting name (e.g. `SWIFT_OPTIMIZATION_LEVEL`).
+    pub name: String,
+    /// `Type = StringList` / `PathList`: the value is whitespace-split and the
+    /// encoding applied per element.
+    pub is_list: bool,
+    /// `CommandLineFlag` — a single flag (Boolean: emitted when `YES`; scalar:
+    /// followed by the value).
+    pub flag: Option<String>,
+    /// `CommandLinePrefixFlag` — glued to each list element (`-I` → `-I/p`).
+    pub prefix_flag: Option<String>,
+    /// `CommandLineArgs` — a flat arg list (with `$(value)` substitution) or a
+    /// per-value map (Boolean `YES`/`NO`, Enumeration values, `<<otherwise>>`).
+    pub args: Option<CliArgs>,
+}
+
+/// The two shapes Apple's `CommandLineArgs` takes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliArgs {
+    /// Array form: emitted verbatim (with `$(value)` substituted), once for a
+    /// scalar or once per element for a list.
+    List(Vec<String>),
+    /// Dict form keyed by the resolved value, with an optional `<<otherwise>>`
+    /// fallback. Covers Boolean (`YES`/`NO`) and Enumeration options.
+    ByValue {
+        map: BTreeMap<String, Vec<String>>,
+        otherwise: Option<Vec<String>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -352,6 +392,18 @@ fn ingest_xcspec_entry(entry: &Value, file_domain: Option<&str>, catalog: &mut C
         }
     }
     let ty = dict.get("Type").and_then(Value::as_str);
+    // Compiler/linker specs carry the authoritative "setting → argv" encoding
+    // for each option. Parse it, keyed by the tool `Identifier`, so the
+    // compiler-argument generator can route generation through it.
+    if matches!(ty, Some("Compiler" | "Linker"))
+        && let Some(id) = dict.get("Identifier").and_then(Value::as_str)
+        && let Some(arr) = dict.get("Options").and_then(Value::as_array)
+    {
+        let opts: Vec<CompilerOption> = arr.iter().filter_map(parse_compiler_option).collect();
+        if !opts.is_empty() {
+            catalog.compiler_options.insert(id.to_string(), opts);
+        }
+    }
     if matches!(ty, Some("ProductType" | "PackageType"))
         && let Some(id) = dict.get("Identifier").and_then(Value::as_str)
     {
@@ -530,6 +582,60 @@ fn value_to_string(v: &Value) -> String {
     }
 }
 
+/// A command-line arg slot is one string, or an array of strings; flatten either.
+fn value_to_strings(v: &Value) -> Vec<String> {
+    match v {
+        Value::String(s) => vec![s.clone()],
+        Value::Array(arr) => arr.iter().filter_map(Value::as_str).map(String::from).collect(),
+        Value::Dict(_) => Vec::new(),
+    }
+}
+
+/// Parse one compiler/linker `Options` entry's command-line encoding. Returns
+/// `None` for an unnamed option.
+fn parse_compiler_option(opt: &Value) -> Option<CompilerOption> {
+    let dict = opt.as_dict()?;
+    let name = dict.get("Name").and_then(Value::as_str)?;
+    if name.is_empty() {
+        return None;
+    }
+    let ty = dict.get("Type").and_then(Value::as_str).unwrap_or("");
+    let is_list = matches!(ty, "StringList" | "PathList" | "stringlist");
+
+    let args = dict.get("CommandLineArgs").map(|v| match v {
+        Value::Dict(d) => {
+            let mut map = BTreeMap::new();
+            let mut otherwise = None;
+            for (k, val) in d {
+                let strs = value_to_strings(val);
+                if k == "<<otherwise>>" {
+                    otherwise = Some(strs);
+                } else {
+                    map.insert(k.clone(), strs);
+                }
+            }
+            CliArgs::ByValue { map, otherwise }
+        }
+        _ => CliArgs::List(value_to_strings(v)),
+    });
+
+    Some(CompilerOption {
+        name: name.to_string(),
+        is_list,
+        flag: dict
+            .get("CommandLineFlag")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(String::from),
+        prefix_flag: dict
+            .get("CommandLinePrefixFlag")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(String::from),
+        args,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -565,6 +671,44 @@ mod tests {
             "expected hundreds of total assignments, got {}",
             cat.assignment_count()
         );
+    }
+
+    #[test]
+    fn parses_swift_compiler_command_line_options() {
+        let cat = load_catalog(&xcspec_root(), Some(&sdksettings_root())).unwrap();
+        let opts = cat
+            .compiler_options
+            .get("com.apple.xcode.tools.swift.compiler")
+            .expect("swift compiler options should be parsed");
+        assert!(opts.len() > 20, "expected many options, got {}", opts.len());
+        let by = |n: &str| opts.iter().find(|o| o.name == n);
+
+        // Enumeration with `<<otherwise>> = $(value)`.
+        let opt = by("SWIFT_OPTIMIZATION_LEVEL").expect("SWIFT_OPTIMIZATION_LEVEL");
+        match opt.args.as_ref().expect("args") {
+            CliArgs::ByValue { otherwise, .. } => {
+                assert_eq!(otherwise.as_deref(), Some(&["$(value)".to_string()][..]));
+            }
+            CliArgs::List(_) => panic!("expected ByValue"),
+        }
+
+        // StringList emitting `-D$(value)` per element.
+        let cc = by("SWIFT_ACTIVE_COMPILATION_CONDITIONS").expect("conditions");
+        assert!(cc.is_list);
+        match cc.args.as_ref().expect("args") {
+            CliArgs::List(v) => assert_eq!(v.as_slice(), &["-D$(value)".to_string()]),
+            CliArgs::ByValue { .. } => panic!("expected List"),
+        }
+
+        // The upcoming-feature family carries the authoritative feature name.
+        let ea = by("SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY").expect("existential any");
+        match ea.args.as_ref().expect("args") {
+            CliArgs::ByValue { map, .. } => assert_eq!(
+                map.get("YES").map(Vec::as_slice),
+                Some(&["-enable-upcoming-feature".to_string(), "ExistentialAny".to_string()][..])
+            ),
+            CliArgs::List(_) => panic!("expected ByValue"),
+        }
     }
 
     #[test]

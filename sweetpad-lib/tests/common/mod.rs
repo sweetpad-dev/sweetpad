@@ -33,6 +33,10 @@ use std::path::{Path, PathBuf};
 
 use sweetpad::xcspec;
 
+/// Argv comparator for the compiler-args oracle (see `PLAN_COMPILER_ARGS.md`).
+/// Reuses this module's [`canonicalize_value`] and [`MismatchTally`].
+pub mod argv;
+
 // ----- tiny JSON reader ----------------------------------------------------
 
 #[derive(Debug)]
@@ -425,6 +429,26 @@ pub fn find_oracles() -> Vec<PathBuf> {
                 .and_then(|d| d.file_name())
                 .and_then(OsStr::to_str)
                 == Some("build-settings")
+            && p.extension() == Some(OsStr::new("json"))
+        {
+            out.push(p.to_path_buf());
+        }
+    });
+    out.sort();
+    out
+}
+
+/// Collect every `*.json` file directly inside a `compiler-args/` directory
+/// anywhere under `fixtures/`. The corpus the compiler-args oracle
+/// (`compiler_args_oracle.rs`) consumes.
+pub fn find_compiler_args_oracles() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    walk(&fixtures_root(), &mut out, &|p, out| {
+        if p.is_file()
+            && p.parent()
+                .and_then(|d| d.file_name())
+                .and_then(OsStr::to_str)
+                == Some("compiler-args")
             && p.extension() == Some(OsStr::new("json"))
         {
             out.push(p.to_path_buf());

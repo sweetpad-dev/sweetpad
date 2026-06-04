@@ -1,0 +1,626 @@
+//! Compiler argument generation: resolved build settings → the per-tool argv
+//! `xcodebuild` would invoke. The layer directly above
+//! [`crate::build_context::BuildContext::resolve`].
+//!
+//! Today this generates the `swiftc` module invocation. It emits the flags that
+//! are a function of the resolved settings (module name, optimization, target
+//! triple, search paths, active-compilation `-D`s, …) plus the build-system
+//! defaults a current Xcode always passes (`-enable-batch-mode`,
+//! `-explicit-module-build`, `-no-color-diagnostics`, …). It does **not** emit
+//! the per-build output/intermediate geometry (`-o`, `-output-file-map`,
+//! `-emit-module-path`, header maps, the module cache): those are validation-
+//! out-of-scope (see the oracle comparator) and have no consumer here.
+//!
+//! Mappings are grounded against the captured oracle
+//! (`fixtures/<slug>/.../compiler-args/`). Where a flag is a fixed build-system
+//! default rather than a function of a setting, that is noted at the emit site.
+
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
+
+use crate::xcspec::{CliArgs, CompilerOption};
+
+type Settings = BTreeMap<String, String>;
+
+/// One generated tool invocation: the tool name, its argument vector, and the
+/// input files it consumes (`.swift` for swiftc, the C-family sources for
+/// clang; empty for the linker, which takes object files via geometry).
+#[derive(Debug, Clone)]
+pub struct ToolInvocation {
+    pub tool: String,
+    pub arguments: Vec<String>,
+    pub input_files: Vec<String>,
+}
+
+/// The per-tool argv a target compiles + links with. A tool is `None` when the
+/// target has no inputs for it (no `.swift` → no `swift`; no C-family source →
+/// no `clang`; a non-linking product → no `link`).
+#[derive(Debug, Clone)]
+pub struct TargetCompilerArguments {
+    pub target: String,
+    pub swift: Option<ToolInvocation>,
+    pub clang: Option<ToolInvocation>,
+    pub link: Option<ToolInvocation>,
+}
+
+/// C-family source extensions a `clang`/`clang++` invocation compiles.
+const CLANG_EXTS: &[&str] = &["c", "m", "mm", "cc", "cpp", "cxx", "C"];
+
+/// Assemble the full per-tool argv for one target from its resolved settings,
+/// arch, product type, and source files. The entry point the bindings call.
+#[must_use]
+pub fn target_arguments(
+    target: &str,
+    settings: &Settings,
+    arch: &str,
+    product_type: Option<&str>,
+    sources: &[PathBuf],
+    swift_options: &[CompilerOption],
+    clang_options: &[CompilerOption],
+) -> TargetCompilerArguments {
+    let mut swift_inputs = Vec::new();
+    let mut clang_inputs = Vec::new();
+    for src in sources {
+        let path = src.to_string_lossy().into_owned();
+        match src.extension().and_then(|e| e.to_str()) {
+            Some("swift") => swift_inputs.push(path),
+            Some(ext) if CLANG_EXTS.contains(&ext) => clang_inputs.push(path),
+            _ => {}
+        }
+    }
+    let swift = (!swift_inputs.is_empty()).then(|| ToolInvocation {
+        tool: "swiftc".to_string(),
+        arguments: swift_arguments(settings, arch, swift_options),
+        input_files: swift_inputs,
+    });
+    let clang = (!clang_inputs.is_empty()).then(|| ToolInvocation {
+        tool: "clang".to_string(),
+        arguments: clang_arguments(settings, arch, clang_options),
+        input_files: clang_inputs,
+    });
+    // A target links when it produces a binary from compiled sources. A
+    // static library is assembled by libtool; everything else (framework, app,
+    // tool, bundle, test, extension) links through the clang driver.
+    let has_sources = swift.is_some() || clang.is_some();
+    let link = (has_sources && links(product_type)).then(|| ToolInvocation {
+        tool: link_tool(settings, product_type).to_string(),
+        arguments: link_arguments(settings, arch),
+        input_files: Vec::new(),
+    });
+    TargetCompilerArguments {
+        target: target.to_string(),
+        swift,
+        clang,
+        link,
+    }
+}
+
+/// Whether a product type links a binary (vs. an aggregate / legacy target that
+/// runs scripts only). Unknown / absent product types are assumed to link.
+fn links(product_type: Option<&str>) -> bool {
+    !matches!(product_type, Some(pt) if pt.contains("bundle") && !pt.contains("unit-test"))
+}
+
+/// `libtool` for a static library, the `clang` driver otherwise.
+fn link_tool(settings: &Settings, product_type: Option<&str>) -> &'static str {
+    let static_lib = product_type.is_some_and(|pt| pt.contains("library.static"))
+        || settings.get("MACH_O_TYPE").map(String::as_str) == Some("staticlib");
+    if static_lib { "libtool" } else { "clang" }
+}
+
+/// Build the `swiftc` module argv for one target+arch from its resolved
+/// settings, routing the options the compiler xcspec cleanly encodes
+/// (`options`) through that data and hand-coding the computed/build-system flags
+/// it doesn't (the target triple, search paths, driver defaults, …). Pass `&[]`
+/// for `options` to fall back to the hand-coded heuristic for every option.
+///
+/// Order is not significant — the oracle comparator scores argv as a multiset —
+/// so flags are grouped by concern for readability.
+#[must_use]
+pub fn swift_arguments(settings: &Settings, arch: &str, options: &[CompilerOption]) -> Vec<String> {
+    let mut a = ArgBuilder::default();
+    let get = |k: &str| settings.get(k).map(String::as_str);
+    let by_name: HashMap<&str, &CompilerOption> =
+        options.iter().map(|o| (o.name.as_str(), o)).collect();
+    // Spec-driven emit for one named option: its encoding applied to the
+    // resolved value, or `None` when the spec lacks it / it didn't resolve.
+    // An empty or still-unexpanded (`$(…)`) value emits nothing — it must not
+    // fall through to an Enumeration's `<<otherwise>>` branch.
+    let spec = |name: &str| -> Option<Vec<String>> {
+        let opt = by_name.get(name)?;
+        let value = settings.get(name)?;
+        if value.is_empty() || value.contains("$(") {
+            return None;
+        }
+        Some(emit_option(opt, value, settings))
+    };
+
+    // --- Identity + language -----------------------------------------------
+    if let Some(module) = get("PRODUCT_MODULE_NAME").or_else(|| get("PRODUCT_NAME")) {
+        a.pair("-module-name", module);
+    }
+    // SWIFT_OPTIMIZATION_LEVEL: the spec enum maps `-Owholemodule` specially and
+    // passes everything else (`-Onone`/`-O`/`-Osize`) through as the flag itself.
+    if let Some(args) = spec("SWIFT_OPTIMIZATION_LEVEL") {
+        a.extend(args);
+    } else if let Some(opt) = get("SWIFT_OPTIMIZATION_LEVEL") {
+        a.flag(opt);
+    }
+    // SWIFT_VERSION has no swift-spec encoding — the build system passes it,
+    // collapsing `5.0` → `5`.
+    if let Some(v) = get("SWIFT_VERSION") {
+        a.pair("-swift-version", swift_version(v));
+    }
+
+    // --- Conditional compilation -------------------------------------------
+    // SWIFT_ACTIVE_COMPILATION_CONDITIONS is a StringList encoded `-D$(value)`.
+    if let Some(args) = spec("SWIFT_ACTIVE_COMPILATION_CONDITIONS") {
+        a.extend(args);
+    } else {
+        for cond in ws(get("SWIFT_ACTIVE_COMPILATION_CONDITIONS")) {
+            a.flag(&format!("-D{cond}"));
+        }
+    }
+    emit_feature_flags(&mut a, settings, &by_name);
+    // SWIFT_STRICT_CONCURRENCY (`complete` → -enable-upcoming-feature
+    // StrictConcurrency) and code-coverage instrumentation are both spec enums
+    // keyed on the resolved value.
+    if let Some(args) = spec("SWIFT_STRICT_CONCURRENCY") {
+        a.extend(args);
+    }
+    if let Some(args) = spec("CLANG_COVERAGE_MAPPING") {
+        a.extend(args);
+    }
+
+    // --- Platform ----------------------------------------------------------
+    if let Some(sdk) = get("SDKROOT") {
+        a.pair("-sdk", sdk);
+    }
+    if let Some(triple) = target_triple(settings, arch) {
+        a.pair("-target", &triple);
+    }
+
+    // --- Debugging + testing -----------------------------------------------
+    if debug_info_enabled(get("DEBUG_INFORMATION_FORMAT")) {
+        a.flag("-g");
+        // Xcode serializes the debug options into the module for a debuggable build.
+        a.pair("-Xfrontend", "-serialize-debugging-options");
+    }
+    if is_yes(get("ENABLE_TESTABILITY").unwrap_or("")) {
+        a.flag("-enable-testing");
+    }
+    if is_yes(get("APPLICATION_EXTENSION_API_ONLY").unwrap_or("")) {
+        a.flag("-application-extension");
+    }
+
+    // --- Search paths (structural; geometry-independent) -------------------
+    if let Some(products) = get("BUILT_PRODUCTS_DIR") {
+        a.pair("-I", products);
+    }
+    for p in ws(get("SWIFT_INCLUDE_PATHS")) {
+        a.pair("-I", p);
+    }
+    for p in ws(get("FRAMEWORK_SEARCH_PATHS")) {
+        a.pair("-F", p);
+    }
+
+    // --- Clang importer flags ----------------------------------------------
+    // GCC_PREPROCESSOR_DEFINITIONS reach the embedded clang importer as -Xcc -D.
+    for def in ws(get("GCC_PREPROCESSOR_DEFINITIONS")) {
+        a.pair("-Xcc", &format!("-D{def}"));
+    }
+    // The products `include` dir, where Xcode drops generated module maps.
+    if let Some(products) = get("BUILT_PRODUCTS_DIR") {
+        a.pair("-Xcc", &format!("-I{products}/include"));
+    }
+
+    // --- Module / header emission ------------------------------------------
+    a.flag("-emit-module");
+    a.flag("-emit-dependencies");
+    if get("SWIFT_INSTALL_OBJC_HEADER").is_none_or(|v| !v.eq_ignore_ascii_case("NO")) {
+        a.flag("-emit-objc-header");
+    }
+
+    // --- User passthrough --------------------------------------------------
+    for f in ws(get("OTHER_SWIFT_FLAGS")) {
+        a.flag(f);
+    }
+
+    // --- Compilation mode + build-system defaults --------------------------
+    a.flag("-c");
+    // Debug builds use incremental batch mode; -O* whole-module builds don't.
+    let whole_module = get("SWIFT_COMPILATION_MODE")
+        .is_some_and(|m| m.eq_ignore_ascii_case("wholemodule"))
+        || get("SWIFT_OPTIMIZATION_LEVEL").is_some_and(|o| o == "-O" || o == "-Osize");
+    if !whole_module {
+        a.flag("-enable-batch-mode");
+        a.flag("-incremental");
+        a.flag("-disable-cmo");
+    }
+    // Defaults a current Xcode (16+/26) always passes to the Swift driver.
+    for flag in MODERN_DRIVER_DEFAULTS {
+        a.flag(flag);
+    }
+    // C++ standard-library hardening: Xcode injects this into the clang importer
+    // for a Debug build.
+    if get("CONFIGURATION").is_some_and(|c| c.eq_ignore_ascii_case("Debug")) {
+        a.pair("-Xcc", "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG");
+    }
+
+    a.into_vec()
+}
+
+/// Build the `clang`/`clang++` per-target compile argv (the shared flag set, not
+/// the per-file `-c <src>`/`-o <obj>` geometry) from resolved settings. The
+/// warning/codegen flags are routed through the Clang xcspec's option encodings
+/// (`options`, the `com.apple.compilers.llvm.clang.1_0` set); the platform flags
+/// are computed.
+#[must_use]
+pub fn clang_arguments(settings: &Settings, arch: &str, options: &[CompilerOption]) -> Vec<String> {
+    let mut a = ArgBuilder::default();
+    let get = |k: &str| settings.get(k).map(String::as_str);
+    if let Some(triple) = target_triple(settings, arch) {
+        a.pair("-target", &triple);
+    }
+    if let Some(sdk) = get("SDKROOT") {
+        a.pair("-isysroot", sdk);
+    }
+    // Every Clang-spec option whose value resolved (and isn't a no-op default)
+    // contributes its encoded `-W…` / `-f…` flags.
+    for opt in options {
+        let Some(value) = settings.get(&opt.name) else {
+            continue;
+        };
+        if value.is_empty() || value.contains("$(") {
+            continue;
+        }
+        if opt.args.is_some() || opt.flag.is_some() || opt.prefix_flag.is_some() {
+            a.extend(emit_option(opt, value, settings));
+        }
+    }
+    a.into_vec()
+}
+
+/// Build the link argv (`clang`-driver invoked) from resolved settings: the
+/// platform triple, SDK, dylib/runpath/search-path flags, and version stamps.
+/// The auto-linked framework imports, the `-add_ast_path` debug-info plumbing,
+/// and the object filelist are out of scope (geometry / autolink), tracked by
+/// the comparator tally rather than generated here.
+#[must_use]
+pub fn link_arguments(settings: &Settings, arch: &str) -> Vec<String> {
+    let mut a = ArgBuilder::default();
+    let get = |k: &str| settings.get(k).map(String::as_str);
+    if let Some(triple) = target_triple(settings, arch) {
+        a.pair("-target", &triple);
+    }
+    if let Some(sdk) = get("SDKROOT") {
+        a.pair("-isysroot", sdk);
+    }
+    if get("MACH_O_TYPE") == Some("mh_dylib") {
+        a.flag("-dynamiclib");
+    }
+    if let Some(level) = get("GCC_OPTIMIZATION_LEVEL") {
+        a.flag(&format!("-O{level}"));
+    }
+    if let Some(products) = get("BUILT_PRODUCTS_DIR") {
+        a.flag(&format!("-L{products}"));
+        a.flag(&format!("-F{products}"));
+    }
+    for p in ws(get("LIBRARY_SEARCH_PATHS")) {
+        a.flag(&format!("-L{p}"));
+    }
+    for p in ws(get("FRAMEWORK_SEARCH_PATHS")) {
+        a.flag(&format!("-F{p}"));
+    }
+    for p in ws(get("LD_RUNPATH_SEARCH_PATHS")) {
+        a.pair("-Xlinker", "-rpath");
+        a.pair("-Xlinker", p);
+    }
+    if let Some(name) = get("LD_DYLIB_INSTALL_NAME") {
+        a.pair("-install_name", name);
+    }
+    if is_yes(get("APPLICATION_EXTENSION_API_ONLY").unwrap_or("")) {
+        a.flag("-fapplication-extension");
+    }
+    if let Some(v) = get("DYLIB_COMPATIBILITY_VERSION") {
+        a.pair("-compatibility_version", v);
+    }
+    if let Some(v) = get("DYLIB_CURRENT_VERSION") {
+        a.pair("-current_version", v);
+    }
+    for f in ws(get("OTHER_LDFLAGS")) {
+        a.flag(f);
+    }
+    a.into_vec()
+}
+
+/// Driver flags a current Xcode emits unconditionally for a Swift target. These
+/// are build-system defaults, not functions of any user setting; they are
+/// calibrated against the Xcode 26 oracle and revisited per-version in Phase 5.
+const MODERN_DRIVER_DEFAULTS: &[&str] = &[
+    "-enable-bare-slash-regex",
+    "-no-color-diagnostics",
+    "-use-frontend-parseable-output",
+    "-save-temps",
+    "-explicit-module-build",
+    "-validate-clang-modules-once",
+    "-emit-const-values",
+    "-experimental-emit-module-separately",
+];
+
+// ----- helpers -------------------------------------------------------------
+
+/// Ordered argv accumulator. A standalone flag is one token; a pair is two
+/// (`-flag value`). Order isn't scored, but pairs must stay adjacent.
+#[derive(Default)]
+struct ArgBuilder {
+    out: Vec<String>,
+}
+
+impl ArgBuilder {
+    fn flag(&mut self, f: &str) {
+        self.out.push(f.to_string());
+    }
+    fn pair(&mut self, flag: &str, value: &str) {
+        self.out.push(flag.to_string());
+        self.out.push(value.to_string());
+    }
+    fn extend(&mut self, items: Vec<String>) {
+        self.out.extend(items);
+    }
+    fn into_vec(self) -> Vec<String> {
+        self.out
+    }
+}
+
+/// Emit the `-enable-upcoming-feature` / `-enable-experimental-feature` flags
+/// for the resolved `SWIFT_UPCOMING_FEATURE_*` / `SWIFT_EXPERIMENTAL_FEATURE_*`
+/// settings. The xcspec option (when present) carries the authoritative feature
+/// name and the `YES`/`MIGRATE`/`NO` encoding; a setting the spec doesn't model
+/// falls back to Title-casing its suffix.
+fn emit_feature_flags(a: &mut ArgBuilder, settings: &Settings, by_name: &SpecIndex) {
+    for (key, val) in settings {
+        for (prefix, flag) in [
+            ("SWIFT_UPCOMING_FEATURE_", "-enable-upcoming-feature"),
+            ("SWIFT_EXPERIMENTAL_FEATURE_", "-enable-experimental-feature"),
+        ] {
+            let Some(suffix) = key.strip_prefix(prefix) else {
+                continue;
+            };
+            if let Some(opt) = by_name.get(key.as_str()) {
+                a.extend(emit_option(opt, val, settings));
+            } else if is_yes(val) {
+                a.pair(flag, &feature_name(suffix));
+            }
+        }
+    }
+}
+
+type SpecIndex<'a> = HashMap<&'a str, &'a CompilerOption>;
+
+/// Apply one option's xcspec command-line encoding to its resolved `value`.
+fn emit_option(opt: &CompilerOption, value: &str, settings: &Settings) -> Vec<String> {
+    if let Some(args) = &opt.args {
+        return match args {
+            CliArgs::ByValue { map, otherwise } => map
+                .get(value)
+                .or(otherwise.as_ref())
+                .map(|tokens| tokens.iter().map(|t| subst(t, value, settings)).collect())
+                .unwrap_or_default(),
+            CliArgs::List(tokens) => {
+                let mut out = Vec::new();
+                if opt.is_list {
+                    for elem in value.split_whitespace() {
+                        for t in tokens {
+                            out.push(subst(t, elem, settings));
+                        }
+                    }
+                } else {
+                    for t in tokens {
+                        out.push(subst(t, value, settings));
+                    }
+                }
+                out
+            }
+        };
+    }
+    if let Some(flag) = &opt.flag {
+        if value.eq_ignore_ascii_case("YES") {
+            return vec![flag.clone()];
+        }
+        if value.is_empty() || value.eq_ignore_ascii_case("NO") {
+            return Vec::new();
+        }
+        if opt.is_list {
+            let mut out = Vec::new();
+            for elem in value.split_whitespace() {
+                out.push(flag.clone());
+                out.push(elem.to_string());
+            }
+            return out;
+        }
+        return vec![flag.clone(), value.to_string()];
+    }
+    if let Some(prefix) = &opt.prefix_flag {
+        return value
+            .split_whitespace()
+            .map(|elem| format!("{prefix}{elem}"))
+            .collect();
+    }
+    Vec::new()
+}
+
+/// Substitute `$(value)` (and any `$(OTHER_SETTING)`) inside one xcspec arg
+/// token, single-pass so a substituted value can't recurse.
+fn subst(token: &str, value: &str, settings: &Settings) -> String {
+    let mut out = String::with_capacity(token.len());
+    let mut rest = token;
+    while let Some(i) = rest.find("$(") {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 2..];
+        let Some(j) = after.find(')') else {
+            out.push_str(&rest[i..]);
+            return out;
+        };
+        let var = &after[..j];
+        if var == "value" {
+            out.push_str(value);
+        } else {
+            out.push_str(settings.get(var).map_or("", String::as_str));
+        }
+        rest = &after[j + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn is_yes(v: &str) -> bool {
+    v.eq_ignore_ascii_case("YES")
+}
+
+/// Whitespace-split a setting value into non-empty tokens.
+fn ws(v: Option<&str>) -> Vec<&str> {
+    v.map(|s| s.split_whitespace().collect())
+        .unwrap_or_default()
+}
+
+/// `5.0` → `5`, `6.0` → `6`; anything else (e.g. `4.2`) is passed through.
+fn swift_version(v: &str) -> &str {
+    v.strip_suffix(".0").unwrap_or(v)
+}
+
+/// Debug info is on unless the format is empty / explicitly none.
+fn debug_info_enabled(fmt: Option<&str>) -> bool {
+    matches!(fmt, Some(f) if !f.is_empty() && !f.eq_ignore_ascii_case("none"))
+}
+
+/// `SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY` → `ExistentialAny`: split the
+/// screaming-snake suffix and Title-case each word. Exact for the common
+/// features; the xcspec ingest (Phase 4) supplies the authoritative names where
+/// this heuristic (acronyms, digits) would diverge.
+fn feature_name(suffix: &str) -> String {
+    suffix
+        .split('_')
+        .map(|word| {
+            let mut c = word.chars();
+            match c.next() {
+                Some(first) => {
+                    first.to_ascii_uppercase().to_string() + &c.as_str().to_ascii_lowercase()
+                }
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
+/// The `swiftc -target` triple: `<arch>-<vendor>-<os><suffix>`. Prefers the
+/// resolved `LLVM_TARGET_TRIPLE_OS_VERSION` (e.g. `macos10.12`); falls back to
+/// composing `SWIFT_PLATFORM_TARGET_PREFIX` + the platform's deployment target.
+fn target_triple(settings: &Settings, arch: &str) -> Option<String> {
+    let get = |k: &str| settings.get(k).map(String::as_str);
+    let vendor = get("LLVM_TARGET_TRIPLE_VENDOR").unwrap_or("apple");
+    let suffix = get("LLVM_TARGET_TRIPLE_SUFFIX").unwrap_or("");
+    let os = if let Some(os) = get("LLVM_TARGET_TRIPLE_OS_VERSION") {
+        os.to_string()
+    } else {
+        let prefix = get("SWIFT_PLATFORM_TARGET_PREFIX")?;
+        let dep_key = get("DEPLOYMENT_TARGET_SETTING_NAME")?;
+        let dep = get(dep_key)?;
+        format!("{prefix}{dep}")
+    };
+    if arch.is_empty() || os.is_empty() {
+        return None;
+    }
+    Some(format!("{arch}-{vendor}-{os}{suffix}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn swift_version_strips_dot_zero() {
+        assert_eq!(swift_version("5.0"), "5");
+        assert_eq!(swift_version("6.0"), "6");
+        assert_eq!(swift_version("4.2"), "4.2");
+    }
+
+    #[test]
+    fn feature_name_title_cases() {
+        assert_eq!(feature_name("EXISTENTIAL_ANY"), "ExistentialAny");
+        assert_eq!(feature_name("FORWARD_TRAILING_CLOSURES"), "ForwardTrailingClosures");
+    }
+
+    #[test]
+    fn triple_prefers_resolved_os_version() {
+        let mut s = Settings::new();
+        s.insert("LLVM_TARGET_TRIPLE_OS_VERSION".into(), "macos10.12".into());
+        assert_eq!(
+            target_triple(&s, "arm64").as_deref(),
+            Some("arm64-apple-macos10.12")
+        );
+    }
+
+    #[test]
+    fn triple_composes_from_prefix_and_deployment() {
+        let mut s = Settings::new();
+        s.insert("SWIFT_PLATFORM_TARGET_PREFIX".into(), "ios".into());
+        s.insert("DEPLOYMENT_TARGET_SETTING_NAME".into(), "IPHONEOS_DEPLOYMENT_TARGET".into());
+        s.insert("IPHONEOS_DEPLOYMENT_TARGET".into(), "17.0".into());
+        s.insert("LLVM_TARGET_TRIPLE_SUFFIX".into(), "-simulator".into());
+        assert_eq!(
+            target_triple(&s, "arm64").as_deref(),
+            Some("arm64-apple-ios17.0-simulator")
+        );
+    }
+
+    #[test]
+    fn emits_core_semantic_flags() {
+        let mut s = Settings::new();
+        s.insert("PRODUCT_MODULE_NAME".into(), "Alamofire".into());
+        s.insert("SWIFT_OPTIMIZATION_LEVEL".into(), "-Onone".into());
+        s.insert("SWIFT_VERSION".into(), "5.0".into());
+        s.insert("SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(), "DEBUG".into());
+        // No spec options: exercises the hand-coded fallback path.
+        let args = swift_arguments(&s, "arm64", &[]);
+        let joined = args.join(" ");
+        assert!(joined.contains("-module-name Alamofire"));
+        assert!(joined.contains("-Onone"));
+        assert!(joined.contains("-swift-version 5"));
+        assert!(joined.contains("-DDEBUG"));
+        assert!(args.contains(&"-c".to_string()));
+    }
+
+    #[test]
+    fn spec_driven_optimization_and_conditions() {
+        use crate::xcspec::CliArgs;
+        let opt_level = CompilerOption {
+            name: "SWIFT_OPTIMIZATION_LEVEL".into(),
+            is_list: false,
+            flag: None,
+            prefix_flag: None,
+            args: Some(CliArgs::ByValue {
+                map: BTreeMap::from([(
+                    "-Owholemodule".into(),
+                    vec!["-O".into(), "-whole-module-optimization".into()],
+                )]),
+                otherwise: Some(vec!["$(value)".into()]),
+            }),
+        };
+        let conds = CompilerOption {
+            name: "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
+            is_list: true,
+            flag: None,
+            prefix_flag: None,
+            args: Some(CliArgs::List(vec!["-D$(value)".into()])),
+        };
+        let mut s = Settings::new();
+        s.insert("SWIFT_OPTIMIZATION_LEVEL".into(), "-Owholemodule".into());
+        s.insert("SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(), "DEBUG COCOAPODS".into());
+        let args = swift_arguments(&s, "arm64", &[opt_level, conds]);
+        // The enum's special-cased `-Owholemodule` expands; conditions become -D.
+        assert!(args.windows(2).any(|w| w == ["-O", "-whole-module-optimization"]));
+        assert!(args.contains(&"-DDEBUG".to_string()));
+        assert!(args.contains(&"-DCOCOAPODS".to_string()));
+    }
+}

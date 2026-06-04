@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use napi_derive::napi;
 
 use crate::destination::parse_destination_arg;
-use crate::{project, scheme, workspace, xcode};
+use crate::{compiler_args, project, scheme, workspace, xcode};
 
 /// Active Xcode toolchain info. Mirrors `xcrun xcodebuild -version` plus the
 /// resolved `DEVELOPER_DIR`.
@@ -177,10 +177,11 @@ pub struct TargetBuildSettings {
     pub settings: HashMap<String, String>,
 }
 
-/// Resolve build settings for a scheme or target across a project/workspace.
-/// Mirrors `xcodebuild -showBuildSettings`.
-#[napi]
-pub fn build_settings(options: BuildSettingsOptions) -> napi::Result<Vec<TargetBuildSettings>> {
+/// Map the N-API options to the library's `BuildSettingsOptions`, parsing the
+/// destination string. Shared by `buildSettings` and `compilerArguments`.
+fn core_options(
+    options: BuildSettingsOptions,
+) -> napi::Result<crate::build_settings::BuildSettingsOptions> {
     let destination = match options.destination.as_deref() {
         Some(s) => Some(
             parse_destination_arg(s)
@@ -188,7 +189,7 @@ pub fn build_settings(options: BuildSettingsOptions) -> napi::Result<Vec<TargetB
         ),
         None => None,
     };
-    let opts = crate::build_settings::BuildSettingsOptions {
+    Ok(crate::build_settings::BuildSettingsOptions {
         project: options.project.map(PathBuf::from),
         workspace: options.workspace.map(PathBuf::from),
         scheme: options.scheme,
@@ -204,7 +205,14 @@ pub fn build_settings(options: BuildSettingsOptions) -> napi::Result<Vec<TargetB
         catalog_cache: None,
         derived_data_path: options.derived_data_path.map(PathBuf::from),
         keys: options.keys,
-    };
+    })
+}
+
+/// Resolve build settings for a scheme or target across a project/workspace.
+/// Mirrors `xcodebuild -showBuildSettings`.
+#[napi]
+pub fn build_settings(options: BuildSettingsOptions) -> napi::Result<Vec<TargetBuildSettings>> {
+    let opts = core_options(options)?;
     let resolved = crate::build_settings::resolve_build_settings(&opts).map_err(to_napi_err)?;
     Ok(resolved
         .into_iter()
@@ -213,6 +221,55 @@ pub fn build_settings(options: BuildSettingsOptions) -> napi::Result<Vec<TargetB
             settings: t.settings.into_iter().collect(),
         })
         .collect())
+}
+
+/// One generated tool invocation: the tool, its argv, and the input files it
+/// compiles (`.swift` for `swiftc`, the C-family sources for `clang`; empty for
+/// the linker).
+#[napi(object)]
+pub struct CompilerToolInvocation {
+    pub tool: String,
+    pub arguments: Vec<String>,
+    pub input_files: Vec<String>,
+}
+
+/// One target's generated per-tool compiler/linker argv. A field is absent when
+/// the target has no inputs for that tool.
+#[napi(object)]
+pub struct TargetCompilerArguments {
+    pub target: String,
+    pub swift: Option<CompilerToolInvocation>,
+    pub clang: Option<CompilerToolInvocation>,
+    pub link: Option<CompilerToolInvocation>,
+}
+
+/// Resolve the per-tool compiler/linker argument vectors (`swiftc` / `clang` /
+/// link) for a scheme or target — the command lines `xcodebuild` would invoke,
+/// derived from the resolved build settings. Takes the same options as
+/// [`build_settings`].
+#[napi]
+pub fn compiler_arguments(
+    options: BuildSettingsOptions,
+) -> napi::Result<Vec<TargetCompilerArguments>> {
+    let opts = core_options(options)?;
+    let resolved = crate::build_settings::resolve_compiler_arguments(&opts).map_err(to_napi_err)?;
+    Ok(resolved
+        .into_iter()
+        .map(|t| TargetCompilerArguments {
+            target: t.target,
+            swift: t.swift.map(tool_to_napi),
+            clang: t.clang.map(tool_to_napi),
+            link: t.link.map(tool_to_napi),
+        })
+        .collect())
+}
+
+fn tool_to_napi(t: compiler_args::ToolInvocation) -> CompilerToolInvocation {
+    CompilerToolInvocation {
+        tool: t.tool,
+        arguments: t.arguments,
+        input_files: t.input_files,
+    }
 }
 
 /// A target referenced by a scheme (a build entry or a testable). Mirrors a
