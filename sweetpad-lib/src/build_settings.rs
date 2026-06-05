@@ -150,6 +150,10 @@ pub fn resolve_compiler_arguments(
         .as_ref()
         .and_then(|c| c.compiler_options.get("com.apple.compilers.llvm.clang.1_0"))
         .map_or(&[][..], Vec::as_slice);
+    let xcode_version = catalog
+        .as_ref()
+        .and_then(|c| c.xcode_version.as_deref())
+        .unwrap_or("");
 
     let single = projects.len() == 1;
     let mut out = Vec::new();
@@ -169,6 +173,7 @@ pub fn resolve_compiler_arguments(
                         &sources,
                         swift_opts,
                         clang_opts,
+                        xcode_version,
                     ));
                 }
                 // Single project: bubble the error (xcodebuild-equivalent wording).

@@ -11,6 +11,7 @@
 
 mod common;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use common::argv::{self, ArgvStats, compare_argv, parse_argv, print_argv_summary};
@@ -311,20 +312,25 @@ fn project_with_target(raw: &Path, target: &str) -> Option<PathBuf> {
     })
 }
 
-/// Codified structural floors per tool, from the clean run minus a small margin.
-/// The corpus spans pure-Swift frameworks (Alamofire, Kingfisher), a real ObjC
-/// target (KingfisherTests' vendored Nocilla `.m`), and a Release app (executable
-/// link + whole-module). Swift is near-exact (every framework/app target 100%,
-/// the mixed ObjC+Swift test target lower for its bridged framework/header search
-/// paths). Clang is language-gated against the xcspec `FileTypes`/`Architectures`,
-/// so per-language flags land only on the files that accept them. Link is the
-/// foundational generator: its floor reflects derivable coverage, with the tally
-/// documenting the not-yet-generated flags (autolinked `-framework`, `-rdynamic`,
-/// the Swift-runtime toolchain `-L`, coverage `-fprofile-instr-generate`). Judged
-/// by structural % + the tally, never the geometry-capped exact %.
-const SWIFT_STRUCTURAL_FLOOR: u64 = 95;
-const CLANG_STRUCTURAL_FLOOR: u64 = 92;
-const LINK_STRUCTURAL_FLOOR: u64 = 68;
+/// Per-version structural floors `(swift, clang, link)`, from the clean run minus
+/// a small margin. The corpus spans pure-Swift frameworks (Alamofire, Kingfisher),
+/// a real ObjC target (KingfisherTests' vendored Nocilla `.m`), and a Release app
+/// (executable link + whole-module). Swift is near-exact; clang is language-gated
+/// against the xcspec `FileTypes`/`Architectures`; link is the foundational
+/// generator, its floor reflecting derivable coverage with the tally documenting
+/// the not-yet-generated flags (autolinked `-framework`, `-rdynamic`, the
+/// Swift-runtime toolchain `-L`, coverage `-fprofile-instr-generate`). Judged by
+/// structural % + the tally, never the geometry-capped exact %. Each Xcode runs
+/// its own Swift driver, so every version is guarded at its own baseline.
+fn version_floor(version: &str) -> (u64, u64, u64) {
+    match version {
+        // (swift, clang, link), each = the clean run minus a ~2pt margin.
+        "26.5.0" => (95, 92, 68),
+        "16.4.0" => (96, 92, 68),
+        "15.4.0" => (96, 91, 68),
+        _ => (90, 85, 55),
+    }
+}
 
 /// One tool's accumulated score plus its split missing/extra tallies.
 #[derive(Default)]
@@ -336,10 +342,18 @@ struct ToolScore {
 }
 
 impl ToolScore {
-    fn record(&mut self, slug: &str, target: &str, label: &str, oracle: &[String], ours: &[String]) {
+    fn record(
+        &mut self,
+        version: &str,
+        slug: &str,
+        target: &str,
+        label: &str,
+        oracle: &[String],
+        ours: &[String],
+    ) {
         let st = compare_argv(oracle, ours, &mut self.miss, &mut self.extra);
         println!(
-            "  {slug:<12} {target:<16} {label:<5} struct={}% precision={}% (oracle={} ours={} missing={} extra={} geom_o={})",
+            "  {version:<8} {slug:<11} {target:<22} {label:<5} struct={}% precision={}% (oracle={} ours={} missing={} extra={} geom_o={})",
             st.structural_pct(),
             st.precision_pct(),
             st.oracle_items,
@@ -353,6 +367,15 @@ impl ToolScore {
     }
 }
 
+/// Per-Xcode-version tool scores — the same resolver/generator is run for every
+/// version, but each is scored and floored on its own (different Swift drivers).
+#[derive(Default)]
+struct VersionScores {
+    swift: ToolScore,
+    clang: ToolScore,
+    link: ToolScore,
+}
+
 /// Resolve each captured target, generate its `swiftc`/`clang`/`ld` argv, and
 /// score each against the oracle. The systematic missing/extra tally per tool is
 /// the deliverable; the per-tool floors guard against a generation regression.
@@ -361,9 +384,7 @@ fn compiler_args_oracle_coverage() {
     let oracles = find_compiler_args_oracles();
     assert!(!oracles.is_empty(), "no compiler-args oracles captured");
     let mut catalogs = CatalogCache::new();
-    let mut swift = ToolScore::default();
-    let mut clang = ToolScore::default();
-    let mut link = ToolScore::default();
+    let mut by_version: BTreeMap<String, VersionScores> = BTreeMap::new();
 
     for path in &oracles {
         let Some(version) = capture_xcode_version(path) else {
@@ -402,50 +423,60 @@ fn compiler_args_oracle_coverage() {
                 continue;
             };
             let settings = &resolved.settings;
+            let dump = std::env::var("ARGV_DUMP").is_ok();
+            let scores = by_version.entry(version.clone()).or_default();
 
             if let Some(sw) = &t.swift {
-                let ours = compiler_args::swift_arguments(settings, &oracle.arch, swift_opts);
-                if std::env::var("ARGV_DUMP").is_ok() {
-                    eprintln!("--- ORACLE swift {} ---\n{}", t.target, sw.arguments.join("\n"));
-                    eprintln!("--- OURS swift {} ---\n{}", t.target, ours.join("\n"));
+                let ours = compiler_args::swift_arguments(settings, &oracle.arch, swift_opts, &version);
+                if dump {
+                    eprintln!("--- ORACLE swift {version} {} ---\n{}", t.target, sw.arguments.join("\n"));
+                    eprintln!("--- OURS swift {version} {} ---\n{}", t.target, ours.join("\n"));
                 }
-                swift.record(&oracle.slug, &t.target, "swift", &sw.arguments, &ours);
+                scores.swift.record(&version, &oracle.slug, &t.target, "swift", &sw.arguments, &ours);
             }
             if let Some(cl) = &t.clang {
                 let files: Vec<String> = cl.files.iter().map(|f| f.file.clone()).collect();
                 let langs = compiler_args::clang_languages(&files);
                 let ours = compiler_args::clang_arguments(settings, &oracle.arch, clang_opts, &langs);
-                if std::env::var("ARGV_DUMP").is_ok() {
-                    eprintln!("--- ORACLE clang {} ---\n{}", t.target, cl.common_arguments.join("\n"));
-                    eprintln!("--- OURS clang {} ---\n{}", t.target, ours.join("\n"));
+                if dump {
+                    eprintln!("--- ORACLE clang {version} {} ---\n{}", t.target, cl.common_arguments.join("\n"));
+                    eprintln!("--- OURS clang {version} {} ---\n{}", t.target, ours.join("\n"));
                 }
-                clang.record(&oracle.slug, &t.target, "clang", &cl.common_arguments, &ours);
+                scores.clang.record(&version, &oracle.slug, &t.target, "clang", &cl.common_arguments, &ours);
             }
             if let Some(ln) = &t.link {
                 let ours = compiler_args::link_arguments(settings, &oracle.arch);
-                link.record(&oracle.slug, &t.target, "link", &ln.arguments, &ours);
+                scores.link.record(&version, &oracle.slug, &t.target, "link", &ln.arguments, &ours);
             }
         }
     }
 
-    print_argv_summary("swift generator vs oracle", &swift.stats, &swift.miss, &swift.extra);
-    print_argv_summary("clang generator vs oracle", &clang.stats, &clang.miss, &clang.extra);
-    print_argv_summary("link generator vs oracle", &link.stats, &link.miss, &link.extra);
-    assert!(swift.targets > 0, "no swift targets scored");
+    for (version, scores) in &by_version {
+        print_argv_summary(&format!("[{version}] swift"), &scores.swift.stats, &scores.swift.miss, &scores.swift.extra);
+        print_argv_summary(&format!("[{version}] clang"), &scores.clang.stats, &scores.clang.miss, &scores.clang.extra);
+        print_argv_summary(&format!("[{version}] link"), &scores.link.stats, &scores.link.miss, &scores.link.extra);
+    }
+    assert!(
+        by_version.values().any(|s| s.swift.targets > 0),
+        "no swift targets scored"
+    );
 
     if std::env::var("ARGV_DIAGNOSTIC").is_ok() {
         return;
     }
-    for (label, score, floor) in [
-        ("swift", &swift, SWIFT_STRUCTURAL_FLOOR),
-        ("clang", &clang, CLANG_STRUCTURAL_FLOOR),
-        ("link", &link, LINK_STRUCTURAL_FLOOR),
-    ] {
-        let pct = score.stats.structural_pct();
-        assert!(
-            score.targets == 0 || pct >= floor,
-            "{label} structural {pct}% < floor {floor}% (missing/extra tally above)"
-        );
+    for (version, scores) in &by_version {
+        let (swift_floor, clang_floor, link_floor) = version_floor(version);
+        for (label, score, floor) in [
+            ("swift", &scores.swift, swift_floor),
+            ("clang", &scores.clang, clang_floor),
+            ("link", &scores.link, link_floor),
+        ] {
+            let pct = score.stats.structural_pct();
+            assert!(
+                score.targets == 0 || pct >= floor,
+                "[{version}] {label} structural {pct}% < floor {floor}% (tally above)"
+            );
+        }
     }
 }
 

@@ -86,6 +86,11 @@ pub fn clang_languages(paths: &[String]) -> BTreeSet<String> {
 
 /// Assemble the full per-tool argv for one target from its resolved settings,
 /// arch, product type, and source files. The entry point the bindings call.
+///
+/// The inputs are distinct resolved facts (settings, arch, product type, sources,
+/// the swift/clang spec option sets, the toolchain version), so they stay
+/// positional rather than bundled into a one-use struct.
+#[allow(clippy::too_many_arguments)]
 #[must_use]
 pub fn target_arguments(
     target: &str,
@@ -95,6 +100,7 @@ pub fn target_arguments(
     sources: &[PathBuf],
     swift_options: &[CompilerOption],
     clang_options: &[CompilerOption],
+    xcode_version: &str,
 ) -> TargetCompilerArguments {
     let mut swift_inputs = Vec::new();
     let mut clang_inputs = Vec::new();
@@ -108,7 +114,7 @@ pub fn target_arguments(
     }
     let swift = (!swift_inputs.is_empty()).then(|| ToolInvocation {
         tool: "swiftc".to_string(),
-        arguments: swift_arguments(settings, arch, swift_options),
+        arguments: swift_arguments(settings, arch, swift_options, xcode_version),
         input_files: swift_inputs,
     });
     let clang_langs = clang_languages(&clang_inputs);
@@ -156,7 +162,12 @@ fn link_tool(settings: &Settings, product_type: Option<&str>) -> &'static str {
 /// Order is not significant — the oracle comparator scores argv as a multiset —
 /// so flags are grouped by concern for readability.
 #[must_use]
-pub fn swift_arguments(settings: &Settings, arch: &str, options: &[CompilerOption]) -> Vec<String> {
+pub fn swift_arguments(
+    settings: &Settings,
+    arch: &str,
+    options: &[CompilerOption],
+    xcode_version: &str,
+) -> Vec<String> {
     let mut a = ArgBuilder::default();
     let get = |k: &str| settings.get(k).map(String::as_str);
     let by_name: HashMap<&str, &CompilerOption> =
@@ -277,15 +288,25 @@ pub fn swift_arguments(settings: &Settings, arch: &str, options: &[CompilerOptio
     }
 
     // --- Compilation mode + build-system defaults --------------------------
-    emit_compilation_defaults(&mut a, settings);
+    emit_compilation_defaults(&mut a, settings, xcode_major(xcode_version));
 
     a.into_vec()
 }
 
+/// Major version from an Xcode version string (`26.5.0` → 26), or 0 if absent /
+/// unparseable — callers treat 0 as the current (modern) toolchain.
+fn xcode_major(version: &str) -> u32 {
+    version.split('.').next().and_then(|s| s.parse().ok()).unwrap_or(0)
+}
+
 /// Emit the compilation-mode flags (incremental batch vs whole-module) and the
-/// driver / clang-importer defaults a current Xcode always passes to swiftc.
-fn emit_compilation_defaults(a: &mut ArgBuilder, settings: &Settings) {
+/// driver / clang-importer defaults a current Xcode always passes to swiftc. A
+/// few defaults turned over at the Xcode 26 explicit-modules cutover, so they are
+/// gated on the toolchain major (an unknown version is treated as modern, since
+/// the bindings always supply one).
+fn emit_compilation_defaults(a: &mut ArgBuilder, settings: &Settings, major: u32) {
     let get = |k: &str| settings.get(k).map(String::as_str);
+    let modern = major == 0 || major >= 26;
     a.flag("-c");
     // Debug builds compile incrementally in batches; a whole-module build
     // (explicit mode, or implied by -O/-Osize/-Owholemodule) compiles the module
@@ -309,6 +330,10 @@ fn emit_compilation_defaults(a: &mut ArgBuilder, settings: &Settings) {
         a.flag("-incremental");
         a.flag("-disable-cmo");
     }
+    // Pre-26 Swift drivers pass exclusivity enforcement explicitly; 26+ implies it.
+    if !modern {
+        a.flag("-enforce-exclusivity=checked");
+    }
     // Defaults a current Xcode (16+/26) always passes to the Swift driver;
     // -experimental-emit-module-separately is incremental-only (a whole-module
     // build emits the module in-process, via -no-emit-module-separately-wmo).
@@ -318,9 +343,9 @@ fn emit_compilation_defaults(a: &mut ArgBuilder, settings: &Settings) {
         }
         a.flag(flag);
     }
-    // C++ standard-library hardening: Xcode injects this into the clang importer
-    // for a Debug build.
-    if get("CONFIGURATION").is_some_and(|c| c.eq_ignore_ascii_case("Debug")) {
+    // C++ standard-library hardening: the 26 toolchain's libc++ injects this into
+    // the clang importer for a Debug build (earlier toolchains don't).
+    if modern && get("CONFIGURATION").is_some_and(|c| c.eq_ignore_ascii_case("Debug")) {
         a.pair("-Xcc", "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG");
     }
 }
@@ -718,7 +743,7 @@ mod tests {
         s.insert("SWIFT_VERSION".into(), "5.0".into());
         s.insert("SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(), "DEBUG".into());
         // No spec options: exercises the hand-coded fallback path.
-        let args = swift_arguments(&s, "arm64", &[]);
+        let args = swift_arguments(&s, "arm64", &[], "26.5.0");
         let joined = args.join(" ");
         assert!(joined.contains("-module-name Alamofire"));
         assert!(joined.contains("-Onone"));
@@ -757,7 +782,7 @@ mod tests {
         let mut s = Settings::new();
         s.insert("SWIFT_OPTIMIZATION_LEVEL".into(), "-Owholemodule".into());
         s.insert("SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(), "DEBUG COCOAPODS".into());
-        let args = swift_arguments(&s, "arm64", &[opt_level, conds]);
+        let args = swift_arguments(&s, "arm64", &[opt_level, conds], "26.5.0");
         // The enum's special-cased `-Owholemodule` expands; conditions become -D.
         assert!(args.windows(2).any(|w| w == ["-O", "-whole-module-optimization"]));
         assert!(args.contains(&"-DDEBUG".to_string()));

@@ -231,8 +231,9 @@ _Validation:_ callable from TS; returns per-target `swift`/`clang`/`link` argv.
 ## Status (as built)
 
 Phases 0–4 and 6 are complete. Phase 5 (corpus + clang + link) covers the macOS
-oracles — a real ObjC target, a Release app, and the framework dylibs — with the
-non-macOS / multi-version matrix the main remaining capture work.
+oracles — a real ObjC target, a Release app, and the framework dylibs — across
+Xcode 15.4 / 16.4 / 26.5, with the non-macOS destination matrix the main
+remaining capture work.
 
 - **Phase 0–1:** capture (`scripts/16_capture_compiler_args.py`, stdout-sourced)
   + the argv comparator (`tests/common/argv.rs`): flag-family multiset, three
@@ -267,11 +268,18 @@ non-macOS / multi-version matrix the main remaining capture work.
     Debug `-no_deduplicate`, `-fobjc-link-runtime`). **link: 93 % precision /
     72 % structural;** the autolinked `-framework`, `-rdynamic`, the swift-runtime
     toolchain `-L`, and coverage `-fprofile-instr-generate` are the tracked tally
-    gaps. Codified floors: **swift 95, clang 92, link 68**.
-  - _Remaining (mechanical capture + iteration):_ the full 5 × 3 matrix — the
-    non-macOS destinations need simulator runtimes (`xcodebuild
-    -downloadPlatform`), and the 15.4 / 16.4 oracles will surface version-gated
-    driver-default drift; more ObjC/C++ breadth (e.g. NetNewsWire); and a
+    gaps.
+  - **Version coverage:** the macOS oracles are captured and scored across
+    **Xcode 15.4 / 16.4 / 26.5**, each guarded at its own per-version floor (15.4
+    is Kingfisher-only — Alamofire's `.xcodeproj` is a newer format than Xcode
+    15.4 will open). The
+    Swift driver defaults that turned over at the Xcode 26 explicit-modules cutover
+    are gated on the toolchain major (`-enforce-exclusivity=checked` for < 26, the
+    libc++ `_LIBCPP_HARDENING_MODE` for ≥ 26), so every version scores swift
+    ≥ 97 % structural, clang ≥ 93 %, link ≥ 70 %.
+  - _Remaining (mechanical capture + iteration):_ the non-macOS destinations
+    (iOS/tvOS/watchOS/visionOS) need simulator runtimes (`xcodebuild
+    -downloadPlatform`); more ObjC/C++ breadth (e.g. NetNewsWire); and a
     static-library (`libtool`) link, which has no oracle yet.
 - **Phase 6:** `#[napi] compiler_arguments` (`node.rs`) →
   `compiler_args::target_arguments` via `build_settings::resolve_compiler_arguments`;
