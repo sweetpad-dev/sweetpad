@@ -49,9 +49,16 @@ public func scratchGreeting() -> String { "scratch" }
 HELPER_SWIFT = """public func scratchAnswer() -> Int { 42 }
 """
 
-UTIL_C = """#include <stdint.h>
+# An ObjC++ source — the archive then holds a swiftc and a clang `.mm` object,
+# exercising the `sourcecode.cpp.objcpp` language gate (C++ and ObjC flags, no
+# C-only `-std`). Single-language so the per-file flags fold cleanly.
+UTIL_MM = """#import <Foundation/Foundation.h>
+#include <string>
 
-int32_t scratch_add(int32_t a, int32_t b) { return a + b; }
+NSString *scratchDescribe(int n) {
+    std::string s = std::to_string(n);
+    return [NSString stringWithUTF8String:s.c_str()];
+}
 """
 
 # Project-level settings shared by both configs. (PRODUCT_NAME is set per target
@@ -107,7 +114,7 @@ def render_pbxproj(obj: dict[str, str]) -> str:
                 {obj["c_build"]} = {{isa = PBXBuildFile; fileRef = {obj["c_ref"]}; }};
                 {obj["swift_ref"]} = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; }};
                 {obj["swift2_ref"]} = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = helper.swift; sourceTree = "<group>"; }};
-                {obj["c_ref"]} = {{isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = util.c; sourceTree = "<group>"; }};
+                {obj["c_ref"]} = {{isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = util.mm; sourceTree = "<group>"; }};
                 {obj["product_ref"]} = {{isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libScratch.a; sourceTree = BUILT_PRODUCTS_DIR; }};
                 {obj["main_group"]} = {{
                     isa = PBXGroup;
@@ -208,7 +215,7 @@ def materialize(root: Path) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / "main.swift").write_text(MAIN_SWIFT)
     (root / "helper.swift").write_text(HELPER_SWIFT)
-    (root / "util.c").write_text(UTIL_C)
+    (root / "util.mm").write_text(UTIL_MM)
     keys = [
         "project", "main_group", "products_group", "target", "bcl_proj", "bcl_target",
         "swift_ref", "swift_build", "swift2_ref", "swift2_build",

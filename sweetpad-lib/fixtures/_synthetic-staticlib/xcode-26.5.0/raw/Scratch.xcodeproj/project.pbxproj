@@ -9,7 +9,7 @@
         7D071445DE9A51D2913DD46F = {isa = PBXBuildFile; fileRef = 870AF15B84B05DDDB26308D5; };
         5122EE0F8A8953FEA6705EE4 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
         55008667F5F05CDA8EA38606 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = helper.swift; sourceTree = "<group>"; };
-        870AF15B84B05DDDB26308D5 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = util.c; sourceTree = "<group>"; };
+        870AF15B84B05DDDB26308D5 = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = util.mm; sourceTree = "<group>"; };
         E548D1BEB9C65468A9E10C15 = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libScratch.a; sourceTree = BUILT_PRODUCTS_DIR; };
         CC52231BC59157EE89953301 = {
             isa = PBXGroup;
