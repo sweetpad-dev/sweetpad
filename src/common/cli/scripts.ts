@@ -711,7 +711,7 @@ async function generateSweetpadBuildServerConfig(options: { xcworkspace: string 
 }
 
 /** The active Xcode developer dir (`DEVELOPER_DIR`, else `xcode-select -p`). */
-async function getDeveloperDir(): Promise<string | undefined> {
+export async function getDeveloperDir(): Promise<string | undefined> {
   if (process.env.DEVELOPER_DIR) {
     return process.env.DEVELOPER_DIR;
   }
