@@ -217,13 +217,21 @@ impl Server {
             .targets
             .iter()
             .map(|name| {
+                // Only edges to targets we also expose are useful to sourcekit-lsp;
+                // drop any that fall outside this project's target set.
+                let deps: Vec<Value> = project::target_dependencies(&self.project_path, name)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|d| self.targets.contains(d))
+                    .map(|d| target_id(&d))
+                    .collect();
                 json!({
                     "id": target_id(name),
                     "displayName": name,
                     "baseDirectory": base,
                     "tags": [],
                     "languageIds": LANGUAGE_IDS,
-                    "dependencies": [],
+                    "dependencies": deps,
                     "capabilities": { "canCompile": true, "canTest": false, "canRun": false, "canDebug": false },
                 })
             })

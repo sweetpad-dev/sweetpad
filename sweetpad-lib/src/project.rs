@@ -526,6 +526,41 @@ pub fn target_linked_frameworks(
     Ok(out)
 }
 
+/// The names of the targets a native target directly depends on — the `target`
+/// of each `PBXTargetDependency` in its `dependencies`, in pbxproj order. These
+/// are the build graph's edges: sourcekit-lsp uses them to know which dependency
+/// modules to prepare. Same-project dependencies only; a cross-project
+/// `targetProxy` whose `target` doesn't resolve in this project is skipped.
+pub fn target_dependencies(
+    xcodeproj_path: &Path,
+    target_name: &str,
+) -> Result<Vec<String>, Error> {
+    let value = parse_pbxproj(xcodeproj_path)?;
+    let (objects, project_obj) = project_root(&value)?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::BadProject(format!("no target named '{target_name}' in the project")))?;
+    Ok(target_dependency_names(objects, target))
+}
+
+fn target_dependency_names(objects: &BTreeMap<String, Value>, target_obj: &Value) -> Vec<String> {
+    let Some(deps) = target_obj.get("dependencies").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for dep_ref in deps {
+        let name = dep_ref
+            .as_str()
+            .and_then(|id| objects.get(id))
+            .and_then(|dep| dep.get("target").and_then(Value::as_str))
+            .and_then(|id| objects.get(id))
+            .and_then(|t| t.get("name").and_then(Value::as_str));
+        if let Some(name) = name {
+            out.push(name.to_string());
+        }
+    }
+    out
+}
+
 /// The absolute directory containing the `.xcodeproj` — the anchor for
 /// `<group>` / `SOURCE_ROOT` source trees. Canonicalized when it exists (so the
 /// paths match xcodebuild's absolute output), falling back to the input.

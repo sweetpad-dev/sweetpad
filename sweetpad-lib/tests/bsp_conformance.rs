@@ -97,6 +97,31 @@ fn bsp_conformance() {
     let names: Vec<&str> = targets.iter().filter_map(|t| t.get("displayName").and_then(Value::as_str)).collect();
     assert!(names.contains(&"ModuleA") && names.contains(&"ModuleB"), "missing targets: {names:?}");
 
+    // buildTargets: the dependency edge ModuleB → ModuleA is reported (so
+    // sourcekit-lsp knows the prepare order / transitive module set).
+    let module_b_target = targets
+        .iter()
+        .find(|t| t.get("displayName").and_then(Value::as_str) == Some("ModuleB"))
+        .expect("ModuleB target");
+    let deps: Vec<&str> = module_b_target
+        .get("dependencies")
+        .and_then(Value::as_array)
+        .expect("dependencies")
+        .iter()
+        .filter_map(|d| d.get("uri").and_then(Value::as_str))
+        .collect();
+    assert_eq!(deps, vec!["sweetpad://target/ModuleA"], "ModuleB should depend on ModuleA");
+    // ModuleA depends on nothing.
+    let module_a_target = targets
+        .iter()
+        .find(|t| t.get("displayName").and_then(Value::as_str) == Some("ModuleA"))
+        .expect("ModuleA target");
+    assert_eq!(
+        module_a_target.get("dependencies").and_then(Value::as_array).map(Vec::len),
+        Some(0),
+        "ModuleA should have no dependencies"
+    );
+
     // sources(ModuleB): includes b.swift.
     let items = result_for(&frames, 3).and_then(|r| r.get("items")).and_then(Value::as_array).expect("items");
     let b_listed = items.iter().any(|it| {
