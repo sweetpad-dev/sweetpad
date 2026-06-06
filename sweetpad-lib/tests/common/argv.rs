@@ -304,6 +304,8 @@ const GEOMETRY_FLAGS: &[&str] = &[
     "-ivfsoverlay",
     // swiftc whole-module parallelism — host core count, not a decision (cf. -j<N>)
     "-num-threads",
+    // libtool's per-build dependency-info output (the linker emits it via -Xlinker)
+    "-dependency_info",
 ];
 
 /// Substrings that mark an item's value as a per-build intermediate/cache/output

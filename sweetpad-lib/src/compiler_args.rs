@@ -127,9 +127,14 @@ pub fn target_arguments(
     // static library is assembled by libtool; everything else (framework, app,
     // tool, bundle, test, extension) links through the clang driver.
     let has_sources = swift.is_some() || clang.is_some();
+    let tool = link_tool(settings, product_type);
     let link = (has_sources && links(product_type)).then(|| ToolInvocation {
-        tool: link_tool(settings, product_type).to_string(),
-        arguments: link_arguments(settings, arch),
+        tool: tool.to_string(),
+        arguments: if tool == "libtool" {
+            static_lib_arguments(settings, arch)
+        } else {
+            link_arguments(settings, arch)
+        },
         input_files: Vec::new(),
     });
     TargetCompilerArguments {
@@ -491,6 +496,32 @@ pub fn link_arguments(settings: &Settings, arch: &str) -> Vec<String> {
     a.flag("-fobjc-link-runtime");
     for f in ws(get("OTHER_LDFLAGS")) {
         a.flag(f);
+    }
+    a.into_vec()
+}
+
+/// The `libtool -static` argv for a static-library link. Far smaller than the
+/// clang-driver link — the archive carries no triple, runpaths, or dylib flags,
+/// just the arch, the deterministic-mode `-D`, the SDK (`-syslibroot`), and the
+/// library search paths. The object filelist and `-o` / `-dependency_info` are
+/// geometry, scored out by the comparator.
+#[must_use]
+pub fn static_lib_arguments(settings: &Settings, arch: &str) -> Vec<String> {
+    let mut a = ArgBuilder::default();
+    let get = |k: &str| settings.get(k).map(String::as_str);
+    a.flag("-static");
+    if !arch.is_empty() {
+        a.pair("-arch_only", arch);
+    }
+    a.flag("-D");
+    if let Some(sdk) = get("SDKROOT") {
+        a.pair("-syslibroot", sdk);
+    }
+    if let Some(products) = get("BUILT_PRODUCTS_DIR") {
+        a.flag(&format!("-L{products}"));
+    }
+    for p in ws(get("LIBRARY_SEARCH_PATHS")) {
+        a.flag(&format!("-L{p}"));
     }
     a.into_vec()
 }

@@ -445,7 +445,11 @@ fn compiler_args_oracle_coverage() {
                 scores.clang.record(&version, &oracle.slug, &t.target, "clang", &cl.common_arguments, &ours);
             }
             if let Some(ln) = &t.link {
-                let ours = compiler_args::link_arguments(settings, &oracle.arch);
+                let ours = if ln.tool.as_deref() == Some("libtool") {
+                    compiler_args::static_lib_arguments(settings, &oracle.arch)
+                } else {
+                    compiler_args::link_arguments(settings, &oracle.arch)
+                };
                 scores.link.record(&version, &oracle.slug, &t.target, "link", &ln.arguments, &ours);
             }
         }

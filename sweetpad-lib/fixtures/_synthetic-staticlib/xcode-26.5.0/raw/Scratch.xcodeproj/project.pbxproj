@@ -1,0 +1,123 @@
+// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    classes = {};
+    objectVersion = 60;
+    objects = {
+        0F1AC7AABE055286895DAE3E = {isa = PBXBuildFile; fileRef = 5122EE0F8A8953FEA6705EE4; };
+        C680525262A45AECB6E56283 = {isa = PBXBuildFile; fileRef = 55008667F5F05CDA8EA38606; };
+        7D071445DE9A51D2913DD46F = {isa = PBXBuildFile; fileRef = 870AF15B84B05DDDB26308D5; };
+        5122EE0F8A8953FEA6705EE4 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+        55008667F5F05CDA8EA38606 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = helper.swift; sourceTree = "<group>"; };
+        870AF15B84B05DDDB26308D5 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = util.c; sourceTree = "<group>"; };
+        E548D1BEB9C65468A9E10C15 = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libScratch.a; sourceTree = BUILT_PRODUCTS_DIR; };
+        CC52231BC59157EE89953301 = {
+            isa = PBXGroup;
+            children = (
+                5122EE0F8A8953FEA6705EE4,
+                55008667F5F05CDA8EA38606,
+                870AF15B84B05DDDB26308D5,
+                958A8E33D3745DDE9BCF5113,
+            );
+            sourceTree = "<group>";
+        };
+        958A8E33D3745DDE9BCF5113 = {
+            isa = PBXGroup;
+            children = (E548D1BEB9C65468A9E10C15);
+            name = Products;
+            sourceTree = "<group>";
+        };
+        B8D585DAE2D45991964AB195 = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = 8E166799DB1C5A07A8EF228A;
+            buildPhases = (C0B920906F645E04979F2E82);
+            buildRules = ();
+            dependencies = ();
+            name = Scratch;
+            productName = Scratch;
+            productReference = E548D1BEB9C65468A9E10C15;
+            productType = "com.apple.product-type.library.static";
+        };
+        BFEA815985465108BF495254 = {
+            isa = PBXProject;
+            attributes = { LastUpgradeCheck = 1500; };
+            buildConfigurationList = ECC22F8268405C8888A08FA8;
+            compatibilityVersion = "Xcode 14.0";
+            developmentRegion = en;
+            hasScannedForEncodings = 0;
+            knownRegions = (en, Base);
+            mainGroup = CC52231BC59157EE89953301;
+            productRefGroup = 958A8E33D3745DDE9BCF5113;
+            projectDirPath = "";
+            projectRoot = "";
+            targets = (B8D585DAE2D45991964AB195);
+        };
+        C0B920906F645E04979F2E82 = {
+            isa = PBXSourcesBuildPhase;
+            buildActionMask = 2147483647;
+            files = (
+                0F1AC7AABE055286895DAE3E,
+                C680525262A45AECB6E56283,
+                7D071445DE9A51D2913DD46F,
+            );
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+        D9AAD5D134785E8AB2ECACE8 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                MACOSX_DEPLOYMENT_TARGET = 12.0;
+                ONLY_ACTIVE_ARCH = YES;
+                SDKROOT = macosx;
+                SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+                SWIFT_VERSION = 5.0;
+            };
+            name = Debug;
+        };
+        1D8F74DD41525AF4A4A57799 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                PRODUCT_NAME = "$(TARGET_NAME)";
+            };
+            name = Debug;
+        };
+        AF906BC9E3FD558BBA6141A1 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                MACOSX_DEPLOYMENT_TARGET = 12.0;
+                ONLY_ACTIVE_ARCH = YES;
+                SDKROOT = macosx;
+                SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+                SWIFT_VERSION = 5.0;
+            };
+            name = Release;
+        };
+        F5542BCCDA645674B1DF8BBE = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                PRODUCT_NAME = "$(TARGET_NAME)";
+            };
+            name = Release;
+        };
+        ECC22F8268405C8888A08FA8 = {
+            isa = XCConfigurationList;
+            buildConfigurations = (
+            D9AAD5D134785E8AB2ECACE8,
+            AF906BC9E3FD558BBA6141A1,
+            );
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
+        8E166799DB1C5A07A8EF228A = {
+            isa = XCConfigurationList;
+            buildConfigurations = (
+            1D8F74DD41525AF4A4A57799,
+            F5542BCCDA645674B1DF8BBE,
+            );
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
+    };
+    rootObject = BFEA815985465108BF495254;
+}

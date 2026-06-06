@@ -269,6 +269,11 @@ remaining capture work.
     72 % structural;** the autolinked `-framework`, `-rdynamic`, the swift-runtime
     toolchain `-L`, and coverage `-fprofile-instr-generate` are the tracked tally
     gaps.
+  - **Static library:** a synthetic static-library oracle
+    (`scripts/17_static_library.py` → `fixtures/_synthetic-staticlib/`) validates
+    the `libtool -static` link — `-static`, `-arch_only`, `-D`, `-syslibroot`, the
+    `-L` search paths — at 100 % structural recall. It's a separate generator from
+    the clang-driver link, selected by product type / `MACH_O_TYPE`.
   - **Version coverage:** the macOS oracles are captured and scored across
     **Xcode 15.4 / 16.4 / 26.5**, each guarded at its own per-version floor (15.4
     is Kingfisher-only — Alamofire's `.xcodeproj` is a newer format than Xcode
@@ -279,8 +284,7 @@ remaining capture work.
     ≥ 97 % structural, clang ≥ 93 %, link ≥ 70 %.
   - _Remaining (mechanical capture + iteration):_ the non-macOS destinations
     (iOS/tvOS/watchOS/visionOS) need simulator runtimes (`xcodebuild
-    -downloadPlatform`); more ObjC/C++ breadth (e.g. NetNewsWire); and a
-    static-library (`libtool`) link, which has no oracle yet.
+    -downloadPlatform`); and more ObjC/C++ breadth (e.g. NetNewsWire).
 - **Phase 6:** `#[napi] compiler_arguments` (`node.rs`) →
   `compiler_args::target_arguments` via `build_settings::resolve_compiler_arguments`;
   the generated `index.d.ts` exposes `compilerArguments(...)` returning per-target
