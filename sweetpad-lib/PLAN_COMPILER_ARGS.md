@@ -297,8 +297,22 @@ macOS / iOS (device + simulator) / tvOS / watchOS / visionOS.
     settings — so it generalizes with **no platform-specific gating**: every
     platform scores swift ≥ 94 %, clang ≥ 92 %, link ≥ 84 % structural (all
     ≥ 93 % precision). The oracle test keys floors by `(version, platform)`.
+  - **Precision (xcspec `Condition` gating):** clang options carry a `Condition`
+    predicate (`$(VAR)` truthiness, `==`/`!=`, `&&`/`||`/`!`, parens). The
+    generator ingests it (`CompilerOption.condition`) and evaluates it against the
+    resolved settings, so an option whose own value resolves `YES` is still
+    suppressed when its gate is off — e.g. `CLANG_UNDEFINED_BEHAVIOR_SANITIZER_INTEGER`
+    is `YES` in the corpus but `-fsanitize=integer` only ships when the parent
+    `CLANG_UNDEFINED_BEHAVIOR_SANITIZER` is on. This removed the dominant
+    confident-wrong extras (`-fsanitize=integer`/`nullability`, ×14), lifting
+    precision to **90–100 % per cell**. The oracle test now floors precision per
+    `(version, platform)` and asserts those gated flags never leak.
   - _Remaining:_ the link `-framework`s the sources autolink via `import` (encoded
-    in the objects, not the project graph) is the one tracked gap. Real apps at
+    in the objects, not the project graph) is the one tracked gap. A thin tail of
+    confident-wrong extras persists from settings-resolver values that
+    `-showBuildSettings` doesn't surface, not from generation logic: `-fexceptions`
+    (`GCC_ENABLE_EXCEPTIONS`), `-fvisibility=hidden` (`GCC_SYMBOLS_PRIVATE_EXTERN`),
+    and a one-target `-Wno-shorten-64-to-32` flip. Real apps at
     scale are optional, uncommitted breadth — IceCubesApp builds for iOS once
     `IceCubesApp.xcconfig` is stubbed, but its 41-target oracle is SPM-dominated;
     NetNewsWire needs a developer `SecretKey` file.

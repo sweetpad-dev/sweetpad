@@ -399,17 +399,24 @@ pub fn clang_arguments(
     if let Some(sdk) = get("SDKROOT") {
         a.pair("-isysroot", sdk);
     }
-    // An option applies when its language gate and its arch gate both pass. A
+    // An option applies when its language, arch, and condition gates all pass. A
     // `FileTypes` is satisfied by a language the target compiles (or is empty, =
     // every C-family input; or `file_types` is empty = no info, gate nothing); an
-    // `Architectures` is satisfied by the build arch (or is empty = every arch).
+    // `Architectures` is satisfied by the build arch (or is empty = every arch); a
+    // `Condition` is the xcspec predicate evaluated against the settings (e.g.
+    // `-fsanitize=integer` is gated on `$(CLANG_UNDEFINED_BEHAVIOR_SANITIZER)`, so
+    // its sub-setting being `YES` doesn't emit the flag when the sanitizer is off).
     let applies = |opt: &CompilerOption| {
         let lang_ok = file_types.is_empty()
             || opt.file_types.is_empty()
             || opt.file_types.iter().any(|ft| file_types.contains(ft));
         let arch_ok =
             opt.architectures.is_empty() || opt.architectures.iter().any(|a| a == arch);
-        lang_ok && arch_ok
+        let cond_ok = match &opt.condition {
+            None => true,
+            Some(c) => condition_holds(c, settings),
+        };
+        lang_ok && arch_ok && cond_ok
     };
     // Every applicable Clang-spec option whose value resolved (and isn't a
     // no-op default) contributes its encoded `-W…` / `-f…` flags.
@@ -715,6 +722,205 @@ fn is_yes(v: &str) -> bool {
     v.eq_ignore_ascii_case("YES")
 }
 
+/// Whether an xcspec option's `Condition` predicate holds against the resolved
+/// settings, deciding if the option contributes its argv. The grammar mirrors
+/// Apple's macro-condition language: `$(VAR)` references, bare/quoted literals,
+/// `==` / `!=` comparisons, `&&` / `||` / `!`, and parentheses. An undefined
+/// `$(VAR)` is the empty string (Apple's semantics). Anything we cannot tokenize
+/// or parse evaluates to `true`, so a malformed condition never silently drops a
+/// real flag.
+fn condition_holds(cond: &str, settings: &Settings) -> bool {
+    let Some(toks) = tokenize_condition(cond) else {
+        return true;
+    };
+    if toks.is_empty() {
+        return true;
+    }
+    let mut p = CondParser { toks: &toks, pos: 0, settings };
+    match p.parse_or() {
+        Some(v) if p.pos == toks.len() => v,
+        _ => true,
+    }
+}
+
+/// One lexeme of a `Condition` string.
+#[derive(Debug, PartialEq, Eq)]
+enum CondTok {
+    LParen,
+    RParen,
+    Not,
+    And,
+    Or,
+    Eq,
+    Ne,
+    /// `$(NAME)` — resolved against the settings when evaluated.
+    Macro(String),
+    /// A bare word or quoted string (`mh_object`, `'5'`, `""`), quotes stripped.
+    Lit(String),
+}
+
+/// Lex a `Condition`. Returns `None` on a stray operator char so an
+/// unrecognized condition falls back to always-applies rather than mis-parsing.
+fn tokenize_condition(cond: &str) -> Option<Vec<CondTok>> {
+    let bytes = cond.as_bytes();
+    let mut toks = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b' ' | b'\t' | b'\n' | b'\r' => i += 1,
+            b'(' => {
+                toks.push(CondTok::LParen);
+                i += 1;
+            }
+            b')' => {
+                toks.push(CondTok::RParen);
+                i += 1;
+            }
+            b'&' if bytes.get(i + 1) == Some(&b'&') => {
+                toks.push(CondTok::And);
+                i += 2;
+            }
+            b'|' if bytes.get(i + 1) == Some(&b'|') => {
+                toks.push(CondTok::Or);
+                i += 2;
+            }
+            b'=' if bytes.get(i + 1) == Some(&b'=') => {
+                toks.push(CondTok::Eq);
+                i += 2;
+            }
+            b'!' if bytes.get(i + 1) == Some(&b'=') => {
+                toks.push(CondTok::Ne);
+                i += 2;
+            }
+            b'!' => {
+                toks.push(CondTok::Not);
+                i += 1;
+            }
+            b'$' if bytes.get(i + 1) == Some(&b'(') => {
+                let start = i + 2;
+                let end = cond[start..].find(')')? + start;
+                toks.push(CondTok::Macro(cond[start..end].to_string()));
+                i = end + 1;
+            }
+            q @ (b'\'' | b'"') => {
+                let start = i + 1;
+                let end = bytes[start..].iter().position(|&b| b == q)? + start;
+                toks.push(CondTok::Lit(cond[start..end].to_string()));
+                i = end + 1;
+            }
+            _ => {
+                let start = i;
+                while i < bytes.len()
+                    && !matches!(
+                        bytes[i],
+                        b' ' | b'\t'
+                            | b'\n'
+                            | b'\r'
+                            | b'('
+                            | b')'
+                            | b'!'
+                            | b'='
+                            | b'&'
+                            | b'|'
+                            | b'\''
+                            | b'"'
+                            | b'$'
+                    )
+                {
+                    i += 1;
+                }
+                if i == start {
+                    return None;
+                }
+                toks.push(CondTok::Lit(cond[start..i].to_string()));
+            }
+        }
+    }
+    Some(toks)
+}
+
+/// Recursive-descent evaluator over [`CondTok`]s. Precedence: `!` binds tighter
+/// than `&&`, which binds tighter than `||`; comparisons sit between a pair of
+/// terms. Both sides of `&&` / `||` are always evaluated (no short-circuit) so
+/// the whole token stream is consumed and validated.
+struct CondParser<'a> {
+    toks: &'a [CondTok],
+    pos: usize,
+    settings: &'a Settings,
+}
+
+impl CondParser<'_> {
+    fn parse_or(&mut self) -> Option<bool> {
+        let mut v = self.parse_and()?;
+        while matches!(self.toks.get(self.pos), Some(CondTok::Or)) {
+            self.pos += 1;
+            v = self.parse_and()? || v;
+        }
+        Some(v)
+    }
+
+    fn parse_and(&mut self) -> Option<bool> {
+        let mut v = self.parse_unary()?;
+        while matches!(self.toks.get(self.pos), Some(CondTok::And)) {
+            self.pos += 1;
+            v = self.parse_unary()? && v;
+        }
+        Some(v)
+    }
+
+    fn parse_unary(&mut self) -> Option<bool> {
+        let toks = self.toks;
+        match toks.get(self.pos)? {
+            CondTok::Not => {
+                self.pos += 1;
+                Some(!self.parse_unary()?)
+            }
+            CondTok::LParen => {
+                self.pos += 1;
+                let v = self.parse_or()?;
+                if matches!(toks.get(self.pos), Some(CondTok::RParen)) {
+                    self.pos += 1;
+                    Some(v)
+                } else {
+                    None
+                }
+            }
+            CondTok::Macro(_) | CondTok::Lit(_) => {
+                let (lval, ltruthy) = self.take_term()?;
+                match toks.get(self.pos) {
+                    Some(CondTok::Eq) => {
+                        self.pos += 1;
+                        let (rval, _) = self.take_term()?;
+                        Some(lval == rval)
+                    }
+                    Some(CondTok::Ne) => {
+                        self.pos += 1;
+                        let (rval, _) = self.take_term()?;
+                        Some(lval != rval)
+                    }
+                    _ => Some(ltruthy),
+                }
+            }
+            CondTok::RParen | CondTok::And | CondTok::Or | CondTok::Eq | CondTok::Ne => None,
+        }
+    }
+
+    /// Consume a term, returning its resolved string value and truthiness (a
+    /// `$(VAR)` resolves via the settings; a literal is its own text).
+    fn take_term(&mut self) -> Option<(String, bool)> {
+        let toks = self.toks;
+        let settings = self.settings;
+        let val = match toks.get(self.pos)? {
+            CondTok::Macro(name) => settings.get(name).cloned().unwrap_or_default(),
+            CondTok::Lit(s) => s.clone(),
+            _ => return None,
+        };
+        self.pos += 1;
+        let truthy = is_yes(&val);
+        Some((val, truthy))
+    }
+}
+
 /// Whitespace-split a setting value into non-empty tokens.
 fn ws(v: Option<&str>) -> Vec<&str> {
     v.map(|s| s.split_whitespace().collect())
@@ -845,6 +1051,7 @@ mod tests {
             }),
             file_types: vec![],
             architectures: vec![],
+            condition: None,
         };
         let conds = CompilerOption {
             name: "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
@@ -854,6 +1061,7 @@ mod tests {
             args: Some(CliArgs::List(vec!["-D$(value)".into()])),
             file_types: vec![],
             architectures: vec![],
+            condition: None,
         };
         let mut s = Settings::new();
         s.insert("SWIFT_OPTIMIZATION_LEVEL".into(), "-Owholemodule".into());
@@ -863,5 +1071,78 @@ mod tests {
         assert!(args.windows(2).any(|w| w == ["-O", "-whole-module-optimization"]));
         assert!(args.contains(&"-DDEBUG".to_string()));
         assert!(args.contains(&"-DCOCOAPODS".to_string()));
+    }
+
+    #[test]
+    fn condition_grammar() {
+        let mut s = Settings::new();
+        s.insert("ON".into(), "YES".into());
+        s.insert("OFF".into(), "NO".into());
+        s.insert("DRIVER".into(), "clang".into());
+        s.insert("MACH".into(), "mh_execute".into());
+        s.insert("PKG".into(), String::new());
+        let h = |c: &str| condition_holds(c, &s);
+
+        // Bare `$(VAR)` truthiness; an undefined macro is empty (false).
+        assert!(h("$(ON)"));
+        assert!(!h("$(OFF)"));
+        assert!(!h("$(UNDEFINED)"));
+        // Negation.
+        assert!(h("!$(OFF)"));
+        assert!(!h("! $(ON)"));
+        // Comparisons against bare and quoted literals.
+        assert!(h("$(DRIVER) == clang"));
+        assert!(!h("$(DRIVER) == swiftc"));
+        assert!(h("$(MACH) != mh_object"));
+        assert!(h("$(PKG) == \"\""));
+        assert!(h("$(UNDEFINED) == ''"));
+        // Boolean composition and precedence (`&&` over `||`, parens override).
+        assert!(h("$(ON) && $(DRIVER) == clang"));
+        assert!(!h("$(ON) && $(OFF)"));
+        assert!(h("$(OFF) || $(ON)"));
+        assert!(h("$(OFF) || ($(ON) && $(DRIVER) == clang)"));
+        assert!(!h("($(OFF) || $(UNDEFINED)) && $(ON)"));
+        // The real UBSan gate and a constant-false literal.
+        assert!(!h("$(CLANG_UNDEFINED_BEHAVIOR_SANITIZER)"));
+        assert!(!h("NO"));
+        // An unparseable condition falls back to applies (never drops a flag).
+        assert!(h("$(ON) ^^ garbage"));
+        assert!(h(""));
+    }
+
+    #[test]
+    fn clang_skips_condition_failed_option() {
+        use crate::xcspec::CliArgs;
+        // `CLANG_UNDEFINED_BEHAVIOR_SANITIZER_INTEGER = YES` would emit
+        // `-fsanitize=integer`, but the option is gated on the parent sanitizer.
+        let ubsan_integer = CompilerOption {
+            name: "CLANG_UNDEFINED_BEHAVIOR_SANITIZER_INTEGER".into(),
+            is_list: false,
+            flag: None,
+            prefix_flag: None,
+            args: Some(CliArgs::ByValue {
+                map: BTreeMap::from([("YES".into(), vec!["-fsanitize=integer".into()])]),
+                otherwise: Some(vec![]),
+            }),
+            file_types: vec![],
+            architectures: vec![],
+            condition: Some("$(CLANG_UNDEFINED_BEHAVIOR_SANITIZER)".into()),
+        };
+        let langs = BTreeSet::from(["sourcecode.c.objc".to_string()]);
+
+        let mut off = Settings::new();
+        off.insert("CLANG_UNDEFINED_BEHAVIOR_SANITIZER_INTEGER".into(), "YES".into());
+        off.insert("CLANG_UNDEFINED_BEHAVIOR_SANITIZER".into(), "NO".into());
+        let args = clang_arguments(&off, "arm64", std::slice::from_ref(&ubsan_integer), &langs);
+        assert!(
+            !args.contains(&"-fsanitize=integer".to_string()),
+            "condition off must drop the flag: {args:?}"
+        );
+
+        // Turning the parent sanitizer on lets the same option through.
+        let mut on = off.clone();
+        on.insert("CLANG_UNDEFINED_BEHAVIOR_SANITIZER".into(), "YES".into());
+        let args = clang_arguments(&on, "arm64", std::slice::from_ref(&ubsan_integer), &langs);
+        assert!(args.contains(&"-fsanitize=integer".to_string()), "{args:?}");
     }
 }

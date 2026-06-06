@@ -340,6 +340,32 @@ fn version_floor(version: &str, sdk: &str) -> (u64, u64, u64) {
     }
 }
 
+/// Per-version precision floors `(swift, clang, link)` = the share of what we
+/// emit (geometry excluded) that the oracle also has. Modeling the xcspec
+/// `Condition` field keeps confident-wrong extras out (a sanitizer sub-setting
+/// resolving `YES` no longer emits `-fsanitize=…` when the parent sanitizer is
+/// off), so precision sits at 90–100%. These floors sit a few points below the
+/// clean run and guard against a regression that reintroduces spurious flags.
+#[allow(clippy::match_same_arms)] // distinct cells may share a baseline
+fn precision_floor(version: &str, sdk: &str) -> (u64, u64, u64) {
+    match (version, sdk) {
+        ("26.5.0", "macosx") => (96, 96, 94),
+        ("16.4.0", "macosx") => (95, 96, 89),
+        ("15.4.0", "macosx") => (95, 95, 86),
+        ("26.5.0", "iphoneos") => (97, 97, 97),
+        ("26.5.0", "iphonesimulator") => (97, 95, 97),
+        ("26.5.0", "appletvos") => (97, 97, 97),
+        ("26.5.0", "watchos") => (97, 95, 97),
+        ("26.5.0", "xros") => (97, 97, 97),
+        _ => (88, 88, 78),
+    }
+}
+
+/// Condition-gated flags whose sub-setting can resolve `YES` while the parent
+/// gate is off — emitting them is the confident-wrong bug the `Condition`
+/// modeling fixes. None may appear as a clang extra in any cell.
+const NEVER_LEAK: &[&str] = &["-fsanitize=integer", "-fsanitize=nullability"];
+
 /// One tool's accumulated score plus its split missing/extra tallies.
 #[derive(Default)]
 struct ToolScore {
@@ -485,17 +511,36 @@ fn compiler_args_oracle_coverage() {
     if std::env::var("ARGV_DIAGNOSTIC").is_ok() {
         return;
     }
+    // Condition-gated flags must never leak: their sub-setting can resolve `YES`
+    // while the parent gate is off, so emitting them unconditionally is the exact
+    // confident-wrong bug the xcspec `Condition` modeling fixes. Guard the whole
+    // matrix against a regression that drops the gate.
+    for ((version, sdk), scores) in &by_key {
+        for flag in NEVER_LEAK {
+            let n = scores.clang.extra.get(*flag).copied().unwrap_or(0);
+            assert_eq!(n, 0, "[{version} {sdk}] clang leaked condition-gated {flag} ×{n}");
+        }
+    }
     for ((version, sdk), scores) in &by_key {
         let (swift_floor, clang_floor, link_floor) = version_floor(version, sdk);
-        for (label, score, floor) in [
-            ("swift", &scores.swift, swift_floor),
-            ("clang", &scores.clang, clang_floor),
-            ("link", &scores.link, link_floor),
+        let (swift_prec, clang_prec, link_prec) = precision_floor(version, sdk);
+        for (label, score, floor, pfloor) in [
+            ("swift", &scores.swift, swift_floor, swift_prec),
+            ("clang", &scores.clang, clang_floor, clang_prec),
+            ("link", &scores.link, link_floor, link_prec),
         ] {
+            if score.targets == 0 {
+                continue;
+            }
             let pct = score.stats.structural_pct();
             assert!(
-                score.targets == 0 || pct >= floor,
+                pct >= floor,
                 "[{version} {sdk}] {label} structural {pct}% < floor {floor}% (tally above)"
+            );
+            let prec = score.stats.precision_pct();
+            assert!(
+                prec >= pfloor,
+                "[{version} {sdk}] {label} precision {prec}% < floor {pfloor}% (tally above)"
             );
         }
     }

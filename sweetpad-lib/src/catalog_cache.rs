@@ -43,7 +43,7 @@ const MAGIC: &[u8; 4] = b"SPC1";
 /// Bump whenever the serialized layout (or the [`Catalog`] shape) changes, so a
 /// sweetpad upgrade transparently rebuilds disk caches and the embedded blob is
 /// rejected if stale.
-const FORMAT_VERSION: u8 = 4;
+const FORMAT_VERSION: u8 = 5;
 
 #[derive(Debug)]
 pub enum Error {
@@ -346,6 +346,7 @@ fn write_compiler_options(out: &mut Vec<u8>, opts: &[CompilerOption]) {
         }
         write_str_list(out, &o.file_types);
         write_str_list(out, &o.architectures);
+        write_opt_str(out, o.condition.as_deref());
     }
 }
 
@@ -373,6 +374,7 @@ fn read_compiler_options(r: &mut Reader) -> Result<Vec<CompilerOption>, Error> {
         };
         let file_types = read_str_list(r)?;
         let architectures = read_str_list(r)?;
+        let condition = r.opt_str()?;
         v.push(CompilerOption {
             name,
             is_list,
@@ -381,6 +383,7 @@ fn read_compiler_options(r: &mut Reader) -> Result<Vec<CompilerOption>, Error> {
             args,
             file_types,
             architectures,
+            condition,
         });
     }
     Ok(v)
@@ -633,6 +636,7 @@ mod tests {
                     }),
                     file_types: vec![],
                     architectures: vec![],
+                    condition: None,
                 },
                 CompilerOption {
                     name: "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
@@ -642,6 +646,7 @@ mod tests {
                     args: Some(CliArgs::List(vec!["-D$(value)".into()])),
                     file_types: vec!["sourcecode.c.objc".into(), "sourcecode.cpp.objcpp".into()],
                     architectures: vec!["x86_64".into()],
+                    condition: Some("$(CLANG_ENABLE_MODULES)".into()),
                 },
                 CompilerOption {
                     name: "SWIFT_OBJC_BRIDGING_HEADER".into(),
@@ -651,6 +656,7 @@ mod tests {
                     args: None,
                     file_types: vec![],
                     architectures: vec![],
+                    condition: None,
                 },
             ],
         );

@@ -124,6 +124,12 @@ pub struct CompilerOption {
     /// Intel-only flag (`GCC_CW_ASM_SYNTAX` → `-fasm-blocks`) never lands on an
     /// arm64 compile.
     pub architectures: Vec<String>,
+    /// `Condition` — a `$(SETTING)`-referencing predicate that must hold for the
+    /// option to apply (e.g. `$(CLANG_ENABLE_MODULES)` gates
+    /// `-fmodules-validate-once-per-build-session`). `None` means unconditional;
+    /// an unparseable condition is treated as holding, so a real flag is never
+    /// dropped.
+    pub condition: Option<String>,
 }
 
 /// The two shapes Apple's `CommandLineArgs` takes.
@@ -645,6 +651,11 @@ fn parse_compiler_option(opt: &Value) -> Option<CompilerOption> {
         args,
         file_types: dict.get("FileTypes").map(value_to_strings).unwrap_or_default(),
         architectures: dict.get("Architectures").map(value_to_strings).unwrap_or_default(),
+        condition: dict
+            .get("Condition")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(String::from),
     })
 }
 
