@@ -13,8 +13,8 @@ use std::collections::BTreeMap;
 use std::fs::OpenOptions;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -63,11 +63,13 @@ pub fn write_config(args: &[String]) -> Result<(), String> {
 
 /// Run the BSP server loop over stdin/stdout until EOF or `build/exit`.
 pub fn run(args: &[String]) -> Result<(), String> {
-    let server = Server::from_args(args)?;
+    let server = Arc::new(Server::from_args(args)?);
     let stdin = io::stdin();
     let mut reader = stdin.lock();
-    let stdout = io::stdout();
-    let mut writer = stdout.lock();
+    // Each write locks stdout for one whole frame rather than holding the lock
+    // across the loop, so the change-watcher thread can interleave its
+    // `buildTarget/didChange` notifications between requests.
+    let mut watching = false;
 
     while let Some(msg) = read_message(&mut reader)? {
         let Ok(req) = serde_json::from_str::<Value>(&msg) else {
@@ -78,17 +80,22 @@ pub fn run(args: &[String]) -> Result<(), String> {
         let params = req.get("params");
         server.log(&format!("recv: {msg}"));
         match method {
-            "build/initialize" => server.reply(&mut writer, id, server.initialize())?,
-            "build/initialized" => {}
-            "workspace/buildTargets" => server.reply(&mut writer, id, server.build_targets())?,
-            "buildTarget/sources" => server.reply(&mut writer, id, server.sources(params))?,
-            "buildTarget/inverseSources" => {
-                server.reply(&mut writer, id, server.inverse_sources(params))?;
+            "build/initialize" => server.reply(id, server.initialize())?,
+            "build/initialized" => {
+                // The client is now ready for notifications: watch the project
+                // for structure changes and push `buildTarget/didChange`.
+                if !watching {
+                    Arc::clone(&server).spawn_change_watcher();
+                    watching = true;
+                }
             }
+            "workspace/buildTargets" => server.reply(id, server.build_targets())?,
+            "buildTarget/sources" => server.reply(id, server.sources(params))?,
+            "buildTarget/inverseSources" => server.reply(id, server.inverse_sources(params))?,
             "textDocument/sourceKitOptions" => {
-                server.reply(&mut writer, id, server.source_kit_options(params))?;
+                server.reply(id, server.source_kit_options(params))?;
             }
-            "build/shutdown" | "shutdown" => server.reply(&mut writer, id, Value::Null)?,
+            "build/shutdown" | "shutdown" => server.reply(id, Value::Null)?,
             "build/exit" | "exit" => break,
             _ => {
                 // Unknown request: a minimal "method not found" so the client
@@ -99,8 +106,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                         "id": id,
                         "error": { "code": -32601, "message": format!("method not found: {method}") },
                     });
-                    server.log(&format!("send: {resp}"));
-                    write_message(&mut writer, &resp.to_string())?;
+                    server.send(&resp)?;
                 }
             }
         }
@@ -213,8 +219,11 @@ impl Server {
 
     fn build_targets(&self) -> Value {
         let base = file_uri(self.project_dir());
-        let targets: Vec<Value> = self
-            .targets
+        // Re-read the target set so a project regenerated mid-session (a target
+        // added/removed) is reflected when the client re-queries after a
+        // `buildTarget/didChange`.
+        let targets = self.current_targets();
+        let target_list: Vec<Value> = targets
             .iter()
             .map(|name| {
                 // Only edges to targets we also expose are useful to sourcekit-lsp;
@@ -222,7 +231,7 @@ impl Server {
                 let deps: Vec<Value> = project::target_dependencies(&self.project_path, name)
                     .unwrap_or_default()
                     .into_iter()
-                    .filter(|d| self.targets.contains(d))
+                    .filter(|d| targets.contains(d))
                     .map(|d| target_id(&d))
                     .collect();
                 json!({
@@ -236,7 +245,57 @@ impl Server {
                 })
             })
             .collect();
-        json!({ "targets": targets })
+        json!({ "targets": target_list })
+    }
+
+    /// The project's current target names — re-read from disk (the pbxproj parse
+    /// is `(len, mtime)`-cached, so this is cheap and reflects edits), falling
+    /// back to the startup set if the project momentarily fails to open.
+    fn current_targets(&self) -> Vec<String> {
+        BuildContext::open(&self.project_path).map_or_else(
+            |_| self.targets.clone(),
+            |ctx| ctx.project.targets.iter().map(|t| t.name.clone()).collect(),
+        )
+    }
+
+    /// Watch the project file for structure changes and push a
+    /// `buildTarget/didChange` so the client re-queries targets/sources without
+    /// an LSP restart. Per-request resolution is already fresh (the parse cache
+    /// is mtime-validated); this is the push that tells the client to ask again.
+    /// Polling (no notify dependency) keeps it portable; the interval is
+    /// overridable via `SWEETPAD_BSP_WATCH_MS` (for tests).
+    fn spawn_change_watcher(self: Arc<Self>) {
+        let interval = std::env::var("SWEETPAD_BSP_WATCH_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .map_or(Duration::from_millis(1500), Duration::from_millis);
+        let pbxproj = self.project_path.join("project.pbxproj");
+        std::thread::spawn(move || {
+            let mut last = file_stamp(&pbxproj);
+            loop {
+                std::thread::sleep(interval);
+                let now = file_stamp(&pbxproj);
+                if now != last {
+                    last = now;
+                    self.notify_targets_changed();
+                }
+            }
+        });
+    }
+
+    /// Send `buildTarget/didChange` marking every current target changed.
+    fn notify_targets_changed(&self) {
+        let changes: Vec<Value> = self
+            .current_targets()
+            .iter()
+            .map(|t| json!({ "target": target_id(t), "kind": 2 }))
+            .collect();
+        let notif = json!({
+            "jsonrpc": "2.0",
+            "method": "buildTarget/didChange",
+            "params": { "changes": changes },
+        });
+        let _ = self.send(&notif);
     }
 
     fn sources(&self, params: Option<&Value>) -> Value {
@@ -535,18 +594,33 @@ fn write_message(writer: &mut impl Write, body: &str) -> Result<(), String> {
     writer.flush().map_err(|e| e.to_string())
 }
 
+/// A change fingerprint for a file — `(len, mtime)`, or `None` if it can't be
+/// stat'd. Comparing it across polls detects an edit without a notify dependency.
+fn file_stamp(path: &Path) -> Option<(u64, SystemTime)> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.len(), meta.modified().ok()?))
+}
+
 impl Server {
     /// Write a JSON-RPC result response (skipped for notifications, which have no
     /// id) and log the full outgoing JSON.
     // `result` is owned: it's moved into the response object (`json!` needs an
     // owned `Value`); the id-less early return — a malformed request — only drops it.
     #[allow(clippy::needless_pass_by_value)]
-    fn reply(&self, writer: &mut impl Write, id: Option<Value>, result: Value) -> Result<(), String> {
+    fn reply(&self, id: Option<Value>, result: Value) -> Result<(), String> {
         let Some(id) = id else {
             return Ok(());
         };
         let resp = json!({ "jsonrpc": "2.0", "id": id, "result": result });
-        self.log(&format!("send: {resp}"));
-        write_message(writer, &resp.to_string())
+        self.send(&resp)
+    }
+
+    /// Write one JSON-RPC message to stdout, holding the lock for the whole frame
+    /// so the request loop and the watcher thread never interleave output.
+    fn send(&self, msg: &Value) -> Result<(), String> {
+        self.log(&format!("send: {msg}"));
+        let stdout = io::stdout();
+        let mut writer = stdout.lock();
+        write_message(&mut writer, &msg.to_string())
     }
 }
