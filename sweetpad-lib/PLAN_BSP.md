@@ -67,31 +67,40 @@ them itself for an external server; only its built-in SwiftPM path does that).
 
 ## Roadmap
 
-### v1 — Working autocomplete (relies on a prior build)
+### v1 — Working autocomplete (relies on a prior build) — ✅ functionally complete
 
-**Engine prerequisites**
-- Complete search-path / module-input emission from settings (explicit +
-  implicit), and compute the DerivedData / build-products location.
-- Per-file argument API (file → its invocation; Swift = whole-module + file
-  list, clang = the file's language + `-x`).
-- Module/index decisions: emit implicit-module args (let SourceKit manage its own
-  module cache — likely *strip* `-explicit-module-build`/session-file flags), and
-  emit `-index-store-path` for cross-file navigation.
+**Engine** ✅
+- Complete search-path / module-input emission: swift hand-codes its side; clang
+  emits `HEADER_SEARCH_PATHS`/`USER_HEADER_SEARCH_PATHS`/`SYSTEM_HEADER_SEARCH_PATHS`/
+  `FRAMEWORK_SEARCH_PATHS` + the products dir's generated-headers, de-duplicated
+  (`emit_clang_search_paths`). DerivedData located via `xcode_hash`.
+- Per-file argument API (`build_settings::resolve_file_arguments`): Swift = the
+  whole module's swiftc invocation; clang = gated to the one file's language
+  (`-x objective-c` for a `.m`, C++/ObjC++ for a `.mm`).
+- Editor mode: strips `-explicit-module-build`/emit/`-c` (implicit modules);
+  advertises the build's index store (`indexStorePath`/`indexDatabasePath`) for
+  project-wide navigation.
 
-**Validation pivot**
-- A SourceKit / type-check oracle: feed generated per-file args to
-  `swiftc -typecheck` / `clang -fsyntax-only` and assert **zero "no such module" /
-  "file not found"**. This tests the search-path surface the build-oracle ignored.
+**Validation** ✅ — the 3-layer loop (`tests/bsp_*`):
+- Layer 0 (`swiftc -typecheck`/`clang -fsyntax-only`): **0** resolution errors,
+  incl. cross-module `import` and ObjC `HEADER_SEARCH_PATHS`.
+- Layer 1 (conformance): protocol round-trip + per-file `-x objective-c`.
+- Layer 2 (real `sourcekit-lsp`): **0** diagnostics on `b.swift` and
+  jump-to-definition `Greeter → ModuleA/a.swift`.
 
-**Server**
-- BSP core: `build/initialize`, `workspace/buildTargets`, `buildTarget/sources`,
-  `buildTarget/inverseSources`, `textDocument/sourceKitOptions` (calls our
-  engine), `buildTarget/didChange`; generate `buildServer.json`; file-watching →
-  re-derive on change (our advantage over `xcode-build-server`).
+**Server** ✅ — `sweetpad-lib bsp`: `build/initialize`, `workspace/buildTargets`,
+`buildTarget/sources` (+ `inverseSources`), `textDocument/sourceKitOptions`,
+shutdown/exit; `sweetpad-lib config` writes `buildServer.json`.
 
-**Cross-module strategy:** rely on a prior `xcodebuild` build (point search paths
-at DerivedData), same as `xcode-build-server`. Cross-module is broken until the
-user builds once — acceptable for v1.
+**Cross-module strategy:** relies on a prior `xcodebuild` build (search paths +
+index point at DerivedData), like `xcode-build-server`. Seamless prepare is v2.
+
+**Remaining v1 tail (refinements, not blocking):**
+- `buildTarget/didChange` + file-watching to push project-structure changes (the
+  server already re-resolves per request, so content/settings edits are fresh;
+  only adding/removing files mid-session needs a reload today).
+- VS Code extension wiring (separate repo): run `sweetpad-lib config`, ensure a
+  build, hand off to `sourcekit-lsp`.
 
 ### v2 — Seamless background indexing (no manual build), `xcodebuild`-driven prepare
 
