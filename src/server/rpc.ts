@@ -1,24 +1,20 @@
 import type { Socket } from "node:net";
 
 import {
-  JSON_RPC_INTERNAL_ERROR,
-  JSON_RPC_INVALID_PARAMS,
-  JSON_RPC_INVALID_REQUEST,
-  JSON_RPC_METHOD_NOT_FOUND,
-  JSON_RPC_PARSE_ERROR,
-  SWEETPAD_APPLICATION_ERROR,
-  type ErrorCode,
-  type JsonRpcFailure,
-  type JsonRpcId,
-  type JsonRpcRequest,
-  type JsonRpcResponse,
-  type JsonRpcSuccess,
-} from "./types";
+  createMessageConnection,
+  type MessageConnection,
+  ResponseError,
+  StreamMessageReader,
+  StreamMessageWriter,
+} from "vscode-jsonrpc/node";
+
+import { JSON_RPC_INTERNAL_ERROR, JSON_RPC_INVALID_PARAMS, SWEETPAD_APPLICATION_ERROR, type ErrorCode } from "./types";
 
 /**
  * Error type that handlers throw to surface a structured RPC error with a
  * stable string code in `error.data.code`. The numeric JSON-RPC code stays in
- * the application-defined range (-32099..-32000).
+ * the application-defined range (-32099..-32000), except INVALID_PARAMS which
+ * maps to the reserved -32602.
  */
 export class SweetpadRpcError extends Error {
   readonly code: ErrorCode;
@@ -36,109 +32,45 @@ export class SweetpadRpcError extends Error {
 export type RpcHandler = (params: unknown) => Promise<unknown> | unknown;
 export type RpcDispatch = Record<string, RpcHandler>;
 
+/** Wire shape of the `error.data` payload SweetPad puts on RPC failures. */
+export type SweetpadErrorData = { code?: string; hint?: string; [key: string]: unknown };
+
 /**
- * Parse one wire line as a JSON-RPC request. Returns either the request or a
- * failure envelope that should be sent back unmodified.
+ * Map a thrown handler error to a vscode-jsonrpc `ResponseError`, preserving
+ * the stable string code (+ optional hint and extra data) under `error.data`.
+ * A `SweetpadRpcError` keeps its string code; anything else becomes an internal
+ * error carrying the original message.
  */
-export function parseRequest(line: string): JsonRpcRequest | JsonRpcFailure {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(line);
-  } catch {
-    return makeError(null, JSON_RPC_PARSE_ERROR, "Parse error");
+export function toResponseError(error: unknown): ResponseError<SweetpadErrorData> {
+  if (error instanceof SweetpadRpcError) {
+    const numericCode = error.code === "INVALID_PARAMS" ? JSON_RPC_INVALID_PARAMS : SWEETPAD_APPLICATION_ERROR;
+    return new ResponseError(numericCode, error.message, {
+      code: error.code,
+      ...(error.hint ? { hint: error.hint } : {}),
+      ...error.data,
+    });
   }
-
-  if (
-    !raw ||
-    typeof raw !== "object" ||
-    Array.isArray(raw) ||
-    (raw as { jsonrpc?: unknown }).jsonrpc !== "2.0" ||
-    typeof (raw as { method?: unknown }).method !== "string"
-  ) {
-    const id = extractId(raw);
-    return makeError(id, JSON_RPC_INVALID_REQUEST, "Invalid Request");
-  }
-
-  return raw as JsonRpcRequest;
-}
-
-function extractId(raw: unknown): JsonRpcId {
-  if (raw && typeof raw === "object" && "id" in raw) {
-    const v = (raw as { id?: unknown }).id;
-    if (typeof v === "string" || typeof v === "number" || v === null) {
-      return v;
-    }
-  }
-  return null;
+  const message = error instanceof Error ? error.message : String(error);
+  return new ResponseError(JSON_RPC_INTERNAL_ERROR, message);
 }
 
 /**
- * Run a parsed request through the dispatch table. Always resolves to a
- * response envelope — never throws.
+ * Bind a connected socket to the dispatch table over Content-Length-framed
+ * JSON-RPC 2.0. Each handler is registered as a request; unknown methods are
+ * answered with -32601 by the connection itself. Returns the live connection —
+ * the caller owns its disposal.
  */
-export async function dispatch(req: JsonRpcRequest, table: RpcDispatch): Promise<JsonRpcResponse> {
-  const handler = table[req.method];
-  if (!handler) {
-    return makeError(req.id, JSON_RPC_METHOD_NOT_FOUND, `Method not found: ${req.method}`);
-  }
-
-  try {
-    const result = await handler(req.params ?? {});
-    return makeSuccess(req.id, result);
-  } catch (error) {
-    if (error instanceof SweetpadRpcError) {
-      const numericCode = error.code === "INVALID_PARAMS" ? JSON_RPC_INVALID_PARAMS : SWEETPAD_APPLICATION_ERROR;
-      return {
-        jsonrpc: "2.0",
-        id: req.id,
-        error: {
-          code: numericCode,
-          message: error.message,
-          data: {
-            code: error.code,
-            ...(error.hint ? { hint: error.hint } : {}),
-            ...error.data,
-          },
-        },
-      };
-    }
-    const message = error instanceof Error ? error.message : String(error);
-    return makeError(req.id, JSON_RPC_INTERNAL_ERROR, message);
-  }
-}
-
-function makeSuccess<T>(id: JsonRpcId, result: T): JsonRpcSuccess<T> {
-  return { jsonrpc: "2.0", id, result };
-}
-
-function makeError(id: JsonRpcId, code: number, message: string): JsonRpcFailure {
-  return { jsonrpc: "2.0", id, error: { code, message } };
-}
-
-/**
- * Read newline-delimited JSON messages off a socket and invoke onMessage for
- * each. Buffers partial chunks across `data` events. Returns a disposer that
- * removes the listener.
- */
-export function readLineDelimitedJson(socket: Socket, onMessage: (line: string) => void): () => void {
-  let buffer = "";
-  const handler = (chunk: Buffer) => {
-    buffer += chunk.toString("utf8");
-    let nlIdx: number;
-    while ((nlIdx = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, nlIdx).trim();
-      buffer = buffer.slice(nlIdx + 1);
-      if (line.length > 0) {
-        onMessage(line);
+export function serveDispatch(socket: Socket, handlers: RpcDispatch): MessageConnection {
+  const connection = createMessageConnection(new StreamMessageReader(socket), new StreamMessageWriter(socket));
+  for (const [method, handler] of Object.entries(handlers)) {
+    connection.onRequest(method, async (params: unknown) => {
+      try {
+        return await handler(params ?? {});
+      } catch (error) {
+        throw toResponseError(error);
       }
-    }
-  };
-  socket.on("data", handler);
-  return () => {
-    socket.off("data", handler);
-  };
-}
-
-export function writeMessage(socket: Socket, msg: JsonRpcResponse): void {
-  socket.write(`${JSON.stringify(msg)}\n`);
+    });
+  }
+  connection.listen();
+  return connection;
 }

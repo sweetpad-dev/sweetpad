@@ -5,7 +5,7 @@ import type * as vscode from "vscode";
 
 import { commonLogger } from "../common/logger";
 import { ensureDir, generateServerName, getMetadataPath, getSocketPath, getSocketsDir, safeUnlink } from "./paths";
-import { dispatch, parseRequest, readLineDelimitedJson, writeMessage, type RpcDispatch } from "./rpc";
+import { serveDispatch, type RpcDispatch } from "./rpc";
 import { PROTOCOL_VERSION, type ServerMetadata } from "./types";
 
 export type SocketServerOptions = {
@@ -118,20 +118,11 @@ export class SocketServer implements vscode.Disposable {
 
   private onConnection(socket: net.Socket): void {
     this.connections.add(socket);
-    socket.setEncoding("utf8");
 
-    const removeReader = readLineDelimitedJson(socket, async (line) => {
-      const reqOrError = parseRequest(line);
-      if ("error" in reqOrError) {
-        writeMessage(socket, reqOrError);
-        return;
-      }
-      const response = await dispatch(reqOrError, this.options.handlers);
-      writeMessage(socket, response);
-    });
+    const connection = serveDispatch(socket, this.options.handlers);
 
     const cleanup = () => {
-      removeReader();
+      connection.dispose();
       this.connections.delete(socket);
     };
     socket.once("close", cleanup);

@@ -1,11 +1,16 @@
 import * as net from "node:net";
 
-import { readLineDelimitedJson } from "../server/rpc";
-import type { JsonRpcRequest, JsonRpcResponse } from "../server/types";
+import {
+  createMessageConnection,
+  type MessageConnection,
+  ResponseError,
+  StreamMessageReader,
+  StreamMessageWriter,
+} from "vscode-jsonrpc/node";
 
 const DEFAULT_TIMEOUT_MS = 6 * 60 * 1000;
 
-// One-shot JSON-RPC 2.0 client over a Unix socket using newline-delimited framing.
+// One-shot JSON-RPC 2.0 client over a Unix socket using Content-Length framing.
 export async function rpc<T = unknown>(options: {
   socketPath: string;
   method: string;
@@ -13,49 +18,22 @@ export async function rpc<T = unknown>(options: {
   timeoutMs?: number;
 }): Promise<T> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const id = 1;
-  const request: JsonRpcRequest = {
-    jsonrpc: "2.0",
-    id,
-    method: options.method,
-    params: options.params,
-  };
 
   return await new Promise<T>((resolve, reject) => {
     const socket = net.createConnection(options.socketPath);
+    let connection: MessageConnection | undefined;
     let finished = false;
     const finish = (err: Error | undefined, value?: T) => {
       if (finished) return;
       finished = true;
-      try {
-        removeReader();
-      } catch {
-        // ignore
-      }
       clearTimeout(timer);
+      connection?.dispose();
       socket.destroy();
       if (err) reject(err);
       else resolve(value as T);
     };
     const timer = setTimeout(() => finish(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
     timer.unref?.();
-
-    const removeReader = readLineDelimitedJson(socket, (line) => {
-      let parsed: JsonRpcResponse;
-      try {
-        parsed = JSON.parse(line) as JsonRpcResponse;
-      } catch (err) {
-        finish(new Error(`Invalid JSON from server: ${(err as Error).message}`));
-        return;
-      }
-      if ((parsed as { id?: unknown }).id !== id) return;
-      if ("error" in parsed && parsed.error) {
-        const e = new RpcError(parsed.error.message, parsed.error.code, parsed.error.data);
-        finish(e);
-        return;
-      }
-      finish(undefined, (parsed as { result: T }).result);
-    });
 
     socket.once("error", (err) => {
       const code = (err as NodeJS.ErrnoException)?.code;
@@ -67,8 +45,21 @@ export async function rpc<T = unknown>(options: {
       }
       finish(err);
     });
+
     socket.once("connect", () => {
-      socket.write(`${JSON.stringify(request)}\n`);
+      connection = createMessageConnection(new StreamMessageReader(socket), new StreamMessageWriter(socket));
+      connection.onClose(() => finish(new Error("Connection closed before a response was received")));
+      connection.listen();
+      connection.sendRequest(options.method, options.params).then(
+        (result) => finish(undefined, result as T),
+        (err) => {
+          if (err instanceof ResponseError) {
+            finish(new RpcError(err.message, err.code, err.data as RpcError["data"]));
+          } else {
+            finish(err instanceof Error ? err : new Error(String(err)));
+          }
+        },
+      );
     });
   });
 }

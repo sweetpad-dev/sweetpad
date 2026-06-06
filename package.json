@@ -59,6 +59,7 @@
     "@sweetpad/lib": "*",
     "execa": "npm:@esm2cjs/execa@^6.1.1-cjs.1",
     "shell-quote": "^1.8.1",
+    "vscode-jsonrpc": "^8.2.0",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {

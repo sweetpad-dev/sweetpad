@@ -5,46 +5,11 @@
 
 export const PROTOCOL_VERSION = "1.0";
 
-export type JsonRpcId = string | number | null;
-
-export type JsonRpcRequest = {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  method: string;
-  params?: unknown;
-};
-
-export type JsonRpcSuccess<T = unknown> = {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  result: T;
-};
-
-export type JsonRpcErrorPayload = {
-  code: number;
-  message: string;
-  data?: {
-    code?: string;
-    hint?: string;
-    [key: string]: unknown;
-  };
-};
-
-export type JsonRpcFailure = {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  error: JsonRpcErrorPayload;
-};
-
-export type JsonRpcResponse<T = unknown> = JsonRpcSuccess<T> | JsonRpcFailure;
-
-// JSON-RPC reserved error codes
-export const JSON_RPC_PARSE_ERROR = -32700;
-export const JSON_RPC_INVALID_REQUEST = -32600;
-export const JSON_RPC_METHOD_NOT_FOUND = -32601;
+// JSON-RPC error codes SweetPad emits. INVALID_PARAMS (-32602) and
+// INTERNAL_ERROR (-32603) are reserved codes; every other failure uses the
+// application-defined -32000 and carries a stable string code in error.data.
 export const JSON_RPC_INVALID_PARAMS = -32602;
 export const JSON_RPC_INTERNAL_ERROR = -32603;
-// Application-defined error codes live in -32099..-32000
 export const SWEETPAD_APPLICATION_ERROR = -32000;
 
 export type ServerMetadata = {

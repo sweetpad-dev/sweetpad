@@ -103,4 +103,17 @@ describe("SocketServer", () => {
       }),
     ).rejects.toBeInstanceOf(RpcError);
   });
+
+  it("answers an unknown method with JSON-RPC method-not-found (-32601)", async () => {
+    server = new SocketServer({
+      workspacePath: "/fake/workspace",
+      extensionVersion: "test",
+      handlers: {},
+    });
+    await server.start();
+
+    const err = await rpc({ socketPath: server.socket, method: "does.not.exist", params: {} }).catch((e) => e);
+    expect(err).toBeInstanceOf(RpcError);
+    expect((err as RpcError).code).toBe(-32601);
+  });
 });
