@@ -117,17 +117,30 @@ synthetic fixtures; the synthetic-fixture harness alone missed these):
 - VS Code extension wiring: `buildServer.provider: "sweetpad"` generates the
   config (Electron-as-Node launcher) and hands off to `sourcekit-lsp`.
 
-### v2 — Seamless background indexing (no manual build), `xcodebuild`-driven prepare
+### v2 — Seamless background indexing (no manual build), `xcodebuild`-driven prepare — ✅ done
 
-- Implement `buildTarget/prepare` + `workspace/waitForBuildSystemUpdates`.
-- Need the **transitive target dependency graph** (derive from the project).
-- `prepare` = invoke `xcodebuild` to build the dependency modules on demand, when
-  `sourcekit-lsp` asks. **This is where we surpass `xcode-build-server`** (it does
-  not implement prepare — it just tells users to build).
-- Caveats: external-BSP Swift integration has had rough edges (e.g. sourcekit-lsp
-  #2328, stdlib loading); Xcode has **no** fast declarations-only prepare mode
-  (SwiftPM has `--experimental-prepare-for-indexing`), so prepare = a real
-  (incremental) `xcodebuild` build — heavier than the SwiftPM path.
+- `build/initialize` advertises `data.prepareProvider: true`; the server handles
+  `buildTarget/prepare` and `workspace/waitForBuildSystemUpdates`. sourcekit-lsp's
+  background indexing (default-on, Swift 6.1+) calls prepare for the file's
+  target.
+- `prepare` runs an incremental `xcodebuild` **by scheme** (a bare `-target` build
+  doesn't populate the products dir) into the DerivedData our search paths point
+  at, so the target's dependency `.swiftmodule`s + generated inputs exist.
+  `project::scheme_for_target` maps the prepared target → a scheme. It runs on a
+  serialized worker thread and replies only when the build finishes (sourcekit-lsp
+  blocks on the response); it's best-effort (replies even on build failure).
+  **This is where we surpass `xcode-build-server`** — it has no prepare.
+- Validated end-to-end: from a **clean DerivedData**, a real headless
+  sourcekit-lsp resolves `ModuleB`'s `import ModuleA` with **0 diagnostics**
+  (`tests/bsp_lsp_e2e.rs::prepare_resolves_cross_module_without_prior_build`),
+  and prepare produces the dependency module
+  (`tests/bsp_prepare.rs`). Both gated on `BSP_ORACLE=1` + Xcode 26.5.
+- Known nuance: a file compiled before its first prepare keeps a stale "no such
+  module" until re-pulled — a real editor re-pulls on `workspace/diagnostic/refresh`.
+- Caveats: Xcode has **no** fast declarations-only prepare mode (SwiftPM has
+  `--experimental-prepare-for-indexing`), so prepare = a real incremental build —
+  heavier than the SwiftPM path. Cancellation (`$/cancelRequest`) of a superseded
+  prepare isn't handled yet (the build runs to completion).
 
 ### v3 — Self-built prepare (custom executor) for the fast path
 
