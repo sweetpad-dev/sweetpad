@@ -9,11 +9,15 @@
 //! This is the walking-skeleton scope: the core requests, per-**target** argv
 //! (⚠️ per-file later — see `PLAN_BSP.md`), no `buildTarget/prepare` yet (v2).
 
+mod control;
+mod framing;
+
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -23,6 +27,8 @@ use serde_json::{Value, json};
 use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
 use crate::project;
+use control::{ControlClient, LogLevel};
+use framing::{read_message, write_message};
 
 /// Write a `buildServer.json` so `sourcekit-lsp` discovers and launches this
 /// server. Its `argv` points at the current executable + the same `bsp` flags,
@@ -65,7 +71,7 @@ pub fn write_config(args: &[String]) -> Result<(), String> {
 
 /// Run the BSP server loop over stdin/stdout until EOF or `build/exit`.
 pub fn run(args: &[String]) -> Result<(), String> {
-    let server = Arc::new(Server::from_args(args)?);
+    let server = Arc::new(Server::resolve(args)?);
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     // Each write locks stdout for one whole frame rather than holding the lock
@@ -155,6 +161,11 @@ struct Server {
     /// stdout is the BSP protocol, so debug output must go elsewhere; a file is
     /// also the only channel observable after sourcekit-lsp spawns us detached.
     log: Option<Mutex<std::fs::File>>,
+    /// Live connection to the extension (when config was pulled, not passed on
+    /// the command line). Carries `bsp/log` + `bsp/status` up; `None` standalone.
+    control: Option<Arc<ControlClient>>,
+    /// Verbosity of the `bsp/log` stream, retunable live via `bsp/setLogLevel`.
+    log_level: Arc<AtomicU8>,
 }
 
 const TARGET_SCHEME: &str = "sweetpad://target/";
@@ -167,40 +178,136 @@ struct PrepareJob {
     targets: Vec<String>,
 }
 
-impl Server {
-    fn from_args(args: &[String]) -> Result<Self, String> {
-        let flags = parse_flags(args);
-        let project_path = flags
-            .get("project")
-            .map(PathBuf::from)
-            .ok_or("bsp: --project <path.xcodeproj> is required")?;
-        let ctx = BuildContext::open(&project_path).map_err(|e| format!("open project: {e}"))?;
-        let targets: Vec<String> = ctx.project.targets.iter().map(|t| t.name.clone()).collect();
-        let log = std::env::var_os("SWEETPAD_BSP_LOG")
-            .and_then(|p| OpenOptions::new().create(true).append(true).open(p).ok())
-            .map(Mutex::new);
-        let server = Server {
+/// The inputs the server needs, however they were obtained — from `--project`
+/// flags, from the extension's `bsp.resolveConfig`, or from the working dir.
+struct ResolvedConfig {
+    project_path: PathBuf,
+    configuration: String,
+    sdk: Option<String>,
+    arch: Option<String>,
+    xcode: Option<PathBuf>,
+    derived_data_path: Option<PathBuf>,
+}
+
+impl ResolvedConfig {
+    fn from_flags(project_path: PathBuf, flags: &BTreeMap<String, String>) -> Self {
+        ResolvedConfig {
             project_path,
             configuration: flags.get("configuration").cloned().unwrap_or_else(|| "Debug".into()),
             sdk: flags.get("sdk").cloned(),
             arch: flags.get("arch").cloned(),
             xcode: flags.get("xcode").map(PathBuf::from),
             derived_data_path: flags.get("derived-data-path").map(PathBuf::from),
+        }
+    }
+
+    /// Build from a `bsp.resolveConfig` response. Any explicit flag still wins,
+    /// so the channel can be combined with targeted overrides.
+    fn from_control(value: &Value, flags: &BTreeMap<String, String>) -> Result<Self, String> {
+        let pull = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_string);
+        let project_path = flags
+            .get("project")
+            .cloned()
+            .or_else(|| pull("projectPath"))
+            .ok_or("control config missing projectPath")?;
+        Ok(ResolvedConfig {
+            project_path: PathBuf::from(project_path),
+            configuration: flags
+                .get("configuration")
+                .cloned()
+                .or_else(|| pull("configuration"))
+                .unwrap_or_else(|| "Debug".into()),
+            sdk: flags.get("sdk").cloned(),
+            arch: flags.get("arch").cloned(),
+            xcode: flags.get("xcode").map(PathBuf::from).or_else(|| pull("developerDir").map(PathBuf::from)),
+            derived_data_path: flags
+                .get("derived-data-path")
+                .map(PathBuf::from)
+                .or_else(|| pull("derivedDataPath").map(PathBuf::from)),
+        })
+    }
+
+    /// The sole `.xcodeproj` in `cwd`, or `None` if there are zero or many.
+    fn from_cwd(cwd: &Path) -> Option<Self> {
+        let mut projects = std::fs::read_dir(cwd).ok()?.flatten().filter_map(|e| {
+            let p = e.path();
+            (p.extension().and_then(|x| x.to_str()) == Some("xcodeproj")).then_some(p)
+        });
+        let first = projects.next()?;
+        if projects.next().is_some() {
+            return None;
+        }
+        Some(ResolvedConfig::from_flags(first, &BTreeMap::new()))
+    }
+}
+
+impl Server {
+    /// Resolve the server config and bring up the control channel. With an
+    /// explicit `--project` the server stays self-contained (no channel); without
+    /// it, discover the extension's socket and pull the config via
+    /// `bsp.resolveConfig`, falling back to a sole `.xcodeproj` in the working
+    /// directory when no server is reachable.
+    fn resolve(args: &[String]) -> Result<Self, String> {
+        let flags = parse_flags(args);
+        let log_level = Arc::new(AtomicU8::new(LogLevel::Info as u8));
+
+        if let Some(project) = flags.get("project") {
+            let config = ResolvedConfig::from_flags(PathBuf::from(project), &flags);
+            return Self::build(config, None, log_level);
+        }
+
+        let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+        if let Some(socket) = control::discover_socket(&cwd) {
+            match ControlClient::connect_and_resolve(&socket, Arc::clone(&log_level)) {
+                Ok((client, config_value)) => {
+                    let config = ResolvedConfig::from_control(&config_value, &flags)?;
+                    return Self::build(config, Some(client), log_level);
+                }
+                Err(e) => eprintln!("sweetpad bsp: control connect failed ({e}); trying cwd project"),
+            }
+        }
+        let config = ResolvedConfig::from_cwd(&cwd)
+            .ok_or("no --project, no reachable sweetpad server, and no unique .xcodeproj in the working directory")?;
+        Self::build(config, None, log_level)
+    }
+
+    fn build(
+        config: ResolvedConfig,
+        control: Option<Arc<ControlClient>>,
+        log_level: Arc<AtomicU8>,
+    ) -> Result<Self, String> {
+        let ctx = BuildContext::open(&config.project_path).map_err(|e| format!("open project: {e}"))?;
+        let targets: Vec<String> = ctx.project.targets.iter().map(|t| t.name.clone()).collect();
+        let log = std::env::var_os("SWEETPAD_BSP_LOG")
+            .and_then(|p| OpenOptions::new().create(true).append(true).open(p).ok())
+            .map(Mutex::new);
+        let server = Server {
+            project_path: config.project_path,
+            configuration: config.configuration,
+            sdk: config.sdk,
+            arch: config.arch,
+            xcode: config.xcode,
+            derived_data_path: config.derived_data_path,
             targets,
             log,
+            control,
+            log_level,
         };
         server.log(&format!(
-            "start: project={} xcode={:?} dd={:?} targets={:?}",
+            "start: project={} xcode={:?} dd={:?} control={} targets={:?}",
             server.project_path.display(),
             server.xcode,
             server.derived_data_path,
+            server.control.is_some(),
             server.targets,
         ));
         Ok(server)
     }
 
     /// Append a timestamped line to the debug log (no-op unless `SWEETPAD_BSP_LOG`
-    /// is set). Epoch-millis timestamps keep it dependency-free.
+    /// is set) and stream it to the extension. The file is unconditional; the
+    /// control stream is gated on the live level. Epoch-millis timestamps keep it
+    /// dependency-free.
     fn log(&self, msg: &str) {
         if let Some(file) = &self.log
             && let Ok(mut file) = file.lock()
@@ -208,6 +315,25 @@ impl Server {
             let ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis());
             let _ = writeln!(file, "[{ms}] {msg}");
             let _ = file.flush();
+        }
+        self.push_log(LogLevel::Debug, msg);
+    }
+
+    /// Stream one log line to the extension when a control channel is attached
+    /// and the live level permits it (the `SWEETPAD_BSP_LOG` file is unaffected).
+    fn push_log(&self, level: LogLevel, msg: &str) {
+        if let Some(control) = &self.control
+            && level as u8 <= self.log_level.load(Ordering::Relaxed)
+        {
+            control.notify("bsp/log", json!({ "level": level.as_str(), "message": msg }));
+        }
+    }
+
+    /// Push a coarse status phase to the extension's status bar (no-op without a
+    /// control channel).
+    fn push_status(&self, phase: &str, detail: Option<&str>) {
+        if let Some(control) = &self.control {
+            control.notify("bsp/status", json!({ "phase": phase, "detail": detail }));
         }
     }
 
@@ -225,6 +351,7 @@ impl Server {
     }
 
     fn initialize(&self) -> Value {
+        self.push_status("ready", None);
         // Advertise the per-file options extension and `prepareProvider`, so
         // sourcekit-lsp's background indexing delegates `buildTarget/prepare` to
         // us (we build dependency modules on demand). When we can locate the
@@ -348,9 +475,11 @@ impl Server {
     /// replies (even on build failure) — prepare is best-effort, and a missing
     /// response would wedge sourcekit-lsp's semantics for that target.
     fn run_prepare(&self, job: &PrepareJob) {
+        self.push_status("preparing", Some(&job.targets.join(", ")));
         for target in &job.targets {
             self.prepare_target(target);
         }
+        self.push_status("ready", None);
         let resp = json!({ "jsonrpc": "2.0", "id": job.id, "result": {} });
         let _ = self.send(&resp);
     }
@@ -755,34 +884,6 @@ fn path_from_uri(uri: &str) -> PathBuf {
         i += 1;
     }
     PathBuf::from(String::from_utf8_lossy(&out).into_owned())
-}
-
-/// Read one `Content-Length`-framed JSON-RPC message. `Ok(None)` on clean EOF.
-fn read_message(reader: &mut impl BufRead) -> Result<Option<String>, String> {
-    let mut content_length: Option<usize> = None;
-    loop {
-        let mut line = String::new();
-        let n = reader.read_line(&mut line).map_err(|e| e.to_string())?;
-        if n == 0 {
-            return Ok(None);
-        }
-        let line = line.trim_end_matches(['\r', '\n']);
-        if line.is_empty() {
-            break;
-        }
-        if let Some(v) = line.strip_prefix("Content-Length:") {
-            content_length = v.trim().parse().ok();
-        }
-    }
-    let len = content_length.ok_or("message without Content-Length")?;
-    let mut buf = vec![0u8; len];
-    reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
-    Ok(Some(String::from_utf8_lossy(&buf).into_owned()))
-}
-
-fn write_message(writer: &mut impl Write, body: &str) -> Result<(), String> {
-    write!(writer, "Content-Length: {}\r\n\r\n{body}", body.len()).map_err(|e| e.to_string())?;
-    writer.flush().map_err(|e| e.to_string())
 }
 
 /// A change fingerprint for a file — `(len, mtime)`, or `None` if it can't be
