@@ -149,7 +149,12 @@ fn cmd_compiler_args(args: &[String]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn cmd_bsp(_args: &[String]) -> ExitCode {
-    eprintln!("bsp: not implemented yet (see PLAN_BSP.md — Layer 1/2 work)");
-    ExitCode::FAILURE
+fn cmd_bsp(args: &[String]) -> ExitCode {
+    match sweetpad::bsp::run(args) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("bsp: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }

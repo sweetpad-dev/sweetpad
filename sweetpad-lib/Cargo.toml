@@ -30,6 +30,10 @@ node = ["dep:napi", "dep:napi-derive"]
 [dependencies]
 napi = { version = "3", default-features = false, features = ["napi8"], optional = true }
 napi-derive = { version = "3", optional = true }
+# JSON-RPC for the BSP server. We hand-roll project-domain parsing (pbxproj,
+# xcconfig) where Apple's formats have no good crate, but a well-known standard
+# like JSON is not worth reinventing — see CLAUDE.md "Dependencies".
+serde_json = "1"
 
 [build-dependencies]
 napi-build = "2"

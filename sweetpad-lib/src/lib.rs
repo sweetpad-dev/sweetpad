@@ -11,6 +11,7 @@
 //! layer over the same core — nothing in the core would have to change.
 
 pub mod bplist;
+pub mod bsp;
 pub mod build_context;
 pub mod build_settings;
 pub mod catalog_cache;

@@ -1,0 +1,400 @@
+//! The Build Server Protocol server (`sweetpad-lib bsp`) — see `PLAN_BSP.md`.
+//!
+//! Speaks BSP (JSON-RPC over stdio) to `sourcekit-lsp`, answering the questions
+//! that drive editor intelligence: what targets exist, what files each contains,
+//! and the compiler arguments for a file. The argv comes from the resolver/
+//! generator core (`build_settings::resolve_compiler_arguments`), so it's derived
+//! from the project, not parsed out of a build log.
+//!
+//! This is the walking-skeleton scope: the core requests, per-**target** argv
+//! (⚠️ per-file later — see `PLAN_BSP.md`), no `buildTarget/prepare` yet (v2).
+
+use std::collections::BTreeMap;
+use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
+
+use serde_json::{Value, json};
+
+use crate::build_context::BuildContext;
+use crate::build_settings::{self, BuildSettingsOptions};
+use crate::project;
+
+/// Run the BSP server loop over stdin/stdout until EOF or `build/exit`.
+pub fn run(args: &[String]) -> Result<(), String> {
+    let server = Server::from_args(args)?;
+    let stdin = io::stdin();
+    let mut reader = stdin.lock();
+    let stdout = io::stdout();
+    let mut writer = stdout.lock();
+
+    while let Some(msg) = read_message(&mut reader)? {
+        let Ok(req) = serde_json::from_str::<Value>(&msg) else {
+            continue;
+        };
+        let method = req.get("method").and_then(Value::as_str).unwrap_or("");
+        let id = req.get("id").cloned();
+        let params = req.get("params");
+        match method {
+            "build/initialize" => reply(&mut writer, id, Server::initialize())?,
+            "build/initialized" => {}
+            "workspace/buildTargets" => reply(&mut writer, id, server.build_targets())?,
+            "buildTarget/sources" => reply(&mut writer, id, server.sources(params))?,
+            "buildTarget/inverseSources" => reply(&mut writer, id, server.inverse_sources(params))?,
+            "textDocument/sourceKitOptions" => {
+                reply(&mut writer, id, server.source_kit_options(params))?;
+            }
+            "build/shutdown" | "shutdown" => reply(&mut writer, id, Value::Null)?,
+            "build/exit" | "exit" => break,
+            _ => {
+                // Unknown request: a minimal "method not found" so the client
+                // isn't left waiting; notifications (no id) are ignored.
+                if let Some(id) = id {
+                    let resp = json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32601, "message": format!("method not found: {method}") },
+                    });
+                    write_message(&mut writer, &resp.to_string())?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+struct Server {
+    project_path: PathBuf,
+    configuration: String,
+    sdk: String,
+    arch: String,
+    xcode: Option<PathBuf>,
+    derived_data_path: Option<PathBuf>,
+    /// Target names in pbxproj order (cached at startup).
+    targets: Vec<String>,
+}
+
+const TARGET_SCHEME: &str = "sweetpad://target/";
+const LANGUAGE_IDS: [&str; 5] = ["swift", "objective-c", "objective-cpp", "c", "cpp"];
+
+impl Server {
+    fn from_args(args: &[String]) -> Result<Self, String> {
+        let flags = parse_flags(args);
+        let project_path = flags
+            .get("project")
+            .map(PathBuf::from)
+            .ok_or("bsp: --project <path.xcodeproj> is required")?;
+        let ctx = BuildContext::open(&project_path).map_err(|e| format!("open project: {e}"))?;
+        let targets = ctx.project.targets.iter().map(|t| t.name.clone()).collect();
+        Ok(Server {
+            project_path,
+            configuration: flags.get("configuration").cloned().unwrap_or_else(|| "Debug".into()),
+            sdk: flags.get("sdk").cloned().unwrap_or_else(|| "macosx".into()),
+            arch: flags.get("arch").cloned().unwrap_or_else(|| "arm64".into()),
+            xcode: flags.get("xcode").map(PathBuf::from),
+            derived_data_path: flags.get("derived-data-path").map(PathBuf::from),
+            targets,
+        })
+    }
+
+    fn project_dir(&self) -> &Path {
+        self.project_path.parent().unwrap_or_else(|| Path::new("."))
+    }
+
+    fn initialize() -> Value {
+        json!({
+            "displayName": "sweetpad-lib",
+            "version": env!("CARGO_PKG_VERSION"),
+            "bspVersion": "2.2.0",
+            "capabilities": { "languageIds": LANGUAGE_IDS },
+            "dataKind": "sourceKit",
+            // Tell sourcekit-lsp we serve the per-file options extension. Index
+            // store + prepare come later (PLAN_BSP.md v2).
+            "data": { "sourceKitOptionsProvider": true },
+        })
+    }
+
+    fn build_targets(&self) -> Value {
+        let base = file_uri(self.project_dir());
+        let targets: Vec<Value> = self
+            .targets
+            .iter()
+            .map(|name| {
+                json!({
+                    "id": target_id(name),
+                    "displayName": name,
+                    "baseDirectory": base,
+                    "tags": [],
+                    "languageIds": LANGUAGE_IDS,
+                    "dependencies": [],
+                    "capabilities": { "canCompile": true, "canTest": false, "canRun": false, "canDebug": false },
+                })
+            })
+            .collect();
+        json!({ "targets": targets })
+    }
+
+    fn sources(&self, params: Option<&Value>) -> Value {
+        let requested = self.requested_targets(params);
+        let items: Vec<Value> = requested
+            .iter()
+            .map(|target| {
+                let sources: Vec<Value> = self
+                    .source_files(target)
+                    .iter()
+                    .map(|p| json!({ "uri": file_uri(p), "kind": 1, "generated": false }))
+                    .collect();
+                json!({ "target": target_id(target), "sources": sources })
+            })
+            .collect();
+        json!({ "items": items })
+    }
+
+    fn inverse_sources(&self, params: Option<&Value>) -> Value {
+        let path = params
+            .and_then(|p| p.get("textDocument"))
+            .and_then(|d| d.get("uri"))
+            .and_then(Value::as_str)
+            .map(path_from_uri)
+            .unwrap_or_default();
+        let owning: Vec<Value> = self
+            .targets
+            .iter()
+            .filter(|t| self.source_files(t).contains(&path))
+            .map(|t| target_id(t))
+            .collect();
+        json!({ "targets": owning })
+    }
+
+    fn source_kit_options(&self, params: Option<&Value>) -> Value {
+        let Some(params) = params else {
+            return Value::Null;
+        };
+        let uri = params
+            .get("textDocument")
+            .and_then(|d| d.get("uri"))
+            .or_else(|| params.get("uri"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let path = path_from_uri(uri);
+
+        // The owning target: the request's `target`, else the first whose source
+        // list contains the file.
+        let target = params
+            .get("target")
+            .and_then(|t| t.get("uri"))
+            .and_then(Value::as_str)
+            .map(target_name_from_uri)
+            .or_else(|| {
+                self.targets
+                    .iter()
+                    .find(|t| self.source_files(t).contains(&path))
+                    .cloned()
+            });
+
+        let Some(target) = target else {
+            return Value::Null;
+        };
+        let Some(args) = self.compiler_arguments(&target, &path) else {
+            return Value::Null;
+        };
+        json!({
+            "compilerArguments": args,
+            "workingDirectory": self.project_dir().to_string_lossy(),
+        })
+    }
+
+    /// The targets named in a `{ targets: [{uri}] }` param, or all targets.
+    fn requested_targets(&self, params: Option<&Value>) -> Vec<String> {
+        params
+            .and_then(|p| p.get("targets"))
+            .and_then(Value::as_array)
+            .map_or_else(
+                || self.targets.clone(),
+                |arr| {
+                    arr.iter()
+                        .filter_map(|t| {
+                            t.get("uri").and_then(Value::as_str).map(target_name_from_uri)
+                        })
+                        .collect()
+                },
+            )
+    }
+
+    fn source_files(&self, target: &str) -> Vec<PathBuf> {
+        project::target_source_files(&self.project_path, target).unwrap_or_default()
+    }
+
+    /// The editor compiler arguments for `file` in `target`: the target's
+    /// generated swift (for `.swift`) or clang (otherwise) argv, reduced to an
+    /// editor invocation (no build actions / explicit-module plumbing), with the
+    /// module's inputs appended.
+    fn compiler_arguments(&self, target: &str, file: &Path) -> Option<Vec<String>> {
+        let opts = self.options_for(target);
+        let mut resolved = build_settings::resolve_compiler_arguments(&opts).ok()?;
+        resolved.retain(|t| t.target == target);
+        let inv = resolved.pop()?;
+        let is_swift = file.extension().is_some_and(|e| e == "swift");
+        let tool = if is_swift { inv.swift } else { inv.clang }?;
+        let mut args = editor_arguments(&tool.arguments);
+        if is_swift {
+            // Swift type-checks the whole module: hand over every source file.
+            args.extend(tool.input_files);
+        } else {
+            args.push(file.to_string_lossy().into_owned());
+        }
+        Some(args)
+    }
+
+    fn options_for(&self, target: &str) -> BuildSettingsOptions {
+        BuildSettingsOptions {
+            project: Some(self.project_path.clone()),
+            workspace: None,
+            scheme: None,
+            target: Some(target.to_string()),
+            configuration: self.configuration.clone(),
+            sdk: self.sdk.clone(),
+            arch: self.arch.clone(),
+            destination: None,
+            xcconfig: None,
+            xcode: self.xcode.clone(),
+            xcspec_root: None,
+            sdksettings_root: None,
+            catalog_cache: None,
+            derived_data_path: self.derived_data_path.clone(),
+            keys: None,
+        }
+    }
+}
+
+/// Build-only / output-producing flags the editor front end doesn't want:
+/// stripping them leaves a parse + type-check invocation against implicit
+/// modules (SourceKit manages its own module cache). ⚠️ Refine against real
+/// `sourcekit-lsp` in Layer 2 (PLAN_BSP.md).
+const STRIP_FLAGS: &[&str] = &[
+    "-explicit-module-build",
+    "-validate-clang-modules-once",
+    "-emit-module",
+    "-emit-dependencies",
+    "-emit-objc-header",
+    "-emit-const-values",
+    "-c",
+    "-experimental-emit-module-separately",
+    "-no-emit-module-separately-wmo",
+    "-save-temps",
+    "-use-frontend-parseable-output",
+    "-incremental",
+    "-enable-batch-mode",
+    "-disable-cmo",
+    "-whole-module-optimization",
+];
+
+fn editor_arguments(build_args: &[String]) -> Vec<String> {
+    build_args.iter().filter(|a| !STRIP_FLAGS.contains(&a.as_str())).cloned().collect()
+}
+
+fn parse_flags(args: &[String]) -> BTreeMap<String, String> {
+    let mut flags = BTreeMap::new();
+    let mut i = 0;
+    while i < args.len() {
+        if let Some(key) = args[i].strip_prefix("--") {
+            if let Some((k, v)) = key.split_once('=') {
+                flags.insert(k.to_string(), v.to_string());
+                i += 1;
+            } else if i + 1 < args.len() {
+                flags.insert(key.to_string(), args[i + 1].clone());
+                i += 2;
+            } else {
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    flags
+}
+
+fn target_id(name: &str) -> Value {
+    json!({ "uri": format!("{TARGET_SCHEME}{name}") })
+}
+
+fn target_name_from_uri(uri: &str) -> String {
+    uri.strip_prefix(TARGET_SCHEME).unwrap_or(uri).to_string()
+}
+
+fn file_uri(path: &Path) -> String {
+    let mut out = String::from("file://");
+    for b in path.to_string_lossy().bytes() {
+        match b {
+            b'/' | b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => {
+                const HEX: &[u8; 16] = b"0123456789ABCDEF";
+                out.push('%');
+                out.push(HEX[(b >> 4) as usize] as char);
+                out.push(HEX[(b & 0xf) as usize] as char);
+            }
+        }
+    }
+    out
+}
+
+fn path_from_uri(uri: &str) -> PathBuf {
+    let raw = uri.strip_prefix("file://").unwrap_or(uri);
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(b) = u8::from_str_radix(&raw[i + 1..i + 3], 16)
+        {
+            out.push(b);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    PathBuf::from(String::from_utf8_lossy(&out).into_owned())
+}
+
+/// Read one `Content-Length`-framed JSON-RPC message. `Ok(None)` on clean EOF.
+fn read_message(reader: &mut impl BufRead) -> Result<Option<String>, String> {
+    let mut content_length: Option<usize> = None;
+    loop {
+        let mut line = String::new();
+        let n = reader.read_line(&mut line).map_err(|e| e.to_string())?;
+        if n == 0 {
+            return Ok(None);
+        }
+        let line = line.trim_end_matches(['\r', '\n']);
+        if line.is_empty() {
+            break;
+        }
+        if let Some(v) = line.strip_prefix("Content-Length:") {
+            content_length = v.trim().parse().ok();
+        }
+    }
+    let len = content_length.ok_or("message without Content-Length")?;
+    let mut buf = vec![0u8; len];
+    reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
+    Ok(Some(String::from_utf8_lossy(&buf).into_owned()))
+}
+
+fn write_message(writer: &mut impl Write, body: &str) -> Result<(), String> {
+    write!(writer, "Content-Length: {}\r\n\r\n{body}", body.len()).map_err(|e| e.to_string())?;
+    writer.flush().map_err(|e| e.to_string())
+}
+
+/// Write a JSON-RPC result response (skipped for notifications, which have no id).
+// `result` is owned: it's moved into the response object (`json!` needs an owned
+// `Value`); the id-less early return — a malformed request — only drops it.
+#[allow(clippy::needless_pass_by_value)]
+fn reply(writer: &mut impl Write, id: Option<Value>, result: Value) -> Result<(), String> {
+    let Some(id) = id else {
+        return Ok(());
+    };
+    let resp = json!({ "jsonrpc": "2.0", "id": id, "result": result });
+    write_message(writer, &resp.to_string())
+}

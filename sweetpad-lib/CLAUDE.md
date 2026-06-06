@@ -4,6 +4,18 @@ A Rust resolver for Xcode `pbxproj` / `xcconfig` build settings, snapshot-tested
 against real `xcodebuild -showBuildSettings` captures. See `PLAN.md` for phases
 and `COVERAGE.md` for the test-case matrix.
 
+## Dependencies
+
+Keep them minimal — but *minimal*, not *zero for its own sake*. Hand-roll the
+**project-domain** formats Apple invented and no crate handles well (OpenStep
+`pbxproj`, `xcconfig`, the DerivedData path hash, the binary catalog cache): that
+parsing *is* the library's value, and owning it keeps us exact. Do **not**
+reinvent well-known, standardized formats — JSON, XML, and the like — where a
+mature crate is effectively part of the ecosystem's std (e.g. `serde_json` for
+the BSP server's JSON-RPC). The Node runtime is feature-gated (`node`) because
+it's heavy and platform-specific; a small pure-Rust utility crate for a standard
+format does not need that ceremony.
+
 The corpus tracks the **latest non-beta minor of each Xcode major**. When asked
 to update/refresh a version (e.g. bump 26.x to the newest 26.minor, or add a
 major), follow **`UPDATING_XCODE_VERSIONS.md`** — a step-by-step runbook covering
