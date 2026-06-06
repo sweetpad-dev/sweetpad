@@ -43,6 +43,7 @@ type Config = {
   "xcodebuildserver.path": string;
   "xcodebuildserver.serverEnv": { [key: string]: string | null };
   "buildServer.provider": "xcode-build-server" | "sweetpad";
+  "buildServer.logPath": string;
   "tuist.autogenerate": boolean;
   "tuist.generate.env": { [key: string]: string | null };
   "testing.configuration": string;

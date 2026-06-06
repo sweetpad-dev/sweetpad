@@ -691,10 +691,15 @@ async function generateSweetpadBuildServerConfig(options: { xcworkspace: string 
   await fs.writeFile(buildServerPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 
   // `ELECTRON_RUN_AS_NODE` makes VS Code's binary run the launcher as Node; the
-  // standard `/usr/bin/env` prefix carries it (plus any user serverEnv) into the
-  // process sourcekit-lsp spawns.
+  // standard `/usr/bin/env` prefix carries it (plus any user serverEnv, and the
+  // debug log path) into the process sourcekit-lsp spawns.
   const serverEnv = getWorkspaceConfig("xcodebuildserver.serverEnv") ?? {};
-  await injectEnvIntoBuildServerConfig(buildServerPath, { ELECTRON_RUN_AS_NODE: "1", ...serverEnv });
+  const env: { [key: string]: string | null } = { ELECTRON_RUN_AS_NODE: "1", ...serverEnv };
+  const logPath = getWorkspaceConfig("buildServer.logPath");
+  if (logPath) {
+    env.SWEETPAD_BSP_LOG = logPath;
+  }
+  await injectEnvIntoBuildServerConfig(buildServerPath, env);
 }
 
 /** The active Xcode developer dir (`DEVELOPER_DIR`, else `xcode-select -p`). */

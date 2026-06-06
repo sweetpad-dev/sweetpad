@@ -10,8 +10,11 @@
 //! (⚠️ per-file later — see `PLAN_BSP.md`), no `buildTarget/prepare` yet (v2).
 
 use std::collections::BTreeMap;
+use std::fs::OpenOptions;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -73,6 +76,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
         let id = req.get("id").cloned();
         let params = req.get("params");
+        server.log(&format!("recv {method}"));
         match method {
             "build/initialize" => reply(&mut writer, id, server.initialize())?,
             "build/initialized" => {}
@@ -111,6 +115,10 @@ struct Server {
     derived_data_path: Option<PathBuf>,
     /// Target names in pbxproj order (cached at startup).
     targets: Vec<String>,
+    /// Debug log sink — the file named by `SWEETPAD_BSP_LOG`, else nothing.
+    /// stdout is the BSP protocol, so debug output must go elsewhere; a file is
+    /// also the only channel observable after sourcekit-lsp spawns us detached.
+    log: Option<Mutex<std::fs::File>>,
 }
 
 const TARGET_SCHEME: &str = "sweetpad://target/";
@@ -124,8 +132,11 @@ impl Server {
             .map(PathBuf::from)
             .ok_or("bsp: --project <path.xcodeproj> is required")?;
         let ctx = BuildContext::open(&project_path).map_err(|e| format!("open project: {e}"))?;
-        let targets = ctx.project.targets.iter().map(|t| t.name.clone()).collect();
-        Ok(Server {
+        let targets: Vec<String> = ctx.project.targets.iter().map(|t| t.name.clone()).collect();
+        let log = std::env::var_os("SWEETPAD_BSP_LOG")
+            .and_then(|p| OpenOptions::new().create(true).append(true).open(p).ok())
+            .map(Mutex::new);
+        let server = Server {
             project_path,
             configuration: flags.get("configuration").cloned().unwrap_or_else(|| "Debug".into()),
             sdk: flags.get("sdk").cloned(),
@@ -133,7 +144,28 @@ impl Server {
             xcode: flags.get("xcode").map(PathBuf::from),
             derived_data_path: flags.get("derived-data-path").map(PathBuf::from),
             targets,
-        })
+            log,
+        };
+        server.log(&format!(
+            "start: project={} xcode={:?} dd={:?} targets={:?}",
+            server.project_path.display(),
+            server.xcode,
+            server.derived_data_path,
+            server.targets,
+        ));
+        Ok(server)
+    }
+
+    /// Append a timestamped line to the debug log (no-op unless `SWEETPAD_BSP_LOG`
+    /// is set). Epoch-millis timestamps keep it dependency-free.
+    fn log(&self, msg: &str) {
+        if let Some(file) = &self.log
+            && let Ok(mut file) = file.lock()
+        {
+            let ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis());
+            let _ = writeln!(file, "[{ms}] {msg}");
+            let _ = file.flush();
+        }
     }
 
     fn project_dir(&self) -> &Path {
@@ -255,6 +287,7 @@ impl Server {
             });
 
         let Some(target) = target else {
+            self.log(&format!("sourceKitOptions: no target owns {}", path.display()));
             return Value::Null;
         };
         let Some(args) = self.compiler_arguments(&target, &path) else {
@@ -294,9 +327,21 @@ impl Server {
     fn compiler_arguments(&self, target: &str, file: &Path) -> Option<Vec<String>> {
         let (sdk, arch) = self.editor_platform(target);
         let opts = self.options_for(target, &sdk, &arch);
-        let inv = build_settings::resolve_file_arguments(&opts, file).ok()?;
+        let inv = match build_settings::resolve_file_arguments(&opts, file) {
+            Ok(inv) => inv,
+            Err(e) => {
+                self.log(&format!("resolve failed: target={target} file={} err={e}", file.display()));
+                return None;
+            }
+        };
         let mut args = editor_arguments(&inv.arguments);
         args.extend(inv.input_files);
+        self.log(&format!(
+            "sourceKitOptions: target={target} file={} tool={} args={}",
+            file.display(),
+            inv.tool,
+            args.len(),
+        ));
         Some(args)
     }
 
@@ -333,6 +378,7 @@ impl Server {
         } else {
             "macosx"
         };
+        self.log(&format!("platform {target}: SDKROOT={sdkroot:?} -> sdk={sdk} arch=arm64"));
         (sdk.to_string(), "arm64".to_string())
     }
 
