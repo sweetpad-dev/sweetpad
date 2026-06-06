@@ -399,6 +399,10 @@ pub fn clang_arguments(
     if let Some(sdk) = get("SDKROOT") {
         a.pair("-isysroot", sdk);
     }
+    // Header/framework search paths live in the core build-settings spec, not the
+    // Clang tool spec, so the option loop below never emits them — the editor's
+    // front end needs them to find project headers and framework modules.
+    emit_clang_search_paths(&mut a, settings);
     // An option applies when its language, arch, and condition gates all pass. A
     // `FileTypes` is satisfied by a language the target compiles (or is empty, =
     // every C-family input; or `file_types` is empty = no info, gate nothing); an
@@ -442,6 +446,49 @@ pub fn clang_arguments(
     // The compile action every per-file clang runs (compile, don't link).
     a.flag("-c");
     a.into_vec()
+}
+
+/// Emit the clang header/framework search paths. The build system adds these
+/// from the core build settings (not the Clang xcspec): the products dir's
+/// generated-headers `include` subdir + `HEADER_SEARCH_PATHS` as `-I`, the
+/// products dir + `FRAMEWORK_SEARCH_PATHS` as `-F`, and the user/system header
+/// paths as `-iquote`/`-isystem`. Each list is de-duplicated (a setting often
+/// re-inherits the products dir), as `emit_library_paths` does for `-L`.
+fn emit_clang_search_paths(a: &mut ArgBuilder, settings: &Settings) {
+    let get = |k: &str| settings.get(k).map(String::as_str);
+    let products = get("BUILT_PRODUCTS_DIR");
+
+    // `-I`: the products generated-headers dir, then HEADER_SEARCH_PATHS. (Bare
+    // `BUILT_PRODUCTS_DIR` is a Swift-module path, not a clang header path.)
+    let mut includes: Vec<String> = Vec::new();
+    if let Some(p) = products {
+        includes.push(format!("{p}/include"));
+    }
+    includes.extend(ws(get("HEADER_SEARCH_PATHS")).into_iter().map(str::to_string));
+    emit_unique_pairs(a, "-I", &includes);
+
+    // `-F`: the products dir, then FRAMEWORK_SEARCH_PATHS.
+    let mut frameworks: Vec<String> = products.map(str::to_string).into_iter().collect();
+    frameworks.extend(ws(get("FRAMEWORK_SEARCH_PATHS")).into_iter().map(str::to_string));
+    emit_unique_pairs(a, "-F", &frameworks);
+
+    for p in ws(get("USER_HEADER_SEARCH_PATHS")) {
+        a.pair("-iquote", p);
+    }
+    for p in ws(get("SYSTEM_HEADER_SEARCH_PATHS")) {
+        a.pair("-isystem", p);
+    }
+}
+
+/// Emit `flag value` for each path, skipping duplicates (order preserved).
+fn emit_unique_pairs(a: &mut ArgBuilder, flag: &str, paths: &[String]) {
+    let mut seen: Vec<&str> = Vec::new();
+    for p in paths {
+        if !seen.contains(&p.as_str()) {
+            a.pair(flag, p);
+            seen.push(p);
+        }
+    }
 }
 
 /// Emit one `-L` per unique library search path: the products dir (passed

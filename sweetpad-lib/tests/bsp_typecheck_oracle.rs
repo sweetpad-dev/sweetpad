@@ -1,18 +1,19 @@
 //! Layer 0 of the BSP measurement loop (see `PLAN_BSP.md`): does the editor's
 //! front end accept our generated arguments and **resolve every imported
-//! module**? This is the search-path/module-input surface the compiler-args
-//! oracle deliberately excludes as geometry — yet it's exactly what makes
+//! module / header**? This is the search-path/module-input surface the
+//! compiler-args oracle excludes as geometry — yet it's exactly what makes
 //! completion and navigation work.
 //!
-//! Method: build the synthetic multi-module fixture hermetically (into a
-//! throwaway `-derivedDataPath`), then `swiftc -typecheck` each target's sources
-//! with the args we generate (pointed at that same DerivedData). The headline
-//! metric is the count of **module-resolution errors** (`no such module`, …) →
-//! it must be zero, including `ModuleB`'s cross-module `import ModuleA`.
+//! Method: build a synthetic fixture hermetically (into a throwaway
+//! `-derivedDataPath`), then run the front end (`swiftc -typecheck` /
+//! `clang -fsyntax-only`) on each target's sources with the args we generate
+//! (pointed at that same DerivedData). The headline metric is the count of
+//! **resolution errors** (`no such module`, `'foo.h' file not found`, …) → it
+//! must be zero, covering both the Swift cross-module import (multi-module
+//! fixture) and the ObjC header search path (objc-headers fixture).
 //!
-//! Opt-in: this builds with `xcodebuild`, so it only runs when `BSP_ORACLE=1`
-//! (and Xcode 26.5 is installed). ⚠️ Pinned to Xcode 26.5 for now — expand to
-//! 15.4 / 16.4 later (see `PLAN_BSP.md`).
+//! Opt-in: builds with `xcodebuild`, so it only runs when `BSP_ORACLE=1` (and
+//! Xcode 26.5 is installed). ⚠️ Pinned to Xcode 26.5 — expand later (PLAN_BSP.md).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -27,40 +28,28 @@ fn developer_dir() -> String {
     format!("{XCODE}/Contents/Developer")
 }
 
-fn swiftc() -> String {
-    format!("{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc", developer_dir())
+fn toolchain_bin(tool: &str) -> String {
+    format!("{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{tool}", developer_dir())
 }
 
-fn fixture_project() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures/_synthetic-multimodule/project/MultiModule.xcodeproj")
+fn fixture(name: &str, proj: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("fixtures/{name}/project/{proj}"))
 }
 
-/// Flags that carry a value in the next token; we keep both. The set is the
-/// module-resolution surface — search paths, sysroot/target, importer flags,
-/// module name, language mode, features.
+/// Flags carrying a value in the next token — the module-resolution surface
+/// (search paths, sysroot/target, importer flags, module name, language mode).
+/// Superset for both front ends; `-sdk` is swift, `-isysroot` is clang.
 const PAIR_FLAGS: &[&str] = &[
-    "-sdk",
-    "-target",
-    "-module-name",
-    "-swift-version",
-    "-I",
-    "-F",
-    "-Xcc",
-    "-import-objc-header",
-    "-isystem",
-    "-iframework",
-    "-fmodule-map-file",
-    "-enable-experimental-feature",
-    "-enable-upcoming-feature",
-    "-resource-dir",
+    "-sdk", "-isysroot", "-target", "-x", "-module-name", "-swift-version", "-I", "-F", "-Xcc",
+    "-import-objc-header", "-isystem", "-iquote", "-iframework", "-fmodule-map-file", "-include",
+    "-resource-dir", "-enable-experimental-feature", "-enable-upcoming-feature",
 ];
 
-/// Reduce a build invocation to a `-typecheck` one: keep only the flags that
-/// affect module resolution / parsing, drop the build actions and
-/// explicit-module plumbing a standalone front-end run can't satisfy.
-fn typecheck_args(build_args: &[String]) -> Vec<String> {
-    let mut out = vec!["-typecheck".to_string()];
+/// Reduce a build invocation to a syntax-only one: keep the flags that affect
+/// resolution / parsing, drop build actions and explicit-module plumbing a
+/// standalone front-end run can't satisfy.
+fn syntax_args(build_args: &[String], action: &str) -> Vec<String> {
+    let mut out = vec![action.to_string()];
     let mut i = 0;
     while i < build_args.len() {
         let a = &build_args[i];
@@ -74,6 +63,7 @@ fn typecheck_args(build_args: &[String]) -> Vec<String> {
             || a.starts_with("-I")
             || a.starts_with("-F")
             || a.starts_with("-isystem")
+            || a.starts_with("-std")
         {
             out.push(a.clone());
             i += 1;
@@ -84,9 +74,8 @@ fn typecheck_args(build_args: &[String]) -> Vec<String> {
     out
 }
 
-/// Diagnostic lines that mean a module/header couldn't be resolved — the defect
-/// Layer 0 hunts. (A plain type error would be a fixture bug, tallied separately.)
-fn module_errors(stderr: &str) -> Vec<String> {
+/// Diagnostic lines that mean a module/header couldn't be resolved.
+fn resolution_errors(stderr: &str) -> Vec<String> {
     stderr
         .lines()
         .filter(|l| {
@@ -96,7 +85,6 @@ fn module_errors(stderr: &str) -> Vec<String> {
                 || l.contains("missing required module")
                 || l.contains("cannot load module")
                 || l.contains("unable to load standard library")
-                || l.contains("'.h' file not found")
                 || l.contains("file not found")
         })
         .map(ToString::to_string)
@@ -127,6 +115,48 @@ fn resolve_target(project: &Path, target: &str, dd: &Path) -> TargetCompilerArgu
     all.pop().unwrap_or_else(|| panic!("no args for target {target}"))
 }
 
+fn build_fixture(project: &Path, scheme: &str, dd: &Path) {
+    let build = Command::new("xcodebuild")
+        .env("DEVELOPER_DIR", developer_dir())
+        .args(["build", "-project"])
+        .arg(project)
+        .args(["-scheme", scheme, "-configuration", "Debug", "-destination", "platform=macOS", "-derivedDataPath"])
+        .arg(dd)
+        .arg("CODE_SIGNING_ALLOWED=NO")
+        .output()
+        .expect("run xcodebuild");
+    assert!(
+        build.status.success(),
+        "fixture build failed ({scheme}):\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+}
+
+/// Run a front end on a target's sources, returning resolution errors.
+fn check_target(project: &Path, target: &str, dd: &Path, swift: bool) -> Vec<String> {
+    let inv = resolve_target(project, target, dd);
+    let (tool, action, build_args, files) = if swift {
+        let s = inv.swift.unwrap_or_else(|| panic!("{target} has no swift invocation"));
+        (toolchain_bin("swiftc"), "-typecheck", s.arguments, s.input_files)
+    } else {
+        let c = inv.clang.unwrap_or_else(|| panic!("{target} has no clang invocation"));
+        (toolchain_bin("clang"), "-fsyntax-only", c.arguments, c.input_files)
+    };
+    let mut args = syntax_args(&build_args, action);
+    args.extend(files);
+    let out = Command::new(&tool)
+        .env("DEVELOPER_DIR", developer_dir())
+        .args(&args)
+        .output()
+        .unwrap_or_else(|e| panic!("run {tool}: {e}"));
+    let errs = resolution_errors(&String::from_utf8_lossy(&out.stderr));
+    eprintln!("[{target}] {} exit={} resolution-errors={}", if swift { "swift" } else { "clang" }, out.status.code().unwrap_or(-1), errs.len());
+    for e in &errs {
+        eprintln!("    {e}");
+    }
+    errs
+}
+
 #[test]
 fn bsp_typecheck_oracle() {
     if std::env::var("BSP_ORACLE").is_err() {
@@ -138,64 +168,22 @@ fn bsp_typecheck_oracle() {
         return;
     }
 
-    let project = fixture_project();
-    let dd = std::env::temp_dir().join(format!("sweetpad-bsp-{}", std::process::id()));
+    let mut errors = Vec::new();
 
-    // Build hermetically so ModuleA.swiftmodule exists where ModuleB's args point.
-    let build = Command::new("xcodebuild")
-        .env("DEVELOPER_DIR", developer_dir())
-        .args(["build", "-project"])
-        .arg(&project)
-        .args([
-            "-scheme", "ModuleB", "-configuration", "Debug", "-destination", "platform=macOS",
-            "-derivedDataPath",
-        ])
-        .arg(&dd)
-        .arg("CODE_SIGNING_ALLOWED=NO")
-        .output()
-        .expect("run xcodebuild");
-    assert!(
-        build.status.success(),
-        "fixture build failed:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
+    // Swift cross-module: ModuleB imports ModuleA.
+    let multimodule = fixture("_synthetic-multimodule", "MultiModule.xcodeproj");
+    let dd1 = std::env::temp_dir().join(format!("sweetpad-bsp-mm-{}", std::process::id()));
+    build_fixture(&multimodule, "ModuleB", &dd1);
+    errors.extend(check_target(&multimodule, "ModuleA", &dd1, true));
+    errors.extend(check_target(&multimodule, "ModuleB", &dd1, true));
+    let _ = std::fs::remove_dir_all(&dd1);
 
-    // Each target: generate args, reduce to a typecheck run, count module errors.
-    let mut total_module_errors = 0usize;
-    let mut module_b_errors = Vec::new();
-    for (target, sources) in [("ModuleA", &["ModuleA/a.swift"][..]), ("ModuleB", &["ModuleB/b.swift"][..])] {
-        let inv = resolve_target(&project, target, &dd);
-        let swift = inv.swift.unwrap_or_else(|| panic!("{target} has no swift invocation"));
-        let mut args = typecheck_args(&swift.arguments);
-        args.extend(swift.input_files.clone());
+    // ObjC header search path: widget.m #imports include/widget.h via HEADER_SEARCH_PATHS.
+    let objc = fixture("_synthetic-objc-headers", "ObjCHeaders.xcodeproj");
+    let dd2 = std::env::temp_dir().join(format!("sweetpad-bsp-objc-{}", std::process::id()));
+    build_fixture(&objc, "ObjCHeaders", &dd2);
+    errors.extend(check_target(&objc, "ObjCHeaders", &dd2, false));
+    let _ = std::fs::remove_dir_all(&dd2);
 
-        let out = Command::new(swiftc())
-            .env("DEVELOPER_DIR", developer_dir())
-            .args(&args)
-            .output()
-            .expect("run swiftc -typecheck");
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        let errs = module_errors(&stderr);
-        eprintln!(
-            "[{target}] typecheck exit={} module-errors={} (sources: {sources:?})",
-            out.status.code().unwrap_or(-1),
-            errs.len()
-        );
-        for e in &errs {
-            eprintln!("    {e}");
-        }
-        total_module_errors += errs.len();
-        if target == "ModuleB" {
-            module_b_errors = errs;
-        }
-    }
-
-    let _ = std::fs::remove_dir_all(&dd);
-
-    // The headline invariant: the cross-module import resolves cleanly.
-    assert!(
-        module_b_errors.is_empty(),
-        "ModuleB failed to resolve its cross-module import: {module_b_errors:?}"
-    );
-    assert_eq!(total_module_errors, 0, "module-resolution errors across the fixture");
+    assert!(errors.is_empty(), "module/header resolution failures: {errors:?}");
 }
