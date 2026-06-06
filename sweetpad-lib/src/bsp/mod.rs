@@ -76,17 +76,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
         let id = req.get("id").cloned();
         let params = req.get("params");
-        server.log(&format!("recv {method}"));
+        server.log(&format!("recv: {msg}"));
         match method {
-            "build/initialize" => reply(&mut writer, id, server.initialize())?,
+            "build/initialize" => server.reply(&mut writer, id, server.initialize())?,
             "build/initialized" => {}
-            "workspace/buildTargets" => reply(&mut writer, id, server.build_targets())?,
-            "buildTarget/sources" => reply(&mut writer, id, server.sources(params))?,
-            "buildTarget/inverseSources" => reply(&mut writer, id, server.inverse_sources(params))?,
-            "textDocument/sourceKitOptions" => {
-                reply(&mut writer, id, server.source_kit_options(params))?;
+            "workspace/buildTargets" => server.reply(&mut writer, id, server.build_targets())?,
+            "buildTarget/sources" => server.reply(&mut writer, id, server.sources(params))?,
+            "buildTarget/inverseSources" => {
+                server.reply(&mut writer, id, server.inverse_sources(params))?;
             }
-            "build/shutdown" | "shutdown" => reply(&mut writer, id, Value::Null)?,
+            "textDocument/sourceKitOptions" => {
+                server.reply(&mut writer, id, server.source_kit_options(params))?;
+            }
+            "build/shutdown" | "shutdown" => server.reply(&mut writer, id, Value::Null)?,
             "build/exit" | "exit" => break,
             _ => {
                 // Unknown request: a minimal "method not found" so the client
@@ -97,6 +99,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                         "id": id,
                         "error": { "code": -32601, "message": format!("method not found: {method}") },
                     });
+                    server.log(&format!("send: {resp}"));
                     write_message(&mut writer, &resp.to_string())?;
                 }
             }
@@ -524,14 +527,18 @@ fn write_message(writer: &mut impl Write, body: &str) -> Result<(), String> {
     writer.flush().map_err(|e| e.to_string())
 }
 
-/// Write a JSON-RPC result response (skipped for notifications, which have no id).
-// `result` is owned: it's moved into the response object (`json!` needs an owned
-// `Value`); the id-less early return — a malformed request — only drops it.
-#[allow(clippy::needless_pass_by_value)]
-fn reply(writer: &mut impl Write, id: Option<Value>, result: Value) -> Result<(), String> {
-    let Some(id) = id else {
-        return Ok(());
-    };
-    let resp = json!({ "jsonrpc": "2.0", "id": id, "result": result });
-    write_message(writer, &resp.to_string())
+impl Server {
+    /// Write a JSON-RPC result response (skipped for notifications, which have no
+    /// id) and log the full outgoing JSON.
+    // `result` is owned: it's moved into the response object (`json!` needs an
+    // owned `Value`); the id-less early return — a malformed request — only drops it.
+    #[allow(clippy::needless_pass_by_value)]
+    fn reply(&self, writer: &mut impl Write, id: Option<Value>, result: Value) -> Result<(), String> {
+        let Some(id) = id else {
+            return Ok(());
+        };
+        let resp = json!({ "jsonrpc": "2.0", "id": id, "result": result });
+        self.log(&format!("send: {resp}"));
+        write_message(writer, &resp.to_string())
+    }
 }

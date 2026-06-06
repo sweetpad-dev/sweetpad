@@ -697,7 +697,10 @@ async function generateSweetpadBuildServerConfig(options: { xcworkspace: string 
   const env: { [key: string]: string | null } = { ELECTRON_RUN_AS_NODE: "1", ...serverEnv };
   const logPath = getWorkspaceConfig("buildServer.logPath");
   if (logPath) {
-    env.SWEETPAD_BSP_LOG = logPath;
+    // Resolve `${workspaceFolder}` and relative paths against the workspace, so a
+    // value like "sweetpad-bsp.log" lands in the project folder where it's visible.
+    const expanded = logPath.split("${workspaceFolder}").join(cwd);
+    env.SWEETPAD_BSP_LOG = path.isAbsolute(expanded) ? expanded : path.join(cwd, expanded);
   }
   await injectEnvIntoBuildServerConfig(buildServerPath, env);
 }
