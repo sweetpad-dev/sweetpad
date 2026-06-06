@@ -17,7 +17,7 @@ import {
 } from "../common/cli/scripts";
 import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
-import { createDirectory, findFilesRecursive, isFileExists, removeDirectory } from "../common/files";
+import { createDirectory, findFilesRecursive, isFileExists, readJsonFile, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { TaskTerminal } from "../common/tasks/types";
@@ -380,6 +380,23 @@ export async function generateBuildServerConfigOnBuild(options: {
   xcworkspace: string;
 }): Promise<void> {
   if (!isAutoGenerateBuildServerConfigEnabled()) {
+    return;
+  }
+
+  const provider = getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server";
+  if (provider === "sweetpad") {
+    // Our config is project-based (no scheme/build_root), so it's valid as long
+    // as it's ours — regenerate only when switching in from another provider
+    // (otherwise we'd rewrite + restart the LSP on every build).
+    let name: string | undefined;
+    try {
+      name = (await readJsonFile<{ name?: string }>(path.join(getWorkspacePath(), "buildServer.json"))).name;
+    } catch {
+      // missing / invalid → (re)generate below
+    }
+    if (name !== "sweetpad") {
+      await refreshBuildServer({ xcworkspace: options.xcworkspace, scheme: options.scheme });
+    }
     return;
   }
 

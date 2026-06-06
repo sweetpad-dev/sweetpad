@@ -617,11 +617,11 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
  * the only stable way to pass env via BSP.
  */
 export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
-  // Opt-in: SweetPad's own BSP server, for plain `.xcodeproj` projects. It
-  // derives compiler args from the project (no build-log parsing), but doesn't
-  // do `.xcworkspace`/SPM yet — those fall through to xcode-build-server.
+  // Opt-in: when the provider is `sweetpad`, always use our own BSP server (it
+  // derives compiler args from the project, no build-log parsing). No project-type
+  // detection — if you opt in, you get it.
   const provider = getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server";
-  if (provider === "sweetpad" && options.xcworkspace.endsWith(".xcodeproj")) {
+  if (provider === "sweetpad") {
     await generateSweetpadBuildServerConfig(options);
     return;
   }
@@ -658,9 +658,19 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
  */
 async function generateSweetpadBuildServerConfig(options: { xcworkspace: string }): Promise<void> {
   const cwd = getWorkspacePath();
+  // The server resolves a `.xcodeproj`. Xcode addresses a plain project through
+  // its embedded `<name>.xcodeproj/project.xcworkspace`, so drop that suffix; any
+  // other path is passed through untouched.
+  let project = options.xcworkspace;
+  if (path.basename(project) === "project.xcworkspace") {
+    project = path.dirname(project);
+  }
+  if (!path.isAbsolute(project)) {
+    project = path.join(cwd, project);
+  }
   // `out/bsp-server.js` sits next to the bundled extension (this module's dir).
   const bspServer = path.join(__dirname, "bsp-server.js");
-  const argv = [process.execPath, bspServer, "--project", options.xcworkspace];
+  const argv = [process.execPath, bspServer, "--project", project];
 
   const developerDir = await getDeveloperDir();
   if (developerDir) {
