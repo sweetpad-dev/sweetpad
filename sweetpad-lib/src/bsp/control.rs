@@ -100,7 +100,7 @@ fn pick_socket<'a>(entries: &'a [(String, String)], cwd: &Path) -> Option<&'a st
             best = Some((ws.len(), name.as_str()));
         }
     }
-    best.map(|(_, name)| name).or_else(|| match entries {
+    best.map(|(_, name)| name).or(match entries {
         [(name, _)] => Some(name.as_str()),
         _ => None,
     })

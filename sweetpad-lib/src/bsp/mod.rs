@@ -100,7 +100,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
         let id = req.get("id").cloned();
         let params = req.get("params");
-        server.log(&format!("recv: {msg}"));
+        server.trace(&format!("recv: {msg}"));
         match method {
             "build/initialize" => server.reply(id, server.initialize())?,
             "build/initialized" => {
@@ -307,11 +307,23 @@ impl Server {
         Ok(server)
     }
 
-    /// Append a timestamped line to the debug log (no-op unless `SWEETPAD_BSP_LOG`
-    /// is set) and stream it to the extension. The file is unconditional; the
-    /// control stream is gated on the live level. Epoch-millis timestamps keep it
-    /// dependency-free.
+    /// An operational log line: to the `SWEETPAD_BSP_LOG` file (unconditional)
+    /// and the extension stream at `info`, so it's visible by default.
     fn log(&self, msg: &str) {
+        self.write_log(msg);
+        self.push_log(LogLevel::Info, msg);
+    }
+
+    /// A high-volume trace (raw JSON-RPC frames): to the file unconditionally,
+    /// but to the extension stream only at `debug` so it's opt-in.
+    fn trace(&self, msg: &str) {
+        self.write_log(msg);
+        self.push_log(LogLevel::Debug, msg);
+    }
+
+    /// Append a timestamped line to the debug log (no-op unless `SWEETPAD_BSP_LOG`
+    /// is set). Epoch-millis timestamps keep it dependency-free.
+    fn write_log(&self, msg: &str) {
         if let Some(file) = &self.log
             && let Ok(mut file) = file.lock()
         {
@@ -319,7 +331,6 @@ impl Server {
             let _ = writeln!(file, "[{ms}] {msg}");
             let _ = file.flush();
         }
-        self.push_log(LogLevel::Debug, msg);
     }
 
     /// Stream one log line to the extension when a control channel is attached
@@ -940,7 +951,7 @@ impl Server {
     /// Write one JSON-RPC message to stdout, holding the lock for the whole frame
     /// so the request loop and the watcher thread never interleave output.
     fn send(&self, msg: &Value) -> Result<(), String> {
-        self.log(&format!("send: {msg}"));
+        self.trace(&format!("send: {msg}"));
         let stdout = io::stdout();
         let mut writer = stdout.lock();
         write_message(&mut writer, &msg.to_string())
