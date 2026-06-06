@@ -168,6 +168,9 @@ pub fn resolve_compiler_arguments(
                     let frameworks =
                         project::target_linked_frameworks(&ctx.project.path, &query.target)
                             .unwrap_or_default();
+                    let has_package_products =
+                        project::target_has_package_products(&ctx.project.path, &query.target)
+                            .unwrap_or(false);
                     out.push(compiler_args::target_arguments(
                         &query.target,
                         &resolved.settings,
@@ -178,6 +181,7 @@ pub fn resolve_compiler_arguments(
                         swift_opts,
                         clang_opts,
                         xcode_version,
+                        has_package_products,
                     ));
                 }
                 // Single project: bubble the error (xcodebuild-equivalent wording).
@@ -244,9 +248,17 @@ pub fn resolve_file_arguments(
                 .filter(|p| p.extension().is_some_and(|e| e == "swift"))
                 .map(|p| p.to_string_lossy().into_owned())
                 .collect();
+            let has_package_products =
+                project::target_has_package_products(&ctx.project.path, target).unwrap_or(false);
             return Ok(compiler_args::ToolInvocation {
                 tool: "swiftc".into(),
-                arguments: compiler_args::swift_arguments(settings, &query.arch, swift_opts, xcode_version),
+                arguments: compiler_args::swift_arguments(
+                    settings,
+                    &query.arch,
+                    swift_opts,
+                    xcode_version,
+                    has_package_products,
+                ),
                 input_files: swift_inputs,
             });
         }

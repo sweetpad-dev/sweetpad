@@ -608,6 +608,24 @@ fn target_dependency_names(objects: &BTreeMap<String, Value>, target_obj: &Value
     out
 }
 
+/// Whether a target links one or more Swift Package products (a non-empty
+/// `packageProductDependencies`). Such a target needs the package-products
+/// framework search path (`-F …/PackageFrameworks`) for its `import`s to
+/// resolve; targets without packages must not emit it.
+pub fn target_has_package_products(
+    xcodeproj_path: &Path,
+    target_name: &str,
+) -> Result<bool, Error> {
+    let value = parse_pbxproj(xcodeproj_path)?;
+    let (objects, project_obj) = project_root(&value)?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::BadProject(format!("no target named '{target_name}' in the project")))?;
+    Ok(target
+        .get("packageProductDependencies")
+        .and_then(Value::as_array)
+        .is_some_and(|deps| !deps.is_empty()))
+}
+
 /// The absolute directory containing the `.xcodeproj` — the anchor for
 /// `<group>` / `SOURCE_ROOT` source trees. Canonicalized when it exists (so the
 /// paths match xcodebuild's absolute output), falling back to the input.

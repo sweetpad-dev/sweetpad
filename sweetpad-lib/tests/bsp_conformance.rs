@@ -175,3 +175,33 @@ fn bsp_per_file_clang_dialect() {
     assert!(args.windows(2).any(|w| w == ["-x", "objective-c"]), "no -x objective-c: {args:?}");
     assert!(args.contains(&"-I"), "no header search path: {args:?}");
 }
+
+/// A target consuming a Swift Package product gets the package-products
+/// framework search path (`-F …/PackageFrameworks`), and its source maps to the
+/// target — both through the server, hermetically (no build required).
+#[test]
+fn bsp_spm_package_search_path() {
+    let root = env!("CARGO_MANIFEST_DIR");
+    let proj = format!("{root}/fixtures/_synthetic-spm/project/SpmApp.xcodeproj");
+    let app_uri = format!("file://{root}/fixtures/_synthetic-spm/project/AppSources/App.swift");
+    let target = json!({ "uri": "sweetpad://target/SpmApp" });
+    let messages = vec![
+        json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
+        json!({"jsonrpc":"2.0","method":"build/initialized"}),
+        json!({"jsonrpc":"2.0","id":5,"method":"textDocument/sourceKitOptions","params":{"textDocument":{"uri":app_uri},"target":target}}),
+        json!({"jsonrpc":"2.0","method":"build/exit"}),
+    ];
+    let frames = run_session(&messages, &proj);
+    let args: Vec<&str> = result_for(&frames, 5)
+        .and_then(|r| r.get("compilerArguments"))
+        .and_then(Value::as_array)
+        .expect("compilerArguments")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(
+        args.windows(2).any(|w| w[0] == "-F" && w[1].ends_with("/PackageFrameworks")),
+        "no PackageFrameworks framework search path: {args:?}"
+    );
+    assert!(args.iter().any(|a| a.ends_with("/AppSources/App.swift")), "App.swift not an input: {args:?}");
+}

@@ -185,5 +185,13 @@ fn bsp_typecheck_oracle() {
     errors.extend(check_target(&objc, "ObjCHeaders", &dd2, false));
     let _ = std::fs::remove_dir_all(&dd2);
 
+    // Swift Package product: SpmApp imports `Dep` from a local package, whose
+    // module Xcode builds into the products dir / PackageFrameworks.
+    let spm = fixture("_synthetic-spm", "SpmApp.xcodeproj");
+    let dd3 = std::env::temp_dir().join(format!("sweetpad-bsp-spm-{}", std::process::id()));
+    build_fixture(&spm, "SpmApp", &dd3);
+    errors.extend(check_target(&spm, "SpmApp", &dd3, true));
+    let _ = std::fs::remove_dir_all(&dd3);
+
     assert!(errors.is_empty(), "module/header resolution failures: {errors:?}");
 }

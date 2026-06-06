@@ -102,6 +102,7 @@ pub fn target_arguments(
     swift_options: &[CompilerOption],
     clang_options: &[CompilerOption],
     xcode_version: &str,
+    has_package_products: bool,
 ) -> TargetCompilerArguments {
     let mut swift_inputs = Vec::new();
     let mut clang_inputs = Vec::new();
@@ -115,7 +116,7 @@ pub fn target_arguments(
     }
     let swift = (!swift_inputs.is_empty()).then(|| ToolInvocation {
         tool: "swiftc".to_string(),
-        arguments: swift_arguments(settings, arch, swift_options, xcode_version),
+        arguments: swift_arguments(settings, arch, swift_options, xcode_version, has_package_products),
         input_files: swift_inputs,
     });
     let clang_langs = clang_languages(&clang_inputs);
@@ -173,6 +174,7 @@ pub fn swift_arguments(
     arch: &str,
     options: &[CompilerOption],
     xcode_version: &str,
+    has_package_products: bool,
 ) -> Vec<String> {
     let mut a = ArgBuilder::default();
     let get = |k: &str| settings.get(k).map(String::as_str);
@@ -252,6 +254,13 @@ pub fn swift_arguments(
     // --- Search paths (structural; geometry-independent) -------------------
     if let Some(products) = get("BUILT_PRODUCTS_DIR") {
         a.pair("-I", products);
+        // Swift-package products Xcode links dynamically build into a
+        // `PackageFrameworks` subdir of the products dir (static products land
+        // in the products dir itself, covered by `-I` above). Xcode emits this
+        // `-F` only for targets that consume package products, so gate on it.
+        if has_package_products {
+            a.pair("-F", &format!("{products}/PackageFrameworks"));
+        }
     }
     for p in ws(get("SWIFT_INCLUDE_PATHS")) {
         a.pair("-I", p);
@@ -1072,7 +1081,7 @@ mod tests {
         s.insert("SWIFT_VERSION".into(), "5.0".into());
         s.insert("SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(), "DEBUG".into());
         // No spec options: exercises the hand-coded fallback path.
-        let args = swift_arguments(&s, "arm64", &[], "26.5.0");
+        let args = swift_arguments(&s, "arm64", &[], "26.5.0", false);
         let joined = args.join(" ");
         assert!(joined.contains("-module-name Alamofire"));
         assert!(joined.contains("-Onone"));
@@ -1113,7 +1122,7 @@ mod tests {
         let mut s = Settings::new();
         s.insert("SWIFT_OPTIMIZATION_LEVEL".into(), "-Owholemodule".into());
         s.insert("SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(), "DEBUG COCOAPODS".into());
-        let args = swift_arguments(&s, "arm64", &[opt_level, conds], "26.5.0");
+        let args = swift_arguments(&s, "arm64", &[opt_level, conds], "26.5.0", false);
         // The enum's special-cased `-Owholemodule` expands; conditions become -D.
         assert!(args.windows(2).any(|w| w == ["-O", "-whole-module-optimization"]));
         assert!(args.contains(&"-DDEBUG".to_string()));
