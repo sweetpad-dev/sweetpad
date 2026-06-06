@@ -19,6 +19,45 @@ use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
 use crate::project;
 
+/// Write a `buildServer.json` so `sourcekit-lsp` discovers and launches this
+/// server. Its `argv` points at the current executable + the same `bsp` flags,
+/// dropped into the workspace root (the `.xcodeproj`'s parent, or `--output`).
+pub fn write_config(args: &[String]) -> Result<(), String> {
+    let flags = parse_flags(args);
+    let project = flags.get("project").ok_or("config: --project <path.xcodeproj> is required")?;
+    let project_abs = std::fs::canonicalize(project).map_err(|e| format!("--project: {e}"))?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+
+    let mut server_argv = vec![
+        exe.to_string_lossy().into_owned(),
+        "bsp".into(),
+        "--project".into(),
+        project_abs.to_string_lossy().into_owned(),
+    ];
+    for (flag, key) in [("--xcode", "xcode"), ("--derived-data-path", "derived-data-path")] {
+        if let Some(v) = flags.get(key) {
+            server_argv.push(flag.into());
+            server_argv.push(v.clone());
+        }
+    }
+    let config = json!({
+        "name": "sweetpad-lib",
+        "version": env!("CARGO_PKG_VERSION"),
+        "bspVersion": "2.2.0",
+        "languages": LANGUAGE_IDS,
+        "argv": server_argv,
+    });
+
+    let out = flags.get("output").map_or_else(
+        || project_abs.parent().unwrap_or_else(|| Path::new(".")).join("buildServer.json"),
+        PathBuf::from,
+    );
+    let body = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    std::fs::write(&out, format!("{body}\n")).map_err(|e| format!("write {}: {e}", out.display()))?;
+    eprintln!("wrote {}", out.display());
+    Ok(())
+}
+
 /// Run the BSP server loop over stdin/stdout until EOF or `build/exit`.
 pub fn run(args: &[String]) -> Result<(), String> {
     let server = Server::from_args(args)?;

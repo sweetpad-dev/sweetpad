@@ -97,21 +97,19 @@ fn bsp_lsp_e2e() {
         .expect("xcodebuild");
     assert!(build.status.success(), "fixture build failed:\n{}", String::from_utf8_lossy(&build.stderr));
 
-    // Point sourcekit-lsp at our server via buildServer.json in the workspace root.
+    // Point sourcekit-lsp at our server by generating buildServer.json with the
+    // real `config` command (dog-foods it end-to-end).
     let bsp_bin = env!("CARGO_BIN_EXE_sweetpad-lib");
-    let build_server = json!({
-        "name": "sweetpad-lib",
-        "version": "0.1.0",
-        "bspVersion": "2.2.0",
-        "languages": ["swift", "objective-c", "objective-cpp", "c", "cpp"],
-        "argv": [
-            bsp_bin, "bsp",
-            "--project", xcodeproj.to_string_lossy(),
-            "--xcode", XCODE,
-            "--derived-data-path", dd.to_string_lossy(),
-        ],
-    });
-    std::fs::write(project_dir.join("buildServer.json"), build_server.to_string()).unwrap();
+    let config = Command::new(bsp_bin)
+        .args(["config", "--project"])
+        .arg(&xcodeproj)
+        .args(["--xcode", XCODE, "--derived-data-path"])
+        .arg(&dd)
+        .arg("--output")
+        .arg(project_dir.join("buildServer.json"))
+        .status()
+        .expect("run config");
+    assert!(config.success(), "config command failed");
 
     // Launch sourcekit-lsp.
     let mut lsp = Command::new(&sourcekit_lsp)

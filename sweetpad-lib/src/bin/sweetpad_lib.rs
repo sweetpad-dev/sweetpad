@@ -22,6 +22,8 @@ USAGE:
 COMMANDS:
     compiler-args   Resolve and print a target's swiftc/clang/link argv
     bsp             Run the Build Server Protocol server (for sourcekit-lsp)
+    config          Write a buildServer.json so sourcekit-lsp finds the server
+                    (--project <p> [--xcode <p>] [--derived-data-path <p>] [--output <p>])
 
 compiler-args options:
     --project <path>          .xcodeproj (or --workspace <path>)
@@ -40,6 +42,7 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("compiler-args") => cmd_compiler_args(&args[1..]),
         Some("bsp") => cmd_bsp(&args[1..]),
+        Some("config") => cmd_config(&args[1..]),
         Some("-h" | "--help" | "help") => {
             print!("{USAGE}");
             ExitCode::SUCCESS
@@ -154,6 +157,16 @@ fn cmd_bsp(args: &[String]) -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("bsp: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn cmd_config(args: &[String]) -> ExitCode {
+    match sweetpad::bsp::write_config(args) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("config: {e}");
             ExitCode::FAILURE
         }
     }
