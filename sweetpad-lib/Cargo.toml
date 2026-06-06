@@ -38,6 +38,10 @@ serde_json = "1"
 [build-dependencies]
 napi-build = "2"
 
+[dev-dependencies]
+# Integration tests (the BSP conformance harness) build/parse JSON-RPC messages.
+serde_json = "1"
+
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 missing_errors_doc = "allow"
