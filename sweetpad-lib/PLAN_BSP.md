@@ -142,30 +142,34 @@ synthetic fixtures; the synthetic-fixture harness alone missed these):
   heavier than the SwiftPM path. Cancellation (`$/cancelRequest`) of a superseded
   prepare isn't handled yet (the build runs to completion).
 
-### v3 — Self-built prepare (custom executor) for the fast path
+### v3 — Self-built prepare (custom executor) for the fast path — ✅ done (Swift fast path)
 
-Build the dependency `.swiftmodule`s **ourselves** via direct `swiftc`/`clang`,
-no `xcodebuild` — the "custom build planner" differentiator.
+Emit dependency `.swiftmodule`s **ourselves** via direct `swiftc` — no
+`xcodebuild` process, no link, single arch — the "custom build planner" fast path.
 
-- **Scope that makes it tractable:** prepare only needs *declarations-only*
-  modules, single-arch, **no link / no sign / no resources**, and is
-  **error-tolerant** (dependency failures shouldn't stop downstream — easier to do
-  ourselves than with xcodebuild, which stops).
-- **Hybrid, decided per target from the project graph:**
-  - *Simple* (pure Swift, no codegen phases, no framework header layout, no SPM)
-    → build ourselves: topo-sort, `swiftc -emit-module` with our flags into the
-    right path.
-  - *Complex* (asset catalogs → `actool`, Core Data → `momc`, string catalogs,
-    custom build rules, framework module/header layout, SPM-in-Xcode) → fall back
-    to `xcodebuild` for that target.
-- **What this forces us to own (the parts the arg engine deliberately skips):**
-  output-layout geometry (`.swiftmodule` must land where dependents' `-I`/`-F`
-  point; `-output-file-map`, VFS overlays, header maps) and, at the fallback
-  boundary, running the code-generation tools.
+- **Decision from the project graph** (`prepare_target` in `bsp/mod.rs`): if the
+  prepared target and its whole transitive closure are `project::is_self_buildable`
+  (pure Swift; no Swift-package products, C-family sources, shell-script phases, or
+  build rules), emit each transitive dependency (in `project::transitive_dependencies`
+  topo order) with `swiftc -emit-module -emit-module-path` into the products dir,
+  reusing the **editor arguments** we already feed sourcekit-lsp. The module name +
+  products dir are read back out of those args, so output lands exactly where
+  dependents' `-I` looks.
+- **Fallback** to the v2 `xcodebuild`-by-scheme path for any non-self-buildable
+  closure (packages, C-family, code-gen: asset catalogs / Core Data / string
+  catalogs / custom rules) **and** for any self-build that unexpectedly fails — so
+  classification only needs to be a fast-path gate, not perfect.
+- **Validated:** the self-build path produces a usable module with `swiftc` alone
+  (`tests/bsp_prepare.rs` asserts the swiftc path, no `xcodebuild`), and the
+  no-prior-build cross-module e2e still resolves — now in **~1s vs ~5s** for the
+  xcodebuild path. Classification + closure unit-tested in `tests/project.rs`.
+- **Remaining for "full" v3** (not blocking the fast path): per-target *mixing*
+  (self-build the simple deps of an otherwise-complex closure rather than
+  xcodebuild the whole thing); code-gen-resource classification (today an asset
+  catalog is caught only when its emit fails, or when other disqualifiers fire);
+  owning more output-layout geometry (header maps / VFS) for mixed-language deps.
 - **Existence proofs:** SwiftPM (a swiftc-driver build system; sourcekit-lsp's own
-  prepare uses it) and Bazel `rules_swift`/`rules_apple` (build Apple apps with no
-  xcodebuild, incl. their own `actool` etc.). Both also show the *scale* — this is
-  a major project, **not before v1 + v2**.
+  prepare uses it) and Bazel `rules_swift`/`rules_apple`.
 
 ---
 
