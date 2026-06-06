@@ -57,10 +57,15 @@ export function toResponseError(error: unknown): ResponseError<SweetpadErrorData
 /**
  * Bind a connected socket to the dispatch table over Content-Length-framed
  * JSON-RPC 2.0. Each handler is registered as a request; unknown methods are
- * answered with -32601 by the connection itself. Returns the live connection —
- * the caller owns its disposal.
+ * answered with -32601 by the connection itself. `onConnection` runs before
+ * `listen()`, letting callers register extra handlers (e.g. the BSP bridge's
+ * notification handlers). Returns the live connection — the caller owns disposal.
  */
-export function serveDispatch(socket: Socket, handlers: RpcDispatch): MessageConnection {
+export function serveDispatch(
+  socket: Socket,
+  handlers: RpcDispatch,
+  onConnection?: (connection: MessageConnection) => void,
+): MessageConnection {
   const connection = createMessageConnection(new StreamMessageReader(socket), new StreamMessageWriter(socket));
   for (const [method, handler] of Object.entries(handlers)) {
     connection.onRequest(method, async (params: unknown) => {
@@ -71,6 +76,7 @@ export function serveDispatch(socket: Socket, handlers: RpcDispatch): MessageCon
       }
     });
   }
+  onConnection?.(connection);
   connection.listen();
   return connection;
 }

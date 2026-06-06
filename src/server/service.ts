@@ -4,6 +4,7 @@ import type { BuildManager } from "../build/manager";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationsManager } from "../destination/manager";
+import { BspBridge } from "./bsp-bridge";
 import { BuildSessionRegistry } from "./builds";
 import { buildDispatch } from "./handlers";
 import { canonicalizeWorkspacePath } from "./paths";
@@ -40,6 +41,7 @@ export class ServerService implements vscode.Disposable {
   private readonly extensionVersion: string;
   private readonly vscodeContext: vscode.ExtensionContext;
   private readonly configKeys: string[];
+  private readonly bridge: BspBridge;
 
   private current: { server: SocketServer; registry: BuildSessionRegistry; workspacePath: string } | undefined;
   private configSubscription: vscode.Disposable | undefined;
@@ -58,6 +60,7 @@ export class ServerService implements vscode.Disposable {
     this.extensionVersion = options.extensionVersion;
     this.vscodeContext = options.vscodeContext;
     this.configKeys = extractSweetpadConfigKeys(options.vscodeContext);
+    this.bridge = new BspBridge();
   }
 
   async start(): Promise<void> {
@@ -73,6 +76,7 @@ export class ServerService implements vscode.Disposable {
     this.configSubscription?.dispose();
     this.configSubscription = undefined;
     await this.stop();
+    this.bridge.dispose();
   }
 
   getStatus(): { running: boolean; name?: string; socket?: string; workspacePath?: string } {
@@ -133,12 +137,14 @@ export class ServerService implements vscode.Disposable {
         buildRegistry: registry,
         vscodeContext: this.vscodeContext,
         configKeys: this.configKeys,
+        bspBridge: this.bridge,
       });
 
       const server = new SocketServer({
         workspacePath,
         extensionVersion: this.extensionVersion,
         handlers: dispatch,
+        onConnection: (connection) => this.bridge.attach(connection),
       });
       try {
         await server.start();

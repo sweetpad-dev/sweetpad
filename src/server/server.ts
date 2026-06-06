@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import * as net from "node:net";
 
 import type * as vscode from "vscode";
+import type { MessageConnection } from "vscode-jsonrpc/node";
 
 import { commonLogger } from "../common/logger";
 import { ensureDir, generateServerName, getMetadataPath, getSocketPath, getSocketsDir, safeUnlink } from "./paths";
@@ -12,6 +13,8 @@ export type SocketServerOptions = {
   workspacePath: string;
   extensionVersion: string;
   handlers: RpcDispatch;
+  /** Called with each accepted connection before it starts listening (the BSP bridge hooks notifications here). */
+  onConnection?: (connection: MessageConnection) => void;
 };
 
 /**
@@ -119,7 +122,7 @@ export class SocketServer implements vscode.Disposable {
   private onConnection(socket: net.Socket): void {
     this.connections.add(socket);
 
-    const connection = serveDispatch(socket, this.options.handlers);
+    const connection = serveDispatch(socket, this.options.handlers, this.options.onConnection);
 
     const cleanup = () => {
       connection.dispose();

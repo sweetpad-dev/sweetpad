@@ -12,6 +12,7 @@ function makeCtx(): RpcContext {
     buildRegistry: {} as RpcContext["buildRegistry"],
     vscodeContext: {} as RpcContext["vscodeContext"],
     configKeys: [],
+    bspBridge: {} as RpcContext["bspBridge"],
   };
 }
 

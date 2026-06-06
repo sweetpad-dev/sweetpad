@@ -21,6 +21,7 @@ function makeContext(): { ctx: RpcContext; state: Map<string, unknown> } {
     buildRegistry: {} as RpcContext["buildRegistry"],
     vscodeContext: {} as RpcContext["vscodeContext"],
     configKeys: [],
+    bspBridge: {} as RpcContext["bspBridge"],
   };
   return { ctx, state };
 }

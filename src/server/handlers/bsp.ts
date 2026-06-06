@@ -2,6 +2,7 @@ import * as path from "node:path";
 
 import { getCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import { getDeveloperDir } from "../../common/cli/scripts";
+import { BSP_LOG_LEVELS, type BspLogLevel } from "../bsp-bridge";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES } from "../types";
 import type { HandlerFn } from "./context";
@@ -42,4 +43,18 @@ export const bspResolveConfig: HandlerFn<unknown, BspResolvedConfig> = async (_p
     configuration: ctx.buildManager.getDefaultConfigurationForBuild() ?? "Debug",
     derivedDataPath: prepareDerivedDataPath(),
   };
+};
+
+/**
+ * Set the verbosity of the BSP server's `bsp/log` stream (off | error | info |
+ * debug). Pushed live to every connected BSP server via the control channel;
+ * the `SWEETPAD_BSP_LOG` file is unaffected.
+ */
+export const bspSetLogLevel: HandlerFn<{ level?: string }, { level: BspLogLevel }> = (params, ctx) => {
+  const level = params?.level;
+  if (!level || !BSP_LOG_LEVELS.includes(level as BspLogLevel)) {
+    throw new SweetpadRpcError(ERROR_CODES.INVALID_PARAMS, `level must be one of: ${BSP_LOG_LEVELS.join(", ")}`);
+  }
+  ctx.bspBridge.setLogLevel(level as BspLogLevel);
+  return { level: level as BspLogLevel };
 };
