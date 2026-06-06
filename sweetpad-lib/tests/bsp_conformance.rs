@@ -47,13 +47,13 @@ fn parse_frames(out: &[u8]) -> Vec<Value> {
 }
 
 /// Run a full scripted session against the server, returning responses by id.
-fn run_session(messages: &[Value]) -> Vec<Value> {
+fn run_session(messages: &[Value], project: &str) -> Vec<Value> {
     let mut input = Vec::new();
     for m in messages {
         input.extend(frame(m));
     }
     let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
-        .args(["bsp", "--project", &project()])
+        .args(["bsp", "--project", project])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -85,7 +85,7 @@ fn bsp_conformance() {
         json!({"jsonrpc":"2.0","id":6,"method":"build/shutdown"}),
         json!({"jsonrpc":"2.0","method":"build/exit"}),
     ];
-    let frames = run_session(&messages);
+    let frames = run_session(&messages, &project());
 
     // initialize: advertises the SourceKit options capability + swift language.
     let init = result_for(&frames, 1).expect("initialize result");
@@ -123,4 +123,30 @@ fn bsp_conformance() {
 
     // shutdown is answered.
     assert!(result_for(&frames, 6).is_some(), "shutdown not answered");
+}
+
+/// Per-file `sourceKitOptions`: a `.m` file gets ObjC dialect (`-x objective-c`)
+/// and the header search path it needs — both through the server, hermetically.
+#[test]
+fn bsp_per_file_clang_dialect() {
+    let root = env!("CARGO_MANIFEST_DIR");
+    let proj = format!("{root}/fixtures/_synthetic-objc-headers/project/ObjCHeaders.xcodeproj");
+    let m_uri = format!("file://{root}/fixtures/_synthetic-objc-headers/project/widget.m");
+    let target = json!({ "uri": "sweetpad://target/ObjCHeaders" });
+    let messages = vec![
+        json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
+        json!({"jsonrpc":"2.0","method":"build/initialized"}),
+        json!({"jsonrpc":"2.0","id":5,"method":"textDocument/sourceKitOptions","params":{"textDocument":{"uri":m_uri},"target":target}}),
+        json!({"jsonrpc":"2.0","method":"build/exit"}),
+    ];
+    let frames = run_session(&messages, &proj);
+    let args: Vec<&str> = result_for(&frames, 5)
+        .and_then(|r| r.get("compilerArguments"))
+        .and_then(Value::as_array)
+        .expect("compilerArguments")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(args.windows(2).any(|w| w == ["-x", "objective-c"]), "no -x objective-c: {args:?}");
+    assert!(args.contains(&"-I"), "no header search path: {args:?}");
 }

@@ -286,24 +286,15 @@ impl Server {
         project::target_source_files(&self.project_path, target).unwrap_or_default()
     }
 
-    /// The editor compiler arguments for `file` in `target`: the target's
-    /// generated swift (for `.swift`) or clang (otherwise) argv, reduced to an
-    /// editor invocation (no build actions / explicit-module plumbing), with the
-    /// module's inputs appended.
+    /// The editor compiler arguments for `file` in `target`: the engine's
+    /// per-file invocation (a clang file gated to its own language, a `.swift`
+    /// file the whole module), reduced to an editor invocation (no build actions
+    /// / explicit-module plumbing), with the inputs appended.
     fn compiler_arguments(&self, target: &str, file: &Path) -> Option<Vec<String>> {
         let opts = self.options_for(target);
-        let mut resolved = build_settings::resolve_compiler_arguments(&opts).ok()?;
-        resolved.retain(|t| t.target == target);
-        let inv = resolved.pop()?;
-        let is_swift = file.extension().is_some_and(|e| e == "swift");
-        let tool = if is_swift { inv.swift } else { inv.clang }?;
-        let mut args = editor_arguments(&tool.arguments);
-        if is_swift {
-            // Swift type-checks the whole module: hand over every source file.
-            args.extend(tool.input_files);
-        } else {
-            args.push(file.to_string_lossy().into_owned());
-        }
+        let inv = build_settings::resolve_file_arguments(&opts, file).ok()?;
+        let mut args = editor_arguments(&inv.arguments);
+        args.extend(inv.input_files);
         Some(args)
     }
 

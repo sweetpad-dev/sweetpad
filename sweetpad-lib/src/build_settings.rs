@@ -200,6 +200,67 @@ pub fn resolve_compiler_arguments(
     Ok(out)
 }
 
+/// Resolve the compiler arguments for a **single file** in `opts.target` — the
+/// per-file invocation an editor / BSP server wants, where a clang file is gated
+/// to its own language (a `.m` gets ObjC flags + `-x objective-c`; a `.mm` gets
+/// C++/ObjC++), not the per-target union. A `.swift` file resolves to the whole
+/// module's swiftc invocation (Swift type-checks a module at once).
+pub fn resolve_file_arguments(
+    opts: &BuildSettingsOptions,
+    file: &Path,
+) -> Result<compiler_args::ToolInvocation, String> {
+    let target = opts.target.as_deref().ok_or("resolve_file_arguments: a target is required")?;
+    let catalog = load_catalog(
+        opts.xcode.as_deref(),
+        opts.xcspec_root.as_deref(),
+        opts.sdksettings_root.as_deref(),
+        opts.catalog_cache.as_deref(),
+    )?;
+    let swift_opts = catalog
+        .as_ref()
+        .and_then(|c| c.compiler_options.get("com.apple.xcode.tools.swift.compiler"))
+        .map_or(&[][..], Vec::as_slice);
+    let clang_opts = catalog
+        .as_ref()
+        .and_then(|c| c.compiler_options.get("com.apple.compilers.llvm.clang.1_0"))
+        .map_or(&[][..], Vec::as_slice);
+    let xcode_version = catalog.as_ref().and_then(|c| c.xcode_version.as_deref()).unwrap_or("");
+    let projects = resolve_project_paths(opts.project.as_deref(), opts.workspace.as_deref())?;
+
+    for project_path in &projects {
+        let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
+        let Some(query) = build_queries(&ctx, opts, None, Some(target)).into_iter().next() else {
+            continue;
+        };
+        let Ok(resolved) = ctx.resolve(&query) else {
+            continue;
+        };
+        let settings = &resolved.settings;
+        let file_str = file.to_string_lossy().into_owned();
+        if file.extension().is_some_and(|e| e == "swift") {
+            let swift_inputs = project::target_source_files(&ctx.project.path, target)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|p| p.extension().is_some_and(|e| e == "swift"))
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect();
+            return Ok(compiler_args::ToolInvocation {
+                tool: "swiftc".into(),
+                arguments: compiler_args::swift_arguments(settings, &query.arch, swift_opts, xcode_version),
+                input_files: swift_inputs,
+            });
+        }
+        // A clang file: gate options to this one file's language.
+        let langs = compiler_args::clang_languages(std::slice::from_ref(&file_str));
+        return Ok(compiler_args::ToolInvocation {
+            tool: "clang".into(),
+            arguments: compiler_args::clang_arguments(settings, &query.arch, clang_opts, &langs),
+            input_files: vec![file_str],
+        });
+    }
+    Err(format!("no project contained target {target}"))
+}
+
 /// Trim each target's settings to `keys` when a projection is requested. Keys
 /// that didn't resolve are simply absent (never inserted empty); `None` leaves
 /// the full map untouched.
