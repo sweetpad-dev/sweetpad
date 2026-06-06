@@ -307,6 +307,16 @@ macOS / iOS (device + simulator) / tvOS / watchOS / visionOS.
     confident-wrong extras (`-fsanitize=integer`/`nullability`, ×14), lifting
     precision to **90–100 % per cell**. The oracle test now floors precision per
     `(version, platform)` and asserts those gated flags never leak.
+  - **Validation surface:** beyond the near-default corpus, two oracles exercise
+    the under-validated paths. A **rich-settings synthetic fixture**
+    (`scripts/18_rich_settings.py`, `_synthetic-rich`) turns on UBSan (with the
+    `_INTEGER`/`_NULLABILITY` sub-checks), exceptions, hidden visibility, several
+    warnings, and `SWIFT_STRICT_CONCURRENCY = complete` — confirming those
+    encodings emit (and that the `Condition` gate *passes* `-fsanitize=integer`
+    when the parent sanitizer is on, not only that it suppresses it): swift 96 %,
+    clang **100 %**, link 100 % precision. A **Release framework oracle**
+    (Alamofire macOS Release) validates the whole-module dylib path the Debug
+    corpus never hits: swift **100 %**, clang 98 %, link 95 % precision.
   - _Remaining:_ the link `-framework`s the sources autolink via `import` (encoded
     in the objects, not the project graph) is the one tracked gap. A thin tail of
     confident-wrong extras persists from settings-resolver values that
