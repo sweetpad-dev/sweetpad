@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import { type XcodeScheme, getBuildConfigurations, getIsXcodeBuildServerInstalled } from "../common/cli/scripts";
 import type { AppDeps } from "../common/commands";
-import { updateWorkspaceConfig } from "../common/config";
+import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, removeDirectory } from "../common/files";
@@ -125,8 +125,11 @@ export async function removeBundleDirCommand(deps: AppDeps) {
 export async function generateBuildServerConfigCommand(deps: AppDeps, item?: BuildTreeItem) {
   deps.progressStatusBar.updateText("Starting buildServer.json generation");
 
-  const isServerInstalled = await getIsXcodeBuildServerInstalled();
-  if (!isServerInstalled) {
+  // SweetPad's own provider ships with the extension; only xcode-build-server
+  // needs the external tool installed.
+  const usingXcodeBuildServer =
+    (getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server") === "xcode-build-server";
+  if (usingXcodeBuildServer && !(await getIsXcodeBuildServerInstalled())) {
     throw new ExtensionError("xcode-build-server is not installed");
   }
 

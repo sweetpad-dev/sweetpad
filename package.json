@@ -1045,6 +1045,19 @@
             }
           ]
         },
+        "sweetpad.buildServer.provider": {
+          "type": "string",
+          "enum": [
+            "xcode-build-server",
+            "sweetpad"
+          ],
+          "default": "xcode-build-server",
+          "markdownEnumDescriptions": [
+            "The standard, battle-tested `xcode-build-server` (parses build logs).",
+            "SweetPad's own BSP server, which derives compiler arguments from the project (no build required to parse). Experimental — currently applies only to plain `.xcodeproj` projects; `.xcworkspace`/SPM fall back to `xcode-build-server`."
+          ],
+          "description": "Which build server backs sourcekit-lsp (writes buildServer.json)."
+        },
         "sweetpad.xcodebuildserver.autogenerate": {
           "type": "boolean",
           "default": true,

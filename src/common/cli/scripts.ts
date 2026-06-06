@@ -617,6 +617,15 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
  * the only stable way to pass env via BSP.
  */
 export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
+  // Opt-in: SweetPad's own BSP server, for plain `.xcodeproj` projects. It
+  // derives compiler args from the project (no build-log parsing), but doesn't
+  // do `.xcworkspace`/SPM yet — those fall through to xcode-build-server.
+  const provider = getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server";
+  if (provider === "sweetpad" && options.xcworkspace.endsWith(".xcodeproj")) {
+    await generateSweetpadBuildServerConfig(options);
+    return;
+  }
+
   const workspaceType = detectWorkspaceType(options.xcworkspace);
   const command = getXcodeBuildServerCommand();
   let cwd: string;
@@ -639,6 +648,55 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
 
   const env = getWorkspaceConfig("xcodebuildserver.serverEnv") ?? {};
   await injectEnvIntoBuildServerConfig(path.join(cwd, "buildServer.json"), env);
+}
+
+/**
+ * Generate a `buildServer.json` pointing at SweetPad's own BSP server — the
+ * bundled `out/bsp-server.js` launcher run through VS Code's Node
+ * (`ELECTRON_RUN_AS_NODE`), which loads the native addon and serves BSP. This is
+ * the opt-in alternative to xcode-build-server; no separate binary is published.
+ */
+async function generateSweetpadBuildServerConfig(options: { xcworkspace: string }): Promise<void> {
+  const cwd = getWorkspacePath();
+  // `out/bsp-server.js` sits next to the bundled extension (this module's dir).
+  const bspServer = path.join(__dirname, "bsp-server.js");
+  const argv = [process.execPath, bspServer, "--project", options.xcworkspace];
+
+  const developerDir = await getDeveloperDir();
+  if (developerDir) {
+    argv.push("--xcode", developerDir);
+  }
+  const derivedDataPath = getWorkspaceConfig("build.derivedDataPath");
+  if (derivedDataPath) {
+    argv.push("--derived-data-path", derivedDataPath);
+  }
+
+  const config = {
+    name: "sweetpad",
+    bspVersion: "2.2.0",
+    languages: ["swift", "objective-c", "objective-cpp", "c", "cpp"],
+    argv,
+  };
+  const buildServerPath = path.join(cwd, "buildServer.json");
+  await fs.writeFile(buildServerPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+  // `ELECTRON_RUN_AS_NODE` makes VS Code's binary run the launcher as Node; the
+  // standard `/usr/bin/env` prefix carries it (plus any user serverEnv) into the
+  // process sourcekit-lsp spawns.
+  const serverEnv = getWorkspaceConfig("xcodebuildserver.serverEnv") ?? {};
+  await injectEnvIntoBuildServerConfig(buildServerPath, { ELECTRON_RUN_AS_NODE: "1", ...serverEnv });
+}
+
+/** The active Xcode developer dir (`DEVELOPER_DIR`, else `xcode-select -p`). */
+async function getDeveloperDir(): Promise<string | undefined> {
+  if (process.env.DEVELOPER_DIR) {
+    return process.env.DEVELOPER_DIR;
+  }
+  try {
+    return (await exec({ command: "xcode-select", args: ["-p"] })).trim();
+  } catch {
+    return undefined;
+  }
 }
 
 /**
