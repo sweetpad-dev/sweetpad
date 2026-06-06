@@ -681,8 +681,13 @@ async function generateSweetpadBuildServerConfig(options: { xcworkspace: string 
     argv.push("--derived-data-path", derivedDataPath);
   }
 
+  // sourcekit-lsp decodes `buildServer.json` into a struct whose `name`,
+  // `version`, `bspVersion`, `languages`, and `argv` are all required; a missing
+  // field makes the decode throw and the server is silently skipped (no launch,
+  // editor falls back to single-file args). `version` is the build-tool version.
   const config = {
     name: "sweetpad",
+    version: "0.1.0",
     bspVersion: "2.2.0",
     languages: ["swift", "objective-c", "objective-cpp", "c", "cpp"],
     argv,
