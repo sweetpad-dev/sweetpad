@@ -95,12 +95,27 @@ shutdown/exit; `sweetpad-lib config` writes `buildServer.json`.
 **Cross-module strategy:** relies on a prior `xcodebuild` build (search paths +
 index point at DerivedData), like `xcode-build-server`. Seamless prepare is v2.
 
-**Remaining v1 tail (refinements, not blocking):**
-- `buildTarget/didChange` + file-watching to push project-structure changes (the
-  server already re-resolves per request, so content/settings edits are fresh;
-  only adding/removing files mid-session needs a reload today).
-- VS Code extension wiring (separate repo): run `sweetpad-lib config`, ensure a
-  build, hand off to `sourcekit-lsp`.
+**v1 hardening — real-project breadth** ✅ (validated against the OSS corpus +
+synthetic fixtures; the synthetic-fixture harness alone missed these):
+- Xcode-16 buildable folders (`PBXFileSystemSynchronizedRootGroup`): sources are
+  walked from the folder, honoring `membershipExceptions`.
+- Target dependency edges: `workspace/buildTargets` reports each target's
+  `PBXTargetDependency` graph (also the v2 prepare-order input).
+- Swift-package products: `-F …/PackageFrameworks` for package-consuming targets
+  (`_synthetic-spm`, both harness layers).
+- Corpus soundness check: every corpus target resolves its dependency/source/
+  package queries, edges name real targets, graph is acyclic.
+- `buildServer.json` carries the `version` field sourcekit-lsp's decoder requires
+  (without it the server was silently skipped).
+
+**v1 tail** ✅:
+- `buildTarget/didChange` + `project.pbxproj` watching: a poll-based watcher
+  pushes the notification so the client re-queries mid-session without an LSP
+  restart (per-request resolution is already fresh — the parse cache is
+  mtime-validated). Writes lock stdout per frame so the watcher and request loop
+  don't interleave.
+- VS Code extension wiring: `buildServer.provider: "sweetpad"` generates the
+  config (Electron-as-Node launcher) and hands off to `sourcekit-lsp`.
 
 ### v2 — Seamless background indexing (no manual build), `xcodebuild`-driven prepare
 
