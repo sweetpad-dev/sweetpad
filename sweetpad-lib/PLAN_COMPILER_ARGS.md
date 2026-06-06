@@ -230,10 +230,10 @@ _Validation:_ callable from TS; returns per-target `swift`/`clang`/`link` argv.
 
 ## Status (as built)
 
-Phases 0–4 and 6 are complete. Phase 5 (corpus + clang + link) covers the macOS
-oracles — a real ObjC target, a Release app, and the framework dylibs — across
-Xcode 15.4 / 16.4 / 26.5, with the non-macOS destination matrix the main
-remaining capture work.
+Phases 0–4 and 6 are complete. Phase 5 (corpus + clang + link) covers a real ObjC
+target, a Release app, framework dylibs, a static lib, a command-line tool, and a
+dynamic library — across Xcode 15.4 / 16.4 / 26.5 on macOS and, at 26.5, across
+macOS / iOS (device + simulator) / tvOS / watchOS / visionOS.
 
 - **Phase 0–1:** capture (`scripts/16_capture_compiler_args.py`, stdout-sourced)
   + the argv comparator (`tests/common/argv.rs`): flag-family multiset, three
@@ -291,12 +291,17 @@ remaining capture work.
     are gated on the toolchain major (`-enforce-exclusivity=checked` for < 26, the
     libc++ `_LIBCPP_HARDENING_MODE` for ≥ 26), so every version scores swift
     99 % structural, clang ≥ 93 %, link ≥ 80 %.
+  - **Platform coverage:** at Xcode 26.5 the oracles span **macOS, iOS (device +
+    simulator), tvOS, watchOS, and visionOS** (Alamofire is multiplatform). The
+    generator is platform-agnostic — driven by the resolved target triple +
+    settings — so it generalizes with **no platform-specific gating**: every
+    platform scores swift ≥ 94 %, clang ≥ 92 %, link ≥ 84 % structural (all
+    ≥ 93 % precision). The oracle test keys floors by `(version, platform)`.
   - _Remaining:_ the link `-framework`s the sources autolink via `import` (encoded
-    in the objects, not the project graph). For breadth, the non-macOS destinations
-    (iOS/tvOS/watchOS/visionOS) still need simulator runtimes or device builds —
-    IceCubesApp is iOS-only, and the tuist iOS examples and the simulator matrix
-    live here. NetNewsWire needs a developer `SecretKey` file to build, so it is
-    not captured.
+    in the objects, not the project graph) is the one tracked gap. Real apps at
+    scale are optional, uncommitted breadth — IceCubesApp builds for iOS once
+    `IceCubesApp.xcconfig` is stubbed, but its 41-target oracle is SPM-dominated;
+    NetNewsWire needs a developer `SecretKey` file.
 - **Phase 6:** `#[napi] compiler_arguments` (`node.rs`) →
   `compiler_args::target_arguments` via `build_settings::resolve_compiler_arguments`;
   the generated `index.d.ts` exposes `compilerArguments(...)` returning per-target

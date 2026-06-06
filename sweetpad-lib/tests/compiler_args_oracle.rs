@@ -323,6 +323,7 @@ fn project_with_target(raw: &Path, target: &str) -> Option<PathBuf> {
 /// structural % + the tally, never the geometry-capped exact %. Each Xcode runs
 /// its own Swift driver and each platform its own SDK/flags, so every
 /// (version, platform) cell is guarded at its own baseline.
+#[allow(clippy::match_same_arms)] // distinct cells may share a baseline
 fn version_floor(version: &str, sdk: &str) -> (u64, u64, u64) {
     match (version, sdk) {
         // (swift, clang, link), each = the clean run minus a ~2pt margin.
@@ -330,8 +331,11 @@ fn version_floor(version: &str, sdk: &str) -> (u64, u64, u64) {
         ("16.4.0", "macosx") => (97, 92, 79),
         ("15.4.0", "macosx") => (97, 91, 78),
         ("26.5.0", "iphoneos") => (97, 92, 88),
-        ("26.5.0", "iphonesimulator") => (97, 92, 80),
-        // Other platforms: calibrated once their oracles are captured.
+        ("26.5.0", "iphonesimulator") => (97, 91, 80),
+        ("26.5.0", "appletvos") => (97, 92, 88),
+        ("26.5.0", "watchos") => (97, 90, 88),
+        ("26.5.0", "xros") => (92, 90, 80),
+        // Other (version, platform) cells: calibrated once captured.
         _ => (90, 85, 55),
     }
 }
