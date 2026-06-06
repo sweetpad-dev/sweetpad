@@ -98,6 +98,7 @@ pub fn target_arguments(
     arch: &str,
     product_type: Option<&str>,
     sources: &[PathBuf],
+    frameworks: &[String],
     swift_options: &[CompilerOption],
     clang_options: &[CompilerOption],
     xcode_version: &str,
@@ -133,7 +134,7 @@ pub fn target_arguments(
         arguments: if tool == "libtool" {
             static_lib_arguments(settings, arch)
         } else {
-            link_arguments(settings, arch)
+            link_arguments(settings, arch, frameworks)
         },
         input_files: Vec::new(),
     });
@@ -436,13 +437,32 @@ pub fn clang_arguments(
     a.into_vec()
 }
 
+/// Emit one `-L` per unique library search path: the products dir (passed
+/// explicitly) plus LIBRARY_SEARCH_PATHS, which usually inherits the products
+/// dir — the build system de-duplicates, so we do too.
+fn emit_library_paths(a: &mut ArgBuilder, settings: &Settings) {
+    let get = |k: &str| settings.get(k).map(String::as_str);
+    let mut paths: Vec<&str> = Vec::new();
+    if let Some(products) = get("BUILT_PRODUCTS_DIR") {
+        paths.push(products);
+    }
+    for p in ws(get("LIBRARY_SEARCH_PATHS")) {
+        if !paths.contains(&p) {
+            paths.push(p);
+        }
+    }
+    for p in &paths {
+        a.flag(&format!("-L{p}"));
+    }
+}
+
 /// Build the link argv (`clang`-driver invoked) from resolved settings: the
 /// platform triple, SDK, dylib/runpath/search-path flags, and version stamps.
 /// The auto-linked framework imports, the `-add_ast_path` debug-info plumbing,
 /// and the object filelist are out of scope (geometry / autolink), tracked by
 /// the comparator tally rather than generated here.
 #[must_use]
-pub fn link_arguments(settings: &Settings, arch: &str) -> Vec<String> {
+pub fn link_arguments(settings: &Settings, arch: &str, frameworks: &[String]) -> Vec<String> {
     let mut a = ArgBuilder::default();
     let get = |k: &str| settings.get(k).map(String::as_str);
     if let Some(triple) = target_triple(settings, arch) {
@@ -462,15 +482,24 @@ pub fn link_arguments(settings: &Settings, arch: &str) -> Vec<String> {
     if let Some(level) = get("GCC_OPTIMIZATION_LEVEL") {
         a.flag(&format!("-O{level}"));
     }
-    if let Some(products) = get("BUILT_PRODUCTS_DIR") {
-        a.flag(&format!("-L{products}"));
-        a.flag(&format!("-F{products}"));
-    }
-    for p in ws(get("LIBRARY_SEARCH_PATHS")) {
-        a.flag(&format!("-L{p}"));
-    }
+    emit_library_paths(&mut a, settings);
     for p in ws(get("FRAMEWORK_SEARCH_PATHS")) {
         a.flag(&format!("-F{p}"));
+    }
+    // Swift-runtime stdlib search paths the driver adds for a Swift link.
+    if let (Some(toolchain), Some(platform)) = (get("TOOLCHAIN_DIR"), get("PLATFORM_NAME")) {
+        a.flag(&format!("-L{toolchain}/usr/lib/swift/{platform}"));
+    }
+    a.flag("-L/usr/lib/swift");
+    // A unit-test bundle links XCTest from the products + platform test paths.
+    if get("PRODUCT_TYPE").is_some_and(|p| p.contains("unit-test")) {
+        if let Some(products) = get("BUILT_PRODUCTS_DIR") {
+            a.flag(&format!("-F{products}"));
+        }
+        if let Some(platform) = get("PLATFORM_DIR") {
+            a.flag(&format!("-L{platform}/Developer/usr/lib"));
+        }
+        a.pair("-framework", "XCTest");
     }
     for p in ws(get("LD_RUNPATH_SEARCH_PATHS")) {
         a.pair("-Xlinker", "-rpath");
@@ -510,6 +539,11 @@ pub fn link_arguments(settings: &Settings, arch: &str) -> Vec<String> {
     if get("CLANG_COVERAGE_MAPPING").is_some_and(is_yes) {
         a.flag("-fprofile-instr-generate");
     }
+    // Frameworks the target links explicitly (its Frameworks build phase); the
+    // ones the sources autolink via `import` are encoded in the objects, not here.
+    for fw in frameworks {
+        a.pair("-framework", fw);
+    }
     for f in ws(get("OTHER_LDFLAGS")) {
         a.flag(f);
     }
@@ -533,12 +567,7 @@ pub fn static_lib_arguments(settings: &Settings, arch: &str) -> Vec<String> {
     if let Some(sdk) = get("SDKROOT") {
         a.pair("-syslibroot", sdk);
     }
-    if let Some(products) = get("BUILT_PRODUCTS_DIR") {
-        a.flag(&format!("-L{products}"));
-    }
-    for p in ws(get("LIBRARY_SEARCH_PATHS")) {
-        a.flag(&format!("-L{p}"));
-    }
+    emit_library_paths(&mut a, settings);
     a.into_vec()
 }
 

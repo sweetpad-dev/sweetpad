@@ -265,12 +265,15 @@ remaining capture work.
     `Developer/Library/Frameworks`). **swift: ≥ 98 % precision / 99 % structural**
     (every framework/app target 100 %; the mixed ObjC+Swift test target ~95 %).
   - link adds the executable/bundle shapes (`-bundle`; the dylib identity +
-    version stamps gated to `mh_dylib`), the modern link-driver defaults grounded
-    across every capture (`-Xlinker -reproducible` / `-dead_strip`, Debug
-    `-no_deduplicate`, `-fobjc-link-runtime`), a Debug `-rdynamic`, and the
-    coverage `-fprofile-instr-generate`. **link: ≥ 85 % precision / 72–78 %
-    structural;** the autolinked `-framework` and the swift-runtime toolchain
-    `-L` remain the tracked tally gaps.
+    version stamps gated to `mh_dylib`), the modern link-driver defaults
+    (`-Xlinker -reproducible` / `-dead_strip`, Debug `-no_deduplicate` /
+    `-rdynamic`, `-fobjc-link-runtime`, coverage `-fprofile-instr-generate`), the
+    swift-runtime stdlib `-L` (toolchain + `/usr/lib/swift`), a unit-test target's
+    XCTest + platform search paths, and the explicitly-linked frameworks read from
+    the `PBXFrameworksBuildPhase` (`project::target_linked_frameworks`). **link:
+    ≥ 90 % precision / 80–85 % structural;** the `-framework`s the sources
+    autolink via `import` (encoded in the objects, not the project graph) are the
+    main remaining gap.
   - **Static library:** a synthetic static-library oracle
     (`scripts/17_static_library.py` → `fixtures/_synthetic-staticlib/`) validates
     the `libtool -static` link — `-static`, `-arch_only`, `-D`, `-syslibroot`, the
@@ -283,7 +286,7 @@ remaining capture work.
     Swift driver defaults that turned over at the Xcode 26 explicit-modules cutover
     are gated on the toolchain major (`-enforce-exclusivity=checked` for < 26, the
     libc++ `_LIBCPP_HARDENING_MODE` for ≥ 26), so every version scores swift
-    99 % structural, clang ≥ 93 %, link ≥ 72 %.
+    99 % structural, clang ≥ 93 %, link ≥ 80 %.
   - _Remaining (mechanical capture + iteration):_ the non-macOS destinations
     (iOS/tvOS/watchOS/visionOS) need simulator runtimes (`xcodebuild
     -downloadPlatform`); and more ObjC/C++ breadth (e.g. NetNewsWire).

@@ -165,12 +165,16 @@ pub fn resolve_compiler_arguments(
                     let sources =
                         project::target_source_files(&ctx.project.path, &query.target)
                             .unwrap_or_default();
+                    let frameworks =
+                        project::target_linked_frameworks(&ctx.project.path, &query.target)
+                            .unwrap_or_default();
                     out.push(compiler_args::target_arguments(
                         &query.target,
                         &resolved.settings,
                         &query.arch,
                         resolved.product_type.as_deref(),
                         &sources,
+                        &frameworks,
                         swift_opts,
                         clang_opts,
                         xcode_version,

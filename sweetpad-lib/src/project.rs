@@ -416,6 +416,58 @@ pub fn target_source_files_from_value(
     Ok(out)
 }
 
+/// The frameworks a native target links **explicitly** — the `.framework` file
+/// references of its `PBXFrameworksBuildPhase`, by base name (`Kingfisher.framework`
+/// → `Kingfisher`), in pbxproj order. These become `-framework <name>` on the
+/// link line. Frameworks the sources autolink via `import` are NOT here — they're
+/// encoded in the object files, not the project graph.
+pub fn target_linked_frameworks(
+    xcodeproj_path: &Path,
+    target_name: &str,
+) -> Result<Vec<String>, Error> {
+    let value = parse_pbxproj(xcodeproj_path)?;
+    let (objects, project_obj) = project_root(&value)?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::BadProject(format!("no target named '{target_name}' in the project")))?;
+
+    let mut out = Vec::new();
+    let Some(phase_ids) = target.get("buildPhases").and_then(Value::as_array) else {
+        return Ok(out);
+    };
+    for phase_ref in phase_ids {
+        let Some(phase) = phase_ref.as_str().and_then(|id| objects.get(id)) else {
+            continue;
+        };
+        if phase.get("isa").and_then(Value::as_str) != Some("PBXFrameworksBuildPhase") {
+            continue;
+        }
+        let Some(file_ids) = phase.get("files").and_then(Value::as_array) else {
+            continue;
+        };
+        for build_file_ref in file_ids {
+            let Some(file_ref) = build_file_ref
+                .as_str()
+                .and_then(|id| objects.get(id))
+                .and_then(|bf| bf.get("fileRef").and_then(Value::as_str))
+                .and_then(|id| objects.get(id))
+            else {
+                continue;
+            };
+            let label = file_ref
+                .get("name")
+                .and_then(Value::as_str)
+                .or_else(|| file_ref.get("path").and_then(Value::as_str));
+            if let Some(name) = label
+                .and_then(|l| l.rsplit('/').next())
+                .and_then(|n| n.strip_suffix(".framework"))
+            {
+                out.push(name.to_string());
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The absolute directory containing the `.xcodeproj` — the anchor for
 /// `<group>` / `SOURCE_ROOT` source trees. Canonicalized when it exists (so the
 /// paths match xcodebuild's absolute output), falling back to the input.

@@ -325,9 +325,9 @@ fn project_with_target(raw: &Path, target: &str) -> Option<PathBuf> {
 fn version_floor(version: &str) -> (u64, u64, u64) {
     match version {
         // (swift, clang, link), each = the clean run minus a ~2pt margin.
-        "26.5.0" => (97, 92, 75),
-        "16.4.0" => (97, 92, 72),
-        "15.4.0" => (97, 91, 70),
+        "26.5.0" => (97, 92, 83),
+        "16.4.0" => (97, 92, 79),
+        "15.4.0" => (97, 91, 78),
         _ => (90, 85, 55),
     }
 }
@@ -448,8 +448,14 @@ fn compiler_args_oracle_coverage() {
                 let ours = if ln.tool.as_deref() == Some("libtool") {
                     compiler_args::static_lib_arguments(settings, &oracle.arch)
                 } else {
-                    compiler_args::link_arguments(settings, &oracle.arch)
+                    let fws = project::target_linked_frameworks(&xcodeproj, &t.target)
+                        .unwrap_or_default();
+                    compiler_args::link_arguments(settings, &oracle.arch, &fws)
                 };
+                if dump {
+                    eprintln!("--- ORACLE link {version} {} ---\n{}", t.target, ln.arguments.join("\n"));
+                    eprintln!("--- OURS link {version} {} ---\n{}", t.target, ours.join("\n"));
+                }
                 scores.link.record(&version, &oracle.slug, &t.target, "link", &ln.arguments, &ours);
             }
         }
