@@ -622,7 +622,7 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
   // detection — if you opt in, you get it.
   const provider = getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server";
   if (provider === "sweetpad") {
-    await generateSweetpadBuildServerConfig(options);
+    await generateSweetpadBuildServerConfig();
     return;
   }
 
@@ -651,35 +651,21 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
 }
 
 /**
- * Generate a `buildServer.json` pointing at SweetPad's own BSP server — the
- * bundled `out/bsp-server.js` launcher run through VS Code's Node
+ * Generate a minimal `buildServer.json` pointing at SweetPad's own BSP server —
+ * the bundled `out/bsp-server.js` launcher run through VS Code's Node
  * (`ELECTRON_RUN_AS_NODE`), which loads the native addon and serves BSP. This is
  * the opt-in alternative to xcode-build-server; no separate binary is published.
+ *
+ * The project, Xcode and derived-data path are not baked into `argv`: the server
+ * discovers the extension's control socket at runtime and pulls them via
+ * `bsp.resolveConfig`, so this file is stable across scheme/configuration
+ * changes and never needs regenerating when the selection changes.
  */
-async function generateSweetpadBuildServerConfig(options: { xcworkspace: string }): Promise<void> {
+async function generateSweetpadBuildServerConfig(): Promise<void> {
   const cwd = getWorkspacePath();
-  // The server resolves a `.xcodeproj`. Xcode addresses a plain project through
-  // its embedded `<name>.xcodeproj/project.xcworkspace`, so drop that suffix; any
-  // other path is passed through untouched.
-  let project = options.xcworkspace;
-  if (path.basename(project) === "project.xcworkspace") {
-    project = path.dirname(project);
-  }
-  if (!path.isAbsolute(project)) {
-    project = path.join(cwd, project);
-  }
   // `out/bsp-server.js` sits next to the bundled extension (this module's dir).
   const bspServer = path.join(__dirname, "bsp-server.js");
-  const argv = [process.execPath, bspServer, "--project", project];
-
-  const developerDir = await getDeveloperDir();
-  if (developerDir) {
-    argv.push("--xcode", developerDir);
-  }
-  const derivedDataPath = getWorkspaceConfig("build.derivedDataPath");
-  if (derivedDataPath) {
-    argv.push("--derived-data-path", derivedDataPath);
-  }
+  const argv = [process.execPath, bspServer];
 
   // sourcekit-lsp decodes `buildServer.json` into a struct whose `name`,
   // `version`, `bspVersion`, `languages`, and `argv` are all required; a missing

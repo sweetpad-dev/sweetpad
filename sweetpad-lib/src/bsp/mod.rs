@@ -256,7 +256,10 @@ impl Server {
             return Self::build(config, None, log_level);
         }
 
+        // Canonicalize to match the extension's realpath'd `workspacePath`
+        // (so `/var` vs `/private/var` symlinks don't defeat the lookup).
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+        let cwd = std::fs::canonicalize(&cwd).unwrap_or(cwd);
         if let Some(socket) = control::discover_socket(&cwd) {
             match ControlClient::connect_and_resolve(&socket, Arc::clone(&log_level)) {
                 Ok((client, config_value)) => {
