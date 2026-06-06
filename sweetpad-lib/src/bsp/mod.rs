@@ -13,6 +13,8 @@ use std::collections::BTreeMap;
 use std::fs::OpenOptions;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -67,9 +69,23 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     // Each write locks stdout for one whole frame rather than holding the lock
-    // across the loop, so the change-watcher thread can interleave its
-    // `buildTarget/didChange` notifications between requests.
+    // across the loop, so the worker threads (change-watcher, prepare) can
+    // interleave their messages between requests.
     let mut watching = false;
+
+    // `buildTarget/prepare` runs `xcodebuild` (seconds-to-minutes), and
+    // sourcekit-lsp blocks the requesting target's semantics until our response
+    // arrives — so run it on a serialized worker and reply by id when the build
+    // finishes, keeping the request loop responsive in the meantime.
+    let (prepare_tx, prepare_rx) = mpsc::channel::<PrepareJob>();
+    {
+        let server = Arc::clone(&server);
+        std::thread::spawn(move || {
+            while let Ok(job) = prepare_rx.recv() {
+                server.run_prepare(&job);
+            }
+        });
+    }
 
     while let Some(msg) = read_message(&mut reader)? {
         let Ok(req) = serde_json::from_str::<Value>(&msg) else {
@@ -95,6 +111,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
             "textDocument/sourceKitOptions" => {
                 server.reply(id, server.source_kit_options(params))?;
             }
+            "buildTarget/prepare" => {
+                // Hand off to the worker; it replies once the build is done. A
+                // prepare without an id (shouldn't happen) is simply dropped.
+                if let Some(id) = id {
+                    let targets = server.requested_targets(params);
+                    if prepare_tx.send(PrepareJob { id, targets }).is_err() {
+                        break; // worker gone
+                    }
+                }
+            }
+            "workspace/waitForBuildSystemUpdates" => server.reply(id, json!({}))?,
             "build/shutdown" | "shutdown" => server.reply(id, Value::Null)?,
             "build/exit" | "exit" => break,
             _ => {
@@ -132,6 +159,13 @@ struct Server {
 
 const TARGET_SCHEME: &str = "sweetpad://target/";
 const LANGUAGE_IDS: [&str; 5] = ["swift", "objective-c", "objective-cpp", "c", "cpp"];
+
+/// A queued `buildTarget/prepare`: the request `id` to answer once the build is
+/// done, and the target names to prepare.
+struct PrepareJob {
+    id: Value,
+    targets: Vec<String>,
+}
 
 impl Server {
     fn from_args(args: &[String]) -> Result<Self, String> {
@@ -181,11 +215,22 @@ impl Server {
         self.project_path.parent().unwrap_or_else(|| Path::new("."))
     }
 
+    /// The Xcode **Developer** directory (what `DEVELOPER_DIR` / `xcodebuild`
+    /// want), normalized from `--xcode` which may be given as either the `.app`
+    /// bundle or the Developer dir itself.
+    fn developer_dir(&self) -> Option<PathBuf> {
+        let x = self.xcode.as_ref()?;
+        let nested = x.join("Contents/Developer");
+        Some(if nested.is_dir() { nested } else { x.clone() })
+    }
+
     fn initialize(&self) -> Value {
-        // Advertise the per-file options extension, and — when we can locate the
-        // build's DerivedData — its index store, so sourcekit-lsp does project-wide
-        // navigation (definition / references) from the index-while-building data.
-        let mut data = json!({ "sourceKitOptionsProvider": true });
+        // Advertise the per-file options extension and `prepareProvider`, so
+        // sourcekit-lsp's background indexing delegates `buildTarget/prepare` to
+        // us (we build dependency modules on demand). When we can locate the
+        // build's DerivedData, also advertise its index store for project-wide
+        // navigation from the index-while-building data.
+        let mut data = json!({ "sourceKitOptionsProvider": true, "prepareProvider": true });
         if let Some(dd) = self.derived_data_dir() {
             data["indexStorePath"] = json!(dd.join("Index.noindex/DataStore").to_string_lossy());
             data["indexDatabasePath"] = json!(dd.join("Index.noindex/IndexDatabase").to_string_lossy());
@@ -296,6 +341,71 @@ impl Server {
             "params": { "changes": changes },
         });
         let _ = self.send(&notif);
+    }
+
+    /// Run a queued `buildTarget/prepare`: build each requested target's
+    /// dependency modules + generated inputs, then answer the request. Always
+    /// replies (even on build failure) — prepare is best-effort, and a missing
+    /// response would wedge sourcekit-lsp's semantics for that target.
+    fn run_prepare(&self, job: &PrepareJob) {
+        for target in &job.targets {
+            self.prepare_target(target);
+        }
+        let resp = json!({ "jsonrpc": "2.0", "id": job.id, "result": {} });
+        let _ = self.send(&resp);
+    }
+
+    /// Build `target` via `xcodebuild` so its dependency `.swiftmodule`s and
+    /// generated inputs land in the DerivedData our search paths point at —
+    /// what makes cross-module / package `import`s resolve with no prior build.
+    /// xcodebuild builds by **scheme** (a bare `-target` build doesn't populate
+    /// the products dir), so a scheme that builds the target is required.
+    fn prepare_target(&self, target: &str) {
+        let Some(scheme) = project::scheme_for_target(&self.project_path, target) else {
+            self.log(&format!("prepare: no scheme builds target {target}; skipping"));
+            return;
+        };
+        let (sdk, _arch) = self.editor_platform(target);
+        let destination = format!("generic/platform={}", platform_name(&sdk));
+        let developer = self.developer_dir();
+        let xcodebuild = developer.as_ref().map_or_else(
+            || PathBuf::from("xcodebuild"),
+            |dev| dev.join("usr/bin/xcodebuild"),
+        );
+        let mut cmd = Command::new(&xcodebuild);
+        if let Some(dev) = &developer {
+            cmd.env("DEVELOPER_DIR", dev);
+        }
+        cmd.arg("build")
+            .args(["-project".as_ref(), self.project_path.as_os_str()])
+            .args(["-scheme", &scheme])
+            .args(["-configuration", &self.configuration])
+            .args(["-destination", &destination])
+            // Prepare only needs modules, not a signed/launchable product, and
+            // must not stall on validation prompts in a headless run.
+            .args(["CODE_SIGNING_ALLOWED=NO", "-skipMacroValidation", "-skipPackagePluginValidation"]);
+        if let Some(dd) = &self.derived_data_path {
+            // An explicit override needs `-derivedDataPath` (which xcodebuild only
+            // accepts with `-scheme`); without it the default DerivedData already
+            // matches our search paths.
+            cmd.args(["-derivedDataPath".as_ref(), dd.as_os_str()]);
+        }
+        self.log(&format!("prepare: building scheme {scheme} ({destination}) for target {target}"));
+        match cmd.output() {
+            Ok(out) => {
+                let code = out.status.code().unwrap_or(-1);
+                if out.status.success() {
+                    self.log(&format!("prepare: {target} build ok"));
+                } else {
+                    // Best-effort: log the tail and carry on (sourcekit-lsp uses
+                    // whatever modules did build).
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    let tail: String = stderr.lines().rev().take(8).collect::<Vec<_>>().join(" | ");
+                    self.log(&format!("prepare: {target} build exit={code}: {tail}"));
+                }
+            }
+            Err(e) => self.log(&format!("prepare: {target} failed to launch xcodebuild: {e}")),
+        }
     }
 
     fn sources(&self, params: Option<&Value>) -> Value {
@@ -599,6 +709,22 @@ fn write_message(writer: &mut impl Write, body: &str) -> Result<(), String> {
 fn file_stamp(path: &Path) -> Option<(u64, SystemTime)> {
     let meta = std::fs::metadata(path).ok()?;
     Some((meta.len(), meta.modified().ok()?))
+}
+
+/// The `xcodebuild -destination 'generic/platform=…'` name for an SDK, used to
+/// build a target for the platform the editor analyzes it as.
+fn platform_name(sdk: &str) -> &'static str {
+    match sdk {
+        s if s.starts_with("iphonesimulator") => "iOS Simulator",
+        s if s.starts_with("iphoneos") => "iOS",
+        s if s.starts_with("appletvsimulator") => "tvOS Simulator",
+        s if s.starts_with("appletvos") => "tvOS",
+        s if s.starts_with("watchsimulator") => "watchOS Simulator",
+        s if s.starts_with("watchos") => "watchOS",
+        s if s.starts_with("xrsimulator") => "visionOS Simulator",
+        s if s.starts_with("xros") => "visionOS",
+        _ => "macOS",
+    }
 }
 
 impl Server {

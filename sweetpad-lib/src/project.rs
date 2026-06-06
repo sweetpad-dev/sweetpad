@@ -2577,6 +2577,46 @@ fn scan_shared_schemes(xcodeproj_path: &Path) -> Vec<String> {
     out
 }
 
+/// A shared scheme that builds `target`, for driving an `xcodebuild` build of it
+/// (BSP `prepare`). Prefers a scheme named exactly `target` (Xcode and Tuist
+/// create a per-target scheme); otherwise the first shared scheme whose build
+/// action references it. `None` if none qualifies — `xcodebuild` needs a scheme
+/// (a bare `-target` build doesn't populate the products dir our search paths use).
+#[must_use]
+pub fn scheme_for_target(xcodeproj_path: &Path, target: &str) -> Option<String> {
+    let dir = xcodeproj_path.join("xcshareddata/xcschemes");
+    let mut schemes: Vec<PathBuf> = fs::read_dir(&dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension() == Some(OsStr::new("xcscheme")))
+        .collect();
+    schemes.sort();
+    let stem = |p: &Path| p.file_stem().and_then(OsStr::to_str).map(String::from);
+    if let Some(p) = schemes.iter().find(|p| stem(p).as_deref() == Some(target)) {
+        return stem(p);
+    }
+    schemes
+        .iter()
+        .find(|p| scheme_build_action_targets(p).iter().any(|t| t == target))
+        .and_then(|p| stem(p))
+}
+
+/// The blueprint (target) names a scheme's `BuildAction` builds.
+fn scheme_build_action_targets(scheme_path: &Path) -> Vec<String> {
+    let Ok(root) = crate::xcscheme::parse_file(scheme_path) else {
+        return Vec::new();
+    };
+    let Some(build_action) = root.child("BuildAction") else {
+        return Vec::new();
+    };
+    build_action
+        .descendants_named("BuildableReference")
+        .iter()
+        .filter_map(|e| e.attr("BlueprintName").map(String::from))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

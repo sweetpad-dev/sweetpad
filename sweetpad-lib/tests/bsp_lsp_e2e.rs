@@ -227,14 +227,158 @@ fn bsp_lsp_e2e() {
     let module_errors: Vec<&str> = diags
         .iter()
         .filter_map(|d| d.get("message").and_then(Value::as_str))
-        .filter(|m| {
-            let m = m.to_lowercase();
-            m.contains("no such module") || m.contains("cannot find") || m.contains("could not build module")
-        })
+        .filter(|m| is_module_resolution_error(m))
         .collect();
     eprintln!("b.swift diagnostics: {} total, {} module-resolution", diags.len(), module_errors.len());
     assert!(
         module_errors.is_empty(),
         "sourcekit-lsp couldn't resolve the cross-module import via our BSP server: {module_errors:?}"
+    );
+}
+
+fn is_module_resolution_error(message: &str) -> bool {
+    let m = message.to_lowercase();
+    m.contains("no such module") || m.contains("cannot find") || m.contains("could not build module")
+}
+
+/// v2 end-to-end: the headline promise — cross-module `import` resolves with **no
+/// prior build**. From a clean DerivedData, background indexing has sourcekit-lsp
+/// call `buildTarget/prepare` on our server, which builds the dependency module
+/// on demand. Drive it deterministically: open `b.swift`, `workspace/synchronize`
+/// (blocks until prepare + indexing finish), then pull diagnostics — zero
+/// module-resolution errors.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn prepare_resolves_cross_module_without_prior_build() {
+    if std::env::var("BSP_ORACLE").is_err() {
+        eprintln!("skipping: set BSP_ORACLE=1 to run the sourcekit-lsp prepare end-to-end oracle");
+        return;
+    }
+    let sourcekit_lsp = bin_dir("sourcekit-lsp");
+    if !Path::new(&sourcekit_lsp).exists() {
+        eprintln!("skipping: {sourcekit_lsp} not found");
+        return;
+    }
+
+    let root = std::env::temp_dir().join(format!("sweetpad-lsp-prep-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    copy_fixture(&root);
+    let project_dir = root.join("project");
+    let xcodeproj = project_dir.join("MultiModule.xcodeproj");
+    let dd = root.join("dd"); // clean — deliberately NOT built up front
+
+    // buildServer.json → our server, pointed at the clean DerivedData; prepare
+    // will build the dependency module into it on demand.
+    let bsp_bin = env!("CARGO_BIN_EXE_sweetpad-lib");
+    let config = Command::new(bsp_bin)
+        .args(["config", "--project"])
+        .arg(&xcodeproj)
+        .args(["--xcode", XCODE, "--derived-data-path"])
+        .arg(&dd)
+        .arg("--output")
+        .arg(project_dir.join("buildServer.json"))
+        .status()
+        .expect("run config");
+    assert!(config.success(), "config command failed");
+
+    let mut lsp = Command::new(&sourcekit_lsp)
+        .env("DEVELOPER_DIR", developer_dir())
+        .current_dir(&project_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn sourcekit-lsp");
+    let mut stdin = lsp.stdin.take().unwrap();
+    let stdout = lsp.stdout.take().unwrap();
+    let (tx, rx) = mpsc::channel::<Value>();
+    let reader = std::thread::spawn(move || {
+        let mut r = BufReader::new(stdout);
+        while let Some(msg) = read_lsp(&mut r) {
+            if tx.send(msg).is_err() {
+                break;
+            }
+        }
+    });
+
+    let root_uri = format!("file://{}", project_dir.to_string_lossy());
+    let b_path = project_dir.join("ModuleB/b.swift");
+    let b_uri = format!("file://{}", b_path.to_string_lossy());
+    let b_text = std::fs::read_to_string(&b_path).unwrap();
+    let send = |stdin: &mut std::process::ChildStdin, msg: &Value| {
+        let _ = stdin.write_all(&lsp_frame(msg));
+        let _ = stdin.flush();
+    };
+
+    send(&mut stdin, &json!({
+        "jsonrpc":"2.0","id":1,"method":"initialize",
+        "params":{
+            "processId":std::process::id(),"rootUri":root_uri,
+            "capabilities":{
+                "textDocument":{"diagnostic":{"dynamicRegistration":false}},
+                "workspace":{"diagnostics":{"refreshSupport":true}}
+            },
+            // Background indexing drives prepare; default-on in 6.1+ but explicit here.
+            "initializationOptions":{"backgroundIndexing":true,"backgroundPreparationMode":"enabled"}
+        }
+    }));
+    send(&mut stdin, &json!({"jsonrpc":"2.0","method":"initialized","params":{}}));
+    send(&mut stdin, &json!({
+        "jsonrpc":"2.0","method":"textDocument/didOpen",
+        "params":{"textDocument":{"uri":b_uri,"languageId":"swift","version":1,"text":b_text}}
+    }));
+    let wait_for_id = |rx: &mpsc::Receiver<Value>, want: i64, secs: u64| -> Option<Value> {
+        let deadline = Instant::now() + Duration::from_secs(secs);
+        while Instant::now() < deadline {
+            match rx.recv_timeout(Duration::from_secs(2)) {
+                Ok(msg) if msg.get("id").and_then(Value::as_i64) == Some(want) => return Some(msg),
+                Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+            }
+        }
+        None
+    };
+
+    // Block until background work (prepare + index) settles. The build runs here.
+    send(&mut stdin, &json!({"jsonrpc":"2.0","id":10,"method":"workspace/synchronize","params":{"index":true}}));
+    let synchronized = wait_for_id(&rx, 10, 180).is_some();
+    // b.swift was first compiled at didOpen — before prepare built ModuleA — so
+    // its diagnostics are cached as "no such module". A real editor re-pulls on
+    // `workspace/diagnostic/refresh`; force the equivalent fresh compile with a
+    // no-op version bump, then pull diagnostics.
+    send(&mut stdin, &json!({
+        "jsonrpc":"2.0","method":"textDocument/didChange",
+        "params":{"textDocument":{"uri":b_uri,"version":2},"contentChanges":[{"text":b_text}]}
+    }));
+    send(&mut stdin, &json!({
+        "jsonrpc":"2.0","id":20,"method":"textDocument/diagnostic",
+        "params":{"textDocument":{"uri":b_uri}}
+    }));
+    let diag_report = wait_for_id(&rx, 20, 60);
+
+    send(&mut stdin, &json!({"jsonrpc":"2.0","id":99,"method":"shutdown"}));
+    send(&mut stdin, &json!({"jsonrpc":"2.0","method":"exit"}));
+    drop(stdin);
+    let _ = lsp.wait();
+    let _ = reader.join();
+    // Confirm prepare actually built the dependency into the clean DerivedData.
+    let dep_built = dd.join("Build/Products/Debug/ModuleA.swiftmodule").exists();
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert!(synchronized, "workspace/synchronize never returned (prepare/index didn't settle)");
+    assert!(dep_built, "prepare did not build ModuleA into the clean DerivedData");
+    let report = diag_report.expect("no textDocument/diagnostic response");
+    // Pull-diagnostic result is a full report: { kind: "full", items: [...] }.
+    let items = report.pointer("/result/items").and_then(Value::as_array).cloned().unwrap_or_default();
+    let module_errors: Vec<&str> = items
+        .iter()
+        .filter_map(|d| d.get("message").and_then(Value::as_str))
+        .filter(|m| is_module_resolution_error(m))
+        .collect();
+    eprintln!("b.swift (no prior build) diagnostics: {} total, {} module-resolution", items.len(), module_errors.len());
+    assert!(
+        module_errors.is_empty(),
+        "cross-module import did not resolve after prepare (no prior build): {module_errors:?}"
     );
 }
