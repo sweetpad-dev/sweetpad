@@ -259,16 +259,18 @@ remaining capture work.
     <dialect>`. **clang: 97 % precision / 95 % structural; the real-ObjC
     KingfisherTests target is 100 % precision.**
   - swift additionally handles whole-module Release builds
-    (`-whole-module-optimization` / `-no-emit-module-separately-wmo`) and the
-    `-import-objc-header` bridging header. **swift: 100 % precision / 97 %
-    structural** (every framework/app target 100 %).
+    (`-whole-module-optimization` / `-no-emit-module-separately-wmo`), the
+    `-import-objc-header` bridging header, and a unit-test target's framework
+    search paths (`-F` into the products dir + the platform's
+    `Developer/Library/Frameworks`). **swift: ≥ 98 % precision / 99 % structural**
+    (every framework/app target 100 %; the mixed ObjC+Swift test target ~95 %).
   - link adds the executable/bundle shapes (`-bundle`; the dylib identity +
-    version stamps gated to `mh_dylib`) and the modern link-driver defaults
-    grounded across every capture (`-Xlinker -reproducible` / `-dead_strip`,
-    Debug `-no_deduplicate`, `-fobjc-link-runtime`). **link: 93 % precision /
-    72 % structural;** the autolinked `-framework`, `-rdynamic`, the swift-runtime
-    toolchain `-L`, and coverage `-fprofile-instr-generate` are the tracked tally
-    gaps.
+    version stamps gated to `mh_dylib`), the modern link-driver defaults grounded
+    across every capture (`-Xlinker -reproducible` / `-dead_strip`, Debug
+    `-no_deduplicate`, `-fobjc-link-runtime`), a Debug `-rdynamic`, and the
+    coverage `-fprofile-instr-generate`. **link: ≥ 85 % precision / 72–78 %
+    structural;** the autolinked `-framework` and the swift-runtime toolchain
+    `-L` remain the tracked tally gaps.
   - **Static library:** a synthetic static-library oracle
     (`scripts/17_static_library.py` → `fixtures/_synthetic-staticlib/`) validates
     the `libtool -static` link — `-static`, `-arch_only`, `-D`, `-syslibroot`, the
@@ -281,7 +283,7 @@ remaining capture work.
     Swift driver defaults that turned over at the Xcode 26 explicit-modules cutover
     are gated on the toolchain major (`-enforce-exclusivity=checked` for < 26, the
     libc++ `_LIBCPP_HARDENING_MODE` for ≥ 26), so every version scores swift
-    ≥ 97 % structural, clang ≥ 93 %, link ≥ 70 %.
+    99 % structural, clang ≥ 93 %, link ≥ 72 %.
   - _Remaining (mechanical capture + iteration):_ the non-macOS destinations
     (iOS/tvOS/watchOS/visionOS) need simulator runtimes (`xcodebuild
     -downloadPlatform`); and more ObjC/C++ breadth (e.g. NetNewsWire).

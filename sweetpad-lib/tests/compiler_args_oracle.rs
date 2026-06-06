@@ -325,9 +325,9 @@ fn project_with_target(raw: &Path, target: &str) -> Option<PathBuf> {
 fn version_floor(version: &str) -> (u64, u64, u64) {
     match version {
         // (swift, clang, link), each = the clean run minus a ~2pt margin.
-        "26.5.0" => (95, 92, 68),
-        "16.4.0" => (96, 92, 68),
-        "15.4.0" => (96, 91, 68),
+        "26.5.0" => (97, 92, 75),
+        "16.4.0" => (97, 92, 72),
+        "15.4.0" => (97, 91, 70),
         _ => (90, 85, 55),
     }
 }

@@ -258,6 +258,16 @@ pub fn swift_arguments(
     for p in ws(get("FRAMEWORK_SEARCH_PATHS")) {
         a.pair("-F", p);
     }
+    // A unit-test target compiles against the framework-under-test (in the
+    // products dir) and the platform's test frameworks (XCTest et al.).
+    if get("PRODUCT_TYPE").is_some_and(|p| p.contains("unit-test")) {
+        if let Some(products) = get("BUILT_PRODUCTS_DIR") {
+            a.pair("-F", products);
+        }
+        if let Some(platform) = get("PLATFORM_DIR") {
+            a.pair("-F", &format!("{platform}/Developer/Library/Frameworks"));
+        }
+    }
 
     // --- Clang importer flags ----------------------------------------------
     // GCC_PREPROCESSOR_DEFINITIONS reach the embedded clang importer as -Xcc -D.
@@ -272,9 +282,9 @@ pub fn swift_arguments(
     // --- Module / header emission ------------------------------------------
     a.flag("-emit-module");
     a.flag("-emit-dependencies");
-    if get("SWIFT_INSTALL_OBJC_HEADER").is_none_or(|v| !v.eq_ignore_ascii_case("NO")) {
-        a.flag("-emit-objc-header");
-    }
+    // swiftc always emits the generated ObjC interface header into the build dir;
+    // SWIFT_INSTALL_OBJC_HEADER only controls whether it is *installed* publicly.
+    a.flag("-emit-objc-header");
     // SWIFT_OBJC_BRIDGING_HEADER imports a target's ObjC declarations into Swift;
     // the build system passes it as `-import-objc-header <path>` (the Swift
     // xcspec carries the setting but not the flag mapping), resolved against
@@ -492,8 +502,14 @@ pub fn link_arguments(settings: &Settings, arch: &str) -> Vec<String> {
     }
     if get("CONFIGURATION").is_some_and(|c| c.eq_ignore_ascii_case("Debug")) {
         a.pair("-Xlinker", "-no_deduplicate");
+        // A Debug link keeps dynamic symbols exported (for the debugger / dlopen).
+        a.flag("-rdynamic");
     }
     a.flag("-fobjc-link-runtime");
+    // A coverage-instrumented build links the profiling runtime.
+    if get("CLANG_COVERAGE_MAPPING").is_some_and(is_yes) {
+        a.flag("-fprofile-instr-generate");
+    }
     for f in ws(get("OTHER_LDFLAGS")) {
         a.flag(f);
     }
