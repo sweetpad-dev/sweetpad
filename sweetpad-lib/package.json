@@ -15,9 +15,9 @@
     ]
   },
   "scripts": {
-    "build": "napi build --platform --release --features node",
-    "build:debug": "napi build --platform --features node",
-    "build:universal": "napi build --platform --release --features node --target aarch64-apple-darwin && napi build --platform --release --features node --target x86_64-apple-darwin && napi universalize",
+    "build": "napi build --platform --release --no-default-features --features node",
+    "build:debug": "napi build --platform --no-default-features --features node",
+    "build:universal": "napi build --platform --release --no-default-features --features node --target aarch64-apple-darwin && napi build --platform --release --no-default-features --features node --target x86_64-apple-darwin && napi universalize",
     "universalize": "napi universalize"
   },
   "devDependencies": {

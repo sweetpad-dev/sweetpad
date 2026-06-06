@@ -272,6 +272,19 @@ fn tool_to_napi(t: compiler_args::ToolInvocation) -> CompilerToolInvocation {
     }
 }
 
+/// Run the Build Server Protocol server (see [`crate::bsp`]) over this process's
+/// stdio, blocking until EOF / `build/exit`. `args` are the `bsp` flags, e.g.
+/// `["--project", "App.xcodeproj", "--xcode", "/Applications/Xcode.app",
+/// "--derived-data-path", "…"]`.
+///
+/// This lets sourcekit-lsp launch the server through VS Code's bundled Node +
+/// the shipped addon (a `buildServer.json` `argv` of `[node, entry.js, …]`),
+/// rather than a separate published binary.
+#[napi]
+pub fn bsp(args: Vec<String>) -> napi::Result<()> {
+    crate::bsp::run(&args).map_err(to_napi_err)
+}
+
 /// A target referenced by a scheme (a build entry or a testable). Mirrors a
 /// `BuildableReference` in the `.xcscheme` XML.
 #[napi(object)]
