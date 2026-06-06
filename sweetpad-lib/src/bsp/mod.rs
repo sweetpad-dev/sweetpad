@@ -104,8 +104,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
 struct Server {
     project_path: PathBuf,
     configuration: String,
-    sdk: String,
-    arch: String,
+    /// `--sdk` / `--arch` overrides; `None` means infer the platform per target.
+    sdk: Option<String>,
+    arch: Option<String>,
     xcode: Option<PathBuf>,
     derived_data_path: Option<PathBuf>,
     /// Target names in pbxproj order (cached at startup).
@@ -127,8 +128,8 @@ impl Server {
         Ok(Server {
             project_path,
             configuration: flags.get("configuration").cloned().unwrap_or_else(|| "Debug".into()),
-            sdk: flags.get("sdk").cloned().unwrap_or_else(|| "macosx".into()),
-            arch: flags.get("arch").cloned().unwrap_or_else(|| "arm64".into()),
+            sdk: flags.get("sdk").cloned(),
+            arch: flags.get("arch").cloned(),
             xcode: flags.get("xcode").map(PathBuf::from),
             derived_data_path: flags.get("derived-data-path").map(PathBuf::from),
             targets,
@@ -291,22 +292,59 @@ impl Server {
     /// file the whole module), reduced to an editor invocation (no build actions
     /// / explicit-module plumbing), with the inputs appended.
     fn compiler_arguments(&self, target: &str, file: &Path) -> Option<Vec<String>> {
-        let opts = self.options_for(target);
+        let (sdk, arch) = self.editor_platform(target);
+        let opts = self.options_for(target, &sdk, &arch);
         let inv = build_settings::resolve_file_arguments(&opts, file).ok()?;
         let mut args = editor_arguments(&inv.arguments);
         args.extend(inv.input_files);
         Some(args)
     }
 
-    fn options_for(&self, target: &str) -> BuildSettingsOptions {
+    /// The SDK + arch sourcekit-lsp should analyze `target` with. We infer the
+    /// platform from the target's `SUPPORTED_PLATFORMS` and pick the **simulator**
+    /// for device platforms (editor-friendly — no device/signing, and the usual
+    /// dev build), defaulting to macOS. Arch is arm64 (Apple Silicon: simulator,
+    /// device, and macOS are all arm64). `--sdk`/`--arch` flags override.
+    fn editor_platform(&self, target: &str) -> (String, String) {
+        if let (Some(sdk), Some(arch)) = (self.sdk.as_deref(), self.arch.as_deref()) {
+            return (sdk.to_string(), arch.to_string());
+        }
+        // Read the target's *authored* SDKROOT (e.g. `iphoneos`): a real `--sdk`
+        // replaces SDKROOT with that SDK's path, but a sentinel the catalog
+        // doesn't know leaves it untouched. Map the platform to its simulator.
+        let probe = self.options_for(target, "auto", "arm64");
+        let sdkroot = build_settings::resolve_build_settings(&probe)
+            .ok()
+            .and_then(|mut t| {
+                t.retain(|s| s.target == target);
+                t.pop()
+            })
+            .and_then(|t| t.settings.get("SDKROOT").cloned())
+            .unwrap_or_default()
+            .to_lowercase();
+        let sdk = if sdkroot.contains("iphone") {
+            "iphonesimulator"
+        } else if sdkroot.contains("appletv") {
+            "appletvsimulator"
+        } else if sdkroot.contains("watch") {
+            "watchsimulator"
+        } else if sdkroot.contains("xr") {
+            "xrsimulator"
+        } else {
+            "macosx"
+        };
+        (sdk.to_string(), "arm64".to_string())
+    }
+
+    fn options_for(&self, target: &str, sdk: &str, arch: &str) -> BuildSettingsOptions {
         BuildSettingsOptions {
             project: Some(self.project_path.clone()),
             workspace: None,
             scheme: None,
             target: Some(target.to_string()),
             configuration: self.configuration.clone(),
-            sdk: self.sdk.clone(),
-            arch: self.arch.clone(),
+            sdk: sdk.to_string(),
+            arch: arch.to_string(),
             destination: None,
             xcconfig: None,
             xcode: self.xcode.clone(),
