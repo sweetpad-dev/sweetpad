@@ -418,16 +418,63 @@ pub fn target_source_files_from_value(
 
     // Synchronized folders (Xcode 16+): each id in `fileSystemSynchronizedGroups`
     // names a root folder whose compilable files are implicit target members —
-    // they never appear in a `PBXSourcesBuildPhase`. Walk each for sources.
+    // they never appear in a `PBXSourcesBuildPhase`. Walk each for sources, minus
+    // any file the group's exception sets exclude from this target.
     if let Some(group_ids) = target.get("fileSystemSynchronizedGroups").and_then(Value::as_array) {
         for group_ref in group_ids {
-            let Some(dir) = group_ref.as_str().and_then(|id| sync_dirs.get(id)) else {
+            let Some(group_id) = group_ref.as_str() else {
                 continue;
             };
-            collect_synchronized_sources(dir, &mut out);
+            let Some(dir) = sync_dirs.get(group_id) else {
+                continue;
+            };
+            let excluded = objects.get(group_id).map_or_else(Vec::new, |group| {
+                synchronized_membership_exclusions(objects, group, target_name, dir, &project_dir)
+            });
+            collect_synchronized_sources(dir, &excluded, &mut out);
         }
     }
     Ok(out)
+}
+
+/// The absolute paths a synchronized root group's exception sets exclude from
+/// `target_name` — the `membershipExceptions` of each
+/// `PBXFileSystemSynchronizedBuildFileExceptionSet` that targets it (a file
+/// unchecked from the target's membership). Xcode is inconsistent about whether
+/// these relative paths are anchored at the group folder or the project root, so
+/// both anchorings are returned and either match excludes the file.
+fn synchronized_membership_exclusions(
+    objects: &BTreeMap<String, Value>,
+    group: &Value,
+    target_name: &str,
+    group_dir: &Path,
+    project_dir: &Path,
+) -> Vec<PathBuf> {
+    let mut excluded = Vec::new();
+    let Some(set_ids) = group.get("exceptions").and_then(Value::as_array) else {
+        return excluded;
+    };
+    for set_ref in set_ids {
+        let Some(set) = set_ref.as_str().and_then(|id| objects.get(id)) else {
+            continue;
+        };
+        let applies = set
+            .get("target")
+            .and_then(Value::as_str)
+            .and_then(|id| objects.get(id))
+            .and_then(|t| t.get("name").and_then(Value::as_str))
+            == Some(target_name);
+        if !applies {
+            continue;
+        }
+        if let Some(members) = set.get("membershipExceptions").and_then(Value::as_array) {
+            for rel in members.iter().filter_map(Value::as_str) {
+                excluded.push(join_normalized(group_dir, rel));
+                excluded.push(join_normalized(project_dir, rel));
+            }
+        }
+    }
+    excluded
 }
 
 /// Compilable source extensions a synchronized folder contributes to a target —
@@ -437,14 +484,14 @@ pub fn target_source_files_from_value(
 const SYNCHRONIZED_SOURCE_EXTS: &[&str] = &["swift", "c", "m", "mm", "cc", "cpp", "cxx", "C"];
 
 /// Append every compilable source under `dir` (recursively) to `out`, sorted for
-/// determinism and skipping files already present. A missing directory yields
-/// nothing.
-fn collect_synchronized_sources(dir: &Path, out: &mut Vec<PathBuf>) {
+/// determinism, skipping files already present or excluded from the target. A
+/// missing directory yields nothing.
+fn collect_synchronized_sources(dir: &Path, excluded: &[PathBuf], out: &mut Vec<PathBuf>) {
     let mut found = Vec::new();
     walk_source_tree(dir, &mut found);
     found.sort();
     for p in found {
-        if !out.contains(&p) {
+        if !excluded.contains(&p) && !out.contains(&p) {
             out.push(p);
         }
     }

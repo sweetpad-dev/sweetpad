@@ -195,3 +195,46 @@ fn synchronized_folder_sources_are_walked() {
         "expected the synchronized folder's compilable sources (recursively), no header/markdown"
     );
 }
+
+/// A file unchecked from a target's membership appears in the synchronized
+/// folder's `PBXFileSystemSynchronizedBuildFileExceptionSet.membershipExceptions`
+/// and must be dropped from that target's sources.
+#[test]
+fn synchronized_folder_membership_exception_is_excluded() {
+    let root = std::env::temp_dir().join(format!("sweetpad-sync-exc-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let xcodeproj = root.join("App.xcodeproj");
+    let sources = root.join("App/Sources");
+    fs::create_dir_all(&xcodeproj).unwrap();
+    fs::create_dir_all(&sources).unwrap();
+    fs::write(sources.join("Included.swift"), "let a = 1\n").unwrap();
+    fs::write(sources.join("Excluded.swift"), "let b = 2\n").unwrap();
+
+    // The exception set targets `App` and excludes `Excluded.swift` (group-relative).
+    let pbxproj = "\
+// !$*UTF8*$!
+{
+\tarchiveVersion = 1;
+\tobjects = {
+\t\tPROJ = { isa = PBXProject; mainGroup = MAIN; targets = (APP); };
+\t\tMAIN = { isa = PBXGroup; sourceTree = \"<group>\"; children = (APPGRP); };
+\t\tAPPGRP = { isa = PBXGroup; path = App; sourceTree = \"<group>\"; children = (SYNC); };
+\t\tSYNC = { isa = PBXFileSystemSynchronizedRootGroup; path = Sources; sourceTree = \"<group>\"; exceptions = (EXC); };
+\t\tEXC = { isa = PBXFileSystemSynchronizedBuildFileExceptionSet; target = APP; membershipExceptions = (\"Excluded.swift\"); };
+\t\tAPP = { isa = PBXNativeTarget; name = App; buildPhases = (); fileSystemSynchronizedGroups = (SYNC); };
+\t};
+\trootObject = PROJ;
+}
+";
+    fs::write(xcodeproj.join("project.pbxproj"), pbxproj).unwrap();
+
+    let files = target_source_files(&xcodeproj, "App").unwrap();
+    let mut names: Vec<&str> = files
+        .iter()
+        .filter_map(|p| p.file_name().and_then(OsStr::to_str))
+        .collect();
+    names.sort_unstable();
+    let _ = fs::remove_dir_all(&root);
+
+    assert_eq!(names, vec!["Included.swift"], "Excluded.swift should be dropped by the membership exception");
+}
