@@ -1,0 +1,188 @@
+# sweetpad-lib → BSP server roadmap
+
+Where the compiler-argument work is heading: a **Build Server Protocol (BSP)**
+server for Xcode projects, so `sourcekit-lsp` can drive editor intelligence
+(completion, diagnostics, jump-to-definition) in VS Code / Neovim / etc. without
+Xcode's editor.
+
+## The chain it plugs into
+
+```
+editor ──LSP──► sourcekit-lsp ──BSP──► our build server ──► compiler args ──► SourceKit
+```
+
+- **LSP** (Language Server Protocol): editor ↔ `sourcekit-lsp`.
+- **BSP** (Build Server Protocol): `sourcekit-lsp` (client) ↔ our build server.
+  The server answers: *what targets exist*, *what files per target*, and — the
+  core question — **the compiler arguments for this file**.
+- **SourceKit**: the engine `sourcekit-lsp` feeds those args to so it can parse +
+  type-check the file the same way the compiler would.
+
+## Approach: derive, don't observe
+
+The established tool, [`xcode-build-server`](https://github.com/SolaWing/xcode-build-server),
+**observes**: it parses an `xcodebuild` build log to recover the real compile
+commands. Accurate, but requires a prior build, goes stale on edits, is slow, and
+broke when Xcode 26 stopped persisting the activity log.
+
+We **derive**: compute the compiler args directly from the project + resolved
+build settings (what Xcode does internally before it runs anything). No build
+required, always fresh, fast, machine-independent — but we must reproduce Xcode's
+settings resolution + flag generation exactly. That engine is **built and proven
+against real builds** (see `PLAN_COMPILER_ARGS.md`): swift/clang/link arg vectors,
+validated across product types, Xcode 15.4/16.4/26.5, and macOS/iOS/tvOS/watchOS/
+visionOS, at 90–100 % precision on the semantic flags.
+
+## What BSP needs that the build-oracle de-prioritized
+
+The compiler-args oracle scored *semantic flags* and **excluded geometry**
+(search paths, file maps) as machine-specific noise. For BSP the priorities
+invert — the editor never links, so:
+
+- **Search paths are load-bearing.** `-I` / `-F` / `-isystem` / module paths are
+  how SourceKit finds imported modules; get them wrong and you get "no such
+  module" + dead completion. The clang generator currently under-emits these
+  (missing `-I`/`-F`/`-iframework`); completing them is the #1 BSP engine task.
+- **Per-file, not per-target.** The editor asks file-by-file; a `.mm` needs the
+  C++ dialect/flags, a `.m` must not.
+- **Link / autolink is irrelevant** to the editor (no linking happens). The one
+  "structural gap" from the compiler-args work (autolinked `-framework`s) does
+  **not** matter for BSP.
+
+## The cross-module "outputs must exist" problem
+
+Intra-module completion is live (SourceKit type-checks all of a target's source
+together — no build needed). **Cross-module** (`import MyOwnLib`) needs MyOwnLib's
+compiled `.swiftmodule` to exist on disk. System frameworks resolve on-demand
+from SDK headers (no build); **your own modules must have been built.** Xcode
+hides this by building dependency modules automatically (full build + background
+"prepare for indexing"). Our server must arrange the same.
+
+`sourcekit-lsp` background indexing (default in **Swift 6.1**) handles this via
+BSP, but **delegates the compiling back to the build server** — it calls
+`buildTarget/prepare` and *we* must produce the modules (it does **not** compile
+them itself for an external server; only its built-in SwiftPM path does that).
+
+---
+
+## Roadmap
+
+### v1 — Working autocomplete (relies on a prior build)
+
+**Engine prerequisites**
+- Complete search-path / module-input emission from settings (explicit +
+  implicit), and compute the DerivedData / build-products location.
+- Per-file argument API (file → its invocation; Swift = whole-module + file
+  list, clang = the file's language + `-x`).
+- Module/index decisions: emit implicit-module args (let SourceKit manage its own
+  module cache — likely *strip* `-explicit-module-build`/session-file flags), and
+  emit `-index-store-path` for cross-file navigation.
+
+**Validation pivot**
+- A SourceKit / type-check oracle: feed generated per-file args to
+  `swiftc -typecheck` / `clang -fsyntax-only` and assert **zero "no such module" /
+  "file not found"**. This tests the search-path surface the build-oracle ignored.
+
+**Server**
+- BSP core: `build/initialize`, `workspace/buildTargets`, `buildTarget/sources`,
+  `buildTarget/inverseSources`, `textDocument/sourceKitOptions` (calls our
+  engine), `buildTarget/didChange`; generate `buildServer.json`; file-watching →
+  re-derive on change (our advantage over `xcode-build-server`).
+
+**Cross-module strategy:** rely on a prior `xcodebuild` build (point search paths
+at DerivedData), same as `xcode-build-server`. Cross-module is broken until the
+user builds once — acceptable for v1.
+
+### v2 — Seamless background indexing (no manual build), `xcodebuild`-driven prepare
+
+- Implement `buildTarget/prepare` + `workspace/waitForBuildSystemUpdates`.
+- Need the **transitive target dependency graph** (derive from the project).
+- `prepare` = invoke `xcodebuild` to build the dependency modules on demand, when
+  `sourcekit-lsp` asks. **This is where we surpass `xcode-build-server`** (it does
+  not implement prepare — it just tells users to build).
+- Caveats: external-BSP Swift integration has had rough edges (e.g. sourcekit-lsp
+  #2328, stdlib loading); Xcode has **no** fast declarations-only prepare mode
+  (SwiftPM has `--experimental-prepare-for-indexing`), so prepare = a real
+  (incremental) `xcodebuild` build — heavier than the SwiftPM path.
+
+### v3 — Self-built prepare (custom executor) for the fast path
+
+Build the dependency `.swiftmodule`s **ourselves** via direct `swiftc`/`clang`,
+no `xcodebuild` — the "custom build planner" differentiator.
+
+- **Scope that makes it tractable:** prepare only needs *declarations-only*
+  modules, single-arch, **no link / no sign / no resources**, and is
+  **error-tolerant** (dependency failures shouldn't stop downstream — easier to do
+  ourselves than with xcodebuild, which stops).
+- **Hybrid, decided per target from the project graph:**
+  - *Simple* (pure Swift, no codegen phases, no framework header layout, no SPM)
+    → build ourselves: topo-sort, `swiftc -emit-module` with our flags into the
+    right path.
+  - *Complex* (asset catalogs → `actool`, Core Data → `momc`, string catalogs,
+    custom build rules, framework module/header layout, SPM-in-Xcode) → fall back
+    to `xcodebuild` for that target.
+- **What this forces us to own (the parts the arg engine deliberately skips):**
+  output-layout geometry (`.swiftmodule` must land where dependents' `-I`/`-F`
+  point; `-output-file-map`, VFS overlays, header maps) and, at the fallback
+  boundary, running the code-generation tools.
+- **Existence proofs:** SwiftPM (a swiftc-driver build system; sourcekit-lsp's own
+  prepare uses it) and Bazel `rules_swift`/`rules_apple` (build Apple apps with no
+  xcodebuild, incl. their own `actool` etc.). Both also show the *scale* — this is
+  a major project, **not before v1 + v2**.
+
+---
+
+## Decisions (locked) + things to expand later
+
+- **Approach:** walking skeleton first — stand up a minimal BSP server early to
+  kill the integration risk, then iterate arg quality against an automated loop.
+- **Server:** a `bsp` subcommand on the `sweetpad-lib` Rust binary (`sweetpad-lib
+  bsp`), calling the engine directly. Started as the walking skeleton.
+- **Toolchain:** Xcode **26.5 only** to start. ⚠️ *Expand later* to 15.4 / 16.4
+  (key the harness by version like the compiler-args oracle).
+- **Cross-module fixture:** a committed synthetic multi-module Xcode project (app
+  + two framework targets + a real cross-module `import`), same approach as
+  `_synthetic-staticlib` / `_synthetic-rich`.
+- **"Modules must exist" handling:** the harness does a hermetic `xcodebuild
+  -derivedDataPath <tmp>` build once per fixture; the engine computes search paths
+  into that same path.
+- **`sourceKitOptions` granularity:** **per-target first** (map file → target →
+  the target's args). ⚠️ *Expand later* to true per-file args (per-file `-x`
+  dialect + language-specific flags).
+- **Harness language:** Rust (Layer 0/1 as integration tests like
+  `compiler_args_oracle.rs`; Layer 2 a small scripted LSP client).
+
+## Automated measurement layers (the loop)
+
+The whole stack is headless/scriptable, so the BSP analog of the xcodebuild
+oracle is an automated, self-labeling loop (no human in the iteration):
+
+- **Layer 0 — type-check oracle** (no server, no LSP): run `swiftc -typecheck` /
+  `clang -fsyntax-only` with our generated args; metric = count of
+  module-resolution errors (`no such module`, `cannot find …`) → drive to 0.
+  Differential: compare our args vs the real captured args (build = ground truth).
+- **Layer 1 — BSP conformance** (server alone, scripted JSON-RPC): every file maps
+  to a target, every target returns args, `sources` ↔ `inverseSources` round-trip.
+- **Layer 2 — end-to-end** (headless `sourcekit-lsp`, scripted LSP client):
+  assert zero spurious diagnostics, expected completions, cross-module definition
+  resolves.
+
+Expectations are auto-derived (self-evident "zero false errors"; differential vs
+the captured build args; source-derived "every `import` must resolve"), so an
+agent can push the metric without human labeling.
+
+## Required BSP methods (reference)
+
+Standard: `build/initialize`, `workspace/buildTargets`, `buildTarget/sources`,
+`buildTarget/inverseSources`, `buildTarget/didChange`. SourceKit-LSP core:
+`textDocument/sourceKitOptions`. Background-indexing extensions:
+`buildTarget/prepare`, `workspace/waitForBuildSystemUpdates`.
+
+## References
+
+- sourcekit-lsp — Background Indexing: https://github.com/swiftlang/sourcekit-lsp/blob/main/Contributor%20Documentation/Background%20Indexing.md
+- Swift Forums — Extending BSP with SourceKit-LSP (the prepare/indexing extensions, non-SwiftPM servers): https://forums.swift.org/t/extending-functionality-of-build-server-protocol-with-sourcekit-lsp/74400
+- sourcekit-lsp — Enable Background Indexing: https://github.com/swiftlang/sourcekit-lsp/blob/main/Documentation/Enable%20Experimental%20Background%20Indexing.md
+- xcode-build-server (the "observe build logs" approach we contrast with): https://github.com/SolaWing/xcode-build-server
+- Bazel rules_swift / rules_apple (build Apple targets without xcodebuild): https://github.com/bazelbuild/rules_swift , https://github.com/bazelbuild/rules_apple
+- sourcekit-lsp #2328 (external-BSP stdlib loading rough edge): https://github.com/swiftlang/sourcekit-lsp/issues/2328
