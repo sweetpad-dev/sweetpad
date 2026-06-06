@@ -278,7 +278,11 @@ remaining capture work.
     (`scripts/17_static_library.py` → `fixtures/_synthetic-staticlib/`) validates
     the `libtool -static` link — `-static`, `-arch_only`, `-D`, `-syslibroot`, the
     `-L` search paths — at 100 % structural recall. It's a separate generator from
-    the clang-driver link, selected by product type / `MACH_O_TYPE`.
+    the clang-driver link, selected by product type / `MACH_O_TYPE`. Its clang
+    source is ObjC++ (`.mm`), exercising the `objcpp` language gate.
+  - **More product types:** a generated tuist example (`fixtures/_tuist-src/`)
+    adds a command-line tool (`mh_execute`) and a standalone dynamic library
+    (`mh_dylib`) — both ≥ 96 % structural / 100 % precision.
   - **Version coverage:** the macOS oracles are captured and scored across
     **Xcode 15.4 / 16.4 / 26.5**, each guarded at its own per-version floor (15.4
     is Kingfisher-only — Alamofire's `.xcodeproj` is a newer format than Xcode
@@ -287,9 +291,12 @@ remaining capture work.
     are gated on the toolchain major (`-enforce-exclusivity=checked` for < 26, the
     libc++ `_LIBCPP_HARDENING_MODE` for ≥ 26), so every version scores swift
     99 % structural, clang ≥ 93 %, link ≥ 80 %.
-  - _Remaining (mechanical capture + iteration):_ the non-macOS destinations
-    (iOS/tvOS/watchOS/visionOS) need simulator runtimes (`xcodebuild
-    -downloadPlatform`); and more ObjC/C++ breadth (e.g. NetNewsWire).
+  - _Remaining:_ the link `-framework`s the sources autolink via `import` (encoded
+    in the objects, not the project graph). For breadth, the non-macOS destinations
+    (iOS/tvOS/watchOS/visionOS) still need simulator runtimes or device builds —
+    IceCubesApp is iOS-only, and the tuist iOS examples and the simulator matrix
+    live here. NetNewsWire needs a developer `SecretKey` file to build, so it is
+    not captured.
 - **Phase 6:** `#[napi] compiler_arguments` (`node.rs`) →
   `compiler_args::target_arguments` via `build_settings::resolve_compiler_arguments`;
   the generated `index.d.ts` exposes `compilerArguments(...)` returning per-target
