@@ -1,8 +1,11 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use sweetpad::project::{Target, open, target_source_files};
+use sweetpad::project::{
+    Target, open, target_dependencies, target_has_package_products, target_source_files,
+};
 
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")
@@ -237,4 +240,71 @@ fn synchronized_folder_membership_exception_is_excluded() {
     let _ = fs::remove_dir_all(&root);
 
     assert_eq!(names, vec!["Included.swift"], "Excluded.swift should be dropped by the membership exception");
+}
+
+/// True if the dependency graph (target → its same-project dependencies) has no
+/// cycle reachable from `start` — a DFS with a recursion stack.
+fn acyclic_from(start: &str, adj: &BTreeMap<String, Vec<String>>, stack: &mut BTreeSet<String>, done: &mut BTreeSet<String>) -> bool {
+    if done.contains(start) {
+        return true;
+    }
+    if !stack.insert(start.to_string()) {
+        return false; // back-edge: cycle
+    }
+    for dep in adj.get(start).into_iter().flatten() {
+        if !acyclic_from(dep, adj, stack, done) {
+            return false;
+        }
+    }
+    stack.remove(start);
+    done.insert(start.to_string());
+    true
+}
+
+/// The BSP graph queries must hold across every real project in the corpus
+/// (no source trees needed — this is pbxproj-level): every target resolves its
+/// dependency, package, and source queries without error; each derived
+/// dependency names a real same-project target; and the graph is acyclic. This
+/// exercises the synchronized-group + dependency derivation against IceCubes /
+/// NetNewsWire / Tuist structures the synthetic fixtures don't cover.
+#[test]
+fn corpus_dependency_graphs_are_sound() {
+    let projects = xcodeproj_dirs(&fixtures_root());
+    let mut checked = 0;
+    for path in &projects {
+        let Ok(project) = open(path) else {
+            continue; // open() failures are covered by opens_every_xcodeproj_in_corpus
+        };
+        let names: BTreeSet<&str> = project.targets.iter().map(|t| t.name.as_str()).collect();
+        let mut adj: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for t in &project.targets {
+            // None of the per-target queries may error for a project that opened.
+            let deps = target_dependencies(path, &t.name)
+                .unwrap_or_else(|e| panic!("{}: target_dependencies({}) failed: {e}", path.display(), t.name));
+            target_source_files(path, &t.name)
+                .unwrap_or_else(|e| panic!("{}: target_source_files({}) failed: {e}", path.display(), t.name));
+            target_has_package_products(path, &t.name)
+                .unwrap_or_else(|e| panic!("{}: target_has_package_products({}) failed: {e}", path.display(), t.name));
+            for d in &deps {
+                assert!(
+                    names.contains(d.as_str()),
+                    "{}: target '{}' depends on '{d}', not a target of this project {names:?}",
+                    path.display(),
+                    t.name,
+                );
+            }
+            adj.insert(t.name.clone(), deps);
+        }
+        let (mut stack, mut done) = (BTreeSet::new(), BTreeSet::new());
+        for t in &project.targets {
+            assert!(
+                acyclic_from(&t.name, &adj, &mut stack, &mut done),
+                "{}: dependency cycle reachable from '{}'",
+                path.display(),
+                t.name,
+            );
+        }
+        checked += 1;
+    }
+    assert!(checked > 5, "expected to check several corpus projects, only {checked}");
 }
