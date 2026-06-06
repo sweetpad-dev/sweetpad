@@ -1,0 +1,201 @@
+//! Layer 2 of the BSP measurement loop (see `PLAN_BSP.md`): end-to-end through a
+//! real, headless `sourcekit-lsp`. This is the closest thing to "does the editor
+//! actually work" — it exercises the whole stack: `sourcekit-lsp` discovers our
+//! `buildServer.json`, launches `sweetpad-lib bsp`, asks it for a file's
+//! `sourceKitOptions`, and analyzes the file with those args.
+//!
+//! The assertion: opening `ModuleB/b.swift` (which `import ModuleA`) produces **no
+//! module-resolution diagnostics** — i.e. our BSP server fed `sourcekit-lsp`
+//! arguments that resolve the cross-module import.
+//!
+//! Opt-in (`BSP_ORACLE=1`): it copies the fixture to a temp dir, builds it with
+//! `xcodebuild`, and runs `sourcekit-lsp` from Xcode 26.5. ⚠️ Pinned to 26.5.
+
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+
+use serde_json::{Value, json};
+
+const XCODE: &str = "/Applications/Xcode-26.5.0.app";
+
+fn developer_dir() -> String {
+    format!("{XCODE}/Contents/Developer")
+}
+
+fn bin_dir(tool: &str) -> String {
+    format!("{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{tool}", developer_dir())
+}
+
+fn lsp_frame(msg: &Value) -> Vec<u8> {
+    let body = msg.to_string();
+    format!("Content-Length: {}\r\n\r\n{body}", body.len()).into_bytes()
+}
+
+/// Copy the committed fixture into `dst` (so the build artifacts + buildServer.json
+/// don't touch the tracked tree).
+fn copy_fixture(dst: &Path) {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/_synthetic-multimodule/project");
+    let status = Command::new("cp").arg("-R").arg(&src).arg(dst).status().expect("cp fixture");
+    assert!(status.success(), "failed to copy fixture");
+}
+
+/// Read one `Content-Length`-framed LSP message; `None` on EOF.
+fn read_lsp(reader: &mut impl BufRead) -> Option<Value> {
+    let mut len = 0usize;
+    loop {
+        let mut line = String::new();
+        if reader.read_line(&mut line).ok()? == 0 {
+            return None;
+        }
+        let line = line.trim_end_matches(['\r', '\n']);
+        if line.is_empty() {
+            break;
+        }
+        if let Some(v) = line.strip_prefix("Content-Length:") {
+            len = v.trim().parse().ok()?;
+        }
+    }
+    let mut buf = vec![0u8; len];
+    reader.read_exact(&mut buf).ok()?;
+    serde_json::from_str(&String::from_utf8_lossy(&buf)).ok()
+}
+
+#[test]
+#[allow(clippy::too_many_lines)] // a linear end-to-end harness reads clearer in one piece
+fn bsp_lsp_e2e() {
+    if std::env::var("BSP_ORACLE").is_err() {
+        eprintln!("skipping: set BSP_ORACLE=1 to run the sourcekit-lsp end-to-end oracle");
+        return;
+    }
+    let sourcekit_lsp = bin_dir("sourcekit-lsp");
+    if !Path::new(&sourcekit_lsp).exists() {
+        eprintln!("skipping: {sourcekit_lsp} not found");
+        return;
+    }
+
+    // Isolate everything in a temp copy of the fixture.
+    let root = std::env::temp_dir().join(format!("sweetpad-lsp-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    copy_fixture(&root);
+    let project_dir = root.join("project");
+    let xcodeproj = project_dir.join("MultiModule.xcodeproj");
+    let dd = root.join("dd");
+
+    // Build so ModuleA.swiftmodule exists where the args point.
+    let build = Command::new("xcodebuild")
+        .env("DEVELOPER_DIR", developer_dir())
+        .args(["build", "-project"])
+        .arg(&xcodeproj)
+        .args(["-scheme", "ModuleB", "-configuration", "Debug", "-destination", "platform=macOS", "-derivedDataPath"])
+        .arg(&dd)
+        .arg("CODE_SIGNING_ALLOWED=NO")
+        .output()
+        .expect("xcodebuild");
+    assert!(build.status.success(), "fixture build failed:\n{}", String::from_utf8_lossy(&build.stderr));
+
+    // Point sourcekit-lsp at our server via buildServer.json in the workspace root.
+    let bsp_bin = env!("CARGO_BIN_EXE_sweetpad-lib");
+    let build_server = json!({
+        "name": "sweetpad-lib",
+        "version": "0.1.0",
+        "bspVersion": "2.2.0",
+        "languages": ["swift", "objective-c", "objective-cpp", "c", "cpp"],
+        "argv": [
+            bsp_bin, "bsp",
+            "--project", xcodeproj.to_string_lossy(),
+            "--xcode", XCODE,
+            "--derived-data-path", dd.to_string_lossy(),
+        ],
+    });
+    std::fs::write(project_dir.join("buildServer.json"), build_server.to_string()).unwrap();
+
+    // Launch sourcekit-lsp.
+    let mut lsp = Command::new(&sourcekit_lsp)
+        .env("DEVELOPER_DIR", developer_dir())
+        .current_dir(&project_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn sourcekit-lsp");
+
+    let mut stdin = lsp.stdin.take().unwrap();
+    let stdout = lsp.stdout.take().unwrap();
+    // Reader thread → channel of messages (diagnostics arrive asynchronously).
+    let (tx, rx) = mpsc::channel::<Value>();
+    let reader = std::thread::spawn(move || {
+        let mut r = BufReader::new(stdout);
+        while let Some(msg) = read_lsp(&mut r) {
+            if tx.send(msg).is_err() {
+                break;
+            }
+        }
+    });
+
+    let root_uri = format!("file://{}", project_dir.to_string_lossy());
+    let b_path = project_dir.join("ModuleB/b.swift");
+    let b_uri = format!("file://{}", b_path.to_string_lossy());
+    let b_text = std::fs::read_to_string(&b_path).unwrap();
+
+    let send = |stdin: &mut std::process::ChildStdin, msg: &Value| {
+        let _ = stdin.write_all(&lsp_frame(msg));
+        let _ = stdin.flush();
+    };
+
+    send(&mut stdin, &json!({
+        "jsonrpc":"2.0","id":1,"method":"initialize",
+        "params":{"processId":std::process::id(),"rootUri":root_uri,"capabilities":{},"initializationOptions":{}}
+    }));
+    send(&mut stdin, &json!({"jsonrpc":"2.0","method":"initialized","params":{}}));
+    send(&mut stdin, &json!({
+        "jsonrpc":"2.0","method":"textDocument/didOpen",
+        "params":{"textDocument":{"uri":b_uri,"languageId":"swift","version":1,"text":b_text}}
+    }));
+
+    // Collect diagnostics for b.swift within a window.
+    let deadline = Instant::now() + Duration::from_secs(40);
+    let mut diags_for_b: Option<Vec<Value>> = None;
+    while Instant::now() < deadline {
+        match rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(msg) => {
+                if msg.get("method").and_then(Value::as_str) == Some("textDocument/publishDiagnostics") {
+                    let uri = msg.pointer("/params/uri").and_then(Value::as_str).unwrap_or("");
+                    if uri.ends_with("/ModuleB/b.swift") {
+                        let d = msg.pointer("/params/diagnostics").and_then(Value::as_array).cloned().unwrap_or_default();
+                        diags_for_b = Some(d);
+                        break;
+                    }
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+
+    // Shut down.
+    send(&mut stdin, &json!({"jsonrpc":"2.0","id":99,"method":"shutdown"}));
+    send(&mut stdin, &json!({"jsonrpc":"2.0","method":"exit"}));
+    drop(stdin);
+    let _ = lsp.wait();
+    let _ = reader.join();
+    let _ = std::fs::remove_dir_all(&root);
+
+    let diags = diags_for_b.expect("no diagnostics published for b.swift within the window");
+    let module_errors: Vec<&str> = diags
+        .iter()
+        .filter_map(|d| d.get("message").and_then(Value::as_str))
+        .filter(|m| {
+            let m = m.to_lowercase();
+            m.contains("no such module") || m.contains("cannot find") || m.contains("could not build module")
+        })
+        .collect();
+    eprintln!("b.swift diagnostics: {} total, {} module-resolution", diags.len(), module_errors.len());
+    assert!(
+        module_errors.is_empty(),
+        "sourcekit-lsp couldn't resolve the cross-module import via our BSP server: {module_errors:?}"
+    );
+}

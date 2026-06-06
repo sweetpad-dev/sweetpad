@@ -152,24 +152,29 @@ no `xcodebuild` — the "custom build planner" differentiator.
 - **Harness language:** Rust (Layer 0/1 as integration tests like
   `compiler_args_oracle.rs`; Layer 2 a small scripted LSP client).
 
-## Automated measurement layers (the loop)
+## Automated measurement layers (the loop) — all green
 
 The whole stack is headless/scriptable, so the BSP analog of the xcodebuild
-oracle is an automated, self-labeling loop (no human in the iteration):
+oracle is an automated, self-labeling loop (no human in the iteration). All three
+layers are built and passing against the multi-module fixture:
 
-- **Layer 0 — type-check oracle** (no server, no LSP): run `swiftc -typecheck` /
-  `clang -fsyntax-only` with our generated args; metric = count of
-  module-resolution errors (`no such module`, `cannot find …`) → drive to 0.
-  Differential: compare our args vs the real captured args (build = ground truth).
-- **Layer 1 — BSP conformance** (server alone, scripted JSON-RPC): every file maps
-  to a target, every target returns args, `sources` ↔ `inverseSources` round-trip.
-- **Layer 2 — end-to-end** (headless `sourcekit-lsp`, scripted LSP client):
-  assert zero spurious diagnostics, expected completions, cross-module definition
-  resolves.
+- **Layer 0 — type-check oracle** (`tests/bsp_typecheck_oracle.rs`, no server/LSP):
+  builds the fixture, runs `swiftc -typecheck` with our generated args; metric =
+  module-resolution errors → **0**, including `ModuleB`'s cross-module
+  `import ModuleA`. Opt-in `BSP_ORACLE=1` (builds + needs Xcode 26.5).
+- **Layer 1 — BSP conformance** (`tests/bsp_conformance.rs`, server alone): drives
+  `sweetpad-lib bsp` with scripted JSON-RPC; asserts targets listed, sources
+  returned, `sources` ↔ `inverseSources` round-trip, `sourceKitOptions` yields
+  editor args (`-I` in, `-explicit-module-build` out). Fast, hermetic, ungated.
+- **Layer 2 — end-to-end** (`tests/bsp_lsp_e2e.rs`, real headless `sourcekit-lsp`):
+  writes `buildServer.json` → our server → `sourcekit-lsp` opens `b.swift` →
+  **0 module-resolution diagnostics**. Opt-in `BSP_ORACLE=1`.
 
 Expectations are auto-derived (self-evident "zero false errors"; differential vs
 the captured build args; source-derived "every `import` must resolve"), so an
-agent can push the metric without human labeling.
+agent can push the metric without human labeling. Next: a positive cross-module
+check (completion/definition), the differential-vs-captured-args variant, and the
+search-path / per-file engine work the loop now measures.
 
 ## Required BSP methods (reference)
 
