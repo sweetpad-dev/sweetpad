@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs;
@@ -624,6 +624,81 @@ pub fn target_has_package_products(
         .get("packageProductDependencies")
         .and_then(Value::as_array)
         .is_some_and(|deps| !deps.is_empty()))
+}
+
+/// `target`'s transitive dependencies in build order — a dependency precedes
+/// every target that depends on it (post-order DFS), excluding `target` itself.
+/// Each target is visited once, so cycles can't loop. This is the order a custom
+/// prepare executor must emit modules in.
+pub fn transitive_dependencies(
+    xcodeproj_path: &Path,
+    target_name: &str,
+) -> Result<Vec<String>, Error> {
+    let value = parse_pbxproj(xcodeproj_path)?;
+    let (objects, project_obj) = project_root(&value)?;
+    let mut order = Vec::new();
+    let mut visited = BTreeSet::new();
+    visit_dependencies(objects, project_obj, target_name, &mut visited, &mut order);
+    order.retain(|t| t != target_name);
+    Ok(order)
+}
+
+fn visit_dependencies(
+    objects: &BTreeMap<String, Value>,
+    project_obj: &Value,
+    target_name: &str,
+    visited: &mut BTreeSet<String>,
+    order: &mut Vec<String>,
+) {
+    if !visited.insert(target_name.to_string()) {
+        return;
+    }
+    if let Ok(Some(target)) = find_target(objects, project_obj, target_name) {
+        for dep in target_dependency_names(objects, target) {
+            visit_dependencies(objects, project_obj, &dep, visited, order);
+        }
+    }
+    order.push(target_name.to_string());
+}
+
+/// Whether `target`'s module can be emitted directly with `swiftc` (the v3 fast
+/// path), versus needing a full `xcodebuild`. Conservative — true only for a
+/// pure-Swift target with no code-generation machinery: no Swift-package
+/// products, no C-family sources (which form a clang module with header maps),
+/// and no shell-script phases or build rules (which can synthesize sources).
+/// A target that slips through but still can't be emitted is caught at build
+/// time (the executor falls back to `xcodebuild`).
+pub fn is_self_buildable(xcodeproj_path: &Path, target_name: &str) -> Result<bool, Error> {
+    if target_has_package_products(xcodeproj_path, target_name)? {
+        return Ok(false);
+    }
+    let value = parse_pbxproj(xcodeproj_path)?;
+    let (objects, project_obj) = project_root(&value)?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::BadProject(format!("no target named '{target_name}' in the project")))?;
+    if target_has_script_or_rule_phase(objects, target) {
+        return Ok(false);
+    }
+    let sources = target_source_files_from_value(&value, xcodeproj_path, target_name)?;
+    let is_swift = |p: &Path| p.extension().and_then(OsStr::to_str) == Some("swift");
+    Ok(sources.iter().any(|p| is_swift(p)) && sources.iter().all(|p| is_swift(p)))
+}
+
+/// Whether a target has a `PBXShellScriptBuildPhase` or any build rule — either
+/// can generate sources, so the module isn't a pure `swiftc` emit.
+fn target_has_script_or_rule_phase(objects: &BTreeMap<String, Value>, target_obj: &Value) -> bool {
+    if target_obj.get("buildRules").and_then(Value::as_array).is_some_and(|r| !r.is_empty()) {
+        return true;
+    }
+    let Some(phases) = target_obj.get("buildPhases").and_then(Value::as_array) else {
+        return false;
+    };
+    phases.iter().any(|pid| {
+        pid.as_str()
+            .and_then(|id| objects.get(id))
+            .and_then(|p| p.get("isa").and_then(Value::as_str))
+            == Some("PBXShellScriptBuildPhase")
+    })
 }
 
 /// The absolute directory containing the `.xcodeproj` — the anchor for

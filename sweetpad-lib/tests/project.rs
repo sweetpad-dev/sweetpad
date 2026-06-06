@@ -4,7 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use sweetpad::project::{
-    Target, open, target_dependencies, target_has_package_products, target_source_files,
+    Target, is_self_buildable, open, target_dependencies, target_has_package_products,
+    target_source_files, transitive_dependencies,
 };
 
 fn fixtures_root() -> PathBuf {
@@ -307,4 +308,31 @@ fn corpus_dependency_graphs_are_sound() {
         checked += 1;
     }
     assert!(checked > 5, "expected to check several corpus projects, only {checked}");
+}
+
+/// The v3 prepare gate: a pure-Swift target + its deps are self-buildable (so
+/// modules can be emitted with `swiftc` directly), and the dependency closure is
+/// reported deps-first.
+#[test]
+fn multimodule_closure_is_self_buildable() {
+    let mm = fixtures_root().join("_synthetic-multimodule/project/MultiModule.xcodeproj");
+    assert_eq!(
+        transitive_dependencies(&mm, "ModuleB").unwrap(),
+        vec!["ModuleA".to_string()],
+        "ModuleB depends on ModuleA"
+    );
+    assert!(transitive_dependencies(&mm, "ModuleA").unwrap().is_empty(), "ModuleA has no deps");
+    assert!(is_self_buildable(&mm, "ModuleA").unwrap());
+    assert!(is_self_buildable(&mm, "ModuleB").unwrap());
+}
+
+/// A target linking a Swift-package product can't be emitted by `swiftc` alone —
+/// it must fall back to a real build.
+#[test]
+fn spm_target_is_not_self_buildable() {
+    let spm = fixtures_root().join("_synthetic-spm/project/SpmApp.xcodeproj");
+    assert!(
+        !is_self_buildable(&spm, "SpmApp").unwrap(),
+        "SpmApp links a package product, so it is not a pure-swiftc emit"
+    );
 }

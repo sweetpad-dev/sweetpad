@@ -37,12 +37,15 @@ fn prepare_builds_dependency_module_from_clean_deriveddata() {
     let dd = std::env::temp_dir().join(format!("sweetpad-bsp-prep-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dd);
     let dep_module = dd.join("Build/Products/Debug/ModuleA.swiftmodule");
+    let log = std::env::temp_dir().join(format!("sweetpad-bsp-prep-log-{}", std::process::id()));
+    let _ = std::fs::remove_file(&log);
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
         .args(["bsp", "--project", &project, "--xcode"])
         .arg(format!("{XCODE}/Contents/Developer"))
         .arg("--derived-data-path")
         .arg(&dd)
+        .env("SWEETPAD_BSP_LOG", &log)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -86,12 +89,23 @@ fn prepare_builds_dependency_module_from_clean_deriveddata() {
     let _ = reader.join();
 
     let module_exists = dep_module.exists();
+    let log_text = std::fs::read_to_string(&log).unwrap_or_default();
     let _ = std::fs::remove_dir_all(&dd);
+    let _ = std::fs::remove_file(&log);
 
     assert!(replied, "server never answered buildTarget/prepare");
     assert!(
         module_exists,
         "prepare did not produce the dependency module at {}",
         dep_module.display()
+    );
+    // v3 fast path: the pure-Swift closure is emitted by swiftc, not xcodebuild.
+    assert!(
+        log_text.contains("emitted module ModuleA"),
+        "expected the swiftc self-build fast path; log:\n{log_text}"
+    );
+    assert!(
+        !log_text.contains("building scheme"),
+        "should not have fallen back to xcodebuild for a pure-Swift closure; log:\n{log_text}"
     );
 }

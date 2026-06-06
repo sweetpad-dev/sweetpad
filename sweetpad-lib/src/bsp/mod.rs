@@ -355,12 +355,93 @@ impl Server {
         let _ = self.send(&resp);
     }
 
+    /// Prepare `target` so its sources become semantically analyzable: build the
+    /// modules it imports. The fast path emits each dependency's module with
+    /// `swiftc` directly (no `xcodebuild` process, no link, single arch) when the
+    /// whole closure — the target and its transitive deps — is pure Swift;
+    /// anything else (packages, C-family, code-gen) falls back to a real
+    /// `xcodebuild`, as does a self-build that unexpectedly fails.
+    fn prepare_target(&self, target: &str) {
+        let deps = project::transitive_dependencies(&self.project_path, target).unwrap_or_default();
+        let closure_simple = std::iter::once(target)
+            .chain(deps.iter().map(String::as_str))
+            .all(|t| project::is_self_buildable(&self.project_path, t).unwrap_or(false));
+        if closure_simple {
+            // The target itself is type-checked live by sourcekit-lsp; we only
+            // need its dependency modules on disk.
+            if deps.iter().all(|dep| self.self_build_module(dep)) {
+                self.log(&format!(
+                    "prepare: {target} self-built {} dependency module(s)",
+                    deps.len()
+                ));
+                return;
+            }
+            self.log(&format!("prepare: {target} self-build failed; falling back to xcodebuild"));
+        }
+        self.xcodebuild_prepare(target);
+    }
+
+    /// Emit one dependency's `.swiftmodule` with `swiftc` straight into the
+    /// products dir its dependents search, using the same editor arguments we
+    /// feed sourcekit-lsp (plus `-emit-module`). Returns whether it produced the
+    /// module. The module name and products dir are read back out of those args
+    /// so the output lands exactly where dependents' `-I` looks.
+    fn self_build_module(&self, target: &str) -> bool {
+        let swift_sources: Vec<PathBuf> = project::target_source_files(&self.project_path, target)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("swift"))
+            .collect();
+        let Some(first) = swift_sources.first() else {
+            return true; // nothing to emit
+        };
+        let Some(args) = self.compiler_arguments(target, first) else {
+            return false;
+        };
+        let Some(products) =
+            arg_values(&args, "-I").into_iter().find(|p| p.contains("/Build/Products/"))
+        else {
+            return false;
+        };
+        let module_name =
+            arg_values(&args, "-module-name").into_iter().next().unwrap_or_else(|| target.to_string());
+        let module_path = Path::new(&products).join(format!("{module_name}.swiftmodule"));
+        if std::fs::create_dir_all(&products).is_err() {
+            return false;
+        }
+        let swiftc = self.developer_dir().map_or_else(
+            || PathBuf::from("swiftc"),
+            |dev| dev.join("Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"),
+        );
+        let mut cmd = Command::new(&swiftc);
+        if let Some(dev) = self.developer_dir() {
+            cmd.env("DEVELOPER_DIR", dev);
+        }
+        cmd.arg("-emit-module").arg("-emit-module-path").arg(&module_path).args(&args);
+        match cmd.output() {
+            Ok(out) if out.status.success() => {
+                self.log(&format!("prepare: emitted module {module_name} -> {}", module_path.display()));
+                true
+            }
+            Ok(out) => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let tail: String = stderr.lines().rev().take(6).collect::<Vec<_>>().join(" | ");
+                self.log(&format!("prepare: emit {module_name} failed: {tail}"));
+                false
+            }
+            Err(e) => {
+                self.log(&format!("prepare: failed to launch swiftc for {module_name}: {e}"));
+                false
+            }
+        }
+    }
+
     /// Build `target` via `xcodebuild` so its dependency `.swiftmodule`s and
     /// generated inputs land in the DerivedData our search paths point at —
-    /// what makes cross-module / package `import`s resolve with no prior build.
+    /// the fallback for closures the `swiftc` fast path can't emit.
     /// xcodebuild builds by **scheme** (a bare `-target` build doesn't populate
     /// the products dir), so a scheme that builds the target is required.
-    fn prepare_target(&self, target: &str) {
+    fn xcodebuild_prepare(&self, target: &str) {
         let Some(scheme) = project::scheme_for_target(&self.project_path, target) else {
             self.log(&format!("prepare: no scheme builds target {target}; skipping"));
             return;
@@ -709,6 +790,17 @@ fn write_message(writer: &mut impl Write, body: &str) -> Result<(), String> {
 fn file_stamp(path: &Path) -> Option<(u64, SystemTime)> {
     let meta = std::fs::metadata(path).ok()?;
     Some((meta.len(), meta.modified().ok()?))
+}
+
+/// The value following each occurrence of `flag` in an argv (`-I <dir>` → the
+/// dirs). Lets the self-build executor read the products dir and module name
+/// back out of the editor arguments instead of recomputing them.
+fn arg_values(args: &[String], flag: &str) -> Vec<String> {
+    args.iter()
+        .zip(args.iter().skip(1))
+        .filter(|(a, _)| a.as_str() == flag)
+        .map(|(_, v)| v.clone())
+        .collect()
 }
 
 /// The `xcodebuild -destination 'generic/platform=…'` name for an SDK, used to
