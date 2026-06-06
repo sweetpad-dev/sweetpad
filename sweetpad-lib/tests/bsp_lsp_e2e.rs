@@ -34,6 +34,17 @@ fn lsp_frame(msg: &Value) -> Vec<u8> {
     format!("Content-Length: {}\r\n\r\n{body}", body.len()).into_bytes()
 }
 
+/// Pull the target uri from a `textDocument/definition` result
+/// (`Location` | `Location[]` | `LocationLink[]`).
+fn definition_uri(result: Option<&Value>) -> Option<String> {
+    let v = result?;
+    if v.is_null() {
+        return None;
+    }
+    let loc = if let Some(arr) = v.as_array() { arr.first()? } else { v };
+    loc.get("uri").or_else(|| loc.get("targetUri")).and_then(Value::as_str).map(String::from)
+}
+
 /// Copy the committed fixture into `dst` (so the build artifacts + buildServer.json
 /// don't touch the tracked tree).
 fn copy_fixture(dst: &Path) {
@@ -174,6 +185,28 @@ fn bsp_lsp_e2e() {
         }
     }
 
+    // Positive cross-module navigation: jump-to-definition on `Greeter` (line 3,
+    // `    Greeter().greet()`) should resolve into ModuleA's a.swift via the
+    // index store we advertised. Best-effort — sourcekit-lsp indexes
+    // asynchronously, so a miss within the window is logged, not failed; a hit
+    // must land in ModuleA.
+    send(&mut stdin, &json!({
+        "jsonrpc":"2.0","id":50,"method":"textDocument/definition",
+        "params":{"textDocument":{"uri":b_uri},"position":{"line":3,"character":4}}
+    }));
+    let mut def_uri: Option<String> = None;
+    let def_deadline = Instant::now() + Duration::from_secs(30);
+    while Instant::now() < def_deadline {
+        match rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(msg) if msg.get("id").and_then(Value::as_i64) == Some(50) => {
+                def_uri = definition_uri(msg.get("result"));
+                break;
+            }
+            Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+
     // Shut down.
     send(&mut stdin, &json!({"jsonrpc":"2.0","id":99,"method":"shutdown"}));
     send(&mut stdin, &json!({"jsonrpc":"2.0","method":"exit"}));
@@ -181,6 +214,14 @@ fn bsp_lsp_e2e() {
     let _ = lsp.wait();
     let _ = reader.join();
     let _ = std::fs::remove_dir_all(&root);
+
+    match &def_uri {
+        Some(u) => {
+            eprintln!("definition(Greeter) -> {u}");
+            assert!(u.contains("/ModuleA/") || u.ends_with("a.swift"), "definition resolved outside ModuleA: {u}");
+        }
+        None => eprintln!("definition(Greeter): no result within window (index async) — not failing"),
+    }
 
     let diags = diags_for_b.expect("no diagnostics published for b.swift within the window");
     let module_errors: Vec<&str> = diags

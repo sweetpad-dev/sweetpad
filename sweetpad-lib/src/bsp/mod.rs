@@ -74,7 +74,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         let id = req.get("id").cloned();
         let params = req.get("params");
         match method {
-            "build/initialize" => reply(&mut writer, id, Server::initialize())?,
+            "build/initialize" => reply(&mut writer, id, server.initialize())?,
             "build/initialized" => {}
             "workspace/buildTargets" => reply(&mut writer, id, server.build_targets())?,
             "buildTarget/sources" => reply(&mut writer, id, server.sources(params))?,
@@ -139,17 +139,40 @@ impl Server {
         self.project_path.parent().unwrap_or_else(|| Path::new("."))
     }
 
-    fn initialize() -> Value {
+    fn initialize(&self) -> Value {
+        // Advertise the per-file options extension, and — when we can locate the
+        // build's DerivedData — its index store, so sourcekit-lsp does project-wide
+        // navigation (definition / references) from the index-while-building data.
+        let mut data = json!({ "sourceKitOptionsProvider": true });
+        if let Some(dd) = self.derived_data_dir() {
+            data["indexStorePath"] = json!(dd.join("Index.noindex/DataStore").to_string_lossy());
+            data["indexDatabasePath"] = json!(dd.join("Index.noindex/IndexDatabase").to_string_lossy());
+        }
         json!({
             "displayName": "sweetpad-lib",
             "version": env!("CARGO_PKG_VERSION"),
             "bspVersion": "2.2.0",
             "capabilities": { "languageIds": LANGUAGE_IDS },
             "dataKind": "sourceKit",
-            // Tell sourcekit-lsp we serve the per-file options extension. Index
-            // store + prepare come later (PLAN_BSP.md v2).
-            "data": { "sourceKitOptionsProvider": true },
+            "data": data,
         })
+    }
+
+    /// The build's DerivedData directory: the `--derived-data-path` override, else
+    /// Xcode's default `~/Library/Developer/Xcode/DerivedData/<name>-<hash>`.
+    fn derived_data_dir(&self) -> Option<PathBuf> {
+        if let Some(dd) = &self.derived_data_path {
+            return Some(dd.clone());
+        }
+        let abs = std::fs::canonicalize(&self.project_path).ok()?;
+        let name = abs.file_stem()?.to_string_lossy().into_owned();
+        let hash = crate::xcode_hash::derived_data_hash(&abs.to_string_lossy());
+        let home = std::env::var_os("HOME")?;
+        Some(
+            PathBuf::from(home)
+                .join("Library/Developer/Xcode/DerivedData")
+                .join(format!("{name}-{hash}")),
+        )
     }
 
     fn build_targets(&self) -> Value {
