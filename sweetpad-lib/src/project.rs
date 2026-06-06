@@ -373,6 +373,7 @@ pub fn target_source_files_from_value(
     // Resolve every file reference to an absolute path with one DFS from the
     // project's mainGroup, accumulating each `<group>`'s `path` as we descend.
     let mut file_paths: BTreeMap<String, PathBuf> = BTreeMap::new();
+    let mut sync_dirs: BTreeMap<String, PathBuf> = BTreeMap::new();
     if let Some(main_group_id) = project_obj.get("mainGroup").and_then(Value::as_str) {
         resolve_group_paths(
             objects,
@@ -380,6 +381,7 @@ pub fn target_source_files_from_value(
             &project_dir,
             &project_dir,
             &mut file_paths,
+            &mut sync_dirs,
         );
     }
 
@@ -413,7 +415,63 @@ pub fn target_source_files_from_value(
             }
         }
     }
+
+    // Synchronized folders (Xcode 16+): each id in `fileSystemSynchronizedGroups`
+    // names a root folder whose compilable files are implicit target members —
+    // they never appear in a `PBXSourcesBuildPhase`. Walk each for sources.
+    if let Some(group_ids) = target.get("fileSystemSynchronizedGroups").and_then(Value::as_array) {
+        for group_ref in group_ids {
+            let Some(dir) = group_ref.as_str().and_then(|id| sync_dirs.get(id)) else {
+                continue;
+            };
+            collect_synchronized_sources(dir, &mut out);
+        }
+    }
     Ok(out)
+}
+
+/// Compilable source extensions a synchronized folder contributes to a target —
+/// the `.swift` and C-family files that would otherwise be listed in a
+/// `PBXSourcesBuildPhase`. Headers, resources, and asset catalogs are excluded
+/// (they are not compiler inputs). `.C` is the C++ convention, distinct from `.c`.
+const SYNCHRONIZED_SOURCE_EXTS: &[&str] = &["swift", "c", "m", "mm", "cc", "cpp", "cxx", "C"];
+
+/// Append every compilable source under `dir` (recursively) to `out`, sorted for
+/// determinism and skipping files already present. A missing directory yields
+/// nothing.
+fn collect_synchronized_sources(dir: &Path, out: &mut Vec<PathBuf>) {
+    let mut found = Vec::new();
+    walk_source_tree(dir, &mut found);
+    found.sort();
+    for p in found {
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    }
+}
+
+/// Recursively collect compilable sources under `dir`. Symlinks are not followed
+/// (`file_type` does not traverse them), so a self-referential link can't loop.
+fn walk_source_tree(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        let path = entry.path();
+        if file_type.is_dir() {
+            walk_source_tree(&path, out);
+        } else if file_type.is_file()
+            && path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|ext| SYNCHRONIZED_SOURCE_EXTS.contains(&ext))
+        {
+            out.push(path);
+        }
+    }
 }
 
 /// The frameworks a native target links **explicitly** — the `.framework` file
@@ -486,22 +544,33 @@ fn resolve_group_paths(
     parent_base: &Path,
     project_dir: &Path,
     out: &mut BTreeMap<String, PathBuf>,
+    sync_out: &mut BTreeMap<String, PathBuf>,
 ) {
     let Some(node) = objects.get(node_id) else {
         return;
     };
     let base = node_base(node, parent_base, project_dir);
     let isa = node.get("isa").and_then(Value::as_str).unwrap_or("");
-    if matches!(isa, "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup") {
-        if let Some(children) = node.get("children").and_then(Value::as_array) {
-            for child in children {
-                if let Some(cid) = child.as_str() {
-                    resolve_group_paths(objects, cid, &base, project_dir, out);
+    match isa {
+        "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup" => {
+            if let Some(children) = node.get("children").and_then(Value::as_array) {
+                for child in children {
+                    if let Some(cid) = child.as_str() {
+                        resolve_group_paths(objects, cid, &base, project_dir, out, sync_out);
+                    }
                 }
             }
         }
-    } else {
-        out.insert(node_id.to_string(), base);
+        // A folder reference (Xcode 16+): its members aren't listed in the
+        // pbxproj — they are every file physically under `base`. Record the
+        // directory keyed by id; a target that lists it in
+        // `fileSystemSynchronizedGroups` resolves its sources by walking it.
+        "PBXFileSystemSynchronizedRootGroup" => {
+            sync_out.insert(node_id.to_string(), base);
+        }
+        _ => {
+            out.insert(node_id.to_string(), base);
+        }
     }
 }
 

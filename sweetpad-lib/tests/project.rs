@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use sweetpad::project::{Target, open};
+use sweetpad::project::{Target, open, target_source_files};
 
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")
@@ -140,4 +140,58 @@ fn icecubes_shared_schemes_discovered() {
             project.schemes
         );
     }
+}
+
+/// A target whose sources live in a `PBXFileSystemSynchronizedRootGroup`
+/// (Xcode 16 "buildable folders") lists none of them in a build phase — they
+/// are every compilable file physically under the folder. `target_source_files`
+/// must walk that folder (recursively), include `.swift`/C-family sources, and
+/// skip headers and other non-compiled files.
+#[test]
+fn synchronized_folder_sources_are_walked() {
+    let root = std::env::temp_dir().join(format!("sweetpad-sync-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let xcodeproj = root.join("App.xcodeproj");
+    let sources = root.join("App/Sources");
+    fs::create_dir_all(xcodeproj.join("..")).unwrap();
+    fs::create_dir_all(&xcodeproj).unwrap();
+    fs::create_dir_all(sources.join("Nested")).unwrap();
+    // The synchronized `Sources` folder nests under a `path = App` group, so its
+    // members resolve to `<root>/App/Sources/...` — the same accumulation Xcode
+    // applies. A naive `<root>/Sources` would miss them.
+    fs::write(sources.join("Alpha.swift"), "let a = 1\n").unwrap();
+    fs::write(sources.join("Beta.swift"), "let b = 2\n").unwrap();
+    fs::write(sources.join("Nested/Gamma.swift"), "let g = 3\n").unwrap();
+    fs::write(sources.join("Header.h"), "// not compiled\n").unwrap();
+    fs::write(sources.join("Readme.md"), "# not compiled\n").unwrap();
+
+    let pbxproj = "\
+// !$*UTF8*$!
+{
+\tarchiveVersion = 1;
+\tobjects = {
+\t\tPROJ = { isa = PBXProject; mainGroup = MAIN; targets = (APP); };
+\t\tMAIN = { isa = PBXGroup; sourceTree = \"<group>\"; children = (APPGRP); };
+\t\tAPPGRP = { isa = PBXGroup; path = App; sourceTree = \"<group>\"; children = (SYNC); };
+\t\tSYNC = { isa = PBXFileSystemSynchronizedRootGroup; path = Sources; sourceTree = \"<group>\"; };
+\t\tAPP = { isa = PBXNativeTarget; name = App; buildPhases = (); fileSystemSynchronizedGroups = (SYNC); };
+\t};
+\trootObject = PROJ;
+}
+";
+    fs::write(xcodeproj.join("project.pbxproj"), pbxproj).unwrap();
+
+    let files = target_source_files(&xcodeproj, "App").unwrap();
+    let mut names: Vec<&str> = files
+        .iter()
+        .filter_map(|p| p.file_name().and_then(OsStr::to_str))
+        .collect();
+    names.sort_unstable();
+    let _ = fs::remove_dir_all(&root);
+
+    assert_eq!(
+        names,
+        vec!["Alpha.swift", "Beta.swift", "Gamma.swift"],
+        "expected the synchronized folder's compilable sources (recursively), no header/markdown"
+    );
 }
