@@ -1,11 +1,11 @@
-//! The control channel to the SweetPad extension. Instead of taking the project
-//! and toolchain on its command line, the BSP server discovers the extension's
-//! Unix socket under its XDG state dir, connects, and pulls the resolved config
-//! over JSON-RPC (`bsp.resolveConfig`). The same connection stays open so the
-//! server can push `bsp/log` and `bsp/status` up, and receive `bsp/setLogLevel`.
+//! The telemetry channel to the SweetPad extension. The BSP server reads all of
+//! its config — including the Unix socket path to bind — from `.sweetpad/bsp.json`
+//! (written by the extension). It binds that socket, serves `bsp/log` and
+//! `bsp/status` to any extension that connects, and accepts `bsp/setLogLevel`
+//! back. Config never flows over this channel; it lives entirely in `bsp.json`.
 
-use std::io::{BufRead, BufReader};
-use std::os::unix::net::UnixStream;
+use std::io::BufReader;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use super::framing::{read_message, write_message};
 
 /// Verbosity of the `bsp/log` stream pushed to the extension. Gates only the
-/// control-channel stream — the `SWEETPAD_BSP_LOG` file always gets everything.
+/// telemetry stream — the `SWEETPAD_BSP_LOG` file always gets everything.
 #[derive(Clone, Copy)]
 pub(crate) enum LogLevel {
     Off = 0,
@@ -55,172 +55,85 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
     }
 }
 
-/// The extension server's control socket for the project containing `cwd`: read
-/// the `.sweetpad/run/*.json` connection files and pick the active server's
-/// socket, else any `kind: "extension"` one (BSP entries are ignored). A
-/// returned path may be stale — the connect surfaces that as a refused
-/// connection.
-pub(crate) fn discover_socket(cwd: &Path) -> Option<PathBuf> {
-    let root = find_project_root(cwd)?;
-    let run = root.join(".sweetpad/run");
-    let active = read_active_name(&root);
-    let mut entries: Vec<(String, String, String)> = Vec::new();
-    for entry in std::fs::read_dir(&run).ok()?.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
-            continue;
-        }
-        let Ok(raw) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        let Ok(conn) = serde_json::from_str::<Value>(&raw) else {
-            continue;
-        };
-        if let (Some(name), Some(kind), Some(socket)) = (
-            conn.get("name").and_then(Value::as_str),
-            conn.get("kind").and_then(Value::as_str),
-            conn.get("socket").and_then(Value::as_str),
-        ) {
-            entries.push((name.to_string(), kind.to_string(), socket.to_string()));
-        }
-    }
-    pick_extension_socket(&entries, active.as_deref()).map(PathBuf::from)
+/// The `.sweetpad/bsp.json` config file for the project containing `cwd`, if it
+/// exists — the persistent config the extension writes and the server reads at
+/// startup and watches for live changes. Walks up to the project root the way
+/// `git` finds `.git`.
+pub(crate) fn discover_config_file(cwd: &Path) -> Option<PathBuf> {
+    let path = find_project_root(cwd)?.join(".sweetpad").join("bsp.json");
+    path.is_file().then_some(path)
 }
 
-/// The active server's recorded name, from `.sweetpad/active.json`.
-fn read_active_name(root: &Path) -> Option<String> {
-    let raw = std::fs::read_to_string(root.join(".sweetpad/active.json")).ok()?;
-    serde_json::from_str::<Value>(&raw).ok()?.get("server").and_then(Value::as_str).map(str::to_string)
+/// The telemetry socket the BSP binds — at the path the extension assigned in
+/// `bsp.json` — and the connected extensions it pushes `bsp/log` / `bsp/status`
+/// to. Each accepted connection also feeds `bsp/setLogLevel` back through the
+/// `on_set_level` callback.
+pub(crate) struct TelemetryServer {
+    clients: Mutex<Vec<UnixStream>>,
+    socket: PathBuf,
 }
 
-/// Among `(name, kind, socket)` connection entries, the active server's socket
-/// when it's an extension server, else the first `extension` socket. Pure (no
-/// IO) so the selection policy is unit-testable.
-fn pick_extension_socket(entries: &[(String, String, String)], active: Option<&str>) -> Option<String> {
-    let mut fallback: Option<&str> = None;
-    for (name, kind, socket) in entries {
-        if kind != "extension" {
-            continue;
+impl TelemetryServer {
+    /// Bind `socket` and start accepting extension connections. Reclaims a stale
+    /// socket file (nothing listening there); returns `None` if another live
+    /// server already owns the path — a second BSP for the same project — so the
+    /// caller simply runs without telemetry. `on_set_level` fires for each
+    /// incoming `bsp/setLogLevel`.
+    pub(crate) fn bind(
+        socket: &Path,
+        on_set_level: impl Fn(&str) + Send + Sync + 'static,
+    ) -> Option<Arc<TelemetryServer>> {
+        // A leftover socket file is either a live peer (another BSP owns this
+        // project — stand down) or a crashed one's stale file (reclaim it).
+        if socket.exists() {
+            if UnixStream::connect(socket).is_ok() {
+                return None;
+            }
+            let _ = std::fs::remove_file(socket);
         }
-        if active == Some(name.as_str()) {
-            return Some(socket.clone());
-        }
-        if fallback.is_none() {
-            fallback = Some(socket.as_str());
-        }
-    }
-    fallback.map(str::to_string)
-}
-
-/// A live JSON-RPC connection to the extension over its Unix control socket.
-/// Sends are serialized through a mutex; once the server exists, a background
-/// thread drains incoming notifications (`bsp/setLogLevel`, `bsp/configChanged`).
-pub(crate) struct ControlClient {
-    write: Mutex<UnixStream>,
-    // Held between `connect_and_resolve` and `start_receiving`: the reader can't
-    // be consumed by the loop until the Server it dispatches to has been built.
-    reader: Mutex<Option<BufReader<UnixStream>>>,
-}
-
-impl ControlClient {
-    /// Connect and pull the resolved config via `bsp.resolveConfig`, keeping the
-    /// connection open for `start_receiving`.
-    pub(crate) fn connect_and_resolve(socket: &Path) -> Result<(Arc<ControlClient>, Value), String> {
-        let stream = UnixStream::connect(socket).map_err(|e| format!("connect {}: {e}", socket.display()))?;
-        let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
-        let client = Arc::new(ControlClient { write: Mutex::new(stream), reader: Mutex::new(None) });
-        let config = client.request(&mut reader, "bsp.resolveConfig", json!({}))?;
-        *client.reader.lock().map_err(|_| "control reader lock poisoned")? = Some(reader);
-        Ok((client, config))
-    }
-
-    /// Spawn the reader thread, dispatching each incoming notification's
-    /// `(method, params)` to `handler` until the connection closes. Call once,
-    /// after the Server the handler captures has been built.
-    pub(crate) fn start_receiving(&self, handler: impl Fn(&str, &Value) + Send + 'static) {
-        let Some(mut reader) = self.reader.lock().ok().and_then(|mut r| r.take()) else {
-            return;
-        };
+        let listener = UnixListener::bind(socket).ok()?;
+        let server = Arc::new(TelemetryServer { clients: Mutex::new(Vec::new()), socket: socket.to_path_buf() });
+        let accept = Arc::clone(&server);
+        let on_set_level = Arc::new(on_set_level);
         std::thread::spawn(move || {
-            while let Ok(Some(msg)) = read_message(&mut reader) {
-                if let Ok(val) = serde_json::from_str::<Value>(&msg)
-                    && let Some(method) = val.get("method").and_then(Value::as_str)
+            for stream in listener.incoming().flatten() {
+                // Keep a write half for broadcasts; the read half drains
+                // `bsp/setLogLevel` until the extension disconnects.
+                if let Ok(write_half) = stream.try_clone()
+                    && let Ok(mut clients) = accept.clients.lock()
                 {
-                    let params = val.get("params").cloned().unwrap_or(Value::Null);
-                    handler(method, &params);
+                    clients.push(write_half);
                 }
+                let on_set_level = Arc::clone(&on_set_level);
+                std::thread::spawn(move || {
+                    let mut reader = BufReader::new(stream);
+                    while let Ok(Some(msg)) = read_message(&mut reader) {
+                        if let Ok(val) = serde_json::from_str::<Value>(&msg)
+                            && val.get("method").and_then(Value::as_str) == Some("bsp/setLogLevel")
+                            && let Some(level) = val.get("params").and_then(|p| p.get("level")).and_then(Value::as_str)
+                        {
+                            on_set_level(level);
+                        }
+                    }
+                });
             }
         });
+        Some(server)
     }
 
-    /// One request/response round-trip on the connection, reading (and ignoring)
-    /// any interleaved notifications until the matching response arrives. Uses a
-    /// fixed id since requests are issued one-at-a-time during connect.
-    // Callers pass an owned `json!(...)` temporary; `json!` serializes it by
-    // reference, so clippy can't see the value as consumed.
+    /// Push a JSON-RPC notification to every connected extension, dropping any
+    /// that error on write (a disconnected client).
     #[allow(clippy::needless_pass_by_value)]
-    fn request(&self, reader: &mut impl BufRead, method: &str, params: Value) -> Result<Value, String> {
-        let req = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params });
-        {
-            let mut w = self.write.lock().map_err(|_| "control write lock poisoned")?;
-            write_message(&mut *w, &req.to_string())?;
-        }
-        loop {
-            let Some(msg) = read_message(reader)? else {
-                return Err("control connection closed before response".into());
-            };
-            let Ok(val) = serde_json::from_str::<Value>(&msg) else {
-                continue;
-            };
-            if val.get("id").and_then(Value::as_i64) == Some(1) {
-                if let Some(err) = val.get("error") {
-                    return Err(format!("{method} failed: {err}"));
-                }
-                return Ok(val.get("result").cloned().unwrap_or(Value::Null));
-            }
+    pub(crate) fn broadcast(&self, method: &str, params: Value) {
+        let body = json!({ "jsonrpc": "2.0", "method": method, "params": params }).to_string();
+        if let Ok(mut clients) = self.clients.lock() {
+            clients.retain_mut(|c| write_message(c, &body).is_ok());
         }
     }
 
-    /// Fire a notification at the extension (best-effort — a dropped control
-    /// connection must not wedge the BSP loop).
-    #[allow(clippy::needless_pass_by_value)]
-    pub(crate) fn notify(&self, method: &str, params: Value) {
-        let notif = json!({ "jsonrpc": "2.0", "method": method, "params": params });
-        if let Ok(mut w) = self.write.lock() {
-            let _ = write_message(&mut *w, &notif.to_string());
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::pick_extension_socket;
-
-    fn entries(rows: &[(&str, &str, &str)]) -> Vec<(String, String, String)> {
-        rows.iter().map(|(n, k, s)| ((*n).to_string(), (*k).to_string(), (*s).to_string())).collect()
-    }
-
-    #[test]
-    fn prefers_the_active_extension_server() {
-        let e = entries(&[("a", "extension", "/tmp/a.sock"), ("b", "extension", "/tmp/b.sock")]);
-        assert_eq!(pick_extension_socket(&e, Some("b")).as_deref(), Some("/tmp/b.sock"));
-    }
-
-    #[test]
-    fn falls_back_to_the_first_extension_when_no_active() {
-        let e = entries(&[("a", "extension", "/tmp/a.sock"), ("b", "extension", "/tmp/b.sock")]);
-        assert_eq!(pick_extension_socket(&e, None).as_deref(), Some("/tmp/a.sock"));
-    }
-
-    #[test]
-    fn ignores_bsp_entries() {
-        let e = entries(&[("x", "bsp", "/tmp/x.sock"), ("y", "extension", "/tmp/y.sock")]);
-        assert_eq!(pick_extension_socket(&e, None).as_deref(), Some("/tmp/y.sock"));
-    }
-
-    #[test]
-    fn none_when_no_extension_server() {
-        let e = entries(&[("x", "bsp", "/tmp/x.sock")]);
-        assert_eq!(pick_extension_socket(&e, None), None);
+    /// Remove the socket file on a clean shutdown. (A crash leaves it behind; the
+    /// next server reclaims it via the connect-probe in [`Self::bind`].)
+    pub(crate) fn shutdown(&self) {
+        let _ = std::fs::remove_file(&self.socket);
     }
 }

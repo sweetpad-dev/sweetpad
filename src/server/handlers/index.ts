@@ -1,5 +1,4 @@
 import type { RpcDispatch } from "../rpc";
-import { bspResolveConfig, bspSetLogLevel } from "./bsp";
 import { buildDiagnostics, buildList, buildLogs, buildStart, buildStatus, buildStop, buildWait } from "./build";
 import { buildConfigGet, buildConfigList, buildConfigSet } from "./build-config";
 import { appPathFind, bundleIdGet, buildSettingsGet, derivedDataPath } from "./build-settings";
@@ -48,9 +47,6 @@ export function buildDispatch(ctx: RpcContext): RpcDispatch {
     "meta.workspacePath": bind(metaWorkspacePath),
 
     "state.get": bind(stateGet),
-
-    "bsp.resolveConfig": bind(bspResolveConfig),
-    "bsp.setLogLevel": bind(bspSetLogLevel),
 
     "scheme.list": bind(schemeList),
     "scheme.get": bind(schemeGet),

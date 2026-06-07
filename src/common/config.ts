@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { ConfigurationChangeEvent } from "vscode";
 
 type Config = {
   "format.path": string;
@@ -44,6 +45,7 @@ type Config = {
   "xcodebuildserver.serverEnv": { [key: string]: string | null };
   "buildServer.provider": "xcode-build-server" | "sweetpad";
   "buildServer.logPath": string;
+  "buildServer.logLevel": "off" | "error" | "info" | "debug";
   "tuist.autogenerate": boolean;
   "tuist.generate.env": { [key: string]: string | null };
   "testing.configuration": string;
@@ -53,6 +55,8 @@ type Config = {
 };
 
 type ConfigKey = keyof Config;
+
+type SweetPadConfigKey = `sweetpad.${ConfigKey}`;
 
 export function getWorkspaceConfig<K extends ConfigKey>(key: K): Config[K] | undefined {
   const config = vscode.workspace.getConfiguration("sweetpad");
@@ -110,4 +114,12 @@ function expandConfigEnvVars<T>(value: T): T {
 
   // numbers, booleans, null, undefined, etc. are returned as is
   return value;
+}
+
+interface ConfigurationChangeEvent {
+  affectsConfiguration<K extends SweetPadConfigKey>(section: K, resource?: vscode.Uri): boolean;
+}
+
+export function onDidChangeConfiguration(listener: (e: ConfigurationChangeEvent) => any): vscode.Disposable {
+  return vscode.workspace.onDidChangeConfiguration(listener);
 }

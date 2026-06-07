@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import type { BspService } from "../bsp/service";
 import type { LspDiagnosticsService } from "../build/lsp-diagnostics";
 import type { BuildManager } from "../build/manager";
 import type { BuildTreeProvider } from "../build/tree";
@@ -45,6 +46,7 @@ export type AppDeps = {
   buildTreeProvider: BuildTreeProvider;
   lspDiagnostics: LspDiagnosticsService;
   serverService: ServerService;
+  bspService: BspService;
 };
 
 /**

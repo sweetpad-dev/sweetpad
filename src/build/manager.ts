@@ -149,6 +149,10 @@ export class BuildManager {
     this.emitter.off(event, listener as any);
   }
 
+  removeAllListeners<K extends IEventKey>(event: K): void {
+    this.emitter.removeAllListeners(event);
+  }
+
   startSchemeBuild(scheme: string): void {
     this.runningSchemes.add(scheme);
     this.emitter.emit("schemeBuildStarted", scheme);

@@ -27,7 +27,7 @@ use serde_json::{Value, json};
 use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
 use crate::project;
-use control::{ControlClient, LogLevel};
+use control::{LogLevel, TelemetryServer};
 use framing::{read_message, write_message};
 
 /// Write a `buildServer.json` so `sourcekit-lsp` discovers and launches this
@@ -72,12 +72,6 @@ pub fn write_config(args: &[String]) -> Result<(), String> {
 /// Run the BSP server loop over stdin/stdout until EOF or `build/exit`.
 pub fn run(args: &[String]) -> Result<(), String> {
     let server = Arc::new(Server::resolve(args)?);
-    // If config came from the extension, keep listening on that control
-    // connection for live updates (`bsp/setLogLevel`, `bsp/configChanged`).
-    if let Some(control) = server.control.clone() {
-        let target = Arc::clone(&server);
-        control.start_receiving(move |method, params| target.handle_control(method, params));
-    }
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     // Each write locks stdout for one whole frame rather than holding the lock
@@ -150,6 +144,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
         }
     }
+    server.shutdown_telemetry();
     Ok(())
 }
 
@@ -168,9 +163,14 @@ struct Server {
     /// stdout is the BSP protocol, so debug output must go elsewhere; a file is
     /// also the only channel observable after sourcekit-lsp spawns us detached.
     log: Option<Mutex<std::fs::File>>,
-    /// Live connection to the extension (when config was pulled, not passed on
-    /// the command line). Carries `bsp/log` + `bsp/status` up; `None` standalone.
-    control: Option<Arc<ControlClient>>,
+    /// Telemetry socket served to connected extensions: `bsp/log` + `bsp/status`
+    /// out, `bsp/setLogLevel` in. The extension assigns the path in `bsp.json`;
+    /// `None` until bound, and in `--project` standalone mode (which has none).
+    telemetry: Mutex<Option<Arc<TelemetryServer>>>,
+    /// The watched `.sweetpad/bsp.json` path. Live scheme/configuration changes
+    /// the extension persists there are applied without a restart; immutable
+    /// fields are fixed at startup. `None` in `--project` standalone mode.
+    config_path: Option<PathBuf>,
     /// Verbosity of the `bsp/log` stream, retunable live via `bsp/setLogLevel`.
     log_level: Arc<AtomicU8>,
 }
@@ -195,7 +195,7 @@ struct LiveConfig {
 }
 
 /// The inputs the server needs, however they were obtained — from `--project`
-/// flags, from the extension's `bsp.resolveConfig`, or from the working dir.
+/// flags or the extension's `.sweetpad/bsp.json`.
 struct ResolvedConfig {
     project_path: PathBuf,
     configuration: String,
@@ -204,8 +204,11 @@ struct ResolvedConfig {
     arch: Option<String>,
     xcode: Option<PathBuf>,
     derived_data_path: Option<PathBuf>,
-    /// Debug log file: from the control config's `logPath`, else `$SWEETPAD_BSP_LOG`.
+    /// Debug log file: from `bsp.json`'s `logPath`, else `$SWEETPAD_BSP_LOG`.
     log_path: Option<PathBuf>,
+    /// Telemetry socket to bind, assigned by the extension in `bsp.json`. `None`
+    /// in `--project` standalone mode (no telemetry).
+    socket: Option<PathBuf>,
 }
 
 /// The `SWEETPAD_BSP_LOG` env path (used by tests and the standalone paths).
@@ -224,20 +227,26 @@ impl ResolvedConfig {
             xcode: flags.get("xcode").map(PathBuf::from),
             derived_data_path: flags.get("derived-data-path").map(PathBuf::from),
             log_path: env_log(),
+            socket: None,
         }
     }
 
-    /// Build from a `bsp.resolveConfig` response. Any explicit flag still wins,
-    /// so the channel can be combined with targeted overrides.
-    fn from_control(value: &Value, flags: &BTreeMap<String, String>) -> Result<Self, String> {
+    /// Build from a `.sweetpad/bsp.json` object (the key schema the extension
+    /// writes). Path fields may be written relative to the project root; they're
+    /// resolved against `base`. Any explicit flag still wins, so it can be combined
+    /// with targeted overrides.
+    fn from_json(value: &Value, base: &Path, flags: &BTreeMap<String, String>) -> Result<Self, String> {
         let pull = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_string);
+        // `base.join` roots a relative path at the project and leaves an absolute
+        // one untouched — so out-of-tree paths (Xcode, the socket) stay as written.
+        let resolve = |p: String| base.join(p);
         let project_path = flags
             .get("project")
             .cloned()
             .or_else(|| pull("projectPath"))
-            .ok_or("control config missing projectPath")?;
+            .ok_or("bsp.json missing projectPath")?;
         Ok(ResolvedConfig {
-            project_path: PathBuf::from(project_path),
+            project_path: resolve(project_path),
             configuration: flags
                 .get("configuration")
                 .cloned()
@@ -246,35 +255,29 @@ impl ResolvedConfig {
             scheme: flags.get("scheme").cloned().or_else(|| pull("scheme")),
             sdk: flags.get("sdk").cloned(),
             arch: flags.get("arch").cloned(),
-            xcode: flags.get("xcode").map(PathBuf::from).or_else(|| pull("developerDir").map(PathBuf::from)),
-            derived_data_path: flags
-                .get("derived-data-path")
-                .map(PathBuf::from)
-                .or_else(|| pull("derivedDataPath").map(PathBuf::from)),
-            log_path: pull("logPath").map(PathBuf::from).or_else(env_log),
+            xcode: flags.get("xcode").cloned().or_else(|| pull("developerDir")).map(&resolve),
+            derived_data_path: flags.get("derived-data-path").cloned().or_else(|| pull("derivedDataPath")).map(&resolve),
+            log_path: pull("logPath").map(&resolve).or_else(env_log),
+            socket: pull("socket").map(&resolve),
         })
     }
 
-    /// The sole `.xcodeproj` in `cwd`, or `None` if there are zero or many.
-    fn from_cwd(cwd: &Path) -> Option<Self> {
-        let mut projects = std::fs::read_dir(cwd).ok()?.flatten().filter_map(|e| {
-            let p = e.path();
-            (p.extension().and_then(|x| x.to_str()) == Some("xcodeproj")).then_some(p)
-        });
-        let first = projects.next()?;
-        if projects.next().is_some() {
-            return None;
-        }
-        Some(ResolvedConfig::from_flags(first, &BTreeMap::new()))
+    /// Read and parse `.sweetpad/bsp.json` (written by the extension). Relative
+    /// path fields resolve against the project root — the `.sweetpad` dir's
+    /// parent — which is what the extension wrote them relative to.
+    fn from_file(path: &Path, flags: &BTreeMap<String, String>) -> Result<Self, String> {
+        let raw = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let value: Value = serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))?;
+        let base = path.parent().and_then(Path::parent).unwrap_or_else(|| Path::new("."));
+        Self::from_json(&value, base, flags)
     }
 }
 
 impl Server {
-    /// Resolve the server config and bring up the control channel. With an
-    /// explicit `--project` the server stays self-contained (no channel); without
-    /// it, discover the extension's socket and pull the config via
-    /// `bsp.resolveConfig`, falling back to a sole `.xcodeproj` in the working
-    /// directory when no server is reachable.
+    /// Resolve the server config. An explicit `--project` stays self-contained
+    /// (no config file, no telemetry — used by `sweetpad-lib config` and the
+    /// tests); otherwise the sole source is `.sweetpad/bsp.json` (written by the
+    /// extension), read here and watched for live changes.
     fn resolve(args: &[String]) -> Result<Self, String> {
         let flags = parse_flags(args);
         let log_level = Arc::new(AtomicU8::new(LogLevel::Info as u8));
@@ -288,29 +291,18 @@ impl Server {
         // (so `/var` vs `/private/var` symlinks don't defeat the lookup).
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
         let cwd = std::fs::canonicalize(&cwd).unwrap_or(cwd);
-        if let Some(socket) = control::discover_socket(&cwd) {
-            match ControlClient::connect_and_resolve(&socket) {
-                Ok((client, config_value)) => {
-                    let config = ResolvedConfig::from_control(&config_value, &flags)?;
-                    return Self::build(config, Some(client), log_level);
-                }
-                Err(e) => eprintln!("sweetpad bsp: control connect failed ({e}); trying cwd project"),
-            }
-        }
-        let config = ResolvedConfig::from_cwd(&cwd)
-            .ok_or("no --project, no reachable sweetpad server, and no unique .xcodeproj in the working directory")?;
-        Self::build(config, None, log_level)
+        let config_file = control::discover_config_file(&cwd).ok_or(
+            "no .sweetpad/bsp.json found from the working directory (the SweetPad extension or `sweetpad-lib config` writes it)",
+        )?;
+        let config = ResolvedConfig::from_file(&config_file, &flags)?;
+        Self::build(config, Some(config_file), log_level)
     }
 
-    fn build(
-        config: ResolvedConfig,
-        control: Option<Arc<ControlClient>>,
-        log_level: Arc<AtomicU8>,
-    ) -> Result<Self, String> {
+    fn build(config: ResolvedConfig, config_path: Option<PathBuf>, log_level: Arc<AtomicU8>) -> Result<Self, String> {
         let ctx = BuildContext::open(&config.project_path).map_err(|e| format!("open project: {e}"))?;
         let targets: Vec<String> = ctx.project.targets.iter().map(|t| t.name.clone()).collect();
-        // Log file from the control config (`logPath`) or the SWEETPAD_BSP_LOG env
-        // (tests); the control channel streams logs regardless of the file.
+        // Log file from the config's `logPath` or the SWEETPAD_BSP_LOG env
+        // (tests); telemetry streams logs regardless of the file.
         let log = config
             .log_path
             .as_ref()
@@ -325,40 +317,26 @@ impl Server {
             derived_data_path: config.derived_data_path,
             targets,
             log,
-            control,
+            telemetry: Mutex::new(None),
+            config_path,
             log_level,
         };
+        server.bind_telemetry(config.socket.as_deref());
         server.log(&format!(
-            "start: project={} xcode={:?} dd={:?} control={} targets={:?}",
+            "start: project={} xcode={:?} dd={:?} telemetry={} config_watch={:?} targets={:?}",
             server.project_path.display(),
             server.xcode,
             server.derived_data_path,
-            server.control.is_some(),
+            server.telemetry.lock().is_ok_and(|t| t.is_some()),
+            server.config_path,
             server.targets,
         ));
         Ok(server)
     }
 
-    /// The current build configuration (swapped live by `bsp/configChanged`).
+    /// The current build configuration (swapped live when `bsp.json` changes).
     fn configuration(&self) -> String {
         self.live.lock().map_or_else(|_| "Debug".into(), |c| c.configuration.clone())
-    }
-
-    /// Dispatch a control-channel notification pushed by the extension.
-    fn handle_control(&self, method: &str, params: &Value) {
-        match method {
-            "bsp/setLogLevel" => {
-                if let Some(level) = params.get("level").and_then(Value::as_str) {
-                    self.log_level.store(LogLevel::parse(level) as u8, Ordering::Relaxed);
-                }
-            }
-            "bsp/configChanged" => {
-                let configuration = params.get("configuration").and_then(Value::as_str);
-                let scheme = params.get("scheme").and_then(Value::as_str).map(str::to_string);
-                self.apply_config(configuration, scheme);
-            }
-            _ => {}
-        }
     }
 
     /// Swap the live config and, when it actually changed, tell the client to
@@ -381,6 +359,25 @@ impl Server {
         };
         self.log(&format!("config changed: configuration={} scheme={:?}", next.configuration, next.scheme));
         self.notify_targets_changed();
+    }
+
+    /// Re-read `.sweetpad/bsp.json` after a change: apply the volatile selection
+    /// (configuration + scheme) live via [`Self::apply_config`], and bind the
+    /// telemetry socket if one has just appeared. Immutable fields (project/
+    /// xcode/derived data) are deliberately not refreshed — they're fixed at
+    /// startup, so a change to them needs a server restart.
+    fn reload_from_file(&self, path: &Path) {
+        let Ok(raw) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+            return;
+        };
+        let configuration = value.get("configuration").and_then(Value::as_str);
+        let scheme = value.get("scheme").and_then(Value::as_str).map(str::to_string);
+        self.apply_config(configuration, scheme);
+        let socket = value.get("socket").and_then(Value::as_str).map(PathBuf::from);
+        self.bind_telemetry(socket.as_deref());
     }
 
     /// An operational log line: to the `SWEETPAD_BSP_LOG` file (unconditional)
@@ -409,21 +406,57 @@ impl Server {
         }
     }
 
-    /// Stream one log line to the extension when a control channel is attached
-    /// and the live level permits it (the `SWEETPAD_BSP_LOG` file is unaffected).
-    fn push_log(&self, level: LogLevel, msg: &str) {
-        if let Some(control) = &self.control
-            && level as u8 <= self.log_level.load(Ordering::Relaxed)
-        {
-            control.notify("bsp/log", json!({ "level": level.as_str(), "message": msg }));
+    /// Bind the telemetry socket the extension assigned in `bsp.json`, so
+    /// connected extensions get `bsp/log` / `bsp/status` and can push
+    /// `bsp/setLogLevel`. No-op without a socket (a headless / Neovim setup) or
+    /// once bound — the path is stable, so it's bound at most once.
+    fn bind_telemetry(&self, socket: Option<&Path>) {
+        let Some(socket) = socket else {
+            return;
+        };
+        let Ok(mut slot) = self.telemetry.lock() else {
+            return;
+        };
+        if slot.is_some() {
+            return;
+        }
+        let level = Arc::clone(&self.log_level);
+        if let Some(server) = TelemetryServer::bind(socket, move |lvl| {
+            level.store(LogLevel::parse(lvl) as u8, Ordering::Relaxed);
+        }) {
+            *slot = Some(server);
         }
     }
 
-    /// Push a coarse status phase to the extension's status bar (no-op without a
-    /// control channel).
+    /// The bound telemetry server, if any — cloned out so the lock isn't held
+    /// across a (possibly blocking) socket write.
+    fn telemetry(&self) -> Option<Arc<TelemetryServer>> {
+        self.telemetry.lock().ok().and_then(|s| s.clone())
+    }
+
+    /// Stream one log line to connected extensions when the live level permits it
+    /// (the `SWEETPAD_BSP_LOG` file is unaffected).
+    fn push_log(&self, level: LogLevel, msg: &str) {
+        if level as u8 > self.log_level.load(Ordering::Relaxed) {
+            return;
+        }
+        if let Some(server) = self.telemetry() {
+            server.broadcast("bsp/log", json!({ "level": level.as_str(), "message": msg }));
+        }
+    }
+
+    /// Push a coarse status phase to connected extensions' status bars (no-op
+    /// when nothing is connected).
     fn push_status(&self, phase: &str, detail: Option<&str>) {
-        if let Some(control) = &self.control {
-            control.notify("bsp/status", json!({ "phase": phase, "detail": detail }));
+        if let Some(server) = self.telemetry() {
+            server.broadcast("bsp/status", json!({ "phase": phase, "detail": detail }));
+        }
+    }
+
+    /// Unlink the telemetry socket on a clean shutdown.
+    fn shutdown_telemetry(&self) {
+        if let Some(server) = self.telemetry() {
+            server.shutdown();
         }
     }
 
@@ -520,26 +553,36 @@ impl Server {
         )
     }
 
-    /// Watch the project file for structure changes and push a
-    /// `buildTarget/didChange` so the client re-queries targets/sources without
-    /// an LSP restart. Per-request resolution is already fresh (the parse cache
-    /// is mtime-validated); this is the push that tells the client to ask again.
-    /// Polling (no notify dependency) keeps it portable; the interval is
-    /// overridable via `SWEETPAD_BSP_WATCH_MS` (for tests).
+    /// Watch the project file (and the `.sweetpad/bsp.json` config, when present)
+    /// and react without an LSP restart: a project-structure change pushes
+    /// `buildTarget/didChange` so the client re-queries targets/sources; a config
+    /// change re-applies the live scheme/configuration. Per-request resolution is
+    /// already fresh (the parse cache is mtime-validated); this is the push that
+    /// tells the client to ask again. Polling (no notify dependency) keeps it
+    /// portable; the interval is overridable via `SWEETPAD_BSP_WATCH_MS` (tests).
     fn spawn_change_watcher(self: Arc<Self>) {
         let interval = std::env::var("SWEETPAD_BSP_WATCH_MS")
             .ok()
             .and_then(|v| v.parse().ok())
             .map_or(Duration::from_millis(1500), Duration::from_millis);
         let pbxproj = self.project_path.join("project.pbxproj");
+        let config = self.config_path.clone();
         std::thread::spawn(move || {
-            let mut last = file_stamp(&pbxproj);
+            let mut last_pbx = file_stamp(&pbxproj);
+            let mut last_cfg = config.as_deref().map(file_stamp);
             loop {
                 std::thread::sleep(interval);
-                let now = file_stamp(&pbxproj);
-                if now != last {
-                    last = now;
+                let now_pbx = file_stamp(&pbxproj);
+                if now_pbx != last_pbx {
+                    last_pbx = now_pbx;
                     self.notify_targets_changed();
+                }
+                if let (Some(path), Some(prev)) = (config.as_deref(), last_cfg.as_mut()) {
+                    let now_cfg = file_stamp(path);
+                    if now_cfg != *prev {
+                        *prev = now_cfg;
+                        self.reload_from_file(path);
+                    }
                 }
             }
         });

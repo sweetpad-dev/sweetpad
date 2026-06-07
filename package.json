@@ -407,11 +407,6 @@
         "icon": "$(list-tree)"
       },
       {
-        "command": "sweetpad.bsp.setLogLevel",
-        "title": "SweetPad: Set BSP log level",
-        "icon": "$(settings-gear)"
-      },
-      {
         "command": "sweetpad.bsp.restart",
         "title": "SweetPad: Restart BSP server",
         "icon": "$(debug-restart)"
@@ -1097,6 +1092,23 @@
             "sweetpad-bsp.log",
             "/tmp/sweetpad-bsp.log"
           ]
+        },
+        "sweetpad.buildServer.logLevel": {
+          "type": "string",
+          "enum": [
+            "off",
+            "error",
+            "info",
+            "debug"
+          ],
+          "default": "info",
+          "markdownEnumDescriptions": [
+            "No live log stream.",
+            "Errors only.",
+            "Errors and high-level progress (default).",
+            "Everything, including raw JSON-RPC frames."
+          ],
+          "markdownDescription": "Verbosity of the `sweetpad` BSP server's live log stream in the \"SweetPad: BSP\" output channel. The `.sweetpad/bsp.log` file always captures everything regardless of this setting."
         },
         "sweetpad.xcodebuildserver.autogenerate": {
           "type": "boolean",

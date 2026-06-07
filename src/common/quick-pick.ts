@@ -14,12 +14,13 @@ export class QuickPickCancelledError extends Error {}
 export async function showQuickPick<T>(options: {
   title: string;
   items: QuickPickItem<T>[];
+  placeholder?: string;
 }): Promise<QuickPickItemRow<T>> {
   const pick = vscode.window.createQuickPick<QuickPickItem<T>>();
 
   pick.items = options.items;
   pick.title = options.title;
-  pick.placeholder = options.title;
+  pick.placeholder = options.placeholder ?? pick.title;
 
   pick.show();
 

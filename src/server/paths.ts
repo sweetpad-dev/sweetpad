@@ -36,13 +36,6 @@ export function getBuildDir(workspacePath: string, buildId: string): string {
   return path.join(getBuildsDir(workspacePath), buildId);
 }
 
-// Default debug-log file for the BSP server, kept alongside the other runtime
-// state. Lives directly under `.sweetpad/` (not a subdir) so it's writable
-// without creating anything — the control server already ensures `.sweetpad/`.
-export function getBspLogPath(workspacePath: string): string {
-  return path.join(getStateRoot(workspacePath), "bsp.log");
-}
-
 // The socket path for a server name: a short tmpdir path, independent of how
 // deeply the project is nested, so it always fits within `sun_path`. Derivable
 // from the name alone, so a client that knows the name can connect without
@@ -70,15 +63,6 @@ export async function findProjectRoot(startDir: string): Promise<string | undefi
     const parent = path.dirname(dir);
     if (parent === dir) return undefined;
     dir = parent;
-  }
-}
-
-// Symlink-resolved so two paths into the same tree dedupe to one directory.
-export async function canonicalizeWorkspacePath(p: string): Promise<string> {
-  try {
-    return await fs.realpath(p);
-  } catch {
-    return path.resolve(p);
   }
 }
 

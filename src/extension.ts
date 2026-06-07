@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+import { bspDoctorCommand, bspSetupCommand, bspShowLogsCommand } from "./bsp/commands.js";
+import { BspService } from "./bsp/service.js";
 import {
   applySchemeFilterCommand,
   buildCommand,
@@ -55,15 +57,6 @@ import { TunnelManager } from "./devices/tunnel.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
 import { createFormatStatusItem } from "./format/status.js";
-import {
-  bspDoctorCommand,
-  bspRestartCommand,
-  bspSetLogLevelCommand,
-  bspSetupCommand,
-  bspShowLogsCommand,
-  bspStatusCommand,
-  maybeOfferBspSetup,
-} from "./server/bsp-commands.js";
 import { ServerService } from "./server/service.js";
 import {
   openSimulatorCommand,
@@ -192,6 +185,10 @@ export async function activate(context: vscode.ExtensionContext) {
     extensionVersion: context.extension?.packageJSON?.version ?? "unknown",
     vscodeContext: context,
   });
+  const bspService = new BspService({
+    buildManager: buildManager,
+    workspace: workspace,
+  });
 
   // Start everything that has side effects (subscriptions, calculations, .show(), etc.)
   void progressStatusBar.start();
@@ -208,6 +205,7 @@ export async function activate(context: vscode.ExtensionContext) {
   void tuistWatcher.start();
   void xcodegenWatcher.start();
   void serverService.start();
+  void bspService.start();
 
   // Main dependency bag for commands 🌍
   const deps: AppDeps = {
@@ -224,6 +222,7 @@ export async function activate(context: vscode.ExtensionContext) {
     buildTreeProvider: buildTreeProvider,
     lspDiagnostics: lspDiagnostics,
     serverService: serverService,
+    bspService: bspService,
   };
 
   // Shortcut helpers bound to the deps bag
@@ -263,11 +262,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // BSP server
   d(command("sweetpad.bsp.setup", bspSetupCommand));
   d(command("sweetpad.bsp.doctor", bspDoctorCommand));
-  d(command("sweetpad.bsp.status", bspStatusCommand));
   d(command("sweetpad.bsp.showLogs", bspShowLogsCommand));
-  d(command("sweetpad.bsp.setLogLevel", bspSetLogLevelCommand));
-  d(command("sweetpad.bsp.restart", bspRestartCommand));
-  void maybeOfferBspSetup(context);
 
   // Testing
   d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));
@@ -345,6 +340,7 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.server.restart", restartServerCommand));
   d(command("sweetpad.server.showStatus", showServerStatusCommand));
   d({ dispose: () => void serverService.dispose() });
+  d({ dispose: () => void bspService.dispose() });
 
   lspDiagnostics.reattachIfEnabled();
   lspDiagnostics.showPostReloadNotificationIfPending();

@@ -4,7 +4,6 @@ import type { BuildManager } from "../build/manager";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationsManager } from "../destination/manager";
-import { BspBridge, type BspLogLevel } from "./bsp-bridge";
 import { BuildSessionRegistry } from "./builds";
 import { GitignoreNotifier } from "./gitignore-notice";
 import { buildDispatch } from "./handlers";
@@ -30,10 +29,11 @@ function extractSweetpadConfigKeys(context: vscode.ExtensionContext): string[] {
 }
 
 /**
- * Owns the in-extension JSON-RPC server lifecycle. Reads
- * `sweetpad.server.enabled` and starts/stops the server live when that setting
- * changes. Exposes the running server name so VS Code commands can read it
- * (e.g. for clipboard copy or status notifications).
+ * Owns the in-extension JSON-RPC server lifecycle — the control socket the CLI
+ * connects to. Reads `sweetpad.server.enabled` and starts/stops the server live
+ * when that setting changes. Exposes the running server name so VS Code commands
+ * can read it (e.g. for clipboard copy or status notifications). BSP is separate
+ * (see `src/bsp`); this layer knows nothing about it.
  */
 export class ServerService implements vscode.Disposable {
   private readonly buildManager: BuildManager;
@@ -42,13 +42,11 @@ export class ServerService implements vscode.Disposable {
   private readonly extensionVersion: string;
   private readonly vscodeContext: vscode.ExtensionContext;
   private readonly configKeys: string[];
-  private readonly bridge: BspBridge;
 
   private current:
     | { server: SocketServer; registry: BuildSessionRegistry; workspacePath: string; gitignore: GitignoreNotifier }
     | undefined;
   private configSubscription: vscode.Disposable | undefined;
-  private unsubscribeBuildConfig: (() => void) | undefined;
   private starting = false;
 
   constructor(options: {
@@ -64,7 +62,6 @@ export class ServerService implements vscode.Disposable {
     this.extensionVersion = options.extensionVersion;
     this.vscodeContext = options.vscodeContext;
     this.configKeys = extractSweetpadConfigKeys(options.vscodeContext);
-    this.bridge = new BspBridge();
   }
 
   async start(): Promise<void> {
@@ -73,31 +70,13 @@ export class ServerService implements vscode.Disposable {
         void this.reconcile();
       }
     });
-
-    // Push scheme/configuration changes to connected BSP servers so the editor
-    // refreshes args live (the bridge diffs, so no-op changes don't fire).
-    const pushConfig = () =>
-      this.bridge.notifyConfigChanged({
-        configuration: this.buildManager.getDefaultConfigurationForBuild() ?? "Debug",
-        scheme: this.buildManager.getDefaultSchemeForBuild() ?? null,
-      });
-    this.buildManager.on("defaultSchemeForBuildUpdated", pushConfig);
-    this.buildManager.on("defaultConfigurationForBuildUpdated", pushConfig);
-    this.unsubscribeBuildConfig = () => {
-      this.buildManager.off("defaultSchemeForBuildUpdated", pushConfig);
-      this.buildManager.off("defaultConfigurationForBuildUpdated", pushConfig);
-    };
-
     await this.reconcile();
   }
 
   async dispose(): Promise<void> {
     this.configSubscription?.dispose();
     this.configSubscription = undefined;
-    this.unsubscribeBuildConfig?.();
-    this.unsubscribeBuildConfig = undefined;
     await this.stop();
-    this.bridge.dispose();
   }
 
   getStatus(): { running: boolean; name?: string; socket?: string; workspacePath?: string } {
@@ -115,46 +94,6 @@ export class ServerService implements vscode.Disposable {
   async restart(): Promise<void> {
     await this.stop();
     await this.reconcile();
-  }
-
-  /** Reveal the "SweetPad BSP" output channel. */
-  revealBspLogs(): void {
-    this.bridge.revealLogs();
-  }
-
-  /** Append a report block (the Doctor checklist) to the BSP output channel. */
-  writeBspReport(lines: string[]): void {
-    this.bridge.report(lines);
-  }
-
-  setBspLogLevel(level: BspLogLevel): void {
-    this.bridge.setLogLevel(level);
-  }
-
-  getBspLogLevel(): BspLogLevel {
-    return this.bridge.getLogLevel();
-  }
-
-  /** A one-shot snapshot of BSP/server health for the status command and Doctor. */
-  bspSnapshot(): {
-    serverRunning: boolean;
-    bspConnected: boolean;
-    phase: string;
-    detail?: string;
-    scheme: string | null;
-    configuration: string | null;
-    logLevel: BspLogLevel;
-  } {
-    const b = this.bridge.snapshot();
-    return {
-      serverRunning: this.current !== undefined,
-      bspConnected: b.connected,
-      phase: b.phase,
-      detail: b.detail,
-      scheme: this.buildManager.getDefaultSchemeForBuild() ?? null,
-      configuration: this.buildManager.getDefaultConfigurationForBuild() ?? null,
-      logLevel: b.level,
-    };
   }
 
   private isEnabled(): boolean {
@@ -198,14 +137,12 @@ export class ServerService implements vscode.Disposable {
         buildRegistry: registry,
         vscodeContext: this.vscodeContext,
         configKeys: this.configKeys,
-        bspBridge: this.bridge,
       });
 
       const server = new SocketServer({
         workspacePath,
         extensionVersion: this.extensionVersion,
         handlers: dispatch,
-        onConnection: (connection) => this.bridge.attach(connection),
       });
       try {
         await server.start();

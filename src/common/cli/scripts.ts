@@ -673,8 +673,8 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
  * through the user's Node. No subcommand, so it works the same in any editor
  * (VS Code, Cursor, nvim, Zed).
  *
- * Project, Xcode, scheme, configuration and the log path are all discovered at
- * runtime over the control socket (`bsp.resolveConfig`).
+ * Project, Xcode, scheme, configuration, the log path and the telemetry socket
+ * are all read from `.sweetpad/bsp.json`, which the extension writes.
  */
 async function generateSweetpadBuildServerConfig(): Promise<void> {
   const cwd = getWorkspacePath();
