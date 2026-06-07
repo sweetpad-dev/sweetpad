@@ -48,6 +48,7 @@ export class ServerService implements vscode.Disposable {
     | { server: SocketServer; registry: BuildSessionRegistry; workspacePath: string; gitignore: GitignoreNotifier }
     | undefined;
   private configSubscription: vscode.Disposable | undefined;
+  private unsubscribeBuildConfig: (() => void) | undefined;
   private starting = false;
 
   constructor(options: {
@@ -72,12 +73,29 @@ export class ServerService implements vscode.Disposable {
         void this.reconcile();
       }
     });
+
+    // Push scheme/configuration changes to connected BSP servers so the editor
+    // refreshes args live (the bridge diffs, so no-op changes don't fire).
+    const pushConfig = () =>
+      this.bridge.notifyConfigChanged({
+        configuration: this.buildManager.getDefaultConfigurationForBuild() ?? "Debug",
+        scheme: this.buildManager.getDefaultSchemeForBuild() ?? null,
+      });
+    this.buildManager.on("defaultSchemeForBuildUpdated", pushConfig);
+    this.buildManager.on("defaultConfigurationForBuildUpdated", pushConfig);
+    this.unsubscribeBuildConfig = () => {
+      this.buildManager.off("defaultSchemeForBuildUpdated", pushConfig);
+      this.buildManager.off("defaultConfigurationForBuildUpdated", pushConfig);
+    };
+
     await this.reconcile();
   }
 
   async dispose(): Promise<void> {
     this.configSubscription?.dispose();
     this.configSubscription = undefined;
+    this.unsubscribeBuildConfig?.();
+    this.unsubscribeBuildConfig = undefined;
     await this.stop();
     this.bridge.dispose();
   }

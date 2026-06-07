@@ -86,6 +86,8 @@ type IEventMap = {
   defaultSchemeForBuildUpdated: [scheme: string | undefined];
   defaultSchemeForTestingUpdated: [scheme: string | undefined];
 
+  defaultConfigurationForBuildUpdated: [configuration: string | undefined];
+
   schemeBuildStarted: [scheme: string];
   schemeBuildStopped: [scheme: string];
 
@@ -219,6 +221,7 @@ export class BuildManager {
 
   setDefaultConfigurationForBuild(configuration: string | undefined): void {
     this.workspace.update("build.xcodeConfiguration", configuration);
+    this.emitter.emit("defaultConfigurationForBuildUpdated", configuration);
   }
 
   setDefaultConfigurationForTesting(configuration: string | undefined): void {
