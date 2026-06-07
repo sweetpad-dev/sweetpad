@@ -44,32 +44,29 @@ impl LogLevel {
     }
 }
 
-/// SweetPad's XDG state root: `$XDG_STATE_HOME/sweetpad`, else
-/// `~/.local/state/sweetpad` — mirrors `src/server/paths.ts` `getStateRoot`.
-fn state_root() -> Option<PathBuf> {
-    if let Some(xdg) = std::env::var_os("XDG_STATE_HOME") {
-        let p = PathBuf::from(xdg);
-        if p.is_absolute() {
-            return Some(p.join("sweetpad"));
+/// Walk up from `start` to the nearest ancestor that contains a `.sweetpad`
+/// directory — the project root, found the way `git` finds `.git`.
+fn find_project_root(start: &Path) -> Option<PathBuf> {
+    let mut dir = start;
+    loop {
+        if dir.join(".sweetpad").is_dir() {
+            return Some(dir.to_path_buf());
         }
+        dir = dir.parent()?;
     }
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".local/state/sweetpad"))
 }
 
-fn sockets_dir() -> Option<PathBuf> {
-    Some(state_root()?.join("sockets"))
-}
-
-/// Find the control socket of the SweetPad server owning `cwd`. Scans the
-/// `<name>.json` sidecars in the sockets dir, preferring the server whose
-/// `workspacePath` contains `cwd` (longest match wins for nested workspaces),
-/// and falling back to the sole server when there's exactly one. A returned
-/// path may be stale — the connect surfaces that as a refused connection.
+/// The extension server's control socket for the project containing `cwd`: read
+/// the `.sweetpad/run/*.json` connection files and pick the active server's
+/// socket, else any `kind: "extension"` one (BSP entries are ignored). A
+/// returned path may be stale — the connect surfaces that as a refused
+/// connection.
 pub(crate) fn discover_socket(cwd: &Path) -> Option<PathBuf> {
-    let dir = sockets_dir()?;
-    let mut entries: Vec<(String, String)> = Vec::new();
-    for entry in std::fs::read_dir(&dir).ok()?.flatten() {
+    let root = find_project_root(cwd)?;
+    let run = root.join(".sweetpad/run");
+    let active = read_active_name(&root);
+    let mut entries: Vec<(String, String, String)> = Vec::new();
+    for entry in std::fs::read_dir(&run).ok()?.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
@@ -77,33 +74,43 @@ pub(crate) fn discover_socket(cwd: &Path) -> Option<PathBuf> {
         let Ok(raw) = std::fs::read_to_string(&path) else {
             continue;
         };
-        let Ok(sidecar) = serde_json::from_str::<Value>(&raw) else {
+        let Ok(conn) = serde_json::from_str::<Value>(&raw) else {
             continue;
         };
-        if let (Some(name), Some(ws)) = (
-            sidecar.get("name").and_then(Value::as_str),
-            sidecar.get("workspacePath").and_then(Value::as_str),
+        if let (Some(name), Some(kind), Some(socket)) = (
+            conn.get("name").and_then(Value::as_str),
+            conn.get("kind").and_then(Value::as_str),
+            conn.get("socket").and_then(Value::as_str),
         ) {
-            entries.push((name.to_string(), ws.to_string()));
+            entries.push((name.to_string(), kind.to_string(), socket.to_string()));
         }
     }
-    pick_socket(&entries, cwd).map(|name| dir.join(format!("{name}.sock")))
+    pick_extension_socket(&entries, active.as_deref()).map(PathBuf::from)
 }
 
-/// Choose the server whose workspace contains `cwd` (longest match wins for
-/// nested workspaces), else the sole server when there's exactly one. Pure (no
-/// IO) so the matching policy is unit-testable.
-fn pick_socket<'a>(entries: &'a [(String, String)], cwd: &Path) -> Option<&'a str> {
-    let mut best: Option<(usize, &str)> = None;
-    for (name, ws) in entries {
-        if cwd.starts_with(ws) && best.as_ref().is_none_or(|(len, _)| ws.len() > *len) {
-            best = Some((ws.len(), name.as_str()));
+/// The active server's recorded name, from `.sweetpad/active.json`.
+fn read_active_name(root: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(root.join(".sweetpad/active.json")).ok()?;
+    serde_json::from_str::<Value>(&raw).ok()?.get("server").and_then(Value::as_str).map(str::to_string)
+}
+
+/// Among `(name, kind, socket)` connection entries, the active server's socket
+/// when it's an extension server, else the first `extension` socket. Pure (no
+/// IO) so the selection policy is unit-testable.
+fn pick_extension_socket(entries: &[(String, String, String)], active: Option<&str>) -> Option<String> {
+    let mut fallback: Option<&str> = None;
+    for (name, kind, socket) in entries {
+        if kind != "extension" {
+            continue;
+        }
+        if active == Some(name.as_str()) {
+            return Some(socket.clone());
+        }
+        if fallback.is_none() {
+            fallback = Some(socket.as_str());
         }
     }
-    best.map(|(_, name)| name).or(match entries {
-        [(name, _)] => Some(name.as_str()),
-        _ => None,
-    })
+    fallback.map(str::to_string)
 }
 
 /// A live JSON-RPC connection to the extension over its Unix control socket.
@@ -188,35 +195,33 @@ fn handle_incoming(msg: &str, log_level: &AtomicU8) {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use super::pick_extension_socket;
 
-    use super::pick_socket;
-
-    fn entries(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
-        pairs.iter().map(|(n, w)| ((*n).to_string(), (*w).to_string())).collect()
+    fn entries(rows: &[(&str, &str, &str)]) -> Vec<(String, String, String)> {
+        rows.iter().map(|(n, k, s)| ((*n).to_string(), (*k).to_string(), (*s).to_string())).collect()
     }
 
     #[test]
-    fn picks_the_workspace_that_contains_cwd() {
-        let e = entries(&[("a", "/work/projA"), ("b", "/work/projB")]);
-        assert_eq!(pick_socket(&e, Path::new("/work/projB/Sources")), Some("b"));
+    fn prefers_the_active_extension_server() {
+        let e = entries(&[("a", "extension", "/tmp/a.sock"), ("b", "extension", "/tmp/b.sock")]);
+        assert_eq!(pick_extension_socket(&e, Some("b")).as_deref(), Some("/tmp/b.sock"));
     }
 
     #[test]
-    fn prefers_the_longest_containing_workspace() {
-        let e = entries(&[("outer", "/work"), ("inner", "/work/nested")]);
-        assert_eq!(pick_socket(&e, Path::new("/work/nested/app")), Some("inner"));
+    fn falls_back_to_the_first_extension_when_no_active() {
+        let e = entries(&[("a", "extension", "/tmp/a.sock"), ("b", "extension", "/tmp/b.sock")]);
+        assert_eq!(pick_extension_socket(&e, None).as_deref(), Some("/tmp/a.sock"));
     }
 
     #[test]
-    fn falls_back_to_the_sole_server_when_none_contain_cwd() {
-        let e = entries(&[("only", "/elsewhere")]);
-        assert_eq!(pick_socket(&e, Path::new("/work/app")), Some("only"));
+    fn ignores_bsp_entries() {
+        let e = entries(&[("x", "bsp", "/tmp/x.sock"), ("y", "extension", "/tmp/y.sock")]);
+        assert_eq!(pick_extension_socket(&e, None).as_deref(), Some("/tmp/y.sock"));
     }
 
     #[test]
-    fn no_match_among_several_is_none() {
-        let e = entries(&[("a", "/x"), ("b", "/y")]);
-        assert_eq!(pick_socket(&e, Path::new("/work/app")), None);
+    fn none_when_no_extension_server() {
+        let e = entries(&[("x", "bsp", "/tmp/x.sock")]);
+        assert_eq!(pick_extension_socket(&e, None), None);
     }
 }
