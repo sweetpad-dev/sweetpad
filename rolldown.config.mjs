@@ -55,17 +55,6 @@ const sweetpadLibPlugin = {
   },
 };
 
-// The BSP server entry only needs the `@sweetpad/lib` import rewritten to the
-// copied addon — the extension entry's `writeBundle` already populates `out/lib`.
-const sweetpadLibResolvePlugin = {
-  name: "sweetpad-lib-resolve",
-  resolveId(source) {
-    if (source === "@sweetpad/lib") {
-      return { id: "./lib/index.js", external: true };
-    }
-  },
-};
-
 const extensionPlugins = [sweetpadLibPlugin];
 
 if (isProduction) {
@@ -123,25 +112,5 @@ export default defineConfig([
         GLOBAL_RELEASE_VERSION: JSON.stringify(pkg.version),
       },
     },
-  },
-  {
-    // Standalone BSP server sourcekit-lsp execs (via buildServer.json). Loads the
-    // copied addon (`out/lib`) and runs the sweetpad-lib BSP loop over stdio.
-    input: "./src/cli/bsp-server.ts",
-    output: {
-      file: "out/bsp-server.js",
-      format: "cjs",
-      sourcemap: isProduction ? "hidden" : true,
-      minify: isProduction,
-    },
-    platform: "node",
-    transform: {
-      target: "es2022",
-      define: {
-        GLOBAL_SENTRY_DSN: JSON.stringify(null),
-        GLOBAL_RELEASE_VERSION: JSON.stringify(pkg.version),
-      },
-    },
-    plugins: [sweetpadLibResolvePlugin],
   },
 ]);
