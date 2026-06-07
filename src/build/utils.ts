@@ -389,10 +389,10 @@ export function XBSMissingError(): ExtensionError {
  * to install it or open its docs.
  */
 export async function notifyXBSMissing(workspace: WorkspaceStateService): Promise<void> {
-  if (workspace.get("build.xcodeBuildServerMissingNotified")) {
+  if (workspace.get("build.xbsMissingNotified")) {
     return;
   }
-  workspace.update("build.xcodeBuildServerMissingNotified", true);
+  workspace.update("build.xbsMissingNotified", true);
   const choice = await vscode.window.showWarningMessage(
     "SweetPad: xcode-build-server isn't installed, so buildServer.json can't be (re)generated and Swift code intelligence may be stale. Install it to continue.",
     XBS_INSTALL_ACTION,

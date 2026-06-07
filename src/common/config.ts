@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { ConfigurationChangeEvent } from "vscode";
 
 type Config = {
   "format.path": string;
