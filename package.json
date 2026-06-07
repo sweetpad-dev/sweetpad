@@ -387,6 +387,11 @@
         "icon": "$(bug)"
       },
       {
+        "command": "sweetpad.bsp.setup",
+        "title": "SweetPad: Set up Swift code intelligence (BSP)",
+        "icon": "$(rocket)"
+      },
+      {
         "command": "sweetpad.bsp.doctor",
         "title": "SweetPad: Diagnose BSP (Doctor)",
         "icon": "$(bug)"

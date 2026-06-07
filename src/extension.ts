@@ -59,8 +59,10 @@ import {
   bspDoctorCommand,
   bspRestartCommand,
   bspSetLogLevelCommand,
+  bspSetupCommand,
   bspShowLogsCommand,
   bspStatusCommand,
+  maybeOfferBspSetup,
 } from "./server/bsp-commands.js";
 import { ServerService } from "./server/service.js";
 import {
@@ -259,11 +261,13 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.search", searchBuildViewCommand));
 
   // BSP server
+  d(command("sweetpad.bsp.setup", bspSetupCommand));
   d(command("sweetpad.bsp.doctor", bspDoctorCommand));
   d(command("sweetpad.bsp.status", bspStatusCommand));
   d(command("sweetpad.bsp.showLogs", bspShowLogsCommand));
   d(command("sweetpad.bsp.setLogLevel", bspSetLogLevelCommand));
   d(command("sweetpad.bsp.restart", bspRestartCommand));
+  void maybeOfferBspSetup(context);
 
   // Testing
   d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));

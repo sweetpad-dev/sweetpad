@@ -11,6 +11,59 @@ import { BSP_LOG_LEVELS } from "./bsp-bridge";
 type DoctorCheck = { ok: boolean; label: string; detail?: string; hint?: string };
 
 const SWIFT_RESTART_COMMAND = "swift.restartLSPServer";
+const SETUP_DISMISSED_KEY = "sweetpad.bsp.setup.dismissed";
+
+/**
+ * One-click setup: point the build server at sweetpad, enable the control
+ * server, and (re)generate buildServer.json. The remaining config is discovered
+ * at runtime, so this is all it takes.
+ */
+export async function bspSetupCommand(): Promise<void> {
+  await vscode.workspace
+    .getConfiguration("sweetpad")
+    .update("buildServer.provider", "sweetpad", vscode.ConfigurationTarget.Workspace);
+  await vscode.workspace
+    .getConfiguration()
+    .update("sweetpad.server.enabled", true, vscode.ConfigurationTarget.Workspace);
+  await vscode.commands.executeCommand("sweetpad.build.generateBuildServerConfig");
+  void vscode.window.showInformationMessage(
+    "SweetPad: Swift code intelligence is set up. Open a Swift file to start the build server.",
+  );
+}
+
+/**
+ * First-run nudge: in an Xcode project that isn't already using sweetpad's build
+ * server (and has no buildServer.json yet), offer to set it up. Asks at most
+ * once per workspace.
+ */
+export async function maybeOfferBspSetup(context: vscode.ExtensionContext): Promise<void> {
+  if (context.workspaceState.get<boolean>(SETUP_DISMISSED_KEY)) return;
+  const provider = vscode.workspace.getConfiguration("sweetpad").get<string>("buildServer.provider");
+  if (provider === "sweetpad") return; // already opted in
+
+  try {
+    if (await fileExists(path.join(getWorkspacePath(), "buildServer.json"))) return; // a build server is already configured
+  } catch {
+    return; // no workspace folder
+  }
+
+  const xcodeProjects = await vscode.workspace.findFiles("**/*.xcodeproj/project.pbxproj", "**/.build/**", 1);
+  if (xcodeProjects.length === 0) return; // not an Xcode project
+
+  const setUp = "Set up";
+  const never = "Don't ask again";
+  const choice = await vscode.window.showInformationMessage(
+    "SweetPad can power Swift code completion and navigation for this Xcode project. Set it up?",
+    setUp,
+    "Not now",
+    never,
+  );
+  if (choice === setUp) {
+    await bspSetupCommand();
+  } else if (choice === never) {
+    await context.workspaceState.update(SETUP_DISMISSED_KEY, true);
+  }
+}
 
 /** Reveal the BSP output channel. */
 export async function bspShowLogsCommand(deps: AppDeps): Promise<void> {
@@ -81,6 +134,15 @@ export async function bspDoctorCommand(deps: AppDeps): Promise<void> {
     if (!c.ok && c.hint) lines.push(`    → ${c.hint}`);
   }
   deps.serverService.writeBspReport(lines);
+}
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function collectBspChecks(deps: AppDeps): Promise<DoctorCheck[]> {
