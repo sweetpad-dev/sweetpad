@@ -55,6 +55,12 @@ import { TunnelManager } from "./devices/tunnel.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
 import { createFormatStatusItem } from "./format/status.js";
+import {
+  bspRestartCommand,
+  bspSetLogLevelCommand,
+  bspShowLogsCommand,
+  bspStatusCommand,
+} from "./server/bsp-commands.js";
 import { ServerService } from "./server/service.js";
 import {
   openSimulatorCommand,
@@ -250,6 +256,12 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.pauseSchemeFilter", pauseSchemeFilterCommand));
   d(command("sweetpad.build.applySchemeFilter", applySchemeFilterCommand));
   d(command("sweetpad.build.search", searchBuildViewCommand));
+
+  // BSP server
+  d(command("sweetpad.bsp.status", bspStatusCommand));
+  d(command("sweetpad.bsp.showLogs", bspShowLogsCommand));
+  d(command("sweetpad.bsp.setLogLevel", bspSetLogLevelCommand));
+  d(command("sweetpad.bsp.restart", bspRestartCommand));
 
   // Testing
   d(command("sweetpad.testing.buildForTesting", buildForTestingCommand));

@@ -4,7 +4,7 @@ import type { BuildManager } from "../build/manager";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationsManager } from "../destination/manager";
-import { BspBridge } from "./bsp-bridge";
+import { BspBridge, type BspLogLevel } from "./bsp-bridge";
 import { BuildSessionRegistry } from "./builds";
 import { GitignoreNotifier } from "./gitignore-notice";
 import { buildDispatch } from "./handlers";
@@ -97,6 +97,41 @@ export class ServerService implements vscode.Disposable {
   async restart(): Promise<void> {
     await this.stop();
     await this.reconcile();
+  }
+
+  /** Reveal the "SweetPad BSP" output channel. */
+  revealBspLogs(): void {
+    this.bridge.revealLogs();
+  }
+
+  setBspLogLevel(level: BspLogLevel): void {
+    this.bridge.setLogLevel(level);
+  }
+
+  getBspLogLevel(): BspLogLevel {
+    return this.bridge.getLogLevel();
+  }
+
+  /** A one-shot snapshot of BSP/server health for the status command and Doctor. */
+  bspSnapshot(): {
+    serverRunning: boolean;
+    bspConnected: boolean;
+    phase: string;
+    detail?: string;
+    scheme: string | null;
+    configuration: string | null;
+    logLevel: BspLogLevel;
+  } {
+    const b = this.bridge.snapshot();
+    return {
+      serverRunning: this.current !== undefined,
+      bspConnected: b.connected,
+      phase: b.phase,
+      detail: b.detail,
+      scheme: this.buildManager.getDefaultSchemeForBuild() ?? null,
+      configuration: this.buildManager.getDefaultConfigurationForBuild() ?? null,
+      logLevel: b.level,
+    };
   }
 
   private isEnabled(): boolean {

@@ -387,6 +387,26 @@
         "icon": "$(bug)"
       },
       {
+        "command": "sweetpad.bsp.status",
+        "title": "SweetPad: Show BSP status",
+        "icon": "$(server-process)"
+      },
+      {
+        "command": "sweetpad.bsp.showLogs",
+        "title": "SweetPad: Show BSP logs",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "sweetpad.bsp.setLogLevel",
+        "title": "SweetPad: Set BSP log level",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "sweetpad.bsp.restart",
+        "title": "SweetPad: Restart BSP server",
+        "icon": "$(debug-restart)"
+      },
+      {
         "command": "sweetpad.testing.selectTarget",
         "title": "SweetPad.Testing: Select testing target",
         "icon": "$(file-code)"
