@@ -25,6 +25,7 @@ export class BspBridge implements vscode.Disposable {
   private level: BspLogLevel = "info";
   private phase = "ready";
   private detail: string | undefined;
+  private prepareDone: (() => void) | undefined;
 
   constructor() {
     this.output = vscode.window.createOutputChannel("SweetPad BSP");
@@ -106,9 +107,37 @@ export class BspBridge implements vscode.Disposable {
     const icon = phase === "preparing" ? "$(sync~spin)" : phase === "error" ? "$(error)" : "$(check)";
     this.statusBar.text = `${icon} BSP`;
     this.statusBar.tooltip = `SweetPad BSP — ${detail ? `${phase}: ${detail}` : phase}`;
+    if (phase === "preparing") {
+      this.beginPrepareProgress(detail);
+    } else {
+      this.endPrepareProgress();
+    }
+  }
+
+  // A notification-area spinner while the server prepares dependency modules, so
+  // the first cross-module completion doesn't look like a hang.
+  private beginPrepareProgress(detail: string | undefined): void {
+    if (this.prepareDone) return;
+    void vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `SweetPad: preparing${detail ? ` ${detail}` : ""}…`,
+        cancellable: false,
+      },
+      () =>
+        new Promise<void>((resolve) => {
+          this.prepareDone = resolve;
+        }),
+    );
+  }
+
+  private endPrepareProgress(): void {
+    this.prepareDone?.();
+    this.prepareDone = undefined;
   }
 
   dispose(): void {
+    this.endPrepareProgress();
     this.statusBar.dispose();
     this.output.dispose();
     this.connections.clear();
