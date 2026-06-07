@@ -104,6 +104,11 @@ export class ServerService implements vscode.Disposable {
     this.bridge.revealLogs();
   }
 
+  /** Append a report block (the Doctor checklist) to the BSP output channel. */
+  writeBspReport(lines: string[]): void {
+    this.bridge.report(lines);
+  }
+
   setBspLogLevel(level: BspLogLevel): void {
     this.bridge.setLogLevel(level);
   }

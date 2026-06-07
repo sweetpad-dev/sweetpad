@@ -82,6 +82,15 @@ export class BspBridge implements vscode.Disposable {
     this.output.show(true);
   }
 
+  /** Append a report block (e.g. the Doctor checklist) and reveal the channel. */
+  report(lines: string[]): void {
+    this.output.appendLine("");
+    for (const line of lines) {
+      this.output.appendLine(line);
+    }
+    this.output.show(true);
+  }
+
   snapshot(): BspSnapshot {
     return { connected: this.connections.size > 0, phase: this.phase, detail: this.detail, level: this.level };
   }

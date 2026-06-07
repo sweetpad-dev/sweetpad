@@ -56,6 +56,7 @@ import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
 import { createFormatStatusItem } from "./format/status.js";
 import {
+  bspDoctorCommand,
   bspRestartCommand,
   bspSetLogLevelCommand,
   bspShowLogsCommand,
@@ -258,6 +259,7 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.build.search", searchBuildViewCommand));
 
   // BSP server
+  d(command("sweetpad.bsp.doctor", bspDoctorCommand));
   d(command("sweetpad.bsp.status", bspStatusCommand));
   d(command("sweetpad.bsp.showLogs", bspShowLogsCommand));
   d(command("sweetpad.bsp.setLogLevel", bspSetLogLevelCommand));

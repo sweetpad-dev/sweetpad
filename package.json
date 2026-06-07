@@ -387,6 +387,11 @@
         "icon": "$(bug)"
       },
       {
+        "command": "sweetpad.bsp.doctor",
+        "title": "SweetPad: Diagnose BSP (Doctor)",
+        "icon": "$(bug)"
+      },
+      {
         "command": "sweetpad.bsp.status",
         "title": "SweetPad: Show BSP status",
         "icon": "$(server-process)"
