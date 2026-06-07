@@ -6,6 +6,7 @@ import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationsManager } from "../destination/manager";
 import { BspBridge } from "./bsp-bridge";
 import { BuildSessionRegistry } from "./builds";
+import { GitignoreNotifier } from "./gitignore-notice";
 import { buildDispatch } from "./handlers";
 import { canonicalizeWorkspacePath } from "./paths";
 import { SocketServer } from "./server";
@@ -43,7 +44,9 @@ export class ServerService implements vscode.Disposable {
   private readonly configKeys: string[];
   private readonly bridge: BspBridge;
 
-  private current: { server: SocketServer; registry: BuildSessionRegistry; workspacePath: string } | undefined;
+  private current:
+    | { server: SocketServer; registry: BuildSessionRegistry; workspacePath: string; gitignore: GitignoreNotifier }
+    | undefined;
   private configSubscription: vscode.Disposable | undefined;
   private starting = false;
 
@@ -152,7 +155,8 @@ export class ServerService implements vscode.Disposable {
         registry.dispose();
         throw err;
       }
-      this.current = { server, registry, workspacePath };
+      const gitignore = new GitignoreNotifier(workspacePath, this.vscodeContext);
+      this.current = { server, registry, workspacePath, gitignore };
     } catch (err) {
       commonLogger.error("Failed to start SweetPad RPC server", { error: err });
     } finally {
@@ -164,6 +168,11 @@ export class ServerService implements vscode.Disposable {
     const current = this.current;
     this.current = undefined;
     if (!current) return;
+    try {
+      current.gitignore.dispose();
+    } catch (err) {
+      commonLogger.debug("GitignoreNotifier.dispose threw", { error: err });
+    }
     try {
       current.registry.dispose();
     } catch (err) {
