@@ -8,6 +8,11 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 
+# In-tree xcodebuild output from building a fixture without -derivedDataPath. The
+# BSP test harness is hermetic (it builds a temp copy with throwaway derived
+# data), so anything under a fixture's build/ is stray and safe to ignore.
+fixtures/**/build/
+
 # Transient Xcodes installed by scripts/13_capture_version.py (one `rm -rf` cleans up)
 .xcodes/
 
