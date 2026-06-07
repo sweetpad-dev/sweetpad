@@ -11,7 +11,7 @@ import {
 } from "../common/cli/scripts";
 import { type AppDeps, warnNodeRuntimeMissing } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
-import { ExecBaseError, ExtensionError } from "../common/errors";
+import { ExecBaseError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, removeDirectory } from "../common/files";
 import { showInputBox, showQuickPick } from "../common/quick-pick";
@@ -28,6 +28,7 @@ import {
   prepareStoragePath,
   refreshBuildServer,
   selectXcodeWorkspace,
+  xcodeBuildServerMissingError,
 } from "./utils";
 
 /**
@@ -135,7 +136,7 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
   const usingXcodeBuildServer =
     (getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server") === "xcode-build-server";
   if (usingXcodeBuildServer && !(await getIsXcodeBuildServerInstalled())) {
-    throw new ExtensionError("xcode-build-server is not installed");
+    throw xcodeBuildServerMissingError();
   }
 
   // SweetPad's own BSP server launches via `#!/usr/bin/env node`. Warn (without
@@ -183,7 +184,7 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
 export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTreeItem) {
   const isServerInstalled = await getIsXcodeBuildServerInstalled();
   if (!isServerInstalled) {
-    throw new ExtensionError("xcode-build-server is not installed");
+    throw xcodeBuildServerMissingError();
   }
 
   const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
@@ -215,7 +216,7 @@ export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTre
 export async function disableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTreeItem) {
   const isServerInstalled = await getIsXcodeBuildServerInstalled();
   if (!isServerInstalled) {
-    throw new ExtensionError("xcode-build-server is not installed");
+    throw xcodeBuildServerMissingError();
   }
 
   const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);

@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { getWorkspacePath } from "../build/utils";
-import { getDeveloperDir, getIsNodeInstalled } from "../common/cli/scripts";
+import { getDeveloperDir, getIsNodeInstalled, getIsXcodeBuildServerInstalled } from "../common/cli/scripts";
 import { type AppDeps, NODE_DOWNLOAD_URL } from "../common/commands";
 import { BSP_LOG_LEVELS } from "./bsp-bridge";
 
@@ -12,6 +12,11 @@ type DoctorCheck = { ok: boolean; label: string; detail?: string; hint?: string 
 
 const SWIFT_RESTART_COMMAND = "swift.restartLSPServer";
 const SETUP_DISMISSED_KEY = "sweetpad.bsp.setup.dismissed";
+
+/** The configured build-server provider backing sourcekit-lsp. */
+function getBuildServerProvider(): string {
+  return vscode.workspace.getConfiguration("sweetpad").get<string>("buildServer.provider") ?? "xcode-build-server";
+}
 
 /**
  * One-click setup: point the build server at sweetpad, enable the control
@@ -67,11 +72,28 @@ export async function maybeOfferBspSetup(context: vscode.ExtensionContext): Prom
 
 /** Reveal the BSP output channel. */
 export async function bspShowLogsCommand(deps: AppDeps): Promise<void> {
+  if (getBuildServerProvider() !== "sweetpad") {
+    const serverEnv =
+      vscode.workspace.getConfiguration("sweetpad").get<Record<string, string>>("xcodebuildserver.serverEnv") ?? {};
+    const logPath = serverEnv.XBS_LOGPATH;
+    void vscode.window.showInformationMessage(
+      logPath
+        ? `SweetPad: the live BSP log stream is a SweetPad-provider feature. xcode-build-server writes its log to ${logPath} (XBS_LOGPATH).`
+        : "SweetPad: the live BSP log stream is a SweetPad-provider feature. To capture xcode-build-server logs, set XBS_LOGPATH in sweetpad.xcodebuildserver.serverEnv.",
+    );
+    return;
+  }
   deps.serverService.revealBspLogs();
 }
 
 /** Pick a verbosity for the BSP log stream and push it to connected servers. */
 export async function bspSetLogLevelCommand(deps: AppDeps): Promise<void> {
+  if (getBuildServerProvider() !== "sweetpad") {
+    void vscode.window.showInformationMessage(
+      "SweetPad: the BSP log level applies to the SweetPad build-server provider; you're using xcode-build-server.",
+    );
+    return;
+  }
   const current = deps.serverService.getBspLogLevel();
   const picked = await vscode.window.showQuickPick(
     BSP_LOG_LEVELS.map((level) => ({ label: level, description: level === current ? "current" : undefined })),
@@ -100,6 +122,10 @@ export async function bspRestartCommand(): Promise<void> {
 
 /** Show current BSP/server health, with a shortcut to the logs. */
 export async function bspStatusCommand(deps: AppDeps): Promise<void> {
+  if (getBuildServerProvider() !== "sweetpad") {
+    await xcodeBuildServerStatus();
+    return;
+  }
   const s = deps.serverService.bspSnapshot();
   const lines = [
     `Server: ${s.serverRunning ? "running" : "stopped"}`,
@@ -145,17 +171,98 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
+/** Read and parse the workspace buildServer.json, or undefined if missing/invalid. */
+async function readBuildServerJson(): Promise<Record<string, unknown> | undefined> {
+  try {
+    const raw = await fs.readFile(path.join(getWorkspacePath(), "buildServer.json"), "utf8");
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Shared check: buildServer.json exists and carries every field sourcekit-lsp requires. */
+async function buildServerJsonCheck(): Promise<DoctorCheck> {
+  const config = await readBuildServerJson();
+  let ok = false;
+  let detail = "not found";
+  if (config) {
+    const missing = ["name", "version", "bspVersion", "languages", "argv"].filter((k) => config[k] === undefined);
+    ok = missing.length === 0;
+    detail = ok ? "all required fields present" : `missing: ${missing.join(", ")}`;
+  }
+  return {
+    ok,
+    label: "buildServer.json valid",
+    detail,
+    hint: "Run 'SweetPad: Generate Build Server Config' to (re)create it.",
+  };
+}
+
+/** Status for the xcode-build-server provider (the SweetPad RPC/BSP server isn't involved). */
+async function xcodeBuildServerStatus(): Promise<void> {
+  const installed = await getIsXcodeBuildServerInstalled();
+  const config = await readBuildServerJson();
+  const configState = config ? `present${typeof config.name === "string" ? ` (${config.name})` : ""}` : "missing";
+  const lines = [
+    "Provider: xcode-build-server",
+    `xcode-build-server installed: ${installed ? "yes" : "no"}`,
+    `buildServer.json: ${configState}`,
+  ];
+  const runDoctor = "Run doctor";
+  const choice = await vscode.window.showInformationMessage(
+    `SweetPad BSP\n${lines.join("\n")}`,
+    { modal: false },
+    runDoctor,
+  );
+  if (choice === runDoctor) {
+    await vscode.commands.executeCommand("sweetpad.bsp.doctor");
+  }
+}
+
 async function collectBspChecks(deps: AppDeps): Promise<DoctorCheck[]> {
+  return getBuildServerProvider() === "sweetpad" ? collectSweetpadChecks(deps) : collectXcodeBuildServerChecks();
+}
+
+/** Diagnose the xcode-build-server provider: its tool, config, and sourcekit-lsp. */
+async function collectXcodeBuildServerChecks(): Promise<DoctorCheck[]> {
+  const checks: DoctorCheck[] = [];
+
+  checks.push({ ok: true, label: "Build server provider", detail: "xcode-build-server" });
+
+  const installed = await getIsXcodeBuildServerInstalled();
+  checks.push({
+    ok: installed,
+    label: "xcode-build-server installed",
+    hint: "Install it with 'brew install xcode-build-server' (or run 'SweetPad: Install tool').",
+  });
+
+  checks.push(await buildServerJsonCheck());
+
+  const swiftLspAvailable = (await vscode.commands.getCommands(true)).includes(SWIFT_RESTART_COMMAND);
+  checks.push({
+    ok: swiftLspAvailable,
+    label: "Swift extension (sourcekit-lsp) available",
+    hint: "Install the Swift extension so sourcekit-lsp picks up buildServer.json.",
+  });
+
+  const developerDir = await getDeveloperDir();
+  checks.push({
+    ok: developerDir !== undefined,
+    label: "Xcode developer dir resolved",
+    detail: developerDir,
+    hint: "Run 'xcode-select --switch /Applications/Xcode.app' or set DEVELOPER_DIR.",
+  });
+
+  return checks;
+}
+
+/** Diagnose the SweetPad BSP provider: control server, runtime config, and toolchain. */
+async function collectSweetpadChecks(deps: AppDeps): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
   const snap = deps.serverService.bspSnapshot();
 
-  const provider = vscode.workspace.getConfiguration("sweetpad").get<string>("buildServer.provider") ?? "xcode-build-server";
-  checks.push({
-    ok: provider === "sweetpad",
-    label: "Build server provider is 'sweetpad'",
-    detail: `provider = ${provider}`,
-    hint: 'Set "sweetpad.buildServer.provider": "sweetpad", then regenerate buildServer.json.',
-  });
+  checks.push({ ok: true, label: "Build server provider", detail: "sweetpad" });
 
   checks.push({
     ok: vscode.workspace.getConfiguration().get<boolean>("sweetpad.server.enabled") === true,
@@ -169,23 +276,7 @@ async function collectBspChecks(deps: AppDeps): Promise<DoctorCheck[]> {
     hint: "Open a Swift/Xcode workspace; the server starts when enabled.",
   });
 
-  let bsOk = false;
-  let bsDetail = "not found";
-  try {
-    const raw = await fs.readFile(path.join(getWorkspacePath(), "buildServer.json"), "utf8");
-    const config = JSON.parse(raw) as Record<string, unknown>;
-    const missing = ["name", "version", "bspVersion", "languages", "argv"].filter((k) => config[k] === undefined);
-    bsOk = missing.length === 0;
-    bsDetail = bsOk ? "all required fields present" : `missing: ${missing.join(", ")}`;
-  } catch {
-    // left as "not found"
-  }
-  checks.push({
-    ok: bsOk,
-    label: "buildServer.json valid",
-    detail: bsDetail,
-    hint: "Run 'SweetPad: Generate Build Server Config' to (re)create it.",
-  });
+  checks.push(await buildServerJsonCheck());
 
   const nodeOk = await getIsNodeInstalled();
   checks.push({

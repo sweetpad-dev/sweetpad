@@ -140,3 +140,12 @@ export const TOOLS: Tool[] = [
     documentation: "https://github.com/johnno1962/InjectionNext",
   },
 ];
+
+/** Look up a tool by its `id` (throws on an unknown id — caller passes a literal). */
+export function getToolById(id: string): Tool {
+  const tool = TOOLS.find((t) => t.id === id);
+  if (!tool) {
+    throw new Error(`Unknown tool id: ${id}`);
+  }
+  return tool;
+}

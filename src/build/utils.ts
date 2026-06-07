@@ -29,6 +29,7 @@ import type { Destination } from "../destination/types";
 import { splitSupportedDestinatinos } from "../destination/utils";
 import type { SimulatorDestination } from "../simulators/types";
 import type { ProgressStatusBar } from "../system/status-bar";
+import { getToolById } from "../tools/constants";
 import type { BuildManager } from "./manager";
 
 export type SelectedDestination = {
@@ -355,6 +356,54 @@ export function isAutoGenerateBuildServerConfigEnabled(): boolean {
   return getWorkspaceConfig("xcodebuildserver.autogenerate") ?? true;
 }
 
+const XCODE_BUILD_SERVER_TOOL_ID = "xcode-build-server";
+const XBS_INSTALL_ACTION = "Install";
+const XBS_DOCS_ACTION = "Open docs";
+
+function openXcodeBuildServerDocs(): void {
+  void vscode.env.openExternal(vscode.Uri.parse(getToolById(XCODE_BUILD_SERVER_TOOL_ID).documentation));
+}
+
+/**
+ * Actionable error for the explicit commands that need xcode-build-server (the
+ * `sweetpad` provider doesn't). Instead of a dead-end "not installed" message it
+ * offers to install it (`brew install xcode-build-server`) or open its docs.
+ */
+export function xcodeBuildServerMissingError(): ExtensionError {
+  return new ExtensionError("xcode-build-server is not installed", {
+    actions: [
+      {
+        label: XBS_INSTALL_ACTION,
+        callback: () => void vscode.commands.executeCommand("sweetpad.tools.install", XCODE_BUILD_SERVER_TOOL_ID),
+      },
+      { label: XBS_DOCS_ACTION, callback: openXcodeBuildServerDocs },
+    ],
+  });
+}
+
+/**
+ * Tell the user once (per workspace) that buildServer.json can't be
+ * auto-(re)generated because xcode-build-server is missing — otherwise the
+ * failure is invisible and Swift code intelligence silently goes stale. Offers
+ * to install it or open its docs.
+ */
+export async function notifyXcodeBuildServerMissing(workspace: WorkspaceStateService): Promise<void> {
+  if (workspace.get("build.xcodeBuildServerMissingNotified")) {
+    return;
+  }
+  workspace.update("build.xcodeBuildServerMissingNotified", true);
+  const choice = await vscode.window.showWarningMessage(
+    "SweetPad: xcode-build-server isn't installed, so buildServer.json can't be (re)generated and Swift code intelligence may be stale. Install it to continue.",
+    XBS_INSTALL_ACTION,
+    XBS_DOCS_ACTION,
+  );
+  if (choice === XBS_INSTALL_ACTION) {
+    await vscode.commands.executeCommand("sweetpad.tools.install", XCODE_BUILD_SERVER_TOOL_ID);
+  } else if (choice === XBS_DOCS_ACTION) {
+    openXcodeBuildServerDocs();
+  }
+}
+
 /**
  * Standard regenerate cycle: (re)write buildServer.json and restart
  * sourcekit-lsp. Used by the manual command, the scheme-change auto-regen, and
@@ -378,6 +427,7 @@ export async function refreshBuildServer(options: {
 export async function generateBuildServerConfigOnBuild(options: {
   scheme: string;
   xcworkspace: string;
+  workspace: WorkspaceStateService;
 }): Promise<void> {
   if (!isAutoGenerateBuildServerConfigEnabled()) {
     return;
@@ -402,6 +452,7 @@ export async function generateBuildServerConfigOnBuild(options: {
 
   const isServerInstalled = await getIsXcodeBuildServerInstalled();
   if (!isServerInstalled) {
+    await notifyXcodeBuildServerMissing(options.workspace);
     return;
   }
 

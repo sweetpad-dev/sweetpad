@@ -52,6 +52,7 @@ import {
   ensureAppPathExists,
   generateBuildServerConfigOnBuild,
   getCurrentXcodeWorkspacePath,
+  notifyXcodeBuildServerMissing,
   getSchemeLaunchSettings,
   getSwiftPMDirectory,
   getWorkspacePath,
@@ -249,6 +250,7 @@ export class BuildManager {
 
     const isServerInstalled = await getIsXcodeBuildServerInstalled();
     if (!isServerInstalled) {
+      await notifyXcodeBuildServerMissing(this.workspace);
       return;
     }
 
@@ -335,6 +337,7 @@ export class BuildManager {
     await generateBuildServerConfigOnBuild({
       scheme: scheme,
       xcworkspace: xcworkspace,
+      workspace: this.workspace,
     });
 
     this.progress.updateText("Searching for configuration");
@@ -475,6 +478,7 @@ export class BuildManager {
     await generateBuildServerConfigOnBuild({
       scheme: scheme,
       xcworkspace: xcworkspace,
+      workspace: this.workspace,
     });
 
     this.progress.updateText("Searching for configuration");
@@ -1012,6 +1016,7 @@ export class BuildManager {
     await generateBuildServerConfigOnBuild({
       scheme: options.scheme,
       xcworkspace: options.xcworkspace,
+      workspace: this.workspace,
     });
 
     let cwd: string;

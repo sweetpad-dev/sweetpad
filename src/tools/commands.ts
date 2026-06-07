@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import type { AppDeps } from "../common/commands.js";
 import { runTask } from "../common/tasks/run.js";
+import { type Tool, getToolById } from "./constants.js";
 import type { ToolTreeItem } from "./tree.js";
 import { askTool } from "./utils.js";
 
@@ -9,9 +10,18 @@ import { askTool } from "./utils.js";
  * Command to install a tool from the Tools view. Either runs an install command in a
  * task terminal (for Homebrew-installable tools) or opens an external URL (for tools
  * like InjectionNext that ship as a .app outside any package manager).
+ *
+ * `item` is a tree node (Tools view), a tool-id string (callers that target a
+ * specific tool, e.g. the "xcode-build-server is not installed" prompt), or
+ * undefined (command palette — asks which tool to install).
  */
-export async function installToolCommand(deps: AppDeps, item?: ToolTreeItem) {
-  const tool = item?.tool ?? (await askTool({ title: "Select tool to install" }));
+export async function installToolCommand(deps: AppDeps, item?: ToolTreeItem | string) {
+  let tool: Tool;
+  if (typeof item === "string") {
+    tool = getToolById(item);
+  } else {
+    tool = item?.tool ?? (await askTool({ title: "Select tool to install" }));
+  }
   const install = tool.install;
 
   if (install.type === "openUrl") {
