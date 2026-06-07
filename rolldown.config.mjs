@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { sentryRollupPlugin } from "@sentry/rollup-plugin";
@@ -39,6 +39,18 @@ const sweetpadLibPlugin = {
     const addons = universal.length > 0 ? universal : nodeFiles;
     for (const file of ["index.js", ...addons]) {
       copyFileSync(path.join(SWEETPAD_LIB_DIR, file), path.join(outLibDir, file));
+    }
+
+    // The standalone BSP server binary (built alongside the addon by
+    // build:sweetpad-lib:*) ships next to the extension bundle; sourcekit-lsp
+    // execs it directly. Absent on a JS-only `rolldown` run — skip then.
+    const bspBinary = path.join(SWEETPAD_LIB_DIR, "sweetpad-bsp");
+    if (existsSync(bspBinary)) {
+      const dest = path.join(path.dirname(outputOptions.file), "sweetpad-bsp");
+      copyFileSync(bspBinary, dest);
+      chmodSync(dest, 0o755);
+    } else {
+      this.warn("No sweetpad-bsp binary in sweetpad-lib/ — run build:sweetpad-lib:debug for BSP support.");
     }
   },
 };
