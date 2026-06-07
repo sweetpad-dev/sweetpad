@@ -7,7 +7,6 @@
 use std::io::{BufRead, BufReader};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
@@ -34,7 +33,7 @@ impl LogLevel {
         }
     }
 
-    fn parse(s: &str) -> Self {
+    pub(crate) fn parse(s: &str) -> Self {
         match s {
             "off" => LogLevel::Off,
             "error" => LogLevel::Error,
@@ -114,33 +113,44 @@ fn pick_extension_socket(entries: &[(String, String, String)], active: Option<&s
 }
 
 /// A live JSON-RPC connection to the extension over its Unix control socket.
-/// Sends are serialized through a mutex; a background thread drains incoming
-/// notifications (currently `bsp/setLogLevel`).
+/// Sends are serialized through a mutex; once the server exists, a background
+/// thread drains incoming notifications (`bsp/setLogLevel`, `bsp/configChanged`).
 pub(crate) struct ControlClient {
     write: Mutex<UnixStream>,
+    // Held between `connect_and_resolve` and `start_receiving`: the reader can't
+    // be consumed by the loop until the Server it dispatches to has been built.
+    reader: Mutex<Option<BufReader<UnixStream>>>,
 }
 
 impl ControlClient {
-    /// Connect, pull the resolved config via `bsp.resolveConfig`, then keep the
-    /// connection open: spawn the notification reader and return the client plus
-    /// the config `Value`. `log_level` is shared with the reader so the
-    /// extension can retune the `bsp/log` stream live.
-    pub(crate) fn connect_and_resolve(
-        socket: &Path,
-        log_level: Arc<AtomicU8>,
-    ) -> Result<(Arc<ControlClient>, Value), String> {
+    /// Connect and pull the resolved config via `bsp.resolveConfig`, keeping the
+    /// connection open for `start_receiving`.
+    pub(crate) fn connect_and_resolve(socket: &Path) -> Result<(Arc<ControlClient>, Value), String> {
         let stream = UnixStream::connect(socket).map_err(|e| format!("connect {}: {e}", socket.display()))?;
         let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
-        let client = Arc::new(ControlClient { write: Mutex::new(stream) });
-
+        let client = Arc::new(ControlClient { write: Mutex::new(stream), reader: Mutex::new(None) });
         let config = client.request(&mut reader, "bsp.resolveConfig", json!({}))?;
+        *client.reader.lock().map_err(|_| "control reader lock poisoned")? = Some(reader);
+        Ok((client, config))
+    }
 
+    /// Spawn the reader thread, dispatching each incoming notification's
+    /// `(method, params)` to `handler` until the connection closes. Call once,
+    /// after the Server the handler captures has been built.
+    pub(crate) fn start_receiving(&self, handler: impl Fn(&str, &Value) + Send + 'static) {
+        let Some(mut reader) = self.reader.lock().ok().and_then(|mut r| r.take()) else {
+            return;
+        };
         std::thread::spawn(move || {
             while let Ok(Some(msg)) = read_message(&mut reader) {
-                handle_incoming(&msg, &log_level);
+                if let Ok(val) = serde_json::from_str::<Value>(&msg)
+                    && let Some(method) = val.get("method").and_then(Value::as_str)
+                {
+                    let params = val.get("params").cloned().unwrap_or(Value::Null);
+                    handler(method, &params);
+                }
             }
         });
-        Ok((client, config))
     }
 
     /// One request/response round-trip on the connection, reading (and ignoring)
@@ -179,17 +189,6 @@ impl ControlClient {
         if let Ok(mut w) = self.write.lock() {
             let _ = write_message(&mut *w, &notif.to_string());
         }
-    }
-}
-
-fn handle_incoming(msg: &str, log_level: &AtomicU8) {
-    let Ok(val) = serde_json::from_str::<Value>(msg) else {
-        return;
-    };
-    if val.get("method").and_then(Value::as_str) == Some("bsp/setLogLevel")
-        && let Some(level) = val.get("params").and_then(|p| p.get("level")).and_then(Value::as_str)
-    {
-        log_level.store(LogLevel::parse(level) as u8, Ordering::Relaxed);
     }
 }
 

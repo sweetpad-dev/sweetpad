@@ -72,6 +72,12 @@ pub fn write_config(args: &[String]) -> Result<(), String> {
 /// Run the BSP server loop over stdin/stdout until EOF or `build/exit`.
 pub fn run(args: &[String]) -> Result<(), String> {
     let server = Arc::new(Server::resolve(args)?);
+    // If config came from the extension, keep listening on that control
+    // connection for live updates (`bsp/setLogLevel`, `bsp/configChanged`).
+    if let Some(control) = server.control.clone() {
+        let target = Arc::clone(&server);
+        control.start_receiving(move |method, params| target.handle_control(method, params));
+    }
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     // Each write locks stdout for one whole frame rather than holding the lock
@@ -149,7 +155,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
 struct Server {
     project_path: PathBuf,
-    configuration: String,
+    /// Live-updatable config (configuration + scheme), swapped on `bsp/configChanged`.
+    live: Mutex<LiveConfig>,
     /// `--sdk` / `--arch` overrides; `None` means infer the platform per target.
     sdk: Option<String>,
     arch: Option<String>,
@@ -178,11 +185,21 @@ struct PrepareJob {
     targets: Vec<String>,
 }
 
+/// The portion of config that can change while the server runs — pushed live by
+/// the extension as `bsp/configChanged`. Everything else (project/xcode/derived
+/// data) is fixed at startup; toolchain/DD changes warrant a restart instead.
+#[derive(Clone, PartialEq)]
+struct LiveConfig {
+    configuration: String,
+    scheme: Option<String>,
+}
+
 /// The inputs the server needs, however they were obtained — from `--project`
 /// flags, from the extension's `bsp.resolveConfig`, or from the working dir.
 struct ResolvedConfig {
     project_path: PathBuf,
     configuration: String,
+    scheme: Option<String>,
     sdk: Option<String>,
     arch: Option<String>,
     xcode: Option<PathBuf>,
@@ -194,6 +211,7 @@ impl ResolvedConfig {
         ResolvedConfig {
             project_path,
             configuration: flags.get("configuration").cloned().unwrap_or_else(|| "Debug".into()),
+            scheme: flags.get("scheme").cloned(),
             sdk: flags.get("sdk").cloned(),
             arch: flags.get("arch").cloned(),
             xcode: flags.get("xcode").map(PathBuf::from),
@@ -217,6 +235,7 @@ impl ResolvedConfig {
                 .cloned()
                 .or_else(|| pull("configuration"))
                 .unwrap_or_else(|| "Debug".into()),
+            scheme: flags.get("scheme").cloned().or_else(|| pull("scheme")),
             sdk: flags.get("sdk").cloned(),
             arch: flags.get("arch").cloned(),
             xcode: flags.get("xcode").map(PathBuf::from).or_else(|| pull("developerDir").map(PathBuf::from)),
@@ -261,7 +280,7 @@ impl Server {
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
         let cwd = std::fs::canonicalize(&cwd).unwrap_or(cwd);
         if let Some(socket) = control::discover_socket(&cwd) {
-            match ControlClient::connect_and_resolve(&socket, Arc::clone(&log_level)) {
+            match ControlClient::connect_and_resolve(&socket) {
                 Ok((client, config_value)) => {
                     let config = ResolvedConfig::from_control(&config_value, &flags)?;
                     return Self::build(config, Some(client), log_level);
@@ -286,7 +305,7 @@ impl Server {
             .map(Mutex::new);
         let server = Server {
             project_path: config.project_path,
-            configuration: config.configuration,
+            live: Mutex::new(LiveConfig { configuration: config.configuration, scheme: config.scheme }),
             sdk: config.sdk,
             arch: config.arch,
             xcode: config.xcode,
@@ -305,6 +324,50 @@ impl Server {
             server.targets,
         ));
         Ok(server)
+    }
+
+    /// The current build configuration (swapped live by `bsp/configChanged`).
+    fn configuration(&self) -> String {
+        self.live.lock().map_or_else(|_| "Debug".into(), |c| c.configuration.clone())
+    }
+
+    /// Dispatch a control-channel notification pushed by the extension.
+    fn handle_control(&self, method: &str, params: &Value) {
+        match method {
+            "bsp/setLogLevel" => {
+                if let Some(level) = params.get("level").and_then(Value::as_str) {
+                    self.log_level.store(LogLevel::parse(level) as u8, Ordering::Relaxed);
+                }
+            }
+            "bsp/configChanged" => {
+                let configuration = params.get("configuration").and_then(Value::as_str);
+                let scheme = params.get("scheme").and_then(Value::as_str).map(str::to_string);
+                self.apply_config(configuration, scheme);
+            }
+            _ => {}
+        }
+    }
+
+    /// Swap the live config and, when it actually changed, tell the client to
+    /// re-pull options via `buildTarget/didChange`. A missing `configuration`
+    /// keeps the current value; the diff prevents redundant refresh storms.
+    fn apply_config(&self, configuration: Option<&str>, scheme: Option<String>) {
+        let next = {
+            let Ok(mut live) = self.live.lock() else {
+                return;
+            };
+            let updated = LiveConfig {
+                configuration: configuration.map_or_else(|| live.configuration.clone(), str::to_string),
+                scheme,
+            };
+            if updated == *live {
+                return;
+            }
+            *live = updated.clone();
+            updated
+        };
+        self.log(&format!("config changed: configuration={} scheme={:?}", next.configuration, next.scheme));
+        self.notify_targets_changed();
     }
 
     /// An operational log line: to the `SWEETPAD_BSP_LOG` file (unconditional)
@@ -603,7 +666,7 @@ impl Server {
         cmd.arg("build")
             .args(["-project".as_ref(), self.project_path.as_os_str()])
             .args(["-scheme", &scheme])
-            .args(["-configuration", &self.configuration])
+            .args(["-configuration", &self.configuration()])
             .args(["-destination", &destination])
             // Prepare only needs modules, not a signed/launchable product, and
             // must not stall on validation prompts in a headless run.
@@ -792,7 +855,7 @@ impl Server {
             workspace: None,
             scheme: None,
             target: Some(target.to_string()),
-            configuration: self.configuration.clone(),
+            configuration: self.configuration(),
             sdk: sdk.to_string(),
             arch: arch.to_string(),
             destination: None,
