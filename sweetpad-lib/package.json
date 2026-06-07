@@ -18,9 +18,7 @@
     "build": "napi build --platform --release --no-default-features --features node",
     "build:debug": "napi build --platform --no-default-features --features node",
     "build:universal": "napi build --platform --release --no-default-features --features node --target aarch64-apple-darwin && napi build --platform --release --no-default-features --features node --target x86_64-apple-darwin && napi universalize",
-    "universalize": "napi universalize",
-    "build:bin:debug": "cargo build --bin sweetpad-bsp && cp target/debug/sweetpad-bsp sweetpad-bsp",
-    "build:bin:universal": "cargo build --release --bin sweetpad-bsp --target aarch64-apple-darwin && cargo build --release --bin sweetpad-bsp --target x86_64-apple-darwin && lipo -create -output sweetpad-bsp target/aarch64-apple-darwin/release/sweetpad-bsp target/x86_64-apple-darwin/release/sweetpad-bsp"
+    "universalize": "napi universalize"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.0.0"

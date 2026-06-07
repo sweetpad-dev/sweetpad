@@ -1,5 +1,4 @@
-import { execFileSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { sentryRollupPlugin } from "@sentry/rollup-plugin";
@@ -41,25 +40,16 @@ const sweetpadLibPlugin = {
     for (const file of ["index.js", ...addons]) {
       copyFileSync(path.join(SWEETPAD_LIB_DIR, file), path.join(outLibDir, file));
     }
+  },
+};
 
-    // The standalone BSP server binary (built alongside the addon by
-    // build:sweetpad-lib:*) ships next to the extension bundle; sourcekit-lsp
-    // execs it directly. Absent on a JS-only `rolldown` run — skip then.
-    const bspBinary = path.join(SWEETPAD_LIB_DIR, "sweetpad-bsp");
-    if (existsSync(bspBinary)) {
-      const dest = path.join(path.dirname(outputOptions.file), "sweetpad-bsp");
-      copyFileSync(bspBinary, dest);
-      chmodSync(dest, 0o755);
-      // The linker's ad-hoc signature doesn't survive a copy on Apple Silicon —
-      // the copy gets SIGKILLed by amfi. A fresh ad-hoc re-sign survives copies
-      // (incl. the VSIX zip), so the shipped binary actually launches.
-      try {
-        execFileSync("codesign", ["--sign", "-", "--force", dest], { stdio: "ignore" });
-      } catch (err) {
-        this.warn(`codesign of sweetpad-bsp failed (it may be SIGKILLed on launch): ${err.message}`);
-      }
-    } else {
-      this.warn("No sweetpad-bsp binary in sweetpad-lib/ — run build:sweetpad-lib:debug for BSP support.");
+// The BSP server entry only needs the `@sweetpad/lib` import rewritten to the
+// copied addon — the extension entry's `writeBundle` already populates `out/lib`.
+const sweetpadLibResolvePlugin = {
+  name: "sweetpad-lib-resolve",
+  resolveId(source) {
+    if (source === "@sweetpad/lib") {
+      return { id: "./lib/index.js", external: true };
     }
   },
 };
@@ -121,5 +111,28 @@ export default defineConfig([
         GLOBAL_RELEASE_VERSION: JSON.stringify(pkg.version),
       },
     },
+  },
+  {
+    // The BSP server sourcekit-lsp execs (via `argv` in buildServer.json).
+    // Bundled with a `#!/usr/bin/env node` shebang — like the CLI — so it runs
+    // under the user's system Node, which loads the copied addon (`out/lib`) and
+    // runs the sweetpad-lib BSP loop over stdio. No running extension required.
+    input: "./src/cli/bsp-server.ts",
+    output: {
+      file: "out/bsp-server.js",
+      format: "cjs",
+      sourcemap: isProduction ? "hidden" : true,
+      minify: isProduction,
+      banner: "#!/usr/bin/env node",
+    },
+    platform: "node",
+    transform: {
+      target: "es2022",
+      define: {
+        GLOBAL_SENTRY_DSN: JSON.stringify(null),
+        GLOBAL_RELEASE_VERSION: JSON.stringify(pkg.version),
+      },
+    },
+    plugins: [sweetpadLibResolvePlugin],
   },
 ]);

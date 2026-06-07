@@ -652,18 +652,19 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
 
 /**
  * Generate a minimal `buildServer.json` for SweetPad's own BSP server. `argv` is
- * a single entry — the bundled native `sweetpad-bsp` binary; starting it *is* the
- * BSP server (no subcommand). No Node, Electron, or shim, so it works the same in
- * any editor (VS Code, Cursor, nvim, Zed).
+ * a single entry — the bundled `bsp-server.js`, which carries a
+ * `#!/usr/bin/env node` shebang (like the CLI) so sourcekit-lsp execs it directly
+ * through the user's Node. No subcommand, so it works the same in any editor
+ * (VS Code, Cursor, nvim, Zed).
  *
  * Project, Xcode, scheme, configuration and the log path are all discovered at
  * runtime over the control socket (`bsp.resolveConfig`).
  */
 async function generateSweetpadBuildServerConfig(): Promise<void> {
   const cwd = getWorkspacePath();
-  // The native BSP binary ships next to the bundled extension (this module's dir).
-  const binary = path.join(__dirname, "sweetpad-bsp");
-  await ensureBspBinaryRunnable(binary);
+  // The bundled BSP launcher ships next to the extension bundle (this module's dir).
+  const bspServer = path.join(__dirname, "bsp-server.js");
+  await ensureExecutable(bspServer);
 
   // sourcekit-lsp requires all five fields (`name`, `version`, `bspVersion`,
   // `languages`, `argv`) or the decode throws and the server is silently skipped.
@@ -672,33 +673,22 @@ async function generateSweetpadBuildServerConfig(): Promise<void> {
     version: "0.1.0",
     bspVersion: "2.2.0",
     languages: ["swift", "objective-c", "objective-cpp", "c", "cpp"],
-    argv: [binary],
+    argv: [bspServer],
   };
   await fs.writeFile(path.join(cwd, "buildServer.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
 /**
- * Make the shipped BSP binary launchable. All best-effort:
- *  - executable bit (a VSIX zip can drop it);
- *  - strip the macOS quarantine xattr so Gatekeeper doesn't block the exec;
- *  - re-sign ad-hoc, because the linker's ad-hoc signature doesn't survive being
- *    copied/unzipped on Apple Silicon — the copy gets SIGKILLed by amfi otherwise.
+ * Make the bundled BSP launcher executable. Its `#!/usr/bin/env node` shebang
+ * lets sourcekit-lsp exec the `.js` directly, but only if the file keeps its
+ * executable bit — a VSIX zip can drop it. Best-effort chmod; a Node script needs
+ * no de-quarantine or code-signing (only a bare Mach-O hits amfi on launch).
  */
-async function ensureBspBinaryRunnable(binary: string): Promise<void> {
+async function ensureExecutable(bspServer: string): Promise<void> {
   try {
-    await fs.chmod(binary, 0o755);
+    await fs.chmod(bspServer, 0o755);
   } catch (e) {
-    commonLogger.debug("Failed to chmod the BSP binary", { error: e, binary });
-  }
-  try {
-    await exec({ command: "xattr", args: ["-d", "com.apple.quarantine", binary] });
-  } catch {
-    // Not quarantined (or xattr unavailable) — nothing to do.
-  }
-  try {
-    await exec({ command: "codesign", args: ["--sign", "-", "--force", binary] });
-  } catch (e) {
-    commonLogger.debug("codesign of the BSP binary failed", { error: e, binary });
+    commonLogger.debug("Failed to chmod the BSP launcher", { error: e, bspServer });
   }
 }
 

@@ -24,13 +24,6 @@ name = "sweetpad-lib"
 path = "src/bin/sweetpad_lib.rs"
 required-features = ["cli"]
 
-# The shipped Build Server Protocol server. Starting it *is* the BSP server (no
-# subcommand) — sourcekit-lsp execs it directly via buildServer.json.
-[[bin]]
-name = "sweetpad-bsp"
-path = "src/bin/sweetpad_bsp.rs"
-required-features = ["cli"]
-
 [features]
 # `cli` builds the `sweetpad-lib` binary; default-on so `cargo build`/`cargo test`
 # get it (the integration tests exec it), and skipped by the addon build.
