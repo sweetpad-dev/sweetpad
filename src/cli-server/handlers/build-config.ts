@@ -5,7 +5,7 @@ import { ERROR_CODES, type ConfigurationEntity } from "../types";
 import type { HandlerFn, RpcContext } from "./context";
 
 async function loadConfigurations(ctx: RpcContext): Promise<string[]> {
-  const xcworkspace = getCurrentXcodeWorkspacePath(ctx.workspace);
+  const xcworkspace = getCurrentXcodeWorkspacePath(ctx.workspaceState);
   if (!xcworkspace) {
     throw new SweetpadRpcError(ERROR_CODES.NO_WORKSPACE, "No Xcode workspace detected for this folder.");
   }

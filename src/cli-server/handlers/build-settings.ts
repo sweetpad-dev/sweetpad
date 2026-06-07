@@ -16,7 +16,7 @@ async function loadSettings(params: GetParams, ctx: RpcContext): Promise<XcodeBu
     });
   }
   const configuration = params?.configuration ?? ctx.buildManager.getDefaultConfigurationForBuild() ?? "Debug";
-  const xcworkspace = params?.xcworkspace ?? getCurrentXcodeWorkspacePath(ctx.workspace);
+  const xcworkspace = params?.xcworkspace ?? getCurrentXcodeWorkspacePath(ctx.workspaceState);
   if (!xcworkspace) {
     throw new SweetpadRpcError(ERROR_CODES.NO_WORKSPACE, "No Xcode workspace detected for this folder.");
   }

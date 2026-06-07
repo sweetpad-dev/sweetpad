@@ -35,10 +35,12 @@ import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { SchemeWatcher } from "./build/scheme-watcher.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
+import { getWorkspacePath } from "./build/utils.js";
 import { CliServerService } from "./cli-server/service.js";
 import { type AppDeps, registerCommand, registerTreeDataProvider } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
 import { ExecutionScopeService } from "./common/execution-scope.js";
+import { GitignoreNotifier } from "./common/gitignore-notice.js";
 import { Logger } from "./common/logger.js";
 import { warmShellEnv } from "./common/tasks/shell-env.js";
 import { WorkspaceStateService } from "./common/workspace-state.js";
@@ -110,11 +112,13 @@ export async function activate(context: vscode.ExtensionContext) {
   // An activation event matched this workspace — reveal SweetPad UI.
   await vscode.commands.executeCommand("setContext", "sweetpad.enabled", true);
 
+  const workspacePath = getWorkspacePath();
+
   warmShellEnv();
 
   // Services 🔧
   // Leaf services with no manager dependencies. Constructed first so managers can take them as deps.
-  const workspace = new WorkspaceStateService(context);
+  const workspaceState = new WorkspaceStateService(context);
   const execution = new ExecutionScopeService();
 
   // Managers 💼
@@ -129,12 +133,12 @@ export async function activate(context: vscode.ExtensionContext) {
   const destinationsManager = new DestinationsManager({
     simulatorsManager: simulatorsManager,
     devicesManager: devicesManager,
-    workspace: workspace,
+    workspaceState: workspaceState,
   });
-  const lspDiagnostics = new LspDiagnosticsService(workspace);
+  const lspDiagnostics = new LspDiagnosticsService(workspaceState);
   const diagnostics = new DiagnosticsManager();
   const buildManager = new BuildManager({
-    workspace: workspace,
+    workspaceState: workspaceState,
     progress: progressStatusBar,
     execution: execution,
     tunnel: tunnelManager,
@@ -144,7 +148,7 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   const toolsManager = new ToolsManager();
   const testingManager = new TestingManager({
-    workspace: workspace,
+    workspaceState: workspaceState,
     progress: progressStatusBar,
     execution: execution,
     buildManager: buildManager,
@@ -169,7 +173,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const buildTaskProvider = new XcodeBuildTaskProvider({
     buildManager: buildManager,
     destinationsManager: destinationsManager,
-    workspace: workspace,
+    workspaceState: workspaceState,
     progressStatusBar: progressStatusBar,
     execution: execution,
   });
@@ -181,13 +185,19 @@ export async function activate(context: vscode.ExtensionContext) {
   const serverService = new CliServerService({
     buildManager: buildManager,
     destinationsManager: destinationsManager,
-    workspace: workspace,
+    workspaceState: workspaceState,
+    workspacePath: workspacePath,
     extensionVersion: context.extension?.packageJSON?.version ?? "unknown",
     vscodeContext: context,
   });
   const bspService = new BspService({
     buildManager: buildManager,
-    workspace: workspace,
+    workspaceState: workspaceState,
+  });
+
+  const gitignoreNotifier = new GitignoreNotifier({
+    workspacePath: workspacePath,
+    workspaceState: workspaceState,
   });
 
   // Start everything that has side effects (subscriptions, calculations, .show(), etc.)
@@ -216,7 +226,7 @@ export async function activate(context: vscode.ExtensionContext) {
     formatter: formatter,
     progressStatusBar: progressStatusBar,
     tunnelManager: tunnelManager,
-    workspace: workspace,
+    workspaceState: workspaceState,
     execution: execution,
     vscodeContext: context,
     buildTreeProvider: buildTreeProvider,
@@ -272,7 +282,12 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.testing.selectConfiguration", selectConfigurationForTestingCommand));
 
   // Debugging
-  d(registerDebugConfigurationProvider({ workspace: workspace, vscodeContext: context }));
+  d(
+    registerDebugConfigurationProvider({
+      workspaceState: workspaceState,
+      vscodeContext: context,
+    }),
+  );
   d(command("sweetpad.debugger.getAppPath", getAppPathCommand));
   d(command("sweetpad.debugger.debuggingLaunch", debuggingLaunchCommand));
   d(command("sweetpad.debugger.debuggingRun", debuggingRunCommand));
@@ -346,6 +361,7 @@ export async function activate(context: vscode.ExtensionContext) {
   d(diagnostics);
   d(serverService);
   d(bspService);
+  d(gitignoreNotifier);
 }
 
 export function deactivate() {}

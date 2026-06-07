@@ -3,6 +3,7 @@ import * as crypto from "node:crypto";
 
 import * as vscode from "vscode";
 
+import { getWorkspacePath } from "../../build/utils";
 import { getWorkspaceConfig } from "../config";
 import { commonLogger } from "../logger";
 
@@ -28,14 +29,6 @@ const ELECTRON_ONLY_VARS = new Set(["ELECTRON_RUN_AS_NODE", "ELECTRON_NO_ATTACH_
 
 let cachedPromise: Promise<NodeJS.ProcessEnv> | null = null;
 let notifiedFailureThisSession = false;
-
-function getProbeCwd(): string | undefined {
-  // Running the probe shell in the workspace root lets tools with per-directory
-  // behavior (mise activate, direnv, asdf .tool-versions, local .envrc) resolve
-  // to the project's expected toolchain instead of whatever cwd the extension
-  // host happened to start in.
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-}
 
 export function getShellEnv(): Promise<NodeJS.ProcessEnv> {
   if (!cachedPromise) {
@@ -87,7 +80,7 @@ export function warmShellEnv(): void {
 async function resolveShellEnv(): Promise<NodeJS.ProcessEnv> {
   const shell = getWorkspaceConfig("shellEnv.shell") || process.env.SHELL || "/bin/sh";
   const timeoutMs = getWorkspaceConfig("shellEnv.timeout") ?? DEFAULT_TIMEOUT_MS;
-  const cwd = getProbeCwd();
+  const cwd = getWorkspacePath();
 
   const uuid = crypto.randomUUID();
   const startMarker = `__SW_ENV_START_${uuid}__`;

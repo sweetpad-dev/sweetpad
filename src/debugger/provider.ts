@@ -38,11 +38,11 @@ class InitialDebugConfigurationProvider implements vscode.DebugConfigurationProv
 }
 
 class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
-  private workspace: WorkspaceStateService;
+  private workspaceState: WorkspaceStateService;
   private vscodeContext: vscode.ExtensionContext;
 
-  constructor(options: { workspace: WorkspaceStateService; vscodeContext: vscode.ExtensionContext }) {
-    this.workspace = options.workspace;
+  constructor(options: { workspaceState: WorkspaceStateService; vscodeContext: vscode.ExtensionContext }) {
+    this.workspaceState = options.workspaceState;
     this.vscodeContext = options.vscodeContext;
   }
 
@@ -167,7 +167,7 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     config: vscode.DebugConfiguration,
     token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration> {
-    const launchContext = this.workspace.get("build.lastLaunchedApp");
+    const launchContext = this.workspaceState.get("build.lastLaunchedApp");
     if (!launchContext) {
       throw new Error("No last launched app found, please launch the app first using the SweetPad extension");
     }
@@ -201,7 +201,7 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
 }
 
 export function registerDebugConfigurationProvider(options: {
-  workspace: WorkspaceStateService;
+  workspaceState: WorkspaceStateService;
   vscodeContext: vscode.ExtensionContext;
 }) {
   const dynamicProvider = new DynamicDebugConfigurationProvider(options);

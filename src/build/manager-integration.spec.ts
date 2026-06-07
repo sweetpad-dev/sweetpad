@@ -88,7 +88,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       }),
     } as any;
     buildManager = new BuildManager({
-      workspace: mockWorkspace,
+      workspaceState: mockWorkspace,
       progress: mockProgress,
       execution,
       tunnel: mockTunnel,

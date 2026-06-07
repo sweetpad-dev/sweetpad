@@ -4,12 +4,7 @@ import * as vscode from "vscode";
 
 import { getBuildServerProvider } from "../bsp/commands";
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
-import {
-  type XcodeScheme,
-  getBuildConfigurations,
-  getIsNodeInstalled,
-  getIsXBSInstalled,
-} from "../common/cli/scripts";
+import { type XcodeScheme, getBuildConfigurations, getIsNodeInstalled, getIsXBSInstalled } from "../common/cli/scripts";
 import { type AppDeps, warnNodeRuntimeMissing } from "../common/commands";
 import { updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError } from "../common/errors";
@@ -95,7 +90,10 @@ export async function testCommand(deps: AppDeps, item?: BuildTreeItem) {
  */
 export async function resolveDependenciesCommand(deps: AppDeps, item?: BuildTreeItem) {
   deps.progressStatusBar.updateText("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const xcworkspace = await askXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    buildManager: deps.buildManager,
+  });
 
   deps.progressStatusBar.updateText("Searching for scheme");
   const scheme =
@@ -147,7 +145,10 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
   }
 
   deps.progressStatusBar.updateText("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const xcworkspace = await askXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    buildManager: deps.buildManager,
+  });
 
   deps.progressStatusBar.updateText("Searching for scheme");
   const scheme =
@@ -187,7 +188,10 @@ export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTre
     throw XBSMissingError();
   }
 
-  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const xcworkspace = await askXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    buildManager: deps.buildManager,
+  });
   const scheme =
     item?.scheme ??
     (await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
@@ -219,7 +223,10 @@ export async function disableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTr
     throw XBSMissingError();
   }
 
-  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const xcworkspace = await askXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    buildManager: deps.buildManager,
+  });
   const scheme =
     item?.scheme ??
     (await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
@@ -251,7 +258,10 @@ export async function searchBuildViewCommand(_deps: AppDeps) {
  */
 export async function openXcodeCommand(deps: AppDeps) {
   deps.progressStatusBar.updateText("Opening project in Xcode");
-  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const xcworkspace = await askXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    buildManager: deps.buildManager,
+  });
 
   await exec({
     command: "open",
@@ -273,9 +283,9 @@ export async function selectXcodeWorkspaceCommand(deps: AppDeps) {
   if (updateAnswer) {
     const relative = getWorkspaceRelativePath(workspace);
     await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
-    deps.workspace.update("build.xcodeWorkspacePath", undefined);
+    deps.workspaceState.update("build.xcodeWorkspacePath", undefined);
   } else {
-    deps.workspace.update("build.xcodeWorkspacePath", workspace);
+    deps.workspaceState.update("build.xcodeWorkspacePath", workspace);
   }
 
   deps.buildManager.refreshSchemes();
@@ -288,7 +298,10 @@ export async function selectXcodeSchemeForBuildCommand(deps: AppDeps, item?: Bui
   }
 
   deps.progressStatusBar.updateText("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const xcworkspace = await askXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    buildManager: deps.buildManager,
+  });
 
   deps.progressStatusBar.updateText("Searching for scheme");
   await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
@@ -303,7 +316,10 @@ export async function selectXcodeSchemeForBuildCommand(deps: AppDeps, item?: Bui
  */
 export async function selectConfigurationForBuildCommand(deps: AppDeps): Promise<void> {
   deps.progressStatusBar.updateText("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const xcworkspace = await askXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    buildManager: deps.buildManager,
+  });
 
   deps.progressStatusBar.updateText("Searching for configurations");
   const configurations = await getBuildConfigurations({
@@ -374,7 +390,7 @@ export async function diagnoseBuildSetupCommand(deps: AppDeps): Promise<void> {
       diagWrite(`✅ VSCode workspace path: ${workspacePath}\n`);
       diagWrite("================================");
 
-      const xcWorkspacePath = getCurrentXcodeWorkspacePath(deps.workspace);
+      const xcWorkspacePath = getCurrentXcodeWorkspacePath(deps.workspaceState);
       diagWrite("🔎 Checking current xcode worskpace path");
       diagWrite(`✅ Xcode workspace path: ${xcWorkspacePath ?? "<project-root>"}\n`);
       diagWrite("================================");
@@ -460,13 +476,16 @@ export async function applySchemeFilterCommand(deps: AppDeps): Promise<void> {
 }
 
 export async function refreshSchemesCommand(deps: AppDeps): Promise<void> {
-  const xcworkspace = getCurrentXcodeWorkspacePath(deps.workspace);
+  const xcworkspace = getCurrentXcodeWorkspacePath(deps.workspaceState);
 
   if (!xcworkspace) {
     // If there is no workspace, we should ask user to select it first.
     // This function automatically refreshes schemes, so we can just call it and move on
     // without calling to refresh schemes manually.
-    await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+    await askXcodeWorkspacePath({
+      workspaceState: deps.workspaceState,
+      buildManager: deps.buildManager,
+    });
     return;
   }
 
@@ -491,7 +510,7 @@ export async function switchWorktreeCommand(deps: AppDeps) {
     return;
   }
 
-  const currentWorkspace = getCurrentXcodeWorkspacePath(deps.workspace);
+  const currentWorkspace = getCurrentXcodeWorkspacePath(deps.workspaceState);
 
   type WorktreePickContext = { worktreePath: string; xcworkspace: string };
   const items: { label: string; description: string; detail?: string; context: WorktreePickContext }[] = [];
@@ -526,7 +545,7 @@ export async function switchWorktreeCommand(deps: AppDeps) {
   const relative = getWorkspaceRelativePath(selected.context.xcworkspace);
   await updateWorkspaceConfig("build.xcodeWorkspacePath", relative);
 
-  deps.workspace.update("build.xcodeWorkspacePath", undefined);
+  deps.workspaceState.update("build.xcodeWorkspacePath", undefined);
   deps.buildManager.refreshSchemes();
 
   const dirName = path.basename(selected.context.worktreePath);

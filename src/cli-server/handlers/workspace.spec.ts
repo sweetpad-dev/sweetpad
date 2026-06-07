@@ -25,7 +25,7 @@ function makeContext(opts: { workspacePath: string; state?: Map<string, unknown>
   return {
     workspacePath: opts.workspacePath,
     extensionVersion: "test",
-    workspace: ws as WorkspaceStateService,
+    workspaceState: ws as WorkspaceStateService,
     buildManager: {} as RpcContext["buildManager"],
     destinationsManager: {} as RpcContext["destinationsManager"],
     buildRegistry: {} as RpcContext["buildRegistry"],

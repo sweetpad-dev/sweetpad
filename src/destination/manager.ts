@@ -46,7 +46,7 @@ type IEventKey = keyof IEventMap;
 export class DestinationsManager {
   private simulatorsManager: SimulatorsManager;
   private devicesManager: DevicesManager;
-  private workspace: WorkspaceStateService;
+  private workspaceState: WorkspaceStateService;
 
   // Event emitter to signal changes in the destinations
   private emitter = new events.EventEmitter<IEventMap>();
@@ -54,11 +54,11 @@ export class DestinationsManager {
   constructor(options: {
     simulatorsManager: SimulatorsManager;
     devicesManager: DevicesManager;
-    workspace: WorkspaceStateService;
+    workspaceState: WorkspaceStateService;
   }) {
     this.simulatorsManager = options.simulatorsManager;
     this.devicesManager = options.devicesManager;
-    this.workspace = options.workspace;
+    this.workspaceState = options.workspaceState;
   }
 
   async start(): Promise<void> {
@@ -89,12 +89,12 @@ export class DestinationsManager {
   }
 
   isRecentExists(): boolean {
-    const recent = this.workspace.get("build.xcodeDestinationsRecent");
+    const recent = this.workspaceState.get("build.xcodeDestinationsRecent");
     return Array.isArray(recent) && recent.length > 0;
   }
 
   async getRecentDestinations(): Promise<Destination[]> {
-    const rawDestinations = this.workspace.get("build.xcodeDestinationsRecent") ?? [];
+    const rawDestinations = this.workspaceState.get("build.xcodeDestinationsRecent") ?? [];
 
     const destinations: Destination[] = [];
     for (const rawDestination of rawDestinations) {
@@ -278,7 +278,7 @@ export class DestinationsManager {
 
     // Most used destinations should be on top of the list
     if (options?.mostUsedSort) {
-      const usageStats = this.workspace.get("build.xcodeDestinationsUsageStatistics") ?? {};
+      const usageStats = this.workspaceState.get("build.xcodeDestinationsUsageStatistics") ?? {};
       destinations.sort((a, b) => {
         const aCount = usageStats[a.id] ?? 0;
         const bCount = usageStats[b.id] ?? 0;
@@ -340,9 +340,9 @@ export class DestinationsManager {
    */
   trackDestinationUsage(destination: Destination) {
     // Incrmement usage statistics
-    const prevStat = this.workspace.get("build.xcodeDestinationsUsageStatistics") ?? {};
+    const prevStat = this.workspaceState.get("build.xcodeDestinationsUsageStatistics") ?? {};
     const count: number = prevStat[destination.id] ?? 0;
-    this.workspace.update("build.xcodeDestinationsUsageStatistics", {
+    this.workspaceState.update("build.xcodeDestinationsUsageStatistics", {
       ...prevStat,
       [destination.id]: count + 1,
     });
@@ -350,7 +350,7 @@ export class DestinationsManager {
 
   trackRecentDestination(destination: Destination) {
     // Add to recent destinations
-    const recentDestinations = this.workspace.get("build.xcodeDestinationsRecent") ?? [];
+    const recentDestinations = this.workspaceState.get("build.xcodeDestinationsRecent") ?? [];
     const recentDestination = recentDestinations.find((d) => d.id === destination.id);
     if (!recentDestination) {
       const newRecentDestination: SelectedDestination = {
@@ -358,20 +358,20 @@ export class DestinationsManager {
         type: destination.type,
         name: destination.name,
       };
-      this.workspace.update("build.xcodeDestinationsRecent", [...recentDestinations, newRecentDestination]);
+      this.workspaceState.update("build.xcodeDestinationsRecent", [...recentDestinations, newRecentDestination]);
     }
   }
 
   removeRecentDestination(destination: Destination) {
-    const recentDestinations = this.workspace.get("build.xcodeDestinationsRecent") ?? [];
+    const recentDestinations = this.workspaceState.get("build.xcodeDestinationsRecent") ?? [];
     const newRecentDestinations = recentDestinations.filter((d) => d.id !== destination.id);
-    this.workspace.update("build.xcodeDestinationsRecent", newRecentDestinations);
+    this.workspaceState.update("build.xcodeDestinationsRecent", newRecentDestinations);
     this.emitter.emit("recentDestinationsUpdated");
   }
 
   setWorkspaceDestinationForBuild(destination: Destination | undefined) {
     if (!destination) {
-      this.workspace.update("build.xcodeDestination", undefined);
+      this.workspaceState.update("build.xcodeDestination", undefined);
       this.emitter.emit("xcodeDestinationForBuildUpdated", undefined);
       return;
     }
@@ -381,7 +381,7 @@ export class DestinationsManager {
       type: destination.type,
       name: destination.name,
     };
-    this.workspace.update("build.xcodeDestination", selectedDestination);
+    this.workspaceState.update("build.xcodeDestination", selectedDestination);
     this.trackSelectedDestination(destination);
 
     this.emitter.emit("xcodeDestinationForBuildUpdated", selectedDestination);
@@ -389,7 +389,7 @@ export class DestinationsManager {
 
   setWorkspaceDestinationForTesting(destination: Destination | undefined) {
     if (!destination) {
-      this.workspace.update("testing.xcodeDestination", undefined);
+      this.workspaceState.update("testing.xcodeDestination", undefined);
       this.emitter.emit("xcodeDestinationForTestingUpdated", undefined);
       return;
     }
@@ -399,7 +399,7 @@ export class DestinationsManager {
       type: destination.type,
       name: destination.name,
     };
-    this.workspace.update("testing.xcodeDestination", selectedDestination);
+    this.workspaceState.update("testing.xcodeDestination", selectedDestination);
     this.trackSelectedDestination(destination);
     this.emitter.emit("xcodeDestinationForTestingUpdated", selectedDestination);
   }
@@ -408,10 +408,10 @@ export class DestinationsManager {
    * Get selected destination from the workspace state
    */
   getSelectedXcodeDestinationForBuild(): SelectedDestination | undefined {
-    return this.workspace.get("build.xcodeDestination");
+    return this.workspaceState.get("build.xcodeDestination");
   }
 
   getSelectedXcodeDestinationForTesting(): SelectedDestination | undefined {
-    return this.workspace.get("testing.xcodeDestination");
+    return this.workspaceState.get("testing.xcodeDestination");
   }
 }

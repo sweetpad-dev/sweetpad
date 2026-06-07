@@ -1,18 +1,14 @@
-import { promises as fs } from "node:fs";
-import * as path from "node:path";
-
 import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
+import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationsManager } from "../destination/manager";
 import { BuildSessionRegistry } from "./builds";
-import { GitignoreNotifier } from "./gitignore-notice";
 import { buildDispatch } from "./handlers";
 import { CliServer } from "./server";
 
-const ENABLED_KEY = "sweetpad.server.enabled";
 const CONFIG_KEY_PREFIX = "sweetpad.";
 
 /**
@@ -40,35 +36,36 @@ function extractSweetpadConfigKeys(context: vscode.ExtensionContext): string[] {
 export class CliServerService implements vscode.Disposable {
   private readonly buildManager: BuildManager;
   private readonly destinationsManager: DestinationsManager;
-  private readonly workspace: WorkspaceStateService;
+  private readonly workspaceState: WorkspaceStateService;
+  private readonly workspacePath: string;
   private readonly extensionVersion: string;
   private readonly vscodeContext: vscode.ExtensionContext;
   private readonly configKeys: string[];
 
-  private current:
-    | { server: CliServer; registry: BuildSessionRegistry; workspacePath: string; gitignore: GitignoreNotifier }
-    | undefined;
+  private current: { server: CliServer; registry: BuildSessionRegistry } | undefined;
   private configSubscription: vscode.Disposable | undefined;
   private starting = false;
 
   constructor(options: {
     buildManager: BuildManager;
     destinationsManager: DestinationsManager;
-    workspace: WorkspaceStateService;
+    workspaceState: WorkspaceStateService;
+    workspacePath: string;
     extensionVersion: string;
     vscodeContext: vscode.ExtensionContext;
   }) {
     this.buildManager = options.buildManager;
     this.destinationsManager = options.destinationsManager;
-    this.workspace = options.workspace;
+    this.workspaceState = options.workspaceState;
+    this.workspacePath = options.workspacePath;
     this.extensionVersion = options.extensionVersion;
     this.vscodeContext = options.vscodeContext;
     this.configKeys = extractSweetpadConfigKeys(options.vscodeContext);
   }
 
   async start(): Promise<void> {
-    this.configSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration(ENABLED_KEY)) {
+    this.configSubscription = onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("sweetpad.server.enabled")) {
         void this.reconcile();
       }
     });
@@ -81,7 +78,7 @@ export class CliServerService implements vscode.Disposable {
     await this.stop();
   }
 
-  getStatus(): { running: boolean; name?: string; socket?: string; workspacePath?: string } {
+  getStatus(): { running: boolean; name?: string; socket?: string } {
     if (!this.current) {
       return { running: false };
     }
@@ -89,7 +86,6 @@ export class CliServerService implements vscode.Disposable {
       running: true,
       name: this.current.server.name,
       socket: this.current.server.socket,
-      workspacePath: this.current.workspacePath,
     };
   }
 
@@ -99,7 +95,7 @@ export class CliServerService implements vscode.Disposable {
   }
 
   private isEnabled(): boolean {
-    return vscode.workspace.getConfiguration().get<boolean>(ENABLED_KEY) === true;
+    return getWorkspaceConfig("server.enabled") === true;
   }
 
   private async reconcile(): Promise<void> {
@@ -116,25 +112,18 @@ export class CliServerService implements vscode.Disposable {
   private async startServer(): Promise<void> {
     this.starting = true;
     try {
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
-      if (!folder) {
-        commonLogger.warn("sweetpad.server.enabled is true but no workspace folder is open; server will not start");
-        return;
-      }
-      // Symlink-resolved so it matches the realpath'd paths used elsewhere.
-      const workspacePath = await fs.realpath(folder).catch(() => path.resolve(folder));
-
+      const workspacePath = this.workspacePath;
       const registry = new BuildSessionRegistry({
-        workspacePath,
+        workspacePath: workspacePath,
         buildManager: this.buildManager,
         destinationsManager: this.destinationsManager,
       });
       await registry.start();
 
       const dispatch = buildDispatch({
-        workspacePath,
+        workspacePath: workspacePath,
         extensionVersion: this.extensionVersion,
-        workspace: this.workspace,
+        workspaceState: this.workspaceState,
         buildManager: this.buildManager,
         destinationsManager: this.destinationsManager,
         buildRegistry: registry,
@@ -143,7 +132,7 @@ export class CliServerService implements vscode.Disposable {
       });
 
       const server = new CliServer({
-        workspacePath,
+        workspacePath: workspacePath,
         extensionVersion: this.extensionVersion,
         handlers: dispatch,
       });
@@ -153,8 +142,7 @@ export class CliServerService implements vscode.Disposable {
         registry.dispose();
         throw err;
       }
-      const gitignore = new GitignoreNotifier(workspacePath, this.vscodeContext);
-      this.current = { server, registry, workspacePath, gitignore };
+      this.current = { server, registry };
     } catch (err) {
       commonLogger.error("Failed to start SweetPad RPC server", { error: err });
     } finally {
@@ -166,11 +154,6 @@ export class CliServerService implements vscode.Disposable {
     const current = this.current;
     this.current = undefined;
     if (!current) return;
-    try {
-      current.gitignore.dispose();
-    } catch (err) {
-      commonLogger.debug("GitignoreNotifier.dispose threw", { error: err });
-    }
     try {
       current.registry.dispose();
     } catch (err) {

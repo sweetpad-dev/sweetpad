@@ -24,7 +24,7 @@ export class LspDiagnosticsService implements vscode.Disposable {
   private outputChannel: vscode.OutputChannel | undefined;
   private tailProcess: ChildProcess | undefined;
 
-  constructor(private readonly workspace: WorkspaceStateService) {}
+  constructor(private readonly workspaceState: WorkspaceStateService) {}
 
   /**
    * Enable verbose LSP diagnostics: sets env vars on both xcode-build-server
@@ -37,11 +37,11 @@ export class LspDiagnosticsService implements vscode.Disposable {
   async enable(): Promise<void> {
     await this.setExtensionConfigEnv("sweetpad", "xcodebuildserver.serverEnv", XBS_ENV_KEY, XBS_LOG_PATH);
     await this.setExtensionConfigEnv("swift", "swiftEnvironmentVariables", SOURCEKIT_ENV_KEY, SOURCEKIT_ENV_VALUE);
-    this.workspace.update(STATE_KEY, true);
+    this.workspaceState.update(STATE_KEY, true);
     // Defer the user-facing notification to after the window reload triggered
     // by the calling command; the env-var changes don't take effect until
     // then, and racing with VS Code's own "reload required" prompt is ugly.
-    this.workspace.update(POST_RELOAD_KEY, "enabled");
+    this.workspaceState.update(POST_RELOAD_KEY, "enabled");
     await this.startTail();
   }
 
@@ -53,12 +53,12 @@ export class LspDiagnosticsService implements vscode.Disposable {
    * XBS continues logging until the next regen.
    */
   async disable(): Promise<void> {
-    if (!this.workspace.get(STATE_KEY)) return;
+    if (!this.workspaceState.get(STATE_KEY)) return;
 
     await this.setExtensionConfigEnv("sweetpad", "xcodebuildserver.serverEnv", XBS_ENV_KEY, undefined);
     await this.setExtensionConfigEnv("swift", "swiftEnvironmentVariables", SOURCEKIT_ENV_KEY, undefined);
-    this.workspace.update(STATE_KEY, undefined);
-    this.workspace.update(POST_RELOAD_KEY, "disabled");
+    this.workspaceState.update(STATE_KEY, undefined);
+    this.workspaceState.update(POST_RELOAD_KEY, "disabled");
     this.stopTail();
   }
 
@@ -67,7 +67,7 @@ export class LspDiagnosticsService implements vscode.Disposable {
    * previous session, re-attach the tail so the stream resumes after a reload.
    */
   reattachIfEnabled(): void {
-    if (!this.workspace.get(STATE_KEY)) return;
+    if (!this.workspaceState.get(STATE_KEY)) return;
     void this.startTail();
   }
 
@@ -78,9 +78,9 @@ export class LspDiagnosticsService implements vscode.Disposable {
    * the window had to reload first to apply the env vars).
    */
   showPostReloadNotificationIfPending(): void {
-    const action = this.workspace.get(POST_RELOAD_KEY);
+    const action = this.workspaceState.get(POST_RELOAD_KEY);
     if (!action) return;
-    this.workspace.update(POST_RELOAD_KEY, undefined);
+    this.workspaceState.update(POST_RELOAD_KEY, undefined);
 
     if (action === "enabled") {
       const openChannel = "Open Output Channel";

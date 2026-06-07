@@ -19,7 +19,7 @@ function buildManager(): DestinationsManager {
     update: vi.fn(),
     reset: vi.fn(),
   } as unknown as WorkspaceStateService;
-  return new DestinationsManager({ simulatorsManager, devicesManager, workspace });
+  return new DestinationsManager({ simulatorsManager, devicesManager, workspaceState: workspace });
 }
 
 function makeDevice(overrides: {

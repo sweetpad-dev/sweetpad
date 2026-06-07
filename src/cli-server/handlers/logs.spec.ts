@@ -6,7 +6,7 @@ function makeCtx(): RpcContext {
   return {
     workspacePath: "/tmp/ws",
     extensionVersion: "test",
-    workspace: {} as RpcContext["workspace"],
+    workspaceState: {} as RpcContext["workspaceState"],
     buildManager: {} as RpcContext["buildManager"],
     destinationsManager: {} as RpcContext["destinationsManager"],
     buildRegistry: {} as RpcContext["buildRegistry"],

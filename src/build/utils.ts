@@ -284,17 +284,17 @@ export function prepareDerivedDataPath(): string | null {
   return derivedDataPath;
 }
 
-export function getCurrentXcodeWorkspacePath(workspace: WorkspaceStateService): string | undefined {
+export function getCurrentXcodeWorkspacePath(workspaceState: WorkspaceStateService): string | undefined {
   const configPath = getWorkspaceConfig("build.xcodeWorkspacePath");
   if (configPath) {
-    workspace.update("build.xcodeWorkspacePath", undefined);
+    workspaceState.update("build.xcodeWorkspacePath", undefined);
     if (path.isAbsolute(configPath)) {
       return configPath;
     }
     return path.join(getWorkspacePath(), configPath);
   }
 
-  const cachedPath = workspace.get("build.xcodeWorkspacePath");
+  const cachedPath = workspaceState.get("build.xcodeWorkspacePath");
   if (cachedPath) {
     return cachedPath;
   }
@@ -302,11 +302,11 @@ export function getCurrentXcodeWorkspacePath(workspace: WorkspaceStateService): 
   return undefined;
 }
 
-export async function askXcodeWorkspacePath(
-  workspace: WorkspaceStateService,
-  buildManager: BuildManager,
-): Promise<string> {
-  const current = getCurrentXcodeWorkspacePath(workspace);
+export async function askXcodeWorkspacePath(options: {
+  workspaceState: WorkspaceStateService;
+  buildManager: BuildManager;
+}): Promise<string> {
+  const current = getCurrentXcodeWorkspacePath(options.workspaceState);
   if (current) {
     return current;
   }
@@ -315,8 +315,8 @@ export async function askXcodeWorkspacePath(
     autoselect: true,
   });
 
-  workspace.update("build.xcodeWorkspacePath", selectedPath);
-  buildManager.refreshSchemes();
+  options.workspaceState.update("build.xcodeWorkspacePath", selectedPath);
+  options.buildManager.refreshSchemes();
   return selectedPath;
 }
 
@@ -388,11 +388,11 @@ export function XBSMissingError(): ExtensionError {
  * failure is invisible and Swift code intelligence silently goes stale. Offers
  * to install it or open its docs.
  */
-export async function notifyXBSMissing(workspace: WorkspaceStateService): Promise<void> {
-  if (workspace.get("build.xbsMissingNotified")) {
+export async function notifyXBSMissing(workspaceState: WorkspaceStateService): Promise<void> {
+  if (workspaceState.get("build.xbsMissingNotified")) {
     return;
   }
-  workspace.update("build.xbsMissingNotified", true);
+  workspaceState.update("build.xbsMissingNotified", true);
   const choice = await vscode.window.showWarningMessage(
     "SweetPad: xcode-build-server isn't installed, so buildServer.json can't be (re)generated and Swift code intelligence may be stale. Install it to continue.",
     XBS_INSTALL_ACTION,
@@ -428,7 +428,7 @@ export async function refreshBuildServer(options: {
 export async function generateBuildServerConfigOnBuild(options: {
   scheme: string;
   xcworkspace: string;
-  workspace: WorkspaceStateService;
+  workspaceState: WorkspaceStateService;
 }): Promise<void> {
   if (!isAutoGenerateBuildServerConfigEnabled()) {
     return;
@@ -454,7 +454,7 @@ export async function generateBuildServerConfigOnBuild(options: {
   if (provider === "xcode-build-server") {
     const isServerInstalled = await getIsXBSInstalled();
     if (!isServerInstalled) {
-      await notifyXBSMissing(options.workspace);
+      await notifyXBSMissing(options.workspaceState);
       return;
     }
 

@@ -38,7 +38,7 @@ export type AppDeps = {
   destinationsManager: DestinationsManager;
   toolsManager: ToolsManager;
   tunnelManager: TunnelManager;
-  workspace: WorkspaceStateService;
+  workspaceState: WorkspaceStateService;
   execution: ExecutionScopeService;
   progressStatusBar: ProgressStatusBar;
   formatter: SwiftFormattingProvider;
@@ -170,7 +170,7 @@ export async function warnNodeRuntimeMissing(subject: string): Promise<void> {
  * Wipe all sweetpad.* workspace state and reset coordinated manager state.
  */
 export function resetSweetPadState(deps: AppDeps): void {
-  deps.workspace.reset();
+  deps.workspaceState.reset();
   deps.destinationsManager.setWorkspaceDestinationForBuild(undefined);
   deps.destinationsManager.setWorkspaceDestinationForTesting(undefined);
   deps.buildManager.setDefaultSchemeForBuild(undefined);

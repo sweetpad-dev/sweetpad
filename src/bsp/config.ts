@@ -35,11 +35,11 @@ export type BspResolvedConfig = {
  * for the BSP server to read.
  */
 export async function buildBspResolvedConfig(deps: {
-  workspace: WorkspaceStateService;
+  workspaceState: WorkspaceStateService;
   workspacePath: string;
   buildManager: BuildManager;
 }): Promise<BspResolvedConfig | null> {
-  const xcworkspace = getCurrentXcodeWorkspacePath(deps.workspace);
+  const xcworkspace = getCurrentXcodeWorkspacePath(deps.workspaceState);
   if (!xcworkspace) {
     return null;
   }

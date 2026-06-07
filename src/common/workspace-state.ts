@@ -50,6 +50,7 @@ export type WorkspaceTypes = {
   "testing.xcodeDestination": SelectedDestination;
   "testing.xcodeScheme": string;
   "hotReload.injectWarningShownCount": number;
+  "gitignore.dismissed": boolean;
 };
 
 export type WorkspaceStateKey = keyof WorkspaceTypes;

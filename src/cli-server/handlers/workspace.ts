@@ -21,7 +21,7 @@ export const workspaceDetect: HandlerFn<
   candidates.sort((a, b) => order(a.kind) - order(b.kind) || a.path.localeCompare(b.path));
   return {
     workspacePath: ctx.workspacePath,
-    current: getCurrentXcodeWorkspacePath(ctx.workspace),
+    current: getCurrentXcodeWorkspacePath(ctx.workspaceState),
     candidates,
   };
 };
@@ -36,17 +36,17 @@ export const workspaceUse: HandlerFn<{ path?: string }, { workspacePath: string;
   } catch {
     throw new SweetpadRpcError(ERROR_CODES.WORKSPACE_NOT_FOUND, `No file or directory at ${target}`);
   }
-  ctx.workspace.update("build.xcodeWorkspacePath", target);
+  ctx.workspaceState.update("build.xcodeWorkspacePath", target);
 
-  const recent = ctx.workspace.get("build.xcodeWorkspacePathRecent") ?? [];
+  const recent = ctx.workspaceState.get("build.xcodeWorkspacePathRecent") ?? [];
   const next = [target, ...recent.filter((p) => p !== target)].slice(0, RECENT_MAX);
-  ctx.workspace.update("build.xcodeWorkspacePathRecent", next);
+  ctx.workspaceState.update("build.xcodeWorkspacePathRecent", next);
 
   return { workspacePath: target, recent: next };
 };
 
 export const workspaceRecent: HandlerFn<unknown, { recent: string[] }> = (_params, ctx) => {
-  return { recent: ctx.workspace.get("build.xcodeWorkspacePathRecent") ?? [] };
+  return { recent: ctx.workspaceState.get("build.xcodeWorkspacePathRecent") ?? [] };
 };
 
 function order(kind: Candidate["kind"]): number {

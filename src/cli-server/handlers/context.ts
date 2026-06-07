@@ -8,7 +8,7 @@ import type { BuildSessionRegistry } from "../builds";
 export type RpcContext = {
   workspacePath: string;
   extensionVersion: string;
-  workspace: WorkspaceStateService;
+  workspaceState: WorkspaceStateService;
   buildManager: BuildManager;
   destinationsManager: DestinationsManager;
   buildRegistry: BuildSessionRegistry;

@@ -7,7 +7,7 @@ const requireKey = (key: unknown, method: string) =>
 
 export const workspaceStateGet: HandlerFn<{ key?: string }, { key: string; value: unknown }> = (params, ctx) => {
   const key = requireKey(params?.key, "workspaceState.get");
-  const value = ctx.workspace.rawGet(key);
+  const value = ctx.workspaceState.rawGet(key);
   return { key, value: value === undefined ? null : value };
 };
 
@@ -17,12 +17,12 @@ export const workspaceStateSet: HandlerFn<{ key?: string; value?: unknown }, { k
 ) => {
   const key = requireKey(params?.key, "workspaceState.set");
   const value = params?.value === null ? undefined : params?.value;
-  await ctx.workspace.rawUpdate(key, value);
-  return { key, value: ctx.workspace.rawGet(key) ?? null };
+  await ctx.workspaceState.rawUpdate(key, value);
+  return { key, value: ctx.workspaceState.rawGet(key) ?? null };
 };
 
 export const workspaceStateKeys: HandlerFn<unknown, { keys: string[] }> = (_params, ctx) => {
-  return { keys: ctx.workspace.rawKeys().toSorted() };
+  return { keys: ctx.workspaceState.rawKeys().toSorted() };
 };
 
 export const workspaceStateDelete: HandlerFn<{ key?: string }, { key: string; deleted: boolean }> = async (
@@ -30,7 +30,7 @@ export const workspaceStateDelete: HandlerFn<{ key?: string }, { key: string; de
   ctx,
 ) => {
   const key = requireKey(params?.key, "workspaceState.delete");
-  const existed = ctx.workspace.rawGet(key) !== undefined;
-  await ctx.workspace.rawUpdate(key, undefined);
+  const existed = ctx.workspaceState.rawGet(key) !== undefined;
+  await ctx.workspaceState.rawUpdate(key, undefined);
   return { key, deleted: existed };
 };

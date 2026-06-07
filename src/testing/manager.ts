@@ -143,7 +143,7 @@ type TestItemContext = {
 
 export class TestingManager {
   controller: vscode.TestController;
-  private workspace: WorkspaceStateService;
+  private workspaceState: WorkspaceStateService;
   private progress: ProgressStatusBar;
   private execution: ExecutionScopeService;
   private buildManager: BuildManager;
@@ -176,13 +176,13 @@ export class TestingManager {
   readonly workspacePath: string;
 
   constructor(options: {
-    workspace: WorkspaceStateService;
+    workspaceState: WorkspaceStateService;
     progress: ProgressStatusBar;
     execution: ExecutionScopeService;
     buildManager: BuildManager;
     destinations: DestinationsManager;
   }) {
-    this.workspace = options.workspace;
+    this.workspaceState = options.workspaceState;
     this.progress = options.progress;
     this.execution = options.execution;
     this.buildManager = options.buildManager;
@@ -252,11 +252,11 @@ export class TestingManager {
   }
 
   setDefaultTestingTarget(target: string | undefined) {
-    this.workspace.update("testing.xcodeTarget", target);
+    this.workspaceState.update("testing.xcodeTarget", target);
   }
 
   getDefaultTestingTarget(): string | undefined {
-    return this.workspace.get("testing.xcodeTarget");
+    return this.workspaceState.get("testing.xcodeTarget");
   }
 
   /**
@@ -359,7 +359,10 @@ export class TestingManager {
     // todo: consider to have separate configuration for testing and building. currently we use the
     // configuration for building the project
 
-    const xcworkspace = await askXcodeWorkspacePath(this.workspace, this.buildManager);
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.workspaceState,
+      buildManager: this.buildManager,
+    });
     const scheme = await askSchemeForTesting(this.progress, this.buildManager, {
       xcworkspace: xcworkspace,
       title: "Select a scheme to run tests",

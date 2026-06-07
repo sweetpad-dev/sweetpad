@@ -30,12 +30,12 @@ export type BspStatusSnapshot = {
 export class BspService implements vscode.Disposable {
   private readonly bridge = new BspBridge();
   private readonly buildManager: BuildManager;
-  private readonly workspace: WorkspaceStateService;
+  private readonly workspaceState: WorkspaceStateService;
   private subscriptions: vscode.Disposable[] = [];
 
-  constructor(options: { buildManager: BuildManager; workspace: WorkspaceStateService }) {
+  constructor(options: { buildManager: BuildManager; workspaceState: WorkspaceStateService }) {
     this.buildManager = options.buildManager;
-    this.workspace = options.workspace;
+    this.workspaceState = options.workspaceState;
   }
 
   async start(): Promise<void> {
@@ -79,7 +79,7 @@ export class BspService implements vscode.Disposable {
       }
 
       const config = await buildBspResolvedConfig({
-        workspace: this.workspace,
+        workspaceState: this.workspaceState,
         workspacePath: workspacePath,
         buildManager: this.buildManager,
       });

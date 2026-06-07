@@ -15,7 +15,7 @@ function makeContext(): { ctx: RpcContext; state: Map<string, unknown> } {
   const ctx: RpcContext = {
     workspacePath: "/tmp/ws",
     extensionVersion: "test",
-    workspace: ws as WorkspaceStateService,
+    workspaceState: ws as WorkspaceStateService,
     buildManager: {} as RpcContext["buildManager"],
     destinationsManager: {} as RpcContext["destinationsManager"],
     buildRegistry: {} as RpcContext["buildRegistry"],

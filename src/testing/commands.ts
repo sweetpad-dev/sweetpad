@@ -11,7 +11,10 @@ import { askSchemeForTesting, askTestingTarget } from "./utils";
 
 export async function selectTestingTargetCommand(deps: AppDeps): Promise<void> {
   deps.progressStatusBar.updateText("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const xcworkspace = await askXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    buildManager: deps.buildManager,
+  });
 
   deps.progressStatusBar.updateText("Selecting testing target");
   await askTestingTarget(deps.testingManager, {
@@ -41,7 +44,10 @@ export async function selectXcodeSchemeForTestingCommand(deps: AppDeps, item?: B
     return;
   }
 
-  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const xcworkspace = await askXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    buildManager: deps.buildManager,
+  });
   await askSchemeForTesting(deps.progressStatusBar, deps.buildManager, {
     title: "Select scheme to set as default",
     xcworkspace: xcworkspace,
@@ -54,7 +60,10 @@ export async function selectXcodeSchemeForTestingCommand(deps: AppDeps, item?: B
  */
 export async function selectConfigurationForTestingCommand(deps: AppDeps): Promise<void> {
   deps.progressStatusBar.updateText("Searching for workspace");
-  const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
+  const xcworkspace = await askXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    buildManager: deps.buildManager,
+  });
 
   deps.progressStatusBar.updateText("Searching for configurations");
   const configurations = await getBuildConfigurations({

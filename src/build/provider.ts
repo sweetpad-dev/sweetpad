@@ -28,7 +28,7 @@ import {
 type DispatcherDeps = {
   buildManager: BuildManager;
   destinationsManager: DestinationsManager;
-  workspace: WorkspaceStateService;
+  workspaceState: WorkspaceStateService;
   progressStatusBar: ProgressStatusBar;
 };
 
@@ -169,7 +169,10 @@ class ActionDispatcher {
 
   private async commonLaunchCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
     this.deps.progressStatusBar.updateText("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager);
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.deps.workspaceState,
+      buildManager: this.deps.buildManager,
+    });
 
     this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
@@ -273,7 +276,10 @@ class ActionDispatcher {
 
   private async commonBuildCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
     this.deps.progressStatusBar.updateText("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager);
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.deps.workspaceState,
+      buildManager: this.deps.buildManager,
+    });
 
     this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
@@ -327,7 +333,10 @@ class ActionDispatcher {
 
   private async commonRunCallback(terminal: TaskTerminal, definition: TaskDefinition, options: { debug: boolean }) {
     this.deps.progressStatusBar.updateText("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager);
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.deps.workspaceState,
+      buildManager: this.deps.buildManager,
+    });
 
     this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
@@ -405,7 +414,10 @@ class ActionDispatcher {
 
   private async cleanCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     this.deps.progressStatusBar.updateText("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager);
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.deps.workspaceState,
+      buildManager: this.deps.buildManager,
+    });
 
     this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
@@ -447,7 +459,10 @@ class ActionDispatcher {
 
   private async testCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     this.deps.progressStatusBar.updateText("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager);
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.deps.workspaceState,
+      buildManager: this.deps.buildManager,
+    });
 
     this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
@@ -488,7 +503,11 @@ class ActionDispatcher {
   private async resolveDependenciesCallback(terminal: TaskTerminal, definition: TaskDefinition) {
     this.deps.progressStatusBar.updateText("Searching for workspace");
     const xcworkspacePath =
-      definition.workspace ?? (await askXcodeWorkspacePath(this.deps.workspace, this.deps.buildManager));
+      definition.workspace ??
+      (await askXcodeWorkspacePath({
+        workspaceState: this.deps.workspaceState,
+        buildManager: this.deps.buildManager,
+      }));
 
     this.deps.progressStatusBar.updateText("Searching for scheme");
     const scheme =
@@ -514,7 +533,7 @@ export class XcodeBuildTaskProvider implements vscode.TaskProvider {
     this.dispathcer = new ActionDispatcher({
       buildManager: deps.buildManager,
       destinationsManager: deps.destinationsManager,
-      workspace: deps.workspace,
+      workspaceState: deps.workspaceState,
       progressStatusBar: deps.progressStatusBar,
     });
   }
