@@ -1092,7 +1092,7 @@
         "sweetpad.buildServer.logPath": {
           "type": "string",
           "default": null,
-          "markdownDescription": "Debug log file for the `sweetpad` BSP server (sets `SWEETPAD_BSP_LOG` in `buildServer.json`'s `argv`). When set, the server appends per-request state — resolved SDK/platform, compiler-argument counts, errors — there. `tail -f` it to debug what sourcekit-lsp is getting. A relative path (or `${workspaceFolder}/…`) resolves against the workspace folder.",
+          "markdownDescription": "Debug log file for the `sweetpad` BSP server. The server appends per-request state — resolved SDK/platform, compiler-argument counts, errors — there; `tail -f` it to see what sourcekit-lsp receives. Defaults to `.sweetpad/bsp.log`; set this to override the location (a relative path, or `${workspaceFolder}/…`, resolves against the workspace folder).",
           "examples": [
             "sweetpad-bsp.log",
             "/tmp/sweetpad-bsp.log"

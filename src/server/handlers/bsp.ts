@@ -4,6 +4,7 @@ import { getCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../../buil
 import { getDeveloperDir } from "../../common/cli/scripts";
 import { getWorkspaceConfig } from "../../common/config";
 import { BSP_LOG_LEVELS, type BspLogLevel } from "../bsp-bridge";
+import { getBspLogPath } from "../paths";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES } from "../types";
 import type { HandlerFn } from "./context";
@@ -22,8 +23,8 @@ export type BspResolvedConfig = {
   scheme: string | null;
   configuration: string;
   derivedDataPath: string | null;
-  /** Debug log file (`sweetpad.buildServer.logPath`), resolved absolute, or null. */
-  logPath: string | null;
+  /** Debug log file, resolved absolute. Defaults to `.sweetpad/bsp.log`; overridable via `sweetpad.buildServer.logPath`. */
+  logPath: string;
 };
 
 export const bspResolveConfig: HandlerFn<unknown, BspResolvedConfig> = async (_params, ctx) => {
@@ -49,10 +50,14 @@ export const bspResolveConfig: HandlerFn<unknown, BspResolvedConfig> = async (_p
   };
 };
 
-/** The configured BSP log path, with `${workspaceFolder}`/relative resolved absolute. */
-function resolveLogPath(workspacePath: string): string | null {
+/**
+ * The BSP log path. Defaults to `.sweetpad/bsp.log` so logs are always captured;
+ * `sweetpad.buildServer.logPath` overrides it (with `${workspaceFolder}`/relative
+ * resolved absolute against the workspace folder).
+ */
+function resolveLogPath(workspacePath: string): string {
   const raw = getWorkspaceConfig("buildServer.logPath");
-  if (!raw) return null;
+  if (!raw) return getBspLogPath(workspacePath);
   const expanded = raw.split("${workspaceFolder}").join(workspacePath);
   return path.isAbsolute(expanded) ? expanded : path.join(workspacePath, expanded);
 }

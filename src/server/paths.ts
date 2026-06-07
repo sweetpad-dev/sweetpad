@@ -36,6 +36,13 @@ export function getBuildDir(workspacePath: string, buildId: string): string {
   return path.join(getBuildsDir(workspacePath), buildId);
 }
 
+// Default debug-log file for the BSP server, kept alongside the other runtime
+// state. Lives directly under `.sweetpad/` (not a subdir) so it's writable
+// without creating anything — the control server already ensures `.sweetpad/`.
+export function getBspLogPath(workspacePath: string): string {
+  return path.join(getStateRoot(workspacePath), "bsp.log");
+}
+
 // The socket path for a server name: a short tmpdir path, independent of how
 // deeply the project is nested, so it always fits within `sun_path`. Derivable
 // from the name alone, so a client that knows the name can connect without
