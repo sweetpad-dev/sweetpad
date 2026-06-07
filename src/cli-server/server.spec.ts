@@ -3,13 +3,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { rpc, RpcError } from "../cli/client";
-import { SocketServer } from "./server";
+import { CliServer } from "./server";
 
-describe("SocketServer", () => {
-  // A real temp dir as the workspace: the connection file lands in
-  // <workspace>/.sweetpad/run/. The socket itself lives in tmpdir (short path).
+describe("CliServer", () => {
+  // A real temp dir as the workspace: the connection file lands at
+  // <workspace>/.sweetpad/cli.json. The socket itself lives in tmpdir (short path).
   let workspacePath: string;
-  let server: SocketServer | undefined;
+  let server: CliServer | undefined;
 
   beforeEach(async () => {
     workspacePath = await fs.mkdtemp(path.join(os.tmpdir(), "sweetpad-server-spec-"));
@@ -21,12 +21,12 @@ describe("SocketServer", () => {
     await fs.rm(workspacePath, { recursive: true, force: true });
   });
 
-  function connectionFile(name: string): string {
-    return path.join(workspacePath, ".sweetpad", "run", `${name}.json`);
+  function cliConfigFile(): string {
+    return path.join(workspacePath, ".sweetpad", "cli.json");
   }
 
   it("round-trips a JSON-RPC call end-to-end over the Unix socket", async () => {
-    server = new SocketServer({
+    server = new CliServer({
       workspacePath,
       extensionVersion: "test",
       handlers: {
@@ -44,16 +44,15 @@ describe("SocketServer", () => {
   });
 
   it("writes a connection file with correct fields", async () => {
-    server = new SocketServer({
+    server = new CliServer({
       workspacePath,
       extensionVersion: "9.9.9",
       handlers: {},
     });
     await server.start();
 
-    const meta = JSON.parse(await fs.readFile(connectionFile(server.name), "utf8"));
+    const meta = JSON.parse(await fs.readFile(cliConfigFile(), "utf8"));
     expect(meta.name).toBe(server.name);
-    expect(meta.kind).toBe("extension");
     expect(meta.socket).toBe(server.socket);
     expect(meta.workspacePath).toBe(workspacePath);
     expect(meta.extensionVersion).toBe("9.9.9");
@@ -63,14 +62,14 @@ describe("SocketServer", () => {
   });
 
   it("removes the socket and connection file on dispose", async () => {
-    server = new SocketServer({
+    server = new CliServer({
       workspacePath,
       extensionVersion: "test",
       handlers: {},
     });
     await server.start();
     const socketPath = server.socket;
-    const connPath = connectionFile(server.name);
+    const connPath = cliConfigFile();
 
     await server.dispose();
     server = undefined;
@@ -80,7 +79,7 @@ describe("SocketServer", () => {
   });
 
   it("surfaces RPC errors with the application code in error.data", async () => {
-    server = new SocketServer({
+    server = new CliServer({
       workspacePath,
       extensionVersion: "test",
       handlers: {
@@ -101,7 +100,7 @@ describe("SocketServer", () => {
   });
 
   it("answers an unknown method with JSON-RPC method-not-found (-32601)", async () => {
-    server = new SocketServer({
+    server = new CliServer({
       workspacePath,
       extensionVersion: "test",
       handlers: {},

@@ -1,61 +1,31 @@
-import { getSocketPath } from "../server/paths";
-import { readActive, writeActive } from "./active";
+import { promises as fs } from "node:fs";
+
+import { findProjectRoot, getCliConfigFile } from "../cli-server/paths";
+import type { CliServerMetadata } from "../cli-server/types";
 import type { ParsedArgv } from "./argv";
 import { rpc, RpcError } from "./client";
 import { parseDuration } from "./duration";
-import { listServers, readMetadata } from "./registry";
-import { resolveServerName } from "./resolve";
 
 export type CliExit = { code: number; stdout?: unknown; stderr?: unknown };
 
-// Server selection precedence: --server flag, then SWEETPAD_SERVER env,
-// then active.json. All accept unique prefixes.
-async function resolveSocket(server: string | undefined): Promise<string | CliExit> {
-  let candidate = server ?? process.env.SWEETPAD_SERVER ?? undefined;
-  if (candidate) {
-    const outcome = await resolveServerName(candidate);
-    if (outcome.kind === "none") {
-      return {
-        code: 2,
-        stderr: errorEnvelope("UNKNOWN_SERVER", `Unknown server: ${candidate}.`, "sweetpad servers list"),
-      };
-    }
-    if (outcome.kind === "ambiguous") {
-      return {
-        code: 2,
-        stderr: errorEnvelope(
-          "AMBIGUOUS_SERVER",
-          `Server prefix "${candidate}" matches multiple servers.`,
-          "sweetpad servers list",
-          { matches: outcome.matches },
-        ),
-      };
-    }
-    return getSocketPath(outcome.name);
+// The CLI talks to the single control server advertised in `.sweetpad/cli.json`
+// (last-writer-wins across windows). Read its socket; the connect itself surfaces
+// a dead server as ECONNREFUSED.
+async function resolveSocket(): Promise<string | CliExit> {
+  const noServer = (message: string): CliExit => ({ code: 2, stderr: errorEnvelope("NO_SERVER", message) });
+  const root = await findProjectRoot(process.cwd());
+  if (!root) {
+    return noServer("No .sweetpad project found from the current directory.");
   }
-  const active = await readActive();
-  if (!active?.server) {
-    return {
-      code: 2,
-      stderr: errorEnvelope(
-        "NO_ACTIVE_SERVER",
-        "No active server set. Use --server <name> or run `sweetpad servers switch <name>`.",
-        "sweetpad servers list",
-      ),
-    };
+  try {
+    const meta = JSON.parse(await fs.readFile(getCliConfigFile(root), "utf8")) as CliServerMetadata;
+    if (typeof meta?.socket !== "string") throw new Error("cli.json has no socket");
+    return meta.socket;
+  } catch {
+    return noServer(
+      "No running SweetPad server (.sweetpad/cli.json not found). Enable sweetpad.server.enabled and open the project in VS Code.",
+    );
   }
-  const meta = await readMetadata(active.server);
-  if (!meta) {
-    return {
-      code: 2,
-      stderr: errorEnvelope(
-        "UNKNOWN_SERVER",
-        `Active server "${active.server}" is no longer running.`,
-        "sweetpad servers list",
-      ),
-    };
-  }
-  return getSocketPath(active.server);
 }
 
 function errorEnvelope(
@@ -67,13 +37,8 @@ function errorEnvelope(
   return { ok: false, error: { code, message, ...(hint ? { hint } : {}), ...(data ? { data } : {}) } };
 }
 
-async function callRpc(
-  server: string | undefined,
-  method: string,
-  params: unknown,
-  timeoutMs?: number,
-): Promise<CliExit> {
-  const sock = await resolveSocket(server);
+async function callRpc(method: string, params: unknown, timeoutMs?: number): Promise<CliExit> {
+  const sock = await resolveSocket();
   if (typeof sock !== "string") return sock;
   try {
     const result = await rpc({ socketPath: sock, method, params, timeoutMs });
@@ -88,52 +53,6 @@ async function callRpc(
     const message = err instanceof Error ? err.message : String(err);
     return { code: 2, stderr: errorEnvelope("CLI_ERROR", message) };
   }
-}
-
-async function serversList(): Promise<CliExit> {
-  const servers = await listServers();
-  return { code: 0, stdout: { servers } };
-}
-
-async function serversSwitch(parsed: ParsedArgv): Promise<CliExit> {
-  const input = parsed.positionals[0];
-  if (!input) {
-    return {
-      code: 2,
-      stderr: errorEnvelope("INVALID_ARGS", "Usage: sweetpad servers switch <name>"),
-    };
-  }
-  const outcome = await resolveServerName(input);
-  if (outcome.kind === "none") {
-    return {
-      code: 2,
-      stderr: errorEnvelope("UNKNOWN_SERVER", `Unknown server: ${input}`, "sweetpad servers list"),
-    };
-  }
-  if (outcome.kind === "ambiguous") {
-    return {
-      code: 2,
-      stderr: errorEnvelope(
-        "AMBIGUOUS_SERVER",
-        `Server prefix "${input}" matches multiple servers.`,
-        "sweetpad servers list",
-        { matches: outcome.matches },
-      ),
-    };
-  }
-  const meta = await readMetadata(outcome.name);
-  if (!meta) {
-    return {
-      code: 2,
-      stderr: errorEnvelope(
-        "UNKNOWN_SERVER",
-        `Server "${outcome.name}" has no live metadata.`,
-        "sweetpad servers list",
-      ),
-    };
-  }
-  await writeActive(outcome.name);
-  return { code: 0, stdout: { active: { server: outcome.name, workspacePath: meta.workspacePath } } };
 }
 
 type Mapped = { method: string; params: unknown; timeoutMs?: number };
@@ -390,23 +309,18 @@ function parseJsonFlag(raw: unknown): unknown {
 
 export async function dispatchCli(parsed: ParsedArgv): Promise<CliExit> {
   if (parsed.help) return helpExit();
-  if (parsed.subcommand === "servers") {
-    if (parsed.subcommandAction === "list") return await serversList();
-    if (parsed.subcommandAction === "switch") return await serversSwitch(parsed);
-    return helpExit();
-  }
   if (!parsed.method) return helpExit();
   const mp = methodParams(parsed);
   if (!mp) return helpExit();
 
-  return await callRpc(parsed.server, mp.method, mp.params, mp.timeoutMs);
+  return await callRpc(mp.method, mp.params, mp.timeoutMs);
 }
 
 function helpExit(): CliExit {
   const usage = `sweetpad — JSON-RPC client for the SweetPad VS Code extension
 
 Usage:
-  sweetpad <method> [args...] [--server <name|prefix>] [--raw]
+  sweetpad <method> [args...] [--raw]
 
 Methods (canonical dot-form; arguments listed after the method name):
   meta.usage
@@ -475,12 +389,7 @@ Methods (canonical dot-form; arguments listed after the method name):
 
   logs.tail [--lines N] [--level debug|info|warning|error]
 
-Server management (local; no RPC):
-  sweetpad servers list
-  sweetpad servers switch <name|prefix>
-
 Flags:
-  --server <name|prefix>   override server selection (also SWEETPAD_SERVER env)
   --raw                    minify JSON output
   --timeout <30s|5m|1h>    duration for build.wait (capped server-side ~30s)
   --caller <label>         label build originator (also SWEETPAD_CALLER env)`;

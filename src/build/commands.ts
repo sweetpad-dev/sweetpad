@@ -8,7 +8,7 @@ import {
   type XcodeScheme,
   getBuildConfigurations,
   getIsNodeInstalled,
-  getIsXBSInstalled as getIsXBSInstalled,
+  getIsXBSInstalled,
 } from "../common/cli/scripts";
 import { type AppDeps, warnNodeRuntimeMissing } from "../common/commands";
 import { updateWorkspaceConfig } from "../common/config";

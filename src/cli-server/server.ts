@@ -5,11 +5,11 @@ import type * as vscode from "vscode";
 import type { MessageConnection } from "vscode-jsonrpc/node";
 
 import { commonLogger } from "../common/logger";
-import { ensureDir, generateServerName, getConnectionFile, getRunDir, getSocketPath, safeUnlink } from "./paths";
+import { ensureDir, generateServerName, getCliConfigFile, getSocketPath, getStateRoot, safeUnlink } from "./paths";
 import { serveDispatch, type RpcDispatch } from "./rpc";
-import { PROTOCOL_VERSION, type ServerMetadata } from "./types";
+import { PROTOCOL_VERSION, type CliServerMetadata } from "./types";
 
-export type SocketServerOptions = {
+export type CliServerOptions = {
   workspacePath: string;
   extensionVersion: string;
   handlers: RpcDispatch;
@@ -24,8 +24,8 @@ export type SocketServerOptions = {
  *
  * Lifecycle owned by the caller — call `start()` once, `dispose()` once.
  */
-export class SocketServer implements vscode.Disposable {
-  private readonly options: SocketServerOptions;
+export class CliServer implements vscode.Disposable {
+  private readonly options: CliServerOptions;
   private readonly serverName: string;
   private readonly socketPath: string;
   private readonly connectionPath: string;
@@ -34,11 +34,11 @@ export class SocketServer implements vscode.Disposable {
   private connections = new Set<net.Socket>();
   private disposed = false;
 
-  constructor(options: SocketServerOptions) {
+  constructor(options: CliServerOptions) {
     this.options = options;
     this.serverName = generateServerName();
     this.socketPath = getSocketPath(this.serverName);
-    this.connectionPath = getConnectionFile(options.workspacePath, this.serverName);
+    this.connectionPath = getCliConfigFile(options.workspacePath);
   }
 
   get name(): string {
@@ -51,9 +51,9 @@ export class SocketServer implements vscode.Disposable {
 
   async start(): Promise<void> {
     if (this.server) {
-      throw new Error("SocketServer.start() called twice");
+      throw new Error("CliServer.start() called twice");
     }
-    await ensureDir(getRunDir(this.options.workspacePath));
+    await ensureDir(getStateRoot(this.options.workspacePath));
     // Defensive — without this a rare same-name collision would hit EADDRINUSE.
     await safeUnlink(this.socketPath);
 
@@ -81,9 +81,8 @@ export class SocketServer implements vscode.Disposable {
     this.server = server;
     this.startedAt = new Date();
 
-    const metadata: ServerMetadata = {
+    const metadata: CliServerMetadata = {
       name: this.serverName,
-      kind: "extension",
       socket: this.socketPath,
       workspacePath: this.options.workspacePath,
       pid: process.pid,
@@ -91,7 +90,11 @@ export class SocketServer implements vscode.Disposable {
       extensionVersion: this.options.extensionVersion,
       protocolVersion: PROTOCOL_VERSION,
     };
-    await fs.writeFile(this.connectionPath, JSON.stringify(metadata, null, 2), { mode: 0o600 });
+    // Last-writer-wins: a second window overwrites cli.json. tmp+rename keeps the
+    // CLI's read side from ever seeing a half-written file.
+    const tmp = `${this.connectionPath}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(metadata, null, 2), { mode: 0o600 });
+    await fs.rename(tmp, this.connectionPath);
 
     commonLogger.log("SweetPad RPC server started", {
       name: this.serverName,
@@ -116,7 +119,16 @@ export class SocketServer implements vscode.Disposable {
     }
 
     await safeUnlink(this.socketPath);
-    await safeUnlink(this.connectionPath);
+    // Remove cli.json only if it still points at us — a newer window may have
+    // overwritten it (last-wins), and we must not delete its pointer.
+    try {
+      const raw = await fs.readFile(this.connectionPath, "utf8");
+      if ((JSON.parse(raw) as CliServerMetadata).pid === process.pid) {
+        await safeUnlink(this.connectionPath);
+      }
+    } catch {
+      // missing or corrupt — nothing of ours to remove
+    }
 
     commonLogger.log("SweetPad RPC server stopped", { name: this.serverName });
   }

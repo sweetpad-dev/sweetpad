@@ -5,11 +5,9 @@ import * as path from "node:path";
 import {
   findProjectRoot,
   generateServerName,
-  getActiveFile,
   getBuildDir,
   getBuildsDir,
-  getConnectionFile,
-  getRunDir,
+  getCliConfigFile,
   getSocketPath,
   getStateRoot,
   SWEETPAD_DIR_NAME,
@@ -24,15 +22,10 @@ describe("server/paths", () => {
       expect(getStateRoot(ws)).toBe(root);
     });
 
-    it("nests run/, active.json and builds under the state root", () => {
-      expect(getRunDir(ws)).toBe(path.join(root, "run"));
-      expect(getActiveFile(ws)).toBe(path.join(root, "active.json"));
+    it("nests cli.json and builds under the state root", () => {
+      expect(getCliConfigFile(ws)).toBe(path.join(root, "cli.json"));
       expect(getBuildsDir(ws)).toBe(path.join(root, "builds"));
       expect(getBuildDir(ws, "b3")).toBe(path.join(root, "builds", "b3"));
-    });
-
-    it("places a server's connection file at run/<name>.json", () => {
-      expect(getConnectionFile(ws, "abc123")).toBe(path.join(root, "run", "abc123.json"));
     });
   });
 

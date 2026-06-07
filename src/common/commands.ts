@@ -4,10 +4,10 @@ import type { BspService } from "../bsp/service";
 import type { LspDiagnosticsService } from "../build/lsp-diagnostics";
 import type { BuildManager } from "../build/manager";
 import type { BuildTreeProvider } from "../build/tree";
+import type { CliServerService } from "../cli-server/service";
 import type { DestinationsManager } from "../destination/manager";
 import type { TunnelManager } from "../devices/tunnel";
 import type { SwiftFormattingProvider } from "../format/formatter";
-import type { ServerService } from "../server/service";
 import type { ProgressStatusBar } from "../system/status-bar";
 import type { TestingManager } from "../testing/manager";
 import type { ToolsManager } from "../tools/manager";
@@ -45,7 +45,7 @@ export type AppDeps = {
   vscodeContext: vscode.ExtensionContext;
   buildTreeProvider: BuildTreeProvider;
   lspDiagnostics: LspDiagnosticsService;
-  serverService: ServerService;
+  serverService: CliServerService;
   bspService: BspService;
 };
 

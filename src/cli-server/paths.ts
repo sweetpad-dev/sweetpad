@@ -3,29 +3,24 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-// SweetPad keeps per-project runtime state in `<workspace>/.sweetpad` — the
-// connection files (`run/<name>.json`), the active-server pointer, and build
-// history. It's fully ephemeral and meant to be gitignored.
+// SweetPad keeps per-project runtime state in `<workspace>/.sweetpad` — the CLI
+// server's `cli.json`, the BSP server's `bsp.json`, and build history. It's fully
+// ephemeral and meant to be gitignored.
 //
 // The Unix sockets themselves do NOT live here: `sun_path` caps at ~104 bytes,
 // and a deep project path would blow that. Sockets live at a short tmpdir path
-// (`getSocketPath`), and each `run/<name>.json` connection file points at one.
+// (`getSocketPath`), and `cli.json` points at one.
 export const SWEETPAD_DIR_NAME = ".sweetpad";
 
 export function getStateRoot(workspacePath: string): string {
   return path.join(workspacePath, SWEETPAD_DIR_NAME);
 }
 
-export function getRunDir(workspacePath: string): string {
-  return path.join(getStateRoot(workspacePath), "run");
-}
-
-export function getConnectionFile(workspacePath: string, name: string): string {
-  return path.join(getRunDir(workspacePath), `${name}.json`);
-}
-
-export function getActiveFile(workspacePath: string): string {
-  return path.join(getStateRoot(workspacePath), "active.json");
+// The CLI control server's connection file: a single `.sweetpad/cli.json` holding
+// the running server's socket + metadata. Last-writer-wins — a second window
+// overwrites it (no multi-server registry); the CLI reads it to find the socket.
+export function getCliConfigFile(workspacePath: string): string {
+  return path.join(getStateRoot(workspacePath), "cli.json");
 }
 
 export function getBuildsDir(workspacePath: string): string {

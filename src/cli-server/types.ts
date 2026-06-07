@@ -12,25 +12,17 @@ export const JSON_RPC_INVALID_PARAMS = -32602;
 export const JSON_RPC_INTERNAL_ERROR = -32603;
 export const SWEETPAD_APPLICATION_ERROR = -32000;
 
-export type ServerKind = "extension" | "bsp";
-
-// A `<workspace>/.sweetpad/run/<name>.json` connection file: enough to find,
-// identify, liveness-check, and connect to a running server. `socket` is the
-// short tmpdir path the server bound (see `getSocketPath`).
-export type ServerMetadata = {
+// The `<workspace>/.sweetpad/cli.json` connection file: enough to find and
+// connect to the running CLI control server. `socket` is the short tmpdir path
+// the server bound (see `getSocketPath`). Last-writer-wins across windows.
+export type CliServerMetadata = {
   name: string;
-  kind: ServerKind;
   socket: string;
   workspacePath: string;
   pid: number;
   startedAt: string;
   extensionVersion: string;
   protocolVersion: string;
-};
-
-export type ActiveServer = {
-  server: string;
-  setAt: string;
 };
 
 export type SchemeEntity = {
@@ -82,20 +74,6 @@ export type BuildEntity = {
   durationMs: number | null;
   errorCount: number;
   warningCount: number;
-};
-
-/**
- * One entry returned by `sweetpad servers list`. The active flag is read
- * client-side from active.json so the agent doesn't need a second roundtrip.
- */
-export type ServerListEntry = {
-  name: string;
-  workspacePath: string;
-  /**
-   * True when this server is the one pointed to by ~/.local/state/sweetpad/active.json.
-   * Saves a `cat active.json` round-trip for agents.
-   */
-  isActive: boolean;
 };
 
 /** Aggregate response of `state.get` — one shot of "where are we?". */

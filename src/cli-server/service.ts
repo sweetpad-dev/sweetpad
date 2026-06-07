@@ -1,3 +1,6 @@
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
+
 import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
@@ -7,8 +10,7 @@ import type { DestinationsManager } from "../destination/manager";
 import { BuildSessionRegistry } from "./builds";
 import { GitignoreNotifier } from "./gitignore-notice";
 import { buildDispatch } from "./handlers";
-import { canonicalizeWorkspacePath } from "./paths";
-import { SocketServer } from "./server";
+import { CliServer } from "./server";
 
 const ENABLED_KEY = "sweetpad.server.enabled";
 const CONFIG_KEY_PREFIX = "sweetpad.";
@@ -35,7 +37,7 @@ function extractSweetpadConfigKeys(context: vscode.ExtensionContext): string[] {
  * can read it (e.g. for clipboard copy or status notifications). BSP is separate
  * (see `src/bsp`); this layer knows nothing about it.
  */
-export class ServerService implements vscode.Disposable {
+export class CliServerService implements vscode.Disposable {
   private readonly buildManager: BuildManager;
   private readonly destinationsManager: DestinationsManager;
   private readonly workspace: WorkspaceStateService;
@@ -44,7 +46,7 @@ export class ServerService implements vscode.Disposable {
   private readonly configKeys: string[];
 
   private current:
-    | { server: SocketServer; registry: BuildSessionRegistry; workspacePath: string; gitignore: GitignoreNotifier }
+    | { server: CliServer; registry: BuildSessionRegistry; workspacePath: string; gitignore: GitignoreNotifier }
     | undefined;
   private configSubscription: vscode.Disposable | undefined;
   private starting = false;
@@ -119,7 +121,8 @@ export class ServerService implements vscode.Disposable {
         commonLogger.warn("sweetpad.server.enabled is true but no workspace folder is open; server will not start");
         return;
       }
-      const workspacePath = await canonicalizeWorkspacePath(folder);
+      // Symlink-resolved so it matches the realpath'd paths used elsewhere.
+      const workspacePath = await fs.realpath(folder).catch(() => path.resolve(folder));
 
       const registry = new BuildSessionRegistry({
         workspacePath,
@@ -139,7 +142,7 @@ export class ServerService implements vscode.Disposable {
         configKeys: this.configKeys,
       });
 
-      const server = new SocketServer({
+      const server = new CliServer({
         workspacePath,
         extensionVersion: this.extensionVersion,
         handlers: dispatch,
@@ -176,7 +179,7 @@ export class ServerService implements vscode.Disposable {
     try {
       await current.server.dispose();
     } catch (err) {
-      commonLogger.error("SocketServer.dispose threw", { error: err });
+      commonLogger.error("CliServer.dispose threw", { error: err });
     }
   }
 }

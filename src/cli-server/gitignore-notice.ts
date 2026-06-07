@@ -119,8 +119,8 @@ async function appendGitignore(workspacePath: string, entry: string): Promise<vo
   } catch {
     // new .gitignore
   }
-  const lines = existing.split("\n").map((l) => l.trim());
-  if (lines.includes(`${entry}/`) || lines.includes(entry)) return;
+  const lines = new Set(existing.split("\n").map((l) => l.trim()));
+  if (lines.has(`${entry}/`) || lines.has(entry)) return;
   const prefix = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
   await fs.appendFile(file, `${prefix}${entry}/\n`);
 }

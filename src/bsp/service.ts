@@ -4,10 +4,10 @@ import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
 import { getWorkspacePath } from "../build/utils";
+import { ensureDir, getStateRoot } from "../cli-server/paths";
 import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceStateService } from "../common/workspace-state";
-import { ensureDir, getStateRoot } from "../server/paths";
 import { BSP_LOG_LEVELS, BspBridge, type BspLogLevel } from "./bridge";
 import { getBuildServerProvider, isSweetpadBuildServerActive } from "./commands";
 import { buildBspResolvedConfig } from "./config";

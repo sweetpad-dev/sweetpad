@@ -35,6 +35,7 @@ import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { SchemeWatcher } from "./build/scheme-watcher.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
+import { CliServerService } from "./cli-server/service.js";
 import { type AppDeps, registerCommand, registerTreeDataProvider } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
 import { ExecutionScopeService } from "./common/execution-scope.js";
@@ -57,7 +58,6 @@ import { TunnelManager } from "./devices/tunnel.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
 import { createFormatStatusItem } from "./format/status.js";
-import { ServerService } from "./server/service.js";
 import {
   openSimulatorCommand,
   removeSimulatorCacheCommand,
@@ -178,7 +178,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const schemeWatcher = new SchemeWatcher(buildManager);
   const tuistWatcher = new TuistGenWatcher();
   const xcodegenWatcher = new XcodeGenWatcher();
-  const serverService = new ServerService({
+  const serverService = new CliServerService({
     buildManager: buildManager,
     destinationsManager: destinationsManager,
     workspace: workspace,

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { getStateRoot } from "../server/paths";
+import { getStateRoot } from "../cli-server/paths";
 
 // Default debug-log file for the BSP server, under the shared `.sweetpad/`
 // runtime-state dir (not a subdir) so it's writable without creating anything.

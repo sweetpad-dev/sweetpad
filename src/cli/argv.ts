@@ -3,24 +3,17 @@
  *
  *   sweetpad <method.name> [positional...] [--flag value | --flag=value]
  *
- * The first non-flag token is the full RPC method name (must contain a `.`).
- * All subsequent non-flag tokens go straight into `positionals`. Reserved
- * flags: --server, --raw, --help / -h.
+ * The first non-flag token is the full RPC method name (must contain a `.`); a
+ * bare word leaves `method` undefined and the dispatcher prints usage. All
+ * subsequent non-flag tokens go straight into `positionals`. Reserved flags:
+ * --raw, --help / -h.
  */
 
 export type ParsedArgv = {
   /** Full method name (e.g. "scheme.list", "buildSettings.get"). */
   method: string | undefined;
-  /**
-   * Special non-RPC subcommand (e.g. `servers`) when the first token is a bare
-   * word with no dot. Populated mutually exclusively with `method`.
-   */
-  subcommand: string | undefined;
-  /** Subcommand action — only set when `subcommand` is. */
-  subcommandAction: string | undefined;
   positionals: string[];
   flags: Record<string, string | boolean>;
-  server: string | undefined;
   raw: boolean;
   help: boolean;
 };
@@ -28,11 +21,8 @@ export type ParsedArgv = {
 export function parseArgv(argv: string[]): ParsedArgv {
   const result: ParsedArgv = {
     method: undefined,
-    subcommand: undefined,
-    subcommandAction: undefined,
     positionals: [],
     flags: {},
-    server: undefined,
     raw: false,
     help: false,
   };
@@ -68,32 +58,19 @@ export function parseArgv(argv: string[]): ParsedArgv {
           value = true;
         }
       }
-      if (key === "server") {
-        result.server = typeof value === "string" ? value : undefined;
-      } else {
-        result.flags[key] = value;
-      }
+      result.flags[key] = value;
       i += 1;
       continue;
     }
-    // First positional: either a dotted method name or a bare subcommand word.
+    // First non-flag token is the dotted method name; a bare word leaves
+    // `method` undefined (→ usage). Everything after is a positional.
     if (!firstSeen) {
       firstSeen = true;
-      if (arg.includes(".")) {
-        result.method = arg;
-      } else {
-        result.subcommand = arg;
-      }
+      if (arg.includes(".")) result.method = arg;
       i += 1;
       continue;
     }
-    // Second positional: when we have a subcommand it doubles as the action;
-    // otherwise it lands in `positionals` like every other arg.
-    if (result.subcommand && result.subcommandAction === undefined) {
-      result.subcommandAction = arg;
-    } else {
-      result.positionals.push(arg);
-    }
+    result.positionals.push(arg);
     i += 1;
   }
   return result;

@@ -4,7 +4,6 @@ describe("cli/argv", () => {
   it("treats the first dotted token as the RPC method name", () => {
     const r = parseArgv(["scheme.list"]);
     expect(r.method).toBe("scheme.list");
-    expect(r.subcommand).toBeUndefined();
     expect(r.positionals).toEqual([]);
     expect(r.help).toBe(false);
   });
@@ -21,18 +20,10 @@ describe("cli/argv", () => {
     expect(r.positionals).toEqual(["udid-abc", "/path/to/app.app"]);
   });
 
-  it("treats a bare first token as a subcommand (e.g. servers)", () => {
-    const r = parseArgv(["servers", "switch", "abc"]);
+  it("leaves method undefined for a bare (non-dotted) first token", () => {
+    const r = parseArgv(["servers", "list"]);
     expect(r.method).toBeUndefined();
-    expect(r.subcommand).toBe("servers");
-    expect(r.subcommandAction).toBe("switch");
-    expect(r.positionals).toEqual(["abc"]);
-  });
-
-  it("extracts --server flag into a top-level field", () => {
-    const r = parseArgv(["--server", "abc123", "scheme.list"]);
-    expect(r.server).toBe("abc123");
-    expect(r.method).toBe("scheme.list");
+    expect(r.positionals).toEqual(["list"]);
   });
 
   it("supports --flag=value form", () => {
