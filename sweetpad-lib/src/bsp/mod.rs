@@ -306,7 +306,15 @@ impl Server {
         let log = config
             .log_path
             .as_ref()
-            .and_then(|p| OpenOptions::new().create(true).append(true).open(p).ok())
+            .and_then(|p| {
+                // Create the parent dir (the per-workspace tmp state root) first so the
+                // first write after a cold start doesn't silently drop because the dir
+                // isn't there yet.
+                if let Some(parent) = p.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                OpenOptions::new().create(true).append(true).open(p).ok()
+            })
             .map(Mutex::new);
         let server = Server {
             project_path: config.project_path,

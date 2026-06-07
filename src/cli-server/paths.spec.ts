@@ -10,22 +10,31 @@ import {
   getCliConfigFile,
   getSocketPath,
   getStateRoot,
+  getTmpStateRoot,
   SWEETPAD_DIR_NAME,
+  workspaceHash,
 } from "./paths";
 
 describe("server/paths", () => {
-  describe("project-local layout", () => {
+  describe("path layout", () => {
     const ws = "/some/Project";
     const root = path.join(ws, ".sweetpad");
 
-    it("roots state at <workspace>/.sweetpad", () => {
+    it("roots the project-local pointers at <workspace>/.sweetpad", () => {
       expect(getStateRoot(ws)).toBe(root);
+      expect(getCliConfigFile(ws)).toBe(path.join(root, "cli.json"));
     });
 
-    it("nests cli.json and builds under the state root", () => {
-      expect(getCliConfigFile(ws)).toBe(path.join(root, "cli.json"));
-      expect(getBuildsDir(ws)).toBe(path.join(root, "builds"));
-      expect(getBuildDir(ws, "b3")).toBe(path.join(root, "builds", "b3"));
+    it("derives a stable 12-char hex workspace hash", () => {
+      expect(workspaceHash(ws)).toMatch(/^[0-9a-f]{12}$/);
+      expect(workspaceHash(ws)).toBe(workspaceHash(ws));
+    });
+
+    it("puts logs and build history in a per-workspace tmp dir", () => {
+      const tmpRoot = path.join(os.tmpdir(), `sweetpad-${workspaceHash(ws)}`);
+      expect(getTmpStateRoot(ws)).toBe(tmpRoot);
+      expect(getBuildsDir(ws)).toBe(path.join(tmpRoot, "builds"));
+      expect(getBuildDir(ws, "b3")).toBe(path.join(tmpRoot, "builds", "b3"));
     });
   });
 

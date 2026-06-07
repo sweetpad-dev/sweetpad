@@ -1,19 +1,35 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-// SweetPad keeps per-project runtime state in `<workspace>/.sweetpad` — the CLI
-// server's `cli.json`, the BSP server's `bsp.json`, and build history. It's fully
-// ephemeral and meant to be gitignored.
+// SweetPad keeps per-project runtime state in two places. The `<workspace>/.sweetpad`
+// dir holds only the small discovery pointers — the CLI server's `cli.json` and the
+// BSP server's `bsp.json` — and is meant to be gitignored. Bulky, noisy, or truly
+// ephemeral state (logs, build history) lives outside the project in a per-workspace
+// tmpdir (`getTmpStateRoot`) so it never clutters the tree or gets committed.
 //
-// The Unix sockets themselves do NOT live here: `sun_path` caps at ~104 bytes,
-// and a deep project path would blow that. Sockets live at a short tmpdir path
-// (`getSocketPath`), and `cli.json` points at one.
+// The Unix sockets also live in tmpdir: `sun_path` caps at ~104 bytes, and a deep
+// project path would blow that. Sockets use a short tmpdir path (`getSocketPath`),
+// and `cli.json` points at one.
 export const SWEETPAD_DIR_NAME = ".sweetpad";
 
 export function getStateRoot(workspacePath: string): string {
   return path.join(workspacePath, SWEETPAD_DIR_NAME);
+}
+
+// A short, stable token derived from the workspace path, for naming per-workspace
+// tmpdir entries (the BSP socket, the tmp state root) — keeps them short (well under
+// `sun_path`) and collision-free across projects.
+export function workspaceHash(workspacePath: string): string {
+  return createHash("sha1").update(workspacePath).digest("hex").slice(0, 12);
+}
+
+// Per-workspace runtime dir under the OS temp dir, holding logs and build history
+// (`bsp.log`, `builds/<id>/build.log`). Kept out of the project tree so logs never
+// clutter or get committed; the OS reclaims it, which is fine for ephemeral state.
+export function getTmpStateRoot(workspacePath: string): string {
+  return path.join(os.tmpdir(), `sweetpad-${workspaceHash(workspacePath)}`);
 }
 
 // The CLI control server's connection file: a single `.sweetpad/cli.json` holding
@@ -24,7 +40,7 @@ export function getCliConfigFile(workspacePath: string): string {
 }
 
 export function getBuildsDir(workspacePath: string): string {
-  return path.join(getStateRoot(workspacePath), "builds");
+  return path.join(getTmpStateRoot(workspacePath), "builds");
 }
 
 export function getBuildDir(workspacePath: string, buildId: string): string {

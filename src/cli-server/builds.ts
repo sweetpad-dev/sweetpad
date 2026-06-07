@@ -144,7 +144,7 @@ export class BuildSessionRegistry implements vscode.Disposable {
     if (this.current?.buildId === buildId) {
       return this.current.logChunks.join("\n");
     }
-    const logPath = path.join(getBuildDir(this.workspacePath, buildId), "log.txt");
+    const logPath = path.join(getBuildDir(this.workspacePath, buildId), "build.log");
     try {
       return await fs.readFile(logPath, "utf8");
     } catch {
@@ -290,7 +290,7 @@ export class BuildSessionRegistry implements vscode.Disposable {
       diagnostics: session.diagnostics.map(toDiagnosticEntity),
     };
     await fs.writeFile(path.join(dir, "snapshot.json"), JSON.stringify(snapshot, null, 2));
-    await fs.writeFile(path.join(dir, "log.txt"), session.logChunks.join("\n"));
+    await fs.writeFile(path.join(dir, "build.log"), session.logChunks.join("\n"));
   }
 
   private async loadPersisted(): Promise<void> {

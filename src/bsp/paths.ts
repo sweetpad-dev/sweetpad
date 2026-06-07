@@ -1,19 +1,17 @@
-import { createHash } from "node:crypto";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { getStateRoot } from "../cli-server/paths";
+import { getStateRoot, getTmpStateRoot, workspaceHash } from "../cli-server/paths";
 
-// Default debug-log file for the BSP server, under the shared `.sweetpad/`
-// runtime-state dir (not a subdir) so it's writable without creating anything.
+// Default debug-log file for the BSP server, in the per-workspace tmp state root
+// (alongside the build logs) so logs stay out of the project tree.
 export function getBspLogPath(workspacePath: string): string {
-  return path.join(getStateRoot(workspacePath), "bsp.log");
+  return path.join(getTmpStateRoot(workspacePath), "bsp.log");
 }
 
 // The BSP server's persisted config (`.sweetpad/bsp.json`): the resolved
 // project/scheme/configuration the server reads at startup and watches for
-// changes. The extension writes it; it persists across server restarts (unlike
-// the ephemeral `run/*.json` connection files).
+// changes. The extension writes it; it persists across server restarts.
 export function getBspConfigFile(workspacePath: string): string {
   return path.join(getStateRoot(workspacePath), "bsp.json");
 }
@@ -24,6 +22,5 @@ export function getBspConfigFile(workspacePath: string): string {
 // and dials it for live logs/status. Stable across restarts, so a relaunched
 // extension or server reconnects to the same path.
 export function getBspSocketPath(workspacePath: string): string {
-  const hash = createHash("sha1").update(workspacePath).digest("hex").slice(0, 12);
-  return path.join(os.tmpdir(), `sweetpad-bsp-${hash}.sock`);
+  return path.join(os.tmpdir(), `sweetpad-bsp-${workspaceHash(workspacePath)}.sock`);
 }

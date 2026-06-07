@@ -6,7 +6,7 @@ import * as path from "node:path";
 import type { BuildManager, BuildSessionEnded, BuildSessionStarted } from "../build/manager";
 import type { DestinationsManager } from "../destination/manager";
 import { BuildSessionRegistry } from "./builds";
-import { getBuildDir } from "./paths";
+import { getBuildDir, getTmpStateRoot } from "./paths";
 
 function makeMockManagers() {
   const emitter = new EventEmitter();
@@ -28,7 +28,8 @@ function pump(emitter: EventEmitter, event: string, payload: unknown): void {
 }
 
 describe("BuildSessionRegistry", () => {
-  // A fresh project dir per test; build history lands in <tmpRoot>/.sweetpad/builds.
+  // A fresh project dir per test; build history lands in a per-workspace tmp dir
+  // (getBuildsDir(tmpRoot)), outside the project tree, cleaned up in afterEach.
   let tmpRoot: string;
 
   beforeEach(async () => {
@@ -37,6 +38,7 @@ describe("BuildSessionRegistry", () => {
 
   afterEach(async () => {
     await fs.rm(tmpRoot, { recursive: true, force: true });
+    await fs.rm(getTmpStateRoot(tmpRoot), { recursive: true, force: true });
   });
 
   it("captures a single session start->log->end cycle and persists the snapshot", async () => {
@@ -85,7 +87,7 @@ describe("BuildSessionRegistry", () => {
       message: "cannot find 'Bar'",
     });
 
-    const log = await fs.readFile(path.join(buildDir, "log.txt"), "utf8");
+    const log = await fs.readFile(path.join(buildDir, "build.log"), "utf8");
     expect(log).toContain("Compiling MyApp");
     expect(log).toContain("error: cannot find 'Bar'");
 

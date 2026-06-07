@@ -12,7 +12,7 @@ import { getBspLogPath, getBspSocketPath } from "./paths";
  * (the server reads it at startup and watches it for changes), so `buildServer.json`
  * stays a minimal launch stub. In-workspace paths are written relative to the
  * workspace root (the server resolves them against it); out-of-tree paths (Xcode,
- * the socket) stay absolute.
+ * the socket, the log) stay absolute.
  */
 export type BspResolvedConfig = {
   workspacePath: string;
@@ -23,7 +23,7 @@ export type BspResolvedConfig = {
   scheme: string | null;
   configuration: string;
   derivedDataPath: string | null;
-  /** Debug log file. Defaults to `.sweetpad/bsp.log` (written workspace-relative); overridable via `sweetpad.buildServer.logPath`. */
+  /** Debug log file. Defaults to a per-workspace OS-temp path (out of the project tree); overridable via `sweetpad.buildServer.logPath`. */
   logPath: string;
   /** Unix socket the BSP server binds for telemetry; the extension connects to it for live logs/status. */
   socket: string;
@@ -74,7 +74,8 @@ function toWorkspaceRelative(workspacePath: string, target: string): string {
 }
 
 /**
- * The BSP log path. Defaults to `.sweetpad/bsp.log` so logs are always captured;
+ * The BSP log path. Defaults to a per-workspace OS-temp file (`getBspLogPath`) so
+ * logs are always captured without cluttering the project tree;
  * `sweetpad.buildServer.logPath` overrides it (with `${workspaceFolder}`/relative
  * resolved absolute against the workspace folder).
  */
