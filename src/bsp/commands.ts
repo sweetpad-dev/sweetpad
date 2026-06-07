@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { getWorkspacePath } from "../build/utils";
-import { getDeveloperDir, getIsNodeInstalled, getIsXcodeBuildServerInstalled } from "../common/cli/scripts";
+import { getDeveloperDir, getIsNodeInstalled, getIsXBSInstalled } from "../common/cli/scripts";
 import { type AppDeps, NODE_DOWNLOAD_URL } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { isFileExists } from "../common/files";
@@ -100,15 +100,15 @@ async function buildServerJsonCheck(): Promise<DoctorCheck> {
 }
 
 async function collectBspChecks(deps: AppDeps): Promise<DoctorCheck[]> {
-  return getBuildServerProvider() === "sweetpad" ? collectSweetpadChecks(deps) : collectXcodeBuildServerChecks();
+  return getBuildServerProvider() === "sweetpad" ? collectSweetpadChecks(deps) : collectXBSChecks();
 }
 
-async function collectXcodeBuildServerChecks(): Promise<DoctorCheck[]> {
+async function collectXBSChecks(): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
 
   checks.push({ ok: true, label: "Build server provider", detail: "xcode-build-server" });
 
-  const installed = await getIsXcodeBuildServerInstalled();
+  const installed = await getIsXBSInstalled();
   checks.push({
     ok: installed,
     label: "xcode-build-server installed",

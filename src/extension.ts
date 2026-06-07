@@ -339,13 +339,13 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.server.copyName", copyServerNameCommand));
   d(command("sweetpad.server.restart", restartServerCommand));
   d(command("sweetpad.server.showStatus", showServerStatusCommand));
-  d({ dispose: () => void serverService.dispose() });
-  d({ dispose: () => void bspService.dispose() });
 
   lspDiagnostics.reattachIfEnabled();
   lspDiagnostics.showPostReloadNotificationIfPending();
   d(lspDiagnostics);
   d(diagnostics);
+  d(serverService);
+  d(bspService);
 }
 
 export function deactivate() {}

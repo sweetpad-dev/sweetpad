@@ -3,6 +3,7 @@ import path from "node:path";
 
 import * as sweetpadLib from "@sweetpad/lib";
 
+import { getBuildServerProvider } from "../../bsp/commands";
 import { detectWorkspaceType, getSwiftPMDirectory, getWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { getWorkspaceConfig } from "../config";
@@ -462,7 +463,7 @@ export async function getIsXcbeautifyInstalled() {
 /**
  * Get the xcode-build-server command path from config or default
  */
-function getXcodeBuildServerCommand(): string {
+function getXBSCommand(): string {
   const customPath = getWorkspaceConfig("xcodebuildserver.path");
   return customPath || "xcode-build-server";
 }
@@ -483,8 +484,8 @@ export function getSwiftCommand(): string {
 /**
  * Find if xcode-build-server is installed
  */
-export async function getIsXcodeBuildServerInstalled() {
-  const command = getXcodeBuildServerCommand();
+export async function getIsXBSInstalled() {
+  const command = getXBSCommand();
 
   try {
     await exec({
@@ -623,47 +624,25 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
 }
 
 /**
- * Generate xcode-build-server config.
- *
- * `sweetpad.xcodebuildserver.serverEnv` is injected into the generated
- * `buildServer.json` by prefixing `argv` with `/usr/bin/env KEY=VAL ...` so the
- * long-running build server (later spawned by sourcekit-lsp) inherits them.
- * The vars aren't passed to this short-lived `config` call itself — XBS's
- * config phase only honors them in trivial ways, and the docs flag `argv` as
- * the only stable way to pass env via BSP.
+ * Generate buildServer.json for the current scheme and workspace, based on the configured provider.
  */
 export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
-  // Opt-in: when the provider is `sweetpad`, always use our own BSP server (it
-  // derives compiler args from the project, no build-log parsing). No project-type
-  // detection — if you opt in, you get it.
-  const provider = getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server";
+  const provider = getBuildServerProvider();
   if (provider === "sweetpad") {
     await generateSweetpadBuildServerConfig();
     return;
   }
 
-  const workspaceType = detectWorkspaceType(options.xcworkspace);
-  const command = getXcodeBuildServerCommand();
-  let cwd: string;
-  let args: string[];
+  if (provider === "xcode-build-server") {
+    await generateXBSBuildServerConfig({
+      xcworkspace: options.xcworkspace,
+      scheme: options.scheme,
+    });
 
-  if (workspaceType === "spm") {
-    cwd = getSwiftPMDirectory(options.xcworkspace);
-    args = ["config", "-scheme", options.scheme];
-  } else if (workspaceType === "xcode") {
-    cwd = getWorkspacePath();
-    args = ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme];
-  } else {
-    assertUnreachable(workspaceType);
+    return;
   }
-  await exec({
-    command: command,
-    args: args,
-    cwd: cwd,
-  });
 
-  const env = getWorkspaceConfig("xcodebuildserver.serverEnv") ?? {};
-  await injectEnvIntoBuildServerConfig(path.join(cwd, "buildServer.json"), env);
+  assertUnreachable(provider);
 }
 
 /**
@@ -692,6 +671,31 @@ async function generateSweetpadBuildServerConfig(): Promise<void> {
     argv: [bspServer],
   };
   await fs.writeFile(path.join(cwd, "buildServer.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
+async function generateXBSBuildServerConfig(options: { xcworkspace: string; scheme: string }): Promise<void> {
+  const workspaceType = detectWorkspaceType(options.xcworkspace);
+  const command = getXBSCommand();
+  let cwd: string;
+  let args: string[];
+
+  if (workspaceType === "spm") {
+    cwd = getSwiftPMDirectory(options.xcworkspace);
+    args = ["config", "-scheme", options.scheme];
+  } else if (workspaceType === "xcode") {
+    cwd = getWorkspacePath();
+    args = ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme];
+  } else {
+    assertUnreachable(workspaceType);
+  }
+  await exec({
+    command: command,
+    args: args,
+    cwd: cwd,
+  });
+
+  const env = getWorkspaceConfig("xcodebuildserver.serverEnv") ?? {};
+  await injectEnvIntoBuildServerConfig(path.join(cwd, "buildServer.json"), env);
 }
 
 /**
@@ -766,7 +770,7 @@ async function injectEnvIntoBuildServerConfig(
   await fs.writeFile(buildServerJsonPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
-export type XcodeBuildServerConfig = {
+export type XBSConfig = {
   scheme: string;
   workspace: string;
   build_root: string;
@@ -776,9 +780,9 @@ export type XcodeBuildServerConfig = {
 /**
  * Read xcode-build-server config with proper types
  */
-export async function readXcodeBuildServerConfig(): Promise<XcodeBuildServerConfig> {
+export async function readXBSConfig(): Promise<XBSConfig> {
   const buildServerJsonPath = path.join(getWorkspacePath(), "buildServer.json");
-  return await readJsonFile<XcodeBuildServerConfig>(buildServerJsonPath);
+  return await readJsonFile<XBSConfig>(buildServerJsonPath);
 }
 
 /**

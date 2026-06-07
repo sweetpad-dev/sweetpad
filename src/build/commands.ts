@@ -2,15 +2,16 @@ import path from "node:path";
 
 import * as vscode from "vscode";
 
+import { getBuildServerProvider } from "../bsp/commands";
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
 import {
   type XcodeScheme,
   getBuildConfigurations,
   getIsNodeInstalled,
-  getIsXcodeBuildServerInstalled,
+  getIsXBSInstalled as getIsXBSInstalled,
 } from "../common/cli/scripts";
 import { type AppDeps, warnNodeRuntimeMissing } from "../common/commands";
-import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
+import { updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, removeDirectory } from "../common/files";
@@ -28,7 +29,7 @@ import {
   prepareStoragePath,
   refreshBuildServer,
   selectXcodeWorkspace,
-  xcodeBuildServerMissingError,
+  XBSMissingError,
 } from "./utils";
 
 /**
@@ -133,16 +134,15 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
 
   // SweetPad's own provider ships with the extension; only xcode-build-server
   // needs the external tool installed.
-  const usingXcodeBuildServer =
-    (getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server") === "xcode-build-server";
-  if (usingXcodeBuildServer && !(await getIsXcodeBuildServerInstalled())) {
-    throw xcodeBuildServerMissingError();
+  const usingXBS = getBuildServerProvider() === "xcode-build-server";
+  if (usingXBS && !(await getIsXBSInstalled())) {
+    throw XBSMissingError();
   }
 
   // SweetPad's own BSP server launches via `#!/usr/bin/env node`. Warn (without
   // blocking) when Node is missing: the config still writes, so it's ready once
   // Node is on PATH, but the server can't start until then.
-  if (!usingXcodeBuildServer && !(await getIsNodeInstalled())) {
+  if (!usingXBS && !(await getIsNodeInstalled())) {
     void warnNodeRuntimeMissing("The SweetPad BSP server");
   }
 
@@ -182,9 +182,9 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
  * "SweetPad: xcode-build-server logs" output channel.
  */
 export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTreeItem) {
-  const isServerInstalled = await getIsXcodeBuildServerInstalled();
+  const isServerInstalled = await getIsXBSInstalled();
   if (!isServerInstalled) {
-    throw xcodeBuildServerMissingError();
+    throw XBSMissingError();
   }
 
   const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);
@@ -214,9 +214,9 @@ export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTre
  * XBS_LOGPATH, restart the Swift LSP, and stop the log stream.
  */
 export async function disableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTreeItem) {
-  const isServerInstalled = await getIsXcodeBuildServerInstalled();
+  const isServerInstalled = await getIsXBSInstalled();
   if (!isServerInstalled) {
-    throw xcodeBuildServerMissingError();
+    throw XBSMissingError();
   }
 
   const xcworkspace = await askXcodeWorkspacePath(deps.workspace, deps.buildManager);

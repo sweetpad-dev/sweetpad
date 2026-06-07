@@ -7,7 +7,7 @@ import {
   type XcodeScheme,
   getBuildSettingsToLaunch,
   getIsXcbeautifyInstalled,
-  getIsXcodeBuildServerInstalled,
+  getIsXBSInstalled,
   getSchemes,
   getSwiftCommand,
   getXcodeBuildCommand,
@@ -52,7 +52,7 @@ import {
   ensureAppPathExists,
   generateBuildServerConfigOnBuild,
   getCurrentXcodeWorkspacePath,
-  notifyXcodeBuildServerMissing,
+  notifyXBSMissing,
   getSchemeLaunchSettings,
   getSwiftPMDirectory,
   getWorkspacePath,
@@ -135,7 +135,7 @@ export class BuildManager {
 
   async start(): Promise<void> {
     this.on("defaultSchemeForBuildUpdated", (scheme: string | undefined) => {
-      void this.generateXcodeBuildServerSettingsOnSchemeChange({
+      void this.generateXBSSettingsOnSchemeChange({
         scheme: scheme,
       });
     });
@@ -237,7 +237,7 @@ export class BuildManager {
    * Every time the scheme changes, we need to rebuild the buildServer.json file
    * for providing the correct build settings to the LSP server.
    */
-  async generateXcodeBuildServerSettingsOnSchemeChange(options: { scheme: string | undefined }): Promise<void> {
+  async generateXBSSettingsOnSchemeChange(options: { scheme: string | undefined }): Promise<void> {
     if (!options.scheme) {
       return;
     }
@@ -252,9 +252,9 @@ export class BuildManager {
       return;
     }
 
-    const isServerInstalled = await getIsXcodeBuildServerInstalled();
+    const isServerInstalled = await getIsXBSInstalled();
     if (!isServerInstalled) {
-      await notifyXcodeBuildServerMissing(this.workspace);
+      await notifyXBSMissing(this.workspace);
       return;
     }
 
@@ -264,9 +264,9 @@ export class BuildManager {
       scheme: options.scheme,
     });
 
-    const isShown = this.workspace.get("build.xcodeBuildServerAutogenreateInfoShown") ?? false;
+    const isShown = this.workspace.get("build.xbsAutogenreateInfoShown") ?? false;
     if (!isShown) {
-      this.workspace.update("build.xcodeBuildServerAutogenreateInfoShown", true);
+      this.workspace.update("build.xbsAutogenreateInfoShown", true);
       vscode.window.showInformationMessage(`
           INFO: "buildServer.json" file is automatically regenerated every time you change the scheme.
           If you want to disable this feature, you can do it in the settings. This message is shown only once.

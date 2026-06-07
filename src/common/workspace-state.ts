@@ -41,8 +41,8 @@ export type WorkspaceTypes = {
   "build.xcodeDestinationsRecent": SelectedDestination[];
   "build.xcodeSdk": string;
   "build.lastLaunchedApp": LastLaunchedAppContext;
-  "build.xcodeBuildServerAutogenreateInfoShown": boolean;
-  "build.xcodeBuildServerMissingNotified": boolean;
+  "build.xbsAutogenreateInfoShown": boolean;
+  "build.xbsMissingNotified": boolean;
   "build.lspDiagnosticsEnabled": boolean;
   "build.lspDiagnosticsPostReloadAction": "enabled" | "disabled";
   "testing.xcodeTarget": string;

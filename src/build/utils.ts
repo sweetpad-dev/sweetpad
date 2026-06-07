@@ -4,16 +4,17 @@ import * as sweetpadLib from "@sweetpad/lib";
 import { execa } from "execa";
 import * as vscode from "vscode";
 
+import { getBuildServerProvider } from "../bsp/commands";
 import { askConfigurationBase } from "../common/askers";
 import {
-  type XcodeBuildServerConfig,
+  type XBSConfig,
   findSchemeFile,
   generateBuildServerConfig,
   getBuildSettingsToAskDestination,
-  getIsXcodeBuildServerInstalled,
+  getIsXBSInstalled,
   getSchemes,
   getXcodeBuildCommand,
-  readXcodeBuildServerConfig,
+  readXBSConfig,
 } from "../common/cli/scripts";
 import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
@@ -360,7 +361,7 @@ const XCODE_BUILD_SERVER_TOOL_ID = "xcode-build-server";
 const XBS_INSTALL_ACTION = "Install";
 const XBS_DOCS_ACTION = "Open docs";
 
-function openXcodeBuildServerDocs(): void {
+function openXBSDocs(): void {
   void vscode.env.openExternal(vscode.Uri.parse(getToolById(XCODE_BUILD_SERVER_TOOL_ID).documentation));
 }
 
@@ -369,14 +370,14 @@ function openXcodeBuildServerDocs(): void {
  * `sweetpad` provider doesn't). Instead of a dead-end "not installed" message it
  * offers to install it (`brew install xcode-build-server`) or open its docs.
  */
-export function xcodeBuildServerMissingError(): ExtensionError {
+export function XBSMissingError(): ExtensionError {
   return new ExtensionError("xcode-build-server is not installed", {
     actions: [
       {
         label: XBS_INSTALL_ACTION,
         callback: () => void vscode.commands.executeCommand("sweetpad.tools.install", XCODE_BUILD_SERVER_TOOL_ID),
       },
-      { label: XBS_DOCS_ACTION, callback: openXcodeBuildServerDocs },
+      { label: XBS_DOCS_ACTION, callback: openXBSDocs },
     ],
   });
 }
@@ -387,7 +388,7 @@ export function xcodeBuildServerMissingError(): ExtensionError {
  * failure is invisible and Swift code intelligence silently goes stale. Offers
  * to install it or open its docs.
  */
-export async function notifyXcodeBuildServerMissing(workspace: WorkspaceStateService): Promise<void> {
+export async function notifyXBSMissing(workspace: WorkspaceStateService): Promise<void> {
   if (workspace.get("build.xcodeBuildServerMissingNotified")) {
     return;
   }
@@ -400,7 +401,7 @@ export async function notifyXcodeBuildServerMissing(workspace: WorkspaceStateSer
   if (choice === XBS_INSTALL_ACTION) {
     await vscode.commands.executeCommand("sweetpad.tools.install", XCODE_BUILD_SERVER_TOOL_ID);
   } else if (choice === XBS_DOCS_ACTION) {
-    openXcodeBuildServerDocs();
+    openXBSDocs();
   }
 }
 
@@ -433,7 +434,7 @@ export async function generateBuildServerConfigOnBuild(options: {
     return;
   }
 
-  const provider = getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server";
+  const provider = getBuildServerProvider();
   if (provider === "sweetpad") {
     // Our config is project-based (no scheme/build_root), so it's valid as long
     // as it's ours — regenerate only when switching in from another provider
@@ -450,37 +451,41 @@ export async function generateBuildServerConfigOnBuild(options: {
     return;
   }
 
-  const isServerInstalled = await getIsXcodeBuildServerInstalled();
-  if (!isServerInstalled) {
-    await notifyXcodeBuildServerMissing(options.workspace);
+  if (provider === "xcode-build-server") {
+    const isServerInstalled = await getIsXBSInstalled();
+    if (!isServerInstalled) {
+      await notifyXBSMissing(options.workspace);
+      return;
+    }
+
+    let config: XBSConfig | undefined = undefined;
+    try {
+      config = await readXBSConfig();
+    } catch (e) {
+      // regenerate config in case of errors like JSON invalid or file does not exist
+    }
+
+    // regenegerate config only if something is wrong with config:
+    // - scheme does not match
+    // - workspace does not exist
+    // - build_root does not exist
+    const isConfigValid =
+      config &&
+      config.scheme === options.scheme &&
+      config.workspace &&
+      config.build_root &&
+      (await isFileExists(config.build_root)) &&
+      (await isFileExists(config.workspace));
+
+    if (!isConfigValid) {
+      await refreshBuildServer({
+        xcworkspace: options.xcworkspace,
+        scheme: options.scheme,
+      });
+    }
     return;
   }
-
-  let config: XcodeBuildServerConfig | undefined = undefined;
-  try {
-    config = await readXcodeBuildServerConfig();
-  } catch (e) {
-    // regenerate config in case of errors like JSON invalid or file does not exist
-  }
-
-  // regenegerate config only if something is wrong with config:
-  // - scheme does not match
-  // - workspace does not exist
-  // - build_root does not exist
-  const isConfigValid =
-    config &&
-    config.scheme === options.scheme &&
-    config.workspace &&
-    config.build_root &&
-    (await isFileExists(config.build_root)) &&
-    (await isFileExists(config.workspace));
-
-  if (!isConfigValid) {
-    await refreshBuildServer({
-      xcworkspace: options.xcworkspace,
-      scheme: options.scheme,
-    });
-  }
+  assertUnreachable(provider);
 }
 
 /**
