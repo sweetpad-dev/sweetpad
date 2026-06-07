@@ -6,7 +6,7 @@ import * as path from "node:path";
 import type { BuildManager, BuildSessionEnded, BuildSessionStarted } from "../build/manager";
 import type { DestinationsManager } from "../destination/manager";
 import { BuildSessionRegistry } from "./builds";
-import { getBuildDir, getStateRoot } from "./paths";
+import { getBuildDir } from "./paths";
 
 function makeMockManagers() {
   const emitter = new EventEmitter();
@@ -28,28 +28,21 @@ function pump(emitter: EventEmitter, event: string, payload: unknown): void {
 }
 
 describe("BuildSessionRegistry", () => {
+  // A fresh project dir per test; build history lands in <tmpRoot>/.sweetpad/builds.
   let tmpRoot: string;
-  let originalXdg: string | undefined;
 
   beforeEach(async () => {
     tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sweetpad-builds-spec-"));
-    originalXdg = process.env.XDG_STATE_HOME;
-    process.env.XDG_STATE_HOME = tmpRoot;
   });
 
   afterEach(async () => {
-    if (originalXdg === undefined) {
-      delete process.env.XDG_STATE_HOME;
-    } else {
-      process.env.XDG_STATE_HOME = originalXdg;
-    }
     await fs.rm(tmpRoot, { recursive: true, force: true });
   });
 
   it("captures a single session start->log->end cycle and persists the snapshot", async () => {
     const { emitter, buildManager, destinationsManager } = makeMockManagers();
     const reg = new BuildSessionRegistry({
-      workspacePath: "/fake/workspace",
+      workspacePath: tmpRoot,
       buildManager,
       destinationsManager,
     });
@@ -81,7 +74,7 @@ describe("BuildSessionRegistry", () => {
     expect(entity!.warningCount).toBe(0);
     expect(entity!.originator).toBe("vscode");
 
-    const buildDir = getBuildDir("/fake/workspace", "b1");
+    const buildDir = getBuildDir(tmpRoot, "b1");
     const snapshot = JSON.parse(await fs.readFile(path.join(buildDir, "snapshot.json"), "utf8"));
     expect(snapshot.diagnostics).toHaveLength(1);
     expect(snapshot.diagnostics[0]).toEqual({
@@ -102,7 +95,7 @@ describe("BuildSessionRegistry", () => {
   it("evicts oldest builds beyond the retention cap", async () => {
     const { emitter, buildManager, destinationsManager } = makeMockManagers();
     const reg = new BuildSessionRegistry({
-      workspacePath: "/fake/workspace2",
+      workspacePath: tmpRoot,
       buildManager,
       destinationsManager,
     });
@@ -129,7 +122,7 @@ describe("BuildSessionRegistry", () => {
   it("waitForBuild resolves immediately if the build already finished", async () => {
     const { emitter, buildManager, destinationsManager } = makeMockManagers();
     const reg = new BuildSessionRegistry({
-      workspacePath: "/fake/workspace3",
+      workspacePath: tmpRoot,
       buildManager,
       destinationsManager,
     });
@@ -147,7 +140,7 @@ describe("BuildSessionRegistry", () => {
   it("waitForBuild blocks until the session ends, then resolves", async () => {
     const { emitter, buildManager, destinationsManager } = makeMockManagers();
     const reg = new BuildSessionRegistry({
-      workspacePath: "/fake/workspace4",
+      workspacePath: tmpRoot,
       buildManager,
       destinationsManager,
     });
@@ -166,7 +159,7 @@ describe("BuildSessionRegistry", () => {
   it("waitForBuild returns the still-running entity (no throw) on timeout", async () => {
     const { emitter, buildManager, destinationsManager } = makeMockManagers();
     const reg = new BuildSessionRegistry({
-      workspacePath: "/fake/workspace4b",
+      workspacePath: tmpRoot,
       buildManager,
       destinationsManager,
     });
@@ -187,7 +180,7 @@ describe("BuildSessionRegistry", () => {
   it("waitForBuild caps timeoutMs at the server max (~30s)", async () => {
     const { emitter, buildManager, destinationsManager } = makeMockManagers();
     const reg = new BuildSessionRegistry({
-      workspacePath: "/fake/workspace4c",
+      workspacePath: tmpRoot,
       buildManager,
       destinationsManager,
     });
@@ -210,7 +203,7 @@ describe("BuildSessionRegistry", () => {
   it("CLI-reserved buildId is claimed by the next session start", async () => {
     const { emitter, buildManager, destinationsManager } = makeMockManagers();
     const reg = new BuildSessionRegistry({
-      workspacePath: "/fake/workspace5",
+      workspacePath: tmpRoot,
       buildManager,
       destinationsManager,
     });
@@ -229,21 +222,17 @@ describe("BuildSessionRegistry", () => {
   });
 
   it("recovers nextSeq from existing on-disk builds after restart", async () => {
-    const wsPath = "/fake/workspace6";
     const { emitter, buildManager, destinationsManager } = makeMockManagers();
-    const reg = new BuildSessionRegistry({ workspacePath: wsPath, buildManager, destinationsManager });
+    const reg = new BuildSessionRegistry({ workspacePath: tmpRoot, buildManager, destinationsManager });
     await reg.start();
     pump(emitter, "buildSessionStarted", { scheme: "A", command: "build" });
     pump(emitter, "buildSessionEnded", { scheme: "A", status: "succeeded" });
     await reg.flushPending();
     reg.dispose();
 
-    // Confirm we wrote under the test-controlled state root
-    expect(getStateRoot()).toBe(path.join(process.env.XDG_STATE_HOME!, "sweetpad"));
-
     const fresh = makeMockManagers();
     const reg2 = new BuildSessionRegistry({
-      workspacePath: wsPath,
+      workspacePath: tmpRoot,
       buildManager: fresh.buildManager,
       destinationsManager: fresh.destinationsManager,
     });

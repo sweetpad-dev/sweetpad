@@ -1,72 +1,51 @@
+import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
 import {
+  findProjectRoot,
   generateServerName,
   getActiveFile,
+  getBuildDir,
   getBuildsDir,
-  getMetadataPath,
+  getConnectionFile,
+  getRunDir,
   getSocketPath,
-  getSocketsDir,
   getStateRoot,
-  getWorkspaceDir,
-  workspacePathHash,
+  SWEETPAD_DIR_NAME,
 } from "./paths";
 
 describe("server/paths", () => {
-  const originalXdg = process.env.XDG_STATE_HOME;
-  beforeEach(() => {
-    delete process.env.XDG_STATE_HOME;
-  });
-  afterEach(() => {
-    if (originalXdg === undefined) {
-      delete process.env.XDG_STATE_HOME;
-    } else {
-      process.env.XDG_STATE_HOME = originalXdg;
-    }
-  });
+  describe("project-local layout", () => {
+    const ws = "/some/Project";
+    const root = path.join(ws, ".sweetpad");
 
-  describe("getStateRoot", () => {
-    it("defaults to ~/.local/state/sweetpad when XDG_STATE_HOME is unset", () => {
-      expect(getStateRoot()).toBe(path.join(os.homedir(), ".local", "state", "sweetpad"));
+    it("roots state at <workspace>/.sweetpad", () => {
+      expect(getStateRoot(ws)).toBe(root);
     });
 
-    it("respects $XDG_STATE_HOME when set to an absolute path", () => {
-      process.env.XDG_STATE_HOME = "/custom/state";
-      expect(getStateRoot()).toBe("/custom/state/sweetpad");
+    it("nests run/, active.json and builds under the state root", () => {
+      expect(getRunDir(ws)).toBe(path.join(root, "run"));
+      expect(getActiveFile(ws)).toBe(path.join(root, "active.json"));
+      expect(getBuildsDir(ws)).toBe(path.join(root, "builds"));
+      expect(getBuildDir(ws, "b3")).toBe(path.join(root, "builds", "b3"));
     });
 
-    it("ignores $XDG_STATE_HOME when it's not absolute", () => {
-      process.env.XDG_STATE_HOME = "relative/path";
-      expect(getStateRoot()).toBe(path.join(os.homedir(), ".local", "state", "sweetpad"));
+    it("places a server's connection file at run/<name>.json", () => {
+      expect(getConnectionFile(ws, "abc123")).toBe(path.join(root, "run", "abc123.json"));
     });
   });
 
-  describe("nested paths", () => {
-    it("nests sockets, active.json, and workspaces under the state root", () => {
-      const root = getStateRoot();
-      expect(getSocketsDir()).toBe(path.join(root, "sockets"));
-      expect(getActiveFile()).toBe(path.join(root, "active.json"));
-    });
-
-    it("composes socket and metadata paths from a name", () => {
-      expect(getSocketPath("abc123")).toBe(path.join(getSocketsDir(), "abc123.sock"));
-      expect(getMetadataPath("abc123")).toBe(path.join(getSocketsDir(), "abc123.json"));
-    });
-
-    it("nests workspace artifacts under workspaces/<sha1>/builds/<id>", () => {
-      const ws = "/some/Project";
-      const hash = workspacePathHash(ws);
-      expect(getWorkspaceDir(ws).endsWith(path.join("workspaces", hash))).toBe(true);
-      expect(getBuildsDir(ws).endsWith(path.join("workspaces", hash, "builds"))).toBe(true);
+  describe("getSocketPath", () => {
+    it("puts the socket in tmpdir (short path), keyed by name", () => {
+      expect(getSocketPath("abc123")).toBe(path.join(os.tmpdir(), "sweetpad-abc123.sock"));
     });
   });
 
   describe("generateServerName", () => {
     it("produces 6-char lowercase hex names", () => {
       for (let i = 0; i < 50; i += 1) {
-        const name = generateServerName();
-        expect(name).toMatch(/^[0-9a-f]{6}$/);
+        expect(generateServerName()).toMatch(/^[0-9a-f]{6}$/);
       }
     });
 
@@ -77,17 +56,27 @@ describe("server/paths", () => {
     });
   });
 
-  describe("workspacePathHash", () => {
-    it("is deterministic for the same input", () => {
-      expect(workspacePathHash("/a/b/c")).toBe(workspacePathHash("/a/b/c"));
+  describe("findProjectRoot", () => {
+    let tmp: string;
+    beforeEach(async () => {
+      tmp = await fs.mkdtemp(path.join(os.tmpdir(), "sw-paths-"));
+    });
+    afterEach(async () => {
+      await fs.rm(tmp, { recursive: true, force: true });
     });
 
-    it("differs for different inputs", () => {
-      expect(workspacePathHash("/a")).not.toBe(workspacePathHash("/b"));
+    it("walks up to the nearest ancestor containing .sweetpad", async () => {
+      const proj = path.join(tmp, "proj");
+      const nested = path.join(proj, "a", "b");
+      await fs.mkdir(path.join(proj, SWEETPAD_DIR_NAME), { recursive: true });
+      await fs.mkdir(nested, { recursive: true });
+      expect(await findProjectRoot(nested)).toBe(proj);
     });
 
-    it("is a 40-char hex string (sha1)", () => {
-      expect(workspacePathHash("/x")).toMatch(/^[0-9a-f]{40}$/);
+    it("returns undefined when no .sweetpad exists up the tree", async () => {
+      const nested = path.join(tmp, "x", "y");
+      await fs.mkdir(nested, { recursive: true });
+      expect(await findProjectRoot(nested)).toBeUndefined();
     });
   });
 });

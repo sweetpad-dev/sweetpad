@@ -12,8 +12,15 @@ export const JSON_RPC_INVALID_PARAMS = -32602;
 export const JSON_RPC_INTERNAL_ERROR = -32603;
 export const SWEETPAD_APPLICATION_ERROR = -32000;
 
+export type ServerKind = "extension" | "bsp";
+
+// A `<workspace>/.sweetpad/run/<name>.json` connection file: enough to find,
+// identify, liveness-check, and connect to a running server. `socket` is the
+// short tmpdir path the server bound (see `getSocketPath`).
 export type ServerMetadata = {
   name: string;
+  kind: ServerKind;
+  socket: string;
   workspacePath: string;
   pid: number;
   startedAt: string;

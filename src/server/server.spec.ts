@@ -1,37 +1,33 @@
 import { promises as fs } from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import { rpc, RpcError } from "../cli/client";
 import { SocketServer } from "./server";
 
 describe("SocketServer", () => {
-  let tmpRoot: string;
-  let originalXdg: string | undefined;
+  // A real temp dir as the workspace: the connection file lands in
+  // <workspace>/.sweetpad/run/. The socket itself lives in tmpdir (short path).
+  let workspacePath: string;
   let server: SocketServer | undefined;
 
   beforeEach(async () => {
-    // Keep this path short — Unix sockets cap at 104 chars on macOS, and the
-    // default os.tmpdir() under /var/folders is already 50+ chars before we
-    // append /sweetpad/sockets/<name>.sock.
-    tmpRoot = await fs.mkdtemp("/tmp/sw-");
-    originalXdg = process.env.XDG_STATE_HOME;
-    process.env.XDG_STATE_HOME = tmpRoot;
+    workspacePath = await fs.mkdtemp(path.join(os.tmpdir(), "sweetpad-server-spec-"));
   });
 
   afterEach(async () => {
     if (server) await server.dispose();
     server = undefined;
-    if (originalXdg === undefined) {
-      delete process.env.XDG_STATE_HOME;
-    } else {
-      process.env.XDG_STATE_HOME = originalXdg;
-    }
-    await fs.rm(tmpRoot, { recursive: true, force: true });
+    await fs.rm(workspacePath, { recursive: true, force: true });
   });
+
+  function connectionFile(name: string): string {
+    return path.join(workspacePath, ".sweetpad", "run", `${name}.json`);
+  }
 
   it("round-trips a JSON-RPC call end-to-end over the Unix socket", async () => {
     server = new SocketServer({
-      workspacePath: "/fake/workspace",
+      workspacePath,
       extensionVersion: "test",
       handlers: {
         "echo.test": (params) => ({ received: params }),
@@ -47,45 +43,45 @@ describe("SocketServer", () => {
     expect(result.received).toEqual({ hello: "world" });
   });
 
-  it("writes a metadata sidecar with correct fields", async () => {
+  it("writes a connection file with correct fields", async () => {
     server = new SocketServer({
-      workspacePath: "/some/workspace",
+      workspacePath,
       extensionVersion: "9.9.9",
       handlers: {},
     });
     await server.start();
 
-    const metaPath = path.join(tmpRoot, "sweetpad", "sockets", `${server.name}.json`);
-    const raw = await fs.readFile(metaPath, "utf8");
-    const meta = JSON.parse(raw);
+    const meta = JSON.parse(await fs.readFile(connectionFile(server.name), "utf8"));
     expect(meta.name).toBe(server.name);
-    expect(meta.workspacePath).toBe("/some/workspace");
+    expect(meta.kind).toBe("extension");
+    expect(meta.socket).toBe(server.socket);
+    expect(meta.workspacePath).toBe(workspacePath);
     expect(meta.extensionVersion).toBe("9.9.9");
     expect(meta.protocolVersion).toBe("1.0");
     expect(typeof meta.pid).toBe("number");
     expect(typeof meta.startedAt).toBe("string");
   });
 
-  it("removes the socket and sidecar on dispose", async () => {
+  it("removes the socket and connection file on dispose", async () => {
     server = new SocketServer({
-      workspacePath: "/fake/workspace",
+      workspacePath,
       extensionVersion: "test",
       handlers: {},
     });
     await server.start();
     const socketPath = server.socket;
-    const metaPath = path.join(tmpRoot, "sweetpad", "sockets", `${server.name}.json`);
+    const connPath = connectionFile(server.name);
 
     await server.dispose();
     server = undefined;
 
     await expect(fs.access(socketPath)).rejects.toThrow(/ENOENT/);
-    await expect(fs.access(metaPath)).rejects.toThrow(/ENOENT/);
+    await expect(fs.access(connPath)).rejects.toThrow(/ENOENT/);
   });
 
   it("surfaces RPC errors with the application code in error.data", async () => {
     server = new SocketServer({
-      workspacePath: "/fake/workspace",
+      workspacePath,
       extensionVersion: "test",
       handlers: {
         "fail.now": () => {
@@ -106,7 +102,7 @@ describe("SocketServer", () => {
 
   it("answers an unknown method with JSON-RPC method-not-found (-32601)", async () => {
     server = new SocketServer({
-      workspacePath: "/fake/workspace",
+      workspacePath,
       extensionVersion: "test",
       handlers: {},
     });

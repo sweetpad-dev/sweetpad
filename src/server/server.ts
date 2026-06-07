@@ -5,7 +5,7 @@ import type * as vscode from "vscode";
 import type { MessageConnection } from "vscode-jsonrpc/node";
 
 import { commonLogger } from "../common/logger";
-import { ensureDir, generateServerName, getMetadataPath, getSocketPath, getSocketsDir, safeUnlink } from "./paths";
+import { ensureDir, generateServerName, getConnectionFile, getRunDir, getSocketPath, safeUnlink } from "./paths";
 import { serveDispatch, type RpcDispatch } from "./rpc";
 import { PROTOCOL_VERSION, type ServerMetadata } from "./types";
 
@@ -28,7 +28,7 @@ export class SocketServer implements vscode.Disposable {
   private readonly options: SocketServerOptions;
   private readonly serverName: string;
   private readonly socketPath: string;
-  private readonly metadataPath: string;
+  private readonly connectionPath: string;
   private server: net.Server | undefined;
   private startedAt: Date | undefined;
   private connections = new Set<net.Socket>();
@@ -38,7 +38,7 @@ export class SocketServer implements vscode.Disposable {
     this.options = options;
     this.serverName = generateServerName();
     this.socketPath = getSocketPath(this.serverName);
-    this.metadataPath = getMetadataPath(this.serverName);
+    this.connectionPath = getConnectionFile(options.workspacePath, this.serverName);
   }
 
   get name(): string {
@@ -53,7 +53,7 @@ export class SocketServer implements vscode.Disposable {
     if (this.server) {
       throw new Error("SocketServer.start() called twice");
     }
-    await ensureDir(getSocketsDir());
+    await ensureDir(getRunDir(this.options.workspacePath));
     // Defensive — without this a rare same-name collision would hit EADDRINUSE.
     await safeUnlink(this.socketPath);
 
@@ -83,13 +83,15 @@ export class SocketServer implements vscode.Disposable {
 
     const metadata: ServerMetadata = {
       name: this.serverName,
+      kind: "extension",
+      socket: this.socketPath,
       workspacePath: this.options.workspacePath,
       pid: process.pid,
       startedAt: this.startedAt.toISOString(),
       extensionVersion: this.options.extensionVersion,
       protocolVersion: PROTOCOL_VERSION,
     };
-    await fs.writeFile(this.metadataPath, JSON.stringify(metadata, null, 2), { mode: 0o600 });
+    await fs.writeFile(this.connectionPath, JSON.stringify(metadata, null, 2), { mode: 0o600 });
 
     commonLogger.log("SweetPad RPC server started", {
       name: this.serverName,
@@ -114,7 +116,7 @@ export class SocketServer implements vscode.Disposable {
     }
 
     await safeUnlink(this.socketPath);
-    await safeUnlink(this.metadataPath);
+    await safeUnlink(this.connectionPath);
 
     commonLogger.log("SweetPad RPC server stopped", { name: this.serverName });
   }
