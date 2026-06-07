@@ -651,27 +651,19 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
 }
 
 /**
- * Generate a minimal `buildServer.json` for SweetPad's own BSP server. `argv`
- * execs the bundled native `sweetpad-bsp` binary directly — no Node, Electron,
- * or shim — so it works the same in any editor (VS Code, Cursor, nvim, Zed).
+ * Generate a minimal `buildServer.json` for SweetPad's own BSP server. `argv` is
+ * a single entry — the bundled native `sweetpad-bsp` binary; starting it *is* the
+ * BSP server (no subcommand). No Node, Electron, or shim, so it works the same in
+ * any editor (VS Code, Cursor, nvim, Zed).
  *
- * Project/Xcode/scheme/configuration are discovered at runtime via the control
- * socket; the only optional arg is the debug log path.
+ * Project, Xcode, scheme, configuration and the log path are all discovered at
+ * runtime over the control socket (`bsp.resolveConfig`).
  */
 async function generateSweetpadBuildServerConfig(): Promise<void> {
   const cwd = getWorkspacePath();
   // The native BSP binary ships next to the bundled extension (this module's dir).
   const binary = path.join(__dirname, "sweetpad-bsp");
   await ensureBspBinaryRunnable(binary);
-
-  const argv = [binary, "bsp"];
-  const logPath = getWorkspaceConfig("buildServer.logPath");
-  if (logPath) {
-    // Resolve `${workspaceFolder}` and relative paths against the workspace, so a
-    // value like "sweetpad-bsp.log" lands in the project folder where it's visible.
-    const expanded = logPath.split("${workspaceFolder}").join(cwd);
-    argv.push("--log", path.isAbsolute(expanded) ? expanded : path.join(cwd, expanded));
-  }
 
   // sourcekit-lsp requires all five fields (`name`, `version`, `bspVersion`,
   // `languages`, `argv`) or the decode throws and the server is silently skipped.
@@ -680,15 +672,17 @@ async function generateSweetpadBuildServerConfig(): Promise<void> {
     version: "0.1.0",
     bspVersion: "2.2.0",
     languages: ["swift", "objective-c", "objective-cpp", "c", "cpp"],
-    argv,
+    argv: [binary],
   };
   await fs.writeFile(path.join(cwd, "buildServer.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
 /**
- * Make the shipped BSP binary launchable: ensure the executable bit, and strip
- * the macOS quarantine xattr so Gatekeeper doesn't block the binary sourcekit-lsp
- * execs (a VSIX install can leave it quarantined). Both are best-effort.
+ * Make the shipped BSP binary launchable. All best-effort:
+ *  - executable bit (a VSIX zip can drop it);
+ *  - strip the macOS quarantine xattr so Gatekeeper doesn't block the exec;
+ *  - re-sign ad-hoc, because the linker's ad-hoc signature doesn't survive being
+ *    copied/unzipped on Apple Silicon — the copy gets SIGKILLed by amfi otherwise.
  */
 async function ensureBspBinaryRunnable(binary: string): Promise<void> {
   try {
@@ -700,6 +694,11 @@ async function ensureBspBinaryRunnable(binary: string): Promise<void> {
     await exec({ command: "xattr", args: ["-d", "com.apple.quarantine", binary] });
   } catch {
     // Not quarantined (or xattr unavailable) — nothing to do.
+  }
+  try {
+    await exec({ command: "codesign", args: ["--sign", "-", "--force", binary] });
+  } catch (e) {
+    commonLogger.debug("codesign of the BSP binary failed", { error: e, binary });
   }
 }
 

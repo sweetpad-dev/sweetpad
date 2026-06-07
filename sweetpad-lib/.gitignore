@@ -39,3 +39,6 @@ __pycache__/
 /*.node
 /index.js
 /index.d.ts
+
+# Standalone BSP server binary (built by build:bin:*, copied into out/ by rolldown)
+/sweetpad-bsp

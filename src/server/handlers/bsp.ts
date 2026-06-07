@@ -2,6 +2,7 @@ import * as path from "node:path";
 
 import { getCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import { getDeveloperDir } from "../../common/cli/scripts";
+import { getWorkspaceConfig } from "../../common/config";
 import { BSP_LOG_LEVELS, type BspLogLevel } from "../bsp-bridge";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES } from "../types";
@@ -21,6 +22,8 @@ export type BspResolvedConfig = {
   scheme: string | null;
   configuration: string;
   derivedDataPath: string | null;
+  /** Debug log file (`sweetpad.buildServer.logPath`), resolved absolute, or null. */
+  logPath: string | null;
 };
 
 export const bspResolveConfig: HandlerFn<unknown, BspResolvedConfig> = async (_params, ctx) => {
@@ -42,8 +45,17 @@ export const bspResolveConfig: HandlerFn<unknown, BspResolvedConfig> = async (_p
     scheme: ctx.buildManager.getDefaultSchemeForBuild() ?? null,
     configuration: ctx.buildManager.getDefaultConfigurationForBuild() ?? "Debug",
     derivedDataPath: prepareDerivedDataPath(),
+    logPath: resolveLogPath(ctx.workspacePath),
   };
 };
+
+/** The configured BSP log path, with `${workspaceFolder}`/relative resolved absolute. */
+function resolveLogPath(workspacePath: string): string | null {
+  const raw = getWorkspaceConfig("buildServer.logPath");
+  if (!raw) return null;
+  const expanded = raw.split("${workspaceFolder}").join(workspacePath);
+  return path.isAbsolute(expanded) ? expanded : path.join(workspacePath, expanded);
+}
 
 /**
  * Set the verbosity of the BSP server's `bsp/log` stream (off | error | info |

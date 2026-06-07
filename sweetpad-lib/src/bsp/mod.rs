@@ -204,6 +204,13 @@ struct ResolvedConfig {
     arch: Option<String>,
     xcode: Option<PathBuf>,
     derived_data_path: Option<PathBuf>,
+    /// Debug log file: from the control config's `logPath`, else `$SWEETPAD_BSP_LOG`.
+    log_path: Option<PathBuf>,
+}
+
+/// The `SWEETPAD_BSP_LOG` env path (used by tests and the standalone paths).
+fn env_log() -> Option<PathBuf> {
+    std::env::var_os("SWEETPAD_BSP_LOG").map(PathBuf::from)
 }
 
 impl ResolvedConfig {
@@ -216,6 +223,7 @@ impl ResolvedConfig {
             arch: flags.get("arch").cloned(),
             xcode: flags.get("xcode").map(PathBuf::from),
             derived_data_path: flags.get("derived-data-path").map(PathBuf::from),
+            log_path: env_log(),
         }
     }
 
@@ -243,6 +251,7 @@ impl ResolvedConfig {
                 .get("derived-data-path")
                 .map(PathBuf::from)
                 .or_else(|| pull("derivedDataPath").map(PathBuf::from)),
+            log_path: pull("logPath").map(PathBuf::from).or_else(env_log),
         })
     }
 
@@ -269,16 +278,10 @@ impl Server {
     fn resolve(args: &[String]) -> Result<Self, String> {
         let flags = parse_flags(args);
         let log_level = Arc::new(AtomicU8::new(LogLevel::Info as u8));
-        // Log file: `--log <path>` (set in buildServer.json), else the
-        // SWEETPAD_BSP_LOG env (tests). The control channel streams logs regardless.
-        let log_path = flags
-            .get("log")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("SWEETPAD_BSP_LOG").map(PathBuf::from));
 
         if let Some(project) = flags.get("project") {
             let config = ResolvedConfig::from_flags(PathBuf::from(project), &flags);
-            return Self::build(config, None, log_level, log_path);
+            return Self::build(config, None, log_level);
         }
 
         // Canonicalize to match the extension's realpath'd `workspacePath`
@@ -289,25 +292,28 @@ impl Server {
             match ControlClient::connect_and_resolve(&socket) {
                 Ok((client, config_value)) => {
                     let config = ResolvedConfig::from_control(&config_value, &flags)?;
-                    return Self::build(config, Some(client), log_level, log_path);
+                    return Self::build(config, Some(client), log_level);
                 }
                 Err(e) => eprintln!("sweetpad bsp: control connect failed ({e}); trying cwd project"),
             }
         }
         let config = ResolvedConfig::from_cwd(&cwd)
             .ok_or("no --project, no reachable sweetpad server, and no unique .xcodeproj in the working directory")?;
-        Self::build(config, None, log_level, log_path)
+        Self::build(config, None, log_level)
     }
 
     fn build(
         config: ResolvedConfig,
         control: Option<Arc<ControlClient>>,
         log_level: Arc<AtomicU8>,
-        log_path: Option<PathBuf>,
     ) -> Result<Self, String> {
         let ctx = BuildContext::open(&config.project_path).map_err(|e| format!("open project: {e}"))?;
         let targets: Vec<String> = ctx.project.targets.iter().map(|t| t.name.clone()).collect();
-        let log = log_path
+        // Log file from the control config (`logPath`) or the SWEETPAD_BSP_LOG env
+        // (tests); the control channel streams logs regardless of the file.
+        let log = config
+            .log_path
+            .as_ref()
             .and_then(|p| OpenOptions::new().create(true).append(true).open(p).ok())
             .map(Mutex::new);
         let server = Server {

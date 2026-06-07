@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
@@ -49,6 +50,14 @@ const sweetpadLibPlugin = {
       const dest = path.join(path.dirname(outputOptions.file), "sweetpad-bsp");
       copyFileSync(bspBinary, dest);
       chmodSync(dest, 0o755);
+      // The linker's ad-hoc signature doesn't survive a copy on Apple Silicon —
+      // the copy gets SIGKILLed by amfi. A fresh ad-hoc re-sign survives copies
+      // (incl. the VSIX zip), so the shipped binary actually launches.
+      try {
+        execFileSync("codesign", ["--sign", "-", "--force", dest], { stdio: "ignore" });
+      } catch (err) {
+        this.warn(`codesign of sweetpad-bsp failed (it may be SIGKILLed on launch): ${err.message}`);
+      }
     } else {
       this.warn("No sweetpad-bsp binary in sweetpad-lib/ — run build:sweetpad-lib:debug for BSP support.");
     }
