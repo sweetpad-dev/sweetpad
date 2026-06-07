@@ -4,8 +4,8 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { getWorkspacePath } from "../build/utils";
-import { getDeveloperDir } from "../common/cli/scripts";
-import type { AppDeps } from "../common/commands";
+import { getDeveloperDir, getIsNodeInstalled } from "../common/cli/scripts";
+import { type AppDeps, NODE_DOWNLOAD_URL } from "../common/commands";
 import { BSP_LOG_LEVELS } from "./bsp-bridge";
 
 type DoctorCheck = { ok: boolean; label: string; detail?: string; hint?: string };
@@ -185,6 +185,14 @@ async function collectBspChecks(deps: AppDeps): Promise<DoctorCheck[]> {
     label: "buildServer.json valid",
     detail: bsDetail,
     hint: "Run 'SweetPad: Generate Build Server Config' to (re)create it.",
+  });
+
+  const nodeOk = await getIsNodeInstalled();
+  checks.push({
+    ok: nodeOk,
+    label: "Node.js runtime on PATH",
+    detail: nodeOk ? undefined : "node not found",
+    hint: `The BSP server launches via "#!/usr/bin/env node"; install Node.js (${NODE_DOWNLOAD_URL}) so it's on your PATH.`,
   });
 
   checks.push({

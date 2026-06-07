@@ -3,8 +3,13 @@ import path from "node:path";
 import * as vscode from "vscode";
 
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
-import { type XcodeScheme, getBuildConfigurations, getIsXcodeBuildServerInstalled } from "../common/cli/scripts";
-import type { AppDeps } from "../common/commands";
+import {
+  type XcodeScheme,
+  getBuildConfigurations,
+  getIsNodeInstalled,
+  getIsXcodeBuildServerInstalled,
+} from "../common/cli/scripts";
+import { type AppDeps, warnNodeRuntimeMissing } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
@@ -131,6 +136,13 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
     (getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server") === "xcode-build-server";
   if (usingXcodeBuildServer && !(await getIsXcodeBuildServerInstalled())) {
     throw new ExtensionError("xcode-build-server is not installed");
+  }
+
+  // SweetPad's own BSP server launches via `#!/usr/bin/env node`. Warn (without
+  // blocking) when Node is missing: the config still writes, so it's ready once
+  // Node is on PATH, but the server can't start until then.
+  if (!usingXcodeBuildServer && !(await getIsNodeInstalled())) {
+    void warnNodeRuntimeMissing("The SweetPad BSP server");
   }
 
   deps.progressStatusBar.updateText("Searching for workspace");

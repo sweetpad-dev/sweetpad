@@ -144,6 +144,26 @@ export async function showCommandErrorMessage(
   }
 }
 
+/** Node.js download/install instructions (shown when no `node` is on PATH). */
+export const NODE_DOWNLOAD_URL = "https://nodejs.org/en/download";
+
+/**
+ * Warn that no Node.js runtime is on PATH, with a button to the install docs.
+ * The CLI (`cli.js`) and BSP server (`bsp-server.js`) launch via
+ * `#!/usr/bin/env node`, so without `node` on PATH they can't run. Non-blocking:
+ * the caller still completes its work (the warning is informational).
+ */
+export async function warnNodeRuntimeMissing(subject: string): Promise<void> {
+  const install = "Install Node.js";
+  const choice = await vscode.window.showWarningMessage(
+    `SweetPad: ${subject} needs a Node.js runtime on your PATH, but "node" wasn't found. Install Node.js to use it.`,
+    install,
+  );
+  if (choice === install) {
+    void vscode.env.openExternal(vscode.Uri.parse(NODE_DOWNLOAD_URL));
+  }
+}
+
 /**
  * Wipe all sweetpad.* workspace state and reset coordinated manager state.
  */

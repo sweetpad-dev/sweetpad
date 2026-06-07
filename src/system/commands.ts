@@ -4,7 +4,8 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { type AppDeps, resetSweetPadState } from "../common/commands";
+import { getIsNodeInstalled } from "../common/cli/scripts";
+import { type AppDeps, resetSweetPadState, warnNodeRuntimeMissing } from "../common/commands";
 import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { refreshShellEnv } from "../common/tasks/shell-env";
@@ -120,6 +121,13 @@ export async function installCliCommand(deps: AppDeps): Promise<void> {
   }
 
   vscode.window.showInformationMessage(`SweetPad CLI installed at ${target}`);
+
+  // The symlinked CLI runs through its `#!/usr/bin/env node` shebang, so it needs
+  // a Node runtime on PATH to work at all — point the user at the installer now
+  // rather than letting `sweetpad` fail cryptically the first time they run it.
+  if (!(await getIsNodeInstalled())) {
+    await warnNodeRuntimeMissing("The sweetpad CLI");
+  }
 }
 
 export async function copyServerNameCommand(deps: AppDeps): Promise<void> {

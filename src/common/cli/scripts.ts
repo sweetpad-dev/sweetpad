@@ -497,6 +497,22 @@ export async function getIsXcodeBuildServerInstalled() {
   }
 }
 
+/**
+ * Is a Node.js runtime on the user's PATH? The bundled CLI (`cli.js`) and the BSP
+ * server (`bsp-server.js`) both launch via a `#!/usr/bin/env node` shebang, so
+ * they need a real `node` on PATH — VS Code's own bundled Node isn't exposed
+ * there. Resolved against the login-shell PATH (via `exec`), the same one the
+ * shebang sees.
+ */
+export async function getIsNodeInstalled(): Promise<boolean> {
+  try {
+    await exec({ command: "which", args: ["node"] });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
   commonLogger.log("Getting schemes", { xcworkspace: options?.xcworkspace ?? "undefined" });
 
