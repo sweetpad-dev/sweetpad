@@ -351,9 +351,9 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.system.installCli", installCliCommand));
 
   // Server
-  d(command("sweetpad.server.copyName", copyServerNameCommand));
-  d(command("sweetpad.server.restart", restartServerCommand));
-  d(command("sweetpad.server.showStatus", showServerStatusCommand));
+  d(command("sweetpad.cliServer.copyName", copyServerNameCommand));
+  d(command("sweetpad.cliServer.restart", restartServerCommand));
+  d(command("sweetpad.cliServer.showStatus", showServerStatusCommand));
 
   lspDiagnostics.reattachIfEnabled();
   lspDiagnostics.showPostReloadNotificationIfPending();

@@ -133,7 +133,7 @@ export async function installCliCommand(deps: AppDeps): Promise<void> {
 export async function copyServerNameCommand(deps: AppDeps): Promise<void> {
   const status = deps.serverService.getStatus();
   if (!status.running || !status.name) {
-    vscode.window.showWarningMessage("SweetPad server is not running. Enable it via `sweetpad.server.enabled`.");
+    vscode.window.showWarningMessage("SweetPad server is not running. Enable it via `sweetpad.cliServer.enabled`.");
     return;
   }
   await vscode.env.clipboard.writeText(status.name);
@@ -146,14 +146,14 @@ export async function restartServerCommand(deps: AppDeps): Promise<void> {
   if (status.running && status.name) {
     vscode.window.showInformationMessage(`SweetPad server restarted: ${status.name}`);
   } else {
-    vscode.window.showWarningMessage("SweetPad server is not running. Enable it via `sweetpad.server.enabled`.");
+    vscode.window.showWarningMessage("SweetPad server is not running. Enable it via `sweetpad.cliServer.enabled`.");
   }
 }
 
 export async function showServerStatusCommand(deps: AppDeps): Promise<void> {
   const status = deps.serverService.getStatus();
   if (!status.running) {
-    vscode.window.showInformationMessage("SweetPad server is not running. Enable it via `sweetpad.server.enabled`.");
+    vscode.window.showInformationMessage("SweetPad server is not running. Enable it via `sweetpad.cliServer.enabled`.");
     return;
   }
   const summary = `SweetPad server: ${status.name}\nSocket: ${status.socket}`;

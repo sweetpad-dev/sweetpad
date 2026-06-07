@@ -23,7 +23,7 @@ async function resolveSocket(): Promise<string | CliExit> {
     return meta.socket;
   } catch {
     return noServer(
-      "No running SweetPad server (.sweetpad/cli.json not found). Enable sweetpad.server.enabled and open the project in VS Code.",
+      "No running SweetPad server (.sweetpad/cli.json not found). Enable sweetpad.cliServer.enabled and open the project in VS Code.",
     );
   }
 }

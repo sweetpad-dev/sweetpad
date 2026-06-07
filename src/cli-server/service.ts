@@ -28,7 +28,7 @@ function extractSweetpadConfigKeys(context: vscode.ExtensionContext): string[] {
 
 /**
  * Owns the in-extension JSON-RPC server lifecycle — the control socket the CLI
- * connects to. Reads `sweetpad.server.enabled` and starts/stops the server live
+ * connects to. Reads `sweetpad.cliServer.enabled` and starts/stops the server live
  * when that setting changes. Exposes the running server name so VS Code commands
  * can read it (e.g. for clipboard copy or status notifications). BSP is separate
  * (see `src/bsp`); this layer knows nothing about it.
@@ -65,7 +65,7 @@ export class CliServerService implements vscode.Disposable {
 
   async start(): Promise<void> {
     this.configSubscription = onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("sweetpad.server.enabled")) {
+      if (event.affectsConfiguration("sweetpad.cliServer.enabled")) {
         void this.reconcile();
       }
     });
@@ -95,7 +95,7 @@ export class CliServerService implements vscode.Disposable {
   }
 
   private isEnabled(): boolean {
-    return getWorkspaceConfig("server.enabled") === true;
+    return getWorkspaceConfig("cliServer.enabled") === true;
   }
 
   private async reconcile(): Promise<void> {

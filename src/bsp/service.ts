@@ -25,7 +25,7 @@ export type BspStatusSnapshot = {
  * `.sweetpad/bsp.json` for the BSP server to read, and dials the server's
  * telemetry socket to surface its logs/status in VS Code. Activates whenever
  * SweetPad is the build-server provider for the open workspace — it does not
- * depend on `sweetpad.server.enabled`.
+ * depend on `sweetpad.cliServer.enabled`.
  */
 export class BspService implements vscode.Disposable {
   private readonly bridge = new BspBridge();

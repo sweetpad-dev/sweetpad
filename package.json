@@ -577,17 +577,17 @@
         "icon": "$(terminal)"
       },
       {
-        "command": "sweetpad.server.copyName",
+        "command": "sweetpad.cliServer.copyName",
         "title": "SweetPad: Copy RPC server name",
         "icon": "$(copy)"
       },
       {
-        "command": "sweetpad.server.restart",
+        "command": "sweetpad.cliServer.restart",
         "title": "SweetPad: Restart RPC server",
         "icon": "$(sweetpad-refresh)"
       },
       {
-        "command": "sweetpad.server.showStatus",
+        "command": "sweetpad.cliServer.showStatus",
         "title": "SweetPad: Show RPC server status",
         "icon": "$(info)"
       },
@@ -1200,7 +1200,7 @@
           "default": [],
           "description": "When non-empty, only keep entries whose subsystem matches a pattern (e.g. 'com.myapp.*')."
         },
-        "sweetpad.server.enabled": {
+        "sweetpad.cliServer.enabled": {
           "type": "boolean",
           "default": false,
           "description": "Run the in-extension JSON-RPC server over a Unix socket so the bundled `sweetpad` CLI (and AI agents) can read state and trigger builds from outside VS Code. See docs/dev/agent-cli.md."
