@@ -1306,4 +1306,39 @@ mod tests {
         let args = clang_arguments(&on, "arm64", std::slice::from_ref(&ubsan_integer), &langs);
         assert!(args.contains(&"-fsanitize=integer".to_string()), "{args:?}");
     }
+
+    #[test]
+    fn macro_plugins_emit_load_plugin_executable() {
+        // A package's executable macro plugin resolves only via the explicit
+        // `-Xfrontend -load-plugin-executable -Xfrontend <plugin>#<module>` form.
+        let s = Settings::new();
+        let plugins = [PathBuf::from("/dd/Build/Products/Debug/MyMacros")];
+        let args = swift_arguments(&s, "arm64", &[], "26.5.0", false, &plugins);
+        let joined = args.join(" ");
+        assert!(
+            args.iter().any(|a| a == "-load-plugin-executable"),
+            "macro plugin not loaded: {args:?}"
+        );
+        assert!(
+            joined.contains("/dd/Build/Products/Debug/MyMacros#MyMacros"),
+            "plugin#module form missing: {joined}"
+        );
+    }
+
+    #[test]
+    fn package_products_emit_packageframeworks_search_path() {
+        // Dynamic Swift-package products build into a `PackageFrameworks` subdir;
+        // a target consuming package products needs that `-F` to import them.
+        let mut s = Settings::new();
+        s.insert(
+            "BUILT_PRODUCTS_DIR".into(),
+            "/dd/Build/Products/Debug".into(),
+        );
+        let args = swift_arguments(&s, "arm64", &[], "26.5.0", true, &[]);
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "-F" && w[1] == "/dd/Build/Products/Debug/PackageFrameworks"),
+            "no -F PackageFrameworks: {args:?}"
+        );
+    }
 }

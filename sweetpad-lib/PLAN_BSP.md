@@ -267,14 +267,24 @@ layers are built and passing against the multi-module fixture:
      host dir as extension-less Mach-O executables (basename = module name),
      gated on package products; a spurious entry is harmless because the frontend
      loads a plugin lazily, only when a macro from that module actually expands.
-  Measured before→after: all six generated-source/Pod/macro fixtures (Core Data,
+  5. **Unit-test files** — a unit-test target's editor args now add `-I
+     $(PLATFORM_DIR)/Developer/usr/lib`, where XCTest's Swift overlay (the
+     `XCTAssert*` functions) ships; the platform-Frameworks `-F` finds only
+     XCTest's ObjC API, so `import XCTest` left the assertions "not in scope". The
+     `_synthetic-tests` fixture (a framework + a logic test bundle) is measured by
+     building `build-for-testing` and including the test-target files the harness
+     otherwise skips.
+  Measured before→after: the generated-source/Pod/macro/test fixtures (Core Data,
   asset symbols, string catalogs, SiriKit intents, CocoaPods, third-party Swift
-  macros) **fail → clean** end-to-end through real sourcekit-lsp; the full
-  unit+oracle suite stays green (the changes are additive / no-op when no plugin
-  dir exists or paths are unquoted). Also validated against a real Tuist Core Data
-  example (`Model.swift` uses the generated `User` class) — `tuist generate` the
-  gitignored `corpus/_tuist-src/examples/.../generated_ios_app_with_coredata`; the
-  harness skips it when absent.
+  macros, unit tests) **fail → clean** end-to-end through real sourcekit-lsp; the
+  full unit+oracle suite stays green (the changes are additive / no-op when no
+  plugin dir exists or paths are unquoted). Also validated against a real Tuist
+  Core Data example (`Model.swift` uses the generated `User` class) — `tuist
+  generate` the gitignored
+  `corpus/_tuist-src/examples/.../generated_ios_app_with_coredata`; the harness
+  skips it when absent. **Full-corpus run: 138/138 sampled files clean (100%)**
+  across kingfisher, alamofire, ice-cubes, netnewswire, and every synthetic
+  fixture — every measured non-test *and* test file gets correct editor args.
 
   **Multiplatform `SDKROOT = auto` editor binding** (was misattributed to the
   upstream sourcekit-lsp #2328 stdlib-load issue — it's actually ours, now
@@ -295,9 +305,13 @@ layers are built and passing against the multi-module fixture:
   literal `auto` — no corpus regression). Result: IceCubesApp **30/30 stdlib
   failures → 0** through real sourcekit-lsp. The genuine #2328 (a fallback macOS
   `-sdk` overriding a build-server-provided SDK) is a separate upstream cluster
-  our self-consistent args don't trigger. ⚠️ Still single-`.xcodeproj`:
-  multi-project workspaces beyond the CocoaPods app-target case remain out of
-  scope.
+  our self-consistent args don't trigger.
+
+  **Multi-project workspaces.** The BSP server resolves a `.xcworkspace` to its
+  member `.xcodeproj`s (`--workspace` / `workspacePath`), unions their targets, and
+  resolves each file against whichever member declares its target (prepare builds
+  with `-workspace`) — so a workspace's app *and* its pods/libraries analyze, not
+  just one project (`tests/bsp_workspace.rs`, over the CocoaPods `App.xcworkspace`).
 
   **Hunting the remaining corners** (automated, so a fixed bug can't quietly
   return). Four nets, cheapest first, each attacking a blind spot the three layers
@@ -329,12 +343,11 @@ layers are built and passing against the multi-module fixture:
     had. Editor-critical keys are asserted; the rest is reported.
   - **Mutation audit** (`scripts/21_mutation_audit.py`): injects each plausible
     resolver bug and checks a fast net goes red — measuring the coverage of the
-    coverage. Today **5/7 caught by the fast tier** (the SDKROOT=auto unbinding and
-    the `-sdk`/`-target` mismatch among them, via the invariant linter + the
-    oracle); the two it surfaces as *only* e2e-guarded — third-party macro plugins
-    and the dynamic-SPM `-F PackageFrameworks` path — are the next fast guards to
-    add. `--e2e` reverts the SDKROOT fix and proves the de-exoneration reclassifies
-    it.
+    coverage. Today **7/7 caught by the fast tier** (the SDKROOT=auto unbinding,
+    the `-sdk`/`-target` mismatch, and — after closing the two gaps it first
+    surfaced — third-party macro plugins and the dynamic-SPM `-F PackageFrameworks`
+    path, now guarded by `compiler_args` unit tests). `--e2e` reverts the SDKROOT
+    fix and proves the de-exoneration reclassifies it.
   CI (`.github/workflows/sweetpad-lib.yaml`) runs the fast tier — fmt, clippy
   `-D warnings`, `cargo test` (the invariant gate + the settings/compiler-args
   oracles) — on every push/PR; the build-gated tiers (`BSP_CORPUS`,

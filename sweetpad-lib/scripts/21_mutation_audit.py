@@ -84,7 +84,7 @@ MUTATIONS = [
         "find": "for plugin in macro_plugins {",
         "replace": "for plugin in macro_plugins.iter().take(0) {",
         "note": "third-party macro plugins not loaded (-load-plugin-executable)",
-        "expect": "uncaught by fast tier (only the BSP_CORPUS e2e covers macros)",
+        "expect": "caught",
     },
     {
         "id": "drop-package-frameworks",
@@ -92,7 +92,7 @@ MUTATIONS = [
         "find": "a.pair(\"-F\", &format!(\"{products}/PackageFrameworks\"));",
         "replace": "let _ = products;",
         "note": "dynamic SPM-product -F PackageFrameworks search path dropped",
-        "expect": "uncaught by fast tier (no captured oracle consumes SPM products)",
+        "expect": "caught",
     },
 ]
 
