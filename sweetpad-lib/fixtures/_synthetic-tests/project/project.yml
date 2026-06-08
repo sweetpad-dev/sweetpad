@@ -1,0 +1,39 @@
+name: TestProbe
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+  deploymentTarget:
+    macOS: "13.0"
+targets:
+  Lib:
+    type: framework
+    platform: macOS
+    sources:
+      - Lib
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.Lib
+        GENERATE_INFOPLIST_FILE: "YES"
+        CODE_SIGNING_ALLOWED: "NO"
+  # A macOS logic unit-test bundle (no host app): `import XCTest` resolves against
+  # the platform's test frameworks, `@testable import Lib` against the built
+  # framework — both only if the BSP emits the unit-test `-F` search paths.
+  LibTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: Lib
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.LibTests
+        GENERATE_INFOPLIST_FILE: "YES"
+        CODE_SIGNING_ALLOWED: "NO"
+schemes:
+  Lib:
+    build:
+      targets:
+        Lib: all
+    test:
+      targets:
+        - LibTests

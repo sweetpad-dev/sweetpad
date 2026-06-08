@@ -277,16 +277,7 @@ pub fn swift_arguments(
     for p in ws_paths(get("FRAMEWORK_SEARCH_PATHS")) {
         a.pair("-F", &p);
     }
-    // A unit-test target compiles against the framework-under-test (in the
-    // products dir) and the platform's test frameworks (XCTest et al.).
-    if get("PRODUCT_TYPE").is_some_and(|p| p.contains("unit-test")) {
-        if let Some(products) = get("BUILT_PRODUCTS_DIR") {
-            a.pair("-F", products);
-        }
-        if let Some(platform) = get("PLATFORM_DIR") {
-            a.pair("-F", &format!("{platform}/Developer/Library/Frameworks"));
-        }
-    }
+    emit_unit_test_search_paths(&mut a, settings);
 
     // Swift macros a package vends are out-of-process executable plugins. A
     // plugin *search path* doesn't discover executables, so the frontend
@@ -338,6 +329,27 @@ pub fn swift_arguments(
     emit_compilation_defaults(&mut a, settings, xcode_major(xcode_version));
 
     a.into_vec()
+}
+
+/// A unit-test target compiles against the framework-under-test (the products
+/// dir) and the platform's test frameworks: XCTest's ObjC API via `-F`, and its
+/// Swift overlay — the `XCTAssert*` functions in `Developer/usr/lib/
+/// XCTest.swiftmodule` — via `-I`. Without the `-I`, `import XCTest` in a test
+/// file resolves only the ObjC half and the assertion functions are out of scope.
+fn emit_unit_test_search_paths(a: &mut ArgBuilder, settings: &Settings) {
+    if !settings
+        .get("PRODUCT_TYPE")
+        .is_some_and(|p| p.contains("unit-test"))
+    {
+        return;
+    }
+    if let Some(products) = settings.get("BUILT_PRODUCTS_DIR") {
+        a.pair("-F", products);
+    }
+    if let Some(platform) = settings.get("PLATFORM_DIR") {
+        a.pair("-F", &format!("{platform}/Developer/Library/Frameworks"));
+        a.pair("-I", &format!("{platform}/Developer/usr/lib"));
+    }
 }
 
 /// Major version from an Xcode version string (`26.5.0` → 26), or 0 if absent /

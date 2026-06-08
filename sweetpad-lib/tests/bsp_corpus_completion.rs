@@ -57,12 +57,31 @@ struct CorpusProject {
     /// diagnostic (e.g. an unresolved generated symbol — an in-scope error, not
     /// "no such module") counts as our failure, not just module-resolution ones.
     strict: bool,
+    /// Build with `build-for-testing` (vs `build`) and measure the **test**
+    /// targets' files too — so a test file's `import XCTest` / `@testable import`
+    /// resolution is exercised instead of skipped.
+    build_for_testing: bool,
 }
 
 /// The corpus clones (build headlessly, measure arg/module-resolution quality)
 /// plus the committed synthetic fixtures that probe the generated-source and
 /// CocoaPods surfaces the clones don't exercise.
 const PROJECTS: &[CorpusProject] = &[
+    // A unit-test target: `ProbeTests.swift` uses `import XCTest` + `@testable
+    // import Lib`. Built `build-for-testing` (so `Lib.swiftmodule` exists), it
+    // resolves only if the BSP gives the test file the unit-test `-F` search
+    // paths — the test-target editor path every other project skips.
+    CorpusProject {
+        slug: "_synthetic-tests",
+        xcodeproj: "TestProbe.xcodeproj",
+        scheme: "Lib",
+        destination: "platform=macOS",
+        project_root: "project",
+        workspace: None,
+        forced_probes: &["Probe"],
+        strict: true,
+        build_for_testing: true,
+    },
     CorpusProject {
         slug: "kingfisher",
         xcodeproj: "Kingfisher.xcodeproj",
@@ -72,6 +91,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &[],
         strict: false,
+        build_for_testing: false,
     },
     CorpusProject {
         slug: "alamofire",
@@ -82,6 +102,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &[],
         strict: false,
+        build_for_testing: false,
     },
     // The hard cases: real apps with many cross-module targets (local packages,
     // app extensions, ObjC+Swift, generated sources). They may not build
@@ -95,6 +116,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &[],
         strict: false,
+        build_for_testing: false,
     },
     CorpusProject {
         slug: "netnewswire",
@@ -105,6 +127,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &[],
         strict: false,
+        build_for_testing: false,
     },
     // Committed synthetic fixtures (fixtures/_synthetic-*/project/), each with a
     // Probe*.swift that references a build-time-generated symbol. They build
@@ -119,6 +142,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &["Probe"],
         strict: true,
+        build_for_testing: false,
     },
     CorpusProject {
         slug: "_synthetic-assetsym",
@@ -129,6 +153,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &["Probe"],
         strict: true,
+        build_for_testing: false,
     },
     CorpusProject {
         slug: "_synthetic-strcat",
@@ -139,6 +164,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &["Probe"],
         strict: true,
+        build_for_testing: false,
     },
     CorpusProject {
         slug: "_synthetic-intents",
@@ -149,6 +175,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &["Probe"],
         strict: true,
+        build_for_testing: false,
     },
     CorpusProject {
         slug: "_synthetic-cocoapods",
@@ -159,6 +186,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: Some("App.xcworkspace"),
         forced_probes: &["Probe"],
         strict: true,
+        build_for_testing: false,
     },
     // A third-party Swift macro: `Probe.swift` uses `#stringify` from the bundled
     // `SweetMacro` package, whose implementation lives only in a `.macro` plugin
@@ -173,6 +201,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &["Probe"],
         strict: true,
+        build_for_testing: false,
     },
     // A multiplatform `SDKROOT = auto` app (the IceCubesApp shape, miniaturized):
     // one target, `SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx`. Built
@@ -188,6 +217,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &["Probe"],
         strict: true,
+        build_for_testing: false,
     },
     // Real-world generated-source validation against a Tuist example (`Model.swift`
     // uses the generated Core Data class `User`). Needs a one-time
@@ -204,6 +234,7 @@ const PROJECTS: &[CorpusProject] = &[
         workspace: None,
         forced_probes: &["Model"],
         strict: true,
+        build_for_testing: false,
     },
 ];
 
@@ -394,7 +425,7 @@ fn classify(items: &[Value]) -> Class {
 /// framework/app scheme doesn't do — so measuring test files here would charge
 /// the build server for a target we didn't prepare. Measuring test targets is a
 /// separable concern (build-for-testing), left for a later iteration.
-fn swift_sources(xcodeproj: &Path) -> Vec<PathBuf> {
+fn swift_sources(xcodeproj: &Path, include_tests: bool) -> Vec<PathBuf> {
     let Ok(project) = sweetpad::project::open(xcodeproj) else {
         return Vec::new();
     };
@@ -405,7 +436,7 @@ fn swift_sources(xcodeproj: &Path) -> Vec<PathBuf> {
             .product_type
             .as_deref()
             .is_some_and(|pt| pt.contains("-test"));
-        if is_test {
+        if is_test && !include_tests {
             continue;
         }
         let srcs = sweetpad::project::target_source_files(xcodeproj, &t.name).unwrap_or_default();
@@ -488,7 +519,12 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
         timeout.as_secs()
     );
     let mut cmd = Command::new("xcodebuild");
-    cmd.env("DEVELOPER_DIR", developer_dir()).arg("build");
+    cmd.env("DEVELOPER_DIR", developer_dir())
+        .arg(if p.build_for_testing {
+            "build-for-testing"
+        } else {
+            "build"
+        });
     // CocoaPods needs the workspace built so the Pods build; everything else
     // builds the project directly.
     if let Some(ws) = p.workspace {
@@ -555,7 +591,7 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
         return report;
     }
 
-    let candidates = swift_sources(&xcodeproj);
+    let candidates = swift_sources(&xcodeproj, p.build_for_testing);
     report.candidates = candidates.len();
     let mut files = sample(&candidates, sample_cap);
     // Always measure the forced-probe files (the ones referencing generated/Pod
