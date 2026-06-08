@@ -234,9 +234,10 @@ layers are built and passing against the multi-module fixture:
   (NetNewsWire); the iOS-simulator path surfaced the stdlib-load rough edge
   (sourcekit-lsp #2328) on some IceCubesApp files.
 
-  **Generated-source + CocoaPods coverage** (committed synthetic fixtures
-  `fixtures/_synthetic-{coredata,assetsym,strcat,cocoapods}`, each a forced
-  `Probe*.swift` that references a build-time-generated / Pod symbol; a `strict`
+  **Generated-source, CocoaPods & macro-plugin coverage** (committed synthetic
+  fixtures `fixtures/_synthetic-{coredata,assetsym,strcat,intents,cocoapods,macro}`,
+  each a forced `Probe*.swift` that references a build-time-generated / Pod /
+  macro-expanded symbol; a `strict`
   fixture treats *any* editor error as a failure and also gates on our BSP
   actually returning options, so a null reply can't masquerade as clean). The
   harness drove three real engine fixes the OSS frameworks never exercised:
@@ -253,10 +254,23 @@ layers are built and passing against the multi-module fixture:
      double quotes xcconfigs put around each path (`"${…}/Pod"`), which otherwise
      reached swiftc as a literal-quoted relative path (`-F "…"`), defeating
      framework module loading. Fixes CocoaPods and any spaced/quoted path.
-  Measured before→after: all five generated-source/Pod fixtures (Core Data, asset
-  symbols, string catalogs, SiriKit intents, CocoaPods) **fail → clean**
-  end-to-end; the full unit+oracle suite stays green (the changes are additive /
-  no-op on unquoted corpus paths). Also validated against a real Tuist Core Data
+  4. **Swift macro plugins** — `resolve_file_arguments` now emits, for each macro
+     plugin a package graph builds into the host products dir
+     (`$(BUILD_DIR)/$(CONFIGURATION)`), the `-Xfrontend -load-plugin-executable
+     -Xfrontend <plugin>#<module>` form Xcode passes the frontend. A plugin
+     *search path* (`-plugin-path` / `-external-plugin-path`) does **not**
+     discover executable plugins — verified empirically — so without the explicit
+     per-plugin arg a `#externalMacro`-backed reference (any swift-syntax macro:
+     `#stringify`, TCA, swift-dependencies, …) failed with "external macro
+     implementation … could not be found". Plugins are enumerated from the built
+     host dir as extension-less Mach-O executables (basename = module name),
+     gated on package products; a spurious entry is harmless because the frontend
+     loads a plugin lazily, only when a macro from that module actually expands.
+  Measured before→after: all six generated-source/Pod/macro fixtures (Core Data,
+  asset symbols, string catalogs, SiriKit intents, CocoaPods, third-party Swift
+  macros) **fail → clean** end-to-end through real sourcekit-lsp; the full
+  unit+oracle suite stays green (the changes are additive / no-op when no plugin
+  dir exists or paths are unquoted). Also validated against a real Tuist Core Data
   example (`Model.swift` uses the generated `User` class) — `tuist generate` the
   gitignored `corpus/_tuist-src/examples/.../generated_ios_app_with_coredata`; the
   harness skips it when absent.

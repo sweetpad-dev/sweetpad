@@ -467,7 +467,7 @@ fn compiler_args_oracle_coverage() {
                 let has_pkg =
                     project::target_has_package_products(&xcodeproj, &t.target).unwrap_or(false);
                 let ours =
-                    compiler_args::swift_arguments(settings, &oracle.arch, swift_opts, &version, has_pkg);
+                    compiler_args::swift_arguments(settings, &oracle.arch, swift_opts, &version, has_pkg, &[]);
                 if dump {
                     eprintln!("--- ORACLE swift {key} {} ---\n{}", t.target, sw.arguments.join("\n"));
                     eprintln!("--- OURS swift {key} {} ---\n{}", t.target, ours.join("\n"));

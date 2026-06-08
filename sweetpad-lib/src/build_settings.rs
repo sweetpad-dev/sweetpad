@@ -171,6 +171,11 @@ pub fn resolve_compiler_arguments(
                     let has_package_products =
                         project::target_has_package_products(&ctx.project.path, &query.target)
                             .unwrap_or(false);
+                    let macro_plugins = if has_package_products {
+                        collect_macro_plugins(&resolved.settings)
+                    } else {
+                        Vec::new()
+                    };
                     out.push(compiler_args::target_arguments(
                         &query.target,
                         &resolved.settings,
@@ -182,6 +187,7 @@ pub fn resolve_compiler_arguments(
                         clang_opts,
                         xcode_version,
                         has_package_products,
+                        &macro_plugins,
                     ));
                 }
                 // Single project: bubble the error (xcodebuild-equivalent wording).
@@ -259,6 +265,11 @@ pub fn resolve_file_arguments(
             }
             let has_package_products =
                 project::target_has_package_products(&ctx.project.path, target).unwrap_or(false);
+            let macro_plugins = if has_package_products {
+                collect_macro_plugins(settings)
+            } else {
+                Vec::new()
+            };
             return Ok(compiler_args::ToolInvocation {
                 tool: "swiftc".into(),
                 arguments: compiler_args::swift_arguments(
@@ -267,6 +278,7 @@ pub fn resolve_file_arguments(
                     swift_opts,
                     xcode_version,
                     has_package_products,
+                    &macro_plugins,
                 ),
                 input_files: swift_inputs,
             });
@@ -298,6 +310,64 @@ fn collect_generated_swift(dir: &Path, out: &mut Vec<String>) {
             out.push(path.to_string_lossy().into_owned());
         }
     }
+}
+
+/// Built Swift-macro plugin executables a package graph drops in the host
+/// products dir (`$(BUILD_DIR)/$(CONFIGURATION)` — the macOS variant, since macro
+/// plugins are host tools whatever the app's platform). Xcode hands each to the
+/// frontend as `-load-plugin-executable <exe>#<module>`; the editor resolves a
+/// `#externalMacro(module:)` reference only when we pass the same. The plugin is
+/// an extension-less host Mach-O executable whose basename is the macro module
+/// name. Empty until a build has populated the dir — the prepared-build
+/// assumption the package-framework search path already relies on.
+fn collect_macro_plugins(settings: &BTreeMap<String, String>) -> Vec<PathBuf> {
+    let (Some(build_dir), Some(config)) =
+        (settings.get("BUILD_DIR"), settings.get("CONFIGURATION"))
+    else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(Path::new(build_dir).join(config)) else {
+        return Vec::new();
+    };
+    let mut plugins: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| is_macro_plugin_executable(p))
+        .collect();
+    plugins.sort();
+    plugins
+}
+
+/// Whether `path` is a host compiler-plugin executable: an extension-less,
+/// user-executable Mach-O file. The host products dir also holds the plugin's
+/// `.o` / `.swiftmodule` build products and a `PackageFrameworks` directory —
+/// all carry an extension or aren't regular files, so they're skipped. A
+/// non-macro host tool that slips through is harmless: `-load-plugin-executable`
+/// is consulted lazily, only when a macro from that module is actually expanded.
+fn is_macro_plugin_executable(path: &Path) -> bool {
+    use std::io::Read;
+    use std::os::unix::fs::PermissionsExt;
+    if path.extension().is_some() {
+        return false;
+    }
+    let Ok(meta) = path.metadata() else {
+        return false;
+    };
+    if !meta.is_file() || meta.permissions().mode() & 0o111 == 0 {
+        return false;
+    }
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut magic = [0u8; 4];
+    if file.read_exact(&mut magic).is_err() {
+        return false;
+    }
+    // Mach-O magic, either byte order (thin 32/64-bit or fat).
+    matches!(
+        u32::from_be_bytes(magic),
+        0xFEED_FACE | 0xFEED_FACF | 0xCEFA_EDFE | 0xCFFA_EDFE | 0xCAFE_BABE | 0xBEBA_FECA
+    )
 }
 
 /// Trim each target's settings to `keys` when a projection is requested. Keys
@@ -435,4 +505,75 @@ fn build_queries(
         queries.push(q);
     }
     queries
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// A unique scratch dir under the OS temp dir (no tempfile dep).
+    fn scratch(tag: &str) -> PathBuf {
+        static N: AtomicU32 = AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("sweetpad-{tag}-{}-{n}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_file(path: &Path, bytes: &[u8], exec: bool) {
+        std::fs::File::create(path).unwrap().write_all(bytes).unwrap();
+        if exec {
+            let mut perm = std::fs::metadata(path).unwrap().permissions();
+            perm.set_mode(0o755);
+            std::fs::set_permissions(path, perm).unwrap();
+        }
+    }
+
+    /// MH_MAGIC_64 as it sits on disk (little-endian) plus padding.
+    const MACHO: &[u8] = &[0xCF, 0xFA, 0xED, 0xFE, 0, 0, 0, 0];
+
+    #[test]
+    fn macro_plugin_filter_picks_only_host_executables() {
+        let dir = scratch("plugin-filter");
+        let plugin = dir.join("MyMacros"); // the macro plugin: ext-less, +x, Mach-O
+        write_file(&plugin, MACHO, true);
+        write_file(&dir.join("MyMacros.o"), MACHO, true); // build product (extension)
+        write_file(&dir.join("MyMacros.swiftmodule"), MACHO, true); // (extension)
+        write_file(&dir.join("NotExec"), MACHO, false); // Mach-O but not executable
+        write_file(&dir.join("script"), b"#!/bin/sh\n", true); // +x but not Mach-O
+        std::fs::create_dir_all(dir.join("PackageFrameworks")).unwrap(); // a directory
+
+        assert!(is_macro_plugin_executable(&plugin));
+        for skip in ["MyMacros.o", "MyMacros.swiftmodule", "NotExec", "script", "PackageFrameworks"] {
+            assert!(!is_macro_plugin_executable(&dir.join(skip)), "should skip {skip}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_macro_plugins_scans_the_host_config_dir() {
+        let root = scratch("plugin-collect");
+        let host = root.join("Debug");
+        std::fs::create_dir_all(&host).unwrap();
+        write_file(&host.join("BetaMacros"), MACHO, true);
+        write_file(&host.join("AlphaMacros"), MACHO, true);
+        write_file(&host.join("Gamma.o"), MACHO, true); // skipped (extension)
+
+        let settings = BTreeMap::from([
+            ("BUILD_DIR".to_string(), root.to_string_lossy().into_owned()),
+            ("CONFIGURATION".to_string(), "Debug".to_string()),
+        ]);
+        let names: Vec<_> = collect_macro_plugins(&settings)
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
+        assert_eq!(names, ["AlphaMacros", "BetaMacros"]); // path-sorted, .o excluded
+
+        // Missing BUILD_DIR/CONFIGURATION → never scans.
+        assert!(collect_macro_plugins(&BTreeMap::new()).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

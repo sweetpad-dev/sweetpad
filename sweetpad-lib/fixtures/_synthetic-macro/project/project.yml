@@ -1,0 +1,28 @@
+name: MacroProbe
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+  deploymentTarget:
+    macOS: "12.0"
+packages:
+  SweetMacro:
+    path: SweetMacro
+targets:
+  MacroProbe:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    dependencies:
+      - package: SweetMacro
+        product: SweetMacro
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.MacroProbe
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_IDENTITY: "-"
+schemes:
+  MacroProbe:
+    build:
+      targets:
+        MacroProbe: all

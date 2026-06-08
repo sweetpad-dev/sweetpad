@@ -103,6 +103,7 @@ pub fn target_arguments(
     clang_options: &[CompilerOption],
     xcode_version: &str,
     has_package_products: bool,
+    macro_plugins: &[PathBuf],
 ) -> TargetCompilerArguments {
     let mut swift_inputs = Vec::new();
     let mut clang_inputs = Vec::new();
@@ -116,7 +117,14 @@ pub fn target_arguments(
     }
     let swift = (!swift_inputs.is_empty()).then(|| ToolInvocation {
         tool: "swiftc".to_string(),
-        arguments: swift_arguments(settings, arch, swift_options, xcode_version, has_package_products),
+        arguments: swift_arguments(
+            settings,
+            arch,
+            swift_options,
+            xcode_version,
+            has_package_products,
+            macro_plugins,
+        ),
         input_files: swift_inputs,
     });
     let clang_langs = clang_languages(&clang_inputs);
@@ -175,6 +183,7 @@ pub fn swift_arguments(
     options: &[CompilerOption],
     xcode_version: &str,
     has_package_products: bool,
+    macro_plugins: &[PathBuf],
 ) -> Vec<String> {
     let mut a = ArgBuilder::default();
     let get = |k: &str| settings.get(k).map(String::as_str);
@@ -276,6 +285,19 @@ pub fn swift_arguments(
         }
         if let Some(platform) = get("PLATFORM_DIR") {
             a.pair("-F", &format!("{platform}/Developer/Library/Frameworks"));
+        }
+    }
+
+    // Swift macros a package vends are out-of-process executable plugins. A
+    // plugin *search path* doesn't discover executables, so the frontend
+    // resolves a `#externalMacro(module:)` reference only when handed each
+    // plugin explicitly — `-load-plugin-executable <exe>#<module>`, exactly as
+    // Xcode emits it. The caller passes the plugins built into the host products
+    // dir (empty unless the target consumes package products).
+    for plugin in macro_plugins {
+        if let Some(module) = plugin.file_name().and_then(|n| n.to_str()) {
+            a.pair("-Xfrontend", "-load-plugin-executable");
+            a.pair("-Xfrontend", &format!("{}#{module}", plugin.display()));
         }
     }
 
@@ -1121,7 +1143,7 @@ mod tests {
         s.insert("SWIFT_VERSION".into(), "5.0".into());
         s.insert("SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(), "DEBUG".into());
         // No spec options: exercises the hand-coded fallback path.
-        let args = swift_arguments(&s, "arm64", &[], "26.5.0", false);
+        let args = swift_arguments(&s, "arm64", &[], "26.5.0", false, &[]);
         let joined = args.join(" ");
         assert!(joined.contains("-module-name Alamofire"));
         assert!(joined.contains("-Onone"));
@@ -1162,7 +1184,7 @@ mod tests {
         let mut s = Settings::new();
         s.insert("SWIFT_OPTIMIZATION_LEVEL".into(), "-Owholemodule".into());
         s.insert("SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(), "DEBUG COCOAPODS".into());
-        let args = swift_arguments(&s, "arm64", &[opt_level, conds], "26.5.0", false);
+        let args = swift_arguments(&s, "arm64", &[opt_level, conds], "26.5.0", false, &[]);
         // The enum's special-cased `-Owholemodule` expands; conditions become -D.
         assert!(args.windows(2).any(|w| w == ["-O", "-whole-module-optimization"]));
         assert!(args.contains(&"-DDEBUG".to_string()));

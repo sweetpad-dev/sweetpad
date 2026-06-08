@@ -160,6 +160,20 @@ const PROJECTS: &[CorpusProject] = &[
         forced_probes: &["Probe"],
         strict: true,
     },
+    // A third-party Swift macro: `Probe.swift` uses `#stringify` from the bundled
+    // `SweetMacro` package, whose implementation lives only in a `.macro` plugin
+    // executable Xcode builds into the host products dir. The reference resolves
+    // only if the BSP emits `-load-plugin-executable <plugin>#<module>` for it.
+    CorpusProject {
+        slug: "_synthetic-macro",
+        xcodeproj: "MacroProbe.xcodeproj",
+        scheme: "MacroProbe",
+        destination: "platform=macOS",
+        project_root: "project",
+        workspace: None,
+        forced_probes: &["Probe"],
+        strict: true,
+    },
     // Real-world generated-source validation against a Tuist example (`Model.swift`
     // uses the generated Core Data class `User`). Needs a one-time
     // `tuist generate --path corpus/_tuist-src/examples/xcode/generated_ios_app_with_coredata`
