@@ -2566,15 +2566,60 @@ fn resolve_file_ref_path(
     let project_dir = xcodeproj_path.parent().unwrap_or_else(|| Path::new("."));
     let resolved = match source_tree {
         "<absolute>" => PathBuf::from(path),
-        // `<group>` is technically relative to the parent group's path, but for
-        // xcconfigs referenced via `baseConfigurationReference` the parent is
-        // almost always the project root group — so the project directory is
-        // the right anchor in practice. `SOURCE_ROOT` is explicitly the project
-        // dir; other source trees (BUILT_PRODUCTS_DIR, etc.) only make sense
-        // at build time and are unlikely for xcconfig references.
+        // `<group>` (the default) is relative to the parent group's path, which
+        // is NOT always the root group — CocoaPods nests the Pod xcconfigs under
+        // a group whose `path` is "Pods". Walk the parent-group chain to anchor
+        // it; a root-group ref still resolves to the project dir.
+        "<group>" => parent_group_dir(objects, file_ref_id, project_dir, 0).join(path),
+        // `SOURCE_ROOT` is the project dir; build-time trees (BUILT_PRODUCTS_DIR,
+        // etc.) don't occur for xcconfig references — anchor at the project dir.
         _ => project_dir.join(path),
     };
     Ok(resolved)
+}
+
+/// The on-disk directory a `<group>`-relative child resolves against: its parent
+/// `PBXGroup`'s directory, resolved up the group chain. The mainGroup (no parent)
+/// anchors at the project dir. Depth-guarded against a malformed cyclic graph.
+fn parent_group_dir(objects: &BTreeMap<String, Value>, child_id: &str, project_dir: &Path, depth: usize) -> PathBuf {
+    if depth > 64 {
+        return project_dir.to_path_buf();
+    }
+    match parent_group_of(objects, child_id) {
+        Some(parent_id) => group_dir(objects, &parent_id, project_dir, depth + 1),
+        None => project_dir.to_path_buf(),
+    }
+}
+
+/// The on-disk directory of a `PBXGroup`, resolving its `path` up the parent
+/// chain (each `<group>` ancestor contributes its `path`).
+fn group_dir(objects: &BTreeMap<String, Value>, group_id: &str, project_dir: &Path, depth: usize) -> PathBuf {
+    if depth > 64 {
+        return project_dir.to_path_buf();
+    }
+    let Some(group) = objects.get(group_id) else {
+        return project_dir.to_path_buf();
+    };
+    let path = group.get("path").and_then(Value::as_str).unwrap_or("");
+    let source_tree = group.get("sourceTree").and_then(Value::as_str).unwrap_or("<group>");
+    match source_tree {
+        "<absolute>" => PathBuf::from(path),
+        "<group>" => parent_group_dir(objects, group_id, project_dir, depth + 1).join(path),
+        _ => project_dir.join(path),
+    }
+}
+
+/// The id of the group (`PBXGroup` / variant / version) listing `child_id` in its
+/// `children`.
+fn parent_group_of(objects: &BTreeMap<String, Value>, child_id: &str) -> Option<String> {
+    objects.iter().find_map(|(id, v)| {
+        let isa = v.get("isa").and_then(Value::as_str)?;
+        if !matches!(isa, "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup") {
+            return None;
+        }
+        let children = v.get("children").and_then(Value::as_array)?;
+        children.iter().any(|c| c.as_str() == Some(child_id)).then(|| id.clone())
+    })
 }
 
 fn extract_inline_settings(config: &Value) -> Vec<Assignment> {

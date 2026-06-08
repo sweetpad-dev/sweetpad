@@ -1,0 +1,25 @@
+name: AssetSym
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+settings:
+  base:
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: "YES"
+    ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: "YES"
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_INDEX: "YES"
+    ASSETCATALOG_COMPILER_APPICON_NAME: ""
+targets:
+  AssetSym:
+    type: application
+    platform: macOS
+    # Asset-symbol types (ColorResource/ImageResource) are macOS 14+.
+    deploymentTarget: "14.0"
+    sources:
+      - Sources
+      - Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.AssetSym
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+    scheme: {}

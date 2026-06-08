@@ -84,7 +84,8 @@ them itself for an external server; only its built-in SwiftPM path does that).
 **Validation** ✅ — the 3-layer loop (`tests/bsp_*`):
 - Layer 0 (`swiftc -typecheck`/`clang -fsyntax-only`): **0** resolution errors,
   incl. cross-module `import` and ObjC `HEADER_SEARCH_PATHS`.
-- Layer 1 (conformance): protocol round-trip + per-file `-x objective-c`.
+- Layer 1 (conformance): protocol round-trip + the full reply-shape / per-file
+  `-x` dialect matrix (see the measurement-layers section).
 - Layer 2 (real `sourcekit-lsp`): **0** diagnostics on `b.swift` and
   jump-to-definition `Greeter → ModuleA/a.swift`.
 
@@ -204,12 +205,72 @@ layers are built and passing against the multi-module fixture:
   module-resolution errors → **0**, including `ModuleB`'s cross-module
   `import ModuleA`. Opt-in `BSP_ORACLE=1` (builds + needs Xcode 26.5).
 - **Layer 1 — BSP conformance** (`tests/bsp_conformance.rs`, server alone): drives
-  `sweetpad-lib bsp` with scripted JSON-RPC; asserts targets listed, sources
-  returned, `sources` ↔ `inverseSources` round-trip, `sourceKitOptions` yields
-  editor args (`-I` in, `-explicit-module-build` out). Fast, hermetic, ungated.
+  `sweetpad-lib bsp` with scripted JSON-RPC and pins the structural reply surface
+  sourcekit-lsp decodes. Beyond the smoke test (targets listed, sources returned,
+  `sources` ↔ `inverseSources` round-trip, `-I` in / `-explicit-module-build`
+  out): the full `initialize` capability set (data kind, both providers, the five
+  language ids, index-store geometry from `--derived-data-path`), the
+  `buildTargets`/`sources` item shapes, target resolution by membership when no
+  target is given, the unowned-file (empty/`null`) and unknown-method (`-32601`)
+  edges, build-only-flag stripping (verified non-vacuous against the real argv),
+  and the per-file clang `-x` dialect matrix (`.m`/`.mm`/`.cpp`/`.c`) with ObjC vs
+  C++ flag gating. Fast, hermetic, ungated.
 - **Layer 2 — end-to-end** (`tests/bsp_lsp_e2e.rs`, real headless `sourcekit-lsp`):
   writes `buildServer.json` → our server → `sourcekit-lsp` opens `b.swift` →
   **0 module-resolution diagnostics**. Opt-in `BSP_ORACLE=1`.
+- **Layer 2 at corpus scale** (`tests/bsp_corpus_completion.rs`, opt-in
+  `BSP_CORPUS=1`): the same end-to-end loop, but over the real OSS corpus instead
+  of one synthetic fixture — it turns "works on ~X% of projects" into a measured
+  number. Per project it builds the main scheme once into a throwaway DerivedData
+  (build-first, to isolate *arg/search-path correctness* from prepare), points
+  `sourcekit-lsp` at our `buildServer.json`, opens a bounded sample of the
+  project's own **non-test** source files, and classifies each into clean /
+  *resolution-failure* (a missing-module/header arg bug — the headline) /
+  *internal-error* (a `sourcekit-lsp` stdlib-load rough edge, retried once).
+  Knobs: `BSP_CORPUS_ONLY`, `BSP_CORPUS_SAMPLE`, `BSP_CORPUS_BUILD_TIMEOUT`.
+  Build-first means a project must build headlessly; failures are reported, not
+  hidden. OSS-corpus finding: **0 resolution failures** on the clean Swift
+  frameworks (Kingfisher, Alamofire) and the large ObjC+Swift macOS app
+  (NetNewsWire); the iOS-simulator path surfaced the stdlib-load rough edge
+  (sourcekit-lsp #2328) on some IceCubesApp files.
+
+  **Generated-source + CocoaPods coverage** (committed synthetic fixtures
+  `fixtures/_synthetic-{coredata,assetsym,strcat,cocoapods}`, each a forced
+  `Probe*.swift` that references a build-time-generated / Pod symbol; a `strict`
+  fixture treats *any* editor error as a failure and also gates on our BSP
+  actually returning options, so a null reply can't masquerade as clean). The
+  harness drove three real engine fixes the OSS frameworks never exercised:
+  1. **Generated sources** — `resolve_file_arguments` now folds the `.swift`
+     xcodebuild emits into `DERIVED_SOURCES_DIR` (Core Data subclasses,
+     `GeneratedAssetSymbols.swift`, intent classes, string-catalog symbols) into
+     the editor's input set; without it references to those intra-module symbols
+     failed with "cannot find … in scope".
+  2. **Nested-group xcconfig** — `resolve_file_ref_path` walks the parent
+     `PBXGroup` chain instead of assuming the root group, so CocoaPods'
+     `Pods`-nested `Pods-<App>.xcconfig` resolves (it was hard-failing the whole
+     app-target resolve → our BSP served nothing → a *false* clean).
+  3. **Quoted search paths** — a quote-aware `ws_paths` tokenizer strips the
+     double quotes xcconfigs put around each path (`"${…}/Pod"`), which otherwise
+     reached swiftc as a literal-quoted relative path (`-F "…"`), defeating
+     framework module loading. Fixes CocoaPods and any spaced/quoted path.
+  Measured before→after: all five generated-source/Pod fixtures (Core Data, asset
+  symbols, string catalogs, SiriKit intents, CocoaPods) **fail → clean**
+  end-to-end; the full unit+oracle suite stays green (the changes are additive /
+  no-op on unquoted corpus paths). Also validated against a real Tuist Core Data
+  example (`Model.swift` uses the generated `User` class) — `tuist generate` the
+  gitignored `corpus/_tuist-src/examples/.../generated_ios_app_with_coredata`; the
+  harness skips it when absent.
+
+  **Known limitation — sourcekit-lsp #2328.** On the iOS-simulator path some files
+  intermittently return "Loading the standard library failed" — a sourcekit-lsp
+  internal error, **not** our args: our exact editor arguments type-check cleanly
+  under `swiftc -typecheck` (the stdlib loads via the prebuilt modules). It
+  persists past one retry and accounts for the entire iOS-corpus gap (IceCubesApp
+  ~43% clean, **0** of which are resolution bugs). The harness buckets it
+  separately (`is_internal_error`) so it can never read as our failure; we can
+  only mitigate (the retry), not fix it in argument generation. ⚠️ Still
+  single-`.xcodeproj`: multi-project workspaces beyond the CocoaPods app-target
+  case remain out of scope.
 
 Expectations are auto-derived (self-evident "zero false errors"; differential vs
 the captured build args; source-derived "every `import` must resolve"), so an

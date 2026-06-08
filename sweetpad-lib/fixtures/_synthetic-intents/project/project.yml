@@ -1,0 +1,22 @@
+name: IntentsGen
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+settings:
+  base:
+    # The setting under test: a .intentdefinition in Compile Sources is run
+    # through intentbuilderc, emitting <DERIVED_FILE_DIR>/IntentDefinitionGenerated/.
+    INTENTS_CODEGEN_LANGUAGE: Swift
+targets:
+  IntentsGen:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.IntentsGen
+        INFOPLIST_FILE: Sources/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+    scheme: {}

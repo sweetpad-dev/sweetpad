@@ -1,0 +1,30 @@
+name: StringCatGen
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+  createIntermediateGroups: true
+settings:
+  base:
+    STRING_CATALOG_GENERATE_SYMBOLS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+targets:
+  StringCatGen:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - Sources
+      - Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.StringCatGen
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGNING_ALLOWED: NO
+schemes:
+  StringCatGen:
+    build:
+      targets:
+        StringCatGen: all
+    run:
+      config: Debug

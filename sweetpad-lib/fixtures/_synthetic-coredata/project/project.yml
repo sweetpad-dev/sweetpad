@@ -1,0 +1,19 @@
+name: CoreDataGen
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+  deploymentTarget:
+    macOS: "13.0"
+targets:
+  CoreDataGen:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.CoreDataGen
+        GENERATE_INFOPLIST_FILE: "NO"
+        INFOPLIST_FILE: Sources/Info.plist
+        CODE_SIGNING_ALLOWED: "NO"
+    scheme: {}

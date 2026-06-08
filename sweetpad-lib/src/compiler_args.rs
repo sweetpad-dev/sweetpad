@@ -262,11 +262,11 @@ pub fn swift_arguments(
             a.pair("-F", &format!("{products}/PackageFrameworks"));
         }
     }
-    for p in ws(get("SWIFT_INCLUDE_PATHS")) {
-        a.pair("-I", p);
+    for p in ws_paths(get("SWIFT_INCLUDE_PATHS")) {
+        a.pair("-I", &p);
     }
-    for p in ws(get("FRAMEWORK_SEARCH_PATHS")) {
-        a.pair("-F", p);
+    for p in ws_paths(get("FRAMEWORK_SEARCH_PATHS")) {
+        a.pair("-F", &p);
     }
     // A unit-test target compiles against the framework-under-test (in the
     // products dir) and the platform's test frameworks (XCTest et al.).
@@ -473,19 +473,19 @@ fn emit_clang_search_paths(a: &mut ArgBuilder, settings: &Settings) {
     if let Some(p) = products {
         includes.push(format!("{p}/include"));
     }
-    includes.extend(ws(get("HEADER_SEARCH_PATHS")).into_iter().map(str::to_string));
+    includes.extend(ws_paths(get("HEADER_SEARCH_PATHS")));
     emit_unique_pairs(a, "-I", &includes);
 
     // `-F`: the products dir, then FRAMEWORK_SEARCH_PATHS.
     let mut frameworks: Vec<String> = products.map(str::to_string).into_iter().collect();
-    frameworks.extend(ws(get("FRAMEWORK_SEARCH_PATHS")).into_iter().map(str::to_string));
+    frameworks.extend(ws_paths(get("FRAMEWORK_SEARCH_PATHS")));
     emit_unique_pairs(a, "-F", &frameworks);
 
-    for p in ws(get("USER_HEADER_SEARCH_PATHS")) {
-        a.pair("-iquote", p);
+    for p in ws_paths(get("USER_HEADER_SEARCH_PATHS")) {
+        a.pair("-iquote", &p);
     }
-    for p in ws(get("SYSTEM_HEADER_SEARCH_PATHS")) {
-        a.pair("-isystem", p);
+    for p in ws_paths(get("SYSTEM_HEADER_SEARCH_PATHS")) {
+        a.pair("-isystem", &p);
     }
 }
 
@@ -505,11 +505,11 @@ fn emit_unique_pairs(a: &mut ArgBuilder, flag: &str, paths: &[String]) {
 /// dir — the build system de-duplicates, so we do too.
 fn emit_library_paths(a: &mut ArgBuilder, settings: &Settings) {
     let get = |k: &str| settings.get(k).map(String::as_str);
-    let mut paths: Vec<&str> = Vec::new();
+    let mut paths: Vec<String> = Vec::new();
     if let Some(products) = get("BUILT_PRODUCTS_DIR") {
-        paths.push(products);
+        paths.push(products.to_string());
     }
-    for p in ws(get("LIBRARY_SEARCH_PATHS")) {
+    for p in ws_paths(get("LIBRARY_SEARCH_PATHS")) {
         if !paths.contains(&p) {
             paths.push(p);
         }
@@ -546,7 +546,7 @@ pub fn link_arguments(settings: &Settings, arch: &str, frameworks: &[String]) ->
         a.flag(&format!("-O{level}"));
     }
     emit_library_paths(&mut a, settings);
-    for p in ws(get("FRAMEWORK_SEARCH_PATHS")) {
+    for p in ws_paths(get("FRAMEWORK_SEARCH_PATHS")) {
         a.flag(&format!("-F{p}"));
     }
     // Swift-runtime stdlib search paths the driver adds for a Swift link.
@@ -564,9 +564,9 @@ pub fn link_arguments(settings: &Settings, arch: &str, frameworks: &[String]) ->
         }
         a.pair("-framework", "XCTest");
     }
-    for p in ws(get("LD_RUNPATH_SEARCH_PATHS")) {
+    for p in ws_paths(get("LD_RUNPATH_SEARCH_PATHS")) {
         a.pair("-Xlinker", "-rpath");
-        a.pair("-Xlinker", p);
+        a.pair("-Xlinker", &p);
     }
     if is_yes(get("APPLICATION_EXTENSION_API_ONLY").unwrap_or("")) {
         a.flag("-fapplication-extension");
@@ -981,6 +981,46 @@ impl CondParser<'_> {
 fn ws(v: Option<&str>) -> Vec<&str> {
     v.map(|s| s.split_whitespace().collect())
         .unwrap_or_default()
+}
+
+/// Split a **search-path** setting into the tokens the build system forms for
+/// argv: whitespace-separated, but respecting double quotes (a path may contain
+/// spaces) and with the quotes stripped. xcconfigs quote each path — CocoaPods
+/// writes `FRAMEWORK_SEARCH_PATHS = $(inherited) "${PODS_CONFIGURATION_BUILD_DIR}/Pod"` —
+/// and if the quotes survive into a `-F`/`-I` token, swiftc/clang read the quoted
+/// string as a relative path and never find the framework/header. (Distinct from
+/// [`ws`], which leaves quotes intact for value lists like preprocessor defines.)
+fn ws_paths(v: Option<&str>) -> Vec<String> {
+    let Some(s) = v else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_quote = false;
+    let mut started = false;
+    for ch in s.chars() {
+        match ch {
+            '"' => {
+                in_quote = !in_quote;
+                started = true;
+            }
+            c if c.is_whitespace() && !in_quote => {
+                if started {
+                    out.push(std::mem::take(&mut cur));
+                    started = false;
+                }
+            }
+            c => {
+                cur.push(c);
+                started = true;
+            }
+        }
+    }
+    if started {
+        out.push(cur);
+    }
+    out.retain(|t| !t.is_empty());
+    out
 }
 
 /// `5.0` → `5`, `6.0` → `6`; anything else (e.g. `4.2`) is passed through.

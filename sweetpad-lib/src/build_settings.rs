@@ -242,12 +242,21 @@ pub fn resolve_file_arguments(
         let settings = &resolved.settings;
         let file_str = file.to_string_lossy().into_owned();
         if file.extension().is_some_and(|e| e == "swift") {
-            let swift_inputs = project::target_source_files(&ctx.project.path, target)
+            let mut swift_inputs: Vec<String> = project::target_source_files(&ctx.project.path, target)
                 .unwrap_or_default()
                 .into_iter()
                 .filter(|p| p.extension().is_some_and(|e| e == "swift"))
                 .map(|p| p.to_string_lossy().into_owned())
                 .collect();
+            // Build-time-generated Swift (Core Data subclasses, asset symbols,
+            // intent classes, string-catalog symbols, build-rule output) is part
+            // of the module but absent from the project graph — it lives under
+            // DERIVED_SOURCES_DIR. Without it in the input set, the editor can't
+            // resolve references to those generated symbols. A no-op until a
+            // build has populated the dir.
+            if let Some(derived) = settings.get("DERIVED_SOURCES_DIR") {
+                collect_generated_swift(Path::new(derived), &mut swift_inputs);
+            }
             let has_package_products =
                 project::target_has_package_products(&ctx.project.path, target).unwrap_or(false);
             return Ok(compiler_args::ToolInvocation {
@@ -271,6 +280,24 @@ pub fn resolve_file_arguments(
         });
     }
     Err(format!("no project contained target {target}"))
+}
+
+/// Recursively append every `.swift` under `dir` to `out` — the build-time
+/// generated sources xcodebuild deposits in `DERIVED_SOURCES_DIR` (and its
+/// `CoreDataGenerated` / `IntentDefinitionGenerated` subdirs). A no-op when the
+/// directory doesn't exist yet (no prior build).
+fn collect_generated_swift(dir: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_generated_swift(&path, out);
+        } else if path.extension().is_some_and(|e| e == "swift") {
+            out.push(path.to_string_lossy().into_owned());
+        }
+    }
 }
 
 /// Trim each target's settings to `keys` when a projection is requested. Keys

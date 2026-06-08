@@ -1,0 +1,6 @@
+platform :ios, "16.0"
+use_frameworks!
+
+target "App" do
+  pod "SwiftyJSON", "~> 5.0"
+end
