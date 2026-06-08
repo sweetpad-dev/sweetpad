@@ -30,9 +30,19 @@ fn config_writes_complete_build_server_json() {
     let cfg: Value = serde_json::from_str(&raw).expect("buildServer.json is valid JSON");
 
     // The five fields sourcekit-lsp's decoder requires.
-    assert!(cfg.get("name").and_then(Value::as_str).is_some(), "missing `name`: {cfg}");
-    assert!(cfg.get("version").and_then(Value::as_str).is_some(), "missing `version`: {cfg}");
-    assert_eq!(cfg.get("bspVersion").and_then(Value::as_str), Some("2.2.0"), "wrong/absent `bspVersion`: {cfg}");
+    assert!(
+        cfg.get("name").and_then(Value::as_str).is_some(),
+        "missing `name`: {cfg}"
+    );
+    assert!(
+        cfg.get("version").and_then(Value::as_str).is_some(),
+        "missing `version`: {cfg}"
+    );
+    assert_eq!(
+        cfg.get("bspVersion").and_then(Value::as_str),
+        Some("2.2.0"),
+        "wrong/absent `bspVersion`: {cfg}"
+    );
 
     let langs: Vec<&str> = cfg
         .get("languages")
@@ -42,7 +52,10 @@ fn config_writes_complete_build_server_json() {
         .filter_map(Value::as_str)
         .collect();
     for lang in ["swift", "objective-c", "objective-cpp", "c", "cpp"] {
-        assert!(langs.contains(&lang), "`languages` missing {lang}: {langs:?}");
+        assert!(
+            langs.contains(&lang),
+            "`languages` missing {lang}: {langs:?}"
+        );
     }
 
     // `argv` must re-launch this server pointed at the (canonicalized) project,
@@ -58,9 +71,13 @@ fn config_writes_complete_build_server_json() {
         argv.first().is_some_and(|a| a.ends_with("sweetpad-lib")),
         "argv[0] should be the server executable: {argv:?}"
     );
-    assert!(argv.contains(&"bsp"), "argv missing the `bsp` subcommand: {argv:?}");
     assert!(
-        argv.windows(2).any(|w| w[0] == "--project" && w[1].ends_with("/MultiModule.xcodeproj")),
+        argv.contains(&"bsp"),
+        "argv missing the `bsp` subcommand: {argv:?}"
+    );
+    assert!(
+        argv.windows(2)
+            .any(|w| w[0] == "--project" && w[1].ends_with("/MultiModule.xcodeproj")),
         "argv missing `--project <path>`: {argv:?}"
     );
 }

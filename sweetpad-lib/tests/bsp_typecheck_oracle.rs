@@ -29,7 +29,10 @@ fn developer_dir() -> String {
 }
 
 fn toolchain_bin(tool: &str) -> String {
-    format!("{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{tool}", developer_dir())
+    format!(
+        "{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{tool}",
+        developer_dir()
+    )
 }
 
 fn fixture(name: &str, proj: &str) -> PathBuf {
@@ -40,9 +43,24 @@ fn fixture(name: &str, proj: &str) -> PathBuf {
 /// (search paths, sysroot/target, importer flags, module name, language mode).
 /// Superset for both front ends; `-sdk` is swift, `-isysroot` is clang.
 const PAIR_FLAGS: &[&str] = &[
-    "-sdk", "-isysroot", "-target", "-x", "-module-name", "-swift-version", "-I", "-F", "-Xcc",
-    "-import-objc-header", "-isystem", "-iquote", "-iframework", "-fmodule-map-file", "-include",
-    "-resource-dir", "-enable-experimental-feature", "-enable-upcoming-feature",
+    "-sdk",
+    "-isysroot",
+    "-target",
+    "-x",
+    "-module-name",
+    "-swift-version",
+    "-I",
+    "-F",
+    "-Xcc",
+    "-import-objc-header",
+    "-isystem",
+    "-iquote",
+    "-iframework",
+    "-fmodule-map-file",
+    "-include",
+    "-resource-dir",
+    "-enable-experimental-feature",
+    "-enable-upcoming-feature",
 ];
 
 /// Reduce a build invocation to a syntax-only one: keep the flags that affect
@@ -112,7 +130,8 @@ fn resolve_target(project: &Path, target: &str, dd: &Path) -> TargetCompilerArgu
     let mut all = build_settings::resolve_compiler_arguments(&opts)
         .unwrap_or_else(|e| panic!("resolve {target}: {e}"));
     all.retain(|t| t.target == target);
-    all.pop().unwrap_or_else(|| panic!("no args for target {target}"))
+    all.pop()
+        .unwrap_or_else(|| panic!("no args for target {target}"))
 }
 
 fn build_fixture(project: &Path, scheme: &str, dd: &Path) {
@@ -120,7 +139,15 @@ fn build_fixture(project: &Path, scheme: &str, dd: &Path) {
         .env("DEVELOPER_DIR", developer_dir())
         .args(["build", "-project"])
         .arg(project)
-        .args(["-scheme", scheme, "-configuration", "Debug", "-destination", "platform=macOS", "-derivedDataPath"])
+        .args([
+            "-scheme",
+            scheme,
+            "-configuration",
+            "Debug",
+            "-destination",
+            "platform=macOS",
+            "-derivedDataPath",
+        ])
         .arg(dd)
         .arg("CODE_SIGNING_ALLOWED=NO")
         .output()
@@ -136,11 +163,25 @@ fn build_fixture(project: &Path, scheme: &str, dd: &Path) {
 fn check_target(project: &Path, target: &str, dd: &Path, swift: bool) -> Vec<String> {
     let inv = resolve_target(project, target, dd);
     let (tool, action, build_args, files) = if swift {
-        let s = inv.swift.unwrap_or_else(|| panic!("{target} has no swift invocation"));
-        (toolchain_bin("swiftc"), "-typecheck", s.arguments, s.input_files)
+        let s = inv
+            .swift
+            .unwrap_or_else(|| panic!("{target} has no swift invocation"));
+        (
+            toolchain_bin("swiftc"),
+            "-typecheck",
+            s.arguments,
+            s.input_files,
+        )
     } else {
-        let c = inv.clang.unwrap_or_else(|| panic!("{target} has no clang invocation"));
-        (toolchain_bin("clang"), "-fsyntax-only", c.arguments, c.input_files)
+        let c = inv
+            .clang
+            .unwrap_or_else(|| panic!("{target} has no clang invocation"));
+        (
+            toolchain_bin("clang"),
+            "-fsyntax-only",
+            c.arguments,
+            c.input_files,
+        )
     };
     let mut args = syntax_args(&build_args, action);
     args.extend(files);
@@ -150,7 +191,12 @@ fn check_target(project: &Path, target: &str, dd: &Path, swift: bool) -> Vec<Str
         .output()
         .unwrap_or_else(|e| panic!("run {tool}: {e}"));
     let errs = resolution_errors(&String::from_utf8_lossy(&out.stderr));
-    eprintln!("[{target}] {} exit={} resolution-errors={}", if swift { "swift" } else { "clang" }, out.status.code().unwrap_or(-1), errs.len());
+    eprintln!(
+        "[{target}] {} exit={} resolution-errors={}",
+        if swift { "swift" } else { "clang" },
+        out.status.code().unwrap_or(-1),
+        errs.len()
+    );
     for e in &errs {
         eprintln!("    {e}");
     }
@@ -193,5 +239,8 @@ fn bsp_typecheck_oracle() {
     errors.extend(check_target(&spm, "SpmApp", &dd3, true));
     let _ = std::fs::remove_dir_all(&dd3);
 
-    assert!(errors.is_empty(), "module/header resolution failures: {errors:?}");
+    assert!(
+        errors.is_empty(),
+        "module/header resolution failures: {errors:?}"
+    );
 }

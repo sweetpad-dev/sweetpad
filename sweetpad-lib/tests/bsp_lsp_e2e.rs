@@ -26,7 +26,10 @@ fn developer_dir() -> String {
 }
 
 fn bin_dir(tool: &str) -> String {
-    format!("{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{tool}", developer_dir())
+    format!(
+        "{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{tool}",
+        developer_dir()
+    )
 }
 
 fn lsp_frame(msg: &Value) -> Vec<u8> {
@@ -41,15 +44,28 @@ fn definition_uri(result: Option<&Value>) -> Option<String> {
     if v.is_null() {
         return None;
     }
-    let loc = if let Some(arr) = v.as_array() { arr.first()? } else { v };
-    loc.get("uri").or_else(|| loc.get("targetUri")).and_then(Value::as_str).map(String::from)
+    let loc = if let Some(arr) = v.as_array() {
+        arr.first()?
+    } else {
+        v
+    };
+    loc.get("uri")
+        .or_else(|| loc.get("targetUri"))
+        .and_then(Value::as_str)
+        .map(String::from)
 }
 
 /// Copy the committed fixture into `dst` (so the build artifacts + buildServer.json
 /// don't touch the tracked tree).
 fn copy_fixture(dst: &Path) {
-    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/_synthetic-multimodule/project");
-    let status = Command::new("cp").arg("-R").arg(&src).arg(dst).status().expect("cp fixture");
+    let src =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/_synthetic-multimodule/project");
+    let status = Command::new("cp")
+        .arg("-R")
+        .arg(&src)
+        .arg(dst)
+        .status()
+        .expect("cp fixture");
     assert!(status.success(), "failed to copy fixture");
 }
 
@@ -101,12 +117,24 @@ fn bsp_lsp_e2e() {
         .env("DEVELOPER_DIR", developer_dir())
         .args(["build", "-project"])
         .arg(&xcodeproj)
-        .args(["-scheme", "ModuleB", "-configuration", "Debug", "-destination", "platform=macOS", "-derivedDataPath"])
+        .args([
+            "-scheme",
+            "ModuleB",
+            "-configuration",
+            "Debug",
+            "-destination",
+            "platform=macOS",
+            "-derivedDataPath",
+        ])
         .arg(&dd)
         .arg("CODE_SIGNING_ALLOWED=NO")
         .output()
         .expect("xcodebuild");
-    assert!(build.status.success(), "fixture build failed:\n{}", String::from_utf8_lossy(&build.stderr));
+    assert!(
+        build.status.success(),
+        "fixture build failed:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
 
     // Point sourcekit-lsp at our server by generating buildServer.json with the
     // real `config` command (dog-foods it end-to-end).
@@ -155,15 +183,24 @@ fn bsp_lsp_e2e() {
         let _ = stdin.flush();
     };
 
-    send(&mut stdin, &json!({
-        "jsonrpc":"2.0","id":1,"method":"initialize",
-        "params":{"processId":std::process::id(),"rootUri":root_uri,"capabilities":{},"initializationOptions":{}}
-    }));
-    send(&mut stdin, &json!({"jsonrpc":"2.0","method":"initialized","params":{}}));
-    send(&mut stdin, &json!({
-        "jsonrpc":"2.0","method":"textDocument/didOpen",
-        "params":{"textDocument":{"uri":b_uri,"languageId":"swift","version":1,"text":b_text}}
-    }));
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc":"2.0","id":1,"method":"initialize",
+            "params":{"processId":std::process::id(),"rootUri":root_uri,"capabilities":{},"initializationOptions":{}}
+        }),
+    );
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","method":"initialized","params":{}}),
+    );
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc":"2.0","method":"textDocument/didOpen",
+            "params":{"textDocument":{"uri":b_uri,"languageId":"swift","version":1,"text":b_text}}
+        }),
+    );
 
     // Collect diagnostics for b.swift within a window.
     let deadline = Instant::now() + Duration::from_secs(40);
@@ -171,10 +208,19 @@ fn bsp_lsp_e2e() {
     while Instant::now() < deadline {
         match rx.recv_timeout(Duration::from_secs(2)) {
             Ok(msg) => {
-                if msg.get("method").and_then(Value::as_str) == Some("textDocument/publishDiagnostics") {
-                    let uri = msg.pointer("/params/uri").and_then(Value::as_str).unwrap_or("");
+                if msg.get("method").and_then(Value::as_str)
+                    == Some("textDocument/publishDiagnostics")
+                {
+                    let uri = msg
+                        .pointer("/params/uri")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
                     if uri.ends_with("/ModuleB/b.swift") {
-                        let d = msg.pointer("/params/diagnostics").and_then(Value::as_array).cloned().unwrap_or_default();
+                        let d = msg
+                            .pointer("/params/diagnostics")
+                            .and_then(Value::as_array)
+                            .cloned()
+                            .unwrap_or_default();
                         diags_for_b = Some(d);
                         break;
                     }
@@ -190,10 +236,13 @@ fn bsp_lsp_e2e() {
     // index store we advertised. Best-effort — sourcekit-lsp indexes
     // asynchronously, so a miss within the window is logged, not failed; a hit
     // must land in ModuleA.
-    send(&mut stdin, &json!({
-        "jsonrpc":"2.0","id":50,"method":"textDocument/definition",
-        "params":{"textDocument":{"uri":b_uri},"position":{"line":3,"character":4}}
-    }));
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc":"2.0","id":50,"method":"textDocument/definition",
+            "params":{"textDocument":{"uri":b_uri},"position":{"line":3,"character":4}}
+        }),
+    );
     let mut def_uri: Option<String> = None;
     let def_deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < def_deadline {
@@ -208,7 +257,10 @@ fn bsp_lsp_e2e() {
     }
 
     // Shut down.
-    send(&mut stdin, &json!({"jsonrpc":"2.0","id":99,"method":"shutdown"}));
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","id":99,"method":"shutdown"}),
+    );
     send(&mut stdin, &json!({"jsonrpc":"2.0","method":"exit"}));
     drop(stdin);
     let _ = lsp.wait();
@@ -218,9 +270,14 @@ fn bsp_lsp_e2e() {
     match &def_uri {
         Some(u) => {
             eprintln!("definition(Greeter) -> {u}");
-            assert!(u.contains("/ModuleA/") || u.ends_with("a.swift"), "definition resolved outside ModuleA: {u}");
+            assert!(
+                u.contains("/ModuleA/") || u.ends_with("a.swift"),
+                "definition resolved outside ModuleA: {u}"
+            );
         }
-        None => eprintln!("definition(Greeter): no result within window (index async) — not failing"),
+        None => {
+            eprintln!("definition(Greeter): no result within window (index async) — not failing")
+        }
     }
 
     let diags = diags_for_b.expect("no diagnostics published for b.swift within the window");
@@ -229,7 +286,11 @@ fn bsp_lsp_e2e() {
         .filter_map(|d| d.get("message").and_then(Value::as_str))
         .filter(|m| is_module_resolution_error(m))
         .collect();
-    eprintln!("b.swift diagnostics: {} total, {} module-resolution", diags.len(), module_errors.len());
+    eprintln!(
+        "b.swift diagnostics: {} total, {} module-resolution",
+        diags.len(),
+        module_errors.len()
+    );
     assert!(
         module_errors.is_empty(),
         "sourcekit-lsp couldn't resolve the cross-module import via our BSP server: {module_errors:?}"
@@ -238,7 +299,9 @@ fn bsp_lsp_e2e() {
 
 fn is_module_resolution_error(message: &str) -> bool {
     let m = message.to_lowercase();
-    m.contains("no such module") || m.contains("cannot find") || m.contains("could not build module")
+    m.contains("no such module")
+        || m.contains("cannot find")
+        || m.contains("could not build module")
 }
 
 /// v2 end-to-end: the headline promise — cross-module `import` resolves with **no
@@ -311,23 +374,32 @@ fn prepare_resolves_cross_module_without_prior_build() {
         let _ = stdin.flush();
     };
 
-    send(&mut stdin, &json!({
-        "jsonrpc":"2.0","id":1,"method":"initialize",
-        "params":{
-            "processId":std::process::id(),"rootUri":root_uri,
-            "capabilities":{
-                "textDocument":{"diagnostic":{"dynamicRegistration":false}},
-                "workspace":{"diagnostics":{"refreshSupport":true}}
-            },
-            // Background indexing drives prepare; default-on in 6.1+ but explicit here.
-            "initializationOptions":{"backgroundIndexing":true,"backgroundPreparationMode":"enabled"}
-        }
-    }));
-    send(&mut stdin, &json!({"jsonrpc":"2.0","method":"initialized","params":{}}));
-    send(&mut stdin, &json!({
-        "jsonrpc":"2.0","method":"textDocument/didOpen",
-        "params":{"textDocument":{"uri":b_uri,"languageId":"swift","version":1,"text":b_text}}
-    }));
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc":"2.0","id":1,"method":"initialize",
+            "params":{
+                "processId":std::process::id(),"rootUri":root_uri,
+                "capabilities":{
+                    "textDocument":{"diagnostic":{"dynamicRegistration":false}},
+                    "workspace":{"diagnostics":{"refreshSupport":true}}
+                },
+                // Background indexing drives prepare; default-on in 6.1+ but explicit here.
+                "initializationOptions":{"backgroundIndexing":true,"backgroundPreparationMode":"enabled"}
+            }
+        }),
+    );
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","method":"initialized","params":{}}),
+    );
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc":"2.0","method":"textDocument/didOpen",
+            "params":{"textDocument":{"uri":b_uri,"languageId":"swift","version":1,"text":b_text}}
+        }),
+    );
     let wait_for_id = |rx: &mpsc::Receiver<Value>, want: i64, secs: u64| -> Option<Value> {
         let deadline = Instant::now() + Duration::from_secs(secs);
         while Instant::now() < deadline {
@@ -341,23 +413,35 @@ fn prepare_resolves_cross_module_without_prior_build() {
     };
 
     // Block until background work (prepare + index) settles. The build runs here.
-    send(&mut stdin, &json!({"jsonrpc":"2.0","id":10,"method":"workspace/synchronize","params":{"index":true}}));
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","id":10,"method":"workspace/synchronize","params":{"index":true}}),
+    );
     let synchronized = wait_for_id(&rx, 10, 180).is_some();
     // b.swift was first compiled at didOpen — before prepare built ModuleA — so
     // its diagnostics are cached as "no such module". A real editor re-pulls on
     // `workspace/diagnostic/refresh`; force the equivalent fresh compile with a
     // no-op version bump, then pull diagnostics.
-    send(&mut stdin, &json!({
-        "jsonrpc":"2.0","method":"textDocument/didChange",
-        "params":{"textDocument":{"uri":b_uri,"version":2},"contentChanges":[{"text":b_text}]}
-    }));
-    send(&mut stdin, &json!({
-        "jsonrpc":"2.0","id":20,"method":"textDocument/diagnostic",
-        "params":{"textDocument":{"uri":b_uri}}
-    }));
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc":"2.0","method":"textDocument/didChange",
+            "params":{"textDocument":{"uri":b_uri,"version":2},"contentChanges":[{"text":b_text}]}
+        }),
+    );
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc":"2.0","id":20,"method":"textDocument/diagnostic",
+            "params":{"textDocument":{"uri":b_uri}}
+        }),
+    );
     let diag_report = wait_for_id(&rx, 20, 60);
 
-    send(&mut stdin, &json!({"jsonrpc":"2.0","id":99,"method":"shutdown"}));
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","id":99,"method":"shutdown"}),
+    );
     send(&mut stdin, &json!({"jsonrpc":"2.0","method":"exit"}));
     drop(stdin);
     let _ = lsp.wait();
@@ -366,17 +450,31 @@ fn prepare_resolves_cross_module_without_prior_build() {
     let dep_built = dd.join("Build/Products/Debug/ModuleA.swiftmodule").exists();
     let _ = std::fs::remove_dir_all(&root);
 
-    assert!(synchronized, "workspace/synchronize never returned (prepare/index didn't settle)");
-    assert!(dep_built, "prepare did not build ModuleA into the clean DerivedData");
+    assert!(
+        synchronized,
+        "workspace/synchronize never returned (prepare/index didn't settle)"
+    );
+    assert!(
+        dep_built,
+        "prepare did not build ModuleA into the clean DerivedData"
+    );
     let report = diag_report.expect("no textDocument/diagnostic response");
     // Pull-diagnostic result is a full report: { kind: "full", items: [...] }.
-    let items = report.pointer("/result/items").and_then(Value::as_array).cloned().unwrap_or_default();
+    let items = report
+        .pointer("/result/items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let module_errors: Vec<&str> = items
         .iter()
         .filter_map(|d| d.get("message").and_then(Value::as_str))
         .filter(|m| is_module_resolution_error(m))
         .collect();
-    eprintln!("b.swift (no prior build) diagnostics: {} total, {} module-resolution", items.len(), module_errors.len());
+    eprintln!(
+        "b.swift (no prior build) diagnostics: {} total, {} module-resolution",
+        items.len(),
+        module_errors.len()
+    );
     assert!(
         module_errors.is_empty(),
         "cross-module import did not resolve after prepare (no prior build): {module_errors:?}"

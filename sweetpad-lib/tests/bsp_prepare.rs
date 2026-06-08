@@ -62,12 +62,21 @@ fn prepare_builds_dependency_module_from_clean_deriveddata() {
             if n == 0 {
                 break;
             }
-            buf_reader.lock().unwrap().push_str(&String::from_utf8_lossy(&chunk[..n]));
+            buf_reader
+                .lock()
+                .unwrap()
+                .push_str(&String::from_utf8_lossy(&chunk[..n]));
         }
     });
 
-    stdin.write_all(&frame(r#"{"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}"#)).unwrap();
-    stdin.write_all(&frame(r#"{"jsonrpc":"2.0","method":"build/initialized"}"#)).unwrap();
+    stdin
+        .write_all(&frame(
+            r#"{"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}"#,
+        ))
+        .unwrap();
+    stdin
+        .write_all(&frame(r#"{"jsonrpc":"2.0","method":"build/initialized"}"#))
+        .unwrap();
     // prepare ModuleB → must build its dependency ModuleA's module.
     stdin.write_all(&frame(r#"{"jsonrpc":"2.0","id":10,"method":"buildTarget/prepare","params":{"targets":[{"uri":"sweetpad://target/ModuleB"}]}}"#)).unwrap();
     stdin.flush().unwrap();

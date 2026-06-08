@@ -26,8 +26,8 @@
 //! Strings are `u32` length + UTF-8 bytes; `Option<String>` is a `u8` tag then
 //! the string when present; sequences/maps are a `u32` count then their items.
 
-use std::collections::{BTreeMap, BTreeSet};
 use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs;

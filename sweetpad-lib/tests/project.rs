@@ -240,12 +240,21 @@ fn synchronized_folder_membership_exception_is_excluded() {
     names.sort_unstable();
     let _ = fs::remove_dir_all(&root);
 
-    assert_eq!(names, vec!["Included.swift"], "Excluded.swift should be dropped by the membership exception");
+    assert_eq!(
+        names,
+        vec!["Included.swift"],
+        "Excluded.swift should be dropped by the membership exception"
+    );
 }
 
 /// True if the dependency graph (target → its same-project dependencies) has no
 /// cycle reachable from `start` — a DFS with a recursion stack.
-fn acyclic_from(start: &str, adj: &BTreeMap<String, Vec<String>>, stack: &mut BTreeSet<String>, done: &mut BTreeSet<String>) -> bool {
+fn acyclic_from(
+    start: &str,
+    adj: &BTreeMap<String, Vec<String>>,
+    stack: &mut BTreeSet<String>,
+    done: &mut BTreeSet<String>,
+) -> bool {
     if done.contains(start) {
         return true;
     }
@@ -280,12 +289,27 @@ fn corpus_dependency_graphs_are_sound() {
         let mut adj: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for t in &project.targets {
             // None of the per-target queries may error for a project that opened.
-            let deps = target_dependencies(path, &t.name)
-                .unwrap_or_else(|e| panic!("{}: target_dependencies({}) failed: {e}", path.display(), t.name));
-            target_source_files(path, &t.name)
-                .unwrap_or_else(|e| panic!("{}: target_source_files({}) failed: {e}", path.display(), t.name));
-            target_has_package_products(path, &t.name)
-                .unwrap_or_else(|e| panic!("{}: target_has_package_products({}) failed: {e}", path.display(), t.name));
+            let deps = target_dependencies(path, &t.name).unwrap_or_else(|e| {
+                panic!(
+                    "{}: target_dependencies({}) failed: {e}",
+                    path.display(),
+                    t.name
+                )
+            });
+            target_source_files(path, &t.name).unwrap_or_else(|e| {
+                panic!(
+                    "{}: target_source_files({}) failed: {e}",
+                    path.display(),
+                    t.name
+                )
+            });
+            target_has_package_products(path, &t.name).unwrap_or_else(|e| {
+                panic!(
+                    "{}: target_has_package_products({}) failed: {e}",
+                    path.display(),
+                    t.name
+                )
+            });
             for d in &deps {
                 assert!(
                     names.contains(d.as_str()),
@@ -307,7 +331,10 @@ fn corpus_dependency_graphs_are_sound() {
         }
         checked += 1;
     }
-    assert!(checked > 5, "expected to check several corpus projects, only {checked}");
+    assert!(
+        checked > 5,
+        "expected to check several corpus projects, only {checked}"
+    );
 }
 
 /// The v3 prepare gate: a pure-Swift target + its deps are self-buildable (so
@@ -321,7 +348,10 @@ fn multimodule_closure_is_self_buildable() {
         vec!["ModuleA".to_string()],
         "ModuleB depends on ModuleA"
     );
-    assert!(transitive_dependencies(&mm, "ModuleA").unwrap().is_empty(), "ModuleA has no deps");
+    assert!(
+        transitive_dependencies(&mm, "ModuleA").unwrap().is_empty(),
+        "ModuleA has no deps"
+    );
     assert!(is_self_buildable(&mm, "ModuleA").unwrap());
     assert!(is_self_buildable(&mm, "ModuleB").unwrap());
 }

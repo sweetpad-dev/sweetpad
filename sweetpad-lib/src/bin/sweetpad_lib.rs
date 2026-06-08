@@ -90,7 +90,10 @@ fn options_from(flags: &BTreeMap<String, String>) -> BuildSettingsOptions {
         workspace: flags.get("workspace").map(PathBuf::from),
         scheme: flags.get("scheme").cloned(),
         target: flags.get("target").cloned(),
-        configuration: flags.get("configuration").cloned().unwrap_or_else(|| "Debug".into()),
+        configuration: flags
+            .get("configuration")
+            .cloned()
+            .unwrap_or_else(|| "Debug".into()),
         sdk: flags.get("sdk").cloned().unwrap_or_else(|| "macosx".into()),
         arch: flags.get("arch").cloned().unwrap_or_else(|| "arm64".into()),
         destination: None,

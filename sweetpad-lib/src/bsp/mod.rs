@@ -35,7 +35,9 @@ use framing::{read_message, write_message};
 /// dropped into the workspace root (the `.xcodeproj`'s parent, or `--output`).
 pub fn write_config(args: &[String]) -> Result<(), String> {
     let flags = parse_flags(args);
-    let project = flags.get("project").ok_or("config: --project <path.xcodeproj> is required")?;
+    let project = flags
+        .get("project")
+        .ok_or("config: --project <path.xcodeproj> is required")?;
     let project_abs = std::fs::canonicalize(project).map_err(|e| format!("--project: {e}"))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
 
@@ -45,7 +47,10 @@ pub fn write_config(args: &[String]) -> Result<(), String> {
         "--project".into(),
         project_abs.to_string_lossy().into_owned(),
     ];
-    for (flag, key) in [("--xcode", "xcode"), ("--derived-data-path", "derived-data-path")] {
+    for (flag, key) in [
+        ("--xcode", "xcode"),
+        ("--derived-data-path", "derived-data-path"),
+    ] {
         if let Some(v) = flags.get(key) {
             server_argv.push(flag.into());
             server_argv.push(v.clone());
@@ -60,11 +65,17 @@ pub fn write_config(args: &[String]) -> Result<(), String> {
     });
 
     let out = flags.get("output").map_or_else(
-        || project_abs.parent().unwrap_or_else(|| Path::new(".")).join("buildServer.json"),
+        || {
+            project_abs
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join("buildServer.json")
+        },
         PathBuf::from,
     );
     let body = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    std::fs::write(&out, format!("{body}\n")).map_err(|e| format!("write {}: {e}", out.display()))?;
+    std::fs::write(&out, format!("{body}\n"))
+        .map_err(|e| format!("write {}: {e}", out.display()))?;
     eprintln!("wrote {}", out.display());
     Ok(())
 }
@@ -220,7 +231,10 @@ impl ResolvedConfig {
     fn from_flags(project_path: PathBuf, flags: &BTreeMap<String, String>) -> Self {
         ResolvedConfig {
             project_path,
-            configuration: flags.get("configuration").cloned().unwrap_or_else(|| "Debug".into()),
+            configuration: flags
+                .get("configuration")
+                .cloned()
+                .unwrap_or_else(|| "Debug".into()),
             scheme: flags.get("scheme").cloned(),
             sdk: flags.get("sdk").cloned(),
             arch: flags.get("arch").cloned(),
@@ -235,7 +249,11 @@ impl ResolvedConfig {
     /// writes). Path fields may be written relative to the project root; they're
     /// resolved against `base`. Any explicit flag still wins, so it can be combined
     /// with targeted overrides.
-    fn from_json(value: &Value, base: &Path, flags: &BTreeMap<String, String>) -> Result<Self, String> {
+    fn from_json(
+        value: &Value,
+        base: &Path,
+        flags: &BTreeMap<String, String>,
+    ) -> Result<Self, String> {
         let pull = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_string);
         // `base.join` roots a relative path at the project and leaves an absolute
         // one untouched — so out-of-tree paths (Xcode, the socket) stay as written.
@@ -255,8 +273,16 @@ impl ResolvedConfig {
             scheme: flags.get("scheme").cloned().or_else(|| pull("scheme")),
             sdk: flags.get("sdk").cloned(),
             arch: flags.get("arch").cloned(),
-            xcode: flags.get("xcode").cloned().or_else(|| pull("developerDir")).map(&resolve),
-            derived_data_path: flags.get("derived-data-path").cloned().or_else(|| pull("derivedDataPath")).map(&resolve),
+            xcode: flags
+                .get("xcode")
+                .cloned()
+                .or_else(|| pull("developerDir"))
+                .map(&resolve),
+            derived_data_path: flags
+                .get("derived-data-path")
+                .cloned()
+                .or_else(|| pull("derivedDataPath"))
+                .map(&resolve),
             log_path: pull("logPath").map(&resolve).or_else(env_log),
             socket: pull("socket").map(&resolve),
         })
@@ -266,9 +292,14 @@ impl ResolvedConfig {
     /// path fields resolve against the project root — the `.sweetpad` dir's
     /// parent — which is what the extension wrote them relative to.
     fn from_file(path: &Path, flags: &BTreeMap<String, String>) -> Result<Self, String> {
-        let raw = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let value: Value = serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))?;
-        let base = path.parent().and_then(Path::parent).unwrap_or_else(|| Path::new("."));
+        let raw =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let value: Value =
+            serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))?;
+        let base = path
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or_else(|| Path::new("."));
         Self::from_json(&value, base, flags)
     }
 }
@@ -298,8 +329,13 @@ impl Server {
         Self::build(config, Some(config_file), log_level)
     }
 
-    fn build(config: ResolvedConfig, config_path: Option<PathBuf>, log_level: Arc<AtomicU8>) -> Result<Self, String> {
-        let ctx = BuildContext::open(&config.project_path).map_err(|e| format!("open project: {e}"))?;
+    fn build(
+        config: ResolvedConfig,
+        config_path: Option<PathBuf>,
+        log_level: Arc<AtomicU8>,
+    ) -> Result<Self, String> {
+        let ctx =
+            BuildContext::open(&config.project_path).map_err(|e| format!("open project: {e}"))?;
         let targets: Vec<String> = ctx.project.targets.iter().map(|t| t.name.clone()).collect();
         // Log file from the config's `logPath` or the SWEETPAD_BSP_LOG env
         // (tests); telemetry streams logs regardless of the file.
@@ -318,7 +354,10 @@ impl Server {
             .map(Mutex::new);
         let server = Server {
             project_path: config.project_path,
-            live: Mutex::new(LiveConfig { configuration: config.configuration, scheme: config.scheme }),
+            live: Mutex::new(LiveConfig {
+                configuration: config.configuration,
+                scheme: config.scheme,
+            }),
             sdk: config.sdk,
             arch: config.arch,
             xcode: config.xcode,
@@ -344,7 +383,9 @@ impl Server {
 
     /// The current build configuration (swapped live when `bsp.json` changes).
     fn configuration(&self) -> String {
-        self.live.lock().map_or_else(|_| "Debug".into(), |c| c.configuration.clone())
+        self.live
+            .lock()
+            .map_or_else(|_| "Debug".into(), |c| c.configuration.clone())
     }
 
     /// Swap the live config and, when it actually changed, tell the client to
@@ -356,7 +397,8 @@ impl Server {
                 return;
             };
             let updated = LiveConfig {
-                configuration: configuration.map_or_else(|| live.configuration.clone(), str::to_string),
+                configuration: configuration
+                    .map_or_else(|| live.configuration.clone(), str::to_string),
                 scheme,
             };
             if updated == *live {
@@ -365,7 +407,10 @@ impl Server {
             *live = updated.clone();
             updated
         };
-        self.log(&format!("config changed: configuration={} scheme={:?}", next.configuration, next.scheme));
+        self.log(&format!(
+            "config changed: configuration={} scheme={:?}",
+            next.configuration, next.scheme
+        ));
         self.notify_targets_changed();
     }
 
@@ -382,9 +427,15 @@ impl Server {
             return;
         };
         let configuration = value.get("configuration").and_then(Value::as_str);
-        let scheme = value.get("scheme").and_then(Value::as_str).map(str::to_string);
+        let scheme = value
+            .get("scheme")
+            .and_then(Value::as_str)
+            .map(str::to_string);
         self.apply_config(configuration, scheme);
-        let socket = value.get("socket").and_then(Value::as_str).map(PathBuf::from);
+        let socket = value
+            .get("socket")
+            .and_then(Value::as_str)
+            .map(PathBuf::from);
         self.bind_telemetry(socket.as_deref());
     }
 
@@ -408,7 +459,9 @@ impl Server {
         if let Some(file) = &self.log
             && let Ok(mut file) = file.lock()
         {
-            let ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis());
+            let ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis());
             let _ = writeln!(file, "[{ms}] {msg}");
             let _ = file.flush();
         }
@@ -449,7 +502,10 @@ impl Server {
             return;
         }
         if let Some(server) = self.telemetry() {
-            server.broadcast("bsp/log", json!({ "level": level.as_str(), "message": msg }));
+            server.broadcast(
+                "bsp/log",
+                json!({ "level": level.as_str(), "message": msg }),
+            );
         }
     }
 
@@ -491,7 +547,8 @@ impl Server {
         let mut data = json!({ "sourceKitOptionsProvider": true, "prepareProvider": true });
         if let Some(dd) = self.derived_data_dir() {
             data["indexStorePath"] = json!(dd.join("Index.noindex/DataStore").to_string_lossy());
-            data["indexDatabasePath"] = json!(dd.join("Index.noindex/IndexDatabase").to_string_lossy());
+            data["indexDatabasePath"] =
+                json!(dd.join("Index.noindex/IndexDatabase").to_string_lossy());
         }
         json!({
             "displayName": "sweetpad-lib",
@@ -646,7 +703,9 @@ impl Server {
                 ));
                 return;
             }
-            self.log(&format!("prepare: {target} self-build failed; falling back to xcodebuild"));
+            self.log(&format!(
+                "prepare: {target} self-build failed; falling back to xcodebuild"
+            ));
         }
         self.xcodebuild_prepare(target);
     }
@@ -668,13 +727,16 @@ impl Server {
         let Some(args) = self.compiler_arguments(target, first) else {
             return false;
         };
-        let Some(products) =
-            arg_values(&args, "-I").into_iter().find(|p| p.contains("/Build/Products/"))
+        let Some(products) = arg_values(&args, "-I")
+            .into_iter()
+            .find(|p| p.contains("/Build/Products/"))
         else {
             return false;
         };
-        let module_name =
-            arg_values(&args, "-module-name").into_iter().next().unwrap_or_else(|| target.to_string());
+        let module_name = arg_values(&args, "-module-name")
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| target.to_string());
         let module_path = Path::new(&products).join(format!("{module_name}.swiftmodule"));
         if std::fs::create_dir_all(&products).is_err() {
             return false;
@@ -687,10 +749,16 @@ impl Server {
         if let Some(dev) = self.developer_dir() {
             cmd.env("DEVELOPER_DIR", dev);
         }
-        cmd.arg("-emit-module").arg("-emit-module-path").arg(&module_path).args(&args);
+        cmd.arg("-emit-module")
+            .arg("-emit-module-path")
+            .arg(&module_path)
+            .args(&args);
         match cmd.output() {
             Ok(out) if out.status.success() => {
-                self.log(&format!("prepare: emitted module {module_name} -> {}", module_path.display()));
+                self.log(&format!(
+                    "prepare: emitted module {module_name} -> {}",
+                    module_path.display()
+                ));
                 true
             }
             Ok(out) => {
@@ -700,7 +768,9 @@ impl Server {
                 false
             }
             Err(e) => {
-                self.log(&format!("prepare: failed to launch swiftc for {module_name}: {e}"));
+                self.log(&format!(
+                    "prepare: failed to launch swiftc for {module_name}: {e}"
+                ));
                 false
             }
         }
@@ -713,7 +783,9 @@ impl Server {
     /// the products dir), so a scheme that builds the target is required.
     fn xcodebuild_prepare(&self, target: &str) {
         let Some(scheme) = project::scheme_for_target(&self.project_path, target) else {
-            self.log(&format!("prepare: no scheme builds target {target}; skipping"));
+            self.log(&format!(
+                "prepare: no scheme builds target {target}; skipping"
+            ));
             return;
         };
         let (sdk, _arch) = self.editor_platform(target);
@@ -734,14 +806,20 @@ impl Server {
             .args(["-destination", &destination])
             // Prepare only needs modules, not a signed/launchable product, and
             // must not stall on validation prompts in a headless run.
-            .args(["CODE_SIGNING_ALLOWED=NO", "-skipMacroValidation", "-skipPackagePluginValidation"]);
+            .args([
+                "CODE_SIGNING_ALLOWED=NO",
+                "-skipMacroValidation",
+                "-skipPackagePluginValidation",
+            ]);
         if let Some(dd) = &self.derived_data_path {
             // An explicit override needs `-derivedDataPath` (which xcodebuild only
             // accepts with `-scheme`); without it the default DerivedData already
             // matches our search paths.
             cmd.args(["-derivedDataPath".as_ref(), dd.as_os_str()]);
         }
-        self.log(&format!("prepare: building scheme {scheme} ({destination}) for target {target}"));
+        self.log(&format!(
+            "prepare: building scheme {scheme} ({destination}) for target {target}"
+        ));
         match cmd.output() {
             Ok(out) => {
                 let code = out.status.code().unwrap_or(-1);
@@ -755,7 +833,9 @@ impl Server {
                     self.log(&format!("prepare: {target} build exit={code}: {tail}"));
                 }
             }
-            Err(e) => self.log(&format!("prepare: {target} failed to launch xcodebuild: {e}")),
+            Err(e) => self.log(&format!(
+                "prepare: {target} failed to launch xcodebuild: {e}"
+            )),
         }
     }
 
@@ -818,7 +898,10 @@ impl Server {
             });
 
         let Some(target) = target else {
-            self.log(&format!("sourceKitOptions: no target owns {}", path.display()));
+            self.log(&format!(
+                "sourceKitOptions: no target owns {}",
+                path.display()
+            ));
             return Value::Null;
         };
         let Some(args) = self.compiler_arguments(&target, &path) else {
@@ -840,7 +923,9 @@ impl Server {
                 |arr| {
                     arr.iter()
                         .filter_map(|t| {
-                            t.get("uri").and_then(Value::as_str).map(target_name_from_uri)
+                            t.get("uri")
+                                .and_then(Value::as_str)
+                                .map(target_name_from_uri)
                         })
                         .collect()
                 },
@@ -861,7 +946,10 @@ impl Server {
         let inv = match build_settings::resolve_file_arguments(&opts, file) {
             Ok(inv) => inv,
             Err(e) => {
-                self.log(&format!("resolve failed: target={target} file={} err={e}", file.display()));
+                self.log(&format!(
+                    "resolve failed: target={target} file={} err={e}",
+                    file.display()
+                ));
                 return None;
             }
         };
@@ -897,7 +985,12 @@ impl Server {
             })
             .map(|t| t.settings);
         let read = |k: &str| {
-            settings.as_ref().and_then(|s| s.get(k)).cloned().unwrap_or_default().to_lowercase()
+            settings
+                .as_ref()
+                .and_then(|s| s.get(k))
+                .cloned()
+                .unwrap_or_default()
+                .to_lowercase()
         };
         let sdkroot = read("SDKROOT");
         let supported = read("SUPPORTED_PLATFORMS");
@@ -952,7 +1045,11 @@ const STRIP_FLAGS: &[&str] = &[
 ];
 
 fn editor_arguments(build_args: &[String]) -> Vec<String> {
-    build_args.iter().filter(|a| !STRIP_FLAGS.contains(&a.as_str())).cloned().collect()
+    build_args
+        .iter()
+        .filter(|a| !STRIP_FLAGS.contains(&a.as_str()))
+        .cloned()
+        .collect()
 }
 
 fn parse_flags(args: &[String]) -> BTreeMap<String, String> {
@@ -1129,7 +1226,10 @@ mod tests {
         );
         assert_eq!(editor_sdk_for("auto", "xros xrsimulator"), "xrsimulator");
         // Empty SDKROOT behaves like auto.
-        assert_eq!(editor_sdk_for("", "appletvos appletvsimulator"), "appletvsimulator");
+        assert_eq!(
+            editor_sdk_for("", "appletvos appletvsimulator"),
+            "appletvsimulator"
+        );
         // No usable info → macOS default (never `auto`, which breaks stdlib loading).
         assert_eq!(editor_sdk_for("auto", ""), "macosx");
     }

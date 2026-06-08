@@ -92,7 +92,10 @@ impl TelemetryServer {
             let _ = std::fs::remove_file(socket);
         }
         let listener = UnixListener::bind(socket).ok()?;
-        let server = Arc::new(TelemetryServer { clients: Mutex::new(Vec::new()), socket: socket.to_path_buf() });
+        let server = Arc::new(TelemetryServer {
+            clients: Mutex::new(Vec::new()),
+            socket: socket.to_path_buf(),
+        });
         let accept = Arc::clone(&server);
         let on_set_level = Arc::new(on_set_level);
         std::thread::spawn(move || {
@@ -110,7 +113,10 @@ impl TelemetryServer {
                     while let Ok(Some(msg)) = read_message(&mut reader) {
                         if let Ok(val) = serde_json::from_str::<Value>(&msg)
                             && val.get("method").and_then(Value::as_str) == Some("bsp/setLogLevel")
-                            && let Some(level) = val.get("params").and_then(|p| p.get("level")).and_then(Value::as_str)
+                            && let Some(level) = val
+                                .get("params")
+                                .and_then(|p| p.get("level"))
+                                .and_then(Value::as_str)
                         {
                             on_set_level(level);
                         }

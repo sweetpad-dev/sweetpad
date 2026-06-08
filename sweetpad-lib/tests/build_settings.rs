@@ -4,7 +4,10 @@
 
 // Test helpers take owned options and assert on a literal `.sdk` suffix; the
 // pedantic lints for those don't apply in tests.
-#![allow(clippy::needless_pass_by_value, clippy::case_sensitive_file_extension_comparisons)]
+#![allow(
+    clippy::needless_pass_by_value,
+    clippy::case_sensitive_file_extension_comparisons
+)]
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

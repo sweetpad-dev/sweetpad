@@ -144,7 +144,10 @@ pub fn resolve_compiler_arguments(
 
     let swift_opts = catalog
         .as_ref()
-        .and_then(|c| c.compiler_options.get("com.apple.xcode.tools.swift.compiler"))
+        .and_then(|c| {
+            c.compiler_options
+                .get("com.apple.xcode.tools.swift.compiler")
+        })
         .map_or(&[][..], Vec::as_slice);
     let clang_opts = catalog
         .as_ref()
@@ -162,9 +165,8 @@ pub fn resolve_compiler_arguments(
         for query in build_queries(&ctx, opts, want_scheme, want_target) {
             match ctx.resolve(&query) {
                 Ok(resolved) => {
-                    let sources =
-                        project::target_source_files(&ctx.project.path, &query.target)
-                            .unwrap_or_default();
+                    let sources = project::target_source_files(&ctx.project.path, &query.target)
+                        .unwrap_or_default();
                     let frameworks =
                         project::target_linked_frameworks(&ctx.project.path, &query.target)
                             .unwrap_or_default();
@@ -219,7 +221,10 @@ pub fn resolve_file_arguments(
     opts: &BuildSettingsOptions,
     file: &Path,
 ) -> Result<compiler_args::ToolInvocation, String> {
-    let target = opts.target.as_deref().ok_or("resolve_file_arguments: a target is required")?;
+    let target = opts
+        .target
+        .as_deref()
+        .ok_or("resolve_file_arguments: a target is required")?;
     let catalog = load_catalog(
         opts.xcode.as_deref(),
         opts.xcspec_root.as_deref(),
@@ -228,18 +233,27 @@ pub fn resolve_file_arguments(
     )?;
     let swift_opts = catalog
         .as_ref()
-        .and_then(|c| c.compiler_options.get("com.apple.xcode.tools.swift.compiler"))
+        .and_then(|c| {
+            c.compiler_options
+                .get("com.apple.xcode.tools.swift.compiler")
+        })
         .map_or(&[][..], Vec::as_slice);
     let clang_opts = catalog
         .as_ref()
         .and_then(|c| c.compiler_options.get("com.apple.compilers.llvm.clang.1_0"))
         .map_or(&[][..], Vec::as_slice);
-    let xcode_version = catalog.as_ref().and_then(|c| c.xcode_version.as_deref()).unwrap_or("");
+    let xcode_version = catalog
+        .as_ref()
+        .and_then(|c| c.xcode_version.as_deref())
+        .unwrap_or("");
     let projects = resolve_project_paths(opts.project.as_deref(), opts.workspace.as_deref())?;
 
     for project_path in &projects {
         let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
-        let Some(query) = build_queries(&ctx, opts, None, Some(target)).into_iter().next() else {
+        let Some(query) = build_queries(&ctx, opts, None, Some(target))
+            .into_iter()
+            .next()
+        else {
             continue;
         };
         let Ok(resolved) = ctx.resolve(&query) else {
@@ -248,12 +262,13 @@ pub fn resolve_file_arguments(
         let settings = &resolved.settings;
         let file_str = file.to_string_lossy().into_owned();
         if file.extension().is_some_and(|e| e == "swift") {
-            let mut swift_inputs: Vec<String> = project::target_source_files(&ctx.project.path, target)
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|p| p.extension().is_some_and(|e| e == "swift"))
-                .map(|p| p.to_string_lossy().into_owned())
-                .collect();
+            let mut swift_inputs: Vec<String> =
+                project::target_source_files(&ctx.project.path, target)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|p| p.extension().is_some_and(|e| e == "swift"))
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect();
             // Build-time-generated Swift (Core Data subclasses, asset symbols,
             // intent classes, string-catalog symbols, build-rule output) is part
             // of the module but absent from the project graph — it lives under
@@ -524,7 +539,10 @@ mod tests {
     }
 
     fn write_file(path: &Path, bytes: &[u8], exec: bool) {
-        std::fs::File::create(path).unwrap().write_all(bytes).unwrap();
+        std::fs::File::create(path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
         if exec {
             let mut perm = std::fs::metadata(path).unwrap().permissions();
             perm.set_mode(0o755);
@@ -547,8 +565,17 @@ mod tests {
         std::fs::create_dir_all(dir.join("PackageFrameworks")).unwrap(); // a directory
 
         assert!(is_macro_plugin_executable(&plugin));
-        for skip in ["MyMacros.o", "MyMacros.swiftmodule", "NotExec", "script", "PackageFrameworks"] {
-            assert!(!is_macro_plugin_executable(&dir.join(skip)), "should skip {skip}");
+        for skip in [
+            "MyMacros.o",
+            "MyMacros.swiftmodule",
+            "NotExec",
+            "script",
+            "PackageFrameworks",
+        ] {
+            assert!(
+                !is_macro_plugin_executable(&dir.join(skip)),
+                "should skip {skip}"
+            );
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

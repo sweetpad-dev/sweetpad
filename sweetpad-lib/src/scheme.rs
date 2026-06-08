@@ -375,7 +375,10 @@ mod tests {
         // would pick the extension) is the wrong signal; `launch_target` is
         // authoritative.
         assert_eq!(
-            scheme.launch_target.as_ref().map(|b| b.blueprint_name.as_str()),
+            scheme
+                .launch_target
+                .as_ref()
+                .map(|b| b.blueprint_name.as_str()),
             Some("IceCubesApp")
         );
     }

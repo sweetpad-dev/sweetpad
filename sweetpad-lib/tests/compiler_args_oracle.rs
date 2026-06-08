@@ -7,7 +7,10 @@
 //! score pass lands in later phases once the Swift generator exists; until then
 //! this guards the scoring core and the captured fixtures' integrity.
 
-#![allow(clippy::too_many_lines, clippy::case_sensitive_file_extension_comparisons)]
+#![allow(
+    clippy::too_many_lines,
+    clippy::case_sensitive_file_extension_comparisons
+)]
 
 mod common;
 
@@ -53,7 +56,14 @@ fn parse_argv_pairs_attached_and_standalone() {
 
 #[test]
 fn identity_scores_all_exact() {
-    let a = argv(&["-module-name", "Alamofire", "-Onone", "-g", "-swift-version", "5"]);
+    let a = argv(&[
+        "-module-name",
+        "Alamofire",
+        "-Onone",
+        "-g",
+        "-swift-version",
+        "5",
+    ]);
     let (mut miss, mut extra) = (MismatchTally::new(), MismatchTally::new());
     let st = compare_argv(&a, &a, &mut miss, &mut extra);
     assert_eq!(st.oracle_items, st.exact, "every item should be byte-exact");
@@ -104,7 +114,10 @@ fn geometry_is_counted_not_scored() {
 fn structural_credits_divergent_abs_paths() {
     // Same search-path flag, paths anchored at different roots: the canonical
     // tier fails (different roots) but the structural tier credits "both abs".
-    let oracle = argv(&["-I", "/Users/ci/corpus/alamofire/.work/dd/Build/Products/Debug"]);
+    let oracle = argv(&[
+        "-I",
+        "/Users/ci/corpus/alamofire/.work/dd/Build/Products/Debug",
+    ]);
     let ours = argv(&[
         "-I",
         "/Users/dev/Library/Developer/Xcode/DerivedData/Alamofire-aaaaaaaaaaaaaaaaaaaaaaaaaaaa/Build/Products/Debug",
@@ -163,7 +176,11 @@ fn captured_oracles_self_score_100() {
                     "[{} {}] self-compare produced {} missing",
                     t.target, label, st.missing
                 );
-                assert_eq!(st.extra, 0, "[{} {}] self-compare produced extra", t.target, label);
+                assert_eq!(
+                    st.extra, 0,
+                    "[{} {}] self-compare produced extra",
+                    t.target, label
+                );
                 assert_eq!(
                     st.exact, st.oracle_items,
                     "[{} {}] self-compare not byte-exact",
@@ -243,7 +260,11 @@ fn alamofire_source_files_match_oracle() {
         .expect("Alamofire macOS target");
     let sw = t.swift.as_ref().expect("swift invocation");
 
-    let mut want: Vec<String> = sw.input_files.iter().map(|p| canonicalize_value(p)).collect();
+    let mut want: Vec<String> = sw
+        .input_files
+        .iter()
+        .map(|p| canonicalize_value(p))
+        .collect();
     want.sort();
 
     let resolved =
@@ -308,7 +329,8 @@ fn project_with_target(raw: &Path, target: &str) -> Option<PathBuf> {
         }
     });
     projects.into_iter().find(|proj| {
-        BuildContext::open(proj).is_ok_and(|ctx| ctx.project.targets.iter().any(|t| t.name == target))
+        BuildContext::open(proj)
+            .is_ok_and(|ctx| ctx.project.targets.iter().any(|t| t.name == target))
     })
 }
 
@@ -442,7 +464,11 @@ fn compiler_args_oracle_coverage() {
 
         for t in &oracle.targets {
             let Some(xcodeproj) = project_with_target(&raw, &t.target) else {
-                eprintln!("no raw project for target {} under {}", t.target, raw.display());
+                eprintln!(
+                    "no raw project for target {} under {}",
+                    t.target,
+                    raw.display()
+                );
                 continue;
             };
             let Ok(ctx) = BuildContext::open(&xcodeproj) else {
@@ -461,28 +487,54 @@ fn compiler_args_oracle_coverage() {
             let settings = &resolved.settings;
             let dump = std::env::var("ARGV_DUMP").is_ok();
             let key = format!("{version} {}", oracle.sdk);
-            let scores = by_key.entry((version.clone(), oracle.sdk.clone())).or_default();
+            let scores = by_key
+                .entry((version.clone(), oracle.sdk.clone()))
+                .or_default();
 
             if let Some(sw) = &t.swift {
                 let has_pkg =
                     project::target_has_package_products(&xcodeproj, &t.target).unwrap_or(false);
-                let ours =
-                    compiler_args::swift_arguments(settings, &oracle.arch, swift_opts, &version, has_pkg, &[]);
+                let ours = compiler_args::swift_arguments(
+                    settings,
+                    &oracle.arch,
+                    swift_opts,
+                    &version,
+                    has_pkg,
+                    &[],
+                );
                 if dump {
-                    eprintln!("--- ORACLE swift {key} {} ---\n{}", t.target, sw.arguments.join("\n"));
+                    eprintln!(
+                        "--- ORACLE swift {key} {} ---\n{}",
+                        t.target,
+                        sw.arguments.join("\n")
+                    );
                     eprintln!("--- OURS swift {key} {} ---\n{}", t.target, ours.join("\n"));
                 }
-                scores.swift.record(&key, &oracle.slug, &t.target, "swift", &sw.arguments, &ours);
+                scores
+                    .swift
+                    .record(&key, &oracle.slug, &t.target, "swift", &sw.arguments, &ours);
             }
             if let Some(cl) = &t.clang {
                 let files: Vec<String> = cl.files.iter().map(|f| f.file.clone()).collect();
                 let langs = compiler_args::clang_languages(&files);
-                let ours = compiler_args::clang_arguments(settings, &oracle.arch, clang_opts, &langs);
+                let ours =
+                    compiler_args::clang_arguments(settings, &oracle.arch, clang_opts, &langs);
                 if dump {
-                    eprintln!("--- ORACLE clang {key} {} ---\n{}", t.target, cl.common_arguments.join("\n"));
+                    eprintln!(
+                        "--- ORACLE clang {key} {} ---\n{}",
+                        t.target,
+                        cl.common_arguments.join("\n")
+                    );
                     eprintln!("--- OURS clang {key} {} ---\n{}", t.target, ours.join("\n"));
                 }
-                scores.clang.record(&key, &oracle.slug, &t.target, "clang", &cl.common_arguments, &ours);
+                scores.clang.record(
+                    &key,
+                    &oracle.slug,
+                    &t.target,
+                    "clang",
+                    &cl.common_arguments,
+                    &ours,
+                );
             }
             if let Some(ln) = &t.link {
                 let ours = if ln.tool.as_deref() == Some("libtool") {
@@ -493,18 +545,39 @@ fn compiler_args_oracle_coverage() {
                     compiler_args::link_arguments(settings, &oracle.arch, &fws)
                 };
                 if dump {
-                    eprintln!("--- ORACLE link {key} {} ---\n{}", t.target, ln.arguments.join("\n"));
+                    eprintln!(
+                        "--- ORACLE link {key} {} ---\n{}",
+                        t.target,
+                        ln.arguments.join("\n")
+                    );
                     eprintln!("--- OURS link {key} {} ---\n{}", t.target, ours.join("\n"));
                 }
-                scores.link.record(&key, &oracle.slug, &t.target, "link", &ln.arguments, &ours);
+                scores
+                    .link
+                    .record(&key, &oracle.slug, &t.target, "link", &ln.arguments, &ours);
             }
         }
     }
 
     for ((version, sdk), scores) in &by_key {
-        print_argv_summary(&format!("[{version} {sdk}] swift"), &scores.swift.stats, &scores.swift.miss, &scores.swift.extra);
-        print_argv_summary(&format!("[{version} {sdk}] clang"), &scores.clang.stats, &scores.clang.miss, &scores.clang.extra);
-        print_argv_summary(&format!("[{version} {sdk}] link"), &scores.link.stats, &scores.link.miss, &scores.link.extra);
+        print_argv_summary(
+            &format!("[{version} {sdk}] swift"),
+            &scores.swift.stats,
+            &scores.swift.miss,
+            &scores.swift.extra,
+        );
+        print_argv_summary(
+            &format!("[{version} {sdk}] clang"),
+            &scores.clang.stats,
+            &scores.clang.miss,
+            &scores.clang.extra,
+        );
+        print_argv_summary(
+            &format!("[{version} {sdk}] link"),
+            &scores.link.stats,
+            &scores.link.miss,
+            &scores.link.extra,
+        );
     }
     assert!(
         by_key.values().any(|s| s.swift.targets > 0),
@@ -521,7 +594,10 @@ fn compiler_args_oracle_coverage() {
     for ((version, sdk), scores) in &by_key {
         for flag in NEVER_LEAK {
             let n = scores.clang.extra.get(*flag).copied().unwrap_or(0);
-            assert_eq!(n, 0, "[{version} {sdk}] clang leaked condition-gated {flag} ×{n}");
+            assert_eq!(
+                n, 0,
+                "[{version} {sdk}] clang leaked condition-gated {flag} ×{n}"
+            );
         }
     }
     for ((version, sdk), scores) in &by_key {

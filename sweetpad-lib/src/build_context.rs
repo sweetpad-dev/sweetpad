@@ -339,9 +339,10 @@ impl BuildContext {
         // `-showBuildSettings` — stays in the no-platform `auto` mode. The editor
         // (BSP) path always requests a supported sdk, so it now binds correctly
         // instead of emitting `-sdk auto` with an `-unknown` platform.
-        let requested_supported = user_supported_platforms
-            .as_deref()
-            .is_some_and(|sp| sp.split_whitespace().any(|p| p.eq_ignore_ascii_case(&query.sdk)));
+        let requested_supported = user_supported_platforms.as_deref().is_some_and(|sp| {
+            sp.split_whitespace()
+                .any(|p| p.eq_ignore_ascii_case(&query.sdk))
+        });
         let auto_no_destination = query.destination.is_none()
             && !requested_supported
             && natural_sdk

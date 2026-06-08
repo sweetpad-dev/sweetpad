@@ -385,8 +385,9 @@ pub fn target_source_files_from_value(
         );
     }
 
-    let target = find_target(objects, project_obj, target_name)?
-        .ok_or_else(|| Error::BadProject(format!("no target named '{target_name}' in the project")))?;
+    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
+        Error::BadProject(format!("no target named '{target_name}' in the project"))
+    })?;
 
     let mut out = Vec::new();
     let Some(phase_ids) = target.get("buildPhases").and_then(Value::as_array) else {
@@ -420,7 +421,10 @@ pub fn target_source_files_from_value(
     // names a root folder whose compilable files are implicit target members —
     // they never appear in a `PBXSourcesBuildPhase`. Walk each for sources, minus
     // any file the group's exception sets exclude from this target.
-    if let Some(group_ids) = target.get("fileSystemSynchronizedGroups").and_then(Value::as_array) {
+    if let Some(group_ids) = target
+        .get("fileSystemSynchronizedGroups")
+        .and_then(Value::as_array)
+    {
         for group_ref in group_ids {
             let Some(group_id) = group_ref.as_str() else {
                 continue;
@@ -532,8 +536,9 @@ pub fn target_linked_frameworks(
 ) -> Result<Vec<String>, Error> {
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
-    let target = find_target(objects, project_obj, target_name)?
-        .ok_or_else(|| Error::BadProject(format!("no target named '{target_name}' in the project")))?;
+    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
+        Error::BadProject(format!("no target named '{target_name}' in the project"))
+    })?;
 
     let mut out = Vec::new();
     let Some(phase_ids) = target.get("buildPhases").and_then(Value::as_array) else {
@@ -578,14 +583,12 @@ pub fn target_linked_frameworks(
 /// are the build graph's edges: sourcekit-lsp uses them to know which dependency
 /// modules to prepare. Same-project dependencies only; a cross-project
 /// `targetProxy` whose `target` doesn't resolve in this project is skipped.
-pub fn target_dependencies(
-    xcodeproj_path: &Path,
-    target_name: &str,
-) -> Result<Vec<String>, Error> {
+pub fn target_dependencies(xcodeproj_path: &Path, target_name: &str) -> Result<Vec<String>, Error> {
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
-    let target = find_target(objects, project_obj, target_name)?
-        .ok_or_else(|| Error::BadProject(format!("no target named '{target_name}' in the project")))?;
+    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
+        Error::BadProject(format!("no target named '{target_name}' in the project"))
+    })?;
     Ok(target_dependency_names(objects, target))
 }
 
@@ -618,8 +621,9 @@ pub fn target_has_package_products(
 ) -> Result<bool, Error> {
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
-    let target = find_target(objects, project_obj, target_name)?
-        .ok_or_else(|| Error::BadProject(format!("no target named '{target_name}' in the project")))?;
+    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
+        Error::BadProject(format!("no target named '{target_name}' in the project"))
+    })?;
     Ok(target
         .get("packageProductDependencies")
         .and_then(Value::as_array)
@@ -674,8 +678,9 @@ pub fn is_self_buildable(xcodeproj_path: &Path, target_name: &str) -> Result<boo
     }
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
-    let target = find_target(objects, project_obj, target_name)?
-        .ok_or_else(|| Error::BadProject(format!("no target named '{target_name}' in the project")))?;
+    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
+        Error::BadProject(format!("no target named '{target_name}' in the project"))
+    })?;
     if target_has_script_or_rule_phase(objects, target) {
         return Ok(false);
     }
@@ -687,7 +692,11 @@ pub fn is_self_buildable(xcodeproj_path: &Path, target_name: &str) -> Result<boo
 /// Whether a target has a `PBXShellScriptBuildPhase` or any build rule — either
 /// can generate sources, so the module isn't a pure `swiftc` emit.
 fn target_has_script_or_rule_phase(objects: &BTreeMap<String, Value>, target_obj: &Value) -> bool {
-    if target_obj.get("buildRules").and_then(Value::as_array).is_some_and(|r| !r.is_empty()) {
+    if target_obj
+        .get("buildRules")
+        .and_then(Value::as_array)
+        .is_some_and(|r| !r.is_empty())
+    {
         return true;
     }
     let Some(phases) = target_obj.get("buildPhases").and_then(Value::as_array) else {
@@ -2581,7 +2590,12 @@ fn resolve_file_ref_path(
 /// The on-disk directory a `<group>`-relative child resolves against: its parent
 /// `PBXGroup`'s directory, resolved up the group chain. The mainGroup (no parent)
 /// anchors at the project dir. Depth-guarded against a malformed cyclic graph.
-fn parent_group_dir(objects: &BTreeMap<String, Value>, child_id: &str, project_dir: &Path, depth: usize) -> PathBuf {
+fn parent_group_dir(
+    objects: &BTreeMap<String, Value>,
+    child_id: &str,
+    project_dir: &Path,
+    depth: usize,
+) -> PathBuf {
     if depth > 64 {
         return project_dir.to_path_buf();
     }
@@ -2593,7 +2607,12 @@ fn parent_group_dir(objects: &BTreeMap<String, Value>, child_id: &str, project_d
 
 /// The on-disk directory of a `PBXGroup`, resolving its `path` up the parent
 /// chain (each `<group>` ancestor contributes its `path`).
-fn group_dir(objects: &BTreeMap<String, Value>, group_id: &str, project_dir: &Path, depth: usize) -> PathBuf {
+fn group_dir(
+    objects: &BTreeMap<String, Value>,
+    group_id: &str,
+    project_dir: &Path,
+    depth: usize,
+) -> PathBuf {
     if depth > 64 {
         return project_dir.to_path_buf();
     }
@@ -2601,7 +2620,10 @@ fn group_dir(objects: &BTreeMap<String, Value>, group_id: &str, project_dir: &Pa
         return project_dir.to_path_buf();
     };
     let path = group.get("path").and_then(Value::as_str).unwrap_or("");
-    let source_tree = group.get("sourceTree").and_then(Value::as_str).unwrap_or("<group>");
+    let source_tree = group
+        .get("sourceTree")
+        .and_then(Value::as_str)
+        .unwrap_or("<group>");
     match source_tree {
         "<absolute>" => PathBuf::from(path),
         "<group>" => parent_group_dir(objects, group_id, project_dir, depth + 1).join(path),
@@ -2618,7 +2640,10 @@ fn parent_group_of(objects: &BTreeMap<String, Value>, child_id: &str) -> Option<
             return None;
         }
         let children = v.get("children").and_then(Value::as_array)?;
-        children.iter().any(|c| c.as_str() == Some(child_id)).then(|| id.clone())
+        children
+            .iter()
+            .any(|c| c.as_str() == Some(child_id))
+            .then(|| id.clone())
     })
 }
 

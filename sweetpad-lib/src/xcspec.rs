@@ -602,7 +602,11 @@ fn value_to_string(v: &Value) -> String {
 fn value_to_strings(v: &Value) -> Vec<String> {
     match v {
         Value::String(s) => vec![s.clone()],
-        Value::Array(arr) => arr.iter().filter_map(Value::as_str).map(String::from).collect(),
+        Value::Array(arr) => arr
+            .iter()
+            .filter_map(Value::as_str)
+            .map(String::from)
+            .collect(),
         Value::Dict(_) => Vec::new(),
     }
 }
@@ -649,8 +653,14 @@ fn parse_compiler_option(opt: &Value) -> Option<CompilerOption> {
             .filter(|s| !s.is_empty())
             .map(String::from),
         args,
-        file_types: dict.get("FileTypes").map(value_to_strings).unwrap_or_default(),
-        architectures: dict.get("Architectures").map(value_to_strings).unwrap_or_default(),
+        file_types: dict
+            .get("FileTypes")
+            .map(value_to_strings)
+            .unwrap_or_default(),
+        architectures: dict
+            .get("Architectures")
+            .map(value_to_strings)
+            .unwrap_or_default(),
         condition: dict
             .get("Condition")
             .and_then(Value::as_str)
@@ -728,7 +738,12 @@ mod tests {
         match ea.args.as_ref().expect("args") {
             CliArgs::ByValue { map, .. } => assert_eq!(
                 map.get("YES").map(Vec::as_slice),
-                Some(&["-enable-upcoming-feature".to_string(), "ExistentialAny".to_string()][..])
+                Some(
+                    &[
+                        "-enable-upcoming-feature".to_string(),
+                        "ExistentialAny".to_string()
+                    ][..]
+                )
             ),
             CliArgs::List(_) => panic!("expected ByValue"),
         }

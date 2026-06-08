@@ -29,8 +29,8 @@ fn copy_dir(src: &Path, dst: &Path) {
 
 #[test]
 fn buildtarget_did_change_on_pbxproj_edit() {
-    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures/_synthetic-multimodule/project");
+    let src =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/_synthetic-multimodule/project");
     let tmp = std::env::temp_dir().join(format!("sweetpad-bsp-didchange-{}", std::process::id()));
     let _ = fs::remove_dir_all(&tmp);
     copy_dir(&src, &tmp);
@@ -62,8 +62,14 @@ fn buildtarget_did_change_on_pbxproj_edit() {
         }
     });
 
-    stdin.write_all(&frame(r#"{"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}"#)).unwrap();
-    stdin.write_all(&frame(r#"{"jsonrpc":"2.0","method":"build/initialized"}"#)).unwrap();
+    stdin
+        .write_all(&frame(
+            r#"{"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}"#,
+        ))
+        .unwrap();
+    stdin
+        .write_all(&frame(r#"{"jsonrpc":"2.0","method":"build/initialized"}"#))
+        .unwrap();
     stdin.flush().unwrap();
 
     // Let the watcher capture the baseline stamp, then edit the pbxproj — insert
@@ -71,7 +77,11 @@ fn buildtarget_did_change_on_pbxproj_edit() {
     // (len, mtime).
     std::thread::sleep(Duration::from_millis(300));
     let content = fs::read_to_string(&pbxproj).unwrap();
-    fs::write(&pbxproj, content.replacen('\n', "\n// touched by test\n", 1)).unwrap();
+    fs::write(
+        &pbxproj,
+        content.replacen('\n', "\n// touched by test\n", 1),
+    )
+    .unwrap();
 
     // Give the 100 ms poll time to notice and push the notification.
     std::thread::sleep(Duration::from_millis(600));

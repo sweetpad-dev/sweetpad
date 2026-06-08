@@ -359,11 +359,13 @@ fn is_geometry(it: &Item) -> bool {
     }
     // `-Xcc -iquote` / `-Xlinker -add_ast_path` etc. — the next token (a header
     // map / vfs / AST / dependency / LTO path) is geometry, so is the flag.
-    if matches!(it.flag.as_str(), "-Xcc" | "-Xclang" | "-Xfrontend" | "-Xlinker")
-        && it
-            .value
-            .as_deref()
-            .is_some_and(|v| GEOMETRY_XARG_VALUES.contains(&v))
+    if matches!(
+        it.flag.as_str(),
+        "-Xcc" | "-Xclang" | "-Xfrontend" | "-Xlinker"
+    ) && it
+        .value
+        .as_deref()
+        .is_some_and(|v| GEOMETRY_XARG_VALUES.contains(&v))
     {
         return true;
     }
@@ -598,7 +600,12 @@ pub fn compare_argv(
 /// Print the headline + a split missing/extra tally for one argv comparison
 /// group (a tool family). The audit trail per run, mirroring the build-settings
 /// `print_summary`.
-pub fn print_argv_summary(title: &str, st: &ArgvStats, miss: &MismatchTally, extra: &MismatchTally) {
+pub fn print_argv_summary(
+    title: &str,
+    st: &ArgvStats,
+    miss: &MismatchTally,
+    extra: &MismatchTally,
+) {
     println!("=== {title} ===");
     println!(
         "scored items: oracle={} ours={} | exact={} ({}%) canon={} ({}%) struct={} ({}%) precision={}%",

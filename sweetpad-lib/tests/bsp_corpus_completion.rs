@@ -210,7 +210,10 @@ const PROJECTS: &[CorpusProject] = &[
 /// Wall-clock cap for a single project's build (`BSP_CORPUS_BUILD_TIMEOUT`,
 /// seconds). Bounds a pathological/headless-incompatible project.
 fn build_timeout() -> Duration {
-    let secs = std::env::var("BSP_CORPUS_BUILD_TIMEOUT").ok().and_then(|v| v.parse().ok()).unwrap_or(420);
+    let secs = std::env::var("BSP_CORPUS_BUILD_TIMEOUT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(420);
     Duration::from_secs(secs)
 }
 
@@ -246,7 +249,10 @@ fn developer_dir() -> String {
 }
 
 fn tool(name: &str) -> String {
-    format!("{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{name}", developer_dir())
+    format!(
+        "{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{name}",
+        developer_dir()
+    )
 }
 
 fn corpus_root() -> PathBuf {
@@ -395,13 +401,19 @@ fn swift_sources(xcodeproj: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
     for t in &project.targets {
-        let is_test = t.product_type.as_deref().is_some_and(|pt| pt.contains("-test"));
+        let is_test = t
+            .product_type
+            .as_deref()
+            .is_some_and(|pt| pt.contains("-test"));
         if is_test {
             continue;
         }
         let srcs = sweetpad::project::target_source_files(xcodeproj, &t.name).unwrap_or_default();
         for p in srcs {
-            if p.extension().and_then(|e| e.to_str()) == Some("swift") && p.exists() && seen.insert(p.clone()) {
+            if p.extension().and_then(|e| e.to_str()) == Some("swift")
+                && p.exists()
+                && seen.insert(p.clone())
+            {
                 files.push(p);
             }
         }
@@ -416,7 +428,9 @@ fn sample<T: Clone>(items: &[T], cap: usize) -> Vec<T> {
     if items.len() <= cap {
         return items.to_vec();
     }
-    (0..cap).map(|i| items[i * items.len() / cap].clone()).collect()
+    (0..cap)
+        .map(|i| items[i * items.len() / cap].clone())
+        .collect()
 }
 
 fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
@@ -437,11 +451,18 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
     // Corpus clones live under corpus/<slug>/; committed synthetic fixtures under
     // fixtures/<slug>/project/. The project dir is also the sourcekit-lsp root
     // (where buildServer.json goes).
-    let base = if p.slug.starts_with("_synthetic-") { fixtures_root() } else { corpus_root() };
+    let base = if p.slug.starts_with("_synthetic-") {
+        fixtures_root()
+    } else {
+        corpus_root()
+    };
     let project_dir = base.join(p.slug).join(p.project_root);
     let xcodeproj = project_dir.join(p.xcodeproj);
     if !xcodeproj.exists() {
-        report.skipped = Some(format!("no project at {} (corpus clone / fixture missing)", xcodeproj.display()));
+        report.skipped = Some(format!(
+            "no project at {} (corpus clone / fixture missing)",
+            xcodeproj.display()
+        ));
         return report;
     }
 
@@ -453,9 +474,19 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
 
     // Build once so the module graph + generated inputs exist where our search
     // paths point.
-    let errlog = std::env::temp_dir().join(format!("sweetpad-corpus-{}-{}.err", tag, std::process::id()));
+    let errlog = std::env::temp_dir().join(format!(
+        "sweetpad-corpus-{}-{}.err",
+        tag,
+        std::process::id()
+    ));
     let timeout = build_timeout();
-    eprintln!("[{}] building scheme {:?} for {} (≤{}s) …", p.slug, p.scheme, p.destination, timeout.as_secs());
+    eprintln!(
+        "[{}] building scheme {:?} for {} (≤{}s) …",
+        p.slug,
+        p.scheme,
+        p.destination,
+        timeout.as_secs()
+    );
     let mut cmd = Command::new("xcodebuild");
     cmd.env("DEVELOPER_DIR", developer_dir()).arg("build");
     // CocoaPods needs the workspace built so the Pods build; everything else
@@ -465,15 +496,35 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
     } else {
         cmd.arg("-project").arg(&xcodeproj);
     }
-    cmd.args(["-scheme", p.scheme, "-configuration", "Debug", "-destination", p.destination, "-derivedDataPath"])
-        .arg(&dd)
-        .args(["CODE_SIGNING_ALLOWED=NO", "-skipMacroValidation", "-skipPackagePluginValidation"]);
+    cmd.args([
+        "-scheme",
+        p.scheme,
+        "-configuration",
+        "Debug",
+        "-destination",
+        p.destination,
+        "-derivedDataPath",
+    ])
+    .arg(&dd)
+    .args([
+        "CODE_SIGNING_ALLOWED=NO",
+        "-skipMacroValidation",
+        "-skipPackagePluginValidation",
+    ]);
     match run_build(&mut cmd, timeout, &errlog) {
         Ok(true) => {}
         Ok(false) => {
             let log = std::fs::read_to_string(&errlog).unwrap_or_default();
-            let tail: Vec<&str> = log.lines().filter(|l| !l.trim().is_empty()).rev().take(3).collect();
-            report.skipped = Some(format!("build failed: {}", tail.into_iter().rev().collect::<Vec<_>>().join(" | ")));
+            let tail: Vec<&str> = log
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .rev()
+                .take(3)
+                .collect();
+            report.skipped = Some(format!(
+                "build failed: {}",
+                tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
+            ));
             let _ = std::fs::remove_dir_all(&dd);
             let _ = std::fs::remove_file(&errlog);
             return report;
@@ -538,7 +589,9 @@ fn bsp_frames(out: &[u8]) -> Vec<Value> {
     let mut rest: &str = &text;
     while let Some(hdr) = rest.find("Content-Length:") {
         rest = &rest[hdr + "Content-Length:".len()..];
-        let Some(sep) = rest.find("\r\n\r\n") else { break };
+        let Some(sep) = rest.find("\r\n\r\n") else {
+            break;
+        };
         let len: usize = rest[..sep].trim().parse().unwrap_or(0);
         let start = sep + 4;
         let end = (start + len).min(rest.len());
@@ -590,7 +643,11 @@ fn bsp_file_args(xcodeproj: &Path, dd: &Path, file: &Path) -> Option<Vec<String>
         }
         f.pointer("/result/compilerArguments")
             .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
     })
 }
 
@@ -630,7 +687,14 @@ fn args_fail_to_load_stdlib(args: &[String]) -> bool {
 /// each file is first gated on our BSP actually serving options (a null reply is
 /// a resolver failure that sourcekit-lsp would otherwise mask).
 #[allow(clippy::too_many_lines)] // a linear LSP-driving loop reads clearer in one piece
-fn measure_files(root: &Path, xcodeproj: &Path, dd: &Path, files: &[PathBuf], strict: bool, report: &mut Report) {
+fn measure_files(
+    root: &Path,
+    xcodeproj: &Path,
+    dd: &Path,
+    files: &[PathBuf],
+    strict: bool,
+    report: &mut Report,
+) {
     let mut lsp = Command::new(tool("sourcekit-lsp"))
         .env("DEVELOPER_DIR", developer_dir())
         .current_dir(root)
@@ -667,42 +731,70 @@ fn measure_files(root: &Path, xcodeproj: &Path, dd: &Path, files: &[PathBuf], st
     };
 
     let root_uri = format!("file://{}", root.to_string_lossy());
-    send(&mut stdin, &json!({
-        "jsonrpc":"2.0","id":1,"method":"initialize",
-        "params":{
-            "processId":std::process::id(),"rootUri":root_uri,
-            "capabilities":{"textDocument":{"diagnostic":{"dynamicRegistration":false}}},
-            "initializationOptions":{}
-        }
-    }));
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc":"2.0","id":1,"method":"initialize",
+            "params":{
+                "processId":std::process::id(),"rootUri":root_uri,
+                "capabilities":{"textDocument":{"diagnostic":{"dynamicRegistration":false}}},
+                "initializationOptions":{}
+            }
+        }),
+    );
     let _ = wait_for_id(&rx, 1, 30);
-    send(&mut stdin, &json!({"jsonrpc":"2.0","method":"initialized","params":{}}));
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","method":"initialized","params":{}}),
+    );
 
-    let pull = |stdin: &mut std::process::ChildStdin, uri: &str, id: i64, secs: u64| -> Vec<Value> {
-        send(stdin, &json!({
-            "jsonrpc":"2.0","id":id,"method":"textDocument/diagnostic",
-            "params":{"textDocument":{"uri":uri}}
-        }));
-        wait_for_id(&rx, id, secs).and_then(|r| r.pointer("/result/items").and_then(Value::as_array).cloned()).unwrap_or_default()
-    };
+    let pull =
+        |stdin: &mut std::process::ChildStdin, uri: &str, id: i64, secs: u64| -> Vec<Value> {
+            send(
+                stdin,
+                &json!({
+                    "jsonrpc":"2.0","id":id,"method":"textDocument/diagnostic",
+                    "params":{"textDocument":{"uri":uri}}
+                }),
+            );
+            wait_for_id(&rx, id, secs)
+                .and_then(|r| {
+                    r.pointer("/result/items")
+                        .and_then(Value::as_array)
+                        .cloned()
+                })
+                .unwrap_or_default()
+        };
 
     for (i, file) in files.iter().enumerate() {
-        let Ok(text) = std::fs::read_to_string(file) else { continue };
+        let Ok(text) = std::fs::read_to_string(file) else {
+            continue;
+        };
         let uri = format!("file://{}", file.to_string_lossy());
-        let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string();
+        let name = file
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("?")
+            .to_string();
         // For a strict fixture, a null BSP reply is itself the failure (sourcekit
         // would fall back and report nothing — a false clean), so gate on it.
         if strict && !bsp_serves_options(xcodeproj, dd, file) {
             report.failed += 1;
             if report.samples.len() < 8 {
-                report.samples.push((name, "BSP returned no sourceKitOptions (resolver failed for the target)".into()));
+                report.samples.push((
+                    name,
+                    "BSP returned no sourceKitOptions (resolver failed for the target)".into(),
+                ));
             }
             continue;
         }
-        send(&mut stdin, &json!({
-            "jsonrpc":"2.0","method":"textDocument/didOpen",
-            "params":{"textDocument":{"uri":uri,"languageId":"swift","version":1,"text":text}}
-        }));
+        send(
+            &mut stdin,
+            &json!({
+                "jsonrpc":"2.0","method":"textDocument/didOpen",
+                "params":{"textDocument":{"uri":uri,"languageId":"swift","version":1,"text":text}}
+            }),
+        );
         // The first file pays the module-graph load (slow); later files are fast.
         let seq = i64::try_from(i).unwrap_or(0);
         let first_timeout = if i == 0 { 90 } else { 30 };
@@ -764,7 +856,10 @@ fn measure_files(root: &Path, xcodeproj: &Path, dd: &Path, files: &[PathBuf], st
         }
     }
 
-    send(&mut stdin, &json!({"jsonrpc":"2.0","id":9999,"method":"shutdown"}));
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","id":9999,"method":"shutdown"}),
+    );
     send(&mut stdin, &json!({"jsonrpc":"2.0","method":"exit"}));
     drop(stdin);
     let _ = lsp.wait();
@@ -786,7 +881,10 @@ fn bsp_corpus_completion() {
     let only: Option<Vec<String>> = std::env::var("BSP_CORPUS_ONLY")
         .ok()
         .map(|v| v.split(',').map(|s| s.trim().to_string()).collect());
-    let sample_cap = std::env::var("BSP_CORPUS_SAMPLE").ok().and_then(|v| v.parse().ok()).unwrap_or(DEFAULT_SAMPLE);
+    let sample_cap = std::env::var("BSP_CORPUS_SAMPLE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_SAMPLE);
 
     let mut reports = Vec::new();
     for p in PROJECTS {
@@ -810,10 +908,21 @@ fn bsp_corpus_completion() {
         measured += 1;
         tot_sampled += r.sampled;
         tot_clean += r.clean;
-        let pct = if r.sampled > 0 { 100.0 * r.clean as f64 / r.sampled as f64 } else { 0.0 };
+        let pct = if r.sampled > 0 {
+            100.0 * r.clean as f64 / r.sampled as f64
+        } else {
+            0.0
+        };
         eprintln!(
             "  {:<14} clean {:>3}/{:<3} ({pct:>5.1}%)  resolution-fail {:<3} (incl {:<2} reclassified)  internal-err {:<3} proj-error {:<3}  [of {} candidates]",
-            r.slug, r.clean, r.sampled, r.failed, r.reclassified, r.internal_errors, r.any_errors, r.candidates
+            r.slug,
+            r.clean,
+            r.sampled,
+            r.failed,
+            r.reclassified,
+            r.internal_errors,
+            r.any_errors,
+            r.candidates
         );
         for (file, msg) in &r.samples {
             eprintln!("                  ↳ resolution-fail {file}: {msg}");
@@ -834,12 +943,17 @@ fn bsp_corpus_completion() {
     }
     eprintln!("=================================================================\n");
 
-    assert!(measured > 0, "no corpus project could be built + measured; see SKIPPED reasons above");
+    assert!(
+        measured > 0,
+        "no corpus project could be built + measured; see SKIPPED reasons above"
+    );
     // Guard the harness itself: a *resolution* failure on every file means our
     // args point nowhere (wrong DerivedData / server not launched) — a setup
     // fault, not a real-world signal. (An all-internal-error project is a real,
     // if degraded, result and must not trip this.)
-    let dead = reports.iter().find(|r| r.skipped.is_none() && r.sampled > 0 && r.failed == r.sampled);
+    let dead = reports
+        .iter()
+        .find(|r| r.skipped.is_none() && r.sampled > 0 && r.failed == r.sampled);
     assert!(
         dead.is_none(),
         "project {:?} had a resolution failure on all {} files — likely a harness/setup fault, not a quality measure",

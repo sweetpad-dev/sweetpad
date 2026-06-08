@@ -343,7 +343,11 @@ pub fn swift_arguments(
 /// Major version from an Xcode version string (`26.5.0` → 26), or 0 if absent /
 /// unparseable — callers treat 0 as the current (modern) toolchain.
 fn xcode_major(version: &str) -> u32 {
-    version.split('.').next().and_then(|s| s.parse().ok()).unwrap_or(0)
+    version
+        .split('.')
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0)
 }
 
 /// Emit the compilation-mode flags (incremental batch vs whole-module) and the
@@ -393,7 +397,10 @@ fn emit_compilation_defaults(a: &mut ArgBuilder, settings: &Settings, major: u32
     // C++ standard-library hardening: the 26 toolchain's libc++ injects this into
     // the clang importer for a Debug build (earlier toolchains don't).
     if modern && get("CONFIGURATION").is_some_and(|c| c.eq_ignore_ascii_case("Debug")) {
-        a.pair("-Xcc", "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG");
+        a.pair(
+            "-Xcc",
+            "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG",
+        );
     }
 }
 
@@ -445,8 +452,7 @@ pub fn clang_arguments(
         let lang_ok = file_types.is_empty()
             || opt.file_types.is_empty()
             || opt.file_types.iter().any(|ft| file_types.contains(ft));
-        let arch_ok =
-            opt.architectures.is_empty() || opt.architectures.iter().any(|a| a == arch);
+        let arch_ok = opt.architectures.is_empty() || opt.architectures.iter().any(|a| a == arch);
         let cond_ok = match &opt.condition {
             None => true,
             Some(c) => condition_holds(c, settings),
@@ -468,7 +474,10 @@ pub fn clang_arguments(
             // re-encodes them (CLANG_TARGET_TRIPLE_ARCHS → `-target`, the header
             // symlink dir → `-isysroot`) would duplicate them, often with an
             // unresolved `$(CURRENT_ARCH)`.
-            if toks.first().is_some_and(|t| t == "-target" || t == "-isysroot") {
+            if toks
+                .first()
+                .is_some_and(|t| t == "-target" || t == "-isysroot")
+            {
                 continue;
             }
             a.extend(toks);
@@ -704,7 +713,10 @@ fn emit_feature_flags(a: &mut ArgBuilder, settings: &Settings, by_name: &SpecInd
     for (key, val) in settings {
         for (prefix, flag) in [
             ("SWIFT_UPCOMING_FEATURE_", "-enable-upcoming-feature"),
-            ("SWIFT_EXPERIMENTAL_FEATURE_", "-enable-experimental-feature"),
+            (
+                "SWIFT_EXPERIMENTAL_FEATURE_",
+                "-enable-experimental-feature",
+            ),
         ] {
             let Some(suffix) = key.strip_prefix(prefix) else {
                 continue;
@@ -814,7 +826,11 @@ fn condition_holds(cond: &str, settings: &Settings) -> bool {
     if toks.is_empty() {
         return true;
     }
-    let mut p = CondParser { toks: &toks, pos: 0, settings };
+    let mut p = CondParser {
+        toks: &toks,
+        pos: 0,
+        settings,
+    };
     match p.parse_or() {
         Some(v) if p.pos == toks.len() => v,
         _ => true,
@@ -1109,7 +1125,10 @@ mod tests {
     #[test]
     fn feature_name_title_cases() {
         assert_eq!(feature_name("EXISTENTIAL_ANY"), "ExistentialAny");
-        assert_eq!(feature_name("FORWARD_TRAILING_CLOSURES"), "ForwardTrailingClosures");
+        assert_eq!(
+            feature_name("FORWARD_TRAILING_CLOSURES"),
+            "ForwardTrailingClosures"
+        );
     }
 
     #[test]
@@ -1126,7 +1145,10 @@ mod tests {
     fn triple_composes_from_prefix_and_deployment() {
         let mut s = Settings::new();
         s.insert("SWIFT_PLATFORM_TARGET_PREFIX".into(), "ios".into());
-        s.insert("DEPLOYMENT_TARGET_SETTING_NAME".into(), "IPHONEOS_DEPLOYMENT_TARGET".into());
+        s.insert(
+            "DEPLOYMENT_TARGET_SETTING_NAME".into(),
+            "IPHONEOS_DEPLOYMENT_TARGET".into(),
+        );
         s.insert("IPHONEOS_DEPLOYMENT_TARGET".into(), "17.0".into());
         s.insert("LLVM_TARGET_TRIPLE_SUFFIX".into(), "-simulator".into());
         assert_eq!(
@@ -1183,10 +1205,16 @@ mod tests {
         };
         let mut s = Settings::new();
         s.insert("SWIFT_OPTIMIZATION_LEVEL".into(), "-Owholemodule".into());
-        s.insert("SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(), "DEBUG COCOAPODS".into());
+        s.insert(
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
+            "DEBUG COCOAPODS".into(),
+        );
         let args = swift_arguments(&s, "arm64", &[opt_level, conds], "26.5.0", false, &[]);
         // The enum's special-cased `-Owholemodule` expands; conditions become -D.
-        assert!(args.windows(2).any(|w| w == ["-O", "-whole-module-optimization"]));
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["-O", "-whole-module-optimization"])
+        );
         assert!(args.contains(&"-DDEBUG".to_string()));
         assert!(args.contains(&"-DCOCOAPODS".to_string()));
     }
@@ -1249,7 +1277,10 @@ mod tests {
         let langs = BTreeSet::from(["sourcecode.c.objc".to_string()]);
 
         let mut off = Settings::new();
-        off.insert("CLANG_UNDEFINED_BEHAVIOR_SANITIZER_INTEGER".into(), "YES".into());
+        off.insert(
+            "CLANG_UNDEFINED_BEHAVIOR_SANITIZER_INTEGER".into(),
+            "YES".into(),
+        );
         off.insert("CLANG_UNDEFINED_BEHAVIOR_SANITIZER".into(), "NO".into());
         let args = clang_arguments(&off, "arm64", std::slice::from_ref(&ubsan_integer), &langs);
         assert!(

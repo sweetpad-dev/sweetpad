@@ -13,11 +13,17 @@ use std::process::{Command, Stdio};
 use serde_json::{Value, json};
 
 fn project() -> String {
-    format!("{}/fixtures/_synthetic-multimodule/project/MultiModule.xcodeproj", env!("CARGO_MANIFEST_DIR"))
+    format!(
+        "{}/fixtures/_synthetic-multimodule/project/MultiModule.xcodeproj",
+        env!("CARGO_MANIFEST_DIR")
+    )
 }
 
 fn b_swift_uri() -> String {
-    format!("file://{}/fixtures/_synthetic-multimodule/project/ModuleB/b.swift", env!("CARGO_MANIFEST_DIR"))
+    format!(
+        "file://{}/fixtures/_synthetic-multimodule/project/ModuleB/b.swift",
+        env!("CARGO_MANIFEST_DIR")
+    )
 }
 
 fn frame(msg: &Value) -> Vec<u8> {
@@ -34,7 +40,9 @@ fn parse_frames(out: &[u8]) -> Vec<Value> {
     let mut rest: &str = &text;
     while let Some(hdr) = rest.find("Content-Length:") {
         rest = &rest[hdr + "Content-Length:".len()..];
-        let Some(sep) = rest.find("\r\n\r\n") else { break };
+        let Some(sep) = rest.find("\r\n\r\n") else {
+            break;
+        };
         let len: usize = rest[..sep].trim().parse().unwrap_or(0);
         let start = sep + 4;
         let end = (start + len).min(rest.len());
@@ -66,20 +74,36 @@ fn run_session_args(messages: &[Value], project: &str, extra: &[&str]) -> Vec<Va
         .stderr(Stdio::null())
         .spawn()
         .expect("spawn bsp server");
-    child.stdin.take().unwrap().write_all(&input).expect("write stdin");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&input)
+        .expect("write stdin");
     // stdin dropped → EOF; the server also exits on the `build/exit` message.
     let mut out = Vec::new();
-    child.stdout.take().unwrap().read_to_end(&mut out).expect("read stdout");
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_end(&mut out)
+        .expect("read stdout");
     let _ = child.wait();
     parse_frames(&out)
 }
 
 fn result_for(frames: &[Value], id: i64) -> Option<&Value> {
-    frames.iter().find(|f| f.get("id").and_then(Value::as_i64) == Some(id)).and_then(|f| f.get("result"))
+    frames
+        .iter()
+        .find(|f| f.get("id").and_then(Value::as_i64) == Some(id))
+        .and_then(|f| f.get("result"))
 }
 
 fn error_for(frames: &[Value], id: i64) -> Option<&Value> {
-    frames.iter().find(|f| f.get("id").and_then(Value::as_i64) == Some(id)).and_then(|f| f.get("error"))
+    frames
+        .iter()
+        .find(|f| f.get("id").and_then(Value::as_i64) == Some(id))
+        .and_then(|f| f.get("error"))
 }
 
 /// The string compiler arguments from a `textDocument/sourceKitOptions` reply.
@@ -87,7 +111,12 @@ fn sourcekit_args(frames: &[Value], id: i64) -> Vec<String> {
     result_for(frames, id)
         .and_then(|r| r.get("compilerArguments"))
         .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -109,13 +138,28 @@ fn bsp_conformance() {
 
     // initialize: advertises the SourceKit options capability + swift language.
     let init = result_for(&frames, 1).expect("initialize result");
-    let langs = init.pointer("/capabilities/languageIds").and_then(Value::as_array).expect("languageIds");
-    assert!(langs.iter().any(|l| l == "swift"), "swift not advertised: {init}");
+    let langs = init
+        .pointer("/capabilities/languageIds")
+        .and_then(Value::as_array)
+        .expect("languageIds");
+    assert!(
+        langs.iter().any(|l| l == "swift"),
+        "swift not advertised: {init}"
+    );
 
     // buildTargets: both modules present.
-    let targets = result_for(&frames, 2).and_then(|r| r.get("targets")).and_then(Value::as_array).expect("targets");
-    let names: Vec<&str> = targets.iter().filter_map(|t| t.get("displayName").and_then(Value::as_str)).collect();
-    assert!(names.contains(&"ModuleA") && names.contains(&"ModuleB"), "missing targets: {names:?}");
+    let targets = result_for(&frames, 2)
+        .and_then(|r| r.get("targets"))
+        .and_then(Value::as_array)
+        .expect("targets");
+    let names: Vec<&str> = targets
+        .iter()
+        .filter_map(|t| t.get("displayName").and_then(Value::as_str))
+        .collect();
+    assert!(
+        names.contains(&"ModuleA") && names.contains(&"ModuleB"),
+        "missing targets: {names:?}"
+    );
 
     // buildTargets: the dependency edge ModuleB → ModuleA is reported (so
     // sourcekit-lsp knows the prepare order / transitive module set).
@@ -130,31 +174,56 @@ fn bsp_conformance() {
         .iter()
         .filter_map(|d| d.get("uri").and_then(Value::as_str))
         .collect();
-    assert_eq!(deps, vec!["sweetpad://target/ModuleA"], "ModuleB should depend on ModuleA");
+    assert_eq!(
+        deps,
+        vec!["sweetpad://target/ModuleA"],
+        "ModuleB should depend on ModuleA"
+    );
     // ModuleA depends on nothing.
     let module_a_target = targets
         .iter()
         .find(|t| t.get("displayName").and_then(Value::as_str) == Some("ModuleA"))
         .expect("ModuleA target");
     assert_eq!(
-        module_a_target.get("dependencies").and_then(Value::as_array).map(Vec::len),
+        module_a_target
+            .get("dependencies")
+            .and_then(Value::as_array)
+            .map(Vec::len),
         Some(0),
         "ModuleA should have no dependencies"
     );
 
     // sources(ModuleB): includes b.swift.
-    let items = result_for(&frames, 3).and_then(|r| r.get("items")).and_then(Value::as_array).expect("items");
+    let items = result_for(&frames, 3)
+        .and_then(|r| r.get("items"))
+        .and_then(Value::as_array)
+        .expect("items");
     let b_listed = items.iter().any(|it| {
-        it.get("sources").and_then(Value::as_array).is_some_and(|ss| {
-            ss.iter().any(|s| s.get("uri").and_then(Value::as_str).is_some_and(|u| u.ends_with("/ModuleB/b.swift")))
-        })
+        it.get("sources")
+            .and_then(Value::as_array)
+            .is_some_and(|ss| {
+                ss.iter().any(|s| {
+                    s.get("uri")
+                        .and_then(Value::as_str)
+                        .is_some_and(|u| u.ends_with("/ModuleB/b.swift"))
+                })
+            })
     });
     assert!(b_listed, "b.swift not in ModuleB sources: {items:?}");
 
     // inverseSources(b.swift) → ModuleB (the round-trip).
-    let inverse = result_for(&frames, 4).and_then(|r| r.get("targets")).and_then(Value::as_array).expect("inverse");
-    let owners: Vec<&str> = inverse.iter().filter_map(|t| t.get("uri").and_then(Value::as_str)).collect();
-    assert!(owners.contains(&"sweetpad://target/ModuleB"), "inverseSources didn't map b.swift to ModuleB: {owners:?}");
+    let inverse = result_for(&frames, 4)
+        .and_then(|r| r.get("targets"))
+        .and_then(Value::as_array)
+        .expect("inverse");
+    let owners: Vec<&str> = inverse
+        .iter()
+        .filter_map(|t| t.get("uri").and_then(Value::as_str))
+        .collect();
+    assert!(
+        owners.contains(&"sweetpad://target/ModuleB"),
+        "inverseSources didn't map b.swift to ModuleB: {owners:?}"
+    );
 
     // sourceKitOptions(b.swift): editor args — search paths in, explicit-module out.
     let args = result_for(&frames, 5)
@@ -163,8 +232,14 @@ fn bsp_conformance() {
         .expect("compilerArguments");
     let args: Vec<&str> = args.iter().filter_map(Value::as_str).collect();
     assert!(!args.is_empty(), "empty compilerArguments");
-    assert!(args.contains(&"-I"), "no search paths in editor args: {args:?}");
-    assert!(!args.contains(&"-explicit-module-build"), "explicit-module flag leaked into editor args");
+    assert!(
+        args.contains(&"-I"),
+        "no search paths in editor args: {args:?}"
+    );
+    assert!(
+        !args.contains(&"-explicit-module-build"),
+        "explicit-module flag leaked into editor args"
+    );
 
     // shutdown is answered.
     assert!(result_for(&frames, 6).is_some(), "shutdown not answered");
@@ -192,7 +267,10 @@ fn bsp_per_file_clang_dialect() {
         .iter()
         .filter_map(Value::as_str)
         .collect();
-    assert!(args.windows(2).any(|w| w == ["-x", "objective-c"]), "no -x objective-c: {args:?}");
+    assert!(
+        args.windows(2).any(|w| w == ["-x", "objective-c"]),
+        "no -x objective-c: {args:?}"
+    );
     assert!(args.contains(&"-I"), "no header search path: {args:?}");
 }
 
@@ -220,10 +298,14 @@ fn bsp_spm_package_search_path() {
         .filter_map(Value::as_str)
         .collect();
     assert!(
-        args.windows(2).any(|w| w[0] == "-F" && w[1].ends_with("/PackageFrameworks")),
+        args.windows(2)
+            .any(|w| w[0] == "-F" && w[1].ends_with("/PackageFrameworks")),
         "no PackageFrameworks framework search path: {args:?}"
     );
-    assert!(args.iter().any(|a| a.ends_with("/AppSources/App.swift")), "App.swift not an input: {args:?}");
+    assert!(
+        args.iter().any(|a| a.ends_with("/AppSources/App.swift")),
+        "App.swift not an input: {args:?}"
+    );
 }
 
 // The fixtures below the conformance smoke test pin the rest of the protocol
@@ -234,11 +316,17 @@ fn bsp_spm_package_search_path() {
 // `BSP_ORACLE`-gated Layer 0/2 tests).
 
 fn multimodule_dir() -> String {
-    format!("{}/fixtures/_synthetic-multimodule/project", env!("CARGO_MANIFEST_DIR"))
+    format!(
+        "{}/fixtures/_synthetic-multimodule/project",
+        env!("CARGO_MANIFEST_DIR")
+    )
 }
 
 fn objc_project() -> String {
-    format!("{}/fixtures/_synthetic-objc-headers/project/ObjCHeaders.xcodeproj", env!("CARGO_MANIFEST_DIR"))
+    format!(
+        "{}/fixtures/_synthetic-objc-headers/project/ObjCHeaders.xcodeproj",
+        env!("CARGO_MANIFEST_DIR")
+    )
 }
 
 /// `build/initialize` advertises the exact capability surface sourcekit-lsp
@@ -250,16 +338,28 @@ fn bsp_initialize_full_capabilities() {
         json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
         json!({"jsonrpc":"2.0","method":"build/exit"}),
     ];
-    let init = result_for(&run_session(&messages, &project()), 1).cloned().expect("initialize result");
-    assert_eq!(init.get("bspVersion").and_then(Value::as_str), Some("2.2.0"), "bspVersion: {init}");
-    assert_eq!(init.get("dataKind").and_then(Value::as_str), Some("sourceKit"), "dataKind: {init}");
+    let init = result_for(&run_session(&messages, &project()), 1)
+        .cloned()
+        .expect("initialize result");
     assert_eq!(
-        init.pointer("/data/sourceKitOptionsProvider").and_then(Value::as_bool),
+        init.get("bspVersion").and_then(Value::as_str),
+        Some("2.2.0"),
+        "bspVersion: {init}"
+    );
+    assert_eq!(
+        init.get("dataKind").and_then(Value::as_str),
+        Some("sourceKit"),
+        "dataKind: {init}"
+    );
+    assert_eq!(
+        init.pointer("/data/sourceKitOptionsProvider")
+            .and_then(Value::as_bool),
         Some(true),
         "sourceKitOptionsProvider must be advertised: {init}"
     );
     assert_eq!(
-        init.pointer("/data/prepareProvider").and_then(Value::as_bool),
+        init.pointer("/data/prepareProvider")
+            .and_then(Value::as_bool),
         Some(true),
         "prepareProvider must be advertised so background indexing delegates prepare: {init}"
     );
@@ -271,7 +371,10 @@ fn bsp_initialize_full_capabilities() {
         .filter_map(Value::as_str)
         .collect();
     for lang in ["swift", "objective-c", "objective-cpp", "c", "cpp"] {
-        assert!(langs.contains(&lang), "languageIds missing {lang}: {langs:?}");
+        assert!(
+            langs.contains(&lang),
+            "languageIds missing {lang}: {langs:?}"
+        );
     }
 }
 
@@ -287,10 +390,24 @@ fn bsp_initialize_advertises_index_store() {
     ];
     let frames = run_session_args(&messages, &project(), &["--derived-data-path", dd]);
     let init = result_for(&frames, 1).cloned().expect("initialize result");
-    let store = init.pointer("/data/indexStorePath").and_then(Value::as_str).expect("indexStorePath");
-    let db = init.pointer("/data/indexDatabasePath").and_then(Value::as_str).expect("indexDatabasePath");
-    assert_eq!(store, format!("{dd}/Index.noindex/DataStore"), "indexStorePath");
-    assert_eq!(db, format!("{dd}/Index.noindex/IndexDatabase"), "indexDatabasePath");
+    let store = init
+        .pointer("/data/indexStorePath")
+        .and_then(Value::as_str)
+        .expect("indexStorePath");
+    let db = init
+        .pointer("/data/indexDatabasePath")
+        .and_then(Value::as_str)
+        .expect("indexDatabasePath");
+    assert_eq!(
+        store,
+        format!("{dd}/Index.noindex/DataStore"),
+        "indexStorePath"
+    );
+    assert_eq!(
+        db,
+        format!("{dd}/Index.noindex/IndexDatabase"),
+        "indexDatabasePath"
+    );
 }
 
 /// Every `workspace/buildTargets` entry carries the fields sourcekit-lsp needs:
@@ -307,24 +424,36 @@ fn bsp_build_targets_shape() {
     ];
     let frames = run_session(&messages, &project());
     let base = format!("file://{}", multimodule_dir());
-    let targets = result_for(&frames, 2).and_then(|r| r.get("targets")).and_then(Value::as_array).expect("targets");
+    let targets = result_for(&frames, 2)
+        .and_then(|r| r.get("targets"))
+        .and_then(Value::as_array)
+        .expect("targets");
     assert!(!targets.is_empty(), "no targets");
     for t in targets {
-        let name = t.get("displayName").and_then(Value::as_str).expect("displayName");
+        let name = t
+            .get("displayName")
+            .and_then(Value::as_str)
+            .expect("displayName");
         assert_eq!(
             t.pointer("/id/uri").and_then(Value::as_str),
             Some(format!("sweetpad://target/{name}").as_str()),
             "target id uri for {name}: {t}"
         );
-        assert_eq!(t.get("baseDirectory").and_then(Value::as_str), Some(base.as_str()), "baseDirectory for {name}");
         assert_eq!(
-            t.pointer("/capabilities/canCompile").and_then(Value::as_bool),
+            t.get("baseDirectory").and_then(Value::as_str),
+            Some(base.as_str()),
+            "baseDirectory for {name}"
+        );
+        assert_eq!(
+            t.pointer("/capabilities/canCompile")
+                .and_then(Value::as_bool),
             Some(true),
             "{name} must be compilable"
         );
         for cap in ["canTest", "canRun", "canDebug"] {
             assert_eq!(
-                t.pointer(&format!("/capabilities/{cap}")).and_then(Value::as_bool),
+                t.pointer(&format!("/capabilities/{cap}"))
+                    .and_then(Value::as_bool),
                 Some(false),
                 "{name}.{cap} must be false (the editor doesn't run targets)"
             );
@@ -346,17 +475,41 @@ fn bsp_sources_metadata_and_filtering() {
         json!({"jsonrpc":"2.0","method":"build/exit"}),
     ];
     let frames = run_session(&messages, &project());
-    let items = result_for(&frames, 2).and_then(|r| r.get("items")).and_then(Value::as_array).expect("items");
-    assert_eq!(items.len(), 1, "asking for ModuleA must return exactly one item: {items:?}");
-    assert_eq!(items[0].pointer("/target/uri").and_then(Value::as_str), Some("sweetpad://target/ModuleA"));
-    let sources = items[0].get("sources").and_then(Value::as_array).expect("sources");
+    let items = result_for(&frames, 2)
+        .and_then(|r| r.get("items"))
+        .and_then(Value::as_array)
+        .expect("items");
+    assert_eq!(
+        items.len(),
+        1,
+        "asking for ModuleA must return exactly one item: {items:?}"
+    );
+    assert_eq!(
+        items[0].pointer("/target/uri").and_then(Value::as_str),
+        Some("sweetpad://target/ModuleA")
+    );
+    let sources = items[0]
+        .get("sources")
+        .and_then(Value::as_array)
+        .expect("sources");
     assert!(!sources.is_empty(), "ModuleA has no sources");
     for s in sources {
-        assert_eq!(s.get("kind").and_then(Value::as_i64), Some(1), "source kind must be 1 (file): {s}");
-        assert_eq!(s.get("generated").and_then(Value::as_bool), Some(false), "source must be on-disk: {s}");
+        assert_eq!(
+            s.get("kind").and_then(Value::as_i64),
+            Some(1),
+            "source kind must be 1 (file): {s}"
+        );
+        assert_eq!(
+            s.get("generated").and_then(Value::as_bool),
+            Some(false),
+            "source must be on-disk: {s}"
+        );
     }
     assert!(
-        sources.iter().any(|s| s.get("uri").and_then(Value::as_str).is_some_and(|u| u.ends_with("/ModuleA/a.swift"))),
+        sources.iter().any(|s| s
+            .get("uri")
+            .and_then(Value::as_str)
+            .is_some_and(|u| u.ends_with("/ModuleA/a.swift"))),
         "a.swift not in ModuleA sources: {sources:?}"
     );
 }
@@ -372,10 +525,22 @@ fn bsp_sources_all_targets_when_unspecified() {
         json!({"jsonrpc":"2.0","method":"build/exit"}),
     ];
     let frames = run_session(&messages, &project());
-    let items = result_for(&frames, 2).and_then(|r| r.get("items")).and_then(Value::as_array).expect("items");
-    let owners: Vec<&str> = items.iter().filter_map(|it| it.pointer("/target/uri").and_then(Value::as_str)).collect();
-    assert!(owners.contains(&"sweetpad://target/ModuleA"), "ModuleA missing: {owners:?}");
-    assert!(owners.contains(&"sweetpad://target/ModuleB"), "ModuleB missing: {owners:?}");
+    let items = result_for(&frames, 2)
+        .and_then(|r| r.get("items"))
+        .and_then(Value::as_array)
+        .expect("items");
+    let owners: Vec<&str> = items
+        .iter()
+        .filter_map(|it| it.pointer("/target/uri").and_then(Value::as_str))
+        .collect();
+    assert!(
+        owners.contains(&"sweetpad://target/ModuleA"),
+        "ModuleA missing: {owners:?}"
+    );
+    assert!(
+        owners.contains(&"sweetpad://target/ModuleB"),
+        "ModuleB missing: {owners:?}"
+    );
 }
 
 /// `sources` ↔ `inverseSources` is an exact bijection on the fixture: each
@@ -397,11 +562,24 @@ fn bsp_inverse_sources_exact_roundtrip() {
         result_for(&frames, id)
             .and_then(|r| r.get("targets"))
             .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(|t| t.get("uri").and_then(Value::as_str)).map(str::to_string).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|t| t.get("uri").and_then(Value::as_str))
+                    .map(str::to_string)
+                    .collect()
+            })
             .unwrap_or_default()
     };
-    assert_eq!(owners(2), vec!["sweetpad://target/ModuleA"], "a.swift must map to exactly ModuleA");
-    assert_eq!(owners(3), vec!["sweetpad://target/ModuleB"], "b.swift must map to exactly ModuleB");
+    assert_eq!(
+        owners(2),
+        vec!["sweetpad://target/ModuleA"],
+        "a.swift must map to exactly ModuleA"
+    );
+    assert_eq!(
+        owners(3),
+        vec!["sweetpad://target/ModuleB"],
+        "b.swift must map to exactly ModuleB"
+    );
 }
 
 /// A Swift `sourceKitOptions` reply carries the module-resolution surface
@@ -426,17 +604,33 @@ fn bsp_swift_options_editor_shape() {
     );
     assert!(args.iter().any(|a| a == "-sdk"), "no -sdk: {args:?}");
     assert!(args.iter().any(|a| a == "-target"), "no -target: {args:?}");
-    assert!(args.iter().any(|a| a.ends_with("/ModuleB/b.swift")), "b.swift not an input: {args:?}");
+    assert!(
+        args.iter().any(|a| a.ends_with("/ModuleB/b.swift")),
+        "b.swift not an input: {args:?}"
+    );
     // Build-only flags the editor invocation must drop. Each is present in the
     // real build argv (verified via `compiler-args` against this fixture), so a
     // regression that stops stripping would surface here, not pass vacuously.
-    for stripped in
-        ["-explicit-module-build", "-emit-dependencies", "-emit-const-values", "-incremental", "-enable-batch-mode"]
-    {
-        assert!(!args.iter().any(|a| a == stripped), "build-only flag {stripped} leaked into editor args: {args:?}");
+    for stripped in [
+        "-explicit-module-build",
+        "-emit-dependencies",
+        "-emit-const-values",
+        "-incremental",
+        "-enable-batch-mode",
+    ] {
+        assert!(
+            !args.iter().any(|a| a == stripped),
+            "build-only flag {stripped} leaked into editor args: {args:?}"
+        );
     }
-    let wd = result_for(&frames, 5).and_then(|r| r.get("workingDirectory")).and_then(Value::as_str);
-    assert_eq!(wd, Some(dir.as_str()), "workingDirectory must be the project dir");
+    let wd = result_for(&frames, 5)
+        .and_then(|r| r.get("workingDirectory"))
+        .and_then(Value::as_str);
+    assert_eq!(
+        wd,
+        Some(dir.as_str()),
+        "workingDirectory must be the project dir"
+    );
 }
 
 /// An unknown request gets a JSON-RPC `-32601` (method not found) rather than a
@@ -450,7 +644,11 @@ fn bsp_unknown_method_errors() {
     ];
     let frames = run_session(&messages, &project());
     let err = error_for(&frames, 42).expect("error reply for unknown method");
-    assert_eq!(err.get("code").and_then(Value::as_i64), Some(-32601), "wrong error code: {err}");
+    assert_eq!(
+        err.get("code").and_then(Value::as_i64),
+        Some(-32601),
+        "wrong error code: {err}"
+    );
 }
 
 /// `inverseSources` for a file in no target returns an empty target list (not
@@ -465,9 +663,19 @@ fn bsp_unowned_file_handled_gracefully() {
         json!({"jsonrpc":"2.0","method":"build/exit"}),
     ];
     let frames = run_session(&messages, &project());
-    let owners = result_for(&frames, 2).and_then(|r| r.get("targets")).and_then(Value::as_array);
-    assert_eq!(owners.map(Vec::len), Some(0), "inverseSources of a foreign file must be empty: {owners:?}");
-    assert_eq!(result_for(&frames, 3), Some(&Value::Null), "sourceKitOptions of an unowned file must be null");
+    let owners = result_for(&frames, 2)
+        .and_then(|r| r.get("targets"))
+        .and_then(Value::as_array);
+    assert_eq!(
+        owners.map(Vec::len),
+        Some(0),
+        "inverseSources of a foreign file must be empty: {owners:?}"
+    );
+    assert_eq!(
+        result_for(&frames, 3),
+        Some(&Value::Null),
+        "sourceKitOptions of an unowned file must be null"
+    );
 }
 
 /// `workspace/waitForBuildSystemUpdates` is answered with an empty object, so
@@ -480,7 +688,11 @@ fn bsp_wait_for_build_system_updates() {
         json!({"jsonrpc":"2.0","method":"build/exit"}),
     ];
     let frames = run_session(&messages, &project());
-    assert_eq!(result_for(&frames, 2), Some(&json!({})), "waitForBuildSystemUpdates must answer with {{}}");
+    assert_eq!(
+        result_for(&frames, 2),
+        Some(&json!({})),
+        "waitForBuildSystemUpdates must answer with {{}}"
+    );
 }
 
 /// `sourceKitOptions` without an explicit `target` resolves the owning target
@@ -498,12 +710,20 @@ fn bsp_source_kit_options_resolves_target_by_membership() {
     ];
     let swift_args = sourcekit_args(&run_session(&messages, &project()), 5);
     assert!(
-        swift_args.windows(2).any(|w| w == ["-module-name", "ModuleB"]),
+        swift_args
+            .windows(2)
+            .any(|w| w == ["-module-name", "ModuleB"]),
         "membership fallback should resolve ModuleB for b.swift: {swift_args:?}"
     );
-    assert!(swift_args.iter().any(|a| a.ends_with("/ModuleB/b.swift")), "b.swift not an input: {swift_args:?}");
+    assert!(
+        swift_args.iter().any(|a| a.ends_with("/ModuleB/b.swift")),
+        "b.swift not an input: {swift_args:?}"
+    );
 
-    let objc_dir = format!("{}/fixtures/_synthetic-objc-headers/project", env!("CARGO_MANIFEST_DIR"));
+    let objc_dir = format!(
+        "{}/fixtures/_synthetic-objc-headers/project",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let widget = format!("file://{objc_dir}/widget.m");
     let messages = vec![
         json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
@@ -529,14 +749,34 @@ fn bsp_sources_lists_clang_sources() {
         json!({"jsonrpc":"2.0","method":"build/exit"}),
     ];
     let frames = run_session(&messages, &objc_project());
-    let items = result_for(&frames, 2).and_then(|r| r.get("items")).and_then(Value::as_array).expect("items");
+    let items = result_for(&frames, 2)
+        .and_then(|r| r.get("items"))
+        .and_then(Value::as_array)
+        .expect("items");
     let widget = items
         .iter()
-        .flat_map(|it| it.get("sources").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default())
-        .find(|s| s.get("uri").and_then(Value::as_str).is_some_and(|u| u.ends_with("/widget.m")))
+        .flat_map(|it| {
+            it.get("sources")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+        })
+        .find(|s| {
+            s.get("uri")
+                .and_then(Value::as_str)
+                .is_some_and(|u| u.ends_with("/widget.m"))
+        })
         .expect("widget.m not listed in ObjCHeaders sources");
-    assert_eq!(widget.get("kind").and_then(Value::as_i64), Some(1), "widget.m kind must be 1: {widget}");
-    assert_eq!(widget.get("generated").and_then(Value::as_bool), Some(false), "widget.m must be on-disk: {widget}");
+    assert_eq!(
+        widget.get("kind").and_then(Value::as_i64),
+        Some(1),
+        "widget.m kind must be 1: {widget}"
+    );
+    assert_eq!(
+        widget.get("generated").and_then(Value::as_bool),
+        Some(false),
+        "widget.m must be on-disk: {widget}"
+    );
 }
 
 /// Per-file `sourceKitOptions` dialect gating — the correctness-critical
@@ -552,7 +792,10 @@ fn bsp_per_file_clang_dialect_matrix() {
     const OBJC_ONLY: &str = "-DOBJC_OLD_DISPATCH_PROTOTYPES=1";
     const CXX_ONLY: &str = "-Winvalid-offsetof";
 
-    let dir = format!("{}/fixtures/_synthetic-objc-headers/project", env!("CARGO_MANIFEST_DIR"));
+    let dir = format!(
+        "{}/fixtures/_synthetic-objc-headers/project",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let proj = objc_project();
 
     // (file, expected `-x` dialect, has ObjC flags, has C++ flags)
