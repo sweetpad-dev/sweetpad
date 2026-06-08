@@ -1,0 +1,26 @@
+name: MultiPlatformApp
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+targets:
+  MultiPlatformApp:
+    type: application
+    # A single multiplatform target: xcodegen emits `SDKROOT = auto` and a
+    # cross-platform `SUPPORTED_PLATFORMS` (the IceCubesApp shape). The editor
+    # must bind `auto` to a concrete SDK per platform or the stdlib fails to load.
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - Sources
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.MultiPlatformApp
+        SWIFT_VERSION: "6.0"
+        CODE_SIGNING_ALLOWED: "NO"
+schemes:
+  MultiPlatformApp:
+    build:
+      targets:
+        MultiPlatformApp: all

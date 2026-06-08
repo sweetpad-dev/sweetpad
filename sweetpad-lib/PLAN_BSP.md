@@ -299,6 +299,47 @@ layers are built and passing against the multi-module fixture:
   multi-project workspaces beyond the CocoaPods app-target case remain out of
   scope.
 
+  **Hunting the remaining corners** (automated, so a fixed bug can't quietly
+  return). Four nets, cheapest first, each attacking a blind spot the three layers
+  above had — the `SDKROOT = auto` bug slipped *all three* (the settings oracle
+  skipped the unbound capture, no compiler-args capture existed, and Layer 2
+  exonerated the stdlib-load error as upstream #2328):
+  - **Arg-invariant linter** (`tests/bsp_arg_invariants.rs`, ungated): resolves
+    every committed fixture target across every `(platform ∈ SUPPORTED_PLATFORMS,
+    configuration)` and asserts properties that hold for *any* correct invocation —
+    exactly one real `-sdk` (never `auto`/`$(…)`), a `-target` whose platform
+    agrees with the `-sdk`, no leaked build variables, a valid `-module-name`. No
+    build, no capture, so it is the always-on gate; the `SDKROOT = auto` class
+    fails it two independent ways. A committed `fixtures/_synthetic-multiplatform`
+    (one `SDKROOT = auto` target, `SUPPORTED_PLATFORMS = iphoneos iphonesimulator
+    macosx` — the IceCubesApp shape) puts that exact case in the asserted set, so
+    the gate fires in CI without the gitignored corpus. The real corpus is swept
+    too when present, but only *reported* — the hunting half.
+  - **De-exonerated internal-error bucket** (`bsp_corpus_completion.rs`): a
+    stdlib-load / internal-sourcekit error is no longer trusted as "not ours". The
+    file's real BSP args are re-run through a standalone `swiftc -typecheck`; if
+    the compiler *also* fails to load the stdlib, the file is reclassified as our
+    resolution failure instead of bucketed as the upstream rough edge — the same
+    cross-check we did by hand for IceCubesApp, now automatic, so the "it's all
+    #2328" misattribution cannot recur.
+  - **Live `-showBuildSettings` differential** (`tests/showbuildsettings_live_diff.rs`,
+    opt-in `BSP_LIVE_DIFF=1`): diffs the resolver against a *fresh* xcodebuild run
+    **bound to each `-sdk`**, so a multiplatform `auto` target yields a
+    ground-truth row the pre-captured oracle (which keeps the literal `auto`) never
+    had. Editor-critical keys are asserted; the rest is reported.
+  - **Mutation audit** (`scripts/21_mutation_audit.py`): injects each plausible
+    resolver bug and checks a fast net goes red — measuring the coverage of the
+    coverage. Today **5/7 caught by the fast tier** (the SDKROOT=auto unbinding and
+    the `-sdk`/`-target` mismatch among them, via the invariant linter + the
+    oracle); the two it surfaces as *only* e2e-guarded — third-party macro plugins
+    and the dynamic-SPM `-F PackageFrameworks` path — are the next fast guards to
+    add. `--e2e` reverts the SDKROOT fix and proves the de-exoneration reclassifies
+    it.
+  CI (`.github/workflows/sweetpad-lib.yaml`) runs the fast tier — fmt, clippy
+  `-D warnings`, `cargo test` (the invariant gate + the settings/compiler-args
+  oracles) — on every push/PR; the build-gated tiers (`BSP_CORPUS`,
+  `BSP_LIVE_DIFF`, the mutation audit) run locally/nightly against the corpus.
+
 Expectations are auto-derived (self-evident "zero false errors"; differential vs
 the captured build args; source-derived "every `import` must resolve"), so an
 agent can push the metric without human labeling. Next: a positive cross-module

@@ -174,6 +174,21 @@ const PROJECTS: &[CorpusProject] = &[
         forced_probes: &["Probe"],
         strict: true,
     },
+    // A multiplatform `SDKROOT = auto` app (the IceCubesApp shape, miniaturized):
+    // one target, `SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx`. Built
+    // for the iOS simulator — the editor picks `iphonesimulator`, so the BSP must
+    // bind `auto` to that SDK and emit a matching `-target` or the stdlib won't
+    // load. The committed regression for the SDKROOT=auto class, end to end.
+    CorpusProject {
+        slug: "_synthetic-multiplatform",
+        xcodeproj: "MultiPlatformApp.xcodeproj",
+        scheme: "MultiPlatformApp",
+        destination: "generic/platform=iOS Simulator",
+        project_root: "project",
+        workspace: None,
+        forced_probes: &["Probe"],
+        strict: true,
+    },
     // Real-world generated-source validation against a Tuist example (`Model.swift`
     // uses the generated Core Data class `User`). Needs a one-time
     // `tuist generate --path corpus/_tuist-src/examples/xcode/generated_ios_app_with_coredata`
@@ -293,9 +308,14 @@ struct Report {
     /// Files with at least one resolution failure (the headline failures).
     failed: usize,
     /// Files where `sourcekit-lsp` returned an internal error (e.g. "Loading the
-    /// standard library failed") rather than real diagnostics — a degraded
-    /// experience, but an environment/rough-edge category, not an arg bug.
+    /// standard library failed") that the standalone-compiler cross-check
+    /// *cleared* of being our fault — the genuine rough edge, not an arg bug.
     internal_errors: usize,
+    /// Internal-error files the cross-check reclassified as our fault (a subset of
+    /// `failed`): a standalone `swiftc` also failed to load the stdlib with our
+    /// args. The de-exoneration signal — what the old "it's all upstream" bucket
+    /// would have hidden.
+    reclassified: usize,
     /// Clean files that still carried some error-severity diagnostic — broader,
     /// lower-precision context (may be the project's own latent errors).
     any_errors: usize,
@@ -321,20 +341,21 @@ impl Class {
     }
 }
 
-/// A `sourcekit-lsp` internal failure (e.g. "Loading the standard library
-/// failed") rather than a real diagnostic — distinct from our args omitting a
-/// module.
+/// A *candidate* `sourcekit-lsp` internal failure (e.g. "Loading the standard
+/// library failed") — a diagnostic that is not yet charged to anyone, because it
+/// can be either a genuine sourcekit-lsp rough edge OR our own bad `-sdk`/
+/// `-target` wearing an internal-error mask.
 ///
-/// KNOWN LIMITATION — not fixable in our argument generation. On the
-/// iOS-simulator path some files intermittently hit this *even though our args
-/// are correct*: driving our exact editor args through `swiftc -typecheck`
-/// loads the stdlib cleanly (`-Rmodule-loading` shows `loaded module 'Swift'`
-/// from the prebuilt modules). It is the external-BSP stdlib-loading rough edge
-/// in sourcekit-lsp itself (swiftlang/sourcekit-lsp#2328), it persists past one
-/// retry, and it dominates the iOS-corpus gap (e.g. IceCubesApp ~43% clean —
-/// every "failure" there is this, zero are resolution bugs). Bucketed separately
-/// so it can never masquerade as our arg bug, and retried once below to filter
-/// the build-time module race from the genuine rough edge.
+/// The classifier never trusts this verdict on its own. A file that lands here is
+/// retried once (filtering the build-time module race) and then cross-checked:
+/// its real BSP args are driven through a standalone `swiftc -typecheck`
+/// (`args_fail_to_load_stdlib`). If the compiler also fails to load the stdlib
+/// with our args, the fault is ours and the file is reclassified as a resolution
+/// failure; only a clean standalone load leaves it in the internal bucket. That
+/// cross-check is the guard the earlier "it's all upstream #2328" assumption
+/// lacked — a multiplatform `SDKROOT = auto` mis-binding produced the *identical*
+/// stdlib-load message and was wrongly exonerated until a standalone compile
+/// separated our bug from the real rough edge.
 fn is_internal_error(message: &str) -> bool {
     let m = message.to_lowercase();
     m.contains("internal sourcekit error")
@@ -407,6 +428,7 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
         clean: 0,
         failed: 0,
         internal_errors: 0,
+        reclassified: 0,
         any_errors: 0,
         samples: Vec::new(),
         internal_samples: Vec::new(),
@@ -528,12 +550,11 @@ fn bsp_frames(out: &[u8]) -> Vec<Value> {
     frames
 }
 
-/// Whether our BSP server returns non-empty `sourceKitOptions` for `file`. A
-/// `null`/empty reply means our resolver failed for the owning target — and
-/// sourcekit-lsp would silently fall back, emitting no diagnostics, which the
-/// per-file measurement would otherwise misread as "clean". So a strict fixture
-/// gates on this directly, closing that false-clean hole.
-fn bsp_serves_options(xcodeproj: &Path, dd: &Path, file: &Path) -> bool {
+/// The `compilerArguments` our BSP server returns for `file` (via a one-shot
+/// `textDocument/sourceKitOptions`), or `None` when the resolver failed for the
+/// owning target. These are the exact args sourcekit-lsp is handed, so they also
+/// feed the standalone cross-check that de-exonerates internal errors.
+fn bsp_file_args(xcodeproj: &Path, dd: &Path, file: &Path) -> Option<Vec<String>> {
     let uri = format!("file://{}", file.to_string_lossy());
     let msgs = [
         json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
@@ -545,7 +566,7 @@ fn bsp_serves_options(xcodeproj: &Path, dd: &Path, file: &Path) -> bool {
     for m in &msgs {
         input.extend(lsp_frame(m));
     }
-    let Ok(mut child) = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
         .args(["bsp", "--project"])
         .arg(xcodeproj)
         .args(["--derived-data-path"])
@@ -554,9 +575,7 @@ fn bsp_serves_options(xcodeproj: &Path, dd: &Path, file: &Path) -> bool {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-    else {
-        return false;
-    };
+        .ok()?;
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(&input);
     }
@@ -565,10 +584,45 @@ fn bsp_serves_options(xcodeproj: &Path, dd: &Path, file: &Path) -> bool {
         let _ = stdout.read_to_end(&mut out);
     }
     let _ = child.wait();
-    bsp_frames(&out).iter().any(|f| {
-        f.get("id").and_then(Value::as_i64) == Some(5)
-            && f.pointer("/result/compilerArguments").and_then(Value::as_array).is_some_and(|a| !a.is_empty())
+    bsp_frames(&out).iter().find_map(|f| {
+        if f.get("id").and_then(Value::as_i64) != Some(5) {
+            return None;
+        }
+        f.pointer("/result/compilerArguments")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
     })
+}
+
+/// Whether our BSP server returns non-empty `sourceKitOptions` for `file`. A
+/// `null`/empty reply means our resolver failed for the owning target — and
+/// sourcekit-lsp would silently fall back, emitting no diagnostics, which the
+/// per-file measurement would otherwise misread as "clean". So a strict fixture
+/// gates on this directly, closing that false-clean hole.
+fn bsp_serves_options(xcodeproj: &Path, dd: &Path, file: &Path) -> bool {
+    bsp_file_args(xcodeproj, dd, file).is_some_and(|a| !a.is_empty())
+}
+
+/// Cross-check a candidate internal/stdlib-load error: feed the file's own BSP
+/// args to a standalone `swiftc -typecheck`. The editor args already drop the
+/// build-only output flags, so this is a pure parse + module load. If the
+/// compiler *also* fails to load the standard library, our `-sdk`/`-target` are
+/// the cause (a resolution bug, not the sourcekit-lsp rough edge) and the caller
+/// charges it to us; a clean load — or only unrelated type errors — exonerates
+/// the args and leaves the file in the internal bucket.
+fn args_fail_to_load_stdlib(args: &[String]) -> bool {
+    let Ok(out) = Command::new(tool("swiftc"))
+        .env("DEVELOPER_DIR", developer_dir())
+        .arg("-typecheck")
+        .args(args)
+        .output()
+    else {
+        return false;
+    };
+    let err = String::from_utf8_lossy(&out.stderr).to_lowercase();
+    err.contains("unable to load standard library")
+        || err.contains("loading the standard library failed")
+        || err.contains("failed to load module 'swift'")
 }
 
 /// Drive one `sourcekit-lsp` session over the sampled files, pulling diagnostics
@@ -668,9 +722,26 @@ fn measure_files(root: &Path, xcodeproj: &Path, dd: &Path, files: &[PathBuf], st
                 }
             }
             Class::Internal(msg) => {
-                report.internal_errors += 1;
-                if report.internal_samples.len() < 6 {
-                    report.internal_samples.push((name, msg));
+                // De-exonerate: keep this in the internal bucket only when a
+                // standalone compile with the file's own BSP args loads the
+                // stdlib cleanly. If that compile also fails to load the stdlib,
+                // our `-sdk`/`-target` are wrong and it is our resolution failure.
+                let our_fault = bsp_file_args(xcodeproj, dd, file)
+                    .is_some_and(|args| args_fail_to_load_stdlib(&args));
+                if our_fault {
+                    report.failed += 1;
+                    report.reclassified += 1;
+                    if report.samples.len() < 8 {
+                        report.samples.push((
+                            name,
+                            format!("[reclassified from internal] standalone swiftc also fails to load the stdlib with our args: {msg}"),
+                        ));
+                    }
+                } else {
+                    report.internal_errors += 1;
+                    if report.internal_samples.len() < 6 {
+                        report.internal_samples.push((name, msg));
+                    }
                 }
             }
             // In strict mode (a minimal synthetic fixture that must be fully
@@ -741,8 +812,8 @@ fn bsp_corpus_completion() {
         tot_clean += r.clean;
         let pct = if r.sampled > 0 { 100.0 * r.clean as f64 / r.sampled as f64 } else { 0.0 };
         eprintln!(
-            "  {:<14} clean {:>3}/{:<3} ({pct:>5.1}%)  resolution-fail {:<3} internal-err {:<3} proj-error {:<3}  [of {} candidates]",
-            r.slug, r.clean, r.sampled, r.failed, r.internal_errors, r.any_errors, r.candidates
+            "  {:<14} clean {:>3}/{:<3} ({pct:>5.1}%)  resolution-fail {:<3} (incl {:<2} reclassified)  internal-err {:<3} proj-error {:<3}  [of {} candidates]",
+            r.slug, r.clean, r.sampled, r.failed, r.reclassified, r.internal_errors, r.any_errors, r.candidates
         );
         for (file, msg) in &r.samples {
             eprintln!("                  ↳ resolution-fail {file}: {msg}");
