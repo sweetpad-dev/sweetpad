@@ -35,17 +35,23 @@ use framing::{read_message, write_message};
 /// dropped into the workspace root (the `.xcodeproj`'s parent, or `--output`).
 pub fn write_config(args: &[String]) -> Result<(), String> {
     let flags = parse_flags(args);
-    let project = flags
-        .get("project")
-        .ok_or("config: --project <path.xcodeproj> is required")?;
-    let project_abs = std::fs::canonicalize(project).map_err(|e| format!("--project: {e}"))?;
+    // Accept either a `.xcodeproj` (`--project`) or a `.xcworkspace` (`--workspace`);
+    // the BSP server resolves files against a workspace's member projects.
+    let (root_flag, root) = flags
+        .get("workspace")
+        .map(|w| ("--workspace", w))
+        .or_else(|| flags.get("project").map(|p| ("--project", p)))
+        .ok_or(
+            "config: --project <path.xcodeproj> or --workspace <path.xcworkspace> is required",
+        )?;
+    let root_abs = std::fs::canonicalize(root).map_err(|e| format!("{root_flag}: {e}"))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
 
     let mut server_argv = vec![
         exe.to_string_lossy().into_owned(),
         "bsp".into(),
-        "--project".into(),
-        project_abs.to_string_lossy().into_owned(),
+        root_flag.into(),
+        root_abs.to_string_lossy().into_owned(),
     ];
     for (flag, key) in [
         ("--xcode", "xcode"),
@@ -66,7 +72,7 @@ pub fn write_config(args: &[String]) -> Result<(), String> {
 
     let out = flags.get("output").map_or_else(
         || {
-            project_abs
+            root_abs
                 .parent()
                 .unwrap_or_else(|| Path::new("."))
                 .join("buildServer.json")
@@ -160,7 +166,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
 }
 
 struct Server {
+    /// The root the server was pointed at: a `.xcodeproj` or a `.xcworkspace`.
     project_path: PathBuf,
+    /// The member `.xcodeproj`s — `[project_path]` for a project root, or the
+    /// workspace's project refs for a `.xcworkspace`. File→target and settings
+    /// resolution iterate these, so each file in a multi-project workspace
+    /// resolves against whichever member declares its target.
+    projects: Vec<PathBuf>,
     /// Live-updatable config (configuration + scheme), swapped on `bsp/configChanged`.
     live: Mutex<LiveConfig>,
     /// `--sdk` / `--arch` overrides; `None` means infer the platform per target.
@@ -259,10 +271,12 @@ impl ResolvedConfig {
         // one untouched — so out-of-tree paths (Xcode, the socket) stay as written.
         let resolve = |p: String| base.join(p);
         let project_path = flags
-            .get("project")
+            .get("workspace")
             .cloned()
+            .or_else(|| flags.get("project").cloned())
+            .or_else(|| pull("workspacePath"))
             .or_else(|| pull("projectPath"))
-            .ok_or("bsp.json missing projectPath")?;
+            .ok_or("bsp.json missing projectPath/workspacePath")?;
         Ok(ResolvedConfig {
             project_path: resolve(project_path),
             configuration: flags
@@ -313,8 +327,8 @@ impl Server {
         let flags = parse_flags(args);
         let log_level = Arc::new(AtomicU8::new(LogLevel::Info as u8));
 
-        if let Some(project) = flags.get("project") {
-            let config = ResolvedConfig::from_flags(PathBuf::from(project), &flags);
+        if let Some(root) = flags.get("workspace").or_else(|| flags.get("project")) {
+            let config = ResolvedConfig::from_flags(PathBuf::from(root), &flags);
             return Self::build(config, None, log_level);
         }
 
@@ -334,9 +348,32 @@ impl Server {
         config_path: Option<PathBuf>,
         log_level: Arc<AtomicU8>,
     ) -> Result<Self, String> {
-        let ctx =
-            BuildContext::open(&config.project_path).map_err(|e| format!("open project: {e}"))?;
-        let targets: Vec<String> = ctx.project.targets.iter().map(|t| t.name.clone()).collect();
+        // A `.xcworkspace` root expands to its member projects; a `.xcodeproj`
+        // root is a one-element list. Targets are the union across members.
+        let root = config.project_path.clone();
+        let projects: Vec<PathBuf> =
+            if root.extension().and_then(|e| e.to_str()) == Some("xcworkspace") {
+                crate::workspace::open(&root)
+                    .map_err(|e| format!("open workspace: {e}"))?
+                    .project_refs
+            } else {
+                vec![root.clone()]
+            };
+        let mut targets: Vec<String> = Vec::new();
+        for p in &projects {
+            if let Ok(ctx) = BuildContext::open(p) {
+                for t in &ctx.project.targets {
+                    if !targets.contains(&t.name) {
+                        targets.push(t.name.clone());
+                    }
+                }
+            }
+        }
+        // Surface a genuinely broken single project (a workspace tolerates a
+        // member that won't open).
+        if targets.is_empty() && projects.len() == 1 {
+            BuildContext::open(&projects[0]).map_err(|e| format!("open project: {e}"))?;
+        }
         // Log file from the config's `logPath` or the SWEETPAD_BSP_LOG env
         // (tests); telemetry streams logs regardless of the file.
         let log = config
@@ -354,6 +391,7 @@ impl Server {
             .map(Mutex::new);
         let server = Server {
             project_path: config.project_path,
+            projects,
             live: Mutex::new(LiveConfig {
                 configuration: config.configuration,
                 scheme: config.scheme,
@@ -528,6 +566,30 @@ impl Server {
         self.project_path.parent().unwrap_or_else(|| Path::new("."))
     }
 
+    /// The member `.xcodeproj` that declares `target`. A single-project root
+    /// returns it directly; a workspace finds the first member whose targets
+    /// include `target` (a cross-project name clash resolves to the first).
+    fn project_for_target(&self, target: &str) -> PathBuf {
+        if self.projects.len() == 1 {
+            return self.projects[0].clone();
+        }
+        self.projects
+            .iter()
+            .find(|p| {
+                BuildContext::open(p)
+                    .map(|c| c.project.targets.iter().any(|t| t.name == target))
+                    .unwrap_or(false)
+            })
+            .or_else(|| self.projects.first())
+            .cloned()
+            .unwrap_or_else(|| self.project_path.clone())
+    }
+
+    /// Whether the root is a `.xcworkspace` (prepare builds with `-workspace`).
+    fn is_workspace(&self) -> bool {
+        self.project_path.extension().and_then(|e| e.to_str()) == Some("xcworkspace")
+    }
+
     /// The Xcode **Developer** directory (what `DEVELOPER_DIR` / `xcodebuild`
     /// want), normalized from `--xcode` which may be given as either the `.app`
     /// bundle or the Developer dir itself.
@@ -588,7 +650,7 @@ impl Server {
             .map(|name| {
                 // Only edges to targets we also expose are useful to sourcekit-lsp;
                 // drop any that fall outside this project's target set.
-                let deps: Vec<Value> = project::target_dependencies(&self.project_path, name)
+                let deps: Vec<Value> = project::target_dependencies(&self.project_for_target(name), name)
                     .unwrap_or_default()
                     .into_iter()
                     .filter(|d| targets.contains(d))
@@ -612,10 +674,21 @@ impl Server {
     /// is `(len, mtime)`-cached, so this is cheap and reflects edits), falling
     /// back to the startup set if the project momentarily fails to open.
     fn current_targets(&self) -> Vec<String> {
-        BuildContext::open(&self.project_path).map_or_else(
-            |_| self.targets.clone(),
-            |ctx| ctx.project.targets.iter().map(|t| t.name.clone()).collect(),
-        )
+        let mut out: Vec<String> = Vec::new();
+        for p in &self.projects {
+            if let Ok(ctx) = BuildContext::open(p) {
+                for t in &ctx.project.targets {
+                    if !out.contains(&t.name) {
+                        out.push(t.name.clone());
+                    }
+                }
+            }
+        }
+        if out.is_empty() {
+            self.targets.clone()
+        } else {
+            out
+        }
     }
 
     /// Watch the project file (and the `.sweetpad/bsp.json` config, when present)
@@ -630,14 +703,20 @@ impl Server {
             .ok()
             .and_then(|v| v.parse().ok())
             .map_or(Duration::from_millis(1500), Duration::from_millis);
-        let pbxproj = self.project_path.join("project.pbxproj");
+        let pbxprojs: Vec<PathBuf> = self
+            .projects
+            .iter()
+            .map(|p| p.join("project.pbxproj"))
+            .collect();
         let config = self.config_path.clone();
         std::thread::spawn(move || {
-            let mut last_pbx = file_stamp(&pbxproj);
+            let stamp_all =
+                |paths: &[PathBuf]| paths.iter().map(|p| file_stamp(p)).collect::<Vec<_>>();
+            let mut last_pbx = stamp_all(&pbxprojs);
             let mut last_cfg = config.as_deref().map(file_stamp);
             loop {
                 std::thread::sleep(interval);
-                let now_pbx = file_stamp(&pbxproj);
+                let now_pbx = stamp_all(&pbxprojs);
                 if now_pbx != last_pbx {
                     last_pbx = now_pbx;
                     self.notify_targets_changed();
@@ -689,10 +768,14 @@ impl Server {
     /// anything else (packages, C-family, code-gen) falls back to a real
     /// `xcodebuild`, as does a self-build that unexpectedly fails.
     fn prepare_target(&self, target: &str) {
-        let deps = project::transitive_dependencies(&self.project_path, target).unwrap_or_default();
-        let closure_simple = std::iter::once(target)
-            .chain(deps.iter().map(String::as_str))
-            .all(|t| project::is_self_buildable(&self.project_path, t).unwrap_or(false));
+        let proj = self.project_for_target(target);
+        // The self-build fast path is single-project: a workspace target's deps
+        // can live in another member, so let xcodebuild handle the closure.
+        let deps = project::transitive_dependencies(&proj, target).unwrap_or_default();
+        let closure_simple = !self.is_workspace()
+            && std::iter::once(target)
+                .chain(deps.iter().map(String::as_str))
+                .all(|t| project::is_self_buildable(&proj, t).unwrap_or(false));
         if closure_simple {
             // The target itself is type-checked live by sourcekit-lsp; we only
             // need its dependency modules on disk.
@@ -716,11 +799,12 @@ impl Server {
     /// module. The module name and products dir are read back out of those args
     /// so the output lands exactly where dependents' `-I` looks.
     fn self_build_module(&self, target: &str) -> bool {
-        let swift_sources: Vec<PathBuf> = project::target_source_files(&self.project_path, target)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("swift"))
-            .collect();
+        let swift_sources: Vec<PathBuf> =
+            project::target_source_files(&self.project_for_target(target), target)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("swift"))
+                .collect();
         let Some(first) = swift_sources.first() else {
             return true; // nothing to emit
         };
@@ -782,7 +866,8 @@ impl Server {
     /// xcodebuild builds by **scheme** (a bare `-target` build doesn't populate
     /// the products dir), so a scheme that builds the target is required.
     fn xcodebuild_prepare(&self, target: &str) {
-        let Some(scheme) = project::scheme_for_target(&self.project_path, target) else {
+        let owning = self.project_for_target(target);
+        let Some(scheme) = project::scheme_for_target(&owning, target) else {
             self.log(&format!(
                 "prepare: no scheme builds target {target}; skipping"
             ));
@@ -799,9 +884,13 @@ impl Server {
         if let Some(dev) = &developer {
             cmd.env("DEVELOPER_DIR", dev);
         }
-        cmd.arg("build")
-            .args(["-project".as_ref(), self.project_path.as_os_str()])
-            .args(["-scheme", &scheme])
+        cmd.arg("build");
+        if self.is_workspace() {
+            cmd.args(["-workspace".as_ref(), self.project_path.as_os_str()]);
+        } else {
+            cmd.args(["-project".as_ref(), owning.as_os_str()]);
+        }
+        cmd.args(["-scheme", &scheme])
             .args(["-configuration", &self.configuration()])
             .args(["-destination", &destination])
             // Prepare only needs modules, not a signed/launchable product, and
@@ -933,7 +1022,7 @@ impl Server {
     }
 
     fn source_files(&self, target: &str) -> Vec<PathBuf> {
-        project::target_source_files(&self.project_path, target).unwrap_or_default()
+        project::target_source_files(&self.project_for_target(target), target).unwrap_or_default()
     }
 
     /// The editor compiler arguments for `file` in `target`: the engine's
@@ -1003,7 +1092,7 @@ impl Server {
 
     fn options_for(&self, target: &str, sdk: &str, arch: &str) -> BuildSettingsOptions {
         BuildSettingsOptions {
-            project: Some(self.project_path.clone()),
+            project: Some(self.project_for_target(target)),
             workspace: None,
             scheme: None,
             target: Some(target.to_string()),
