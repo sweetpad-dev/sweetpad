@@ -889,27 +889,22 @@ impl Server {
         // replaces SDKROOT with that SDK's path, but a sentinel the catalog
         // doesn't know leaves it untouched. Map the platform to its simulator.
         let probe = self.options_for(target, "auto", "arm64");
-        let sdkroot = build_settings::resolve_build_settings(&probe)
+        let settings = build_settings::resolve_build_settings(&probe)
             .ok()
             .and_then(|mut t| {
                 t.retain(|s| s.target == target);
                 t.pop()
             })
-            .and_then(|t| t.settings.get("SDKROOT").cloned())
-            .unwrap_or_default()
-            .to_lowercase();
-        let sdk = if sdkroot.contains("iphone") {
-            "iphonesimulator"
-        } else if sdkroot.contains("appletv") {
-            "appletvsimulator"
-        } else if sdkroot.contains("watch") {
-            "watchsimulator"
-        } else if sdkroot.contains("xr") {
-            "xrsimulator"
-        } else {
-            "macosx"
+            .map(|t| t.settings);
+        let read = |k: &str| {
+            settings.as_ref().and_then(|s| s.get(k)).cloned().unwrap_or_default().to_lowercase()
         };
-        self.log(&format!("platform {target}: SDKROOT={sdkroot:?} -> sdk={sdk} arch=arm64"));
+        let sdkroot = read("SDKROOT");
+        let supported = read("SUPPORTED_PLATFORMS");
+        let sdk = editor_sdk_for(&sdkroot, &supported);
+        self.log(&format!(
+            "platform {target}: SDKROOT={sdkroot:?} platforms={supported:?} -> sdk={sdk} arch=arm64"
+        ));
         (sdk.to_string(), "arm64".to_string())
     }
 
@@ -1082,5 +1077,60 @@ impl Server {
         let stdout = io::stdout();
         let mut writer = stdout.lock();
         write_message(&mut writer, &msg.to_string())
+    }
+}
+
+/// Pick the editor's SDK name for a target from its resolved `SDKROOT` and
+/// `SUPPORTED_PLATFORMS`. `SDKROOT` is normally a concrete SDK (`iphoneos`), but
+/// a multiplatform target sets it to `auto` and names its platforms in
+/// `SUPPORTED_PLATFORMS` — so derive from whichever carries the platform. Device
+/// platforms map to their simulator (editor-friendly: no device / signing);
+/// anything unrecognized falls back to macOS. Never returns `auto`, which would
+/// reach sourcekitd as `-sdk auto` and fail to load a standard library.
+fn editor_sdk_for(sdkroot: &str, supported_platforms: &str) -> &'static str {
+    let sdkroot = sdkroot.trim().to_lowercase();
+    let platform = if sdkroot.is_empty() || sdkroot == "auto" {
+        supported_platforms.to_lowercase()
+    } else {
+        sdkroot
+    };
+    if platform.contains("iphone") {
+        "iphonesimulator"
+    } else if platform.contains("appletv") {
+        "appletvsimulator"
+    } else if platform.contains("watch") {
+        "watchsimulator"
+    } else if platform.contains("xr") {
+        "xrsimulator"
+    } else {
+        "macosx"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::editor_sdk_for;
+
+    #[test]
+    fn editor_sdk_from_concrete_sdkroot() {
+        assert_eq!(editor_sdk_for("iphoneos", ""), "iphonesimulator");
+        assert_eq!(editor_sdk_for("macosx", ""), "macosx");
+        assert_eq!(editor_sdk_for("appletvos", ""), "appletvsimulator");
+        assert_eq!(editor_sdk_for("watchos", ""), "watchsimulator");
+        assert_eq!(editor_sdk_for("xros", ""), "xrsimulator");
+    }
+
+    #[test]
+    fn editor_sdk_from_supported_platforms_when_auto() {
+        // The IceCubesApp case: SDKROOT = auto, platform comes from SUPPORTED_PLATFORMS.
+        assert_eq!(
+            editor_sdk_for("auto", "iphoneos iphonesimulator xros xrsimulator"),
+            "iphonesimulator"
+        );
+        assert_eq!(editor_sdk_for("auto", "xros xrsimulator"), "xrsimulator");
+        // Empty SDKROOT behaves like auto.
+        assert_eq!(editor_sdk_for("", "appletvos appletvsimulator"), "appletvsimulator");
+        // No usable info → macOS default (never `auto`, which breaks stdlib loading).
+        assert_eq!(editor_sdk_for("auto", ""), "macosx");
     }
 }

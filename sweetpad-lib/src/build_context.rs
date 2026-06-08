@@ -329,7 +329,21 @@ impl BuildContext {
         // Detect that no-platform mode here so `detect_catalyst` doesn't pull
         // the macosx fallback (`query.sdk = "macosx"`) into the Catalyst path.
         // A bound destination (or a concrete SDKROOT) keeps the normal logic.
+        let user_supported_platforms =
+            project::last_unconditional_setting(&bundle.layers, "SUPPORTED_PLATFORMS");
+        // A multiplatform `SDKROOT = auto` target binds to a concrete SDK the
+        // moment a *supported* sdk is requested: xcodebuild resolves `auto` to
+        // that SDK's path even with no `-destination` (`-sdk iphonesimulator`
+        // gives the iOS-simulator SDK). So only the genuinely unbound view — no
+        // destination AND an unsupported / `auto` sdk, e.g. a plain
+        // `-showBuildSettings` — stays in the no-platform `auto` mode. The editor
+        // (BSP) path always requests a supported sdk, so it now binds correctly
+        // instead of emitting `-sdk auto` with an `-unknown` platform.
+        let requested_supported = user_supported_platforms
+            .as_deref()
+            .is_some_and(|sp| sp.split_whitespace().any(|p| p.eq_ignore_ascii_case(&query.sdk)));
         let auto_no_destination = query.destination.is_none()
+            && !requested_supported
             && natural_sdk
                 .as_deref()
                 .is_some_and(|s| s.eq_ignore_ascii_case("auto"));
@@ -341,8 +355,6 @@ impl BuildContext {
             );
         let user_ios_deployment =
             project::last_unconditional_setting(&bundle.layers, "IPHONEOS_DEPLOYMENT_TARGET");
-        let user_supported_platforms =
-            project::last_unconditional_setting(&bundle.layers, "SUPPORTED_PLATFORMS");
         let user_only_active_arch =
             project::last_unconditional_setting(&bundle.layers, "ONLY_ACTIVE_ARCH");
         // Catalyst bundle-id prefixing: the user-authored opt-in flag and the

@@ -226,13 +226,14 @@ layers are built and passing against the multi-module fixture:
   `sourcekit-lsp` at our `buildServer.json`, opens a bounded sample of the
   project's own **non-test** source files, and classifies each into clean /
   *resolution-failure* (a missing-module/header arg bug — the headline) /
-  *internal-error* (a `sourcekit-lsp` stdlib-load rough edge, retried once).
+  *internal-error* (a stdlib-load / internal sourcekit failure, retried once).
   Knobs: `BSP_CORPUS_ONLY`, `BSP_CORPUS_SAMPLE`, `BSP_CORPUS_BUILD_TIMEOUT`.
   Build-first means a project must build headlessly; failures are reported, not
   hidden. OSS-corpus finding: **0 resolution failures** on the clean Swift
   frameworks (Kingfisher, Alamofire) and the large ObjC+Swift macOS app
-  (NetNewsWire); the iOS-simulator path surfaced the stdlib-load rough edge
-  (sourcekit-lsp #2328) on some IceCubesApp files.
+  (NetNewsWire); the iOS-simulator path surfaced our `SDKROOT = auto`
+  editor-binding bug on IceCubesApp (the BSP served `-sdk auto` → a stdlib-load
+  failure) — now fixed (see below), taking it from 30/30 failing files to 0.
 
   **Generated-source, CocoaPods & macro-plugin coverage** (committed synthetic
   fixtures `fixtures/_synthetic-{coredata,assetsym,strcat,intents,cocoapods,macro}`,
@@ -275,16 +276,28 @@ layers are built and passing against the multi-module fixture:
   gitignored `corpus/_tuist-src/examples/.../generated_ios_app_with_coredata`; the
   harness skips it when absent.
 
-  **Known limitation — sourcekit-lsp #2328.** On the iOS-simulator path some files
-  intermittently return "Loading the standard library failed" — a sourcekit-lsp
-  internal error, **not** our args: our exact editor arguments type-check cleanly
-  under `swiftc -typecheck` (the stdlib loads via the prebuilt modules). It
-  persists past one retry and accounts for the entire iOS-corpus gap (IceCubesApp
-  ~43% clean, **0** of which are resolution bugs). The harness buckets it
-  separately (`is_internal_error`) so it can never read as our failure; we can
-  only mitigate (the retry), not fix it in argument generation. ⚠️ Still
-  single-`.xcodeproj`: multi-project workspaces beyond the CocoaPods app-target
-  case remain out of scope.
+  **Multiplatform `SDKROOT = auto` editor binding** (was misattributed to the
+  upstream sourcekit-lsp #2328 stdlib-load issue — it's actually ours, now
+  fixed). A multiplatform target authors `SDKROOT = auto` and lists its platforms
+  in `SUPPORTED_PLATFORMS`; xcodebuild binds `auto` to a concrete SDK once a
+  destination / `-sdk` is chosen, but the editor path didn't: `editor_platform`
+  checked `SDKROOT` for "iphone" (a bare `auto` has none → defaulted to macOS),
+  and the resolver passed the literal `auto` straight through. So the BSP served
+  `-sdk auto` + an `arm64-apple-macos` triple + a `Debug-unknown` products dir,
+  and sourcekitd — with no real SDK for the target — returned "Loading the
+  standard library failed". Caught by capturing the args sourcekitd actually
+  received (`SOURCEKIT_LOGGING=3`) over a built IceCubesApp: they were **ours**
+  (`-sdk auto`), not an upstream defect. Fixed in two places — `editor_platform`
+  derives the platform from `SUPPORTED_PLATFORMS` when `SDKROOT` is `auto`, and
+  `build_context` binds `SDKROOT = auto` to the chosen SDK's real path whenever
+  the requested sdk is in `SUPPORTED_PLATFORMS` (so the unbound
+  `-showBuildSettings` oracle, whose sdk isn't supported, still reports the
+  literal `auto` — no corpus regression). Result: IceCubesApp **30/30 stdlib
+  failures → 0** through real sourcekit-lsp. The genuine #2328 (a fallback macOS
+  `-sdk` overriding a build-server-provided SDK) is a separate upstream cluster
+  our self-consistent args don't trigger. ⚠️ Still single-`.xcodeproj`:
+  multi-project workspaces beyond the CocoaPods app-target case remain out of
+  scope.
 
 Expectations are auto-derived (self-evident "zero false errors"; differential vs
 the captured build args; source-derived "every `import` must resolve"), so an
