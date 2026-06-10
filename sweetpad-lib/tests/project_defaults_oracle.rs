@@ -73,6 +73,7 @@ fn run_capture(
 
 #[test]
 fn project_defaults_oracle_coverage() {
+    common::pin_capture_host();
     let captures = find_capture_files("_project_defaults");
     let only = common::only_version();
     let mut catalogs = CatalogCache::new();

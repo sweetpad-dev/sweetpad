@@ -939,8 +939,8 @@ pub fn built_in_settings(
         .to_string();
     let project_dir_str = project_dir.display().to_string();
     let project_file_path = abs_path.display().to_string();
-    let user = std::env::var("USER").unwrap_or_default();
-    let home = std::env::var("HOME").unwrap_or_default();
+    let user = host_user();
+    let home = host_home();
     // Xcode keys DerivedData by whichever container was opened (an
     // `.xcworkspace` if one sits next to or above the project, else the
     // `.xcodeproj` itself). The 28-char base-26 hash is MD5(container_path).
@@ -2057,7 +2057,42 @@ fn effective_platform_name_for(sdk_base: &str) -> String {
     }
 }
 
+/// Host-derived facts the resolver reports in build settings but that are not
+/// a function of any project input: the machine's architecture (`NATIVE_ARCH`
+/// family, destination-collapsed `ARCHS`), the login user (`USER`,
+/// `VERSION_INFO_BUILDER`, `INSTALL_OWNER`, …), and the home directory (every
+/// DerivedData-anchored path). `None` fields keep the live detection.
+#[derive(Debug, Default)]
+pub struct HostOverride {
+    pub arch: Option<String>,
+    pub user: Option<String>,
+    pub home: Option<String>,
+}
+
+static HOST_OVERRIDE: std::sync::OnceLock<HostOverride> = std::sync::OnceLock::new();
+
+/// Pin host-derived facts instead of detecting them from the running process.
+/// First call wins for the process. The corpus oracles pin the capture host's
+/// identity so `cargo test` scores identically on any machine (the floors were
+/// calibrated against captures taken on one specific Mac); the
+/// `SWEETPAD_HOST_ARCH` env var pins the arch alone without code.
+pub fn set_host_override(host: HostOverride) {
+    let _ = HOST_OVERRIDE.set(host);
+}
+
+fn host_override(field: impl Fn(&HostOverride) -> Option<&String>) -> Option<String> {
+    HOST_OVERRIDE.get().and_then(|o| field(o).cloned())
+}
+
 fn host_arch() -> String {
+    if let Some(arch) = host_override(|o| o.arch.as_ref()) {
+        return arch;
+    }
+    if let Ok(arch) = std::env::var("SWEETPAD_HOST_ARCH")
+        && !arch.is_empty()
+    {
+        return arch;
+    }
     if cfg!(target_arch = "aarch64") {
         "arm64".into()
     } else if cfg!(target_arch = "x86_64") {
@@ -2065,6 +2100,14 @@ fn host_arch() -> String {
     } else {
         "arm64".into()
     }
+}
+
+fn host_user() -> String {
+    host_override(|o| o.user.as_ref()).unwrap_or_else(|| std::env::var("USER").unwrap_or_default())
+}
+
+fn host_home() -> String {
+    host_override(|o| o.home.as_ref()).unwrap_or_else(|| std::env::var("HOME").unwrap_or_default())
 }
 
 /// Return the path Xcode would hash for the DerivedData folder name: a

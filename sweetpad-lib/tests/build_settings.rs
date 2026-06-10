@@ -144,6 +144,12 @@ fn unknown_target_errors() {
 
 #[test]
 fn destination_collapses_macos_archs() {
+    // The collapsed arch is host-derived; pin it so the assertion holds on
+    // non-Apple-Silicon hosts too (and to exercise the override itself).
+    sweetpad::project::set_host_override(sweetpad::project::HostOverride {
+        arch: Some("arm64".into()),
+        ..Default::default()
+    });
     // No destination on macOS reports the SDK's full standard arch list; a
     // bound macOS destination collapses ARCHS to the active arch — the
     // headline destination-aware behaviour.

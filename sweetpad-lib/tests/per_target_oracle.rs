@@ -74,6 +74,7 @@ fn run_oracle(
 
 #[test]
 fn per_target_oracle_coverage() {
+    common::pin_capture_host();
     let oracles = find_capture_files("_per_target");
     let only = common::only_version();
     let mut catalogs = CatalogCache::new();

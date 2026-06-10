@@ -309,6 +309,21 @@ pub fn read_build_settings(path: &Path) -> Option<Vec<BTreeMap<String, String>>>
 
 // ----- corpus roots --------------------------------------------------------
 
+/// Pin the resolver's host-derived outputs to the corpus capture host: every
+/// capture was taken on one Apple Silicon Mac as `hyzyla_home` (verify with
+/// `grep '"USER"' fixtures/**/build-settings/*.json`). The `NATIVE_ARCH`
+/// family, the `USER` family, and every `$HOME`-anchored DerivedData path are
+/// host-derived, so without pinning the oracle scores drop below their
+/// calibrated floors on any other machine (x86_64, Linux CI, another user's
+/// Mac). Call at the top of every corpus-scoring test; idempotent.
+pub fn pin_capture_host() {
+    sweetpad::project::set_host_override(sweetpad::project::HostOverride {
+        arch: Some("arm64".into()),
+        user: Some("hyzyla_home".into()),
+        home: Some("/Users/hyzyla_home".into()),
+    });
+}
+
 pub fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")
 }
@@ -651,6 +666,10 @@ pub fn assert_version_floors(
     floor: impl Fn(&str) -> Option<(u64, u64, u64)>,
 ) {
     println!("\n--- per Xcode version (floor check: {label}) ---");
+    // Collect every violation and panic once at the end, so a failing version
+    // never hides the observed numbers of the versions after it — the printed
+    // block is the audit trail for recalibration.
+    let mut violations: Vec<String> = Vec::new();
     for (ver, s) in per_version {
         let (e, c, st) = (s.exact_pct(), s.canonical_pct(), s.structural_pct());
         if let Some((fe, fc, fst)) = floor(ver) {
@@ -658,37 +677,39 @@ pub fn assert_version_floors(
                 "  {ver:<10} exact={e}% (≥{fe}) canon={c}% (≥{fc}) struct={st}% (≥{fst}) shared={}",
                 s.shared_keys
             );
-            assert!(
-                e >= fe,
-                "[{label} {ver}] exact {e}% < floor {fe}% ({}/{} keys) — value regression?",
-                s.exact_matches,
-                s.shared_keys
-            );
-            assert!(
-                c >= fc,
-                "[{label} {ver}] canonical {c}% < floor {fc}% ({}/{})",
-                s.canonical_matches,
-                s.shared_keys
-            );
-            assert!(
-                st >= fst,
-                "[{label} {ver}] structural {st}% < floor {fst}% ({}/{})",
-                s.structural_matches,
-                s.shared_keys
-            );
+            if e < fe {
+                violations.push(format!(
+                    "[{label} {ver}] exact {e}% < floor {fe}% ({}/{} keys) — value regression?",
+                    s.exact_matches, s.shared_keys
+                ));
+            }
+            if c < fc {
+                violations.push(format!(
+                    "[{label} {ver}] canonical {c}% < floor {fc}% ({}/{})",
+                    s.canonical_matches, s.shared_keys
+                ));
+            }
+            if st < fst {
+                violations.push(format!(
+                    "[{label} {ver}] structural {st}% < floor {fst}% ({}/{})",
+                    s.structural_matches, s.shared_keys
+                ));
+            }
         } else {
             println!(
                 "  {ver:<10} exact={e}% canon={c}% struct={st}% shared={} \
                  [NO CODIFIED FLOOR — add to version_floor()]",
                 s.shared_keys
             );
-            assert!(
-                st >= 98,
-                "[{label} {ver}] structural {st}% < 98% safety floor (no codified \
-                 floor yet; observed exact={e}% canon={c}%)"
-            );
+            if st < 98 {
+                violations.push(format!(
+                    "[{label} {ver}] structural {st}% < 98% safety floor (no codified \
+                     floor yet; observed exact={e}% canon={c}%)"
+                ));
+            }
         }
     }
+    assert!(violations.is_empty(), "{}", violations.join("\n"));
 }
 
 pub type MismatchTally = BTreeMap<String, u64>;

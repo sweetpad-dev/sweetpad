@@ -128,6 +128,7 @@ fn run_capture(
 
 #[test]
 fn xcconfig_resolution_oracle_coverage() {
+    common::pin_capture_host();
     let captures = find_capture_files("_xcconfig_resolution");
     let mut catalogs = CatalogCache::new();
 

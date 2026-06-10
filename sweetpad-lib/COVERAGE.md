@@ -22,9 +22,18 @@ headers phase, scheme post-actions/launch-args, weak-linking, Swift-package-root
 build-settings dictionary, not core resolution. Re-run the verification when
 fixtures change.
 
+**Updated 2026-06-10**: the scheme-discovery work (user schemes under
+`xcuserdata/`, autocreated per-target schemes) closed the "User scheme under
+`xcuserdata/`" row and added an autocreated-schemes row, both covered by
+hermetic tests rather than corpus captures (no corpus project ships either
+layout) — see the Schemes table. Result: **115 ✅ / 18 ❌**.
+
 ## Legend
 
-- ✅ — at least one fixture exercises this; pointer in **Where**.
+- ✅ — at least one fixture exercises this; pointer in **Where**. Rows marked
+  *hermetic, not corpus* are exercised by tests that build the layout in temp
+  dirs instead of a captured fixture — covered, but with no oracle capture
+  behind them.
 - ⏳ — the corpus *probably* contains it (e.g. SwiftPM dep), but we haven't
   manually verified the captured `build-settings/*.json` actually reflects
   the resolved value. Confirm before claiming coverage.
@@ -133,7 +142,8 @@ with no codified floor gets only a `structural ≥ 98` safety guard until calibr
 | Test case | Status | Where |
 |---|---|---|
 | Shared scheme under `xcshareddata/xcschemes/` | ✅ | fixtures/alamofire/xcode-26.0.1/raw/Alamofire.xcodeproj/xcshareddata/xcschemes/Alamofire iOS.xcscheme (and every… |
-| User scheme under `xcuserdata/` | ❌ | — |
+| User scheme under `xcuserdata/` | ✅ | hermetic, not corpus: tests/build_settings.rs (`user_scheme_in_xcuserdata_resolves`) + src/scheme.rs discovery tests build the `xcuserdata/<user>.xcuserdatad/xcschemes` layout in temp dirs |
+| Autocreated per-target schemes (no `.xcscheme` on disk) | ✅ | hermetic, not corpus: src/workspace.rs (`merged_schemes_autocreates_per_target_when_no_scheme_files`) + src/project.rs schemeless-project tests (no corpus project ships schemeless) |
 | Scheme with multiple build entries | ✅ | fixtures/alamofire/xcode-26.0.1/raw/Alamofire.xcodeproj/xcshareddata/xcschemes/Alamofire iOS.xcscheme |
 | Scheme with pre-action script | ✅ | fixtures/netnewswire/xcode-26.0.1/raw/NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire-iOS.xcscheme |
 | Scheme with post-action script | ❌ | — |

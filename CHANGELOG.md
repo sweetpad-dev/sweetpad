@@ -4,6 +4,10 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 ## [Unreleased]
 
+- Pass the login shell's `DEVELOPER_DIR` to the bundled resolver explicitly, so a `DEVELOPER_DIR` exported in `~/.zshrc`/`~/.zprofile` selects the same Xcode for scheme lists and build settings as it does for builds
+- "SweetPad: Refresh shell environment" now also re-detects the active Xcode, picking up `xcode-select --switch` without restarting VS Code
+- Route `-showBuildSettings` through a customized `sweetpad.build.xcodebuildCommand` again (a wrapper that injects env or selects a toolchain now sees the same queries it sees builds), and log a one-time warning that scheme/target/configuration lists always come from the bundled resolver
+- Add opt-in `sweetpad.system.xcodebuildFallback` to retry build-settings queries via `xcodebuild` when the bundled resolver fails on exotic or malformed projects
 - List Xcode's autocreated per-target schemes for projects/workspaces that have no `.xcscheme` files on disk (fresh or never-shared projects previously showed an empty scheme list)
 - Discover and resolve per-user schemes stored under `xcuserdata/<user>.xcuserdatad/xcschemes`, matching `xcodebuild -list` and `-showBuildSettings -scheme`
 - Resolve build settings for schemes stored in the workspace bundle's own `xcshareddata`/`xcuserdata` (they were listed but failed to launch), dispatching each buildable to the member project named by its `ReferencedContainer`

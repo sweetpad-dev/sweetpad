@@ -29,17 +29,33 @@ pub struct XcodeVersion {
     pub major_version: u32,
 }
 
-/// Resolve the active Xcode (the one `xcode-select` points at).
+/// Resolve the Xcode toolchain info. `developer_dir` pins a specific install
+/// (the extension passes its login shell's `DEVELOPER_DIR`, which this
+/// process's own environment doesn't see); omitted, the active Xcode (env
+/// `DEVELOPER_DIR`, else `xcode-select -p`) is detected.
 #[napi]
 #[must_use]
-pub fn xcode_version() -> XcodeVersion {
-    let info = xcode::active_install();
+pub fn xcode_version(developer_dir: Option<String>) -> XcodeVersion {
+    let info = match developer_dir.as_deref() {
+        Some(dir) if !dir.is_empty() => xcode::install_at(Path::new(dir)),
+        _ => xcode::active_install(),
+    };
     XcodeVersion {
         developer_dir: info.developer_dir.display().to_string(),
         short_version: info.short_version.clone(),
         build_version: info.build_version.clone(),
         major_version: info.major_version(),
     }
+}
+
+/// Forget the session-memoized Xcode state (the `xcode-select -p` result and
+/// per-install `version.plist` reads) so the next call re-detects the active
+/// Xcode. The addon is long-lived inside the extension host; call this after
+/// the user switches Xcode (`xcode-select -s`, a changed `DEVELOPER_DIR`) or
+/// refreshes the shell environment.
+#[napi]
+pub fn flush_xcode_cache() {
+    xcode::flush_caches();
 }
 
 /// A single `.xcodeproj`'s targets, configurations, and schemes (shared +

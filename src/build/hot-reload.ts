@@ -1,6 +1,7 @@
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 
+import { getDeveloperDir } from "../common/cli/scripts";
 import { getWorkspaceConfig } from "../common/config";
 import { exec } from "../common/exec";
 import { commonLogger } from "../common/logger";
@@ -64,24 +65,16 @@ let cachedDeveloperDir: string | null | undefined = undefined;
 
 /**
  * Resolve the active Xcode developer dir (the prefix used by xcodebuild and friends),
- * preferring the DEVELOPER_DIR env var if set, otherwise falling back to `xcode-select -p`.
- * Cached for the process lifetime.
+ * preferring the login shell's DEVELOPER_DIR (which subsumes the host env), otherwise
+ * falling back to `xcode-select -p`. Cached for the process lifetime.
  */
 async function getXcodeDeveloperDir(): Promise<string | null> {
   if (cachedDeveloperDir !== undefined) return cachedDeveloperDir;
-  if (process.env.DEVELOPER_DIR) {
-    cachedDeveloperDir = process.env.DEVELOPER_DIR;
-    return cachedDeveloperDir;
+  cachedDeveloperDir = (await getDeveloperDir()) ?? null;
+  if (cachedDeveloperDir === null) {
+    commonLogger.warn("Hot reload: failed to resolve Xcode developer dir");
   }
-  try {
-    const out = await exec({ command: "xcode-select", args: ["-p"] });
-    cachedDeveloperDir = out.trim() || null;
-    return cachedDeveloperDir;
-  } catch (error) {
-    commonLogger.warn("Hot reload: failed to resolve Xcode developer dir via xcode-select", { error: error });
-    cachedDeveloperDir = null;
-    return null;
-  }
+  return cachedDeveloperDir;
 }
 
 export function isHotReloadEnabled(): boolean {

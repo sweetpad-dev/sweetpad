@@ -157,6 +157,22 @@ async function resolveShellEnv(): Promise<NodeJS.ProcessEnv> {
 }
 
 /**
+ * The login shell's `DEVELOPER_DIR`, or undefined when no shell exports one.
+ * Task children get the full shell env via `exec`, but the bundled Rust
+ * resolver runs in-process and only sees the extension host's environment —
+ * callers pass this value to it explicitly (the `xcode` option of
+ * `buildSettings`, the `developerDir` argument of `xcodeVersion`) so a
+ * `DEVELOPER_DIR` exported in `~/.zshrc` selects the same Xcode for
+ * scheme/build-settings queries as it does for builds. Falls back to
+ * `process.env.DEVELOPER_DIR` naturally: the probe shell inherits the
+ * host env, and `getShellEnv` resolves to `process.env` when probing fails.
+ */
+export async function getShellDeveloperDir(): Promise<string | undefined> {
+  const env = await getShellEnv();
+  return env.DEVELOPER_DIR || undefined;
+}
+
+/**
  * Anything printed before `startMarker` (dotfile banners, MOTD, fortune,
  * zsh-welcome messages, oh-my-zsh update prompts) and anything after
  * `endMarker` is discarded. Only the block between the markers is parsed

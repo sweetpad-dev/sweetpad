@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import * as sweetpadLib from "@sweetpad/lib";
 import * as vscode from "vscode";
 
 import { getIsNodeInstalled } from "../common/cli/scripts";
@@ -55,6 +56,10 @@ export async function openTerminalPanel() {
 }
 
 export async function refreshShellEnvCommand(_deps: AppDeps) {
+  // Re-detect the active Xcode too: the in-process resolver memoizes the
+  // `xcode-select -p` result for the session, so without this an
+  // `xcode-select -s` switch isn't observed until VS Code restarts.
+  sweetpadLib.flushXcodeCache();
   await refreshShellEnv();
 }
 
