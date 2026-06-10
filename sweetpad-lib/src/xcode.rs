@@ -11,12 +11,13 @@
 //! after. `DEVELOPER_DIR` is still read live on every [`detect_developer_dir`]
 //! call, so an env override always wins. The trade-off is session staleness:
 //! switching the active Xcode (`xcode-select -s`) or updating one in place
-//! isn't observed until the process restarts.
+//! isn't observed until [`flush_caches`] drops the memos (the extension calls
+//! it from "Refresh shell environment") or the process restarts.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{LazyLock, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 /// Snapshot of the active Xcode toolchain.
 #[derive(Debug, Clone)]
@@ -87,11 +88,11 @@ pub fn detect_developer_dir() -> PathBuf {
 /// `xcode-select -p` (with the hard-coded fallback when the tool is missing or
 /// nothing is selected), memoized for the process. `DEVELOPER_DIR` is honoured
 /// ahead of this in [`detect_developer_dir`], so only the subprocess result is
-/// frozen — an env override stays live.
+/// frozen — an env override stays live. [`flush_caches`] drops the memo.
 fn selected_developer_dir() -> PathBuf {
-    static SELECTED: OnceLock<PathBuf> = OnceLock::new();
-    SELECTED
-        .get_or_init(|| {
+    let mut cached = selected_cache();
+    cached
+        .get_or_insert_with(|| {
             if let Ok(output) = Command::new("xcode-select").arg("-p").output()
                 && output.status.success()
             {
@@ -103,6 +104,24 @@ fn selected_developer_dir() -> PathBuf {
             PathBuf::from("/Applications/Xcode.app/Contents/Developer")
         })
         .clone()
+}
+
+static SELECTED_CACHE: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+fn selected_cache() -> MutexGuard<'static, Option<PathBuf>> {
+    SELECTED_CACHE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Forget the session-memoized Xcode state: the `xcode-select -p` result and
+/// every cached [`XcodeLayout`] (`version.plist` reads). The next detection
+/// re-observes the host, so a long-lived process (the node addon inside the
+/// VS Code extension) can pick up `xcode-select -s` switches or an in-place
+/// Xcode update without restarting.
+pub fn flush_caches() {
+    *selected_cache() = None;
+    layout_cache().clear();
 }
 
 /// Spec + SDK roots discovered inside one Xcode install, so a `build-settings`
@@ -298,6 +317,34 @@ mod tests {
             locate(&root).is_err(),
             "bare dir without Contents should fail"
         );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn flush_caches_drops_memoized_layouts() {
+        let root =
+            std::env::temp_dir().join(format!("sweetpad-xcode-flush-{}", std::process::id()));
+        let contents = root.join("Xcode.app/Contents");
+        std::fs::create_dir_all(contents.join("SharedFrameworks")).unwrap();
+        std::fs::create_dir_all(contents.join("Developer/Platforms")).unwrap();
+        let plist = |ver: &str| {
+            format!(
+                "<plist><dict><key>CFBundleShortVersionString</key><string>{ver}</string>\
+                 <key>ProductBuildVersion</key><string>17F6</string></dict></plist>"
+            )
+        };
+        std::fs::write(contents.join("version.plist"), plist("26.5")).unwrap();
+
+        let app = root.join("Xcode.app");
+        assert_eq!(locate(&app).unwrap().short_version, "26.5");
+
+        // An in-place update isn't observed while the layout is memoized…
+        std::fs::write(contents.join("version.plist"), plist("27.0")).unwrap();
+        assert_eq!(locate(&app).unwrap().short_version, "26.5");
+
+        // …until the session caches are flushed.
+        flush_caches();
+        assert_eq!(locate(&app).unwrap().short_version, "27.0");
         std::fs::remove_dir_all(&root).ok();
     }
 }

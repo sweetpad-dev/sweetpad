@@ -147,6 +147,7 @@ fn key_for_grouping(path: &Path, group: &str) -> String {
 
 #[test]
 fn full_corpus_oracle_coverage() {
+    common::pin_capture_host();
     let oracles = find_oracles();
     let only = common::only_version();
     let mut catalogs = CatalogCache::new();

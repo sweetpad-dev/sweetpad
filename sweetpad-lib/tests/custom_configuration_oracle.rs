@@ -125,20 +125,45 @@ fn run_capture(
 /// reporting (NATIVE_ARCH/HOST_ARCH/CURRENT_ARCH/VALID_ARCHS) the resolver can't
 /// derive from inputs. Signing keys (CODE_SIGN_IDENTITY) are out of scope on
 /// every version. Set from the first clean run minus a ~1pt margin.
+///
+/// The strict floors only hold *in place*: this fixture was captured inside the
+/// repo itself, so when the checkout sits at the capture path even
+/// path-anchored keys byte-match. At any other checkout (another machine, CI)
+/// the same fixed set of path-embedding keys can only structurally match, so
+/// the exact/canonical ceilings drop by that set's share — `in_place: false`
+/// returns floors calibrated for that mode (first off-path clean run minus a
+/// ~1pt margin). Structural is geometry-independent and shared by both modes.
 #[allow(clippy::match_same_arms)]
-fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
-    match version {
-        "26.5.0" => Some((85, 85, 98)),
-        "16.4.0" => Some((84, 85, 98)),
+fn version_floor(version: &str, in_place: bool) -> Option<(u64, u64, u64)> {
+    match (version, in_place) {
+        ("26.5.0", true) => Some((85, 85, 98)),
+        ("26.5.0", false) => Some((83, 84, 98)),
+        ("16.4.0", true) => Some((84, 85, 98)),
+        ("16.4.0", false) => Some((83, 83, 98)),
         // 15.4 byte-matches more keys (simpler SDK geometry) but loses structural
         // to the irreducible 15.x arch family — the inverse of the newer majors.
-        "15.4.0" => Some((93, 93, 95)),
+        ("15.4.0", true) => Some((93, 93, 95)),
+        ("15.4.0", false) => Some((81, 92, 95)),
         _ => None,
     }
 }
 
+/// Whether this checkout sits at the very absolute path the capture was taken
+/// at, by comparing the captured `SRCROOT` against the fixture project's real
+/// location. Selects which floor calibration applies (see [`version_floor`]).
+fn checkout_in_capture_place(capture: &Path) -> bool {
+    let Some(entries) = read_build_settings(capture) else {
+        return false;
+    };
+    let captured_srcroot = entries.first().and_then(|bs| bs.get("SRCROOT").cloned());
+    let local_srcroot =
+        project_for(capture).and_then(|p| p.parent().map(|d| d.display().to_string()));
+    captured_srcroot.is_some() && captured_srcroot == local_srcroot
+}
+
 #[test]
 fn custom_configuration_oracle_coverage() {
+    common::pin_capture_host();
     let captures = capture_files();
     assert!(
         captures.len() >= 3,
@@ -152,11 +177,13 @@ fn custom_configuration_oracle_coverage() {
     let mut mismatch: MismatchTally = BTreeMap::new();
     let mut canon_only: MismatchTally = BTreeMap::new();
     let mut saw_profile = false;
+    let mut in_place = true;
 
     for capture in &captures {
         if capture.file_name() == Some(OsStr::new("Scratch__Profile.json")) {
             saw_profile = true;
         }
+        in_place &= checkout_in_capture_place(capture);
         let (version, stats) = run_capture(capture, &mut catalogs, &mut mismatch, &mut canon_only);
         total.merge(stats);
         per_version.entry(version).or_default().merge(stats);
@@ -167,9 +194,14 @@ fn custom_configuration_oracle_coverage() {
         "the custom `Profile` config capture is missing"
     );
     common::print_summary("Custom-configuration oracle", &total, &mismatch);
+    if !in_place {
+        println!("(checkout differs from the capture path — applying off-path floor calibration)");
+    }
 
     // The marker assertions in `run_capture` are the real proof that a custom
     // config resolves; these per-version floors guard the rest of the resolved
     // dictionary against regressions (see `version_floor`).
-    assert_version_floors("custom-config", &per_version, version_floor);
+    assert_version_floors("custom-config", &per_version, |v| {
+        version_floor(v, in_place)
+    });
 }

@@ -121,6 +121,7 @@ fn run_oracle(
 
 #[test]
 fn synthetic_override_oracle_coverage() {
+    common::pin_capture_host();
     // `find_oracles()` enumerates every `build-settings/*.json`; the synthetic
     // captures are exactly those under a `_synthetic/` ancestor.
     let oracles: Vec<_> = find_oracles()

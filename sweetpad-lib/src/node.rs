@@ -42,6 +42,16 @@ pub fn xcode_version() -> XcodeVersion {
     }
 }
 
+/// Forget the session-memoized Xcode state (the `xcode-select -p` result and
+/// per-install `version.plist` reads) so the next call re-detects the active
+/// Xcode. The addon is long-lived inside the extension host; call this after
+/// the user switches Xcode (`xcode-select -s`, a changed `DEVELOPER_DIR`) or
+/// refreshes the shell environment.
+#[napi]
+pub fn flush_xcode_cache() {
+    xcode::flush_caches();
+}
+
 /// A single `.xcodeproj`'s targets, configurations, and schemes (shared +
 /// per-user, or autocreated per-target when no scheme file exists).
 /// Mirrors `xcodebuild -list -project`.
