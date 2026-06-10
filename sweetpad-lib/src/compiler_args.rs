@@ -271,8 +271,16 @@ pub fn swift_arguments(
             a.pair("-F", &format!("{products}/PackageFrameworks"));
         }
     }
+    // SWIFT_INCLUDE_PATHS now resolves with the synthesized
+    // `$(BUILT_PRODUCTS_DIR) ` default prepended (matching xcodebuild's
+    // -showBuildSettings output); the products dir is already on the argv
+    // via the explicit `-I` above, so skip it here — Xcode's swiftc
+    // invocation carries it once.
+    let products_dir = get("BUILT_PRODUCTS_DIR").unwrap_or_default();
     for p in ws_paths(get("SWIFT_INCLUDE_PATHS")) {
-        a.pair("-I", &p);
+        if p != products_dir {
+            a.pair("-I", &p);
+        }
     }
     for p in ws_paths(get("FRAMEWORK_SEARCH_PATHS")) {
         a.pair("-F", &p);

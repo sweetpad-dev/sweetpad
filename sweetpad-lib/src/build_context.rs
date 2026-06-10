@@ -395,6 +395,11 @@ impl BuildContext {
             project::last_unconditional_setting(&bundle.layers, "DEVELOPMENT_TEAM");
         let user_code_sign_identity =
             project::last_unconditional_setting(&bundle.layers, "CODE_SIGN_IDENTITY");
+        // Whether the target authors `ENABLE_PREVIEWS` — gates the previews
+        // override family (ENABLE_DEBUG_DYLIB / ENABLE_HARDENED_RUNTIME) in
+        // `built_in_overrides`.
+        let user_enable_previews =
+            project::last_unconditional_setting(&bundle.layers, "ENABLE_PREVIEWS");
         let derive_maccatalyst_bundle_id = project::last_unconditional_setting(
             &bundle.layers,
             "DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER",
@@ -485,6 +490,7 @@ impl BuildContext {
             user_product_bundle_identifier.as_deref(),
             user_development_team.as_deref(),
             user_code_sign_identity.as_deref(),
+            user_enable_previews.as_deref(),
         ));
 
         // Pin the absolute SDKROOT only when a platform actually resolved. A

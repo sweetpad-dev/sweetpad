@@ -1381,9 +1381,6 @@ pub fn built_in_settings(
         }
     }
 
-    // RESIDUAL (IPHONEOS_DEPLOYMENT_TARGET, 4): the named deployment target is a
-    // pass-through of the user/SDK value; four captures drift 13.0-vs-13.1 in the
-    // minor version, a capture-time artifact rather than a resolver rule — left as-is.
     // `ARCHS` resolves to the *active* arch when `ONLY_ACTIVE_ARCH=YES`
     // and to the platform's standard arch list otherwise. The user's
     // unconditional `ONLY_ACTIVE_ARCH` setting wins over the Debug→YES /
@@ -1447,9 +1444,14 @@ pub fn built_in_settings(
         if is_catalyst { "YES" } else { "NO" }.into(),
     );
     push("INLINE_PRIVATE_FRAMEWORKS", "NO".into());
-    // STRIP_INSTALLED_PRODUCT is config-conditional: Debug builds keep
-    // symbols for debugging; Release strips them.
-    let strip = if config_name.eq_ignore_ascii_case("Release") {
+    // STRIP_INSTALLED_PRODUCT became config-conditional on Xcode 16 (Debug
+    // keeps symbols for debugging; Release strips them). Xcode 15.x reports
+    // YES in every configuration — all 15.4 captures, Debug included.
+    // An unknown Xcode version (no catalog attached) keeps the modern rule.
+    let xcode_major_num = xcode_version_numbers(&xcode_short)
+        .and_then(|(major, _, _)| major.parse::<u32>().ok())
+        .unwrap_or(u32::MAX);
+    let strip = if xcode_major_num < 1600 || config_name.eq_ignore_ascii_case("Release") {
         "YES"
     } else {
         "NO"
@@ -1767,6 +1769,11 @@ pub fn built_in_settings(
     push("LIBRARY_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
     push("REZ_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
     push("FRAMEWORK_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
+    // `SWIFT_INCLUDE_PATHS` carries the same synthesized default: a target
+    // authoring `$(inherited) <path>` resolves to `<BUILT_PRODUCTS_DIR>  <path>`
+    // (double space — the default's trailing space plus the joiner), exactly
+    // what the tuist static-library captures show.
+    push("SWIFT_INCLUDE_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
     // `TEST_FRAMEWORK_SEARCH_PATHS` points at the platform-bundled XCTest
     // frameworks. macOS gets only the platform-level path; every other
     // platform (device OR simulator) also gets the SDK-internal
@@ -1795,29 +1802,30 @@ pub fn built_in_settings(
     push("STRIP_BITCODE_FROM_COPIED_FILES", strip_bitcode.into());
 
     // `ENABLE_DEBUG_DYLIB` enables the split debug-dylib executable used by
-    // previews + incremental relinking. See [`enable_debug_dylib_default`]
-    // for the per-product-type rule, which follows Apple's
-    // `DarwinProductTypes.xcspec`.
+    // previews + incremental relinking. The xcspec default is per product
+    // type and NOT config-conditional (see [`enable_debug_dylib_default`]);
+    // the Release flip to NO is a previews override that lives in
+    // [`built_in_overrides`], gated on the target authoring
+    // `ENABLE_PREVIEWS` truthy.
     let is_debug = !config_name.eq_ignore_ascii_case("Release");
-    push(
-        "ENABLE_DEBUG_DYLIB",
-        enable_debug_dylib_default(product_type, is_debug).into(),
-    );
+    let edd_default = enable_debug_dylib_default(product_type);
+    push("ENABLE_DEBUG_DYLIB", edd_default.into());
 
-    // `DEBUG_INFORMATION_FORMAT` for an installable iPhone application resolved
-    // with NO run destination: xcodebuild's no-destination "default-target"
-    // view reports `dwarf-with-dsym` (the archive-like default) instead of the
-    // documented Debug `dwarf` — the same no-destination installable-product
-    // behaviour that drives `ENABLE_DEBUG_DYLIB` above. Emitted at the DEFAULT
-    // layer (below the user layer) and gated on `destination.is_none()`, so a
-    // destination-bound build and any project that authors its own value are
-    // left untouched. Scoped to iphoneos apps — the only product/platform the
-    // corpus exhibits this for (iOS-Example, Kingfisher-Demo).
-    if is_debug
-        && destination.is_none()
-        && product_type == Some("com.apple.product-type.application")
-        && sdk_base == "iphoneos"
-    {
+    // `DEBUG_INFORMATION_FORMAT` when the debug dylib is active but previews
+    // are NOT effective (the target doesn't author `ENABLE_PREVIEWS` truthy):
+    // xcodebuild reports `dwarf-with-dsym` even in Debug — the stub-executor
+    // split needs the dSYM for debugging when the previews engine isn't the
+    // one driving it. Previews-effective targets (ice-cubes, tuist) and
+    // macOS/Catalyst builds keep the documented Debug `dwarf`. Emitted at the
+    // DEFAULT layer (below the user layer): an authored value still wins
+    // (Kingfisher-tvOS-Demo authors `dwarf` in Debug and the captures keep
+    // it), so only nothing-authored targets surface the dSYM default
+    // (Alamofire's iOS Example, Kingfisher-Demo — across no-destination AND
+    // bound-simulator captures alike).
+    let user_enable_previews_truthy = last_unconditional_setting(user_layers, "ENABLE_PREVIEWS")
+        .is_some_and(|v| v.eq_ignore_ascii_case("YES"));
+    let previews_effective = is_debug && user_enable_previews_truthy;
+    if is_debug && edd_default == "YES" && !previews_effective && sdk_base != "macosx" {
         push("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym".into());
     }
 
@@ -1861,7 +1869,11 @@ pub fn built_in_settings(
 // facts (config, Catalyst, package deps, scheme code coverage, …); each is
 // a distinct yes/no condition, so a flat flag list reads clearer here than
 // folding them into ad-hoc enums.
-#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::fn_params_excessive_bools,
+    clippy::too_many_lines
+)]
 pub fn built_in_overrides(
     config_name: &str,
     is_catalyst: bool,
@@ -1878,6 +1890,7 @@ pub fn built_in_overrides(
     user_product_bundle_identifier: Option<&str>,
     user_development_team: Option<&str>,
     user_code_sign_identity: Option<&str>,
+    user_enable_previews: Option<&str>,
 ) -> Vec<Assignment> {
     let is_debug = !config_name.eq_ignore_ascii_case("Release");
     let mut out = Vec::new();
@@ -1890,6 +1903,24 @@ pub fn built_in_overrides(
         });
     };
     push("ENABLE_PREVIEWS", if is_debug { "YES" } else { "NO" });
+    // The previews override family: when the target authors `ENABLE_PREVIEWS`
+    // truthy, xcodebuild couples two more settings to the previews state.
+    // An optimized (Release) build can't run previews, so it forces
+    // `ENABLE_DEBUG_DYLIB = NO` over the product-type default `YES`; an
+    // unoptimized (Debug) build runs them, and off-macOS that forces
+    // `ENABLE_HARDENED_RUNTIME = NO` even over a user-authored `YES`
+    // (ice-cubes authors both YES and its Debug simulator captures report
+    // EHR=NO, while its Release captures keep the authored YES). Targets that
+    // never author `ENABLE_PREVIEWS` (Alamofire, Kingfisher, NetNewsWire) skip
+    // this whole family — that's what keeps their `ENABLE_DEBUG_DYLIB = YES`
+    // alive in Release. Zero exceptions across the corpus for both rules.
+    let previews_authored = user_enable_previews.is_some_and(|v| v.eq_ignore_ascii_case("YES"));
+    if previews_authored && !is_debug {
+        push("ENABLE_DEBUG_DYLIB", "NO");
+    }
+    if previews_authored && is_debug && canonicalize_sdk_base(sdk_base) != "macosx" {
+        push("ENABLE_HARDENED_RUNTIME", "NO");
+    }
     push(
         "GCC_SYMBOLS_PRIVATE_EXTERN",
         if is_debug { "NO" } else { "YES" },
@@ -1899,24 +1930,27 @@ pub fn built_in_overrides(
     }
     // `DEBUG_INFORMATION_FORMAT` defaults to `dwarf` in xcspec, but
     // xcodebuild reports `dwarf-with-dsym` for Release builds in
-    // `-showBuildSettings` regardless of what the user set.
+    // `-showBuildSettings` regardless of what the user set — EXCEPT under
+    // Mac Catalyst, where the captures keep the plain `dwarf` default
+    // (Kingfisher-Demo Release__macOS on 16.4 and 26.5).
     if !is_debug {
-        push("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym");
-    } else if destination.is_none()
+        if !is_catalyst {
+            push("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym");
+        }
+    } else if destination.is_none_or(RunDestination::is_macos)
         && is_test_bundle_product_type(product_type)
         && canonicalize_sdk_base(sdk_base) != "macosx"
     {
         // Non-macOS unit/UI-test bundles get a dSYM even in Debug *in the
-        // no-destination "default-target" view*: there xcodebuild reports
+        // "default-target" view*: with no destination at all, or with a macOS
+        // destination that cannot run the (non-Catalyst) bundle — the two are
+        // the same fallback inside xcodebuild. There it reports
         // `dwarf-with-dsym` for shallow-bundle (iOS/tvOS/watchOS/visionOS) test
-        // bundles, while macOS test bundles keep the plain `dwarf` default. This
-        // is the same no-destination/destination split that drives
-        // `ENABLE_DEBUG_DYLIB` and the no-destination app rule below: once a run
-        // destination is bound (an iOS-Simulator scheme build), xcodebuild emits
-        // the documented Debug `dwarf` for the very same test bundle. Gating on
-        // `destination.is_none()` keeps the per-target/project-defaults captures
-        // (no destination) matching without over-firing on destination-bound
-        // scheme captures (verified: tuist iOS-Sim test bundles are `dwarf`).
+        // bundles, while macOS test bundles keep the plain `dwarf` default.
+        // Once a RUNNABLE destination is bound (an iOS-Simulator scheme
+        // build), xcodebuild emits the documented Debug `dwarf` for the very
+        // same test bundle (verified: tuist iOS-Sim test bundles are `dwarf`,
+        // their macOS-destination captures are `dwarf-with-dsym`).
         push("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym");
     }
     // Watch targets being built under a non-watch run destination (an
@@ -2003,6 +2037,11 @@ pub fn built_in_overrides(
     // reproducing it would be over-fitting, so we leave the single-token value.
     if is_catalyst && let Some(user_target) = user_iphoneos_deployment_target {
         let ios_effective = apply_catalyst_ios_floor(user_target);
+        // The reported IPHONEOS_DEPLOYMENT_TARGET itself is clamped to the
+        // 13.1 Catalyst floor too: Alamofire authors 10.0 and Kingfisher 13.0,
+        // and both Catalyst captures report 13.1 (already-above values like
+        // ice-cubes' 18.5 pass through untouched).
+        push("IPHONEOS_DEPLOYMENT_TARGET", &ios_effective);
         push("SWIFT_DEPLOYMENT_TARGET", &ios_effective);
         push(
             "LLVM_TARGET_TRIPLE_OS_VERSION",
@@ -2386,29 +2425,19 @@ pub fn is_unit_test_bundle_product_type(product_type: Option<&str>) -> bool {
 /// (sticker pack, watch container, Messages app) hard-code `NO` because their
 /// thin-stub executable can't host the dylib wrapper.
 ///
-/// One divergence from the spec: plain `application` in Release. The spec says
-/// `YES`, but `xcodebuild -showBuildSettings` reports `NO` for most apps and
-/// `YES` for a minority, keyed on a build-system heuristic that isn't a
-/// function of any input we can see — it splits e.g. NetNewsWire / Kingfisher /
-/// Alamofire's iOS Example (`YES`) from ice-cubes / tuist-generated apps
-/// (`NO`) with otherwise-identical declared settings, and doesn't track
-/// project format, deployment target, or `ONLY_ACTIVE_ARCH`. `Debug→YES /
-/// Release→NO` matches the majority for apps. App-extensions, by contrast,
-/// keep `YES` in Release across the entire corpus, so they're unconditional.
-///
-/// This Release→NO branch is therefore best-effort and irreducible. On the
-/// corpus it is correct for 59 of 68 Release `application` configs (~87%); the
-/// 9 misses are the `YES` minority and span iOS / macOS / tvOS / visionOS, so
-/// no observable input (`IPHONEOS_DEPLOYMENT_TARGET`, `SUPPORTS_MACCATALYST`,
-/// product type, pbxproj/xcconfig, project format) predicts them. The gate is
-/// an opaque xcodebuild runtime decision; matching it exactly would require
-/// keying on project identity, which we deliberately don't do. `NO` is kept as
-/// the safe majority default.
+/// The default is per product type only — NOT config-conditional. What used
+/// to look like an unpredictable Release split (NetNewsWire / Kingfisher /
+/// Alamofire `YES` vs ice-cubes / tuist `NO`) is the previews override: when
+/// the target authors `ENABLE_PREVIEWS` truthy and the build is optimized,
+/// xcodebuild forces `ENABLE_PREVIEWS = NO` *and* `ENABLE_DEBUG_DYLIB = NO`
+/// (see [`built_in_overrides`]). Targets that never author `ENABLE_PREVIEWS`
+/// keep the spec default `YES` straight through Release — exactly the split
+/// the corpus shows, with zero exceptions across all 190 EDD-bearing entries.
 ///
 /// Product types that don't emit `ENABLE_DEBUG_DYLIB` at all (frameworks,
 /// libraries, tools, test bundles) fall through to `NO`; the value is never
 /// compared for them.
-fn enable_debug_dylib_default(product_type: Option<&str>, is_debug: bool) -> &'static str {
+fn enable_debug_dylib_default(product_type: Option<&str>) -> &'static str {
     match product_type {
         // Stub-binary product types: incompatible with the dylib wrapper.
         Some(
@@ -2417,20 +2446,13 @@ fn enable_debug_dylib_default(product_type: Option<&str>, is_debug: bool) -> &'s
             | "com.apple.product-type.application.watchapp2-container"
             | "com.apple.product-type.app-extension.messages-sticker-pack",
         ) => "NO",
-        // App-extension family inherits YES and keeps it in every config.
+        // Applications and the whole app-extension family default YES.
         Some(
-            "com.apple.product-type.extensionkit-extension"
+            "com.apple.product-type.application"
+            | "com.apple.product-type.extensionkit-extension"
             | "com.apple.product-type.watchkit2-extension",
         ) => "YES",
         Some(pt) if pt.starts_with("com.apple.product-type.app-extension") => "YES",
-        // Plain applications: YES in Debug, NO in Release (majority match).
-        Some("com.apple.product-type.application") => {
-            if is_debug {
-                "YES"
-            } else {
-                "NO"
-            }
-        }
         _ => "NO",
     }
 }
@@ -2452,8 +2474,13 @@ fn device_model_for(device_name: &str) -> &'static str {
 
 /// Best-effort lookup of the running macOS version. Used to fill
 /// `ASSETCATALOG_FILTER_FOR_DEVICE_OS_VERSION` when the destination is
-/// macOS but the target's platform isn't.
+/// macOS but the target's platform isn't. Host-derived like the arch/user/
+/// home families, so the [`HostOverride`] pin wins over the live `sw_vers`
+/// probe (which only exists on a mac).
 fn host_os_version() -> String {
+    if let Some(v) = host_override(|o| o.os_version.as_ref()) {
+        return v;
+    }
     if let Ok(output) = std::process::Command::new("sw_vers")
         .arg("-productVersion")
         .output()
@@ -3014,22 +3041,18 @@ mod tests {
         let watch_container = Some("com.apple.product-type.application.watchapp2-container");
         let framework = Some("com.apple.product-type.framework");
 
-        // Plain apps: Debug→YES / Release→NO (majority of captures).
-        assert_eq!(enable_debug_dylib_default(app, true), "YES");
-        assert_eq!(enable_debug_dylib_default(app, false), "NO");
-        // App-extension family: YES in every configuration.
-        for ext in [ext, widget, watch_ext, imsg_ext] {
-            assert_eq!(enable_debug_dylib_default(ext, true), "YES");
-            assert_eq!(enable_debug_dylib_default(ext, false), "YES");
+        // Apps and the app-extension family: YES in every configuration —
+        // the Release flip to NO is the previews override, not the default.
+        for yes in [app, ext, widget, watch_ext, imsg_ext] {
+            assert_eq!(enable_debug_dylib_default(yes), "YES");
         }
         // Stub-binary product types: always NO.
         for stub in [sticker, watch_container] {
-            assert_eq!(enable_debug_dylib_default(stub, true), "NO");
-            assert_eq!(enable_debug_dylib_default(stub, false), "NO");
+            assert_eq!(enable_debug_dylib_default(stub), "NO");
         }
         // Types that don't emit the setting fall through to NO.
-        assert_eq!(enable_debug_dylib_default(framework, true), "NO");
-        assert_eq!(enable_debug_dylib_default(None, true), "NO");
+        assert_eq!(enable_debug_dylib_default(framework), "NO");
+        assert_eq!(enable_debug_dylib_default(None), "NO");
     }
 
     #[test]
@@ -3135,6 +3158,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         assert_eq!(
             find(&ice, "ALLOW_TARGET_PLATFORM_SPECIALIZATION").as_deref(),
@@ -3163,6 +3187,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         assert_eq!(find(&kf, "ALLOW_TARGET_PLATFORM_SPECIALIZATION"), None);
         assert_eq!(
@@ -3185,6 +3210,7 @@ mod tests {
             false,
             true,
             false,
+            None,
             None,
             None,
             None,
@@ -3215,6 +3241,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         assert_eq!(find(&plain, "ALLOW_TARGET_PLATFORM_SPECIALIZATION"), None);
         assert_eq!(find(&plain, "SUPPORTED_PLATFORMS"), None);
@@ -3236,6 +3263,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         assert_eq!(find(&already, "SUPPORTED_PLATFORMS"), None);
     }
@@ -3251,12 +3279,12 @@ mod tests {
         let app = Some("com.apple.product-type.application");
         let unsigned = built_in_overrides(
             "Debug", false, false, None, None, framework, "macosx", None, false, false, false,
-            false, None, None, None,
+            false, None, None, None, None,
         );
         assert_eq!(find(&unsigned, "CODE_SIGN_IDENTITY").as_deref(), Some("-"));
         let signed = built_in_overrides(
             "Debug", false, false, None, None, app, "macosx", None, false, false, true, false,
-            None, None, None,
+            None, None, None, None,
         );
         assert_eq!(find(&signed, "CODE_SIGN_IDENTITY"), None);
     }
@@ -3286,6 +3314,7 @@ mod tests {
             Some("com.onevcat.$(PRODUCT_NAME:rfc1034identifier)"),
             None,
             None,
+            None,
         );
         assert_eq!(
             find(&derived, "PRODUCT_BUNDLE_IDENTIFIER").as_deref(),
@@ -3309,6 +3338,7 @@ mod tests {
             Some("com.example.App"),
             None,
             None,
+            None,
         );
         assert_eq!(find(&not_derived, "PRODUCT_BUNDLE_IDENTIFIER"), None);
 
@@ -3329,6 +3359,7 @@ mod tests {
             Some("com.example.App"),
             None,
             None,
+            None,
         );
         assert_eq!(find(&non_catalyst, "PRODUCT_BUNDLE_IDENTIFIER"), None);
 
@@ -3347,6 +3378,7 @@ mod tests {
             true,
             true,
             Some("maccatalyst.com.example.App"),
+            None,
             None,
             None,
         );

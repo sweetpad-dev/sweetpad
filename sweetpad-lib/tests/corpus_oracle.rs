@@ -303,12 +303,18 @@ fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     }
 }
 
-const CORPUS_FLOOR_2650: (u64, u64, u64) = (86, 95, 98);
-const CORPUS_FLOOR_1640: (u64, u64, u64) = (86, 98, 98);
+// Recalibrated after the previews-coupling / host-pinning / Catalyst-clamp
+// fixes (see `tests/oracle_regression_proofs.rs`) cleared the
+// ASSETCATALOG_FILTER / ENABLE_DEBUG_DYLIB / ENABLE_HARDENED_RUNTIME /
+// DEBUG_INFORMATION_FORMAT / STRIP_INSTALLED_PRODUCT / SWIFT_INCLUDE_PATHS
+// systematic-mismatch families: observed 88/96/99 (26.5), 88/99/100 (16.4),
+// 86/95/97 (15.4), floored with the usual ~1pt margin.
+const CORPUS_FLOOR_2650: (u64, u64, u64) = (87, 95, 98);
+const CORPUS_FLOOR_1640: (u64, u64, u64) = (87, 98, 99);
 // 15.4 structural sits ~97% (vs 99% on 16+) because that Xcode reports host/arch
 // settings the resolver can't derive from project inputs and that newer Xcodes
 // normalize away (NATIVE_ARCH/HOST_ARCH=arm64e, concrete CURRENT_ARCH on the
 // no-destination path, VALID_ARCHS ordering) — documented irreducibles, not
 // resolver bugs (the real 15.x parse bugs, PACKAGE_TYPE/BUNDLE_FORMAT
 // undomained-clobber, are fixed). Floor accordingly.
-const CORPUS_FLOOR_1540: (u64, u64, u64) = (84, 94, 95);
+const CORPUS_FLOOR_1540: (u64, u64, u64) = (85, 94, 96);

@@ -32,7 +32,7 @@ mod common;
 
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use sweetpad::build_context::{BuildContext, ResolveQuery};
 use sweetpad::destination::parse_destination_suffix;
