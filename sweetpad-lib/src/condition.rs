@@ -19,9 +19,10 @@
 //! comparing or boolean-testing.
 //!
 //! Equality compares the two operands as expanded strings. Boolean context
-//! (`&&`, `||`, `!`, the ternary condition) coerces via `boolValue`: only the
-//! literal `"YES"` (case-insensitive) is truthy; everything else — including
-//! arbitrary non-empty strings — is false.
+//! (`&&`, `||`, `!`, the ternary condition) coerces via NSString.boolValue:
+//! after optional whitespace, sign, and zeroes, a `Y`/`y`/`T`/`t` or nonzero
+//! digit is truthy ("YES", "true", "1", "+9", "01"); everything else —
+//! including arbitrary non-empty strings — is false.
 //!
 //! See `tests/MacroConditionExpressionTests.swift` in `swift-build` for the
 //! canonical expected behaviour the tests below mirror.
@@ -390,13 +391,20 @@ fn eval_bool(expr: &Expr, settings: &BTreeMap<String, String>) -> bool {
 }
 
 fn bool_value(s: &str) -> bool {
-    // Apple's `String.boolValue` returns true for "YES" and "1" /
-    // case-insensitive "true" — `Foundation` semantics. We match the
-    // observed truthiness in the swift-build tests: any non-`YES` string
-    // (case-insensitive) is false. Numeric YES values aren't found in the
-    // xcspec corpus' conditions, so we don't need integer parsing.
-    let trimmed = s.trim();
-    trimmed.eq_ignore_ascii_case("YES") || trimmed == "1" || trimmed.eq_ignore_ascii_case("true")
+    // NSString.boolValue semantics — what Apple's spec engine coerces with:
+    // skip leading whitespace, an optional `+`/`-` sign, and any zeroes;
+    // truthy iff the next character is `Y`/`y`/`T`/`t` (so "YES", "yes",
+    // "true", "t" …) or a nonzero digit ("1", "9", "+1", "01"). Everything
+    // else — "NO", "0", "", "no1", arbitrary strings — is false.
+    let mut chars = s.trim_start().chars();
+    let mut c = chars.next();
+    if matches!(c, Some('+' | '-')) {
+        c = chars.next();
+    }
+    while c == Some('0') {
+        c = chars.next();
+    }
+    matches!(c, Some('Y' | 'y' | 'T' | 't' | '1'..='9'))
 }
 
 fn bool_to_yesno(b: bool) -> String {

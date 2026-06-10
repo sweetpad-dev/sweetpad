@@ -109,6 +109,31 @@ fn layers_extra_xcconfig_iphoneos() {
 }
 
 #[test]
+fn sdk_conditions_match_the_versioned_canonical_name() {
+    // xcodebuild binds `[sdk=...]` conditionals against the resolved SDK's
+    // canonical name (e.g. `macosx26.0`), so the ubiquitous trailing-star
+    // form matches while a bare unversioned pattern does not — CocoaPods
+    // writes `[sdk=iphoneos*]` precisely because `[sdk=iphoneos]` wouldn't
+    // match a real (versioned) SDK.
+    let dir = std::env::temp_dir().join(format!("sweetpad-sdkcond-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let xcconfig = dir.join("sdk-cond.xcconfig");
+    std::fs::write(
+        &xcconfig,
+        "BARE_SDK_COND[sdk=macosx] = bare\nSTAR_SDK_COND[sdk=macosx*] = star\n",
+    )
+    .unwrap();
+    let opts = BuildSettingsOptions {
+        xcconfig: Some(xcconfig),
+        ..scratch_opts()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(s.get("STAR_SDK_COND").map(String::as_str), Some("star"));
+    assert_eq!(s.get("BARE_SDK_COND"), None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn keys_projection_trims_output_to_requested_present_keys() {
     // Requesting a projection returns only the requested keys that resolved:
     // present keys keep their resolved values, an unknown requested key is

@@ -230,7 +230,11 @@ impl BuildContext {
         let layers = self.build_layers(&bundle, query);
         let layer_refs: Vec<&[Assignment]> = layers.iter().map(Vec::as_slice).collect();
         let ctx = ResolveContext {
-            sdk: query.sdk.clone(),
+            // xcodebuild binds `[sdk=...]` conditionals against the resolved
+            // SDK's canonical (versioned) name, e.g. `macosx26.0` — that's
+            // why xcconfig authors write `[sdk=iphoneos*]`. Bind the
+            // canonical name when the catalog knows it.
+            sdk: self.canonical_sdk(&query.sdk),
             arch: query.arch.clone(),
             configuration: query.configuration.clone(),
             // xcodebuild's default build variant — `[variant=normal]`
@@ -502,6 +506,30 @@ impl BuildContext {
         }
 
         layers
+    }
+
+    /// The canonical (versioned) name of the SDK a query binds, e.g.
+    /// `macosx26.0` for a `macosx` request — the name xcodebuild matches
+    /// `[sdk=...]` conditionals against. The catalog keys `sdk_paths` by
+    /// both the canonical name and its unversioned base; pick the versioned
+    /// sibling of the requested base. Falls back to the request verbatim
+    /// when there's no catalog or no versioned entry (then bare patterns
+    /// keep matching, the lenient pre-catalog behavior).
+    fn canonical_sdk(&self, sdk: &str) -> String {
+        let Some(catalog) = &self.xcspec else {
+            return sdk.to_string();
+        };
+        catalog
+            .sdk_paths
+            .keys()
+            .filter(|k| {
+                k.len() > sdk.len()
+                    && k.starts_with(sdk)
+                    && k.as_bytes()[sdk.len()].is_ascii_digit()
+            })
+            .min()
+            .cloned()
+            .unwrap_or_else(|| sdk.to_string())
     }
 
     /// Synthesize a test bundle's `TARGET_BUILD_SUBPATH` from its host app
