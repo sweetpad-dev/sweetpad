@@ -421,6 +421,7 @@ impl BuildContext {
             &query.sdk,
             query.destination.as_ref(),
             is_catalyst,
+            auto_no_destination,
             user_ios_deployment.as_deref(),
             user_only_active_arch.as_deref(),
             &bundle.layers,

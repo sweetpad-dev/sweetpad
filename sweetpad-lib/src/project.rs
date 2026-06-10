@@ -924,11 +924,16 @@ fn apply_catalyst_ios_floor(user_target: &str) -> String {
 /// `MACOSX_DEPLOYMENT_TARGET`. Apple's rule:
 ///
 /// - iOS 13.X (any minor) → macOS 10.15 (Catalina, the Catalyst floor)
-/// - iOS X.Y where X ≥ 14 → macOS (X − 3).Y
+/// - iOS X.Y where 14 ≤ X ≤ 18 → macOS (X − 3).Y (the last offset pair is
+///   iOS 18 → macOS 15)
+/// - iOS X.Y where X ≥ 26 → macOS X.Y — Apple aligned every OS on the same
+///   version number starting at 26 (iOS 26 ↔ macOS 26), ending the −3 offset
 fn catalyst_macos_target(ios_target: &str) -> String {
     let (major, minor) = parse_version_pair(ios_target);
     if major == 13 {
         "10.15".to_string()
+    } else if major >= 26 {
+        format!("{major}.{minor}")
     } else {
         format!("{}.{}", major.saturating_sub(3), minor)
     }
@@ -957,6 +962,7 @@ pub fn built_in_settings(
     sdk_canonical: &str,
     destination: Option<&RunDestination>,
     is_catalyst: bool,
+    auto_no_destination: bool,
     user_iphoneos_deployment_target: Option<&str>,
     user_only_active_arch: Option<&str>,
     user_layers: &[Vec<Assignment>],
@@ -1019,18 +1025,19 @@ pub fn built_in_settings(
     let platform_dir_name = platform_dir_name_for(&sdk_base);
     let platform_display = platform_display_name(&sdk_base);
     let effective_platform_name = effective_platform_name_for(&sdk_base);
-    // A multiplatform target with `SDKROOT = auto` and no `-destination` never
-    // resolves a concrete platform: `xcodebuild -showBuildSettings` leaves
-    // PLATFORM_NAME / the PackageType (wrapper) chain unresolved and reports a
-    // band of sentinel / base-spec defaults instead of the macosx-resolved
-    // values our fallback (`sdk_canonical = "macosx"`) would pull in. Detect
-    // that mode once here so the affected keys below can pin Apple's
-    // no-platform output. A bound destination (or any concrete SDKROOT) keeps
-    // the normal resolved values.
-    let auto_no_destination = destination.is_none()
-        && natural_sdkroot(user_layers)
-            .as_deref()
-            .is_some_and(|s| s.eq_ignore_ascii_case("auto"));
+    // `auto_no_destination` is the caller's verdict on the no-platform mode: a
+    // multiplatform target with `SDKROOT = auto`, no `-destination`, and no
+    // supported `-sdk` request never resolves a concrete platform —
+    // `xcodebuild -showBuildSettings` leaves PLATFORM_NAME / the PackageType
+    // (wrapper) chain unresolved and reports a band of sentinel / base-spec
+    // defaults instead of the macosx-resolved values our fallback
+    // (`sdk_canonical = "macosx"`) would pull in. The affected keys below pin
+    // Apple's no-platform output in that mode. It is computed by the caller
+    // (see [`crate::build_context::BuildContext`]) rather than re-derived here
+    // so the same verdict gates this layer, Catalyst detection, and the
+    // SDKROOT pin — a request for an SDK the target *supports* binds the
+    // platform (matching `xcodebuild -sdk iphonesimulator`) and must not pin
+    // the sentinels.
     // No-destination ARCHS_STANDARD for watchOS *device* can surface the full
     // watchOSDevice.xcspec RealArchitectures = ( arm64, armv7k, arm64_32 ).
     // Two filters apply, both observed only on the no-destination path:
@@ -1099,8 +1106,12 @@ pub fn built_in_settings(
     push("SYMROOT", build_dir);
     push("OBJROOT", obj_root.clone());
     push("TEMP_ROOT", obj_root);
-    push("DSTROOT", format!("/tmp/{target_name}.dst"));
-    push("INSTALL_ROOT", format!("/tmp/{target_name}.dst"));
+    // `DSTROOT` is keyed on the *project*, not the target —
+    // CoreBuildSystem.xcspec defines it as `/tmp/$(PROJECT_NAME).dst` and the
+    // captures confirm it (target `Alamofire iOS` reports `/tmp/Alamofire.dst`).
+    // `INSTALL_ROOT` defaults to `$(DSTROOT)`.
+    push("DSTROOT", format!("/tmp/{project_name}.dst"));
+    push("INSTALL_ROOT", format!("/tmp/{project_name}.dst"));
     // DerivedData root (parent of every container/hash dir). Referenced by
     // xcspec defaults like `MODULE_CACHE_DIR = $(DERIVED_DATA_DIR)/ModuleCache.noindex`.
     // When `-derivedDataPath` is overridden, the override IS the
@@ -1394,8 +1405,17 @@ pub fn built_in_settings(
     // single out. The no-destination device/macOS oracles confirm ARCHS ==
     // ARCHS_STANDARD even on Debug.
     let pinned_to_device = destination.is_some() || sdk_base.ends_with("simulator");
+    // The collapse target is the *destination's* running arch (a device
+    // destination is arm64 even on an Intel host; an explicit
+    // `-destination …,arch=x86_64` wins on any host). Only the bare
+    // simulator-SDK case — no destination to read — falls back to the host
+    // arch, since a simulator executes on the host.
+    let active_arch = destination
+        .map(|d| d.arch.as_str())
+        .filter(|a| !a.is_empty())
+        .unwrap_or(host.as_str());
     let archs_value = if pinned_to_device && only_active_arch_yes {
-        host.clone()
+        active_arch.to_string()
     } else {
         arch_list.clone()
     };
@@ -1827,7 +1847,7 @@ pub fn built_in_settings(
 /// settings when emitting `-showBuildSettings`. Layer this ABOVE the
 /// user-authored layers so it wins unconditionally.
 ///
-/// `ENABLE_PREVIEWS`, `LD_EXPORT_GLOBAL_SYMBOMS`, and
+/// `ENABLE_PREVIEWS`, `LD_EXPORT_GLOBAL_SYMBOLS`, and
 /// `GCC_SYMBOLS_PRIVATE_EXTERN` all flip purely on the configuration
 /// name in the captured oracles — even when the user explicitly sets
 /// them in the pbxproj. Mac Catalyst additionally forces a
@@ -3067,9 +3087,13 @@ mod tests {
         // iOS 13.x always maps to 10.15 (Catalina floor).
         assert_eq!(catalyst_macos_target("13.1"), "10.15");
         assert_eq!(catalyst_macos_target("13.5"), "10.15");
-        // iOS X.y where X >= 14 maps to (X - 3).y.
+        // iOS X.y where 14 <= X <= 18 maps to (X - 3).y.
         assert_eq!(catalyst_macos_target("14.0"), "11.0");
         assert_eq!(catalyst_macos_target("18.5"), "15.5");
+        // From 26 the version numbers are aligned (iOS 26 <-> macOS 26);
+        // the -3 offset would invent a macOS 23 that never existed.
+        assert_eq!(catalyst_macos_target("26.0"), "26.0");
+        assert_eq!(catalyst_macos_target("26.2"), "26.2");
     }
 
     #[test]
@@ -3380,6 +3404,7 @@ mod tests {
             "macosx", // the resolver's fallback SDK for an unresolved `auto`
             None,     // no destination -> no-platform mode
             false,
+            true, // the caller's no-platform verdict (auto + no destination)
             Some("18.5"),
             None,
             &user_layers,
@@ -3412,6 +3437,7 @@ mod tests {
             "macosx",
             None,
             false,
+            false, // a concrete SDKROOT resolves a platform
             Some("18.5"),
             None,
             &user_layers,
@@ -3423,6 +3449,85 @@ mod tests {
         assert_eq!(get("SKIP_INSTALL"), Some("NO"));
         // The no-platform TAPI override is absent, so the catalog's value wins.
         assert_eq!(get("TAPI_VERIFY_MODE"), None);
+    }
+
+    #[test]
+    fn dstroot_is_keyed_on_the_project_not_the_target() {
+        // CoreBuildSystem.xcspec: `DSTROOT = /tmp/$(PROJECT_NAME).dst`,
+        // `INSTALL_ROOT = $(DSTROOT)`. The oracle for target `Alamofire iOS`
+        // (project `Alamofire`) reports `/tmp/Alamofire.dst` for both.
+        let out = built_in_settings(
+            Path::new("/tmp/Alamofire.xcodeproj"),
+            "Alamofire iOS",
+            "Debug",
+            Some("com.apple.product-type.framework"),
+            "iphoneos",
+            None,
+            false,
+            false,
+            None,
+            None,
+            &[],
+            None,
+            None,
+            None,
+        );
+        let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
+        assert_eq!(get("DSTROOT"), Some("/tmp/Alamofire.dst"));
+        assert_eq!(get("INSTALL_ROOT"), Some("/tmp/Alamofire.dst"));
+    }
+
+    #[test]
+    fn only_active_arch_collapses_archs_to_the_destination_arch() {
+        // ONLY_ACTIVE_ARCH=YES with a bound destination collapses ARCHS to the
+        // *destination's* arch — a device destination is arm64 regardless of
+        // the host machine (xcodebuild on an Intel Mac still builds arm64 for
+        // an iPhone), and an explicit `-destination …,arch=…` wins likewise.
+        let dest = RunDestination {
+            platform: "iphoneos".into(),
+            os_version: String::new(),
+            device_name: String::new(),
+            arch: "arm64".into(),
+        };
+        let out = built_in_settings(
+            Path::new("/tmp/App.xcodeproj"),
+            "App",
+            "Debug", // ONLY_ACTIVE_ARCH defaults YES on Debug
+            Some("com.apple.product-type.application"),
+            "iphoneos",
+            Some(&dest),
+            false,
+            false,
+            None,
+            None,
+            &[],
+            None,
+            None,
+            None,
+        );
+        let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
+        assert_eq!(get("ARCHS"), Some("arm64"));
+
+        // No destination + simulator SDK still collapses, to the host arch
+        // (the simulator executes on the host).
+        let out = built_in_settings(
+            Path::new("/tmp/App.xcodeproj"),
+            "App",
+            "Debug",
+            Some("com.apple.product-type.application"),
+            "iphonesimulator",
+            None,
+            false,
+            false,
+            None,
+            None,
+            &[],
+            None,
+            None,
+            None,
+        );
+        let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
+        assert_eq!(get("ARCHS").map(String::from), Some(host_arch()));
     }
 
     #[test]

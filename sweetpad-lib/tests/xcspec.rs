@@ -172,6 +172,7 @@ fn scratch_resolves_against_captured_oracle_with_decent_coverage() {
         "macosx26.5",
         None,
         false,
+        false,
         None,
         None,
         &[],

@@ -456,3 +456,66 @@ fn ui_test_bundles_are_not_unit_test_bundles() {
         "com.apple.product-type.application"
     )));
 }
+
+/// Fix 9: a multiplatform `SDKROOT = auto` target binds the moment a
+/// *supported* SDK is requested — `xcodebuild -sdk iphonesimulator` resolves
+/// the platform even with no `-destination` — so the whole no-platform band
+/// must stay consistent. The SDKROOT pin already honored this (commit
+/// "Bind SDKROOT=auto to a real SDK"), but `built_in_settings` re-derived the
+/// no-platform verdict on its own and kept pinning the `-unknown` sentinels:
+/// the same resolve then mixed a bound platform with
+/// `EFFECTIVE_PLATFORM_NAME = -unknown` paths (`Debug-unknown` products dir)
+/// and `SKIP_INSTALL = YES` for an application. The verdict is now computed
+/// once and threaded through.
+#[test]
+fn supported_sdk_request_on_auto_sdkroot_binds_the_platform_consistently() {
+    use sweetpad::build_context::{BuildContext, ResolveQuery};
+
+    const AUTO_PBXPROJ: &str = "\
+// !$*UTF8*$!
+{
+\tarchiveVersion = 1;
+\tobjects = {
+\t\tPROJ = { isa = PBXProject; buildConfigurationList = PLIST; mainGroup = MAIN; targets = (APP); };
+\t\tMAIN = { isa = PBXGroup; sourceTree = \"<group>\"; children = (); };
+\t\tPLIST = { isa = XCConfigurationList; buildConfigurations = (PDBG); defaultConfigurationName = Debug; };
+\t\tPDBG = { isa = XCBuildConfiguration; name = Debug; buildSettings = { SDKROOT = auto; SUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\"; }; };
+\t\tAPP = { isa = PBXNativeTarget; name = App; productType = \"com.apple.product-type.application\"; };
+\t};
+\trootObject = PROJ;
+}
+";
+    let proj = scratch_xcodeproj("auto-supported-sdk", AUTO_PBXPROJ);
+    let ctx = BuildContext::open(&proj).unwrap();
+
+    // A supported SDK request resolves the platform (xcodebuild
+    // `-sdk iphonesimulator` semantics): platform-derived values, not the
+    // no-platform sentinels.
+    let bound = ctx
+        .resolve(&ResolveQuery::new(
+            "App",
+            "Debug",
+            "iphonesimulator",
+            "arm64",
+        ))
+        .unwrap()
+        .settings;
+    assert_eq!(
+        bound.get("EFFECTIVE_PLATFORM_NAME").map(String::as_str),
+        Some("-iphonesimulator"),
+        "a supported -sdk binds the platform; the -unknown sentinel must not leak in"
+    );
+    assert_eq!(bound.get("SKIP_INSTALL").map(String::as_str), Some("NO"));
+
+    // An unsupported / fallback request (plain `-showBuildSettings`) stays in
+    // the no-platform mode and keeps Apple's sentinel output.
+    let unbound = ctx
+        .resolve(&ResolveQuery::new("App", "Debug", "macosx", "arm64"))
+        .unwrap()
+        .settings;
+    assert_eq!(
+        unbound.get("EFFECTIVE_PLATFORM_NAME").map(String::as_str),
+        Some("-unknown")
+    );
+    assert_eq!(unbound.get("SKIP_INSTALL").map(String::as_str), Some("YES"));
+}
