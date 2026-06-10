@@ -2,8 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [Unreleased]
+## [0.2.0] - 2026-06-10
 
+- Add built-in Swift code intelligence powered by a bundled Build Server Protocol (BSP) server: SweetPad feeds sourcekit-lsp accurate per-file compiler arguments, builds dependency modules on demand, and refreshes live when you switch scheme or configuration — with `SweetPad: Setup BSP` and `SweetPad: Diagnose BSP` commands, a status-bar control, and a first-run prompt
+- Rename the `sweetpad.server.*` settings and commands to `sweetpad.cliServer.*`
+- Fix a "path argument must be of type string" crash on older Node runtimes during workspace auto-detection ([#255](https://github.com/sweetpad-dev/sweetpad/issues/255))
 - Always route read-only Xcode operations (`-list`, `-showBuildSettings`, `-version`) through the bundled [sweetpad-lib](https://github.com/sweetpad-dev/sweetpad-lib) Rust resolver, and remove the opt-in `sweetpad.system.useSweetpadLib` flag
 - Remove the `scheme.write` agent RPC method — scheme files are now read-only over the agent API via `scheme.reveal`
 
