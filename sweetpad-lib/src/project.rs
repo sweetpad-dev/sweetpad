@@ -2127,6 +2127,11 @@ pub struct HostOverride {
     pub arch: Option<String>,
     pub user: Option<String>,
     pub home: Option<String>,
+    /// The host's macOS version (`sw_vers -productVersion`), reported as
+    /// `ASSETCATALOG_FILTER_FOR_DEVICE_OS_VERSION` when a macOS destination
+    /// runs an iOS-natural target. Pinning it lets the corpus oracles score
+    /// identically off-macOS, where `sw_vers` doesn't exist.
+    pub os_version: Option<String>,
 }
 
 static HOST_OVERRIDE: std::sync::OnceLock<HostOverride> = std::sync::OnceLock::new();

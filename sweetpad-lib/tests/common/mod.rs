@@ -321,6 +321,9 @@ pub fn pin_capture_host() {
         arch: Some("arm64".into()),
         user: Some("hyzyla_home".into()),
         home: Some("/Users/hyzyla_home".into()),
+        // `corpus/manifest.json` records `host_macos: 26.5` for the capture
+        // host; the Catalyst-fallback asset-catalog OS filter reports it.
+        os_version: Some("26.5".into()),
     });
 }
 
