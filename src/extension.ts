@@ -35,7 +35,7 @@ import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { SchemeWatcher } from "./build/scheme-watcher.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
-import { getWorkspacePath } from "./build/utils.js";
+import { getWorkspacePath, notifyCustomXcodebuildReadOnlyScope } from "./build/utils.js";
 import { CliServerService } from "./cli-server/service.js";
 import { type AppDeps, registerCommand, registerTreeDataProvider } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
@@ -199,6 +199,17 @@ export async function activate(context: vscode.ExtensionContext) {
     workspacePath: workspacePath,
     workspaceState: workspaceState,
   });
+
+  // One-time (per workspace) note about how a customized xcodebuild command
+  // interacts with the bundled resolver — re-checked when the setting changes.
+  notifyCustomXcodebuildReadOnlyScope(workspaceState);
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("sweetpad.build.xcodebuildCommand")) {
+        notifyCustomXcodebuildReadOnlyScope(workspaceState);
+      }
+    }),
+  );
 
   // Start everything that has side effects (subscriptions, calculations, .show(), etc.)
   void progressStatusBar.start();

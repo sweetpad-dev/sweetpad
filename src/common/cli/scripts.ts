@@ -288,7 +288,6 @@ export async function getBuildSettingsList(options: {
     // selects a toolchain, …) must serve the read-only queries too, or the
     // settings we resolve could disagree with what the wrapper builds.
     if (isXcodeBuildCommandCustomized()) {
-      logReadOnlyXcodebuildRoutingOnce();
       return await getBuildSettingsViaXcodebuild({ ...options, derivedDataPath, workspaceType });
     }
     try {
@@ -405,32 +404,15 @@ async function getBuildSettingsViaXcodebuild(options: {
   return [];
 }
 
-/** Has the user pointed `sweetpad.build.xcodebuildCommand` at a custom binary/wrapper? */
-function isXcodeBuildCommandCustomized(): boolean {
+/**
+ * Has the user pointed `sweetpad.build.xcodebuildCommand` at a custom
+ * binary/wrapper? Build-settings queries are routed through it (see
+ * `getBuildSettingsList`); scheme/target/configuration enumeration always uses
+ * the bundled resolver — `notifyCustomXcodebuildReadOnlyScope` tells the user
+ * about that split once per workspace.
+ */
+export function isXcodeBuildCommandCustomized(): boolean {
   return Boolean(getWorkspaceConfig("build.xcodebuildCommand"));
-}
-
-let loggedReadOnlyXcodebuildRouting = false;
-function logReadOnlyXcodebuildRoutingOnce(): void {
-  if (loggedReadOnlyXcodebuildRouting) {
-    return;
-  }
-  loggedReadOnlyXcodebuildRouting = true;
-  commonLogger.log("build.xcodebuildCommand is customized; resolving build settings through it", {
-    command: getXcodeBuildCommand(),
-  });
-}
-
-let warnedEnumerationCustomXcodebuild = false;
-function warnEnumerationIgnoresCustomXcodebuildOnce(): void {
-  if (warnedEnumerationCustomXcodebuild || !isXcodeBuildCommandCustomized()) {
-    return;
-  }
-  warnedEnumerationCustomXcodebuild = true;
-  commonLogger.warn(
-    "build.xcodebuildCommand is customized, but scheme/target/configuration lists come from the bundled resolver (which reads project files directly) — the custom command only affects builds and build-settings queries",
-    { command: getXcodeBuildCommand() },
-  );
 }
 
 /**
@@ -642,7 +624,6 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
     if (!options.xcworkspace) {
       return [];
     }
-    warnEnumerationIgnoresCustomXcodebuildOnce();
     return sweetpadLib.schemes(options.xcworkspace).map((name) => ({ name }));
   }
   assertUnreachable(workspaceType);
@@ -680,7 +661,6 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   }
 
   if (workspaceType === "xcode") {
-    warnEnumerationIgnoresCustomXcodebuildOnce();
     return sweetpadLib.targets(options.xcworkspace);
   }
   assertUnreachable(workspaceType);
@@ -695,7 +675,6 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
   }
 
   if (workspaceType === "xcode") {
-    warnEnumerationIgnoresCustomXcodebuildOnce();
     return sweetpadLib.configurations(options.xcworkspace).map((name) => ({ name }));
   }
   assertUnreachable(workspaceType);

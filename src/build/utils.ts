@@ -14,6 +14,7 @@ import {
   getIsXBSInstalled,
   getSchemes,
   getXcodeBuildCommand,
+  isXcodeBuildCommandCustomized,
   readXBSConfig,
 } from "../common/cli/scripts";
 import { getWorkspaceConfig } from "../common/config";
@@ -403,6 +404,28 @@ export async function notifyXBSMissing(workspaceState: WorkspaceStateService): P
   } else if (choice === XBS_DOCS_ACTION) {
     openXBSDocs();
   }
+}
+
+/**
+ * Tell the user once (per workspace) how a customized
+ * `sweetpad.build.xcodebuildCommand` splits the read-only queries: builds and
+ * `-showBuildSettings` go through the custom command, while
+ * scheme/target/configuration lists always come from the bundled resolver
+ * (which reads project files directly). Called on activation and whenever the
+ * setting changes; the notice resets with "Reset SweetPad cache".
+ */
+export function notifyCustomXcodebuildReadOnlyScope(workspaceState: WorkspaceStateService): void {
+  if (!isXcodeBuildCommandCustomized()) {
+    return;
+  }
+  if (workspaceState.get("build.customXcodebuildNoticeShown")) {
+    return;
+  }
+  workspaceState.update("build.customXcodebuildNoticeShown", true);
+  commonLogger.warn(
+    "build.xcodebuildCommand is customized: builds and build-settings queries run through it, but scheme/target/configuration lists come from the bundled resolver, which reads project files directly",
+    { command: getXcodeBuildCommand() },
+  );
 }
 
 /**
