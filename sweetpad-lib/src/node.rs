@@ -42,7 +42,8 @@ pub fn xcode_version() -> XcodeVersion {
     }
 }
 
-/// A single `.xcodeproj`'s targets, configurations, and shared schemes.
+/// A single `.xcodeproj`'s targets, configurations, and schemes (shared +
+/// per-user, or autocreated per-target when no scheme file exists).
 /// Mirrors `xcodebuild -list -project`.
 #[napi(object)]
 pub struct ProjectInfo {
@@ -52,7 +53,7 @@ pub struct ProjectInfo {
     pub schemes: Vec<String>,
 }
 
-/// List a `.xcodeproj`'s targets, configurations, and shared schemes.
+/// List a `.xcodeproj`'s targets, configurations, and schemes.
 #[napi]
 pub fn list_project(path: String) -> napi::Result<ProjectInfo> {
     let project = project::open(Path::new(&path)).map_err(to_napi_err)?;
@@ -64,7 +65,9 @@ pub fn list_project(path: String) -> napi::Result<ProjectInfo> {
     })
 }
 
-/// A `.xcworkspace`'s declared `.xcodeproj` paths and merged shared schemes.
+/// A `.xcworkspace`'s declared `.xcodeproj` paths and merged schemes (the
+/// workspace bundle's own plus every member project's, shared + per-user,
+/// or autocreated per-target when no scheme file exists anywhere).
 /// Mirrors `xcodebuild -list -workspace`, plus the `projects` paths.
 #[napi(object)]
 pub struct WorkspaceInfo {
@@ -74,7 +77,7 @@ pub struct WorkspaceInfo {
     pub schemes: Vec<String>,
 }
 
-/// List a `.xcworkspace`'s member projects and merged shared schemes.
+/// List a `.xcworkspace`'s member projects and merged schemes.
 #[napi]
 pub fn list_workspace(path: String) -> napi::Result<WorkspaceInfo> {
     let ws = workspace::open(Path::new(&path)).map_err(to_napi_err)?;
@@ -95,9 +98,10 @@ fn is_workspace(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()) == Some("xcworkspace")
 }
 
-/// Scheme names for a `.xcodeproj` or `.xcworkspace`. For a workspace, the
-/// merged shared schemes across member projects (sorted, like
-/// `xcodebuild -list -workspace`).
+/// Scheme names for a `.xcodeproj` or `.xcworkspace` — shared and per-user
+/// scheme files, falling back to autocreated per-target schemes when none
+/// exist. For a workspace, merged across the bundle and its member projects
+/// (sorted, like `xcodebuild -list -workspace`).
 #[napi]
 pub fn schemes(path: String) -> napi::Result<Vec<String>> {
     let p = Path::new(&path);

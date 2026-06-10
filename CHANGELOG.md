@@ -2,6 +2,12 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [Unreleased]
+
+- List Xcode's autocreated per-target schemes for projects/workspaces that have no `.xcscheme` files on disk (fresh or never-shared projects previously showed an empty scheme list)
+- Discover and resolve per-user schemes stored under `xcuserdata/<user>.xcuserdatad/xcschemes`, matching `xcodebuild -list` and `-showBuildSettings -scheme`
+- Resolve build settings for schemes stored in the workspace bundle's own `xcshareddata`/`xcuserdata` (they were listed but failed to launch), dispatching each buildable to the member project named by its `ReferencedContainer`
+
 ## [0.2.0] - 2026-06-10
 
 - Add built-in Swift code intelligence powered by a bundled Build Server Protocol (BSP) server: SweetPad feeds sourcekit-lsp accurate per-file compiler arguments, builds dependency modules on demand, and refreshes live when you switch scheme or configuration — with `SweetPad: Setup BSP` and `SweetPad: Diagnose BSP` commands, a status-bar control, and a first-run prompt

@@ -22,8 +22,11 @@ pub struct Project {
     pub targets: Vec<Target>,
     /// Project-level configuration names in pbxproj order (e.g. `Debug`, `Release`).
     pub configurations: Vec<String>,
-    /// Names of shared schemes discovered in `xcshareddata/xcschemes/*.xcscheme`,
-    /// sorted alphabetically. Matches the order `xcodebuild -list` prints them.
+    /// Scheme names for this project, sorted alphabetically — the set
+    /// `xcodebuild -list` prints: shared (`xcshareddata/xcschemes`) plus
+    /// per-user (`xcuserdata/<user>.xcuserdatad/xcschemes`) scheme files,
+    /// or one autocreated scheme per target when no scheme file exists at
+    /// all (Xcode's scheme autocreation for fresh / never-shared projects).
     pub schemes: Vec<String>,
 }
 
@@ -87,7 +90,15 @@ pub fn open_from_value(value: &Value, xcodeproj_path: &Path) -> Result<Project, 
 
     let configurations = extract_project_configurations(objects, project_obj)?;
     let targets = extract_targets(objects, project_obj)?;
-    let schemes = scan_shared_schemes(xcodeproj_path);
+    let mut schemes = crate::scheme::container_schemes(xcodeproj_path);
+    if schemes.is_empty() {
+        // No scheme file on disk anywhere (shared or per-user): mirror Xcode's
+        // scheme autocreation — `xcodebuild -list` reports one scheme per
+        // target — so fresh / never-shared projects still list schemes.
+        schemes = targets.iter().map(|t| t.name.clone()).collect();
+        schemes.sort();
+        schemes.dedup();
+    }
 
     let name = xcodeproj_path
         .file_stem()
@@ -2702,26 +2713,6 @@ fn value_to_string(v: &Value) -> String {
     }
 }
 
-fn scan_shared_schemes(xcodeproj_path: &Path) -> Vec<String> {
-    let dir = xcodeproj_path.join("xcshareddata/xcschemes");
-    let Ok(entries) = fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    let mut out: Vec<String> = entries
-        .flatten()
-        .filter_map(|e| {
-            let p = e.path();
-            if p.extension() == Some(OsStr::new("xcscheme")) {
-                p.file_stem().and_then(OsStr::to_str).map(String::from)
-            } else {
-                None
-            }
-        })
-        .collect();
-    out.sort();
-    out
-}
-
 /// A shared scheme that builds `target`, for driving an `xcodebuild` build of it
 /// (BSP `prepare`). Prefers a scheme named exactly `target` (Xcode and Tuist
 /// create a per-target scheme); otherwise the first shared scheme whose build
@@ -3258,8 +3249,9 @@ mod tests {
             Some("com.apple.product-type.tool")
         );
         assert_eq!(scratch.configurations, vec!["Debug", "Release"]);
-        // Synthetic project has no xcshareddata directory.
-        assert!(project.schemes.is_empty());
+        // Synthetic project has no scheme files at all, so the autocreated
+        // per-target schemes surface (matching `xcodebuild -list`).
+        assert_eq!(project.schemes, vec!["Scratch"]);
     }
 
     #[test]
