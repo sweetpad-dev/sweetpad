@@ -62,6 +62,78 @@ pub struct TargetSettings {
     pub settings: BTreeMap<String, String>,
 }
 
+/// What the `scheme` / `target` selector resolved to, decided once up front
+/// (see [`resolve_selection`]) and then planned against each project.
+enum Selection {
+    /// A parsed `.xcscheme` found in the workspace bundle or a member project
+    /// (shared or per-user). Plans one query per BuildAction buildable, each
+    /// resolved in the member project that owns it.
+    Scheme {
+        name: String,
+        // Boxed: a parsed Scheme dwarfs the other variants' Strings.
+        parsed: Box<scheme::Scheme>,
+    },
+    /// An explicit `target` query.
+    Target(String),
+    /// `scheme` was requested but no `.xcscheme` file exists anywhere —
+    /// Xcode's autocreated per-target scheme, which builds the same-named
+    /// target.
+    AutoScheme(String),
+}
+
+impl Selection {
+    /// What the final "nothing matched" error should call the selector.
+    fn describe(&self) -> String {
+        match self {
+            Selection::Scheme { name, .. } | Selection::AutoScheme(name) => {
+                format!("scheme {name}")
+            }
+            Selection::Target(t) => format!("target {t}"),
+        }
+    }
+
+    /// Target-style queries stop at the first project that resolves them;
+    /// scheme queries visit every member project (a workspace scheme can
+    /// build targets across several).
+    fn stops_at_first_match(&self) -> bool {
+        !matches!(self, Selection::Scheme { .. })
+    }
+}
+
+/// Resolve the `scheme` / `target` choice once, before the per-project loop.
+/// A scheme file is looked up across every container that can hold one — the
+/// workspace bundle itself, then each member project, shared then per-user
+/// directories (mirroring where xcodebuild finds schemes). A scheme with no
+/// file anywhere falls back to [`Selection::AutoScheme`].
+fn resolve_selection(
+    opts: &BuildSettingsOptions,
+    projects: &[PathBuf],
+) -> Result<Selection, String> {
+    if let Some(name) = opts.scheme.as_deref() {
+        let containers = opts
+            .workspace
+            .as_deref()
+            .into_iter()
+            .chain(projects.iter().map(PathBuf::as_path));
+        for container in containers {
+            let Some(path) = scheme::find_scheme_file(container, name) else {
+                continue;
+            };
+            let parsed = scheme::parse_file(&path)
+                .map_err(|e| format!("failed to parse scheme {name} at {}: {e}", path.display()))?;
+            return Ok(Selection::Scheme {
+                name: name.to_string(),
+                parsed: Box::new(parsed),
+            });
+        }
+        return Ok(Selection::AutoScheme(name.to_string()));
+    }
+    if let Some(target) = opts.target.as_deref() {
+        return Ok(Selection::Target(target.to_string()));
+    }
+    Err("either scheme or target is required".into())
+}
+
 /// Resolve build settings for the selected scheme/target across the supplied
 /// project/workspace. Mirrors `xcodebuild -showBuildSettings`.
 pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetSettings>, String> {
@@ -72,15 +144,13 @@ pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetS
         opts.catalog_cache.as_deref(),
     )?;
     let projects = resolve_project_paths(opts.project.as_deref(), opts.workspace.as_deref())?;
-
-    let want_scheme = opts.scheme.as_deref();
-    let want_target = opts.target.as_deref();
+    let selection = resolve_selection(opts, &projects)?;
 
     if projects.len() == 1 {
         // Single project: bubble up the underlying error directly so callers
         // get xcodebuild-equivalent messages ("no target named …").
         let ctx = build_one_context(&projects[0], catalog.as_ref(), opts.xcconfig.as_deref())?;
-        let queries = build_queries(&ctx, opts, want_scheme, want_target);
+        let queries = build_queries(&ctx, opts, &selection);
         let mut out = Vec::new();
         for query in queries {
             let resolved = ctx.resolve(&query).map_err(|e| e.to_string())?;
@@ -98,7 +168,7 @@ pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetS
         let mut out = Vec::new();
         for project_path in &projects {
             let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
-            let queries = build_queries(&ctx, opts, want_scheme, want_target);
+            let queries = build_queries(&ctx, opts, &selection);
             for query in queries {
                 if let Ok(r) = ctx.resolve(&query) {
                     out.push(TargetSettings {
@@ -107,17 +177,14 @@ pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetS
                     });
                 }
             }
-            if !out.is_empty() && want_scheme.is_none() {
+            if !out.is_empty() && selection.stops_at_first_match() {
                 break;
             }
         }
         if out.is_empty() {
-            let needle = want_target
-                .map(|t| format!("target {t}"))
-                .or_else(|| want_scheme.map(|s| format!("scheme {s}")))
-                .unwrap_or_default();
             return Err(format!(
-                "no target matched {needle} across the supplied workspace"
+                "no target matched {} across the supplied workspace",
+                selection.describe()
             ));
         }
         project_keys(&mut out, opts.keys.as_deref());
@@ -139,8 +206,7 @@ pub fn resolve_compiler_arguments(
         opts.catalog_cache.as_deref(),
     )?;
     let projects = resolve_project_paths(opts.project.as_deref(), opts.workspace.as_deref())?;
-    let want_scheme = opts.scheme.as_deref();
-    let want_target = opts.target.as_deref();
+    let selection = resolve_selection(opts, &projects)?;
 
     let swift_opts = catalog
         .as_ref()
@@ -162,7 +228,7 @@ pub fn resolve_compiler_arguments(
     let mut out = Vec::new();
     for project_path in &projects {
         let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
-        for query in build_queries(&ctx, opts, want_scheme, want_target) {
+        for query in build_queries(&ctx, opts, &selection) {
             match ctx.resolve(&query) {
                 Ok(resolved) => {
                     let sources = project::target_source_files(&ctx.project.path, &query.target)
@@ -198,16 +264,12 @@ pub fn resolve_compiler_arguments(
                 Err(_) => {}
             }
         }
-        if !out.is_empty() && want_scheme.is_none() {
+        if !out.is_empty() && selection.stops_at_first_match() {
             break;
         }
     }
     if out.is_empty() {
-        let needle = want_target
-            .map(|t| format!("target {t}"))
-            .or_else(|| want_scheme.map(|s| format!("scheme {s}")))
-            .unwrap_or_default();
-        return Err(format!("no target matched {needle}"));
+        return Err(format!("no target matched {}", selection.describe()));
     }
     Ok(out)
 }
@@ -248,12 +310,10 @@ pub fn resolve_file_arguments(
         .unwrap_or("");
     let projects = resolve_project_paths(opts.project.as_deref(), opts.workspace.as_deref())?;
 
+    let selection = Selection::Target(target.to_string());
     for project_path in &projects {
         let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
-        let Some(query) = build_queries(&ctx, opts, None, Some(target))
-            .into_iter()
-            .next()
-        else {
+        let Some(query) = build_queries(&ctx, opts, &selection).into_iter().next() else {
             continue;
         };
         let Ok(resolved) = ctx.resolve(&query) else {
@@ -476,14 +536,15 @@ fn build_one_context(
     Ok(ctx)
 }
 
-/// Decide which target(s) to resolve, given the `scheme` or `target` choice.
-/// For `scheme`, look up the scheme XML on disk under the project's
-/// `xcshareddata/xcschemes/`.
+/// Turn the resolved [`Selection`] into the [`ResolveQuery`]s for one project
+/// context. A scheme plans one query per BuildAction buildable owned by this
+/// project (cross-container buildables resolve when the caller visits their
+/// own project); a target — explicit or an autocreated scheme's — is a single
+/// direct query.
 fn build_queries(
     ctx: &BuildContext,
     opts: &BuildSettingsOptions,
-    want_scheme: Option<&str>,
-    want_target: Option<&str>,
+    selection: &Selection,
 ) -> Vec<ResolveQuery> {
     let destination = opts.destination.as_ref();
     // A bound destination supplies the SDK + active arch (mirroring xcodebuild,
@@ -493,31 +554,26 @@ fn build_queries(
         None => (opts.sdk.as_str(), opts.arch.as_str()),
     };
     let mut queries = Vec::new();
-    if let Some(scheme_name) = want_scheme {
-        let scheme_path = ctx
-            .project
-            .path
-            .join("xcshareddata/xcschemes")
-            .join(format!("{scheme_name}.xcscheme"));
-        let Ok(parsed) = scheme::parse_file(&scheme_path) else {
-            return queries;
-        };
-        let plan = ctx.plan_build(&parsed, &opts.configuration, sdk, arch, destination);
-        for mut q in plan.entries {
+    match selection {
+        Selection::Scheme { parsed, .. } => {
+            let plan = ctx.plan_build(parsed, &opts.configuration, sdk, arch, destination);
+            for mut q in plan.entries {
+                if let Some(p) = &opts.derived_data_path {
+                    q = q.with_derived_data_path(p.clone());
+                }
+                queries.push(q);
+            }
+        }
+        Selection::Target(target_name) | Selection::AutoScheme(target_name) => {
+            let mut q = ResolveQuery::new(target_name, &opts.configuration, sdk, arch);
+            if let Some(d) = destination {
+                q = q.with_destination(d.clone());
+            }
             if let Some(p) = &opts.derived_data_path {
                 q = q.with_derived_data_path(p.clone());
             }
             queries.push(q);
         }
-    } else if let Some(target_name) = want_target {
-        let mut q = ResolveQuery::new(target_name, &opts.configuration, sdk, arch);
-        if let Some(d) = destination {
-            q = q.with_destination(d.clone());
-        }
-        if let Some(p) = &opts.derived_data_path {
-            q = q.with_derived_data_path(p.clone());
-        }
-        queries.push(q);
     }
     queries
 }

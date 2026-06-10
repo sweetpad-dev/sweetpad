@@ -1,7 +1,8 @@
 //! Typed model of an `.xcworkspace`.
 //!
 //! Reads `contents.xcworkspacedata` (XML, same parser as `.xcscheme`) and
-//! the workspace-level shared schemes under `xcshareddata/xcschemes/`.
+//! the workspace-level schemes (shared `xcshareddata/xcschemes/` plus
+//! per-user `xcuserdata/<user>.xcuserdatad/xcschemes/`).
 //! Returns absolute paths to every referenced `.xcodeproj`.
 //!
 //! What `contents.xcworkspacedata` looks like:
@@ -22,7 +23,6 @@
 
 use std::ffi::OsStr;
 use std::fmt;
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -39,9 +39,9 @@ pub struct Workspace {
     /// Absolute paths to every `.xcodeproj` referenced by the workspace,
     /// in declaration order.
     pub project_refs: Vec<PathBuf>,
-    /// Shared scheme names from `<ws>/xcshareddata/xcschemes/`, sorted
-    /// alphabetically. Matches the order `xcodebuild -list -workspace`
-    /// reports.
+    /// The workspace bundle's own scheme names (shared plus per-user files),
+    /// sorted alphabetically. Member-project schemes are merged in by
+    /// [`Workspace::merged_schemes`].
     pub schemes: Vec<String>,
 }
 
@@ -101,7 +101,7 @@ pub fn open(workspace_path: &Path) -> Result<Workspace, Error> {
     let mut seen = std::collections::HashSet::new();
     project_refs.retain(|p| seen.insert(p.clone()));
 
-    let schemes = scan_shared_schemes(workspace_path);
+    let schemes = crate::scheme::container_schemes(workspace_path);
 
     let name = workspace_path
         .file_stem()
@@ -119,26 +119,21 @@ pub fn open(workspace_path: &Path) -> Result<Workspace, Error> {
 
 impl Workspace {
     /// Schemes that `xcodebuild -list -workspace` would surface: the
-    /// workspace's own shared schemes UNION every member project's shared
-    /// schemes, deduplicated and sorted. Opens each project to scan its
-    /// `xcshareddata/xcschemes/`; failures (missing project, unreadable
-    /// directory) are skipped silently.
+    /// workspace's own schemes UNION every member project's schemes (shared
+    /// plus per-user files), deduplicated and sorted. When no scheme file
+    /// exists anywhere, falls back to Xcode's scheme autocreation — one
+    /// scheme per target across the member projects. Failures (missing
+    /// project, unreadable directory) are skipped silently.
     #[must_use]
     pub fn merged_schemes(&self) -> Vec<String> {
         let mut set: std::collections::BTreeSet<String> = self.schemes.iter().cloned().collect();
         for project_path in &self.project_refs {
-            let dir = project_path.join("xcshareddata/xcschemes");
-            let Ok(entries) = fs::read_dir(&dir) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if p.extension() == Some(OsStr::new("xcscheme"))
-                    && let Some(name) = p.file_stem().and_then(OsStr::to_str)
-                {
-                    set.insert(name.to_string());
-                }
-            }
+            set.extend(crate::scheme::container_schemes(project_path));
+        }
+        if set.is_empty() {
+            let mut autocreated = self.merged_targets();
+            autocreated.sort();
+            return autocreated;
         }
         set.into_iter().collect()
     }
@@ -181,19 +176,15 @@ impl Workspace {
     }
 
     /// Locate the `.xcodeproj` member that owns a scheme by name. Returns
-    /// the project path whose `xcshareddata/xcschemes/<name>.xcscheme`
-    /// exists. Used by callers (the CLI) that need to dispatch a
-    /// scheme-driven build to the right project.
+    /// the first project with a `<name>.xcscheme` file (shared or per-user).
+    /// Used by callers (the CLI) that need to dispatch a scheme-driven build
+    /// to the right project.
     #[must_use]
     pub fn project_for_scheme(&self, scheme_name: &str) -> Option<&Path> {
-        for project_path in &self.project_refs {
-            let candidate =
-                project_path.join(format!("xcshareddata/xcschemes/{scheme_name}.xcscheme"));
-            if candidate.exists() {
-                return Some(project_path);
-            }
-        }
-        None
+        self.project_refs
+            .iter()
+            .find(|p| crate::scheme::find_scheme_file(p, scheme_name).is_some())
+            .map(PathBuf::as_path)
     }
 }
 
@@ -244,29 +235,10 @@ fn resolve_location(location: &str, base: &Path) -> Option<PathBuf> {
     }
 }
 
-fn scan_shared_schemes(workspace_path: &Path) -> Vec<String> {
-    let dir = workspace_path.join("xcshareddata/xcschemes");
-    let Ok(entries) = fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    let mut out: Vec<String> = entries
-        .flatten()
-        .filter_map(|e| {
-            let p = e.path();
-            if p.extension() == Some(OsStr::new("xcscheme")) {
-                p.file_stem().and_then(OsStr::to_str).map(String::from)
-            } else {
-                None
-            }
-        })
-        .collect();
-    out.sort();
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn fixtures_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")
@@ -359,6 +331,61 @@ mod tests {
                 base.join("Sub/Nested.xcodeproj")
             ],
         );
+    }
+
+    /// A scratch workspace under the OS temp dir containing one copy of the
+    /// synthetic `Scratch.xcodeproj` (a single `Scratch` target, no scheme
+    /// files), referenced via `group:`.
+    fn scratch_workspace(tag: &str) -> (PathBuf, PathBuf) {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let root =
+            std::env::temp_dir().join(format!("sweetpad-ws-{tag}-{}-{n}", std::process::id()));
+        let proj = root.join("Scratch.xcodeproj");
+        fs::create_dir_all(&proj).unwrap();
+        fs::copy(
+            fixtures_root().join(
+                "_synthetic-xcconfigs/xcode-26.5.0/project/Scratch.xcodeproj/project.pbxproj",
+            ),
+            proj.join("project.pbxproj"),
+        )
+        .unwrap();
+        let ws = root.join("Test.xcworkspace");
+        fs::create_dir_all(&ws).unwrap();
+        fs::write(
+            ws.join("contents.xcworkspacedata"),
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n  <FileRef location=\"group:Scratch.xcodeproj\"/>\n</Workspace>\n",
+        )
+        .unwrap();
+        (ws, proj)
+    }
+
+    #[test]
+    fn merged_schemes_autocreates_per_target_when_no_scheme_files() {
+        let (ws_path, _proj) = scratch_workspace("autocreate");
+        let ws = open(&ws_path).unwrap();
+        // Neither the workspace nor the project has any scheme file, so the
+        // autocreated per-target schemes surface (matching xcodebuild -list).
+        assert_eq!(ws.merged_schemes(), vec!["Scratch"]);
+    }
+
+    #[test]
+    fn merged_schemes_includes_workspace_and_project_user_schemes() {
+        let (ws_path, proj) = scratch_workspace("user-schemes");
+        let ws_user = ws_path.join("xcuserdata/alice.xcuserdatad/xcschemes");
+        fs::create_dir_all(&ws_user).unwrap();
+        fs::write(ws_user.join("WsPersonal.xcscheme"), b"").unwrap();
+        let proj_user = proj.join("xcuserdata/alice.xcuserdatad/xcschemes");
+        fs::create_dir_all(&proj_user).unwrap();
+        fs::write(proj_user.join("ProjPersonal.xcscheme"), b"").unwrap();
+
+        let ws = open(&ws_path).unwrap();
+        // Scheme files exist, so no autocreation — just the user schemes from
+        // both the workspace bundle and the member project.
+        assert_eq!(ws.merged_schemes(), vec!["ProjPersonal", "WsPersonal"]);
+        // And the user scheme makes the project dispatchable by name.
+        assert_eq!(ws.project_for_scheme("ProjPersonal"), Some(proj.as_path()));
     }
 
     #[test]

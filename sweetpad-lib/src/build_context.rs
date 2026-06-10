@@ -143,10 +143,10 @@ pub struct BuildPlan {
     /// One [`ResolveQuery`] per scheme `BuildActionEntry` whose target
     /// lives in this project. Order matches the scheme's declared order.
     pub entries: Vec<ResolveQuery>,
-    /// Buildables the planner couldn't resolve to a target in this
-    /// context — typically cross-container references in a workspace
-    /// scheme. Multi-project workspaces aren't supported yet; callers
-    /// see what was left behind here.
+    /// Buildables that don't belong to this context's project — typically
+    /// cross-container references in a workspace scheme. They resolve when
+    /// the caller plans the same scheme against their own project (see
+    /// `build_settings::resolve_build_settings`'s workspace loop).
     pub skipped: Vec<BuildableRef>,
 }
 
@@ -263,7 +263,9 @@ impl BuildContext {
         let mut skipped = Vec::new();
         for entry in &scheme.build_entries {
             let name = &entry.buildable.blueprint_name;
-            if self.project.targets.iter().any(|t| t.name == *name) {
+            let owned = self.project.targets.iter().any(|t| t.name == *name)
+                && container_matches(&entry.buildable.container, &self.project.path);
+            if owned {
                 let mut q = ResolveQuery::new(name, configuration, sdk, arch);
                 if let Some(d) = destination {
                     q = q.with_destination(d.clone());
@@ -502,6 +504,23 @@ impl BuildContext {
             ""
         };
         Some(format!("/{wrapper}.app{contents}/PlugIns"))
+    }
+}
+
+/// Whether a scheme entry's `ReferencedContainer` (e.g.
+/// `container:Sub/Foo.xcodeproj`) plausibly refers to this context's project.
+/// The container path is relative to the scheme's own anchor directory, which
+/// the planner doesn't know, so compare by `.xcodeproj` basename — enough to
+/// keep a workspace scheme's buildable out of a *different* project that
+/// happens to own a same-named target. An entry with no parseable container
+/// matches permissively.
+fn container_matches(container: &str, project_path: &Path) -> bool {
+    let Some(rest) = container.strip_prefix("container:") else {
+        return true;
+    };
+    match Path::new(rest).file_name() {
+        Some(basename) => project_path.file_name() == Some(basename),
+        None => true,
     }
 }
 

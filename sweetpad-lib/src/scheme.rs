@@ -15,8 +15,11 @@
 //! incrementally as concrete callers need them — see CLAUDE.md "minimum
 //! abstraction."
 
+use std::collections::BTreeSet;
+use std::ffi::OsStr;
 use std::fmt;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use crate::xcscheme::{self, Element};
 
@@ -160,6 +163,59 @@ impl From<xcscheme::Error> for Error {
 pub fn parse_file(path: &Path) -> Result<Scheme, Error> {
     let root = xcscheme::parse_file(path)?;
     from_element(&root)
+}
+
+/// The directories a container (`.xcodeproj` or `.xcworkspace` — both share
+/// the same layout) stores scheme files in: `xcshareddata/xcschemes` first,
+/// then every per-user `xcuserdata/<user>.xcuserdatad/xcschemes`, sorted for
+/// a stable order.
+fn scheme_dirs(container: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![container.join("xcshareddata/xcschemes")];
+    if let Ok(entries) = fs::read_dir(container.join("xcuserdata")) {
+        let mut user_dirs: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension() == Some(OsStr::new("xcuserdatad")))
+            .map(|p| p.join("xcschemes"))
+            .collect();
+        user_dirs.sort();
+        dirs.extend(user_dirs);
+    }
+    dirs
+}
+
+/// Scheme names stored in a container: the shared schemes plus every user's
+/// personal schemes, deduplicated and sorted alphabetically — the set
+/// `xcodebuild -list` reports for the container.
+#[must_use]
+pub fn container_schemes(container: &Path) -> Vec<String> {
+    let mut set = BTreeSet::new();
+    for dir in scheme_dirs(container) {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension() == Some(OsStr::new("xcscheme"))
+                && let Some(name) = p.file_stem().and_then(OsStr::to_str)
+            {
+                set.insert(name.to_string());
+            }
+        }
+    }
+    set.into_iter().collect()
+}
+
+/// Locate `<name>.xcscheme` in a container: the shared directory first, then
+/// each per-user directory (a shared scheme shadows a same-named user one,
+/// matching Xcode). `None` when the scheme has no file — either it doesn't
+/// exist or it's an autocreated scheme Xcode never materialized.
+#[must_use]
+pub fn find_scheme_file(container: &Path, name: &str) -> Option<PathBuf> {
+    scheme_dirs(container)
+        .into_iter()
+        .map(|dir| dir.join(format!("{name}.xcscheme")))
+        .find(|p| p.is_file())
 }
 
 /// Build a [`Scheme`] from an already-parsed `<Scheme>` element.
@@ -419,5 +475,52 @@ mod tests {
         };
         let err = from_element(&element).unwrap_err();
         assert!(format!("{err}").contains("expected root element"));
+    }
+
+    /// A unique scratch container dir under the OS temp dir.
+    fn scratch_container(tag: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "sweetpad-scheme-{tag}-{}-{n}.xcodeproj",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn touch(path: &Path) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, b"").unwrap();
+    }
+
+    #[test]
+    fn container_schemes_merges_shared_and_user_schemes() {
+        let dir = scratch_container("merge");
+        touch(&dir.join("xcshareddata/xcschemes/Shared.xcscheme"));
+        touch(&dir.join("xcuserdata/alice.xcuserdatad/xcschemes/Personal.xcscheme"));
+        touch(&dir.join("xcuserdata/bob.xcuserdatad/xcschemes/Shared.xcscheme")); // dup of shared
+        assert_eq!(container_schemes(&dir), vec!["Personal", "Shared"]);
+    }
+
+    #[test]
+    fn container_schemes_empty_without_scheme_files() {
+        let dir = scratch_container("empty");
+        assert!(container_schemes(&dir).is_empty());
+    }
+
+    #[test]
+    fn find_scheme_file_prefers_shared_over_user() {
+        let dir = scratch_container("find");
+        let shared = dir.join("xcshareddata/xcschemes/App.xcscheme");
+        touch(&shared);
+        touch(&dir.join("xcuserdata/alice.xcuserdatad/xcschemes/App.xcscheme"));
+        let user_only = dir.join("xcuserdata/alice.xcuserdatad/xcschemes/Mine.xcscheme");
+        touch(&user_only);
+
+        assert_eq!(find_scheme_file(&dir, "App"), Some(shared));
+        assert_eq!(find_scheme_file(&dir, "Mine"), Some(user_only));
+        assert_eq!(find_scheme_file(&dir, "Nope"), None);
     }
 }

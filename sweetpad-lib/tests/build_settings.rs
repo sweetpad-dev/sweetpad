@@ -187,3 +187,126 @@ fn invalid_destination_is_rejected_at_parse() {
     // `None` (the CLI surfaced this as "invalid --destination").
     assert!(parse_destination_arg("platform=Android").is_none());
 }
+
+// ----- scheme discovery parity (autocreated / user / workspace-level) -------
+
+/// A unique scratch dir under the OS temp dir containing a copy of the
+/// synthetic `Scratch.xcodeproj` (one `Scratch` tool target, no scheme files).
+fn scratch_copy(tag: &str) -> (PathBuf, PathBuf) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!("sweetpad-bs-{tag}-{}-{n}", std::process::id()));
+    let proj = root.join("Scratch.xcodeproj");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::copy(
+        scratch_proj().join("project.pbxproj"),
+        proj.join("project.pbxproj"),
+    )
+    .unwrap();
+    (root, proj)
+}
+
+/// A minimal `.xcscheme` whose BuildAction builds the `Scratch` target.
+const SCRATCH_SCHEME_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion="1640" version="1.7">
+   <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES">
+      <BuildActionEntries>
+         <BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">
+            <BuildableReference
+               BuildableIdentifier="primary"
+               BlueprintIdentifier="14A71A1C6762522AADB33EF1"
+               BuildableName="Scratch"
+               BlueprintName="Scratch"
+               ReferencedContainer="container:Scratch.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+</Scheme>
+"#;
+
+fn write_scheme(dir: &PathBuf, name: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join(format!("{name}.xcscheme")), SCRATCH_SCHEME_XML).unwrap();
+}
+
+#[test]
+fn scheme_without_file_resolves_the_same_named_target() {
+    // No `.xcscheme` exists anywhere — Xcode's autocreated per-target scheme.
+    // xcodebuild resolves it as the same-named target; so do we.
+    let (_root, proj) = scratch_copy("autocreated");
+    let opts = BuildSettingsOptions {
+        project: Some(proj),
+        scheme: Some("Scratch".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(s.get("PRODUCT_NAME").map(String::as_str), Some("Scratch"));
+}
+
+#[test]
+fn unknown_scheme_with_no_matching_target_errors() {
+    let (_root, proj) = scratch_copy("unknown-scheme");
+    let opts = BuildSettingsOptions {
+        project: Some(proj),
+        scheme: Some("Nonexistent".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let err = resolve_build_settings(&opts).unwrap_err();
+    assert!(err.contains("no target named"), "err: {err}");
+}
+
+#[test]
+fn user_scheme_in_xcuserdata_resolves() {
+    // A per-user (non-shared) scheme under `xcuserdata/<user>.xcuserdatad/`
+    // resolves exactly like a shared one (xcodebuild accepts both).
+    let (_root, proj) = scratch_copy("user-scheme");
+    write_scheme(
+        &proj.join("xcuserdata/tester.xcuserdatad/xcschemes"),
+        "Custom",
+    );
+    let opts = BuildSettingsOptions {
+        project: Some(proj),
+        scheme: Some("Custom".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+}
+
+#[test]
+fn workspace_level_scheme_resolves() {
+    // A scheme stored in the workspace bundle's own `xcshareddata/xcschemes/`
+    // (not in any member project) — its buildables dispatch to the member
+    // project named by `ReferencedContainer`.
+    let (root, _proj) = scratch_copy("ws-scheme");
+    let ws = root.join("Test.xcworkspace");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(
+        ws.join("contents.xcworkspacedata"),
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n  <FileRef location=\"group:Scratch.xcodeproj\"/>\n</Workspace>\n",
+    )
+    .unwrap();
+    write_scheme(&ws.join("xcshareddata/xcschemes"), "WsScheme");
+
+    let opts = BuildSettingsOptions {
+        workspace: Some(ws),
+        scheme: Some("WsScheme".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+}
