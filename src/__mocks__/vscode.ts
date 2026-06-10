@@ -1,5 +1,6 @@
 export const window = {
   showInformationMessage: vi.fn(),
+  showWarningMessage: vi.fn(),
   createOutputChannel: vi.fn(() => ({
     appendLine: vi.fn(),
     show: vi.fn(),

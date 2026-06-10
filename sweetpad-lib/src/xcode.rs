@@ -64,10 +64,18 @@ impl ActiveInstall {
 /// for short + build version when available.
 #[must_use]
 pub fn active_install() -> ActiveInstall {
-    let developer_dir = detect_developer_dir();
-    let (short_version, build_version) = read_version_plist(&developer_dir);
+    install_at(&detect_developer_dir())
+}
+
+/// The install snapshot for a specific Developer directory — the caller-supplied
+/// equivalent of [`active_install`], for hosts that resolve the toolchain
+/// themselves (e.g. the extension passing its login shell's `DEVELOPER_DIR`)
+/// instead of relying on this process's environment.
+#[must_use]
+pub fn install_at(developer_dir: &Path) -> ActiveInstall {
+    let (short_version, build_version) = read_version_plist(developer_dir);
     ActiveInstall {
-        developer_dir,
+        developer_dir: developer_dir.to_path_buf(),
         short_version,
         build_version,
     }

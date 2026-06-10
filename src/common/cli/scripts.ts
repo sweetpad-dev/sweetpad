@@ -12,6 +12,7 @@ import { exec } from "../exec";
 import { isFileExists, readJsonFile } from "../files";
 import { prepareEnvVars } from "../helpers";
 import { commonLogger } from "../logger";
+import { getShellDeveloperDir } from "../tasks/shell-env";
 import { assertUnreachable } from "../types";
 
 export type SimulatorOutput = {
@@ -298,6 +299,11 @@ export async function getBuildSettingsList(options: {
         destination: options.destination,
         derivedDataPath: derivedDataPath ?? undefined,
         keys: options.keys,
+        // Resolve against the login shell's Xcode (a DEVELOPER_DIR exported in
+        // dotfiles is invisible to the extension host's own env, which is all
+        // the in-process resolver sees). Undefined lets the resolver detect
+        // the active Xcode itself.
+        xcode: await getShellDeveloperDir(),
         ...(options.xcworkspace.endsWith(".xcworkspace")
           ? { workspace: options.xcworkspace }
           : { project: options.xcworkspace }),
@@ -769,10 +775,15 @@ async function ensureExecutable(bspServer: string): Promise<void> {
   }
 }
 
-/** The active Xcode developer dir (`DEVELOPER_DIR`, else `xcode-select -p`). */
+/**
+ * The active Xcode developer dir: `DEVELOPER_DIR` from the login shell (which
+ * subsumes the extension host's own env — the probe shell inherits it), else
+ * `xcode-select -p`.
+ */
 export async function getDeveloperDir(): Promise<string | undefined> {
-  if (process.env.DEVELOPER_DIR) {
-    return process.env.DEVELOPER_DIR;
+  const fromShell = await getShellDeveloperDir();
+  if (fromShell) {
+    return fromShell;
   }
   try {
     return (await exec({ command: "xcode-select", args: ["-p"] })).trim();
@@ -921,7 +932,7 @@ export async function tuistTest() {
 export async function getXcodeVersionInstalled(): Promise<{
   major: number;
 }> {
-  return { major: sweetpadLib.xcodeVersion().majorVersion };
+  return { major: sweetpadLib.xcodeVersion(await getShellDeveloperDir()).majorVersion };
 }
 
 /**

@@ -1,20 +1,9 @@
-import * as sweetpadLib from "@sweetpad/lib";
-import type { Mock } from "vitest";
+import { getShellDeveloperDir, refreshShellEnv } from "./shell-env";
 
-import { syncDeveloperDirIntoProcessEnv } from "./shell-env";
-
-vi.mock("@sweetpad/lib", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@sweetpad/lib")>()),
-  flushXcodeCache: vi.fn(),
-}));
-
-const mockFlushXcodeCache = sweetpadLib.flushXcodeCache as Mock;
-
-describe("syncDeveloperDirIntoProcessEnv", () => {
+describe("getShellDeveloperDir", () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    vi.resetAllMocks();
     process.env = { ...originalEnv };
   });
 
@@ -22,39 +11,19 @@ describe("syncDeveloperDirIntoProcessEnv", () => {
     process.env = originalEnv;
   });
 
-  it("propagates the shell's DEVELOPER_DIR and flushes the resolver's Xcode memo", () => {
+  it("returns the login shell's DEVELOPER_DIR (inherited from the host env)", async () => {
+    process.env.DEVELOPER_DIR = "/Applications/Xcode-beta.app/Contents/Developer";
+    // Re-resolve so the probe shell (or its process.env fallback) sees the
+    // value set above instead of a cached earlier resolution.
+    await refreshShellEnv();
+
+    await expect(getShellDeveloperDir()).resolves.toBe("/Applications/Xcode-beta.app/Contents/Developer");
+  });
+
+  it("returns undefined when no shell exports one", async () => {
     delete process.env.DEVELOPER_DIR;
+    await refreshShellEnv();
 
-    syncDeveloperDirIntoProcessEnv({ DEVELOPER_DIR: "/Applications/Xcode-beta.app/Contents/Developer" });
-
-    expect(process.env.DEVELOPER_DIR).toBe("/Applications/Xcode-beta.app/Contents/Developer");
-    expect(mockFlushXcodeCache).toHaveBeenCalledTimes(1);
-  });
-
-  it("overwrites a stale process value when the shell disagrees", () => {
-    process.env.DEVELOPER_DIR = "/Applications/Xcode-old.app/Contents/Developer";
-
-    syncDeveloperDirIntoProcessEnv({ DEVELOPER_DIR: "/Applications/Xcode-new.app/Contents/Developer" });
-
-    expect(process.env.DEVELOPER_DIR).toBe("/Applications/Xcode-new.app/Contents/Developer");
-    expect(mockFlushXcodeCache).toHaveBeenCalledTimes(1);
-  });
-
-  it("does nothing when the values already agree", () => {
-    process.env.DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer";
-
-    syncDeveloperDirIntoProcessEnv({ DEVELOPER_DIR: "/Applications/Xcode.app/Contents/Developer" });
-
-    expect(process.env.DEVELOPER_DIR).toBe("/Applications/Xcode.app/Contents/Developer");
-    expect(mockFlushXcodeCache).not.toHaveBeenCalled();
-  });
-
-  it("never deletes an existing process value when the shell env lacks one", () => {
-    process.env.DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer";
-
-    syncDeveloperDirIntoProcessEnv({});
-
-    expect(process.env.DEVELOPER_DIR).toBe("/Applications/Xcode.app/Contents/Developer");
-    expect(mockFlushXcodeCache).not.toHaveBeenCalled();
+    await expect(getShellDeveloperDir()).resolves.toBeUndefined();
   });
 });

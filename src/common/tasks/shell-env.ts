@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import * as crypto from "node:crypto";
 
-import * as sweetpadLib from "@sweetpad/lib";
 import * as vscode from "vscode";
 
 import { getWorkspacePath } from "../../build/utils";
@@ -152,34 +151,25 @@ async function resolveShellEnv(): Promise<NodeJS.ProcessEnv> {
         );
         return;
       }
-      const env = cleanResolvedEnv(parsed);
-      syncDeveloperDirIntoProcessEnv(env);
-      resolve(env);
+      resolve(cleanResolvedEnv(parsed));
     });
   });
 }
 
 /**
- * Propagate the login shell's `DEVELOPER_DIR` into the extension host's own
- * env. Task children get the full shell env via `exec`, but the bundled Rust
- * resolver runs in-process and reads `process.env` — without this, a
- * `DEVELOPER_DIR` exported in `~/.zshrc` selects one Xcode for builds and
- * another for scheme/build-settings resolution. Only sets/overwrites (never
- * deletes): the probe shell inherits `process.env`, so an absent value means
- * a dotfile unset it, which we don't second-guess.
+ * The login shell's `DEVELOPER_DIR`, or undefined when no shell exports one.
+ * Task children get the full shell env via `exec`, but the bundled Rust
+ * resolver runs in-process and only sees the extension host's environment —
+ * callers pass this value to it explicitly (the `xcode` option of
+ * `buildSettings`, the `developerDir` argument of `xcodeVersion`) so a
+ * `DEVELOPER_DIR` exported in `~/.zshrc` selects the same Xcode for
+ * scheme/build-settings queries as it does for builds. Falls back to
+ * `process.env.DEVELOPER_DIR` naturally: the probe shell inherits the
+ * host env, and `getShellEnv` resolves to `process.env` when probing fails.
  */
-export function syncDeveloperDirIntoProcessEnv(env: NodeJS.ProcessEnv): void {
-  const developerDir = env.DEVELOPER_DIR;
-  if (!developerDir || developerDir === process.env.DEVELOPER_DIR) {
-    return;
-  }
-  process.env.DEVELOPER_DIR = developerDir;
-  // The resolver memoizes per-install Xcode state; drop it so the next call
-  // resolves against the shell's Xcode instead of a stale detection.
-  sweetpadLib.flushXcodeCache();
-  commonLogger.log("Propagated DEVELOPER_DIR from the login shell to the in-process resolver", {
-    developerDir,
-  });
+export async function getShellDeveloperDir(): Promise<string | undefined> {
+  const env = await getShellEnv();
+  return env.DEVELOPER_DIR || undefined;
 }
 
 /**

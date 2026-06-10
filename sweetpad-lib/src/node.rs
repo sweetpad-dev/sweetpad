@@ -29,11 +29,17 @@ pub struct XcodeVersion {
     pub major_version: u32,
 }
 
-/// Resolve the active Xcode (the one `xcode-select` points at).
+/// Resolve the Xcode toolchain info. `developer_dir` pins a specific install
+/// (the extension passes its login shell's `DEVELOPER_DIR`, which this
+/// process's own environment doesn't see); omitted, the active Xcode (env
+/// `DEVELOPER_DIR`, else `xcode-select -p`) is detected.
 #[napi]
 #[must_use]
-pub fn xcode_version() -> XcodeVersion {
-    let info = xcode::active_install();
+pub fn xcode_version(developer_dir: Option<String>) -> XcodeVersion {
+    let info = match developer_dir.as_deref() {
+        Some(dir) if !dir.is_empty() => xcode::install_at(Path::new(dir)),
+        _ => xcode::active_install(),
+    };
     XcodeVersion {
         developer_dir: info.developer_dir.display().to_string(),
         short_version: info.short_version.clone(),

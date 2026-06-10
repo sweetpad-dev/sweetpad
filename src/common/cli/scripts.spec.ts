@@ -4,9 +4,11 @@ import * as vscode from "vscode";
 
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
+import { getShellDeveloperDir } from "../tasks/shell-env";
 import { getBuildSettingsList, getXcodeBuildCommand, parseCliJsonOutput } from "./scripts";
 
 vi.mock("../exec", () => ({ exec: vi.fn() }));
+vi.mock("../tasks/shell-env", () => ({ getShellDeveloperDir: vi.fn() }));
 vi.mock("@sweetpad/lib", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sweetpad/lib")>()),
   buildSettings: vi.fn(),
@@ -14,6 +16,7 @@ vi.mock("@sweetpad/lib", async (importOriginal) => ({
 
 const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
 const mockExec = exec as Mock;
+const mockGetShellDeveloperDir = getShellDeveloperDir as Mock;
 const mockBuildSettings = sweetpadLib.buildSettings as Mock;
 
 describe("getXcodeBuildCommand", () => {
@@ -172,6 +175,23 @@ describe("getBuildSettingsList", () => {
     expect(settings[0].target).toBe("App");
     expect(mockBuildSettings).toHaveBeenCalledWith(expect.objectContaining({ workspace: "/proj/App.xcworkspace" }));
     expect(mockExec).not.toHaveBeenCalled();
+  });
+
+  it("passes the login shell's DEVELOPER_DIR to the resolver as `xcode`", async () => {
+    mockConfig({});
+    mockGetShellDeveloperDir.mockResolvedValue("/Applications/Xcode-beta.app/Contents/Developer");
+    mockBuildSettings.mockReturnValue([{ target: "App", settings: {} }]);
+
+    await getBuildSettingsList({
+      scheme: "App",
+      configuration: "Debug",
+      sdk: undefined,
+      xcworkspace: "/proj/App.xcworkspace",
+    });
+
+    expect(mockBuildSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ xcode: "/Applications/Xcode-beta.app/Contents/Developer" }),
+    );
   });
 
   it("passes a bare .xcodeproj as `project` to the resolver", async () => {
