@@ -380,10 +380,8 @@ mod tests {
         use std::sync::atomic::{AtomicU32, Ordering};
         static N: AtomicU32 = AtomicU32::new(0);
         let n = N.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "sweetpad-ws-container-{}-{n}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("sweetpad-ws-container-{}-{n}", std::process::id()));
         let ws = root.join("Test.xcworkspace");
         fs::create_dir_all(&ws).unwrap();
         fs::write(

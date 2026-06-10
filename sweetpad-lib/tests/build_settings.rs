@@ -158,6 +158,31 @@ fn keys_projection_trims_output_to_requested_present_keys() {
 }
 
 #[test]
+fn ui_test_bundle_nests_in_its_own_runner_app() {
+    // UI-test bundles run inside their own XCTRunner app, not the host's
+    // PlugIns — even though they author TEST_TARGET_NAME. Oracle:
+    // tuist-fixtures/xcode-26.5.0/metadata/examples_xcode_generated_ios_app_
+    // with_watchapp2/_per_target/App/WatchAppUITests__Debug.json reports
+    // TARGET_BUILD_SUBPATH = /WatchAppUITests-Runner.app/PlugIns (the
+    // unit-test sibling AppTests nests in /App.app/PlugIns).
+    let opts = BuildSettingsOptions {
+        project: Some(fixtures_root().join(
+            "tuist-fixtures/xcode-26.5.0/raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcodeproj",
+        )),
+        target: Some("WatchAppUITests".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "watchos".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(
+        s.get("TARGET_BUILD_SUBPATH").map(String::as_str),
+        Some("/WatchAppUITests-Runner.app/PlugIns")
+    );
+}
+
+#[test]
 fn unknown_target_errors() {
     let opts = BuildSettingsOptions {
         target: Some("Nonexistent".to_string()),
@@ -374,7 +399,10 @@ fn user_scheme_in_xcuserdata_resolves() {
     // resolves exactly like a shared one (xcodebuild accepts both).
     let (_root, proj) = scratch_copy("user-scheme");
     write_scheme(
-        &proj.join(format!("xcuserdata/{}.xcuserdatad/xcschemes", visible_user())),
+        &proj.join(format!(
+            "xcuserdata/{}.xcuserdatad/xcschemes",
+            visible_user()
+        )),
         "Custom",
     );
     let opts = BuildSettingsOptions {

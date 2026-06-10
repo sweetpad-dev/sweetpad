@@ -573,21 +573,37 @@ fn container_matches(container: &str, project_path: &Path) -> bool {
 
 /// Settings derived from the project's target graph — the relationships
 /// between targets that aren't visible from a single target's own settings.
-/// Today: the test-host edge that nests a unit-test or UI-test bundle into
-/// its host app's `PlugIns` directory.
+/// Today: where a test bundle nests.
 ///
-/// xcodebuild's XCTest product-embedding machinery reads `TEST_TARGET_NAME`
-/// from the test bundle's user-authored settings and synthesizes
+/// A **unit-test** bundle nests into its host app's `PlugIns`: xcodebuild's
+/// XCTest product-embedding machinery reads `TEST_TARGET_NAME` from the test
+/// bundle's user-authored settings and synthesizes
 /// `TARGET_BUILD_SUBPATH = /<host wrapper>/PlugIns`, which combined with the
 /// xcspec recipe `TARGET_BUILD_DIR = $(CONFIGURATION_BUILD_DIR)$(TARGET_BUILD_SUBPATH)`
-/// places the test bundle alongside the host's app bundle.
+/// places the test bundle alongside the host's app bundle. We approximate
+/// the host's wrapper as `<TEST_TARGET_NAME>.app` — correct whenever the
+/// host target's `PRODUCT_NAME` matches its `TARGET_NAME`, which is the case
+/// for every test-host pair in the corpus.
 ///
-/// We approximate the host's wrapper as `<TEST_TARGET_NAME>.app` — correct
-/// whenever the host target's `PRODUCT_NAME` matches its `TARGET_NAME`,
-/// which is the case for every test-host pair in the corpus.
+/// A **UI-test** bundle runs inside its own XCTRunner app instead — even
+/// when it authors `TEST_TARGET_NAME` (that names the app it *drives*, not
+/// where it embeds). xcodebuild reports `TARGET_BUILD_SUBPATH =
+/// /<PRODUCT_NAME>-Runner.app/PlugIns` (the watchapp2 tuist capture:
+/// `/WatchAppUITests-Runner.app/PlugIns`, with `USES_XCTRUNNER = YES`). The
+/// value is emitted as a `$(PRODUCT_NAME)` recipe so a renamed product
+/// resolves correctly.
 fn target_graph_layer(bundle: &project::BuildSettingsContext) -> Vec<Assignment> {
     let mut out = Vec::new();
-    if project::is_test_bundle_product_type(bundle.product_type.as_deref())
+    let is_ui_test =
+        bundle.product_type.as_deref() == Some("com.apple.product-type.bundle.ui-testing");
+    if is_ui_test {
+        out.push(Assignment {
+            key: "TARGET_BUILD_SUBPATH".into(),
+            conditions: Vec::new(),
+            value: "/$(PRODUCT_NAME)-Runner.app/PlugIns".into(),
+            condition: None,
+        });
+    } else if project::is_unit_test_bundle_product_type(bundle.product_type.as_deref())
         && let Some(host) = project::last_unconditional_setting(&bundle.layers, "TEST_TARGET_NAME")
         && !host.is_empty()
     {

@@ -22,6 +22,10 @@ pub struct Project {
     pub targets: Vec<Target>,
     /// Project-level configuration names in pbxproj order (e.g. `Debug`, `Release`).
     pub configurations: Vec<String>,
+    /// The project XCConfigurationList's `defaultConfigurationName` (usually
+    /// `Release`) — the configuration xcodebuild falls back to when a requested
+    /// name isn't in the list. `None` when the pbxproj doesn't declare one.
+    pub default_configuration: Option<String>,
     /// Scheme names for this project, sorted alphabetically — the set
     /// `xcodebuild -list` prints: shared (`xcshareddata/xcschemes`) plus
     /// per-user (`xcuserdata/<user>.xcuserdatad/xcschemes`) scheme files,
@@ -89,12 +93,15 @@ pub fn open_from_value(value: &Value, xcodeproj_path: &Path) -> Result<Project, 
     let (objects, project_obj) = project_root(value)?;
 
     let configurations = extract_project_configurations(objects, project_obj)?;
+    let default_configuration = default_configuration_name(objects, project_obj);
     let targets = extract_targets(objects, project_obj)?;
     let mut schemes = crate::scheme::container_schemes(xcodeproj_path);
-    if schemes.is_empty() {
+    if schemes.is_empty() && crate::scheme::autocreation_allowed(xcodeproj_path) {
         // No scheme file on disk anywhere (shared or per-user): mirror Xcode's
         // scheme autocreation — `xcodebuild -list` reports one scheme per
-        // target — so fresh / never-shared projects still list schemes.
+        // target — so fresh / never-shared projects still list schemes. When
+        // the workspace settings disable autocreation (XcodeGen / Tuist write
+        // the flag), `xcodebuild -list` shows no schemes and so do we.
         schemes = targets.iter().map(|t| t.name.clone()).collect();
         schemes.sort();
         schemes.dedup();
@@ -111,8 +118,26 @@ pub fn open_from_value(value: &Value, xcodeproj_path: &Path) -> Result<Project, 
         path: xcodeproj_path.to_path_buf(),
         targets,
         configurations,
+        default_configuration,
         schemes,
     })
+}
+
+/// The `defaultConfigurationName` declared on a container's
+/// `XCConfigurationList`, if any. Each list — the project's and every
+/// target's — carries its own; xcodebuild falls back to it when asked for a
+/// configuration name the list doesn't contain.
+fn default_configuration_name(
+    objects: &BTreeMap<String, Value>,
+    container: &Value,
+) -> Option<String> {
+    container
+        .get("buildConfigurationList")
+        .and_then(Value::as_str)
+        .and_then(|id| objects.get(id))
+        .and_then(|list| list.get("defaultConfigurationName"))
+        .and_then(Value::as_str)
+        .map(String::from)
 }
 
 /// Parse the `project.pbxproj` under an `.xcodeproj` directory. Served from a
@@ -177,9 +202,11 @@ fn config_names(
         let id = v
             .as_str()
             .ok_or_else(|| Error::BadProject("buildConfigurations entry is not a string".into()))?;
-        let config = objects.get(id).ok_or_else(|| {
-            Error::BadProject(format!("XCBuildConfiguration {id} not in objects"))
-        })?;
+        // A dangling configuration id (hand-edited or merge-damaged pbxproj)
+        // doesn't fail xcodebuild — the entry just doesn't exist. Skip it.
+        let Some(config) = objects.get(id) else {
+            continue;
+        };
         let name = config
             .get("name")
             .and_then(Value::as_str)
@@ -219,15 +246,15 @@ fn extract_targets(
             .get("productType")
             .and_then(Value::as_str)
             .map(String::from);
-        let configurations = match target.get("buildConfigurationList").and_then(Value::as_str) {
-            Some(list_id) => {
-                let config_list = objects.get(list_id).ok_or_else(|| {
-                    Error::BadProject(format!(
-                        "target buildConfigurationList {list_id} not in objects"
-                    ))
-                })?;
-                config_names(objects, config_list)?
-            }
+        // A dangling target buildConfigurationList reads as an empty list
+        // (the target then resolves with project-level settings only, like
+        // xcodebuild); only the project-level list is load-bearing.
+        let configurations = match target
+            .get("buildConfigurationList")
+            .and_then(Value::as_str)
+            .and_then(|list_id| objects.get(list_id))
+        {
+            Some(config_list) => config_names(objects, config_list)?,
             None => Vec::new(),
         };
         targets.push(Target {
@@ -294,24 +321,33 @@ pub fn build_settings_from_value(
 ) -> Result<BuildSettingsContext, Error> {
     let (objects, project_obj) = project_root(value)?;
 
+    // An unknown configuration name is not fatal: xcodebuild warns and falls
+    // back to each XCConfigurationList's own `defaultConfigurationName` (see
+    // [`find_config`]). Only a project with no configurations at all errors.
     let project_config = find_config(objects, project_obj, config_name)?.ok_or_else(|| {
-        Error::BadProject(format!("project has no '{config_name}' configuration"))
+        Error::BadProject(format!(
+            "project has no configurations (requested '{config_name}')"
+        ))
     })?;
 
     let target_obj = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
         Error::BadProject(format!("no target named '{target_name}' in the project"))
     })?;
 
-    let target_config = find_config(objects, target_obj, config_name)?.ok_or_else(|| {
-        Error::BadProject(format!(
-            "target '{target_name}' has no '{config_name}' configuration"
-        ))
-    })?;
+    // A target with no (or an empty/dangling) buildConfigurationList still
+    // resolves — xcodebuild uses the project-level settings only — so its two
+    // layers are simply empty.
+    let target_config = find_config(objects, target_obj, config_name)?;
 
     let project_xcconfig = load_xcconfig_layer(objects, project_config, xcodeproj_path)?;
     let project_inline = extract_inline_settings(project_config);
-    let target_xcconfig = load_xcconfig_layer(objects, target_config, xcodeproj_path)?;
-    let target_inline = extract_inline_settings(target_config);
+    let (target_xcconfig, target_inline) = match target_config {
+        Some(config) => (
+            load_xcconfig_layer(objects, config, xcodeproj_path)?,
+            extract_inline_settings(config),
+        ),
+        None => (Vec::new(), Vec::new()),
+    };
     let product_type = target_obj
         .get("productType")
         .and_then(Value::as_str)
@@ -326,7 +362,11 @@ pub fn build_settings_from_value(
         .and_then(Value::as_array)
         .is_some_and(|deps| !deps.is_empty());
     let test_host_target = if is_test_bundle_product_type(product_type.as_deref()) {
-        find_app_host_target(objects, target_obj)
+        // Xcode records the authoritative host in the root PBXProject's
+        // `attributes.TargetAttributes.<test-target-uuid>.TestTargetID`;
+        // the dependency scan is the fallback for projects without it.
+        test_target_id_host(objects, project_obj, target_name)
+            .or_else(|| find_app_host_target(objects, target_obj))
     } else {
         None
     };
@@ -2084,7 +2124,7 @@ fn host_override(field: impl Fn(&HostOverride) -> Option<&String>) -> Option<Str
     HOST_OVERRIDE.get().and_then(|o| field(o).cloned())
 }
 
-fn host_arch() -> String {
+pub(crate) fn host_arch() -> String {
     if let Some(arch) = host_override(|o| o.arch.as_ref()) {
         return arch;
     }
@@ -2286,6 +2326,27 @@ pub fn is_test_bundle_product_type(product_type: Option<&str>) -> bool {
         Some(
             "com.apple.product-type.bundle.unit-test"
                 | "com.apple.product-type.bundle.ui-testing"
+                | "com.apple.product-type.bundle.external-test"
+                | "com.apple.product-type.bundle.ocunit-test"
+        )
+    )
+}
+
+/// True only for unit-style test bundles — the ones xcodebuild nests into a
+/// host application's `PlugIns` directory (`TARGET_BUILD_SUBPATH =
+/// /<host>.app/PlugIns`). UI-testing bundles are excluded: they build into
+/// their *own* XCTRunner app, not the host's PlugIns — the corpus captures
+/// report `TARGET_BUILD_SUBPATH = /<PRODUCT_NAME>-Runner.app/PlugIns` and
+/// `USES_XCTRUNNER = YES` for them (e.g. tuist `ios_app_with_watchapp2`'s
+/// `WatchAppUITests`). Use [`is_test_bundle_product_type`] for behavior
+/// shared by every XCTest bundle (XCTest framework search paths, the
+/// test-host target edge).
+#[must_use]
+pub fn is_unit_test_bundle_product_type(product_type: Option<&str>) -> bool {
+    matches!(
+        product_type,
+        Some(
+            "com.apple.product-type.bundle.unit-test"
                 | "com.apple.product-type.bundle.external-test"
                 | "com.apple.product-type.bundle.ocunit-test"
         )
@@ -2510,6 +2571,40 @@ fn find_target<'a>(
     Ok(None)
 }
 
+/// The test-host target named by the root PBXProject's
+/// `attributes.TargetAttributes.<test-target-uuid>.TestTargetID` — the
+/// authoritative edge Xcode records when the user picks a host app in the
+/// test target's settings. The attribute value is a target UUID; resolve it
+/// to the target's name. `None` when the project carries no TargetAttributes
+/// entry for the test target (older or generated pbxprojs) — callers fall
+/// back to scanning the dependency edges.
+fn test_target_id_host(
+    objects: &BTreeMap<String, Value>,
+    project_obj: &Value,
+    target_name: &str,
+) -> Option<String> {
+    // TargetAttributes is keyed by the test target's UUID, so find it first.
+    let target_ids = project_obj.get("targets").and_then(Value::as_array)?;
+    let test_id = target_ids.iter().filter_map(Value::as_str).find(|id| {
+        objects
+            .get(*id)
+            .and_then(|t| t.get("name"))
+            .and_then(Value::as_str)
+            == Some(target_name)
+    })?;
+    let host_id = project_obj
+        .get("attributes")?
+        .get("TargetAttributes")?
+        .get(test_id)?
+        .get("TestTargetID")
+        .and_then(Value::as_str)?;
+    objects
+        .get(host_id)?
+        .get("name")
+        .and_then(Value::as_str)
+        .map(String::from)
+}
+
 /// Walk a target's `dependencies` (each a `PBXTargetDependency` pointing at a
 /// `target`) and return the `name` of the first dependency whose `productType`
 /// is an application. That target is the XCTest host: xcodebuild reads its
@@ -2538,18 +2633,24 @@ fn find_app_host_target(objects: &BTreeMap<String, Value>, target_obj: &Value) -
     None
 }
 
+/// The `XCBuildConfiguration` a container uses for a requested configuration
+/// name, with xcodebuild's fallback semantics: an exact (case-sensitive) name
+/// match wins; a name absent from the list resolves to the list's own
+/// `defaultConfigurationName` (xcodebuild warns rather than erroring); a
+/// missing or dangling default falls back to the list's first configuration.
+/// `Ok(None)` only when the container has no usable configuration at all (no
+/// list, a dangling list, or an empty one) — the caller decides whether that
+/// is fatal (project level) or just an empty layer (target level).
 fn find_config<'a>(
     objects: &'a BTreeMap<String, Value>,
     container: &Value,
     config_name: &str,
 ) -> Result<Option<&'a Value>, Error> {
-    let Some(list_id) = container
+    let Some(config_list) = container
         .get("buildConfigurationList")
         .and_then(Value::as_str)
+        .and_then(|list_id| objects.get(list_id))
     else {
-        return Ok(None);
-    };
-    let Some(config_list) = objects.get(list_id) else {
         return Ok(None);
     };
     let Some(ids) = config_list
@@ -2558,17 +2659,30 @@ fn find_config<'a>(
     else {
         return Ok(None);
     };
+    // The list's configurations in order, skipping dangling ids.
+    let mut configs = Vec::with_capacity(ids.len());
     for v in ids {
         let id = v
             .as_str()
             .ok_or_else(|| Error::BadProject("buildConfigurations entry is not a string".into()))?;
-        if let Some(config) = objects.get(id)
-            && config.get("name").and_then(Value::as_str) == Some(config_name)
-        {
-            return Ok(Some(config));
+        if let Some(config) = objects.get(id) {
+            configs.push(config);
         }
     }
-    Ok(None)
+    let by_name = |name: &str| {
+        configs
+            .iter()
+            .find(|c| c.get("name").and_then(Value::as_str) == Some(name))
+            .copied()
+    };
+    if let Some(config) = by_name(config_name) {
+        return Ok(Some(config));
+    }
+    let default = config_list
+        .get("defaultConfigurationName")
+        .and_then(Value::as_str)
+        .and_then(by_name);
+    Ok(default.or_else(|| configs.first().copied()))
 }
 
 fn load_xcconfig_layer(
@@ -2591,26 +2705,44 @@ fn load_xcconfig_layer(
         // Newer pbxproj format used by `PBXFileSystemSynchronizedRootGroup`:
         // the anchor identifies a sync'd folder (group), and the relative
         // path is the xcconfig's path within that folder.
-        resolve_anchor_relative_path(objects, anchor_id, relative_path, xcodeproj_path)?
+        resolve_anchor_relative_path(objects, anchor_id, relative_path, xcodeproj_path)
     } else {
         return Ok(Vec::new());
     };
-    resolver::flatten_xcconfig(&xcconfig_path)
-        .map_err(|e| Error::BadProject(format!("xcconfig {}: {e}", xcconfig_path.display())))
+    match resolver::flatten_xcconfig(&xcconfig_path) {
+        Ok(assignments) => Ok(assignments),
+        // The referenced file doesn't exist (classic trigger: a CocoaPods
+        // project before `pod install`). xcodebuild warns "Unable to open base
+        // configuration reference file" and resolves as if no xcconfig were
+        // attached, so the layer is simply empty. A file that exists but can't
+        // be read or parsed stays fatal.
+        Err(resolver::Error::Io { path, source })
+            if source.kind() == io::ErrorKind::NotFound && path == xcconfig_path =>
+        {
+            Ok(Vec::new())
+        }
+        Err(e) => Err(Error::BadProject(format!(
+            "xcconfig {}: {e}",
+            xcconfig_path.display()
+        ))),
+    }
 }
 
+/// Resolve an Xcode-16 `baseConfigurationReferenceAnchor` + relative path to
+/// the xcconfig's on-disk location. The anchor (usually a
+/// `PBXFileSystemSynchronizedRootGroup`) sits in the group tree like any other
+/// node, so its directory accumulates every pathed parent group's segment and
+/// honors its own `sourceTree` (`<group>`, `SOURCE_ROOT`, `<absolute>`) — the
+/// same walk [`group_dir`] does for file references. A dangling anchor
+/// anchors at the project dir as a best effort.
 fn resolve_anchor_relative_path(
     objects: &BTreeMap<String, Value>,
     anchor_id: &str,
     relative_path: &str,
     xcodeproj_path: &Path,
-) -> Result<PathBuf, Error> {
-    let anchor = objects
-        .get(anchor_id)
-        .ok_or_else(|| Error::BadProject(format!("anchor object {anchor_id} not in objects")))?;
-    let anchor_path = anchor.get("path").and_then(Value::as_str).unwrap_or("");
+) -> PathBuf {
     let project_dir = xcodeproj_path.parent().unwrap_or_else(|| Path::new("."));
-    Ok(project_dir.join(anchor_path).join(relative_path))
+    group_dir(objects, anchor_id, project_dir, 0).join(relative_path)
 }
 
 fn resolve_file_ref_path(
@@ -2756,29 +2888,46 @@ fn value_to_string(v: &Value) -> String {
     }
 }
 
-/// A shared scheme that builds `target`, for driving an `xcodebuild` build of it
-/// (BSP `prepare`). Prefers a scheme named exactly `target` (Xcode and Tuist
-/// create a per-target scheme); otherwise the first shared scheme whose build
-/// action references it. `None` if none qualifies — `xcodebuild` needs a scheme
-/// (a bare `-target` build doesn't populate the products dir our search paths use).
+/// A scheme that builds `target`, for driving an `xcodebuild` build of it
+/// (BSP `prepare`). Prefers a scheme file named exactly `target` (Xcode and
+/// Tuist create a per-target scheme), shared or per-user; otherwise the first
+/// scheme file (shared directory first, then the current user's) whose build
+/// action references it. When the container holds no scheme file at all and
+/// scheme autocreation is enabled, the target's own name qualifies —
+/// `xcodebuild` accepts autocreated scheme names. `None` otherwise —
+/// `xcodebuild` needs a scheme (a bare `-target` build doesn't populate the
+/// products dir our search paths use).
 #[must_use]
 pub fn scheme_for_target(xcodeproj_path: &Path, target: &str) -> Option<String> {
-    let dir = xcodeproj_path.join("xcshareddata/xcschemes");
-    let mut schemes: Vec<PathBuf> = fs::read_dir(&dir)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension() == Some(OsStr::new("xcscheme")))
+    let names = crate::scheme::container_schemes(xcodeproj_path);
+    if names.is_empty() {
+        // No scheme file anywhere (shared or per-user): xcodebuild resolves
+        // the target's autocreated scheme, unless the workspace settings
+        // disable autocreation (XcodeGen / Tuist write the flag).
+        return crate::scheme::autocreation_allowed(xcodeproj_path).then(|| target.to_string());
+    }
+    if names.iter().any(|n| n == target) {
+        return Some(target.to_string());
+    }
+    // Resolve each name to its file (shared shadows per-user) and scan the
+    // shared schemes before the per-user ones, each set in name order.
+    let mut schemes: Vec<(bool, String, PathBuf)> = names
+        .into_iter()
+        .filter_map(|name| {
+            let path = crate::scheme::find_scheme_file(xcodeproj_path, &name)?;
+            let user = !path.starts_with(xcodeproj_path.join("xcshareddata"));
+            Some((user, name, path))
+        })
         .collect();
     schemes.sort();
-    let stem = |p: &Path| p.file_stem().and_then(OsStr::to_str).map(String::from);
-    if let Some(p) = schemes.iter().find(|p| stem(p).as_deref() == Some(target)) {
-        return stem(p);
-    }
     schemes
-        .iter()
-        .find(|p| scheme_build_action_targets(p).iter().any(|t| t == target))
-        .and_then(|p| stem(p))
+        .into_iter()
+        .find(|(_, _, path)| {
+            scheme_build_action_targets(path)
+                .iter()
+                .any(|t| t == target)
+        })
+        .map(|(_, name, _)| name)
 }
 
 /// The blueprint (target) names a scheme's `BuildAction` builds.
@@ -3392,14 +3541,25 @@ mod tests {
     }
 
     #[test]
-    fn scratch_unknown_config_errors() {
+    fn scratch_unknown_config_falls_back_to_default() {
+        // xcodebuild doesn't error on an unknown configuration name — it warns
+        // and falls back to each XCConfigurationList's own
+        // `defaultConfigurationName` (Release for Scratch), so the resolved
+        // layers match a plain Release resolution.
         let path =
             fixtures_root().join("_synthetic-xcconfigs/xcode-26.5.0/project/Scratch.xcodeproj");
-        let err = build_settings_layers(&path, "Scratch", "Nonexistent").unwrap_err();
-        assert!(
-            format!("{err}").contains("Nonexistent"),
-            "error should mention the missing config; got: {err}"
-        );
+        let fallback = build_settings_layers(&path, "Scratch", "Nonexistent").unwrap();
+        let release = build_settings_layers(&path, "Scratch", "Release").unwrap();
+        assert_eq!(fallback.len(), release.len());
+        for (f, r) in fallback.iter().zip(&release) {
+            let keys = |layer: &[Assignment]| {
+                layer
+                    .iter()
+                    .map(|a| (a.key.clone(), a.value.clone()))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(keys(f), keys(r), "fallback must mirror the default config");
+        }
     }
 
     #[test]

@@ -648,11 +648,7 @@ mod tests {
             \t<false/>\n</dict>\n</plist>\n";
         let ws = scratch_container("autocreate-off");
         std::fs::create_dir_all(ws.join("xcshareddata")).unwrap();
-        std::fs::write(
-            ws.join("xcshareddata/WorkspaceSettings.xcsettings"),
-            plist,
-        )
-        .unwrap();
+        std::fs::write(ws.join("xcshareddata/WorkspaceSettings.xcsettings"), plist).unwrap();
         assert!(!autocreation_allowed(&ws));
 
         // Project-style container (settings inside the embedded workspace),
