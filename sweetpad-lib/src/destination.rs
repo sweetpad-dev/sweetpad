@@ -110,6 +110,7 @@ fn platform_for_label(label: &str) -> Option<String> {
 /// platform=iOS Simulator,name=iPhone 16,OS=18.5
 /// platform=macOS
 /// platform=iOS Simulator,arch=x86_64
+/// generic/platform=iOS                        // device-less platform build
 /// ```
 ///
 /// `platform=` is required and maps to a canonical SDK; every other field is
@@ -129,7 +130,9 @@ pub fn parse_destination_arg(s: &str) -> Option<RunDestination> {
         };
         let value = value.trim();
         match key.trim().to_ascii_lowercase().as_str() {
-            "platform" => platform_label = Some(value),
+            // `generic/platform=iOS` is xcodebuild's device-less destination
+            // (build for the platform without binding a device).
+            "platform" | "generic/platform" => platform_label = Some(value),
             "os" => {
                 if !value.eq_ignore_ascii_case("latest") && !value.eq_ignore_ascii_case("any") {
                     os_version = value.to_string();
@@ -270,6 +273,17 @@ mod tests {
     fn arg_rejects_missing_or_unknown_platform() {
         assert!(parse_destination_arg("id=abc,arch=arm64").is_none());
         assert!(parse_destination_arg("platform=Android").is_none());
+    }
+
+    #[test]
+    fn arg_generic_platform_destinations() {
+        // xcodebuild's device-less form, `-destination 'generic/platform=iOS'`
+        // — the standard way to build for a platform without picking a device.
+        let d = parse_destination_arg("generic/platform=iOS").unwrap();
+        assert_eq!(d.platform, "iphoneos");
+        assert!(d.device_name.is_empty());
+        let d = parse_destination_arg("generic/platform=iOS Simulator").unwrap();
+        assert_eq!(d.platform, "iphonesimulator");
     }
 
     #[test]

@@ -233,7 +233,9 @@ impl BuildContext {
             sdk: query.sdk.clone(),
             arch: query.arch.clone(),
             configuration: query.configuration.clone(),
-            variant: String::new(),
+            // xcodebuild's default build variant — `[variant=normal]`
+            // conditionals (Apple xcspecs carry them) must match.
+            variant: "normal".into(),
         };
         Ok(Resolved {
             settings: resolver::resolve(&layer_refs, &ctx),
@@ -242,31 +244,48 @@ impl BuildContext {
     }
 
     /// Turn a scheme's `BuildAction` into a list of [`ResolveQuery`]s
-    /// against this context. One query per entry whose `BlueprintName`
-    /// resolves to a target in `self.project`; cross-container entries
-    /// land in [`BuildPlan::skipped`].
+    /// against this context. One query per entry that participates in
+    /// `build_for` (xcodebuild only builds the entries whose matching
+    /// `buildFor*` flag is set — a testing-only entry is skipped for a
+    /// plain build) and whose `BlueprintName` resolves to a target in
+    /// `self.project`; cross-container entries land in
+    /// [`BuildPlan::skipped`].
     ///
     /// The scheme itself doesn't pick a configuration for the build
     /// action — xcodebuild inherits one from whichever action it's
     /// performing (launch / test / archive). The caller passes the
     /// chosen `configuration` here.
+    ///
+    /// When the scheme's `TestAction` gathers code coverage, every planned
+    /// query carries [`ResolveQuery::code_coverage_enabled`] — xcodebuild
+    /// forces `CLANG_COVERAGE_MAPPING=YES` on every buildable it resolves
+    /// for such a scheme, whatever the action.
     #[must_use]
     pub fn plan_build(
         &self,
         scheme: &Scheme,
+        build_for: crate::scheme::BuildFor,
         configuration: &str,
         sdk: &str,
         arch: &str,
         destination: Option<&RunDestination>,
     ) -> BuildPlan {
+        let code_coverage = scheme
+            .test_action
+            .as_ref()
+            .is_some_and(|t| t.code_coverage_enabled);
         let mut entries = Vec::new();
         let mut skipped = Vec::new();
         for entry in &scheme.build_entries {
+            if !entry.builds_for(build_for) {
+                continue;
+            }
             let name = &entry.buildable.blueprint_name;
             let owned = self.project.targets.iter().any(|t| t.name == *name)
                 && container_matches(&entry.buildable.container, &self.project.path);
             if owned {
-                let mut q = ResolveQuery::new(name, configuration, sdk, arch);
+                let mut q = ResolveQuery::new(name, configuration, sdk, arch)
+                    .with_code_coverage_enabled(code_coverage);
                 if let Some(d) = destination {
                     q = q.with_destination(d.clone());
                 }

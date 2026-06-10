@@ -194,6 +194,51 @@ fn invalid_destination_is_rejected_at_parse() {
     assert!(parse_destination_arg("platform=Android").is_none());
 }
 
+#[test]
+fn scheme_code_coverage_forces_coverage_mapping() {
+    // The Kingfisher scheme's TestAction has codeCoverageEnabled="YES";
+    // xcodebuild forces CLANG_COVERAGE_MAPPING=YES on every buildable it
+    // resolves for the scheme. Oracle: fixtures/kingfisher/xcode-26.5.0/
+    // metadata/schemes/Kingfisher/build-settings/Debug__macOS.json reports
+    // "CLANG_COVERAGE_MAPPING": "YES".
+    let opts = BuildSettingsOptions {
+        project: Some(kingfisher_proj()),
+        scheme: Some("Kingfisher".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        destination: parse_destination_arg("platform=macOS"),
+        ..Default::default()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(
+        s.get("CLANG_COVERAGE_MAPPING").map(String::as_str),
+        Some("YES")
+    );
+}
+
+#[test]
+fn scheme_build_excludes_test_only_entries() {
+    // The "Alamofire macOS" scheme has a second BuildActionEntry for the
+    // test bundle with buildForRunning="NO" (testing-only). xcodebuild's
+    // -showBuildSettings (the build action) resolves only the framework
+    // target. Oracle: fixtures/alamofire/xcode-26.5.0/metadata/schemes/
+    // Alamofire macOS/build-settings/Debug__macOS.json contains a single
+    // TARGET_NAME, "Alamofire macOS".
+    let opts = BuildSettingsOptions {
+        project: Some(fixtures_root().join("alamofire/xcode-26.5.0/raw/Alamofire.xcodeproj")),
+        scheme: Some("Alamofire macOS".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        destination: parse_destination_arg("platform=macOS"),
+        ..Default::default()
+    };
+    let out = resolve_build_settings(&opts).unwrap();
+    let targets: Vec<&str> = out.iter().map(|t| t.target.as_str()).collect();
+    assert_eq!(targets, vec!["Alamofire macOS"]);
+}
+
 // ----- scheme discovery parity (autocreated / user / workspace-level) -------
 
 /// A unique scratch dir under the OS temp dir containing a copy of the
@@ -255,6 +300,25 @@ fn scheme_without_file_resolves_the_same_named_target() {
 }
 
 #[test]
+fn unknown_scheme_errors_when_other_scheme_files_exist() {
+    // Xcode's autocreated per-target schemes only exist in containers with
+    // NO scheme files at all. Once any scheme file exists, xcodebuild
+    // refuses an unknown scheme name even if a target with that name exists.
+    let (_root, proj) = scratch_copy("schemes-exist");
+    write_scheme(&proj.join("xcshareddata/xcschemes"), "Custom");
+    let opts = BuildSettingsOptions {
+        project: Some(proj),
+        scheme: Some("Scratch".to_string()), // a target, but not a scheme
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let err = resolve_build_settings(&opts).unwrap_err();
+    assert!(err.contains("does not contain a scheme"), "err: {err}");
+}
+
+#[test]
 fn unknown_scheme_with_no_matching_target_errors() {
     let (_root, proj) = scratch_copy("unknown-scheme");
     let opts = BuildSettingsOptions {
@@ -269,13 +333,23 @@ fn unknown_scheme_with_no_matching_target_errors() {
     assert!(err.contains("no target named"), "err: {err}");
 }
 
+/// A username whose `xcuserdata` is visible to scheme discovery on this host:
+/// the detected `$USER` when set (discovery scopes to the current user), any
+/// fixed name otherwise (no identity → every user dir is scanned).
+fn visible_user() -> String {
+    std::env::var("USER")
+        .ok()
+        .filter(|u| !u.is_empty())
+        .unwrap_or_else(|| "tester".into())
+}
+
 #[test]
 fn user_scheme_in_xcuserdata_resolves() {
     // A per-user (non-shared) scheme under `xcuserdata/<user>.xcuserdatad/`
     // resolves exactly like a shared one (xcodebuild accepts both).
     let (_root, proj) = scratch_copy("user-scheme");
     write_scheme(
-        &proj.join("xcuserdata/tester.xcuserdatad/xcschemes"),
+        &proj.join(format!("xcuserdata/{}.xcuserdatad/xcschemes", visible_user())),
         "Custom",
     );
     let opts = BuildSettingsOptions {

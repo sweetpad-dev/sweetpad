@@ -151,10 +151,18 @@ impl<'a> Parser<'a> {
             } else if self.starts_with(b"<!--") {
                 self.skip_comment()?;
             } else if self.starts_with(b"<!") {
+                // <!DOCTYPE …> — may carry an internal subset in brackets
+                // (`<!DOCTYPE x [ <!ENTITY …> ]>`) whose own '>' characters
+                // must not terminate the declaration early.
                 self.pos += 2;
-                while self.peek() != Some(b'>') {
-                    if self.pos >= self.input.len() {
-                        return Err(self.error("unterminated <!...>"));
+                let mut bracket_depth = 0usize;
+                loop {
+                    match self.peek() {
+                        Some(b'[') => bracket_depth += 1,
+                        Some(b']') => bracket_depth = bracket_depth.saturating_sub(1),
+                        Some(b'>') if bracket_depth == 0 => break,
+                        Some(_) => {}
+                        None => return Err(self.error("unterminated <!...>")),
                     }
                     self.pos += 1;
                 }
@@ -462,6 +470,14 @@ mod tests {
     #[test]
     fn parses_xml_declaration() {
         let e = parse(r#"<?xml version="1.0" encoding="UTF-8"?><Root/>"#).unwrap();
+        assert_eq!(e.name, "Root");
+    }
+
+    #[test]
+    fn skips_doctype_with_internal_subset() {
+        // A DOCTYPE's internal subset can contain markup declarations whose
+        // own '>' must not terminate the DOCTYPE early.
+        let e = parse("<!DOCTYPE plist [ <!ENTITY foo \"bar\"> ]><Root/>").unwrap();
         assert_eq!(e.name, "Root");
     }
 

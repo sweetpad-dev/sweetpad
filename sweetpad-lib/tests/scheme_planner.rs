@@ -54,7 +54,7 @@ fn kingfisher_scheme_plans_single_framework_target() {
     let ctx = BuildContext::open(&xcodeproj).unwrap();
     let scheme = scheme::parse_file(&scheme_path).unwrap();
     let dest = parse_destination_suffix("macOS");
-    let plan = ctx.plan_build(&scheme, "Debug", "macosx", "arm64", dest.as_ref());
+    let plan = ctx.plan_build(&scheme, scheme::BuildFor::Running, "Debug", "macosx", "arm64", dest.as_ref());
 
     let oracle_targets = read_oracle_target_names(&oracle);
     let plan_targets: Vec<String> = plan.entries.iter().map(|q| q.target.clone()).collect();
@@ -76,7 +76,7 @@ fn share_extension_scheme_plans_both_extension_and_parent_app() {
     let ctx = BuildContext::open(&xcodeproj).unwrap();
     let scheme = scheme::parse_file(&scheme_path).unwrap();
     let dest = parse_destination_suffix("iOS-Simulator_OS26.5_iPad-A16");
-    let plan = ctx.plan_build(&scheme, "Debug", "iphonesimulator", "arm64", dest.as_ref());
+    let plan = ctx.plan_build(&scheme, scheme::BuildFor::Running, "Debug", "iphonesimulator", "arm64", dest.as_ref());
 
     let plan_targets: BTreeSet<String> = plan.entries.iter().map(|q| q.target.clone()).collect();
     let oracle_targets: BTreeSet<String> = read_oracle_target_names(&oracle).into_iter().collect();
@@ -96,7 +96,7 @@ fn plan_then_resolve_produces_expected_product_settings() {
 
     let ctx = BuildContext::open(&xcodeproj).unwrap();
     let scheme = scheme::parse_file(&scheme_path).unwrap();
-    let plan = ctx.plan_build(&scheme, "Debug", "macosx", "arm64", None);
+    let plan = ctx.plan_build(&scheme, scheme::BuildFor::Running, "Debug", "macosx", "arm64", None);
     assert_eq!(plan.entries.len(), 1);
 
     let resolved = ctx.resolve(&plan.entries[0]).unwrap();
@@ -118,7 +118,7 @@ fn plan_uses_passed_configuration_and_destination_for_every_entry() {
     let ctx = BuildContext::open(&xcodeproj).unwrap();
     let scheme = scheme::parse_file(&scheme_path).unwrap();
     let dest = parse_destination_suffix("iOS-Simulator_OS26.5_iPad-A16").unwrap();
-    let plan = ctx.plan_build(&scheme, "Release", "iphonesimulator", "arm64", Some(&dest));
+    let plan = ctx.plan_build(&scheme, scheme::BuildFor::Running, "Release", "iphonesimulator", "arm64", Some(&dest));
 
     for query in &plan.entries {
         assert_eq!(query.configuration, "Release");
@@ -126,6 +126,48 @@ fn plan_uses_passed_configuration_and_destination_for_every_entry() {
         assert_eq!(query.arch, "arm64");
         assert_eq!(query.destination.as_ref(), Some(&dest));
     }
+}
+
+#[test]
+fn plan_honors_build_for_action_flags() {
+    // The "Alamofire macOS" scheme carries a testing-only second entry
+    // (`buildForRunning="NO" buildForTesting="YES"` on the test bundle).
+    // The Run build set excludes it — matching the oracle capture
+    // metadata/schemes/Alamofire macOS/build-settings/Debug__macOS.json,
+    // which contains only the framework target — while the Test build set
+    // includes both. The scheme also has codeCoverageEnabled="YES", which
+    // xcodebuild propagates to every resolved buildable.
+    let xcodeproj = fixtures_root().join("alamofire/xcode-26.5.0/raw/Alamofire.xcodeproj");
+    let scheme_path = xcodeproj.join("xcshareddata/xcschemes/Alamofire macOS.xcscheme");
+    let oracle = fixtures_root().join(
+        "alamofire/xcode-26.5.0/metadata/schemes/Alamofire macOS/build-settings/Debug__macOS.json",
+    );
+
+    let ctx = BuildContext::open(&xcodeproj).unwrap();
+    let scheme = scheme::parse_file(&scheme_path).unwrap();
+
+    let run = ctx.plan_build(
+        &scheme,
+        scheme::BuildFor::Running,
+        "Debug",
+        "macosx",
+        "arm64",
+        None,
+    );
+    let run_targets: Vec<String> = run.entries.iter().map(|q| q.target.clone()).collect();
+    assert_eq!(run_targets, read_oracle_target_names(&oracle));
+    assert_eq!(run_targets, vec!["Alamofire macOS"]);
+
+    let test = ctx.plan_build(
+        &scheme,
+        scheme::BuildFor::Testing,
+        "Debug",
+        "macosx",
+        "arm64",
+        None,
+    );
+    let test_targets: Vec<String> = test.entries.iter().map(|q| q.target.clone()).collect();
+    assert_eq!(test_targets, vec!["Alamofire macOS", "Alamofire macOS Tests"]);
 }
 
 /// Sample 10 schemes from the corpus and assert every entry's
@@ -142,7 +184,7 @@ fn every_corpus_scheme_plans_with_no_unresolved_entries_in_same_project() {
         let Ok(scheme) = scheme::parse_file(&case.scheme) else {
             continue;
         };
-        let plan = ctx.plan_build(&scheme, "Debug", "macosx", "arm64", None);
+        let plan = ctx.plan_build(&scheme, scheme::BuildFor::Running, "Debug", "macosx", "arm64", None);
         checked += 1;
         total_skipped += plan.skipped.len();
     }

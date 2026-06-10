@@ -38,11 +38,12 @@ pub struct Scheme {
     /// Test action — present in every scheme Xcode generates, but
     /// sometimes empty (no testables wired up).
     pub test_action: Option<TestAction>,
-    /// `LaunchAction.BuildableProductRunnable` — the single target the scheme
-    /// launches (the app). Distinct from the BuildAction's `for_running`
-    /// buildables, which also include frameworks/dependencies built for the
-    /// run; this is the one Xcode actually launches. `None` when the scheme
-    /// has no runnable (e.g. a library-only scheme).
+    /// `LaunchAction.BuildableProductRunnable` (or `RemoteRunnable` for
+    /// watch-app schemes) — the single target the scheme launches (the app).
+    /// Distinct from the BuildAction's `for_running` buildables, which also
+    /// include frameworks/dependencies built for the run; this is the one
+    /// Xcode actually launches. `None` when the scheme has no runnable
+    /// (e.g. a library-only scheme).
     pub launch_target: Option<BuildableRef>,
     /// `LaunchAction.buildConfiguration` — the config xcodebuild defaults
     /// to when no explicit `-configuration` is passed.
@@ -77,6 +78,36 @@ pub struct BuildEntry {
     pub for_profiling: bool,
     pub for_archiving: bool,
     pub for_analyzing: bool,
+}
+
+/// Which scheme action a build is for. xcodebuild builds only the
+/// `BuildActionEntry`s whose matching `buildFor*` flag is set: plain
+/// `build` (and `-showBuildSettings` with no action) uses the Run set,
+/// `build-for-testing` / `test` the Test set, and so on. The Alamofire
+/// schemes are the corpus example — their test bundles carry
+/// `buildForTesting="YES" buildForRunning="NO"` and xcodebuild's
+/// `-showBuildSettings` output omits them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildFor {
+    Running,
+    Testing,
+    Profiling,
+    Archiving,
+    Analyzing,
+}
+
+impl BuildEntry {
+    /// Whether this entry participates in a build for the given action.
+    #[must_use]
+    pub fn builds_for(&self, action: BuildFor) -> bool {
+        match action {
+            BuildFor::Running => self.for_running,
+            BuildFor::Testing => self.for_testing,
+            BuildFor::Profiling => self.for_profiling,
+            BuildFor::Archiving => self.for_archiving,
+            BuildFor::Analyzing => self.for_analyzing,
+        }
+    }
 }
 
 /// Identity of a target referenced by a scheme. The same shape is used in
@@ -165,13 +196,39 @@ pub fn parse_file(path: &Path) -> Result<Scheme, Error> {
     from_element(&root)
 }
 
+/// The login user whose `xcuserdata` Xcode would consult, or `None` when the
+/// process has no usable identity (then we fall back to scanning every user's
+/// directory rather than seeing no per-user schemes at all).
+fn detected_user() -> Option<String> {
+    std::env::var("USER").ok().filter(|u| !u.is_empty())
+}
+
+/// Test-only: a username whose `xcuserdata` directory is visible through the
+/// public scheme-discovery APIs on this host — the detected `$USER` when set,
+/// any fixed name otherwise (no identity → every user dir is scanned). Tests
+/// that create per-user scheme files use this so they pass both on developer
+/// machines (where `$USER` is set and scoping applies) and in bare containers.
+#[cfg(test)]
+pub(crate) fn visible_user() -> String {
+    detected_user().unwrap_or_else(|| "tester".into())
+}
+
 /// The directories a container (`.xcodeproj` or `.xcworkspace` — both share
 /// the same layout) stores scheme files in: `xcshareddata/xcschemes` first,
-/// then every per-user `xcuserdata/<user>.xcuserdatad/xcschemes`, sorted for
-/// a stable order.
+/// then the per-user `xcuserdata/<user>.xcuserdatad/xcschemes`. Xcode and
+/// xcodebuild only consult the *current* user's directory — a committed
+/// `xcuserdata/alice.xcuserdatad` scheme is invisible to bob — so we scope to
+/// `$USER` when the identity is known, and scan every user directory (sorted,
+/// for a stable order) only as a best-effort fallback when it isn't.
 fn scheme_dirs(container: &Path) -> Vec<PathBuf> {
+    scheme_dirs_for_user(container, detected_user().as_deref())
+}
+
+fn scheme_dirs_for_user(container: &Path, user: Option<&str>) -> Vec<PathBuf> {
     let mut dirs = vec![container.join("xcshareddata/xcschemes")];
-    if let Ok(entries) = fs::read_dir(container.join("xcuserdata")) {
+    if let Some(user) = user {
+        dirs.push(container.join(format!("xcuserdata/{user}.xcuserdatad/xcschemes")));
+    } else if let Ok(entries) = fs::read_dir(container.join("xcuserdata")) {
         let mut user_dirs: Vec<PathBuf> = entries
             .flatten()
             .map(|e| e.path())
@@ -182,6 +239,39 @@ fn scheme_dirs(container: &Path) -> Vec<PathBuf> {
         dirs.extend(user_dirs);
     }
     dirs
+}
+
+/// Whether Xcode's scheme autocreation is enabled for a container — the
+/// `IDEWorkspaceSharedSettings_AutocreateContextsIfNeeded` key in the shared
+/// `WorkspaceSettings.xcsettings` (XcodeGen / Tuist commonly write `false` so
+/// generated projects don't sprout per-target schemes). Missing file or key
+/// means enabled, matching Xcode's default. A `.xcodeproj` keeps the settings
+/// inside its embedded `project.xcworkspace`; a `.xcworkspace` holds them
+/// directly.
+#[must_use]
+pub fn autocreation_allowed(container: &Path) -> bool {
+    let candidates = [
+        container.join("xcshareddata/WorkspaceSettings.xcsettings"),
+        container.join("project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings"),
+    ];
+    for path in candidates {
+        let Ok(root) = xcscheme::parse_file(&path) else {
+            continue;
+        };
+        // XML plist: <plist><dict><key>…</key><false/>…</dict></plist>.
+        let Some(dict) = root.child("dict") else {
+            continue;
+        };
+        let mut children = dict.children.iter();
+        while let Some(child) = children.next() {
+            if child.name == "key"
+                && child.text == "IDEWorkspaceSharedSettings_AutocreateContextsIfNeeded"
+            {
+                return children.next().is_none_or(|v| v.name != "false");
+            }
+        }
+    }
+    true
 }
 
 /// Scheme names stored in a container: the shared schemes plus every user's
@@ -252,8 +342,14 @@ pub fn from_element(root: &Element) -> Result<Scheme, Error> {
         build_implicit_dependencies,
         parallelize_buildables,
         test_action,
+        // Watch-app schemes launch via `<RemoteRunnable>` (the watch extension
+        // runs on the paired device) instead of `<BuildableProductRunnable>`;
+        // both wrap the same `BuildableReference` shape.
         launch_target: launch_action
-            .and_then(|a| a.child("BuildableProductRunnable"))
+            .and_then(|a| {
+                a.child("BuildableProductRunnable")
+                    .or_else(|| a.child("RemoteRunnable"))
+            })
             .and_then(|r| r.child("BuildableReference"))
             .and_then(parse_buildable),
         launch_configuration: launch_action
@@ -498,9 +594,15 @@ mod tests {
     #[test]
     fn container_schemes_merges_shared_and_user_schemes() {
         let dir = scratch_container("merge");
+        let user = visible_user();
         touch(&dir.join("xcshareddata/xcschemes/Shared.xcscheme"));
-        touch(&dir.join("xcuserdata/alice.xcuserdatad/xcschemes/Personal.xcscheme"));
-        touch(&dir.join("xcuserdata/bob.xcuserdatad/xcschemes/Shared.xcscheme")); // dup of shared
+        touch(&dir.join(format!(
+            "xcuserdata/{user}.xcuserdatad/xcschemes/Personal.xcscheme"
+        )));
+        // Duplicate of the shared scheme in the user dir collapses to one.
+        touch(&dir.join(format!(
+            "xcuserdata/{user}.xcuserdatad/xcschemes/Shared.xcscheme"
+        )));
         assert_eq!(container_schemes(&dir), vec!["Personal", "Shared"]);
     }
 
@@ -511,12 +613,93 @@ mod tests {
     }
 
     #[test]
+    fn scheme_dirs_scope_to_the_known_user() {
+        let dir = scratch_container("user-scope");
+        touch(&dir.join("xcshareddata/xcschemes/Shared.xcscheme"));
+        touch(&dir.join("xcuserdata/alice.xcuserdatad/xcschemes/Mine.xcscheme"));
+        touch(&dir.join("xcuserdata/bob.xcuserdatad/xcschemes/Foreign.xcscheme"));
+
+        // With a known identity, only that user's directory is consulted —
+        // xcodebuild never sees another user's committed schemes.
+        let dirs = scheme_dirs_for_user(&dir, Some("alice"));
+        assert_eq!(
+            dirs,
+            vec![
+                dir.join("xcshareddata/xcschemes"),
+                dir.join("xcuserdata/alice.xcuserdatad/xcschemes"),
+            ]
+        );
+        // Unknown identity: best-effort scan of every user dir.
+        let dirs = scheme_dirs_for_user(&dir, None);
+        assert_eq!(dirs.len(), 3);
+    }
+
+    #[test]
+    fn autocreation_allowed_honors_workspace_settings() {
+        // Default: no settings file → enabled.
+        let dir = scratch_container("autocreate-default");
+        assert!(autocreation_allowed(&dir));
+
+        // Workspace-style container with the key set to false → disabled.
+        let plist = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+            <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+            <plist version=\"1.0\">\n<dict>\n\
+            \t<key>IDEWorkspaceSharedSettings_AutocreateContextsIfNeeded</key>\n\
+            \t<false/>\n</dict>\n</plist>\n";
+        let ws = scratch_container("autocreate-off");
+        std::fs::create_dir_all(ws.join("xcshareddata")).unwrap();
+        std::fs::write(
+            ws.join("xcshareddata/WorkspaceSettings.xcsettings"),
+            plist,
+        )
+        .unwrap();
+        assert!(!autocreation_allowed(&ws));
+
+        // Project-style container (settings inside the embedded workspace),
+        // key explicitly true → enabled.
+        let proj = scratch_container("autocreate-on");
+        let inner = proj.join("project.xcworkspace/xcshareddata");
+        std::fs::create_dir_all(&inner).unwrap();
+        std::fs::write(
+            inner.join("WorkspaceSettings.xcsettings"),
+            plist.replace("<false/>", "<true/>"),
+        )
+        .unwrap();
+        assert!(autocreation_allowed(&proj));
+    }
+
+    #[test]
+    fn build_for_flags_gate_entries() {
+        let entry = BuildEntry {
+            buildable: BuildableRef {
+                blueprint_name: "T".into(),
+                blueprint_identifier: String::new(),
+                buildable_name: "T.xctest".into(),
+                container: String::new(),
+            },
+            for_running: false,
+            for_testing: true,
+            for_profiling: false,
+            for_archiving: false,
+            for_analyzing: false,
+        };
+        assert!(!entry.builds_for(BuildFor::Running));
+        assert!(entry.builds_for(BuildFor::Testing));
+        assert!(!entry.builds_for(BuildFor::Archiving));
+    }
+
+    #[test]
     fn find_scheme_file_prefers_shared_over_user() {
         let dir = scratch_container("find");
+        let user = visible_user();
         let shared = dir.join("xcshareddata/xcschemes/App.xcscheme");
         touch(&shared);
-        touch(&dir.join("xcuserdata/alice.xcuserdatad/xcschemes/App.xcscheme"));
-        let user_only = dir.join("xcuserdata/alice.xcuserdatad/xcschemes/Mine.xcscheme");
+        touch(&dir.join(format!(
+            "xcuserdata/{user}.xcuserdatad/xcschemes/App.xcscheme"
+        )));
+        let user_only = dir.join(format!(
+            "xcuserdata/{user}.xcuserdatad/xcschemes/Mine.xcscheme"
+        ));
         touch(&user_only);
 
         assert_eq!(find_scheme_file(&dir, "App"), Some(shared));
