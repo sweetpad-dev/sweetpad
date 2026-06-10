@@ -38,6 +38,7 @@ type Config = {
   "system.enableSentry": boolean;
   "system.autoRevealTerminal": boolean;
   "system.showProgressStatusBar": boolean;
+  "system.xcodebuildFallback": boolean;
   "xcodegen.autogenerate": boolean;
   "xcodebuildserver.autogenerate": boolean;
   "xcodebuildserver.path": string;

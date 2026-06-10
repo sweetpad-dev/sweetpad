@@ -1040,6 +1040,11 @@
           "default": true,
           "description": "Show progress in the status bar when executing a command or task"
         },
+        "sweetpad.system.xcodebuildFallback": {
+          "type": "boolean",
+          "default": false,
+          "description": "When the bundled resolver fails to read build settings from project files, retry the query via `xcodebuild -showBuildSettings` instead of failing. Useful as a safety net for exotic or malformed projects; slower than the bundled resolver."
+        },
         "sweetpad.xcodegen.autogenerate": {
           "type": "boolean",
           "default": false,

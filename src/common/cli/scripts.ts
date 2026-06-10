@@ -281,27 +281,69 @@ export async function getBuildSettingsList(options: {
   keys?: string[];
 }): Promise<XcodeBuildSettings[]> {
   const derivedDataPath = prepareDerivedDataPath();
-
   const workspaceType = detectWorkspaceType(options.xcworkspace);
-  let cwd: string | undefined;
 
   if (workspaceType === "xcode") {
-    const result = sweetpadLib.buildSettings({
-      scheme: options.scheme,
-      configuration: options.configuration,
-      sdk: options.sdk ?? undefined,
-      destination: options.destination,
-      derivedDataPath: derivedDataPath ?? undefined,
-      keys: options.keys,
-      ...(options.xcworkspace.endsWith(".xcworkspace")
-        ? { workspace: options.xcworkspace }
-        : { project: options.xcworkspace }),
-    });
-    return result.map((entry) => new XcodeBuildSettings({ settings: entry.settings, target: entry.target }));
+    // A customized `build.xcodebuildCommand` (a wrapper that injects env vars,
+    // selects a toolchain, …) must serve the read-only queries too, or the
+    // settings we resolve could disagree with what the wrapper builds.
+    if (isXcodeBuildCommandCustomized()) {
+      logReadOnlyXcodebuildRoutingOnce();
+      return await getBuildSettingsViaXcodebuild({ ...options, derivedDataPath, workspaceType });
+    }
+    try {
+      const result = sweetpadLib.buildSettings({
+        scheme: options.scheme,
+        configuration: options.configuration,
+        sdk: options.sdk ?? undefined,
+        destination: options.destination,
+        derivedDataPath: derivedDataPath ?? undefined,
+        keys: options.keys,
+        ...(options.xcworkspace.endsWith(".xcworkspace")
+          ? { workspace: options.xcworkspace }
+          : { project: options.xcworkspace }),
+      });
+      return result.map((entry) => new XcodeBuildSettings({ settings: entry.settings, target: entry.target }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (getWorkspaceConfig("system.xcodebuildFallback")) {
+        commonLogger.warn("In-process build-settings resolver failed; falling back to xcodebuild", {
+          error: message,
+          scheme: options.scheme,
+          xcworkspace: options.xcworkspace,
+        });
+        return await getBuildSettingsViaXcodebuild({ ...options, derivedDataPath, workspaceType });
+      }
+      throw new ExtensionError(`Failed to resolve build settings: ${message}`, {
+        context: {
+          scheme: options.scheme,
+          configuration: options.configuration,
+          xcworkspace: options.xcworkspace,
+          hint: 'Enable "sweetpad.system.xcodebuildFallback" to retry such failures via xcodebuild.',
+        },
+      });
+    }
   }
 
   // For SPM we still use xcodebuild
   // TODO: consider implementing this in sweetpad-lib as well
+  return await getBuildSettingsViaXcodebuild({ ...options, derivedDataPath, workspaceType });
+}
+
+/**
+ * Run `xcodebuild -showBuildSettings -json` and parse its output. The only
+ * path for SPM packages, the routing target when the user customizes
+ * `sweetpad.build.xcodebuildCommand`, and the opt-in safety net
+ * (`sweetpad.system.xcodebuildFallback`) when the in-process resolver fails.
+ */
+async function getBuildSettingsViaXcodebuild(options: {
+  scheme: string;
+  configuration: string;
+  sdk: string | undefined;
+  xcworkspace: string;
+  derivedDataPath: string | null;
+  workspaceType: "xcode" | "spm";
+}): Promise<XcodeBuildSettings[]> {
   const command = getXcodeBuildCommand();
   const args = [
     "-showBuildSettings",
@@ -309,18 +351,23 @@ export async function getBuildSettingsList(options: {
     options.scheme,
     "-configuration",
     options.configuration,
-    ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
+    ...(options.derivedDataPath ? ["-derivedDataPath", options.derivedDataPath] : []),
     "-json",
   ];
   if (options.sdk !== undefined) {
     args.push("-sdk", options.sdk);
   }
-  if (workspaceType === "spm") {
+  let cwd: string | undefined;
+  if (options.workspaceType === "spm") {
     cwd = getSwiftPMDirectory(options.xcworkspace);
-  } else if (workspaceType === "xcode") {
-    args.push("-workspace", options.xcworkspace);
+  } else if (options.workspaceType === "xcode") {
+    if (options.xcworkspace.endsWith(".xcworkspace")) {
+      args.push("-workspace", options.xcworkspace);
+    } else {
+      args.push("-project", options.xcworkspace);
+    }
   } else {
-    assertUnreachable(workspaceType);
+    assertUnreachable(options.workspaceType);
   }
 
   const stdout = await exec({
@@ -356,6 +403,34 @@ export async function getBuildSettingsList(options: {
     }
   }
   return [];
+}
+
+/** Has the user pointed `sweetpad.build.xcodebuildCommand` at a custom binary/wrapper? */
+function isXcodeBuildCommandCustomized(): boolean {
+  return Boolean(getWorkspaceConfig("build.xcodebuildCommand"));
+}
+
+let loggedReadOnlyXcodebuildRouting = false;
+function logReadOnlyXcodebuildRoutingOnce(): void {
+  if (loggedReadOnlyXcodebuildRouting) {
+    return;
+  }
+  loggedReadOnlyXcodebuildRouting = true;
+  commonLogger.log("build.xcodebuildCommand is customized; resolving build settings through it", {
+    command: getXcodeBuildCommand(),
+  });
+}
+
+let warnedEnumerationCustomXcodebuild = false;
+function warnEnumerationIgnoresCustomXcodebuildOnce(): void {
+  if (warnedEnumerationCustomXcodebuild || !isXcodeBuildCommandCustomized()) {
+    return;
+  }
+  warnedEnumerationCustomXcodebuild = true;
+  commonLogger.warn(
+    "build.xcodebuildCommand is customized, but scheme/target/configuration lists come from the bundled resolver (which reads project files directly) — the custom command only affects builds and build-settings queries",
+    { command: getXcodeBuildCommand() },
+  );
 }
 
 /**
@@ -567,6 +642,7 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
     if (!options.xcworkspace) {
       return [];
     }
+    warnEnumerationIgnoresCustomXcodebuildOnce();
     return sweetpadLib.schemes(options.xcworkspace).map((name) => ({ name }));
   }
   assertUnreachable(workspaceType);
@@ -604,6 +680,7 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   }
 
   if (workspaceType === "xcode") {
+    warnEnumerationIgnoresCustomXcodebuildOnce();
     return sweetpadLib.targets(options.xcworkspace);
   }
   assertUnreachable(workspaceType);
@@ -618,6 +695,7 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
   }
 
   if (workspaceType === "xcode") {
+    warnEnumerationIgnoresCustomXcodebuildOnce();
     return sweetpadLib.configurations(options.xcworkspace).map((name) => ({ name }));
   }
   assertUnreachable(workspaceType);

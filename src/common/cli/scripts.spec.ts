@@ -1,10 +1,20 @@
+import * as sweetpadLib from "@sweetpad/lib";
 import type { Mock } from "vitest";
 import * as vscode from "vscode";
 
 import { ExtensionError } from "../errors";
-import { getXcodeBuildCommand, parseCliJsonOutput } from "./scripts";
+import { exec } from "../exec";
+import { getBuildSettingsList, getXcodeBuildCommand, parseCliJsonOutput } from "./scripts";
+
+vi.mock("../exec", () => ({ exec: vi.fn() }));
+vi.mock("@sweetpad/lib", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sweetpad/lib")>()),
+  buildSettings: vi.fn(),
+}));
 
 const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
+const mockExec = exec as Mock;
+const mockBuildSettings = sweetpadLib.buildSettings as Mock;
 
 describe("getXcodeBuildCommand", () => {
   const originalEnv = process.env;
@@ -129,5 +139,140 @@ More noise`;
 More noise`;
     const obj = parseCliJsonOutput(input);
     expect(obj).toEqual([{ key1: "value1" }, { key2: 2 }]);
+  });
+});
+
+const xcodebuildJson = (target: string) =>
+  JSON.stringify([{ action: "build", target, buildSettings: { PRODUCT_NAME: target } }]);
+
+describe("getBuildSettingsList", () => {
+  /** `getWorkspaceConfig` reads `getConfiguration("sweetpad").get(key)`. */
+  function mockConfig(values: Record<string, unknown>) {
+    mockGetConfiguration.mockReturnValue({
+      get: vi.fn((key: string) => values[key]),
+    });
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("resolves Xcode projects with the in-process resolver, not xcodebuild", async () => {
+    mockConfig({});
+    mockBuildSettings.mockReturnValue([{ target: "App", settings: { PRODUCT_NAME: "App" } }]);
+
+    const settings = await getBuildSettingsList({
+      scheme: "App",
+      configuration: "Debug",
+      sdk: undefined,
+      xcworkspace: "/proj/App.xcworkspace",
+    });
+
+    expect(settings).toHaveLength(1);
+    expect(settings[0].target).toBe("App");
+    expect(mockBuildSettings).toHaveBeenCalledWith(expect.objectContaining({ workspace: "/proj/App.xcworkspace" }));
+    expect(mockExec).not.toHaveBeenCalled();
+  });
+
+  it("passes a bare .xcodeproj as `project` to the resolver", async () => {
+    mockConfig({});
+    mockBuildSettings.mockReturnValue([{ target: "App", settings: {} }]);
+
+    await getBuildSettingsList({
+      scheme: "App",
+      configuration: "Debug",
+      sdk: undefined,
+      xcworkspace: "/proj/App.xcodeproj",
+    });
+
+    expect(mockBuildSettings).toHaveBeenCalledWith(expect.objectContaining({ project: "/proj/App.xcodeproj" }));
+  });
+
+  it("routes through a customized build.xcodebuildCommand instead of the resolver", async () => {
+    mockConfig({ "build.xcodebuildCommand": "/usr/local/bin/xcodebuild-wrapper" });
+    mockExec.mockResolvedValue(xcodebuildJson("App"));
+
+    const settings = await getBuildSettingsList({
+      scheme: "App",
+      configuration: "Debug",
+      sdk: undefined,
+      xcworkspace: "/proj/App.xcworkspace",
+    });
+
+    expect(settings[0].target).toBe("App");
+    expect(mockBuildSettings).not.toHaveBeenCalled();
+    expect(mockExec).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "/usr/local/bin/xcodebuild-wrapper",
+        args: expect.arrayContaining(["-showBuildSettings", "-workspace", "/proj/App.xcworkspace"]),
+      }),
+    );
+  });
+
+  it("uses -project for a bare .xcodeproj on the xcodebuild path", async () => {
+    mockConfig({ "build.xcodebuildCommand": "/usr/local/bin/xcodebuild-wrapper" });
+    mockExec.mockResolvedValue(xcodebuildJson("App"));
+
+    await getBuildSettingsList({
+      scheme: "App",
+      configuration: "Debug",
+      sdk: undefined,
+      xcworkspace: "/proj/App.xcodeproj",
+    });
+
+    const args = mockExec.mock.calls[0][0].args as string[];
+    expect(args).toContain("-project");
+    expect(args).not.toContain("-workspace");
+  });
+
+  it("throws an ExtensionError with a hint when the resolver fails and fallback is off", async () => {
+    mockConfig({});
+    mockBuildSettings.mockImplementation(() => {
+      throw new Error("unparseable pbxproj");
+    });
+
+    await expect(
+      getBuildSettingsList({
+        scheme: "App",
+        configuration: "Debug",
+        sdk: undefined,
+        xcworkspace: "/proj/App.xcworkspace",
+      }),
+    ).rejects.toThrow(/Failed to resolve build settings: unparseable pbxproj/);
+    expect(mockExec).not.toHaveBeenCalled();
+  });
+
+  it("falls back to xcodebuild on resolver failure when system.xcodebuildFallback is on", async () => {
+    mockConfig({ "system.xcodebuildFallback": true });
+    mockBuildSettings.mockImplementation(() => {
+      throw new Error("unparseable pbxproj");
+    });
+    mockExec.mockResolvedValue(xcodebuildJson("App"));
+
+    const settings = await getBuildSettingsList({
+      scheme: "App",
+      configuration: "Debug",
+      sdk: undefined,
+      xcworkspace: "/proj/App.xcworkspace",
+    });
+
+    expect(settings[0].target).toBe("App");
+    expect(mockExec).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps using xcodebuild for SPM packages, from the package directory", async () => {
+    mockConfig({});
+    mockExec.mockResolvedValue(xcodebuildJson("MyPackage"));
+
+    const settings = await getBuildSettingsList({
+      scheme: "MyPackage",
+      configuration: "Debug",
+      sdk: undefined,
+      xcworkspace: "/proj/Package.swift",
+    });
+
+    expect(settings[0].target).toBe("MyPackage");
+    expect(mockBuildSettings).not.toHaveBeenCalled();
+    expect(mockExec).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/proj" }));
   });
 });
