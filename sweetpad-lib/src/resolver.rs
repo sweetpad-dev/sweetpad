@@ -11,10 +11,22 @@ pub struct ResolveContext {
     pub sdk: String,
     pub arch: String,
     pub configuration: String,
+    /// Build variant (`normal`, `profile`, `debug`). xcodebuild's default
+    /// variant is `normal`, so callers resolving a standard build should pass
+    /// `"normal"` for `[variant=normal]` conditions to match.
     pub variant: String,
 }
 
 impl ResolveContext {
+    /// Known limitation on `[sdk=…]`: xcodebuild matches sdk conditions
+    /// against the *versioned* canonical SDK name (`macosx26.0`), while
+    /// [`Self::sdk`] carries the unversioned platform name (`macosx`). The
+    /// overwhelmingly common `[sdk=macosx*]` form behaves identically either
+    /// way; an exact-versioned pattern like `[sdk=iphoneos18.2]` can never
+    /// match here, and a bare `[sdk=iphoneos]` matches here but would not
+    /// under xcodebuild (it never matches the versioned name without a `*`).
+    /// Fixing this fully needs the versioned canonical name plumbed into the
+    /// context from the SDK catalog.
     #[must_use]
     pub fn matches(&self, cond: &Condition) -> bool {
         match cond.key.as_str() {
@@ -27,14 +39,41 @@ impl ResolveContext {
     }
 }
 
+/// Glob over `*` — any number of stars, at any position (`*64` matches
+/// `arm64`). xcodebuild condition patterns use only `*`; there is no `?` or
+/// character-class syntax. Iterative two-pointer matching with backtracking
+/// to the most recent star; byte-wise comparison is exact for UTF-8 since
+/// `*` is ASCII.
 fn glob_match(pattern: &str, s: &str) -> bool {
-    if pattern == "*" {
-        true
-    } else if let Some(prefix) = pattern.strip_suffix('*') {
-        s.starts_with(prefix)
-    } else {
-        pattern == s
+    let p = pattern.as_bytes();
+    let t = s.as_bytes();
+    let (mut pi, mut ti) = (0usize, 0usize);
+    // Index of the last `*` seen in the pattern, and the position in `t`
+    // that star is currently matched up to.
+    let mut star: Option<usize> = None;
+    let mut mark = 0usize;
+    while ti < t.len() {
+        if pi < p.len() && p[pi] == b'*' {
+            star = Some(pi);
+            mark = ti;
+            pi += 1;
+        } else if pi < p.len() && p[pi] == t[ti] {
+            pi += 1;
+            ti += 1;
+        } else if let Some(sp) = star {
+            // Mismatch after a star: let the star consume one more byte.
+            pi = sp + 1;
+            mark += 1;
+            ti = mark;
+        } else {
+            return false;
+        }
     }
+    // Trailing stars match the empty remainder.
+    while pi < p.len() && p[pi] == b'*' {
+        pi += 1;
+    }
+    pi == p.len()
 }
 
 #[derive(Debug)]
@@ -66,11 +105,37 @@ impl std::error::Error for Error {}
 /// producing a flat list of assignments in source order.
 pub fn flatten_xcconfig(path: &Path) -> Result<Vec<Assignment>, Error> {
     let mut out = Vec::new();
-    flatten_into(path, &mut out)?;
+    flatten_into(path, &mut out, &mut Vec::new())?;
     Ok(out)
 }
 
-fn flatten_into(path: &Path, out: &mut Vec<Assignment>) -> Result<(), Error> {
+fn flatten_into(
+    path: &Path,
+    out: &mut Vec<Assignment>,
+    chain: &mut Vec<PathBuf>,
+) -> Result<(), Error> {
+    // Cycle guard: Xcode warns ("Skipping the inclusion of … because it is
+    // already included") and skips a file already on the include chain rather
+    // than failing the build — or, as naive recursion would here, overflowing
+    // the stack. Canonicalize so the same file reached through different
+    // lexical spellings is still caught; fall back to the lexical path when
+    // canonicalize fails (e.g. the file is missing — the read below reports
+    // that properly).
+    let id = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if chain.contains(&id) {
+        return Ok(());
+    }
+    chain.push(id);
+    let result = flatten_entries(path, out, chain);
+    chain.pop();
+    result
+}
+
+fn flatten_entries(
+    path: &Path,
+    out: &mut Vec<Assignment>,
+    chain: &mut Vec<PathBuf>,
+) -> Result<(), Error> {
     // Shared cache entry — iterate by reference and clone each assignment out
     // rather than consuming the (now `Arc`-owned) parse.
     let xcc = xcconfig::parse_file_cached(path).map_err(|e| match e {
@@ -88,17 +153,26 @@ fn flatten_into(path: &Path, out: &mut Vec<Assignment>) -> Result<(), Error> {
         match entry {
             Entry::Assignment(a) => out.push(a.clone()),
             Entry::Include(inc) => {
-                let inc_path = base_dir.join(&inc.path);
-                match flatten_into(&inc_path, out) {
+                // A leading `<DEVELOPER_DIR>` is a literal placeholder
+                // xcodebuild substitutes with the active Developer directory
+                // (e.g. `#include "<DEVELOPER_DIR>/Library/Xcode/…"`).
+                let inc_path = if let Some(rest) = inc.path.strip_prefix("<DEVELOPER_DIR>") {
+                    crate::xcode::detect_developer_dir().join(rest.trim_start_matches('/'))
+                } else {
+                    base_dir.join(&inc.path)
+                };
+                match flatten_into(&inc_path, out, chain) {
                     Ok(()) => {}
-                    Err(e) => {
-                        if inc.optional {
-                            // #include? silently skips missing/erroring files.
-                            let _ = e;
-                        } else {
-                            return Err(e);
-                        }
-                    }
+                    // `#include?` forgives exactly one failure mode: the
+                    // optional file *itself* being absent. A present-but-
+                    // malformed optional include, or a non-optional missing
+                    // include nested inside it, is still a hard error —
+                    // matching xcodebuild.
+                    Err(Error::Io { path, source })
+                        if inc.optional
+                            && path == inc_path
+                            && source.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e),
                 }
             }
         }
@@ -111,8 +185,10 @@ fn flatten_into(path: &Path, out: &mut Vec<Assignment>) -> Result<(), Error> {
 ///
 /// Layers apply in order. Within a layer, every assignment whose conditions
 /// all match the context is evaluated; later matches override earlier ones for
-/// the same key. `$(inherited)` and `${inherited}` in a layer's value are
-/// substituted with the value resolved by earlier layers (or "" if none).
+/// the same key, with `$(inherited)` (or a self-reference) in the later value
+/// folding in the earlier same-layer value first. Any `$(inherited)` /
+/// `${inherited}` still present after that is substituted with the value
+/// resolved by earlier layers (or "" if none).
 ///
 /// xcspec assignments may also carry a free-form `Condition` expression (see
 /// [`crate::condition`]). Those are evaluated in a second pass against the
@@ -201,10 +277,20 @@ fn reduce_layer(
         {
             continue;
         }
-        if !map.contains_key(&ass.key) {
+        // xcodebuild chains assignments for the same key within one table:
+        // `$(inherited)` (or a self-reference) in a later assignment picks up
+        // the value accumulated *earlier in this same layer*, so an
+        // `#include`d default composes with the includer's `KEY = $(inherited)
+        // extra` (the include and the includer flatten into one layer here).
+        // An unreplaced `$(inherited)` — no earlier same-layer assignment —
+        // survives to merge time, where it picks up the lower layer.
+        let folded = if let Some(prev) = map.get(&ass.key) {
+            substitute_inherited(&ass.key, &ass.value, prev)
+        } else {
             order.push(ass.key.clone());
-        }
-        map.insert(ass.key.clone(), ass.value.clone());
+            ass.value.clone()
+        };
+        map.insert(ass.key.clone(), folded);
     }
     order
         .into_iter()
@@ -225,13 +311,60 @@ fn substitute_inherited(key: &str, value: &str, inherited: &str) -> String {
     // time, so the lower-layer value isn't lost when an upper layer re-states the
     // key in terms of itself. (`strip_self_reference` in the variable-expansion
     // pass remains as a backstop for any self-reference that survives this.)
-    let self_paren = format!("$({key})");
-    let self_brace = format!("${{{key}}}");
-    value
-        .replace("$(inherited)", inherited)
-        .replace("${inherited}", inherited)
-        .replace(&self_paren, inherited)
-        .replace(&self_brace, inherited)
+    //
+    // Both forms also accept a modifier chain — `$(inherited:lower)`,
+    // `${KEY:suffix}` — which xcodebuild applies to the inherited value, so we
+    // substitute the transformed value rather than dropping it.
+    let bytes = value.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' && i + 1 < bytes.len() && (bytes[i + 1] == b'(' || bytes[i + 1] == b'{')
+        {
+            let open = bytes[i + 1];
+            let close = if open == b'(' { b')' } else { b'}' };
+            let body_start = i + 2;
+            let mut j = body_start;
+            let mut depth = 1i32;
+            while j < bytes.len() {
+                let c = bytes[j];
+                if c == open {
+                    depth += 1;
+                } else if c == close {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                j += 1;
+            }
+            if depth == 0 {
+                let body = &value[body_start..j];
+                let (name, mods) = match find_top_level_colon(body) {
+                    Some(idx) => (&body[..idx], Some(&body[idx + 1..])),
+                    None => (body, None),
+                };
+                if name == "inherited" || name == key {
+                    match mods {
+                        Some(m) => out.push_str(&apply_modifiers(inherited, m)),
+                        None => out.push_str(inherited),
+                    }
+                    i = j + 1;
+                    continue;
+                }
+            }
+            // Not an inherited/self reference (or unterminated): emit the `$`
+            // and rescan from the open bracket so nested references inside —
+            // `$(FOO_$(inherited))` — are still found.
+            out.push('$');
+            i += 1;
+        } else {
+            let c = value[i..].chars().next().expect("valid UTF-8 boundary");
+            out.push(c);
+            i += c.len_utf8();
+        }
+    }
+    out
 }
 
 fn expand_variables(map: &mut BTreeMap<String, String>) {
@@ -271,7 +404,14 @@ fn expand_one_with_depth(value: &str, lookup: &BTreeMap<String, String>, depth: 
     let mut i = 0;
     while i < bytes.len() {
         let b = bytes[i];
-        if b == b'$' && i + 1 < bytes.len() && (bytes[i + 1] == b'(' || bytes[i + 1] == b'{') {
+        if b == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'$' {
+            // `$$` is an escaped dollar — swift-build collapses it to a
+            // literal `$`, which therefore cannot start a reference even when
+            // a `(` follows.
+            out.push('$');
+            i += 2;
+        } else if b == b'$' && i + 1 < bytes.len() && (bytes[i + 1] == b'(' || bytes[i + 1] == b'{')
+        {
             let open = bytes[i + 1];
             let close = if open == b'(' { b')' } else { b'}' };
             let body_start = i + 2;
@@ -376,8 +516,28 @@ fn resolve_var_with_depth(spec: &str, lookup: &BTreeMap<String, String>, depth: 
         raw
     };
     match modifier {
-        Some(m) => apply_modifier(&resolved, m),
+        Some(m) => apply_modifiers(&resolved, m),
         None => resolved,
+    }
+}
+
+/// Apply a (possibly chained) modifier spec — `lower:rfc1034identifier` —
+/// left to right: `$(PRODUCT_NAME:lower:rfc1034identifier)` lowercases first,
+/// then mangles. Segments split only on top-level colons (matching
+/// [`find_top_level_colon`]) so a nested reference inside a `default=`
+/// payload keeps its own colon; each segment — `default=…` included —
+/// consumes exactly itself.
+fn apply_modifiers(raw: &str, spec: &str) -> String {
+    let mut value = raw.to_string();
+    let mut rest = spec;
+    loop {
+        match find_top_level_colon(rest) {
+            Some(idx) => {
+                value = apply_modifier(&value, &rest[..idx]);
+                rest = &rest[idx + 1..];
+            }
+            None => return apply_modifier(&value, rest),
+        }
     }
 }
 
@@ -415,44 +575,139 @@ fn apply_modifier(raw: &str, modifier: &str) -> String {
     match modifier {
         "lower" => raw.to_lowercase(),
         "upper" => raw.to_uppercase(),
-        "quote" => format!("'{raw}'"),
-        "identifier" => raw
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect(),
+        // Quote only when something actually needs quoting (whitespace or a
+        // shell-special character); plain values pass through untouched.
+        "quote" => quote_for_shell(raw),
+        // `identifier` / `c99extidentifier` turn a human-readable string
+        // (e.g. `$(PRODUCT_NAME:c99extidentifier)`) into a valid C/Swift/
+        // Objective-C identifier: alphanumerics + `_` pass through, every
+        // other character becomes `_`, and a leading digit gains a `_`
+        // prefix so the result never starts with a digit.
+        "identifier" | "c99extidentifier" => {
+            let mut s: String = raw
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect();
+            if s.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+                s.insert(0, '_');
+            }
+            s
+        }
+        // RFC 1034 DNS-label mangling for bundle identifiers: letters,
+        // digits, `-`, and `.` (the component separator) are preserved;
+        // everything else becomes `-`. "My.App Name" → "My.App-Name".
         "rfc1034identifier" => raw
             .chars()
             .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '-' {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
                     c
                 } else {
                     '-'
                 }
             })
             .collect(),
-        // `c99extidentifier` is Apple's C99-extended-identifier modifier:
-        // alphanumerics + `_` pass through, every other character becomes
-        // `_`. Used by `$(PRODUCT_NAME:c99extidentifier)` to turn a
-        // human-readable product name into a valid Swift/Objective-C
-        // module name.
-        "c99extidentifier" => raw
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect(),
+        "dir" => path_dir(raw),
+        "file" => path_file(raw).to_string(),
+        "base" => split_ext(path_file(raw)).0.to_string(),
+        "suffix" => split_ext(path_file(raw)).1.to_string(),
+        "standardizepath" => standardize_path(raw),
         _ => raw.to_string(),
     }
+}
+
+/// `:dir` — the directory part: "/tmp/a/b.txt" → "/tmp/a", a bare filename
+/// → ".", a first-level path → "/". Trailing slashes are ignored
+/// ("/tmp/a/" names the same entry as "/tmp/a") — Apple leaves this corner
+/// undocumented, so we take the dirname-like reading.
+fn path_dir(raw: &str) -> String {
+    let trimmed = raw.trim_end_matches('/');
+    if trimmed.is_empty() {
+        // "" → "."; "/" (all slashes) → "/".
+        return if raw.is_empty() {
+            ".".into()
+        } else {
+            "/".into()
+        };
+    }
+    match trimmed.rfind('/') {
+        Some(0) => "/".to_string(),
+        Some(i) => trimmed[..i].to_string(),
+        None => ".".to_string(),
+    }
+}
+
+/// `:file` — the last path component: "/tmp/a/b.txt" → "b.txt". Trailing
+/// slashes are ignored, same reading as [`path_dir`].
+fn path_file(raw: &str) -> &str {
+    let trimmed = raw.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return if raw.is_empty() { "" } else { "/" };
+    }
+    match trimmed.rfind('/') {
+        Some(i) => &trimmed[i + 1..],
+        None => trimmed,
+    }
+}
+
+/// Split a filename at its extension dot: "b.txt" → ("b", ".txt"); no dot →
+/// empty suffix. A *leading* dot (".bashrc") is part of the name, not an
+/// extension separator — matching NSString's pathExtension behavior.
+fn split_ext(file: &str) -> (&str, &str) {
+    match file.rfind('.') {
+        Some(i) if i > 0 => (&file[..i], &file[i..]),
+        _ => (file, ""),
+    }
+}
+
+/// `:standardizepath` — lexically resolve `.` and `..` segments and collapse
+/// `//`. The lexical subset of NSString's `standardizingPath` (no symlink
+/// resolution; `..` at an absolute root drops out, leading `..` on a
+/// relative path is kept).
+fn standardize_path(raw: &str) -> String {
+    let absolute = raw.starts_with('/');
+    let mut parts: Vec<&str> = Vec::new();
+    for seg in raw.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => match parts.last() {
+                Some(&"..") | None if !absolute => parts.push(".."),
+                Some(_) => {
+                    parts.pop();
+                }
+                _ => {}
+            },
+            other => parts.push(other),
+        }
+    }
+    let joined = parts.join("/");
+    if absolute {
+        format!("/{joined}")
+    } else if joined.is_empty() {
+        ".".to_string()
+    } else {
+        joined
+    }
+}
+
+/// `:quote` — shell-quote only when needed. A value made purely of
+/// characters safe in an unquoted shell word passes through unchanged;
+/// anything containing whitespace or a shell-special character is wrapped
+/// in single quotes, with embedded single quotes escaped as `'\''`.
+fn quote_for_shell(raw: &str) -> String {
+    fn safe(c: char) -> bool {
+        c.is_ascii_alphanumeric()
+            || matches!(c, '_' | '-' | '+' | '=' | '/' | '.' | ',' | ':' | '@' | '%')
+    }
+    if !raw.is_empty() && raw.chars().all(safe) {
+        return raw.to_string();
+    }
+    format!("'{}'", raw.replace('\'', "'\\''"))
 }
 
 #[cfg(test)]

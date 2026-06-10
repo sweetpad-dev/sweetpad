@@ -85,11 +85,14 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 pub fn parse(input: &str) -> Result<Xcconfig, ParseError> {
+    // Comments are stripped from the whole content *before* any line
+    // handling: a backslash inside a comment (`FOO = bar // see C:\`) is
+    // comment text, not a line continuation, so the order matters.
+    let stripped = strip_comments(input);
     let mut entries = Vec::new();
-    let iter = LineIter::new(input);
+    let iter = LineIter::new(&stripped);
     for (line_no, raw_line) in iter {
-        let no_comment = strip_line_comment(&raw_line);
-        let trimmed = no_comment.trim();
+        let trimmed = raw_line.trim();
         if trimmed.is_empty() {
             continue;
         }
@@ -127,8 +130,47 @@ pub fn parse_file_cached(path: &Path) -> Result<Arc<Xcconfig>, Error> {
     CACHE.get_or_parse(path, parse_file)
 }
 
-fn strip_line_comment(line: &str) -> &str {
-    line.find("//").map_or(line, |idx| &line[..idx])
+/// Strip `//` line comments and `/* … */` block comments. Apple's parser
+/// skips both forms, anywhere — `//` opens a comment even mid-"URL"
+/// (`http://…` truncates to `http:`), and an unterminated `/*` runs to end
+/// of input. A block comment reads as whitespace: one that sits within a
+/// single line becomes a space, while newlines inside a spanning one are
+/// preserved so parse-error line numbers stay aligned with the source.
+fn strip_comments(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            // Line comment: drop up to (not including) the newline.
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+        } else if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+            i += 2;
+            let mut newlines = 0usize;
+            while i < bytes.len() {
+                if bytes[i] == b'*' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                    i += 2;
+                    break;
+                }
+                if bytes[i] == b'\n' {
+                    newlines += 1;
+                }
+                i += 1;
+            }
+            if newlines == 0 {
+                out.push(' ');
+            } else {
+                out.extend(std::iter::repeat_n('\n', newlines));
+            }
+        } else {
+            let c = input[i..].chars().next().expect("valid UTF-8 boundary");
+            out.push(c);
+            i += c.len_utf8();
+        }
+    }
+    out
 }
 
 fn parse_include_path(s: &str, line_no: usize) -> Result<String, ParseError> {

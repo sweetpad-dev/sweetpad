@@ -110,10 +110,13 @@ fn platform_for_label(label: &str) -> Option<String> {
 /// platform=iOS Simulator,name=iPhone 16,OS=18.5
 /// platform=macOS
 /// platform=iOS Simulator,arch=x86_64
+/// generic/platform=iOS                        // device-less platform build
 /// ```
 ///
 /// `platform=` is required and maps to a canonical SDK; every other field is
-/// optional. `arch=` defaults to `arm64`. An `OS=` of `latest`/`any` (or absent)
+/// optional. `arch=` defaults to the host arch for macOS / simulator /
+/// DriverKit destinations and `arm64` for device platforms. An `OS=` of
+/// `latest`/`any` (or absent)
 /// is treated as unset — settings resolution doesn't depend on the destination's
 /// exact OS. Unknown keys (`id`, `variant`, …) are ignored. Returns `None` when
 /// there's no recognized `platform=`.
@@ -129,7 +132,9 @@ pub fn parse_destination_arg(s: &str) -> Option<RunDestination> {
         };
         let value = value.trim();
         match key.trim().to_ascii_lowercase().as_str() {
-            "platform" => platform_label = Some(value),
+            // `generic/platform=iOS` is xcodebuild's device-less destination
+            // (build for the platform without binding a device).
+            "platform" | "generic/platform" => platform_label = Some(value),
             "os" => {
                 if !value.eq_ignore_ascii_case("latest") && !value.eq_ignore_ascii_case("any") {
                     os_version = value.to_string();
@@ -141,15 +146,23 @@ pub fn parse_destination_arg(s: &str) -> Option<RunDestination> {
         }
     }
     let platform = platform_for_cli_label(platform_label?)?;
+    if arch.is_empty() {
+        // macOS, the simulators, and DriverKit execute on the host, so the
+        // default active arch is the host's (x86_64 on Intel Macs); device
+        // platforms are always arm64.
+        arch = if platform.ends_with("simulator")
+            || matches!(platform.as_str(), "macosx" | "driverkit")
+        {
+            crate::project::host_arch()
+        } else {
+            "arm64".into()
+        };
+    }
     Some(RunDestination {
         platform,
         os_version,
         device_name,
-        arch: if arch.is_empty() {
-            "arm64".into()
-        } else {
-            arch
-        },
+        arch,
     })
 }
 
@@ -229,12 +242,12 @@ mod tests {
     #[test]
     fn arg_id_only_is_the_common_case() {
         // An `id=`-only simulator destination (what an IDE typically passes):
-        // platform resolves, arch defaults to arm64, OS/name stay empty.
+        // platform resolves, arch defaults to the host's, OS/name stay empty.
         let d =
             parse_destination_arg("platform=iOS Simulator,id=12345678-1234-1234-1234-123456789012")
                 .unwrap();
         assert_eq!(d.platform, "iphonesimulator");
-        assert_eq!(d.arch, "arm64");
+        assert_eq!(d.arch, crate::project::host_arch());
         assert!(d.os_version.is_empty());
         assert!(d.device_name.is_empty());
         assert!(d.is_simulator());
@@ -273,14 +286,47 @@ mod tests {
     }
 
     #[test]
-    fn arg_and_suffix_agree_on_platform_os_arch() {
+    fn arg_default_arch_is_host_for_mac_and_simulators_arm64_for_devices() {
+        // A macOS or simulator destination executes on the host, so the
+        // default active arch is the host's (x86_64 on Intel Macs); device
+        // platforms always run arm64. An explicit `arch=` still wins.
+        let host = crate::project::host_arch();
+        assert_eq!(parse_destination_arg("platform=macOS").unwrap().arch, host);
+        assert_eq!(
+            parse_destination_arg("platform=iOS Simulator,id=abc")
+                .unwrap()
+                .arch,
+            host
+        );
+        assert_eq!(parse_destination_arg("platform=iOS").unwrap().arch, "arm64");
+        assert_eq!(
+            parse_destination_arg("platform=watchOS").unwrap().arch,
+            "arm64"
+        );
+    }
+
+    #[test]
+    fn arg_generic_platform_destinations() {
+        // xcodebuild's device-less form, `-destination 'generic/platform=iOS'`
+        // — the standard way to build for a platform without picking a device.
+        let d = parse_destination_arg("generic/platform=iOS").unwrap();
+        assert_eq!(d.platform, "iphoneos");
+        assert!(d.device_name.is_empty());
+        let d = parse_destination_arg("generic/platform=iOS Simulator").unwrap();
+        assert_eq!(d.platform, "iphonesimulator");
+    }
+
+    #[test]
+    fn arg_and_suffix_agree_on_platform_and_os() {
         // The CLI-arg form and the oracle-filename form should yield the same
-        // platform / OS / arch for an equivalent destination (device labels
-        // differ in punctuation, so we don't compare those).
+        // platform / OS for an equivalent destination (device labels differ
+        // in punctuation; the arg form's default arch is host-derived while
+        // the suffix form pins the capture machine's arm64, so neither is
+        // compared here).
         let arg = parse_destination_arg("platform=iOS Simulator,name=iPad A16,OS=26.5").unwrap();
         let suffix = parse_destination_suffix("iOS-Simulator_OS26.5_iPad-A16").unwrap();
         assert_eq!(arg.platform, suffix.platform);
         assert_eq!(arg.os_version, suffix.os_version);
-        assert_eq!(arg.arch, suffix.arch);
+        assert_eq!(suffix.arch, "arm64");
     }
 }

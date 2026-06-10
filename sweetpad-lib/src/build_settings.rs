@@ -104,18 +104,23 @@ impl Selection {
 /// A scheme file is looked up across every container that can hold one — the
 /// workspace bundle itself, then each member project, shared then per-user
 /// directories (mirroring where xcodebuild finds schemes). A scheme with no
-/// file anywhere falls back to [`Selection::AutoScheme`].
+/// file falls back to [`Selection::AutoScheme`] only when Xcode's scheme
+/// autocreation would surface it: no container holds *any* scheme file, and
+/// the shared workspace settings don't disable autocreation. Otherwise the
+/// unknown name is an error, matching `xcodebuild -scheme Nope` against a
+/// container that does have schemes.
 fn resolve_selection(
     opts: &BuildSettingsOptions,
     projects: &[PathBuf],
 ) -> Result<Selection, String> {
     if let Some(name) = opts.scheme.as_deref() {
-        let containers = opts
+        let containers: Vec<&Path> = opts
             .workspace
             .as_deref()
             .into_iter()
-            .chain(projects.iter().map(PathBuf::as_path));
-        for container in containers {
+            .chain(projects.iter().map(PathBuf::as_path))
+            .collect();
+        for container in &containers {
             let Some(path) = scheme::find_scheme_file(container, name) else {
                 continue;
             };
@@ -125,6 +130,17 @@ fn resolve_selection(
                 name: name.to_string(),
                 parsed: Box::new(parsed),
             });
+        }
+        let any_scheme_files = containers
+            .iter()
+            .any(|c| !scheme::container_schemes(c).is_empty());
+        let autocreation = containers
+            .first()
+            .is_some_and(|primary| scheme::autocreation_allowed(primary));
+        if any_scheme_files || !autocreation {
+            return Err(format!(
+                "the workspace/project does not contain a scheme named {name:?}"
+            ));
         }
         return Ok(Selection::AutoScheme(name.to_string()));
     }
@@ -556,7 +572,16 @@ fn build_queries(
     let mut queries = Vec::new();
     match selection {
         Selection::Scheme { parsed, .. } => {
-            let plan = ctx.plan_build(parsed, &opts.configuration, sdk, arch, destination);
+            // `-showBuildSettings` (and plain `build`) is the Run action's
+            // build set; testing-only entries are excluded.
+            let plan = ctx.plan_build(
+                parsed,
+                scheme::BuildFor::Running,
+                &opts.configuration,
+                sdk,
+                arch,
+                destination,
+            );
             for mut q in plan.entries {
                 if let Some(p) = &opts.derived_data_path {
                     q = q.with_derived_data_path(p.clone());

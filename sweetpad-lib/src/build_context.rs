@@ -230,10 +230,16 @@ impl BuildContext {
         let layers = self.build_layers(&bundle, query);
         let layer_refs: Vec<&[Assignment]> = layers.iter().map(Vec::as_slice).collect();
         let ctx = ResolveContext {
-            sdk: query.sdk.clone(),
+            // xcodebuild binds `[sdk=...]` conditionals against the resolved
+            // SDK's canonical (versioned) name, e.g. `macosx26.0` — that's
+            // why xcconfig authors write `[sdk=iphoneos*]`. Bind the
+            // canonical name when the catalog knows it.
+            sdk: self.canonical_sdk(&query.sdk),
             arch: query.arch.clone(),
             configuration: query.configuration.clone(),
-            variant: String::new(),
+            // xcodebuild's default build variant — `[variant=normal]`
+            // conditionals (Apple xcspecs carry them) must match.
+            variant: "normal".into(),
         };
         Ok(Resolved {
             settings: resolver::resolve(&layer_refs, &ctx),
@@ -242,31 +248,48 @@ impl BuildContext {
     }
 
     /// Turn a scheme's `BuildAction` into a list of [`ResolveQuery`]s
-    /// against this context. One query per entry whose `BlueprintName`
-    /// resolves to a target in `self.project`; cross-container entries
-    /// land in [`BuildPlan::skipped`].
+    /// against this context. One query per entry that participates in
+    /// `build_for` (xcodebuild only builds the entries whose matching
+    /// `buildFor*` flag is set — a testing-only entry is skipped for a
+    /// plain build) and whose `BlueprintName` resolves to a target in
+    /// `self.project`; cross-container entries land in
+    /// [`BuildPlan::skipped`].
     ///
     /// The scheme itself doesn't pick a configuration for the build
     /// action — xcodebuild inherits one from whichever action it's
     /// performing (launch / test / archive). The caller passes the
     /// chosen `configuration` here.
+    ///
+    /// When the scheme's `TestAction` gathers code coverage, every planned
+    /// query carries [`ResolveQuery::code_coverage_enabled`] — xcodebuild
+    /// forces `CLANG_COVERAGE_MAPPING=YES` on every buildable it resolves
+    /// for such a scheme, whatever the action.
     #[must_use]
     pub fn plan_build(
         &self,
         scheme: &Scheme,
+        build_for: crate::scheme::BuildFor,
         configuration: &str,
         sdk: &str,
         arch: &str,
         destination: Option<&RunDestination>,
     ) -> BuildPlan {
+        let code_coverage = scheme
+            .test_action
+            .as_ref()
+            .is_some_and(|t| t.code_coverage_enabled);
         let mut entries = Vec::new();
         let mut skipped = Vec::new();
         for entry in &scheme.build_entries {
+            if !entry.builds_for(build_for) {
+                continue;
+            }
             let name = &entry.buildable.blueprint_name;
             let owned = self.project.targets.iter().any(|t| t.name == *name)
                 && container_matches(&entry.buildable.container, &self.project.path);
             if owned {
-                let mut q = ResolveQuery::new(name, configuration, sdk, arch);
+                let mut q = ResolveQuery::new(name, configuration, sdk, arch)
+                    .with_code_coverage_enabled(code_coverage);
                 if let Some(d) = destination {
                     q = q.with_destination(d.clone());
                 }
@@ -485,6 +508,30 @@ impl BuildContext {
         layers
     }
 
+    /// The canonical (versioned) name of the SDK a query binds, e.g.
+    /// `macosx26.0` for a `macosx` request — the name xcodebuild matches
+    /// `[sdk=...]` conditionals against. The catalog keys `sdk_paths` by
+    /// both the canonical name and its unversioned base; pick the versioned
+    /// sibling of the requested base. Falls back to the request verbatim
+    /// when there's no catalog or no versioned entry (then bare patterns
+    /// keep matching, the lenient pre-catalog behavior).
+    fn canonical_sdk(&self, sdk: &str) -> String {
+        let Some(catalog) = &self.xcspec else {
+            return sdk.to_string();
+        };
+        catalog
+            .sdk_paths
+            .keys()
+            .filter(|k| {
+                k.len() > sdk.len()
+                    && k.starts_with(sdk)
+                    && k.as_bytes()[sdk.len()].is_ascii_digit()
+            })
+            .min()
+            .cloned()
+            .unwrap_or_else(|| sdk.to_string())
+    }
+
     /// Synthesize a test bundle's `TARGET_BUILD_SUBPATH` from its host app
     /// target. The host's product wrapper is `<resolved PRODUCT_NAME>.app`, and
     /// the test bundle nests into the host's `PlugIns` directory — under
@@ -526,21 +573,37 @@ fn container_matches(container: &str, project_path: &Path) -> bool {
 
 /// Settings derived from the project's target graph — the relationships
 /// between targets that aren't visible from a single target's own settings.
-/// Today: the test-host edge that nests a unit-test or UI-test bundle into
-/// its host app's `PlugIns` directory.
+/// Today: where a test bundle nests.
 ///
-/// xcodebuild's XCTest product-embedding machinery reads `TEST_TARGET_NAME`
-/// from the test bundle's user-authored settings and synthesizes
+/// A **unit-test** bundle nests into its host app's `PlugIns`: xcodebuild's
+/// XCTest product-embedding machinery reads `TEST_TARGET_NAME` from the test
+/// bundle's user-authored settings and synthesizes
 /// `TARGET_BUILD_SUBPATH = /<host wrapper>/PlugIns`, which combined with the
 /// xcspec recipe `TARGET_BUILD_DIR = $(CONFIGURATION_BUILD_DIR)$(TARGET_BUILD_SUBPATH)`
-/// places the test bundle alongside the host's app bundle.
+/// places the test bundle alongside the host's app bundle. We approximate
+/// the host's wrapper as `<TEST_TARGET_NAME>.app` — correct whenever the
+/// host target's `PRODUCT_NAME` matches its `TARGET_NAME`, which is the case
+/// for every test-host pair in the corpus.
 ///
-/// We approximate the host's wrapper as `<TEST_TARGET_NAME>.app` — correct
-/// whenever the host target's `PRODUCT_NAME` matches its `TARGET_NAME`,
-/// which is the case for every test-host pair in the corpus.
+/// A **UI-test** bundle runs inside its own XCTRunner app instead — even
+/// when it authors `TEST_TARGET_NAME` (that names the app it *drives*, not
+/// where it embeds). xcodebuild reports `TARGET_BUILD_SUBPATH =
+/// /<PRODUCT_NAME>-Runner.app/PlugIns` (the watchapp2 tuist capture:
+/// `/WatchAppUITests-Runner.app/PlugIns`, with `USES_XCTRUNNER = YES`). The
+/// value is emitted as a `$(PRODUCT_NAME)` recipe so a renamed product
+/// resolves correctly.
 fn target_graph_layer(bundle: &project::BuildSettingsContext) -> Vec<Assignment> {
     let mut out = Vec::new();
-    if project::is_test_bundle_product_type(bundle.product_type.as_deref())
+    let is_ui_test =
+        bundle.product_type.as_deref() == Some("com.apple.product-type.bundle.ui-testing");
+    if is_ui_test {
+        out.push(Assignment {
+            key: "TARGET_BUILD_SUBPATH".into(),
+            conditions: Vec::new(),
+            value: "/$(PRODUCT_NAME)-Runner.app/PlugIns".into(),
+            condition: None,
+        });
+    } else if project::is_unit_test_bundle_product_type(bundle.product_type.as_deref())
         && let Some(host) = project::last_unconditional_setting(&bundle.layers, "TEST_TARGET_NAME")
         && !host.is_empty()
     {

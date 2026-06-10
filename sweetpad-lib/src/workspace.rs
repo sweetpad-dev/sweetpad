@@ -95,7 +95,7 @@ pub fn open(workspace_path: &Path) -> Result<Workspace, Error> {
         .parent()
         .map_or_else(|| workspace_path.to_path_buf(), Path::to_path_buf);
     let mut project_refs = Vec::new();
-    collect_project_refs(&root, &base, &mut project_refs);
+    collect_project_refs(&root, &base, &base, &mut project_refs);
     // A workspace can declare the same `.xcodeproj` more than once (e.g. via a
     // group alias); Xcode lists it once. Drop duplicates, keep first-seen order.
     let mut seen = std::collections::HashSet::new();
@@ -121,16 +121,17 @@ impl Workspace {
     /// Schemes that `xcodebuild -list -workspace` would surface: the
     /// workspace's own schemes UNION every member project's schemes (shared
     /// plus per-user files), deduplicated and sorted. When no scheme file
-    /// exists anywhere, falls back to Xcode's scheme autocreation — one
-    /// scheme per target across the member projects. Failures (missing
-    /// project, unreadable directory) are skipped silently.
+    /// exists anywhere — and the shared workspace settings don't disable
+    /// scheme autocreation — falls back to Xcode's autocreation, one scheme
+    /// per target across the member projects. Failures (missing project,
+    /// unreadable directory) are skipped silently.
     #[must_use]
     pub fn merged_schemes(&self) -> Vec<String> {
         let mut set: std::collections::BTreeSet<String> = self.schemes.iter().cloned().collect();
         for project_path in &self.project_refs {
             set.extend(crate::scheme::container_schemes(project_path));
         }
-        if set.is_empty() {
+        if set.is_empty() && crate::scheme::autocreation_allowed(&self.path) {
             let mut autocreated = self.merged_targets();
             autocreated.sort();
             return autocreated;
@@ -177,25 +178,52 @@ impl Workspace {
 
     /// Locate the `.xcodeproj` member that owns a scheme by name. Returns
     /// the first project with a `<name>.xcscheme` file (shared or per-user).
-    /// Used by callers (the CLI) that need to dispatch a scheme-driven build
-    /// to the right project.
+    /// When no scheme file exists anywhere — Xcode's autocreation regime,
+    /// the same gate [`Workspace::merged_schemes`] applies — falls back to
+    /// the first project owning a same-named target (an autocreated scheme
+    /// builds exactly its target). Used by callers (the CLI) that need to
+    /// dispatch a scheme-driven build to the right project.
     #[must_use]
     pub fn project_for_scheme(&self, scheme_name: &str) -> Option<&Path> {
-        self.project_refs
+        if let Some(p) = self
+            .project_refs
             .iter()
             .find(|p| crate::scheme::find_scheme_file(p, scheme_name).is_some())
+        {
+            return Some(p.as_path());
+        }
+        let any_scheme_files = !self.schemes.is_empty()
+            || self
+                .project_refs
+                .iter()
+                .any(|p| !crate::scheme::container_schemes(p).is_empty());
+        if any_scheme_files || !crate::scheme::autocreation_allowed(&self.path) {
+            return None;
+        }
+        self.project_refs
+            .iter()
+            .find(|p| {
+                project::open(p)
+                    .map(|proj| proj.targets.iter().any(|t| t.name == scheme_name))
+                    .unwrap_or(false)
+            })
             .map(PathBuf::as_path)
     }
 }
 
-fn collect_project_refs(element: &Element, base: &Path, out: &mut Vec<PathBuf>) {
+fn collect_project_refs(
+    element: &Element,
+    group_base: &Path,
+    container_base: &Path,
+    out: &mut Vec<PathBuf>,
+) {
     for child in &element.children {
         match child.name.as_str() {
             "FileRef" => {
                 let Some(location) = child.attr("location") else {
                     continue;
                 };
-                let Some(path) = resolve_location(location, base) else {
+                let Some(path) = resolve_location(location, group_base, container_base) else {
                     continue;
                 };
                 if path.extension().and_then(OsStr::to_str) == Some("xcodeproj") {
@@ -204,31 +232,40 @@ fn collect_project_refs(element: &Element, base: &Path, out: &mut Vec<PathBuf>) 
             }
             "Group" => {
                 // A Group's `location` (when present) re-anchors its
-                // children. Without one, children resolve against the same
-                // base as their parent.
-                let group_base = child
+                // children's `group:` references. Without one, children
+                // resolve against the same base as their parent. The
+                // container anchor never moves — `container:` is always
+                // relative to the workspace's own directory.
+                let child_base = child
                     .attr("location")
-                    .and_then(|loc| resolve_location(loc, base))
-                    .unwrap_or_else(|| base.to_path_buf());
-                collect_project_refs(child, &group_base, out);
+                    .and_then(|loc| resolve_location(loc, group_base, container_base))
+                    .unwrap_or_else(|| group_base.to_path_buf());
+                collect_project_refs(child, &child_base, container_base, out);
             }
             _ => {}
         }
     }
 }
 
-/// Resolve a `location="<prefix>:<rest>"` to an absolute path, given the
-/// base directory (workspace dir or parent group's resolved location).
-fn resolve_location(location: &str, base: &Path) -> Option<PathBuf> {
+/// Resolve a `location="<prefix>:<rest>"` to an absolute path. `group:` is
+/// relative to the enclosing group's resolved location (`group_base`);
+/// `container:` / `self:` are relative to the directory containing the
+/// workspace (`container_base`), regardless of group nesting.
+fn resolve_location(location: &str, group_base: &Path, container_base: &Path) -> Option<PathBuf> {
     let (prefix, rest) = location.split_once(':')?;
     match prefix {
-        "container" | "group" | "self" => Some(base.join(rest)),
+        "group" => Some(group_base.join(rest)),
+        "container" | "self" => Some(container_base.join(rest)),
         // `absolute:` usually carries an absolute path, but Xcode also permits a
         // relative one (e.g. `absolute:../Foo.xcodeproj`); anchor those at the
         // workspace dir, matching CocoaPods' `File.expand_path`.
         "absolute" => {
             let p = PathBuf::from(rest);
-            Some(if p.is_absolute() { p } else { base.join(rest) })
+            Some(if p.is_absolute() {
+                p
+            } else {
+                container_base.join(rest)
+            })
         }
         "developer" => Some(xcode::detect_developer_dir().join(rest)),
         _ => None,
@@ -286,35 +323,38 @@ mod tests {
 
     #[test]
     fn resolves_location_prefixes() {
-        // The base is the directory containing the .xcworkspace bundle.
-        let base = PathBuf::from("/tmp/parent");
+        // `group:` anchors at the enclosing group's dir; `container:`,
+        // `self:`, and relative `absolute:` anchor at the directory
+        // containing the .xcworkspace bundle.
+        let group = PathBuf::from("/tmp/parent/Sub");
+        let container = PathBuf::from("/tmp/parent");
         assert_eq!(
-            resolve_location("container:Foo.xcodeproj", &base),
+            resolve_location("container:Foo.xcodeproj", &group, &container),
             Some(PathBuf::from("/tmp/parent/Foo.xcodeproj")),
         );
         assert_eq!(
-            resolve_location("group:Sub/Bar.xcodeproj", &base),
-            Some(PathBuf::from("/tmp/parent/Sub/Bar.xcodeproj")),
+            resolve_location("group:Sub/Bar.xcodeproj", &group, &container),
+            Some(PathBuf::from("/tmp/parent/Sub/Sub/Bar.xcodeproj")),
         );
         assert_eq!(
-            resolve_location("absolute:/abs/path/Baz.xcodeproj", &base),
+            resolve_location("absolute:/abs/path/Baz.xcodeproj", &group, &container),
             Some(PathBuf::from("/abs/path/Baz.xcodeproj")),
         );
         // A relative `absolute:` rest anchors at the workspace dir.
         assert_eq!(
-            resolve_location("absolute:../Rel.xcodeproj", &base),
+            resolve_location("absolute:../Rel.xcodeproj", &group, &container),
             Some(PathBuf::from("/tmp/parent/../Rel.xcodeproj")),
         );
         assert_eq!(
-            resolve_location("self:nested", &base),
+            resolve_location("self:nested", &group, &container),
             Some(PathBuf::from("/tmp/parent/nested")),
         );
         // `developer:` resolves under the active DEVELOPER_DIR.
         assert!(
-            resolve_location("developer:Tools/foo", &base)
+            resolve_location("developer:Tools/foo", &group, &container)
                 .is_some_and(|p| p.ends_with("Tools/foo"))
         );
-        assert!(resolve_location("bogus:nope", &base).is_none());
+        assert!(resolve_location("bogus:nope", &group, &container).is_none());
     }
 
     #[test]
@@ -331,6 +371,40 @@ mod tests {
                 base.join("Sub/Nested.xcodeproj")
             ],
         );
+    }
+
+    #[test]
+    fn container_refs_anchor_at_workspace_dir_even_inside_groups() {
+        // `container:` is always relative to the directory containing the
+        // workspace; only `group:` re-anchors with the enclosing Group.
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let root =
+            std::env::temp_dir().join(format!("sweetpad-ws-container-{}-{n}", std::process::id()));
+        let ws = root.join("Test.xcworkspace");
+        fs::create_dir_all(&ws).unwrap();
+        fs::write(
+            ws.join("contents.xcworkspacedata"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Workspace version="1.0">
+  <Group location="group:Sub" name="Sub">
+    <FileRef location="container:App.xcodeproj"/>
+    <FileRef location="group:Nested.xcodeproj"/>
+  </Group>
+</Workspace>
+"#,
+        )
+        .unwrap();
+        let ws = open(&ws).unwrap();
+        assert_eq!(
+            ws.project_refs,
+            vec![
+                root.join("App.xcodeproj"),
+                root.join("Sub/Nested.xcodeproj")
+            ],
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// A scratch workspace under the OS temp dir containing one copy of the
@@ -373,10 +447,11 @@ mod tests {
     #[test]
     fn merged_schemes_includes_workspace_and_project_user_schemes() {
         let (ws_path, proj) = scratch_workspace("user-schemes");
-        let ws_user = ws_path.join("xcuserdata/alice.xcuserdatad/xcschemes");
+        let user = crate::scheme::visible_user();
+        let ws_user = ws_path.join(format!("xcuserdata/{user}.xcuserdatad/xcschemes"));
         fs::create_dir_all(&ws_user).unwrap();
         fs::write(ws_user.join("WsPersonal.xcscheme"), b"").unwrap();
-        let proj_user = proj.join("xcuserdata/alice.xcuserdatad/xcschemes");
+        let proj_user = proj.join(format!("xcuserdata/{user}.xcuserdatad/xcschemes"));
         fs::create_dir_all(&proj_user).unwrap();
         fs::write(proj_user.join("ProjPersonal.xcscheme"), b"").unwrap();
 
@@ -386,6 +461,17 @@ mod tests {
         assert_eq!(ws.merged_schemes(), vec!["ProjPersonal", "WsPersonal"]);
         // And the user scheme makes the project dispatchable by name.
         assert_eq!(ws.project_for_scheme("ProjPersonal"), Some(proj.as_path()));
+    }
+
+    #[test]
+    fn project_for_scheme_falls_back_to_autocreated_target_schemes() {
+        // No scheme file exists anywhere, so the autocreated per-target
+        // scheme "Scratch" must dispatch to the member project owning the
+        // same-named target.
+        let (ws_path, proj) = scratch_workspace("autocreate-dispatch");
+        let ws = open(&ws_path).unwrap();
+        assert_eq!(ws.project_for_scheme("Scratch"), Some(proj.as_path()));
+        assert_eq!(ws.project_for_scheme("NotATarget"), None);
     }
 
     #[test]
