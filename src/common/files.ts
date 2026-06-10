@@ -14,7 +14,11 @@ export async function findFiles(options: { directory: string; matcher: (file: Di
   const matchedFiles: string[] = [];
 
   for (const file of files) {
-    const fullPath = file.path;
+    // Build the path from the directory we read rather than `file.path`
+    // (Dirent.path): that property is undefined on older Node runtimes (added
+    // in Node 18.17/20.1, since deprecated in favor of `parentPath`), which
+    // makes path.join throw "path must be of type string. Received undefined".
+    const fullPath = path.join(options.directory, file.name);
 
     if (options.matcher(file)) {
       matchedFiles.push(fullPath);
@@ -41,7 +45,11 @@ export async function findFilesRecursive(options: {
   const matchedFiles: string[] = [];
 
   for (const file of files) {
-    const fullPath = path.join(file.path, file.name);
+    // Use the directory we just read instead of `file.path` (Dirent.path): that
+    // property is undefined on older Node runtimes (added in Node 18.17/20.1,
+    // since deprecated in favor of `parentPath`), and joining it yields
+    // "path must be of type string. Received undefined".
+    const fullPath = path.join(options.directory, file.name);
 
     if (options.matcher(file)) {
       matchedFiles.push(fullPath);
