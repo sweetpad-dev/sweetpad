@@ -179,6 +179,8 @@ fn scratch_resolves_against_captured_oracle_with_decent_coverage() {
         None,
         catalog.xcode_version.as_deref(),
         catalog.developer_dir.as_deref(),
+        None,
+        false,
     );
 
     let mut layers: Vec<Vec<Assignment>> = vec![defaults, built_in];

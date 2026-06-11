@@ -233,8 +233,17 @@ impl BuildContext {
             // xcodebuild binds `[sdk=...]` conditionals against the resolved
             // SDK's canonical (versioned) name, e.g. `macosx26.0` — that's
             // why xcconfig authors write `[sdk=iphoneos*]`. Bind the
-            // canonical name when the catalog knows it.
-            sdk: self.canonical_sdk(&query.sdk),
+            // canonical name when the catalog knows it. In the no-platform
+            // mode (`SDKROOT = auto`, no destination) there is no resolved
+            // SDK at all, so NO `[sdk=...]` conditional matches — xcodebuild
+            // reports the unconditional base values there (IceCubesApp's
+            // project-only captures: the authored ad-hoc `CODE_SIGN_IDENTITY
+            // = "-"` wins over its `[sdk=macosx*]` variants).
+            sdk: if Self::auto_no_destination_mode(&bundle, query) {
+                String::new()
+            } else {
+                self.canonical_sdk(&query.sdk)
+            },
             arch: query.arch.clone(),
             configuration: query.configuration.clone(),
             // xcodebuild's default build variant — `[variant=normal]`
@@ -301,6 +310,32 @@ impl BuildContext {
         BuildPlan { entries, skipped }
     }
 
+    /// Whether this query resolves in the no-platform "auto" mode: the
+    /// target's natural `SDKROOT` is the multiplatform `auto` sentinel, no
+    /// run destination is bound, and the requested sdk isn't one the target
+    /// declares support for. xcodebuild leaves such a resolution genuinely
+    /// platform-less (no SDK defaults, no `[sdk=...]` conditional matches);
+    /// our pipeline falls back to a macosx catalog to keep going, with the
+    /// platform-derived divergences pinned back in
+    /// [`project::built_in_settings`].
+    fn auto_no_destination_mode(
+        bundle: &project::BuildSettingsContext,
+        query: &ResolveQuery,
+    ) -> bool {
+        let natural_sdk = project::natural_sdkroot(&bundle.layers);
+        let user_supported_platforms =
+            project::last_unconditional_setting(&bundle.layers, "SUPPORTED_PLATFORMS");
+        let requested_supported = user_supported_platforms.as_deref().is_some_and(|sp| {
+            sp.split_whitespace()
+                .any(|p| p.eq_ignore_ascii_case(&query.sdk))
+        });
+        query.destination.is_none()
+            && !requested_supported
+            && natural_sdk
+                .as_deref()
+                .is_some_and(|s| s.eq_ignore_ascii_case("auto"))
+    }
+
     /// Assemble the layer stack for one query, bottom-up (later wins).
     #[allow(clippy::too_many_lines)]
     fn build_layers(
@@ -364,21 +399,29 @@ impl BuildContext {
         // `-showBuildSettings` — stays in the no-platform `auto` mode. The editor
         // (BSP) path always requests a supported sdk, so it now binds correctly
         // instead of emitting `-sdk auto` with an `-unknown` platform.
-        let requested_supported = user_supported_platforms.as_deref().is_some_and(|sp| {
-            sp.split_whitespace()
-                .any(|p| p.eq_ignore_ascii_case(&query.sdk))
-        });
-        let auto_no_destination = query.destination.is_none()
-            && !requested_supported
-            && natural_sdk
-                .as_deref()
-                .is_some_and(|s| s.eq_ignore_ascii_case("auto"));
+        let auto_no_destination = Self::auto_no_destination_mode(bundle, query);
         let is_catalyst = !auto_no_destination
             && project::detect_catalyst(
                 &query.sdk,
                 natural_sdk.as_deref(),
                 supports_maccatalyst.as_deref(),
             );
+        // A macOS run destination only binds a non-macOS resolved SDK when
+        // the target is iOS-natural (Catalyst or designed-for-iPad). When a
+        // macOS-NATURAL target ends up on a device SDK anyway (an iOS
+        // `-xcconfig` layered over the macOS scheme forces SDKROOT), the
+        // destination can't run the product at all and xcodebuild falls back
+        // to the destination-less device view (full ARCHS, ONLY_ACTIVE_ARCH
+        // and BUILD_ACTIVE_RESOURCES_ONLY both NO).
+        let macos_destination_unbound = query
+            .destination
+            .as_ref()
+            .is_some_and(super::destination::RunDestination::is_macos)
+            && !is_catalyst
+            && project::canonicalize_sdk_base(&query.sdk) != "macosx"
+            && natural_sdk
+                .as_deref()
+                .is_some_and(|s| project::canonicalize_sdk_base(s) == "macosx");
         let user_ios_deployment =
             project::last_unconditional_setting(&bundle.layers, "IPHONEOS_DEPLOYMENT_TARGET");
         let user_only_active_arch =
@@ -395,6 +438,26 @@ impl BuildContext {
             project::last_unconditional_setting(&bundle.layers, "DEVELOPMENT_TEAM");
         let user_code_sign_identity =
             project::last_unconditional_setting(&bundle.layers, "CODE_SIGN_IDENTITY");
+        // The extra `-xcconfig` layer and the command-line `KEY=VALUE`
+        // overrides participate in the authored-value checks below (the
+        // synthetic-override captures author ARCHS / MERGEABLE_LIBRARY via
+        // `xcodebuild KEY=VALUE`).
+        let layers_with_extra: Vec<Vec<crate::xcconfig::Assignment>> = {
+            let mut v = bundle.layers.clone();
+            if !self.extra_xcconfig.is_empty() {
+                v.push(self.extra_xcconfig.clone());
+            }
+            if !query.overrides.is_empty() {
+                v.push(query.overrides.clone());
+            }
+            v
+        };
+        let user_archs = project::last_unconditional_setting(&layers_with_extra, "ARCHS");
+        let user_ld_runpath_search_paths =
+            project::last_unconditional_setting(&layers_with_extra, "LD_RUNPATH_SEARCH_PATHS");
+        let mergeable_library =
+            project::last_unconditional_setting(&layers_with_extra, "MERGEABLE_LIBRARY")
+                .is_some_and(|v| v.eq_ignore_ascii_case("YES"));
         let derive_maccatalyst_bundle_id = project::last_unconditional_setting(
             &bundle.layers,
             "DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER",
@@ -432,6 +495,8 @@ impl BuildContext {
             self.xcspec
                 .as_ref()
                 .and_then(|c| c.developer_dir.as_deref()),
+            self.xcspec.as_ref().and_then(|c| c.host_macos.as_deref()),
+            macos_destination_unbound,
         ));
 
         // Target-graph derived settings (parent-app / test-host edges).
@@ -490,6 +555,13 @@ impl BuildContext {
             user_product_bundle_identifier.as_deref(),
             user_development_team.as_deref(),
             user_code_sign_identity.as_deref(),
+            project::last_unconditional_setting(&bundle.layers, "ENABLE_PREVIEWS").is_some(),
+            project::last_unconditional_setting(&bundle.layers, "DEBUG_INFORMATION_FORMAT")
+                .is_some(),
+            user_archs.as_deref(),
+            user_ld_runpath_search_paths.as_deref(),
+            mergeable_library,
+            macos_destination_unbound,
         ));
 
         // Pin the absolute SDKROOT only when a platform actually resolved. A
