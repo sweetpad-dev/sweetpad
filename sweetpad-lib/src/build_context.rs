@@ -470,7 +470,12 @@ impl BuildContext {
         }
 
         layers.push(project::built_in_overrides(
-            &query.configuration,
+            project::effective_xcode_major(
+                self.xcspec
+                    .as_ref()
+                    .and_then(|c| c.xcode_version.as_deref()),
+            ),
+            project::is_unoptimized_build(&bundle.layers, &query.configuration, &query.sdk),
             is_catalyst,
             supports_maccatalyst_yes,
             user_supported_platforms.as_deref(),

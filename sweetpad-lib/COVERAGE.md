@@ -69,7 +69,7 @@ with no codified floor gets only a `structural ≥ 98` safety guard until calibr
 |---|---|---|
 | `26.5.0` | full corpus (all 5 projects) | latest non-beta 26.x — refreshed from 26.0.1 (now dropped); per-target + project-defaults + iOS/tvOS/watchOS/visionOS-simulator + macOS schemes + synthetic + xcconfig; all oracle sources |
 | `16.4.0` | alamofire, kingfisher (per-target + project-defaults + macOS scheme) | second major; ice-cubes incompatible (Swift-tools 6.2 manifests); iOS scheme/simulator needs the user-gated `xcodebuild -downloadPlatform iOS` |
-| `15.4.0` | kingfisher, tuist-fixtures (per-target + project-defaults + macOS scheme) | third major; exposed two undomained-xcspec parser bugs (`PACKAGE_TYPE`/`BUNDLE_FORMAT` clobber, now fixed); alamofire/netnewswire/ice-cubes walled off (objectVersion 76/77, Swift-tools 6.2); residual is irreducible 15.x host/arch reporting (arm64e `NATIVE_ARCH`, concrete no-destination `CURRENT_ARCH`) |
+| `15.4.0` | kingfisher, tuist-fixtures (per-target + project-defaults + macOS scheme) | third major; exposed two undomained-xcspec parser bugs (`PACKAGE_TYPE`/`BUNDLE_FORMAT` clobber, now fixed) and a family of 16+-calibrated built-in rules that misfired on 15.x (device bitcode strip, `STRIP_INSTALLED_PRODUCT`, `SUPPORTED_PLATFORMS` pair order, synthesized `$(BUILT_PRODUCTS_DIR)` search paths, no-destination ARCHS collapse, `ENABLE_PREVIEWS`, swift-testing plugin path — now version-gated, see `tests/version_and_optimization_gates.rs`); alamofire/netnewswire/ice-cubes walled off (objectVersion 76/77, Swift-tools 6.2); residual is irreducible 15.x host/arch reporting (arm64e `NATIVE_ARCH`, concrete no-destination `CURRENT_ARCH`) |
 
 ## Project shapes
 
