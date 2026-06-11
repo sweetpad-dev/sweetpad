@@ -119,24 +119,27 @@ pub fn open(workspace_path: &Path) -> Result<Workspace, Error> {
 
 impl Workspace {
     /// Schemes that `xcodebuild -list -workspace` would surface: the
-    /// workspace's own schemes UNION every member project's schemes (shared
-    /// plus per-user files), deduplicated and sorted. When no scheme file
-    /// exists anywhere — and the shared workspace settings don't disable
-    /// scheme autocreation — falls back to Xcode's autocreation, one scheme
-    /// per target across the member projects. Failures (missing project,
-    /// unreadable directory) are skipped silently.
+    /// workspace's own schemes UNION every member project's schemes — scheme
+    /// files plus each project's autocreated per-target schemes (see
+    /// [`project::open`]) — deduplicated and sorted the way `xcodebuild`
+    /// sorts (case-insensitively). When the shared workspace settings
+    /// disable scheme autocreation (XcodeGen / Tuist write the flag), only
+    /// scheme files are merged. Failures (missing project, unreadable
+    /// directory) are skipped silently.
     #[must_use]
     pub fn merged_schemes(&self) -> Vec<String> {
         let mut set: std::collections::BTreeSet<String> = self.schemes.iter().cloned().collect();
+        let autocreate = crate::scheme::autocreation_allowed(&self.path);
         for project_path in &self.project_refs {
+            if autocreate && let Ok(proj) = project::open(project_path) {
+                set.extend(proj.schemes);
+                continue;
+            }
             set.extend(crate::scheme::container_schemes(project_path));
         }
-        if set.is_empty() && crate::scheme::autocreation_allowed(&self.path) {
-            let mut autocreated = self.merged_targets();
-            autocreated.sort();
-            return autocreated;
-        }
-        set.into_iter().collect()
+        let mut out: Vec<String> = set.into_iter().collect();
+        crate::scheme::sort_like_xcodebuild(&mut out);
+        out
     }
 
     /// Distinct target names across every member project, in first-seen order
@@ -456,9 +459,15 @@ mod tests {
         fs::write(proj_user.join("ProjPersonal.xcscheme"), b"").unwrap();
 
         let ws = open(&ws_path).unwrap();
-        // Scheme files exist, so no autocreation — just the user schemes from
-        // both the workspace bundle and the member project.
-        assert_eq!(ws.merged_schemes(), vec!["ProjPersonal", "WsPersonal"]);
+        // User schemes from both the workspace bundle and the member project,
+        // plus the autocreated scheme for the project's Scratch target —
+        // existing scheme files do NOT suppress per-target autocreation
+        // (kingfisher's workspace captures list the schemeless demo apps
+        // alongside the shared Kingfisher schemes).
+        assert_eq!(
+            ws.merged_schemes(),
+            vec!["ProjPersonal", "Scratch", "WsPersonal"]
+        );
         // And the user scheme makes the project dispatchable by name.
         assert_eq!(ws.project_for_scheme("ProjPersonal"), Some(proj.as_path()));
     }

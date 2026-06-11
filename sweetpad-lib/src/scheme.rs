@@ -274,6 +274,19 @@ pub fn autocreation_allowed(container: &Path) -> bool {
     true
 }
 
+/// Sort scheme names the way `xcodebuild -list` prints them:
+/// case-insensitively, with the byte order as a tiebreak (NetNewsWire's
+/// capture interleaves `NetNewsWire iOS …` between `NetNewsWire` and
+/// `NetNewsWire Share Extension`, which only a case-insensitive sort
+/// produces).
+pub fn sort_like_xcodebuild(names: &mut [String]) {
+    names.sort_by(|a, b| {
+        a.to_lowercase()
+            .cmp(&b.to_lowercase())
+            .then_with(|| a.cmp(b))
+    });
+}
+
 /// Scheme names stored in a container: the shared schemes plus every user's
 /// personal schemes, deduplicated and sorted alphabetically — the set
 /// `xcodebuild -list` reports for the container.

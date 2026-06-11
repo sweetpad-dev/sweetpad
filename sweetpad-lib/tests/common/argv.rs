@@ -350,6 +350,14 @@ fn is_geometry(it: &Item) -> bool {
     if GEOMETRY_FLAGS.contains(&it.flag.as_str()) {
         return true;
     }
+    // The swiftc-driver spelling of the AST registration (`-Wl,-add_ast_path`
+    // followed by `-Wl,<path>`): the path is per-build debug-info plumbing
+    // (the `-Wl,<path>` token is caught by the marker scan below when it
+    // points into the intermediates), so the flag itself is geometry too —
+    // the `-Wl,` analogue of `-Xlinker -add_ast_path` in GEOMETRY_XARG_VALUES.
+    if it.flag == "-Wl,-add_ast_path" {
+        return true;
+    }
     // `-j<N>` is the host core count, not a reproducible decision.
     if let Some(rest) = it.flag.strip_prefix("-j")
         && !rest.is_empty()

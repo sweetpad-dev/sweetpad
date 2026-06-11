@@ -338,10 +338,10 @@ fn project_with_target(raw: &Path, target: &str) -> Option<PathBuf> {
 /// a small margin. The corpus spans pure-Swift frameworks (Alamofire, Kingfisher),
 /// a real ObjC target (KingfisherTests' vendored Nocilla `.m`), and a Release app
 /// (executable link + whole-module). Swift is near-exact; clang is language-gated
-/// against the xcspec `FileTypes`/`Architectures`; link is the foundational
-/// generator, its floor reflecting derivable coverage with the tally documenting
-/// the not-yet-generated flags (autolinked `-framework`, `-rdynamic`, the
-/// Swift-runtime toolchain `-L`, coverage `-fprofile-instr-generate`). Judged by
+/// against the xcspec `FileTypes`/`Architectures`; link now scores at or near
+/// 100% structural everywhere — the residuals are the visionOS scheme-coverage
+/// capture gap (`-debug_variant` / `-fprofile-instr-generate`) and the
+/// multi-arch Release capture's second `-target` triple. Judged by
 /// structural % + the tally, never the geometry-capped exact %. Each Xcode runs
 /// its own Swift driver and each platform its own SDK/flags, so every
 /// (version, platform) cell is guarded at its own baseline.
@@ -349,14 +349,14 @@ fn project_with_target(raw: &Path, target: &str) -> Option<PathBuf> {
 fn version_floor(version: &str, sdk: &str) -> (u64, u64, u64) {
     match (version, sdk) {
         // (swift, clang, link), each = the clean run minus a ~2pt margin.
-        ("26.5.0", "macosx") => (97, 92, 83),
-        ("16.4.0", "macosx") => (97, 92, 79),
-        ("15.4.0", "macosx") => (97, 91, 78),
-        ("26.5.0", "iphoneos") => (97, 92, 88),
-        ("26.5.0", "iphonesimulator") => (97, 91, 80),
-        ("26.5.0", "appletvos") => (97, 92, 88),
-        ("26.5.0", "watchos") => (97, 90, 88),
-        ("26.5.0", "xros") => (92, 90, 80),
+        ("26.5.0", "macosx") => (97, 92, 97),
+        ("16.4.0", "macosx") => (97, 92, 98),
+        ("15.4.0", "macosx") => (97, 91, 98),
+        ("26.5.0", "iphoneos") => (97, 92, 98),
+        ("26.5.0", "iphonesimulator") => (97, 91, 98),
+        ("26.5.0", "appletvos") => (97, 92, 98),
+        ("26.5.0", "watchos") => (97, 90, 98),
+        ("26.5.0", "xros") => (92, 90, 90),
         // Other (version, platform) cells: calibrated once captured.
         _ => (90, 85, 55),
     }
@@ -371,11 +371,11 @@ fn version_floor(version: &str, sdk: &str) -> (u64, u64, u64) {
 #[allow(clippy::match_same_arms)] // distinct cells may share a baseline
 fn precision_floor(version: &str, sdk: &str) -> (u64, u64, u64) {
     match (version, sdk) {
-        ("26.5.0", "macosx") => (96, 96, 94),
-        ("16.4.0", "macosx") => (95, 96, 89),
-        ("15.4.0", "macosx") => (95, 95, 86),
+        ("26.5.0", "macosx") => (96, 96, 97),
+        ("16.4.0", "macosx") => (95, 96, 98),
+        ("15.4.0", "macosx") => (95, 95, 98),
         ("26.5.0", "iphoneos") => (97, 97, 97),
-        ("26.5.0", "iphonesimulator") => (97, 95, 97),
+        ("26.5.0", "iphonesimulator") => (97, 95, 98),
         ("26.5.0", "appletvos") => (97, 97, 97),
         ("26.5.0", "watchos") => (97, 95, 97),
         ("26.5.0", "xros") => (97, 97, 97),
@@ -542,7 +542,23 @@ fn compiler_args_oracle_coverage() {
                 } else {
                     let fws = project::target_linked_frameworks(&xcodeproj, &t.target)
                         .unwrap_or_default();
-                    compiler_args::link_arguments(settings, &oracle.arch, &fws)
+                    // The version-stamp compile (`<Product>_vers.c`,
+                    // VERSIONING_SYSTEM=apple-generic) doesn't count as a
+                    // C-family participant: pure-Swift targets carry it yet
+                    // their links stay ARC-free.
+                    let has_clang_sources = t
+                        .clang
+                        .as_ref()
+                        .is_some_and(|c| c.files.iter().any(|f| !f.file.ends_with("_vers.c")));
+                    let libs =
+                        project::target_linked_libraries(&xcodeproj, &t.target).unwrap_or_default();
+                    compiler_args::link_arguments(
+                        settings,
+                        &oracle.arch,
+                        &fws,
+                        &libs,
+                        has_clang_sources,
+                    )
                 };
                 if dump {
                     eprintln!(

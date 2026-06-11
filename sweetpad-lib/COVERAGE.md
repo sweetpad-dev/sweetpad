@@ -28,6 +28,23 @@ fixtures change.
 hermetic tests rather than corpus captures (no corpus project ships either
 layout) — see the Schemes table. Result: **115 ✅ / 18 ❌**.
 
+**Updated 2026-06-11**: `tests/discovery_oracle.rs` now scores the listing
+surface (`targets` / `configurations` / `schemes` per project, merged
+workspace `schemes`) against the captured `xcodebuild -list -json`
+(`metadata/**/list.json`, 30 captures) — every container matches exactly,
+sets AND case-insensitive ordering. Deriving the rules fixed per-target
+scheme autocreation (it fires even when other scheme files exist; tests,
+WatchKit extensions, watchapp2 containers, and Safari legacy extensions are
+excluded). Schemes `xcodebuild` synthesizes from Swift *package* manifests
+(41 across ice-cubes/netnewswire) are out of the pbxproj surface and tallied,
+not failed. The same pass drove the compiler-args **link** oracle to 100%
+structural+precision on 25 of 27 dynamic links (Swift-runtime rpath via the
+Concurrency/Span back-deployment gates, version-gated `-dead_strip` /
+`-export_dynamic` spellings, `LD_DEBUG_VARIANT`, dependency
+`-add_ast_path` + `-l<lib>` registration, test-bundle `-iframework` /
+XCTestSwiftSupport); the residuals are the visionOS scheme-coverage capture
+gap and a multi-arch Release capture artifact.
+
 ## Legend
 
 - ✅ — at least one fixture exercises this; pointer in **Where**. Rows marked

@@ -29,8 +29,11 @@ pub struct Project {
     /// Scheme names for this project, sorted alphabetically — the set
     /// `xcodebuild -list` prints: shared (`xcshareddata/xcschemes`) plus
     /// per-user (`xcuserdata/<user>.xcuserdatad/xcschemes`) scheme files,
-    /// or one autocreated scheme per target when no scheme file exists at
-    /// all (Xcode's scheme autocreation for fresh / never-shared projects).
+    /// plus one autocreated scheme per eligible target not already named by
+    /// a scheme file (Xcode's scheme autocreation; see
+    /// [`autocreates_scheme_for_target`] for the eligibility rules). Schemes
+    /// that `xcodebuild` additionally synthesizes from Swift *package*
+    /// manifests are out of scope — they aren't derivable from the pbxproj.
     pub schemes: Vec<String>,
 }
 
@@ -96,16 +99,31 @@ pub fn open_from_value(value: &Value, xcodeproj_path: &Path) -> Result<Project, 
     let default_configuration = default_configuration_name(objects, project_obj);
     let targets = extract_targets(objects, project_obj)?;
     let mut schemes = crate::scheme::container_schemes(xcodeproj_path);
-    if schemes.is_empty() && crate::scheme::autocreation_allowed(xcodeproj_path) {
-        // No scheme file on disk anywhere (shared or per-user): mirror Xcode's
-        // scheme autocreation — `xcodebuild -list` reports one scheme per
-        // target — so fresh / never-shared projects still list schemes. When
-        // the workspace settings disable autocreation (XcodeGen / Tuist write
-        // the flag), `xcodebuild -list` shows no schemes and so do we.
-        schemes = targets.iter().map(|t| t.name.clone()).collect();
-        schemes.sort();
+    if crate::scheme::autocreation_allowed(xcodeproj_path) {
+        // Mirror Xcode's per-target scheme autocreation: `xcodebuild -list`
+        // reports one scheme per eligible target that no scheme file already
+        // names, even when other targets DO have scheme files (kingfisher's
+        // Demo project ships only `Kingfisher-Demo.xcscheme` yet lists its
+        // macOS/tvOS/watchOS demo apps too; NetNewsWire lists its
+        // extension targets). When the workspace settings disable
+        // autocreation (XcodeGen / Tuist write the flag), `xcodebuild -list`
+        // shows only the scheme files and so do we.
+        let existing: std::collections::BTreeSet<&str> =
+            schemes.iter().map(String::as_str).collect();
+        let first_config = configurations.first().cloned();
+        let autocreated: Vec<String> = targets
+            .iter()
+            .filter(|t| !existing.contains(t.name.as_str()))
+            .filter(|t| {
+                autocreates_scheme_for_target(value, xcodeproj_path, t, first_config.as_deref())
+            })
+            .map(|t| t.name.clone())
+            .collect();
+        schemes.extend(autocreated);
         schemes.dedup();
     }
+    crate::scheme::sort_like_xcodebuild(&mut schemes);
+    schemes.dedup();
 
     let name = xcodeproj_path
         .file_stem()
@@ -121,6 +139,100 @@ pub fn open_from_value(value: &Value, xcodeproj_path: &Path) -> Result<Project, 
         default_configuration,
         schemes,
     })
+}
+
+/// Whether Xcode's scheme autocreation materializes a scheme for `target`.
+///
+/// Derived from the `xcodebuild -list` captures (`metadata/**/list.json`,
+/// scored by `tests/discovery_oracle.rs`):
+///
+/// * test bundles never autocreate — they ride their host scheme's
+///   TestAction (NetNewsWireTests / KingfisherTests / alamofire's per-
+///   platform test targets are all absent from the captures);
+/// * WatchKit extensions and the iPhone companion stub of a watchapp2 pair
+///   never autocreate — neither runs standalone (kingfisher's watch demo
+///   extension, alamofire's `watchOS Example` container). The watch *app*
+///   itself does autocreate (kingfisher's `Kingfisher-watchOS-Demo`);
+/// * Safari legacy extensions (`NSExtensionPointIdentifier =
+///   com.apple.Safari.extension`) never autocreate — they only run inside
+///   Safari (NetNewsWire's `Subscribe to Feed` is absent while its sibling
+///   share/widget/intents extensions are listed);
+/// * everything else — applications, the non-Safari app-extension family,
+///   frameworks, libraries, tools, aggregate targets — autocreates.
+fn autocreates_scheme_for_target(
+    value: &Value,
+    xcodeproj_path: &Path,
+    target: &Target,
+    first_config: Option<&str>,
+) -> bool {
+    match target.product_type.as_deref() {
+        Some(
+            "com.apple.product-type.bundle.unit-test"
+            | "com.apple.product-type.bundle.ui-testing"
+            | "com.apple.product-type.bundle.external-test"
+            | "com.apple.product-type.bundle.ocunit-test"
+            | "com.apple.product-type.watchkit2-extension"
+            | "com.apple.product-type.watchkit-extension"
+            | "com.apple.product-type.application.watchapp2-container",
+        ) => false,
+        Some(pt) if pt.starts_with("com.apple.product-type.app-extension") => {
+            !is_safari_extension_target(value, xcodeproj_path, &target.name, first_config)
+        }
+        _ => true,
+    }
+}
+
+/// Best-effort detection of a Safari legacy app extension: resolve the
+/// target's authored `INFOPLIST_FILE` through its settings layers (covers a
+/// value supplied by an xcconfig, e.g. NetNewsWire) and look for
+/// `NSExtensionPointIdentifier = com.apple.Safari.extension` in the plist.
+/// Any failure — recipe-valued path, unreadable or binary plist — counts as
+/// "not Safari", so a target is never wrongly dropped from the scheme list.
+fn is_safari_extension_target(
+    value: &Value,
+    xcodeproj_path: &Path,
+    target_name: &str,
+    first_config: Option<&str>,
+) -> bool {
+    let Some(config) = first_config else {
+        return false;
+    };
+    let Ok(bundle) = build_settings_from_value(value, xcodeproj_path, target_name, config) else {
+        return false;
+    };
+    let Some(plist_rel) = last_unconditional_setting(&bundle.layers, "INFOPLIST_FILE") else {
+        return false;
+    };
+    if plist_rel.contains("$(") {
+        return false;
+    }
+    let Some(project_dir) = xcodeproj_path.parent() else {
+        return false;
+    };
+    let Ok(plist) = crate::xcscheme::parse_file(&project_dir.join(plist_rel.trim())) else {
+        return false;
+    };
+    element_has_safari_extension_point(&plist)
+}
+
+/// Recursive search for a `<key>NSExtensionPointIdentifier</key>` followed by
+/// `<string>com.apple.Safari.extension</string>` anywhere in an XML plist.
+fn element_has_safari_extension_point(el: &crate::xcscheme::Element) -> bool {
+    let mut children = el.children.iter().peekable();
+    while let Some(child) = children.next() {
+        if child.name == "key"
+            && child.text == "NSExtensionPointIdentifier"
+            && children
+                .peek()
+                .is_some_and(|v| v.name == "string" && v.text == "com.apple.Safari.extension")
+        {
+            return true;
+        }
+        if element_has_safari_extension_point(child) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The `defaultConfigurationName` declared on a container's
@@ -623,6 +735,57 @@ pub fn target_linked_frameworks(
                 .and_then(|n| n.strip_suffix(".framework"))
             {
                 out.push(name.to_string());
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The dynamic-library products in a target's Frameworks build phase, by
+/// product-base name (`libDynamicLib.dylib` → `DynamicLib`). The companion to
+/// [`target_linked_frameworks`] for the `-l<name>` side of the link line.
+pub fn target_linked_libraries(
+    xcodeproj_path: &Path,
+    target_name: &str,
+) -> Result<Vec<String>, Error> {
+    let value = parse_pbxproj(xcodeproj_path)?;
+    let (objects, project_obj) = project_root(&value)?;
+    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
+        Error::BadProject(format!("no target named '{target_name}' in the project"))
+    })?;
+
+    let mut out = Vec::new();
+    let Some(phase_ids) = target.get("buildPhases").and_then(Value::as_array) else {
+        return Ok(out);
+    };
+    for phase_ref in phase_ids {
+        let Some(phase) = phase_ref.as_str().and_then(|id| objects.get(id)) else {
+            continue;
+        };
+        if phase.get("isa").and_then(Value::as_str) != Some("PBXFrameworksBuildPhase") {
+            continue;
+        }
+        let Some(file_ids) = phase.get("files").and_then(Value::as_array) else {
+            continue;
+        };
+        for build_file_ref in file_ids {
+            let Some(file_ref) = build_file_ref
+                .as_str()
+                .and_then(|id| objects.get(id))
+                .and_then(|bf| bf.get("fileRef").and_then(Value::as_str))
+                .and_then(|id| objects.get(id))
+            else {
+                continue;
+            };
+            let label = file_ref
+                .get("name")
+                .and_then(Value::as_str)
+                .or_else(|| file_ref.get("path").and_then(Value::as_str));
+            if let Some(name) = label
+                .and_then(|l| l.rsplit('/').next())
+                .and_then(|n| n.strip_suffix(".dylib"))
+            {
+                out.push(name.trim_start_matches("lib").to_string());
             }
         }
     }
