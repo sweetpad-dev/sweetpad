@@ -88,6 +88,14 @@ pub struct Catalog {
     /// capture resolves against the Xcode it was taken with, not whichever Xcode
     /// is `xcode-select`ed on the host. `None` falls back to the host install.
     pub developer_dir: Option<String>,
+    /// The macOS version of the capture host (e.g. `26.5`), read from the
+    /// sibling `meta.json`. Feeds the destination's OS-version identity when a
+    /// non-macOS target builds for the macOS host (the
+    /// `ASSETCATALOG_FILTER_FOR_DEVICE_OS_VERSION` xcodebuild forwards to the
+    /// asset-catalog compiler), so a capture resolves to the version of the
+    /// machine it was taken on rather than whatever host runs the resolver.
+    /// `None` falls back to querying the local host (`sw_vers`).
+    pub host_macos: Option<String>,
     /// Command-line option encodings parsed from each `Type = Compiler` /
     /// `Type = Linker` xcspec, keyed by the tool `Identifier` (e.g.
     /// `com.apple.xcode.tools.swift.compiler`). The authoritative
@@ -294,6 +302,9 @@ pub fn load_catalog(xcspec_root: &Path, sdksettings_root: Option<&Path>) -> Resu
     catalog.developer_dir = meta
         .as_deref()
         .and_then(|t| scrape_json_string(t, "developer_dir"));
+    catalog.host_macos = meta
+        .as_deref()
+        .and_then(|t| scrape_json_string(t, "host_macos"));
     Ok(catalog)
 }
 

@@ -99,6 +99,7 @@ pub fn target_arguments(
     product_type: Option<&str>,
     sources: &[PathBuf],
     frameworks: &[String],
+    libraries: &[String],
     swift_options: &[CompilerOption],
     clang_options: &[CompilerOption],
     xcode_version: &str,
@@ -128,7 +129,8 @@ pub fn target_arguments(
         input_files: swift_inputs,
     });
     let clang_langs = clang_languages(&clang_inputs);
-    let clang = (!clang_inputs.is_empty()).then(|| ToolInvocation {
+    let has_clang_sources = !clang_inputs.is_empty();
+    let clang = has_clang_sources.then(|| ToolInvocation {
         tool: "clang".to_string(),
         arguments: clang_arguments(settings, arch, clang_options, &clang_langs),
         input_files: clang_inputs,
@@ -143,7 +145,7 @@ pub fn target_arguments(
         arguments: if tool == "libtool" {
             static_lib_arguments(settings, arch)
         } else {
-            link_arguments(settings, arch, frameworks)
+            link_arguments(settings, arch, frameworks, libraries, has_clang_sources)
         },
         input_files: Vec::new(),
     });
@@ -572,7 +574,13 @@ fn emit_library_paths(a: &mut ArgBuilder, settings: &Settings) -> Vec<String> {
 /// and the object filelist are out of scope (geometry / autolink), tracked by
 /// the comparator tally rather than generated here.
 #[must_use]
-pub fn link_arguments(settings: &Settings, arch: &str, frameworks: &[String]) -> Vec<String> {
+pub fn link_arguments(
+    settings: &Settings,
+    arch: &str,
+    frameworks: &[String],
+    libraries: &[String],
+    has_clang_sources: bool,
+) -> Vec<String> {
     let mut a = ArgBuilder::default();
     let get = |k: &str| settings.get(k).map(String::as_str);
     if let Some(triple) = target_triple(settings, arch) {
@@ -617,17 +625,59 @@ pub fn link_arguments(settings: &Settings, arch: &str, frameworks: &[String]) ->
     // A unit-test bundle links XCTest from the platform test paths (its
     // products-dir `-F` is already first in the framework list above).
     if get("PRODUCT_TYPE").is_some_and(|p| p.contains("unit-test")) {
+        let xcode_major = xcode_major_from_settings(settings);
         if let Some(platform) = get("PLATFORM_DIR") {
             let lib = format!("{platform}/Developer/usr/lib");
             if !library_paths.contains(&lib) {
                 a.flag(&format!("-L{lib}"));
             }
+            // The platform's bundled test frameworks also land on the header
+            // include path of the link driver (every KingfisherTests capture
+            // carries it on 15.4/16.4/26.5).
+            a.pair(
+                "-iframework",
+                &format!("{platform}/Developer/Library/Frameworks"),
+            );
+        }
+        // Xcode 26 marks XCTest as a hard dependency for the new linker
+        // before the classic `-framework` reference.
+        if xcode_major >= 26 {
+            a.pair("-Xlinker", "-needed_framework");
+            a.pair("-Xlinker", "XCTest");
         }
         a.pair("-framework", "XCTest");
+        // The Swift XCTest shims arrived on the 16.x link line (plain
+        // `-lXCTestSwiftSupport`); 26 adds the `-needed-l` marker too.
+        if xcode_major >= 26 {
+            a.flag("-Xlinker");
+            a.flag("-needed-lXCTestSwiftSupport");
+        }
+        if xcode_major >= 16 {
+            a.flag("-lXCTestSwiftSupport");
+        }
     }
+    // The Swift runtime rpath precedes the user runpaths: swift-build's
+    // `computeRPaths` inserts `/usr/lib/swift` FIRST for a Swift link that
+    // back-deploys — below the platform's Swift-Concurrency-in-the-OS floor
+    // on Xcode 15/16 (macOS 12, iOS/tvOS 15, watchOS 8), and below the
+    // aligned 26.0 on Xcode 26+ (the Swift `Span` back-deployment covers
+    // every earlier deployment target; tuist's 26.5-targeting links are the
+    // only corpus captures without it).
+    let mut rpaths: Vec<String> = Vec::new();
+    if get("SWIFT_VERSION").is_some_and(|v| !v.is_empty()) && swift_runtime_back_deploys(settings) {
+        rpaths.push("/usr/lib/swift".to_string());
+    }
+    // xcodebuild de-duplicates the resolved runpath list (KingfisherTests'
+    // authored chain repeats `@loader_path/../Frameworks`; the captures
+    // carry it once).
     for p in ws_paths(get("LD_RUNPATH_SEARCH_PATHS")) {
+        if !rpaths.contains(&p) {
+            rpaths.push(p);
+        }
+    }
+    for p in &rpaths {
         a.pair("-Xlinker", "-rpath");
-        a.pair("-Xlinker", &p);
+        a.pair("-Xlinker", p);
     }
     if is_yes(get("APPLICATION_EXTENSION_API_ONLY").unwrap_or("")) {
         a.flag("-fapplication-extension");
@@ -649,24 +699,124 @@ pub fn link_arguments(settings: &Settings, arch: &str, frameworks: &[String]) ->
     // link: a reproducible link, dead-code stripping (on unless disabled), and
     // the ObjC runtime (Swift uses ObjC interop on Apple platforms). A Debug
     // build also disables dedup for link speed.
+    let xcode_major = xcode_major_from_settings(settings);
     a.pair("-Xlinker", "-reproducible");
     if get("DEAD_CODE_STRIPPING") != Some("NO") {
-        a.pair("-Xlinker", "-dead_strip");
+        // Ld.xcspec encodes the flag as a plain `-dead_strip`
+        // (CommandLineFlag) through Xcode 16; 26 switched to the
+        // `-Xlinker`-escaped pair.
+        if xcode_major >= 26 {
+            a.pair("-Xlinker", "-dead_strip");
+        } else {
+            a.flag("-dead_strip");
+        }
     }
     if get("CONFIGURATION").is_some_and(|c| c.eq_ignore_ascii_case("Debug")) {
         a.pair("-Xlinker", "-no_deduplicate");
-        // A Debug link keeps dynamic symbols exported (for the debugger / dlopen).
-        a.flag("-rdynamic");
+    }
+    // Exported dynamic symbols follow the resolved LD_EXPORT_GLOBAL_SYMBOLS
+    // (the build system flips it YES for unoptimized builds). Xcode 15's
+    // Ld.xcspec spells it `-Xlinker -export_dynamic`; 16+ uses the clang
+    // driver's `-rdynamic`.
+    if get("LD_EXPORT_GLOBAL_SYMBOLS").is_some_and(is_yes) {
+        if xcode_major >= 16 {
+            a.flag("-rdynamic");
+        } else {
+            a.pair("-Xlinker", "-export_dynamic");
+        }
+    }
+    // `LD_DEBUG_VARIANT` (Ld.xcspec, default YES) emits the marker whenever
+    // any sanitizer or coverage mapping instruments the build.
+    let instrumented = [
+        "ENABLE_ADDRESS_SANITIZER",
+        "ENABLE_THREAD_SANITIZER",
+        "ENABLE_SANITIZER_COVERAGE",
+        "ENABLE_UNDEFINED_BEHAVIOR_SANITIZER",
+        "CLANG_COVERAGE_MAPPING",
+    ]
+    .iter()
+    .any(|k| get(k).is_some_and(is_yes));
+    if instrumented && get("LD_DEBUG_VARIANT") != Some("NO") {
+        a.pair("-Xlinker", "-debug_variant");
+    }
+    // `LD_OBJC_ABI_VERSION` defaults to `$(OBJC_ABI_VERSION)` and emits the
+    // pair whenever the setting resolves non-empty (the x86_64 simulator
+    // SDKs carry `2`).
+    let objc_abi = get("OBJC_ABI_VERSION")
+        .filter(|v| !v.is_empty())
+        .map(str::to_owned)
+        .or_else(|| {
+            // The x86_64 simulator SDKs pin the modern ObjC ABI explicitly
+            // (alamofire's `Debug__iOS-sim` capture); the setting itself
+            // doesn't surface through our resolution, so synthesize the
+            // constant for that slice.
+            (arch == "x86_64" && get("PLATFORM_NAME").is_some_and(|p| p.ends_with("simulator")))
+                .then(|| "2".to_string())
+        });
+    if let Some(abi) = objc_abi {
+        a.pair("-Xlinker", "-objc_abi_version");
+        a.pair("-Xlinker", &abi);
+    }
+    // The link driver carries `-fobjc-arc` only when clang-compiled sources
+    // participate in the link (KingfisherTests' ObjC test files); a
+    // pure-Swift target keeps it off even with CLANG_ENABLE_OBJC_ARC=YES.
+    if has_clang_sources && get("CLANG_ENABLE_OBJC_ARC").is_some_and(is_yes) {
+        a.flag("-fobjc-arc");
     }
     a.flag("-fobjc-link-runtime");
     // A coverage-instrumented build links the profiling runtime.
     if get("CLANG_COVERAGE_MAPPING").is_some_and(is_yes) {
         a.flag("-fprofile-instr-generate");
     }
+    // AST registration for the debugger: every captured Swift dynamic link
+    // carries `-add_ast_path` for the product's own swiftmodule (the
+    // intermediates `Objects-normal` copy — optimized builds included), plus
+    // one entry per *linked Swift product* pointing at the dependency's
+    // installed module (the demo app and test bundle register
+    // `Kingfisher.framework/Modules/...`, the command-line tool registers the
+    // linked dylib's `DynamicLib.swiftmodule/...` bundle in BUILT_PRODUCTS_DIR).
+    if get("SWIFT_VERSION").is_some_and(|v| !v.is_empty())
+        && let Some(module) = get("PRODUCT_MODULE_NAME").or_else(|| get("PRODUCT_NAME"))
+        && let Some(obj_dir) = get("OBJECT_FILE_DIR_normal")
+    {
+        a.pair("-Xlinker", "-add_ast_path");
+        a.pair(
+            "-Xlinker",
+            &format!("{obj_dir}/{arch}/{module}.swiftmodule"),
+        );
+    }
+    // The dependency registrations arrived with Xcode 26's linker driver;
+    // 15.4/16.4 captures carry only the own-module entry.
+    if xcode_major >= 26
+        && let (Some(products), Some(prefix)) = (
+            get("BUILT_PRODUCTS_DIR"),
+            get("SWIFT_PLATFORM_TARGET_PREFIX"),
+        )
+    {
+        for fw in frameworks {
+            a.pair("-Xlinker", "-add_ast_path");
+            a.pair(
+                "-Xlinker",
+                &format!(
+                    "{products}/{fw}.framework/Modules/{fw}.swiftmodule/{arch}-apple-{prefix}.swiftmodule"
+                ),
+            );
+        }
+        for lib in libraries {
+            a.pair("-Xlinker", "-add_ast_path");
+            a.pair(
+                "-Xlinker",
+                &format!("{products}/{lib}.swiftmodule/{arch}-apple-{prefix}.swiftmodule"),
+            );
+        }
+    }
     // Frameworks the target links explicitly (its Frameworks build phase); the
     // ones the sources autolink via `import` are encoded in the objects, not here.
     for fw in frameworks {
         a.pair("-framework", fw);
+    }
+    for lib in libraries {
+        a.flag(&format!("-l{lib}"));
     }
     for f in ws(get("OTHER_LDFLAGS")) {
         a.flag(f);
@@ -836,6 +986,49 @@ fn subst(token: &str, value: &str, settings: &Settings) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// The Xcode major this resolution mirrors, from the resolved
+/// `XCODE_VERSION_MAJOR` (`1540`/`1600`/`2600` → 15/16/26). `0` when absent.
+fn xcode_major_from_settings(settings: &Settings) -> u32 {
+    settings
+        .get("XCODE_VERSION_MAJOR")
+        .and_then(|v| v.parse::<u32>().ok())
+        .map_or(0, |v| v / 100)
+}
+
+/// Whether a Swift link needs the leading `/usr/lib/swift` runtime rpath
+/// (swift-build `computeRPaths`): the deployment target predates the
+/// platform's Swift-Concurrency-in-the-OS floor (Xcode 15/16), or — on
+/// Xcode 26+ — predates the aligned 26.0 the Swift `Span` back-deployment
+/// covers.
+fn swift_runtime_back_deploys(settings: &Settings) -> bool {
+    let get = |k: &str| settings.get(k).map(String::as_str);
+    let Some(dep) = get("DEPLOYMENT_TARGET_SETTING_NAME").and_then(get) else {
+        return false;
+    };
+    let xcode_major = xcode_major_from_settings(settings);
+    if xcode_major >= 26 {
+        return version_lt(dep, "26.0");
+    }
+    let floor = match get("SWIFT_PLATFORM_TARGET_PREFIX") {
+        Some("macos") => "12.0",
+        Some("ios" | "tvos") => "15.0",
+        Some("watchos") => "8.0",
+        // visionOS shipped with Swift Concurrency in the OS from 1.0.
+        _ => return false,
+    };
+    version_lt(dep, floor)
+}
+
+/// Numeric dotted-version comparison: `a < b`.
+fn version_lt(a: &str, b: &str) -> bool {
+    let parse = |s: &str| -> Vec<u64> {
+        s.split('.')
+            .map(|c| c.trim().parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    parse(a) < parse(b)
 }
 
 fn is_yes(v: &str) -> bool {

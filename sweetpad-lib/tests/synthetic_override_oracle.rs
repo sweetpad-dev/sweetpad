@@ -212,16 +212,15 @@ fn synthetic_override_oracle_coverage() {
 
 /// Per-version `(exact, canonical, structural)` floors for the synthetic forced
 /// `KEY=VALUE` override captures. The override layer is top-priority so the
-/// forced value always lands; the residual exact gap is dominated by
-/// `BUILD_ACTIVE_RESOURCES_ONLY` (a concrete-simulator default the resolver
-/// can't synthesize from the `id=<uuid>` destination suffix) plus the usual
-/// volatile-path drift. Set from the first clean multi-version run minus a
-/// ~1pt margin.
+/// forced value always lands; the residual exact gap is the usual
+/// volatile-path drift (`BUILD_ACTIVE_RESOURCES_ONLY` is now synthesized
+/// from the simulator SDK itself, destination suffix or not). Set from the
+/// first clean multi-version run minus a ~1pt margin.
 fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     // Only 26.0.1 has synthetic-override captures today; a future version with no
     // entry gets the structural safety guard until its floor is codified.
     match version {
-        "26.5.0" => Some((86, 97, 98)),
+        "26.5.0" => Some((88, 99, 100)),
         _ => None,
     }
 }

@@ -28,6 +28,23 @@ fixtures change.
 hermetic tests rather than corpus captures (no corpus project ships either
 layout) — see the Schemes table. Result: **115 ✅ / 18 ❌**.
 
+**Updated 2026-06-11**: `tests/discovery_oracle.rs` now scores the listing
+surface (`targets` / `configurations` / `schemes` per project, merged
+workspace `schemes`) against the captured `xcodebuild -list -json`
+(`metadata/**/list.json`, 30 captures) — every container matches exactly,
+sets AND case-insensitive ordering. Deriving the rules fixed per-target
+scheme autocreation (it fires even when other scheme files exist; tests,
+WatchKit extensions, watchapp2 containers, and Safari legacy extensions are
+excluded). Schemes `xcodebuild` synthesizes from Swift *package* manifests
+(41 across ice-cubes/netnewswire) are out of the pbxproj surface and tallied,
+not failed. The same pass drove the compiler-args **link** oracle to 100%
+structural+precision on 25 of 27 dynamic links (Swift-runtime rpath via the
+Concurrency/Span back-deployment gates, version-gated `-dead_strip` /
+`-export_dynamic` spellings, `LD_DEBUG_VARIANT`, dependency
+`-add_ast_path` + `-l<lib>` registration, test-bundle `-iframework` /
+XCTestSwiftSupport); the residuals are the visionOS scheme-coverage capture
+gap and a multi-arch Release capture artifact.
+
 ## Legend
 
 - ✅ — at least one fixture exercises this; pointer in **Where**. Rows marked
@@ -69,7 +86,7 @@ with no codified floor gets only a `structural ≥ 98` safety guard until calibr
 |---|---|---|
 | `26.5.0` | full corpus (all 5 projects) | latest non-beta 26.x — refreshed from 26.0.1 (now dropped); per-target + project-defaults + iOS/tvOS/watchOS/visionOS-simulator + macOS schemes + synthetic + xcconfig; all oracle sources |
 | `16.4.0` | alamofire, kingfisher (per-target + project-defaults + macOS scheme) | second major; ice-cubes incompatible (Swift-tools 6.2 manifests); iOS scheme/simulator needs the user-gated `xcodebuild -downloadPlatform iOS` |
-| `15.4.0` | kingfisher, tuist-fixtures (per-target + project-defaults + macOS scheme) | third major; exposed two undomained-xcspec parser bugs (`PACKAGE_TYPE`/`BUNDLE_FORMAT` clobber, now fixed) and a family of 16+-calibrated built-in rules that misfired on 15.x (device bitcode strip, `STRIP_INSTALLED_PRODUCT`, `SUPPORTED_PLATFORMS` pair order, synthesized `$(BUILT_PRODUCTS_DIR)` search paths, no-destination ARCHS collapse, `ENABLE_PREVIEWS`, swift-testing plugin path — now version-gated, see `tests/version_and_optimization_gates.rs`); alamofire/netnewswire/ice-cubes walled off (objectVersion 76/77, Swift-tools 6.2); residual is irreducible 15.x host/arch reporting (arm64e `NATIVE_ARCH`, concrete no-destination `CURRENT_ARCH`) |
+| `15.4.0` | kingfisher, tuist-fixtures (per-target + project-defaults + macOS scheme) | third major; exposed two undomained-xcspec parser bugs (`PACKAGE_TYPE`/`BUNDLE_FORMAT` clobber, now fixed) and a family of 16+-calibrated built-in rules that misfired on 15.x (device bitcode strip, `STRIP_INSTALLED_PRODUCT`, `SUPPORTED_PLATFORMS` pair order, synthesized `$(BUILT_PRODUCTS_DIR)` search paths, no-destination ARCHS collapse, `ENABLE_PREVIEWS`, swift-testing plugin path — now version-gated, see `tests/version_and_optimization_gates.rs`); alamofire/netnewswire/ice-cubes walled off (objectVersion 76/77, Swift-tools 6.2); the 15.x host/arch reporting family is now modelled as version-gated rules too (arm64e `NATIVE_ARCH`/`HOST_ARCH` on Apple Silicon, concrete `CURRENT_ARCH`/`arch` = last of resolved `ARCHS`, the legacy per-SDK `VALID_ARCHS` lists, empty `LOCROOT`/`LOCSYMROOT`, no `BUILD_ACTIVE_RESOURCES_ONLY` flip, no Catalyst `SUPPORTED_PLATFORMS` append / 13.1 deployment floor, and the watch UI-test XCTRunner wrapping — see the `legacy_xcode15` gates in `src/project.rs`) |
 
 ## Project shapes
 

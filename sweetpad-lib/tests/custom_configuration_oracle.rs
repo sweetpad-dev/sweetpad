@@ -137,13 +137,13 @@ fn run_capture(
 fn version_floor(version: &str, in_place: bool) -> Option<(u64, u64, u64)> {
     match (version, in_place) {
         ("26.5.0", true) => Some((85, 85, 98)),
-        ("26.5.0", false) => Some((84, 84, 99)),
+        ("26.5.0", false) => Some((85, 85, 100)),
         ("16.4.0", true) => Some((84, 85, 98)),
-        ("16.4.0", false) => Some((83, 84, 99)),
+        ("16.4.0", false) => Some((84, 85, 100)),
         // 15.4 byte-matches more keys (simpler SDK geometry) but loses structural
         // to the irreducible 15.x arch family — the inverse of the newer majors.
         ("15.4.0", true) => Some((93, 93, 95)),
-        ("15.4.0", false) => Some((82, 93, 96)),
+        ("15.4.0", false) => Some((85, 97, 100)),
         _ => None,
     }
 }

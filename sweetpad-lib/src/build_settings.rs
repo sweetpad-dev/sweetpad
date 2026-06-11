@@ -260,6 +260,9 @@ pub fn resolve_compiler_arguments(
                     } else {
                         Vec::new()
                     };
+                    let libraries =
+                        project::target_linked_libraries(&ctx.project.path, &query.target)
+                            .unwrap_or_default();
                     out.push(compiler_args::target_arguments(
                         &query.target,
                         &resolved.settings,
@@ -267,6 +270,7 @@ pub fn resolve_compiler_arguments(
                         resolved.product_type.as_deref(),
                         &sources,
                         &frameworks,
+                        &libraries,
                         swift_opts,
                         clang_opts,
                         xcode_version,

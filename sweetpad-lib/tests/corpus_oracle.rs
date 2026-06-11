@@ -303,12 +303,12 @@ fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     }
 }
 
-const CORPUS_FLOOR_2650: (u64, u64, u64) = (87, 95, 98);
-const CORPUS_FLOOR_1640: (u64, u64, u64) = (87, 98, 98);
+const CORPUS_FLOOR_2650: (u64, u64, u64) = (88, 96, 99);
+const CORPUS_FLOOR_1640: (u64, u64, u64) = (88, 99, 100);
 // 15.4 structural sits ~97% (vs 99% on 16+) because that Xcode reports host/arch
 // settings the resolver can't derive from project inputs and that newer Xcodes
 // normalize away (NATIVE_ARCH/HOST_ARCH=arm64e, concrete CURRENT_ARCH on the
 // no-destination path, VALID_ARCHS ordering) — documented irreducibles, not
 // resolver bugs (the real 15.x parse bugs, PACKAGE_TYPE/BUNDLE_FORMAT
 // undomained-clobber, are fixed). Floor accordingly.
-const CORPUS_FLOOR_1540: (u64, u64, u64) = (85, 94, 96);
+const CORPUS_FLOOR_1540: (u64, u64, u64) = (88, 99, 100);

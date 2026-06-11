@@ -160,12 +160,12 @@ fn project_defaults_oracle_coverage() {
 /// from the first clean multi-version run minus a ~1pt margin.
 fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     match version {
-        "26.5.0" => Some((86, 87, 98)),
-        "16.4.0" => Some((86, 88, 98)),
-        // 15.4 structural ~97%: irreducible 15.x host/arch reporting (arm64e
-        // NATIVE_ARCH/HOST_ARCH, concrete no-destination CURRENT_ARCH,
-        // VALID_ARCHS ordering); the real 15.x parse bugs are fixed.
-        "15.4.0" => Some((85, 93, 96)),
+        "26.5.0" => Some((87, 88, 100)),
+        "16.4.0" => Some((87, 89, 100)),
+        // The 15.x host/arch reporting family is modelled as version-gated
+        // rules (see `built_in_settings`), so 15.4 scores match the modern
+        // majors.
+        "15.4.0" => Some((88, 97, 100)),
         _ => None,
     }
 }

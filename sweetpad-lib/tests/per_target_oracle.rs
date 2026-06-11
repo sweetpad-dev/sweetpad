@@ -150,14 +150,13 @@ fn per_target_oracle_coverage() {
 #[allow(clippy::match_same_arms)]
 fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     match version {
-        "26.5.0" => Some((86, 87, 98)),
-        "16.4.0" => Some((86, 88, 98)),
-        // 15.4 structural is ~96% (vs 99%): the irreducible 15.x host/arch
-        // reporting (NATIVE_ARCH/HOST_ARCH=arm64e, concrete no-destination
-        // CURRENT_ARCH, VALID_ARCHS ordering) the resolver can't derive from
-        // inputs. The real 15.x parse bugs (PACKAGE_TYPE/BUNDLE_FORMAT
-        // undomained-clobber) are fixed.
-        "15.4.0" => Some((85, 92, 96)),
+        "26.5.0" => Some((87, 88, 100)),
+        "16.4.0" => Some((87, 89, 100)),
+        // The 15.x host/arch reporting family (NATIVE_ARCH/HOST_ARCH=arm64e,
+        // concrete CURRENT_ARCH = last of resolved ARCHS, the legacy
+        // VALID_ARCHS lists, empty LOCROOT/LOCSYMROOT) is now modelled as
+        // version-gated rules, so 15.4 scores match the modern majors.
+        "15.4.0" => Some((88, 96, 100)),
         _ => None,
     }
 }

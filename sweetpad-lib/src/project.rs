@@ -29,8 +29,11 @@ pub struct Project {
     /// Scheme names for this project, sorted alphabetically — the set
     /// `xcodebuild -list` prints: shared (`xcshareddata/xcschemes`) plus
     /// per-user (`xcuserdata/<user>.xcuserdatad/xcschemes`) scheme files,
-    /// or one autocreated scheme per target when no scheme file exists at
-    /// all (Xcode's scheme autocreation for fresh / never-shared projects).
+    /// plus one autocreated scheme per eligible target not already named by
+    /// a scheme file (Xcode's scheme autocreation; see
+    /// [`autocreates_scheme_for_target`] for the eligibility rules). Schemes
+    /// that `xcodebuild` additionally synthesizes from Swift *package*
+    /// manifests are out of scope — they aren't derivable from the pbxproj.
     pub schemes: Vec<String>,
 }
 
@@ -96,16 +99,31 @@ pub fn open_from_value(value: &Value, xcodeproj_path: &Path) -> Result<Project, 
     let default_configuration = default_configuration_name(objects, project_obj);
     let targets = extract_targets(objects, project_obj)?;
     let mut schemes = crate::scheme::container_schemes(xcodeproj_path);
-    if schemes.is_empty() && crate::scheme::autocreation_allowed(xcodeproj_path) {
-        // No scheme file on disk anywhere (shared or per-user): mirror Xcode's
-        // scheme autocreation — `xcodebuild -list` reports one scheme per
-        // target — so fresh / never-shared projects still list schemes. When
-        // the workspace settings disable autocreation (XcodeGen / Tuist write
-        // the flag), `xcodebuild -list` shows no schemes and so do we.
-        schemes = targets.iter().map(|t| t.name.clone()).collect();
-        schemes.sort();
+    if crate::scheme::autocreation_allowed(xcodeproj_path) {
+        // Mirror Xcode's per-target scheme autocreation: `xcodebuild -list`
+        // reports one scheme per eligible target that no scheme file already
+        // names, even when other targets DO have scheme files (kingfisher's
+        // Demo project ships only `Kingfisher-Demo.xcscheme` yet lists its
+        // macOS/tvOS/watchOS demo apps too; NetNewsWire lists its
+        // extension targets). When the workspace settings disable
+        // autocreation (XcodeGen / Tuist write the flag), `xcodebuild -list`
+        // shows only the scheme files and so do we.
+        let existing: std::collections::BTreeSet<&str> =
+            schemes.iter().map(String::as_str).collect();
+        let first_config = configurations.first().cloned();
+        let autocreated: Vec<String> = targets
+            .iter()
+            .filter(|t| !existing.contains(t.name.as_str()))
+            .filter(|t| {
+                autocreates_scheme_for_target(value, xcodeproj_path, t, first_config.as_deref())
+            })
+            .map(|t| t.name.clone())
+            .collect();
+        schemes.extend(autocreated);
         schemes.dedup();
     }
+    crate::scheme::sort_like_xcodebuild(&mut schemes);
+    schemes.dedup();
 
     let name = xcodeproj_path
         .file_stem()
@@ -121,6 +139,100 @@ pub fn open_from_value(value: &Value, xcodeproj_path: &Path) -> Result<Project, 
         default_configuration,
         schemes,
     })
+}
+
+/// Whether Xcode's scheme autocreation materializes a scheme for `target`.
+///
+/// Derived from the `xcodebuild -list` captures (`metadata/**/list.json`,
+/// scored by `tests/discovery_oracle.rs`):
+///
+/// * test bundles never autocreate — they ride their host scheme's
+///   TestAction (NetNewsWireTests / KingfisherTests / alamofire's per-
+///   platform test targets are all absent from the captures);
+/// * WatchKit extensions and the iPhone companion stub of a watchapp2 pair
+///   never autocreate — neither runs standalone (kingfisher's watch demo
+///   extension, alamofire's `watchOS Example` container). The watch *app*
+///   itself does autocreate (kingfisher's `Kingfisher-watchOS-Demo`);
+/// * Safari legacy extensions (`NSExtensionPointIdentifier =
+///   com.apple.Safari.extension`) never autocreate — they only run inside
+///   Safari (NetNewsWire's `Subscribe to Feed` is absent while its sibling
+///   share/widget/intents extensions are listed);
+/// * everything else — applications, the non-Safari app-extension family,
+///   frameworks, libraries, tools, aggregate targets — autocreates.
+fn autocreates_scheme_for_target(
+    value: &Value,
+    xcodeproj_path: &Path,
+    target: &Target,
+    first_config: Option<&str>,
+) -> bool {
+    match target.product_type.as_deref() {
+        Some(
+            "com.apple.product-type.bundle.unit-test"
+            | "com.apple.product-type.bundle.ui-testing"
+            | "com.apple.product-type.bundle.external-test"
+            | "com.apple.product-type.bundle.ocunit-test"
+            | "com.apple.product-type.watchkit2-extension"
+            | "com.apple.product-type.watchkit-extension"
+            | "com.apple.product-type.application.watchapp2-container",
+        ) => false,
+        Some(pt) if pt.starts_with("com.apple.product-type.app-extension") => {
+            !is_safari_extension_target(value, xcodeproj_path, &target.name, first_config)
+        }
+        _ => true,
+    }
+}
+
+/// Best-effort detection of a Safari legacy app extension: resolve the
+/// target's authored `INFOPLIST_FILE` through its settings layers (covers a
+/// value supplied by an xcconfig, e.g. NetNewsWire) and look for
+/// `NSExtensionPointIdentifier = com.apple.Safari.extension` in the plist.
+/// Any failure — recipe-valued path, unreadable or binary plist — counts as
+/// "not Safari", so a target is never wrongly dropped from the scheme list.
+fn is_safari_extension_target(
+    value: &Value,
+    xcodeproj_path: &Path,
+    target_name: &str,
+    first_config: Option<&str>,
+) -> bool {
+    let Some(config) = first_config else {
+        return false;
+    };
+    let Ok(bundle) = build_settings_from_value(value, xcodeproj_path, target_name, config) else {
+        return false;
+    };
+    let Some(plist_rel) = last_unconditional_setting(&bundle.layers, "INFOPLIST_FILE") else {
+        return false;
+    };
+    if plist_rel.contains("$(") {
+        return false;
+    }
+    let Some(project_dir) = xcodeproj_path.parent() else {
+        return false;
+    };
+    let Ok(plist) = crate::xcscheme::parse_file(&project_dir.join(plist_rel.trim())) else {
+        return false;
+    };
+    element_has_safari_extension_point(&plist)
+}
+
+/// Recursive search for a `<key>NSExtensionPointIdentifier</key>` followed by
+/// `<string>com.apple.Safari.extension</string>` anywhere in an XML plist.
+fn element_has_safari_extension_point(el: &crate::xcscheme::Element) -> bool {
+    let mut children = el.children.iter().peekable();
+    while let Some(child) = children.next() {
+        if child.name == "key"
+            && child.text == "NSExtensionPointIdentifier"
+            && children
+                .peek()
+                .is_some_and(|v| v.name == "string" && v.text == "com.apple.Safari.extension")
+        {
+            return true;
+        }
+        if element_has_safari_extension_point(child) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The `defaultConfigurationName` declared on a container's
@@ -629,6 +741,57 @@ pub fn target_linked_frameworks(
     Ok(out)
 }
 
+/// The dynamic-library products in a target's Frameworks build phase, by
+/// product-base name (`libDynamicLib.dylib` → `DynamicLib`). The companion to
+/// [`target_linked_frameworks`] for the `-l<name>` side of the link line.
+pub fn target_linked_libraries(
+    xcodeproj_path: &Path,
+    target_name: &str,
+) -> Result<Vec<String>, Error> {
+    let value = parse_pbxproj(xcodeproj_path)?;
+    let (objects, project_obj) = project_root(&value)?;
+    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
+        Error::BadProject(format!("no target named '{target_name}' in the project"))
+    })?;
+
+    let mut out = Vec::new();
+    let Some(phase_ids) = target.get("buildPhases").and_then(Value::as_array) else {
+        return Ok(out);
+    };
+    for phase_ref in phase_ids {
+        let Some(phase) = phase_ref.as_str().and_then(|id| objects.get(id)) else {
+            continue;
+        };
+        if phase.get("isa").and_then(Value::as_str) != Some("PBXFrameworksBuildPhase") {
+            continue;
+        }
+        let Some(file_ids) = phase.get("files").and_then(Value::as_array) else {
+            continue;
+        };
+        for build_file_ref in file_ids {
+            let Some(file_ref) = build_file_ref
+                .as_str()
+                .and_then(|id| objects.get(id))
+                .and_then(|bf| bf.get("fileRef").and_then(Value::as_str))
+                .and_then(|id| objects.get(id))
+            else {
+                continue;
+            };
+            let label = file_ref
+                .get("name")
+                .and_then(Value::as_str)
+                .or_else(|| file_ref.get("path").and_then(Value::as_str));
+            if let Some(name) = label
+                .and_then(|l| l.rsplit('/').next())
+                .and_then(|n| n.strip_suffix(".dylib"))
+            {
+                out.push(name.trim_start_matches("lib").to_string());
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The names of the targets a native target directly depends on — the `target`
 /// of each `PBXTargetDependency` in its `dependencies`, in pbxproj order. These
 /// are the build graph's edges: sourcekit-lsp uses them to know which dependency
@@ -969,6 +1132,8 @@ pub fn built_in_settings(
     derived_data_path: Option<&Path>,
     xcode_version: Option<&str>,
     xcode_developer_dir: Option<&str>,
+    capture_host_macos: Option<&str>,
+    macos_destination_unbound: bool,
 ) -> Vec<Assignment> {
     // Resolve to an absolute path so PROJECT_DIR / SRCROOT / BUILD_DIR match
     // xcodebuild's behaviour (it always emits absolute paths). Fall back to
@@ -1107,8 +1272,16 @@ pub fn built_in_settings(
     push("PROJECT_FILE_PATH", project_file_path);
     push("PROJECT_DIR", project_dir_str.clone());
     push("SRCROOT", project_dir_str.clone());
-    push("LOCROOT", project_dir_str.clone());
-    push("LOCSYMROOT", project_dir_str.clone());
+    // `LOCROOT` / `LOCSYMROOT` point at the project directory on Xcode 16+;
+    // Xcode 15.x's `-showBuildSettings` reported them as empty strings in
+    // every capture (kingfisher + tuist, all configs and destinations).
+    if legacy_xcode15 {
+        push("LOCROOT", String::new());
+        push("LOCSYMROOT", String::new());
+    } else {
+        push("LOCROOT", project_dir_str.clone());
+        push("LOCSYMROOT", project_dir_str.clone());
+    }
     push("TARGET_NAME", target_name.into());
     push("TARGETNAME", target_name.into());
     push("PRODUCT_NAME", target_name.into());
@@ -1244,11 +1417,31 @@ pub fn built_in_settings(
     push("INSTALL_GROUP", "staff".into());
 
     // --- Host + toolchain --------------------------------------------------
-    push("HOST_ARCH", host.clone());
-    push("NATIVE_ARCH", host.clone());
-    push("NATIVE_ARCH_ACTUAL", host.clone());
-    push("NATIVE_ARCH_64_BIT", host.clone());
-    push("NATIVE_ARCH_32_BIT", native_32);
+    // Xcode 15.x reported the *raw hardware* architecture for the host
+    // family — `arm64e` on every Apple Silicon Mac (all of which expose
+    // pointer authentication), with the Intel-era `i386` as the 32-bit
+    // counterpart. Xcode 16 normalized the whole family to the plain
+    // `arm64` / `arm` pair.
+    let reported_host = if legacy_xcode15 && host == "arm64" {
+        "arm64e".to_string()
+    } else {
+        host.clone()
+    };
+    let reported_32 = if legacy_xcode15 {
+        "i386".to_string()
+    } else {
+        native_32
+    };
+    push("HOST_ARCH", reported_host.clone());
+    push("NATIVE_ARCH", reported_host.clone());
+    push("NATIVE_ARCH_ACTUAL", reported_host.clone());
+    push("NATIVE_ARCH_64_BIT", reported_host);
+    push("NATIVE_ARCH_32_BIT", reported_32);
+    // `CURRENT_ARCH` (and its lowercase `arch` alias) is `undefined_arch` in
+    // the modern aggregated `-showBuildSettings` view; Xcode 15.x reported a
+    // concrete arch — the last element of the resolved `ARCHS` list (the
+    // active arch when ONLY_ACTIVE_ARCH collapsed the list, `x86_64` of an
+    // `arm64 x86_64` pair otherwise; both shapes appear in the 15.4 corpus).
     push("arch", "undefined_arch".into());
     push("CURRENT_ARCH", "undefined_arch".into());
     push("CURRENT_VARIANT", "normal".into());
@@ -1395,6 +1588,24 @@ pub fn built_in_settings(
         // re-emit the hardened-runtime default here. Evidence: IceCubesApp's
         // `-project` capture reports `ENABLE_HARDENED_RUNTIME = YES`.
         push("ENABLE_HARDENED_RUNTIME", "YES".into());
+        // With no resolved platform the per-SDK `SDKSettings.plist` defaults
+        // never apply, so `CODE_SIGN_IDENTITY` falls back to the base ad-hoc
+        // `-` instead of the macOS SDK's "Apple Development" our macosx
+        // fallback would pull in.
+        push("CODE_SIGN_IDENTITY", "-".into());
+        // Same wrapper-collapse as DWARF_DSYM_FILE_NAME above: with no
+        // PackageType chain the wrapper path is empty, so the XPC services
+        // folder reports the bare `/XPCServices`.
+        push("XPCSERVICES_FOLDER_PATH", "/XPCServices".into());
+        // No platform domain also means no macOS deep-bundle rpath: an
+        // application reports the generic `@executable_path/Frameworks`
+        // instead of the macosx fallback's `@executable_path/../Frameworks`.
+        if product_type == Some("com.apple.product-type.application") {
+            push(
+                "LD_RUNPATH_SEARCH_PATHS",
+                "@executable_path/Frameworks".into(),
+            );
+        }
         // The `application` ProductType ships `CODE_SIGNING_ALLOWED = YES`
         // unconditionally, but with no resolved platform xcodebuild reports NO
         // (a concrete signing identity can't be selected for a target whose
@@ -1405,9 +1616,6 @@ pub fn built_in_settings(
         }
     }
 
-    // RESIDUAL (IPHONEOS_DEPLOYMENT_TARGET, 4): the named deployment target is a
-    // pass-through of the user/SDK value; four captures drift 13.0-vs-13.1 in the
-    // minor version, a capture-time artifact rather than a resolver rule — left as-is.
     // `ARCHS` resolves to the *active* arch when `ONLY_ACTIVE_ARCH=YES`
     // and to the platform's standard arch list otherwise. The user's
     // unconditional `ONLY_ACTIVE_ARCH` setting wins; when nothing is
@@ -1459,6 +1667,15 @@ pub fn built_in_settings(
     } else {
         arch_list.clone()
     };
+    // Xcode 15.x reports a concrete `CURRENT_ARCH` / `arch` instead of the
+    // modern `undefined_arch` placeholder: the last element of the resolved
+    // ARCHS list (the collapsed active arch in Debug, the trailing `x86_64`
+    // of a full `arm64 x86_64` pair in Release). Re-pushed here — after the
+    // ARCHS collapse is known — to override the placeholder above.
+    if legacy_xcode15 && let Some(last) = archs_value.split_whitespace().next_back() {
+        push("CURRENT_ARCH", last.to_string());
+        push("arch", last.to_string());
+    }
     push("ARCHS", archs_value);
     push("ARCHS_STANDARD", arch_list.clone());
     // tvOSDevice.xcspec lists ARCHS_STANDARD_64_BIT = ( arm64, arm64e ) — the
@@ -1481,7 +1698,18 @@ pub fn built_in_settings(
         "ARCHS_STANDARD_32_64_BIT",
         archs_standard_32_64_bit_for(&sdk_base).into(),
     );
-    push("VALID_ARCHS", valid_archs_for(&sdk_base).into());
+    // `VALID_ARCHS` per SDK family. Xcode 15.4 reported different lists for
+    // the device families — macOS kept the Intel-first historical list, the
+    // iOS/tvOS device SDKs the bare 64-bit pair (arm64e first, no armv7/s),
+    // and watchOS dropped the retired armv7k with arm64e in the middle —
+    // all replaced by the modern unified lists in 16+.
+    let valid_archs = match (legacy_xcode15, sdk_base.as_str()) {
+        (true, "macosx") => "x86_64 x86_64h arm64 arm64e",
+        (true, "iphoneos" | "appletvos") => "arm64e arm64",
+        (true, "watchos") => "arm64 arm64e arm64_32",
+        _ => valid_archs_for(&sdk_base),
+    };
+    push("VALID_ARCHS", valid_archs.into());
     push(
         "IS_MACCATALYST",
         if is_catalyst { "YES" } else { "NO" }.into(),
@@ -1522,10 +1750,21 @@ pub fn built_in_settings(
 
     // --- Destination-aware defaults ----------------------------------------
     // `BUILD_ACTIVE_RESOURCES_ONLY` is YES when targeting any non-macOS
-    // platform (simulator OR iOS-target running on the macOS host as a
-    // Catalyst-style build), and NO for native macOS or generic device
-    // archives where no specific destination is bound.
-    let active_resources = if sdk_base != "macosx" && destination.is_some() {
+    // platform that can actually run: any simulator SDK (a simulator build
+    // always executes on a concrete simulator, so the flip happens even when
+    // no parseable `-destination` reached us — the `id=<uuid>` synthetic
+    // captures), or a non-macOS target bound to a real destination
+    // (including the designed-for-iPad device fallback a macOS destination
+    // produces for an iOS-only target). It stays NO for native macOS,
+    // destination-less device archives, and the non-binding shape where a
+    // macOS-natural target is forced onto a device SDK by an `-xcconfig`
+    // (see `macos_destination_unbound`). Xcode 15.x reported NO in every
+    // capture (Catalyst and native alike), so the flip is version-gated
+    // to 16+.
+    let active_resources = if !legacy_xcode15
+        && (sdk_base.ends_with("simulator")
+            || (sdk_base != "macosx" && destination.is_some() && !macos_destination_unbound))
+    {
         "YES"
     } else {
         "NO"
@@ -1667,7 +1906,13 @@ pub fn built_in_settings(
         && let Some(d) = destination
     {
         let (model, os_version) = if d.is_macos() {
-            ("MacFamily20,1".to_string(), host_os_version())
+            // Prefer the catalog's recorded capture-host macOS version so a
+            // capture resolves to the machine it was taken on; fall back to
+            // querying the local host for the catalog-less CLI path.
+            (
+                "MacFamily20,1".to_string(),
+                capture_host_macos.map_or_else(host_os_version, str::to_owned),
+            )
         } else {
             (
                 device_model_for(&d.device_name).to_string(),
@@ -1850,13 +2095,36 @@ pub fn built_in_settings(
     // `ENABLE_DEBUG_DYLIB` enables the split debug-dylib executable used by
     // previews + incremental relinking. See [`enable_debug_dylib_default`]
     // for the per-product-type rule, which follows Apple's
-    // `DarwinProductTypes.xcspec`. The debug/release split keys on the
-    // resolved optimization level, like the other unoptimized-build flips.
+    // `DarwinProductTypes.xcspec`. For applications the optimized-build
+    // flip only applies when the target authors `ENABLE_PREVIEWS` itself.
     let is_debug = unoptimized;
+    let authored_enable_previews =
+        last_unconditional_setting(user_layers, "ENABLE_PREVIEWS").is_some();
     push(
         "ENABLE_DEBUG_DYLIB",
-        enable_debug_dylib_default(product_type, is_debug).into(),
+        enable_debug_dylib_default(product_type, is_debug, authored_enable_previews).into(),
     );
+
+    // Xcode 15.x wraps a watchOS UI-testing bundle in its XCTRunner app at
+    // `-showBuildSettings` time, emitting the runner's Info.plist
+    // preprocessor definitions and the `--deep` codesign flag (tuist's
+    // watchapp2 `WatchAppUITests` per-target captures, both configs; 16+
+    // stopped reporting either key). The trailing space in `--deep ` is
+    // verbatim from the captures.
+    if legacy_xcode15
+        && product_type == Some("com.apple.product-type.bundle.ui-testing")
+        && matches!(sdk_base.as_str(), "watchos" | "watchsimulator")
+    {
+        push(
+            "INFOPLIST_PREPROCESSOR_DEFINITIONS",
+            "TESTPRODUCTNAME=$(PRODUCT_NAME) \
+             WRAPPEDPRODUCTBUNDLEIDENTIFIER=$(PRODUCT_BUNDLE_IDENTIFIER).xctrunner \
+             TESTPRODUCTBUNDLEIDENTIFIER=$(PRODUCT_BUNDLE_IDENTIFIER) \
+             WRAPPEDPRODUCTNAME=$(PRODUCT_NAME)-Runner"
+                .into(),
+        );
+        push("OTHER_CODE_SIGN_FLAGS", "--deep ".into());
+    }
 
     // `DEBUG_INFORMATION_FORMAT` for an installable iPhone application resolved
     // with NO run destination: xcodebuild's no-destination "default-target"
@@ -1871,6 +2139,26 @@ pub fn built_in_settings(
         && destination.is_none()
         && product_type == Some("com.apple.product-type.application")
         && sdk_base == "iphoneos"
+    {
+        push("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym".into());
+    }
+
+    // `DEBUG_INFORMATION_FORMAT` for an application bound to a run
+    // destination: the un-authored default is `dwarf-with-dsym` in *every*
+    // configuration (iOS-Example and Kingfisher-Demo report it on simulator
+    // destinations, on the device fallback an unsupported macOS destination
+    // produces, and — on Xcode 15.x — for the Catalyst-capable iOS target on
+    // a macOS destination), with one exception: a 16+ Catalyst build reports
+    // the plain spec `dwarf` instead, in Debug AND Release (Kingfisher-Demo
+    // `__macOS` on 16.4/26.5; see also the optimized-build override, which
+    // is suppressed for that same shape). Native macOS apps are excluded —
+    // the corpus has no unauthored native-macOS app capture, so we leave the
+    // spec default in place there. DEFAULT layer, so authored values win
+    // (ice-cubes/tuist/netnewswire author `dwarf` in Debug and keep it).
+    if destination.is_some()
+        && product_type == Some("com.apple.product-type.application")
+        && (sdk_base != "macosx" || is_catalyst)
+        && (!is_catalyst || legacy_xcode15)
     {
         push("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym".into());
     }
@@ -1945,6 +2233,12 @@ pub fn built_in_overrides(
     user_product_bundle_identifier: Option<&str>,
     user_development_team: Option<&str>,
     user_code_sign_identity: Option<&str>,
+    user_authored_enable_previews: bool,
+    user_authored_debug_information_format: bool,
+    user_archs: Option<&str>,
+    user_ld_runpath_search_paths: Option<&str>,
+    mergeable_library: bool,
+    macos_destination_unbound: bool,
 ) -> Vec<Assignment> {
     let legacy_xcode15 = xcode_major_version != 0 && xcode_major_version < 16;
     let is_debug = unoptimized;
@@ -1980,11 +2274,30 @@ pub fn built_in_overrides(
     // products in `-showBuildSettings` regardless of what the user set.
     // Command-line tools are exempt: the custom-config fixture's tool
     // reports the plain `dwarf` default in its optimized configs on every
-    // captured Xcode version.
-    if !is_debug && product_type != Some("com.apple.product-type.tool") {
+    // captured Xcode version. A 16+ Catalyst application that authors no
+    // DEBUG_INFORMATION_FORMAT of its own is also exempt — it reports the
+    // plain spec `dwarf` even optimized (Kingfisher-Demo `Release__macOS`
+    // on 16.4 and 26.5; the matching Debug default lives in
+    // [`built_in_settings`]).
+    let catalyst_unauthored_app_dwarf = is_catalyst
+        && !legacy_xcode15
+        && product_type == Some("com.apple.product-type.application")
+        && !user_authored_debug_information_format;
+    if !is_debug
+        && product_type != Some("com.apple.product-type.tool")
+        && !catalyst_unauthored_app_dwarf
+    {
         push("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym");
     } else if is_debug
-        && destination.is_none()
+        && (destination.is_none()
+            // A macOS destination that an iOS-family test bundle can't bind
+            // natively (no Catalyst) falls back to the device build — and
+            // xcodebuild reports the same no-destination dSYM default there
+            // (every tuist iOS test bundle's `Debug__macOS` capture).
+            || (destination
+                .is_some_and(|d| canonicalize_sdk_base(&d.platform) == "macosx")
+                && !is_catalyst
+                && canonicalize_sdk_base(sdk_base) != "macosx"))
         && is_test_bundle_product_type(product_type)
         && canonicalize_sdk_base(sdk_base) != "macosx"
     {
@@ -2016,9 +2329,82 @@ pub fn built_in_overrides(
         let target_sdk = canonicalize_sdk_base(sdk_base);
         let target_is_watch = matches!(target_sdk.as_str(), "watchos" | "watchsimulator");
         let dest_is_watch = matches!(dest_sdk.as_str(), "watchos" | "watchsimulator");
-        if target_is_watch != dest_is_watch {
+        // App extensions get the same treatment on ANY simulator destination
+        // of a different platform family (an iOS-only extension built for a
+        // visionOS-Simulator destination, where the host app runs
+        // designed-for-iPad): the extension itself can't be singled out as
+        // the run target, so xcodebuild builds its full standard arch list
+        // (ice-cubes' Action/Share/Widgets extensions, `Debug__visionOS-
+        // Simulator`: ARCHS `arm64 x86_64`, OAA NO, while IceCubesApp —
+        // which supports xros natively — keeps the active-arch collapse).
+        // Applications are NOT generalized: an iOS-only *app* on the same
+        // destination runs designed-for-iPad natively and keeps OAA=YES
+        // (alamofire's iOS Example).
+        let foreign_sim_extension = is_app_extension_family_product_type(product_type)
+            && d.is_simulator()
+            && dest_sdk != target_sdk
+            && target_is_watch == dest_is_watch;
+        // A macOS destination on a macOS-natural target that an `-xcconfig`
+        // forced onto a device SDK never binds (`macos_destination_unbound`,
+        // computed by the caller): xcodebuild reports the destination-less
+        // device view there too — full standard ARCHS, no active-arch
+        // collapse — overriding even an authored `ONLY_ACTIVE_ARCH = YES`
+        // (NetNewsWire's iOS xcconfigs captured against the macOS scheme).
+        if target_is_watch != dest_is_watch || foreign_sim_extension || macos_destination_unbound {
             push("ONLY_ACTIVE_ARCH", "NO");
             push("ARCHS", "$(ARCHS_STANDARD)");
+        }
+    }
+    // An authored *literal* ARCHS list that excludes the build's active arch
+    // can't honour ONLY_ACTIVE_ARCH — there is no active slice to single
+    // out — so xcodebuild reports NO even in Debug (the `archs-arm64e`
+    // synthetic override under a generic iOS destination: ARCHS=arm64e,
+    // active arch arm64, OAA=NO). Recipe values (`$(ARCHS_STANDARD)`) are
+    // left alone — we can't token-check them without a full expansion.
+    if let Some(archs) = user_archs
+        && !archs.contains("$(")
+    {
+        let active = destination
+            .map(|d| d.arch.clone())
+            .filter(|a| !a.is_empty())
+            .unwrap_or_else(host_arch);
+        if !archs.split_whitespace().any(|a| a == active) {
+            push("ONLY_ACTIVE_ARCH", "NO");
+        }
+    }
+    // XCTest bundles that author an LD_RUNPATH_SEARCH_PATHS without the
+    // standard `@executable_path/Frameworks` entry get it appended by
+    // xcodebuild on the iOS device SDK (NetNewsWire's iOSTests authors only
+    // the loader-relative paths; both its per-target captures carry the
+    // appended entry). Authored lists that already contain the token are
+    // left untouched (tuist's generated tests author it explicitly).
+    if is_unit_test_bundle_product_type(product_type)
+        && canonicalize_sdk_base(sdk_base) == "iphoneos"
+        && let Some(rp) = user_ld_runpath_search_paths
+        && !rp
+            .split_whitespace()
+            .any(|t| t == "@executable_path/Frameworks")
+    {
+        push(
+            "LD_RUNPATH_SEARCH_PATHS",
+            "$(inherited) @executable_path/Frameworks",
+        );
+    }
+    // A target resolving `MERGEABLE_LIBRARY = YES` gets the mergeable-library
+    // treatment from xcodebuild: the Swift bundle-lookup helper condition is
+    // appended in every configuration, and optimized builds additionally
+    // become mergeable and skip the install strip (the `mergeable-library`
+    // synthetic override; in Debug the library is built normally for the
+    // debugger, so MAKE_MERGEABLE keeps its NO default and the unoptimized
+    // STRIP_INSTALLED_PRODUCT=NO flip already applies).
+    if mergeable_library {
+        push(
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS",
+            "$(inherited) SWIFT_BUNDLE_LOOKUP_HELPER_AVAILABLE",
+        );
+        if !is_debug {
+            push("MAKE_MERGEABLE", "YES");
+            push("STRIP_INSTALLED_PRODUCT", "NO");
         }
     }
     // Test bundles get the swift-testing macro plugin path appended to
@@ -2090,21 +2476,34 @@ pub fn built_in_overrides(
         push("ALLOW_TARGET_PLATFORM_SPECIALIZATION", "YES");
     }
     // A Catalyst-supporting target built for a macOS destination gets
-    // `macosx` appended to its user-authored `SUPPORTED_PLATFORMS` (kept
-    // verbatim otherwise). Applies to extensions too — it gates on the
-    // Catalyst flag and the macOS destination, not the product type.
+    // `macosx` appended verbatim to its resolved `SUPPORTED_PLATFORMS` —
+    // the user-authored list when there is one, the SDK default otherwise.
+    // The append does NOT deduplicate: an unauthored Catalyst extension on
+    // a macOS destination resolves the `macosx` SDK default and ends up
+    // with the literal `macosx macosx` (ice-cubes' widget extension, both
+    // configs). Applies to extensions too — it gates on the Catalyst flag
+    // and the macOS destination, not the product type. Xcode 15.x didn't do
+    // this append (Kingfisher-Demo's 15.4 `__macOS` captures keep the
+    // authored list untouched), so it's gated to 16+.
     if supports_maccatalyst
+        && !legacy_xcode15
         && destination.is_some_and(|d| canonicalize_sdk_base(&d.platform) == "macosx")
-        && let Some(user_sp) = user_supported_platforms
-        && !user_sp.split_whitespace().any(|p| p == "macosx")
     {
-        push("SUPPORTED_PLATFORMS", &format!("{user_sp} macosx"));
+        let base = user_supported_platforms.map_or_else(
+            || supported_platforms_for(sdk_base, legacy_xcode15),
+            str::to_owned,
+        );
+        push("SUPPORTED_PLATFORMS", &format!("{base} macosx"));
     }
-    // RESIDUAL (SUPPORTED_PLATFORMS, 1): one capture shows xcodebuild emitting a
-    // duplicate "macosx macosx" token; that's an xcodebuild quirk, not a rule —
-    // reproducing it would be over-fitting, so we leave the single-token value.
     if is_catalyst && let Some(user_target) = user_iphoneos_deployment_target {
         let ios_effective = apply_catalyst_ios_floor(user_target);
+        // The Catalyst floor applies to the named iOS deployment target
+        // itself, not just the derived trio: xcodebuild reports 13.1 for
+        // targets authoring anything lower (alamofire's 10.0, kingfisher's
+        // 13.0). Xcode 15.x passed the authored value through untouched.
+        if !legacy_xcode15 {
+            push("IPHONEOS_DEPLOYMENT_TARGET", &ios_effective);
+        }
         push("SWIFT_DEPLOYMENT_TARGET", &ios_effective);
         push(
             "LLVM_TARGET_TRIPLE_OS_VERSION",
@@ -2114,6 +2513,26 @@ pub fn built_in_overrides(
             "MACOSX_DEPLOYMENT_TARGET",
             &catalyst_macos_target(&ios_effective),
         );
+    }
+    // The debug dylib can't be signed with the hardened runtime: for a
+    // Catalyst-capable target built on a simulator platform, xcodebuild
+    // forces `ENABLE_HARDENED_RUNTIME = NO` whenever `ENABLE_DEBUG_DYLIB`
+    // resolves YES, overriding an authored YES (ice-cubes, SUPPORTS_
+    // MACCATALYST=YES on every target: its simulator captures report NO
+    // exactly where the debug dylib is active — every Debug build — and
+    // YES where it isn't: the app's Release builds and every Catalyst/macOS
+    // build). Targets WITHOUT Catalyst support keep their authored value:
+    // NetNewsWire's iOS extensions author an unconditional YES and report
+    // YES on every simulator capture, debug dylib active or not — for them
+    // the hardened runtime can never apply anyway, so xcodebuild passes the
+    // setting through untouched.
+    if !legacy_xcode15
+        && supports_maccatalyst
+        && sdk_base.ends_with("simulator")
+        && enable_debug_dylib_default(product_type, is_debug, user_authored_enable_previews)
+            == "YES"
+    {
+        push("ENABLE_HARDENED_RUNTIME", "NO");
     }
     // A scheme whose `TestAction` has `codeCoverageEnabled="YES"` forces
     // `CLANG_COVERAGE_MAPPING=YES` on every target it resolves, overriding the
@@ -2306,7 +2725,7 @@ fn find_derived_data_container(xcodeproj: &Path) -> PathBuf {
     xcodeproj.to_path_buf()
 }
 
-fn canonicalize_sdk_base(sdk: &str) -> String {
+pub(crate) fn canonicalize_sdk_base(sdk: &str) -> String {
     let trimmed = sdk.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
     if trimmed.is_empty() {
         sdk.to_string()
@@ -2457,6 +2876,23 @@ pub fn is_test_bundle_product_type(product_type: Option<&str>) -> bool {
     )
 }
 
+/// True when the product type identifies an app extension that embeds into a
+/// host application — the classic `app-extension` family (including its
+/// subtypes like Messages stickers) plus the ExtensionKit, PlugInKit, and
+/// WatchKit-2 extension types.
+#[must_use]
+pub fn is_app_extension_family_product_type(product_type: Option<&str>) -> bool {
+    match product_type {
+        Some(
+            "com.apple.product-type.extensionkit-extension"
+            | "com.apple.product-type.pluginkit-plugin"
+            | "com.apple.product-type.watchkit2-extension",
+        ) => true,
+        Some(pt) => pt.starts_with("com.apple.product-type.app-extension"),
+        None => false,
+    }
+}
+
 /// True only for unit-style test bundles — the ones xcodebuild nests into a
 /// host application's `PlugIns` directory (`TARGET_BUILD_SUBPATH =
 /// /<host>.app/PlugIns`). UI-testing bundles are excluded: they build into
@@ -2486,29 +2922,29 @@ pub fn is_unit_test_bundle_product_type(product_type: Option<&str>) -> bool {
 /// (sticker pack, watch container, Messages app) hard-code `NO` because their
 /// thin-stub executable can't host the dylib wrapper.
 ///
-/// One divergence from the spec: plain `application` in Release. The spec says
-/// `YES`, but `xcodebuild -showBuildSettings` reports `NO` for most apps and
-/// `YES` for a minority, keyed on a build-system heuristic that isn't a
-/// function of any input we can see — it splits e.g. NetNewsWire / Kingfisher /
-/// Alamofire's iOS Example (`YES`) from ice-cubes / tuist-generated apps
-/// (`NO`) with otherwise-identical declared settings, and doesn't track
-/// project format, deployment target, or `ONLY_ACTIVE_ARCH`. `Debug→YES /
-/// Release→NO` matches the majority for apps. App-extensions, by contrast,
-/// keep `YES` in Release across the entire corpus, so they're unconditional.
-///
-/// This Release→NO branch is therefore best-effort and irreducible. On the
-/// corpus it is correct for 59 of 68 Release `application` configs (~87%); the
-/// 9 misses are the `YES` minority and span iOS / macOS / tvOS / visionOS, so
-/// no observable input (`IPHONEOS_DEPLOYMENT_TARGET`, `SUPPORTS_MACCATALYST`,
-/// product type, pbxproj/xcconfig, project format) predicts them. The gate is
-/// an opaque xcodebuild runtime decision; matching it exactly would require
-/// keying on project identity, which we deliberately don't do. `NO` is kept as
-/// the safe majority default.
+/// One refinement over the spec: for `application` (and `watchkit2-extension`)
+/// the optimized-build `NO` flip only happens when the target *authors*
+/// `ENABLE_PREVIEWS` somewhere in its layers — opting into the previews
+/// machinery hands the debug dylib to the same unoptimized-build gate that
+/// drives `ENABLE_PREVIEWS` itself. Targets that never mention
+/// `ENABLE_PREVIEWS` keep the spec `YES` in every configuration. This is the
+/// input that cleanly separates what previously looked like an opaque
+/// heuristic: ice-cubes / tuist apps author `ENABLE_PREVIEWS = YES` and
+/// report `NO` in Release; alamofire / kingfisher / netnewswire apps author
+/// none and report `YES`; alamofire's watch project authors it and its watch
+/// extension flips, while kingfisher/tuist watch extensions don't and stay
+/// `YES`. The non-watch app-extension family keeps `YES` in Release across
+/// the entire corpus even when an authored `ENABLE_PREVIEWS` arrives via the
+/// project level (tuist's AppExtension), so it stays unconditional.
 ///
 /// Product types that don't emit `ENABLE_DEBUG_DYLIB` at all (frameworks,
 /// libraries, tools, test bundles) fall through to `NO`; the value is never
 /// compared for them.
-fn enable_debug_dylib_default(product_type: Option<&str>, is_debug: bool) -> &'static str {
+fn enable_debug_dylib_default(
+    product_type: Option<&str>,
+    is_debug: bool,
+    authored_enable_previews: bool,
+) -> &'static str {
     match product_type {
         // Stub-binary product types: incompatible with the dylib wrapper.
         Some(
@@ -2517,15 +2953,32 @@ fn enable_debug_dylib_default(product_type: Option<&str>, is_debug: bool) -> &'s
             | "com.apple.product-type.application.watchapp2-container"
             | "com.apple.product-type.app-extension.messages-sticker-pack",
         ) => "NO",
-        // App-extension family inherits YES and keeps it in every config.
-        Some(
-            "com.apple.product-type.extensionkit-extension"
-            | "com.apple.product-type.watchkit2-extension",
-        ) => "YES",
+        // App-extension family inherits YES and keeps it in every config —
+        // even when an authored ENABLE_PREVIEWS arrives via the project
+        // level (tuist's AppExtension reports YES in Release). WatchKit
+        // extensions are the exception: they follow the same authored-
+        // previews gate as applications below (alamofire's watch project
+        // authors ENABLE_PREVIEWS and its extension reports NO in Release;
+        // kingfisher/tuist author none and stay YES across the corpus).
+        Some("com.apple.product-type.extensionkit-extension") => "YES",
+        Some("com.apple.product-type.watchkit2-extension") => {
+            if is_debug || !authored_enable_previews {
+                "YES"
+            } else {
+                "NO"
+            }
+        }
         Some(pt) if pt.starts_with("com.apple.product-type.app-extension") => "YES",
-        // Plain applications: YES in Debug, NO in Release (majority match).
+        // Plain applications: the spec default YES survives into every
+        // configuration *unless* the target authors `ENABLE_PREVIEWS` —
+        // opting into the previews machinery hands the debug dylib to the
+        // same unoptimized-build gate that drives ENABLE_PREVIEWS itself
+        // (YES in Debug, NO in optimized builds). The corpus separates the
+        // two cleanly: alamofire/kingfisher/netnewswire apps (no authored
+        // ENABLE_PREVIEWS) report YES in Release, ice-cubes/tuist apps
+        // (authored ENABLE_PREVIEWS = YES) report NO.
         Some("com.apple.product-type.application") => {
-            if is_debug {
+            if is_debug || !authored_enable_previews {
                 "YES"
             } else {
                 "NO"
@@ -3166,22 +3619,37 @@ mod tests {
         let watch_container = Some("com.apple.product-type.application.watchapp2-container");
         let framework = Some("com.apple.product-type.framework");
 
-        // Plain apps: Debug→YES / Release→NO (majority of captures).
-        assert_eq!(enable_debug_dylib_default(app, true), "YES");
-        assert_eq!(enable_debug_dylib_default(app, false), "NO");
-        // App-extension family: YES in every configuration.
-        for ext in [ext, widget, watch_ext, imsg_ext] {
-            assert_eq!(enable_debug_dylib_default(ext, true), "YES");
-            assert_eq!(enable_debug_dylib_default(ext, false), "YES");
+        // Plain apps that author ENABLE_PREVIEWS: Debug→YES / Release→NO
+        // (ice-cubes / tuist). Without authored previews the spec default
+        // YES survives every configuration (alamofire / kingfisher /
+        // netnewswire apps).
+        assert_eq!(enable_debug_dylib_default(app, true, true), "YES");
+        assert_eq!(enable_debug_dylib_default(app, false, true), "NO");
+        assert_eq!(enable_debug_dylib_default(app, true, false), "YES");
+        assert_eq!(enable_debug_dylib_default(app, false, false), "YES");
+        // App-extension family: YES in every configuration, regardless of
+        // an (inherited) authored ENABLE_PREVIEWS (tuist's AppExtension).
+        for ext in [ext, widget, imsg_ext] {
+            for previews in [true, false] {
+                assert_eq!(enable_debug_dylib_default(ext, true, previews), "YES");
+                assert_eq!(enable_debug_dylib_default(ext, false, previews), "YES");
+            }
         }
+        // WatchKit extensions follow the application gate: authored
+        // ENABLE_PREVIEWS flips optimized builds to NO (alamofire's watch
+        // project), unauthored stays YES (kingfisher / tuist watch demos).
+        assert_eq!(enable_debug_dylib_default(watch_ext, true, true), "YES");
+        assert_eq!(enable_debug_dylib_default(watch_ext, false, true), "NO");
+        assert_eq!(enable_debug_dylib_default(watch_ext, true, false), "YES");
+        assert_eq!(enable_debug_dylib_default(watch_ext, false, false), "YES");
         // Stub-binary product types: always NO.
         for stub in [sticker, watch_container] {
-            assert_eq!(enable_debug_dylib_default(stub, true), "NO");
-            assert_eq!(enable_debug_dylib_default(stub, false), "NO");
+            assert_eq!(enable_debug_dylib_default(stub, true, false), "NO");
+            assert_eq!(enable_debug_dylib_default(stub, false, false), "NO");
         }
         // Types that don't emit the setting fall through to NO.
-        assert_eq!(enable_debug_dylib_default(framework, true), "NO");
-        assert_eq!(enable_debug_dylib_default(None, true), "NO");
+        assert_eq!(enable_debug_dylib_default(framework, true, false), "NO");
+        assert_eq!(enable_debug_dylib_default(None, true, false), "NO");
     }
 
     #[test]
@@ -3288,6 +3756,12 @@ mod tests {
             None,
             None,
             None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
         );
         assert_eq!(
             find(&ice, "ALLOW_TARGET_PLATFORM_SPECIALIZATION").as_deref(),
@@ -3317,6 +3791,12 @@ mod tests {
             None,
             None,
             None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
         );
         assert_eq!(find(&kf, "ALLOW_TARGET_PLATFORM_SPECIALIZATION"), None);
         assert_eq!(
@@ -3343,6 +3823,12 @@ mod tests {
             None,
             None,
             None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
         );
         assert_eq!(
             find(&extension, "ALLOW_TARGET_PLATFORM_SPECIALIZATION"),
@@ -3371,11 +3857,20 @@ mod tests {
             None,
             None,
             None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
         );
         assert_eq!(find(&plain, "ALLOW_TARGET_PLATFORM_SPECIALIZATION"), None);
         assert_eq!(find(&plain, "SUPPORTED_PLATFORMS"), None);
 
-        // macosx already present → not appended twice.
+        // The append is verbatim — a list already containing macosx gets a
+        // duplicate token, matching xcodebuild (ice-cubes' unauthored widget
+        // extension resolves the `macosx` SDK default and its captures
+        // report the literal `macosx macosx`).
         let already = built_in_overrides(
             26,
             false,
@@ -3393,8 +3888,48 @@ mod tests {
             None,
             None,
             None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
         );
-        assert_eq!(find(&already, "SUPPORTED_PLATFORMS"), None);
+        assert_eq!(
+            find(&already, "SUPPORTED_PLATFORMS").as_deref(),
+            Some("iphoneos macosx macosx")
+        );
+
+        // Unauthored SUPPORTED_PLATFORMS on a Catalyst macOS build: the SDK
+        // default (`macosx`) is the append base → `macosx macosx`.
+        let unauthored = built_in_overrides(
+            26,
+            false,
+            true,
+            true,
+            None,
+            None,
+            ext,
+            "macosx",
+            Some(&macos_dest),
+            false,
+            false,
+            true,
+            false,
+            None,
+            None,
+            None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
+        );
+        assert_eq!(
+            find(&unauthored, "SUPPORTED_PLATFORMS").as_deref(),
+            Some("macosx macosx")
+        );
     }
 
     #[test]
@@ -3408,17 +3943,18 @@ mod tests {
         let app = Some("com.apple.product-type.application");
         let unsigned = built_in_overrides(
             26, true, false, false, None, None, framework, "macosx", None, false, false, false,
-            false, None, None, None,
+            false, None, None, None, false, false, None, None, false, false,
         );
         assert_eq!(find(&unsigned, "CODE_SIGN_IDENTITY").as_deref(), Some("-"));
         let signed = built_in_overrides(
             26, true, false, false, None, None, app, "macosx", None, false, false, true, false,
-            None, None, None,
+            None, None, None, false, false, None, None, false, false,
         );
         assert_eq!(find(&signed, "CODE_SIGN_IDENTITY"), None);
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)] // the extra built_in_overrides args inflate each call site
     fn maccatalyst_bundle_id_prefix_gated_on_derive_flag() {
         let find = |out: &[Assignment], key: &str| -> Option<String> {
             out.iter().find(|a| a.key == key).map(|a| a.value.clone())
@@ -3444,6 +3980,12 @@ mod tests {
             Some("com.onevcat.$(PRODUCT_NAME:rfc1034identifier)"),
             None,
             None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
         );
         assert_eq!(
             find(&derived, "PRODUCT_BUNDLE_IDENTIFIER").as_deref(),
@@ -3468,6 +4010,12 @@ mod tests {
             Some("com.example.App"),
             None,
             None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
         );
         assert_eq!(find(&not_derived, "PRODUCT_BUNDLE_IDENTIFIER"), None);
 
@@ -3489,6 +4037,12 @@ mod tests {
             Some("com.example.App"),
             None,
             None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
         );
         assert_eq!(find(&non_catalyst, "PRODUCT_BUNDLE_IDENTIFIER"), None);
 
@@ -3510,6 +4064,12 @@ mod tests {
             Some("maccatalyst.com.example.App"),
             None,
             None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
         );
         assert_eq!(find(&already, "PRODUCT_BUNDLE_IDENTIFIER"), None);
     }
@@ -3577,6 +4137,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            false,
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("SKIP_INSTALL"), Some("YES"));
@@ -3610,6 +4172,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            false,
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("SKIP_INSTALL"), Some("NO"));
@@ -3637,6 +4201,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            false,
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("DSTROOT"), Some("/tmp/Alamofire.dst"));
@@ -3680,6 +4246,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            false,
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("ARCHS"), Some("arm64"));
@@ -3701,6 +4269,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            false,
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("ARCHS").map(String::from), Some(host_arch()));
@@ -3723,6 +4293,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            false,
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("ARCHS"), Some("arm64 x86_64"));
