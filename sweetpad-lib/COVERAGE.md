@@ -45,6 +45,15 @@ Concurrency/Span back-deployment gates, version-gated `-dead_strip` /
 XCTestSwiftSupport); the residuals are the visionOS scheme-coverage capture
 gap and a multi-arch Release capture artifact.
 
+**Updated 2026-06-11 (roadmap):** a fresh full-oracle run found the settings
+resolver at structural 100% on five of six oracles and 99.999% on the corpus
+oracle — exactly 2 of ~431k scored keys fail structurally, both
+`CLANG_COVERAGE_MAPPING` from one missing `.xctestplan` capture. The remaining
+work to 100% is now itemized in **“Correctness roadmap to 100%”** at the end of
+this file: the prioritized tracks (last-2-keys fix, geometry closure, the
+itemized compiler-args gaps, ranked corpus expansion, harness hardening) with
+acceptance criteria per step.
+
 ## Legend
 
 - ✅ — at least one fixture exercises this; pointer in **Where**. Rows marked
@@ -382,3 +391,189 @@ pass/fail, and asserts floors set just under its observed pass rate. The lone
 documented per-source skips are fixture-capture gaps (e.g. ice-cubes references an
 `IceCubesApp.xcconfig` baseConfiguration that was never captured into `raw/`), not
 resolver gaps — never fabricated as a pass.
+
+## Correctness roadmap to 100% (added 2026-06-11)
+
+This section is the prioritized work queue for closing the remaining gap between
+the resolver and `xcodebuild`. It is grounded in a fresh full-oracle run on this
+date — re-measure (`cargo test --release --test <oracle> -- --nocapture`) before
+acting, and re-rank if the numbers moved.
+
+### Measured baseline (2026-06-11, all tests green)
+
+Settings-resolution oracles — shared keys scored exact / canonical / structural:
+
+| Oracle | Files | Shared keys | Exact | Canon | Struct | Systematic mismatches |
+|---|---|---|---|---|---|---|
+| corpus (per-scheme) | 390 | 190,193 | 88% | 96% | 99.999% | `CLANG_COVERAGE_MAPPING` ×2 — the **only** one |
+| per-target | 294 | 136,194 | 88% | 91% | **100%** | none |
+| project-defaults | 165 | 75,744 | 88% | 91% | **100%** | none |
+| synthetic-override | 26 | 12,561 | 88% | 99% | **100%** | none |
+| real-xcconfig | 25 | 12,843 | 88% | 99% | **100%** | none |
+| custom-config | 9 | 3,291 | 85% | 89% | **100%** | none |
+| discovery (`-list`) | 30 | 30 containers | — | — | **100%** exact (sets + ordering) | none |
+
+**Across all six settings oracles, exactly 2 of ~431,000 scored keys fail
+structurally** — both `CLANG_COVERAGE_MAPPING` on the Alamofire visionOS scheme,
+a known *capture* gap (its `TestAction` points at a `.xctestplan` never copied
+into `raw/`), not a resolver bug. The exact/canonical deficits are dominated by
+two documented geometry families (see Track B), not value errors.
+
+Compiler-args oracle (structural, per Xcode-version × platform): swift 97–100 %
+everywhere except `xros` 94 %; clang 95–98 %; link 99–100 % except `xros` 92 %.
+Precision 94–100 % per cell. The per-flag tallies behind those numbers are short
+and specific — every one is itemized in Track C.
+
+### Definition of "100 % correct"
+
+- **Hard target:** structural 100 % + an empty systematic-mismatch tally on every
+  oracle, every version. Structural is geometry-independent, so 100 % here means
+  "every value xcodebuild computes, we compute" — this is achievable and Tracks
+  A + C get there.
+- **Exact/canonical are geometry-capped** (we resolve against `fixtures/raw/`,
+  the oracle was captured at the original checkout; `CCHROOT` embeds the capture
+  host's Darwin cache dir). They can be pushed into the high 90s by closing the
+  two known drift families (Track B) but byte-for-byte 100 % exact is not a
+  meaningful goal across machines — canonical is the cross-machine ceiling.
+- Two documented irreducibles stay documented unless Track E1 disproves them:
+  `ENABLE_DEBUG_DYLIB` (opaque xcodebuild Release heuristic) and the 15.x
+  host/arch reporting family (already version-gated).
+
+### Track A — settings resolver: the last 2 keys (highest value, small)
+
+1. **Close `CLANG_COVERAGE_MAPPING` ×2.** Extend the raw-input copy list in
+   `scripts/02_capture_metadata.py` to include scheme-referenced `.xctestplan`
+   files (the 5 plans already exist under `corpus/alamofire/`, they were just
+   never copied to `raw/`), re-capture alamofire 26.5 raw inputs, then derive
+   `CLANG_COVERAGE_MAPPING` from the plan's `codeCoverage` flag during scheme
+   resolution (`src/scheme.rs` / `src/build_context.rs`). _Acceptance:_ corpus
+   systematic tally prints empty; corpus 26.5 structural floor raised to 100
+   (`CORPUS_FLOOR_2650` in `tests/corpus_oracle.rs`).
+2. **Audit the 34 skipped corpus captures** ("target/project lookup failed" in
+   `tests/corpus_oracle.rs`) + 2 per-target skips. Every silent skip is unscored
+   surface where a bug can hide. For each: fix the lookup, or move it to an
+   explicit documented-skip list with the reason printed. _Acceptance:_ skipped
+   count is 0 or every skip is named + justified in the test output.
+3. **Capture `IceCubesApp.xcconfig`** — the baseConfiguration ice-cubes
+   references that was never copied into `raw/` (the lone documented per-source
+   skip in `tests/xcconfig_resolution_oracle.rs` / `project_defaults_oracle.rs`).
+   Same capture-script fix family as A1. _Acceptance:_ those skips removed; the
+   xcconfig scores like any other.
+
+### Track B — geometry closure: raise canonical to its real ceiling (optional)
+
+4. **`CCHROOT` (fails canonical in every file of every oracle — ×294 per-target
+   alone).** The value embeds the capture host's `/var/folders/...` Darwin user
+   cache dir. `canonicalize_value` already has a darwin-user-cache rule
+   (`canonicalize_darwin_user_cache` passes), yet CCHROOT still misses — find the
+   form mismatch and close it. Single highest-count canonical win, pure test-
+   harness work, zero resolver risk.
+5. **tuist capture-root drift** (`PROJECT_DIR`/`SRCROOT`/`SOURCE_ROOT`/
+   `PROJECT_FILE_PATH` ×270 each + the `BUILD_DIR`-derived family): the tuist
+   oracles were captured at per-example generated checkouts whose roots the
+   canonicalizer doesn't recognize (tuist canon=95 % vs ≥99 % for every other
+   project). Teach it the tuist fixture layout (or record `capture_root` in each
+   `meta.json` and rebase). Moves corpus canonical ~96→~99 and per-target
+   canonical ~88→mid-90s, since tuist is ~76 % of all keys.
+6. After B1+B2, re-measure and ratchet every canonical floor; document whatever
+   residue remains (it should be only true per-machine paths).
+
+### Track C — compiler-args: itemized structural gaps to 100 %
+
+Every gap below is visible today in `tests/compiler_args_oracle.rs -- --nocapture`;
+fix → re-run all versions → raise that `(version, platform)` floor.
+
+7. **visionOS coverage family** (the largest cell gap: xros swift 94 / clang 95 /
+   link 92): missing `-profile-generate`, `-profile-coverage-mapping`,
+   `-fcoverage-mapping`, `-fprofile-instr-generate`, `-Xlinker`. Same root cause
+   as A1 — the scheme's test plan enables code coverage and we never see it.
+   Landing A1's `.xctestplan` derivation fixes this cell too (or re-capture
+   without coverage; prefer modelling it — it's real behaviour).
+8. **`.mm` sources dropped from clang compiles** (`util.mm` missing in
+   `_synthetic-rich` and `_synthetic-staticlib`): a real enumeration or
+   language-gating bug — ObjC++ files must reach `clang_arguments`. Investigate
+   `project::target_source_files` / the `FileTypes` gate in
+   `src/compiler_args.rs`.
+9. **`<Product>_vers.o` missing from links** (~8 cells, one per framework
+   target): `VERSIONING_SYSTEM = apple-generic` generates a `<Product>_vers.c`
+   compile + link object. Model it (it's a pure function of
+   `CURRENT_PROJECT_VERSION`/product name) or classify as geometry with a
+   comment — decide once, apply everywhere.
+10. **Test-bundle clang `-iframework <Platform>/Developer/Library/Frameworks`**
+    (×1 per version): the swift generator already emits the platform test
+    frameworks path; port the same rule to `clang_arguments`.
+11. **Version gates:** `-explicit-module-build` emitted on 15.4/16.4 where the
+    oracle has none (gate to ≥26); 15.4 clang missing `-g`/`-gmodules`
+    (debug-info gating on the 15.x driver); 15.4 swift missing `-F` ×4.
+12. **Known confident-wrong extras** (precision tail): `-fexceptions`
+    (`GCC_ENABLE_EXCEPTIONS`), `-fvisibility=hidden`
+    (`GCC_SYMBOLS_PRIVATE_EXTERN`), the one-target `-W(no-)shorten-64-to-32`
+    flip. These come from resolver values `-showBuildSettings` doesn't surface —
+    ground the true default in the xcspec; if genuinely underivable, document
+    per-flag and exclude from precision instead of carrying a silent tail.
+13. **`-target` triple mismatches** (26.5 macosx link ×1, 26.5 watchos clang ×1,
+    likely `armv7k`/`arm64_32` or deployment-suffix drift): diff the literal
+    triples and fix derivation.
+14. **Autolinked `-framework` recall** (the one tracked link gap): frameworks
+    pulled in by `import` are encoded in object files, not the project graph.
+    Decide formally: out-of-scope (recommended — BSP never links, and the build
+    oracle's precision is unaffected) and document it, or model an import-scan
+    heuristic. Stop carrying it as an open item either way.
+
+### Track D — corpus expansion for the remaining 18 ❌ rows (ranked)
+
+Only rows that change resolved settings or argv earn a fixture; the rest get
+hermetic parse tests or stay ❌ by design.
+
+15. **Swift package as root** (`Package.swift`, no xcodeproj) — the biggest
+    genuinely uncovered real-world surface: the discovery oracle already tallies
+    41 xcodebuild-synthesized package schemes as out-of-scope. This is a *scope
+    decision* first: if the BSP server should serve SPM-root repos, add a
+    synthetic SPM-root fixture, capture `-list` + `-showBuildSettings` for a
+    package scheme, and extend discovery/resolution to manifests. If not, record
+    the 🚫 with rationale and retire the ❌.
+16. **Weak/optional framework link + `-framework` vs `-l` styles** (3 ❌ rows,
+    one fixture): a synthetic project with a `Weak` ATTRIBUTES framework entry +
+    a `-l`-style library link, captured like `_synthetic-staticlib`
+    (`scripts/17_static_library.py` is the template). Feeds the link oracle.
+17. **XPC service** (and DriverKit if cheap): distinct product-type xcspec
+    domains never exercised — a synthetic macOS XPC target needs no runtime and
+    closes a whole product-type family. DriverKit SDK JSONs already sit in
+    `_global`; capture only if a per-target capture is low-effort.
+18. **Scheme post-actions / launch args / parallel testing + headers phase +
+    run-script I/O files** — structure-only (don't change the settings dict):
+    cover hermetically in `src/scheme.rs`/`tests/xcscheme.rs` parse tests, same
+    pattern as the user-scheme rows; flip to ✅ *(hermetic, not corpus)*.
+19. **Core ML / Metal / `.bundle` / custom build rules / CloudKit / Tuist
+    plugins** — stay ❌/🚫; documented low resolver value (compile rules, not
+    settings).
+
+### Track E — harness hardening (keeps 100 % honest once reached)
+
+20. **Interrogate PIF dumps for `ENABLE_DEBUG_DYLIB`** before accepting it as
+    irreducible forever: the dormant PIF captures are Xcode's own normalized
+    target representation — if the flag (or its real input) appears there, the
+    heuristic becomes derivable. One bounded investigation, then either model it
+    or close the question permanently.
+21. **Wake cheap dormant sources:** `_global/.../sdks/*.json` → a small SDK
+    discovery test; the version banner → trivial assert. Retire the dead
+    `dry-run/` captures (632 of 654 are just the Xcode-26 "no longer supported"
+    error) — superseded by the compiler-args oracle.
+22. **Extend the mutation audit** (`scripts/21_mutation_audit.py`) with one row
+    per rule added in Tracks A/C (coverage-mapping derivation, `.mm` enumeration,
+    `-iframework`, version gates) so every new rule has a net that goes red.
+23. **Ratchet floors after every fix** — that's what makes progress permanent:
+    corpus 26.5 structural → 100 after A1; each compiler-args cell after its C
+    item; canonical floors after Track B.
+24. **Refresh the generated reports** — `fixtures/REPORT.md` and
+    `fixtures/AUDIT.md` still reference the dropped `xcode-26.0.1`; re-run
+    `scripts/05_validate.py` / `06_audit_coverage.py` at the next capture so the
+    generated views match the corpus again.
+
+### Suggested execution order
+
+A1 (+C7, same root cause) → A2/A3 → C8–C13 → B4/B5 → D16 → D15 scope decision →
+E20–E24 interleaved. Tracks A+C reach the hard target (structural 100 %, empty
+tallies); B raises the cross-machine ceiling; D/E widen and lock what "100 %"
+covers. Mac-host capture steps (A1, A3, D16, D17) need a macOS machine with the
+corpus Xcodes; everything else runs on any host against committed fixtures.
