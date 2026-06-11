@@ -25,13 +25,12 @@
 //! real (4/8 bytes), date, data, ASCII string, UTF-16BE string, array, dict.
 //! UID and Set markers are accepted but treated as opaque.
 
-use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::pbxproj::Value;
+use crate::pbxproj::{Dict, Value};
 
 #[derive(Debug)]
 pub enum Error {
@@ -272,7 +271,7 @@ fn read_object(ctx: &Ctx, idx: usize, depth: usize) -> Result<Value, Error> {
                 .and_then(|v| v.checked_mul(ctx.ref_size))
                 .ok_or_else(|| Error::Invalid("dict size overflow".into()))?;
             require(ctx, after, total_refs, "dict refs")?;
-            let mut dict = BTreeMap::new();
+            let mut dict = Dict::new();
             for i in 0..count {
                 let k_off = after + i * ctx.ref_size;
                 let v_off = after + (count + i) * ctx.ref_size;

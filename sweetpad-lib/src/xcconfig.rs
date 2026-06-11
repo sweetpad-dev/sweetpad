@@ -9,6 +9,27 @@ use crate::file_cache::ParseCache;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Xcconfig {
     pub entries: Vec<Entry>,
+    /// Source layout captured at parse time so [`serialize`] can reproduce
+    /// the file byte-for-byte: every physical line is either trivia
+    /// (comments, blank lines) replayed verbatim, or an entry's raw text
+    /// (replayed only while the entry still matches it — see [`serialize`]).
+    /// Empty for programmatically built configs.
+    layout: Vec<Piece>,
+    /// Set when the parsed source did *not* end with a newline, so
+    /// [`serialize`] reproduces that. Inverted so the `Default` (false) gives
+    /// programmatically built configs a conventional trailing newline.
+    no_trailing_newline: bool,
+}
+
+/// One physical chunk of the source file, in order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Piece {
+    /// Line(s) that produced no entry: comments, blank lines. Verbatim,
+    /// without the trailing newline.
+    Raw(String),
+    /// The physical line(s) — including continuations and inline comments —
+    /// that produced `entries[index]`.
+    Entry { index: usize, raw: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,10 +109,14 @@ pub fn parse(input: &str) -> Result<Xcconfig, ParseError> {
     // Comments are stripped from the whole content *before* any line
     // handling: a backslash inside a comment (`FOO = bar // see C:\`) is
     // comment text, not a line continuation, so the order matters.
+    // Stripping preserves line count, so entry line numbers index into the
+    // *original* input when capturing each entry's raw text for [`serialize`].
     let stripped = strip_comments(input);
     let mut entries = Vec::new();
+    // 1-based (first, last) physical-line span of each entry, in order.
+    let mut spans: Vec<(usize, usize)> = Vec::new();
     let iter = LineIter::new(&stripped);
-    for (line_no, raw_line) in iter {
+    for (first_line, last_line, raw_line) in iter {
         let trimmed = raw_line.trim();
         if trimmed.is_empty() {
             continue;
@@ -103,14 +128,149 @@ pub fn parse(input: &str) -> Result<Xcconfig, ParseError> {
                 (false, rest)
             };
             let rest = rest.trim_start();
-            let path = parse_include_path(rest, line_no)?;
+            let path = parse_include_path(rest, first_line)?;
             entries.push(Entry::Include(Include { path, optional }));
+            spans.push((first_line, last_line));
             continue;
         }
-        let assignment = parse_assignment(trimmed, line_no)?;
+        let assignment = parse_assignment(trimmed, first_line)?;
         entries.push(Entry::Assignment(assignment));
+        spans.push((first_line, last_line));
     }
-    Ok(Xcconfig { entries })
+    let layout = build_layout(input, &spans);
+    Ok(Xcconfig {
+        entries,
+        layout,
+        no_trailing_newline: !input.is_empty() && !input.ends_with('\n'),
+    })
+}
+
+/// Interleave entry spans with the uncovered (trivia) lines of the source.
+fn build_layout(input: &str, spans: &[(usize, usize)]) -> Vec<Piece> {
+    let mut lines: Vec<&str> = input.split('\n').collect();
+    // A trailing newline yields a final empty fragment that is not a line.
+    if input.ends_with('\n') {
+        lines.pop();
+    }
+    let mut layout = Vec::new();
+    let mut line_no = 1usize;
+    let mut entry_idx = 0usize;
+    while line_no <= lines.len() {
+        if let Some(&(first, last)) = spans.get(entry_idx)
+            && first == line_no
+        {
+            let last = last.min(lines.len());
+            layout.push(Piece::Entry {
+                index: entry_idx,
+                raw: lines[first - 1..last].join("\n"),
+            });
+            line_no = last + 1;
+            entry_idx += 1;
+        } else {
+            layout.push(Piece::Raw(lines[line_no - 1].to_string()));
+            line_no += 1;
+        }
+    }
+    layout
+}
+
+/// Serialize back to xcconfig text.
+///
+/// Entries that still match what was parsed are replayed from their captured
+/// raw text — preserving comments, spacing, and line continuations — so an
+/// unmodified parse → serialize round trip is byte-exact. An entry that was
+/// mutated since parsing (or appended without layout) is rendered canonically
+/// (`KEY[k=v] = value` / `#include "path"`). Trivia lines (comments, blanks)
+/// always replay verbatim.
+#[must_use]
+pub fn serialize(config: &Xcconfig) -> String {
+    let mut out = String::new();
+    let mut emitted = vec![false; config.entries.len()];
+    for piece in &config.layout {
+        match piece {
+            Piece::Raw(s) => {
+                out.push_str(s);
+                out.push('\n');
+            }
+            Piece::Entry { index, raw } => {
+                // An entry removed from `entries` drops its line entirely.
+                let Some(entry) = config.entries.get(*index) else {
+                    continue;
+                };
+                emitted[*index] = true;
+                if reparse_single(raw).as_ref() == Some(entry) {
+                    out.push_str(raw);
+                } else {
+                    out.push_str(&render_entry(entry));
+                }
+                out.push('\n');
+            }
+        }
+    }
+    for (i, entry) in config.entries.iter().enumerate() {
+        if !emitted[i] {
+            out.push_str(&render_entry(entry));
+            out.push('\n');
+        }
+    }
+    if config.no_trailing_newline && out.ends_with('\n') {
+        out.pop();
+    }
+    out
+}
+
+/// Canonical one-line rendering of an entry.
+fn render_entry(entry: &Entry) -> String {
+    match entry {
+        Entry::Include(include) => {
+            let opt = if include.optional { "?" } else { "" };
+            format!("#include{opt} \"{}\"", include.path)
+        }
+        Entry::Assignment(a) => {
+            let mut s = a.key.clone();
+            for c in &a.conditions {
+                s.push('[');
+                s.push_str(&c.key);
+                s.push('=');
+                s.push_str(&c.value);
+                s.push(']');
+            }
+            s.push_str(" =");
+            if !a.value.is_empty() {
+                s.push(' ');
+                s.push_str(&a.value);
+            }
+            s
+        }
+    }
+}
+
+/// Parse a captured raw chunk back into the single entry it produced, or
+/// `None` when it no longer parses that way (used to detect mutation).
+fn reparse_single(raw: &str) -> Option<Entry> {
+    let stripped = strip_comments(raw);
+    let mut found: Option<Entry> = None;
+    for (line_no, _last, line) in LineIter::new(&stripped) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if found.is_some() {
+            return None;
+        }
+        if let Some(rest) = trimmed.strip_prefix("#include") {
+            let (optional, rest) = if let Some(r) = rest.strip_prefix('?') {
+                (true, r)
+            } else {
+                (false, rest)
+            };
+            let path = parse_include_path(rest.trim_start(), line_no).ok()?;
+            found = Some(Entry::Include(Include { path, optional }));
+        } else {
+            found = Some(Entry::Assignment(parse_assignment(trimmed, line_no).ok()?));
+        }
+    }
+    found
 }
 
 pub fn parse_file(path: &Path) -> Result<Xcconfig, Error> {
@@ -277,7 +437,9 @@ impl<'a> LineIter<'a> {
 }
 
 impl Iterator for LineIter<'_> {
-    type Item = (usize, String);
+    /// `(first_line, last_line, logical_line)` — the 1-based physical-line
+    /// span the (continuation-joined) logical line was assembled from.
+    type Item = (usize, usize, String);
     fn next(&mut self) -> Option<Self::Item> {
         let first = self.lines.next()?;
         self.line_no += 1;
@@ -294,7 +456,7 @@ impl Iterator for LineIter<'_> {
                 None => break,
             }
         }
-        Some((first_line_no, acc))
+        Some((first_line_no, self.line_no, acc))
     }
 }
 
@@ -465,5 +627,69 @@ mod tests {
     #[test]
     fn rejects_unterminated_condition() {
         assert!(parse("FOO[sdk=ios = bar\n").is_err());
+    }
+
+    #[test]
+    fn serialize_round_trips_verbatim() {
+        let src = "// header comment\n\nFOO = bar // trailing\nBAZ[sdk=iphoneos*] = qux\n\nQUUX = a \\\n    b\n#include \"other.xcconfig\"\n";
+        let c = parse(src).unwrap();
+        assert_eq!(serialize(&c), src);
+    }
+
+    #[test]
+    fn serialize_preserves_missing_trailing_newline() {
+        let src = "FOO = bar";
+        let c = parse(src).unwrap();
+        assert_eq!(serialize(&c), src);
+    }
+
+    #[test]
+    fn serialize_renders_mutated_entry_canonically_keeping_trivia() {
+        let src = "// keep me\nFOO   =   bar // gone after edit\nBAZ = ok\n";
+        let mut c = parse(src).unwrap();
+        let Entry::Assignment(a) = &mut c.entries[0] else {
+            panic!("expected assignment");
+        };
+        a.value = "changed".into();
+        // The edited line is re-rendered canonically (its inline comment and
+        // spacing belong to the old value); everything else stays verbatim.
+        assert_eq!(serialize(&c), "// keep me\nFOO = changed\nBAZ = ok\n");
+    }
+
+    #[test]
+    fn serialize_drops_removed_entries_and_appends_new_ones() {
+        let src = "A = 1\nB = 2\n";
+        let mut c = parse(src).unwrap();
+        c.entries.remove(1);
+        c.entries.push(Entry::Assignment(Assignment {
+            key: "C".into(),
+            conditions: vec![Condition {
+                key: "sdk".into(),
+                value: "macosx*".into(),
+            }],
+            value: "3".into(),
+            condition: None,
+        }));
+        assert_eq!(serialize(&c), "A = 1\nC[sdk=macosx*] = 3\n");
+    }
+
+    #[test]
+    fn serialize_renders_programmatic_config_canonically() {
+        let c = Xcconfig {
+            entries: vec![
+                Entry::Include(Include {
+                    path: "base.xcconfig".into(),
+                    optional: true,
+                }),
+                Entry::Assignment(Assignment {
+                    key: "EMPTY".into(),
+                    conditions: Vec::new(),
+                    value: String::new(),
+                    condition: None,
+                }),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(serialize(&c), "#include? \"base.xcconfig\"\nEMPTY =\n");
     }
 }

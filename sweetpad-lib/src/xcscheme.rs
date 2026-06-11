@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::io;
@@ -7,7 +6,11 @@ use std::path::Path;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Element {
     pub name: String,
-    pub attributes: BTreeMap<String, String>,
+    /// Attributes in source order. Xcode's scheme/workspace writer emits
+    /// attributes in a meaning-bearing, non-alphabetical order (e.g.
+    /// `BlueprintIdentifier` before `BuildableName`), so order must survive
+    /// a parse → [`serialize`] round trip.
+    pub attributes: Vec<(String, String)>,
     pub children: Vec<Element>,
     pub text: String,
 }
@@ -15,7 +18,10 @@ pub struct Element {
 impl Element {
     #[must_use]
     pub fn attr(&self, key: &str) -> Option<&str> {
-        self.attributes.get(key).map(String::as_str)
+        self.attributes
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
 
     #[must_use]
@@ -103,6 +109,67 @@ pub fn parse(input: &str) -> Result<Element, ParseError> {
 pub fn parse_file(path: &Path) -> Result<Element, Error> {
     let s = fs::read_to_string(path)?;
     Ok(parse(&s)?)
+}
+
+/// Serialize an element tree back to Xcode's `.xcscheme` /
+/// `contents.xcworkspacedata` on-disk format: the UTF-8 XML declaration,
+/// three-space indentation, one attribute per line (`key = "value"`), and an
+/// explicit closing tag for every element (Xcode never self-closes).
+/// Attribute order is whatever [`Element::attributes`] holds — source order
+/// after a parse — so a parse → serialize round trip is byte-exact.
+#[must_use]
+pub fn serialize(root: &Element) -> String {
+    let mut out = String::with_capacity(1 << 12);
+    out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    write_element(&mut out, root, 0);
+    out
+}
+
+fn write_element(out: &mut String, e: &Element, depth: usize) {
+    let indent = "   ".repeat(depth);
+    out.push_str(&indent);
+    out.push('<');
+    out.push_str(&e.name);
+    for (key, value) in &e.attributes {
+        out.push('\n');
+        out.push_str(&indent);
+        out.push_str("   ");
+        out.push_str(key);
+        out.push_str(" = \"");
+        push_escaped(out, value);
+        out.push('"');
+    }
+    out.push_str(">\n");
+    if !e.text.is_empty() {
+        out.push_str(&indent);
+        out.push_str("   ");
+        push_escaped(out, &e.text);
+        out.push('\n');
+    }
+    for child in &e.children {
+        write_element(out, child, depth + 1);
+    }
+    out.push_str(&indent);
+    out.push_str("</");
+    out.push_str(&e.name);
+    out.push_str(">\n");
+}
+
+/// Escape the way Xcode's writer does: the four markup-significant
+/// characters as named entities, line breaks and tabs as numeric ones.
+fn push_escaped(out: &mut String, s: &str) {
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\n' => out.push_str("&#10;"),
+            '\r' => out.push_str("&#13;"),
+            '\t' => out.push_str("&#9;"),
+            _ => out.push(c),
+        }
+    }
 }
 
 struct Parser<'a> {
@@ -216,7 +283,7 @@ impl<'a> Parser<'a> {
         }
         self.pos += 1;
         let name = self.parse_name()?;
-        let mut attributes = BTreeMap::new();
+        let mut attributes: Vec<(String, String)> = Vec::new();
         loop {
             self.skip_ws();
             match self.peek() {
@@ -247,7 +314,12 @@ impl<'a> Parser<'a> {
                     self.pos += 1;
                     self.skip_ws();
                     let value = self.parse_attr_value()?;
-                    attributes.insert(key, value);
+                    // Duplicate attribute: last value wins, first position kept.
+                    if let Some(slot) = attributes.iter_mut().find(|(k, _)| *k == key) {
+                        slot.1 = value;
+                    } else {
+                        attributes.push((key, value));
+                    }
                 }
             }
         }
@@ -538,5 +610,44 @@ mod tests {
         let e = parse("<a><b><c/></b><c><c/></c></a>").unwrap();
         let descendants = e.descendants_named("c");
         assert_eq!(descendants.len(), 3);
+    }
+
+    #[test]
+    fn preserves_attribute_order() {
+        let e =
+            parse(r#"<Ref BlueprintIdentifier="X" BuildableName="N" BlueprintName="B"/>"#).unwrap();
+        let keys: Vec<&str> = e.attributes.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(
+            keys,
+            vec!["BlueprintIdentifier", "BuildableName", "BlueprintName"]
+        );
+    }
+
+    #[test]
+    fn serializes_in_xcode_layout() {
+        let e = parse(
+            r#"<Scheme LastUpgradeVersion="1640" version="1.7"><BuildAction parallelizeBuildables="YES"><BuildActionEntries></BuildActionEntries></BuildAction></Scheme>"#,
+        )
+        .unwrap();
+        assert_eq!(
+            serialize(&e),
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+             <Scheme\n   LastUpgradeVersion = \"1640\"\n   version = \"1.7\">\n\
+             \x20\x20\x20<BuildAction\n      parallelizeBuildables = \"YES\">\n\
+             \x20\x20\x20\x20\x20\x20<BuildActionEntries>\n\
+             \x20\x20\x20\x20\x20\x20</BuildActionEntries>\n\
+             \x20\x20\x20</BuildAction>\n\
+             </Scheme>\n"
+        );
+    }
+
+    #[test]
+    fn serializes_escaped_attribute_values() {
+        let e = parse(r#"<a scriptText="&quot;${X}&quot; 2&gt;&amp;1&#10;"/>"#).unwrap();
+        assert_eq!(
+            serialize(&e),
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+             <a\n   scriptText = \"&quot;${X}&quot; 2&gt;&amp;1&#10;\">\n</a>\n"
+        );
     }
 }

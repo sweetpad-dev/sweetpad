@@ -18,7 +18,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::bplist;
-use crate::pbxproj::{self, Value};
+use crate::pbxproj::{self, Dict, Value};
 use crate::xcconfig::{Assignment, Condition};
 
 #[derive(Debug)]
@@ -557,7 +557,7 @@ fn extract_sdksettings(path: &Path, catalog: &mut Catalog) -> Result<(), Error> 
     Ok(())
 }
 
-fn dict_to_assignments(dict: &BTreeMap<String, Value>) -> Vec<Assignment> {
+fn dict_to_assignments(dict: &Dict) -> Vec<Assignment> {
     let mut out = Vec::with_capacity(dict.len());
     for (key_raw, val) in dict {
         let (key, conditions) = split_conditional_key(key_raw);

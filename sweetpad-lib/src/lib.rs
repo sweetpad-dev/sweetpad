@@ -22,6 +22,7 @@ mod file_cache;
 #[cfg(feature = "node")]
 pub mod node;
 pub mod pbxproj;
+pub mod pbxproj_writer;
 pub mod project;
 pub mod resolver;
 pub mod scheme;

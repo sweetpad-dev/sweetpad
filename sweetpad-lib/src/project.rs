@@ -7,7 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use crate::destination::RunDestination;
-use crate::pbxproj::{self, Value};
+use crate::pbxproj::{self, Dict, Value};
 use crate::resolver;
 use crate::xcconfig::{Assignment, Condition};
 use crate::xcode_hash::derived_data_hash;
@@ -239,10 +239,7 @@ fn element_has_safari_extension_point(el: &crate::xcscheme::Element) -> bool {
 /// `XCConfigurationList`, if any. Each list — the project's and every
 /// target's — carries its own; xcodebuild falls back to it when asked for a
 /// configuration name the list doesn't contain.
-fn default_configuration_name(
-    objects: &BTreeMap<String, Value>,
-    container: &Value,
-) -> Option<String> {
+fn default_configuration_name(objects: &Dict, container: &Value) -> Option<String> {
     container
         .get("buildConfigurationList")
         .and_then(Value::as_str)
@@ -267,7 +264,7 @@ pub fn parse_pbxproj(xcodeproj_path: &Path) -> Result<Arc<Value>, Error> {
 
 /// Pull the `objects` dict and the root project object out of a parsed
 /// pbxproj. Both shapes are stable and required by every higher-level query.
-fn project_root(value: &Value) -> Result<(&BTreeMap<String, Value>, &Value), Error> {
+fn project_root(value: &Value) -> Result<(&Dict, &Value), Error> {
     let root = value
         .as_dict()
         .ok_or_else(|| Error::BadProject("pbxproj root is not a dict".into()))?;
@@ -286,7 +283,7 @@ fn project_root(value: &Value) -> Result<(&BTreeMap<String, Value>, &Value), Err
 }
 
 fn extract_project_configurations(
-    objects: &BTreeMap<String, Value>,
+    objects: &Dict,
     project_obj: &Value,
 ) -> Result<Vec<String>, Error> {
     let list_id = project_obj
@@ -299,10 +296,7 @@ fn extract_project_configurations(
     config_names(objects, config_list)
 }
 
-fn config_names(
-    objects: &BTreeMap<String, Value>,
-    config_list: &Value,
-) -> Result<Vec<String>, Error> {
+fn config_names(objects: &Dict, config_list: &Value) -> Result<Vec<String>, Error> {
     let ids = config_list
         .get("buildConfigurations")
         .and_then(Value::as_array)
@@ -328,10 +322,7 @@ fn config_names(
     Ok(names)
 }
 
-fn extract_targets(
-    objects: &BTreeMap<String, Value>,
-    project_obj: &Value,
-) -> Result<Vec<Target>, Error> {
+fn extract_targets(objects: &Dict, project_obj: &Value) -> Result<Vec<Target>, Error> {
     let Some(target_ids) = project_obj.get("targets").and_then(Value::as_array) else {
         return Ok(Vec::new());
     };
@@ -611,7 +602,7 @@ pub fn target_source_files_from_value(
 /// these relative paths are anchored at the group folder or the project root, so
 /// both anchorings are returned and either match excludes the file.
 fn synchronized_membership_exclusions(
-    objects: &BTreeMap<String, Value>,
+    objects: &Dict,
     group: &Value,
     target_name: &str,
     group_dir: &Path,
@@ -806,7 +797,7 @@ pub fn target_dependencies(xcodeproj_path: &Path, target_name: &str) -> Result<V
     Ok(target_dependency_names(objects, target))
 }
 
-fn target_dependency_names(objects: &BTreeMap<String, Value>, target_obj: &Value) -> Vec<String> {
+fn target_dependency_names(objects: &Dict, target_obj: &Value) -> Vec<String> {
     let Some(deps) = target_obj.get("dependencies").and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -862,7 +853,7 @@ pub fn transitive_dependencies(
 }
 
 fn visit_dependencies(
-    objects: &BTreeMap<String, Value>,
+    objects: &Dict,
     project_obj: &Value,
     target_name: &str,
     visited: &mut BTreeSet<String>,
@@ -905,7 +896,7 @@ pub fn is_self_buildable(xcodeproj_path: &Path, target_name: &str) -> Result<boo
 
 /// Whether a target has a `PBXShellScriptBuildPhase` or any build rule — either
 /// can generate sources, so the module isn't a pure `swiftc` emit.
-fn target_has_script_or_rule_phase(objects: &BTreeMap<String, Value>, target_obj: &Value) -> bool {
+fn target_has_script_or_rule_phase(objects: &Dict, target_obj: &Value) -> bool {
     if target_obj
         .get("buildRules")
         .and_then(Value::as_array)
@@ -937,7 +928,7 @@ fn abs_project_dir(xcodeproj_path: &Path) -> PathBuf {
 /// full path. `PBXVariantGroup` / `XCVersionGroup` (localized resources, Core
 /// Data model versions) are walked like groups so their members resolve.
 fn resolve_group_paths(
-    objects: &BTreeMap<String, Value>,
+    objects: &Dict,
     node_id: &str,
     parent_base: &Path,
     project_dir: &Path,
@@ -3181,7 +3172,7 @@ pub fn is_unoptimized_build(layers: &[Vec<Assignment>], config_name: &str, sdk: 
 }
 
 fn find_target<'a>(
-    objects: &'a BTreeMap<String, Value>,
+    objects: &'a Dict,
     project_obj: &Value,
     name: &str,
 ) -> Result<Option<&'a Value>, Error> {
@@ -3208,16 +3199,12 @@ fn find_target<'a>(
 /// to the target's name. `None` when the project carries no TargetAttributes
 /// entry for the test target (older or generated pbxprojs) — callers fall
 /// back to scanning the dependency edges.
-fn test_target_id_host(
-    objects: &BTreeMap<String, Value>,
-    project_obj: &Value,
-    target_name: &str,
-) -> Option<String> {
+fn test_target_id_host(objects: &Dict, project_obj: &Value, target_name: &str) -> Option<String> {
     // TargetAttributes is keyed by the test target's UUID, so find it first.
     let target_ids = project_obj.get("targets").and_then(Value::as_array)?;
     let test_id = target_ids.iter().filter_map(Value::as_str).find(|id| {
         objects
-            .get(*id)
+            .get(id)
             .and_then(|t| t.get("name"))
             .and_then(Value::as_str)
             == Some(target_name)
@@ -3241,7 +3228,7 @@ fn test_target_id_host(
 /// product wrapper to compute the test bundle's `TEST_HOST` /
 /// `TARGET_BUILD_SUBPATH`. A library test bundle whose only dependency is a
 /// framework/library returns `None` (it has no host app, so no subpath).
-fn find_app_host_target(objects: &BTreeMap<String, Value>, target_obj: &Value) -> Option<String> {
+fn find_app_host_target(objects: &Dict, target_obj: &Value) -> Option<String> {
     let deps = target_obj.get("dependencies").and_then(Value::as_array)?;
     for dep_ref in deps {
         let Some(host) = dep_ref
@@ -3272,7 +3259,7 @@ fn find_app_host_target(objects: &BTreeMap<String, Value>, target_obj: &Value) -
 /// list, a dangling list, or an empty one) — the caller decides whether that
 /// is fatal (project level) or just an empty layer (target level).
 fn find_config<'a>(
-    objects: &'a BTreeMap<String, Value>,
+    objects: &'a Dict,
     container: &Value,
     config_name: &str,
 ) -> Result<Option<&'a Value>, Error> {
@@ -3316,7 +3303,7 @@ fn find_config<'a>(
 }
 
 fn load_xcconfig_layer(
-    objects: &BTreeMap<String, Value>,
+    objects: &Dict,
     config: &Value,
     xcodeproj_path: &Path,
 ) -> Result<Vec<Assignment>, Error> {
@@ -3366,7 +3353,7 @@ fn load_xcconfig_layer(
 /// same walk [`group_dir`] does for file references. A dangling anchor
 /// anchors at the project dir as a best effort.
 fn resolve_anchor_relative_path(
-    objects: &BTreeMap<String, Value>,
+    objects: &Dict,
     anchor_id: &str,
     relative_path: &str,
     xcodeproj_path: &Path,
@@ -3376,7 +3363,7 @@ fn resolve_anchor_relative_path(
 }
 
 fn resolve_file_ref_path(
-    objects: &BTreeMap<String, Value>,
+    objects: &Dict,
     file_ref_id: &str,
     xcodeproj_path: &Path,
 ) -> Result<PathBuf, Error> {
@@ -3406,12 +3393,7 @@ fn resolve_file_ref_path(
 /// The on-disk directory a `<group>`-relative child resolves against: its parent
 /// `PBXGroup`'s directory, resolved up the group chain. The mainGroup (no parent)
 /// anchors at the project dir. Depth-guarded against a malformed cyclic graph.
-fn parent_group_dir(
-    objects: &BTreeMap<String, Value>,
-    child_id: &str,
-    project_dir: &Path,
-    depth: usize,
-) -> PathBuf {
+fn parent_group_dir(objects: &Dict, child_id: &str, project_dir: &Path, depth: usize) -> PathBuf {
     if depth > 64 {
         return project_dir.to_path_buf();
     }
@@ -3423,12 +3405,7 @@ fn parent_group_dir(
 
 /// The on-disk directory of a `PBXGroup`, resolving its `path` up the parent
 /// chain (each `<group>` ancestor contributes its `path`).
-fn group_dir(
-    objects: &BTreeMap<String, Value>,
-    group_id: &str,
-    project_dir: &Path,
-    depth: usize,
-) -> PathBuf {
+fn group_dir(objects: &Dict, group_id: &str, project_dir: &Path, depth: usize) -> PathBuf {
     if depth > 64 {
         return project_dir.to_path_buf();
     }
@@ -3449,7 +3426,7 @@ fn group_dir(
 
 /// The id of the group (`PBXGroup` / variant / version) listing `child_id` in its
 /// `children`.
-fn parent_group_of(objects: &BTreeMap<String, Value>, child_id: &str) -> Option<String> {
+fn parent_group_of(objects: &Dict, child_id: &str) -> Option<String> {
     objects.iter().find_map(|(id, v)| {
         let isa = v.get("isa").and_then(Value::as_str)?;
         if !matches!(isa, "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup") {

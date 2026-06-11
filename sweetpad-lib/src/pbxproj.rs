@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::io;
@@ -7,11 +7,130 @@ use std::sync::{Arc, LazyLock};
 
 use crate::file_cache::ParseCache;
 
+/// An insertion-order-preserving string-keyed map.
+///
+/// Xcode does not keep `project.pbxproj` dictionaries sorted — objects keep
+/// the historical order in which they were added — so a faithful
+/// re-serialization (see [`crate::pbxproj_writer`]) must replay the order in
+/// which keys appeared in the source. Lookups stay O(1) via a side index.
+#[derive(Debug, Clone, Default)]
+pub struct Dict {
+    entries: Vec<(String, Value)>,
+    index: HashMap<String, usize>,
+    /// Layout hint recorded by the parser: `true` when the dict's source
+    /// representation sat entirely on one line (`{isa = PBXBuildFile; … };`).
+    /// Pure formatting metadata — ignored by equality — that lets the writer
+    /// replay the original single-line/multi-line choice for object entries.
+    single_line: bool,
+}
+
+impl Dict {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.index.get(key).map(|&i| &self.entries[i].1)
+    }
+
+    #[must_use]
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.index.contains_key(key)
+    }
+
+    /// Insert a key/value pair. A duplicate key replaces the value in place,
+    /// keeping the key's original position (last value wins, like a plist).
+    pub fn insert(&mut self, key: String, value: Value) {
+        if let Some(&i) = self.index.get(&key) {
+            self.entries[i].1 = value;
+        } else {
+            self.index.insert(key.clone(), self.entries.len());
+            self.entries.push((key, value));
+        }
+    }
+
+    /// Key/value pairs in insertion (source) order.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Value)> {
+        self.entries.iter().map(|(k, v)| (k, v))
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.entries.iter().map(|(k, _)| k)
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &Value> {
+        self.entries.iter().map(|(_, v)| v)
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// The parser's layout hint: `true` when this dict was written on a
+    /// single line in the source. `false` for programmatically built dicts.
+    #[must_use]
+    pub fn is_single_line(&self) -> bool {
+        self.single_line
+    }
+
+    pub fn set_single_line(&mut self, single_line: bool) {
+        self.single_line = single_line;
+    }
+}
+
+/// Equality is order-sensitive over the entries but ignores the
+/// `single_line` layout hint (formatting, not data).
+impl PartialEq for Dict {
+    fn eq(&self, other: &Self) -> bool {
+        self.entries == other.entries
+    }
+}
+
+impl Eq for Dict {}
+
+impl FromIterator<(String, Value)> for Dict {
+    fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
+        let mut d = Dict::new();
+        for (k, v) in iter {
+            d.insert(k, v);
+        }
+        d
+    }
+}
+
+impl<'a> IntoIterator for &'a Dict {
+    type Item = (&'a String, &'a Value);
+    type IntoIter = std::iter::Map<
+        std::slice::Iter<'a, (String, Value)>,
+        fn(&'a (String, Value)) -> (&'a String, &'a Value),
+    >;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.entries.iter().map(|(k, v)| (k, v))
+    }
+}
+
+impl std::ops::Index<&str> for Dict {
+    type Output = Value;
+
+    fn index(&self, key: &str) -> &Value {
+        self.get(key).expect("no entry found for key")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     String(String),
     Array(Vec<Value>),
-    Dict(BTreeMap<String, Value>),
+    Dict(Dict),
 }
 
 impl Value {
@@ -34,7 +153,7 @@ impl Value {
     }
 
     #[must_use]
-    pub fn as_dict(&self) -> Option<&BTreeMap<String, Value>> {
+    pub fn as_dict(&self) -> Option<&Dict> {
         if let Value::Dict(d) = self {
             Some(d)
         } else {
@@ -237,13 +356,16 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_dict(&mut self) -> Result<Value, ParseError> {
+        let start = self.pos;
         self.pos += 1;
-        let mut map = BTreeMap::new();
+        let mut map = Dict::new();
         loop {
             self.skip_ws();
             match self.peek() {
                 Some(b'}') => {
                     self.pos += 1;
+                    let single_line = !self.input[start..self.pos].contains(&b'\n');
+                    map.set_single_line(single_line);
                     return Ok(Value::Dict(map));
                 }
                 None => return Err(self.error("unterminated dict")),
@@ -445,7 +567,34 @@ mod tests {
     #[test]
     fn parses_empty_dict() {
         let v = parse("{}").unwrap();
-        assert_eq!(v, Value::Dict(BTreeMap::new()));
+        assert_eq!(v, Value::Dict(Dict::new()));
+    }
+
+    #[test]
+    fn preserves_key_insertion_order() {
+        let v = parse("{ z = 1; a = 2; m = 3; }").unwrap();
+        let keys: Vec<&str> = v.as_dict().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, vec!["z", "a", "m"]);
+    }
+
+    #[test]
+    fn records_single_line_hint() {
+        let v = parse("{ a = { x = 1; }; b = {\n x = 1; }; }").unwrap();
+        let d = v.as_dict().unwrap();
+        assert!(
+            d.get("a")
+                .and_then(Value::as_dict)
+                .unwrap()
+                .is_single_line()
+        );
+        assert!(
+            !d.get("b")
+                .and_then(Value::as_dict)
+                .unwrap()
+                .is_single_line()
+        );
+        // The hint is formatting metadata: both dicts are still equal.
+        assert_eq!(d.get("a"), d.get("b"));
     }
 
     #[test]
