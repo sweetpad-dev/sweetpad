@@ -2,8 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [Unreleased]
+## [0.2.1] - 2026-06-11
 
+- Match `xcodebuild -list` exactly when listing schemes: autocreated per-target schemes now appear even when other scheme files exist, test bundles / WatchKit extensions / watch-app companion stubs / legacy Safari extensions are correctly excluded, and the list is sorted the way Xcode sorts it
+- Resolve build settings more accurately across Xcode 15/16/26 — Mac Catalyst (deployment-target floor, `SUPPORTED_PLATFORMS`, debug-info format), debug-dylib and hardened-runtime gating, mergeable libraries, and the Xcode 15.x reporting family now byte-match `xcodebuild -showBuildSettings` on the whole test corpus
+- Feed sourcekit-lsp more faithful linker arguments (Swift runtime rpath, debugger AST registration for linked frameworks and dylibs, XCTest support libraries, version-gated flag spellings)
 - Pass the login shell's `DEVELOPER_DIR` to the bundled resolver explicitly, so a `DEVELOPER_DIR` exported in `~/.zshrc`/`~/.zprofile` selects the same Xcode for scheme lists and build settings as it does for builds
 - "SweetPad: Refresh shell environment" now also re-detects the active Xcode, picking up `xcode-select --switch` without restarting VS Code
 - Route `-showBuildSettings` through a customized `sweetpad.build.xcodebuildCommand` again (a wrapper that injects env or selects a toolchain now sees the same queries it sees builds), and log a one-time warning that scheme/target/configuration lists always come from the bundled resolver
