@@ -543,10 +543,13 @@ fn emit_unique_pairs(a: &mut ArgBuilder, flag: &str, paths: &[String]) {
     }
 }
 
-/// Emit one `-L` per unique library search path: the products dir (passed
-/// explicitly) plus LIBRARY_SEARCH_PATHS, which usually inherits the products
-/// dir — the build system de-duplicates, so we do too.
-fn emit_library_paths(a: &mut ArgBuilder, settings: &Settings) {
+/// Emit one `-L` per unique library search path: the products dir (always —
+/// the build system adds it to the link line itself, so it's present even on
+/// Xcode versions whose `-showBuildSettings` view doesn't surface it in
+/// LIBRARY_SEARCH_PATHS) plus LIBRARY_SEARCH_PATHS, de-duplicated like the
+/// build system does. Returns the emitted paths so later additions (the
+/// unit-test platform lib dir) can dedup against them.
+fn emit_library_paths(a: &mut ArgBuilder, settings: &Settings) -> Vec<String> {
     let get = |k: &str| settings.get(k).map(String::as_str);
     let mut paths: Vec<String> = Vec::new();
     if let Some(products) = get("BUILT_PRODUCTS_DIR") {
@@ -560,6 +563,7 @@ fn emit_library_paths(a: &mut ArgBuilder, settings: &Settings) {
     for p in &paths {
         a.flag(&format!("-L{p}"));
     }
+    paths
 }
 
 /// Build the link argv (`clang`-driver invoked) from resolved settings: the
@@ -588,8 +592,21 @@ pub fn link_arguments(settings: &Settings, arch: &str, frameworks: &[String]) ->
     if let Some(level) = get("GCC_OPTIMIZATION_LEVEL") {
         a.flag(&format!("-O{level}"));
     }
-    emit_library_paths(&mut a, settings);
+    let library_paths = emit_library_paths(&mut a, settings);
+    // `-F`: the products dir first (the build system puts it on the link line
+    // itself, even on Xcode versions whose `-showBuildSettings` view doesn't
+    // surface it in FRAMEWORK_SEARCH_PATHS), then the resolved search paths,
+    // de-duplicated.
+    let mut framework_paths: Vec<String> = Vec::new();
+    if let Some(products) = get("BUILT_PRODUCTS_DIR") {
+        framework_paths.push(products.to_string());
+    }
     for p in ws_paths(get("FRAMEWORK_SEARCH_PATHS")) {
+        if !framework_paths.contains(&p) {
+            framework_paths.push(p);
+        }
+    }
+    for p in &framework_paths {
         a.flag(&format!("-F{p}"));
     }
     // Swift-runtime stdlib search paths the driver adds for a Swift link.
@@ -597,13 +614,14 @@ pub fn link_arguments(settings: &Settings, arch: &str, frameworks: &[String]) ->
         a.flag(&format!("-L{toolchain}/usr/lib/swift/{platform}"));
     }
     a.flag("-L/usr/lib/swift");
-    // A unit-test bundle links XCTest from the products + platform test paths.
+    // A unit-test bundle links XCTest from the platform test paths (its
+    // products-dir `-F` is already first in the framework list above).
     if get("PRODUCT_TYPE").is_some_and(|p| p.contains("unit-test")) {
-        if let Some(products) = get("BUILT_PRODUCTS_DIR") {
-            a.flag(&format!("-F{products}"));
-        }
         if let Some(platform) = get("PLATFORM_DIR") {
-            a.flag(&format!("-L{platform}/Developer/usr/lib"));
+            let lib = format!("{platform}/Developer/usr/lib");
+            if !library_paths.contains(&lib) {
+                a.flag(&format!("-L{lib}"));
+            }
         }
         a.pair("-framework", "XCTest");
     }

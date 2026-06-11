@@ -1020,6 +1020,31 @@ pub fn built_in_settings(
     // version; the CLI (no catalog) falls back to the host install.
     let developer_dir = xcode_developer_dir.map_or_else(detect_developer_dir, str::to_owned);
     let host = host_arch();
+    // The Xcode whose behaviour we're mirroring: the catalog's recorded
+    // version when one is attached, the host's active install otherwise.
+    // Computed up front because several defaults below are version-gated.
+    let xcode_short = xcode_version.map_or_else(
+        || crate::xcode::active_install().short_version,
+        str::to_owned,
+    );
+    // Xcode 15's build system predates several 16+ `-showBuildSettings`
+    // behaviours (synthesized $(BUILT_PRODUCTS_DIR) search paths, the
+    // device-platform bitcode strip, the unoptimized-build
+    // STRIP_INSTALLED_PRODUCT flip, device-first SUPPORTED_PLATFORMS
+    // ordering, the no-destination full-ARCHS view). An unknown version
+    // (no catalog, no Xcode) is treated as modern.
+    let legacy_xcode15 = matches!(xcode_major(&xcode_short), Some(major) if major < 16);
+    // Whether this (target, config) resolves an unoptimized build —
+    // `GCC_OPTIMIZATION_LEVEL = 0`. xcodebuild keys its "debug build" output
+    // flips (STRIP_INSTALLED_PRODUCT, GCC_SYMBOLS_PRIVATE_EXTERN,
+    // ENABLE_PREVIEWS, ...) on this resolved value, NOT on the configuration
+    // *name*: the synthetic custom-config fixture's `Debug`/`Profile` configs
+    // author no optimization settings and get the optimized (Release-shaped)
+    // values from xcodebuild on every captured Xcode version, while tuist's
+    // lowercase `debug` (which authors `GCC_OPTIMIZATION_LEVEL = 0`) gets the
+    // debug-shaped ones. Corpus-wide the correlation holds with zero
+    // exceptions (294 per-target captures + the custom-config fixture).
+    let unoptimized = is_unoptimized_build(user_layers, config_name, sdk_canonical);
     let sdk_base = canonicalize_sdk_base(sdk_canonical);
     let (archs, swift_prefix, deployment_target_name) = platform_metadata(&sdk_base);
     let platform_dir_name = platform_dir_name_for(&sdk_base);
@@ -1267,10 +1292,6 @@ pub fn built_in_settings(
     // record a version. Encoding mirrors xcodebuild: for a version `A.B.C`,
     // MAJOR = A*100, MINOR = A*100+B*10, ACTUAL = A*100+B*10+C (16.4.0 ->
     // 1600/1640/1640; 26.0.1 -> 2600/2600/2601).
-    let xcode_short = xcode_version.map_or_else(
-        || crate::xcode::active_install().short_version,
-        str::to_owned,
-    );
     if let Some((major, minor, actual)) = xcode_version_numbers(&xcode_short) {
         push("XCODE_VERSION_ACTUAL", actual);
         push("XCODE_VERSION_MAJOR", major);
@@ -1293,7 +1314,10 @@ pub fn built_in_settings(
     push("LOCAL_DEVELOPER_DIR", "/Library/Developer".into());
 
     // --- Platform / SDK ----------------------------------------------------
-    push("SUPPORTED_PLATFORMS", supported_platforms_for(&sdk_base));
+    push(
+        "SUPPORTED_PLATFORMS",
+        supported_platforms_for(&sdk_base, legacy_xcode15),
+    );
     push("PLATFORM_NAME", sdk_base.clone());
     let is_sim =
         destination.is_some_and(RunDestination::is_simulator) || sdk_base.ends_with("simulator");
@@ -1386,25 +1410,30 @@ pub fn built_in_settings(
     // minor version, a capture-time artifact rather than a resolver rule — left as-is.
     // `ARCHS` resolves to the *active* arch when `ONLY_ACTIVE_ARCH=YES`
     // and to the platform's standard arch list otherwise. The user's
-    // unconditional `ONLY_ACTIVE_ARCH` setting wins over the Debug→YES /
-    // Release→NO xcspec default. (Cross-platform destination overrides —
-    // e.g. iPhone-Sim destination building an embedded watchsimulator
-    // target — are applied later, in [`built_in_overrides`], so they sit
-    // above user-authored values rather than below.)
-    let only_active_arch_yes = user_only_active_arch.map_or_else(
-        || config_name.eq_ignore_ascii_case("Debug"),
-        |v| v.eq_ignore_ascii_case("YES"),
-    );
+    // unconditional `ONLY_ACTIVE_ARCH` setting wins; when nothing is
+    // authored, the effective default tracks the unoptimized-build flag
+    // (the custom-config fixture's template-less `Debug` reports
+    // `ONLY_ACTIVE_ARCH = NO`, so the configuration *name* is not the
+    // gate). (Cross-platform destination overrides — e.g. iPhone-Sim
+    // destination building an embedded watchsimulator target — are
+    // applied later, in [`built_in_overrides`], so they sit above
+    // user-authored values rather than below.)
+    let only_active_arch_yes =
+        user_only_active_arch.map_or(unoptimized, |v| v.eq_ignore_ascii_case("YES"));
     // The ONLY_ACTIVE_ARCH collapse to the host arch only happens when the
     // build is pinned to one concrete device: a bound destination, or a
     // simulator SDK (a simulator build always targets a concrete simulator,
     // so xcodebuild collapses it even when the harness can't carry the
-    // `id=<uuid>` destination). A plain `xcodebuild -showBuildSettings` on a
-    // *device*/macOS SDK with no -destination reports the SDK's full standard
-    // arch list regardless of ONLY_ACTIVE_ARCH — it has no active device to
-    // single out. The no-destination device/macOS oracles confirm ARCHS ==
-    // ARCHS_STANDARD even on Debug.
-    let pinned_to_device = destination.is_some() || sdk_base.ends_with("simulator");
+    // `id=<uuid>` destination). On Xcode 16+ a plain `xcodebuild
+    // -showBuildSettings` on a *device*/macOS SDK with no -destination
+    // reports the SDK's full standard arch list regardless of
+    // ONLY_ACTIVE_ARCH — it has no active device to single out (the
+    // no-destination device/macOS oracles confirm ARCHS == ARCHS_STANDARD
+    // even on Debug). Xcode 15.x had no such no-destination view: its
+    // captures collapse to the build machine's arch whenever
+    // ONLY_ACTIVE_ARCH is on, destination or not.
+    let pinned_to_device =
+        destination.is_some() || sdk_base.ends_with("simulator") || legacy_xcode15;
     // The collapse target is the *destination's* running arch (a device
     // destination is arm64 even on an Intel host; an explicit
     // `-destination …,arch=x86_64` wins on any host). Only the bare
@@ -1416,6 +1445,17 @@ pub fn built_in_settings(
         .unwrap_or(host.as_str());
     let archs_value = if pinned_to_device && only_active_arch_yes {
         active_arch.to_string()
+    } else if legacy_xcode15 {
+        // Xcode 15.4's build view drops the retired 32-bit `armv7k` from
+        // ARCHS even when ARCHS_STANDARD still reports it (Kingfisher's
+        // watch demo, deployment target 6.0: ARCHS_STANDARD = `arm64
+        // armv7k arm64_32` but ARCHS = `arm64 arm64_32` in Release).
+        archs
+            .iter()
+            .copied()
+            .filter(|a| *a != "armv7k")
+            .collect::<Vec<_>>()
+            .join(" ")
     } else {
         arch_list.clone()
     };
@@ -1447,12 +1487,16 @@ pub fn built_in_settings(
         if is_catalyst { "YES" } else { "NO" }.into(),
     );
     push("INLINE_PRIVATE_FRAMEWORKS", "NO".into());
-    // STRIP_INSTALLED_PRODUCT is config-conditional: Debug builds keep
-    // symbols for debugging; Release strips them.
-    let strip = if config_name.eq_ignore_ascii_case("Release") {
-        "YES"
-    } else {
+    // STRIP_INSTALLED_PRODUCT: the xcspec default is YES; on Xcode 16+
+    // xcodebuild flips it to NO for *unoptimized* builds (keyed on the
+    // resolved `GCC_OPTIMIZATION_LEVEL = 0`, not the configuration name —
+    // the custom-config fixture's template-less `Debug` stays YES). Xcode
+    // 15.x reported the plain YES default in every capture, optimized or
+    // not, so the flip is version-gated.
+    let strip = if !legacy_xcode15 && unoptimized {
         "NO"
+    } else {
+        "YES"
     };
     push("STRIP_INSTALLED_PRODUCT", strip.into());
     push("STRIP_SWIFT_SYMBOLS", "YES".into());
@@ -1758,15 +1802,23 @@ pub fn built_in_settings(
     }
 
     // --- Synthesized search paths ------------------------------------------
-    // xcodebuild appends BUILT_PRODUCTS_DIR-relative entries with a trailing
-    // space, which is what gets surfaced in `-showBuildSettings`.
-    push(
-        "HEADER_SEARCH_PATHS",
-        "$(BUILT_PRODUCTS_DIR)/include ".into(),
-    );
-    push("LIBRARY_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
-    push("REZ_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
-    push("FRAMEWORK_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
+    // Xcode 16+ appends BUILT_PRODUCTS_DIR-relative entries with a trailing
+    // space, which is what gets surfaced in `-showBuildSettings`. Xcode 15.x
+    // never synthesized these — its captures report the keys only when the
+    // user authored a value (or, for LIBRARY_SEARCH_PATHS on a test bundle,
+    // via the test recipe below).
+    if !legacy_xcode15 {
+        push(
+            "HEADER_SEARCH_PATHS",
+            "$(BUILT_PRODUCTS_DIR)/include ".into(),
+        );
+        push("LIBRARY_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
+        push("REZ_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
+        push("FRAMEWORK_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
+    }
+    // (XCTest bundles additionally gain `$(inherited)
+    // $(TEST_LIBRARY_SEARCH_PATHS)` — but ABOVE the user layers, so it lives
+    // in [`built_in_overrides`].)
     // `TEST_FRAMEWORK_SEARCH_PATHS` points at the platform-bundled XCTest
     // frameworks. macOS gets only the platform-level path; every other
     // platform (device OR simulator) also gets the SDK-internal
@@ -1785,9 +1837,10 @@ pub fn built_in_settings(
 
     // --- Misc per-config / per-platform defaults ---------------------------
     // `STRIP_BITCODE_FROM_COPIED_FILES` is YES only when shipping to a real
-    // device (iphoneos/appletvos/watchos/xros). Simulators and native
-    // macOS builds preserve bitcode.
-    let strip_bitcode = if is_device_platform(&sdk_base) {
+    // device (iphoneos/appletvos/watchos/xros) — an Xcode 16+ behaviour.
+    // Xcode 15.4 reports the plain CoreBuildSystem.xcspec `NO` everywhere,
+    // device platforms included (all 98 of its captures).
+    let strip_bitcode = if is_device_platform(&sdk_base) && !legacy_xcode15 {
         "YES"
     } else {
         "NO"
@@ -1797,8 +1850,9 @@ pub fn built_in_settings(
     // `ENABLE_DEBUG_DYLIB` enables the split debug-dylib executable used by
     // previews + incremental relinking. See [`enable_debug_dylib_default`]
     // for the per-product-type rule, which follows Apple's
-    // `DarwinProductTypes.xcspec`.
-    let is_debug = !config_name.eq_ignore_ascii_case("Release");
+    // `DarwinProductTypes.xcspec`. The debug/release split keys on the
+    // resolved optimization level, like the other unoptimized-build flips.
+    let is_debug = unoptimized;
     push(
         "ENABLE_DEBUG_DYLIB",
         enable_debug_dylib_default(product_type, is_debug).into(),
@@ -1848,22 +1902,35 @@ pub fn built_in_settings(
 /// user-authored layers so it wins unconditionally.
 ///
 /// `ENABLE_PREVIEWS`, `LD_EXPORT_GLOBAL_SYMBOLS`, and
-/// `GCC_SYMBOLS_PRIVATE_EXTERN` all flip purely on the configuration
-/// name in the captured oracles — even when the user explicitly sets
-/// them in the pbxproj. Mac Catalyst additionally forces a
+/// `GCC_SYMBOLS_PRIVATE_EXTERN` all flip on whether the build is
+/// *unoptimized* (the resolved `GCC_OPTIMIZATION_LEVEL = 0`, see
+/// [`is_unoptimized_build`]) — even when the user explicitly sets them in
+/// the pbxproj, and regardless of the configuration's *name* (the
+/// custom-config fixture's template-less `Debug`/`Profile` get the
+/// optimized values). Mac Catalyst additionally forces a
 /// deployment-target trio (macOS / Swift / triple OS version) that
 /// recomputes from `IPHONEOS_DEPLOYMENT_TARGET` and ignores whatever
 /// the user wrote for `MACOSX_DEPLOYMENT_TARGET`. They appear here
 /// rather than in [`built_in_settings`] because that runs below the
 /// user layers.
+///
+/// `xcode_major_version` is the major version of the Xcode being mirrored (16, 26,
+/// …; 0 when unknown) — a few overrides are version-gated, e.g. Xcode 15.x
+/// keeps `ENABLE_PREVIEWS = YES` in optimized builds and predates the
+/// swift-testing macro plugin path.
 #[must_use]
 // This forced-override layer is driven by many independent build-system
 // facts (config, Catalyst, package deps, scheme code coverage, …); each is
 // a distinct yes/no condition, so a flat flag list reads clearer here than
 // folding them into ad-hoc enums.
-#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::fn_params_excessive_bools,
+    clippy::too_many_lines
+)]
 pub fn built_in_overrides(
-    config_name: &str,
+    xcode_major_version: u32,
+    unoptimized: bool,
     is_catalyst: bool,
     supports_maccatalyst: bool,
     user_supported_platforms: Option<&str>,
@@ -1879,7 +1946,8 @@ pub fn built_in_overrides(
     user_development_team: Option<&str>,
     user_code_sign_identity: Option<&str>,
 ) -> Vec<Assignment> {
-    let is_debug = !config_name.eq_ignore_ascii_case("Release");
+    let legacy_xcode15 = xcode_major_version != 0 && xcode_major_version < 16;
+    let is_debug = unoptimized;
     let mut out = Vec::new();
     let mut push = |key: &str, value: &str| {
         out.push(Assignment {
@@ -1889,7 +1957,17 @@ pub fn built_in_overrides(
             condition: None,
         });
     };
-    push("ENABLE_PREVIEWS", if is_debug { "YES" } else { "NO" });
+    // Xcode 15.x reported `ENABLE_PREVIEWS = YES` for previews-capable
+    // products in optimized (Release) builds too; the unoptimized-only flip
+    // arrived with Xcode 16.
+    push(
+        "ENABLE_PREVIEWS",
+        if is_debug || legacy_xcode15 {
+            "YES"
+        } else {
+            "NO"
+        },
+    );
     push(
         "GCC_SYMBOLS_PRIVATE_EXTERN",
         if is_debug { "NO" } else { "YES" },
@@ -1898,11 +1976,15 @@ pub fn built_in_overrides(
         push("LD_EXPORT_GLOBAL_SYMBOLS", "YES");
     }
     // `DEBUG_INFORMATION_FORMAT` defaults to `dwarf` in xcspec, but
-    // xcodebuild reports `dwarf-with-dsym` for Release builds in
-    // `-showBuildSettings` regardless of what the user set.
-    if !is_debug {
+    // xcodebuild reports `dwarf-with-dsym` for optimized builds of bundled
+    // products in `-showBuildSettings` regardless of what the user set.
+    // Command-line tools are exempt: the custom-config fixture's tool
+    // reports the plain `dwarf` default in its optimized configs on every
+    // captured Xcode version.
+    if !is_debug && product_type != Some("com.apple.product-type.tool") {
         push("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym");
-    } else if destination.is_none()
+    } else if is_debug
+        && destination.is_none()
         && is_test_bundle_product_type(product_type)
         && canonicalize_sdk_base(sdk_base) != "macosx"
     {
@@ -1940,7 +2022,9 @@ pub fn built_in_overrides(
         }
     }
     // Test bundles get the swift-testing macro plugin path appended to
-    // OTHER_SWIFT_FLAGS by xcodebuild regardless of user value. The
+    // OTHER_SWIFT_FLAGS by xcodebuild (16+; Xcode 15.x predates the
+    // swift-testing toolchain plugin and its captures carry no such flag)
+    // regardless of user value. The
     // `-module-alias Testing=_Testing_Unavailable` flag that UI-testing
     // bundles carry on watchOS is NOT synthesized here — the ui-testing
     // ProductType xcspec already defines
@@ -1951,6 +2035,7 @@ pub fn built_in_overrides(
         let sdk_canon = canonicalize_sdk_base(sdk_base);
         let watch_sdk = matches!(sdk_canon.as_str(), "watchos" | "watchsimulator");
         let suffix = match pt {
+            _ if legacy_xcode15 => None,
             "com.apple.product-type.bundle.unit-test" => {
                 Some("-plugin-path $(TOOLCHAIN_DIR)/usr/lib/swift/host/plugins/testing".to_string())
             }
@@ -1961,6 +2046,23 @@ pub fn built_in_overrides(
         };
         if let Some(s) = suffix {
             push("OTHER_SWIFT_FLAGS", &format!("$(inherited) {s}"));
+        }
+        // XCTest bundles (unit and UI) link against the platform's bundled
+        // libraries: xcodebuild appends `$(inherited)
+        // $(TEST_LIBRARY_SEARCH_PATHS)` to the bundle's resolved
+        // LIBRARY_SEARCH_PATHS on every captured Xcode version
+        // (`TEST_LIBRARY_SEARCH_PATHS` itself is the SDK's
+        // `DefaultProperties` value ` $(PLATFORM_DIR)/Developer/usr/lib`,
+        // which arrives through the catalog layer). It applies ABOVE the
+        // user layers — tuist's ATests authors `LIBRARY_SEARCH_PATHS =
+        // $(inherited) <path>` and its capture reports the user path FIRST,
+        // then the platform path — so it belongs in this override layer,
+        // where `$(inherited)` folds in the user-resolved value.
+        if is_test_bundle_product_type(product_type) {
+            push(
+                "LIBRARY_SEARCH_PATHS",
+                "$(inherited) $(TEST_LIBRARY_SEARCH_PATHS)",
+            );
         }
         // UI-testing bundles on watch get `ENTITLEMENTS_REQUIRED=YES`.
         // The xcspec default for these targets is NO; xcodebuild flips
@@ -2033,20 +2135,23 @@ pub fn built_in_overrides(
     // exceptions, so this is an unconditional override above the SDK default.
     if !code_signing_required {
         push("CODE_SIGN_IDENTITY", "-");
-    } else if is_test_bundle_product_type(product_type)
+    } else if (is_test_bundle_product_type(product_type)
+        || product_type == Some("com.apple.product-type.tool"))
         && canonicalize_sdk_base(sdk_base) == "macosx"
         && user_code_sign_identity.is_none_or(str::is_empty)
         && user_development_team.is_none_or(str::is_empty)
     {
-        // A macOS unit/UI-test bundle with no signing team and no authored
-        // identity signs ad-hoc ("Sign to Run Locally"), which xcodebuild
-        // reports as CODE_SIGN_IDENTITY="-" even though CODE_SIGNING_REQUIRED
-        // stays YES for the test product type (so the branch above doesn't
-        // fire). Our per-SDK default would otherwise surface the macOS
-        // SDKSettings literal "Apple Development". Scoped to macOS test bundles
-        // — the only product type the corpus proves this for — and gated on
-        // no-team/no-identity so a team-set bundle keeps its resolved value.
-        // (macOS *apps* are deliberately left to the SDK default; see
+        // A macOS unit/UI-test bundle or command-line tool with no signing
+        // team and no authored identity signs ad-hoc ("Sign to Run Locally"),
+        // which xcodebuild reports as CODE_SIGN_IDENTITY="-" even though
+        // CODE_SIGNING_REQUIRED stays YES for these product types (so the
+        // branch above doesn't fire). Our per-SDK default would otherwise
+        // surface the macOS SDKSettings literal "Apple Development". Scoped
+        // to macOS test bundles and tools — the product types the corpus
+        // proves this for (the synthetic xcconfig/custom-config Scratch tools
+        // report "-" in every capture) — and gated on no-team/no-identity so
+        // a team-set target keeps its resolved value. (macOS *apps* are
+        // deliberately left to the SDK default; see
         // `code_sign_identity_forced_dash_when_signing_not_required`.)
         push("CODE_SIGN_IDENTITY", "-");
     }
@@ -2486,9 +2591,18 @@ fn collapse_whitespace_preserving_leading_space(s: &str) -> String {
 /// Default `SUPPORTED_PLATFORMS` for an SDK — typically the device +
 /// simulator pair of that family. User-authored xcconfigs override this;
 /// our base is what flows through when the target says nothing.
-fn supported_platforms_for(sdk_base: &str) -> String {
+///
+/// Pair ordering is Xcode-version dependent: 16+ lists the device first for
+/// every family, while 15.4's captures report the *simulator* first for the
+/// iPhone and Watch families (`iphonesimulator iphoneos`, `watchsimulator
+/// watchos`) yet keep the tvOS pair device-first (`appletvos
+/// appletvsimulator` — Kingfisher's unauthored tvOS demo). No 15.x visionOS
+/// capture exists, so that family keeps the modern order.
+fn supported_platforms_for(sdk_base: &str, legacy_xcode15: bool) -> String {
     match sdk_base {
         "macosx" => "macosx".into(),
+        "iphoneos" | "iphonesimulator" if legacy_xcode15 => "iphonesimulator iphoneos".into(),
+        "watchos" | "watchsimulator" if legacy_xcode15 => "watchsimulator watchos".into(),
         "iphoneos" | "iphonesimulator" => "iphoneos iphonesimulator".into(),
         "appletvos" | "appletvsimulator" => "appletvos appletvsimulator".into(),
         "watchos" | "watchsimulator" => "watchos watchsimulator".into(),
@@ -2568,6 +2682,49 @@ fn xcode_version_numbers(version: &str) -> Option<(String, String, String)> {
     let minor = major + b * 10;
     let actual = minor + c;
     Some((major.to_string(), minor.to_string(), actual.to_string()))
+}
+
+/// The leading major component of an Xcode version string (`"15.4.0"` → 15).
+/// `None` when it isn't numeric (including the empty string from a host with
+/// no Xcode).
+fn xcode_major(version: &str) -> Option<u32> {
+    version.split('.').next()?.trim().parse().ok()
+}
+
+/// The major version of the Xcode a resolution mirrors: the catalog's
+/// recorded version when one is attached, the active install's otherwise.
+/// `0` when no version can be determined (callers treat that as modern).
+#[must_use]
+pub fn effective_xcode_major(catalog_xcode_version: Option<&str>) -> u32 {
+    let short = catalog_xcode_version.map_or_else(
+        || crate::xcode::active_install().short_version,
+        str::to_owned,
+    );
+    xcode_major(&short).unwrap_or(0)
+}
+
+/// Whether the user layers resolve `GCC_OPTIMIZATION_LEVEL = 0` for this
+/// (configuration, sdk) — xcodebuild's effective "debug build" gate (see
+/// [`built_in_overrides`]). Honors `[config=…]` / `[sdk=…]` conditional
+/// assignments by matching them against the query bindings; later layers and
+/// later assignments win, like the resolver proper. An unauthored level means
+/// the optimized xcspec default (`s`) applies.
+#[must_use]
+pub fn is_unoptimized_build(layers: &[Vec<Assignment>], config_name: &str, sdk: &str) -> bool {
+    let ctx = crate::resolver::ResolveContext {
+        sdk: sdk.to_string(),
+        arch: String::new(),
+        configuration: config_name.to_string(),
+        variant: "normal".into(),
+    };
+    for layer in layers.iter().rev() {
+        for a in layer.iter().rev() {
+            if a.key == "GCC_OPTIMIZATION_LEVEL" && a.conditions.iter().all(|c| ctx.matches(c)) {
+                return a.value.trim() == "0";
+            }
+        }
+    }
+    false
 }
 
 fn find_target<'a>(
@@ -3115,7 +3272,8 @@ mod tests {
         // Application + Catalyst + package products on macOS → ATPS=YES and
         // SUPPORTED_PLATFORMS gains macosx (IceCubesApp).
         let ice = built_in_overrides(
-            "Release",
+            26,
+            false,
             false,
             true,
             user_sp,
@@ -3143,7 +3301,8 @@ mod tests {
         // Application + Catalyst but NO package products → ATPS stays NO
         // (omitted), still gets +macosx (Kingfisher-Demo).
         let kf = built_in_overrides(
-            "Debug",
+            26,
+            true,
             false,
             true,
             user_sp,
@@ -3168,7 +3327,8 @@ mod tests {
         // Extension with package products + Catalyst → no ATPS (not an app),
         // but still gets +macosx on macOS.
         let extension = built_in_overrides(
-            "Release",
+            26,
+            false,
             false,
             true,
             user_sp,
@@ -3195,7 +3355,8 @@ mod tests {
 
         // No Catalyst → neither override fires regardless of destination.
         let plain = built_in_overrides(
-            "Release",
+            26,
+            false,
             false,
             false,
             user_sp,
@@ -3216,7 +3377,8 @@ mod tests {
 
         // macosx already present → not appended twice.
         let already = built_in_overrides(
-            "Release",
+            26,
+            false,
             false,
             true,
             Some("iphoneos macosx"),
@@ -3245,12 +3407,12 @@ mod tests {
         let framework = Some("com.apple.product-type.framework");
         let app = Some("com.apple.product-type.application");
         let unsigned = built_in_overrides(
-            "Debug", false, false, None, None, framework, "macosx", None, false, false, false,
+            26, true, false, false, None, None, framework, "macosx", None, false, false, false,
             false, None, None, None,
         );
         assert_eq!(find(&unsigned, "CODE_SIGN_IDENTITY").as_deref(), Some("-"));
         let signed = built_in_overrides(
-            "Debug", false, false, None, None, app, "macosx", None, false, false, true, false,
+            26, true, false, false, None, None, app, "macosx", None, false, false, true, false,
             None, None, None,
         );
         assert_eq!(find(&signed, "CODE_SIGN_IDENTITY"), None);
@@ -3266,7 +3428,8 @@ mod tests {
         // Catalyst + DERIVE flag YES → prepend `maccatalyst.` (the user value
         // may be a `$(...)` recipe; we push it verbatim for the resolver).
         let derived = built_in_overrides(
-            "Debug",
+            26,
+            true,
             true,
             true,
             None,
@@ -3289,7 +3452,8 @@ mod tests {
 
         // Catalyst but DERIVE flag at its NO default (IceCubesApp) → no prefix.
         let not_derived = built_in_overrides(
-            "Debug",
+            26,
+            true,
             true,
             true,
             None,
@@ -3309,7 +3473,8 @@ mod tests {
 
         // Not Catalyst → no prefix even with the flag set.
         let non_catalyst = built_in_overrides(
-            "Debug",
+            26,
+            true,
             false,
             false,
             None,
@@ -3329,7 +3494,8 @@ mod tests {
 
         // Already prefixed → not doubled.
         let already = built_in_overrides(
-            "Debug",
+            26,
+            true,
             true,
             true,
             None,
@@ -3483,6 +3649,16 @@ mod tests {
         // *destination's* arch — a device destination is arm64 regardless of
         // the host machine (xcodebuild on an Intel Mac still builds arm64 for
         // an iPhone), and an explicit `-destination …,arch=…` wins likewise.
+        // The effective ONLY_ACTIVE_ARCH default tracks the unoptimized-build
+        // flag (`GCC_OPTIMIZATION_LEVEL = 0`, the Debug template's value),
+        // NOT the configuration name — the custom-config fixture's
+        // template-less `Debug` reports ONLY_ACTIVE_ARCH=NO and a full ARCHS.
+        let debug_template = vec![vec![Assignment {
+            key: "GCC_OPTIMIZATION_LEVEL".into(),
+            conditions: Vec::new(),
+            value: "0".into(),
+            condition: None,
+        }]];
         let dest = RunDestination {
             platform: "iphoneos".into(),
             os_version: String::new(),
@@ -3492,7 +3668,7 @@ mod tests {
         let out = built_in_settings(
             Path::new("/tmp/App.xcodeproj"),
             "App",
-            "Debug", // ONLY_ACTIVE_ARCH defaults YES on Debug
+            "Debug",
             Some("com.apple.product-type.application"),
             "iphoneos",
             Some(&dest),
@@ -3500,7 +3676,7 @@ mod tests {
             false,
             None,
             None,
-            &[],
+            &debug_template,
             None,
             None,
             None,
@@ -3521,13 +3697,35 @@ mod tests {
             false,
             None,
             None,
-            &[],
+            &debug_template,
             None,
             None,
             None,
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("ARCHS").map(String::from), Some(host_arch()));
+
+        // A config that authors NO optimization level — however it's named —
+        // is an optimized build: no collapse even on a simulator SDK
+        // (xcodebuild's custom-config captures report the full pair).
+        let out = built_in_settings(
+            Path::new("/tmp/App.xcodeproj"),
+            "App",
+            "Debug",
+            Some("com.apple.product-type.application"),
+            "iphonesimulator",
+            None,
+            false,
+            false,
+            None,
+            None,
+            &[],
+            None,
+            None,
+            None,
+        );
+        let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
+        assert_eq!(get("ARCHS"), Some("arm64 x86_64"));
     }
 
     #[test]

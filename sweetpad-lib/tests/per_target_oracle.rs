@@ -130,10 +130,11 @@ fn per_target_oracle_coverage() {
 
     // Per-version floors (see `assert_version_floors`). The canonical tier sits
     // below corpus_oracle's because the isolated single-target view surfaces
-    // real resolver gaps (ARCHS / DEBUG_INFORMATION_FORMAT / ARCHS_STANDARD* /
-    // ENABLE_DEBUG_DYLIB — see the systematic-mismatch tally) that scheme
-    // aggregation otherwise masks. Structural still lands at 99%: those misses
-    // are genuine value disagreements, not path-root drift.
+    // real resolver gaps (the documented-irreducible ENABLE_DEBUG_DYLIB
+    // Release-app heuristic and the 15.x host/arch family — see the
+    // systematic-mismatch tally) that scheme aggregation otherwise masks.
+    // Structural still lands at 99%: those misses are genuine value
+    // disagreements, not path-root drift.
     assert!(
         total.files >= 100,
         "expected to process ≥100 per-target captures; only got {}",
@@ -150,13 +151,13 @@ fn per_target_oracle_coverage() {
 fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     match version {
         "26.5.0" => Some((86, 87, 98)),
-        "16.4.0" => Some((86, 87, 98)),
+        "16.4.0" => Some((86, 88, 98)),
         // 15.4 structural is ~96% (vs 99%): the irreducible 15.x host/arch
         // reporting (NATIVE_ARCH/HOST_ARCH=arm64e, concrete no-destination
         // CURRENT_ARCH, VALID_ARCHS ordering) the resolver can't derive from
         // inputs. The real 15.x parse bugs (PACKAGE_TYPE/BUNDLE_FORMAT
         // undomained-clobber) are fixed.
-        "15.4.0" => Some((84, 91, 95)),
+        "15.4.0" => Some((85, 92, 96)),
         _ => None,
     }
 }

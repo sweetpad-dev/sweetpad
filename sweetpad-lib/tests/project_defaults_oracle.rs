@@ -165,7 +165,7 @@ fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
         // 15.4 structural ~97%: irreducible 15.x host/arch reporting (arm64e
         // NATIVE_ARCH/HOST_ARCH, concrete no-destination CURRENT_ARCH,
         // VALID_ARCHS ordering); the real 15.x parse bugs are fixed.
-        "15.4.0" => Some((84, 92, 95)),
+        "15.4.0" => Some((85, 93, 96)),
         _ => None,
     }
 }

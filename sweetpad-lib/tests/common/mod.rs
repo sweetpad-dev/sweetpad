@@ -714,8 +714,14 @@ pub fn assert_version_floors(
 
 pub type MismatchTally = BTreeMap<String, u64>;
 
+/// Whether a value is an absolute path (or a space-joined list of them) for
+/// the structural tier. Search-path values frequently carry xcodebuild's
+/// leading-space artifact (` /path/a /path/b` from an empty `$(inherited)`),
+/// so the check skips leading whitespace — otherwise two path lists differing
+/// only in their roots would read as a genuine value mismatch instead of
+/// path-geometry drift.
 pub fn is_absolute_path(v: &str) -> bool {
-    v.starts_with('/')
+    v.trim_start().starts_with('/')
 }
 
 /// Classify every key shared between `resolved` (our output) and `oracle`
