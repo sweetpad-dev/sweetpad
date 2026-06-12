@@ -25,6 +25,7 @@
 //! real (4/8 bytes), date, data, ASCII string, UTF-16BE string, array, dict.
 //! UID and Set markers are accepted but treated as opaque.
 
+use std::cell::Cell;
 use std::fmt;
 use std::fs;
 use std::io;
@@ -102,6 +103,7 @@ pub fn parse(data: &[u8]) -> Result<Value, Error> {
         ref_size,
         offset_table_offset,
         num_objects,
+        budget: Cell::new(materialization_budget(num_objects)),
     };
     read_object(&ctx, top_object, 0)
 }
@@ -112,11 +114,25 @@ struct Ctx<'a> {
     ref_size: usize,
     offset_table_offset: usize,
     num_objects: usize,
+    /// Remaining object materializations before [`read_object`] bails. See
+    /// [`materialization_budget`].
+    budget: Cell<usize>,
 }
 
 /// Recursion guard. Apple's plists are not deeply nested in practice; 256 is
-/// well past anything real and still finite.
+/// well past anything real and still finite. A true reference cycle grows the
+/// depth on every hop, so this also rejects self/ancestor re-entry.
 const MAX_DEPTH: usize = 256;
+
+/// Total-work guard. The format allows the same object to be referenced from
+/// many containers (Apple's writer dedups strings this way), and we
+/// re-materialize on every reference — so a small file whose object *i* is an
+/// array of two refs to object *i−1* would otherwise expand to 2^N values.
+/// Cap the total number of materialized objects at a generous multiple of the
+/// object count instead of banning shared refs.
+fn materialization_budget(num_objects: usize) -> usize {
+    num_objects.saturating_mul(16).max(64 * 1024)
+}
 
 fn read_be_u64(b: &[u8]) -> u64 {
     let mut v = 0u64;
@@ -147,6 +163,14 @@ fn object_offset(ctx: &Ctx, idx: usize) -> Result<usize, Error> {
 fn read_object(ctx: &Ctx, idx: usize, depth: usize) -> Result<Value, Error> {
     if depth > MAX_DEPTH {
         return Err(Error::Invalid("recursion depth exceeded".into()));
+    }
+    match ctx.budget.get().checked_sub(1) {
+        Some(rest) => ctx.budget.set(rest),
+        None => {
+            return Err(Error::Invalid(
+                "object materialization budget exceeded".into(),
+            ));
+        }
     }
     let start = object_offset(ctx, idx)?;
     let marker = ctx.data[start];
@@ -320,6 +344,13 @@ fn read_size(ctx: &Ctx, pos: usize, info: u8) -> Result<(usize, usize), Error> {
         )));
     }
     let nbytes = 1usize << (marker & 0x0F);
+    // The low nibble encodes log2(byte_count); anything past 8 bytes cannot
+    // fit a usize and would silently truncate through `read_be_u64`.
+    if nbytes > 8 {
+        return Err(Error::Invalid(format!(
+            "extended size width {nbytes} exceeds 8 bytes"
+        )));
+    }
     let body = pos + 1;
     require(ctx, body, nbytes, "extended size")?;
     let val = read_be_u64(&ctx.data[body..body + nbytes]) as usize;

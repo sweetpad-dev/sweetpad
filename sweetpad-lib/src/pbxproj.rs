@@ -219,7 +219,7 @@ impl std::error::Error for Error {}
 pub fn parse(input: &str) -> Result<Value, ParseError> {
     let mut p = Parser::new(input);
     p.skip_ws();
-    let v = p.parse_value()?;
+    let v = p.parse_value(0)?;
     p.skip_ws();
     if p.peek().is_some() {
         return Err(p.error("trailing data after root value"));
@@ -244,6 +244,11 @@ static CACHE: LazyLock<ParseCache<Value>> = LazyLock::new(ParseCache::new);
 pub fn parse_file_cached(path: &Path) -> Result<Arc<Value>, Error> {
     CACHE.get_or_parse(path, parse_file)
 }
+
+/// Recursion guard for nested dicts/arrays. Real pbxproj files nest a handful
+/// of levels deep; 512 is well past anything Xcode writes and keeps a
+/// pathological `(((((…` input from overflowing the stack.
+const MAX_DEPTH: usize = 512;
 
 struct Parser<'a> {
     input: &'a [u8],
@@ -310,11 +315,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_value(&mut self) -> Result<Value, ParseError> {
+    fn parse_value(&mut self, depth: usize) -> Result<Value, ParseError> {
+        if depth > MAX_DEPTH {
+            return Err(self.error("nesting depth limit exceeded"));
+        }
         self.skip_ws();
         match self.peek() {
-            Some(b'{') => self.parse_dict(),
-            Some(b'(') => self.parse_array(),
+            Some(b'{') => self.parse_dict(depth),
+            Some(b'(') => self.parse_array(depth),
             Some(b'"') => Ok(Value::String(self.parse_quoted_string()?)),
             // OpenStep plist also allows `<HEX BYTES>` data literals. We don't
             // need the bytes for anything in pbxproj/xcspec consumers, but the
@@ -355,7 +363,7 @@ impl<'a> Parser<'a> {
         Err(self.error("unterminated data literal"))
     }
 
-    fn parse_dict(&mut self) -> Result<Value, ParseError> {
+    fn parse_dict(&mut self, depth: usize) -> Result<Value, ParseError> {
         let start = self.pos;
         self.pos += 1;
         let mut map = Dict::new();
@@ -377,7 +385,7 @@ impl<'a> Parser<'a> {
                 return Err(self.error("expected '=' after dict key"));
             }
             self.pos += 1;
-            let value = self.parse_value()?;
+            let value = self.parse_value(depth + 1)?;
             self.skip_ws();
             if self.peek() != Some(b';') {
                 return Err(self.error("expected ';' after dict value"));
@@ -387,7 +395,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_array(&mut self) -> Result<Value, ParseError> {
+    fn parse_array(&mut self, depth: usize) -> Result<Value, ParseError> {
         self.pos += 1;
         let mut items = Vec::new();
         loop {
@@ -400,7 +408,7 @@ impl<'a> Parser<'a> {
                 None => return Err(self.error("unterminated array")),
                 _ => {}
             }
-            let v = self.parse_value()?;
+            let v = self.parse_value(depth + 1)?;
             items.push(v);
             self.skip_ws();
             match self.peek() {
