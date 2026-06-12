@@ -5,8 +5,7 @@ import * as path from "node:path";
 import * as sweetpadLib from "@sweetpad/lib";
 import * as vscode from "vscode";
 
-import { getIsNodeInstalled } from "../common/cli/scripts";
-import { type AppDeps, resetSweetPadState, warnNodeRuntimeMissing } from "../common/commands";
+import { type AppDeps, resetSweetPadState } from "../common/commands";
 import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { refreshShellEnv } from "../common/tasks/shell-env";
@@ -67,11 +66,14 @@ const CLI_INSTALL_DEFAULTS = ["/usr/local/bin/sweetpad", path.join(os.homedir(),
 
 // Symlink not copy so extension upgrades reflect automatically.
 export async function installCliCommand(deps: AppDeps): Promise<void> {
-  const source = path.join(deps.vscodeContext.extensionPath, "out", "cli.js");
+  // The native `sweetpad` binary bundled next to the extension (built from
+  // sweetpad-lib and copied to out/ by rolldown) — no Node runtime needed.
+  const source = path.join(deps.vscodeContext.extensionPath, "out", "sweetpad");
   if (!(await isFileExists(source))) {
     throw new Error(`Bundled CLI not found at ${source}. Was the extension built with npm run build?`);
   }
 
+  // The VSIX zip drops file modes, so restore the exec bit before symlinking.
   try {
     await fs.chmod(source, 0o755);
   } catch (err) {
@@ -126,13 +128,6 @@ export async function installCliCommand(deps: AppDeps): Promise<void> {
   }
 
   vscode.window.showInformationMessage(`SweetPad CLI installed at ${target}`);
-
-  // The symlinked CLI runs through its `#!/usr/bin/env node` shebang, so it needs
-  // a Node runtime on PATH to work at all — point the user at the installer now
-  // rather than letting `sweetpad` fail cryptically the first time they run it.
-  if (!(await getIsNodeInstalled())) {
-    await warnNodeRuntimeMissing("The sweetpad CLI");
-  }
 }
 
 export async function copyServerNameCommand(deps: AppDeps): Promise<void> {

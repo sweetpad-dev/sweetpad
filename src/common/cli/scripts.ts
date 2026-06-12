@@ -565,10 +565,10 @@ export async function getIsXBSInstalled() {
 }
 
 /**
- * Is a Node.js runtime on the user's PATH? The bundled CLI (`cli.js`) and the BSP
- * server (`bsp-server.js`) both launch via a `#!/usr/bin/env node` shebang, so
- * they need a real `node` on PATH — VS Code's own bundled Node isn't exposed
- * there. Resolved against the login-shell PATH (via `exec`), the same one the
+ * Is a Node.js runtime on the user's PATH? The bundled BSP server
+ * (`bsp-server.js`) launches via a `#!/usr/bin/env node` shebang, so it needs
+ * a real `node` on PATH — VS Code's own bundled Node isn't exposed there.
+ * Resolved against the login-shell PATH (via `exec`), the same one the
  * shebang sees.
  */
 export async function getIsNodeInstalled(): Promise<boolean> {

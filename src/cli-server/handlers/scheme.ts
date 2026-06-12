@@ -35,7 +35,7 @@ export const schemeSet: HandlerFn<{ name?: string }, { scheme: SchemeEntity }> =
   const names = await loadSchemeNames(ctx);
   if (!names.includes(params.name)) {
     throw new SweetpadRpcError(ERROR_CODES.SCHEME_NOT_FOUND, `Scheme not found: ${params.name}`, {
-      hint: "sweetpad scheme list",
+      hint: "sweetpad vscode scheme.list",
       data: { available: names },
     });
   }

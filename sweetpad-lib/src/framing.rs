@@ -1,5 +1,6 @@
-//! `Content-Length`-framed JSON-RPC message codec, shared by the stdio loop
-//! (toward sourcekit-lsp) and the control-socket client (toward the extension).
+//! `Content-Length`-framed JSON-RPC message codec, shared by the BSP server's
+//! stdio loop (toward sourcekit-lsp), its control-socket client (toward the
+//! extension), and the `sweetpad vscode` CLI client ([`crate::vscode_cli`]).
 
 use std::io::{BufRead, Write};
 

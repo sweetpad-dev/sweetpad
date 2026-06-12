@@ -47,3 +47,6 @@ __pycache__/
 /*.node
 /index.js
 /index.d.ts
+
+# Native `sweetpad` CLI staged for the extension bundle (build:cli:*)
+/sweetpad-cli

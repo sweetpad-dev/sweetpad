@@ -26,11 +26,22 @@ name = "bsp-server"
 path = "src/bin/bsp_server.rs"
 required-features = ["bsp-server"]
 
+# The `sweetpad` CLI — a pure native binary shipped inside the VS Code
+# extension (the installCli command symlinks it onto PATH). One command for
+# now: `vscode`, the JSON-RPC client over the extension's control server (see
+# src/vscode_cli.rs). Same feature-gating rationale as the bsp-server bin.
+[[bin]]
+name = "sweetpad"
+path = "src/bin/sweetpad.rs"
+required-features = ["cli"]
+
 [features]
-# `bsp-server` builds the BSP server binary; default-on so `cargo build`/`cargo
-# test` get it (the BSP integration tests exec it), and skipped by the addon build.
-default = ["bsp-server"]
+# `bsp-server` builds the BSP server binary and `cli` the `sweetpad` CLI;
+# default-on so `cargo build`/`cargo test` get them (the integration tests exec
+# both), and skipped by the addon build.
+default = ["bsp-server", "cli"]
 bsp-server = []
+cli = []
 # Compiles the `src/node.rs` N-API bindings into the cdylib. Off by default so
 # `cargo test` (and the interface-agnostic core) never link the Node runtime.
 node = ["dep:napi", "dep:napi-derive"]

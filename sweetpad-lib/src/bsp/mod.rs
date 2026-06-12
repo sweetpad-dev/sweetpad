@@ -10,7 +10,6 @@
 //! (⚠️ per-file later — see `DOCS.md` §8 (BSP server)), no `buildTarget/prepare` yet (v2).
 
 mod control;
-mod framing;
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
@@ -26,9 +25,9 @@ use serde_json::{Value, json};
 
 use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
+use crate::framing::{read_message, write_message};
 use crate::project;
 use control::{LogLevel, TelemetryServer};
-use framing::{read_message, write_message};
 
 /// Write a `buildServer.json` so `sourcekit-lsp` discovers and launches this
 /// server. Its `argv` points at the current executable + the same `bsp` flags,

@@ -15,9 +15,12 @@
     ]
   },
   "scripts": {
-    "build": "napi build --platform --release --no-default-features --features node",
-    "build:debug": "napi build --platform --no-default-features --features node",
-    "build:universal": "napi build --platform --release --no-default-features --features node --target aarch64-apple-darwin && napi build --platform --release --no-default-features --features node --target x86_64-apple-darwin && napi universalize",
+    "build": "napi build --platform --release --no-default-features --features node && npm run build:cli",
+    "build:debug": "napi build --platform --no-default-features --features node && npm run build:cli:debug",
+    "build:universal": "napi build --platform --release --no-default-features --features node --target aarch64-apple-darwin && napi build --platform --release --no-default-features --features node --target x86_64-apple-darwin && napi universalize && npm run build:cli:universal",
+    "build:cli": "cargo build --release --bin sweetpad && cp target/release/sweetpad sweetpad-cli",
+    "build:cli:debug": "cargo build --bin sweetpad && cp target/debug/sweetpad sweetpad-cli",
+    "build:cli:universal": "cargo build --release --bin sweetpad --target aarch64-apple-darwin && cargo build --release --bin sweetpad --target x86_64-apple-darwin && lipo -create -output sweetpad-cli target/aarch64-apple-darwin/release/sweetpad target/x86_64-apple-darwin/release/sweetpad",
     "universalize": "napi universalize"
   },
   "devDependencies": {

@@ -151,9 +151,9 @@ export const NODE_DOWNLOAD_URL = "https://nodejs.org/en/download";
 
 /**
  * Warn that no Node.js runtime is on PATH, with a button to the install docs.
- * The CLI (`cli.js`) and BSP server (`bsp-server.js`) launch via
- * `#!/usr/bin/env node`, so without `node` on PATH they can't run. Non-blocking:
- * the caller still completes its work (the warning is informational).
+ * The BSP server (`bsp-server.js`) launches via `#!/usr/bin/env node`, so
+ * without `node` on PATH it can't run. Non-blocking: the caller still
+ * completes its work (the warning is informational).
  */
 export async function warnNodeRuntimeMissing(subject: string): Promise<void> {
   const install = "Install Node.js";

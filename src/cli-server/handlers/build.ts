@@ -25,14 +25,14 @@ function resolveBuildId(ctx: RpcContext, buildId: string | undefined): BuildEnti
     entity = ctx.buildRegistry.getBuild(buildId);
     if (!entity) {
       throw new SweetpadRpcError(ERROR_CODES.BUILD_NOT_FOUND, `No build with id ${buildId}`, {
-        hint: "sweetpad build list",
+        hint: "sweetpad vscode build.list",
       });
     }
   } else {
     entity = ctx.buildRegistry.getLatest();
     if (!entity) {
       throw new SweetpadRpcError(ERROR_CODES.NO_LAST_BUILD, "No builds have been recorded yet for this workspace.", {
-        hint: "sweetpad build start build",
+        hint: "sweetpad vscode build.start build",
       });
     }
   }
@@ -69,7 +69,7 @@ export const buildStart: HandlerFn<
       ERROR_CODES.MISSING_PREREQUISITES,
       `Cannot start ${command}: missing ${missing.join(", ")}.`,
       {
-        hint: missing[0] === "scheme" ? "sweetpad scheme set <name>" : `sweetpad ${missing[0]} list`,
+        hint: missing[0] === "scheme" ? "sweetpad vscode scheme.set <name>" : `sweetpad vscode ${missing[0]}.list`,
         data: { missing },
       },
     );
@@ -109,7 +109,7 @@ export const buildWait: HandlerFn<{ buildId?: string; timeoutMs?: number }, Buil
   }
   if (!ctx.buildRegistry.getBuild(targetId)) {
     throw new SweetpadRpcError(ERROR_CODES.BUILD_NOT_FOUND, `No build with id ${targetId}`, {
-      hint: "sweetpad build list",
+      hint: "sweetpad vscode build.list",
     });
   }
   const timeoutMs = typeof params?.timeoutMs === "number" ? params.timeoutMs : undefined;

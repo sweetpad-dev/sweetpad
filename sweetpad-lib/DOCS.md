@@ -71,7 +71,7 @@ P0.3 (see [§11.2](#112-audit-follow-ups-june-2026)).
 
 ```
 sweetpad-lib/
-  Cargo.toml / Cargo.lock      # single crate `sweetpad`; lib + `bsp-server` binary (BSP tests/debugging); lock committed
+  Cargo.toml / Cargo.lock      # single crate `sweetpad`; lib + `sweetpad` CLI + `bsp-server` binary (BSP tests/debugging); lock committed
   rust-toolchain.toml          # pinned toolchain (edition 2024)
   rustfmt.toml
   package.json                 # @sweetpad/lib napi packaging (darwin targets)

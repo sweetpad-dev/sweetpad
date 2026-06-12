@@ -65,7 +65,7 @@ export const destinationSet: HandlerFn<{ id?: string }, { destination: Destinati
   const match = all.find((d) => d.id === params.id);
   if (!match) {
     throw new SweetpadRpcError(ERROR_CODES.DESTINATION_NOT_FOUND, `Destination not found: ${params.id}`, {
-      hint: "sweetpad destination list",
+      hint: "sweetpad vscode destination.list",
     });
   }
   ctx.destinationsManager.setWorkspaceDestinationForBuild(match);

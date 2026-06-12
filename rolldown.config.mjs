@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { sentryRollupPlugin } from "@sentry/rollup-plugin";
@@ -40,6 +40,19 @@ const sweetpadLibPlugin = {
     for (const file of ["index.js", ...addons]) {
       copyFileSync(path.join(SWEETPAD_LIB_DIR, file), path.join(outLibDir, file));
     }
+
+    // The native `sweetpad` CLI (compiled by `build:cli:*` into `sweetpad-cli`)
+    // ships next to the extension bundle; the `sweetpad.system.installCli`
+    // command symlinks `out/sweetpad` to a directory on the user's PATH.
+    const cliBinary = path.join(SWEETPAD_LIB_DIR, "sweetpad-cli");
+    if (!existsSync(cliBinary)) {
+      this.error("No compiled sweetpad CLI found in sweetpad-lib/ — run build:sweetpad-lib:debug first.");
+    }
+    const outCli = path.join(path.dirname(outputOptions.file), "sweetpad");
+    copyFileSync(cliBinary, outCli);
+    // The VSIX zip drops file modes, so the exec bit is also restored at
+    // install time (installCliCommand); this keeps local runs working.
+    chmodSync(outCli, 0o755);
   },
 };
 
@@ -92,31 +105,13 @@ export default defineConfig([
     plugins: extensionPlugins,
   },
   {
-    // Bundled CLI client that ships next to the extension. The
-    // `sweetpad.system.installCli` command symlinks this file to a directory
-    // on the user's PATH.
-    input: "./src/cli/index.ts",
-    output: {
-      file: "out/cli.js",
-      format: "cjs",
-      sourcemap: isProduction ? "hidden" : true,
-      minify: isProduction,
-      banner: "#!/usr/bin/env node",
-    },
-    platform: "node",
-    transform: {
-      target: "es2022",
-      define: {
-        GLOBAL_SENTRY_DSN: JSON.stringify(null),
-        GLOBAL_RELEASE_VERSION: JSON.stringify(pkg.version),
-      },
-    },
-  },
-  {
     // The BSP server sourcekit-lsp execs (via `argv` in buildServer.json).
-    // Bundled with a `#!/usr/bin/env node` shebang — like the CLI — so it runs
-    // under the user's system Node, which loads the copied addon (`out/lib`) and
-    // runs the sweetpad-lib BSP loop over stdio. No running extension required.
+    // Bundled with a `#!/usr/bin/env node` shebang so it runs under the user's
+    // system Node, which loads the copied addon (`out/lib`) and runs the
+    // sweetpad-lib BSP loop over stdio. No running extension required. Unlike
+    // the native `sweetpad` CLI, the BSP server stays a JS wrapper around the
+    // addon: the addon ships unsigned, and macOS only loads it inside an
+    // already-signed host process like `node`.
     input: "./src/cli/bsp-server.ts",
     output: {
       file: "out/bsp-server.js",
