@@ -586,6 +586,7 @@ fn emit_library_paths(a: &mut ArgBuilder, settings: &Settings) -> Vec<String> {
 /// and the object filelist are out of scope (geometry / autolink), tracked by
 /// the comparator tally rather than generated here.
 #[must_use]
+#[allow(clippy::too_many_lines)] // one cohesive link-line serializer, ordered to match xcodebuild
 pub fn link_arguments(
     settings: &Settings,
     arch: &str,
