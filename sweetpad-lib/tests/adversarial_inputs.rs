@@ -58,12 +58,16 @@ fn xcscheme_serializes_programmatic_deep_tree_without_overflow() {
     // one must truncate instead of overflowing the serializer's stack.
     let mut e = xcscheme::Element {
         name: "leaf".into(),
-        ..Default::default()
+        attributes: Vec::new(),
+        children: Vec::new(),
+        text: String::new(),
     };
     for _ in 0..10_000 {
         let mut parent = xcscheme::Element {
             name: "n".into(),
-            ..Default::default()
+            attributes: Vec::new(),
+            children: Vec::new(),
+            text: String::new(),
         };
         parent.children.push(e);
         e = parent;

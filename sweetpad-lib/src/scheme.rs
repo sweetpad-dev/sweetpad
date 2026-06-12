@@ -623,7 +623,9 @@ mod tests {
     fn rejects_non_scheme_root() {
         let element = Element {
             name: "NotAScheme".into(),
-            ..Default::default()
+            attributes: Vec::new(),
+            children: Vec::new(),
+            text: String::new(),
         };
         let err = from_element(&element).unwrap_err();
         assert!(format!("{err}").contains("expected root element"));

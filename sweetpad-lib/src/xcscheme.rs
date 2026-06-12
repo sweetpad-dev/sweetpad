@@ -50,6 +50,23 @@ impl Element {
     }
 }
 
+impl Drop for Element {
+    /// Dismantle the child tree iteratively. The compiler-generated drop
+    /// recurses one stack frame per nesting level, so dropping a
+    /// programmatically built deep tree (one [`parse`]'s [`MAX_DEPTH`] guard can
+    /// never produce, but [`serialize`] is documented to tolerate) would
+    /// overflow the stack. Moving every node onto a heap-allocated worklist
+    /// keeps the teardown at constant stack depth regardless of nesting.
+    fn drop(&mut self) {
+        let mut stack: Vec<Element> = std::mem::take(&mut self.children);
+        while let Some(mut node) = stack.pop() {
+            stack.append(&mut node.children);
+            // `node` drops here with an already-empty `children`, so this
+            // `Drop` runs again but recurses no further.
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ParseError {
     pub message: String,
