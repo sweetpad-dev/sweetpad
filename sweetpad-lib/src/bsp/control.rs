@@ -8,6 +8,7 @@ use std::io::BufReader;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -101,10 +102,16 @@ impl TelemetryServer {
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 // Keep a write half for broadcasts; the read half drains
-                // `bsp/setLogLevel` until the extension disconnects.
+                // `bsp/setLogLevel` until the extension disconnects. The
+                // write timeout is load-bearing: `broadcast` runs on the
+                // request thread, so a connected client that stops reading
+                // (suspended extension host, full socket buffer) would
+                // otherwise block a broadcast forever — wedging the whole
+                // server. A timed-out write fails and drops the client.
                 if let Ok(write_half) = stream.try_clone()
                     && let Ok(mut clients) = accept.clients.lock()
                 {
+                    let _ = write_half.set_write_timeout(Some(Duration::from_secs(1)));
                     clients.push(write_half);
                 }
                 let on_set_level = Arc::clone(&on_set_level);
@@ -128,7 +135,9 @@ impl TelemetryServer {
     }
 
     /// Push a JSON-RPC notification to every connected extension, dropping any
-    /// that error on write (a disconnected client).
+    /// that errors on write — a disconnected client, or one whose write timed
+    /// out (see the timeout set at accept; this runs on the request thread, so
+    /// a stalled client must cost at most one bounded write, never a wedge).
     #[allow(clippy::needless_pass_by_value)]
     pub(crate) fn broadcast(&self, method: &str, params: Value) {
         let body = json!({ "jsonrpc": "2.0", "method": method, "params": params }).to_string();

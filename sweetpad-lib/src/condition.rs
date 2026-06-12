@@ -40,7 +40,11 @@ pub fn parse(input: &str) -> Option<Expr> {
         return None;
     }
     let tokens = lex(trimmed);
-    let mut parser = Parser { tokens, pos: 0 };
+    let mut parser = Parser {
+        tokens,
+        pos: 0,
+        depth: 0,
+    };
     let expr = parser.parse_expression();
     // Trailing garbage means a malformed condition; fall back to always-true
     // so the assignment is included (Apple's resolver does the same on parse
@@ -233,9 +237,19 @@ fn lex(input: &str) -> Vec<Token> {
 // Parser (recursive descent, low → high precedence)
 // =====================================================================
 
+/// Grammar-descent depth cap. Real xcspec conditions nest a handful of
+/// levels; the cap keeps a pathologically nested expression from
+/// overflowing the stack (matching the sibling parsers' guards). Tighter
+/// than the structural parsers' caps because each grammar level costs
+/// several call frames (expression → ternary → or → and → equality →
+/// unary → primary). Past it the parser collapses to its usual recovery
+/// value instead of recursing.
+const MAX_DEPTH: usize = 64;
+
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    depth: usize,
 }
 
 impl Parser {
@@ -263,14 +277,21 @@ impl Parser {
     fn parse_ternary(&mut self) -> Expr {
         let cond = self.parse_or();
         if self.eat(&Token::Question) {
+            if self.depth >= MAX_DEPTH {
+                return cond;
+            }
+            self.depth += 1;
             let then_branch = self.parse_expression();
             // The `:` is mandatory in a well-formed ternary; missing one we
             // treat as parse error and fall back to the OR expression alone.
-            if !self.eat(&Token::Colon) {
-                return cond;
-            }
-            let else_branch = self.parse_ternary();
-            return Expr::Ternary(Box::new(cond), Box::new(then_branch), Box::new(else_branch));
+            let result = if self.eat(&Token::Colon) {
+                let else_branch = self.parse_ternary();
+                Expr::Ternary(Box::new(cond), Box::new(then_branch), Box::new(else_branch))
+            } else {
+                cond
+            };
+            self.depth -= 1;
+            return result;
         }
         cond
     }
@@ -322,7 +343,12 @@ impl Parser {
 
     fn parse_unary(&mut self) -> Expr {
         if self.eat(&Token::Bang) {
+            if self.depth >= MAX_DEPTH {
+                return Expr::Str(String::new());
+            }
+            self.depth += 1;
             let inner = self.parse_unary();
+            self.depth -= 1;
             return Expr::Not(Box::new(inner));
         }
         self.parse_primary()
@@ -331,7 +357,12 @@ impl Parser {
     fn parse_primary(&mut self) -> Expr {
         match self.bump() {
             Some(Token::LParen) => {
+                if self.depth >= MAX_DEPTH {
+                    return Expr::Str(String::new());
+                }
+                self.depth += 1;
                 let inner = self.parse_expression();
+                self.depth -= 1;
                 // Tolerate missing close paren rather than panic — yields a
                 // best-effort parse.
                 let _ = self.eat(&Token::RParen);

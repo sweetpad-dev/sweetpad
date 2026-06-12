@@ -1015,3 +1015,31 @@ fn bsp_framing_header_robustness() {
         "expected clean error exit: {status:?}"
     );
 }
+
+/// A frame declaring a giant `Content-Length` must be rejected before the
+/// body buffer is allocated — previously `vec![0u8; len]` aborted the whole
+/// process on allocation failure (or committed gigabytes and hung waiting
+/// for a body that never comes). Expect a clean error exit, not a signal.
+#[test]
+fn bsp_rejects_oversized_content_length() {
+    let proj = project();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+        .args(["bsp", "--project", &proj])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn bsp server");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"Content-Length: 10000000000\r\n\r\n{}")
+        .expect("write stdin");
+    let status = child.wait().expect("wait");
+    assert_eq!(
+        status.code(),
+        Some(1),
+        "expected clean error exit (a None code means a signal/abort): {status:?}"
+    );
+}

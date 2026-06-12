@@ -207,3 +207,84 @@ fn normal_xcscheme_still_round_trips() {
     let e = xcscheme::parse(src).unwrap();
     assert_eq!(xcscheme::serialize(&e), src);
 }
+
+// ---------------------------------------------------------------------------
+// project: group-tree cycles / shared subtrees in resolve_group_paths
+// ---------------------------------------------------------------------------
+
+/// A pbxproj whose group tree contains a reference cycle (`G1 → G2 → G1`)
+/// and a doubled child list (`children = (G, G)` — shared-subtree fan-out)
+/// must resolve source files cleanly instead of overflowing the stack. Run
+/// on a small stack so an unguarded walk fails fast.
+#[test]
+fn project_group_cycles_resolve_without_overflow() {
+    let pbxproj = r#"// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    objectVersion = 56;
+    rootObject = ROOT;
+    objects = {
+        ROOT = {
+            isa = PBXProject;
+            mainGroup = G1;
+            targets = (T1);
+            buildConfigurationList = CL;
+        };
+        G1 = { isa = PBXGroup; children = (G2, G2, F1); sourceTree = "<group>"; };
+        G2 = { isa = PBXGroup; children = (G1, G1); sourceTree = "<group>"; };
+        F1 = { isa = PBXFileReference; path = a.swift; sourceTree = "<group>"; };
+        T1 = {
+            isa = PBXNativeTarget;
+            name = App;
+            buildPhases = (BP);
+            buildConfigurationList = CL;
+        };
+        BP = { isa = PBXSourcesBuildPhase; files = (BF); };
+        BF = { isa = PBXBuildFile; fileRef = F1; };
+        CL = { isa = XCConfigurationList; buildConfigurations = (); };
+    };
+}
+"#;
+    let dir = std::env::temp_dir().join(format!("sweetpad-group-cycle-{}", std::process::id()));
+    let proj = dir.join("Cycle.xcodeproj");
+    std::fs::create_dir_all(&proj).expect("create xcodeproj dir");
+    std::fs::write(proj.join("project.pbxproj"), pbxproj).expect("write pbxproj");
+
+    let handle = std::thread::Builder::new()
+        .stack_size(512 * 1024)
+        .spawn(move || {
+            let files = sweetpad::project::target_source_files(&proj, "App")
+                .expect("cyclic groups should still resolve");
+            assert!(
+                files.iter().any(|f| f.ends_with("a.swift")),
+                "the real source file should survive the cycle: {files:?}"
+            );
+        })
+        .expect("spawn");
+    handle.join().expect("walk must not overflow the stack");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------
+// condition: unbounded grammar descent in the xcspec condition parser
+// ---------------------------------------------------------------------------
+
+/// Deeply nested condition expressions must hit the depth cap and fall back
+/// to the parser's recovery value instead of overflowing the stack. Only
+/// first-party xcspec data reaches this parser, so the cap is belt-and-braces
+/// — but it matches the guard every sibling parser carries.
+#[test]
+fn condition_rejects_deeply_nested_parens() {
+    let input = format!("{}YES{}", "(".repeat(200_000), ")".repeat(200_000));
+    let handle = std::thread::Builder::new()
+        .stack_size(512 * 1024)
+        .spawn(move || {
+            // Either outcome (recovered parse or None → always-true fallback)
+            // is acceptable; aborting the process is not.
+            let _ = sweetpad::condition::parse(&input);
+            let bangs = format!("{}YES", "!".repeat(200_000));
+            let _ = sweetpad::condition::parse(&bangs);
+        })
+        .expect("spawn");
+    handle.join().expect("condition parse must not overflow");
+}

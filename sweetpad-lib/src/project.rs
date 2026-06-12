@@ -563,6 +563,8 @@ pub fn target_source_files_from_value(
             &project_dir,
             &mut file_paths,
             &mut sync_dirs,
+            &mut BTreeSet::new(),
+            0,
         );
     }
 
@@ -944,17 +946,33 @@ fn abs_project_dir(xcodeproj_path: &Path) -> PathBuf {
     abs.parent().map_or_else(PathBuf::new, Path::to_path_buf)
 }
 
+/// Group nesting deeper than this is treated as malformed. Real group trees
+/// are tens of levels at most — and since groups are objects referenced by
+/// id, their depth is NOT bounded by the pbxproj parser's nesting cap, so a
+/// corrupt chain of groups could otherwise overflow the stack.
+const MAX_GROUP_DEPTH: usize = 256;
+
 /// DFS the group tree, recording `file_id → absolute path` for every leaf. A
 /// group node contributes its own directory to its children; a leaf records its
 /// full path. `PBXVariantGroup` / `XCVersionGroup` (localized resources, Core
 /// Data model versions) are walked like groups so their members resolve.
-fn resolve_group_paths(
-    objects: &Dict,
-    node_id: &str,
+///
+/// `visited` breaks reference cycles (`G1 → G2 → G1`) and bounds the walk to
+/// one visit per group even when a corrupt file shares subtrees (a crafted
+/// `children = (G, G)` at every level would otherwise re-walk shared nodes
+/// 2^depth times); `depth` bounds the stack on a non-cyclic chain.
+// The two walk-state params push this over clippy's arity limit; a state
+// struct for an internal DFS helper would be heavier than the flag list.
+#[allow(clippy::too_many_arguments)]
+fn resolve_group_paths<'a>(
+    objects: &'a Dict,
+    node_id: &'a str,
     parent_base: &Path,
     project_dir: &Path,
     out: &mut BTreeMap<String, PathBuf>,
     sync_out: &mut BTreeMap<String, PathBuf>,
+    visited: &mut BTreeSet<&'a str>,
+    depth: usize,
 ) {
     let Some(node) = objects.get(node_id) else {
         return;
@@ -963,10 +981,22 @@ fn resolve_group_paths(
     let isa = node.get("isa").and_then(Value::as_str).unwrap_or("");
     match isa {
         "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup" => {
+            if depth >= MAX_GROUP_DEPTH || !visited.insert(node_id) {
+                return;
+            }
             if let Some(children) = node.get("children").and_then(Value::as_array) {
                 for child in children {
                     if let Some(cid) = child.as_str() {
-                        resolve_group_paths(objects, cid, &base, project_dir, out, sync_out);
+                        resolve_group_paths(
+                            objects,
+                            cid,
+                            &base,
+                            project_dir,
+                            out,
+                            sync_out,
+                            visited,
+                            depth + 1,
+                        );
                     }
                 }
             }
