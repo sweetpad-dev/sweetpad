@@ -19,14 +19,14 @@ pub(crate) fn read_message(reader: &mut impl BufRead) -> Result<Option<String>, 
         // Header names are case-insensitive; don't die on a client that
         // doesn't send the canonical casing. A malformed value is a hard
         // error (the frame boundary is unrecoverable without it).
-        if let Some((name, value)) = line.split_once(':') {
-            if name.eq_ignore_ascii_case("content-length") {
-                let parsed = value
-                    .trim()
-                    .parse()
-                    .map_err(|e| format!("bad Content-Length {:?}: {e}", value.trim()))?;
-                content_length = Some(parsed);
-            }
+        if let Some((name, value)) = line.split_once(':')
+            && name.eq_ignore_ascii_case("content-length")
+        {
+            let parsed = value
+                .trim()
+                .parse()
+                .map_err(|e| format!("bad Content-Length {:?}: {e}", value.trim()))?;
+            content_length = Some(parsed);
         }
     }
     let len = content_length.ok_or("message without Content-Length")?;
