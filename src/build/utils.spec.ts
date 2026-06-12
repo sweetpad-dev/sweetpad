@@ -1,4 +1,24 @@
-import { launchActionToSettings } from "./utils";
+import type { Mock } from "vitest";
+import * as vscode from "vscode";
+
+import { generateBuildServerConfig, getSweetpadBspServerPath } from "../common/cli/scripts";
+import { isFileExists, readJsonFile } from "../common/files";
+import type { WorkspaceStateService } from "../common/workspace-state";
+import { generateBuildServerConfigOnBuild, launchActionToSettings } from "./utils";
+
+// `./utils` imports the native `@sweetpad/lib` addon at module level; stub it so
+// this spec runs without the compiled addon (none of the tested paths touch it).
+vi.mock("@sweetpad/lib", () => ({}));
+
+vi.mock("../common/cli/scripts", () => ({
+  generateBuildServerConfig: vi.fn(),
+  getSweetpadBspServerPath: vi.fn(),
+}));
+
+vi.mock("../common/files", () => ({
+  isFileExists: vi.fn(),
+  readJsonFile: vi.fn(),
+}));
 
 type ArgInput = { argument: string; isEnabled?: boolean };
 type EnvInput = { key: string; value?: string; isEnabled?: boolean };
@@ -90,5 +110,75 @@ describe("launchActionToSettings", () => {
     expect(args.filter((a) => a === "-AppleLocale")).toHaveLength(2);
     expect(args).toContain("(he)");
     expect(args).toContain("he_IL");
+  });
+});
+
+describe("generateBuildServerConfigOnBuild (sweetpad provider)", () => {
+  const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
+  const mockGenerate = generateBuildServerConfig as Mock;
+  const mockBspServerPath = getSweetpadBspServerPath as Mock;
+  const mockReadJsonFile = readJsonFile as Mock;
+  const mockIsFileExists = isFileExists as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (vscode.workspace as { workspaceFolders?: unknown }).workspaceFolders = [{ uri: { fsPath: "/workspace" } }];
+    mockGetConfiguration.mockReturnValue({
+      get: vi.fn(
+        (key: string) =>
+          ({
+            "buildServer.provider": "sweetpad",
+            "build.autoGenerateBuildServerConfig": true,
+            // Skip the LSP restart so the test stays on the regeneration logic.
+            "build.autoRestartSwiftLSP": false,
+          })[key as never],
+      ),
+    });
+    mockBspServerPath.mockReturnValue("/ext/out/bsp-server.js");
+  });
+
+  function run() {
+    return generateBuildServerConfigOnBuild({
+      scheme: "App",
+      xcworkspace: "/workspace/App.xcworkspace",
+      workspaceState: {} as unknown as WorkspaceStateService,
+    });
+  }
+
+  it("skips regeneration when the config is ours and the launcher path is current", async () => {
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/ext/out/bsp-server.js"] });
+    mockIsFileExists.mockResolvedValue(true);
+    await run();
+    expect(mockGenerate).not.toHaveBeenCalled();
+  });
+
+  it("regenerates when argv[0] points into a stale (old extension version) dir", async () => {
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/old-ext/out/bsp-server.js"] });
+    mockIsFileExists.mockResolvedValue(true);
+    await run();
+    expect(mockGenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it("regenerates when argv[0] no longer exists on disk", async () => {
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/ext/out/bsp-server.js"] });
+    mockIsFileExists.mockResolvedValue(false);
+    await run();
+    expect(mockGenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it("regenerates when switching in from another provider's config", async () => {
+    mockReadJsonFile.mockResolvedValue({
+      name: "xcode build server",
+      argv: ["/opt/homebrew/bin/xcode-build-server"],
+    });
+    mockIsFileExists.mockResolvedValue(true);
+    await run();
+    expect(mockGenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it("regenerates when buildServer.json is missing or unreadable", async () => {
+    mockReadJsonFile.mockRejectedValue(new Error("ENOENT"));
+    await run();
+    expect(mockGenerate).toHaveBeenCalledTimes(1);
   });
 });

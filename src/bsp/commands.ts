@@ -88,8 +88,20 @@ async function buildServerJsonCheck(): Promise<DoctorCheck> {
   let detail = "not found";
   if (config) {
     const missing = ["name", "version", "bspVersion", "languages", "argv"].filter((k) => config[k] === undefined);
-    ok = missing.length === 0;
-    detail = ok ? "all required fields present" : `missing: ${missing.join(", ")}`;
+    const launcher = Array.isArray(config.argv) ? config.argv[0] : undefined;
+    if (missing.length > 0) {
+      detail = `missing: ${missing.join(", ")}`;
+    } else if (typeof launcher !== "string") {
+      detail = "argv is empty";
+    } else if (path.isAbsolute(launcher) && !(await isFileExists(launcher))) {
+      // Typical after an extension update: argv[0] points into the old
+      // (deleted) versioned extension dir, and sourcekit-lsp silently fails
+      // to spawn the server.
+      detail = `argv[0] does not exist on disk: ${launcher}`;
+    } else {
+      ok = true;
+      detail = "all required fields present";
+    }
   }
   return {
     ok,

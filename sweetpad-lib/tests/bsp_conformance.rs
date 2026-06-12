@@ -830,3 +830,216 @@ fn bsp_per_file_clang_dialect_matrix() {
         );
     }
 }
+
+/// The server must start from a `.sweetpad/bsp.json` written with the
+/// extension's schema, where `workspacePath` is the VS Code workspace
+/// *folder* (not an Xcode container) and `projectPath` is the real
+/// `.xcodeproj`. Regression test: the config resolver used to prefer
+/// `workspacePath`, open the folder as a project, and exit before replying.
+#[test]
+fn bsp_starts_from_extension_bsp_json() {
+    let workspace = std::env::temp_dir().join(format!("sweetpad-bsp-json-{}", std::process::id()));
+    let dot_sweetpad = workspace.join(".sweetpad");
+    std::fs::create_dir_all(&dot_sweetpad).expect("create .sweetpad");
+    let config = json!({
+        "name": "sweetpad",
+        "workspacePath": workspace.to_string_lossy(),
+        "projectPath": project(),
+        "scheme": null,
+        "configuration": "Debug",
+        "derivedDataPath": null,
+        "developerDir": null,
+    });
+    std::fs::write(dot_sweetpad.join("bsp.json"), config.to_string()).expect("write bsp.json");
+
+    let messages = [
+        json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
+        json!({"jsonrpc":"2.0","method":"build/initialized"}),
+        json!({"jsonrpc":"2.0","id":2,"method":"workspace/buildTargets"}),
+        json!({"jsonrpc":"2.0","method":"build/exit"}),
+    ];
+    let mut input = Vec::new();
+    for m in &messages {
+        input.extend(frame(m));
+    }
+    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+        .arg("bsp")
+        .current_dir(&workspace)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn bsp server");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&input)
+        .expect("write stdin");
+    let mut out = Vec::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_end(&mut out)
+        .expect("read stdout");
+    let status = child.wait().expect("wait");
+    let _ = std::fs::remove_dir_all(&workspace);
+
+    assert!(status.success(), "server exited non-zero: {status:?}");
+    let frames = parse_frames(&out);
+    assert!(
+        result_for(&frames, 1).is_some(),
+        "no initialize result; frames: {frames:?}"
+    );
+    let names: Vec<&str> = result_for(&frames, 2)
+        .and_then(|r| r.get("targets"))
+        .and_then(Value::as_array)
+        .map(|ts| {
+            ts.iter()
+                .filter_map(|t| t.get("displayName").and_then(Value::as_str))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert!(
+        names.contains(&"ModuleA") && names.contains(&"ModuleB"),
+        "targets should come from projectPath, not workspacePath: {names:?}"
+    );
+}
+
+/// A frame whose body isn't valid JSON must get a `-32700` parse-error reply
+/// (id null) instead of being silently dropped, and the session must continue.
+#[test]
+fn bsp_replies_parse_error_on_malformed_frame() {
+    let proj = project();
+    let bad_body = "{not json";
+    let mut input = format!("Content-Length: {}\r\n\r\n{bad_body}", bad_body.len()).into_bytes();
+    for m in [
+        json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
+        json!({"jsonrpc":"2.0","method":"build/exit"}),
+    ] {
+        input.extend(frame(&m));
+    }
+    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+        .args(["bsp", "--project", &proj])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn bsp server");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&input)
+        .expect("write stdin");
+    let mut out = Vec::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_end(&mut out)
+        .expect("read stdout");
+    let _ = child.wait();
+
+    let frames = parse_frames(&out);
+    let parse_error = frames.iter().find(|f| {
+        f.get("error")
+            .and_then(|e| e.get("code"))
+            .and_then(Value::as_i64)
+            == Some(-32700)
+    });
+    assert!(parse_error.is_some(), "expected a -32700 reply: {frames:?}");
+    assert!(
+        result_for(&frames, 1).is_some(),
+        "session should continue after a parse error: {frames:?}"
+    );
+}
+
+/// `Content-Length` matching is case-insensitive (clients aren't required to
+/// send the canonical casing), and a malformed length is a clean non-zero
+/// exit, not a panic.
+#[test]
+fn bsp_framing_header_robustness() {
+    let proj = project();
+
+    // Lowercase header: the frame must still be read and answered.
+    let body = json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}).to_string();
+    let mut input = format!("content-length: {}\r\n\r\n{body}", body.len()).into_bytes();
+    input.extend(frame(&json!({"jsonrpc":"2.0","method":"build/exit"})));
+    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+        .args(["bsp", "--project", &proj])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn bsp server");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&input)
+        .expect("write stdin");
+    let mut out = Vec::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_end(&mut out)
+        .expect("read stdout");
+    let _ = child.wait();
+    assert!(
+        result_for(&parse_frames(&out), 1).is_some(),
+        "lowercase content-length header should be accepted"
+    );
+
+    // Unparseable length: the frame boundary is unrecoverable — exit non-zero
+    // without panicking (a panic would abort with a signal, not a code).
+    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+        .args(["bsp", "--project", &proj])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn bsp server");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"Content-Length: nope\r\n\r\n{}")
+        .expect("write stdin");
+    let status = child.wait().expect("wait");
+    assert_eq!(
+        status.code(),
+        Some(1),
+        "expected clean error exit: {status:?}"
+    );
+}
+
+/// A frame declaring a giant `Content-Length` must be rejected before the
+/// body buffer is allocated — previously `vec![0u8; len]` aborted the whole
+/// process on allocation failure (or committed gigabytes and hung waiting
+/// for a body that never comes). Expect a clean error exit, not a signal.
+#[test]
+fn bsp_rejects_oversized_content_length() {
+    let proj = project();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+        .args(["bsp", "--project", &proj])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn bsp server");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"Content-Length: 10000000000\r\n\r\n{}")
+        .expect("write stdin");
+    let status = child.wait().expect("wait");
+    assert_eq!(
+        status.code(),
+        Some(1),
+        "expected clean error exit (a None code means a signal/abort): {status:?}"
+    );
+}

@@ -18,15 +18,14 @@ pub struct ResolveContext {
 }
 
 impl ResolveContext {
-    /// Known limitation on `[sdk=…]`: xcodebuild matches sdk conditions
-    /// against the *versioned* canonical SDK name (`macosx26.0`), while
-    /// [`Self::sdk`] carries the unversioned platform name (`macosx`). The
-    /// overwhelmingly common `[sdk=macosx*]` form behaves identically either
-    /// way; an exact-versioned pattern like `[sdk=iphoneos18.2]` can never
-    /// match here, and a bare `[sdk=iphoneos]` matches here but would not
-    /// under xcodebuild (it never matches the versioned name without a `*`).
-    /// Fixing this fully needs the versioned canonical name plumbed into the
-    /// context from the SDK catalog.
+    /// Whether one `[key=pattern]` condition matches this context's bindings.
+    /// xcodebuild matches `[sdk=…]` against the *versioned* canonical SDK
+    /// name (`macosx26.0`) — [`crate::build_context::BuildContext`] binds
+    /// that canonical name from the catalog, so the ubiquitous
+    /// `[sdk=macosx*]` form matches while a bare `[sdk=macosx]` does not,
+    /// exactly like xcodebuild. Its aggregated `-showBuildSettings` view
+    /// likewise binds `arch=undefined_arch` (per-arch conditionals only fire
+    /// for a concrete per-arch resolve, e.g. compiler args).
     #[must_use]
     pub fn matches(&self, cond: &Condition) -> bool {
         match cond.key.as_str() {
@@ -395,6 +394,12 @@ pub fn expand_one(value: &str, lookup: &BTreeMap<String, String>) -> String {
 
 const MAX_EXPAND_DEPTH: usize = 32;
 
+/// Per-value expansion output budget. The depth cap alone doesn't bound the
+/// *work*: a doubling chain (`A = $(B) $(B)`, `B = $(C) $(C)`, …) is ~2^32
+/// bytes before [`MAX_EXPAND_DEPTH`] binds. Past the budget the rest of the
+/// value is carried through unexpanded; real settings are nowhere near it.
+const MAX_EXPAND_BYTES: usize = 1 << 20;
+
 fn expand_one_with_depth(value: &str, lookup: &BTreeMap<String, String>, depth: usize) -> String {
     if depth >= MAX_EXPAND_DEPTH {
         return value.to_string();
@@ -403,6 +408,10 @@ fn expand_one_with_depth(value: &str, lookup: &BTreeMap<String, String>, depth: 
     let bytes = value.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
+        if out.len() >= MAX_EXPAND_BYTES {
+            out.push_str(&value[i..]);
+            break;
+        }
         let b = bytes[i];
         if b == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'$' {
             // `$$` is an escaped dollar — swift-build collapses it to a

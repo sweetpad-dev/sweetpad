@@ -80,6 +80,12 @@ pub struct Catalog {
     /// `None` when no `meta.json` sits beside the xcspecs (the resolver then
     /// falls back to the host install's version).
     pub xcode_version: Option<String>,
+    /// The `ProductBuildVersion` of the Xcode this catalog was captured from
+    /// (e.g. `17F42`), read from the sibling `meta.json`. Feeds
+    /// `XCODE_PRODUCT_BUILD_VERSION` and the `<short>-<build>` segment of
+    /// `CCHROOT` / `CACHE_ROOT` (xcodebuild composes those from the running
+    /// Xcode's `version.plist`). `None` falls back to the host install.
+    pub product_build_version: Option<String>,
     /// The `DEVELOPER_DIR` this catalog was captured from (e.g.
     /// `/Applications/Xcode-26.0.1.app/Contents/Developer`), read from the
     /// sibling `meta.json`. Feeds `DEVELOPER_DIR` and everything derived from it
@@ -295,28 +301,18 @@ pub fn load_catalog(xcspec_root: &Path, sdksettings_root: Option<&Path>) -> Resu
     if let Some(root) = sdksettings_root {
         walk_sdksettings(root, &mut catalog)?;
     }
-    let meta = fs::read_to_string(xcspec_root.join("meta.json")).ok();
-    catalog.xcode_version = meta
-        .as_deref()
-        .and_then(|t| scrape_json_string(t, "xcode_version"));
-    catalog.developer_dir = meta
-        .as_deref()
-        .and_then(|t| scrape_json_string(t, "developer_dir"));
-    catalog.host_macos = meta
-        .as_deref()
-        .and_then(|t| scrape_json_string(t, "host_macos"));
+    // The capture metadata is plain JSON; a missing or malformed meta.json
+    // just leaves the fields `None` (host fallback), same as before.
+    let meta: Option<serde_json::Value> = fs::read_to_string(xcspec_root.join("meta.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok());
+    let meta_str =
+        |key: &str| -> Option<String> { Some(meta.as_ref()?.get(key)?.as_str()?.to_string()) };
+    catalog.xcode_version = meta_str("xcode_version");
+    catalog.product_build_version = meta_str("product_build_version");
+    catalog.developer_dir = meta_str("developer_dir");
+    catalog.host_macos = meta_str("host_macos");
     Ok(catalog)
-}
-
-/// Extract the string value of a top-level `"key": "value"` pair from flat JSON.
-fn scrape_json_string(json: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{key}\"");
-    let after = &json[json.find(&needle)? + needle.len()..];
-    let rest = &after[after.find(':')? + 1..];
-    let q1 = rest.find('"')?;
-    let tail = &rest[q1 + 1..];
-    let q2 = tail.find('"')?;
-    Some(tail[..q2].to_string())
 }
 
 fn walk_xcspec(dir: &Path, catalog: &mut Catalog) -> Result<(), Error> {

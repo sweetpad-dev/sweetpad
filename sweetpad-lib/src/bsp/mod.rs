@@ -110,9 +110,32 @@ pub fn run(args: &[String]) -> Result<(), String> {
         });
     }
 
-    while let Some(msg) = read_message(&mut reader)? {
-        let Ok(req) = serde_json::from_str::<Value>(&msg) else {
-            continue;
+    loop {
+        let msg = match read_message(&mut reader) {
+            Ok(Some(msg)) => msg,
+            Ok(None) => break, // clean EOF
+            Err(e) => {
+                // The frame boundary is lost; log why before dying so the
+                // failure is diagnosable instead of a silent exit.
+                server.trace(&format!("fatal framing error: {e}"));
+                server.shutdown_telemetry();
+                return Err(e);
+            }
+        };
+        let req = match serde_json::from_str::<Value>(&msg) {
+            Ok(req) => req,
+            Err(e) => {
+                // JSON-RPC: a frame that isn't valid JSON gets a parse-error
+                // response (id null) — silently dropping it would leave a
+                // client that sent an id waiting forever.
+                server.trace(&format!("recv: unparseable frame: {e}"));
+                server.send(&json!({
+                    "jsonrpc": "2.0",
+                    "id": Value::Null,
+                    "error": { "code": -32700, "message": format!("parse error: {e}") },
+                }))?;
+                continue;
+            }
         };
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
         let id = req.get("id").cloned();
@@ -270,12 +293,22 @@ impl ResolvedConfig {
         // `base.join` roots a relative path at the project and leaves an absolute
         // one untouched — so out-of-tree paths (Xcode, the socket) stay as written.
         let resolve = |p: String| base.join(p);
+        // `projectPath` is the Xcode container (`.xcodeproj`/`.xcworkspace`);
+        // `workspacePath` is the VS Code workspace *folder*, which is not
+        // openable as a project — accept it only when it actually names an
+        // `.xcworkspace` (older configs carried the container there).
         let project_path = flags
             .get("workspace")
             .cloned()
             .or_else(|| flags.get("project").cloned())
-            .or_else(|| pull("workspacePath"))
             .or_else(|| pull("projectPath"))
+            .or_else(|| {
+                pull("workspacePath").filter(|p| {
+                    Path::new(p)
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("xcworkspace"))
+                })
+            })
             .ok_or("bsp.json missing projectPath/workspacePath")?;
         Ok(ResolvedConfig {
             project_path: resolve(project_path),
@@ -628,7 +661,12 @@ impl Server {
         if let Some(dd) = &self.derived_data_path {
             return Some(dd.clone());
         }
-        let abs = std::fs::canonicalize(&self.project_path).ok()?;
+        // Hash the container path *as opened* (absolute, symlinks intact):
+        // Xcode keys DerivedData by the path it was launched on, so a project
+        // under a symlinked root (`/tmp` → `/private/tmp`) must hash the
+        // symlink spelling — `fs::canonicalize` here would compute a
+        // different DerivedData dir than the one Xcode/xcodebuild populate.
+        let abs = crate::project::absolutize(&self.project_path);
         let name = abs.file_stem()?.to_string_lossy().into_owned();
         let hash = crate::xcode_hash::derived_data_hash(&abs.to_string_lossy());
         let home = std::env::var_os("HOME")?;
@@ -951,8 +989,10 @@ impl Server {
             .and_then(Value::as_str)
             .map(path_from_uri)
             .unwrap_or_default();
+        // Re-read the target list (not the startup snapshot) so files in a
+        // target added after `buildTarget/didChange` resolve to an owner.
         let owning: Vec<Value> = self
-            .targets
+            .current_targets()
             .iter()
             .filter(|t| self.source_files(t).contains(&path))
             .map(|t| target_id(t))
@@ -980,10 +1020,9 @@ impl Server {
             .and_then(Value::as_str)
             .map(target_name_from_uri)
             .or_else(|| {
-                self.targets
-                    .iter()
+                self.current_targets()
+                    .into_iter()
                     .find(|t| self.source_files(t).contains(&path))
-                    .cloned()
             });
 
         let Some(target) = target else {
@@ -1008,7 +1047,7 @@ impl Server {
             .and_then(|p| p.get("targets"))
             .and_then(Value::as_array)
             .map_or_else(
-                || self.targets.clone(),
+                || self.current_targets(),
                 |arr| {
                     arr.iter()
                         .filter_map(|t| {
@@ -1056,16 +1095,18 @@ impl Server {
     /// The SDK + arch sourcekit-lsp should analyze `target` with. We infer the
     /// platform from the target's `SUPPORTED_PLATFORMS` and pick the **simulator**
     /// for device platforms (editor-friendly — no device/signing, and the usual
-    /// dev build), defaulting to macOS. Arch is arm64 (Apple Silicon: simulator,
-    /// device, and macOS are all arm64). `--sdk`/`--arch` flags override.
+    /// dev build), defaulting to macOS. Arch defaults to the host's (simulator
+    /// and macOS builds match the host: arm64 on Apple Silicon, x86_64 on
+    /// Intel). `--sdk`/`--arch` flags override, each independently.
     fn editor_platform(&self, target: &str) -> (String, String) {
-        if let (Some(sdk), Some(arch)) = (self.sdk.as_deref(), self.arch.as_deref()) {
-            return (sdk.to_string(), arch.to_string());
+        let arch = self.arch.clone().unwrap_or_else(|| host_arch().to_string());
+        if let Some(sdk) = self.sdk.as_deref() {
+            return (sdk.to_string(), arch);
         }
         // Read the target's *authored* SDKROOT (e.g. `iphoneos`): a real `--sdk`
         // replaces SDKROOT with that SDK's path, but a sentinel the catalog
         // doesn't know leaves it untouched. Map the platform to its simulator.
-        let probe = self.options_for(target, "auto", "arm64");
+        let probe = self.options_for(target, "auto", &arch);
         let settings = build_settings::resolve_build_settings(&probe)
             .ok()
             .and_then(|mut t| {
@@ -1085,9 +1126,9 @@ impl Server {
         let supported = read("SUPPORTED_PLATFORMS");
         let sdk = editor_sdk_for(&sdkroot, &supported);
         self.log(&format!(
-            "platform {target}: SDKROOT={sdkroot:?} platforms={supported:?} -> sdk={sdk} arch=arm64"
+            "platform {target}: SDKROOT={sdkroot:?} platforms={supported:?} -> sdk={sdk} arch={arch}"
         ));
-        (sdk.to_string(), "arm64".to_string())
+        (sdk.to_string(), arch)
     }
 
     fn options_for(&self, target: &str, sdk: &str, arch: &str) -> BuildSettingsOptions {
@@ -1263,6 +1304,15 @@ impl Server {
         let stdout = io::stdout();
         let mut writer = stdout.lock();
         write_message(&mut writer, &msg.to_string())
+    }
+}
+
+/// The host's arch in Apple naming — the default the editor analyzes for
+/// (simulator and macOS builds target the host arch).
+fn host_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "x86_64",
+        _ => "arm64",
     }
 }
 

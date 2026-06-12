@@ -15,6 +15,9 @@ import { commonLogger } from "../logger";
 import { getShellDeveloperDir } from "../tasks/shell-env";
 import { assertUnreachable } from "../types";
 
+// Injected by rolldown at build time (see rolldown.config.mjs).
+declare const GLOBAL_RELEASE_VERSION: string | undefined;
+
 export type SimulatorOutput = {
   dataPath: string;
   dataPathSize: number;
@@ -720,20 +723,30 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
  */
 async function generateSweetpadBuildServerConfig(): Promise<void> {
   const cwd = getWorkspacePath();
-  // The bundled BSP launcher ships next to the extension bundle (this module's dir).
-  const bspServer = path.join(__dirname, "bsp-server.js");
+  const bspServer = getSweetpadBspServerPath();
   await ensureExecutable(bspServer);
 
   // sourcekit-lsp requires all five fields (`name`, `version`, `bspVersion`,
   // `languages`, `argv`) or the decode throws and the server is silently skipped.
   const config = {
     name: "sweetpad",
-    version: "0.1.0",
+    version: GLOBAL_RELEASE_VERSION ?? "0.1.0",
     bspVersion: "2.2.0",
     languages: ["swift", "objective-c", "objective-cpp", "c", "cpp"],
     argv: [bspServer],
   };
   await fs.writeFile(path.join(cwd, "buildServer.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
+/**
+ * Absolute path to the bundled BSP launcher — it ships next to the extension
+ * bundle (this module's dir). Note this lives inside the *versioned* extension
+ * install dir (`…/extensions/sweetpad.sweetpad-<ver>/out`), so the path changes
+ * on every extension update and any `buildServer.json` written before the
+ * update points at a deleted file.
+ */
+export function getSweetpadBspServerPath(): string {
+  return path.join(__dirname, "bsp-server.js");
 }
 
 async function generateXBSBuildServerConfig(options: { xcworkspace: string; scheme: string }): Promise<void> {

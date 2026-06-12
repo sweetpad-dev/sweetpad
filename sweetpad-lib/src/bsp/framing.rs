@@ -3,6 +3,13 @@
 
 use std::io::{BufRead, Write};
 
+/// Largest frame we'll accept. Real JSON-RPC bodies here top out at tens of
+/// kilobytes (build-target/source lists); the cap stops a hostile or corrupt
+/// `Content-Length` from forcing a giant zero-filled allocation (and a
+/// `read_exact` that waits forever for a body that never comes) before a
+/// single body byte is read.
+const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
+
 /// Read one `Content-Length`-framed JSON-RPC message. `Ok(None)` on clean EOF.
 pub(crate) fn read_message(reader: &mut impl BufRead) -> Result<Option<String>, String> {
     let mut content_length: Option<usize> = None;
@@ -16,11 +23,25 @@ pub(crate) fn read_message(reader: &mut impl BufRead) -> Result<Option<String>, 
         if line.is_empty() {
             break;
         }
-        if let Some(v) = line.strip_prefix("Content-Length:") {
-            content_length = v.trim().parse().ok();
+        // Header names are case-insensitive; don't die on a client that
+        // doesn't send the canonical casing. A malformed value is a hard
+        // error (the frame boundary is unrecoverable without it).
+        if let Some((name, value)) = line.split_once(':')
+            && name.eq_ignore_ascii_case("content-length")
+        {
+            let parsed = value
+                .trim()
+                .parse()
+                .map_err(|e| format!("bad Content-Length {:?}: {e}", value.trim()))?;
+            content_length = Some(parsed);
         }
     }
     let len = content_length.ok_or("message without Content-Length")?;
+    if len > MAX_FRAME_BYTES {
+        return Err(format!(
+            "Content-Length {len} exceeds the {MAX_FRAME_BYTES}-byte frame cap"
+        ));
+    }
     let mut buf = vec![0u8; len];
     reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
     Ok(Some(String::from_utf8_lossy(&buf).into_owned()))

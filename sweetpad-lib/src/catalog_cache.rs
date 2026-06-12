@@ -43,7 +43,7 @@ const MAGIC: &[u8; 4] = b"SPC1";
 /// Bump whenever the serialized layout (or the [`Catalog`] shape) changes, so a
 /// sweetpad upgrade transparently rebuilds disk caches and the embedded blob is
 /// rejected if stale.
-const FORMAT_VERSION: u8 = 6;
+const FORMAT_VERSION: u8 = 7;
 
 #[derive(Debug)]
 pub enum Error {
@@ -293,6 +293,7 @@ fn fnv1a(bytes: &[u8], mut hash: u64) -> u64 {
 
 fn write_catalog(out: &mut Vec<u8>, c: &Catalog) {
     write_opt_str(out, c.xcode_version.as_deref());
+    write_opt_str(out, c.product_build_version.as_deref());
     write_opt_str(out, c.developer_dir.as_deref());
     write_opt_str(out, c.host_macos.as_deref());
     write_assignments(out, &c.universal);
@@ -310,6 +311,7 @@ fn write_catalog(out: &mut Vec<u8>, c: &Catalog) {
 fn read_catalog(r: &mut Reader) -> Result<Catalog, Error> {
     Ok(Catalog {
         xcode_version: r.opt_str()?,
+        product_build_version: r.opt_str()?,
         developer_dir: r.opt_str()?,
         host_macos: r.opt_str()?,
         universal: read_assignments(r)?,
@@ -591,6 +593,7 @@ mod tests {
         let mut c = Catalog {
             universal: vec![asg("ALWAYS_SEARCH_USER_PATHS", "NO")],
             xcode_version: Some("26.5.0".into()),
+            product_build_version: Some("17F42".into()),
             developer_dir: Some("/Applications/Xcode.app/Contents/Developer".into()),
             host_macos: Some("26.5".into()),
             ..Catalog::default()
@@ -668,6 +671,7 @@ mod tests {
 
     fn assert_same(a: &Catalog, b: &Catalog) {
         assert_eq!(a.xcode_version, b.xcode_version);
+        assert_eq!(a.product_build_version, b.product_build_version);
         assert_eq!(a.developer_dir, b.developer_dir);
         assert_eq!(a.host_macos, b.host_macos);
         assert_eq!(a.universal, b.universal);

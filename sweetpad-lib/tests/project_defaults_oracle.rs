@@ -157,15 +157,18 @@ fn project_defaults_oracle_coverage() {
 /// oracle's by design (the no-target capture roots build output at a
 /// project-relative `build/` dir while we compute the DerivedData root, pushing
 /// the whole `BUILD_DIR`/`*_SEARCH_PATHS` family into the structural tier). Set
-/// from the first clean multi-version run minus a ~1pt margin.
+/// from the latest clean multi-version run. Arms are kept per-version even
+/// when two versions' floors currently coincide, since they track independent
+/// baselines.
+#[allow(clippy::match_same_arms)]
 fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     match version {
-        "26.5.0" => Some((87, 88, 100)),
-        "16.4.0" => Some((87, 89, 100)),
+        "26.5.0" => Some((88, 89, 100)),
+        "16.4.0" => Some((88, 89, 100)),
         // The 15.x host/arch reporting family is modelled as version-gated
         // rules (see `built_in_settings`), so 15.4 scores match the modern
         // majors.
-        "15.4.0" => Some((88, 97, 100)),
+        "15.4.0" => Some((89, 98, 100)),
         _ => None,
     }
 }

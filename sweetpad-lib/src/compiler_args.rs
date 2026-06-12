@@ -157,10 +157,20 @@ pub fn target_arguments(
     }
 }
 
-/// Whether a product type links a binary (vs. an aggregate / legacy target that
-/// runs scripts only). Unknown / absent product types are assumed to link.
+/// Whether a product type links a binary. Nearly every type does — including
+/// the loadable-bundle family: `com.apple.product-type.bundle` and the test
+/// bundles (`bundle.unit-test`, `bundle.ui-testing`, …) all default to
+/// `MACH_O_TYPE = mh_bundle` in `ProductTypes.xcspec` and link through the
+/// clang driver. The exceptions carry no Mach-O at all: an aggregate / legacy
+/// (external-build-tool) target runs scripts only, and In-App Purchase content
+/// is a resource-only wrapper (`IsWrapper` with no `MACH_O_TYPE` in
+/// `DarwinProductTypes.xcspec`). Unknown / absent product types are assumed to
+/// link.
 fn links(product_type: Option<&str>) -> bool {
-    !matches!(product_type, Some(pt) if pt.contains("bundle") && !pt.contains("unit-test"))
+    !matches!(
+        product_type,
+        Some("com.apple.product-type.aggregate" | "com.apple.product-type.in-app-purchase-content")
+    )
 }
 
 /// `libtool` for a static library, the `clang` driver otherwise.
@@ -273,10 +283,10 @@ pub fn swift_arguments(
             a.pair("-F", &format!("{products}/PackageFrameworks"));
         }
     }
-    for p in ws_paths(get("SWIFT_INCLUDE_PATHS")) {
+    for p in ws_unquoted(get("SWIFT_INCLUDE_PATHS")) {
         a.pair("-I", &p);
     }
-    for p in ws_paths(get("FRAMEWORK_SEARCH_PATHS")) {
+    for p in ws_unquoted(get("FRAMEWORK_SEARCH_PATHS")) {
         a.pair("-F", &p);
     }
     emit_unit_test_search_paths(&mut a, settings);
@@ -323,8 +333,10 @@ pub fn swift_arguments(
     }
 
     // --- User passthrough --------------------------------------------------
-    for f in ws(get("OTHER_SWIFT_FLAGS")) {
-        a.flag(f);
+    // Quote-aware: CocoaPods quotes flag arguments (`-fmodule-map-file="…"`),
+    // and a literal `"` in the token would hide the module map from swiftc.
+    for f in ws_unquoted(get("OTHER_SWIFT_FLAGS")) {
+        a.flag(&f);
     }
 
     // --- Compilation mode + build-system defaults --------------------------
@@ -518,18 +530,18 @@ fn emit_clang_search_paths(a: &mut ArgBuilder, settings: &Settings) {
     if let Some(p) = products {
         includes.push(format!("{p}/include"));
     }
-    includes.extend(ws_paths(get("HEADER_SEARCH_PATHS")));
+    includes.extend(ws_unquoted(get("HEADER_SEARCH_PATHS")));
     emit_unique_pairs(a, "-I", &includes);
 
     // `-F`: the products dir, then FRAMEWORK_SEARCH_PATHS.
     let mut frameworks: Vec<String> = products.map(str::to_string).into_iter().collect();
-    frameworks.extend(ws_paths(get("FRAMEWORK_SEARCH_PATHS")));
+    frameworks.extend(ws_unquoted(get("FRAMEWORK_SEARCH_PATHS")));
     emit_unique_pairs(a, "-F", &frameworks);
 
-    for p in ws_paths(get("USER_HEADER_SEARCH_PATHS")) {
+    for p in ws_unquoted(get("USER_HEADER_SEARCH_PATHS")) {
         a.pair("-iquote", &p);
     }
-    for p in ws_paths(get("SYSTEM_HEADER_SEARCH_PATHS")) {
+    for p in ws_unquoted(get("SYSTEM_HEADER_SEARCH_PATHS")) {
         a.pair("-isystem", &p);
     }
 }
@@ -557,7 +569,7 @@ fn emit_library_paths(a: &mut ArgBuilder, settings: &Settings) -> Vec<String> {
     if let Some(products) = get("BUILT_PRODUCTS_DIR") {
         paths.push(products.to_string());
     }
-    for p in ws_paths(get("LIBRARY_SEARCH_PATHS")) {
+    for p in ws_unquoted(get("LIBRARY_SEARCH_PATHS")) {
         if !paths.contains(&p) {
             paths.push(p);
         }
@@ -609,7 +621,7 @@ pub fn link_arguments(
     if let Some(products) = get("BUILT_PRODUCTS_DIR") {
         framework_paths.push(products.to_string());
     }
-    for p in ws_paths(get("FRAMEWORK_SEARCH_PATHS")) {
+    for p in ws_unquoted(get("FRAMEWORK_SEARCH_PATHS")) {
         if !framework_paths.contains(&p) {
             framework_paths.push(p);
         }
@@ -670,7 +682,7 @@ pub fn link_arguments(
     // xcodebuild de-duplicates the resolved runpath list (KingfisherTests'
     // authored chain repeats `@loader_path/../Frameworks`; the captures
     // carry it once).
-    for p in ws_paths(get("LD_RUNPATH_SEARCH_PATHS")) {
+    for p in ws_unquoted(get("LD_RUNPATH_SEARCH_PATHS")) {
         if !rpaths.contains(&p) {
             rpaths.push(p);
         }
@@ -818,8 +830,11 @@ pub fn link_arguments(
     for lib in libraries {
         a.flag(&format!("-l{lib}"));
     }
-    for f in ws(get("OTHER_LDFLAGS")) {
-        a.flag(f);
+    // Quote-aware, like OTHER_SWIFT_FLAGS: xcconfigs quote linker arguments
+    // (`-force_load "$(PODS_ROOT)/…/lib.a"`), and the quotes must not survive
+    // into argv tokens.
+    for f in ws_unquoted(get("OTHER_LDFLAGS")) {
+        a.flag(&f);
     }
     a.into_vec()
 }
@@ -1244,34 +1259,43 @@ fn ws(v: Option<&str>) -> Vec<&str> {
         .unwrap_or_default()
 }
 
-/// Split a **search-path** setting into the tokens the build system forms for
-/// argv: whitespace-separated, but respecting double quotes (a path may contain
-/// spaces) and with the quotes stripped. xcconfigs quote each path — CocoaPods
-/// writes `FRAMEWORK_SEARCH_PATHS = $(inherited) "${PODS_CONFIGURATION_BUILD_DIR}/Pod"` —
-/// and if the quotes survive into a `-F`/`-I` token, swiftc/clang read the quoted
-/// string as a relative path and never find the framework/header. (Distinct from
-/// [`ws`], which leaves quotes intact for value lists like preprocessor defines.)
-fn ws_paths(v: Option<&str>) -> Vec<String> {
+/// Split a setting value into the tokens the build system forms for argv:
+/// whitespace-separated, but shell-like — a double- or single-quoted segment
+/// (possibly starting mid-token, as in `-fmodule-map-file="…"`) keeps its
+/// content including spaces, and the quote characters themselves are stripped.
+/// Inside one kind of quote the other is literal.
+///
+/// xcconfigs quote both search paths and passthrough flags — CocoaPods writes
+/// `FRAMEWORK_SEARCH_PATHS = $(inherited) "${PODS_CONFIGURATION_BUILD_DIR}/Pod"`
+/// and `OTHER_SWIFT_FLAGS = $(inherited) -Xcc -fmodule-map-file="${PODS_…}/m.modulemap"` —
+/// and if the quotes survive into an argv token, swiftc/clang read the quoted
+/// string as a literal (relative) path and never find the framework / header /
+/// module map. (Distinct from [`ws`], which leaves quotes intact for value
+/// lists like preprocessor defines.)
+fn ws_unquoted(v: Option<&str>) -> Vec<String> {
     let Some(s) = v else {
         return Vec::new();
     };
     let mut out = Vec::new();
     let mut cur = String::new();
-    let mut in_quote = false;
+    let mut quote: Option<char> = None;
     let mut started = false;
     for ch in s.chars() {
-        match ch {
-            '"' => {
-                in_quote = !in_quote;
+        match (ch, quote) {
+            (c @ ('"' | '\''), None) => {
+                quote = Some(c);
                 started = true;
             }
-            c if c.is_whitespace() && !in_quote => {
+            (c, Some(q)) if c == q => {
+                quote = None;
+            }
+            (c, None) if c.is_whitespace() => {
                 if started {
                     out.push(std::mem::take(&mut cur));
                     started = false;
                 }
             }
-            c => {
+            (c, _) => {
                 cur.push(c);
                 started = true;
             }
@@ -1551,5 +1575,81 @@ mod tests {
                 .any(|w| w[0] == "-F" && w[1] == "/dd/Build/Products/Debug/PackageFrameworks"),
             "no -F PackageFrameworks: {args:?}"
         );
+    }
+
+    #[test]
+    fn ws_unquoted_splits_shell_like() {
+        // Plain whitespace splitting, collapsing runs.
+        assert_eq!(ws_unquoted(Some("-a  -b\t-c")), ["-a", "-b", "-c"]);
+        assert_eq!(ws_unquoted(None), Vec::<String>::new());
+        // A quoted segment keeps its spaces; the quotes themselves are stripped.
+        assert_eq!(ws_unquoted(Some("\"/a dir/x\" /b")), ["/a dir/x", "/b"]);
+        assert_eq!(ws_unquoted(Some("'/a dir/x'")), ["/a dir/x"]);
+        // A quote opening mid-token glues onto the prefix (the CocoaPods form).
+        assert_eq!(
+            ws_unquoted(Some("-fmodule-map-file=\"/p dir/module.modulemap\"")),
+            ["-fmodule-map-file=/p dir/module.modulemap"]
+        );
+        // Inside one kind of quote the other is literal.
+        assert_eq!(ws_unquoted(Some("\"Bob's stuff\"")), ["Bob's stuff"]);
+        assert_eq!(ws_unquoted(Some("'say \"hi\"'")), ["say \"hi\""]);
+    }
+
+    #[test]
+    fn other_swift_flags_strip_cocoapods_quotes() {
+        // CocoaPods quotes the module-map path in OTHER_SWIFT_FLAGS; a literal
+        // `"` in the argv token would hide the module map from swiftc.
+        let mut s = Settings::new();
+        s.insert(
+            "OTHER_SWIFT_FLAGS".into(),
+            "$(inherited) -D COCOAPODS -Xcc \
+             -fmodule-map-file=\"/dd/Build/Products/Debug-iphoneos/Pod A/Pod_A.modulemap\""
+                .into(),
+        );
+        let args = swift_arguments(&s, "arm64", &[], "26.5.0", false, &[]);
+        assert!(
+            args.contains(
+                &"-fmodule-map-file=/dd/Build/Products/Debug-iphoneos/Pod A/Pod_A.modulemap"
+                    .to_string()
+            ),
+            "quotes survived into the token: {args:?}"
+        );
+        assert!(args.contains(&"COCOAPODS".to_string()));
+        assert!(!args.iter().any(|a| a.contains('"')), "{args:?}");
+    }
+
+    #[test]
+    fn other_ldflags_strip_quotes() {
+        let mut s = Settings::new();
+        s.insert(
+            "OTHER_LDFLAGS".into(),
+            "-ObjC -force_load \"/pods root/Lib/libLib.a\"".into(),
+        );
+        let args = link_arguments(&s, "arm64", &[], &[], false);
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "-force_load" && w[1] == "/pods root/Lib/libLib.a"),
+            "quotes survived into the token: {args:?}"
+        );
+        assert!(args.contains(&"-ObjC".to_string()));
+    }
+
+    #[test]
+    fn links_classifies_product_types() {
+        // The loadable-bundle family produces an mh_bundle and links: a generic
+        // bundle (plug-in), a unit-test bundle, a UI-test bundle.
+        assert!(links(Some("com.apple.product-type.bundle")));
+        assert!(links(Some("com.apple.product-type.bundle.unit-test")));
+        assert!(links(Some("com.apple.product-type.bundle.ui-testing")));
+        assert!(links(Some("com.apple.product-type.application")));
+        assert!(links(Some("com.apple.product-type.framework")));
+        // Script-only / resource-only product types carry no Mach-O.
+        assert!(!links(Some("com.apple.product-type.aggregate")));
+        assert!(!links(Some(
+            "com.apple.product-type.in-app-purchase-content"
+        )));
+        // Absent / unknown product types are assumed to link.
+        assert!(links(None));
+        assert!(links(Some("com.apple.product-type.future-unknown")));
     }
 }

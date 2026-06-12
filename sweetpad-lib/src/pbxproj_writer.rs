@@ -233,12 +233,17 @@ fn build_comments(root: &Value, project_name: &str) -> HashMap<String, String> {
     };
     let mut comments = HashMap::new();
     for (guid, _) in objects {
-        if let Some(c) = ctx.comment_for(guid) {
+        if let Some(c) = ctx.comment_for(guid, 0) {
             comments.insert(guid.clone(), c);
         }
     }
     comments
 }
+
+/// Recursion guard for [`CommentCtx::comment_for`]. A well-formed project
+/// needs two hops at most (build file → file ref / phase); a corrupt one
+/// whose `fileRef` points back at itself would otherwise recurse forever.
+const MAX_COMMENT_DEPTH: usize = 8;
 
 struct CommentCtx<'a> {
     objects: &'a Dict,
@@ -255,9 +260,15 @@ impl CommentCtx<'_> {
     }
 
     /// Annotation text for an object, derived from its kind. Recursion is
-    /// shallow by construction: a build file names its file reference and its
-    /// phase, neither of which recurses further.
-    fn comment_for(&self, guid: &str) -> Option<String> {
+    /// shallow in any well-formed project — a build file names its file
+    /// reference and its phase, neither of which recurses further — but a
+    /// corrupt `fileRef` can point back at a `PBXBuildFile` (even itself), so
+    /// `depth` bounds the walk; past [`MAX_COMMENT_DEPTH`] the reference is
+    /// treated like any other failed lookup (`(null)`).
+    fn comment_for(&self, guid: &str, depth: usize) -> Option<String> {
+        if depth > MAX_COMMENT_DEPTH {
+            return None;
+        }
         let obj = self.objects.get(guid)?;
         let isa = obj.get("isa").and_then(Value::as_str)?;
         match isa {
@@ -266,12 +277,12 @@ impl CommentCtx<'_> {
                     .get("fileRef")
                     .or_else(|| obj.get("productRef"))
                     .and_then(Value::as_str)
-                    .and_then(|r| self.comment_for(r))
+                    .and_then(|r| self.comment_for(r, depth + 1))
                     .unwrap_or_else(|| "(null)".into());
                 let phase = self
                     .phase_of
                     .get(guid)
-                    .and_then(|p| self.comment_for(p))
+                    .and_then(|p| self.comment_for(p, depth + 1))
                     .unwrap_or_else(|| "(null)".into());
                 Some(format!("{file} in {phase}"))
             }

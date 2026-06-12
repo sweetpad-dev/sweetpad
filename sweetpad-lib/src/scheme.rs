@@ -63,6 +63,38 @@ pub struct Scheme {
     pub launch_language: Option<String>,
     /// `LaunchAction`'s `region` attribute (drives `-AppleLocale`).
     pub launch_region: Option<String>,
+    /// `LaunchAction`'s sanitizer toggles. Only the LAUNCH action's flags
+    /// reach `xcodebuild`'s scheme build-settings view: the corpus captures
+    /// both shapes — Alamofire's `iOS Example` / `watchOS Example WatchKit
+    /// App` schemes set `enableThreadSanitizer="YES"` on `LaunchAction` and
+    /// every capture reports `ENABLE_THREAD_SANITIZER = YES` (with the
+    /// `-tsan` object-dir suffix), while `Alamofire watchOS` sets the same
+    /// attribute on `TestAction` and its captures stay NO.
+    pub launch_sanitizers: SanitizerEnables,
+}
+
+/// Scheme-level sanitizer enablement, parsed from a `LaunchAction`'s
+/// `enableAddressSanitizer` / `enableThreadSanitizer` / `enableUBSanitizer`
+/// attributes. Feeds `ResolveQuery::scheme_sanitizers`: xcodebuild forces the
+/// matching `ENABLE_*_SANITIZER = YES` and suffixes the per-variant object
+/// dirs (`-asan` / `-tsan` / `-ubsan`; see `OBJECT_FILE_DIR_<variant>` in
+/// [`crate::project::built_in_settings`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SanitizerEnables {
+    /// `enableAddressSanitizer="YES"`.
+    pub address: bool,
+    /// `enableThreadSanitizer="YES"`.
+    pub thread: bool,
+    /// `enableUBSanitizer="YES"`.
+    pub undefined_behavior: bool,
+}
+
+impl SanitizerEnables {
+    /// Whether any sanitizer is enabled.
+    #[must_use]
+    pub fn any(self) -> bool {
+        self.address || self.thread || self.undefined_behavior
+    }
 }
 
 /// One row in the scheme editor's Build phase.
@@ -380,6 +412,17 @@ pub fn from_element(root: &Element) -> Result<Scheme, Error> {
         launch_region: launch_action
             .and_then(|a| a.attr("region"))
             .map(str::to_string),
+        launch_sanitizers: SanitizerEnables {
+            address: launch_action
+                .and_then(|a| a.attr("enableAddressSanitizer"))
+                .is_some_and(parse_yes),
+            thread: launch_action
+                .and_then(|a| a.attr("enableThreadSanitizer"))
+                .is_some_and(parse_yes),
+            undefined_behavior: launch_action
+                .and_then(|a| a.attr("enableUBSanitizer"))
+                .is_some_and(parse_yes),
+        },
         profile_configuration: action_configuration(root, "ProfileAction"),
         archive_configuration: action_configuration(root, "ArchiveAction"),
         analyze_configuration: action_configuration(root, "AnalyzeAction"),

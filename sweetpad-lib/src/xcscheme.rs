@@ -98,10 +98,19 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// Recursion guard for nested elements. Xcode's scheme/workspace files nest a
+/// handful of levels deep; 256 is well past anything real, keeps a
+/// pathological `<a><a><a>…` input from overflowing the stack, and leaves
+/// headroom for [`Parser::parse_element`]'s sizeable debug-build frames on a
+/// 2 MiB test-thread stack. The serializer shares the bound: a parsed tree
+/// can never exceed it, so [`serialize`] only truncates on programmatically
+/// built trees deeper than this.
+const MAX_DEPTH: usize = 256;
+
 pub fn parse(input: &str) -> Result<Element, ParseError> {
     let mut p = Parser::new(input);
     p.skip_prolog()?;
-    let root = p.parse_element()?;
+    let root = p.parse_element(0)?;
     p.skip_trailing()?;
     Ok(root)
 }
@@ -117,6 +126,11 @@ pub fn parse_file(path: &Path) -> Result<Element, Error> {
 /// explicit closing tag for every element (Xcode never self-closes).
 /// Attribute order is whatever [`Element::attributes`] holds — source order
 /// after a parse — so a parse → serialize round trip is byte-exact.
+///
+/// Trees deeper than [`MAX_DEPTH`] cannot come out of [`parse`]; if one is
+/// built programmatically anyway, children past the bound are dropped rather
+/// than overflowing the stack (the signature predates the guard and cannot
+/// surface an error).
 #[must_use]
 pub fn serialize(root: &Element) -> String {
     let mut out = String::with_capacity(1 << 12);
@@ -146,8 +160,10 @@ fn write_element(out: &mut String, e: &Element, depth: usize) {
         push_escaped(out, &e.text);
         out.push('\n');
     }
-    for child in &e.children {
-        write_element(out, child, depth + 1);
+    if depth < MAX_DEPTH {
+        for child in &e.children {
+            write_element(out, child, depth + 1);
+        }
     }
     out.push_str(&indent);
     out.push_str("</");
@@ -276,7 +292,10 @@ impl<'a> Parser<'a> {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn parse_element(&mut self) -> Result<Element, ParseError> {
+    fn parse_element(&mut self, depth: usize) -> Result<Element, ParseError> {
+        if depth > MAX_DEPTH {
+            return Err(self.error("nesting depth limit exceeded"));
+        }
         self.skip_ws();
         if self.peek() != Some(b'<') {
             return Err(self.error("expected '<'"));
@@ -384,7 +403,7 @@ impl<'a> Parser<'a> {
                 self.pos += 3;
                 continue;
             }
-            let child = self.parse_element()?;
+            let child = self.parse_element(depth + 1)?;
             children.push(child);
         }
     }

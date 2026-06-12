@@ -13,6 +13,7 @@ import {
   getBuildSettingsToAskDestination,
   getIsXBSInstalled,
   getSchemes,
+  getSweetpadBspServerPath,
   getXcodeBuildCommand,
   isXcodeBuildCommandCustomized,
   readXBSConfig,
@@ -460,15 +461,26 @@ export async function generateBuildServerConfigOnBuild(options: {
   const provider = getBuildServerProvider();
   if (provider === "sweetpad") {
     // Our config is project-based (no scheme/build_root), so it's valid as long
-    // as it's ours — regenerate only when switching in from another provider
-    // (otherwise we'd rewrite + restart the LSP on every build).
-    let name: string | undefined;
+    // as it's ours and its launcher is still the current one — regenerate only
+    // when switching in from another provider or when `argv[0]` went stale
+    // (the launcher lives inside the *versioned* extension install dir, so every
+    // extension update deletes the old path). Otherwise skip, or we'd rewrite +
+    // restart the LSP on every build.
+    let config: { name?: string; argv?: string[] } | undefined;
     try {
-      name = (await readJsonFile<{ name?: string }>(path.join(getWorkspacePath(), "buildServer.json"))).name;
+      config = await readJsonFile<{ name?: string; argv?: string[] }>(
+        path.join(getWorkspacePath(), "buildServer.json"),
+      );
     } catch {
       // missing / invalid → (re)generate below
     }
-    if (name !== "sweetpad") {
+    const launcher = config?.argv?.[0];
+    const isConfigValid =
+      config?.name === "sweetpad" &&
+      launcher !== undefined &&
+      launcher === getSweetpadBspServerPath() &&
+      (await isFileExists(launcher));
+    if (!isConfigValid) {
       await refreshBuildServer({ xcworkspace: options.xcworkspace, scheme: options.scheme });
     }
     return;

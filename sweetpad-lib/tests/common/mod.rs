@@ -321,6 +321,10 @@ pub fn pin_capture_host() {
         arch: Some("arm64".into()),
         user: Some("hyzyla_home".into()),
         home: Some("/Users/hyzyla_home".into()),
+        // The capture host's `confstr(_CS_DARWIN_USER_CACHE_DIR)` — anchors
+        // CCHROOT / CACHE_ROOT (verify with
+        // `grep -m1 '"CCHROOT"' fixtures/alamofire/**/*.json`).
+        darwin_user_cache: Some("/var/folders/wq/kkdk740d68qcqvttr995x13w0000gq/C/".into()),
     });
 }
 
@@ -773,6 +777,17 @@ pub fn compare(
                 // roots — semantically equivalent for resolver correctness.
                 structural += 1;
                 *canon_only_tally.entry(k.clone()).or_insert(0) += 1;
+                if std::env::var("DEBUG_DIFF_KEY").ok().as_deref() == Some(k.as_str()) {
+                    eprintln!(
+                        "CANON-ONLY {} ::\n  ours   = {:?}\n  oracle = {:?}\n  canon(ours)   = {:?}\n  canon(oracle) = {:?}\n  :: {}",
+                        k,
+                        our_val,
+                        oracle_val,
+                        canonicalize_value(our_val),
+                        canonicalize_value(oracle_val),
+                        source.display()
+                    );
+                }
             } else {
                 *mismatch_tally.entry(k.clone()).or_insert(0) += 1;
                 if std::env::var("DEBUG_DIFF_KEY").ok().as_deref() == Some(k.as_str()) {
@@ -881,17 +896,29 @@ pub fn canonicalize_value(v: &str) -> String {
 /// TUIST CAVEAT: the tuist sub-fixture directory was flattened on import —
 /// ours is `<PROJECT_ROOT>/examples_xcode_generated_foo` (underscores) while
 /// the oracle keeps `<PROJECT_ROOT>/examples/xcode/generated_foo` (slashes).
-/// That separator drift is below this anchor, so tuist source-root values
-/// still land in the structural (not canonical) tier; collapsing it safely
-/// would require mapping the import's flattening rule, which is out of scope.
+/// The flattening rule is exactly "join the `examples/xcode/<dir>` path
+/// segments with underscores" (every `fixtures/tuist-fixtures/.../raw/` entry
+/// is `examples_xcode_*`), so after the root collapse we rewrite the oracle's
+/// slash spelling to the flattened one. This is pure capture-host geometry:
+/// the original `corpus/tuist-fixtures/examples/xcode/<dir>` checkout layout
+/// doesn't exist in the imported fixture tree, so no resolver output running
+/// against `raw/` could ever reproduce it byte-for-byte.
 ///
 /// Idempotent: a value already containing `<PROJECT_ROOT>` matches neither
-/// anchor and passes through unchanged. Operates on embedded tokens (handles
-/// space-joined search paths and paths containing spaces) by consuming each
-/// anchor occurrence in place.
+/// root anchor and passes through unchanged, and the flattened spelling
+/// contains no `/examples/xcode/` left to rewrite. Operates on embedded
+/// tokens (handles space-joined search paths and paths containing spaces) by
+/// consuming each anchor occurrence in place.
 pub fn canon_project_root(s: &str) -> String {
     let s = canon_our_raw_root(s);
-    canon_oracle_corpus_root(&s)
+    let s = canon_oracle_corpus_root(&s);
+    // Tuist sub-fixture flattening (oracle spelling -> fixture spelling).
+    // Anchored on the canonical `<PROJECT_ROOT>` placeholder, so only values
+    // whose project root already collapsed are rewritten.
+    s.replace(
+        "<PROJECT_ROOT>/examples/xcode/",
+        "<PROJECT_ROOT>/examples_xcode_",
+    )
 }
 
 /// Our layout: replace the path token up through `/fixtures/<slug>/xcode-<ver>/raw`
@@ -1446,11 +1473,15 @@ mod canon_tests {
             canon_project_root(ours),
             "<PROJECT_ROOT>/examples_xcode_generated_ios_app_with_static_libraries/Modules/A/../C/prebuilt/C"
         );
+        // The oracle's original-checkout spelling (slash-separated sub-fixture
+        // path) flattens to the fixture's underscore spelling, so the two
+        // geometries land on the same canonical value.
         let oracle = "<HOME>/dev/sweetpad-lib/corpus/tuist-fixtures/examples/xcode/generated_ios_app_with_static_libraries/Modules/A/../C/prebuilt/C";
         assert_eq!(
             canon_project_root(oracle),
-            "<PROJECT_ROOT>/examples/xcode/generated_ios_app_with_static_libraries/Modules/A/../C/prebuilt/C"
+            "<PROJECT_ROOT>/examples_xcode_generated_ios_app_with_static_libraries/Modules/A/../C/prebuilt/C"
         );
+        assert_eq!(canon_project_root(oracle), canon_project_root(ours));
     }
 
     #[test]
