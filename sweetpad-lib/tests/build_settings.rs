@@ -417,6 +417,114 @@ fn user_scheme_in_xcuserdata_resolves() {
     assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
 }
 
+/// A two-member workspace where `Broken.xcodeproj` owns the `Scratch` target
+/// but attaches a malformed (present, unparseable) xcconfig to it, and
+/// `Other.xcodeproj` is a healthy minimal project with an `Other` target.
+/// Returns the `.xcworkspace` path; members are listed broken-last so the
+/// healthy member is visited first.
+fn workspace_with_broken_member(tag: &str) -> PathBuf {
+    let root =
+        std::env::temp_dir().join(format!("sweetpad-bs-broken-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+
+    // Healthy member: one `Other` tool target, Debug-only.
+    let other = root.join("Other.xcodeproj");
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::write(
+        other.join("project.pbxproj"),
+        "// !$*UTF8*$!\n{\n\tarchiveVersion = 1;\n\tobjects = {\n\
+         \t\tPROJ = { isa = PBXProject; buildConfigurationList = PLIST; mainGroup = MAIN; targets = (OTHER); };\n\
+         \t\tMAIN = { isa = PBXGroup; sourceTree = \"<group>\"; children = (); };\n\
+         \t\tPLIST = { isa = XCConfigurationList; buildConfigurations = (PDBG); };\n\
+         \t\tPDBG = { isa = XCBuildConfiguration; name = Debug; buildSettings = { SDKROOT = macosx; }; };\n\
+         \t\tOTHER = { isa = PBXNativeTarget; name = Other; productType = \"com.apple.product-type.tool\"; };\n\
+         \t};\n\trootObject = PROJ;\n}\n",
+    )
+    .unwrap();
+
+    // Broken member: the Scratch fixture with a baseConfigurationReference to
+    // an EXISTING but malformed xcconfig on the target's Debug config (same
+    // injection points as the missing-xcconfig regression test).
+    let broken = root.join("Broken.xcodeproj");
+    std::fs::create_dir_all(&broken).unwrap();
+    let pbxproj = std::fs::read_to_string(scratch_proj().join("project.pbxproj"))
+        .unwrap()
+        .replace(
+            "F08EA8A9D109525AA300CBE6 = {",
+            "F08EA8A9D109525AA300CBE6 = { baseConfigurationReference = AAA0000000000000000000AA;",
+        )
+        .replace(
+            "9D45771675EE5736A477EF39 = {",
+            "AAA0000000000000000000AA = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Broken.xcconfig; sourceTree = \"<group>\"; };\n        9D45771675EE5736A477EF39 = {",
+        );
+    std::fs::write(broken.join("project.pbxproj"), pbxproj).unwrap();
+    std::fs::write(root.join("Broken.xcconfig"), "THIS IS NOT AN XCCONFIG\n").unwrap();
+
+    let ws = root.join("Test.xcworkspace");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(
+        ws.join("contents.xcworkspacedata"),
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n  <FileRef location=\"group:Other.xcodeproj\"/>\n  <FileRef location=\"group:Broken.xcodeproj\"/>\n</Workspace>\n",
+    )
+    .unwrap();
+    ws
+}
+
+#[test]
+fn workspace_member_with_malformed_xcconfig_surfaces_the_real_error() {
+    // The target lives in the broken member: the parse failure must surface,
+    // tagged with the member project's path — not be swallowed into a
+    // misleading "no target matched".
+    let ws = workspace_with_broken_member("hit");
+    let opts = BuildSettingsOptions {
+        workspace: Some(ws),
+        target: Some("Scratch".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let err = resolve_build_settings(&opts).unwrap_err();
+    assert!(
+        err.contains("Broken.xcodeproj") && err.contains("xcconfig"),
+        "the error must name the broken member and the xcconfig: {err}"
+    );
+    assert!(
+        !err.contains("no target matched"),
+        "a broken member must not masquerade as a target miss: {err}"
+    );
+}
+
+#[test]
+fn workspace_broken_member_without_the_target_is_still_skipped() {
+    // The queried target lives in the healthy member; the broken member is a
+    // lookup miss for it (the malformed xcconfig is never even loaded), so
+    // resolution succeeds. And a target that exists nowhere keeps the
+    // "no target matched" wording.
+    let ws = workspace_with_broken_member("skip");
+    let opts = BuildSettingsOptions {
+        workspace: Some(ws.clone()),
+        target: Some("Other".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Other"));
+
+    let opts = BuildSettingsOptions {
+        workspace: Some(ws),
+        target: Some("Nowhere".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let err = resolve_build_settings(&opts).unwrap_err();
+    assert!(err.contains("no target matched"), "err: {err}");
+}
+
 #[test]
 fn workspace_level_scheme_resolves() {
     // A scheme stored in the workspace bundle's own `xcshareddata/xcschemes/`

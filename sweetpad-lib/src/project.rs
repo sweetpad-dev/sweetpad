@@ -56,6 +56,33 @@ pub enum Error {
     Io(io::Error),
     Parse(pbxproj::ParseError),
     BadProject(String),
+    /// The project parsed fine but declares no target with the requested
+    /// name. Distinct from [`Error::BadProject`] so workspace loops can treat
+    /// it as "the target lives in another member project" (see
+    /// [`Error::is_lookup_miss`]) without also swallowing real IO/parse
+    /// failures.
+    NoSuchTarget(String),
+    /// The project has no usable build configuration at all (no list, a
+    /// dangling list, or an empty one) for the requested name. Like
+    /// [`Error::NoSuchTarget`], a lookup miss rather than a broken project.
+    NoConfigurations(String),
+}
+
+impl Error {
+    /// Whether this is a target/configuration *lookup* miss: the project is
+    /// readable and well-formed, it just doesn't declare what was asked for.
+    /// Workspace member loops swallow exactly these (the target may live in
+    /// another member) and propagate everything else — an unreadable or
+    /// malformed member is a real error, not "target elsewhere".
+    #[must_use]
+    pub fn is_lookup_miss(&self) -> bool {
+        matches!(self, Error::NoSuchTarget(_) | Error::NoConfigurations(_))
+    }
+
+    /// The canonical "no target named X" lookup-miss error.
+    fn no_such_target(target_name: &str) -> Self {
+        Error::NoSuchTarget(target_name.to_string())
+    }
 }
 
 impl From<io::Error> for Error {
@@ -76,6 +103,10 @@ impl fmt::Display for Error {
             Error::Io(e) => write!(f, "I/O error: {e}"),
             Error::Parse(e) => write!(f, "parse error: {e}"),
             Error::BadProject(s) => write!(f, "invalid project: {s}"),
+            Error::NoSuchTarget(t) => write!(f, "no target named '{t}' in the project"),
+            Error::NoConfigurations(c) => {
+                write!(f, "project has no configurations (requested '{c}')")
+            }
         }
     }
 }
@@ -427,15 +458,11 @@ pub fn build_settings_from_value(
     // An unknown configuration name is not fatal: xcodebuild warns and falls
     // back to each XCConfigurationList's own `defaultConfigurationName` (see
     // [`find_config`]). Only a project with no configurations at all errors.
-    let project_config = find_config(objects, project_obj, config_name)?.ok_or_else(|| {
-        Error::BadProject(format!(
-            "project has no configurations (requested '{config_name}')"
-        ))
-    })?;
+    let project_config = find_config(objects, project_obj, config_name)?
+        .ok_or_else(|| Error::NoConfigurations(config_name.to_string()))?;
 
-    let target_obj = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
-        Error::BadProject(format!("no target named '{target_name}' in the project"))
-    })?;
+    let target_obj = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::no_such_target(target_name))?;
 
     // A target with no (or an empty/dangling) buildConfigurationList still
     // resolves — xcodebuild uses the project-level settings only — so its two
@@ -539,9 +566,8 @@ pub fn target_source_files_from_value(
         );
     }
 
-    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
-        Error::BadProject(format!("no target named '{target_name}' in the project"))
-    })?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::no_such_target(target_name))?;
 
     let mut out = Vec::new();
     let Some(phase_ids) = target.get("buildPhases").and_then(Value::as_array) else {
@@ -690,9 +716,8 @@ pub fn target_linked_frameworks(
 ) -> Result<Vec<String>, Error> {
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
-    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
-        Error::BadProject(format!("no target named '{target_name}' in the project"))
-    })?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::no_such_target(target_name))?;
 
     let mut out = Vec::new();
     let Some(phase_ids) = target.get("buildPhases").and_then(Value::as_array) else {
@@ -741,9 +766,8 @@ pub fn target_linked_libraries(
 ) -> Result<Vec<String>, Error> {
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
-    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
-        Error::BadProject(format!("no target named '{target_name}' in the project"))
-    })?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::no_such_target(target_name))?;
 
     let mut out = Vec::new();
     let Some(phase_ids) = target.get("buildPhases").and_then(Value::as_array) else {
@@ -791,9 +815,8 @@ pub fn target_linked_libraries(
 pub fn target_dependencies(xcodeproj_path: &Path, target_name: &str) -> Result<Vec<String>, Error> {
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
-    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
-        Error::BadProject(format!("no target named '{target_name}' in the project"))
-    })?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::no_such_target(target_name))?;
     Ok(target_dependency_names(objects, target))
 }
 
@@ -826,9 +849,8 @@ pub fn target_has_package_products(
 ) -> Result<bool, Error> {
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
-    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
-        Error::BadProject(format!("no target named '{target_name}' in the project"))
-    })?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::no_such_target(target_name))?;
     Ok(target
         .get("packageProductDependencies")
         .and_then(Value::as_array)
@@ -883,9 +905,8 @@ pub fn is_self_buildable(xcodeproj_path: &Path, target_name: &str) -> Result<boo
     }
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
-    let target = find_target(objects, project_obj, target_name)?.ok_or_else(|| {
-        Error::BadProject(format!("no target named '{target_name}' in the project"))
-    })?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::no_such_target(target_name))?;
     if target_has_script_or_rule_phase(objects, target) {
         return Ok(false);
     }
@@ -982,6 +1003,33 @@ fn node_base(node: &Value, parent_base: &Path, project_dir: &Path) -> PathBuf {
     }
 }
 
+/// Make `path` absolute WITHOUT resolving symlinks: a relative path anchors
+/// at the current directory and `.` / `..` segments collapse lexically.
+/// Xcode keys DerivedData by the container path *as opened* — a project under
+/// a symlinked root (`/tmp` → `/private/tmp`) hashes the symlink spelling —
+/// so the hash input must not go through [`fs::canonicalize`] (which is still
+/// used for `PROJECT_DIR`/`SRCROOT`, where xcodebuild emits resolved absolute
+/// paths and the VS Code extension realpaths its side).
+#[must_use]
+pub fn absolutize(path: &Path) -> PathBuf {
+    let joined = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
+    };
+    let mut out = PathBuf::new();
+    for comp in joined.components() {
+        match comp {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
 /// Join `rel` onto `base`, collapsing `.` / `..` lexically (without touching the
 /// filesystem) so a group path like `../Shared` resolves cleanly.
 fn join_normalized(base: &Path, rel: &str) -> PathBuf {
@@ -1027,6 +1075,48 @@ pub fn last_unconditional_setting(layers: &[Vec<Assignment>], key: &str) -> Opti
     for layer in layers.iter().rev() {
         for a in layer.iter().rev() {
             if a.key == key && a.conditions.is_empty() {
+                return Some(a.value.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Pre-resolve the user-authored layers ALONE (no xcspec defaults, no
+/// built-ins) into the "effective authored value" map the gating probes
+/// read — the Catalyst/previews/optimization flips xcodebuild keys on what
+/// the user's settings *resolve* to, not on any single raw assignment.
+/// Running the real resolver over the layers gives every gate the same
+/// semantics as the main pass: `[sdk=…]`/`[config=…]` conditionals match the
+/// canonical bindings in `ctx`, `$(inherited)` chains fold across layers,
+/// and `$(VAR)` references expand against the layered values (a reference to
+/// a setting only the defaults define expands empty — the catalog isn't in
+/// scope here; use [`last_matching_setting`] where the raw recipe matters).
+#[must_use]
+pub fn effective_authored_settings(
+    layers: &[Vec<Assignment>],
+    ctx: &crate::resolver::ResolveContext,
+) -> BTreeMap<String, String> {
+    let refs: Vec<&[Assignment]> = layers.iter().map(Vec::as_slice).collect();
+    crate::resolver::resolve(&refs, ctx)
+}
+
+/// The raw value of the last assignment to `key` whose `[…]` conditions all
+/// match `ctx` — later layers and later assignments win, like the resolver
+/// proper, but the value comes back verbatim (`$(…)` references intact).
+/// For the probes that must inspect or re-push the authored *recipe* rather
+/// than its user-layer expansion: an authored `ARCHS = $(ARCHS_STANDARD)`
+/// names a catalog setting that [`effective_authored_settings`] would
+/// expand to empty.
+#[must_use]
+pub fn last_matching_setting(
+    layers: &[Vec<Assignment>],
+    key: &str,
+    ctx: &crate::resolver::ResolveContext,
+) -> Option<String> {
+    for layer in layers.iter().rev() {
+        for a in layer.iter().rev() {
+            if a.key == key && a.conditions.iter().all(|c| ctx.matches(c)) {
                 return Some(a.value.clone());
             }
         }
@@ -1119,7 +1209,13 @@ pub fn built_in_settings(
     auto_no_destination: bool,
     user_iphoneos_deployment_target: Option<&str>,
     user_only_active_arch: Option<&str>,
-    user_layers: &[Vec<Assignment>],
+    // The effective authored values (see [`effective_authored_settings`]) the
+    // remaining authored-value gates below read: the pre-resolved user layers
+    // + `-xcconfig` overlay, WITHOUT the CLI `KEY=VALUE` overrides — the
+    // configuration-level view xcodebuild's optimization gate evaluates (the
+    // gcc-optimization-s synthetic capture keeps the debug-shaped flips with
+    // a CLI-forced `s` level).
+    authored: &BTreeMap<String, String>,
     derived_data_path: Option<&Path>,
     xcode_version: Option<&str>,
     xcode_developer_dir: Option<&str>,
@@ -1149,10 +1245,16 @@ pub fn built_in_settings(
     // We mirror that here so `BUILD_DIR` and friends match the layout the
     // oracle captures use.
     //
+    // The hash input is the container path *as opened* — absolute, but with
+    // symlinks intact (Xcode under a symlinked root, `/tmp` → `/private/tmp`,
+    // hashes the `/tmp` spelling), so it must NOT use the canonicalized
+    // `abs_path` that PROJECT_DIR/SRCROOT report. Callers that realpath their
+    // side (the VS Code extension does) see no difference.
+    //
     // `xcodebuild -derivedDataPath PATH` flattens this — it replaces the
     // whole `<home>/.../DerivedData/<container-hash>` segment with `PATH`,
     // so `BUILD_DIR = PATH/Build/Products` directly.
-    let derived_container = find_derived_data_container(&abs_path);
+    let derived_container = find_derived_data_container(&absolutize(xcodeproj_path));
     let derived_name = derived_container
         .file_stem()
         .and_then(OsStr::to_str)
@@ -1200,7 +1302,7 @@ pub fn built_in_settings(
     // lowercase `debug` (which authors `GCC_OPTIMIZATION_LEVEL = 0`) gets the
     // debug-shaped ones. Corpus-wide the correlation holds with zero
     // exceptions (294 per-target captures + the custom-config fixture).
-    let unoptimized = is_unoptimized_build(user_layers, config_name, sdk_canonical);
+    let unoptimized = is_unoptimized_build(authored);
     let sdk_base = canonicalize_sdk_base(sdk_canonical);
     let (archs, swift_prefix, deployment_target_name) = platform_metadata(&sdk_base);
     let platform_dir_name = platform_dir_name_for(&sdk_base);
@@ -1232,7 +1334,9 @@ pub fn built_in_settings(
     let archs: Vec<&'static str> = if destination.is_none()
         && sdk_base == "watchos"
         && watchos_keeps_armv7k(
-            last_unconditional_setting(user_layers, "WATCHOS_DEPLOYMENT_TARGET").as_deref(),
+            authored
+                .get("WATCHOS_DEPLOYMENT_TARGET")
+                .map(String::as_str),
         ) {
         vec!["arm64", "armv7k", "arm64_32"]
     } else {
@@ -1860,9 +1964,9 @@ pub fn built_in_settings(
             Some(" @executable_path/Frameworks")
         }
         // The watch app only inherits the default when the user authored no
-        // unconditional value; otherwise their `$(inherited)` would double it.
+        // value of their own; otherwise their `$(inherited)` would double it.
         Some("com.apple.product-type.application.watchapp2")
-            if last_unconditional_setting(user_layers, "LD_RUNPATH_SEARCH_PATHS").is_none() =>
+            if !authored.contains_key("LD_RUNPATH_SEARCH_PATHS") =>
         {
             Some(" @executable_path/Frameworks")
         }
@@ -1896,26 +2000,31 @@ pub fn built_in_settings(
     if sdk_base != "macosx"
         && let Some(d) = destination
     {
-        let (model, os_version) = if d.is_macos() {
+        let model_and_os = if d.is_macos() {
             // Prefer the catalog's recorded capture-host macOS version so a
             // capture resolves to the machine it was taken on; fall back to
             // querying the local host for the catalog-less CLI path.
-            (
+            Some((
                 "MacFamily20,1".to_string(),
                 capture_host_macos.map_or_else(host_os_version, str::to_owned),
-            )
+            ))
         } else {
-            (
-                device_model_for(&d.device_name).to_string(),
-                d.os_version.clone(),
-            )
+            // A destination naming a device the model table doesn't know
+            // (any real CLI `name=iPhone 16` destination) suppresses all
+            // three filter settings — emitting an empty model would feed the
+            // asset catalog compiler garbage, while omitting the keys just
+            // skips the thinning, which is what `device_model_for` promises.
+            let model = device_model_for(&d.device_name);
+            (!model.is_empty()).then(|| (model.to_string(), d.os_version.clone()))
         };
-        push("ASSETCATALOG_FILTER_FOR_DEVICE_MODEL", model.clone());
-        push("ASSETCATALOG_FILTER_FOR_DEVICE_OS_VERSION", os_version);
-        push(
-            "ASSETCATALOG_FILTER_FOR_THINNING_DEVICE_CONFIGURATION",
-            model,
-        );
+        if let Some((model, os_version)) = model_and_os {
+            push("ASSETCATALOG_FILTER_FOR_DEVICE_MODEL", model.clone());
+            push("ASSETCATALOG_FILTER_FOR_DEVICE_OS_VERSION", os_version);
+            push(
+                "ASSETCATALOG_FILTER_FOR_THINNING_DEVICE_CONFIGURATION",
+                model,
+            );
+        }
     }
 
     // --- Mac Catalyst extras -----------------------------------------------
@@ -1998,23 +2107,12 @@ pub fn built_in_settings(
         );
     }
 
-    // `KASAN_DEFAULT_CFLAGS` is defined per-SDK in `SDKSettings.plist` with
-    // `[arch=arm64]` / `[arch=arm64e]` overrides that pick the HW-tagged
-    // TBI variant. But xcodebuild's `-showBuildSettings` resolves settings
-    // with `arch=undefined_arch`, so those conditionals don't fire — the
-    // default (CLASSIC) wins. We mirror that by emitting CLASSIC
-    // unconditionally and letting the resolver layer above the SDKSettings
-    // defaults to override the per-arch conditionals.
-    let kasan_classic = "-DKASAN=1 -DKASAN_CLASSIC=1 -fsanitize=address \
-         -mllvm -asan-globals-live-support -mllvm -asan-force-dynamic-shadow";
-    let kasan_tbi = "-DKASAN=1 -DKASAN_TBI=1 -fsanitize=kernel-hwaddress \
-         -mllvm -hwasan-recover=0 -mllvm -hwasan-instrument-atomics=0 \
-         -mllvm -hwasan-instrument-stack=1 -mllvm -hwasan-generate-tags-with-calls=1 \
-         -mllvm -hwasan-instrument-with-calls=1 -mllvm -hwasan-use-short-granules=0 \
-         -mllvm -hwasan-memory-access-callback-prefix=__asan_";
-    push("KASAN_DEFAULT_CFLAGS", normalize_flag_string(kasan_classic));
-    push("KASAN_CFLAGS_CLASSIC", normalize_flag_string(kasan_classic));
-    push("KASAN_CFLAGS_TBI", normalize_flag_string(kasan_tbi));
+    // (`KASAN_DEFAULT_CFLAGS` needs no special-casing here: `SDKSettings.plist`
+    // defines it with `[arch=arm64]`/`[arch=arm64e]` overrides picking the
+    // HW-tagged TBI variant, and the showBuildSettings resolve binds
+    // `arch=undefined_arch` — see [`crate::build_context::BuildContext`] — so
+    // the catalog's unconditional CLASSIC default wins, exactly as xcodebuild
+    // reports.)
 
     // --- Compiler/module cache paths ---------------------------------------
     // These two settings expose where the user's machine caches per-build
@@ -2089,8 +2187,7 @@ pub fn built_in_settings(
     // `DarwinProductTypes.xcspec`. For applications the optimized-build
     // flip only applies when the target authors `ENABLE_PREVIEWS` itself.
     let is_debug = unoptimized;
-    let authored_enable_previews =
-        last_unconditional_setting(user_layers, "ENABLE_PREVIEWS").is_some();
+    let authored_enable_previews = authored.contains_key("ENABLE_PREVIEWS");
     push(
         "ENABLE_DEBUG_DYLIB",
         enable_debug_dylib_default(product_type, is_debug, authored_enable_previews).into(),
@@ -2162,16 +2259,20 @@ pub fn built_in_settings(
     // captured version's snapshot. This is the Xcode 26.5 SDK's list (sorted
     // alphabetically; 26.5 added `AppUnionValue` + `AppUnionValueCasesProviding`
     // over 26.0.1 and switched from declaration order to sorted). Older majors
-    // (16.x/15.x) don't emit this key, so it's only scored on 26.x.
-    push(
-        "SWIFT_EMIT_CONST_VALUE_PROTOCOLS",
-        "AnyResolverProviding AppEntity AppEnum AppExtension AppIntent AppIntentsPackage \
-         AppShortcutProviding AppShortcutsProvider AppUnionValue AppUnionValueCasesProviding \
-         DynamicOptionsProvider EntityQuery ExtensionPointDefining IntentValueQuery Resolver \
-         TransientEntity _AssistantIntentsProvider _GenerativeFunctionExtractable \
-         _IntentValueRepresentable"
-            .into(),
-    );
+    // (16.x/15.x) don't emit this key at all, so it's gated to 26+ — an
+    // unknown version (no catalog, no Xcode) is treated as modern, like the
+    // other version gates.
+    if xcode_major(&xcode_short).is_none_or(|major| major >= 26) {
+        push(
+            "SWIFT_EMIT_CONST_VALUE_PROTOCOLS",
+            "AnyResolverProviding AppEntity AppEnum AppExtension AppIntent AppIntentsPackage \
+             AppShortcutProviding AppShortcutsProvider AppUnionValue AppUnionValueCasesProviding \
+             DynamicOptionsProvider EntityQuery ExtensionPointDefining IntentValueQuery Resolver \
+             TransientEntity _AssistantIntentsProvider _GenerativeFunctionExtractable \
+             _IntentValueRepresentable"
+                .into(),
+        );
+    }
 
     out
 }
@@ -2571,15 +2672,18 @@ pub fn built_in_overrides(
     // `PRODUCT_BUNDLE_IDENTIFIER`. Kingfisher-Demo authors the flag and its
     // macOS captures show `maccatalyst.com.onevcat.Kingfisher-Demo`; the
     // Catalyst IceCubesApp leaves the flag at its NO default and keeps the
-    // bare id. The user value may itself be a `$(...)` recipe, so we push it
-    // verbatim and let the resolver expand the prefixed form. Guard against
-    // double-prefixing in case the user already wrote the prefix.
+    // bare id. The prefix is pushed onto `$(inherited)`, which folds in the
+    // full lower-stack value at merge time — so an id that is itself a
+    // `$(...)` recipe resolves against every layer below, not just the user
+    // layers the probe pre-resolved. `user_product_bundle_identifier` (the
+    // probe's expanded view) gates on an id existing at all and guards
+    // against double-prefixing when the user already wrote the prefix.
     if is_catalyst
         && derive_maccatalyst_bundle_id
         && let Some(id) = user_product_bundle_identifier
         && !id.starts_with("maccatalyst.")
     {
-        push("PRODUCT_BUNDLE_IDENTIFIER", &format!("maccatalyst.{id}"));
+        push("PRODUCT_BUNDLE_IDENTIFIER", "maccatalyst.$(inherited)");
     }
     out
 }
@@ -3147,28 +3251,18 @@ pub fn effective_xcode_major(catalog_xcode_version: Option<&str>) -> u32 {
     xcode_major(&short).unwrap_or(0)
 }
 
-/// Whether the user layers resolve `GCC_OPTIMIZATION_LEVEL = 0` for this
-/// (configuration, sdk) — xcodebuild's effective "debug build" gate (see
-/// [`built_in_overrides`]). Honors `[config=…]` / `[sdk=…]` conditional
-/// assignments by matching them against the query bindings; later layers and
-/// later assignments win, like the resolver proper. An unauthored level means
-/// the optimized xcspec default (`s`) applies.
+/// Whether the authored settings resolve `GCC_OPTIMIZATION_LEVEL = 0` —
+/// xcodebuild's effective "debug build" gate (see [`built_in_overrides`]).
+/// `authored` is the [`effective_authored_settings`] pre-resolve, so
+/// `[config=…]` / `[sdk=…]` conditionals (matched against the same canonical
+/// bindings as the main resolve), `$(inherited)` chains, and `$(VAR)`
+/// indirection are all folded before the comparison. An unauthored level
+/// means the optimized xcspec default (`s`) applies.
 #[must_use]
-pub fn is_unoptimized_build(layers: &[Vec<Assignment>], config_name: &str, sdk: &str) -> bool {
-    let ctx = crate::resolver::ResolveContext {
-        sdk: sdk.to_string(),
-        arch: String::new(),
-        configuration: config_name.to_string(),
-        variant: "normal".into(),
-    };
-    for layer in layers.iter().rev() {
-        for a in layer.iter().rev() {
-            if a.key == "GCC_OPTIMIZATION_LEVEL" && a.conditions.iter().all(|c| ctx.matches(c)) {
-                return a.value.trim() == "0";
-            }
-        }
-    }
-    false
+pub fn is_unoptimized_build(authored: &BTreeMap<String, String>) -> bool {
+    authored
+        .get("GCC_OPTIMIZATION_LEVEL")
+        .is_some_and(|v| v.trim() == "0")
 }
 
 fn find_target<'a>(
@@ -3564,6 +3658,15 @@ fn scheme_build_action_targets(scheme_path: &Path) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// Shorthand for the [`effective_authored_settings`]-shaped map the
+    /// built-in/override gates read.
+    fn authored_map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
     fn fixtures_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")
     }
@@ -3946,8 +4049,9 @@ mod tests {
         };
         let app = Some("com.apple.product-type.application");
 
-        // Catalyst + DERIVE flag YES → prepend `maccatalyst.` (the user value
-        // may be a `$(...)` recipe; we push it verbatim for the resolver).
+        // Catalyst + DERIVE flag YES → prepend `maccatalyst.` onto
+        // `$(inherited)`, which folds in the full lower-stack id at merge
+        // time (so even a `$(...)` recipe resolves against every layer).
         let derived = built_in_overrides(
             26,
             true,
@@ -3974,7 +4078,7 @@ mod tests {
         );
         assert_eq!(
             find(&derived, "PRODUCT_BUNDLE_IDENTIFIER").as_deref(),
-            Some("maccatalyst.com.onevcat.$(PRODUCT_NAME:rfc1034identifier)")
+            Some("maccatalyst.$(inherited)")
         );
 
         // Catalyst but DERIVE flag at its NO default (IceCubesApp) → no prefix.
@@ -4101,12 +4205,6 @@ mod tests {
         // fallback would otherwise pull in. Evidence: IceCubesApp's `-project`
         // capture (SKIP_INSTALL=YES, TAPI_VERIFY_MODE=ErrorsOnly,
         // ENABLE_HARDENED_RUNTIME=YES).
-        let user_layers = vec![vec![Assignment {
-            key: "SDKROOT".into(),
-            conditions: Vec::new(),
-            value: "auto".into(),
-            condition: None,
-        }]];
         let out = built_in_settings(
             Path::new("/tmp/Auto.xcodeproj"),
             "Auto",
@@ -4118,7 +4216,7 @@ mod tests {
             true, // the caller's no-platform verdict (auto + no destination)
             Some("18.5"),
             None,
-            &user_layers,
+            &authored_map(&[("SDKROOT", "auto")]),
             None,
             None,
             None,
@@ -4136,12 +4234,6 @@ mod tests {
         // A normal macOS application (no `auto`) is a top-level installable
         // product (SKIP_INSTALL=NO) and the no-platform pins do not fire, so
         // TAPI_VERIFY_MODE is left to the catalog (not forced to ErrorsOnly).
-        let user_layers = vec![vec![Assignment {
-            key: "SDKROOT".into(),
-            conditions: Vec::new(),
-            value: "macosx".into(),
-            condition: None,
-        }]];
         let out = built_in_settings(
             Path::new("/tmp/Mac.xcodeproj"),
             "Mac",
@@ -4153,7 +4245,7 @@ mod tests {
             false, // a concrete SDKROOT resolves a platform
             Some("18.5"),
             None,
-            &user_layers,
+            &authored_map(&[("SDKROOT", "macosx")]),
             None,
             None,
             None,
@@ -4182,7 +4274,7 @@ mod tests {
             false,
             None,
             None,
-            &[],
+            &BTreeMap::new(),
             None,
             None,
             None,
@@ -4204,12 +4296,7 @@ mod tests {
         // flag (`GCC_OPTIMIZATION_LEVEL = 0`, the Debug template's value),
         // NOT the configuration name — the custom-config fixture's
         // template-less `Debug` reports ONLY_ACTIVE_ARCH=NO and a full ARCHS.
-        let debug_template = vec![vec![Assignment {
-            key: "GCC_OPTIMIZATION_LEVEL".into(),
-            conditions: Vec::new(),
-            value: "0".into(),
-            condition: None,
-        }]];
+        let debug_template = authored_map(&[("GCC_OPTIMIZATION_LEVEL", "0")]);
         let dest = RunDestination {
             platform: "iphoneos".into(),
             os_version: String::new(),
@@ -4274,7 +4361,7 @@ mod tests {
             false,
             None,
             None,
-            &[],
+            &BTreeMap::new(),
             None,
             None,
             None,
@@ -4471,5 +4558,214 @@ mod tests {
                 target.name
             );
         }
+    }
+
+    // ----- the shared authored-value pre-resolve (the gating probe) ---------
+
+    fn probe_ctx(sdk: &str, config: &str) -> crate::resolver::ResolveContext {
+        crate::resolver::ResolveContext {
+            sdk: sdk.into(),
+            arch: "undefined_arch".into(),
+            configuration: config.into(),
+            variant: "normal".into(),
+        }
+    }
+
+    fn assignment(key: &str, conds: &[(&str, &str)], value: &str) -> Assignment {
+        Assignment {
+            key: key.into(),
+            conditions: conds
+                .iter()
+                .map(|(k, v)| Condition {
+                    key: (*k).into(),
+                    value: (*v).into(),
+                })
+                .collect(),
+            value: value.into(),
+            condition: None,
+        }
+    }
+
+    /// A conditional assignment whose condition matches the query bindings is
+    /// visible to the gates — `GCC_OPTIMIZATION_LEVEL[config=Debug] = 0` is a
+    /// debug build under Debug and an optimized one under Release.
+    #[test]
+    fn unoptimized_gate_sees_matching_conditional_assignments() {
+        let layers = vec![vec![assignment(
+            "GCC_OPTIMIZATION_LEVEL",
+            &[("config", "Debug")],
+            "0",
+        )]];
+        let debug = effective_authored_settings(&layers, &probe_ctx("macosx26.0", "Debug"));
+        assert!(is_unoptimized_build(&debug));
+        let release = effective_authored_settings(&layers, &probe_ctx("macosx26.0", "Release"));
+        assert!(!is_unoptimized_build(&release));
+    }
+
+    /// `[sdk=macosx26*]` matches the canonical (versioned) SDK name the
+    /// resolve binds — the same binding the main pass uses, so the gate and
+    /// the reported `GCC_OPTIMIZATION_LEVEL` can never disagree.
+    #[test]
+    fn unoptimized_gate_matches_the_versioned_sdk_binding() {
+        let layers = vec![vec![assignment(
+            "GCC_OPTIMIZATION_LEVEL",
+            &[("sdk", "macosx26*")],
+            "0",
+        )]];
+        let authored = effective_authored_settings(&layers, &probe_ctx("macosx26.0", "Debug"));
+        assert!(is_unoptimized_build(&authored));
+        // A different platform's binding leaves the conditional unmatched.
+        let ios = effective_authored_settings(&layers, &probe_ctx("iphoneos18.2", "Debug"));
+        assert!(!is_unoptimized_build(&ios));
+    }
+
+    /// `$(VAR)` indirection and `$(inherited)` chains fold before the gate
+    /// compares — `GCC_OPTIMIZATION_LEVEL = $(MY_LEVEL)` with `MY_LEVEL = 0`
+    /// is a debug build.
+    #[test]
+    fn unoptimized_gate_expands_variable_references() {
+        let layers = vec![
+            vec![
+                assignment("MY_LEVEL", &[], "0"),
+                assignment("GCC_OPTIMIZATION_LEVEL", &[], "$(MY_LEVEL)"),
+            ],
+            // An upper layer restating the key via $(inherited) keeps it.
+            vec![assignment("GCC_OPTIMIZATION_LEVEL", &[], "$(inherited)")],
+        ];
+        let authored = effective_authored_settings(&layers, &probe_ctx("macosx26.0", "Debug"));
+        assert!(is_unoptimized_build(&authored));
+    }
+
+    /// [`last_matching_setting`] honors conditions but keeps the raw recipe —
+    /// the ARCHS probe must see `$(ARCHS_STANDARD)` verbatim, not its (empty)
+    /// user-layer expansion.
+    #[test]
+    fn last_matching_setting_keeps_the_raw_recipe() {
+        let layers = vec![vec![
+            assignment("ARCHS", &[], "$(ARCHS_STANDARD)"),
+            assignment("ARCHS", &[("sdk", "iphoneos*")], "arm64e"),
+        ]];
+        let ctx = probe_ctx("iphoneos18.2", "Debug");
+        assert_eq!(
+            last_matching_setting(&layers, "ARCHS", &ctx).as_deref(),
+            Some("arm64e")
+        );
+        let ctx = probe_ctx("macosx26.0", "Debug");
+        assert_eq!(
+            last_matching_setting(&layers, "ARCHS", &ctx).as_deref(),
+            Some("$(ARCHS_STANDARD)")
+        );
+    }
+
+    /// An unknown destination device name suppresses the asset-catalog filter
+    /// settings entirely (a real CLI `name=iPhone 16` destination) — known
+    /// labels keep emitting the model triple.
+    #[test]
+    fn assetcatalog_filters_suppressed_for_unknown_device_model() {
+        let resolve_with_device = |device_name: &str| {
+            let dest = RunDestination {
+                platform: "iphonesimulator".into(),
+                os_version: "26.0".into(),
+                device_name: device_name.into(),
+                arch: "arm64".into(),
+            };
+            built_in_settings(
+                Path::new("/tmp/App.xcodeproj"),
+                "App",
+                "Debug",
+                Some("com.apple.product-type.application"),
+                "iphonesimulator",
+                Some(&dest),
+                false,
+                false,
+                None,
+                None,
+                &BTreeMap::new(),
+                None,
+                None,
+                None,
+                None,
+                false,
+            )
+        };
+        let known = resolve_with_device("iPad-A16");
+        assert_eq!(
+            known
+                .iter()
+                .find(|a| a.key == "ASSETCATALOG_FILTER_FOR_DEVICE_MODEL")
+                .map(|a| a.value.as_str()),
+            Some("iPad15,7")
+        );
+        let unknown = resolve_with_device("iPhone 16");
+        assert!(
+            unknown
+                .iter()
+                .all(|a| !a.key.starts_with("ASSETCATALOG_FILTER_FOR_")),
+            "an unknown device model must suppress the filter settings"
+        );
+    }
+
+    /// `SWIFT_EMIT_CONST_VALUE_PROTOCOLS` is a 26+-only key — 16.x/15.x
+    /// captures never carry it.
+    #[test]
+    fn swift_emit_const_value_protocols_gated_to_xcode26() {
+        let resolve_with_version = |version: &str| {
+            built_in_settings(
+                Path::new("/tmp/App.xcodeproj"),
+                "App",
+                "Debug",
+                Some("com.apple.product-type.application"),
+                "macosx",
+                None,
+                false,
+                false,
+                None,
+                None,
+                &BTreeMap::new(),
+                None,
+                Some(version),
+                None,
+                None,
+                false,
+            )
+        };
+        let has_key = |out: &[Assignment]| {
+            out.iter()
+                .any(|a| a.key == "SWIFT_EMIT_CONST_VALUE_PROTOCOLS")
+        };
+        assert!(has_key(&resolve_with_version("26.5")));
+        assert!(!has_key(&resolve_with_version("16.4")));
+        assert!(!has_key(&resolve_with_version("15.4")));
+    }
+
+    /// [`absolutize`] anchors relative paths and collapses dot segments but
+    /// must NOT resolve symlinks — Xcode hashes the DerivedData container
+    /// path as opened.
+    #[test]
+    fn absolutize_keeps_symlinks_and_collapses_lexically() {
+        assert_eq!(
+            absolutize(Path::new("/a/b/../c/./d")),
+            PathBuf::from("/a/c/d")
+        );
+        assert!(
+            absolutize(Path::new("some/relative")).is_absolute(),
+            "relative input must come back absolute"
+        );
+
+        // A symlinked directory keeps its symlink spelling.
+        let root = std::env::temp_dir().join(format!("sweetpad-abs-{}", std::process::id()));
+        let target_dir = root.join("target");
+        let link = root.join("link");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&target_dir).unwrap();
+        std::os::unix::fs::symlink(&target_dir, &link).unwrap();
+        let through_link = link.join("Proj.xcodeproj");
+        assert_eq!(absolutize(&through_link), through_link);
+        assert_ne!(
+            absolutize(&through_link),
+            target_dir.join("Proj.xcodeproj"),
+            "must not resolve the symlink"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 }

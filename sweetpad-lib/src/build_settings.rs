@@ -178,19 +178,24 @@ pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetS
         project_keys(&mut out, opts.keys.as_deref());
         Ok(out)
     } else {
-        // Workspace: try every project until queries resolve. Resolve errors
-        // here mean the target isn't in that particular project, so we suppress
-        // them; we only fail if no project matches at all.
+        // Workspace: try every project until queries resolve. Only a *lookup
+        // miss* ("no target named …" / no usable configuration) means the
+        // target lives in another member and is suppressed; a member that is
+        // genuinely broken (unreadable or malformed xcconfig, parse failure)
+        // surfaces immediately, tagged with the member project's path —
+        // otherwise it would masquerade as a misleading "no target matched".
         let mut out = Vec::new();
         for project_path in &projects {
             let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
             let queries = build_queries(&ctx, opts, &selection);
             for query in queries {
-                if let Ok(r) = ctx.resolve(&query) {
-                    out.push(TargetSettings {
+                match ctx.resolve(&query) {
+                    Ok(r) => out.push(TargetSettings {
                         target: query.target.clone(),
                         settings: r.settings,
-                    });
+                    }),
+                    Err(e) if e.is_lookup_miss() => {}
+                    Err(e) => return Err(format!("{}: {e}", project_path.display())),
                 }
             }
             if !out.is_empty() && selection.stops_at_first_match() {
@@ -245,6 +250,10 @@ pub fn resolve_compiler_arguments(
     for project_path in &projects {
         let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
         for query in build_queries(&ctx, opts, &selection) {
+            // Compiler argv is per concrete arch, so `[arch=…]` conditionals
+            // fire — unlike the showBuildSettings emulation, which binds
+            // xcodebuild's aggregated `undefined_arch` view.
+            let query = query.with_per_arch_conditionals(true);
             match ctx.resolve(&query) {
                 Ok(resolved) => {
                     let sources = project::target_source_files(&ctx.project.path, &query.target)
@@ -279,9 +288,13 @@ pub fn resolve_compiler_arguments(
                     ));
                 }
                 // Single project: bubble the error (xcodebuild-equivalent wording).
-                // Workspace: the target just isn't in this project; keep trying.
+                // Workspace: a lookup miss means the target just isn't in this
+                // member, keep trying — but a broken member (unreadable or
+                // malformed xcconfig, parse failure) is a real error and
+                // surfaces with the member project's path.
                 Err(e) if single => return Err(e.to_string()),
-                Err(_) => {}
+                Err(e) if e.is_lookup_miss() => {}
+                Err(e) => return Err(format!("{}: {e}", project_path.display())),
             }
         }
         if !out.is_empty() && selection.stops_at_first_match() {
@@ -331,13 +344,22 @@ pub fn resolve_file_arguments(
     let projects = resolve_project_paths(opts.project.as_deref(), opts.workspace.as_deref())?;
 
     let selection = Selection::Target(target.to_string());
+    let single = projects.len() == 1;
     for project_path in &projects {
         let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
         let Some(query) = build_queries(&ctx, opts, &selection).into_iter().next() else {
             continue;
         };
-        let Ok(resolved) = ctx.resolve(&query) else {
-            continue;
+        // Per-file compile: the concrete arch binds `[arch=…]` conditionals
+        // (the showBuildSettings emulation binds `undefined_arch` instead).
+        let query = query.with_per_arch_conditionals(true);
+        let resolved = match ctx.resolve(&query) {
+            Ok(resolved) => resolved,
+            // The target lives in another member project; keep trying.
+            Err(e) if !single && e.is_lookup_miss() => continue,
+            // A broken member project is a real error, not "target elsewhere".
+            Err(e) if single => return Err(e.to_string()),
+            Err(e) => return Err(format!("{}: {e}", project_path.display())),
         };
         let settings = &resolved.settings;
         let file_str = file.to_string_lossy().into_owned();

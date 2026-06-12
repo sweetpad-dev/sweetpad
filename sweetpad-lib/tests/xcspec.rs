@@ -175,7 +175,7 @@ fn scratch_resolves_against_captured_oracle_with_decent_coverage() {
         false,
         None,
         None,
-        &[],
+        &std::collections::BTreeMap::new(),
         None,
         catalog.xcode_version.as_deref(),
         catalog.developer_dir.as_deref(),

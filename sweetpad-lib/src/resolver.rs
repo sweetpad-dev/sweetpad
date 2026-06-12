@@ -18,15 +18,14 @@ pub struct ResolveContext {
 }
 
 impl ResolveContext {
-    /// Known limitation on `[sdk=…]`: xcodebuild matches sdk conditions
-    /// against the *versioned* canonical SDK name (`macosx26.0`), while
-    /// [`Self::sdk`] carries the unversioned platform name (`macosx`). The
-    /// overwhelmingly common `[sdk=macosx*]` form behaves identically either
-    /// way; an exact-versioned pattern like `[sdk=iphoneos18.2]` can never
-    /// match here, and a bare `[sdk=iphoneos]` matches here but would not
-    /// under xcodebuild (it never matches the versioned name without a `*`).
-    /// Fixing this fully needs the versioned canonical name plumbed into the
-    /// context from the SDK catalog.
+    /// Whether one `[key=pattern]` condition matches this context's bindings.
+    /// xcodebuild matches `[sdk=…]` against the *versioned* canonical SDK
+    /// name (`macosx26.0`) — [`crate::build_context::BuildContext`] binds
+    /// that canonical name from the catalog, so the ubiquitous
+    /// `[sdk=macosx*]` form matches while a bare `[sdk=macosx]` does not,
+    /// exactly like xcodebuild. Its aggregated `-showBuildSettings` view
+    /// likewise binds `arch=undefined_arch` (per-arch conditionals only fire
+    /// for a concrete per-arch resolve, e.g. compiler args).
     #[must_use]
     pub fn matches(&self, cond: &Condition) -> bool {
         match cond.key.as_str() {

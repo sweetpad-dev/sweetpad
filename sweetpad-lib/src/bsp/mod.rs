@@ -661,7 +661,12 @@ impl Server {
         if let Some(dd) = &self.derived_data_path {
             return Some(dd.clone());
         }
-        let abs = std::fs::canonicalize(&self.project_path).ok()?;
+        // Hash the container path *as opened* (absolute, symlinks intact):
+        // Xcode keys DerivedData by the path it was launched on, so a project
+        // under a symlinked root (`/tmp` → `/private/tmp`) must hash the
+        // symlink spelling — `fs::canonicalize` here would compute a
+        // different DerivedData dir than the one Xcode/xcodebuild populate.
+        let abs = crate::project::absolutize(&self.project_path);
         let name = abs.file_stem()?.to_string_lossy().into_owned();
         let hash = crate::xcode_hash::derived_data_hash(&abs.to_string_lossy());
         let home = std::env::var_os("HOME")?;
