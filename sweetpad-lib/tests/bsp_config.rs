@@ -1,4 +1,4 @@
-//! `sweetpad-lib config` writes the `buildServer.json` that sourcekit-lsp reads
+//! `bsp-server config` writes the `buildServer.json` that sourcekit-lsp reads
 //! to discover and launch our server. Its decoder **silently skips** a config
 //! missing any required field (`name` / `version` / `bspVersion` / `languages` /
 //! `argv`) — a dropped field disables editor intelligence with no error — so this
@@ -17,7 +17,7 @@ fn config_writes_complete_build_server_json() {
     let out = std::env::temp_dir().join(format!("sweetpad-bsp-config-{}.json", std::process::id()));
     let _ = std::fs::remove_file(&out);
 
-    let status = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let status = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["config", "--project", &project, "--output"])
         .arg(&out)
         .stderr(Stdio::null())
@@ -68,7 +68,7 @@ fn config_writes_complete_build_server_json() {
         .filter_map(Value::as_str)
         .collect();
     assert!(
-        argv.first().is_some_and(|a| a.ends_with("sweetpad-lib")),
+        argv.first().is_some_and(|a| a.ends_with("bsp-server")),
         "argv[0] should be the server executable: {argv:?}"
     );
     assert!(

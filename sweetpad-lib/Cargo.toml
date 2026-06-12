@@ -15,20 +15,22 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# The CLI entry point over the interface-agnostic core: a `compiler-args` dump and
-# the `bsp` Build Server Protocol server (see DOCS.md §8 (BSP server)). Gated on the (default)
-# `cli` feature so the N-API addon build (`--no-default-features --features node`)
-# skips it — a standalone bin can't link napi's node-host-provided symbols.
+# Standalone entry point for the `bsp` Build Server Protocol server (see DOCS.md
+# §8 (BSP server)) — execed by the BSP integration tests and by sourcekit-lsp via
+# `bsp::write_config`'s buildServer.json; the extension runs the same server
+# through the N-API addon. Gated on the (default) `bsp-server` feature so the
+# addon build (`--no-default-features --features node`) skips it — a standalone
+# bin can't link napi's node-host-provided symbols.
 [[bin]]
-name = "sweetpad-lib"
-path = "src/bin/sweetpad_lib.rs"
-required-features = ["cli"]
+name = "bsp-server"
+path = "src/bin/bsp_server.rs"
+required-features = ["bsp-server"]
 
 [features]
-# `cli` builds the `sweetpad-lib` binary; default-on so `cargo build`/`cargo test`
-# get it (the integration tests exec it), and skipped by the addon build.
-default = ["cli"]
-cli = []
+# `bsp-server` builds the BSP server binary; default-on so `cargo build`/`cargo
+# test` get it (the BSP integration tests exec it), and skipped by the addon build.
+default = ["bsp-server"]
+bsp-server = []
 # Compiles the `src/node.rs` N-API bindings into the cdylib. Off by default so
 # `cargo test` (and the interface-agnostic core) never link the Node runtime.
 node = ["dep:napi", "dep:napi-derive"]

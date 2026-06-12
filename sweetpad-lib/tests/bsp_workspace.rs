@@ -58,7 +58,7 @@ fn run_workspace_session(messages: &[Value], workspace: &str) -> Vec<Value> {
     for m in messages {
         input.extend(frame(m));
     }
-    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--workspace", workspace])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

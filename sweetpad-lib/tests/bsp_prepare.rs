@@ -1,7 +1,7 @@
 //! v2 of the BSP loop: `buildTarget/prepare` builds a target's dependency
 //! modules on demand, so cross-module `import`s resolve with **no prior build**.
 //!
-//! This drives the `sweetpad-lib bsp` server directly (no sourcekit-lsp): from a
+//! This drives the `bsp-server bsp` server directly (no sourcekit-lsp): from a
 //! clean DerivedData, it sends `buildTarget/prepare` for `ModuleB` and asserts
 //! (a) the server answers the request and (b) `ModuleA`'s `.swiftmodule` now
 //! exists in the products dir our search paths point at — i.e. preparation
@@ -40,7 +40,7 @@ fn prepare_builds_dependency_module_from_clean_deriveddata() {
     let log = std::env::temp_dir().join(format!("sweetpad-bsp-prep-log-{}", std::process::id()));
     let _ = std::fs::remove_file(&log);
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--project", &project, "--xcode"])
         .arg(format!("{XCODE}/Contents/Developer"))
         .arg("--derived-data-path")

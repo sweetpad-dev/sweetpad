@@ -37,7 +37,7 @@ fn buildtarget_did_change_on_pbxproj_edit() {
     let proj = tmp.join("MultiModule.xcodeproj");
     let pbxproj = proj.join("project.pbxproj");
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--project", proj.to_str().unwrap()])
         .env("SWEETPAD_BSP_WATCH_MS", "100")
         .stdin(Stdio::piped())
