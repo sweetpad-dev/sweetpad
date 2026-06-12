@@ -241,8 +241,8 @@ Hand-built fixtures cover paths no real corpus project exercises:
 | `02_capture_metadata.py` | Metadata + raw inputs per (project, Xcode); `augment_with_simulators()` derives a representative simulator per platform from `simctl` (reliable against the `-showdestinations` race); self-sets `DEVELOPER_DIR` via `--xcode` |
 | `03_run_builds.py` | Smoke builds + artifacts |
 | `04_snapshot_xcspecs.py` | xcspec + SDKSettings snapshot per Xcode version |
-| `05_validate.py` | Walks `fixtures/`, writes the generated `fixtures/REPORT.md` coverage matrix |
-| `06_audit_coverage.py` | Probe-based audit → generated `fixtures/AUDIT.md` |
+| `05_validate.py` | Walks `fixtures/`, writes `fixtures/REPORT.json` + the capture-completeness half of the generated `fixtures/FIXTURES.md` |
+| `06_audit_coverage.py` | Probe-based audit → `fixtures/AUDIT.json` + the feature-probe half of `fixtures/FIXTURES.md`; corpus-tree probes are tri-state (carried forward, marked stale, when the gitignored `corpus/` clones are absent) |
 | `07_synthetic_overrides.py` | Synthetic `KEY=VALUE` override captures (does **not** self-set `DEVELOPER_DIR` — export it) |
 | `08_global_defaults.py` | `_global` per-SDK metadata |
 | `09_per_project_settings.py` | Per-target + project-defaults captures |
@@ -281,13 +281,16 @@ fabricated as passes. Diagnostics: `ORACLE_ONLY_VERSION=<ver>` isolates one
 version's tally and skips floors; `DEBUG_DIFF_KEY=<KEY>` dumps one key's
 mismatches.
 
-### 4.6 Generated reports
+### 4.6 Generated report
 
-`fixtures/REPORT.md` (capture-completeness matrix, from `05_validate.py`) and
-`fixtures/AUDIT.md` (probe matrix, from `06_audit_coverage.py`) are
-**generated — do not hand-edit**. Both currently still reference the dropped
-`xcode-26.0.1` capture; re-run their scripts at the next capture on a macOS
-host (roadmap E24).
+`fixtures/FIXTURES.md` is **generated — do not hand-edit**: the
+capture-completeness section comes from `05_validate.py` (`REPORT.json`), the
+feature-probe section from `06_audit_coverage.py` (`AUDIT.json`); either
+script rebuilds the combined file from both JSONs. It is current against the
+26.5/16.4/15.4 corpus. Corpus-tree probes (file presence in the gitignored
+`corpus/<slug>/` clones) can only be re-evaluated on a host with the clones;
+elsewhere the last corpus-present results are carried forward and marked
+stale (`*`).
 
 ## 5. Xcode version coverage
 
@@ -665,8 +668,8 @@ Methods: `build/initialize`, `workspace/buildTargets`, `buildTarget/sources`,
 ## 9. Feature coverage matrix
 
 Tracks which Xcode build-system features have a real example in the corpus.
-Hand-maintained; re-verify against the generated `fixtures/REPORT.md` /
-`fixtures/AUDIT.md` after each capture run. Current tally: **115 ✅ / 18 ❌**
+Hand-maintained; re-verify against the generated `fixtures/FIXTURES.md`
+after each capture run. Current tally: **115 ✅ / 18 ❌**
 (reconciled 2026-05-30 against the captured corpus with concrete evidence per
 row; scheme-discovery rows updated 2026-06-10).
 
@@ -1028,7 +1031,8 @@ pinpoint each:
 `grep -rn 'xcode-<old>\|macosx<old SDK>\|OS<old sim OS>' src/ tests/` should
 come back clean except `tests/common/mod.rs` test data. Also re-run
 `scripts/05_validate.py` / `06_audit_coverage.py` so the generated
-`fixtures/REPORT.md` / `AUDIT.md` match the corpus, and update §9's Where
+`fixtures/FIXTURES.md` matches the corpus (run them on the capture host —
+the corpus-tree probes need the `corpus/` clones), and update §9's Where
 pointers.
 
 ### 10.7b Refresh the embedded defaults catalog
@@ -1168,8 +1172,11 @@ versions → raise that `(version, platform)` floor)
 22. **Extend the mutation audit** with one row per rule added in Tracks A/C so
     every new rule has a net that goes red.
 23. **Ratchet floors after every fix.**
-24. **Refresh the generated reports** (`fixtures/REPORT.md`, `AUDIT.md`) —
-    both still reference the dropped `xcode-26.0.1`.
+24. ~~Refresh the generated reports~~ — done: consolidated into the
+    regenerated `fixtures/FIXTURES.md` (current against 26.5/16.4/15.4).
+    Remaining sliver: the corpus-tree probes are carried forward as stale;
+    re-run `06_audit_coverage.py` on a host with the `corpus/` clones to
+    refresh them.
 
 **Suggested execution order:** A1 (+C7, same root cause) → A2/A3 → C8–C13 →
 B6 → D16 → D15 scope decision → E20–E24 interleaved. Mac-host capture steps

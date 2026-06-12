@@ -8,12 +8,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 3 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "present in 14 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "alamofire": {
-          "info": "present in 54 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -21,15 +37,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 26 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 6 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 34 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 20 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 718 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 8 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -42,12 +58,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 3 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "present in 14 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "alamofire": {
-          "info": "present in 54 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -55,15 +87,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 26 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 6 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 34 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 20 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 718 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 8 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -76,12 +108,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 3 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "present in 14 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "alamofire": {
-          "info": "present in 54 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -89,15 +137,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 26 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 6 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 34 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 20 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 718 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 8 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -110,12 +158,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 3 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "present in 14 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "alamofire": {
-          "info": "present in 54 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -123,15 +187,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 26 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 6 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 34 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 20 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 718 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 8 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -144,12 +208,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 3 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "present in 14 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "alamofire": {
-          "info": "present in 54 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -157,15 +237,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 26 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 6 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 34 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 20 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 718 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 8 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -178,12 +258,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "alamofire": {
-          "info": "present in 52 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 2 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -191,15 +287,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 22 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 2 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 28 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 14 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 614 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 414 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -212,9 +308,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "xcconfig matched: xcconfigs/inherited.xcconfig (+0)",
           "ok": true
+        },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
@@ -229,7 +341,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "xcconfig matched: raw/.github/macos-ci-no-signing.xcconfig (+9)",
+          "info": "xcconfig matched: raw/xcconfig/NetNewsWire_iOSTests_target.xcconfig (+9)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -246,7 +358,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -263,7 +391,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "xcconfig matched: raw/xcconfig/NetNewsWire_safariextension_target.xcconfig (+8)",
+          "info": "xcconfig matched: raw/xcconfig/NetNewsWire_iOSshareextension_target.xcconfig (+8)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -280,9 +408,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "xcconfig matched: xcconfigs/modifier-syntax.xcconfig (+0)",
           "ok": true
+        },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
@@ -314,9 +458,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "xcconfig matched: xcconfigs/multi-line-continuation.xcconfig (+0)",
           "ok": true
+        },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
@@ -348,9 +508,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "xcconfig matched: xcconfigs/conditional-sdk.xcconfig (+0)",
           "ok": true
+        },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
@@ -382,9 +558,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "xcconfig matched: xcconfigs/conditional-arch.xcconfig (+0)",
           "ok": true
+        },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
@@ -416,9 +608,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "xcconfig matched: project/Shared.xcconfig (+0)",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "xcconfig matched: xcconfigs/conditional-config.xcconfig (+0)",
           "ok": true
+        },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
@@ -450,7 +658,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -484,7 +708,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -518,7 +758,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "pbxproj matched: project/Scratch.xcodeproj/project.pbxproj (+0)",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -552,9 +808,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "xcconfig matched: xcconfigs/include-directive.xcconfig (+0)",
           "ok": true
+        },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
@@ -569,7 +841,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "xcconfig matched: raw/xcconfig/NetNewsWire_project_debug.xcconfig (+17)",
+          "info": "xcconfig matched: raw/xcconfig/NetNewsWire_iOSTests_target.xcconfig (+17)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -586,7 +858,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "CONFIGURATION='Profile' (1 hits)",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -607,7 +895,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "CONFIGURATION='release' (24 hits)",
+          "info": "CONFIGURATION='release' (12 hits)",
           "ok": true
         }
       }
@@ -620,12 +908,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 3 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "present in 14 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "alamofire": {
-          "info": "present in 54 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -633,15 +937,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 26 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 6 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 34 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 20 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 718 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 8 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -654,12 +958,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 3 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "present in 14 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "alamofire": {
-          "info": "present in 54 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -667,15 +987,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 26 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 6 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 34 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 20 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 718 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 8 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -688,7 +1008,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -709,8 +1045,8 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "EXCLUDED_ARCHS='arm64e' (8 hits)",
-          "ok": true
+          "info": "",
+          "ok": false
         }
       }
     },
@@ -722,12 +1058,28 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "ARCHS='arm64 x86_64' (3 hits)",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "ARCHS='arm64 x86_64' (14 hits)",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
         "alamofire": {
-          "info": "ARCHS='arm64 x86_64' (26 hits)",
+          "info": "ARCHS='arm64 x86_64' (2 hits)",
           "ok": true
         },
         "ice-cubes": {
@@ -735,15 +1087,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "ARCHS='arm64 x86_64' (13 hits)",
+          "info": "ARCHS='arm64 x86_64' (2 hits)",
           "ok": true
         },
         "netnewswire": {
-          "info": "ARCHS='arm64 x86_64' (17 hits)",
+          "info": "ARCHS='arm64 x86_64' (10 hits)",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "ARCHS='arm64 x86_64' (271 hits)",
+          "info": "ARCHS='arm64 x86_64' (4 hits)",
           "ok": true
         }
       }
@@ -756,7 +1108,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -790,7 +1158,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -811,7 +1195,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "MACH_O_TYPE='staticlib' (288 hits)",
+          "info": "MACH_O_TYPE='staticlib' (224 hits)",
           "ok": true
         }
       }
@@ -824,12 +1208,28 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
+        },
         "alamofire": {
-          "info": "MACH_O_TYPE='mh_dylib' (42 hits)",
+          "info": "MACH_O_TYPE='mh_dylib' (4 hits)",
           "ok": true
         },
         "ice-cubes": {
@@ -837,7 +1237,7 @@
           "ok": false
         },
         "kingfisher": {
-          "info": "MACH_O_TYPE='mh_dylib' (12 hits)",
+          "info": "MACH_O_TYPE='mh_dylib' (2 hits)",
           "ok": true
         },
         "netnewswire": {
@@ -845,7 +1245,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "MACH_O_TYPE='mh_dylib' (56 hits)",
+          "info": "MACH_O_TYPE='mh_dylib' (4 hits)",
           "ok": true
         }
       }
@@ -858,12 +1258,28 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "MACH_O_TYPE='mh_execute' (3 hits)",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "MACH_O_TYPE='mh_execute' (14 hits)",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
         "alamofire": {
-          "info": "MACH_O_TYPE='mh_execute' (12 hits)",
+          "info": "MACH_O_TYPE='mh_execute' (10 hits)",
           "ok": true
         },
         "ice-cubes": {
@@ -871,15 +1287,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "MACH_O_TYPE='mh_execute' (14 hits)",
+          "info": "MACH_O_TYPE='mh_execute' (4 hits)",
           "ok": true
         },
         "netnewswire": {
-          "info": "MACH_O_TYPE='mh_execute' (34 hits)",
+          "info": "MACH_O_TYPE='mh_execute' (20 hits)",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "MACH_O_TYPE='mh_execute' (214 hits)",
+          "info": "MACH_O_TYPE='mh_execute' (4 hits)",
           "ok": true
         }
       }
@@ -892,7 +1308,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -913,7 +1345,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "MACH_O_TYPE='mh_bundle' (160 hits)",
+          "info": "MACH_O_TYPE='mh_bundle' (112 hits)",
           "ok": true
         }
       }
@@ -926,12 +1358,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "alamofire": {
-          "info": "present in 54 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -939,15 +1387,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 26 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 6 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 34 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 20 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 580 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 406 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -960,12 +1408,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "alamofire": {
-          "info": "present in 42 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -981,7 +1445,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "present in 328 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -994,7 +1458,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1028,7 +1508,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1062,7 +1558,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1075,7 +1587,7 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "SUPPORTS_MACCATALYST='YES' (8 hits)",
+          "info": "SUPPORTS_MACCATALYST='YES' (2 hits)",
           "ok": true
         },
         "netnewswire": {
@@ -1096,7 +1608,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1130,7 +1658,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1151,7 +1695,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD='YES' (580 hits)",
+          "info": "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD='YES' (388 hits)",
           "ok": true
         }
       }
@@ -1164,28 +1708,44 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
+        },
         "alamofire": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (38 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (34 hits)",
           "ok": true
         },
         "ice-cubes": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (24 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (24 hits)",
           "ok": true
         },
         "kingfisher": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (8 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (4 hits)",
           "ok": true
         },
         "netnewswire": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (28 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (14 hits)",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (352 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (204 hits)",
           "ok": true
         }
       }
@@ -1198,28 +1758,44 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "SDKROOT='/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (3 hits)",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "SDKROOT='/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (14 hits)",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
         "alamofire": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (4 hits)",
+          "info": "SDKROOT='/Applications/Xcode-16.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (4 hits)",
           "ok": true
         },
         "ice-cubes": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (18 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (18 hits)",
           "ok": true
         },
         "kingfisher": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (6 hits)",
+          "info": "SDKROOT='/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (4 hits)",
           "ok": true
         },
         "netnewswire": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (6 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (6 hits)",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (104 hits)",
+          "info": "SDKROOT='/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (8 hits)",
           "ok": true
         }
       }
@@ -1232,12 +1808,28 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
+        },
         "alamofire": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/WatchSimulator.platf' (4 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/WatchSimulator.platf' (4 hits)",
           "ok": true
         },
         "ice-cubes": {
@@ -1245,7 +1837,7 @@
           "ok": false
         },
         "kingfisher": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/WatchSimulator.platf' (4 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/WatchSimulator.platf' (4 hits)",
           "ok": true
         },
         "netnewswire": {
@@ -1253,7 +1845,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/WatchSimulator.platf' (12 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/WatchSimulator.platf' (12 hits)",
           "ok": true
         }
       }
@@ -1266,12 +1858,28 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
+        },
         "alamofire": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/AppleTVSimulator.pla' (2 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/AppleTVSimulator.pla' (2 hits)",
           "ok": true
         },
         "ice-cubes": {
@@ -1279,7 +1887,7 @@
           "ok": false
         },
         "kingfisher": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/AppleTVSimulator.pla' (4 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/AppleTVSimulator.pla' (4 hits)",
           "ok": true
         },
         "netnewswire": {
@@ -1300,20 +1908,36 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
+        },
         "alamofire": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/XRSimulator.platform' (2 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/XRSimulator.platform' (2 hits)",
           "ok": true
         },
         "ice-cubes": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/XRSimulator.platform' (12 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/XRSimulator.platform' (12 hits)",
           "ok": true
         },
         "kingfisher": {
-          "info": "SDKROOT='/Applications/Xcode-26.0.1.app/Contents/Developer/Platforms/XRSimulator.platform' (4 hits)",
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/XRSimulator.platform' (4 hits)",
           "ok": true
         },
         "netnewswire": {
@@ -1334,7 +1958,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1368,12 +2008,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "alamofire": {
-          "info": "present in 12 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 10 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -1381,15 +2037,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 14 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 32 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 18 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 148 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 96 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -1399,32 +2055,53 @@
       "name": ".xcstrings file present",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "ice-cubes": {
           "info": "corpus/ has 1 .xcstrings files (e.g. Localizable.xcstrings)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "netnewswire": {
           "info": "corpus/ has 2 .xcstrings files (e.g. Localizable.xcstrings)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 1 .xcstrings files (e.g. Localizable.xcstrings)",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -1433,32 +2110,53 @@
       "name": "Legacy .strings file present",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "ice-cubes": {
           "info": "corpus/ has 12 .strings files (e.g. InfoPlist.strings)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "netnewswire": {
           "info": "corpus/ has 31 .strings files (e.g. Sparkle.strings)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 12 .strings files (e.g. Greetings.strings)",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -1467,32 +2165,53 @@
       "name": ".storyboard file present",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "corpus/ has 3 .storyboard files (e.g. LaunchScreen.storyboard)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "kingfisher": {
           "info": "corpus/ has 5 .storyboard files (e.g. Interface.storyboard)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "netnewswire": {
           "info": "corpus/ has 12 .storyboard files (e.g. MainInterface.storyboard)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 14 .storyboard files (e.g. LaunchScreen.storyboard)",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -1501,32 +2220,53 @@
       "name": ".xib file present",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "kingfisher": {
           "info": "corpus/ has 1 .xib files (e.g. Cell.xib)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "netnewswire": {
           "info": "corpus/ has 24 .xib files (e.g. ShareFolderPickerAccountCell.xib)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 4 .xib files (e.g. AView.xib)",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -1535,32 +2275,53 @@
       "name": "Asset catalog Contents.json",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "corpus/ has 16 Contents.json files",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "ice-cubes": {
           "info": "corpus/ has 88 Contents.json files",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "kingfisher": {
           "info": "corpus/ has 21 Contents.json files",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "netnewswire": {
           "info": "corpus/ has 103 Contents.json files",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 277 Contents.json files",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -1569,32 +2330,53 @@
       "name": "Core Data .xcdatamodeld bundle",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "netnewswire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 5 .xcdatamodeld bundle dirs (e.g. Users.xcdatamodeld)",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -1603,32 +2385,53 @@
       "name": "Core ML .mlmodel",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "netnewswire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         }
       }
     },
@@ -1637,32 +2440,53 @@
       "name": "Metal .metal shader",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "netnewswire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 2 .metal files (e.g. Metal.metal)",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -1671,32 +2495,53 @@
       "name": "PrivacyInfo.xcprivacy",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "corpus/ has 1 .xcprivacy files (e.g. PrivacyInfo.xcprivacy)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "kingfisher": {
           "info": "corpus/ has 1 .xcprivacy files (e.g. PrivacyInfo.xcprivacy)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "netnewswire": {
           "info": "corpus/ has 1 .xcprivacy files (e.g. PrivacyInfo.xcprivacy)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         }
       }
     },
@@ -1708,7 +2553,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1717,7 +2578,7 @@
           "ok": false
         },
         "ice-cubes": {
-          "info": "raw/ has 6 .entitlements files (e.g. IceCubesApp-release.entitlements)",
+          "info": "raw/ has 6 .entitlements files (e.g. IceCubesNotifications.entitlements)",
           "ok": true
         },
         "kingfisher": {
@@ -1725,7 +2586,7 @@
           "ok": true
         },
         "netnewswire": {
-          "info": "raw/ has 9 .entitlements files (e.g. NetNewsWire_iOS_WidgetExtension.entitlements)",
+          "info": "raw/ has 9 .entitlements files (e.g. Subscribe_to_Feed.entitlements)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -1742,7 +2603,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1751,7 +2628,7 @@
           "ok": false
         },
         "ice-cubes": {
-          "info": ".entitlements matched: IceCubesApp-release.entitlements",
+          "info": ".entitlements matched: IceCubesNotifications.entitlements",
           "ok": true
         },
         "kingfisher": {
@@ -1759,7 +2636,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": ".entitlements matched: NetNewsWire_iOS_WidgetExtension.entitlements",
+          "info": ".entitlements matched: Subscribe_to_Feed.entitlements",
           "ok": true
         },
         "tuist-fixtures": {
@@ -1776,7 +2653,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1785,7 +2678,7 @@
           "ok": false
         },
         "ice-cubes": {
-          "info": ".entitlements matched: IceCubesApp-release.entitlements",
+          "info": ".entitlements matched: IceCubesApp.entitlements",
           "ok": true
         },
         "kingfisher": {
@@ -1810,7 +2703,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1819,7 +2728,7 @@
           "ok": false
         },
         "ice-cubes": {
-          "info": ".entitlements matched: IceCubesApp-release.entitlements",
+          "info": ".entitlements matched: IceCubesApp.entitlements",
           "ok": true
         },
         "kingfisher": {
@@ -1844,7 +2753,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1878,28 +2803,44 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
+        },
         "alamofire": {
-          "info": "INFOPLIST_FILE='Source/Info.plist' (52 hits)",
+          "info": "INFOPLIST_FILE='Source/Info.plist' (4 hits)",
           "ok": true
         },
         "ice-cubes": {
-          "info": "INFOPLIST_FILE='IceCubesApp/Info.plist' (54 hits)",
+          "info": "INFOPLIST_FILE='IceCubesNotifications/Info.plist' (54 hits)",
           "ok": true
         },
         "kingfisher": {
-          "info": "INFOPLIST_FILE='Demo/Kingfisher-watchOS-Demo/Info.plist' (26 hits)",
+          "info": "INFOPLIST_FILE='Demo/Kingfisher-Demo/Info.plist' (6 hits)",
           "ok": true
         },
         "netnewswire": {
-          "info": "INFOPLIST_FILE='Mac/ShareExtension/Info.plist' (34 hits)",
+          "info": "INFOPLIST_FILE='Mac/Resources/Info.plist' (20 hits)",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "INFOPLIST_FILE='Derived/InfoPlists/App-Info.plist' (702 hits)",
+          "info": "INFOPLIST_FILE='Derived/InfoPlists/CommandLineTool-Info.plist' (4 hits)",
           "ok": true
         }
       }
@@ -1912,7 +2853,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1946,7 +2903,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -1955,15 +2928,15 @@
           "ok": false
         },
         "ice-cubes": {
-          "info": "CODE_SIGN_ENTITLEMENTS='IceCubesApp/App/IceCubesApp.entitlements' (54 hits)",
+          "info": "CODE_SIGN_ENTITLEMENTS='IceCubesNotifications/IceCubesNotifications.entitlements' (54 hits)",
           "ok": true
         },
         "kingfisher": {
-          "info": "CODE_SIGN_ENTITLEMENTS='Kingfisher-Demo.entitlements' (8 hits)",
+          "info": "CODE_SIGN_ENTITLEMENTS='Kingfisher-Demo.entitlements' (2 hits)",
           "ok": true
         },
         "netnewswire": {
-          "info": "CODE_SIGN_ENTITLEMENTS='Mac/ShareExtension/ShareExtension.entitlements' (34 hits)",
+          "info": "CODE_SIGN_ENTITLEMENTS='Mac/Resources/NetNewsWire.entitlements' (20 hits)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -1980,12 +2953,28 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "present in 3 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "present in 14 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "alamofire": {
-          "info": "present in 54 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 4 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "ice-cubes": {
@@ -1993,15 +2982,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "present in 26 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 6 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "netnewswire": {
-          "info": "present in 34 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 20 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "present in 718 target \u00d7 config \u00d7 dest combos",
+          "info": "present in 8 target \u00d7 config \u00d7 dest combos",
           "ok": true
         }
       }
@@ -2014,7 +3003,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2048,20 +3053,36 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
         },
-        "alamofire": {
+        "_tuist-src": {
           "info": "",
           "ok": false
+        },
+        "alamofire": {
+          "info": "SWIFT_STRICT_CONCURRENCY='complete' (4 hits)",
+          "ok": true
         },
         "ice-cubes": {
           "info": "SWIFT_STRICT_CONCURRENCY='complete' (54 hits)",
           "ok": true
         },
         "kingfisher": {
-          "info": "SWIFT_STRICT_CONCURRENCY='complete' (26 hits)",
+          "info": "SWIFT_STRICT_CONCURRENCY='complete' (6 hits)",
           "ok": true
         },
         "netnewswire": {
@@ -2082,7 +3103,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2116,7 +3153,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "OTHER_SWIFT_FLAGS=' -DMY_FLAG' (1 hits)",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2129,15 +3182,15 @@
           "ok": false
         },
         "kingfisher": {
-          "info": "OTHER_SWIFT_FLAGS='-Xfrontend -warn-long-expression-type-checking=150' (6 hits)",
+          "info": "OTHER_SWIFT_FLAGS='-Xfrontend -warn-long-expression-type-checking=150' (1 hits)",
           "ok": true
         },
         "netnewswire": {
-          "info": "OTHER_SWIFT_FLAGS='-DRELEASE' (34 hits)",
+          "info": "OTHER_SWIFT_FLAGS='-DRELEASE' (20 hits)",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "OTHER_SWIFT_FLAGS='-DRELEASE_MARCO' (230 hits)",
+          "info": "OTHER_SWIFT_FLAGS=' -Xcc -fmodule-map-file=/Users/hyzyla_home/Developer/sweetpad-lib/corpus/tuist-f' (172 hits)",
           "ok": true
         }
       }
@@ -2150,7 +3203,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2167,7 +3236,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "SWIFT_OBJC_BRIDGING_HEADER='Mac/NetNewsWire-Bridging-Header.h' (20 hits)",
+          "info": "SWIFT_OBJC_BRIDGING_HEADER='Mac/NetNewsWire-Bridging-Header.h' (12 hits)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -2181,32 +3250,53 @@
       "name": "Package.swift in corpus",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "corpus/ has 1 Package.swift files",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "ice-cubes": {
           "info": "corpus/ has 13 Package.swift files",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "kingfisher": {
           "info": "corpus/ has 1 Package.swift files",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "netnewswire": {
           "info": "corpus/ has 14 Package.swift files",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 77 Package.swift files",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -2215,32 +3305,53 @@
       "name": "Package.resolved in corpus",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "ice-cubes": {
           "info": "corpus/ has 1 Package.resolved files",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "netnewswire": {
           "info": "corpus/ has 2 Package.resolved files",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 47 Package.resolved files",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -2252,7 +3363,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2286,7 +3413,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2320,7 +3463,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2354,7 +3513,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2388,9 +3563,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
+        },
+        "_tuist-src": {
+          "info": "pbxproj matched: raw/CommandLineTool.xcodeproj/project.pbxproj (+0)",
+          "ok": true
         },
         "alamofire": {
           "info": "pbxproj matched: raw/Example/iOS Example.xcodeproj/project.pbxproj (+1)",
@@ -2409,7 +3600,7 @@
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcodeproj/project.pbxproj (+25)",
+          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/App.xcodeproj/project.pbxproj (+20)",
           "ok": true
         }
       }
@@ -2422,9 +3613,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
+        },
+        "_tuist-src": {
+          "info": "pbxproj matched: raw/CommandLineTool.xcodeproj/project.pbxproj (+0)",
+          "ok": true
         },
         "alamofire": {
           "info": "pbxproj matched: raw/watchOS Example/watchOS Example.xcodeproj/project.pbxproj (+0)",
@@ -2443,7 +3650,7 @@
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcodeproj/project.pbxproj (+25)",
+          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/App.xcodeproj/project.pbxproj (+20)",
           "ok": true
         }
       }
@@ -2456,9 +3663,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
+        },
+        "_tuist-src": {
+          "info": "pbxproj matched: raw/CommandLineTool.xcodeproj/project.pbxproj (+0)",
+          "ok": true
         },
         "alamofire": {
           "info": "pbxproj matched: raw/Example/iOS Example.xcodeproj/project.pbxproj (+2)",
@@ -2477,7 +3700,7 @@
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcodeproj/project.pbxproj (+17)",
+          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/App.xcodeproj/project.pbxproj (+14)",
           "ok": true
         }
       }
@@ -2490,9 +3713,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
+        },
+        "_tuist-src": {
+          "info": "pbxproj matched: raw/CommandLineTool.xcodeproj/project.pbxproj (+0)",
+          "ok": true
         },
         "alamofire": {
           "info": "pbxproj matched: raw/Example/iOS Example.xcodeproj/project.pbxproj (+2)",
@@ -2511,7 +3750,7 @@
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcodeproj/project.pbxproj (+17)",
+          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/App.xcodeproj/project.pbxproj (+14)",
           "ok": true
         }
       }
@@ -2524,7 +3763,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2537,7 +3792,7 @@
           "ok": false
         },
         "kingfisher": {
-          "info": "DEFINES_MODULE='YES' (12 hits)",
+          "info": "DEFINES_MODULE='YES' (2 hits)",
           "ok": true
         },
         "netnewswire": {
@@ -2545,7 +3800,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "DEFINES_MODULE='YES' (250 hits)",
+          "info": "DEFINES_MODULE='YES' (192 hits)",
           "ok": true
         }
       }
@@ -2558,12 +3813,28 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
+        },
         "alamofire": {
-          "info": "CLANG_ENABLE_OBJC_ARC='YES' (54 hits)",
+          "info": "CLANG_ENABLE_OBJC_ARC='YES' (4 hits)",
           "ok": true
         },
         "ice-cubes": {
@@ -2571,15 +3842,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "CLANG_ENABLE_OBJC_ARC='YES' (26 hits)",
+          "info": "CLANG_ENABLE_OBJC_ARC='YES' (6 hits)",
           "ok": true
         },
         "netnewswire": {
-          "info": "CLANG_ENABLE_OBJC_ARC='YES' (34 hits)",
+          "info": "CLANG_ENABLE_OBJC_ARC='YES' (20 hits)",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "CLANG_ENABLE_OBJC_ARC='YES' (718 hits)",
+          "info": "CLANG_ENABLE_OBJC_ARC='YES' (8 hits)",
           "ok": true
         }
       }
@@ -2592,7 +3863,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2609,11 +3896,11 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "CLANG_ENABLE_OBJC_WEAK='YES' (34 hits)",
+          "info": "CLANG_ENABLE_OBJC_WEAK='YES' (20 hits)",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "CLANG_ENABLE_OBJC_WEAK='YES' (416 hits)",
+          "info": "CLANG_ENABLE_OBJC_WEAK='YES' (8 hits)",
           "ok": true
         }
       }
@@ -2623,32 +3910,53 @@
       "name": "Obj-C .m source present",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "kingfisher": {
           "info": "corpus/ has 25 .m files (e.g. LSNocilla.m)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "netnewswire": {
           "info": "corpus/ has 10 .m files (e.g. SFSafariViewController+Extras.m)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 14 .m files (e.g. MyPublicClass.m)",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -2657,32 +3965,53 @@
       "name": "Obj-C++ .mm source present",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "netnewswire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 2 .mm files (e.g. MyObjcppClass.mm)",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -2691,32 +4020,53 @@
       "name": "Pre-compiled header .pch",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "netnewswire": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         }
       }
     },
@@ -2728,7 +4078,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2745,7 +4111,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "xcscheme matched: raw/NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire-iOS.xcscheme (+1)",
+          "info": "xcscheme matched: raw/NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire.xcscheme (+1)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -2762,7 +4128,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2796,7 +4178,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2830,7 +4228,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2851,7 +4265,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "xcscheme matched: raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcworkspace/xcshareddata/xcschemes/Generate Project.xcscheme (+13)",
+          "info": "xcscheme matched: raw/examples_xcode_generated_ios_app_with_static_libraries/iOSAppWithTransistiveStaticLibraries.xcworkspace/xcshareddata/xcschemes/Generate Project.xcscheme (+9)",
           "ok": true
         }
       }
@@ -2864,7 +4278,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -2881,7 +4311,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "xcscheme matched: raw/NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire-iOS.xcscheme (+1)",
+          "info": "xcscheme matched: raw/NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire.xcscheme (+1)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -2895,32 +4325,53 @@
       "name": ".xctestplan file present",
       "results": {
         "_global": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-custom-config": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-rich": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_synthetic-staticlib": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "_synthetic-xcconfigs": {
-          "info": "",
-          "ok": false
+          "info": "corpus clone absent",
+          "ok": null
+        },
+        "_tuist-src": {
+          "info": "corpus clone absent",
+          "ok": null
         },
         "alamofire": {
           "info": "corpus/ has 5 .xctestplan files (e.g. watchOS.xctestplan)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false
+          "ok": false,
+          "stale": true
         },
         "netnewswire": {
           "info": "corpus/ has 3 .xctestplan files (e.g. NetNewsWire.xctestplan)",
-          "ok": true
+          "ok": true,
+          "stale": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 7 .xctestplan files (e.g. App.xctestplan)",
-          "ok": true
+          "ok": true,
+          "stale": true
         }
       }
     },
@@ -2932,12 +4383,28 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
+        },
         "alamofire": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.application' (8 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.application' (6 hits)",
           "ok": true
         },
         "ice-cubes": {
@@ -2945,15 +4412,15 @@
           "ok": true
         },
         "kingfisher": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.application' (12 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.application' (4 hits)",
           "ok": true
         },
         "netnewswire": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.application' (20 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.application' (12 hits)",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.application' (140 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.application' (88 hits)",
           "ok": true
         }
       }
@@ -2966,12 +4433,28 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
           "info": "",
           "ok": false
         },
+        "_tuist-src": {
+          "info": "",
+          "ok": false
+        },
         "alamofire": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.framework' (42 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.framework' (4 hits)",
           "ok": true
         },
         "ice-cubes": {
@@ -2979,7 +4462,7 @@
           "ok": false
         },
         "kingfisher": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.framework' (12 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.framework' (2 hits)",
           "ok": true
         },
         "netnewswire": {
@@ -2987,7 +4470,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.framework' (324 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.framework' (244 hits)",
           "ok": true
         }
       }
@@ -3000,7 +4483,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -3034,7 +4533,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -3068,7 +4583,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -3089,7 +4620,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.bundle' (98 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.bundle' (60 hits)",
           "ok": true
         }
       }
@@ -3102,7 +4633,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "PRODUCT_TYPE='com.apple.product-type.tool' (3 hits)",
+          "ok": true
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "PRODUCT_TYPE='com.apple.product-type.tool' (14 hits)",
+          "ok": true
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -3123,7 +4670,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.tool' (12 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.tool' (4 hits)",
           "ok": true
         }
       }
@@ -3136,7 +4683,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -3170,7 +4733,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -3191,7 +4770,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.bundle.unit-test' (58 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.bundle.unit-test' (48 hits)",
           "ok": true
         }
       }
@@ -3204,7 +4783,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -3238,7 +4833,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -3255,11 +4866,11 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.app-extension' (14 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.app-extension' (8 hits)",
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "PRODUCT_TYPE='com.apple.product-type.app-extension' (40 hits)",
+          "info": "PRODUCT_TYPE='com.apple.product-type.app-extension' (8 hits)",
           "ok": true
         }
       }
@@ -3272,7 +4883,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -3306,7 +4933,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-custom-config": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-xcconfigs": {
+          "info": "",
+          "ok": false
+        },
+        "_tuist-src": {
           "info": "",
           "ok": false
         },
@@ -3335,7 +4978,11 @@
   ],
   "slugs": [
     "_global",
+    "_synthetic-custom-config",
+    "_synthetic-rich",
+    "_synthetic-staticlib",
     "_synthetic-xcconfigs",
+    "_tuist-src",
     "alamofire",
     "ice-cubes",
     "kingfisher",

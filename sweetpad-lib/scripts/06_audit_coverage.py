@@ -3,16 +3,24 @@
 
 Indexes captured build-settings JSON, xcconfig files, xcscheme XML, and
 raw/-tree file presence, then runs a fixed set of probes against the index.
-Each probe answers a single question from `coverage.md`. The output is a
-markdown table per category that's safe to paste into `coverage.md`.
+Each probe answers a single question from the coverage matrix (DOCS.md §9).
 
 Inputs (read-only):
   - fixtures/<slug>/xcode-<ver>/metadata/**/build-settings/*.json
-  - fixtures/<slug>/xcode-<ver>/raw/**
+  - fixtures/<slug>/xcode-<ver>/captures/**/*.json   (synthetic fixtures)
+  - fixtures/<slug>/xcode-<ver>/{raw,project,xcconfigs,pif}/**
+  - corpus/<slug>/** when the (gitignored) clone is present
+
+Corpus-tree probes are tri-state: when corpus/<slug>/ is absent on this host
+the probe reports "not evaluable" (ok: null) instead of a false ❌, and the
+previous AUDIT.json result for that probe×slug is preserved, marked stale —
+the clones are pinned by corpus/manifest.json, so their content is stable.
 
 Outputs:
-  - fixtures/AUDIT.md       human-readable per-probe results
   - fixtures/AUDIT.json     machine-readable probe results
+  - fixtures/FIXTURES.md    the consolidated report (via
+                            common.render_fixtures_md, merged with
+                            05_validate.py's REPORT.json)
 
 Not destructive. Adds nothing to git. Safe to re-run.
 
@@ -55,13 +63,20 @@ class FixtureIndex:
     # Apple-style bundle directories (.xcdatamodeld, .xcassets, .framework, ...) —
     # they are directories, not files. Track separately so probes can target them.
     corpus_dirs_by_suffix: dict[str, list[Path]] = dataclasses.field(default_factory=dict)
+    # Whether corpus/<slug>/ existed on this host; when False, corpus probes
+    # are "not evaluable" (ok=None) rather than ❌.
+    corpus_present: bool = False
 
 
 def index_fixture(slug: str, xcode_dir: Path) -> FixtureIndex:
     idx = FixtureIndex(slug=slug, xcode_version=xcode_dir.name.removeprefix("xcode-"), root=xcode_dir)
 
-    # Build settings JSON
-    for bs in xcode_dir.glob("metadata/**/build-settings/*.json"):
+    # Build settings JSON. Synthetic fixtures store their -showBuildSettings
+    # captures under captures/**/*.json (same array-of-targets shape).
+    settings_files = list(xcode_dir.glob("metadata/**/build-settings/*.json"))
+    settings_files += [p for p in xcode_dir.glob("captures/**/*.json")
+                       if not p.name.endswith(".meta.json")]
+    for bs in settings_files:
         if bs.stat().st_size < 10:
             continue
         idx.settings_paths.append(bs)
@@ -69,7 +84,11 @@ def index_fixture(slug: str, xcode_dir: Path) -> FixtureIndex:
             data = json.loads(bs.read_text())
         except Exception:
             continue
+        if not isinstance(data, list):
+            continue
         for entry in data:
+            if not isinstance(entry, dict):
+                continue
             target = entry.get("target", "")
             settings = entry.get("buildSettings", {})
             key = (target, str(bs.relative_to(xcode_dir)))
@@ -77,7 +96,7 @@ def index_fixture(slug: str, xcode_dir: Path) -> FixtureIndex:
 
     # raw/ tree plus auxiliary content dirs (xcconfigs/ for synthetic fixtures,
     # pif/ for PIF cache copies, etc.).
-    EXTRA_CONTENT_DIRS = ("raw", "xcconfigs", "pif")
+    EXTRA_CONTENT_DIRS = ("raw", "project", "xcconfigs", "pif")
     for top in EXTRA_CONTENT_DIRS:
         d = xcode_dir / top
         if not d.exists():
@@ -104,7 +123,8 @@ def index_fixture(slug: str, xcode_dir: Path) -> FixtureIndex:
     # file-presence checks like "does this project have an .xcdatamodel?",
     # walking corpus/<slug>/ gives the full picture.
     corpus_root = common.CORPUS_DIR / slug
-    if corpus_root.exists():
+    idx.corpus_present = corpus_root.exists()
+    if idx.corpus_present:
         SKIP_DIRS = {".git", ".svn", "DerivedData", ".derived", "build",
                      ".build", "node_modules", "Pods", "Carthage",
                      ".swiftpm", "tmp", ".tuist-cache",
@@ -250,7 +270,9 @@ def probe_raw_basename(name: str, label: str) -> Probe:
 
 
 def probe_corpus_suffix(suffix: str, label: str) -> Probe:
-    def check(idx: FixtureIndex) -> tuple[bool, str]:
+    def check(idx: FixtureIndex) -> tuple[bool | None, str]:
+        if not idx.corpus_present:
+            return None, "corpus clone absent"
         hits = idx.corpus_files_by_suffix.get(suffix, [])
         if not hits:
             return False, ""
@@ -260,7 +282,9 @@ def probe_corpus_suffix(suffix: str, label: str) -> Probe:
 
 def probe_corpus_dir_suffix(suffix: str, label: str) -> Probe:
     """Apple-bundle directories (.xcdatamodeld, .xcassets, ...) are dirs, not files."""
-    def check(idx: FixtureIndex) -> tuple[bool, str]:
+    def check(idx: FixtureIndex) -> tuple[bool | None, str]:
+        if not idx.corpus_present:
+            return None, "corpus clone absent"
         hits = idx.corpus_dirs_by_suffix.get(suffix, [])
         if not hits:
             return False, ""
@@ -269,7 +293,9 @@ def probe_corpus_dir_suffix(suffix: str, label: str) -> Probe:
 
 
 def probe_corpus_basename(name: str, label: str) -> Probe:
-    def check(idx: FixtureIndex) -> tuple[bool, str]:
+    def check(idx: FixtureIndex) -> tuple[bool | None, str]:
+        if not idx.corpus_present:
+            return None, "corpus clone absent"
         hits = idx.corpus_files_by_basename.get(name, [])
         if not hits:
             return False, ""
@@ -437,44 +463,6 @@ PROBES: list[Probe] = [
 ]
 
 
-def render_markdown(per_probe: dict[str, dict[str, tuple[bool, str]]], slugs: list[str]) -> str:
-    by_category: dict[str, list[str]] = {}
-    for probe in PROBES:
-        by_category.setdefault(probe.category, []).append(probe.name)
-
-    out: list[str] = []
-    out.append("# fixtures/AUDIT.md")
-    out.append("")
-    out.append("Generated by `scripts/06_audit_coverage.py`. ✅ = at least one fixture "
-               "matches the probe; ❌ = no fixture matches. The **Where** column "
-               "lists the first slug with a hit and the count of hits.")
-    out.append("")
-
-    by_probe = {p.name: p for p in PROBES}
-    for category in ("settings", "xcconfig", "pbxproj", "scheme", "files"):
-        names = by_category.get(category, [])
-        if not names:
-            continue
-        out.append(f"## {category}")
-        out.append("")
-        out.append("| Probe | " + " | ".join(slugs) + " | Where |")
-        out.append("|---" * (2 + len(slugs)) + "|")
-        for name in names:
-            row = [name]
-            first_hit = ""
-            details = ""
-            for slug in slugs:
-                ok, info = per_probe[name].get(slug, (False, ""))
-                row.append("✅" if ok else "❌")
-                if ok and not first_hit:
-                    first_hit = slug
-                    details = info
-            row.append(f"{first_hit}: {details}" if first_hit else "—")
-            out.append("| " + " | ".join(row) + " |")
-        out.append("")
-    return "\n".join(out) + "\n"
-
-
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--xcode", help="restrict to one Xcode version (e.g. 26.0.1)")
@@ -502,42 +490,74 @@ def main() -> int:
             if slug not in slugs:
                 slugs.append(slug)
 
-    per_probe: dict[str, dict[str, tuple[bool, str]]] = {p.name: {} for p in PROBES}
+    # ok is True/False/None (None = not evaluable: corpus clone absent).
+    # Across an slug's multiple xcode-<ver> indices: any True wins, else any
+    # False wins, else None.
+    per_probe: dict[str, dict[str, tuple[bool | None, str]]] = {p.name: {} for p in PROBES}
     for idx in indices:
         for probe in PROBES:
             try:
                 ok, info = probe.check(idx)
             except Exception as e:
                 ok, info = False, f"probe error: {e}"
-            per_probe[probe.name][idx.slug] = (ok, info)
+            prev = per_probe[probe.name].get(idx.slug)
+            if prev is None or (prev[0] is not True and ok is True) \
+                    or (prev[0] is None and ok is not None):
+                per_probe[probe.name][idx.slug] = (ok, info)
 
-    md = render_markdown(per_probe, slugs)
-    out_md = fixtures_root / "AUDIT.md"
-    out_md.write_text(md)
-    common.log(f"wrote {out_md}")
+    # Carry forward corpus-tree results from the previous AUDIT.json where this
+    # host can't evaluate them (the clones are pinned, so they're stable). Only
+    # slugs in corpus/manifest.json ever have a clone — for synthetic fixtures
+    # and _global a corpus probe is permanently "not applicable", so an old
+    # False there is a clone-absent artifact, not evidence; leave those None.
+    out_json = fixtures_root / "AUDIT.json"
+    corpus_slugs: set[str] = set()
+    try:
+        corpus_slugs = set(
+            json.loads(common.MANIFEST_PATH.read_text()).get("projects", {}))
+    except Exception:
+        pass
+    previous: dict[str, dict[str, dict]] = {}
+    if out_json.exists():
+        try:
+            for p in json.loads(out_json.read_text()).get("probes", []):
+                previous[p["name"]] = p.get("results", {})
+        except Exception:
+            pass
 
-    # Machine-readable
+    results: dict[str, dict[str, dict]] = {}
+    stale_count = 0
+    for p in PROBES:
+        results[p.name] = {}
+        for slug in slugs:
+            ok, info = per_probe[p.name].get(slug, (False, ""))
+            entry: dict = {"ok": ok, "info": info}
+            if ok is None and slug in corpus_slugs:
+                old = previous.get(p.name, {}).get(slug)
+                if old is not None and old.get("ok") is not None:
+                    entry = {"ok": old["ok"], "info": old.get("info", ""),
+                             "stale": True}
+                    stale_count += 1
+            results[p.name][slug] = entry
+
     payload = {
         "slugs": slugs,
         "probes": [
-            {
-                "category": p.category,
-                "name": p.name,
-                "results": {
-                    slug: {"ok": per_probe[p.name].get(slug, (False, ""))[0],
-                            "info": per_probe[p.name].get(slug, (False, ""))[1]}
-                    for slug in slugs
-                }
-            } for p in PROBES
+            {"category": p.category, "name": p.name, "results": results[p.name]}
+            for p in PROBES
         ],
     }
-    out_json = fixtures_root / "AUDIT.json"
     out_json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     common.log(f"wrote {out_json}")
+    if stale_count:
+        common.log(f"{stale_count} corpus-tree results carried forward (stale) — "
+                   "re-run on a host with corpus/ clones to refresh")
+    common.render_fixtures_md()
 
     # Summary stats
-    covered = sum(1 for p in PROBES if any(per_probe[p.name][s][0] for s in slugs))
-    print(f"\nProbes covered by ≥1 fixture: {covered}/{len(PROBES)}")
+    covered = sum(1 for p in PROBES
+                  if any(results[p.name][s]["ok"] for s in slugs))
+    print(f"\nProbes covered by >=1 fixture: {covered}/{len(PROBES)}")
     return 0
 
 

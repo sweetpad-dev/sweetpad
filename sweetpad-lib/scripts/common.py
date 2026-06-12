@@ -391,3 +391,156 @@ def selected_xcodes(installs: list[XcodeInstall], only: Optional[str] = None) ->
             f"(have: {[x.version for x in installs]})"
         )
     return out
+
+
+# --- fixtures/FIXTURES.md renderer ------------------------------------------
+#
+# REPORT.json (05_validate.py) and AUDIT.json (06_audit_coverage.py) are the
+# machine-readable artifacts; this composes the single human-readable
+# fixtures/FIXTURES.md from whichever of the two exist, so either script can
+# refresh the consolidated view after writing its own JSON.
+
+def _render_report_section(payload: dict) -> list[str]:
+    out: list[str] = []
+    cells = payload.get("cells", [])
+    by_project: dict[str, dict[str, dict]] = {}
+    versions: set[str] = set()
+    for c in cells:
+        by_project.setdefault(c["project"], {})[c["xcode_version"]] = c
+        versions.add(c["xcode_version"])
+    version_list = sorted(versions)
+
+    out.append("## Capture completeness")
+    out.append("")
+    out.append("Per (corpus project × Xcode version), a rough 0-100 score over "
+               "metadata, per-scheme captures, raw inputs, and smoke builds. "
+               "Synthetic fixtures (`_*`) are excluded — their layouts don't "
+               "follow the corpus rubric; the probe audit below covers them. "
+               "The retired `dry-run/` captures are not scored (Xcode 26 "
+               "removed `-dry-run`).")
+    out.append("")
+    if version_list:
+        out.append("| Project | " + " | ".join(f"xcode-{v}" for v in version_list) + " |")
+        out.append("|---" * (1 + len(version_list)) + "|")
+        for slug in sorted(by_project):
+            row = [slug]
+            for v in version_list:
+                c = by_project[slug].get(v)
+                row.append(f"{c.get('completeness_pct', 0)}%" if c and c.get("exists") else "—")
+            out.append("| " + " | ".join(row) + " |")
+    else:
+        out.append("_no fixture cells found_")
+    out.append("")
+
+    out.append("### Per-cell detail")
+    out.append("")
+    for slug in sorted(by_project):
+        out.append(f"#### {slug}")
+        out.append("")
+        for v in version_list:
+            c = by_project[slug].get(v)
+            if not c:
+                continue
+            out.append(f"##### xcode-{v}")
+            if not c.get("exists"):
+                out.append("_not captured_")
+                out.append("")
+                continue
+            schemes = c.get("schemes", [])
+            out.append(f"- completeness: **{c.get('completeness_pct', 0)}%**")
+            out.append(f"- list.json: {'OK' if c.get('list_json') else 'MISSING'}")
+            out.append(f"- showsdks.json: {'OK' if c.get('showsdks_json') else 'MISSING'}")
+            out.append(f"- raw files: {c.get('raw_files', 0)}")
+            out.append(f"- schemes: {len(schemes)} "
+                       f"({', '.join(schemes[:8])}{'…' if len(schemes) > 8 else ''})")
+            out.append(f"- schemes with destinations.json: "
+                       f"{c.get('schemes_with_destinations', 0)}/{len(schemes)}")
+            out.append(f"- schemes with build-settings/: "
+                       f"{c.get('schemes_with_buildsettings', 0)}/{len(schemes)}")
+            out.append(f"- builds: total={c.get('builds_total', 0)}, "
+                       f"exit0={c.get('builds_ok', 0)}, "
+                       f"complete_artifacts={c.get('builds_with_all_artifacts', 0)}")
+            if c.get("errors"):
+                out.append("- errors:")
+                for e in c["errors"]:
+                    out.append(f"  - `{e}`")
+            out.append("")
+    return out
+
+
+def _render_audit_section(payload: dict) -> list[str]:
+    out: list[str] = []
+    slugs = payload.get("slugs", [])
+    probes = payload.get("probes", [])
+
+    out.append("## Feature-probe audit")
+    out.append("")
+    out.append("✅ = at least one capture under that fixture matches the probe; "
+               "❌ = none matches; – = not evaluable on this host (the probe "
+               "walks the gitignored `corpus/<slug>/` clone, which is absent). "
+               "A `*` marks a corpus-tree result preserved from the last "
+               "corpus-present run (clones are pinned by `corpus/manifest.json`, "
+               "so their content is stable). The **Where** column shows the "
+               "first fixture with a hit.")
+    out.append("")
+
+    by_category: dict[str, list[dict]] = {}
+    for p in probes:
+        by_category.setdefault(p["category"], []).append(p)
+    for category in ("settings", "xcconfig", "pbxproj", "scheme", "files"):
+        cat_probes = by_category.get(category, [])
+        if not cat_probes:
+            continue
+        out.append(f"### {category}")
+        out.append("")
+        out.append("| Probe | " + " | ".join(slugs) + " | Where |")
+        out.append("|---" * (2 + len(slugs)) + "|")
+        for p in cat_probes:
+            row = [p["name"]]
+            first_hit = ""
+            details = ""
+            for slug in slugs:
+                r = p["results"].get(slug, {})
+                ok = r.get("ok")
+                mark = "✅" if ok else ("–" if ok is None else "❌")
+                if r.get("stale"):
+                    mark += "*"
+                row.append(mark)
+                if ok and not first_hit:
+                    first_hit = slug
+                    details = r.get("info", "")
+            row.append(f"{first_hit}: {details}" if first_hit else "—")
+            out.append("| " + " | ".join(row) + " |")
+        out.append("")
+    return out
+
+
+def render_fixtures_md() -> Path:
+    """Compose fixtures/FIXTURES.md from REPORT.json + AUDIT.json."""
+    out: list[str] = []
+    out.append("# fixtures/FIXTURES.md")
+    out.append("")
+    out.append("**Generated — do not hand-edit.** Capture-completeness section "
+               "from `scripts/05_validate.py`, feature-probe section from "
+               "`scripts/06_audit_coverage.py`; each rebuilds this file from "
+               "`REPORT.json` + `AUDIT.json` after refreshing its own data. "
+               "The curated coverage interpretation lives in `DOCS.md` §9.")
+    out.append("")
+
+    report_path = FIXTURES_DIR / "REPORT.json"
+    audit_path = FIXTURES_DIR / "AUDIT.json"
+    if report_path.exists():
+        out.extend(_render_report_section(json.loads(report_path.read_text())))
+    else:
+        out.append("_REPORT.json missing — run `scripts/05_validate.py`._")
+        out.append("")
+    if audit_path.exists():
+        out.extend(_render_audit_section(json.loads(audit_path.read_text())))
+    else:
+        out.append("_AUDIT.json missing — run `scripts/06_audit_coverage.py`._")
+        out.append("")
+
+    target = FIXTURES_DIR / "FIXTURES.md"
+    target.write_text("\n".join(out).rstrip("\n") + "\n")
+    log(f"wrote {target}")
+    return target
