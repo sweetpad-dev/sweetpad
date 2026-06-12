@@ -6,3 +6,5 @@
 > extension as an N-API native addon (`@sweetpad/lib`). It has no stable API, no
 > documentation, no support, and no semver guarantees — it exists solely to back
 > SweetPad and may change or break without notice. Not intended for external use.
+
+Internal documentation lives in [`DOCS.md`](./DOCS.md).

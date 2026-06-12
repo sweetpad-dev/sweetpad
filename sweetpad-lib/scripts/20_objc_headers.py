@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic ObjC-headers fixture for the BSP harness (see PLAN_BSP.md).
+"""Synthetic ObjC-headers fixture for the BSP harness (see DOCS.md §8 (BSP server)).
 
 The multi-module fixture is pure Swift, so the **clang** search-path surface goes
 unexercised. This materializes a tiny ObjC static library whose source

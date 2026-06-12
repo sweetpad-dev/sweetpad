@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase-1 bootstrap.
 
-Verifies / installs the host-side prerequisites declared in PLAN.md:
+Verifies / installs the host-side prerequisites declared in DOCS.md:
 
   - Homebrew is available.
   - CLI tools: `xcodes`, `tuist`, `xclogparser`.

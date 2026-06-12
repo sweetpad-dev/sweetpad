@@ -1,7 +1,7 @@
 //! Regenerate the catalog blob baked into the binary (`src/catalog_embedded.bin`).
 //!
 //! Run after refreshing the corpus to a newer Xcode (see
-//! `UPDATING_XCODE_VERSIONS.md`). It parses the chosen `xcspec-cache/xcode-<ver>`
+//! `DOCS.md` §10 (updating Xcode versions)). It parses the chosen `xcspec-cache/xcode-<ver>`
 //! into a [`Catalog`] and serializes it with [`catalog_cache::serialize`].
 //!
 //! ```sh

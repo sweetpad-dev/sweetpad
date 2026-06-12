@@ -1,4 +1,4 @@
-//! Layer 1 of the BSP measurement loop (see `PLAN_BSP.md`): protocol
+//! Layer 1 of the BSP measurement loop (see `DOCS.md` §8 (BSP server)): protocol
 //! conformance. Drives the `sweetpad-lib bsp` server with a scripted JSON-RPC
 //! session (no `sourcekit-lsp`, no build) and asserts the structural invariants:
 //! every target is listed, sources are returned, `sources` ↔ `inverseSources`
@@ -780,7 +780,7 @@ fn bsp_sources_lists_clang_sources() {
 }
 
 /// Per-file `sourceKitOptions` dialect gating — the correctness-critical
-/// per-file case (PLAN_BSP: "a `.mm` needs the C++ dialect/flags, a `.m` must
+/// per-file case (DOCS.md §8 (BSP server): "a `.mm` needs the C++ dialect/flags, a `.m` must
 /// not"). For one clang target, each source extension must select its own clang
 /// `-x` dialect, ObjC flags must reach only ObjC inputs, and C++ flags only
 /// C++ inputs. Driven through the server against on-disk probe files; resolution

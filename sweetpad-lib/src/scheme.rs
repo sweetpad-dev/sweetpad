@@ -12,7 +12,7 @@
 //!
 //! What's NOT modeled (yet, deliberately): pre/post actions, test plans,
 //! custom working directory, debugger / launcher identifiers. Add these
-//! incrementally as concrete callers need them — see CLAUDE.md "minimum
+//! incrementally as concrete callers need them — see DOCS.md §3.2 "minimum
 //! abstraction."
 
 use std::collections::BTreeSet;

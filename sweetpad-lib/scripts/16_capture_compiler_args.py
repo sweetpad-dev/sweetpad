@@ -2,7 +2,7 @@
 """Capture the per-tool compiler/linker argument vectors of a real build.
 
 This is the oracle for the compiler-argument resolver (see
-`PLAN_COMPILER_ARGS.md`). We run one real `xcodebuild build` and extract, per
+`DOCS.md` §7 (compiler arguments)). We run one real `xcodebuild build` and extract, per
 target, the literal command lines xcodebuild executed — the `swiftc` module
 invocation, every `clang`/`clang++` compile, and the `ld`/`libtool`/`clang`
 link — with their response files expanded. That argv is the most correct

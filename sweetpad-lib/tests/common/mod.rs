@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 
 use sweetpad::xcspec;
 
-/// Argv comparator for the compiler-args oracle (see `PLAN_COMPILER_ARGS.md`).
+/// Argv comparator for the compiler-args oracle (see `DOCS.md` §7 (compiler arguments)).
 /// Reuses this module's [`canonicalize_value`] and [`MismatchTally`].
 pub mod argv;
 

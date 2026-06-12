@@ -1,5 +1,5 @@
 //! Corpus-scale completion oracle — the "does the editor actually work" measure
-//! from PLAN_BSP, generalized from the single synthetic fixture
+//! from DOCS.md §8 (BSP server), generalized from the single synthetic fixture
 //! (`bsp_lsp_e2e.rs`) to the real OSS corpus. It turns the hand-wavy "works on
 //! ~X% of projects" into a **measured** figure.
 //!

@@ -1,4 +1,4 @@
-//! Layer 2 of the BSP measurement loop (see `PLAN_BSP.md`): end-to-end through a
+//! Layer 2 of the BSP measurement loop (see `DOCS.md` §8 (BSP server)): end-to-end through a
 //! real, headless `sourcekit-lsp`. This is the closest thing to "does the editor
 //! actually work" — it exercises the whole stack: `sourcekit-lsp` discovers our
 //! `buildServer.json`, launches `sweetpad-lib bsp`, asks it for a file's

@@ -1,4 +1,4 @@
-//! Layer 0 of the BSP measurement loop (see `PLAN_BSP.md`): does the editor's
+//! Layer 0 of the BSP measurement loop (see `DOCS.md` §8 (BSP server)): does the editor's
 //! front end accept our generated arguments and **resolve every imported
 //! module / header**? This is the search-path/module-input surface the
 //! compiler-args oracle excludes as geometry — yet it's exactly what makes
@@ -13,7 +13,7 @@
 //! fixture) and the ObjC header search path (objc-headers fixture).
 //!
 //! Opt-in: builds with `xcodebuild`, so it only runs when `BSP_ORACLE=1` (and
-//! Xcode 26.5 is installed). ⚠️ Pinned to Xcode 26.5 — expand later (PLAN_BSP.md).
+//! Xcode 26.5 is installed). ⚠️ Pinned to Xcode 26.5 — expand later (DOCS.md §8).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -21,7 +21,7 @@ use std::process::Command;
 use sweetpad::build_settings::{self, BuildSettingsOptions};
 use sweetpad::compiler_args::TargetCompilerArguments;
 
-// ⚠️ Xcode 26.5 only for now (PLAN_BSP.md "expand later").
+// ⚠️ Xcode 26.5 only for now (DOCS.md §8 "expand later").
 const XCODE: &str = "/Applications/Xcode-26.5.0.app";
 
 fn developer_dir() -> String {

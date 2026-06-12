@@ -4,7 +4,7 @@
 Reports the build settings that *genuinely* differ between version A and B after
 canonicalizing the volatile Xcode-app / SDK-version path drift and dropping the
 keys that merely echo the toolchain version. This is the `compare_versions(a, b)`
-core of the delta/dedup design in PLAN.md, used here as a standalone analysis
+core of the delta/dedup design in DOCS.md, used here as a standalone analysis
 tool: it answers "what actually changes in build settings across an Xcode major"
 and surfaces version-conditional behaviour the resolver may need to model (the
 way the 16.4 capture exposed `XCODE_VERSION_MAJOR` nested expansion).
@@ -22,7 +22,7 @@ keys added/removed between versions — is the behavioural signal this tool prin
 The `--delta` auto-capture-and-commit mode from the original design (stage a
 fresh per-target capture, diff vs the last kept version, commit only on change)
 is intentionally NOT built: the version-selection policy captures the latest
-non-beta minor per major with no minor sweeps (see PLAN.md), so there is no dedup
+non-beta minor per major with no minor sweeps (see DOCS.md), so there is no dedup
 workflow to drive it. `compare_versions` here is the reusable core if that
 workflow is ever revived.
 

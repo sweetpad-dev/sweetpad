@@ -4,7 +4,7 @@
 Captures a second (or Nth) Xcode version alongside the existing corpus inside a
 strict acquire -> capture -> validate -> teardown envelope, so the resolver is
 validated against more than one Xcode without ever holding two transient Xcodes
-on disk at once. See the "Multi-version capture" section of PLAN.md for the
+on disk at once. See DOCS.md §10 (updating Xcode versions) for the
 design; this script only *drives* the existing numbered steps (02/03/04/07-12),
 it does not re-implement them.
 
@@ -79,7 +79,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 
 
-# Smoke subset (see PLAN.md): fast framework, framework+SwiftPM, app+SPM.
+# Smoke subset (see DOCS.md): fast framework, framework+SwiftPM, app+SPM.
 SMOKE_SUBSET: list[str] = ["alamofire", "kingfisher", "ice-cubes"]
 # Slugs that may fail to generate against a new Xcode — never block the run.
 BEST_EFFORT: frozenset[str] = frozenset({"tuist-fixtures"})

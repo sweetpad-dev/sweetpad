@@ -2,7 +2,7 @@
 //!
 //! Subcommands:
 //!   compiler-args   print the generated swiftc/clang/link argv for a target
-//!   bsp             run the Build Server Protocol server (see PLAN_BSP.md)
+//!   bsp             run the Build Server Protocol server (see DOCS.md §8 (BSP server))
 //!
 //! Hand-rolled flag parsing, no external crates — the core's zero-dependency
 //! stance extends to its entry point.

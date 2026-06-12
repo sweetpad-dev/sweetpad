@@ -1,4 +1,4 @@
-//! The Build Server Protocol server (`sweetpad-lib bsp`) — see `PLAN_BSP.md`.
+//! The Build Server Protocol server (`sweetpad-lib bsp`) — see `DOCS.md` §8 (BSP server).
 //!
 //! Speaks BSP (JSON-RPC over stdio) to `sourcekit-lsp`, answering the questions
 //! that drive editor intelligence: what targets exist, what files each contains,
@@ -7,7 +7,7 @@
 //! from the project, not parsed out of a build log.
 //!
 //! This is the walking-skeleton scope: the core requests, per-**target** argv
-//! (⚠️ per-file later — see `PLAN_BSP.md`), no `buildTarget/prepare` yet (v2).
+//! (⚠️ per-file later — see `DOCS.md` §8 (BSP server)), no `buildTarget/prepare` yet (v2).
 
 mod control;
 mod framing;
@@ -1155,7 +1155,7 @@ impl Server {
 /// Build-only / output-producing flags the editor front end doesn't want:
 /// stripping them leaves a parse + type-check invocation against implicit
 /// modules (SourceKit manages its own module cache). ⚠️ Refine against real
-/// `sourcekit-lsp` in Layer 2 (PLAN_BSP.md).
+/// `sourcekit-lsp` in Layer 2 (DOCS.md §8 (BSP server)).
 const STRIP_FLAGS: &[&str] = &[
     "-explicit-module-build",
     "-validate-clang-modules-once",

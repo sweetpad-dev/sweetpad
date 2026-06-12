@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic multi-module fixture for the BSP harness (see PLAN_BSP.md).
+"""Synthetic multi-module fixture for the BSP harness (see DOCS.md §8 (BSP server)).
 
 The compiler-args corpus is single-module, so cross-module `import` resolution —
 the crux of editor intelligence — goes unexercised. This materializes a tiny
