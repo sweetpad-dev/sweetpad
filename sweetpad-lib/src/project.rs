@@ -3215,11 +3215,19 @@ fn test_target_id_host(objects: &Dict, project_obj: &Value, target_name: &str) -
         .get(test_id)?
         .get("TestTargetID")
         .and_then(Value::as_str)?;
-    objects
-        .get(host_id)?
-        .get("name")
+    let host = objects.get(host_id)?;
+    // Only an application can host a test bundle. This also breaks the
+    // recursion a malformed edge would otherwise set up: a `TestTargetID`
+    // pointing at the test bundle itself (or another test bundle pointing
+    // back) would recurse resolve → test_bundle_subpath → resolve forever.
+    let is_app = host
+        .get("productType")
         .and_then(Value::as_str)
-        .map(String::from)
+        .is_some_and(|pt| pt.starts_with("com.apple.product-type.application"));
+    if !is_app {
+        return None;
+    }
+    host.get("name").and_then(Value::as_str).map(String::from)
 }
 
 /// Walk a target's `dependencies` (each a `PBXTargetDependency` pointing at a

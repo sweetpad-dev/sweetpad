@@ -395,6 +395,12 @@ pub fn expand_one(value: &str, lookup: &BTreeMap<String, String>) -> String {
 
 const MAX_EXPAND_DEPTH: usize = 32;
 
+/// Per-value expansion output budget. The depth cap alone doesn't bound the
+/// *work*: a doubling chain (`A = $(B) $(B)`, `B = $(C) $(C)`, …) is ~2^32
+/// bytes before [`MAX_EXPAND_DEPTH`] binds. Past the budget the rest of the
+/// value is carried through unexpanded; real settings are nowhere near it.
+const MAX_EXPAND_BYTES: usize = 1 << 20;
+
 fn expand_one_with_depth(value: &str, lookup: &BTreeMap<String, String>, depth: usize) -> String {
     if depth >= MAX_EXPAND_DEPTH {
         return value.to_string();
@@ -403,6 +409,10 @@ fn expand_one_with_depth(value: &str, lookup: &BTreeMap<String, String>, depth: 
     let bytes = value.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
+        if out.len() >= MAX_EXPAND_BYTES {
+            out.push_str(&value[i..]);
+            break;
+        }
         let b = bytes[i];
         if b == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'$' {
             // `$$` is an escaped dollar — swift-build collapses it to a
