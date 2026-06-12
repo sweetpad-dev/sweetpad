@@ -26,7 +26,7 @@ use crate::destination::RunDestination;
 use crate::pbxproj::Value;
 use crate::project::{self, Project};
 use crate::resolver::{self, ResolveContext};
-use crate::scheme::{BuildableRef, Scheme};
+use crate::scheme::{self, BuildableRef, Scheme};
 use crate::xcconfig::Assignment;
 use crate::xcspec::Catalog;
 
@@ -46,6 +46,15 @@ pub struct BuildContext {
     /// the user-authored project / target settings, below forced overrides.
     /// Equivalent to `xcodebuild -xcconfig FILE`.
     pub extra_xcconfig: Vec<Assignment>,
+    /// The container the build was opened with, when it isn't this project
+    /// itself. Xcode keys DerivedData by whatever was opened: a
+    /// `xcodebuild -workspace W.xcworkspace` build hashes `W.xcworkspace`
+    /// for EVERY member project — including members nested several
+    /// directories deep, which the next-to-or-one-above workspace heuristic
+    /// in [`project::built_in_settings`] cannot see (the tuist fixtures'
+    /// `Modules/A/A.xcodeproj` under a root `App.xcworkspace`). `None`
+    /// keeps the heuristic (project opened directly).
+    pub derived_data_container: Option<PathBuf>,
 }
 
 /// One resolution query against a [`BuildContext`].
@@ -86,6 +95,15 @@ pub struct ResolveQuery {
     /// `CLANG_COVERAGE_MAPPING=YES` on every target it resolves for the
     /// scheme — a scheme-level fact the per-target pbxproj can't carry.
     pub code_coverage_enabled: bool,
+    /// The driving scheme's `LaunchAction` sanitizer toggles
+    /// (`enableAddressSanitizer` / `enableThreadSanitizer` /
+    /// `enableUBSanitizer`). When set, xcodebuild forces the matching
+    /// `ENABLE_*_SANITIZER = YES` on every target it resolves for the scheme
+    /// and suffixes the per-variant object dirs (Swift Build's
+    /// `Settings.swift` appends `-asan` / `-tsan` / `-ubsan` to
+    /// `OBJECT_FILE_DIR_<variant>`). Another scheme-level fact the pbxproj
+    /// can't carry; defaults to all-off.
+    pub scheme_sanitizers: scheme::SanitizerEnables,
 }
 
 impl ResolveQuery {
@@ -107,6 +125,7 @@ impl ResolveQuery {
             derived_data_path: None,
             per_arch_conditionals: false,
             code_coverage_enabled: false,
+            scheme_sanitizers: scheme::SanitizerEnables::default(),
         }
     }
 
@@ -143,6 +162,14 @@ impl ResolveQuery {
     #[must_use]
     pub fn with_code_coverage_enabled(mut self, enabled: bool) -> Self {
         self.code_coverage_enabled = enabled;
+        self
+    }
+
+    /// Bind the driving scheme's `LaunchAction` sanitizer toggles (see
+    /// [`Self::scheme_sanitizers`]).
+    #[must_use]
+    pub fn with_scheme_sanitizers(mut self, sanitizers: scheme::SanitizerEnables) -> Self {
+        self.scheme_sanitizers = sanitizers;
         self
     }
 
@@ -259,7 +286,19 @@ impl BuildContext {
             pbxproj,
             xcspec: None,
             extra_xcconfig: Vec::new(),
+            derived_data_container: None,
         })
+    }
+
+    /// Declare the container this build was opened with (the
+    /// `.xcworkspace` of a `-workspace` invocation). DerivedData paths
+    /// (`BUILD_DIR`, `OBJROOT`, `SYMROOT`, …) hash this path instead of
+    /// inferring a container from the project's own location — Xcode keys
+    /// DerivedData by whatever was opened, for every member project.
+    #[must_use]
+    pub fn with_derived_data_container(mut self, container: impl Into<PathBuf>) -> Self {
+        self.derived_data_container = Some(container.into());
+        self
     }
 
     /// Attach an xcspec + SDKSettings defaults catalog. Loading the catalog
@@ -341,7 +380,8 @@ impl BuildContext {
                 && container_matches(&entry.buildable.container, &self.project.path);
             if owned {
                 let mut q = ResolveQuery::new(name, configuration, sdk, arch)
-                    .with_code_coverage_enabled(code_coverage);
+                    .with_code_coverage_enabled(code_coverage)
+                    .with_scheme_sanitizers(scheme.launch_sanitizers);
                 if let Some(d) = destination {
                     q = q.with_destination(d.clone());
                 }
@@ -604,14 +644,19 @@ impl BuildContext {
             // not see CLI overrides (see [`AuthoredProbe::sans_overrides`]).
             &probe.sans_overrides,
             query.derived_data_path.as_deref(),
+            self.derived_data_container.as_deref(),
             self.xcspec
                 .as_ref()
                 .and_then(|c| c.xcode_version.as_deref()),
             self.xcspec
                 .as_ref()
+                .and_then(|c| c.product_build_version.as_deref()),
+            self.xcspec
+                .as_ref()
                 .and_then(|c| c.developer_dir.as_deref()),
             self.xcspec.as_ref().and_then(|c| c.host_macos.as_deref()),
             macos_destination_unbound,
+            query.scheme_sanitizers,
         ));
 
         // Target-graph derived settings (parent-app / test-host edges).
@@ -678,6 +723,7 @@ impl BuildContext {
             user_ld_runpath_search_paths,
             mergeable_library,
             macos_destination_unbound,
+            query.scheme_sanitizers,
         ));
 
         // Pin the absolute SDKROOT only when a platform actually resolved. A

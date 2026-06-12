@@ -1217,10 +1217,22 @@ pub fn built_in_settings(
     // a CLI-forced `s` level).
     authored: &BTreeMap<String, String>,
     derived_data_path: Option<&Path>,
+    // The container the build was opened with (a `-workspace` invocation's
+    // `.xcworkspace`), when it isn't this project itself. DerivedData hashes
+    // this path for every member project; `None` infers the container from
+    // the project's own location (see [`find_derived_data_container`]).
+    derived_data_container: Option<&Path>,
     xcode_version: Option<&str>,
+    // The catalog Xcode's `ProductBuildVersion` (e.g. `17F42`), from the
+    // xcspec capture's `meta.json`. Feeds `XCODE_PRODUCT_BUILD_VERSION` and
+    // the `<short>-<build>` segment of `CCHROOT` / `CACHE_ROOT`.
+    xcode_build_version: Option<&str>,
     xcode_developer_dir: Option<&str>,
     capture_host_macos: Option<&str>,
     macos_destination_unbound: bool,
+    // The driving scheme's LaunchAction sanitizer toggles (see
+    // `ResolveQuery::scheme_sanitizers`).
+    scheme_sanitizers: crate::scheme::SanitizerEnables,
 ) -> Vec<Assignment> {
     // Resolve to an absolute path so PROJECT_DIR / SRCROOT / BUILD_DIR match
     // xcodebuild's behaviour (it always emits absolute paths). Fall back to
@@ -1254,7 +1266,10 @@ pub fn built_in_settings(
     // `xcodebuild -derivedDataPath PATH` flattens this — it replaces the
     // whole `<home>/.../DerivedData/<container-hash>` segment with `PATH`,
     // so `BUILD_DIR = PATH/Build/Products` directly.
-    let derived_container = find_derived_data_container(&absolutize(xcodeproj_path));
+    let derived_container = derived_data_container.map_or_else(
+        || find_derived_data_container(&absolutize(xcodeproj_path)),
+        absolutize,
+    );
     let derived_name = derived_container
         .file_stem()
         .and_then(OsStr::to_str)
@@ -1481,15 +1496,56 @@ pub fn built_in_settings(
     // base `OBJECT_FILE_DIR`. The xcspecs reference these via
     // `$(OBJECT_FILE_DIR_$(CURRENT_VARIANT))` and they'd resolve empty
     // without these built-ins.
-    push("OBJECT_FILE_DIR_normal", "$(OBJECT_FILE_DIR)-normal".into());
-    push("OBJECT_FILE_DIR_debug", "$(OBJECT_FILE_DIR)-debug".into());
+    //
+    // When any sanitizer is enabled the per-variant dir gets a further
+    // suffix so sanitized and unsanitized objects don't mix — Swift Build's
+    // `Settings.swift` appends `-asan` / `-tsan` / `-ubsan` / `-mtasan` (in
+    // that order) to `OBJECT_FILE_DIR_<variant>`, and every dir derived
+    // through it (`PER_ARCH_OBJECT_FILE_DIR`, `LD_DEPENDENCY_INFO_FILE`,
+    // `STRINGSDATA_DIR`, …) follows. Swift Build evaluates the resolved
+    // `ENABLE_*_SANITIZER` macros; our view of those is the authored value
+    // plus the scheme's LaunchAction toggles, which xcodebuild layers above
+    // any authored value (see `built_in_overrides`). Corpus-pinned by the
+    // Alamofire `iOS Example` / `watchOS Example WatchKit App` schemes
+    // (`enableThreadSanitizer="YES"` → `Objects-normal-tsan`).
+    let authored_yes = |key: &str| {
+        authored
+            .get(key)
+            .is_some_and(|v| v.eq_ignore_ascii_case("YES"))
+    };
+    let mut sanitizer_suffix = String::new();
+    if scheme_sanitizers.address || authored_yes("ENABLE_ADDRESS_SANITIZER") {
+        sanitizer_suffix.push_str("-asan");
+    }
+    if scheme_sanitizers.thread || authored_yes("ENABLE_THREAD_SANITIZER") {
+        sanitizer_suffix.push_str("-tsan");
+    }
+    if scheme_sanitizers.undefined_behavior || authored_yes("ENABLE_UNDEFINED_BEHAVIOR_SANITIZER") {
+        sanitizer_suffix.push_str("-ubsan");
+    }
+    if authored_yes("ENABLE_MEMORY_TAGGING_ADDRESS_SANITIZER") {
+        sanitizer_suffix.push_str("-mtasan");
+    }
     push(
-        "OBJECT_FILE_DIR_profile",
-        "$(OBJECT_FILE_DIR)-profile".into(),
+        "OBJECT_FILE_DIR_normal",
+        format!("$(OBJECT_FILE_DIR)-normal{sanitizer_suffix}"),
     );
     push(
+        "OBJECT_FILE_DIR_debug",
+        format!("$(OBJECT_FILE_DIR)-debug{sanitizer_suffix}"),
+    );
+    push(
+        "OBJECT_FILE_DIR_profile",
+        format!("$(OBJECT_FILE_DIR)-profile{sanitizer_suffix}"),
+    );
+    // Routed through `OBJECT_FILE_DIR_<variant>` (not a literal
+    // `Objects-$(CURRENT_VARIANT)`) so the sanitizer suffix propagates —
+    // the captures show `STRINGSDATA_DIR = …/Objects-normal-tsan/<arch>`.
+    // Without a sanitizer this expands to the identical
+    // `$(TARGET_TEMP_DIR)/Objects-normal/$(arch)` value as before.
+    push(
         "STRINGSDATA_DIR",
-        "$(TARGET_TEMP_DIR)/Objects-$(CURRENT_VARIANT)/$(arch)".into(),
+        "$(OBJECT_FILE_DIR_$(CURRENT_VARIANT))/$(arch)".into(),
     );
     push("STRINGSDATA_ROOT", "$(TARGET_TEMP_DIR)".into());
 
@@ -2115,15 +2171,41 @@ pub fn built_in_settings(
     // reports.)
 
     // --- Compiler/module cache paths ---------------------------------------
-    // These two settings expose where the user's machine caches per-build
-    // state. `CCHROOT` is rooted under `_CS_DARWIN_USER_CACHE_DIR` (the
-    // `confstr(3)` value) plus the active Xcode build number; we read it
-    // from `$DARWIN_USER_CACHE_DIR` or fall back to `$TMPDIR/../C/`.
+    // These settings expose where the user's machine caches per-build
+    // state. `CCHROOT` and `CACHE_ROOT` are the same value (verified across
+    // every capture of every Xcode version): the Darwin per-user cache dir
+    // (`confstr(_CS_DARWIN_USER_CACHE_DIR)`, the `/var/folders/<x>/<id>/C/`
+    // tree) + `com.apple.DeveloperTools/<short>-<build>/Xcode`, where
+    // `<short>-<build>` is the running Xcode's marketing version and
+    // ProductBuildVersion (`26.5-17F42`, `15.4-15F31d`). We compose the
+    // version segment from the catalog's recorded Xcode when one is attached
+    // (so a capture resolves against ITS Xcode, not the host's) and fall
+    // back to the active install otherwise. The cache dir is host state —
+    // read from `$DARWIN_USER_CACHE_DIR`, `$TMPDIR/../C/`, or the pinned
+    // [`HostOverride::darwin_user_cache`].
     let darwin_cache = darwin_user_cache_dir();
-    let xcode_build = xcode_product_build_version();
+    let xcode_build = match (xcode_version, xcode_build_version) {
+        (Some(version), Some(build)) => {
+            format!("{}-{build}", xcode_marketing_version(version))
+        }
+        _ => xcode_product_build_version(),
+    };
+    let cache_root = format!("{darwin_cache}com.apple.DeveloperTools/{xcode_build}/Xcode");
+    push("CCHROOT", cache_root.clone());
+    push("CACHE_ROOT", cache_root);
+    // The bare ProductBuildVersion (`17F42`) xcodebuild surfaces alongside.
+    // Only emitted when actually known — catalog meta first, the host
+    // install's `version.plist` otherwise — never a guessed placeholder.
+    let bare_build = xcode_build_version.map_or_else(
+        || crate::xcode::active_install().build_version,
+        str::to_owned,
+    );
+    if !bare_build.is_empty() {
+        push("XCODE_PRODUCT_BUILD_VERSION", bare_build);
+    }
     push(
-        "CCHROOT",
-        format!("{darwin_cache}com.apple.DeveloperTools/{xcode_build}/Xcode"),
+        "XCODE_APP_SUPPORT_DIR",
+        format!("{developer_dir}/Library/Xcode"),
     );
     if !home.is_empty() {
         push(
@@ -2331,6 +2413,9 @@ pub fn built_in_overrides(
     user_ld_runpath_search_paths: Option<&str>,
     mergeable_library: bool,
     macos_destination_unbound: bool,
+    // The driving scheme's LaunchAction sanitizer toggles (see
+    // `ResolveQuery::scheme_sanitizers`).
+    scheme_sanitizers: crate::scheme::SanitizerEnables,
 ) -> Vec<Assignment> {
     let legacy_xcode15 = xcode_major_version != 0 && xcode_major_version < 16;
     let is_debug = unoptimized;
@@ -2587,6 +2672,26 @@ pub fn built_in_overrides(
         );
         push("SUPPORTED_PLATFORMS", &format!("{base} macosx"));
     }
+    // The macOS SDK's Catalyst variant (`SDKSettings.plist`, `Name = iosmac`)
+    // defines `LIBRARY_SEARCH_PATHS = $(inherited)
+    // $(SDKROOT)$(IOS_UNZIPPERED_TWIN_PREFIX_PATH)/usr/lib
+    // $(TOOLCHAIN_DIR)/usr/lib/swift/maccatalyst` — the identical recipe on
+    // every captured Xcode (15.4 / 16.4 / 26.5). Our resolver doesn't ingest
+    // SDK Variants, and xcodebuild's `-showBuildSettings` emits the pair
+    // TWICE — the same doubled emission the SYSTEM_FRAMEWORK_SEARCH_PATHS /
+    // SYSTEM_HEADER_SEARCH_PATHS built-ins mirror. Every captured Catalyst
+    // value (28/28 across 16.4 + 26.5) is `<resolved>  <pair>  <pair>`: the
+    // resolved lower-stack value keeps its trailing space, hence the double
+    // space before each copy. 15.4 never surfaces the key for Catalyst
+    // builds, so the push is unscored there.
+    if is_catalyst {
+        let pair =
+            "$(SDKROOT)/System/iOSSupport/usr/lib $(TOOLCHAIN_DIR)/usr/lib/swift/maccatalyst";
+        push(
+            "LIBRARY_SEARCH_PATHS",
+            &format!("$(inherited) {pair}  {pair}"),
+        );
+    }
     if is_catalyst && let Some(user_target) = user_iphoneos_deployment_target {
         let ios_effective = apply_catalyst_ios_floor(user_target);
         // The Catalyst floor applies to the named iOS deployment target
@@ -2632,6 +2737,21 @@ pub fn built_in_overrides(
     // setting, so it can only arrive via the query (see ResolveQuery).
     if code_coverage_enabled {
         push("CLANG_COVERAGE_MAPPING", "YES");
+    }
+    // A scheme whose `LaunchAction` enables a sanitizer forces the matching
+    // `ENABLE_*_SANITIZER = YES` on every target it resolves, overriding any
+    // authored value (the corpus pins both directions: Alamofire's `iOS
+    // Example` LaunchAction TSan toggle reports YES on every capture, while
+    // `Alamofire watchOS` puts the same toggle on its TestAction and stays
+    // NO). Scheme-level facts arriving via the query, like coverage above.
+    if scheme_sanitizers.address {
+        push("ENABLE_ADDRESS_SANITIZER", "YES");
+    }
+    if scheme_sanitizers.thread {
+        push("ENABLE_THREAD_SANITIZER", "YES");
+    }
+    if scheme_sanitizers.undefined_behavior {
+        push("ENABLE_UNDEFINED_BEHAVIOR_SANITIZER", "YES");
     }
     // RESIDUAL (CLANG_COVERAGE_MAPPING, 2): the Alamofire visionOS scheme's
     // TestAction enables coverage via a .xctestplan that isn't captured under
@@ -2746,6 +2866,11 @@ pub struct HostOverride {
     pub arch: Option<String>,
     pub user: Option<String>,
     pub home: Option<String>,
+    /// The Darwin per-user cache dir (`confstr(_CS_DARWIN_USER_CACHE_DIR)`,
+    /// e.g. `/var/folders/<x>/<id>/C/`) that anchors `CCHROOT` /
+    /// `CACHE_ROOT`. Host state like `home` — the corpus oracles pin the
+    /// capture host's value.
+    pub darwin_user_cache: Option<String>,
 }
 
 static HOST_OVERRIDE: std::sync::OnceLock<HostOverride> = std::sync::OnceLock::new();
@@ -3179,6 +3304,9 @@ fn is_not_simulator_for(sdk_base: &str, destination: Option<&RunDestination>) ->
 /// user caches. Returns a trailing-slash-terminated string so callers
 /// can concatenate sub-paths directly.
 fn darwin_user_cache_dir() -> String {
+    if let Some(pinned) = host_override(|o| o.darwin_user_cache.as_ref()) {
+        return ensure_trailing_slash(&pinned);
+    }
     if let Ok(v) = std::env::var("DARWIN_USER_CACHE_DIR")
         && !v.is_empty()
     {
@@ -3209,6 +3337,24 @@ fn ensure_trailing_slash(s: &str) -> String {
 /// Active Xcode's build version (e.g. `26.0.1-17A400`).
 fn xcode_product_build_version() -> String {
     crate::xcode::active_install().product_build_version()
+}
+
+/// The marketing form of a corpus-normalized Xcode version: the corpus dirs
+/// and `meta.json` record three components (`15.4.0`), while Xcode's own
+/// `CFBundleShortVersionString` — what `CCHROOT`'s `<short>-<build>` segment
+/// embeds — drops a zero patch (`15.4`, `16.4`, `26.5`; a non-zero patch is
+/// kept: `26.0.1`). Verified against every captured `CCHROOT`.
+fn xcode_marketing_version(version: &str) -> String {
+    version.strip_suffix(".0").map_or_else(
+        || version.to_string(),
+        |trimmed| {
+            if trimmed.contains('.') {
+                trimmed.to_string()
+            } else {
+                version.to_string()
+            }
+        },
+    )
 }
 
 /// Encode an Xcode version string `A.B.C` into xcodebuild's
@@ -3850,6 +3996,7 @@ mod tests {
             None,
             false,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(
             find(&ice, "ALLOW_TARGET_PLATFORM_SPECIALIZATION").as_deref(),
@@ -3885,6 +4032,7 @@ mod tests {
             None,
             false,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(find(&kf, "ALLOW_TARGET_PLATFORM_SPECIALIZATION"), None);
         assert_eq!(
@@ -3917,6 +4065,7 @@ mod tests {
             None,
             false,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(
             find(&extension, "ALLOW_TARGET_PLATFORM_SPECIALIZATION"),
@@ -3951,6 +4100,7 @@ mod tests {
             None,
             false,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(find(&plain, "ALLOW_TARGET_PLATFORM_SPECIALIZATION"), None);
         assert_eq!(find(&plain, "SUPPORTED_PLATFORMS"), None);
@@ -3982,6 +4132,7 @@ mod tests {
             None,
             false,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(
             find(&already, "SUPPORTED_PLATFORMS").as_deref(),
@@ -4013,6 +4164,7 @@ mod tests {
             None,
             false,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(
             find(&unauthored, "SUPPORTED_PLATFORMS").as_deref(),
@@ -4030,13 +4182,55 @@ mod tests {
         let framework = Some("com.apple.product-type.framework");
         let app = Some("com.apple.product-type.application");
         let unsigned = built_in_overrides(
-            26, true, false, false, None, None, framework, "macosx", None, false, false, false,
-            false, None, None, None, false, false, None, None, false, false,
+            26,
+            true,
+            false,
+            false,
+            None,
+            None,
+            framework,
+            "macosx",
+            None,
+            false,
+            false,
+            false,
+            false,
+            None,
+            None,
+            None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(find(&unsigned, "CODE_SIGN_IDENTITY").as_deref(), Some("-"));
         let signed = built_in_overrides(
-            26, true, false, false, None, None, app, "macosx", None, false, false, true, false,
-            None, None, None, false, false, None, None, false, false,
+            26,
+            true,
+            false,
+            false,
+            None,
+            None,
+            app,
+            "macosx",
+            None,
+            false,
+            false,
+            true,
+            false,
+            None,
+            None,
+            None,
+            false,
+            false,
+            None,
+            None,
+            false,
+            false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(find(&signed, "CODE_SIGN_IDENTITY"), None);
     }
@@ -4075,6 +4269,7 @@ mod tests {
             None,
             false,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(
             find(&derived, "PRODUCT_BUNDLE_IDENTIFIER").as_deref(),
@@ -4105,6 +4300,7 @@ mod tests {
             None,
             false,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(find(&not_derived, "PRODUCT_BUNDLE_IDENTIFIER"), None);
 
@@ -4132,6 +4328,7 @@ mod tests {
             None,
             false,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(find(&non_catalyst, "PRODUCT_BUNDLE_IDENTIFIER"), None);
 
@@ -4159,6 +4356,7 @@ mod tests {
             None,
             false,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(find(&already, "PRODUCT_BUNDLE_IDENTIFIER"), None);
     }
@@ -4221,7 +4419,10 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("SKIP_INSTALL"), Some("YES"));
@@ -4250,7 +4451,10 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("SKIP_INSTALL"), Some("NO"));
@@ -4279,7 +4483,10 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("DSTROOT"), Some("/tmp/Alamofire.dst"));
@@ -4319,7 +4526,10 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("ARCHS"), Some("arm64"));
@@ -4342,7 +4552,10 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("ARCHS").map(String::from), Some(host_arch()));
@@ -4366,7 +4579,10 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
             false,
+            crate::scheme::SanitizerEnables::default(),
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("ARCHS"), Some("arm64 x86_64"));
@@ -4685,7 +4901,10 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
+                None,
                 false,
+                crate::scheme::SanitizerEnables::default(),
             )
         };
         let known = resolve_with_device("iPad-A16");
@@ -4723,10 +4942,13 @@ mod tests {
                 None,
                 &BTreeMap::new(),
                 None,
+                None,
                 Some(version),
                 None,
                 None,
+                None,
                 false,
+                crate::scheme::SanitizerEnables::default(),
             )
         };
         let has_key = |out: &[Assignment]| {

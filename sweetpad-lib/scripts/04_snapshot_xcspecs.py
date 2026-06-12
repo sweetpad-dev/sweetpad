@@ -13,8 +13,10 @@ Per Xcode version, copies into `xcspec-cache/xcode-<ver>/`:
   - `sdksettings/sdk-paths.json`: a mapping from canonical SDK name (as
     reported by `xcodebuild -showsdks -json`) to the absolute SDK path
     reported by `xcrun --show-sdk-path --sdk <name>`.
-  - `meta.json`: Xcode version, app path, host macOS, capture timestamp,
-    file counts.
+  - `meta.json`: Xcode version, ProductBuildVersion (from the app bundle's
+    `Contents/version.plist`; feeds `XCODE_PRODUCT_BUILD_VERSION` and the
+    `<short>-<build>` segment of `CCHROOT` / `CACHE_ROOT` in the resolver),
+    app path, host macOS, capture timestamp, file counts.
 
 Idempotent: skips any (xcode_version) whose `meta.json` already exists
 unless `--force` is given.
@@ -90,6 +92,23 @@ def show_sdk_path(xcode: common.XcodeInstall, sdk_name: str) -> str:
         return ""
 
 
+def product_build_version(xcode: common.XcodeInstall) -> str:
+    """`ProductBuildVersion` (e.g. "17F42") from the app bundle's
+    `Contents/version.plist` — the build number xcodebuild embeds in
+    `XCODE_PRODUCT_BUILD_VERSION` and the CCHROOT/CACHE_ROOT version
+    segment. Empty string if unreadable (the resolver then falls back to
+    the host install)."""
+    import plistlib
+
+    plist_path = xcode.app_path / "Contents" / "version.plist"
+    try:
+        with plist_path.open("rb") as f:
+            return str(plistlib.load(f).get("ProductBuildVersion", ""))
+    except (OSError, plistlib.InvalidFileException):
+        common.log(f"WARN: could not read {plist_path}")
+        return ""
+
+
 def snapshot_one(xcode: common.XcodeInstall, *, force: bool) -> None:
     out_dir = common.XCSPEC_CACHE_DIR / f"xcode-{xcode.version}"
     meta_path = out_dir / "meta.json"
@@ -145,6 +164,7 @@ def snapshot_one(xcode: common.XcodeInstall, *, force: bool) -> None:
 
     meta = {
         "xcode_version": xcode.version,
+        "product_build_version": product_build_version(xcode),
         "xcode_app": str(xcode.app_path),
         "developer_dir": str(xcode.developer_dir),
         "host_macos": common.host_macos_version(),

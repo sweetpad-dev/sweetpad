@@ -80,6 +80,12 @@ pub struct Catalog {
     /// `None` when no `meta.json` sits beside the xcspecs (the resolver then
     /// falls back to the host install's version).
     pub xcode_version: Option<String>,
+    /// The `ProductBuildVersion` of the Xcode this catalog was captured from
+    /// (e.g. `17F42`), read from the sibling `meta.json`. Feeds
+    /// `XCODE_PRODUCT_BUILD_VERSION` and the `<short>-<build>` segment of
+    /// `CCHROOT` / `CACHE_ROOT` (xcodebuild composes those from the running
+    /// Xcode's `version.plist`). `None` falls back to the host install.
+    pub product_build_version: Option<String>,
     /// The `DEVELOPER_DIR` this catalog was captured from (e.g.
     /// `/Applications/Xcode-26.0.1.app/Contents/Developer`), read from the
     /// sibling `meta.json`. Feeds `DEVELOPER_DIR` and everything derived from it
@@ -303,6 +309,7 @@ pub fn load_catalog(xcspec_root: &Path, sdksettings_root: Option<&Path>) -> Resu
     let meta_str =
         |key: &str| -> Option<String> { Some(meta.as_ref()?.get(key)?.as_str()?.to_string()) };
     catalog.xcode_version = meta_str("xcode_version");
+    catalog.product_build_version = meta_str("product_build_version");
     catalog.developer_dir = meta_str("developer_dir");
     catalog.host_macos = meta_str("host_macos");
     Ok(catalog)

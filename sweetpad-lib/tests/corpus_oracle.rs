@@ -31,25 +31,20 @@ use common::{
     find_xcodeproj_for_oracle, read_build_settings,
 };
 
-/// Whether the scheme that produced this oracle gathers code coverage.
+/// The parsed scheme that produced this oracle, for the scheme-level facts
+/// (TestAction code coverage, LaunchAction sanitizers) the per-target
+/// pbxproj can't carry.
 ///
 /// The oracle path embeds the scheme name as the component right after
 /// `schemes/`. We re-derive the `raw/` sub-fixture root (same logic as
-/// [`find_xcodeproj_for_oracle`]) and search it for `<scheme>.xcscheme`,
-/// then read the TestAction's `codeCoverageEnabled`. Schemes can sit under
-/// either an `.xcodeproj` or an `.xcworkspace`, so we search the whole
-/// sub-fixture rather than guessing the container.
-fn scheme_code_coverage_enabled(oracle: &Path) -> bool {
+/// [`find_xcodeproj_for_oracle`]) and search it for `<scheme>.xcscheme`.
+/// Schemes can sit under either an `.xcodeproj` or an `.xcworkspace`, so we
+/// search the whole sub-fixture rather than guessing the container.
+fn scheme_for_oracle(oracle: &Path) -> Option<scheme::Scheme> {
     let comps: Vec<&OsStr> = oracle.iter().collect();
-    let Some(metadata_idx) = comps.iter().rposition(|c| *c == OsStr::new("metadata")) else {
-        return false;
-    };
-    let Some(schemes_idx) = comps.iter().rposition(|c| *c == OsStr::new("schemes")) else {
-        return false;
-    };
-    let Some(scheme_name) = comps.get(schemes_idx + 1).and_then(|c| c.to_str()) else {
-        return false;
-    };
+    let metadata_idx = comps.iter().rposition(|c| *c == OsStr::new("metadata"))?;
+    let schemes_idx = comps.iter().rposition(|c| *c == OsStr::new("schemes"))?;
+    let scheme_name = comps.get(schemes_idx + 1).and_then(|c| c.to_str())?;
     let mut root = PathBuf::new();
     for (i, c) in comps.iter().enumerate() {
         if i < metadata_idx {
@@ -61,13 +56,8 @@ fn scheme_code_coverage_enabled(oracle: &Path) -> bool {
         }
     }
     let file_name = format!("{scheme_name}.xcscheme");
-    let Some(scheme_path) = common::find_file_named(&root, &file_name) else {
-        return false;
-    };
-    scheme::parse_file(&scheme_path)
-        .ok()
-        .and_then(|s| s.test_action)
-        .is_some_and(|ta| ta.code_coverage_enabled)
+    let scheme_path = common::find_file_named(&root, &file_name)?;
+    scheme::parse_file(&scheme_path).ok()
 }
 
 fn run_oracle(
@@ -106,11 +96,20 @@ fn run_oracle(
         if let Some(d) = destination {
             query = query.with_destination(d);
         }
-        // Code coverage is a scheme-level fact (TestAction.codeCoverageEnabled)
-        // that the per-target pbxproj can't carry, so the harness reads it from
-        // the scheme named in the oracle path and feeds it to the resolver.
-        if scheme_code_coverage_enabled(oracle_path) {
-            query = query.with_code_coverage_enabled(true);
+        // Code coverage (TestAction.codeCoverageEnabled) and the sanitizer
+        // toggles (LaunchAction enable*Sanitizer) are scheme-level facts that
+        // the per-target pbxproj can't carry, so the harness reads them from
+        // the scheme named in the oracle path and feeds them to the resolver
+        // — the same facts `BuildContext::plan_build` threads for scheme
+        // builds.
+        if let Some(s) = scheme_for_oracle(oracle_path) {
+            if s.test_action
+                .as_ref()
+                .is_some_and(|ta| ta.code_coverage_enabled)
+            {
+                query = query.with_code_coverage_enabled(true);
+            }
+            query = query.with_scheme_sanitizers(s.launch_sanitizers);
         }
         let resolved = ctx.resolve(&query).ok()?.settings;
 
@@ -303,12 +302,12 @@ fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     }
 }
 
-const CORPUS_FLOOR_2650: (u64, u64, u64) = (88, 96, 99);
-const CORPUS_FLOOR_1640: (u64, u64, u64) = (88, 99, 100);
+const CORPUS_FLOOR_2650: (u64, u64, u64) = (88, 97, 99);
+const CORPUS_FLOOR_1640: (u64, u64, u64) = (88, 100, 100);
 // 15.4 structural sits ~97% (vs 99% on 16+) because that Xcode reports host/arch
 // settings the resolver can't derive from project inputs and that newer Xcodes
 // normalize away (NATIVE_ARCH/HOST_ARCH=arm64e, concrete CURRENT_ARCH on the
 // no-destination path, VALID_ARCHS ordering) — documented irreducibles, not
 // resolver bugs (the real 15.x parse bugs, PACKAGE_TYPE/BUNDLE_FORMAT
 // undomained-clobber, are fixed). Floor accordingly.
-const CORPUS_FLOOR_1540: (u64, u64, u64) = (88, 99, 100);
+const CORPUS_FLOOR_1540: (u64, u64, u64) = (89, 100, 100);

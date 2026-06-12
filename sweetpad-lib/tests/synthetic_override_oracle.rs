@@ -220,7 +220,7 @@ fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     // Only 26.0.1 has synthetic-override captures today; a future version with no
     // entry gets the structural safety guard until its floor is codified.
     match version {
-        "26.5.0" => Some((88, 99, 100)),
+        "26.5.0" => Some((88, 100, 100)),
         _ => None,
     }
 }
