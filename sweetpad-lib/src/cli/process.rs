@@ -31,20 +31,31 @@ pub fn capture(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Strin
 }
 
 /// Run a command to completion with stdio inherited — output streams straight
-/// to the terminal. Returns the exit code; a non-zero exit is surfaced as an
-/// error so callers can stop a pipeline.
+/// to the terminal. A non-zero exit is surfaced as an error so callers can stop
+/// a pipeline (use [`run`] when a non-zero exit is a meaningful result, e.g.
+/// test failures).
 pub fn stream(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<(), CliError> {
+    if run(program, args, cwd, false)? {
+        Ok(())
+    } else {
+        Err(CliError::new(format!("{program} exited with a non-zero status")))
+    }
+}
+
+/// Run a command to completion, returning whether it succeeded rather than
+/// erroring on a non-zero exit. `quiet` discards stdout (stderr is always
+/// inherited) — used when only the exit status / a side-effect matters, e.g.
+/// `xcodebuild test` whose pass/fail we read from the result bundle.
+pub fn run(program: &str, args: &[&str], cwd: Option<&Path>, quiet: bool) -> Result<bool, CliError> {
     let mut cmd = Command::new(program);
-    cmd.args(args);
+    cmd.args(args)
+        .stdout(if quiet { Stdio::null() } else { Stdio::inherit() })
+        .stderr(Stdio::inherit());
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
     let status = cmd.status().map_err(|e| spawn_error(program, &e))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(CliError::new(format!("{program} exited with {status}")))
-    }
+    Ok(status.success())
 }
 
 fn spawn_error(program: &str, e: &std::io::Error) -> CliError {

@@ -65,6 +65,96 @@ fn working_dir(container: &Container) -> Option<PathBuf> {
     container.path().parent().map(Path::to_path_buf)
 }
 
+/// Everything needed to invoke `xcodebuild test` for a resolved target.
+pub struct TestPlan<'a> {
+    pub container: &'a Container,
+    pub scheme: &'a str,
+    pub configuration: &'a str,
+    pub destination: Option<&'a str>,
+    /// `-only-testing:` selectors (Target/Class/method); empty runs everything.
+    pub only_testing: &'a [String],
+    /// `-skip-testing:` selectors.
+    pub skip_testing: &'a [String],
+    /// Where xcodebuild writes the `.xcresult` bundle (parsed for the summary).
+    pub result_bundle: &'a Path,
+}
+
+impl TestPlan<'_> {
+    fn args(&self) -> Vec<String> {
+        let mut args: Vec<String> = vec![
+            "test".into(),
+            "-scheme".into(),
+            self.scheme.into(),
+            "-configuration".into(),
+            self.configuration.into(),
+            "-resultBundlePath".into(),
+            self.result_bundle.display().to_string(),
+        ];
+        if let Some(dest) = self.destination {
+            args.push("-destination".into());
+            args.push(dest.into());
+        }
+        args.extend(container_args(self.container));
+        for t in self.only_testing {
+            args.push(format!("-only-testing:{t}"));
+        }
+        for t in self.skip_testing {
+            args.push(format!("-skip-testing:{t}"));
+        }
+        args
+    }
+
+    /// Run the tests. `quiet` discards xcodebuild's stdout (for `--json`, where
+    /// only the parsed summary is emitted). Returns whether the run passed; a
+    /// test failure is a `false`, not an error.
+    pub fn run(&self, quiet: bool) -> Result<bool, CliError> {
+        let parts = self.args();
+        let args: Vec<&str> = parts.iter().map(String::as_str).collect();
+        process::run("xcodebuild", &args, working_dir(self.container).as_deref(), quiet)
+    }
+}
+
+/// Parsed `xcrun xcresulttool get test-results summary` output.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TestSummary {
+    pub result: String,
+    pub total_test_count: u32,
+    pub passed_tests: u32,
+    pub failed_tests: u32,
+    pub skipped_tests: u32,
+    pub test_failures: Vec<TestFailure>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TestFailure {
+    pub test_name: String,
+    pub target_name: String,
+    pub failure_text: String,
+}
+
+/// Read a test summary from a `.xcresult` bundle via `xcresulttool` (Xcode 16+).
+pub fn test_summary(bundle: &Path) -> Result<TestSummary, CliError> {
+    let out = process::capture(
+        "xcrun",
+        &[
+            "xcresulttool",
+            "get",
+            "test-results",
+            "summary",
+            "--path",
+            &bundle.to_string_lossy(),
+        ],
+        None,
+    )?;
+    let json = out
+        .find('{')
+        .map(|i| &out[i..])
+        .ok_or_else(|| CliError::new("xcresulttool produced no JSON summary"))?;
+    serde_json::from_str(json).map_err(|e| CliError::new(format!("parsing test summary: {e}")))
+}
+
 /// One target's settings from `xcodebuild -showBuildSettings -json`.
 #[derive(Debug, Deserialize)]
 pub struct TargetBuildSettings {

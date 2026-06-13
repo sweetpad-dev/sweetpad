@@ -9,15 +9,15 @@
 //! Design goals and the full command surface live in `CLI_DESIGN.md`.
 //!
 //! Grammar is **resource-first**: `sweetpad <resource> <action> [flags]`, with
-//! resources at the top level. The tree below is the v1 scope (explore +
-//! build/run); commands are currently stubs over wired-up plumbing
-//! ([`config`], [`state`], [`resolve`], [`output`]).
+//! resources at the top level, over shared plumbing ([`config`], [`state`],
+//! [`resolve`], [`output`]).
 
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 pub mod config;
+pub mod devicectl;
 pub mod output;
 pub mod process;
 pub mod resolve;
@@ -118,10 +118,35 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::build::Action,
     },
+    /// Run the project's tests.
+    Test {
+        #[command(subcommand)]
+        action: commands::test::Action,
+    },
     /// Run, install, and manage the built app's lifecycle.
     App {
         #[command(subcommand)]
         action: commands::app::Action,
+    },
+    /// Inspect connected physical devices.
+    Device {
+        #[command(subcommand)]
+        action: commands::device::Action,
+    },
+    /// Format or lint Swift sources.
+    Format {
+        #[command(subcommand)]
+        action: commands::format::Action,
+    },
+    /// Build Server Protocol integration (sourcekit-lsp autocomplete).
+    Bsp {
+        #[command(subcommand)]
+        action: commands::bsp::Action,
+    },
+    /// Generate shell completion scripts.
+    Completions {
+        /// Shell to generate completions for.
+        shell: clap_complete::Shell,
     },
 }
 
@@ -157,6 +182,12 @@ pub fn run(argv: &[String]) -> ExitCode {
     };
     let state = state::State::load().unwrap_or_default();
 
+    // Completions need nothing from config/state — emit and return.
+    if let Resource::Completions { shell } = &cli.resource {
+        clap_complete::generate(*shell, &mut Cli::command(), "sweetpad", &mut std::io::stdout());
+        return ExitCode::SUCCESS;
+    }
+
     let mut ctx = Context { global: cli.global, config, state, out };
 
     let result = match cli.resource {
@@ -166,7 +197,12 @@ pub fn run(argv: &[String]) -> ExitCode {
         Resource::Settings { action } => commands::settings::run(&mut ctx, &action),
         Resource::Simulator { action } => commands::simulator::run(&mut ctx, &action),
         Resource::Build { action } => commands::build::run(&mut ctx, &action),
+        Resource::Test { action } => commands::test::run(&mut ctx, &action),
         Resource::App { action } => commands::app::run(&mut ctx, &action),
+        Resource::Device { action } => commands::device::run(&mut ctx, &action),
+        Resource::Format { action } => commands::format::run(&mut ctx, &action),
+        Resource::Bsp { action } => commands::bsp::run(&mut ctx, &action),
+        Resource::Completions { .. } => unreachable!("handled above"),
     };
 
     match result {
@@ -200,10 +236,3 @@ impl CliError {
 
 /// Convenience alias for command results.
 pub type CliResult = Result<(), CliError>;
-
-/// Placeholder used by every stubbed command until it's implemented. Keeps the
-/// tree walkable (`--help` works everywhere) and signals scope clearly.
-pub fn not_implemented(ctx: &Context, what: &str) -> CliResult {
-    ctx.out.note(&format!("`{what}` is not implemented yet (scaffold)"));
-    Ok(())
-}
