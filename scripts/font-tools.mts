@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -356,14 +356,14 @@ function verifyCommand(): void {
 
 function showHelp(): void {
   console.log("🍭 SweetPad Font Tools\n");
-  console.log("Usage: tsx font-tools.ts <command>\n");
+  console.log("Usage: node font-tools.mts <command>\n");
   console.log("Commands:");
   console.log("  optimize    Create optimized font subset and verify configuration");
   console.log("  verify      Verify that optimized font is correctly configured");
   console.log("  help        Show this help message\n");
   console.log("Examples:");
-  console.log("  tsx font-tools.ts optimize");
-  console.log("  tsx font-tools.ts verify");
+  console.log("  node font-tools.mts optimize");
+  console.log("  node font-tools.mts verify");
 }
 
 function main(): void {

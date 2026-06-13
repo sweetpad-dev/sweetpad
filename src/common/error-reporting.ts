@@ -6,7 +6,7 @@ import type * as vscode from "vscode";
 import { getWorkspaceConfig } from "./config";
 import { commonLogger } from "./logger";
 
-// Injected by esbuild at build time.
+// Injected by rolldown (`define`) at build time.
 declare const GLOBAL_SENTRY_DSN: string | undefined;
 declare const GLOBAL_RELEASE_VERSION: string | undefined;
 
@@ -28,7 +28,7 @@ class SentryErrorReporting {
     // to `true` in the workspace settings.
     this.isEnabled = getWorkspaceConfig("system.enableSentry") ?? false;
 
-    // This variable should be injected by esbuild at build time.
+    // This variable should be injected by rolldown (`define`) at build time.
     this.dsn = GLOBAL_SENTRY_DSN;
     this.client = new Sentry.NodeClient({
       dsn: this.dsn,
