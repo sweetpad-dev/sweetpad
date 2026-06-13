@@ -218,6 +218,7 @@ quiet. `parse_line` is pure and unit-tested without Xcode.
 
 ## 12. Open / later
 
-- SPM `app run` (libraries have no `.app`; only build/test today).
+- SPM `app run` runs executable products on the host via `swift run <product>`
+  (`--device`/`--mac` don't apply; library packages have nothing to run).
 - Whether the extension actually adopts the CLI as its engine.
 - (Declined for now: `tools` resource, `config`/`state` subcommands.)

@@ -84,6 +84,8 @@ enum Target {
     Simulator(String),
     Device(String),
     Mac,
+    /// A Swift package executable, run on the host via `swift run <product>`.
+    SpmRun(String),
 }
 
 /// A fully-resolved run: container/scheme/configuration/destination plus the
@@ -121,6 +123,16 @@ impl RunPlan {
 fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
     let plan = plan(ctx, opts)?;
 
+    // A Swift package executable runs (and streams) via `swift run`; deploy
+    // does exactly that, so every mode routes through it.
+    if matches!(plan.target, Target::SpmRun(_)) {
+        if opts.watch {
+            deploy(ctx, &plan)?;
+            return watch_loop(ctx, &plan);
+        }
+        return deploy(ctx, &plan);
+    }
+
     // --watch: deploy once, then redeploy on change (no inline logs — they'd
     // block the loop). --no-logs: deploy and return.
     if opts.watch {
@@ -156,6 +168,8 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
                 .note(&format!("running {} (Ctrl-C to stop)", app.bundle_id));
             crate::cli::process::stream(&app.executable.to_string_lossy(), &[], None)
         }
+        // SPM is handled by the early return above.
+        Target::SpmRun(_) => unreachable!("SPM run handled before this match"),
     }
 }
 
@@ -169,7 +183,16 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         .clone()
         .unwrap_or_else(|| "Debug".to_string());
 
-    let (destination, target) = if opts.mac {
+    let (destination, target) = if matches!(resolved.container, resolve::Container::SwiftPackage(_))
+    {
+        if opts.device || opts.mac {
+            return Err(CliError::new(
+                "a Swift package executable runs on the host; --device/--mac don't apply",
+            ));
+        }
+        // No xcodebuild destination — `swift run` builds and runs the product.
+        (String::new(), Target::SpmRun(scheme.clone()))
+    } else if opts.mac {
         ("platform=macOS".to_string(), Target::Mac)
     } else if opts.device {
         let devices = devicectl::list()?;
@@ -232,12 +255,33 @@ fn build_and_install(plan: &RunPlan, out: &Output) -> Result<AppBundle, CliError
         }
         // A macOS app is built in place; there's no install step.
         Target::Mac => {}
+        // SPM executables never reach here (run_app routes them to `swift run`).
+        Target::SpmRun(_) => unreachable!("SPM run does not build/install via xcodebuild"),
     }
     Ok(app)
 }
 
+/// `swift run <product>` in the package directory: builds and runs the
+/// executable, streaming its output until it exits.
+fn spm_run(ctx: &Context, plan: &RunPlan, product: &str) -> CliResult {
+    let cwd = plan
+        .resolved
+        .container
+        .path()
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(Path::to_path_buf);
+    ctx.out.note(&format!("running {product} (swift run)"));
+    crate::cli::process::stream("swift", &["run", product], cwd.as_deref())
+}
+
 /// Build, install, and launch (no log following) — the unit re-run by `--watch`.
 fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
+    // SPM executables build+run in one `swift run` step, not build+install+launch.
+    if let Target::SpmRun(product) = &plan.target {
+        return spm_run(ctx, plan, product);
+    }
+
     let app = build_and_install(plan, &ctx.out)?;
     match &plan.target {
         Target::Simulator(udid) => {
@@ -258,6 +302,8 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
             crate::cli::process::stream("open", &[&app.path.to_string_lossy()], None)?;
             ctx.out.note(&format!("launched {}", app.bundle_id));
         }
+        // Handled by the early return above.
+        Target::SpmRun(_) => {}
     }
     Ok(())
 }
@@ -338,10 +384,12 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
         no_logs: true,
     };
     let plan = plan(ctx, &opts)?;
-    let app = plan.app_bundle()?;
     let Target::Simulator(udid) = &plan.target else {
-        unreachable!("simple stages resolve a simulator target");
+        return Err(CliError::new(
+            "app install/launch/logs/stop are only supported for simulator targets",
+        ));
     };
+    let app = plan.app_bundle()?;
 
     match stage {
         Stage::Install => {
