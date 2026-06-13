@@ -177,10 +177,25 @@ Notes / heuristics:
   predicate; may need refinement per app.
 - New deps (under the `cli` feature only): `clap_complete`.
 
-## 10. Open / later
+## 10. Testing
+
+The CLI modules carry inline `#[cfg(test)]` units that need no Xcode, so the
+tool-spawning code is pinned without a Mac:
+
+- **Arg-vector snapshots** — `BuildPlan`/`TestPlan` produce exact `xcodebuild`
+  argument vectors (the main guard against silent flag drift).
+- **Parser fixtures** — `simctl list`, `devicectl list`, `xcresulttool`
+  summary, and `-showBuildSettings` JSON parsed from captured-shape payloads
+  (this caught a missing `rename_all` on the devicectl device struct).
+- **Pure logic** — resolution precedence, config/state TOML round-trips,
+  `choose` fallback branches, destination/`udid` parsing, watch snapshotting.
+
+Still macOS-only: the *runtime* truth (does xcodebuild actually build, does the
+log predicate/console attach behave). A macOS CI job would close that gap.
+
+## 11. Open / later
 
 - `tools` resource (Homebrew toolchain doctor).
-- Device-side log streaming for `app run --device`.
-- A real fuzzy picker in place of the numbered-menu fallback.
 - `config`/`state` management subcommands.
+- `xcbeautify` piping for prettier build/test output.
 - Whether the extension actually adopts the CLI as its engine.

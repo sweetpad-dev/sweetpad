@@ -85,3 +85,42 @@ fn config_dir() -> Option<PathBuf> {
 pub(crate) fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn for_project_layers_overrides_on_defaults() {
+        let cfg: Config = toml::from_str(
+            r#"
+            [defaults]
+            configuration = "Debug"
+            scheme = "Global"
+
+            [projects."/work/App.xcodeproj"]
+            scheme = "App"
+            destination = "platform=iOS Simulator,name=iPhone 15"
+            "#,
+        )
+        .unwrap();
+
+        let d = cfg.for_project("/work/App.xcodeproj");
+        // Per-project scheme/destination win; configuration falls through.
+        assert_eq!(d.scheme.as_deref(), Some("App"));
+        assert_eq!(d.configuration.as_deref(), Some("Debug"));
+        assert_eq!(d.destination.as_deref(), Some("platform=iOS Simulator,name=iPhone 15"));
+
+        // Unknown project gets only the global defaults.
+        let other = cfg.for_project("/other");
+        assert_eq!(other.scheme.as_deref(), Some("Global"));
+        assert_eq!(other.destination, None);
+    }
+
+    #[test]
+    fn empty_config_is_default() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert!(cfg.projects.is_empty());
+        assert_eq!(cfg.for_project("/x").scheme, None);
+    }
+}

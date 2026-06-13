@@ -98,15 +98,32 @@ fn run_app(
     no_logs: bool,
 ) -> CliResult {
     let plan = plan(ctx, device, device_id)?;
-    deploy(ctx, &plan)?;
 
+    // --watch: deploy once, then redeploy on change (no inline logs — they'd
+    // block the loop). --no-logs: deploy and return.
     if watch {
+        deploy(ctx, &plan)?;
         return watch_loop(ctx, &plan);
     }
-    if !no_logs {
-        return follow_logs(ctx, &plan);
+    if no_logs {
+        return deploy(ctx, &plan);
     }
-    Ok(())
+
+    // Default: deploy and follow logs inline until Ctrl-C.
+    match &plan.target {
+        Target::Simulator(udid) => {
+            let app = build_and_install(&plan)?;
+            let out = simctl::launch(udid, &app.bundle_id)?;
+            ctx.out.note(&format!("launched {} → {}", app.bundle_id, out.trim()));
+            stream_logs(ctx, udid, &app)
+        }
+        Target::Device(id) => {
+            // On device, logs come from launching with the console attached.
+            let app = build_and_install(&plan)?;
+            ctx.out.note(&format!("launching {} with console (Ctrl-C to stop)", app.bundle_id));
+            devicectl::launch_console(id, &app.bundle_id)
+        }
+    }
 }
 
 /// Resolve a full run plan, choosing a simulator (default) or a device.
@@ -154,8 +171,9 @@ fn plan(ctx: &mut Context, device: bool, device_id: Option<&str>) -> Result<RunP
     Ok(plan)
 }
 
-/// Build, install, and launch — the unit re-run by `--watch`.
-fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
+/// Build and install onto the target, returning the launchable app. Shared by
+/// every flow; the launch step is chosen by the caller.
+fn build_and_install(plan: &RunPlan) -> Result<AppBundle, CliError> {
     plan.build_plan().run()?;
     let app = plan.app_bundle()?;
     let app_path = app.path.display().to_string();
@@ -163,30 +181,28 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
         Target::Simulator(udid) => {
             simctl::boot(udid)?;
             simctl::install(udid, &app_path)?;
+        }
+        Target::Device(id) => {
+            devicectl::install(id, &app_path)?;
+        }
+    }
+    Ok(app)
+}
+
+/// Build, install, and launch (no log following) — the unit re-run by `--watch`.
+fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
+    let app = build_and_install(plan)?;
+    match &plan.target {
+        Target::Simulator(udid) => {
             let out = simctl::launch(udid, &app.bundle_id)?;
             ctx.out.note(&format!("launched {} → {}", app.bundle_id, out.trim()));
         }
         Target::Device(id) => {
-            devicectl::install(id, &app_path)?;
             let out = devicectl::launch(id, &app.bundle_id)?;
             ctx.out.note(&format!("launched {} on device → {}", app.bundle_id, out.trim()));
         }
     }
     Ok(())
-}
-
-/// Follow the app's logs after launch (simulator only; devices print a note).
-fn follow_logs(ctx: &Context, plan: &RunPlan) -> CliResult {
-    match &plan.target {
-        Target::Simulator(udid) => {
-            let app = plan.app_bundle()?;
-            stream_logs(ctx, udid, &app)
-        }
-        Target::Device(_) => {
-            ctx.out.note("inline log streaming for devices is not supported yet; app left running");
-            Ok(())
-        }
-    }
 }
 
 /// Poll the project's source tree and redeploy on change.
@@ -314,4 +330,44 @@ fn udid(destination: &str) -> Result<String, CliError> {
                 "app commands need a destination with an id= (got {destination:?})"
             ))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn udid_extracted_from_destination() {
+        assert_eq!(udid("platform=iOS Simulator,id=ABCD").unwrap(), "ABCD");
+        assert_eq!(udid("id=XYZ,platform=iOS Simulator").unwrap(), "XYZ");
+        assert!(udid("platform=iOS Simulator,name=iPhone 15").is_err());
+    }
+
+    #[test]
+    fn scan_sources_picks_swift_and_skips_build_dirs() {
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("sweetpad-scan-{n}"));
+        std::fs::create_dir_all(root.join("Sources")).unwrap();
+        std::fs::create_dir_all(root.join("Pods")).unwrap();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(root.join("Sources/A.swift"), "a").unwrap();
+        std::fs::write(root.join("README.md"), "x").unwrap();
+        std::fs::write(root.join("Pods/B.swift"), "b").unwrap();
+        std::fs::write(root.join(".git/C.swift"), "c").unwrap();
+
+        let snap = scan_sources(&root);
+        let names: Vec<String> = snap
+            .keys()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        // Only the real source file; non-swift, Pods, and .git are excluded.
+        assert_eq!(names, vec!["A.swift"]);
+
+        // Adding a new source file changes the snapshot.
+        std::fs::write(root.join("Sources/D.swift"), "d").unwrap();
+        assert_ne!(scan_sources(&root), snap);
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }

@@ -75,3 +75,30 @@ fn state_dir() -> Option<PathBuf> {
     }
     super::config::home_dir().map(|h| h.join(".local").join("state"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trips_via_toml() {
+        let mut state = State::default();
+        let p = state.project_mut("/work/App.xcodeproj");
+        p.scheme = Some("App".into());
+        p.destination = Some("platform=iOS Simulator,id=UDID".into());
+
+        let text = toml::to_string_pretty(&state).unwrap();
+        let back: State = toml::from_str(&text).unwrap();
+        let p = back.projects.get("/work/App.xcodeproj").unwrap();
+        assert_eq!(p.scheme.as_deref(), Some("App"));
+        assert_eq!(p.destination.as_deref(), Some("platform=iOS Simulator,id=UDID"));
+    }
+
+    #[test]
+    fn project_mut_inserts_default() {
+        let mut state = State::default();
+        assert!(state.projects.is_empty());
+        state.project_mut("/x").configuration = Some("Release".into());
+        assert_eq!(state.projects.get("/x").unwrap().configuration.as_deref(), Some("Release"));
+    }
+}
