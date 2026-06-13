@@ -1,0 +1,49 @@
+# Fixture for the issue/#264 Catalyst-misdetection oracle (ci/catalyst-oracle.sh).
+#
+# Reproduces the report's setup: a project-wide iOS-family Base SDK
+# (`SDKROOT = iphoneos`) on a target that ALSO supports native macOS ("My Mac")
+# and explicitly opts OUT of Mac Catalyst (`SUPPORTS_MACCATALYST = NO`). Built
+# for macOS, Xcode treats this as a native macOS build (IS_MACCATALYST = NO,
+# products under `Debug/`), but the resolver currently keys off the iOS-family
+# SDKROOT alone and misdetects Catalyst (`Debug-maccatalyst/`).
+#
+# Generated on CI with XcodeGen (`xcodegen generate`); the .xcodeproj is not
+# committed.
+name: CatalystProbe
+options:
+  bundleIdPrefix: dev.sweetpad.ci
+  deploymentTarget:
+    iOS: "16.0"
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    # The iOS-family "Base SDK" the whole project inherits — the trigger.
+    SDKROOT: iphoneos
+    CODE_SIGNING_ALLOWED: "NO"
+    SWIFT_VERSION: "5.0"
+
+targets:
+  CatalystProbe:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    settings:
+      base:
+        # Native macOS ("My Mac") is a supported destination, but this is a
+        # native macOS target — NOT Mac Catalyst.
+        SUPPORTED_PLATFORMS: "macosx iphoneos iphonesimulator"
+        SUPPORTS_MACCATALYST: "NO"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.ci.catalystprobe
+
+schemes:
+  CatalystProbe:
+    build:
+      targets:
+        CatalystProbe: all
+    run:
+      config: Debug
