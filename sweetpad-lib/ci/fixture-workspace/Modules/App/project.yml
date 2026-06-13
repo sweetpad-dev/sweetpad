@@ -1,0 +1,46 @@
+# Member project for the issue-#265 workspace oracle (ci/workspace-oracle.sh).
+#
+# The point of this fixture is the *topology*: the project is named differently
+# from the workspace (`XCodeTarget` vs `Apps`) and is nested two directories
+# below it (`Modules/App/`), so the resolver's container inference
+# (`find_derived_data_container`, which only sniffs the project's parent and
+# grandparent dirs) cannot find `Apps.xcworkspace`. Xcode, however, keys
+# DerivedData by the workspace it opened. That divergence is the bug.
+#
+# Generated on CI with XcodeGen (`xcodegen generate`); the .xcodeproj is not
+# committed.
+name: XCodeTarget
+options:
+  bundleIdPrefix: dev.sweetpad.ci
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    # Simulator/unsigned builds don't need signing; keep CI free of provisioning.
+    CODE_SIGNING_ALLOWED: "NO"
+    SWIFT_VERSION: "5.0"
+
+targets:
+  XCodeTarget:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.ci.xcodetarget
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+# A shared scheme so `xcodebuild -workspace -scheme XCodeTarget` (the oracle)
+# resolves it. XcodeGen writes it to xcshareddata/xcschemes.
+schemes:
+  XCodeTarget:
+    build:
+      targets:
+        XCodeTarget: all
+    run:
+      config: Debug
