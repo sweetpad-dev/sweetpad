@@ -139,6 +139,11 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::format::Action,
     },
+    /// Work with `project.pbxproj` files (semantic git-conflict merge).
+    Pbxproj {
+        #[command(subcommand)]
+        action: commands::pbxproj::Action,
+    },
     /// Build Server Protocol integration (sourcekit-lsp autocomplete).
     Bsp {
         #[command(subcommand)]
@@ -221,6 +226,7 @@ pub fn run(argv: &[String]) -> ExitCode {
         Resource::App { action } => commands::app::run(&mut ctx, &action),
         Resource::Device { action } => commands::device::run(&mut ctx, &action),
         Resource::Format { action } => commands::format::run(&mut ctx, &action),
+        Resource::Pbxproj { action } => commands::pbxproj::run(&mut ctx, &action),
         Resource::Bsp { action } => commands::bsp::run(&mut ctx, &action),
         Resource::DerivedData { action } => commands::derived_data::run(&mut ctx, &action),
         Resource::Doctor => commands::doctor::run(&mut ctx),

@@ -232,6 +232,51 @@ Notes / heuristics:
   the lone booted sim, else prompt (booted set, or the full list) / strict
   error off a TTY.
 
+## 9c. v4 — Xcode-file conflict resolution
+
+`project.pbxproj` is the canonical git merge-conflict nightmare: a flat,
+UUID-keyed plist where a line-based merge drops `<<<<<<<` markers in arbitrary
+spots and usually yields an unparseable file. This crate already owns both ends
+of the fix — a faithful parser ([`pbxproj`]) and a **byte-exact** writer
+([`pbxproj_writer`], verified against the whole fixture corpus) — so a *semantic*
+three-way merge is a thin layer between them.
+
+```
+sweetpad pbxproj resolve [PATHS…] [--force]
+                                     semantically resolve conflicted .pbxproj
+                                     files mid-merge. Defaults to every
+                                     conflicted .pbxproj in the repo; reads the
+                                     three clean inputs from git's index stages
+                                     (:1: base, :2: ours, :3: theirs), merges the
+                                     object graphs, writes the result, and
+                                     `git add`s it. --force recovers the inputs
+                                     from HEAD/MERGE_HEAD when git already
+                                     auto-merged the file textually.
+```
+
+The merge engine ([`pbxproj_merge`]) is pure (no git, no I/O, no Xcode) and
+runs the standard three-way rule per UUID-keyed object and per field: identical
+edits and one-sided changes resolve silently, disjoint object/array additions
+union (reference lists like `children`/`files` are treated as ordered sets,
+honoring deletions), and only genuine contradictions — both sides setting the
+same scalar differently, or modify-vs-delete — are reported as conflicts. On any
+conflict the file is left untouched for a human, with a graph-path report
+(`objects/<UUID> (<isa>)/<field>`) of exactly what collided; the command exits
+non-zero.
+
+Notes / heuristics:
+- Reads pristine blobs from git, never the marker-riddled working copy, so the
+  textual conflict's placement is irrelevant.
+- The merged object dict preserves base key order (then ours-only, then
+  theirs-only additions) and the parser's single-line layout hint, keeping the
+  writer's output Xcode-stable and low-churn.
+- Engine is unit-tested without a Mac (disjoint adds, one-sided delete,
+  modify-delete, same-field conflict, array union+delete, layout-hint
+  preservation); the end-to-end git path is exercised by a real synthetic merge.
+- Later: a git merge **driver** (`*.pbxproj merge=sweetpad`) is the same engine
+  wrapped to run automatically during `git merge`; `Package.resolved` (SPM, JSON)
+  is an adjacent trivial-merge candidate.
+
 ## 10. Testing
 
 The CLI modules carry inline `#[cfg(test)]` units that need no Xcode, so the

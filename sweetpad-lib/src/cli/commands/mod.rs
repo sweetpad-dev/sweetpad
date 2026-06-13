@@ -10,6 +10,7 @@ pub mod destination;
 pub mod device;
 pub mod doctor;
 pub mod format;
+pub mod pbxproj;
 pub mod project;
 pub mod scheme;
 pub mod settings;
