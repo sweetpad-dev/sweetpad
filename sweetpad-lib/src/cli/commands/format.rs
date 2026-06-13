@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::{Subcommand, ValueEnum};
 
-use crate::cli::{process, CliResult, Context};
+use crate::cli::{CliResult, Context, process};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Tool {
@@ -53,7 +53,10 @@ fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> CliR
     args.extend(targets);
 
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    ctx.out.note(&format!("{} with {tool:?}", if check { "checking" } else { "formatting" }));
+    ctx.out.note(&format!(
+        "{} with {tool:?}",
+        if check { "checking" } else { "formatting" }
+    ));
     process::stream(&program, &arg_refs, None)
 }
 
@@ -65,7 +68,11 @@ fn swift_format_command(check: bool, recursive: bool) -> (String, Vec<String>) {
     } else {
         ("swift-format".to_string(), Vec::new())
     };
-    args.push(if check { "lint".into() } else { "format".into() });
+    args.push(if check {
+        "lint".into()
+    } else {
+        "format".into()
+    });
     if !check {
         args.push("--in-place".into());
     }

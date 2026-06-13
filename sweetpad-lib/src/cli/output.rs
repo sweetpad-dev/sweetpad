@@ -22,7 +22,11 @@ impl Output {
         let color = !global.no_color
             && std::env::var_os("NO_COLOR").is_none()
             && std::io::stdout().is_terminal();
-        Self { json: global.json, color, verbose: global.verbose }
+        Self {
+            json: global.json,
+            color,
+            verbose: global.verbose,
+        }
     }
 
     #[must_use]
@@ -100,12 +104,20 @@ impl Output {
                 let _ = writeln!(std::io::stderr(), "{s}");
             }
         } else {
-            let prefix = if self.color { "\x1b[31merror:\x1b[0m" } else { "error:" };
+            let prefix = if self.color {
+                "\x1b[31merror:\x1b[0m"
+            } else {
+                "error:"
+            };
             let _ = writeln!(std::io::stderr(), "{prefix} {msg}");
         }
     }
 
     fn dim(&self, s: &str) -> String {
-        if self.color { format!("\x1b[2m{s}\x1b[0m") } else { s.to_string() }
+        if self.color {
+            format!("\x1b[2m{s}\x1b[0m")
+        } else {
+            s.to_string()
+        }
     }
 }

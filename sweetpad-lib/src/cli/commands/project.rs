@@ -44,7 +44,8 @@ fn info(ctx: &mut Context) -> CliResult {
     }
 
     ctx.out.line(&format!("{} ({})", info.name, info.kind));
-    ctx.out.line(&format!("  path: {}", resolved.container.path().display()));
+    ctx.out
+        .line(&format!("  path: {}", resolved.container.path().display()));
     section(ctx, "targets", &info.targets);
     section(ctx, "configurations", &info.configurations);
     section(ctx, "schemes", &info.schemes);
@@ -65,8 +66,9 @@ fn section(ctx: &Context, title: &str, items: &[String]) {
 fn gather(container: &Container) -> Result<Info, CliError> {
     match container {
         Container::Workspace(p) => {
-            let ws = crate::workspace::open(p)
-                .map_err(|e| CliError::new(format!("failed to read workspace {}: {e}", p.display())))?;
+            let ws = crate::workspace::open(p).map_err(|e| {
+                CliError::new(format!("failed to read workspace {}: {e}", p.display()))
+            })?;
             Ok(Info {
                 kind: "workspace",
                 name: ws.name.clone(),
@@ -76,8 +78,9 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             })
         }
         Container::Project(p) => {
-            let proj = crate::project::open(p)
-                .map_err(|e| CliError::new(format!("failed to read project {}: {e}", p.display())))?;
+            let proj = crate::project::open(p).map_err(|e| {
+                CliError::new(format!("failed to read project {}: {e}", p.display()))
+            })?;
             Ok(Info {
                 kind: "project",
                 name: proj.name.clone(),

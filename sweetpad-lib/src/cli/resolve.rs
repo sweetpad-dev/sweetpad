@@ -54,7 +54,8 @@ pub fn container(ctx: &Context) -> Result<Container, CliError> {
     if let Some(proj) = &ctx.global.project {
         return Ok(Container::Project(proj.clone()));
     }
-    let cwd = std::env::current_dir().map_err(|e| CliError::new(format!("cannot read cwd: {e}")))?;
+    let cwd =
+        std::env::current_dir().map_err(|e| CliError::new(format!("cannot read cwd: {e}")))?;
     discover(&cwd).ok_or_else(|| {
         CliError::new(
             "no .xcworkspace, .xcodeproj, or Package.swift found in the current \
@@ -115,7 +116,11 @@ pub fn resolve(ctx: &Context) -> Result<Resolved, CliError> {
     };
 
     Ok(Resolved {
-        scheme: pick(&ctx.global.scheme, &cfg.scheme, st.and_then(|s| s.scheme.as_ref())),
+        scheme: pick(
+            &ctx.global.scheme,
+            &cfg.scheme,
+            st.and_then(|s| s.scheme.as_ref()),
+        ),
         configuration: pick(
             &ctx.global.configuration,
             &cfg.configuration,
@@ -152,11 +157,9 @@ pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
         Container::Project(p) => crate::project::open(p)
             .map(|proj| proj.schemes)
             .map_err(|e| CliError::new(format!("failed to read project {}: {e}", p.display()))),
-        Container::SwiftPackage(p) => Err(CliError::new(format!(
-            "schemes are not supported for Swift packages ({}); xcodebuild \
-             synthesizes those from the manifest",
-            p.display()
-        ))),
+        // Swift packages have no pbxproj; ask xcodebuild for the synthesized
+        // schemes (this drives SPM build/test/run).
+        Container::SwiftPackage(_) => crate::cli::xcodebuild::list_schemes(container),
     }
 }
 
@@ -204,7 +207,10 @@ pub fn build_target(ctx: &Context, resolved: &Resolved) -> Result<BuildTarget, C
         d
     } else {
         let sims = crate::cli::simctl::list()?;
-        let labels: Vec<String> = sims.iter().map(crate::cli::simctl::Simulator::label).collect();
+        let labels: Vec<String> = sims
+            .iter()
+            .map(crate::cli::simctl::Simulator::label)
+            .collect();
         let chosen = choose(ctx, "destination", None, &labels)?;
         sims.iter()
             .find(|s| s.label() == chosen)
@@ -212,7 +218,11 @@ pub fn build_target(ctx: &Context, resolved: &Resolved) -> Result<BuildTarget, C
             .ok_or_else(|| CliError::new("destination not found"))?
     };
 
-    Ok(BuildTarget { scheme, configuration, destination })
+    Ok(BuildTarget {
+        scheme,
+        configuration,
+        destination,
+    })
 }
 
 /// Persist the settled selections to the machine state file so later commands
@@ -241,11 +251,14 @@ fn prompt_choice(what: &str, candidates: &[String]) -> Result<String, CliError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::{config::Config, output::Output, state::State, Context, GlobalArgs};
+    use crate::cli::{Context, GlobalArgs, config::Config, output::Output, state::State};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_dir(tag: &str) -> std::path::PathBuf {
-        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("sweetpad-test-{tag}-{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -263,7 +276,12 @@ mod tests {
             destination: None,
         };
         let out = Output::new(&global);
-        Context { global, config: Config::default(), state: State::default(), out }
+        Context {
+            global,
+            config: Config::default(),
+            state: State::default(),
+            out,
+        }
     }
 
     #[test]
@@ -315,7 +333,10 @@ mod tests {
     #[test]
     fn choose_auto_picks_single_candidate() {
         let c = ctx();
-        assert_eq!(choose(&c, "scheme", None, &["only".into()]).unwrap(), "only");
+        assert_eq!(
+            choose(&c, "scheme", None, &["only".into()]).unwrap(),
+            "only"
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 use clap::Subcommand;
 
-use crate::build_settings::{resolve_build_settings, BuildSettingsOptions};
+use crate::build_settings::{BuildSettingsOptions, resolve_build_settings};
 use crate::cli::resolve::{self, Container};
 use crate::cli::{CliError, CliResult, Context};
 
@@ -47,7 +47,12 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CliResult
         None
     } else {
         let schemes = resolve::schemes(&resolved.container)?;
-        Some(resolve::choose(ctx, "scheme", resolved.scheme.clone(), &schemes)?)
+        Some(resolve::choose(
+            ctx,
+            "scheme",
+            resolved.scheme.clone(),
+            &schemes,
+        )?)
     };
 
     let configuration = resolved
@@ -84,7 +89,8 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CliResult
             .iter()
             .map(|t| serde_json::json!({ "target": t.target, "settings": t.settings }))
             .collect();
-        ctx.out.json_value(&serde_json::json!({ "targets": targets }));
+        ctx.out
+            .json_value(&serde_json::json!({ "targets": targets }));
         return Ok(());
     }
 

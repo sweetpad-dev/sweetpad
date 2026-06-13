@@ -83,7 +83,9 @@ fn config_dir() -> Option<PathBuf> {
 }
 
 pub(crate) fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from)
+    std::env::var_os("HOME")
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from)
 }
 
 #[cfg(test)]
@@ -109,7 +111,10 @@ mod tests {
         // Per-project scheme/destination win; configuration falls through.
         assert_eq!(d.scheme.as_deref(), Some("App"));
         assert_eq!(d.configuration.as_deref(), Some("Debug"));
-        assert_eq!(d.destination.as_deref(), Some("platform=iOS Simulator,name=iPhone 15"));
+        assert_eq!(
+            d.destination.as_deref(),
+            Some("platform=iOS Simulator,name=iPhone 15")
+        );
 
         // Unknown project gets only the global defaults.
         let other = cfg.for_project("/other");

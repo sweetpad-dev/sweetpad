@@ -1,0 +1,4 @@
+# Generated on CI by `xcodegen generate`.
+*.xcodeproj/
+# Written by `sweetpad bsp init`.
+buildServer.json

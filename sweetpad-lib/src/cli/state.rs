@@ -91,7 +91,10 @@ mod tests {
         let back: State = toml::from_str(&text).unwrap();
         let p = back.projects.get("/work/App.xcodeproj").unwrap();
         assert_eq!(p.scheme.as_deref(), Some("App"));
-        assert_eq!(p.destination.as_deref(), Some("platform=iOS Simulator,id=UDID"));
+        assert_eq!(
+            p.destination.as_deref(),
+            Some("platform=iOS Simulator,id=UDID")
+        );
     }
 
     #[test]
@@ -99,6 +102,9 @@ mod tests {
         let mut state = State::default();
         assert!(state.projects.is_empty());
         state.project_mut("/x").configuration = Some("Release".into());
-        assert_eq!(state.projects.get("/x").unwrap().configuration.as_deref(), Some("Release"));
+        assert_eq!(
+            state.projects.get("/x").unwrap().configuration.as_deref(),
+            Some("Release")
+        );
     }
 }

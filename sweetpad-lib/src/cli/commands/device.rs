@@ -3,7 +3,7 @@
 
 use clap::Subcommand;
 
-use crate::cli::{devicectl, CliResult, Context};
+use crate::cli::{CliResult, Context, devicectl};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -43,7 +43,11 @@ fn list(ctx: &mut Context) -> CliResult {
         return Ok(());
     }
     for d in &devices {
-        let conn = if d.connection.is_empty() { String::new() } else { format!("  [{}]", d.connection) };
+        let conn = if d.connection.is_empty() {
+            String::new()
+        } else {
+            format!("  [{}]", d.connection)
+        };
         ctx.out.line(&format!("{}{conn}", d.label()));
         ctx.out.line(&format!("    {}", d.udid));
     }

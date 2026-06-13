@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 
-use crate::cli::{process, CliError};
+use crate::cli::{CliError, process};
 
 #[derive(Debug, Deserialize)]
 struct ListOutput {
@@ -76,7 +76,10 @@ impl Device {
     /// `"My iPhone (iPhone 15 Pro, iOS 17.0)"`.
     #[must_use]
     pub fn label(&self) -> String {
-        format!("{} ({}, {} {})", self.name, self.model, self.platform, self.os_version)
+        format!(
+            "{} ({}, {} {})",
+            self.name, self.model, self.platform, self.os_version
+        )
     }
 }
 
@@ -86,8 +89,10 @@ pub fn list() -> Result<Vec<Device>, CliError> {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let tmp: PathBuf =
-        std::env::temp_dir().join(format!("sweetpad-devices-{}-{nanos}.json", std::process::id()));
+    let tmp: PathBuf = std::env::temp_dir().join(format!(
+        "sweetpad-devices-{}-{nanos}.json",
+        std::process::id()
+    ));
 
     let ok = process::run(
         "xcrun",
@@ -120,8 +125,8 @@ pub fn list() -> Result<Vec<Device>, CliError> {
 /// (devicectl returns empty hardwareProperties for some USB iOS ≤16 devices)
 /// fall back to their `identifier`, and are dropped only if both are empty.
 fn parse_devices(raw: &str) -> Result<Vec<Device>, CliError> {
-    let parsed: ListOutput =
-        serde_json::from_str(raw).map_err(|e| CliError::new(format!("parsing devicectl output: {e}")))?;
+    let parsed: ListOutput = serde_json::from_str(raw)
+        .map_err(|e| CliError::new(format!("parsing devicectl output: {e}")))?;
 
     let mut devices: Vec<Device> = parsed
         .result
@@ -167,7 +172,15 @@ pub fn find<'a>(devices: &'a [Device], query: &str) -> Option<&'a Device> {
 pub fn install(device_id: &str, app_path: &str) -> Result<(), CliError> {
     process::stream(
         "xcrun",
-        &["devicectl", "device", "install", "app", "--device", device_id, app_path],
+        &[
+            "devicectl",
+            "device",
+            "install",
+            "app",
+            "--device",
+            device_id,
+            app_path,
+        ],
         None,
     )
 }
@@ -215,7 +228,15 @@ pub fn launch_console(device_id: &str, bundle_id: &str) -> Result<(), CliError> 
 pub fn terminate(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
     process::stream(
         "xcrun",
-        &["devicectl", "device", "process", "terminate", "--device", device_id, bundle_id],
+        &[
+            "devicectl",
+            "device",
+            "process",
+            "terminate",
+            "--device",
+            device_id,
+            bundle_id,
+        ],
         None,
     )
 }

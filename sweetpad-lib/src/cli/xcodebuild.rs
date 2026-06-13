@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::cli::resolve::Container;
-use crate::cli::{process, CliError};
+use crate::cli::{CliError, process};
 
 /// Everything needed to invoke `xcodebuild build` for a resolved target.
 pub struct BuildPlan<'a> {
@@ -110,7 +110,12 @@ impl TestPlan<'_> {
     pub fn run(&self, quiet: bool) -> Result<bool, CliError> {
         let parts = self.args();
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
-        process::run("xcodebuild", &args, working_dir(self.container).as_deref(), quiet)
+        process::run(
+            "xcodebuild",
+            &args,
+            working_dir(self.container).as_deref(),
+            quiet,
+        )
     }
 }
 
@@ -207,11 +212,14 @@ fn parse_settings(stdout: &str) -> Result<Vec<TargetBuildSettings>, CliError> {
     serde_json::from_str(json).map_err(|e| CliError::new(format!("parsing build settings: {e}")))
 }
 
-/// The launchable app produced by a build: the `.app` path and its bundle id.
+/// The launchable app produced by a build: the `.app` path, its bundle id, and
+/// the executable inside it (used to launch macOS apps directly).
 #[derive(Debug)]
 pub struct AppBundle {
     pub path: PathBuf,
     pub bundle_id: String,
+    /// `TARGET_BUILD_DIR/EXECUTABLE_PATH` — the binary to run for a macOS app.
+    pub executable: PathBuf,
 }
 
 /// Pick the launchable app from resolved settings: the first target that builds
@@ -233,15 +241,61 @@ pub fn app_bundle(settings: &[TargetBuildSettings]) -> Result<AppBundle, CliErro
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("app"))
         {
+            let build_dir = Path::new(build_dir);
+            let executable = t
+                .settings
+                .get("EXECUTABLE_PATH")
+                .map_or_else(|| build_dir.join(wrapper), |rel| build_dir.join(rel));
             return Ok(AppBundle {
-                path: Path::new(build_dir).join(wrapper),
+                path: build_dir.join(wrapper),
                 bundle_id: bundle_id.clone(),
+                executable,
             });
         }
     }
     Err(CliError::new(
         "could not find a launchable .app in the resolved build settings",
     ))
+}
+
+/// One project/workspace block of `xcodebuild -list -json`.
+#[derive(Debug, Default, Deserialize)]
+struct ListBlock {
+    #[serde(default)]
+    schemes: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListJson {
+    project: Option<ListBlock>,
+    workspace: Option<ListBlock>,
+}
+
+/// Scheme names via `xcodebuild -list -json`. Used for Swift packages, whose
+/// schemes xcodebuild synthesizes from the manifest (the in-process resolver
+/// only reads pbxproj). Xcode reports a package under the `workspace` key.
+pub fn list_schemes(container: &Container) -> Result<Vec<String>, CliError> {
+    let mut parts: Vec<String> = vec!["-list".into(), "-json".into()];
+    parts.extend(container_args(container));
+    let args: Vec<&str> = parts.iter().map(String::as_str).collect();
+    let stdout = process::capture("xcodebuild", &args, working_dir(container).as_deref())?;
+    parse_list_schemes(&stdout)
+}
+
+/// Parse `xcodebuild -list -json` schemes from either the project or workspace
+/// block, skipping any leading non-JSON.
+fn parse_list_schemes(stdout: &str) -> Result<Vec<String>, CliError> {
+    let json = stdout
+        .find('{')
+        .map(|i| &stdout[i..])
+        .ok_or_else(|| CliError::new("xcodebuild -list produced no JSON"))?;
+    let parsed: ListJson = serde_json::from_str(json)
+        .map_err(|e| CliError::new(format!("parsing xcodebuild -list: {e}")))?;
+    Ok(parsed
+        .workspace
+        .or(parsed.project)
+        .map(|b| b.schemes)
+        .unwrap_or_default())
 }
 
 #[cfg(test)]
@@ -267,11 +321,16 @@ mod tests {
         assert_eq!(
             plan.args(),
             vec![
-                "clean", "build",
-                "-scheme", "App",
-                "-configuration", "Debug",
-                "-destination", "platform=iOS Simulator,id=UDID",
-                "-project", "/work/App.xcodeproj",
+                "clean",
+                "build",
+                "-scheme",
+                "App",
+                "-configuration",
+                "Debug",
+                "-destination",
+                "platform=iOS Simulator,id=UDID",
+                "-project",
+                "/work/App.xcodeproj",
             ]
         );
     }
@@ -279,10 +338,24 @@ mod tests {
     #[test]
     fn build_args_workspace_omits_clean_and_destination() {
         let c = Container::Workspace(PathBuf::from("/work/App.xcworkspace"));
-        let plan = BuildPlan { container: &c, scheme: "App", configuration: "Release", destination: None, clean: false };
+        let plan = BuildPlan {
+            container: &c,
+            scheme: "App",
+            configuration: "Release",
+            destination: None,
+            clean: false,
+        };
         assert_eq!(
             plan.args(),
-            vec!["build", "-scheme", "App", "-configuration", "Release", "-workspace", "/work/App.xcworkspace"]
+            vec![
+                "build",
+                "-scheme",
+                "App",
+                "-configuration",
+                "Release",
+                "-workspace",
+                "/work/App.xcworkspace"
+            ]
         );
     }
 
@@ -305,11 +378,16 @@ mod tests {
             plan.args(),
             vec![
                 "test",
-                "-scheme", "App",
-                "-configuration", "Debug",
-                "-resultBundlePath", "/tmp/r.xcresult",
-                "-destination", "platform=iOS Simulator,id=UDID",
-                "-project", "/work/App.xcodeproj",
+                "-scheme",
+                "App",
+                "-configuration",
+                "Debug",
+                "-resultBundlePath",
+                "/tmp/r.xcresult",
+                "-destination",
+                "platform=iOS Simulator,id=UDID",
+                "-project",
+                "/work/App.xcodeproj",
                 "-only-testing:AppTests/LoginTests",
                 "-skip-testing:AppTests/FlakyTests/testJitter",
             ]
@@ -318,7 +396,8 @@ mod tests {
 
     #[test]
     fn parses_settings_skipping_preamble() {
-        let stdout = "warning: blah\n[{\"target\":\"App\",\"buildSettings\":{\"PRODUCT_NAME\":\"App\"}}]";
+        let stdout =
+            "warning: blah\n[{\"target\":\"App\",\"buildSettings\":{\"PRODUCT_NAME\":\"App\"}}]";
         let parsed = parse_settings(stdout).unwrap();
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].target, "App");
@@ -338,6 +417,32 @@ mod tests {
     }
 
     #[test]
+    fn app_bundle_resolves_macos_executable() {
+        let stdout = r#"[{"target":"App","buildSettings":{
+            "TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"App.app",
+            "EXECUTABLE_PATH":"App.app/Contents/MacOS/App","PRODUCT_BUNDLE_IDENTIFIER":"com.x.app"}}]"#;
+        let settings = parse_settings(stdout).unwrap();
+        let app = app_bundle(&settings).unwrap();
+        assert_eq!(
+            app.executable,
+            PathBuf::from("/d/App.app/Contents/MacOS/App")
+        );
+    }
+
+    #[test]
+    fn parses_list_schemes_from_workspace_or_project() {
+        let ws = r#"xcodebuild noise
+        {"workspace":{"name":"Pkg","schemes":["Pkg","PkgTests"]}}"#;
+        assert_eq!(parse_list_schemes(ws).unwrap(), vec!["Pkg", "PkgTests"]);
+
+        let proj = r#"{"project":{"name":"App","schemes":["App"]}}"#;
+        assert_eq!(parse_list_schemes(proj).unwrap(), vec!["App"]);
+
+        // Neither block ⇒ empty, not an error.
+        assert!(parse_list_schemes("{}").unwrap().is_empty());
+    }
+
+    #[test]
     fn app_bundle_errors_without_app() {
         let settings = parse_settings(r#"[{"target":"Lib","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"Lib.framework","PRODUCT_BUNDLE_IDENTIFIER":"com.x.lib"}}]"#).unwrap();
         assert!(app_bundle(&settings).is_err());
@@ -347,7 +452,10 @@ mod tests {
     fn parses_test_summary() {
         let out = "Some log line\n{\"result\":\"Failed\",\"totalTestCount\":5,\"passedTests\":4,\"failedTests\":1,\"skippedTests\":0,\"testFailures\":[{\"testName\":\"testX\",\"targetName\":\"AppTests\",\"failureText\":\"boom\"}]}";
         let s = parse_summary(out).unwrap();
-        assert_eq!((s.total_test_count, s.passed_tests, s.failed_tests), (5, 4, 1));
+        assert_eq!(
+            (s.total_test_count, s.passed_tests, s.failed_tests),
+            (5, 4, 1)
+        );
         assert_eq!(s.test_failures[0].test_name, "testX");
     }
 }

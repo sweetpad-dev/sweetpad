@@ -163,7 +163,9 @@ pub struct Context {
 /// argument vector minus `argv[0]` (clap re-prepends the program name).
 #[must_use]
 pub fn run(argv: &[String]) -> ExitCode {
-    let cli = match Cli::try_parse_from(std::iter::once("sweetpad".to_string()).chain(argv.iter().cloned())) {
+    let cli = match Cli::try_parse_from(
+        std::iter::once("sweetpad".to_string()).chain(argv.iter().cloned()),
+    ) {
         Ok(cli) => cli,
         Err(err) => {
             // clap renders help/usage/errors and picks the right stream.
@@ -184,11 +186,21 @@ pub fn run(argv: &[String]) -> ExitCode {
 
     // Completions need nothing from config/state — emit and return.
     if let Resource::Completions { shell } = &cli.resource {
-        clap_complete::generate(*shell, &mut Cli::command(), "sweetpad", &mut std::io::stdout());
+        clap_complete::generate(
+            *shell,
+            &mut Cli::command(),
+            "sweetpad",
+            &mut std::io::stdout(),
+        );
         return ExitCode::SUCCESS;
     }
 
-    let mut ctx = Context { global: cli.global, config, state, out };
+    let mut ctx = Context {
+        global: cli.global,
+        config,
+        state,
+        out,
+    };
 
     let result = match cli.resource {
         Resource::Scheme { action } => commands::scheme::run(&mut ctx, &action),

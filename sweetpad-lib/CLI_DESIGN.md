@@ -164,18 +164,32 @@ sweetpad completions <shell>          clap_complete-generated scripts
 
 - **`--device` / `--device-id <id>`** — build + install + launch on a physical
   device via `devicectl` (destination becomes `platform=iOS,id=<udid>`).
-- **inline logs by default** — after launching on a simulator, follow the app's
-  logs (`simctl spawn … log stream`); disable with **`--no-logs`**. Device log
-  following is not wired yet.
+- **`--mac`** — build and run as a native macOS app: no install step, launch the
+  built executable directly (`TARGET_BUILD_DIR/EXECUTABLE_PATH`).
+- **inline logs by default** — after launching, follow the app's output:
+  `simctl spawn … log stream` on a simulator, `devicectl … launch --console` on
+  a device, the executable's own stdout/stderr for macOS. Disable with
+  **`--no-logs`**.
 - **`--watch`** — poll the project's `.swift` sources (std-only, no extra deps)
   and rebuild + reinstall + relaunch on change; a failed rebuild keeps watching.
+
+`destination list` aggregates **macOS + simulators + connected devices**, each
+with a ready `-destination` specifier. SPM containers are supported for
+`scheme`/`build`/`test`/`run`: schemes come from `xcodebuild -list -json` (Xcode
+synthesizes them from the manifest, which the pbxproj resolver can't).
 
 Notes / heuristics:
 - `test run` exits non-zero on failures; the `--json` summary lands on stdout
   and the failure error on stderr, so both are independently consumable.
-- `app logs` / inline logs use a best-effort `processImagePath CONTAINS` log
+- simulator inline logs use a best-effort `processImagePath CONTAINS` log
   predicate; may need refinement per app.
-- New deps (under the `cli` feature only): `clap_complete`.
+- New deps (under the `cli` feature only): `clap_complete`, `dialoguer`.
+
+A **`cli-smoke` GitHub Actions job** (macOS) generates a real iOS app with
+XcodeGen (`ci/fixture-app/`) and runs the actual dev loop — `scheme/project/
+settings/destination/simulator/bsp/completions`, then `build start`,
+`test run`, `app run` — against live `xcodebuild`/`simctl`. This is the runtime
+counterpart to the unit tests below.
 
 ## 10. Testing
 
@@ -190,12 +204,12 @@ tool-spawning code is pinned without a Mac:
 - **Pure logic** — resolution precedence, config/state TOML round-trips,
   `choose` fallback branches, destination/`udid` parsing, watch snapshotting.
 
-Still macOS-only: the *runtime* truth (does xcodebuild actually build, does the
-log predicate/console attach behave). A macOS CI job would close that gap.
+The *runtime* truth (does xcodebuild actually build, does the log
+predicate/console attach behave) is exercised by the `cli-smoke` macOS job.
 
 ## 11. Open / later
 
-- `tools` resource (Homebrew toolchain doctor).
-- `config`/`state` management subcommands.
 - `xcbeautify` piping for prettier build/test output.
+- SPM `app run` (libraries have no `.app`; only build/test today).
 - Whether the extension actually adopts the CLI as its engine.
+- (Declined for now: `tools` resource, `config`/`state` subcommands.)
