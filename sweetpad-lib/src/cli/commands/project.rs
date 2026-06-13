@@ -64,194 +64,396 @@ fn new(ctx: &mut Context, args: &NewArgs) -> CliResult {
     let cwd = std::env::current_dir()
         .map_err(|e| CliError::new(format!("cannot read current directory: {e}")))?;
 
-    // Each step takes the flag if it was given, else asks on a TTY (with a
-    // default that Enter accepts), else falls back to the default off a TTY.
-    let current_dir = if args.current_dir {
-        true
-    } else if interactive {
-        confirm("Create the project in the current directory?", false)?
+    // On a TTY the wizard collects the answers (and lets the user step back to
+    // change earlier ones); off a TTY it's flags + defaults, strictly.
+    let answers = if interactive {
+        run_wizard(args, &cwd)?
     } else {
-        false
+        default_answers(args, &cwd)?
     };
 
-    // With --current-dir an absent name falls back to the directory's basename.
-    let dir_name = if current_dir {
-        cwd.file_name().map(|n| n.to_string_lossy().into_owned())
-    } else {
-        None
-    };
+    let spec = ProjectSpec::new(
+        &answers.name,
+        &answers.bundle_id,
+        &answers.deployment_target,
+        answers.platform,
+    )
+    .map_err(CliError::new)?;
 
-    let name = resolve_name(args, dir_name.as_deref(), interactive)?;
-
-    // From here every prompt carries an inline "accept all remaining defaults"
-    // choice (a menu entry / a `*` sentinel). Once taken, `defaults` flips true
-    // and the later steps stop asking.
-    let mut defaults = false;
-    let platform = resolve_platform(args, interactive, &mut defaults)?;
-    let bundle_id = resolve_bundle_id(args, &name, interactive, &mut defaults)?;
-    let deployment_target = resolve_deployment_target(args, platform, interactive, &mut defaults)?;
-
-    let spec =
-        ProjectSpec::new(&name, &bundle_id, &deployment_target, platform).map_err(CliError::new)?;
-
-    let root = if current_dir {
+    let root = if answers.current_dir {
         cwd
     } else {
         cwd.join(&spec.name)
     };
     ensure_writable(&root, args.force, interactive)?;
 
-    // --no-git short-circuits to "don't init"; otherwise ask (unless an earlier
-    // step already opted into defaults) / default to yes.
-    let want_git = if args.no_git {
-        false
-    } else if interactive && !defaults {
-        confirm("Initialize a git repository?", true)?
-    } else {
-        true
-    };
-
     let files = scaffold::scaffold(&spec);
     let written = write_files(&root, &files)?;
-    let git_initialized = want_git && init_git(ctx, &root);
+    let git_initialized = answers.git && init_git(ctx, &root);
 
-    report(ctx, &spec, &root, &written, current_dir, git_initialized);
+    report(
+        ctx,
+        &spec,
+        &root,
+        &written,
+        answers.current_dir,
+        git_initialized,
+    );
     Ok(())
 }
 
-/// Name resolution: explicit flag/arg > directory basename (with
-/// `--current-dir`) > interactive prompt > hard error in non-TTY contexts.
-fn resolve_name(
-    args: &NewArgs,
-    dir_name: Option<&str>,
-    interactive: bool,
-) -> Result<String, CliError> {
-    if let Some(name) = &args.name {
-        return Ok(name.clone());
-    }
-    if interactive {
-        return prompt("Project name", dir_name, scaffold::validate_name);
-    }
-    dir_name.map(str::to_string).ok_or_else(|| {
-        CliError::new(
-            "a project name is required (pass it as an argument, or use \
-             --current-dir to name the project after the current directory)",
-        )
+/// The fully-resolved choices a `project new` run operates on, however they were
+/// obtained (flags, the wizard, or defaults).
+struct Answers {
+    current_dir: bool,
+    name: String,
+    platform: scaffold::Platform,
+    bundle_id: String,
+    deployment_target: String,
+    git: bool,
+}
+
+fn dir_basename(dir: &Path) -> Option<String> {
+    dir.file_name().map(|n| n.to_string_lossy().into_owned())
+}
+
+/// Non-interactive resolution: flags win, else defaults. A missing name is the
+/// one hard error — there's no sensible default without `--current-dir`.
+fn default_answers(args: &NewArgs, cwd: &Path) -> Result<Answers, CliError> {
+    let current_dir = args.current_dir;
+    let name = match &args.name {
+        Some(name) => name.clone(),
+        None => current_dir
+            .then(|| dir_basename(cwd))
+            .flatten()
+            .ok_or_else(|| {
+                CliError::new(
+                    "a project name is required (pass it as an argument, or use \
+                     --current-dir to name the project after the current directory)",
+                )
+            })?,
+    };
+    let platform = args.platform.unwrap_or(scaffold::Platform::Ios);
+    Ok(Answers {
+        current_dir,
+        bundle_id: args
+            .bundle_id
+            .clone()
+            .unwrap_or_else(|| format!("com.example.{name}")),
+        deployment_target: args
+            .deployment_target
+            .clone()
+            .unwrap_or_else(|| platform.default_deployment_target().to_string()),
+        platform,
+        git: !args.no_git,
+        name,
     })
 }
 
-fn resolve_bundle_id(
-    args: &NewArgs,
-    name: &str,
-    interactive: bool,
-    defaults: &mut bool,
-) -> Result<String, CliError> {
-    let default = format!("com.example.{name}");
-    if let Some(bundle_id) = &args.bundle_id {
-        return Ok(bundle_id.clone());
+// Wizard sentinels and trailing menu entries.
+const SKIP: &str = "*"; // text steps: accept this default and all remaining ones
+const BACK: &str = "<"; // text steps: return to the previous step
+const USE_DEFAULTS: &str = "Use defaults for everything else"; // Select equivalent of `*`
+const GO_BACK: &str = "← Back"; // Select equivalent of `<`
+
+/// The ordered wizard steps. Each maps to one resolved [`Answers`] field.
+#[derive(Clone, Copy)]
+enum Step {
+    Location,
+    Name,
+    Platform,
+    BundleId,
+    DeploymentTarget,
+    Git,
+}
+
+/// How a step wants to move: forward, back to the previous step, or jump to the
+/// end filling everything still unset from defaults.
+enum Hop {
+    Next,
+    Back,
+    Defaults,
+}
+
+/// Running wizard state. Flags pre-seed it; the steps fill the rest. A stored
+/// answer doubles as the pre-filled default when a step is revisited via Back.
+struct Wizard<'a> {
+    cwd: &'a Path,
+    current_dir: bool,
+    name: Option<String>,
+    platform: Option<scaffold::Platform>,
+    bundle_id: Option<String>,
+    deployment_target: Option<String>,
+    git: bool,
+}
+
+/// Drive the steps a flag hasn't already pinned, honoring Back/Defaults, then
+/// fold the collected state into [`Answers`].
+fn run_wizard(args: &NewArgs, cwd: &Path) -> Result<Answers, CliError> {
+    let mut wiz = Wizard {
+        cwd,
+        current_dir: args.current_dir,
+        name: args.name.clone(),
+        platform: args.platform,
+        bundle_id: args.bundle_id.clone(),
+        deployment_target: args.deployment_target.clone(),
+        git: !args.no_git,
+    };
+
+    let mut steps = Vec::new();
+    if !args.current_dir {
+        steps.push(Step::Location);
     }
-    if !interactive || *defaults {
-        return Ok(default);
+    if args.name.is_none() {
+        steps.push(Step::Name);
     }
-    if let Some(value) =
-        prompt_or_skip("Bundle identifier", &default, scaffold::validate_bundle_id)?
-    {
-        Ok(value)
-    } else {
-        *defaults = true;
-        Ok(default)
+    if args.platform.is_none() {
+        steps.push(Step::Platform);
+    }
+    if args.bundle_id.is_none() {
+        steps.push(Step::BundleId);
+    }
+    if args.deployment_target.is_none() {
+        steps.push(Step::DeploymentTarget);
+    }
+    if !args.no_git {
+        steps.push(Step::Git);
+    }
+
+    let mut i = 0;
+    while i < steps.len() {
+        let can_back = i > 0;
+        let hop = match steps[i] {
+            Step::Location => wiz.ask_location(can_back)?,
+            Step::Name => wiz.ask_name(can_back)?,
+            Step::Platform => wiz.ask_platform(can_back)?,
+            Step::BundleId => wiz.ask_bundle_id(can_back)?,
+            Step::DeploymentTarget => wiz.ask_deployment_target(can_back)?,
+            Step::Git => wiz.ask_git(can_back)?,
+        };
+        match hop {
+            Hop::Next => i += 1,
+            Hop::Back => i = i.saturating_sub(1),
+            Hop::Defaults => break, // remaining fields stay None → defaulted below
+        }
+    }
+
+    wiz.into_answers()
+}
+
+impl Wizard<'_> {
+    fn into_answers(self) -> Result<Answers, CliError> {
+        // Name is always set here: it's flag-pinned or a step that precedes every
+        // "use defaults" escape (those start at Platform), so a break can't skip it.
+        let name = self
+            .name
+            .ok_or_else(|| CliError::new("a project name is required"))?;
+        let platform = self.platform.unwrap_or(scaffold::Platform::Ios);
+        Ok(Answers {
+            current_dir: self.current_dir,
+            bundle_id: self
+                .bundle_id
+                .unwrap_or_else(|| format!("com.example.{name}")),
+            deployment_target: self
+                .deployment_target
+                .unwrap_or_else(|| platform.default_deployment_target().to_string()),
+            platform,
+            git: self.git,
+            name,
+        })
+    }
+
+    fn ask_location(&mut self, can_back: bool) -> Result<Hop, CliError> {
+        let mut items = vec![
+            "Create a new project directory".to_string(),
+            "Use the current directory".to_string(),
+        ];
+        let back = add_back(&mut items, can_back);
+        let idx = select("Location", &items, usize::from(self.current_dir))?;
+        if Some(idx) == back {
+            return Ok(Hop::Back);
+        }
+        self.current_dir = idx == 1;
+        Ok(Hop::Next)
+    }
+
+    fn ask_name(&mut self, can_back: bool) -> Result<Hop, CliError> {
+        // Revisit shows the prior answer; first visit offers the directory
+        // basename only when scaffolding in place.
+        let default = self
+            .name
+            .clone()
+            .or_else(|| self.current_dir.then(|| dir_basename(self.cwd)).flatten());
+        match ask_text(
+            "Project name",
+            default.as_deref(),
+            scaffold::validate_name,
+            can_back,
+            false,
+        )? {
+            TextHop::Value(value) => {
+                self.name = Some(value);
+                Ok(Hop::Next)
+            }
+            TextHop::Back => Ok(Hop::Back),
+            TextHop::Defaults => unreachable!("name step has no defaults escape"),
+        }
+    }
+
+    fn ask_platform(&mut self, can_back: bool) -> Result<Hop, CliError> {
+        let choices = [scaffold::Platform::Ios, scaffold::Platform::Macos];
+        let mut items: Vec<String> = choices.iter().map(|p| p.label().to_string()).collect();
+        let defaults_idx = items.len();
+        items.push(USE_DEFAULTS.to_string());
+        let back = add_back(&mut items, can_back);
+        let default = usize::from(self.platform == Some(scaffold::Platform::Macos));
+        let idx = select("Platform", &items, default)?;
+        if Some(idx) == back {
+            return Ok(Hop::Back);
+        }
+        if idx == defaults_idx {
+            return Ok(Hop::Defaults);
+        }
+        self.platform = Some(choices[idx]);
+        Ok(Hop::Next)
+    }
+
+    fn ask_bundle_id(&mut self, can_back: bool) -> Result<Hop, CliError> {
+        let default = self
+            .bundle_id
+            .clone()
+            .unwrap_or_else(|| format!("com.example.{}", self.name.as_deref().unwrap_or("App")));
+        self.text_step(
+            "Bundle identifier",
+            &default,
+            scaffold::validate_bundle_id,
+            can_back,
+            |wiz, value| wiz.bundle_id = Some(value),
+        )
+    }
+
+    fn ask_deployment_target(&mut self, can_back: bool) -> Result<Hop, CliError> {
+        let platform = self.platform.unwrap_or(scaffold::Platform::Ios);
+        let default = self
+            .deployment_target
+            .clone()
+            .unwrap_or_else(|| platform.default_deployment_target().to_string());
+        let label = format!("{} deployment target", platform.label());
+        self.text_step(
+            &label,
+            &default,
+            scaffold::validate_deployment_target,
+            can_back,
+            |wiz, value| wiz.deployment_target = Some(value),
+        )
+    }
+
+    fn ask_git(&mut self, can_back: bool) -> Result<Hop, CliError> {
+        let mut items = vec!["Yes".to_string(), "No".to_string()];
+        let back = add_back(&mut items, can_back);
+        let idx = select(
+            "Initialize a git repository?",
+            &items,
+            usize::from(!self.git),
+        )?;
+        if Some(idx) == back {
+            return Ok(Hop::Back);
+        }
+        self.git = idx == 0;
+        Ok(Hop::Next)
+    }
+
+    /// Shared body for the optional text steps (bundle id, deployment target):
+    /// both honor the `*` defaults escape and the `<` back escape.
+    fn text_step(
+        &mut self,
+        label: &str,
+        default: &str,
+        validate: fn(&str) -> Result<(), String>,
+        can_back: bool,
+        store: impl FnOnce(&mut Self, String),
+    ) -> Result<Hop, CliError> {
+        match ask_text(label, Some(default), validate, can_back, true)? {
+            TextHop::Value(value) => {
+                store(self, value);
+                Ok(Hop::Next)
+            }
+            TextHop::Back => Ok(Hop::Back),
+            TextHop::Defaults => Ok(Hop::Defaults),
+        }
     }
 }
 
-/// Platform resolution: explicit flag > wizard pick > iOS. The picker carries a
-/// trailing "use defaults" entry that flips `defaults` and short-circuits.
-fn resolve_platform(
-    args: &NewArgs,
-    interactive: bool,
-    defaults: &mut bool,
-) -> Result<scaffold::Platform, CliError> {
-    if let Some(platform) = args.platform {
-        return Ok(platform);
-    }
-    if !interactive || *defaults {
-        return Ok(scaffold::Platform::Ios);
-    }
-    let choices = [scaffold::Platform::Ios, scaffold::Platform::Macos];
-    let mut labels: Vec<&str> = choices.iter().map(|p| p.label()).collect();
-    labels.push(USE_DEFAULTS);
-    let index = dialoguer::Select::new()
-        .with_prompt("Platform")
-        .items(&labels)
-        .default(0)
+/// Append a "← Back" entry when going back is possible; return its index.
+fn add_back(items: &mut Vec<String>, can_back: bool) -> Option<usize> {
+    can_back.then(|| {
+        items.push(GO_BACK.to_string());
+        items.len() - 1
+    })
+}
+
+/// A `Select` step returning the chosen index.
+fn select(prompt: &str, items: &[String], default: usize) -> Result<usize, CliError> {
+    dialoguer::Select::new()
+        .with_prompt(prompt)
+        .items(items)
+        .default(default)
         .interact()
-        .map_err(|e| CliError::new(format!("prompt failed: {e}")))?;
-    if index >= choices.len() {
-        *defaults = true;
-        return Ok(scaffold::Platform::Ios);
-    }
-    Ok(choices[index])
-}
-
-fn resolve_deployment_target(
-    args: &NewArgs,
-    platform: scaffold::Platform,
-    interactive: bool,
-    defaults: &mut bool,
-) -> Result<String, CliError> {
-    let default = platform.default_deployment_target();
-    if let Some(target) = &args.deployment_target {
-        return Ok(target.clone());
-    }
-    if !interactive || *defaults {
-        return Ok(default.to_string());
-    }
-    let label = format!("{} deployment target", platform.label());
-    if let Some(value) = prompt_or_skip(&label, default, scaffold::validate_deployment_target)? {
-        Ok(value)
-    } else {
-        *defaults = true;
-        Ok(default.to_string())
-    }
-}
-
-/// The lone token a text step accepts to mean "use this default and every
-/// remaining one". Invalid as a name/bundle-id/version, so it can never collide
-/// with a real value.
-const SKIP: &str = "*";
-/// The equivalent entry appended to a `Select` step.
-const USE_DEFAULTS: &str = "Use defaults for everything else";
-
-/// A required text step: pre-filled default, inline validation, re-asks until
-/// accepted. Used for the project name, which has no skip (it anchors the rest).
-fn prompt(
-    label: &str,
-    default: Option<&str>,
-    validate: fn(&str) -> Result<(), String>,
-) -> Result<String, CliError> {
-    let mut input = dialoguer::Input::<String>::new().with_prompt(label);
-    if let Some(default) = default {
-        input = input.default(default.to_string());
-    }
-    input
-        .validate_with(move |value: &String| validate(value))
-        .interact_text()
         .map_err(|e| CliError::new(format!("prompt failed: {e}")))
 }
 
-/// Like [`prompt`], but a lone [`SKIP`] (`*`) returns `Ok(None)` — the caller
-/// reads that as "fill this and the rest from defaults".
-fn prompt_or_skip(
+/// What a text step resolved to.
+enum TextHop {
+    Value(String),
+    Back,
+    Defaults,
+}
+
+/// A text wizard step: pre-filled default, inline validation (re-asks until
+/// accepted), plus the `<` back escape and — when `allow_defaults` — the `*`
+/// defaults escape. The escapes bypass validation.
+fn ask_text(
     label: &str,
-    default: &str,
+    default: Option<&str>,
     validate: fn(&str) -> Result<(), String>,
-) -> Result<Option<String>, CliError> {
-    let value = dialoguer::Input::<String>::new()
-        .with_prompt(format!("{label} (* = use defaults)"))
-        .default(default.to_string())
-        .validate_with(move |s: &String| if s == SKIP { Ok(()) } else { validate(s) })
+    can_back: bool,
+    allow_defaults: bool,
+) -> Result<TextHop, CliError> {
+    let mut hints = Vec::new();
+    if allow_defaults {
+        hints.push("* = defaults");
+    }
+    if can_back {
+        hints.push("< = back");
+    }
+    let prompt = if hints.is_empty() {
+        label.to_string()
+    } else {
+        format!("{label} ({})", hints.join(", "))
+    };
+
+    let mut input = dialoguer::Input::<String>::new().with_prompt(prompt);
+    if let Some(default) = default {
+        input = input.default(default.to_string());
+    }
+    let value = input
+        .validate_with(move |s: &String| {
+            if (allow_defaults && s == SKIP) || (can_back && s == BACK) {
+                Ok(())
+            } else {
+                validate(s)
+            }
+        })
         .interact_text()
         .map_err(|e| CliError::new(format!("prompt failed: {e}")))?;
-    Ok((value != SKIP).then_some(value))
+
+    if can_back && value == BACK {
+        Ok(TextHop::Back)
+    } else if allow_defaults && value == SKIP {
+        Ok(TextHop::Defaults)
+    } else {
+        Ok(TextHop::Value(value))
+    }
 }
 
 /// A yes/no wizard step with a default that Enter accepts.

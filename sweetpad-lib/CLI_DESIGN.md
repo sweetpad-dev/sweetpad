@@ -87,6 +87,11 @@ sweetpad project new <Name> [flags]
   picker has a trailing *"Use defaults for everything else"* entry, and the text
   steps accept a lone `*`. Choosing it fills that field and all later ones from
   defaults and finishes — no separate "proceed?" question.
+- **Back-navigation.** The wizard is a step machine over the un-flagged fields,
+  so any step past the first can go back to change an earlier answer — a `← Back`
+  entry on the `Select` steps and a lone `<` on the text steps. A revisited step
+  is pre-filled with the prior answer, and dependent defaults (bundle id from the
+  name, deployment target from the platform) recompute when their input changes.
 - **Platform.** `--platform ios|macos` (default `ios`); the wizard offers a
   picker. Switching platform swaps `SDKROOT`, the deployment-target key and its
   default (`17.0` iOS / `14.0` macOS), the framework runpath, and the iOS-only
