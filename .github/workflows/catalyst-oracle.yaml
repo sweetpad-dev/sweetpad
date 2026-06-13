@@ -1,0 +1,54 @@
+name: catalyst-oracle
+
+# Temp differential oracle for PR #264 (native macOS targets misdetected as Mac
+# Catalyst). Runs real `xcodebuild -sdk macosx -showBuildSettings` as ground
+# truth and compares the in-process resolver's IS_MACCATALYST against it, on a
+# fixture matching the report: project-wide iOS-family Base SDK, target supports
+# native macOS with SUPPORTS_MACCATALYST=NO.
+#
+# Push-triggered on this branch only (no PR needed) so it runs immediately. On
+# plain `main` it is RED — that captures the oracle and proves the bug. Applying
+# PR #264's detect_catalyst reorder turns it green. Delete the branch (and this
+# workflow) once #264 lands.
+on:
+  push:
+    branches: [claude/pr-264-catalyst-oracle]
+  workflow_dispatch:
+
+jobs:
+  oracle:
+    name: native-macOS Catalyst differential
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: sweetpad-lib
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sweetpad-lib
+
+      - name: Tooling versions
+        run: |
+          xcodebuild -version
+          rustc --version
+
+      - name: Build the sweetpad CLI
+        run: cargo build --bin sweetpad
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the fixture project
+        working-directory: sweetpad-lib/ci/fixture-catalyst
+        run: xcodegen generate
+
+      - name: Catalyst misdetection oracle
+        env:
+          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+        run: bash ci/catalyst-oracle.sh
