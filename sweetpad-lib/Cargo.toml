@@ -44,7 +44,7 @@ bsp-server = []
 # The standalone `sweetpad` CLI. Pulls in clap (arg parsing) plus serde/toml
 # for the XDG config & state files — standard formats not worth reinventing
 # (DOCS.md §3.1). Off in the addon build, so the cdylib never links them.
-cli = ["dep:clap", "dep:serde", "dep:toml"]
+cli = ["dep:clap", "dep:clap_complete", "dep:serde", "dep:toml"]
 # Compiles the `src/node.rs` N-API bindings into the cdylib. Off by default so
 # `cargo test` (and the interface-agnostic core) never link the Node runtime.
 node = ["dep:napi", "dep:napi-derive"]
@@ -61,6 +61,7 @@ serde_json = "1"
 # hand-authored ~/.config/sweetpad/config.toml and read/write the machine
 # ~/.local/state/sweetpad/state.toml.
 clap = { version = "4", features = ["derive", "env"], optional = true }
+clap_complete = { version = "4", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 toml = { version = "0.8", optional = true }
 

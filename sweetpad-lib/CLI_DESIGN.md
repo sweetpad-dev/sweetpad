@@ -143,9 +143,44 @@ CLI.
 - **Process orchestration:** spawn and stream `xcodebuild` / `xcrun simctl`;
   parse output for human and `--json` render paths.
 
-## 9. Open / later
+## 9. v2 — completing the headless dev loop
 
-- `test`, `format`, `device`, `bsp`, `tools` resources.
-- Shell-completion generation command.
-- Physical-device run/install/launch (the `--device` path of `app run`).
+Shipped on top of v1, same grammar and plumbing:
+
+```
+sweetpad test run [--only-testing ID]… [--skip-testing ID]…
+                                     xcodebuild test; --json emits a pass/fail
+                                     summary parsed from the .xcresult bundle
+sweetpad format run [paths…] [--tool swift-format|swiftlint] [--check]
+                                     formats in place (or lints with --check);
+                                     each tool reads its own project config
+sweetpad device list                 connected physical devices (xcrun devicectl)
+sweetpad bsp init [--output PATH]     write buildServer.json for sourcekit-lsp
+                                     (reuses the crate's bsp::write_config)
+sweetpad completions <shell>          clap_complete-generated scripts
+```
+
+`app run` gains the full session experience:
+
+- **`--device` / `--device-id <id>`** — build + install + launch on a physical
+  device via `devicectl` (destination becomes `platform=iOS,id=<udid>`).
+- **inline logs by default** — after launching on a simulator, follow the app's
+  logs (`simctl spawn … log stream`); disable with **`--no-logs`**. Device log
+  following is not wired yet.
+- **`--watch`** — poll the project's `.swift` sources (std-only, no extra deps)
+  and rebuild + reinstall + relaunch on change; a failed rebuild keeps watching.
+
+Notes / heuristics:
+- `test run` exits non-zero on failures; the `--json` summary lands on stdout
+  and the failure error on stderr, so both are independently consumable.
+- `app logs` / inline logs use a best-effort `processImagePath CONTAINS` log
+  predicate; may need refinement per app.
+- New deps (under the `cli` feature only): `clap_complete`.
+
+## 10. Open / later
+
+- `tools` resource (Homebrew toolchain doctor).
+- Device-side log streaming for `app run --device`.
+- A real fuzzy picker in place of the numbered-menu fallback.
+- `config`/`state` management subcommands.
 - Whether the extension actually adopts the CLI as its engine.
