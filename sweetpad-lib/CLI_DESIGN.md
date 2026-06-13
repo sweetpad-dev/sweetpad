@@ -38,6 +38,7 @@ v1 scope is **explore + build/run** — the minimum to actually develop headless
 sweetpad scheme list                 list schemes
 sweetpad destination list            list build destinations
 sweetpad project info                targets, configurations, schemes
+sweetpad project new <Name>          scaffold a new minimal SwiftUI iOS app
 sweetpad settings show               resolved build settings (lib's specialty)
 sweetpad simulator list              list simulators
 sweetpad simulator boot              boot a simulator
@@ -57,6 +58,56 @@ groups under `app`, the noun it acts on.
 
 Out of scope for v1 (later iterations): `test`, `format`, `device` (physical)
 management, `bsp` (autocomplete config), `tools` (Homebrew).
+
+## 3a. `project new` — scaffolding
+
+`project new` creates a fresh, buildable **minimal SwiftUI iOS app** with no
+external tools. The `.xcodeproj` is generated **natively**: a
+[`crate::pbxproj`] object graph assembled in [`cli::scaffold`] and serialized by
+the crate's own [`crate::pbxproj_writer`], with the shared `.xcscheme` built as
+a [`crate::xcscheme::Element`]. This keeps the CLI standalone — no XcodeGen
+dependency — and on-policy with DOCS §3 (hand-roll Apple's project formats).
+
+```
+sweetpad project new <Name> [flags]
+```
+
+- **One command, new directory by default.** Creates `./<Name>/`; `--current-dir`
+  scaffolds into the working directory instead (name then defaults to its
+  basename).
+- **Interactive wizard.** On a TTY, any value not supplied as a flag is prompted
+  for — location (current dir?), name, platform, bundle id, deployment target,
+  and git init — each with a default that **Enter accepts** (the name has no
+  universal default, so new-directory mode requires typing it). A non-empty
+  target additionally prompts to continue (the `--force` question). Non-TTY /
+  `--json` runs stay strict: flags and defaults only, and a missing name is an
+  error.
+- **Inline "use defaults" escape.** Every step after the name carries its own
+  way to accept the remaining defaults without more questions: the platform
+  picker has a trailing *"Use defaults for everything else"* entry, and the text
+  steps accept a lone `*`. Choosing it fills that field and all later ones from
+  defaults and finishes — no separate "proceed?" question.
+- **Back-navigation.** The wizard is a step machine over the un-flagged fields,
+  so any step past the first can go back to change an earlier answer — a `← Back`
+  entry on the `Select` steps and a lone `<` on the text steps. A revisited step
+  is pre-filled with the prior answer, and dependent defaults (bundle id from the
+  name, deployment target from the platform) recompute when their input changes.
+- **Platform.** `--platform ios|macos` (default `ios`); the wizard offers a
+  picker. Switching platform swaps `SDKROOT`, the deployment-target key and its
+  default (`17.0` iOS / `14.0` macOS), the framework runpath, and the iOS-only
+  Info.plist keys (launch screen, orientations, device family).
+- **Flags:** `--bundle-id` (default `com.example.<Name>`), `--deployment-target`
+  (platform default), `--platform`, `--no-git` (git init runs by default),
+  `--force` (allow a non-empty target), `--json` (emits the created paths).
+- **Generated tree:** `<Name>.xcodeproj` (pbxproj + inner `.xcworkspace` + shared
+  scheme), `<Name>/<Name>App.swift`, `<Name>/ContentView.swift`, `.gitignore`.
+- **Names** must be plain identifiers (letters/digits/underscore) so they're safe
+  as a Swift type, target, and product name in one.
+
+Generation is a **pure** function (spec → list of files), unit-tested by
+round-tripping the pbxproj through the parser and resolving it with
+`project::open_from_value`; the `cli-smoke` job then scaffolds a project and
+builds it with real `xcodebuild`.
 
 ## 4. Output model
 
