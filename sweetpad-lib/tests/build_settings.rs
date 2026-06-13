@@ -551,3 +551,68 @@ fn workspace_level_scheme_resolves() {
     let s = resolve_one(opts);
     assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
 }
+
+/// A workspace whose single member project is nested two directories below it
+/// (`<root>/Modules/App/Scratch.xcodeproj`) — the layout that defeats
+/// `find_derived_data_container`'s parent/grandparent search. Named `Apps`,
+/// distinct from the member `Scratch`, so the keyed container is unambiguous.
+fn nested_member_workspace(tag: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "sweetpad-bs-nested-{tag}-{}-{n}",
+        std::process::id()
+    ));
+    let proj = root.join("Modules/App/Scratch.xcodeproj");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::copy(
+        scratch_proj().join("project.pbxproj"),
+        proj.join("project.pbxproj"),
+    )
+    .unwrap();
+    let ws = root.join("Apps.xcworkspace");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(
+        ws.join("contents.xcworkspacedata"),
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n  <FileRef location=\"group:Modules/App/Scratch.xcodeproj\"/>\n</Workspace>\n",
+    )
+    .unwrap();
+    ws
+}
+
+#[test]
+fn workspace_keys_derived_data_by_the_workspace_not_a_nested_member() {
+    // Regression for issue #265. With the member project nested two dirs below
+    // the workspace, container inference (`find_derived_data_container`, which
+    // only sniffs the project's parent + grandparent) can't see
+    // `Apps.xcworkspace`. The resolver must nonetheless key BUILD_DIR under the
+    // container Xcode opened — the workspace (`Apps-<hash>`) — not the member
+    // project (`Scratch-<hash>`), so the path matches where xcodebuild writes
+    // the .app.
+    let ws = nested_member_workspace("derived-data");
+    let opts = BuildSettingsOptions {
+        workspace: Some(ws.clone()),
+        target: Some("Scratch".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let s = resolve_one(opts);
+    let build_dir = s.get("BUILD_DIR").expect("BUILD_DIR present");
+
+    // Xcode hashes the container path *as opened* — absolute, symlinks intact —
+    // which is exactly what `absolutize` preserves.
+    let ws_abs = sweetpad::project::absolutize(&ws);
+    let hash = sweetpad::xcode_hash::derived_data_hash(&ws_abs.display().to_string());
+    let expected = format!("/DerivedData/Apps-{hash}/Build/Products");
+    assert!(
+        build_dir.ends_with(&expected),
+        "BUILD_DIR must be keyed under the workspace container Apps-{hash}; got {build_dir}"
+    );
+    assert!(
+        !build_dir.contains("/DerivedData/Scratch-"),
+        "BUILD_DIR must not be keyed under the nested member project (issue #265): {build_dir}"
+    );
+}
