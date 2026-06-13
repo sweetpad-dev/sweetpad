@@ -50,33 +50,7 @@ jobs:
         working-directory: sweetpad-lib/ci/fixture-app
         run: xcodegen generate
 
-      - name: Smoke-test the CLI against the fixture app
-        working-directory: sweetpad-lib/ci/fixture-app
-        run: |
-          set -euxo pipefail
-          BIN="$GITHUB_WORKSPACE/sweetpad-lib/target/debug/sweetpad"
-          PROJ="SweetpadCIApp.xcodeproj"
-
-          # --- explorers (no build needed) ---
-          "$BIN" scheme list --project "$PROJ"
-          "$BIN" project info --project "$PROJ"
-          "$BIN" settings show --project "$PROJ" --scheme SweetpadCIApp --key PRODUCT_BUNDLE_IDENTIFIER
-          "$BIN" simulator list --json > /dev/null
-          "$BIN" bsp init --project "$PROJ"
-          test -f buildServer.json
-          "$BIN" completions zsh > /dev/null
-
-          # --- pick an available iOS simulator destination via the CLI itself ---
-          DEST=$("$BIN" destination list --json \
-            | python3 -c "import json,sys; d=json.load(sys.stdin)['destinations']; print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
-          echo "Using destination: $DEST"
-          UDID="${DEST##*id=}"
-
-          # Boot it up front so install/launch don't race the boot.
-          xcrun simctl boot "$UDID" || true
-          xcrun simctl bootstatus "$UDID" -b || true
-
-          # --- the real dev loop: build, test, run ---
-          "$BIN" build start --project "$PROJ" --scheme SweetpadCIApp --destination "$DEST"
-          "$BIN" test run --project "$PROJ" --scheme SweetpadCIApp --destination "$DEST" --json
-          "$BIN" app run --project "$PROJ" --scheme SweetpadCIApp --destination "$DEST" --no-logs
+      - name: End-to-end CLI coverage (app + Swift package)
+        env:
+          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+        run: bash sweetpad-lib/ci/smoke.sh

@@ -1,16 +1,17 @@
-# Minimal runnable iOS app used by the `cli-smoke` workflow to exercise the
-# standalone `sweetpad` CLI against real xcodebuild/simctl. Generated on CI with
-# XcodeGen (`xcodegen generate`); the resulting .xcodeproj is not committed.
+# Minimal runnable iOS + macOS app used by the `cli-smoke` workflow to exercise
+# the standalone `sweetpad` CLI against real xcodebuild/simctl. Generated on CI
+# with XcodeGen (`xcodegen generate`); the resulting .xcodeproj is not committed.
 name: SweetpadCIApp
 options:
   bundleIdPrefix: dev.sweetpad.ci
   deploymentTarget:
     iOS: "16.0"
+    macOS: "13.0"
   createIntermediateGroups: true
 
 settings:
   base:
-    # Simulator builds don't need signing; keep CI free of provisioning.
+    # Simulator/unsigned builds don't need signing; keep CI free of provisioning.
     CODE_SIGNING_ALLOWED: "NO"
     SWIFT_VERSION: "5.0"
 
@@ -39,8 +40,20 @@ targets:
     dependencies:
       - target: SweetpadCIApp
 
-# An explicit shared scheme so `sweetpad scheme list` and -scheme resolution
-# find it (XcodeGen writes it to xcshareddata/xcschemes).
+  # A macOS app target so `build`/`app run --mac` have a macOS scheme to use.
+  # Reuses the same SwiftUI sources (SwiftUI is cross-platform).
+  SweetpadCIMac:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.ci.mac
+        GENERATE_INFOPLIST_FILE: "YES"
+
+# Explicit shared schemes so `sweetpad scheme list` / -scheme resolution find
+# them (XcodeGen writes them to xcshareddata/xcschemes).
 schemes:
   SweetpadCIApp:
     build:
@@ -52,3 +65,9 @@ schemes:
       config: Debug
       targets:
         - SweetpadCIAppTests
+  SweetpadCIMac:
+    build:
+      targets:
+        SweetpadCIMac: all
+    run:
+      config: Debug
