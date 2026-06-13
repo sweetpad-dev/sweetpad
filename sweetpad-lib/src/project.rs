@@ -1174,13 +1174,16 @@ pub fn detect_catalyst(
     if canonicalize_sdk_base(sdk_canonical) != "macosx" {
         return false;
     }
-    if matches!(
-        natural_sdk,
-        Some("iphoneos" | "appletvos" | "watchos" | "xros")
-    ) {
+    if matches!(supports_maccatalyst, Some(v) if v.eq_ignore_ascii_case("NO")) {
+        return false;
+    }
+    if matches!(supports_maccatalyst, Some(v) if v.eq_ignore_ascii_case("YES")) {
         return true;
     }
-    matches!(supports_maccatalyst, Some(v) if v.eq_ignore_ascii_case("YES"))
+    matches!(
+        natural_sdk,
+        Some("iphoneos" | "appletvos" | "watchos" | "xros")
+    )
 }
 
 /// Apple's Mac Catalyst minimum iOS deployment is 13.1. Any user-set
@@ -3957,6 +3960,8 @@ mod tests {
         assert!(!detect_catalyst("macosx", Some("macosx"), None));
         assert!(!detect_catalyst("macosx", None, None));
         assert!(!detect_catalyst("macosx", None, Some("NO")));
+        assert!(!detect_catalyst("macosx", Some("iphoneos"), Some("NO")));
+        assert!(!detect_catalyst("macosx", Some("iphoneos"), Some("no")));
         assert!(!detect_catalyst("iphonesimulator", Some("iphoneos"), None));
         // Simulators on the iOS family aren't Catalyst — they're native.
         assert!(!detect_catalyst("macosx", Some("iphonesimulator"), None));
