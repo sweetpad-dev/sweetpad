@@ -616,3 +616,38 @@ fn workspace_keys_derived_data_by_the_workspace_not_a_nested_member() {
         "BUILD_DIR must not be keyed under the nested member project (issue #265): {build_dir}"
     );
 }
+
+/// A native macOS target that inherits an iOS-family Base SDK but explicitly
+/// opts out of Mac Catalyst, resolved for a macOS destination. Regression for
+/// the misdetection fixed in #264: an explicit `SUPPORTS_MACCATALYST = NO` must
+/// win over the iOS-family `SDKROOT` heuristic, so the resolver agrees with
+/// xcodebuild — native macOS (IS_MACCATALYST=NO), not Catalyst (which would
+/// wrongly yield a `-maccatalyst` build dir Xcode never writes).
+#[test]
+fn native_macos_target_opting_out_of_catalyst_is_not_catalyst() {
+    let dir = std::env::temp_dir().join(format!("sweetpad-catalyst-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // The report's shape: a project-wide iOS-family Base SDK, but the target is
+    // a native macOS app that does NOT support Mac Catalyst.
+    let xcconfig = dir.join("catalyst.xcconfig");
+    std::fs::write(&xcconfig, "SDKROOT = iphoneos\nSUPPORTS_MACCATALYST = NO\n").unwrap();
+    let opts = BuildSettingsOptions {
+        // A macOS run destination binds the macosx SDK — the trigger for
+        // Catalyst detection.
+        destination: parse_destination_arg("platform=macOS"),
+        xcconfig: Some(xcconfig),
+        ..scratch_opts()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(
+        s.get("IS_MACCATALYST").map(String::as_str),
+        Some("NO"),
+        "explicit SUPPORTS_MACCATALYST=NO must beat the iOS-family SDKROOT (issue #264)"
+    );
+    assert_ne!(
+        s.get("EFFECTIVE_PLATFORM_NAME").map(String::as_str),
+        Some("-maccatalyst"),
+        "a native macOS target must not get the -maccatalyst build dir"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
