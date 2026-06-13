@@ -38,6 +38,7 @@ v1 scope is **explore + build/run** — the minimum to actually develop headless
 sweetpad scheme list                 list schemes
 sweetpad destination list            list build destinations
 sweetpad project info                targets, configurations, schemes
+sweetpad project new <Name>          scaffold a new minimal SwiftUI iOS app
 sweetpad settings show               resolved build settings (lib's specialty)
 sweetpad simulator list              list simulators
 sweetpad simulator boot              boot a simulator
@@ -57,6 +58,39 @@ groups under `app`, the noun it acts on.
 
 Out of scope for v1 (later iterations): `test`, `format`, `device` (physical)
 management, `bsp` (autocomplete config), `tools` (Homebrew).
+
+## 3a. `project new` — scaffolding
+
+`project new` creates a fresh, buildable **minimal SwiftUI iOS app** with no
+external tools. The `.xcodeproj` is generated **natively**: a
+[`crate::pbxproj`] object graph assembled in [`cli::scaffold`] and serialized by
+the crate's own [`crate::pbxproj_writer`], with the shared `.xcscheme` built as
+a [`crate::xcscheme::Element`]. This keeps the CLI standalone — no XcodeGen
+dependency — and on-policy with DOCS §3 (hand-roll Apple's project formats).
+
+```
+sweetpad project new <Name> [flags]
+```
+
+- **One command, new directory by default.** Creates `./<Name>/`; `--current-dir`
+  scaffolds into the working directory instead (name then defaults to its
+  basename).
+- **Interactive wizard.** On a TTY, any value not supplied as a flag is prompted
+  for (name, bundle id, deployment target) with validated defaults. Non-TTY /
+  `--json` runs stay strict: defaults are used and a missing name is an error.
+- **Flags:** `--bundle-id` (default `com.example.<Name>`), `--deployment-target`
+  (default `17.0`), `--platform ios` (iOS only in v1; reserved for `macos`),
+  `--no-git` (git init runs by default), `--force` (allow a non-empty target),
+  `--json` (emits the created paths).
+- **Generated tree:** `<Name>.xcodeproj` (pbxproj + inner `.xcworkspace` + shared
+  scheme), `<Name>/<Name>App.swift`, `<Name>/ContentView.swift`, `.gitignore`.
+- **Names** must be plain identifiers (letters/digits/underscore) so they're safe
+  as a Swift type, target, and product name in one.
+
+Generation is a **pure** function (spec → list of files), unit-tested by
+round-tripping the pbxproj through the parser and resolving it with
+`project::open_from_value`; the `cli-smoke` job then scaffolds a project and
+builds it with real `xcodebuild`.
 
 ## 4. Output model
 

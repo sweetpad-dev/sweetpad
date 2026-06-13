@@ -22,6 +22,7 @@ pub mod devicectl;
 pub mod output;
 pub mod process;
 pub mod resolve;
+pub mod scaffold;
 pub mod simctl;
 pub mod state;
 pub mod xcodebuild;

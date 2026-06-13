@@ -151,6 +151,30 @@ ok "build start --clean"
 ok "build start (macOS)"
 
 # ---------------------------------------------------------------------------
+section "project new (scaffold a fresh app and build it)"
+# Generate a project from scratch, then prove the hand-assembled pbxproj is one
+# real xcodebuild actually accepts and compiles — the runtime counterpart to the
+# parser round-trip unit tests.
+GEN_DIR="$(mktemp -d)"
+( cd "$GEN_DIR" && "$BIN" project new SmokeGen --bundle-id dev.sweetpad.ci.smokegen --no-git )
+GEN_PROJ="$GEN_DIR/SmokeGen/SmokeGen.xcodeproj"
+test -d "$GEN_PROJ" || fail "generated .xcodeproj missing: $GEN_PROJ"
+ok "project new wrote $GEN_PROJ"
+out=$("$BIN" project info --project "$GEN_PROJ" --json)
+assert_json "$out" "d['targets']" "['SmokeGen']"
+assert_json "$out" "d['schemes']" "['SmokeGen']"
+ok "generated project resolves (target + shared scheme)"
+"$BIN" build start --project "$GEN_PROJ" --scheme SmokeGen --destination "$DEST"
+ok "build start on generated project (iOS simulator)"
+# --current-dir variant: scaffold in place, name defaults to the directory.
+GEN_HERE="$GEN_DIR/HereApp"
+mkdir -p "$GEN_HERE"
+out=$(cd "$GEN_HERE" && "$BIN" project new --current-dir --no-git --json)
+assert_json "$out" "d['name']" "HereApp"
+test -d "$GEN_HERE/HereApp.xcodeproj" || fail "--current-dir did not scaffold in place"
+ok "project new --current-dir (in-place, name from directory)"
+
+# ---------------------------------------------------------------------------
 section "test (iOS)"
 out=$("$BIN" test run --project "$APP" --scheme SweetpadCIApp --destination "$DEST" --json)
 assert_json "$out" "d['passed']" "True"

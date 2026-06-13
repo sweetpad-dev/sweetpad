@@ -1,20 +1,274 @@
-//! `sweetpad project …` — inspect the project.
+//! `sweetpad project …` — inspect and scaffold projects.
+
+use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 
 use crate::cli::resolve::{self, Container};
+use crate::cli::scaffold::{self, ProjectSpec, ScaffoldFile};
 use crate::cli::{CliError, CliResult, Context};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
     /// Show targets, configurations, and schemes for the resolved project.
     Info,
+    /// Create a new minimal SwiftUI iOS app project.
+    ///
+    /// Run with no flags on a terminal to be walked through a short wizard;
+    /// pass flags (or `--json`) to skip the prompts and use defaults.
+    New(NewArgs),
+}
+
+/// Flags for `project new`. Anything left unset is filled by the interactive
+/// wizard on a TTY, or by its default otherwise.
+#[derive(Debug, clap::Args)]
+pub struct NewArgs {
+    /// Project name — used for the `.xcodeproj`, target, and product. Optional
+    /// with `--current-dir`, where it defaults to the directory's name.
+    pub name: Option<String>,
+
+    /// Scaffold into the current directory instead of creating `./<Name>/`.
+    #[arg(long)]
+    pub current_dir: bool,
+
+    /// Bundle identifier (default: `com.example.<Name>`).
+    #[arg(long)]
+    pub bundle_id: Option<String>,
+
+    /// iOS deployment target (default: `17.0`).
+    #[arg(long)]
+    pub deployment_target: Option<String>,
+
+    /// Target platform. Only `ios` is supported in this version.
+    #[arg(long, default_value = "ios")]
+    pub platform: String,
+
+    /// Skip `git init` in the new project.
+    #[arg(long)]
+    pub no_git: bool,
+
+    /// Allow scaffolding into a non-empty directory.
+    #[arg(long)]
+    pub force: bool,
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
     match action {
         Action::Info => info(ctx),
+        Action::New(args) => new(ctx, args),
     }
+}
+
+fn new(ctx: &mut Context, args: &NewArgs) -> CliResult {
+    if args.platform != "ios" {
+        return Err(CliError::new(format!(
+            "unsupported platform {:?}; only `ios` is supported in this version",
+            args.platform
+        )));
+    }
+
+    let interactive = ctx.out.is_interactive();
+    let cwd = std::env::current_dir()
+        .map_err(|e| CliError::new(format!("cannot read current directory: {e}")))?;
+
+    // With --current-dir an absent name falls back to the directory's basename.
+    let dir_name = if args.current_dir {
+        cwd.file_name().map(|n| n.to_string_lossy().into_owned())
+    } else {
+        None
+    };
+
+    let name = resolve_name(args, dir_name.as_deref(), interactive)?;
+    let bundle_id = resolve_bundle_id(args, &name, interactive)?;
+    let deployment_target = resolve_deployment_target(args, interactive)?;
+
+    let spec = ProjectSpec::new(&name, &bundle_id, &deployment_target).map_err(CliError::new)?;
+
+    let root = if args.current_dir {
+        cwd
+    } else {
+        cwd.join(&spec.name)
+    };
+    ensure_writable(&root, args.force)?;
+
+    let files = scaffold::scaffold(&spec);
+    let written = write_files(&root, &files)?;
+    let git_initialized = !args.no_git && init_git(ctx, &root);
+
+    report(
+        ctx,
+        &spec,
+        &root,
+        &written,
+        args.current_dir,
+        git_initialized,
+    );
+    Ok(())
+}
+
+/// Name resolution: explicit flag/arg > directory basename (with
+/// `--current-dir`) > interactive prompt > hard error in non-TTY contexts.
+fn resolve_name(
+    args: &NewArgs,
+    dir_name: Option<&str>,
+    interactive: bool,
+) -> Result<String, CliError> {
+    if let Some(name) = &args.name {
+        return Ok(name.clone());
+    }
+    if interactive {
+        return prompt("Project name", dir_name, scaffold::validate_name);
+    }
+    dir_name.map(str::to_string).ok_or_else(|| {
+        CliError::new(
+            "a project name is required (pass it as an argument, or use \
+             --current-dir to name the project after the current directory)",
+        )
+    })
+}
+
+fn resolve_bundle_id(args: &NewArgs, name: &str, interactive: bool) -> Result<String, CliError> {
+    if let Some(bundle_id) = &args.bundle_id {
+        return Ok(bundle_id.clone());
+    }
+    let default = format!("com.example.{name}");
+    if interactive {
+        return prompt(
+            "Bundle identifier",
+            Some(&default),
+            scaffold::validate_bundle_id,
+        );
+    }
+    Ok(default)
+}
+
+fn resolve_deployment_target(args: &NewArgs, interactive: bool) -> Result<String, CliError> {
+    if let Some(target) = &args.deployment_target {
+        return Ok(target.clone());
+    }
+    let default = "17.0";
+    if interactive {
+        return prompt(
+            "iOS deployment target",
+            Some(default),
+            scaffold::validate_deployment_target,
+        );
+    }
+    Ok(default.to_string())
+}
+
+/// One wizard step: a text prompt with an optional pre-filled default and
+/// inline validation (re-asks until the value is accepted).
+fn prompt(
+    label: &str,
+    default: Option<&str>,
+    validate: fn(&str) -> Result<(), String>,
+) -> Result<String, CliError> {
+    let mut input = dialoguer::Input::<String>::new().with_prompt(label);
+    if let Some(default) = default {
+        input = input.default(default.to_string());
+    }
+    input
+        .validate_with(move |value: &String| validate(value))
+        .interact_text()
+        .map_err(|e| CliError::new(format!("prompt failed: {e}")))
+}
+
+/// Refuse to scaffold over an existing non-empty directory unless `--force`.
+fn ensure_writable(root: &Path, force: bool) -> CliResult {
+    match std::fs::read_dir(root) {
+        Ok(mut entries) => {
+            if entries.next().is_some() && !force {
+                return Err(CliError::new(format!(
+                    "{} already exists and is not empty (use --force to scaffold \
+                     into it anyway)",
+                    root.display()
+                )));
+            }
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(CliError::new(format!(
+            "cannot inspect {}: {e}",
+            root.display()
+        ))),
+    }
+}
+
+/// Write each generated file under `root`, creating parent directories.
+fn write_files(root: &Path, files: &[ScaffoldFile]) -> Result<Vec<PathBuf>, CliError> {
+    let mut written = Vec::with_capacity(files.len());
+    for file in files {
+        let full = root.join(&file.path);
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                CliError::new(format!("failed to create {}: {e}", parent.display()))
+            })?;
+        }
+        std::fs::write(&full, &file.contents)
+            .map_err(|e| CliError::new(format!("failed to write {}: {e}", full.display())))?;
+        written.push(full);
+    }
+    Ok(written)
+}
+
+/// Best-effort `git init`. A missing git or a non-zero exit is a soft note —
+/// the project is already written and usable without a repository.
+fn init_git(ctx: &Context, root: &Path) -> bool {
+    match crate::cli::process::run("git", &["init", "--quiet"], Some(root), true) {
+        Ok(true) => true,
+        Ok(false) => {
+            ctx.out
+                .note("git init failed; skipping repository initialization");
+            false
+        }
+        Err(_) => {
+            ctx.out
+                .note("git not found on PATH; skipping repository initialization");
+            false
+        }
+    }
+}
+
+fn report(
+    ctx: &Context,
+    spec: &ProjectSpec,
+    root: &Path,
+    written: &[PathBuf],
+    current_dir: bool,
+    git_initialized: bool,
+) {
+    let xcodeproj = root.join(format!("{}.xcodeproj", spec.name));
+    let scheme = xcodeproj
+        .join("xcshareddata")
+        .join("xcschemes")
+        .join(format!("{}.xcscheme", spec.name));
+
+    if ctx.out.is_json() {
+        ctx.out.json_value(&serde_json::json!({
+            "name": spec.name,
+            "path": root.display().to_string(),
+            "xcodeproj": xcodeproj.display().to_string(),
+            "scheme": scheme.display().to_string(),
+            "bundleId": spec.bundle_id,
+            "deploymentTarget": spec.deployment_target,
+            "gitInitialized": git_initialized,
+            "files": written
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>(),
+        }));
+        return;
+    }
+
+    ctx.out
+        .line(&format!("Created {} at {}", spec.name, root.display()));
+    ctx.out.line("");
+    ctx.out.line("Next steps:");
+    if !current_dir {
+        ctx.out.line(&format!("  cd {}", spec.name));
+    }
+    ctx.out.line("  sweetpad build start");
 }
 
 /// Gathered project facts, container-agnostic so workspace and project render
