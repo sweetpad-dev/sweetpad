@@ -1,5 +1,5 @@
 //! Layer 1 of the BSP measurement loop (see `DOCS.md` §8 (BSP server)): protocol
-//! conformance. Drives the `sweetpad-lib bsp` server with a scripted JSON-RPC
+//! conformance. Drives the `bsp-server bsp` server with a scripted JSON-RPC
 //! session (no `sourcekit-lsp`, no build) and asserts the structural invariants:
 //! every target is listed, sources are returned, `sources` ↔ `inverseSources`
 //! round-trips, and `sourceKitOptions` yields editor arguments.
@@ -66,7 +66,7 @@ fn run_session_args(messages: &[Value], project: &str, extra: &[&str]) -> Vec<Va
     for m in messages {
         input.extend(frame(m));
     }
-    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--project", project])
         .args(extra)
         .stdin(Stdio::piped())
@@ -862,7 +862,7 @@ fn bsp_starts_from_extension_bsp_json() {
     for m in &messages {
         input.extend(frame(m));
     }
-    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .arg("bsp")
         .current_dir(&workspace)
         .stdin(Stdio::piped())
@@ -920,7 +920,7 @@ fn bsp_replies_parse_error_on_malformed_frame() {
     ] {
         input.extend(frame(&m));
     }
-    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--project", &proj])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -967,7 +967,7 @@ fn bsp_framing_header_robustness() {
     let body = json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}).to_string();
     let mut input = format!("content-length: {}\r\n\r\n{body}", body.len()).into_bytes();
     input.extend(frame(&json!({"jsonrpc":"2.0","method":"build/exit"})));
-    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--project", &proj])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -995,7 +995,7 @@ fn bsp_framing_header_robustness() {
 
     // Unparseable length: the frame boundary is unrecoverable — exit non-zero
     // without panicking (a panic would abort with a signal, not a code).
-    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--project", &proj])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -1023,7 +1023,7 @@ fn bsp_framing_header_robustness() {
 #[test]
 fn bsp_rejects_oversized_content_length() {
     let proj = project();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--project", &proj])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())

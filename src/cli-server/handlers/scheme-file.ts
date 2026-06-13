@@ -32,7 +32,7 @@ export const schemeReveal: HandlerFn<
   const all = await locateSchemeFiles(ctx.workspacePath, name);
   if (all.length === 0) {
     throw new SweetpadRpcError(ERROR_CODES.SCHEME_FILE_NOT_FOUND, `No .xcscheme file found for "${name}".`, {
-      hint: "sweetpad scheme.list",
+      hint: "sweetpad vscode scheme.list",
     });
   }
   const primary = all[0];

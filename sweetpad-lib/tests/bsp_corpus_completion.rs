@@ -576,7 +576,7 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
 
     // Point sourcekit-lsp at our server (config dog-foods the real command).
     let build_server = project_dir.join("buildServer.json");
-    let cfg = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let cfg = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["config", "--project"])
         .arg(&xcodeproj)
         .args(["--xcode", XCODE, "--derived-data-path"])
@@ -655,7 +655,7 @@ fn bsp_file_args(xcodeproj: &Path, dd: &Path, file: &Path) -> Option<Vec<String>
     for m in &msgs {
         input.extend(lsp_frame(m));
     }
-    let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad-lib"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--project"])
         .arg(xcodeproj)
         .args(["--derived-data-path"])

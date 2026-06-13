@@ -1,7 +1,7 @@
 //! Layer 2 of the BSP measurement loop (see `DOCS.md` §8 (BSP server)): end-to-end through a
 //! real, headless `sourcekit-lsp`. This is the closest thing to "does the editor
 //! actually work" — it exercises the whole stack: `sourcekit-lsp` discovers our
-//! `buildServer.json`, launches `sweetpad-lib bsp`, asks it for a file's
+//! `buildServer.json`, launches `bsp-server bsp`, asks it for a file's
 //! `sourceKitOptions`, and analyzes the file with those args.
 //!
 //! The assertion: opening `ModuleB/b.swift` (which `import ModuleA`) produces **no
@@ -138,7 +138,7 @@ fn bsp_lsp_e2e() {
 
     // Point sourcekit-lsp at our server by generating buildServer.json with the
     // real `config` command (dog-foods it end-to-end).
-    let bsp_bin = env!("CARGO_BIN_EXE_sweetpad-lib");
+    let bsp_bin = env!("CARGO_BIN_EXE_bsp-server");
     let config = Command::new(bsp_bin)
         .args(["config", "--project"])
         .arg(&xcodeproj)
@@ -333,7 +333,7 @@ fn prepare_resolves_cross_module_without_prior_build() {
 
     // buildServer.json → our server, pointed at the clean DerivedData; prepare
     // will build the dependency module into it on demand.
-    let bsp_bin = env!("CARGO_BIN_EXE_sweetpad-lib");
+    let bsp_bin = env!("CARGO_BIN_EXE_bsp-server");
     let config = Command::new(bsp_bin)
         .args(["config", "--project"])
         .arg(&xcodeproj)

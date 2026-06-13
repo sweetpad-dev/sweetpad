@@ -12,7 +12,7 @@ async function loadSettings(params: GetParams, ctx: RpcContext): Promise<XcodeBu
   const scheme = params?.scheme ?? ctx.buildManager.getDefaultSchemeForBuild();
   if (!scheme) {
     throw new SweetpadRpcError(ERROR_CODES.SCHEME_NOT_SET, "scheme is required (none persisted in workspace state)", {
-      hint: "sweetpad scheme.set <name>",
+      hint: "sweetpad vscode scheme.set <name>",
     });
   }
   const configuration = params?.configuration ?? ctx.buildManager.getDefaultConfigurationForBuild() ?? "Debug";

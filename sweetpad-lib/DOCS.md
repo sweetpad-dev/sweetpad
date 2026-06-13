@@ -44,7 +44,7 @@ pbxproj / xcconfig / xcspec
 The BSP server plugs into:
 
 ```
-editor ──LSP──► sourcekit-lsp ──BSP──► sweetpad-lib bsp ──► compiler args ──► SourceKit
+editor ──LSP──► sourcekit-lsp ──BSP──► sweetpad BSP server ──► compiler args ──► SourceKit
 ```
 
 **Approach: derive, don't observe.** The established tool,
@@ -71,7 +71,7 @@ P0.3 (see [§11.2](#112-audit-follow-ups-june-2026)).
 
 ```
 sweetpad-lib/
-  Cargo.toml / Cargo.lock      # single crate `sweetpad`; lib + `sweetpad-lib` binary; lock committed
+  Cargo.toml / Cargo.lock      # single crate `sweetpad`; lib + `sweetpad` CLI + `bsp-server` binary (BSP tests/debugging); lock committed
   rust-toolchain.toml          # pinned toolchain (edition 2024)
   rustfmt.toml
   package.json                 # @sweetpad/lib napi packaging (darwin targets)
@@ -551,10 +551,10 @@ the build server via `buildTarget/prepare` — *we* must produce the modules.
   (`build_settings::resolve_file_arguments`; Swift = the module's swiftc
   invocation, clang = gated to the file's language), editor mode (strips
   `-explicit-module-build`/emit/`-c`, advertises the build's index store).
-  Server: `sweetpad-lib bsp` — `build/initialize`, `workspace/buildTargets`,
+  Server: `bsp-server bsp` — `build/initialize`, `workspace/buildTargets`,
   `buildTarget/sources` (+ `inverseSources`), `textDocument/sourceKitOptions`,
   `buildTarget/didChange` with a poll-based pbxproj watcher, shutdown/exit;
-  `sweetpad-lib config` writes `buildServer.json` (the `version` field is
+  `bsp-server config` writes `buildServer.json` (the `version` field is
   required — without it sourcekit-lsp silently skips the server). Hardening:
   Xcode-16 buildable folders (`PBXFileSystemSynchronizedRootGroup` with
   `membershipExceptions`), target dependency edges, Swift-package products

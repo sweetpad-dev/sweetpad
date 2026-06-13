@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use super::framing::{read_message, write_message};
+use crate::framing::{read_message, write_message};
 
 /// Verbosity of the `bsp/log` stream pushed to the extension. Gates only the
 /// telemetry stream — the `SWEETPAD_BSP_LOG` file always gets everything.

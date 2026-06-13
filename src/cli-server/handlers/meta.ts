@@ -18,7 +18,7 @@ export const metaSchema: HandlerFn<{ method?: string }, MethodSchema | Record<st
   const schema = METHOD_CATALOG[params.method];
   if (!schema) {
     throw new SweetpadRpcError(ERROR_CODES.INVALID_PARAMS, `Unknown method: ${params.method}`, {
-      hint: "sweetpad meta usage",
+      hint: "sweetpad vscode meta.usage",
     });
   }
   return schema;

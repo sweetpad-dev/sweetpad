@@ -19,6 +19,7 @@ pub mod compiler_args;
 pub mod condition;
 pub mod destination;
 mod file_cache;
+mod framing;
 #[cfg(feature = "node")]
 pub mod node;
 pub mod pbxproj;
@@ -26,6 +27,7 @@ pub mod pbxproj_writer;
 pub mod project;
 pub mod resolver;
 pub mod scheme;
+pub mod vscode_cli;
 pub mod workspace;
 pub mod xcconfig;
 pub mod xcode;

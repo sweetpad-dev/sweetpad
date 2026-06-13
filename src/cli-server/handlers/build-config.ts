@@ -36,7 +36,7 @@ export const buildConfigSet: HandlerFn<{ name?: string }, { configuration: Confi
   const available = await loadConfigurations(ctx);
   if (!available.includes(params.name)) {
     throw new SweetpadRpcError(ERROR_CODES.CONFIG_NOT_FOUND, `Configuration not found: ${params.name}`, {
-      hint: "sweetpad buildConfig list",
+      hint: "sweetpad vscode buildConfig.list",
       data: { available },
     });
   }

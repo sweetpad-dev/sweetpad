@@ -15,19 +15,32 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# The CLI entry point over the interface-agnostic core: a `compiler-args` dump and
-# the `bsp` Build Server Protocol server (see DOCS.md §8 (BSP server)). Gated on the (default)
-# `cli` feature so the N-API addon build (`--no-default-features --features node`)
-# skips it — a standalone bin can't link napi's node-host-provided symbols.
+# Standalone entry point for the `bsp` Build Server Protocol server (see DOCS.md
+# §8 (BSP server)) — execed by the BSP integration tests and by sourcekit-lsp via
+# `bsp::write_config`'s buildServer.json; the extension runs the same server
+# through the N-API addon. Gated on the (default) `bsp-server` feature so the
+# addon build (`--no-default-features --features node`) skips it — a standalone
+# bin can't link napi's node-host-provided symbols.
 [[bin]]
-name = "sweetpad-lib"
-path = "src/bin/sweetpad_lib.rs"
+name = "bsp-server"
+path = "src/bin/bsp_server.rs"
+required-features = ["bsp-server"]
+
+# The `sweetpad` CLI — a pure native binary shipped inside the VS Code
+# extension (the installCli command symlinks it onto PATH). One command for
+# now: `vscode`, the JSON-RPC client over the extension's control server (see
+# src/vscode_cli.rs). Same feature-gating rationale as the bsp-server bin.
+[[bin]]
+name = "sweetpad"
+path = "src/bin/sweetpad.rs"
 required-features = ["cli"]
 
 [features]
-# `cli` builds the `sweetpad-lib` binary; default-on so `cargo build`/`cargo test`
-# get it (the integration tests exec it), and skipped by the addon build.
-default = ["cli"]
+# `bsp-server` builds the BSP server binary and `cli` the `sweetpad` CLI;
+# default-on so `cargo build`/`cargo test` get them (the integration tests exec
+# both), and skipped by the addon build.
+default = ["bsp-server", "cli"]
+bsp-server = []
 cli = []
 # Compiles the `src/node.rs` N-API bindings into the cdylib. Off by default so
 # `cargo test` (and the interface-agnostic core) never link the Node runtime.

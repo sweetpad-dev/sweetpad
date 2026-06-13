@@ -1,4 +1,4 @@
-//! The Build Server Protocol server (`sweetpad-lib bsp`) — see `DOCS.md` §8 (BSP server).
+//! The Build Server Protocol server — see `DOCS.md` §8 (BSP server).
 //!
 //! Speaks BSP (JSON-RPC over stdio) to `sourcekit-lsp`, answering the questions
 //! that drive editor intelligence: what targets exist, what files each contains,
@@ -10,7 +10,6 @@
 //! (⚠️ per-file later — see `DOCS.md` §8 (BSP server)), no `buildTarget/prepare` yet (v2).
 
 mod control;
-mod framing;
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
@@ -26,9 +25,9 @@ use serde_json::{Value, json};
 
 use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
+use crate::framing::{read_message, write_message};
 use crate::project;
 use control::{LogLevel, TelemetryServer};
-use framing::{read_message, write_message};
 
 /// Write a `buildServer.json` so `sourcekit-lsp` discovers and launches this
 /// server. Its `argv` points at the current executable + the same `bsp` flags,
@@ -353,7 +352,7 @@ impl ResolvedConfig {
 
 impl Server {
     /// Resolve the server config. An explicit `--project` stays self-contained
-    /// (no config file, no telemetry — used by `sweetpad-lib config` and the
+    /// (no config file, no telemetry — used by `bsp-server config` and the
     /// tests); otherwise the sole source is `.sweetpad/bsp.json` (written by the
     /// extension), read here and watched for live changes.
     fn resolve(args: &[String]) -> Result<Self, String> {
@@ -370,7 +369,7 @@ impl Server {
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
         let cwd = std::fs::canonicalize(&cwd).unwrap_or(cwd);
         let config_file = control::discover_config_file(&cwd).ok_or(
-            "no .sweetpad/bsp.json found from the working directory (the SweetPad extension or `sweetpad-lib config` writes it)",
+            "no .sweetpad/bsp.json found from the working directory (the SweetPad extension or `bsp-server config` writes it)",
         )?;
         let config = ResolvedConfig::from_file(&config_file, &flags)?;
         Self::build(config, Some(config_file), log_level)
