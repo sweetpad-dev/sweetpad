@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.2] - 2026-06-13
+
+- Fix the built app not being found after 0.2.1 when building from a workspace whose `.xcodeproj` lives in a different directory than the `.xcworkspace`: build settings (`BUILD_DIR`/`TARGET_BUILD_DIR`) are now keyed by the workspace's DerivedData folder, matching Xcode, instead of the member project's ([#265](https://github.com/sweetpad-dev/sweetpad/issues/265))
+- Fix native macOS targets that inherit an iOS-family Base SDK but explicitly set `SUPPORTS_MACCATALYST = NO` being misdetected as Mac Catalyst, which resolved `Debug-maccatalyst/…` build paths Xcode never writes ([#264](https://github.com/sweetpad-dev/sweetpad/pull/264), thanks [@zHElEARN](https://github.com/zHElEARN))
+
 ## [0.2.1] - 2026-06-11
 
 - Match `xcodebuild -list` exactly when listing schemes: autocreated per-target schemes now appear even when other scheme files exist, test bundles / WatchKit extensions / watch-app companion stubs / legacy Safari extensions are correctly excluded, and the list is sorted the way Xcode sorts it
