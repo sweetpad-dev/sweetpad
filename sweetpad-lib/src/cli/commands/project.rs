@@ -12,7 +12,7 @@ use crate::cli::{CliError, CliResult, Context};
 pub enum Action {
     /// Show targets, configurations, and schemes for the resolved project.
     Info,
-    /// Create a new minimal SwiftUI iOS app project.
+    /// Create a new minimal SwiftUI app project (iOS or macOS).
     ///
     /// Run with no flags on a terminal to be walked through a short wizard;
     /// pass flags (or `--json`) to skip the prompts and use defaults.
@@ -39,9 +39,9 @@ pub struct NewArgs {
     #[arg(long)]
     pub deployment_target: Option<String>,
 
-    /// Target platform. Only `ios` is supported in this version.
-    #[arg(long, default_value = "ios")]
-    pub platform: String,
+    /// Target platform (default: `ios`).
+    #[arg(long, value_enum)]
+    pub platform: Option<scaffold::Platform>,
 
     /// Skip `git init` in the new project.
     #[arg(long)]
@@ -60,13 +60,6 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
 }
 
 fn new(ctx: &mut Context, args: &NewArgs) -> CliResult {
-    if args.platform != "ios" {
-        return Err(CliError::new(format!(
-            "unsupported platform {:?}; only `ios` is supported in this version",
-            args.platform
-        )));
-    }
-
     let interactive = ctx.out.is_interactive();
     let cwd = std::env::current_dir()
         .map_err(|e| CliError::new(format!("cannot read current directory: {e}")))?;
@@ -79,10 +72,12 @@ fn new(ctx: &mut Context, args: &NewArgs) -> CliResult {
     };
 
     let name = resolve_name(args, dir_name.as_deref(), interactive)?;
+    let platform = resolve_platform(args, interactive)?;
     let bundle_id = resolve_bundle_id(args, &name, interactive)?;
-    let deployment_target = resolve_deployment_target(args, interactive)?;
+    let deployment_target = resolve_deployment_target(args, platform, interactive)?;
 
-    let spec = ProjectSpec::new(&name, &bundle_id, &deployment_target).map_err(CliError::new)?;
+    let spec =
+        ProjectSpec::new(&name, &bundle_id, &deployment_target, platform).map_err(CliError::new)?;
 
     let root = if args.current_dir {
         cwd
@@ -142,17 +137,37 @@ fn resolve_bundle_id(args: &NewArgs, name: &str, interactive: bool) -> Result<St
     Ok(default)
 }
 
-fn resolve_deployment_target(args: &NewArgs, interactive: bool) -> Result<String, CliError> {
+/// Platform resolution: explicit flag > wizard pick (default iOS) > iOS.
+fn resolve_platform(args: &NewArgs, interactive: bool) -> Result<scaffold::Platform, CliError> {
+    if let Some(platform) = args.platform {
+        return Ok(platform);
+    }
+    if !interactive {
+        return Ok(scaffold::Platform::Ios);
+    }
+    let choices = [scaffold::Platform::Ios, scaffold::Platform::Macos];
+    let labels: Vec<&str> = choices.iter().map(|p| p.label()).collect();
+    let index = dialoguer::Select::new()
+        .with_prompt("Platform")
+        .items(&labels)
+        .default(0)
+        .interact()
+        .map_err(|e| CliError::new(format!("prompt failed: {e}")))?;
+    Ok(choices[index])
+}
+
+fn resolve_deployment_target(
+    args: &NewArgs,
+    platform: scaffold::Platform,
+    interactive: bool,
+) -> Result<String, CliError> {
     if let Some(target) = &args.deployment_target {
         return Ok(target.clone());
     }
-    let default = "17.0";
+    let default = platform.default_deployment_target();
     if interactive {
-        return prompt(
-            "iOS deployment target",
-            Some(default),
-            scaffold::validate_deployment_target,
-        );
+        let label = format!("{} deployment target", platform.label());
+        return prompt(&label, Some(default), scaffold::validate_deployment_target);
     }
     Ok(default.to_string())
 }
@@ -250,6 +265,7 @@ fn report(
             "path": root.display().to_string(),
             "xcodeproj": xcodeproj.display().to_string(),
             "scheme": scheme.display().to_string(),
+            "platform": spec.platform.label(),
             "bundleId": spec.bundle_id,
             "deploymentTarget": spec.deployment_target,
             "gitInitialized": git_initialized,

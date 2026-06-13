@@ -166,6 +166,13 @@ assert_json "$out" "d['schemes']" "['SmokeGen']"
 ok "generated project resolves (target + shared scheme)"
 "$BIN" build start --project "$GEN_PROJ" --scheme SmokeGen --destination "$DEST"
 ok "build start on generated project (iOS simulator)"
+# Same, for a generated macOS app.
+( cd "$GEN_DIR" && "$BIN" project new MacGen --platform macos --bundle-id dev.sweetpad.ci.macgen --no-git )
+MAC_PROJ="$GEN_DIR/MacGen/MacGen.xcodeproj"
+out=$("$BIN" project info --project "$MAC_PROJ" --json)
+assert_json "$out" "d['targets']" "['MacGen']"
+"$BIN" build start --project "$MAC_PROJ" --scheme MacGen --destination "platform=macOS"
+ok "project new --platform macos + build start (macOS)"
 # --current-dir variant: scaffold in place, name defaults to the directory.
 GEN_HERE="$GEN_DIR/HereApp"
 mkdir -p "$GEN_HERE"

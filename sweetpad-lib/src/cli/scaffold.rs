@@ -1,7 +1,8 @@
 //! Pure project scaffolding for `sweetpad project new`.
 //!
 //! Turns a validated [`ProjectSpec`] into the set of files that make up a
-//! minimal, buildable SwiftUI iOS app: the `project.pbxproj` (assembled as a
+//! minimal, buildable SwiftUI app (iOS or macOS): the `project.pbxproj`
+//! (assembled as a
 //! [`crate::pbxproj`] object graph and serialized by [`crate::pbxproj_writer`]),
 //! the shared `.xcscheme` (built as a [`crate::xcscheme::Element`]), the inner
 //! `.xcworkspace`, a `.gitignore`, and the two Swift sources.
@@ -17,18 +18,79 @@ use std::path::PathBuf;
 use crate::pbxproj::{Dict, Value};
 use crate::xcscheme::Element;
 
+/// Which Apple platform the generated app targets. Derives `clap::ValueEnum`
+/// so `--platform ios|macos` parses and tab-completes; the whole module already
+/// lives behind the `cli` feature, so the clap coupling costs nothing extra.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Platform {
+    Ios,
+    Macos,
+}
+
+impl Platform {
+    /// Human label for prompts and reports.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Platform::Ios => "iOS",
+            Platform::Macos => "macOS",
+        }
+    }
+
+    /// The deployment target proposed when the user doesn't pick one.
+    #[must_use]
+    pub fn default_deployment_target(self) -> &'static str {
+        match self {
+            Platform::Ios => "17.0",
+            Platform::Macos => "14.0",
+        }
+    }
+
+    /// `SDKROOT` for the platform.
+    fn sdkroot(self) -> &'static str {
+        match self {
+            Platform::Ios => "iphoneos",
+            Platform::Macos => "macosx",
+        }
+    }
+
+    /// The build setting that carries the deployment target.
+    fn deployment_target_key(self) -> &'static str {
+        match self {
+            Platform::Ios => "IPHONEOS_DEPLOYMENT_TARGET",
+            Platform::Macos => "MACOSX_DEPLOYMENT_TARGET",
+        }
+    }
+
+    /// Where a built app bundle looks for embedded frameworks — `Frameworks/`
+    /// sits beside the executable on iOS, one level up (`Contents/Frameworks`)
+    /// on macOS.
+    fn runpath(self) -> &'static str {
+        match self {
+            Platform::Ios => "@executable_path/Frameworks",
+            Platform::Macos => "@executable_path/../Frameworks",
+        }
+    }
+}
+
 /// Validated inputs for a new project.
 #[derive(Debug, Clone)]
 pub struct ProjectSpec {
     pub name: String,
     pub bundle_id: String,
     pub deployment_target: String,
+    pub platform: Platform,
 }
 
 impl ProjectSpec {
     /// Build a spec, validating each field. The error messages are
     /// user-facing — the command surfaces them and (interactively) re-prompts.
-    pub fn new(name: &str, bundle_id: &str, deployment_target: &str) -> Result<Self, String> {
+    pub fn new(
+        name: &str,
+        bundle_id: &str,
+        deployment_target: &str,
+        platform: Platform,
+    ) -> Result<Self, String> {
         validate_name(name)?;
         validate_bundle_id(bundle_id)?;
         validate_deployment_target(deployment_target)?;
@@ -36,6 +98,7 @@ impl ProjectSpec {
             name: name.to_string(),
             bundle_id: bundle_id.to_string(),
             deployment_target: deployment_target.to_string(),
+            platform,
         })
     }
 }
@@ -442,9 +505,12 @@ fn project_settings(spec: &ProjectSpec, debug: bool) -> Value {
     put("ENABLE_STRICT_OBJC_MSGSEND", "YES");
     put("GCC_C_LANGUAGE_STANDARD", "gnu17");
     put("GCC_NO_COMMON_BLOCKS", "YES");
-    put("IPHONEOS_DEPLOYMENT_TARGET", &spec.deployment_target);
+    put(
+        spec.platform.deployment_target_key(),
+        &spec.deployment_target,
+    );
     put("MTL_FAST_MATH", "YES");
-    put("SDKROOT", "iphoneos");
+    put("SDKROOT", spec.platform.sdkroot());
     put("SWIFT_VERSION", "5.0");
 
     if debug {
@@ -481,27 +547,37 @@ fn target_settings(spec: &ProjectSpec) -> Value {
     put("CURRENT_PROJECT_VERSION", "1");
     put("ENABLE_PREVIEWS", "YES");
     put("GENERATE_INFOPLIST_FILE", "YES");
-    put("INFOPLIST_KEY_UIApplicationSceneManifest_Generation", "YES");
-    put("INFOPLIST_KEY_UILaunchScreen_Generation", "YES");
-    put(
-        "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad",
-        "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown \
-         UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
-    );
-    put(
-        "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone",
-        "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft \
-         UIInterfaceOrientationLandscapeRight",
-    );
     put("MARKETING_VERSION", "1.0");
     put("PRODUCT_BUNDLE_IDENTIFIER", &spec.bundle_id);
     put("PRODUCT_NAME", "$(TARGET_NAME)");
     put("SWIFT_EMIT_LOC_STRINGS", "YES");
-    put("TARGETED_DEVICE_FAMILY", "1,2");
+
+    match spec.platform {
+        Platform::Ios => {
+            put("INFOPLIST_KEY_UIApplicationSceneManifest_Generation", "YES");
+            put("INFOPLIST_KEY_UILaunchScreen_Generation", "YES");
+            put(
+                "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad",
+                "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown \
+                 UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
+            );
+            put(
+                "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone",
+                "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft \
+                 UIInterfaceOrientationLandscapeRight",
+            );
+            put("TARGETED_DEVICE_FAMILY", "1,2");
+        }
+        Platform::Macos => {
+            // macOS apps generate a different Info.plist and have no device
+            // family / launch-screen / orientation keys.
+            put("INFOPLIST_KEY_NSHumanReadableCopyright", "");
+        }
+    }
 
     s.insert(
         "LD_RUNPATH_SEARCH_PATHS".to_string(),
-        varr([vstr("$(inherited)"), vstr("@executable_path/Frameworks")]),
+        varr([vstr("$(inherited)"), vstr(spec.platform.runpath())]),
     );
 
     Value::Dict(s)
@@ -704,7 +780,7 @@ mod tests {
     use super::*;
 
     fn spec() -> ProjectSpec {
-        ProjectSpec::new("MyApp", "com.example.MyApp", "17.0").unwrap()
+        ProjectSpec::new("MyApp", "com.example.MyApp", "17.0", Platform::Ios).unwrap()
     }
 
     #[test]
@@ -788,9 +864,32 @@ mod tests {
 
     #[test]
     fn bundle_id_lands_in_target_settings() {
-        let files = scaffold(&ProjectSpec::new("Demo", "io.demo.app", "16.4").unwrap());
+        let files =
+            scaffold(&ProjectSpec::new("Demo", "io.demo.app", "16.4", Platform::Ios).unwrap());
         let raw = pbxproj(&files);
         assert!(raw.contains("PRODUCT_BUNDLE_IDENTIFIER = io.demo.app;"));
         assert!(raw.contains("IPHONEOS_DEPLOYMENT_TARGET = 16.4;"));
+    }
+
+    #[test]
+    fn macos_uses_macos_sdk_and_omits_ios_keys() {
+        let spec =
+            ProjectSpec::new("MacApp", "com.example.MacApp", "14.0", Platform::Macos).unwrap();
+        let files = scaffold(&spec);
+        let raw = pbxproj(&files);
+
+        // Parses and resolves like any other project …
+        let value = crate::pbxproj::parse(raw).expect("macOS pbxproj parses");
+        let project =
+            crate::project::open_from_value(&value, std::path::Path::new("MacApp.xcodeproj"))
+                .expect("resolves");
+        assert_eq!(project.targets[0].name, "MacApp");
+
+        // … but carries the macOS SDK/deployment key and none of the iOS-only ones.
+        assert!(raw.contains("SDKROOT = macosx;"));
+        assert!(raw.contains("MACOSX_DEPLOYMENT_TARGET = 14.0;"));
+        assert!(!raw.contains("IPHONEOS_DEPLOYMENT_TARGET"));
+        assert!(!raw.contains("TARGETED_DEVICE_FAMILY"));
+        assert!(!raw.contains("INFOPLIST_KEY_UILaunchScreen_Generation"));
     }
 }
