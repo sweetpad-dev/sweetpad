@@ -12,16 +12,17 @@ on:
       - ".github/workflows/workspace-oracle.yaml"
   workflow_dispatch:
 
-# Differential oracle for issue #265 (https://github.com/sweetpad-dev/sweetpad/issues/265).
+# Differential oracle / regression gate for issue #265
+# (https://github.com/sweetpad-dev/sweetpad/issues/265).
 #
 # Runs real `xcodebuild -workspace … -showBuildSettings` as the ground truth and
 # compares the in-process resolver's BUILD_DIR against it, on a fixture whose
 # member project is nested two dirs below the workspace — the exact topology
 # from the report (workspace `Apps`, project `XCodeTarget`).
 #
-# This is EXPECTED TO FAIL until the resolver threads the workspace through as
-# the DerivedData container: the red run is the documented proof of the bug.
-# Once fixed, it becomes the regression gate that keeps it fixed.
+# The resolver must key DerivedData by the workspace Xcode opened (`Apps-<hash>`),
+# not the member project (`XCodeTarget-<hash>`). This job is RED if that
+# regresses — it was the original proof of the bug and now guards the fix.
 jobs:
   oracle:
     name: workspace DerivedData container differential

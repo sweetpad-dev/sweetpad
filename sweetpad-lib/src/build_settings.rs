@@ -165,7 +165,12 @@ pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetS
     if projects.len() == 1 {
         // Single project: bubble up the underlying error directly so callers
         // get xcodebuild-equivalent messages ("no target named …").
-        let ctx = build_one_context(&projects[0], catalog.as_ref(), opts.xcconfig.as_deref())?;
+        let ctx = build_one_context(
+            &projects[0],
+            catalog.as_ref(),
+            opts.xcconfig.as_deref(),
+            opts.workspace.as_deref(),
+        )?;
         let queries = build_queries(&ctx, opts, &selection);
         let mut out = Vec::new();
         for query in queries {
@@ -186,7 +191,12 @@ pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetS
         // otherwise it would masquerade as a misleading "no target matched".
         let mut out = Vec::new();
         for project_path in &projects {
-            let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
+            let ctx = build_one_context(
+                project_path,
+                catalog.as_ref(),
+                opts.xcconfig.as_deref(),
+                opts.workspace.as_deref(),
+            )?;
             let queries = build_queries(&ctx, opts, &selection);
             for query in queries {
                 match ctx.resolve(&query) {
@@ -248,7 +258,12 @@ pub fn resolve_compiler_arguments(
     let single = projects.len() == 1;
     let mut out = Vec::new();
     for project_path in &projects {
-        let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
+        let ctx = build_one_context(
+            project_path,
+            catalog.as_ref(),
+            opts.xcconfig.as_deref(),
+            opts.workspace.as_deref(),
+        )?;
         for query in build_queries(&ctx, opts, &selection) {
             // Compiler argv is per concrete arch, so `[arch=…]` conditionals
             // fire — unlike the showBuildSettings emulation, which binds
@@ -346,7 +361,12 @@ pub fn resolve_file_arguments(
     let selection = Selection::Target(target.to_string());
     let single = projects.len() == 1;
     for project_path in &projects {
-        let ctx = build_one_context(project_path, catalog.as_ref(), opts.xcconfig.as_deref())?;
+        let ctx = build_one_context(
+            project_path,
+            catalog.as_ref(),
+            opts.xcconfig.as_deref(),
+            opts.workspace.as_deref(),
+        )?;
         let Some(query) = build_queries(&ctx, opts, &selection).into_iter().next() else {
             continue;
         };
@@ -567,6 +587,8 @@ fn build_one_context(
     project_path: &Path,
     catalog: Option<&Catalog>,
     extra_xcconfig: Option<&Path>,
+    // The `.xcworkspace` the caller drove this resolution through, if any.
+    workspace: Option<&Path>,
 ) -> Result<BuildContext, String> {
     let mut ctx = BuildContext::open(project_path).map_err(|e| e.to_string())?;
     if let Some(c) = catalog {
@@ -574,6 +596,18 @@ fn build_one_context(
     }
     if let Some(p) = extra_xcconfig {
         ctx = ctx.with_extra_xcconfig(p).map_err(|e| e.to_string())?;
+    }
+    // Xcode keys DerivedData by whichever container it opened. When the caller
+    // selected a `-workspace`, every member project's DerivedData paths
+    // (`BUILD_DIR`, `OBJROOT`, `BUILT_PRODUCTS_DIR`, …) must hash the WORKSPACE
+    // path, not the project's own location. Declare it explicitly so the
+    // context doesn't fall back to inferring a container from the project —
+    // inference (`find_derived_data_container`) only finds a workspace sitting
+    // in the project's parent or grandparent dir, so a member nested deeper, or
+    // a workspace living elsewhere, resolves the wrong tree and the built app
+    // can't be found (issue #265).
+    if let Some(ws) = workspace {
+        ctx = ctx.with_derived_data_container(ws);
     }
     Ok(ctx)
 }

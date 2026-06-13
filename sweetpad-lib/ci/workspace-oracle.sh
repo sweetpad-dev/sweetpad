@@ -19,9 +19,10 @@
 # That is exactly the symptom reported in #265 (app installed under the `Apps-`
 # tree, SweetPad looking under the `XCodeTarget-` tree).
 #
-# This script exits non-zero on that mismatch: a RED run is the documented
-# proof that the bug exists. It turns green once the resolver threads the
-# workspace through as the DerivedData container.
+# This script exits non-zero when the resolver keys the wrong container. It was
+# the original proof of the bug; with the fix in place (the resolver threads the
+# workspace through as the DerivedData container) it passes, and stays in CI as
+# the regression gate.
 #
 # Requires: SWEETPAD_BIN pointing at the built binary; the fixture project
 # already generated with `xcodegen generate` under fixture-workspace/Modules/App.
