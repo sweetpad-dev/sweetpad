@@ -60,9 +60,15 @@ fn container_args(container: &Container) -> Vec<String> {
 }
 
 /// Directory to run xcodebuild from: the container's parent (or the package
-/// directory for SPM).
+/// directory for SPM). A relative container like `App.xcodeproj` has an empty
+/// parent — that means "the current directory", so return `None` rather than
+/// trying to `chdir("")` (which fails the spawn and looks like a missing tool).
 fn working_dir(container: &Container) -> Option<PathBuf> {
-    container.path().parent().map(Path::to_path_buf)
+    container
+        .path()
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(Path::to_path_buf)
 }
 
 /// Everything needed to invoke `xcodebuild test` for a resolved target.
@@ -426,6 +432,20 @@ mod tests {
         assert_eq!(
             app.executable,
             PathBuf::from("/d/App.app/Contents/MacOS/App")
+        );
+    }
+
+    #[test]
+    fn working_dir_is_none_for_relative_container() {
+        // A relative project path must not produce an empty cwd (which would
+        // make the spawn fail and look like a missing xcodebuild).
+        assert_eq!(
+            working_dir(&Container::Project(PathBuf::from("App.xcodeproj"))),
+            None
+        );
+        assert_eq!(
+            working_dir(&Container::Project(PathBuf::from("/work/App.xcodeproj"))),
+            Some(PathBuf::from("/work"))
         );
     }
 

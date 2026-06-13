@@ -263,13 +263,14 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
 
 /// Poll the project's source tree and redeploy on change.
 fn watch_loop(ctx: &Context, plan: &RunPlan) -> CliResult {
+    // The container's parent, or "." when it's a relative path (empty parent).
     let root = plan
         .resolved
         .container
         .path()
         .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf();
+        .filter(|p| !p.as_os_str().is_empty())
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
     let mut snapshot = scan_sources(&root);
     ctx.out.note("watching for changes (Ctrl-C to stop)");
     loop {
