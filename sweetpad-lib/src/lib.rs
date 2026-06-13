@@ -15,6 +15,10 @@ pub mod bsp;
 pub mod build_context;
 pub mod build_settings;
 pub mod catalog_cache;
+// The standalone CLI (resource-first command tree). Gated on the `cli` feature
+// so the N-API addon build never pulls in clap/serde/toml. See `CLI_DESIGN.md`.
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod compiler_args;
 pub mod condition;
 pub mod destination;

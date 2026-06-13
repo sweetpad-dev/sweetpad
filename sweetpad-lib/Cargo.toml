@@ -41,7 +41,10 @@ required-features = ["cli"]
 # both), and skipped by the addon build.
 default = ["bsp-server", "cli"]
 bsp-server = []
-cli = []
+# The standalone `sweetpad` CLI. Pulls in clap (arg parsing) plus serde/toml
+# for the XDG config & state files — standard formats not worth reinventing
+# (DOCS.md §3.1). Off in the addon build, so the cdylib never links them.
+cli = ["dep:clap", "dep:serde", "dep:toml"]
 # Compiles the `src/node.rs` N-API bindings into the cdylib. Off by default so
 # `cargo test` (and the interface-agnostic core) never link the Node runtime.
 node = ["dep:napi", "dep:napi-derive"]
@@ -53,6 +56,13 @@ napi-derive = { version = "3", optional = true }
 # xcconfig) where Apple's formats have no good crate, but a well-known standard
 # like JSON is not worth reinventing — see DOCS.md §3.1 (Dependencies).
 serde_json = "1"
+# CLI-only dependencies (gated behind the `cli` feature). clap derives the
+# resource-first command tree, help, and completions; serde+toml read the
+# hand-authored ~/.config/sweetpad/config.toml and read/write the machine
+# ~/.local/state/sweetpad/state.toml.
+clap = { version = "4", features = ["derive", "env"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+toml = { version = "0.8", optional = true }
 
 [build-dependencies]
 napi-build = "2"
