@@ -82,6 +82,11 @@ sweetpad project new <Name> [flags]
   target additionally prompts to continue (the `--force` question). Non-TTY /
   `--json` runs stay strict: flags and defaults only, and a missing name is an
   error.
+- **Inline "use defaults" escape.** Every step after the name carries its own
+  way to accept the remaining defaults without more questions: the platform
+  picker has a trailing *"Use defaults for everything else"* entry, and the text
+  steps accept a lone `*`. Choosing it fills that field and all later ones from
+  defaults and finishes — no separate "proceed?" question.
 - **Platform.** `--platform ios|macos` (default `ios`); the wizard offers a
   picker. Switching platform swaps `SDKROOT`, the deployment-target key and its
   default (`17.0` iOS / `14.0` macOS), the framework runpath, and the iOS-only

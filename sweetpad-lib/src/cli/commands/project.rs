@@ -82,9 +82,14 @@ fn new(ctx: &mut Context, args: &NewArgs) -> CliResult {
     };
 
     let name = resolve_name(args, dir_name.as_deref(), interactive)?;
-    let platform = resolve_platform(args, interactive)?;
-    let bundle_id = resolve_bundle_id(args, &name, interactive)?;
-    let deployment_target = resolve_deployment_target(args, platform, interactive)?;
+
+    // From here every prompt carries an inline "accept all remaining defaults"
+    // choice (a menu entry / a `*` sentinel). Once taken, `defaults` flips true
+    // and the later steps stop asking.
+    let mut defaults = false;
+    let platform = resolve_platform(args, interactive, &mut defaults)?;
+    let bundle_id = resolve_bundle_id(args, &name, interactive, &mut defaults)?;
+    let deployment_target = resolve_deployment_target(args, platform, interactive, &mut defaults)?;
 
     let spec =
         ProjectSpec::new(&name, &bundle_id, &deployment_target, platform).map_err(CliError::new)?;
@@ -96,10 +101,11 @@ fn new(ctx: &mut Context, args: &NewArgs) -> CliResult {
     };
     ensure_writable(&root, args.force, interactive)?;
 
-    // --no-git short-circuits to "don't init"; otherwise ask / default to yes.
+    // --no-git short-circuits to "don't init"; otherwise ask (unless an earlier
+    // step already opted into defaults) / default to yes.
     let want_git = if args.no_git {
         false
-    } else if interactive {
+    } else if interactive && !defaults {
         confirm("Initialize a git repository?", true)?
     } else {
         true
@@ -134,37 +140,55 @@ fn resolve_name(
     })
 }
 
-fn resolve_bundle_id(args: &NewArgs, name: &str, interactive: bool) -> Result<String, CliError> {
+fn resolve_bundle_id(
+    args: &NewArgs,
+    name: &str,
+    interactive: bool,
+    defaults: &mut bool,
+) -> Result<String, CliError> {
+    let default = format!("com.example.{name}");
     if let Some(bundle_id) = &args.bundle_id {
         return Ok(bundle_id.clone());
     }
-    let default = format!("com.example.{name}");
-    if interactive {
-        return prompt(
-            "Bundle identifier",
-            Some(&default),
-            scaffold::validate_bundle_id,
-        );
+    if !interactive || *defaults {
+        return Ok(default);
     }
-    Ok(default)
+    if let Some(value) =
+        prompt_or_skip("Bundle identifier", &default, scaffold::validate_bundle_id)?
+    {
+        Ok(value)
+    } else {
+        *defaults = true;
+        Ok(default)
+    }
 }
 
-/// Platform resolution: explicit flag > wizard pick (default iOS) > iOS.
-fn resolve_platform(args: &NewArgs, interactive: bool) -> Result<scaffold::Platform, CliError> {
+/// Platform resolution: explicit flag > wizard pick > iOS. The picker carries a
+/// trailing "use defaults" entry that flips `defaults` and short-circuits.
+fn resolve_platform(
+    args: &NewArgs,
+    interactive: bool,
+    defaults: &mut bool,
+) -> Result<scaffold::Platform, CliError> {
     if let Some(platform) = args.platform {
         return Ok(platform);
     }
-    if !interactive {
+    if !interactive || *defaults {
         return Ok(scaffold::Platform::Ios);
     }
     let choices = [scaffold::Platform::Ios, scaffold::Platform::Macos];
-    let labels: Vec<&str> = choices.iter().map(|p| p.label()).collect();
+    let mut labels: Vec<&str> = choices.iter().map(|p| p.label()).collect();
+    labels.push(USE_DEFAULTS);
     let index = dialoguer::Select::new()
         .with_prompt("Platform")
         .items(&labels)
         .default(0)
         .interact()
         .map_err(|e| CliError::new(format!("prompt failed: {e}")))?;
+    if index >= choices.len() {
+        *defaults = true;
+        return Ok(scaffold::Platform::Ios);
+    }
     Ok(choices[index])
 }
 
@@ -172,20 +196,33 @@ fn resolve_deployment_target(
     args: &NewArgs,
     platform: scaffold::Platform,
     interactive: bool,
+    defaults: &mut bool,
 ) -> Result<String, CliError> {
+    let default = platform.default_deployment_target();
     if let Some(target) = &args.deployment_target {
         return Ok(target.clone());
     }
-    let default = platform.default_deployment_target();
-    if interactive {
-        let label = format!("{} deployment target", platform.label());
-        return prompt(&label, Some(default), scaffold::validate_deployment_target);
+    if !interactive || *defaults {
+        return Ok(default.to_string());
     }
-    Ok(default.to_string())
+    let label = format!("{} deployment target", platform.label());
+    if let Some(value) = prompt_or_skip(&label, default, scaffold::validate_deployment_target)? {
+        Ok(value)
+    } else {
+        *defaults = true;
+        Ok(default.to_string())
+    }
 }
 
-/// One wizard step: a text prompt with an optional pre-filled default and
-/// inline validation (re-asks until the value is accepted).
+/// The lone token a text step accepts to mean "use this default and every
+/// remaining one". Invalid as a name/bundle-id/version, so it can never collide
+/// with a real value.
+const SKIP: &str = "*";
+/// The equivalent entry appended to a `Select` step.
+const USE_DEFAULTS: &str = "Use defaults for everything else";
+
+/// A required text step: pre-filled default, inline validation, re-asks until
+/// accepted. Used for the project name, which has no skip (it anchors the rest).
 fn prompt(
     label: &str,
     default: Option<&str>,
@@ -199,6 +236,22 @@ fn prompt(
         .validate_with(move |value: &String| validate(value))
         .interact_text()
         .map_err(|e| CliError::new(format!("prompt failed: {e}")))
+}
+
+/// Like [`prompt`], but a lone [`SKIP`] (`*`) returns `Ok(None)` — the caller
+/// reads that as "fill this and the rest from defaults".
+fn prompt_or_skip(
+    label: &str,
+    default: &str,
+    validate: fn(&str) -> Result<(), String>,
+) -> Result<Option<String>, CliError> {
+    let value = dialoguer::Input::<String>::new()
+        .with_prompt(format!("{label} (* = use defaults)"))
+        .default(default.to_string())
+        .validate_with(move |s: &String| if s == SKIP { Ok(()) } else { validate(s) })
+        .interact_text()
+        .map_err(|e| CliError::new(format!("prompt failed: {e}")))?;
+    Ok((value != SKIP).then_some(value))
 }
 
 /// A yes/no wizard step with a default that Enter accepts.
