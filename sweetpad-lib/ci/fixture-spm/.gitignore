@@ -1,0 +1,3 @@
+# Build products / xcode-build-server output.
+.build/
+buildServer.json
