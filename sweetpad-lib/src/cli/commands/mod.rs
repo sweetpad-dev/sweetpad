@@ -5,8 +5,10 @@
 pub mod app;
 pub mod bsp;
 pub mod build;
+pub mod derived_data;
 pub mod destination;
 pub mod device;
+pub mod doctor;
 pub mod format;
 pub mod project;
 pub mod scheme;

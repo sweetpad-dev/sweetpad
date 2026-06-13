@@ -42,6 +42,14 @@ pub enum Action {
     Logs,
     /// Terminate the running app.
     Stop,
+    /// Open a URL on a simulator — drives deep links / universal links in.
+    OpenUrl {
+        /// The URL to open (e.g. `myapp://path` or `https://example.com/x`).
+        url: String,
+        /// Simulator name or UDID to open it on (defaults to the booted one).
+        #[arg(long)]
+        simulator: Option<String>,
+    },
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
@@ -66,7 +74,29 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
         Action::Launch => simple(ctx, Stage::Launch),
         Action::Logs => simple(ctx, Stage::Logs),
         Action::Stop => simple(ctx, Stage::Stop),
+        Action::OpenUrl { url, simulator } => open_url(ctx, url, simulator.as_deref()),
     }
+}
+
+/// Open a URL on a simulator. Unlike the install/launch lifecycle, this needs
+/// no scheme or build — just a target simulator — so it resolves one directly
+/// rather than going through the build plan.
+fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CliResult {
+    let sims = simctl::list()?;
+    let sim = resolve::select_simulator(ctx, &sims, simulator)?;
+    if !sim.is_booted() {
+        simctl::boot(&sim.udid)?;
+    }
+    simctl::open_url(&sim.udid, url)?;
+    if ctx.out.is_json() {
+        ctx.out.json_value(&serde_json::json!({
+            "udid": sim.udid,
+            "url": url,
+        }));
+    } else {
+        ctx.out.note(&format!("opened {url} on {}", sim.label()));
+    }
+    Ok(())
 }
 
 /// Options for `app run`, gathered from the flags.

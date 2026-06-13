@@ -183,6 +183,42 @@ pub fn choose(
     }
 }
 
+/// Pick a single simulator for the side-effecting `simulator`/`app` actions.
+/// An explicit `target` (UDID or name) wins; otherwise prefer the booted one
+/// when exactly one is booted, prompt among the booted set when several are,
+/// and fall back to the full list (auto-pick/​prompt/​strict-error via
+/// [`choose`]) when none are booted. Shared so simulator subcommands and
+/// `app open-url` resolve a sim the same way.
+pub fn select_simulator<'a>(
+    ctx: &Context,
+    sims: &'a [crate::cli::simctl::Simulator],
+    target: Option<&str>,
+) -> Result<&'a crate::cli::simctl::Simulator, CliError> {
+    use crate::cli::simctl::Simulator;
+
+    if let Some(t) = target {
+        return crate::cli::simctl::find(sims, t)
+            .ok_or_else(|| CliError::new(format!("no simulator matching {t:?}")));
+    }
+
+    let booted: Vec<&Simulator> = sims.iter().filter(|s| s.is_booted()).collect();
+    if booted.len() == 1 {
+        return Ok(booted[0]);
+    }
+
+    // Prompt among the booted set when several are running, else the full list.
+    let pool: Vec<&Simulator> = if booted.len() > 1 {
+        booted
+    } else {
+        sims.iter().collect()
+    };
+    let labels: Vec<String> = pool.iter().map(|s| s.label()).collect();
+    let chosen = choose(ctx, "simulator", None, &labels)?;
+    pool.into_iter()
+        .find(|s| s.label() == chosen)
+        .ok_or_else(|| CliError::new("simulator not found"))
+}
+
 /// A fully-settled build target: the three things `xcodebuild` always needs.
 #[derive(Debug, Clone)]
 pub struct BuildTarget {
@@ -350,5 +386,70 @@ mod tests {
         // Tests don't run under a TTY, so multiple candidates must error.
         let c = ctx();
         assert!(choose(&c, "scheme", None, &["a".into(), "b".into()]).is_err());
+    }
+
+    fn sim(udid: &str, name: &str, booted: bool) -> crate::cli::simctl::Simulator {
+        crate::cli::simctl::Simulator {
+            udid: udid.into(),
+            name: name.into(),
+            state: if booted { "Booted" } else { "Shutdown" }.into(),
+            available: true,
+            os: "iOS".into(),
+            os_version: "17.0".into(),
+        }
+    }
+
+    #[test]
+    fn select_simulator_honors_explicit_target() {
+        let c = ctx();
+        let sims = vec![
+            sim("AAAA", "iPhone 15", false),
+            sim("BBBB", "iPhone 14", true),
+        ];
+        assert_eq!(
+            select_simulator(&c, &sims, Some("AAAA")).unwrap().udid,
+            "AAAA"
+        );
+        assert_eq!(
+            select_simulator(&c, &sims, Some("iPhone 14")).unwrap().udid,
+            "BBBB"
+        );
+        assert!(select_simulator(&c, &sims, Some("nope")).is_err());
+    }
+
+    #[test]
+    fn select_simulator_prefers_the_single_booted_one() {
+        let c = ctx();
+        let sims = vec![
+            sim("AAAA", "iPhone 15", false),
+            sim("BBBB", "iPhone 14", true),
+        ];
+        // No target, exactly one booted → that one, no prompt needed.
+        assert_eq!(select_simulator(&c, &sims, None).unwrap().udid, "BBBB");
+    }
+
+    #[test]
+    fn select_simulator_auto_picks_lone_shutdown_sim() {
+        let c = ctx();
+        let sims = vec![sim("AAAA", "iPhone 15", false)];
+        // None booted, only one candidate → auto-picked (no TTY needed).
+        assert_eq!(select_simulator(&c, &sims, None).unwrap().udid, "AAAA");
+    }
+
+    #[test]
+    fn select_simulator_is_strict_when_ambiguous_and_non_interactive() {
+        let c = ctx();
+        // None booted, several candidates, no TTY → strict error.
+        let sims = vec![
+            sim("AAAA", "iPhone 15", false),
+            sim("BBBB", "iPhone 14", false),
+        ];
+        assert!(select_simulator(&c, &sims, None).is_err());
+        // Several booted, no TTY → also strict.
+        let booted = vec![
+            sim("AAAA", "iPhone 15", true),
+            sim("BBBB", "iPhone 14", true),
+        ];
+        assert!(select_simulator(&c, &booted, None).is_err());
     }
 }
