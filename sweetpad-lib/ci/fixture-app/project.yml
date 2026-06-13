@@ -1,0 +1,54 @@
+# Minimal runnable iOS app used by the `cli-smoke` workflow to exercise the
+# standalone `sweetpad` CLI against real xcodebuild/simctl. Generated on CI with
+# XcodeGen (`xcodegen generate`); the resulting .xcodeproj is not committed.
+name: SweetpadCIApp
+options:
+  bundleIdPrefix: dev.sweetpad.ci
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    # Simulator builds don't need signing; keep CI free of provisioning.
+    CODE_SIGNING_ALLOWED: "NO"
+    SWIFT_VERSION: "5.0"
+
+targets:
+  SweetpadCIApp:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.ci.app
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  SweetpadCIAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/AppTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.ci.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+    dependencies:
+      - target: SweetpadCIApp
+
+# An explicit shared scheme so `sweetpad scheme list` and -scheme resolution
+# find it (XcodeGen writes it to xcshareddata/xcschemes).
+schemes:
+  SweetpadCIApp:
+    build:
+      targets:
+        SweetpadCIApp: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SweetpadCIAppTests

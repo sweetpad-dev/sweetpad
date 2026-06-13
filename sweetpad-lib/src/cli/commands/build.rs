@@ -4,7 +4,7 @@
 
 use clap::Subcommand;
 
-use crate::cli::{resolve, xcodebuild, CliResult, Context};
+use crate::cli::{CliResult, Context, resolve, xcodebuild};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {

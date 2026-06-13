@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::Subcommand;
 
-use crate::cli::{resolve, xcodebuild, CliError, CliResult, Context};
+use crate::cli::{CliError, CliResult, Context, resolve, xcodebuild};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -23,7 +23,10 @@ pub enum Action {
 
 pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
     match action {
-        Action::Run { only_testing, skip_testing } => test(ctx, only_testing, skip_testing),
+        Action::Run {
+            only_testing,
+            skip_testing,
+        } => test(ctx, only_testing, skip_testing),
     }
 }
 
@@ -36,8 +39,10 @@ fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> 
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let bundle =
-        std::env::temp_dir().join(format!("sweetpad-test-{}-{nanos}.xcresult", std::process::id()));
+    let bundle = std::env::temp_dir().join(format!(
+        "sweetpad-test-{}-{nanos}.xcresult",
+        std::process::id()
+    ));
 
     let plan = xcodebuild::TestPlan {
         container: &resolved.container,
@@ -50,7 +55,10 @@ fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> 
     };
 
     if !ctx.out.is_json() {
-        ctx.out.note(&format!("testing {} for {}", target.scheme, target.destination));
+        ctx.out.note(&format!(
+            "testing {} for {}",
+            target.scheme, target.destination
+        ));
     }
 
     // In JSON mode, suppress xcodebuild's chatter so stdout holds only the summary.
@@ -81,10 +89,16 @@ fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> 
     } else {
         ctx.out.line(&format!(
             "{} passed, {} failed, {} skipped ({} total)",
-            summary.passed_tests, summary.failed_tests, summary.skipped_tests, summary.total_test_count
+            summary.passed_tests,
+            summary.failed_tests,
+            summary.skipped_tests,
+            summary.total_test_count
         ));
         for f in &summary.test_failures {
-            ctx.out.line(&format!("  ✗ {}/{}: {}", f.target_name, f.test_name, f.failure_text));
+            ctx.out.line(&format!(
+                "  ✗ {}/{}: {}",
+                f.target_name, f.test_name, f.failure_text
+            ));
         }
     }
 

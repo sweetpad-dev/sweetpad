@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::cli::{process, CliError};
+use crate::cli::{CliError, process};
 
 /// `simctl list --json devices` output: runtime identifier → its devices.
 #[derive(Debug, Deserialize)]
@@ -80,8 +80,8 @@ pub fn list() -> Result<Vec<Simulator>, CliError> {
 /// Parse `simctl list --json devices` output into sorted, available
 /// simulators. Split out from [`list`] so it's testable without `simctl`.
 fn parse_devices(raw: &str) -> Result<Vec<Simulator>, CliError> {
-    let parsed: ListOutput =
-        serde_json::from_str(raw).map_err(|e| CliError::new(format!("parsing simctl output: {e}")))?;
+    let parsed: ListOutput = serde_json::from_str(raw)
+        .map_err(|e| CliError::new(format!("parsing simctl output: {e}")))?;
 
     let mut sims = Vec::new();
     for (runtime, devices) in parsed.devices {
@@ -134,7 +134,10 @@ pub fn boot(udid: &str) -> Result<(), CliError> {
     if stderr.contains("current state: Booted") {
         return Ok(());
     }
-    Err(CliError::new(format!("simctl boot failed: {}", stderr.trim())))
+    Err(CliError::new(format!(
+        "simctl boot failed: {}",
+        stderr.trim()
+    )))
 }
 
 /// Install an `.app` bundle onto a booted simulator.
@@ -210,7 +213,10 @@ mod tests {
     fn destination_specifier_maps_platform() {
         let sims = parse_devices(SAMPLE).unwrap();
         let watch = sims.iter().find(|s| s.os == "watchOS").unwrap();
-        assert_eq!(watch.destination(), format!("platform=watchOS Simulator,id={}", watch.udid));
+        assert_eq!(
+            watch.destination(),
+            format!("platform=watchOS Simulator,id={}", watch.udid)
+        );
         let iphone = sims.iter().find(|s| s.name == "iPhone 15").unwrap();
         assert_eq!(iphone.destination(), "platform=iOS Simulator,id=AAAA");
     }
@@ -224,15 +230,36 @@ mod tests {
     #[test]
     fn find_by_name_prefers_booted() {
         let sims = vec![
-            Simulator { udid: "1".into(), name: "Dup".into(), state: "Shutdown".into(), available: true, os: "iOS".into(), os_version: "17.0".into() },
-            Simulator { udid: "2".into(), name: "Dup".into(), state: "Booted".into(), available: true, os: "iOS".into(), os_version: "17.0".into() },
+            Simulator {
+                udid: "1".into(),
+                name: "Dup".into(),
+                state: "Shutdown".into(),
+                available: true,
+                os: "iOS".into(),
+                os_version: "17.0".into(),
+            },
+            Simulator {
+                udid: "2".into(),
+                name: "Dup".into(),
+                state: "Booted".into(),
+                available: true,
+                os: "iOS".into(),
+                os_version: "17.0".into(),
+            },
         ];
         assert_eq!(find(&sims, "Dup").unwrap().udid, "2");
     }
 
     #[test]
     fn label_includes_version() {
-        let s = Simulator { udid: "x".into(), name: "iPhone 15".into(), state: "Booted".into(), available: true, os: "iOS".into(), os_version: "17.0".into() };
+        let s = Simulator {
+            udid: "x".into(),
+            name: "iPhone 15".into(),
+            state: "Booted".into(),
+            available: true,
+            os: "iOS".into(),
+            os_version: "17.0".into(),
+        };
         assert_eq!(s.label(), "iPhone 15 (17.0)");
         assert!(s.is_booted());
     }

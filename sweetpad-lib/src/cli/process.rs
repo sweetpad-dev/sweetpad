@@ -13,13 +13,13 @@ use crate::cli::CliError;
 /// non-zero.
 pub fn capture(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String, CliError> {
     let mut cmd = Command::new(program);
-    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::inherit());
+    cmd.args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
-    let output = cmd
-        .output()
-        .map_err(|e| spawn_error(program, &e))?;
+    let output = cmd.output().map_err(|e| spawn_error(program, &e))?;
     if !output.status.success() {
         return Err(CliError::new(format!(
             "{program} {} exited with {}",
@@ -38,7 +38,9 @@ pub fn stream(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<(), Cl
     if run(program, args, cwd, false)? {
         Ok(())
     } else {
-        Err(CliError::new(format!("{program} exited with a non-zero status")))
+        Err(CliError::new(format!(
+            "{program} exited with a non-zero status"
+        )))
     }
 }
 
@@ -46,10 +48,19 @@ pub fn stream(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<(), Cl
 /// erroring on a non-zero exit. `quiet` discards stdout (stderr is always
 /// inherited) — used when only the exit status / a side-effect matters, e.g.
 /// `xcodebuild test` whose pass/fail we read from the result bundle.
-pub fn run(program: &str, args: &[&str], cwd: Option<&Path>, quiet: bool) -> Result<bool, CliError> {
+pub fn run(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    quiet: bool,
+) -> Result<bool, CliError> {
     let mut cmd = Command::new(program);
     cmd.args(args)
-        .stdout(if quiet { Stdio::null() } else { Stdio::inherit() })
+        .stdout(if quiet {
+            Stdio::null()
+        } else {
+            Stdio::inherit()
+        })
         .stderr(Stdio::inherit());
     if let Some(dir) = cwd {
         cmd.current_dir(dir);

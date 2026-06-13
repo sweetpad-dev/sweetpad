@@ -2,7 +2,7 @@
 
 use clap::Subcommand;
 
-use crate::cli::{resolve, simctl, CliError, CliResult, Context};
+use crate::cli::{CliError, CliResult, Context, resolve, simctl};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -39,7 +39,8 @@ fn list(ctx: &mut Context) -> CliResult {
                 })
             })
             .collect();
-        ctx.out.json_value(&serde_json::json!({ "simulators": items }));
+        ctx.out
+            .json_value(&serde_json::json!({ "simulators": items }));
         return Ok(());
     }
 
@@ -49,7 +50,10 @@ fn list(ctx: &mut Context) -> CliResult {
     }
     for s in &sims {
         let state = if s.is_booted() { " [booted]" } else { "" };
-        ctx.out.item(&format!("{} {}  {}{state}", s.os, s.label(), s.udid), s.is_booted());
+        ctx.out.item(
+            &format!("{} {}  {}{state}", s.os, s.label(), s.udid),
+            s.is_booted(),
+        );
     }
     Ok(())
 }
@@ -58,7 +62,8 @@ fn boot(ctx: &mut Context, target: Option<&str>) -> CliResult {
     let sims = simctl::list()?;
 
     let sim = if let Some(t) = target {
-        simctl::find(&sims, t).ok_or_else(|| CliError::new(format!("no simulator matching {t:?}")))?
+        simctl::find(&sims, t)
+            .ok_or_else(|| CliError::new(format!("no simulator matching {t:?}")))?
     } else {
         let labels: Vec<String> = sims.iter().map(simctl::Simulator::label).collect();
         let chosen = resolve::choose(ctx, "simulator", None, &labels)?;

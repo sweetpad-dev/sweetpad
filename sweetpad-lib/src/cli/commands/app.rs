@@ -10,7 +10,7 @@ use clap::Subcommand;
 
 use crate::cli::resolve::{self, Resolved};
 use crate::cli::xcodebuild::{self, AppBundle};
-use crate::cli::{devicectl, simctl, CliError, CliResult, Context};
+use crate::cli::{CliError, CliResult, Context, devicectl, simctl};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -22,6 +22,9 @@ pub enum Action {
         /// Specific device UDID/name to target (implies --device).
         #[arg(long = "device-id")]
         device_id: Option<String>,
+        /// Build and run as a native macOS app (launches the executable).
+        #[arg(long, conflicts_with_all = ["device", "device_id"])]
+        mac: bool,
         /// Rebuild, reinstall, and relaunch whenever a source file changes.
         #[arg(long)]
         watch: bool,
@@ -42,9 +45,22 @@ pub enum Action {
 
 pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
     match action {
-        Action::Run { device, device_id, watch, no_logs } => {
-            run_app(ctx, *device || device_id.is_some(), device_id.as_deref(), *watch, *no_logs)
-        }
+        Action::Run {
+            device,
+            device_id,
+            mac,
+            watch,
+            no_logs,
+        } => run_app(
+            ctx,
+            &RunOpts {
+                device: *device || device_id.is_some(),
+                device_id: device_id.as_deref(),
+                mac: *mac,
+                watch: *watch,
+                no_logs: *no_logs,
+            },
+        ),
         Action::Install => simple(ctx, Stage::Install),
         Action::Launch => simple(ctx, Stage::Launch),
         Action::Logs => simple(ctx, Stage::Logs),
@@ -52,10 +68,21 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
     }
 }
 
+/// Options for `app run`, gathered from the flags.
+#[allow(clippy::struct_excessive_bools)]
+struct RunOpts<'a> {
+    device: bool,
+    device_id: Option<&'a str>,
+    mac: bool,
+    watch: bool,
+    no_logs: bool,
+}
+
 /// Where the app runs.
 enum Target {
     Simulator(String),
     Device(String),
+    Mac,
 }
 
 /// A fully-resolved run: container/scheme/configuration/destination plus the
@@ -90,22 +117,16 @@ impl RunPlan {
     }
 }
 
-fn run_app(
-    ctx: &mut Context,
-    device: bool,
-    device_id: Option<&str>,
-    watch: bool,
-    no_logs: bool,
-) -> CliResult {
-    let plan = plan(ctx, device, device_id)?;
+fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
+    let plan = plan(ctx, opts)?;
 
     // --watch: deploy once, then redeploy on change (no inline logs — they'd
     // block the loop). --no-logs: deploy and return.
-    if watch {
+    if opts.watch {
         deploy(ctx, &plan)?;
         return watch_loop(ctx, &plan);
     }
-    if no_logs {
+    if opts.no_logs {
         return deploy(ctx, &plan);
     }
 
@@ -114,20 +135,31 @@ fn run_app(
         Target::Simulator(udid) => {
             let app = build_and_install(&plan)?;
             let out = simctl::launch(udid, &app.bundle_id)?;
-            ctx.out.note(&format!("launched {} → {}", app.bundle_id, out.trim()));
+            ctx.out
+                .note(&format!("launched {} → {}", app.bundle_id, out.trim()));
             stream_logs(ctx, udid, &app)
         }
         Target::Device(id) => {
             // On device, logs come from launching with the console attached.
             let app = build_and_install(&plan)?;
-            ctx.out.note(&format!("launching {} with console (Ctrl-C to stop)", app.bundle_id));
+            ctx.out.note(&format!(
+                "launching {} with console (Ctrl-C to stop)",
+                app.bundle_id
+            ));
             devicectl::launch_console(id, &app.bundle_id)
+        }
+        Target::Mac => {
+            // A macOS app runs its executable directly; that streams its output.
+            let app = build_and_install(&plan)?;
+            ctx.out
+                .note(&format!("running {} (Ctrl-C to stop)", app.bundle_id));
+            crate::cli::process::stream(&app.executable.to_string_lossy(), &[], None)
         }
     }
 }
 
-/// Resolve a full run plan, choosing a simulator (default) or a device.
-fn plan(ctx: &mut Context, device: bool, device_id: Option<&str>) -> Result<RunPlan, CliError> {
+/// Resolve a full run plan, choosing a simulator (default), a device, or macOS.
+fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     let resolved = resolve::resolve(ctx)?;
     let schemes = resolve::schemes(&resolved.container)?;
     let scheme = resolve::choose(ctx, "scheme", resolved.scheme.clone(), &schemes)?;
@@ -136,9 +168,11 @@ fn plan(ctx: &mut Context, device: bool, device_id: Option<&str>) -> Result<RunP
         .clone()
         .unwrap_or_else(|| "Debug".to_string());
 
-    let (destination, target) = if device {
+    let (destination, target) = if opts.mac {
+        ("platform=macOS".to_string(), Target::Mac)
+    } else if opts.device {
         let devices = devicectl::list()?;
-        let dev = if let Some(id) = device_id {
+        let dev = if let Some(id) = opts.device_id {
             devicectl::find(&devices, id)
                 .ok_or_else(|| CliError::new(format!("no device matching {id:?}")))?
         } else {
@@ -149,7 +183,11 @@ fn plan(ctx: &mut Context, device: bool, device_id: Option<&str>) -> Result<RunP
                 .find(|d| d.label() == chosen)
                 .ok_or_else(|| CliError::new("device not found"))?
         };
-        let platform = if dev.platform.is_empty() { "iOS" } else { &dev.platform };
+        let platform = if dev.platform.is_empty() {
+            "iOS"
+        } else {
+            &dev.platform
+        };
         (
             format!("platform={platform},id={}", dev.udid),
             Target::Device(dev.udid.clone()),
@@ -161,7 +199,13 @@ fn plan(ctx: &mut Context, device: bool, device_id: Option<&str>) -> Result<RunP
         (bt.destination, Target::Simulator(udid))
     };
 
-    let plan = RunPlan { resolved, scheme, configuration, destination, target };
+    let plan = RunPlan {
+        resolved,
+        scheme,
+        configuration,
+        destination,
+        target,
+    };
     let bt = resolve::BuildTarget {
         scheme: plan.scheme.clone(),
         configuration: plan.configuration.clone(),
@@ -185,6 +229,8 @@ fn build_and_install(plan: &RunPlan) -> Result<AppBundle, CliError> {
         Target::Device(id) => {
             devicectl::install(id, &app_path)?;
         }
+        // A macOS app is built in place; there's no install step.
+        Target::Mac => {}
     }
     Ok(app)
 }
@@ -195,11 +241,21 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
     match &plan.target {
         Target::Simulator(udid) => {
             let out = simctl::launch(udid, &app.bundle_id)?;
-            ctx.out.note(&format!("launched {} → {}", app.bundle_id, out.trim()));
+            ctx.out
+                .note(&format!("launched {} → {}", app.bundle_id, out.trim()));
         }
         Target::Device(id) => {
             let out = devicectl::launch(id, &app.bundle_id)?;
-            ctx.out.note(&format!("launched {} on device → {}", app.bundle_id, out.trim()));
+            ctx.out.note(&format!(
+                "launched {} on device → {}",
+                app.bundle_id,
+                out.trim()
+            ));
+        }
+        Target::Mac => {
+            // Non-blocking launch (the logs/foreground path runs the executable).
+            crate::cli::process::stream("open", &[&app.path.to_string_lossy()], None)?;
+            ctx.out.note(&format!("launched {}", app.bundle_id));
         }
     }
     Ok(())
@@ -243,7 +299,9 @@ fn scan_sources(root: &Path) -> BTreeMap<PathBuf, SystemTime> {
             let path = entry.path();
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name.starts_with('.') || matches!(name.as_ref(), "DerivedData" | "build" | ".build" | "Pods") {
+            if name.starts_with('.')
+                || matches!(name.as_ref(), "DerivedData" | "build" | ".build" | "Pods")
+            {
                 continue;
             }
             let Ok(ft) = entry.file_type() else { continue };
@@ -270,7 +328,14 @@ enum Stage {
 
 fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
     // These default to a simulator target (the common headless case).
-    let plan = plan(ctx, false, None)?;
+    let opts = RunOpts {
+        device: false,
+        device_id: None,
+        mac: false,
+        watch: false,
+        no_logs: true,
+    };
+    let plan = plan(ctx, &opts)?;
     let app = plan.app_bundle()?;
     let Target::Simulator(udid) = &plan.target else {
         unreachable!("simple stages resolve a simulator target");
@@ -286,7 +351,8 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
         Stage::Launch => {
             simctl::boot(udid)?;
             let out = simctl::launch(udid, &app.bundle_id)?;
-            ctx.out.note(&format!("launched {} → {}", app.bundle_id, out.trim()));
+            ctx.out
+                .note(&format!("launched {} → {}", app.bundle_id, out.trim()));
         }
         Stage::Logs => return stream_logs(ctx, udid, &app),
         Stage::Stop => {
@@ -299,9 +365,16 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
 
 /// Stream a simulator's log for the app's executable (best-effort predicate).
 fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle) -> CliResult {
-    let name = app.path.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+    let name = app
+        .path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
     let predicate = format!("processImagePath CONTAINS \"{name}\"");
-    ctx.out.note(&format!("streaming logs for {} (Ctrl-C to stop)", app.bundle_id));
+    ctx.out.note(&format!(
+        "streaming logs for {} (Ctrl-C to stop)",
+        app.bundle_id
+    ));
     crate::cli::process::stream(
         "xcrun",
         &[
@@ -346,7 +419,10 @@ mod tests {
 
     #[test]
     fn scan_sources_picks_swift_and_skips_build_dirs() {
-        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let root = std::env::temp_dir().join(format!("sweetpad-scan-{n}"));
         std::fs::create_dir_all(root.join("Sources")).unwrap();
         std::fs::create_dir_all(root.join("Pods")).unwrap();

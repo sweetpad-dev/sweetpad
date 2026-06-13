@@ -2,7 +2,7 @@
 
 use clap::Subcommand;
 
-use crate::cli::{resolve, CliResult, Context};
+use crate::cli::{CliResult, Context, resolve};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
