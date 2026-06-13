@@ -25,10 +25,24 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
 struct Dest {
     kind: &'static str,
     name: String,
+    /// Bare platform, e.g. `iOS` / `watchOS` / `macOS`.
     os: String,
+    /// OS version (empty for macOS).
+    os_version: String,
     booted: Option<bool>,
     udid: Option<String>,
     specifier: String,
+}
+
+impl Dest {
+    /// `"iOS 17.0"`, or just `"macOS"` when there's no version.
+    fn os_label(&self) -> String {
+        if self.os_version.is_empty() {
+            self.os.clone()
+        } else {
+            format!("{} {}", self.os, self.os_version)
+        }
+    }
 }
 
 fn list(ctx: &mut Context) -> CliResult {
@@ -36,6 +50,7 @@ fn list(ctx: &mut Context) -> CliResult {
         kind: "macOS",
         name: "My Mac".to_string(),
         os: "macOS".to_string(),
+        os_version: String::new(),
         booted: None,
         udid: None,
         specifier: "platform=macOS".to_string(),
@@ -46,7 +61,8 @@ fn list(ctx: &mut Context) -> CliResult {
         dests.push(Dest {
             kind: "simulator",
             name: s.name.clone(),
-            os: format!("{} {}", s.os, s.os_version),
+            os: s.os.clone(),
+            os_version: s.os_version.clone(),
             booted: Some(s.is_booted()),
             specifier: s.destination(),
             udid: Some(s.udid),
@@ -59,7 +75,8 @@ fn list(ctx: &mut Context) -> CliResult {
         dests.push(Dest {
             kind: "device",
             name: d.name.clone(),
-            os: format!("{} {}", d.platform, d.os_version),
+            os: platform.to_string(),
+            os_version: d.os_version.clone(),
             booted: None,
             specifier: format!("platform={platform},id={}", d.udid),
             udid: Some(d.udid),
@@ -74,6 +91,7 @@ fn list(ctx: &mut Context) -> CliResult {
                     "kind": d.kind,
                     "name": d.name,
                     "os": d.os,
+                    "osVersion": d.os_version,
                     "udid": d.udid,
                     "booted": d.booted,
                     "destination": d.specifier,
@@ -91,8 +109,12 @@ fn list(ctx: &mut Context) -> CliResult {
         } else {
             ""
         };
-        ctx.out
-            .line(&format!("{} · {} ({}){booted}", d.kind, d.name, d.os));
+        ctx.out.line(&format!(
+            "{} · {} ({}){booted}",
+            d.kind,
+            d.name,
+            d.os_label()
+        ));
         ctx.out.line(&format!("    {}", d.specifier));
     }
     Ok(())

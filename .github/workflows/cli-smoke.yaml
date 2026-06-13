@@ -68,7 +68,7 @@ jobs:
 
           # --- pick an available iOS simulator destination via the CLI itself ---
           DEST=$("$BIN" destination list --json \
-            | python3 -c "import json,sys; d=json.load(sys.stdin)['destinations']; print(next(x['destination'] for x in d if x['os']=='iOS'))")
+            | python3 -c "import json,sys; d=json.load(sys.stdin)['destinations']; print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
           echo "Using destination: $DEST"
           UDID="${DEST##*id=}"
 
