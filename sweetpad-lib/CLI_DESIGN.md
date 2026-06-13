@@ -76,9 +76,12 @@ sweetpad project new <Name> [flags]
   scaffolds into the working directory instead (name then defaults to its
   basename).
 - **Interactive wizard.** On a TTY, any value not supplied as a flag is prompted
-  for (name, platform, bundle id, deployment target) with validated defaults.
-  Non-TTY / `--json` runs stay strict: defaults are used and a missing name is
-  an error.
+  for — location (current dir?), name, platform, bundle id, deployment target,
+  and git init — each with a default that **Enter accepts** (the name has no
+  universal default, so new-directory mode requires typing it). A non-empty
+  target additionally prompts to continue (the `--force` question). Non-TTY /
+  `--json` runs stay strict: flags and defaults only, and a missing name is an
+  error.
 - **Platform.** `--platform ios|macos` (default `ios`); the wizard offers a
   picker. Switching platform swaps `SDKROOT`, the deployment-target key and its
   default (`17.0` iOS / `14.0` macOS), the framework runpath, and the iOS-only

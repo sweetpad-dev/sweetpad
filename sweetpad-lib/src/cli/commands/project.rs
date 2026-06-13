@@ -64,8 +64,18 @@ fn new(ctx: &mut Context, args: &NewArgs) -> CliResult {
     let cwd = std::env::current_dir()
         .map_err(|e| CliError::new(format!("cannot read current directory: {e}")))?;
 
+    // Each step takes the flag if it was given, else asks on a TTY (with a
+    // default that Enter accepts), else falls back to the default off a TTY.
+    let current_dir = if args.current_dir {
+        true
+    } else if interactive {
+        confirm("Create the project in the current directory?", false)?
+    } else {
+        false
+    };
+
     // With --current-dir an absent name falls back to the directory's basename.
-    let dir_name = if args.current_dir {
+    let dir_name = if current_dir {
         cwd.file_name().map(|n| n.to_string_lossy().into_owned())
     } else {
         None
@@ -79,25 +89,27 @@ fn new(ctx: &mut Context, args: &NewArgs) -> CliResult {
     let spec =
         ProjectSpec::new(&name, &bundle_id, &deployment_target, platform).map_err(CliError::new)?;
 
-    let root = if args.current_dir {
+    let root = if current_dir {
         cwd
     } else {
         cwd.join(&spec.name)
     };
-    ensure_writable(&root, args.force)?;
+    ensure_writable(&root, args.force, interactive)?;
+
+    // --no-git short-circuits to "don't init"; otherwise ask / default to yes.
+    let want_git = if args.no_git {
+        false
+    } else if interactive {
+        confirm("Initialize a git repository?", true)?
+    } else {
+        true
+    };
 
     let files = scaffold::scaffold(&spec);
     let written = write_files(&root, &files)?;
-    let git_initialized = !args.no_git && init_git(ctx, &root);
+    let git_initialized = want_git && init_git(ctx, &root);
 
-    report(
-        ctx,
-        &spec,
-        &root,
-        &written,
-        args.current_dir,
-        git_initialized,
-    );
+    report(ctx, &spec, &root, &written, current_dir, git_initialized);
     Ok(())
 }
 
@@ -189,25 +201,44 @@ fn prompt(
         .map_err(|e| CliError::new(format!("prompt failed: {e}")))
 }
 
-/// Refuse to scaffold over an existing non-empty directory unless `--force`.
-fn ensure_writable(root: &Path, force: bool) -> CliResult {
-    match std::fs::read_dir(root) {
-        Ok(mut entries) => {
-            if entries.next().is_some() && !force {
-                return Err(CliError::new(format!(
-                    "{} already exists and is not empty (use --force to scaffold \
-                     into it anyway)",
-                    root.display()
-                )));
-            }
-            Ok(())
+/// A yes/no wizard step with a default that Enter accepts.
+fn confirm(prompt: &str, default: bool) -> Result<bool, CliError> {
+    dialoguer::Confirm::new()
+        .with_prompt(prompt)
+        .default(default)
+        .interact()
+        .map_err(|e| CliError::new(format!("prompt failed: {e}")))
+}
+
+/// Refuse to scaffold over an existing non-empty directory. `--force` waives the
+/// check outright; on a TTY without it, the user is asked (default no); off a
+/// TTY it's a hard error.
+fn ensure_writable(root: &Path, force: bool, interactive: bool) -> CliResult {
+    let mut entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(CliError::new(format!(
+                "cannot inspect {}: {e}",
+                root.display()
+            )));
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(CliError::new(format!(
-            "cannot inspect {}: {e}",
-            root.display()
-        ))),
+    };
+    if entries.next().is_none() || force {
+        return Ok(());
     }
+    if interactive
+        && confirm(
+            &format!("{} is not empty. Scaffold into it anyway?", root.display()),
+            false,
+        )?
+    {
+        return Ok(());
+    }
+    Err(CliError::new(format!(
+        "{} already exists and is not empty (use --force to scaffold into it anyway)",
+        root.display()
+    )))
 }
 
 /// Write each generated file under `root`, creating parent directories.
