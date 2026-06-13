@@ -148,6 +148,11 @@ pub fn test_summary(bundle: &Path) -> Result<TestSummary, CliError> {
         ],
         None,
     )?;
+    parse_summary(&out)
+}
+
+/// Parse the `xcresulttool` summary JSON (skipping any leading non-JSON).
+fn parse_summary(out: &str) -> Result<TestSummary, CliError> {
     let json = out
         .find('{')
         .map(|i| &out[i..])
@@ -189,14 +194,17 @@ pub fn show_settings(
 
     let args: Vec<&str> = parts.iter().map(String::as_str).collect();
     let stdout = process::capture("xcodebuild", &args, working_dir(container).as_deref())?;
+    parse_settings(&stdout)
+}
 
-    // xcodebuild can print warnings before the JSON; slice from the first `[`.
+/// Parse `xcodebuild -showBuildSettings -json` output, skipping any warnings
+/// printed before the JSON array.
+fn parse_settings(stdout: &str) -> Result<Vec<TargetBuildSettings>, CliError> {
     let json = stdout
         .find('[')
         .map(|i| &stdout[i..])
         .ok_or_else(|| CliError::new("xcodebuild -showBuildSettings produced no JSON"))?;
-    serde_json::from_str(json)
-        .map_err(|e| CliError::new(format!("parsing build settings: {e}")))
+    serde_json::from_str(json).map_err(|e| CliError::new(format!("parsing build settings: {e}")))
 }
 
 /// The launchable app produced by a build: the `.app` path and its bundle id.
@@ -234,4 +242,112 @@ pub fn app_bundle(settings: &[TargetBuildSettings]) -> Result<AppBundle, CliErro
     Err(CliError::new(
         "could not find a launchable .app in the resolved build settings",
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::resolve::Container;
+    use std::path::PathBuf;
+
+    fn project() -> Container {
+        Container::Project(PathBuf::from("/work/App.xcodeproj"))
+    }
+
+    #[test]
+    fn build_args_for_project() {
+        let c = project();
+        let plan = BuildPlan {
+            container: &c,
+            scheme: "App",
+            configuration: "Debug",
+            destination: Some("platform=iOS Simulator,id=UDID"),
+            clean: true,
+        };
+        assert_eq!(
+            plan.args(),
+            vec![
+                "clean", "build",
+                "-scheme", "App",
+                "-configuration", "Debug",
+                "-destination", "platform=iOS Simulator,id=UDID",
+                "-project", "/work/App.xcodeproj",
+            ]
+        );
+    }
+
+    #[test]
+    fn build_args_workspace_omits_clean_and_destination() {
+        let c = Container::Workspace(PathBuf::from("/work/App.xcworkspace"));
+        let plan = BuildPlan { container: &c, scheme: "App", configuration: "Release", destination: None, clean: false };
+        assert_eq!(
+            plan.args(),
+            vec!["build", "-scheme", "App", "-configuration", "Release", "-workspace", "/work/App.xcworkspace"]
+        );
+    }
+
+    #[test]
+    fn test_args_include_selectors_and_bundle() {
+        let c = project();
+        let bundle = PathBuf::from("/tmp/r.xcresult");
+        let only = vec!["AppTests/LoginTests".to_string()];
+        let skip = vec!["AppTests/FlakyTests/testJitter".to_string()];
+        let plan = TestPlan {
+            container: &c,
+            scheme: "App",
+            configuration: "Debug",
+            destination: Some("platform=iOS Simulator,id=UDID"),
+            only_testing: &only,
+            skip_testing: &skip,
+            result_bundle: &bundle,
+        };
+        assert_eq!(
+            plan.args(),
+            vec![
+                "test",
+                "-scheme", "App",
+                "-configuration", "Debug",
+                "-resultBundlePath", "/tmp/r.xcresult",
+                "-destination", "platform=iOS Simulator,id=UDID",
+                "-project", "/work/App.xcodeproj",
+                "-only-testing:AppTests/LoginTests",
+                "-skip-testing:AppTests/FlakyTests/testJitter",
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_settings_skipping_preamble() {
+        let stdout = "warning: blah\n[{\"target\":\"App\",\"buildSettings\":{\"PRODUCT_NAME\":\"App\"}}]";
+        let parsed = parse_settings(stdout).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].target, "App");
+        assert_eq!(parsed[0].settings.get("PRODUCT_NAME").unwrap(), "App");
+    }
+
+    #[test]
+    fn app_bundle_picks_the_app_target() {
+        let stdout = r#"[
+          {"target":"AppTests","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"AppTests.xctest","PRODUCT_BUNDLE_IDENTIFIER":"com.x.tests"}},
+          {"target":"App","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"App.app","PRODUCT_BUNDLE_IDENTIFIER":"com.x.app"}}
+        ]"#;
+        let settings = parse_settings(stdout).unwrap();
+        let app = app_bundle(&settings).unwrap();
+        assert_eq!(app.path, PathBuf::from("/d/App.app"));
+        assert_eq!(app.bundle_id, "com.x.app");
+    }
+
+    #[test]
+    fn app_bundle_errors_without_app() {
+        let settings = parse_settings(r#"[{"target":"Lib","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"Lib.framework","PRODUCT_BUNDLE_IDENTIFIER":"com.x.lib"}}]"#).unwrap();
+        assert!(app_bundle(&settings).is_err());
+    }
+
+    #[test]
+    fn parses_test_summary() {
+        let out = "Some log line\n{\"result\":\"Failed\",\"totalTestCount\":5,\"passedTests\":4,\"failedTests\":1,\"skippedTests\":0,\"testFailures\":[{\"testName\":\"testX\",\"targetName\":\"AppTests\",\"failureText\":\"boom\"}]}";
+        let s = parse_summary(out).unwrap();
+        assert_eq!((s.total_test_count, s.passed_tests, s.failed_tests), (5, 4, 1));
+        assert_eq!(s.test_failures[0].test_name, "testX");
+    }
 }

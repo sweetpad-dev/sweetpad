@@ -74,8 +74,14 @@ pub fn platform(os: &str) -> &'static str {
 /// devices are dropped (they can't be booted/targeted).
 pub fn list() -> Result<Vec<Simulator>, CliError> {
     let raw = process::capture("xcrun", &["simctl", "list", "--json", "devices"], None)?;
+    parse_devices(&raw)
+}
+
+/// Parse `simctl list --json devices` output into sorted, available
+/// simulators. Split out from [`list`] so it's testable without `simctl`.
+fn parse_devices(raw: &str) -> Result<Vec<Simulator>, CliError> {
     let parsed: ListOutput =
-        serde_json::from_str(&raw).map_err(|e| CliError::new(format!("parsing simctl output: {e}")))?;
+        serde_json::from_str(raw).map_err(|e| CliError::new(format!("parsing simctl output: {e}")))?;
 
     let mut sims = Vec::new();
     for (runtime, devices) in parsed.devices {
@@ -152,5 +158,82 @@ fn parse_runtime(runtime: &str) -> (String, String) {
     match tail.split_once('-') {
         Some((os, version)) => (os.to_string(), version.replace('-', ".")),
         None => (tail.to_string(), String::new()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: &str = r#"{
+      "devices": {
+        "com.apple.CoreSimulator.SimRuntime.iOS-17-0": [
+          {"udid":"AAAA","name":"iPhone 15","state":"Booted","isAvailable":true},
+          {"udid":"BBBB","name":"iPhone 14","state":"Shutdown","isAvailable":true},
+          {"udid":"DEAD","name":"Old","state":"Shutdown","isAvailable":false}
+        ],
+        "com.apple.CoreSimulator.SimRuntime.watchOS-10-0": [
+          {"udid":"CCCC","name":"Apple Watch","state":"Shutdown","isAvailable":true}
+        ]
+      }
+    }"#;
+
+    #[test]
+    fn parses_and_filters_unavailable() {
+        let sims = parse_devices(SAMPLE).unwrap();
+        // The unavailable "Old" device is dropped.
+        assert_eq!(sims.len(), 3);
+        assert!(sims.iter().all(|s| s.udid != "DEAD"));
+    }
+
+    #[test]
+    fn sorts_by_os_then_version_then_name() {
+        let sims = parse_devices(SAMPLE).unwrap();
+        let order: Vec<&str> = sims.iter().map(|s| s.name.as_str()).collect();
+        // iOS before watchOS; within iOS, name order.
+        assert_eq!(order, vec!["iPhone 14", "iPhone 15", "Apple Watch"]);
+    }
+
+    #[test]
+    fn parses_runtime_into_os_and_version() {
+        assert_eq!(
+            parse_runtime("com.apple.CoreSimulator.SimRuntime.iOS-17-0"),
+            ("iOS".to_string(), "17.0".to_string())
+        );
+        assert_eq!(
+            parse_runtime("com.apple.CoreSimulator.SimRuntime.watchOS-10-2"),
+            ("watchOS".to_string(), "10.2".to_string())
+        );
+    }
+
+    #[test]
+    fn destination_specifier_maps_platform() {
+        let sims = parse_devices(SAMPLE).unwrap();
+        let watch = sims.iter().find(|s| s.os == "watchOS").unwrap();
+        assert_eq!(watch.destination(), format!("platform=watchOS Simulator,id={}", watch.udid));
+        let iphone = sims.iter().find(|s| s.name == "iPhone 15").unwrap();
+        assert_eq!(iphone.destination(), "platform=iOS Simulator,id=AAAA");
+    }
+
+    #[test]
+    fn find_matches_udid_case_insensitively() {
+        let sims = parse_devices(SAMPLE).unwrap();
+        assert_eq!(find(&sims, "aaaa").unwrap().name, "iPhone 15");
+    }
+
+    #[test]
+    fn find_by_name_prefers_booted() {
+        let sims = vec![
+            Simulator { udid: "1".into(), name: "Dup".into(), state: "Shutdown".into(), available: true, os: "iOS".into(), os_version: "17.0".into() },
+            Simulator { udid: "2".into(), name: "Dup".into(), state: "Booted".into(), available: true, os: "iOS".into(), os_version: "17.0".into() },
+        ];
+        assert_eq!(find(&sims, "Dup").unwrap().udid, "2");
+    }
+
+    #[test]
+    fn label_includes_version() {
+        let s = Simulator { udid: "x".into(), name: "iPhone 15".into(), state: "Booted".into(), available: true, os: "iOS".into(), os_version: "17.0".into() };
+        assert_eq!(s.label(), "iPhone 15 (17.0)");
+        assert!(s.is_booted());
     }
 }

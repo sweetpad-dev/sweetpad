@@ -226,28 +226,108 @@ pub fn remember(ctx: &mut Context, resolved: &Resolved, target: &BuildTarget) {
     let _ = ctx.state.save();
 }
 
-/// A minimal numbered-menu picker on stderr (the design's interactive fallback;
-/// a richer fuzzy picker can replace this later without changing callers).
+/// Interactive fuzzy picker (the design's TTY fallback): type to filter, arrows
+/// to move, Enter to select. Only reached when stdout is a TTY.
 fn prompt_choice(what: &str, candidates: &[String]) -> Result<String, CliError> {
-    use std::io::Write;
-    let mut err = std::io::stderr();
-    let _ = writeln!(err, "Select a {what}:");
-    for (i, c) in candidates.iter().enumerate() {
-        let _ = writeln!(err, "  {}) {}", i + 1, c);
-    }
-    let _ = write!(err, "> ");
-    let _ = err.flush();
+    let idx = dialoguer::FuzzySelect::new()
+        .with_prompt(format!("Select a {what}"))
+        .items(candidates)
+        .default(0)
+        .interact()
+        .map_err(|e| CliError::new(format!("selection cancelled: {e}")))?;
+    Ok(candidates[idx].clone())
+}
 
-    let mut line = String::new();
-    std::io::stdin()
-        .read_line(&mut line)
-        .map_err(|e| CliError::new(format!("reading selection: {e}")))?;
-    let idx: usize = line
-        .trim()
-        .parse()
-        .map_err(|_| CliError::new("invalid selection"))?;
-    candidates
-        .get(idx.wrapping_sub(1))
-        .cloned()
-        .ok_or_else(|| CliError::new("selection out of range"))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::{config::Config, output::Output, state::State, Context, GlobalArgs};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("sweetpad-test-{tag}-{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn ctx() -> Context {
+        let global = GlobalArgs {
+            json: false,
+            no_color: true,
+            verbose: 0,
+            workspace: None,
+            project: None,
+            scheme: None,
+            configuration: None,
+            destination: None,
+        };
+        let out = Output::new(&global);
+        Context { global, config: Config::default(), state: State::default(), out }
+    }
+
+    #[test]
+    fn discover_prefers_workspace_then_project_then_package() {
+        let dir = temp_dir("disc");
+        std::fs::create_dir(dir.join("App.xcodeproj")).unwrap();
+        std::fs::write(dir.join("Package.swift"), "// pkg").unwrap();
+        // Project beats a bare package.
+        assert!(matches!(discover(&dir), Some(Container::Project(_))));
+
+        std::fs::create_dir(dir.join("App.xcworkspace")).unwrap();
+        // Workspace beats project.
+        assert!(matches!(discover(&dir), Some(Container::Workspace(_))));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn discover_finds_swift_package_alone() {
+        let dir = temp_dir("pkg");
+        std::fs::write(dir.join("Package.swift"), "// pkg").unwrap();
+        assert!(matches!(discover(&dir), Some(Container::SwiftPackage(_))));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn discover_none_in_empty_dir() {
+        let dir = temp_dir("empty");
+        assert!(discover(&dir).is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn container_key_is_canonical_path() {
+        let dir = temp_dir("key");
+        let proj = dir.join("App.xcodeproj");
+        std::fs::create_dir(&proj).unwrap();
+        let key = Container::Project(proj.clone()).key();
+        assert_eq!(key, std::fs::canonicalize(&proj).unwrap().to_string_lossy());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn choose_returns_current_when_set() {
+        let c = ctx();
+        assert_eq!(choose(&c, "scheme", Some("X".into()), &[]).unwrap(), "X");
+    }
+
+    #[test]
+    fn choose_auto_picks_single_candidate() {
+        let c = ctx();
+        assert_eq!(choose(&c, "scheme", None, &["only".into()]).unwrap(), "only");
+    }
+
+    #[test]
+    fn choose_errors_when_empty() {
+        let c = ctx();
+        assert!(choose(&c, "scheme", None, &[]).is_err());
+    }
+
+    #[test]
+    fn choose_is_strict_when_ambiguous_and_non_interactive() {
+        // Tests don't run under a TTY, so multiple candidates must error.
+        let c = ctx();
+        assert!(choose(&c, "scheme", None, &["a".into(), "b".into()]).is_err());
+    }
 }
