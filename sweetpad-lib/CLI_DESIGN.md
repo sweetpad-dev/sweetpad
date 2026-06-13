@@ -232,7 +232,7 @@ Notes / heuristics:
   the lone booted sim, else prompt (booted set, or the full list) / strict
   error off a TTY.
 
-## 9c. v4 — Xcode-file conflict resolution
+## 9c. v4 — git conflict resolution (.pbxproj + Package.resolved)
 
 `project.pbxproj` is the canonical git merge-conflict nightmare: a flat,
 UUID-keyed plist where a line-based merge drops `<<<<<<<` markers in arbitrary
@@ -241,41 +241,68 @@ of the fix — a faithful parser ([`pbxproj`]) and a **byte-exact** writer
 ([`pbxproj_writer`], verified against the whole fixture corpus) — so a *semantic*
 three-way merge is a thin layer between them.
 
+Two file kinds are covered: Xcode's `project.pbxproj` (object-graph merge via
+[`pbxproj_merge`] + the byte-exact [`pbxproj_writer`]) and SwiftPM's
+`Package.resolved` (JSON pin merge via [`spm_resolved`]). Both run on demand
+*and* automatically as git merge drivers; the shared plumbing lives in
+[`cli::merge`].
+
 ```
 sweetpad pbxproj resolve [PATHS…] [--force]
-                                     semantically resolve conflicted .pbxproj
-                                     files mid-merge. Defaults to every
-                                     conflicted .pbxproj in the repo; reads the
-                                     three clean inputs from git's index stages
-                                     (:1: base, :2: ours, :3: theirs), merges the
-                                     object graphs, writes the result, and
-                                     `git add`s it. --force recovers the inputs
-                                     from HEAD/MERGE_HEAD when git already
-                                     auto-merged the file textually.
+sweetpad spm resolve     [PATHS…] [--force]
+                                     resolve conflicted .pbxproj / Package.resolved
+                                     files mid-conflict. Defaults to every matching
+                                     conflicted file in the repo; reads the three
+                                     clean inputs from git's index stages (:1: base,
+                                     :2: ours, :3: theirs), merges, writes the
+                                     result, and `git add`s it. --force recovers the
+                                     inputs from HEAD/MERGE_HEAD when git already
+                                     auto-merged the file textually. Non-zero exit if
+                                     anything is left unresolved.
+
+sweetpad merge install [--global]    register both as git merge drivers
+                                     (.gitattributes + `git config`) so plain
+                                     `git merge` resolves them automatically.
+sweetpad merge driver <KIND> %O %A %B %P
+                                     the driver git itself invokes (hidden); reads
+                                     git's three temp files and writes the merge over
+                                     %A, exiting non-zero on a real conflict so git
+                                     leaves the path unmerged (then `<kind> resolve`
+                                     shows the structured report).
 ```
 
-The merge engine ([`pbxproj_merge`]) is pure (no git, no I/O, no Xcode) and
+The pbxproj engine ([`pbxproj_merge`]) is pure (no git, no I/O, no Xcode) and
 runs the standard three-way rule per UUID-keyed object and per field: identical
 edits and one-sided changes resolve silently, disjoint object/array additions
-union (reference lists like `children`/`files` are treated as ordered sets,
-honoring deletions), and only genuine contradictions — both sides setting the
-same scalar differently, or modify-vs-delete — are reported as conflicts. On any
-conflict the file is left untouched for a human, with a graph-path report
-(`objects/<UUID> (<isa>)/<field>`) of exactly what collided; the command exits
-non-zero.
+union (reference lists like `children`/`files` are ordered sets, honoring
+deletions), and only genuine contradictions — both sides setting the same scalar
+differently, or modify-vs-delete — are reported. On any conflict the file is left
+untouched, with a graph-path report (`objects/<UUID> (<isa>)/<field>`) of what
+collided. The SPM engine ([`spm_resolved`]) is the same shape over `serde_json`:
+the `pins` array merges by `identity` (union disjoint pins, take one-sided version
+bumps, conflict only on both-sides-bumped-differently), re-rendered to Xcode's
+exact `Package.resolved` style (2-space indent, `" : "`, sorted keys, pins sorted
+by identity). `originHash` is a derived digest Xcode regenerates, so it is never
+treated as a conflict.
 
 Notes / heuristics:
 - Reads pristine blobs from git, never the marker-riddled working copy, so the
-  textual conflict's placement is irrelevant.
-- The merged object dict preserves base key order (then ours-only, then
-  theirs-only additions) and the parser's single-line layout hint, keeping the
-  writer's output Xcode-stable and low-churn.
-- Engine is unit-tested without a Mac (disjoint adds, one-sided delete,
-  modify-delete, same-field conflict, array union+delete, layout-hint
-  preservation); the end-to-end git path is exercised by a real synthetic merge.
-- Later: a git merge **driver** (`*.pbxproj merge=sweetpad`) is the same engine
-  wrapped to run automatically during `git merge`; `Package.resolved` (SPM, JSON)
-  is an adjacent trivial-merge candidate.
+  textual conflict's placement is irrelevant. The same engines back both the
+  on-demand `resolve` commands (index stages) and the `merge driver` (git's temp
+  files), so behavior is identical either way.
+- The merged pbxproj dict preserves base key order (then ours-only, then
+  theirs-only additions) and the parser's single-line layout hint, keeping output
+  Xcode-stable and low-churn.
+- `merge install` writes the driver to `git config` (per-clone; collaborators run
+  it once) and the attribute lines to the repo `.gitattributes` (commit it) — or,
+  with `--global`, to global git config + `core.attributesFile`.
+- Engines are unit-tested without a Mac (pbxproj: disjoint adds, one-sided delete,
+  modify-delete, same-field conflict, array union+delete, layout-hint; spm:
+  byte-exact serialize, pin union+sort, version bump, both-bump conflict, add/remove,
+  originHash divergence); the end-to-end git driver path is exercised by real
+  synthetic merges.
+- Later: a `Package.resolved`-style driver for other regenerated lockfiles is the
+  same pattern; a built-in `git merge`-driver self-test could pin the integration.
 
 ## 10. Testing
 

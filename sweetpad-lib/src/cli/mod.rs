@@ -19,6 +19,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 pub mod buildlog;
 pub mod config;
 pub mod devicectl;
+pub mod merge;
 pub mod output;
 pub mod process;
 pub mod resolve;
@@ -144,6 +145,16 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::pbxproj::Action,
     },
+    /// Work with SwiftPM `Package.resolved` files (semantic git-conflict merge).
+    Spm {
+        #[command(subcommand)]
+        action: commands::spm::Action,
+    },
+    /// Git integration: install/run sweetpad's semantic merge drivers.
+    Merge {
+        #[command(subcommand)]
+        action: commands::merge::Action,
+    },
     /// Build Server Protocol integration (sourcekit-lsp autocomplete).
     Bsp {
         #[command(subcommand)]
@@ -227,6 +238,8 @@ pub fn run(argv: &[String]) -> ExitCode {
         Resource::Device { action } => commands::device::run(&mut ctx, &action),
         Resource::Format { action } => commands::format::run(&mut ctx, &action),
         Resource::Pbxproj { action } => commands::pbxproj::run(&mut ctx, &action),
+        Resource::Spm { action } => commands::spm::run(&mut ctx, &action),
+        Resource::Merge { action } => commands::merge::run(&mut ctx, &action),
         Resource::Bsp { action } => commands::bsp::run(&mut ctx, &action),
         Resource::DerivedData { action } => commands::derived_data::run(&mut ctx, &action),
         Resource::Doctor => commands::doctor::run(&mut ctx),

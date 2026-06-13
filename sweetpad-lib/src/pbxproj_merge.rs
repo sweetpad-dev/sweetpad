@@ -121,7 +121,7 @@ impl Merger {
                 Value::Dict(self.merge_dict(path, base.and_then(Value::as_dict), o, t))
             }
             (Value::Array(o), Value::Array(t)) => {
-                Value::Array(self.merge_array(base.and_then(Value::as_array), o, t))
+                Value::Array(merge_array(base.and_then(Value::as_array), o, t))
             }
             _ => {
                 self.conflicts.push(Conflict {
@@ -154,7 +154,7 @@ impl Merger {
             match (b, o, t) {
                 // Present (or added) on both sides — recurse.
                 (_, Some(o), Some(t)) => {
-                    let child = self.child_path(path, &key, ours);
+                    let child = child_path(path, &key, ours);
                     result.insert(key, self.merge_value(&child, b, o, t));
                 }
                 // Added by exactly one side.
@@ -170,7 +170,7 @@ impl Merger {
                         // theirs untouched, ours deleted → honor the delete.
                     } else {
                         self.conflicts.push(Conflict {
-                            path: self.child_path(path, &key, theirs),
+                            path: child_path(path, &key, theirs),
                             kind: ConflictKind::ModifyDelete,
                             detail: format!("ours deleted; theirs modified to {}", summarize(t)),
                         });
@@ -183,72 +183,67 @@ impl Merger {
                         // ours untouched, theirs deleted → honor the delete.
                     } else {
                         self.conflicts.push(Conflict {
-                            path: self.child_path(path, &key, ours),
+                            path: child_path(path, &key, ours),
                             kind: ConflictKind::ModifyDelete,
                             detail: format!("theirs deleted; ours modified to {}", summarize(o)),
                         });
                         result.insert(key, o.clone());
                     }
                 }
-                // Deleted by both, or impossible (none anywhere).
-                (Some(_), None, None) | (None, None, None) => {}
+                // Deleted by both (base present or not) — drop the key.
+                (_, None, None) => {}
             }
         }
         result
     }
+}
 
-    /// Three-way merge of an array, treated as an ordered set (the shape of
-    /// every pbxproj reference list: `children`, `files`, `buildPhases`, …).
-    /// Honors one-sided deletions and unions additions from both sides, biased
-    /// to ours' ordering. Reorder-only differences resolve to ours.
-    fn merge_array(
-        &mut self,
-        base: Option<&[Value]>,
-        ours: &[Value],
-        theirs: &[Value],
-    ) -> Vec<Value> {
-        let base = base.unwrap_or(&[]);
-        let mut result: Vec<Value> = Vec::new();
+/// Three-way merge of an array, treated as an ordered set (the shape of
+/// every pbxproj reference list: `children`, `files`, `buildPhases`, …).
+/// Honors one-sided deletions and unions additions from both sides, biased
+/// to ours' ordering. Reorder-only differences resolve to ours.
+fn merge_array(base: Option<&[Value]>, ours: &[Value], theirs: &[Value]) -> Vec<Value> {
+    let base = base.unwrap_or(&[]);
+    let mut result: Vec<Value> = Vec::new();
 
-        // Walk ours, dropping base elements that theirs deleted.
-        for v in ours {
-            let in_base = contains(base, v);
-            if in_base && !contains(theirs, v) {
-                continue; // theirs removed this base element
-            }
-            if !contains(&result, v) {
-                result.push(v.clone());
-            }
+    // Walk ours, dropping base elements that theirs deleted.
+    for v in ours {
+        let in_base = contains(base, v);
+        if in_base && !contains(theirs, v) {
+            continue; // theirs removed this base element
         }
-        // Append theirs-only additions (anything not from base and not already
-        // contributed by ours).
-        for v in theirs {
-            if contains(base, v) || contains(ours, v) || contains(&result, v) {
-                continue;
-            }
+        if !contains(&result, v) {
             result.push(v.clone());
         }
-        result
     }
+    // Append theirs-only additions (anything not from base and not already
+    // contributed by ours).
+    for v in theirs {
+        if contains(base, v) || contains(ours, v) || contains(&result, v) {
+            continue;
+        }
+        result.push(v.clone());
+    }
+    result
+}
 
-    /// Build the graph path for a child key. Inside `objects`, annotate the
-    /// UUID with its `isa` so conflict reports name the object kind.
-    fn child_path(&self, path: &str, key: &str, side: &Dict) -> String {
-        if path == "objects" {
-            let isa = side
-                .get(key)
-                .and_then(|v| v.get("isa"))
-                .and_then(Value::as_str);
-            return match isa {
-                Some(isa) => format!("objects/{key} ({isa})"),
-                None => format!("objects/{key}"),
-            };
-        }
-        if path.is_empty() {
-            key.to_string()
-        } else {
-            format!("{path}/{key}")
-        }
+/// Build the graph path for a child key. Inside `objects`, annotate the
+/// UUID with its `isa` so conflict reports name the object kind.
+fn child_path(path: &str, key: &str, side: &Dict) -> String {
+    if path == "objects" {
+        let isa = side
+            .get(key)
+            .and_then(|v| v.get("isa"))
+            .and_then(Value::as_str);
+        return match isa {
+            Some(isa) => format!("objects/{key} ({isa})"),
+            None => format!("objects/{key}"),
+        };
+    }
+    if path.is_empty() {
+        key.to_string()
+    } else {
+        format!("{path}/{key}")
     }
 }
 
