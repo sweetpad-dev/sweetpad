@@ -16,6 +16,7 @@ use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser, Subcommand};
 
+pub mod buildlog;
 pub mod config;
 pub mod devicectl;
 pub mod output;

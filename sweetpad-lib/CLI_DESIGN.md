@@ -207,9 +207,17 @@ tool-spawning code is pinned without a Mac:
 The *runtime* truth (does xcodebuild actually build, does the log
 predicate/console attach behave) is exercised by the `cli-smoke` macOS job.
 
-## 11. Open / later
+## 11. Build-log beautifier
 
-- `xcbeautify` piping for prettier build/test output.
+`build`/`test` output is beautified natively (no `xcbeautify` dependency):
+[`buildlog`] parses each raw `xcodebuild` line into a structured [`buildlog::Event`]
+(compile/link/sign/diagnostic/test/result), then renders a concise, colorized
+stream. Parsing is decoupled from rendering so the events can also feed CI
+summaries or diagnostics later. `-v` passes raw output through; `--json` stays
+quiet. `parse_line` is pure and unit-tested without Xcode.
+
+## 12. Open / later
+
 - SPM `app run` (libraries have no `.app`; only build/test today).
 - Whether the extension actually adopts the CLI as its engine.
 - (Declined for now: `tools` resource, `config`/`state` subcommands.)

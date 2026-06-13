@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime};
 
 use clap::Subcommand;
 
+use crate::cli::output::Output;
 use crate::cli::resolve::{self, Resolved};
 use crate::cli::xcodebuild::{self, AppBundle};
 use crate::cli::{CliError, CliResult, Context, devicectl, simctl};
@@ -133,7 +134,7 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
     // Default: deploy and follow logs inline until Ctrl-C.
     match &plan.target {
         Target::Simulator(udid) => {
-            let app = build_and_install(&plan)?;
+            let app = build_and_install(&plan, &ctx.out)?;
             let out = simctl::launch(udid, &app.bundle_id)?;
             ctx.out
                 .note(&format!("launched {} → {}", app.bundle_id, out.trim()));
@@ -141,7 +142,7 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         }
         Target::Device(id) => {
             // On device, logs come from launching with the console attached.
-            let app = build_and_install(&plan)?;
+            let app = build_and_install(&plan, &ctx.out)?;
             ctx.out.note(&format!(
                 "launching {} with console (Ctrl-C to stop)",
                 app.bundle_id
@@ -150,7 +151,7 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         }
         Target::Mac => {
             // A macOS app runs its executable directly; that streams its output.
-            let app = build_and_install(&plan)?;
+            let app = build_and_install(&plan, &ctx.out)?;
             ctx.out
                 .note(&format!("running {} (Ctrl-C to stop)", app.bundle_id));
             crate::cli::process::stream(&app.executable.to_string_lossy(), &[], None)
@@ -217,8 +218,8 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
 
 /// Build and install onto the target, returning the launchable app. Shared by
 /// every flow; the launch step is chosen by the caller.
-fn build_and_install(plan: &RunPlan) -> Result<AppBundle, CliError> {
-    plan.build_plan().run()?;
+fn build_and_install(plan: &RunPlan, out: &Output) -> Result<AppBundle, CliError> {
+    plan.build_plan().run(out)?;
     let app = plan.app_bundle()?;
     let app_path = app.path.display().to_string();
     match &plan.target {
@@ -237,7 +238,7 @@ fn build_and_install(plan: &RunPlan) -> Result<AppBundle, CliError> {
 
 /// Build, install, and launch (no log following) — the unit re-run by `--watch`.
 fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
-    let app = build_and_install(plan)?;
+    let app = build_and_install(plan, &ctx.out)?;
     match &plan.target {
         Target::Simulator(udid) => {
             let out = simctl::launch(udid, &app.bundle_id)?;
@@ -344,7 +345,7 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
 
     match stage {
         Stage::Install => {
-            plan.build_plan().run()?;
+            plan.build_plan().run(&ctx.out)?;
             simctl::boot(udid)?;
             simctl::install(udid, &app.path.display().to_string())?;
             ctx.out.note(&format!("installed {}", app.bundle_id));
