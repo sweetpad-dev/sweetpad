@@ -27,10 +27,12 @@ mod framing;
 #[cfg(feature = "node")]
 pub mod node;
 pub mod pbxproj;
+pub mod pbxproj_merge;
 pub mod pbxproj_writer;
 pub mod project;
 pub mod resolver;
 pub mod scheme;
+pub mod spm_resolved;
 pub mod vscode_cli;
 pub mod workspace;
 pub mod xcconfig;
