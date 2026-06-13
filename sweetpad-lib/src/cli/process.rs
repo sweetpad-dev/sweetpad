@@ -69,6 +69,37 @@ pub fn run(
     Ok(status.success())
 }
 
+/// Run a command, invoking `on_line` for each line of stdout as it arrives
+/// (stderr inherited). Returns whether the process succeeded. Used to feed
+/// xcodebuild output through the native log beautifier ([`crate::cli::buildlog`]).
+pub fn stream_lines(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    mut on_line: impl FnMut(&str),
+) -> Result<bool, CliError> {
+    use std::io::{BufRead, BufReader};
+
+    let mut cmd = Command::new(program);
+    cmd.args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    let mut child = cmd.spawn().map_err(|e| spawn_error(program, &e))?;
+    // Safe: stdout was set to piped above.
+    let stdout = child.stdout.take().expect("piped stdout");
+    for line in BufReader::new(stdout).lines() {
+        match line {
+            Ok(line) => on_line(&line),
+            Err(_) => break, // non-UTF-8 / closed pipe — stop reading, still wait()
+        }
+    }
+    let status = child.wait().map_err(|e| spawn_error(program, &e))?;
+    Ok(status.success())
+}
+
 fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
     if e.kind() == std::io::ErrorKind::NotFound {
         CliError::new(format!(

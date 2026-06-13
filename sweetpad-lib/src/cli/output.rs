@@ -46,6 +46,12 @@ impl Output {
         !self.json && std::io::stderr().is_terminal()
     }
 
+    /// True when `-v`/`--verbose` was passed — surfaces raw/extra output.
+    #[must_use]
+    pub fn is_verbose(&self) -> bool {
+        self.verbose > 0
+    }
+
     /// Print a primary data line to stdout (human mode only — JSON commands
     /// build a payload and emit it via [`Output::json_value`]).
     pub fn line(&self, s: &str) {

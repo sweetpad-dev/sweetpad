@@ -61,8 +61,8 @@ fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> 
         ));
     }
 
-    // In JSON mode, suppress xcodebuild's chatter so stdout holds only the summary.
-    let passed = plan.run(ctx.out.is_json())?;
+    // Human mode beautifies output; JSON stays quiet so stdout holds only the summary.
+    let passed = plan.run(&ctx.out)?;
     let summary = xcodebuild::test_summary(&bundle)?;
     let _ = std::fs::remove_dir_all(&bundle);
 

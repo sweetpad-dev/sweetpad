@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::cli::output::Output;
 use crate::cli::resolve::Container;
-use crate::cli::{CliError, process};
+use crate::cli::{CliError, buildlog, process};
 
 /// Everything needed to invoke `xcodebuild build` for a resolved target.
 pub struct BuildPlan<'a> {
@@ -41,11 +42,24 @@ impl BuildPlan<'_> {
         args
     }
 
-    /// Run the build, streaming xcodebuild output to the terminal.
-    pub fn run(&self) -> Result<(), CliError> {
+    /// Run the build. Human mode beautifies xcodebuild's output via
+    /// [`buildlog`]; `-v` passes it through raw; `--json` stays quiet.
+    pub fn run(&self, out: &Output) -> Result<(), CliError> {
         let parts = self.args();
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
-        process::stream("xcodebuild", &args, working_dir(self.container).as_deref())
+        let cwd = working_dir(self.container);
+        let ok = if out.is_json() {
+            process::run("xcodebuild", &args, cwd.as_deref(), true)?
+        } else if out.is_verbose() {
+            process::run("xcodebuild", &args, cwd.as_deref(), false)?
+        } else {
+            buildlog::run("xcodebuild", &args, cwd.as_deref(), out)?
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(CliError::new("xcodebuild exited with a non-zero status"))
+        }
     }
 }
 
@@ -110,18 +124,20 @@ impl TestPlan<'_> {
         args
     }
 
-    /// Run the tests. `quiet` discards xcodebuild's stdout (for `--json`, where
-    /// only the parsed summary is emitted). Returns whether the run passed; a
-    /// test failure is a `false`, not an error.
-    pub fn run(&self, quiet: bool) -> Result<bool, CliError> {
+    /// Run the tests. `--json` stays quiet (only the parsed summary is emitted),
+    /// `-v` is raw, otherwise xcodebuild output is beautified. Returns whether
+    /// the run passed; a test failure is `false`, not an error.
+    pub fn run(&self, out: &Output) -> Result<bool, CliError> {
         let parts = self.args();
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
-        process::run(
-            "xcodebuild",
-            &args,
-            working_dir(self.container).as_deref(),
-            quiet,
-        )
+        let cwd = working_dir(self.container);
+        if out.is_json() {
+            process::run("xcodebuild", &args, cwd.as_deref(), true)
+        } else if out.is_verbose() {
+            process::run("xcodebuild", &args, cwd.as_deref(), false)
+        } else {
+            buildlog::run("xcodebuild", &args, cwd.as_deref(), out)
+        }
     }
 }
 

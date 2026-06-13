@@ -39,5 +39,5 @@ fn start(ctx: &mut Context, clean: bool) -> CliResult {
         destination: Some(&target.destination),
         clean,
     }
-    .run()
+    .run(&ctx.out)
 }
