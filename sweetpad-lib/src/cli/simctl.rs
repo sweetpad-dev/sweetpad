@@ -155,6 +155,56 @@ pub fn terminate(udid: &str, bundle_id: &str) -> Result<(), CliError> {
     process::stream("xcrun", &["simctl", "terminate", udid, bundle_id], None)
 }
 
+/// Shut down a simulator. Already-shutdown is treated as success so the command
+/// is idempotent (mirrors [`boot`]).
+pub fn shutdown(udid: &str) -> Result<(), CliError> {
+    let output = std::process::Command::new("xcrun")
+        .args(["simctl", "shutdown", udid])
+        .output()
+        .map_err(|e| CliError::new(format!("failed to run `xcrun simctl shutdown`: {e}")))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("current state: Shutdown") || stderr.contains("Unable to shutdown") {
+        return Ok(());
+    }
+    Err(CliError::new(format!(
+        "simctl shutdown failed: {}",
+        stderr.trim()
+    )))
+}
+
+/// Erase a simulator's contents and settings (the device must be shut down).
+pub fn erase(udid: &str) -> Result<(), CliError> {
+    process::stream("xcrun", &["simctl", "erase", udid], None)
+}
+
+/// Open a URL on a booted simulator (`simctl openurl`) — drives deep links and
+/// universal links into the app.
+pub fn open_url(udid: &str, url: &str) -> Result<(), CliError> {
+    process::stream("xcrun", &["simctl", "openurl", udid, url], None)
+}
+
+/// Capture a PNG screenshot of a booted simulator to `path`.
+pub fn screenshot(udid: &str, path: &str) -> Result<(), CliError> {
+    process::stream("xcrun", &["simctl", "io", udid, "screenshot", path], None)
+}
+
+/// Override a booted simulator's UI appearance (`light` / `dark`).
+pub fn set_appearance(udid: &str, appearance: &str) -> Result<(), CliError> {
+    process::stream(
+        "xcrun",
+        &["simctl", "ui", udid, "appearance", appearance],
+        None,
+    )
+}
+
+/// Open the Simulator.app GUI (no specific device required).
+pub fn open_app() -> Result<(), CliError> {
+    process::stream("open", &["-a", "Simulator"], None)
+}
+
 /// `com.apple.CoreSimulator.SimRuntime.iOS-17-0` → (`iOS`, `17.0`).
 fn parse_runtime(runtime: &str) -> (String, String) {
     let tail = runtime.rsplit('.').next().unwrap_or(runtime); // iOS-17-0

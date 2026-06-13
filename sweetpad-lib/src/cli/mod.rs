@@ -144,6 +144,13 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::bsp::Action,
     },
+    /// Inspect and purge Xcode's DerivedData.
+    DerivedData {
+        #[command(subcommand)]
+        action: commands::derived_data::Action,
+    },
+    /// Diagnose the local Xcode/Swift toolchain.
+    Doctor,
     /// Generate shell completion scripts.
     Completions {
         /// Shell to generate completions for.
@@ -215,6 +222,8 @@ pub fn run(argv: &[String]) -> ExitCode {
         Resource::Device { action } => commands::device::run(&mut ctx, &action),
         Resource::Format { action } => commands::format::run(&mut ctx, &action),
         Resource::Bsp { action } => commands::bsp::run(&mut ctx, &action),
+        Resource::DerivedData { action } => commands::derived_data::run(&mut ctx, &action),
+        Resource::Doctor => commands::doctor::run(&mut ctx),
         Resource::Completions { .. } => unreachable!("handled above"),
     };
 

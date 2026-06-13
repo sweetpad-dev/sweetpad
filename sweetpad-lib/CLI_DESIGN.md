@@ -191,6 +191,47 @@ settings/destination/simulator/bsp/completions`, then `build start`,
 `test run`, `app run` — against live `xcodebuild`/`simctl`. This is the runtime
 counterpart to the unit tests below.
 
+## 9b. v3 — toolchain & maintenance commands
+
+Quality-of-life commands on the same grammar and plumbing, aimed at the
+everyday frictions raw `xcodebuild`/`xcrun` leave to the user:
+
+```
+sweetpad doctor                      diagnose the toolchain (flutter-doctor style):
+                                     Xcode/xcodebuild/swift, simulator runtimes,
+                                     devicectl, swift-format/swiftlint — each ok/
+                                     warning/problem with a fix hint. A missing
+                                     required tool is a non-zero exit.
+sweetpad derived-data path [--all]   this project's DerivedData folder(s), or the
+sweetpad derived-data size [--all]   whole store with --all (size is human + bytes)
+sweetpad derived-data purge [--all] [--yes]
+                                     delete DerivedData — this project by default
+                                     (the safe default), or --all; confirms on a
+                                     TTY unless --yes
+sweetpad simulator shutdown [NAME]   shut down a sim (defaults to the booted one)
+sweetpad simulator erase [NAME]      erase contents & settings (must be shut down)
+sweetpad simulator open              open the Simulator.app GUI
+sweetpad simulator screenshot [NAME] [--output PATH]
+                                     PNG of a booted sim (timestamped by default)
+sweetpad simulator appearance <light|dark> [NAME]
+                                     toggle a booted sim's UI appearance
+sweetpad app open-url <URL> [--simulator NAME]
+                                     drive deep / universal links in via
+                                     `simctl openurl` (boots the sim if needed)
+```
+
+Notes / heuristics:
+- `doctor` probes each tool with both stdio streams captured (so the report
+  stays clean) and reports the first version line; the runtime-count, summary,
+  status-glyph, and `first_line` helpers are pure and unit-tested.
+- DerivedData scoping matches Xcode's `<Name>-<hash>` folders by the
+  container's file-stem (exact name or `<Name>-` prefix), tested against
+  prefix-collision cases (`MyApp` must not match `MyAppHelper-…`).
+- the side-effecting `simulator`/`app open-url` actions share one
+  simulator picker (`resolve::select_simulator`): explicit name/UDID wins, else
+  the lone booted sim, else prompt (booted set, or the full list) / strict
+  error off a TTY.
+
 ## 10. Testing
 
 The CLI modules carry inline `#[cfg(test)]` units that need no Xcode, so the
