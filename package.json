@@ -50,9 +50,9 @@
     "check:types": "tsc --noEmit",
     "check:all": "npm run check:format && npm run check:lint && npm run check:types",
     "publish-patch": "./scripts/publish-patch.sh",
-    "download-examples": "tsx ./scripts/download-examples.ts",
-    "optimize-font": "tsx ./scripts/font-tools.ts optimize",
-    "verify-font": "tsx ./scripts/font-tools.ts verify"
+    "download-examples": "node ./scripts/download-examples.mts",
+    "optimize-font": "node ./scripts/font-tools.mts optimize",
+    "verify-font": "node ./scripts/font-tools.mts verify"
   },
   "dependencies": {
     "@sentry/node": "^8.34.0",
@@ -73,7 +73,6 @@
     "oxfmt": "^0.48.0",
     "oxlint": "^1.63.0",
     "rolldown": "^1.0.0",
-    "tsx": "^4.19.1",
     "typescript": "^5.6.3",
     "vitest": "^4.1.5"
   },
