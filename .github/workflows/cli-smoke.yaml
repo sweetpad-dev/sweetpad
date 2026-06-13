@@ -53,4 +53,5 @@ jobs:
       - name: End-to-end CLI coverage (app + Swift package)
         env:
           SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
-        run: bash sweetpad-lib/ci/smoke.sh
+        # Steps inherit `working-directory: sweetpad-lib`, so the path is relative to it.
+        run: bash ci/smoke.sh
