@@ -102,20 +102,34 @@ SERVER_PID=$!
 sleep 1  # let it bind :8887 before the app's +load dials in
 
 section "Launch the app (client dylib injected)"
+# --console captures the app's own stdout/stderr (InjectionNext's printf and
+# dyld diagnostics) which `log stream` does not. DYLD_PRINT_* reveals whether the
+# inserted client dylib actually loaded. Backgrounded so the server can proceed.
+APP_CONSOLE="$WORK/app-console.txt"
 SIMCTL_CHILD_DYLD_INSERT_LIBRARIES="$DYLIB" \
 SIMCTL_CHILD_DYLD_FRAMEWORK_PATH="$FRAMEWORK_PATH" \
 SIMCTL_CHILD_DYLD_LIBRARY_PATH="$LIBRARY_PATH" \
+SIMCTL_CHILD_DYLD_PRINT_LIBRARIES="1" \
+SIMCTL_CHILD_DYLD_PRINT_WARNINGS="1" \
+SIMCTL_CHILD_INJECTION_HOST="127.0.0.1" \
 SIMCTL_CHILD_INJECTION_PROJECT_ROOT="$FIXTURE" \
 SIMCTL_CHILD_INJECTION_NOSTANDALONE="1" \
-  xcrun simctl launch "$UDID" "$BUNDLE_ID"
+  xcrun simctl launch --terminate-running-process --console "$UDID" "$BUNDLE_ID" \
+  >"$APP_CONSOLE" 2>&1 &
+APP_PID=$!
 
 section "Await result"
 set +e
 wait "$SERVER_PID"; RESULT=$?
 set -e
+kill "$APP_PID" 2>/dev/null || true
 kill "$LOGGER_PID" 2>/dev/null || true
 
-echo; echo "---- app log tail ----"; tail -n 40 "$LOG_STREAM" 2>/dev/null || true
+echo; echo "---- app console tail (dyld + InjectionNext) ----"
+tail -n 60 "$APP_CONSOLE" 2>/dev/null || true
+echo; echo "---- did the client dylib load? ----"
+grep -i 'libiphonesimulatorInjection\|Injection\|could not\|not loaded\|Library not' "$APP_CONSOLE" 2>/dev/null | head -20 || true
+echo; echo "---- app os_log tail ----"; tail -n 20 "$LOG_STREAM" 2>/dev/null || true
 
 if [[ "$RESULT" -eq 0 ]]; then
   echo "✅ SPIKE PASSED — socket protocol + recompile/load validated"

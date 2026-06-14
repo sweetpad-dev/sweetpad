@@ -70,8 +70,8 @@ fn main() {
 
     // Watchdog: never let a non-connecting client hang the CI job.
     std::thread::spawn(|| {
-        std::thread::sleep(Duration::from_secs(120));
-        log("❌ watchdog: no result within 120s");
+        std::thread::sleep(Duration::from_secs(60));
+        log("❌ watchdog: no result within 60s (did the client connect?)");
         std::process::exit(2);
     });
 
