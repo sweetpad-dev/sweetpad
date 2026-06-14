@@ -1,16 +1,24 @@
 //! Turning a saved `.swift` file into a loadable `.dylib` the injection client
-//! can `dlopen` and patch in. Two strategies (CLI_DESIGN §9d):
+//! can `dlopen` and patch in. Both strategies converge on running **one
+//! `swift-frontend -primary-file` job** for the changed file (single-file speed)
+//! and linking it into a dylib; they differ only in where that frontend command
+//! comes from (CLI_DESIGN §9d):
 //!
 //! - **`Resolver` (F, default):** ask the crate's own `compiler_args` for the
-//!   target's `swiftc` driver invocation and link the whole module with
-//!   `swiftc -emit-library`. Robust — no build-log dependency, no Xcode-version
-//!   log-format drift — at the cost of recompiling the module each save.
-//! - **`BuildLog` (A, switchable):** recover the exact single-file
-//!   `swift-frontend` command from the `--hot` build's transcript and compile
-//!   just the changed file. Fast, but depends on the captured build log.
+//!   target's `swiftc` *driver* invocation, then ask the user's own toolchain
+//!   driver to print the *frontend* jobs it would run (`swiftc -###`, a dry run)
+//!   and pick the one for the changed file. Robust — no build-log dependency, no
+//!   Xcode-version log-format drift — and uses the active toolchain (so the
+//!   driver/frontend/version all match). Whole-module `swiftc -emit-library` is
+//!   the fallback if `-###` recovery fails.
+//! - **`BuildLog` (A, switchable):** recover the same single-file command from
+//!   the `--hot` build's transcript (`EMIT_FRONTEND_COMMAND_LINES`) — free, since
+//!   the build already emitted it.
 //!
-//! Both then ship the dylib path via the `.load` command.
+//! Recovered commands are **cached per source** (they're stable until the file
+//! set / settings change), so the only per-save cost is the compile + link.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
@@ -23,7 +31,8 @@ use crate::compiler_args::TargetCompilerArguments;
 /// Which recompile strategy `--hot` uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// F — resolver-driven whole-module `swiftc -emit-library` (default).
+    /// F — single-file frontend recovered from the resolver via `swiftc -###`
+    /// (whole-module `-emit-library` fallback). The default.
     Resolver,
     /// A — single-file `swift-frontend` recovered from the build log.
     BuildLog,
@@ -60,6 +69,9 @@ pub struct Recompiler {
     configuration: String,
     /// Cached per-target compiler args; rebuilt on a miss (e.g. a new file).
     resolved: Mutex<Option<Vec<TargetCompilerArguments>>>,
+    /// Recovered single-file frontend commands, keyed by canonical source path.
+    /// Stable across saves, so we run `-###` / parse the log at most once per file.
+    frontend_cache: Mutex<HashMap<PathBuf, Vec<String>>>,
 
     // BuildLog (A) input: the `--hot` build's captured transcript.
     build_log: Option<PathBuf>,
@@ -98,6 +110,7 @@ impl Recompiler {
             scheme,
             configuration,
             resolved: Mutex::new(None),
+            frontend_cache: Mutex::new(HashMap::new()),
             build_log,
             counter: AtomicUsize::new(0),
         }
@@ -109,20 +122,99 @@ impl Recompiler {
         let n = self.counter.fetch_add(1, Ordering::Relaxed);
         // The `eval_injection_` prefix is what the client's image scan expects.
         let dylib = self.out_dir.join(format!("eval_injection_{n}.dylib"));
-        match self.mode {
-            Mode::Resolver => self.recompile_resolver(source, &dylib)?,
-            Mode::BuildLog => self.recompile_buildlog(source, &dylib, n)?,
+        let object = self.out_dir.join(format!("eval_injection_{n}.o"));
+        let source_str = source.to_string_lossy().into_owned();
+
+        // Single-file frontend command (cached); both modes converge here.
+        match self.frontend_tokens(source) {
+            Ok(tokens) => {
+                run(
+                    "",
+                    &single_file_command(&tokens, &source_str, &object)?,
+                    "compile",
+                )?;
+                run("", &link_command(&tokens, &object, &dylib)?, "link")?;
+                Ok(dylib)
+            }
+            // Resolver mode degrades to a robust whole-module build if single-file
+            // recovery (`-###`) failed for any reason.
+            Err(single_err) if self.mode == Mode::Resolver => {
+                self.recompile_wholemodule(source, &dylib).map_err(|wm| {
+                    format!("single-file recovery failed ({single_err}); whole-module fallback failed: {wm}")
+                })?;
+                Ok(dylib)
+            }
+            Err(e) => Err(e),
         }
-        Ok(dylib)
     }
 
-    // ---- F: resolver-driven whole-module emit-library ----
+    /// The cached single-file frontend command for `source` (raw job tokens,
+    /// before output geometry). Populates the cache on a miss.
+    fn frontend_tokens(&self, source: &Path) -> Result<Vec<String>, String> {
+        let canon = std::fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
+        if let Some(tokens) = self.frontend_cache.lock().unwrap().get(&canon) {
+            return Ok(tokens.clone());
+        }
+        match self.mode {
+            Mode::BuildLog => {
+                let tokens = self.buildlog_tokens(source)?;
+                self.frontend_cache
+                    .lock()
+                    .unwrap()
+                    .insert(canon, tokens.clone());
+                Ok(tokens)
+            }
+            Mode::Resolver => {
+                self.populate_resolver_cache(source)?;
+                self.frontend_cache
+                    .lock()
+                    .unwrap()
+                    .get(&canon)
+                    .cloned()
+                    .ok_or_else(|| {
+                        format!(
+                            "swiftc -### produced no frontend job for {}",
+                            source.display()
+                        )
+                    })
+            }
+        }
+    }
 
-    fn recompile_resolver(&self, source: &Path, dylib: &Path) -> Result<(), String> {
+    // ---- F: single-file frontend recovered from `swiftc -###` ----
+
+    /// Run the toolchain driver as a dry run (`swiftc -###`) for the target that
+    /// owns `source`, parse the per-file frontend jobs it would spawn, and cache
+    /// each by its `-primary-file` path. One spawn populates the whole module.
+    fn populate_resolver_cache(&self, source: &Path) -> Result<(), String> {
         let swift = self.resolve_swift_for(source)?;
-        // `compiler_args` emits driver flags without output geometry, so we add
-        // the module sources, the interposable/undefined-lookup link flags, and
-        // a single `-o`. `-emit-library` compiles + links a dylib in one step.
+        // `-disable-batch-mode` makes the driver emit one frontend job per file
+        // (a clean single `-primary-file` each), which is exactly what we want.
+        let mut argv: Vec<String> =
+            vec!["swiftc".into(), "-###".into(), "-disable-batch-mode".into()];
+        argv.extend(swift.arguments.clone());
+        argv.extend(swift.input_files.clone());
+        let output = capture_combined("xcrun", &argv)?;
+
+        let mut cache = self.frontend_cache.lock().unwrap();
+        let mut found = 0;
+        for tokens in parse_frontend_jobs(&output) {
+            if let Some(primary) = primary_file(&tokens) {
+                let key =
+                    std::fs::canonicalize(&primary).unwrap_or_else(|_| PathBuf::from(&primary));
+                cache.insert(key, tokens);
+                found += 1;
+            }
+        }
+        if found == 0 {
+            return Err("no frontend compile jobs in swiftc -### output".into());
+        }
+        Ok(())
+    }
+
+    /// Whole-module fallback: `swiftc -emit-library` over all the module's files.
+    fn recompile_wholemodule(&self, source: &Path, dylib: &Path) -> Result<(), String> {
+        let swift = self.resolve_swift_for(source)?;
         let mut argv: Vec<String> = swift.arguments.clone();
         argv.extend(swift.input_files.clone());
         argv.extend(
@@ -197,7 +289,9 @@ impl Recompiler {
 
     // ---- A: single-file frontend recovered from the build log ----
 
-    fn recompile_buildlog(&self, source: &Path, dylib: &Path, n: usize) -> Result<(), String> {
+    /// Recover the `swift-frontend -primary-file <source>` command for `source`
+    /// from the captured `--hot` build transcript.
+    fn buildlog_tokens(&self, source: &Path) -> Result<Vec<String>, String> {
         let log = self
             .build_log
             .as_ref()
@@ -227,14 +321,7 @@ impl Recompiler {
             })?;
 
         // Transcript args are shell-escaped; we exec argv directly, so unescape.
-        let tokens: Vec<String> = line.split_whitespace().map(unescape).collect();
-        let object = self.out_dir.join(format!("eval_injection_{n}.o"));
-        run(
-            "",
-            &single_file_command(&tokens, &source_str, &object)?,
-            "compile",
-        )?;
-        run("", &link_command(&tokens, &object, dylib)?, "link")
+        Ok(line.split_whitespace().map(unescape).collect())
     }
 
     /// The `Xcode.app` path the client wants for `.xcodePath` (drops the
@@ -249,6 +336,63 @@ impl Recompiler {
 }
 
 // ---- shared command helpers (ported from the validated spike) ----
+
+/// Run `prog argv`, returning stdout+stderr combined (the `-###` dry run prints
+/// its jobs to stderr; we don't care which stream).
+fn capture_combined(prog: &str, argv: &[String]) -> Result<String, String> {
+    let out = Command::new(prog)
+        .args(argv)
+        .output()
+        .map_err(|e| format!("spawn {prog}: {e}"))?;
+    let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
+    s.push_str(&String::from_utf8_lossy(&out.stderr));
+    Ok(s)
+}
+
+/// Parse `swiftc -###` output into the per-file frontend *compile* jobs (each a
+/// token vector). `-###` prints each job on a line with every argument
+/// double-quoted; we keep the lines that are frontend invocations carrying a
+/// `-primary-file` and a compile flag (skipping the module-merge / link jobs).
+fn parse_frontend_jobs(text: &str) -> Vec<Vec<String>> {
+    let mut jobs = Vec::new();
+    for line in text.lines() {
+        if !line.contains("-frontend") {
+            continue;
+        }
+        let tokens = parse_quoted_tokens(line);
+        let has_primary = tokens.iter().any(|t| t == "-primary-file");
+        let is_compile = tokens.iter().any(|t| t == "-c" || t == "-emit-object");
+        if has_primary && is_compile {
+            jobs.push(tokens);
+        }
+    }
+    jobs
+}
+
+/// Tokenize a `-###` job line. `-###` wraps every argument in double quotes, so
+/// the tokens are the odd-indexed `"`-split segments; fall back to whitespace
+/// splitting for any unquoted line.
+fn parse_quoted_tokens(line: &str) -> Vec<String> {
+    let line = line.trim();
+    if line.contains('"') {
+        line.split('"')
+            .enumerate()
+            .filter(|(i, _)| i % 2 == 1)
+            .map(|(_, s)| s.to_string())
+            .collect()
+    } else {
+        line.split_whitespace().map(str::to_string).collect()
+    }
+}
+
+/// The argument following `-primary-file` in a job, if any.
+fn primary_file(tokens: &[String]) -> Option<String> {
+    tokens
+        .iter()
+        .position(|t| t == "-primary-file")
+        .and_then(|i| tokens.get(i + 1))
+        .cloned()
+}
 
 fn prepend(first: &str, rest: &[String]) -> Vec<String> {
     let mut v = Vec::with_capacity(rest.len() + 1);
@@ -464,6 +608,32 @@ mod tests {
             .map(unescape)
             .collect();
         assert!(single_file_command(&toks, "/p/X.swift", Path::new("/t/e.o")).is_err());
+    }
+
+    #[test]
+    fn parses_quoted_dash_dash_dash_tokens() {
+        let line = r#"  "/x/swift-frontend" "-frontend" "-c" "-primary-file" "/p/A.swift" "-target" "arm64-apple-ios16.0-simulator""#;
+        let t = parse_quoted_tokens(line);
+        assert_eq!(t[0], "/x/swift-frontend");
+        assert!(t.contains(&"-primary-file".to_string()));
+        assert!(t.contains(&"/p/A.swift".to_string()));
+        // Unquoted fallback still splits on whitespace.
+        assert_eq!(parse_quoted_tokens("a b c"), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn parse_frontend_jobs_picks_compile_jobs_only() {
+        let out = concat!(
+            "\"/x/swift-frontend\" \"-frontend\" \"-c\" \"-primary-file\" \"/p/A.swift\" \"/p/B.swift\" \"-o\" \"/t/A.o\"\n",
+            "\"/x/swift-frontend\" \"-frontend\" \"-c\" \"/p/A.swift\" \"-primary-file\" \"/p/B.swift\" \"-o\" \"/t/B.o\"\n",
+            "\"/x/swift-frontend\" \"-frontend\" \"-emit-module\" \"/p/A.swift\" \"/p/B.swift\"\n",
+            "\"/x/ld\" \"/t/A.o\" \"/t/B.o\" \"-o\" \"/t/app\"\n",
+        );
+        let jobs = parse_frontend_jobs(out);
+        // Two compile jobs (A, B); the emit-module and link lines are skipped.
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(primary_file(&jobs[0]).as_deref(), Some("/p/A.swift"));
+        assert_eq!(primary_file(&jobs[1]).as_deref(), Some("/p/B.swift"));
     }
 
     #[test]

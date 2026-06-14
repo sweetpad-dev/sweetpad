@@ -465,38 +465,35 @@ log format that shifts every Xcode release and breaks under log pruning, Whole-
 Module mode, and `COMPILATION_CACHE_ENABLE_CACHING`. We do **not** take that as
 the primary path.
 
-**(F) Primary — reuse the crate's own compiler-args generator.**
-`[`crate::compiler_args`]` already produces, from the resolved pbxproj/xcspec
-settings and snapshot-tested against real `xcodebuild` captures, both
-`swift_arguments` (module name, `-sdk`, `-target`, `-I`/`-F`, active-compilation
-`-D`s, search paths — everything bar output geometry) and `link_arguments` (the
-linker argv). The recompiler is then:
+Both implemented strategies instead converge on running **one
+`swift-frontend -primary-file` job** for the changed file (single-file speed) and
+linking it into a dylib; they differ only in where that frontend command comes
+from. Recovered commands are **cached per source** (stable until the file
+set/settings change), so the per-save cost is just compile + link.
 
-1. resolve the changed file's target `swift_arguments` (exists),
-2. append `-primary-file <changed>` + the target's source list + `-c -o eval.o`,
-3. link via `link_arguments`, adjusted for a loadable image
-   (`-Xlinker -dylib -undefined dynamic_lookup -dead_strip -Xlinker -interposable`),
-4. send `.load eval.dylib`.
+**(F) Default — resolver → frontend via `swiftc -###`.**
+`[`crate::compiler_args`]` produces, from the resolved pbxproj/xcspec settings
+(snapshot-tested against real `xcodebuild`), the target's **driver** `swift_arguments`.
+But single-file compilation is a **frontend** (`-primary-file`) operation, and the
+two flag vocabularies differ — so the recompiler asks the *user's own toolchain
+driver* to translate: `xcrun swiftc -### -disable-batch-mode <driver args>
+<module files>` is a **dry run** that prints the `swift-frontend` jobs it *would*
+spawn (one `-primary-file` per file). We parse those, cache each by source, and
+on a save run the changed file's job (rewritten to a single `-o eval.o`) then a
+`clang -dynamiclib -interposable -undefined dynamic_lookup` link. No build-log
+dependency, no Xcode-version log-format drift, and because `-###` uses the
+*active* toolchain the driver/frontend/version all match by construction. If
+`-###` recovery ever fails, it falls back to whole-module `swiftc -emit-library`.
+(We deliberately do **not** link `swift-driver` as a library: a vendored driver
+wouldn't match the user's Xcode — the same skew we avoid everywhere — and the
+cached one-shot spawn makes per-save cost ~0 anyway.)
 
-No log discovery, no `gunzip`, no Xcode-version format drift — and producing
-correct compiler args is the crate's core competency. **The bet** is that the
-generated args match the build's *effective* args closely enough for ABI/symbol
-compatibility (same triple, sdk, module name, `-D`s, Swift version); log-scraping
-guarantees byte-identical args, the resolver reconstructs them. Matching
-xcodebuild's args is exactly what the crate is validated to do, so it is the same
-bet the resolver already makes everywhere — but it must be proven for the *codegen*
-path (see Milestone 1), since the args are validated for correctness sans geometry,
-not yet for a loadable dylib.
-
-**(A) Fallback — capture frontend command lines live from our own build.**
+**(A) Switchable — capture frontend command lines from our own build.**
 Because the CLI *is* the builder, the `--hot` build tees the `swift-frontend`
 invocations straight out of `xcodebuild`'s stdout (`EMIT_FRONTEND_COMMAND_LINES`)
-and indexes them per source file in memory / `/tmp`. This yields the *exact*
-command the build used — InjectionLite's exactness without the DerivedData log
-discovery, gzip, or pruning race (something `InjectionNext.app` can't do, as it
-doesn't run the build). When (F) can't resolve a file's args, or its dylib fails
-to inject, fall back to the captured command for that file. A small `/tmp`
-command cache (keyed by source) survives across runs, mirroring InjectionLite.
+— so the exact per-file command is a **free byproduct**, no `-###` spawn at all.
+Same single-file/link path as (F), sourced from the transcript and cached per
+source. Selected with `--hot-recompiler buildlog`.
 
 ### Module layout & session integration
 
@@ -522,11 +519,11 @@ full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
 2. **Build-flag + launch-env plumbing — ✅ done.** `BuildPlan.hot` appends
    `-interposable` + `EMIT_FRONTEND_COMMAND_LINES`; `simctl::launch_with_env`
    forwards the `SIMCTL_CHILD_*` injection vars (`app run --hot`, simulator-gated).
-3. **Recompiler — ✅ done.** Both strategies in `cli/inject/recompiler.rs`: **F**
-   (resolver-default, whole-module `swiftc -emit-library` via
-   `resolve_compiler_arguments`) and **A** (`--hot-recompiler buildlog`,
-   single-file frontend from the captured transcript). (The **(F)** codegen/ABI
-   match still wants the macOS spike's confirmation; A is proven.)
+3. **Recompiler — ✅ done.** Both strategies in `cli/inject/recompiler.rs`
+   converge on a cached single-file frontend command: **F** (default) recovers it
+   from the resolver via `xcrun swiftc -###` (whole-module `-emit-library`
+   fallback); **A** (`--hot-recompiler buildlog`) recovers it from the captured
+   transcript. (F's `-###` path wants the macOS CI's confirmation; A is proven.)
 4. **Watcher + session integration — ✅ done.** Polling watcher → `server.inject`;
    `run_hot_session` builds + serves + launches + watches; key loop keeps `r`
    (full rebuild, client reconnects) / `q`; `.injected`/`.failed` status lines.
