@@ -4,7 +4,8 @@ name: xcode-tests
 # Xcode versions. Two jobs:
 #   • cli         — the standalone CLI's full e2e (ci/smoke.sh) on each Xcode.
 #   • hot-reload  — the built-in hot-reload / injection e2e (ci/hot-reload-e2e.sh).
-# Also runs weekly so Xcode runner-image updates are caught even without a push.
+# Lean on push/PR (newest Xcode only); the full Xcode matrix runs on the weekly
+# schedule and on manual dispatch, so image updates are still caught.
 on:
   push:
     branches: [main, claude/cli-hot-reloading-c52yf2]
@@ -22,22 +23,29 @@ on:
 permissions:
   contents: read
 
+# Don't stack macOS runs for the same ref — cancel the superseded one.
+concurrency:
+  group: xcode-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Better cache hit rate with Swatinem/rust-cache (no per-run incremental dir).
+  CARGO_INCREMENTAL: "0"
+
 jobs:
   cli:
     name: cli e2e · ${{ matrix.os }} · Xcode ${{ matrix.xcode }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Full matrix on schedule / manual dispatch; just the newest Xcode on push/PR.
       matrix:
-        include:
-          - { os: macos-15, xcode: "26" } # newest (Xcode 26.x)
-          - { os: macos-15, xcode: "16" } # prior major (Xcode 16.x)
+        include: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[{"os":"macos-15","xcode":"26"},{"os":"macos-15","xcode":"16"}]' || '[{"os":"macos-15","xcode":"26"}]') }}
     defaults:
       run:
         working-directory: sweetpad-lib
     steps:
       - uses: actions/checkout@v4
-
       - name: Select Xcode ${{ matrix.xcode }}
         run: |
           APP=$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -1)
@@ -45,28 +53,22 @@ jobs:
           echo "Selecting $APP"
           sudo xcode-select -s "$APP/Contents/Developer"
           xcodebuild -version
-
       - name: Install Rust toolchain
         run: rustup show
-
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: sweetpad-lib
-
+          shared-key: xcode-tests
       - name: Build the sweetpad CLI
         run: cargo build --bin sweetpad
-
       - name: Unit tests
         run: cargo test
-
       - name: Install XcodeGen
         run: brew install xcodegen
-
       - name: Generate the fixture project
         working-directory: sweetpad-lib/ci/fixture-app
         run: xcodegen generate
-
       - name: End-to-end CLI coverage
         env:
           SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
@@ -77,9 +79,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Injection asserts on the Xcode that matches the prebuilt InjectionNext
+      # client. Once the per-Xcode client build lands (Milestone 5), add 16.
       matrix:
-        # Injection asserts on the Xcode that matches the prebuilt InjectionNext
-        # client. Once the per-Xcode client build lands (Milestone 5), add 16.
         include:
           - { os: macos-15, xcode: "26" }
     env:
@@ -89,7 +91,6 @@ jobs:
         working-directory: sweetpad-lib
     steps:
       - uses: actions/checkout@v4
-
       - name: Select Xcode ${{ matrix.xcode }}
         run: |
           APP=$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -1)
@@ -97,24 +98,43 @@ jobs:
           echo "Selecting $APP"
           sudo xcode-select -s "$APP/Contents/Developer"
           xcodebuild -version
-
       - name: Install Rust toolchain
         run: rustup show
-
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: sweetpad-lib
-
+          shared-key: xcode-tests
       - name: Build the sweetpad CLI
         run: cargo build --bin sweetpad
-
       - name: Install XcodeGen
         run: brew install xcodegen
-
       - name: Generate the fixture project
         working-directory: sweetpad-lib/ci/fixture-app
         run: xcodegen generate
+
+      # Cache the InjectionNext client dylib, keyed by the upstream release tag
+      # (a fast metadata call), so we only re-download when it actually changes.
+      - name: Resolve InjectionNext release
+        id: inj
+        run: echo "tag=$(gh release view --repo johnno1962/InjectionNext --json tagName -q .tagName)" >> "$GITHUB_OUTPUT"
+      - name: Cache InjectionNext client
+        id: injcache
+        uses: actions/cache@v4
+        with:
+          path: ~/injectionnext
+          key: injectionnext-${{ steps.inj.outputs.tag }}
+      - name: Download InjectionNext client (on cache miss)
+        if: steps.injcache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/injectionnext
+          gh release download --repo johnno1962/InjectionNext --pattern '*.zip' --dir ~/injectionnext --clobber
+          ( cd ~/injectionnext && for z in *.zip; do unzip -q -o "$z" -d extracted; done )
+      - name: Locate client dylib
+        run: |
+          DYLIB="$(find ~/injectionnext -name 'libiphonesimulatorInjection.dylib' | head -1)"
+          test -n "$DYLIB" || { echo "client dylib not found"; exit 1; }
+          echo "SWEETPAD_HOTRELOAD_DYLIB=$DYLIB" >> "$GITHUB_ENV"
 
       - name: Hot-reload / injection e2e
         env:
