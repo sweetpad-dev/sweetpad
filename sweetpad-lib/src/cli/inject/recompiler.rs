@@ -192,7 +192,7 @@ impl Recompiler {
         // (a clean single `-primary-file` each), which is exactly what we want.
         let mut argv: Vec<String> =
             vec!["swiftc".into(), "-###".into(), "-disable-batch-mode".into()];
-        argv.extend(swift.arguments.clone());
+        argv.extend(sanitize_driver_args(&swift.arguments));
         argv.extend(swift.input_files.clone());
         let output = capture_combined("xcrun", &argv)?;
 
@@ -215,7 +215,7 @@ impl Recompiler {
     /// Whole-module fallback: `swiftc -emit-library` over all the module's files.
     fn recompile_wholemodule(&self, source: &Path, dylib: &Path) -> Result<(), String> {
         let swift = self.resolve_swift_for(source)?;
-        let mut argv: Vec<String> = swift.arguments.clone();
+        let mut argv: Vec<String> = sanitize_driver_args(&swift.arguments);
         argv.extend(swift.input_files.clone());
         argv.extend(
             [
@@ -383,6 +383,38 @@ fn parse_quoted_tokens(line: &str) -> Vec<String> {
     } else {
         line.split_whitespace().map(str::to_string).collect()
     }
+}
+
+/// Drop resolver driver flags that the build system only emits alongside build
+/// *geometry* (output-file-maps, module-cache session files, explicit-module
+/// scanner output) which `compiler_args` deliberately omits. For a standalone
+/// recompile these orphans make `swiftc` reject the args (e.g.
+/// `-validate-clang-modules-once` without `-clang-build-session-file`) or emit a
+/// frontend command referencing missing files. We drop them and let swiftc build
+/// modules implicitly — the same approach InjectionLite's recompiler takes.
+fn sanitize_driver_args(args: &[String]) -> Vec<String> {
+    const DROP_FLAG: &[&str] = &[
+        "-validate-clang-modules-once", // needs -clang-build-session-file
+        "-explicit-module-build",       // needs the module scanner's output
+        "-experimental-emit-module-separately", // module emission; not for a -c recompile
+        "-emit-const-values",           // needs -emit-const-values-path
+        "-use-frontend-parseable-output", // output-format noise
+    ];
+    const DROP_PAIR: &[&str] = &["-clang-build-session-file"];
+    let mut out = Vec::with_capacity(args.len());
+    let mut i = 0;
+    while i < args.len() {
+        let a = args[i].as_str();
+        if DROP_FLAG.contains(&a) {
+            i += 1;
+        } else if DROP_PAIR.contains(&a) {
+            i += 2;
+        } else {
+            out.push(args[i].clone());
+            i += 1;
+        }
+    }
+    out
 }
 
 /// The argument following `-primary-file` in a job, if any.
@@ -608,6 +640,25 @@ mod tests {
             .map(unescape)
             .collect();
         assert!(single_file_command(&toks, "/p/X.swift", Path::new("/t/e.o")).is_err());
+    }
+
+    #[test]
+    fn sanitize_drops_orphaned_geometry_flags() {
+        let args: Vec<String> = [
+            "-module-name",
+            "App",
+            "-validate-clang-modules-once",
+            "-clang-build-session-file",
+            "/x/session",
+            "-explicit-module-build",
+            "-emit-const-values",
+            "-sdk",
+            "/SDK",
+        ]
+        .map(String::from)
+        .to_vec();
+        let out = sanitize_driver_args(&args);
+        assert_eq!(out, vec!["-module-name", "App", "-sdk", "/SDK"]);
     }
 
     #[test]
