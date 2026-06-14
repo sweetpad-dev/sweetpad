@@ -279,7 +279,9 @@ fn recompile(cfg: &Config) -> Result<PathBuf, String> {
     log(&format!("matched frontend command ({} chars)", line.len()));
 
     // CI paths have no spaces, so a whitespace split is sufficient for the spike.
-    let tokens: Vec<String> = line.split_whitespace().map(|t| t.to_string()).collect();
+    // xcodebuild's transcript shell-escapes punctuation (e.g. `-enforce-exclusivity\=checked`);
+    // since we exec the argv directly (no shell), strip those escapes per token.
+    let tokens: Vec<String> = line.split_whitespace().map(unescape).collect();
     let object = cfg.out_dir.join("eval.o");
     let compile = single_file_command(&tokens, &source, &object)?;
     log(&format!("compile: {}", compile.join(" ")));
@@ -362,6 +364,22 @@ fn single_file_command(tokens: &[String], source: &str, object: &std::path::Path
         out = wrapped;
     }
     Ok(out)
+}
+
+/// Strip shell-escaping backslashes from a transcript token (`a\=b` -> `a=b`).
+fn unescape(t: &str) -> String {
+    let mut out = String::with_capacity(t.len());
+    let mut chars = t.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(n) = chars.next() {
+                out.push(n);
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn token_after<'a>(tokens: &'a [String], flag: &str) -> Option<&'a str> {

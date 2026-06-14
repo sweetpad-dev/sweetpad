@@ -31,8 +31,32 @@ echo "DEVELOPER_DIR=$DEVELOPER_DIR"
 
 section "Tooling"
 xcodebuild -version
+swift --version
 which xcodegen
 which gh || true
+
+section "Experiment: build the InjectionNext client with swift build (NO xcodebuild)"
+# Confirms the cache+standalone design's no-xcodebuild path: can SwiftPM cross-build
+# the client package (Swift + ObjC++ + SwiftTrace/DLKit, incl. C/asm) for the iOS
+# simulator using only the toolchain? Non-fatal and informational — the socket spike
+# below remains the gate; this just records whether `swift build` is a viable builder.
+set +e
+CLIENT_SRC="$WORK/InjectionNext-src"
+git clone --depth 1 https://github.com/johnno1962/InjectionNext "$CLIENT_SRC" 2>&1 | tail -2
+SIM_SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+SIM_TRIPLE="arm64-apple-ios16.0-simulator"
+( cd "$CLIENT_SRC" && swift build \
+    -Xswiftc -sdk -Xswiftc "$SIM_SDK" -Xswiftc -target -Xswiftc "$SIM_TRIPLE" \
+    -Xcc -isysroot -Xcc "$SIM_SDK" -Xcc -target -Xcc "$SIM_TRIPLE" 2>&1 | tail -50 )
+SWIFT_BUILD_RC=${PIPESTATUS[0]}
+echo "== swift build (iphonesimulator) exit: $SWIFT_BUILD_RC =="
+if [[ "$SWIFT_BUILD_RC" -eq 0 ]]; then
+  echo "✅ no-xcodebuild client build: swift build compiled the client for the simulator"
+  find "$CLIENT_SRC/.build" \( -name '*.dylib' -o -name '*.a' \) 2>/dev/null | head
+else
+  echo "⚠️ no-xcodebuild client build: swift build did NOT succeed (see output above)"
+fi
+set -e
 
 section "Build the spike server"
 ( cd "$SERVER" && cargo build )
