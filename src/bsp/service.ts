@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
 import { getWorkspacePath } from "../build/utils";
-import { ensureDir, getStateRoot } from "../cli-server/paths";
+import { ensureDir, getProjectStateDir } from "../cli-server/paths";
 import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceStateService } from "../common/workspace-state";
@@ -22,8 +22,9 @@ export type BspStatusSnapshot = {
 
 /**
  * Owns the BSP side end to end, independent of the CLI control server: persists
- * `.sweetpad/bsp.json` for the BSP server to read, and dials the server's
- * telemetry socket to surface its logs/status in VS Code. Activates whenever
+ * the per-project `bsp.json` (under the XDG state home) for the BSP server to
+ * read, and dials the server's telemetry socket to surface its logs/status in
+ * VS Code. Activates whenever
  * SweetPad is the build-server provider for the open workspace — it does not
  * depend on `sweetpad.cliServer.enabled`.
  */
@@ -65,10 +66,11 @@ export class BspService implements vscode.Disposable {
   }
 
   /**
-   * Persist the resolved config to `.sweetpad/bsp.json`, only when SweetPad is the
-   * provider and buildServer.json exists (otherwise sourcekit-lsp won't launch our
-   * server, so the file is moot). Best-effort — a write failure or a folder with no
-   * Xcode workspace is logged, not surfaced.
+   * Persist the resolved config to the per-project `bsp.json` (under the XDG
+   * state home), only when SweetPad is the provider and buildServer.json exists
+   * (otherwise sourcekit-lsp won't launch our server, so the file is moot).
+   * Best-effort — a write failure or a folder with no Xcode workspace is logged,
+   * not surfaced.
    */
   private async saveConfig(): Promise<void> {
     const workspacePath = getWorkspacePath();
@@ -86,10 +88,10 @@ export class BspService implements vscode.Disposable {
       if (!config) {
         return;
       }
-      await ensureDir(getStateRoot(workspacePath));
+      await ensureDir(getProjectStateDir(workspacePath));
       await fs.writeFile(getBspConfigFile(workspacePath), `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
     } catch (err) {
-      commonLogger.debug("Failed to write .sweetpad/bsp.json", { error: err });
+      commonLogger.debug("Failed to write bsp.json", { error: err });
     }
   }
 

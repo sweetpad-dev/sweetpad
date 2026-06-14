@@ -7,22 +7,22 @@
 //! envelope (`{"ok":false,"error":{...}}` on stderr) and exit codes (0 ok,
 //! 1 RPC error, 2 client/usage error).
 //!
-//! Discovery works like `git`: walk up from the cwd to the nearest `.sweetpad/`
-//! directory, read its `cli.json` for the running server's Unix socket
-//! (last-writer-wins across VS Code windows), then send a single
-//! `Content-Length`-framed JSON-RPC 2.0 request over the socket.
+//! Discovery works like `git`: walk up from the cwd to the nearest ancestor
+//! registered in the host-wide index the extension maintains
+//! (`~/.local/state/sweetpad/projects.json`, keyed by canonical workspace path,
+//! last-writer-wins across VS Code windows), read its Unix socket, then send a
+//! single `Content-Length`-framed JSON-RPC 2.0 request over the socket.
 
 use std::collections::BTreeMap;
 use std::io::{BufReader, Write as _};
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
 
 use crate::framing::{read_message, write_message};
 
-const SWEETPAD_DIR: &str = ".sweetpad";
 const DEFAULT_TIMEOUT_MS: u64 = 6 * 60 * 1000;
 
 /// Run `sweetpad vscode <method> [args...]` and return the process exit code:
@@ -459,34 +459,48 @@ fn error_envelope(code: &str, message: &str, hint: Option<&str>, data: Option<Va
     json!({ "ok": false, "error": error })
 }
 
-/// The CLI talks to the single control server advertised in `.sweetpad/cli.json`
-/// (last-writer-wins across windows). Read its socket; the connect itself
-/// surfaces a dead server as ECONNREFUSED.
+/// The CLI talks to the single control server the extension advertised for this
+/// project in the host-wide index (last-writer-wins across windows). Resolve the
+/// socket; the connect itself surfaces a dead server as ECONNREFUSED.
 fn resolve_socket() -> Result<String, Value> {
     let no_server = |message: &str| error_envelope("NO_SERVER", message, None, None);
-    let root = std::env::current_dir()
-        .ok()
-        .and_then(|cwd| find_project_root(&cwd))
-        .ok_or_else(|| no_server("No .sweetpad project found from the current directory."))?;
-    std::fs::read_to_string(root.join(SWEETPAD_DIR).join("cli.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .and_then(|meta| meta.get("socket")?.as_str().map(str::to_string))
-        .ok_or_else(|| {
-            no_server(
-                "No running SweetPad server (.sweetpad/cli.json not found). Enable sweetpad.cliServer.enabled and open the project in VS Code.",
-            )
-        })
+    let cwd = std::env::current_dir()
+        .map_err(|_| no_server("Cannot determine the current working directory."))?;
+    let index = read_projects_index().ok_or_else(|| {
+        no_server(
+            "No SweetPad projects registered (~/.local/state/sweetpad/projects.json not found). Enable sweetpad.cliServer.enabled and open the project in VS Code.",
+        )
+    })?;
+    find_registered_socket(&cwd, &index).ok_or_else(|| {
+        no_server(
+            "No running SweetPad server for this project. Enable sweetpad.cliServer.enabled and open the project in VS Code.",
+        )
+    })
 }
 
-/// Walk up from `start` to the nearest ancestor containing a `.sweetpad`
-/// directory — how the CLI finds the project it's run inside, like `git`
-/// finds `.git`.
-fn find_project_root(start: &Path) -> Option<PathBuf> {
-    let mut dir = start.to_path_buf();
+/// Read and parse the project-discovery index the extension maintains, or `None`
+/// when it's missing/unreadable.
+fn read_projects_index() -> Option<Value> {
+    let path = crate::paths::projects_index_file()?;
+    let text = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// Walk up from `start`, canonicalizing it first so the ancestor spellings match
+/// the extension's realpath'd keys, and return the control socket of the nearest
+/// ancestor registered in `index` — the index-backed equivalent of the old
+/// walk-up to `.sweetpad/`.
+fn find_registered_socket(start: &Path, index: &Value) -> Option<String> {
+    let projects = index.get("projects")?.as_object()?;
+    let mut dir = std::fs::canonicalize(start).unwrap_or_else(|_| start.to_path_buf());
     loop {
-        if dir.join(SWEETPAD_DIR).is_dir() {
-            return Some(dir);
+        if let Some(socket) = dir
+            .to_str()
+            .and_then(|key| projects.get(key))
+            .and_then(|entry| entry.get("socket"))
+            .and_then(Value::as_str)
+        {
+            return Some(socket.to_string());
         }
         if !dir.pop() {
             return None;

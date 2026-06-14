@@ -8,11 +8,11 @@ import type { WorkspaceStateService } from "../common/workspace-state";
 import { getBspLogPath, getBspSocketPath } from "./paths";
 
 /**
- * Everything the BSP server needs, written by the extension to `.sweetpad/bsp.json`
- * (the server reads it at startup and watches it for changes), so `buildServer.json`
- * stays a minimal launch stub. In-workspace paths are written relative to the
- * workspace root (the server resolves them against it); out-of-tree paths (Xcode,
- * the socket, the log) stay absolute.
+ * Everything the BSP server needs, written by the extension to the per-project
+ * `bsp.json` under the XDG state home (the server reads it at startup — via the
+ * `--config` path in `buildServer.json` — and watches it for changes), so
+ * `buildServer.json` stays a minimal launch stub. The config lives outside the
+ * project tree, so all paths are written absolute.
  */
 export type BspResolvedConfig = {
   workspacePath: string;
@@ -31,8 +31,8 @@ export type BspResolvedConfig = {
 
 /**
  * Resolve the BSP config from the current selection, or `null` when no Xcode
- * workspace is detected. This is what the extension writes to `.sweetpad/bsp.json`
- * for the BSP server to read.
+ * workspace is detected. This is what the extension writes to the per-project
+ * `bsp.json` for the BSP server to read.
  */
 export async function buildBspResolvedConfig(deps: {
   workspaceState: WorkspaceStateService;
@@ -53,24 +53,14 @@ export async function buildBspResolvedConfig(deps: {
   const derivedDataPath = prepareDerivedDataPath();
   return {
     workspacePath: deps.workspacePath,
-    projectPath: toWorkspaceRelative(deps.workspacePath, projectPath),
+    projectPath: projectPath,
     developerDir: (await getDeveloperDir()) ?? null,
     scheme: deps.buildManager.getDefaultSchemeForBuild() ?? null,
     configuration: deps.buildManager.getDefaultConfigurationForBuild() ?? "Debug",
-    derivedDataPath: derivedDataPath ? toWorkspaceRelative(deps.workspacePath, derivedDataPath) : null,
-    logPath: toWorkspaceRelative(deps.workspacePath, resolveLogPath(deps.workspacePath)),
+    derivedDataPath: derivedDataPath ?? null,
+    logPath: resolveLogPath(deps.workspacePath),
     socket: getBspSocketPath(deps.workspacePath),
   };
-}
-
-/**
- * A workspace-relative path when `target` is inside `workspacePath`, else `target`
- * unchanged. Keeps in-workspace bsp.json paths relative (and location-independent)
- * while leaving out-of-tree paths (Xcode, the tmpdir socket) absolute.
- */
-function toWorkspaceRelative(workspacePath: string, target: string): string {
-  const rel = path.relative(workspacePath, target);
-  return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : target;
 }
 
 /**

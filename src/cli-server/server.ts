@@ -5,7 +5,8 @@ import type * as vscode from "vscode";
 import type { MessageConnection } from "vscode-jsonrpc/node";
 
 import { commonLogger } from "../common/logger";
-import { ensureDir, generateServerName, getCliConfigFile, getSocketPath, getStateRoot, safeUnlink } from "./paths";
+import { generateServerName, getSocketPath, safeUnlink } from "./paths";
+import { registerProject, unregisterProject } from "./registry";
 import { serveDispatch, type RpcDispatch } from "./rpc";
 import { PROTOCOL_VERSION, type CliServerMetadata } from "./types";
 
@@ -18,9 +19,10 @@ export type CliServerOptions = {
 };
 
 /**
- * In-extension JSON-RPC 2.0 server. Listens on a per-process Unix socket under
- * ~/.local/state/sweetpad/sockets/. Multi-window safe: each window starts its
- * own server with its own random name, the two coexist.
+ * In-extension JSON-RPC 2.0 server. Listens on a per-process Unix socket in the
+ * OS tmpdir (short path, for `sun_path`). Multi-window safe: each window starts
+ * its own server with its own random name, the two coexist, and each advertises
+ * itself in the host-wide discovery index (`registry`).
  *
  * Lifecycle owned by the caller — call `start()` once, `dispose()` once.
  */
@@ -28,7 +30,6 @@ export class CliServer implements vscode.Disposable {
   private readonly options: CliServerOptions;
   private readonly serverName: string;
   private readonly socketPath: string;
-  private readonly connectionPath: string;
   private server: net.Server | undefined;
   private startedAt: Date | undefined;
   private connections = new Set<net.Socket>();
@@ -38,7 +39,6 @@ export class CliServer implements vscode.Disposable {
     this.options = options;
     this.serverName = generateServerName();
     this.socketPath = getSocketPath(this.serverName);
-    this.connectionPath = getCliConfigFile(options.workspacePath);
   }
 
   get name(): string {
@@ -53,7 +53,6 @@ export class CliServer implements vscode.Disposable {
     if (this.server) {
       throw new Error("CliServer.start() called twice");
     }
-    await ensureDir(getStateRoot(this.options.workspacePath));
     // Defensive — without this a rare same-name collision would hit EADDRINUSE.
     await safeUnlink(this.socketPath);
 
@@ -90,11 +89,9 @@ export class CliServer implements vscode.Disposable {
       extensionVersion: this.options.extensionVersion,
       protocolVersion: PROTOCOL_VERSION,
     };
-    // Last-writer-wins: a second window overwrites cli.json. tmp+rename keeps the
-    // CLI's read side from ever seeing a half-written file.
-    const tmp = `${this.connectionPath}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(metadata, null, 2), { mode: 0o600 });
-    await fs.rename(tmp, this.connectionPath);
+    // Advertise this server in the host-wide discovery index, keyed by the
+    // canonical workspace path. Last-writer-wins across windows.
+    await registerProject(this.options.workspacePath, metadata);
 
     commonLogger.log("SweetPad RPC server started", {
       name: this.serverName,
@@ -119,16 +116,9 @@ export class CliServer implements vscode.Disposable {
     }
 
     await safeUnlink(this.socketPath);
-    // Remove cli.json only if it still points at us — a newer window may have
-    // overwritten it (last-wins), and we must not delete its pointer.
-    try {
-      const raw = await fs.readFile(this.connectionPath, "utf8");
-      if ((JSON.parse(raw) as CliServerMetadata).pid === process.pid) {
-        await safeUnlink(this.connectionPath);
-      }
-    } catch {
-      // missing or corrupt — nothing of ours to remove
-    }
+    // Drop our index entry (only if it still points at us — a newer window may
+    // have replaced it under last-writer-wins).
+    await unregisterProject(this.options.workspacePath, process.pid);
 
     commonLogger.log("SweetPad RPC server stopped", { name: this.serverName });
   }

@@ -12,9 +12,9 @@ export const JSON_RPC_INVALID_PARAMS = -32602;
 export const JSON_RPC_INTERNAL_ERROR = -32603;
 export const SWEETPAD_APPLICATION_ERROR = -32000;
 
-// The `<workspace>/.sweetpad/cli.json` connection file: enough to find and
-// connect to the running CLI control server. `socket` is the short tmpdir path
-// the server bound (see `getSocketPath`). Last-writer-wins across windows.
+// An entry in the host-wide discovery index (`projects.json`): enough to find
+// and connect to the running CLI control server. `socket` is the short tmpdir
+// path the server bound (see `getSocketPath`). Last-writer-wins across windows.
 export type CliServerMetadata = {
   name: string;
   socket: string;

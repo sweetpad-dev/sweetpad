@@ -1,28 +1,47 @@
-import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
 import {
-  findProjectRoot,
   generateServerName,
   getBuildDir,
   getBuildsDir,
-  getCliConfigFile,
+  getProjectsIndexFile,
+  getProjectStateDir,
   getSocketPath,
-  getStateRoot,
+  getSweetpadStateHome,
   getTmpStateRoot,
-  SWEETPAD_DIR_NAME,
   workspaceHash,
 } from "./paths";
+
+function withStateHome(value: string | undefined, fn: () => void): void {
+  const prev = process.env.XDG_STATE_HOME;
+  if (value === undefined) delete process.env.XDG_STATE_HOME;
+  else process.env.XDG_STATE_HOME = value;
+  try {
+    fn();
+  } finally {
+    if (prev === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = prev;
+  }
+}
 
 describe("server/paths", () => {
   describe("path layout", () => {
     const ws = "/some/Project";
-    const root = path.join(ws, ".sweetpad");
 
-    it("roots the project-local pointers at <workspace>/.sweetpad", () => {
-      expect(getStateRoot(ws)).toBe(root);
-      expect(getCliConfigFile(ws)).toBe(path.join(root, "cli.json"));
+    it("roots machine-managed state under the XDG state home, never the project", () => {
+      withStateHome("/xdg/state", () => {
+        const home = path.join("/xdg/state", "sweetpad");
+        expect(getSweetpadStateHome()).toBe(home);
+        expect(getProjectsIndexFile()).toBe(path.join(home, "projects.json"));
+        expect(getProjectStateDir(ws)).toBe(path.join(home, "projects", workspaceHash(ws)));
+      });
+    });
+
+    it("falls back to ~/.local/state when XDG_STATE_HOME is unset", () => {
+      withStateHome(undefined, () => {
+        expect(getSweetpadStateHome()).toBe(path.join(os.homedir(), ".local", "state", "sweetpad"));
+      });
     });
 
     it("derives a stable 12-char hex workspace hash", () => {
@@ -55,30 +74,6 @@ describe("server/paths", () => {
       const set = new Set<string>();
       for (let i = 0; i < 100; i += 1) set.add(generateServerName());
       expect(set.size).toBeGreaterThan(90);
-    });
-  });
-
-  describe("findProjectRoot", () => {
-    let tmp: string;
-    beforeEach(async () => {
-      tmp = await fs.mkdtemp(path.join(os.tmpdir(), "sw-paths-"));
-    });
-    afterEach(async () => {
-      await fs.rm(tmp, { recursive: true, force: true });
-    });
-
-    it("walks up to the nearest ancestor containing .sweetpad", async () => {
-      const proj = path.join(tmp, "proj");
-      const nested = path.join(proj, "a", "b");
-      await fs.mkdir(path.join(proj, SWEETPAD_DIR_NAME), { recursive: true });
-      await fs.mkdir(nested, { recursive: true });
-      expect(await findProjectRoot(nested)).toBe(proj);
-    });
-
-    it("returns undefined when no .sweetpad exists up the tree", async () => {
-      const nested = path.join(tmp, "x", "y");
-      await fs.mkdir(nested, { recursive: true });
-      expect(await findProjectRoot(nested)).toBeUndefined();
     });
   });
 });

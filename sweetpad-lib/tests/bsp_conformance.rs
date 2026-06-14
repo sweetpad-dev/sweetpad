@@ -831,16 +831,15 @@ fn bsp_per_file_clang_dialect_matrix() {
     }
 }
 
-/// The server must start from a `.sweetpad/bsp.json` written with the
-/// extension's schema, where `workspacePath` is the VS Code workspace
+/// The server must start from the `bsp.json` named by `--config`, written with
+/// the extension's schema, where `workspacePath` is the VS Code workspace
 /// *folder* (not an Xcode container) and `projectPath` is the real
 /// `.xcodeproj`. Regression test: the config resolver used to prefer
 /// `workspacePath`, open the folder as a project, and exit before replying.
 #[test]
 fn bsp_starts_from_extension_bsp_json() {
     let workspace = std::env::temp_dir().join(format!("sweetpad-bsp-json-{}", std::process::id()));
-    let dot_sweetpad = workspace.join(".sweetpad");
-    std::fs::create_dir_all(&dot_sweetpad).expect("create .sweetpad");
+    std::fs::create_dir_all(&workspace).expect("create workspace");
     let config = json!({
         "name": "sweetpad",
         "workspacePath": workspace.to_string_lossy(),
@@ -850,7 +849,8 @@ fn bsp_starts_from_extension_bsp_json() {
         "derivedDataPath": null,
         "developerDir": null,
     });
-    std::fs::write(dot_sweetpad.join("bsp.json"), config.to_string()).expect("write bsp.json");
+    let config_path = workspace.join("bsp.json");
+    std::fs::write(&config_path, config.to_string()).expect("write bsp.json");
 
     let messages = [
         json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
@@ -864,7 +864,8 @@ fn bsp_starts_from_extension_bsp_json() {
     }
     let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .arg("bsp")
-        .current_dir(&workspace)
+        .arg("--config")
+        .arg(&config_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
