@@ -173,9 +173,29 @@ pub fn launch_with_env(
     }
 }
 
-/// Terminate a running app by bundle id.
+/// Terminate a running app by bundle id. Already-stopped is treated as success
+/// (idempotent, mirroring [`boot`]/[`shutdown`]): `simctl` errors with "found
+/// nothing to terminate" when the app isn't running, which is not a failure for
+/// `app stop` / session teardown.
 pub fn terminate(udid: &str, bundle_id: &str) -> Result<(), CliError> {
-    process::stream("xcrun", &["simctl", "terminate", udid, bundle_id], None)
+    let output = std::process::Command::new("xcrun")
+        .args(["simctl", "terminate", udid, bundle_id])
+        .output()
+        .map_err(|e| CliError::new(format!("failed to run `xcrun simctl terminate`: {e}")))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("found nothing to terminate")
+        || stderr.contains("Unable to terminate")
+        || stderr.contains("No such process")
+    {
+        return Ok(());
+    }
+    Err(CliError::new(format!(
+        "simctl terminate failed: {}",
+        stderr.trim()
+    )))
 }
 
 /// Shut down a simulator. Already-shutdown is treated as success so the command
