@@ -7,12 +7,11 @@ import * as path from "node:path";
 // machine-managed state lives under the XDG state home (`~/.local/state/sweetpad`
 // by default) — the same place the CLI keeps its `state.toml`:
 //
-//   <stateHome>/projects.json        the discovery index (path -> control server)
-//   <stateHome>/projects/<hash>/     per-project config (the BSP server's bsp.json)
+//   <stateHome>/projects.json        the discovery index (path -> servers)
+//   <stateHome>/projects/<hash>/     per-project state: bsp.json, bsp.log, builds/
 //
-// Bulky, noisy, or truly ephemeral state (logs, build history) and the Unix
-// sockets stay in a per-workspace tmpdir: `sun_path` caps at ~104 bytes, and a
-// state-home path can be long, so sockets use a short tmpdir path. Nothing is
+// Only the Unix sockets live elsewhere — a per-workspace tmpdir path — because
+// `sun_path` caps at ~104 bytes and a state-home path can be longer. Nothing is
 // ever written into the project root — there is no `.sweetpad/` directory.
 
 /** `$XDG_STATE_HOME` or `~/.local/state`. */
@@ -45,23 +44,17 @@ export function workspaceHash(workspacePath: string): string {
 }
 
 /**
- * The per-project state directory under the state home, holding config the
- * extension writes for out-of-process consumers (the BSP server's `bsp.json`).
- * Named by `workspaceHash`, so it's stable and out of the project tree.
+ * The per-project state directory under the state home. Holds everything the
+ * extension persists for a project out of the tree: the BSP server's `bsp.json`,
+ * its `bsp.log`, and build history (`builds/<id>/`). Named by `workspaceHash`, so
+ * it's stable and collision-free across projects.
  */
 export function getProjectStateDir(workspacePath: string): string {
   return path.join(getSweetpadStateHome(), "projects", workspaceHash(workspacePath));
 }
 
-// Per-workspace runtime dir under the OS temp dir, holding logs and build history
-// (`bsp.log`, `builds/<id>/build.log`). Kept out of the project tree so logs never
-// clutter or get committed; the OS reclaims it, which is fine for ephemeral state.
-export function getTmpStateRoot(workspacePath: string): string {
-  return path.join(os.tmpdir(), `sweetpad-${workspaceHash(workspacePath)}`);
-}
-
 export function getBuildsDir(workspacePath: string): string {
-  return path.join(getTmpStateRoot(workspacePath), "builds");
+  return path.join(getProjectStateDir(workspacePath), "builds");
 }
 
 export function getBuildDir(workspacePath: string, buildId: string): string {

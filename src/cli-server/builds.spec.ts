@@ -6,7 +6,7 @@ import * as path from "node:path";
 import type { BuildManager, BuildSessionEnded, BuildSessionStarted } from "../build/manager";
 import type { DestinationsManager } from "../destination/manager";
 import { BuildSessionRegistry } from "./builds";
-import { getBuildDir, getTmpStateRoot } from "./paths";
+import { getBuildDir } from "./paths";
 
 function makeMockManagers() {
   const emitter = new EventEmitter();
@@ -28,17 +28,25 @@ function pump(emitter: EventEmitter, event: string, payload: unknown): void {
 }
 
 describe("BuildSessionRegistry", () => {
-  // A fresh project dir per test; build history lands in a per-workspace tmp dir
-  // (getBuildsDir(tmpRoot)), outside the project tree, cleaned up in afterEach.
+  // A fresh project dir per test; build history lands in the per-project state dir
+  // under an isolated XDG_STATE_HOME (never the developer's real ~/.local/state),
+  // both cleaned up in afterEach.
   let tmpRoot: string;
+  let stateHome: string;
+  let prevStateHome: string | undefined;
 
   beforeEach(async () => {
     tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sweetpad-builds-spec-"));
+    stateHome = await fs.mkdtemp(path.join(os.tmpdir(), "sweetpad-builds-state-"));
+    prevStateHome = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = stateHome;
   });
 
   afterEach(async () => {
+    if (prevStateHome === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = prevStateHome;
     await fs.rm(tmpRoot, { recursive: true, force: true });
-    await fs.rm(getTmpStateRoot(tmpRoot), { recursive: true, force: true });
+    await fs.rm(stateHome, { recursive: true, force: true });
   });
 
   it("captures a single session start->log->end cycle and persists the snapshot", async () => {

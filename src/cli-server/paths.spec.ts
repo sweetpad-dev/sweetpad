@@ -9,7 +9,6 @@ import {
   getProjectStateDir,
   getSocketPath,
   getSweetpadStateHome,
-  getTmpStateRoot,
   workspaceHash,
 } from "./paths";
 
@@ -49,11 +48,12 @@ describe("server/paths", () => {
       expect(workspaceHash(ws)).toBe(workspaceHash(ws));
     });
 
-    it("puts logs and build history in a per-workspace tmp dir", () => {
-      const tmpRoot = path.join(os.tmpdir(), `sweetpad-${workspaceHash(ws)}`);
-      expect(getTmpStateRoot(ws)).toBe(tmpRoot);
-      expect(getBuildsDir(ws)).toBe(path.join(tmpRoot, "builds"));
-      expect(getBuildDir(ws, "b3")).toBe(path.join(tmpRoot, "builds", "b3"));
+    it("puts build history in the per-project state dir", () => {
+      withStateHome("/xdg/state", () => {
+        const projectDir = getProjectStateDir(ws);
+        expect(getBuildsDir(ws)).toBe(path.join(projectDir, "builds"));
+        expect(getBuildDir(ws, "b3")).toBe(path.join(projectDir, "builds", "b3"));
+      });
     });
   });
 

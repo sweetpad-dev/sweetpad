@@ -261,6 +261,28 @@ fn env_log() -> Option<PathBuf> {
     std::env::var_os("SWEETPAD_BSP_LOG").map(PathBuf::from)
 }
 
+/// Cap on the debug log. The log now lives in the persistent per-project state
+/// dir (not a reboot-cleared tmpdir), so an append-only file would grow without
+/// bound; [`open_log`] truncates it on startup once it's over this size.
+const BSP_LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Open the debug log for append, creating its parent dir first so the first
+/// write after a cold start doesn't silently drop. Bounds growth by truncating
+/// on startup when the existing file is already over [`BSP_LOG_MAX_BYTES`].
+fn open_log(path: &Path) -> Option<std::fs::File> {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let mut opts = OpenOptions::new();
+    opts.create(true).write(true);
+    if std::fs::metadata(path).is_ok_and(|m| m.len() > BSP_LOG_MAX_BYTES) {
+        opts.truncate(true);
+    } else {
+        opts.append(true);
+    }
+    opts.open(path).ok()
+}
+
 /// Locate the `bsp.json` for the project containing the cwd — the fallback when
 /// `buildServer.json` carries no explicit `--config`. Walks up from the cwd
 /// through the extension's discovery index and reads the nearest registered
@@ -434,16 +456,8 @@ impl Server {
         // (tests); telemetry streams logs regardless of the file.
         let log = config
             .log_path
-            .as_ref()
-            .and_then(|p| {
-                // Create the parent dir (the per-workspace tmp state root) first so the
-                // first write after a cold start doesn't silently drop because the dir
-                // isn't there yet.
-                if let Some(parent) = p.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                OpenOptions::new().create(true).append(true).open(p).ok()
-            })
+            .as_deref()
+            .and_then(open_log)
             .map(Mutex::new);
         let server = Server {
             project_path: config.project_path,

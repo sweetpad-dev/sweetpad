@@ -23,7 +23,7 @@ export type BspResolvedConfig = {
   scheme: string | null;
   configuration: string;
   derivedDataPath: string | null;
-  /** Debug log file. Defaults to a per-workspace OS-temp path (out of the project tree); overridable via `sweetpad.buildServer.logPath`. */
+  /** Debug log file. Defaults to the per-project state dir (out of the project tree); overridable via `sweetpad.buildServer.logPath`. */
   logPath: string;
   /** Unix socket the BSP server binds for telemetry; the extension connects to it for live logs/status. */
   socket: string;
@@ -64,7 +64,7 @@ export async function buildBspResolvedConfig(deps: {
 }
 
 /**
- * The BSP log path. Defaults to a per-workspace OS-temp file (`getBspLogPath`) so
+ * The BSP log path. Defaults to the per-project state dir (`getBspLogPath`) so
  * logs are always captured without cluttering the project tree;
  * `sweetpad.buildServer.logPath` overrides it (with `${workspaceFolder}`/relative
  * resolved absolute against the workspace folder).

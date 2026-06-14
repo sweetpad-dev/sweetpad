@@ -1,12 +1,12 @@
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { getProjectStateDir, getTmpStateRoot, workspaceHash } from "../cli-server/paths";
+import { getProjectStateDir, workspaceHash } from "../cli-server/paths";
 
-// Default debug-log file for the BSP server, in the per-workspace tmp state root
-// (alongside the build logs) so logs stay out of the project tree.
+// Default debug-log file for the BSP server, in the per-project state dir
+// (alongside bsp.json and the build logs) so it stays out of the project tree.
 export function getBspLogPath(workspacePath: string): string {
-  return path.join(getTmpStateRoot(workspacePath), "bsp.log");
+  return path.join(getProjectStateDir(workspacePath), "bsp.log");
 }
 
 // The BSP server's persisted config (`bsp.json`): the resolved
