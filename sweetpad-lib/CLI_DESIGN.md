@@ -511,33 +511,61 @@ full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
 
 ### Milestones
 
-1. **Socket spike (highest risk first).** Bind `:8887`, launch a sim app with the
-   client dylib, complete the handshake, and `.load` a dylib built via the **(F)
-   resolver** path (not a hand-copied command). A SwiftUI view swapping in place
-   validates both the transport *and* the ABI-match assumption before any watcher
-   exists.
+> **Milestone 1: ✅ validated** — run #5 of `hot-reload-spike.yaml` on a real
+> arm64 simulator: the Rust server completed the `:8887` handshake (`version 4001`,
+> `iPhoneSimulator arm64`, projectRoot/tmpPath/executable), recompiled the changed
+> file, linked a dylib, sent `.load`, and the in-app client confirmed `.injected`.
+> The novel socket protocol and the build→load→patch chain are proven.
+
+1. **Socket spike — done.** Validated transport + a recompile/`.load`/`.injected`
+   round-trip using the **(A)** live build-log command. (The **(F)** resolver
+   path still needs its own ABI confirmation; A is proven.)
 2. Build-flag + launch-env plumbing behind `--hot` (simulator-gated).
-3. Recompiler: (F) resolver path, then (A) live-capture fallback + `/tmp` cache.
+3. Recompiler: (A) live-capture + `/tmp` cache, then (F) resolver path.
 4. Watcher + session integration (debounce, status lines, `.failed`/`.unhide`).
-5. Polish: the "Inject package missing" advisory (port from `hot-reload.ts`),
+5. Minimal client: compile-on-demand + cache per Xcode build id.
+6. Polish: the "Inject package missing" advisory (port from `hot-reload.ts`),
    config/flag parity, teardown correctness.
 
-### Client dylib distribution — decided: **vendor (B)**
+### Scope — app UI/code reload only; no test hot-reloading
 
-The CLI **vendors** `libiphonesimulatorInjection.dylib` (the MIT-licensed
-InjectionNext client, © John Holdsworth) in its own resources and points
-`DYLD_INSERT_LIBRARIES` at that copy — so `app run --hot` works on an unmodified
-project with no `InjectionNext.app` install and no SPM edit. We carry the upkeep
-(re-vendor per Xcode injection-ABI change, codesign, license attribution); the
-SwiftUI `@ObserveInjection`/`.enableInjection()` annotations are still the user's
-to add (UIKit apps reload without them). The dylib needs the simulator's XCTest
-search paths on `DYLD_FRAMEWORK_PATH`/`DYLD_LIBRARY_PATH` (already in the launch
-wiring above).
+`--hot` targets **application UI/code** reload (SwiftUI/UIKit), **not** XCTest
+hot-reloading (recompiling a test file and re-running its `XCTestSuite`
+in-process). That test feature is the *only* reason the InjectionNext client
+links XCTest (`Reloader.loadXCTest`, `Sweeper.runXCTestCase`), and that XCTest
+binary reference (`XCTIssue` in `libXCTestSwiftSupport`) is exactly what makes a
+prebuilt client **Xcode-version-bound** — Milestone 1 saw it fail to load under
+Xcode 16.4 while built against 26.x. **Dropping test-reload removes the XCTest
+linkage and the per-Xcode ABI-skew problem entirely.**
+
+### Client distribution — minimal client, compiled from source
+
+With XCTest gone the client reduces to its core: connect to `:8887`, `dlopen`
+the patch dylib, swap class methods, and rebind `-interposable` symbols (via
+`SwiftTrace`/`DLKit`, or a from-scratch fishhook-style interposer). That image
+has no Xcode-ABI-sensitive references, so:
+
+- **No per-Xcode dylib matrix** — the skew was XCTest-only.
+- **Compile-on-demand, cached per Xcode build id** (so it always matches the
+  user's toolchain), `DYLD_INSERT_LIBRARIES`-injected at launch — keeping B's
+  drop-in UX: no project edit, no `InjectionNext.app`. The SwiftUI
+  `@ObserveInjection`/`.enableInjection()` annotations remain the user's to add.
+- Buildable with the toolchain directly (`swiftc`/`clang`). The Milestone-1
+  `swift build` experiment on the *full* InjectionNext package failed only on the
+  repo's dev symlinks to sibling `SwiftTrace`/`DLKit`/`InjectionImpl` checkouts —
+  moot once we own a slim client.
+
+Open question: reuse InjectionNext/`InjectionImpl`'s `Reloader` + `SwiftTrace`/
+`DLKit` rebinder (vendor those, strip the XCTest/test code) vs. a from-scratch
+minimal interposer. The former is proven; the latter is smaller.
 
 ### Open decisions
 
-- **ABI-match confidence for (F).** Milestone 1 is the gate; if resolver-built
-  dylibs prove flaky to inject, (A) becomes primary and (F) an optimization.
+- **ABI match — A proven, F pending.** Path A (exact build-log command) injects
+  cleanly (Milestone 1), so it is primary. The (F) resolver path's ABI match is
+  still to confirm; until then F is an optimization, not the default.
+- **Slim-client engine** — vendor `Reloader`+`SwiftTrace`/`DLKit` (XCTest stripped)
+  vs. a from-scratch interposer (see Client distribution above).
 
 ### Milestone-1 validation harness
 
@@ -552,8 +580,11 @@ recompiles `ContentView.swift` (via the live build-log command, path A) into a
 dylib, sends `.load`, and **asserts `.injected`** over the socket — a machine-
 checkable signal that needs no screen. Reaching the handshake alone validates
 the (novel) socket protocol; `.injected` additionally validates the build+load
-chain. The workflow and harness are removed once the approach lands in the CLI
-proper.
+chain. **Result: passed on run #5** (`.injected` received). A secondary,
+non-fatal step probed the no-xcodebuild client build (`swift build` of the
+InjectionNext package for the simulator); it failed only on the upstream repo's
+dev symlinks, so it's inconclusive — and moot under the minimal-client decision.
+The workflow and harness are removed once the approach lands in the CLI proper.
 
 ## 10. Testing
 
