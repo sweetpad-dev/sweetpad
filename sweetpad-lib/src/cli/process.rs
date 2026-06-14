@@ -116,6 +116,29 @@ pub fn spawn(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, 
     cmd.spawn().map_err(|e| spawn_error(program, &e))
 }
 
+/// Spawn a command with stdout **piped** (for the caller to read line-by-line)
+/// and placed in its **own process group**, so a supervisor can signal just this
+/// process tree — e.g. forward Ctrl-C to an interruptible build without taking
+/// down the parent. stdin is null so it never competes for the terminal's keys.
+pub fn spawn_piped_group(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+) -> Result<Child, CliError> {
+    use std::os::unix::process::CommandExt;
+
+    let mut cmd = Command::new(program);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .process_group(0);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    cmd.spawn().map_err(|e| spawn_error(program, &e))
+}
+
 fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
     if e.kind() == std::io::ErrorKind::NotFound {
         CliError::new(format!(

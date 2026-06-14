@@ -13,45 +13,41 @@
 //!   a delivered `SIGINT` would have killed us mid-session and left it cooked.
 //!
 //! Output post-processing (`OPOST`/`ONLCR`) is left untouched, so `\n` from the
-//! log stream still renders as a clean newline. Unix-only; the CLI targets macOS.
+//! log stream still renders as a clean newline. Reads are non-blocking (a 0.1s
+//! `VTIME` poll) so the session loop — and the watcher thread during a build —
+//! can stay responsive instead of parking forever on a keypress. Unix-only; the
+//! CLI targets macOS.
 
-use std::io::{self, Read};
+use std::io;
 
-/// RAII guard that puts stdin into single-key mode and restores the original
-/// terminal settings on drop (including panics and early returns).
+/// RAII guard that puts stdin into single-key poll mode and restores the
+/// original terminal settings on drop (including panics and early returns).
 pub struct RawMode {
     original: libc::termios,
 }
 
 impl RawMode {
-    /// Enable single-key input on stdin. Fails when stdin isn't a terminal, so
-    /// callers gate the interactive session on a TTY and fall back otherwise.
+    /// Enable single-key polling input on stdin. Fails when stdin isn't a
+    /// terminal, so callers gate the interactive session on a TTY and fall back
+    /// otherwise.
     pub fn enable() -> io::Result<Self> {
         // Safety: tcgetattr/tcsetattr take a fd and a termios we own; we read
         // the current settings, stash them, and write back a tweaked copy.
         unsafe {
             let mut term: libc::termios = std::mem::zeroed();
-            if libc::tcgetattr(libc::STDIN_FILENO, &mut term) != 0 {
+            if libc::tcgetattr(libc::STDIN_FILENO, &raw mut term) != 0 {
                 return Err(io::Error::last_os_error());
             }
             let original = term;
             term.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG | libc::IEXTEN);
-            term.c_cc[libc::VMIN] = 1; // block until at least one byte
-            term.c_cc[libc::VTIME] = 0; // …with no inter-byte timeout
-            if libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &term) != 0 {
+            // VMIN=0, VTIME=1: return after one byte *or* ~0.1s with nothing, so
+            // a read never blocks the loop indefinitely (see [`poll_key`]).
+            term.c_cc[libc::VMIN] = 0;
+            term.c_cc[libc::VTIME] = 1;
+            if libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const term) != 0 {
                 return Err(io::Error::last_os_error());
             }
             Ok(Self { original })
-        }
-    }
-
-    /// Block for the next keystroke. Returns `None` on EOF (Ctrl-D closes the
-    /// stream) or a read error, which callers treat as "quit".
-    pub fn read_key(&self) -> Option<u8> {
-        let mut buf = [0u8; 1];
-        match io::stdin().read(&mut buf) {
-            Ok(1) => Some(buf[0]),
-            _ => None,
         }
     }
 }
@@ -60,7 +56,35 @@ impl Drop for RawMode {
     fn drop(&mut self) {
         // Safety: restoring the exact termios we captured in `enable`.
         unsafe {
-            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &self.original);
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const self.original);
         }
+    }
+}
+
+/// The result of one [`poll_key`] tick.
+pub enum Input {
+    /// A key was pressed.
+    Key(u8),
+    /// Nothing was pressed this tick (the `VTIME` timeout elapsed).
+    Idle,
+    /// stdin read errored — treat as "quit".
+    Closed,
+}
+
+/// Poll stdin for a single keystroke, returning within ~0.1s even if nothing is
+/// pressed. Reads the raw fd directly (not std's buffered `Stdin`) so concurrent
+/// users — the idle loop and the build-time watcher — never fight over a shared
+/// buffer. Only valid while a [`RawMode`] guard is active. On a terminal a
+/// zero-byte read is the `VTIME` timeout (EOF arrives as a `^D` byte), so it
+/// maps to [`Input::Idle`], not a close.
+#[must_use]
+pub fn poll_key() -> Input {
+    let mut buf = [0u8; 1];
+    // Safety: reading one byte into a stack buffer we own.
+    let n = unsafe { libc::read(libc::STDIN_FILENO, buf.as_mut_ptr().cast(), 1) };
+    match n {
+        1 => Input::Key(buf[0]),
+        0 => Input::Idle,
+        _ => Input::Closed,
     }
 }

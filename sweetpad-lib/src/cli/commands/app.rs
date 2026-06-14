@@ -2,15 +2,18 @@
 //! running session, on a simulator or a physical device. The app is the noun;
 //! these are its actions.
 
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::Child;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use clap::Subcommand;
 
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Resolved};
 use crate::cli::xcodebuild::{self, AppBundle};
-use crate::cli::{CliError, CliResult, Context, devicectl, rawmode, simctl};
+use crate::cli::{CliError, CliResult, Context, buildlog, devicectl, process, rawmode, simctl};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -156,39 +159,14 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         return deploy(ctx, &plan);
     }
 
-    // Default: deploy and follow logs. On a simulator at an interactive
-    // terminal this is the rebuild session — logs stream in the background and
-    // `r` rebuilds+relaunches on demand. Everything else (devices, macOS, and
-    // non-interactive simulator runs) follows logs inline until Ctrl-C.
-    match &plan.target {
-        Target::Simulator(udid) => {
-            if ctx.out.is_interactive() {
-                return run_session(ctx, &plan, udid);
-            }
-            let app = build_and_install(&plan, &ctx.out)?;
-            let out = simctl::launch(udid, &app.bundle_id)?;
-            ctx.out
-                .note(&format!("launched {} → {}", app.bundle_id, out.trim()));
-            stream_logs(ctx, udid, &app)
-        }
-        Target::Device(id) => {
-            // On device, logs come from launching with the console attached.
-            let app = build_and_install(&plan, &ctx.out)?;
-            ctx.out.note(&format!(
-                "launching {} with console (Ctrl-C to stop)",
-                app.bundle_id
-            ));
-            devicectl::launch_console(id, &app.bundle_id)
-        }
-        Target::Mac => {
-            // A macOS app runs its executable directly; that streams its output.
-            let app = build_and_install(&plan, &ctx.out)?;
-            ctx.out
-                .note(&format!("running {} (Ctrl-C to stop)", app.bundle_id));
-            crate::cli::process::stream(&app.executable.to_string_lossy(), &[], None)
-        }
-        // SPM is handled by the early return above.
-        Target::SpmRun(_) => unreachable!("SPM run handled before this match"),
+    // Default: build, launch, and follow the app's output. At an interactive
+    // terminal this is the rebuild session — output streams in the background
+    // and `r` rebuilds+relaunches on demand. Non-interactive (CI/piped) runs
+    // fall back to a one-shot launch + inline follow until Ctrl-C.
+    if ctx.out.is_interactive() {
+        run_session(ctx, &plan)
+    } else {
+        follow_once(ctx, &plan)
     }
 }
 
@@ -327,54 +305,225 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
     Ok(())
 }
 
-/// Interactive simulator session: build+install+launch, stream the app's logs
-/// in the background, and rebuild+relaunch on demand. `r` rebuilds; `q`, Ctrl-C,
-/// or Ctrl-D quit. Logs keep streaming throughout — raw mode flips only stdin's
-/// line discipline, not the terminal's output handling (see [`rawmode`]).
-fn run_session(ctx: &Context, plan: &RunPlan, udid: &str) -> CliResult {
-    let app = build_and_install(plan, &ctx.out)?;
-    let launched = simctl::launch(udid, &app.bundle_id)?;
-    ctx.out
-        .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
-
+/// Interactive rebuild session: build + launch + stream the app's output, then
+/// rebuild + relaunch on demand. `r` rebuilds; `q`, Ctrl-C, or Ctrl-D quit. Raw
+/// mode flips only stdin's line discipline (see [`rawmode`]) so output keeps
+/// streaming; the build is interruptible (Ctrl-C aborts it without leaving the
+/// session). The running app is terminated before each relaunch and on quit.
+fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     // Raw mode needs a terminal on stdin; without one (piped input) fall back to
-    // plain inline log following.
-    let Ok(raw) = rawmode::RawMode::enable() else {
-        return stream_logs(ctx, udid, &app);
+    // a one-shot launch + inline follow.
+    let Ok(_raw) = rawmode::RawMode::enable() else {
+        return follow_once(ctx, plan);
     };
 
-    let mut logs = Some(spawn_logs(udid, &app)?);
+    // Initial build + launch. A failed/aborted first build exits — there's
+    // nothing running to attach a session to.
+    build(plan, &ctx.out)?;
+    let mut running = Some(start_app(ctx, plan)?);
     session_hint(ctx);
+
     loop {
-        match classify_key(raw.read_key()) {
-            SessionKey::Rebuild => {
-                stop_logs(&mut logs);
-                ctx.out.note("rebuilding…");
-                match build_and_relaunch(plan, udid, &ctx.out) {
-                    Ok(app) => {
-                        logs = Some(spawn_logs(udid, &app)?);
-                        session_hint(ctx);
+        match rawmode::poll_key() {
+            rawmode::Input::Key(key) => match classify_key(key) {
+                SessionKey::Rebuild => {
+                    ctx.out.note("↻ restarting — rebuilding…");
+                    // Stop the old app first so build output is clean and the
+                    // relaunch is always a fresh process.
+                    if let Some(old) = running.take() {
+                        terminate_app(old);
                     }
-                    // Keep the session alive after a failed build — fix and press
-                    // `r` again. No log stream runs until the next good build.
-                    Err(e) => ctx.out.error(&e.to_string()),
+                    match build(plan, &ctx.out) {
+                        Ok(()) => match start_app(ctx, plan) {
+                            Ok(r) => running = Some(r),
+                            Err(e) => ctx.out.error(&e.to_string()),
+                        },
+                        // Failed/aborted build: nothing runs until the next `r`.
+                        Err(e) => ctx.out.error(&e.to_string()),
+                    }
+                    session_hint(ctx);
                 }
-            }
-            SessionKey::Quit => break,
-            SessionKey::Ignore => {}
+                SessionKey::Quit => break,
+                SessionKey::Ignore => {}
+            },
+            rawmode::Input::Idle => {}
+            rawmode::Input::Closed => break,
         }
     }
-    stop_logs(&mut logs);
+    if let Some(r) = running.take() {
+        terminate_app(r);
+    }
     Ok(())
 }
 
-/// Build, install, and relaunch on the simulator, returning the launchable app.
-/// The rebuild unit re-run by the session's `r` key.
-fn build_and_relaunch(plan: &RunPlan, udid: &str, out: &Output) -> Result<AppBundle, CliError> {
-    let app = build_and_install(plan, out)?;
-    let launched = simctl::launch(udid, &app.bundle_id)?;
-    out.note(&format!("relaunched {} → {}", app.bundle_id, launched.trim()));
-    Ok(app)
+/// A launched app in the interactive session: the background process streaming
+/// its output (simulator log stream, device console, or — for macOS — the app
+/// itself), plus what's needed to terminate the app between rebuilds and on quit.
+struct Running {
+    stream: Child,
+    kind: RunningKind,
+}
+
+enum RunningKind {
+    /// The log stream is separate from the app; terminate via simctl.
+    Simulator { udid: String, bundle_id: String },
+    /// The console process launched the app; terminate via devicectl.
+    Device { id: String, bundle_id: String },
+    /// The streamed child *is* the macOS app; killing it stops the app.
+    Mac,
+}
+
+/// Install (where applicable) and launch the just-built app, starting the
+/// background stream of its output. Assumes [`build`] already produced the
+/// bundle, so it never builds itself.
+fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
+    let app = plan.app_bundle()?;
+    let app_path = app.path.display().to_string();
+    match &plan.target {
+        Target::Simulator(udid) => {
+            simctl::boot(udid)?;
+            simctl::install(udid, &app_path)?;
+            let launched = simctl::launch(udid, &app.bundle_id)?;
+            ctx.out
+                .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
+            Ok(Running {
+                stream: spawn_logs(udid, &app)?,
+                kind: RunningKind::Simulator {
+                    udid: udid.clone(),
+                    bundle_id: app.bundle_id,
+                },
+            })
+        }
+        Target::Device(id) => {
+            devicectl::install(id, &app_path)?;
+            ctx.out
+                .note(&format!("launching {} on device with console", app.bundle_id));
+            Ok(Running {
+                stream: devicectl::spawn_console(id, &app.bundle_id)?,
+                kind: RunningKind::Device {
+                    id: id.clone(),
+                    bundle_id: app.bundle_id,
+                },
+            })
+        }
+        Target::Mac => {
+            ctx.out.note(&format!("running {}", app.bundle_id));
+            Ok(Running {
+                stream: process::spawn(&app.executable.to_string_lossy(), &[], None)?,
+                kind: RunningKind::Mac,
+            })
+        }
+        Target::SpmRun(_) => unreachable!("SPM run does not use the interactive session"),
+    }
+}
+
+/// Terminate the running app and stop its output stream.
+fn terminate_app(running: Running) {
+    let Running { mut stream, kind } = running;
+    match kind {
+        RunningKind::Simulator { udid, bundle_id } => {
+            let _ = simctl::terminate(&udid, &bundle_id);
+        }
+        RunningKind::Device { id, bundle_id } => {
+            let _ = devicectl::terminate(&id, &bundle_id);
+        }
+        // The macOS app *is* the streamed child — killing it below stops it.
+        RunningKind::Mac => {}
+    }
+    let _ = stream.kill();
+    let _ = stream.wait();
+}
+
+/// Run the build, letting Ctrl-C abort it without leaving the session. While
+/// xcodebuild runs, a watcher thread polls stdin: Ctrl-C (`0x03`) sends SIGINT
+/// to the build's process group; any other key is swallowed so stray presses
+/// during a long build can't queue up as commands once we're back at the prompt.
+/// Returns `Ok` on success, `Err` on a failed or aborted build.
+fn build(plan: &RunPlan, out: &Output) -> CliResult {
+    let (parts, cwd) = plan.build_plan().command();
+    let args: Vec<&str> = parts.iter().map(String::as_str).collect();
+    let mut child = process::spawn_piped_group("xcodebuild", &args, cwd.as_deref())?;
+    let pid = child.id();
+
+    let aborted = Arc::new(AtomicBool::new(false));
+    let done = Arc::new(AtomicBool::new(false));
+    let watcher = std::thread::spawn({
+        let aborted = Arc::clone(&aborted);
+        let done = Arc::clone(&done);
+        move || {
+            while !done.load(Ordering::Relaxed) {
+                if let rawmode::Input::Key(0x03) = rawmode::poll_key() {
+                    signal_group(pid, libc::SIGINT);
+                    aborted.store(true, Ordering::Relaxed);
+                    break;
+                }
+            }
+        }
+    });
+
+    // Beautify xcodebuild's piped stdout on this thread (the same path as
+    // [`buildlog::run`], inlined so we own the child for the watcher).
+    let color = out.use_color();
+    let verbose = out.is_verbose();
+    if let Some(stdout) = child.stdout.take() {
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if let Some(rendered) = buildlog::render(&buildlog::parse_line(&line), color, verbose) {
+                out.line(&rendered);
+            }
+        }
+    }
+
+    let status = child.wait();
+    done.store(true, Ordering::Relaxed);
+    let _ = watcher.join();
+
+    if aborted.load(Ordering::Relaxed) {
+        return Err(CliError::new("build aborted"));
+    }
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(_) => Err(CliError::new("xcodebuild exited with a non-zero status")),
+        Err(e) => Err(CliError::new(format!("failed to wait for xcodebuild: {e}"))),
+    }
+}
+
+/// SIGINT (etc.) a process group spawned via [`process::spawn_piped_group`].
+/// The child leads its own group, so its pid is the group id; the negative
+/// target signals the whole tree, mirroring a terminal Ctrl-C.
+fn signal_group(pid: u32, sig: libc::c_int) {
+    // Safety: kill() with a pgid and signal number; failure (already-exited
+    // group) is harmless and ignored.
+    unsafe {
+        libc::kill(-pid.cast_signed(), sig);
+    }
+}
+
+/// One build + launch + inline follow until Ctrl-C — the non-interactive path
+/// (CI/piped, or when stdin isn't a terminal).
+fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
+    let app = build_and_install(plan, &ctx.out)?;
+    match &plan.target {
+        Target::Simulator(udid) => {
+            let launched = simctl::launch(udid, &app.bundle_id)?;
+            ctx.out
+                .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
+            stream_logs(ctx, udid, &app)
+        }
+        Target::Device(id) => {
+            ctx.out.note(&format!(
+                "launching {} with console (Ctrl-C to stop)",
+                app.bundle_id
+            ));
+            devicectl::launch_console(id, &app.bundle_id)
+        }
+        Target::Mac => {
+            ctx.out
+                .note(&format!("running {} (Ctrl-C to stop)", app.bundle_id));
+            process::stream(&app.executable.to_string_lossy(), &[], None)
+        }
+        Target::SpmRun(_) => unreachable!("SPM run handled before this match"),
+    }
 }
 
 /// What the session does with a keystroke.
@@ -385,13 +534,14 @@ enum SessionKey {
     Ignore,
 }
 
-/// Map a raw keystroke (or `None` for EOF) to a session action. `r` rebuilds;
-/// `q`, Ctrl-C (`0x03`), Ctrl-D (`0x04`), and a closed stdin quit.
-fn classify_key(key: Option<u8>) -> SessionKey {
+/// Map a keystroke to a session action. `r` rebuilds; `q`, Ctrl-C (`0x03`), and
+/// Ctrl-D (`0x04`) quit; everything else is ignored. (A closed stdin is handled
+/// separately as [`rawmode::Input::Closed`].)
+fn classify_key(key: u8) -> SessionKey {
     match key {
-        Some(b'r' | b'R') => SessionKey::Rebuild,
-        Some(b'q' | b'Q' | 0x03 | 0x04) | None => SessionKey::Quit,
-        Some(_) => SessionKey::Ignore,
+        b'r' | b'R' => SessionKey::Rebuild,
+        b'q' | b'Q' | 0x03 | 0x04 => SessionKey::Quit,
+        _ => SessionKey::Ignore,
     }
 }
 
@@ -423,14 +573,6 @@ fn spawn_logs(udid: &str, app: &AppBundle) -> Result<Child, CliError> {
         ],
         None,
     )
-}
-
-/// Kill and reap the background log stream, if one is running.
-fn stop_logs(logs: &mut Option<Child>) {
-    if let Some(mut child) = logs.take() {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
 }
 
 /// The stage-only `app` actions (install/launch/logs/stop) share resolution.
@@ -522,16 +664,15 @@ mod tests {
     #[test]
     fn session_keys_map_to_actions() {
         // `r` rebuilds (either case).
-        assert_eq!(classify_key(Some(b'r')), SessionKey::Rebuild);
-        assert_eq!(classify_key(Some(b'R')), SessionKey::Rebuild);
-        // `q`, Ctrl-C, Ctrl-D, and EOF all quit.
-        assert_eq!(classify_key(Some(b'q')), SessionKey::Quit);
-        assert_eq!(classify_key(Some(b'Q')), SessionKey::Quit);
-        assert_eq!(classify_key(Some(0x03)), SessionKey::Quit);
-        assert_eq!(classify_key(Some(0x04)), SessionKey::Quit);
-        assert_eq!(classify_key(None), SessionKey::Quit);
-        // Anything else is ignored — the session keeps streaming logs.
-        assert_eq!(classify_key(Some(b'x')), SessionKey::Ignore);
-        assert_eq!(classify_key(Some(b'\n')), SessionKey::Ignore);
+        assert_eq!(classify_key(b'r'), SessionKey::Rebuild);
+        assert_eq!(classify_key(b'R'), SessionKey::Rebuild);
+        // `q`, Ctrl-C, and Ctrl-D all quit.
+        assert_eq!(classify_key(b'q'), SessionKey::Quit);
+        assert_eq!(classify_key(b'Q'), SessionKey::Quit);
+        assert_eq!(classify_key(0x03), SessionKey::Quit);
+        assert_eq!(classify_key(0x04), SessionKey::Quit);
+        // Anything else is ignored — the session keeps streaming output.
+        assert_eq!(classify_key(b'x'), SessionKey::Ignore);
+        assert_eq!(classify_key(b'\n'), SessionKey::Ignore);
     }
 }

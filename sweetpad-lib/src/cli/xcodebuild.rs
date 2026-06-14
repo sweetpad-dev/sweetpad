@@ -42,10 +42,17 @@ impl BuildPlan<'_> {
         args
     }
 
+    /// The `(argv, cwd)` for this build, exposed so the interactive `app run`
+    /// session can spawn xcodebuild itself (interruptibly) instead of going
+    /// through [`run`].
+    #[must_use]
+    pub fn command(&self) -> (Vec<String>, Option<PathBuf>) {
+        (self.args(), working_dir(self.container))
+    }
+
     /// Run the build. Human mode beautifies xcodebuild's output via
     /// [`buildlog`]; `-v` passes it through raw; `--json` stays quiet.
-    pub fn run(&self, out: &Output) -> Result<(), CliError> {
-        let parts = self.args();
+    pub fn run(&self, out: &Output) -> Result<(), CliError> {        let parts = self.args();
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
         let cwd = working_dir(self.container);
         let ok = if out.is_json() {

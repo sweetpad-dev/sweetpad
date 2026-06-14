@@ -221,17 +221,28 @@ sweetpad completions <shell>          clap_complete-generated scripts
   `simctl spawn … log stream` on a simulator, `devicectl … launch --console` on
   a device, the executable's own stdout/stderr for macOS. Disable with
   **`--no-logs`**.
-- **interactive rebuild session** — on a simulator at an interactive terminal,
-  `app run` keeps the loop under the developer's control instead of auto-watching
-  files: the log stream runs as a background child while a single-key reader sits
-  in front. **`r`** rebuilds + reinstalls + relaunches on demand; **`q`**, Ctrl-C,
-  or Ctrl-D quit. A failed rebuild keeps the session alive — fix and press `r`
-  again. The reader uses a hand-rolled raw mode (`libc`, unix-only) that flips
-  only stdin's line discipline (`ICANON`/`ECHO`/`ISIG`), leaving the terminal's
-  output post-processing on so the streamed logs still render cleanly; clearing
-  `ISIG` routes Ctrl-C in as a byte we handle, so the RAII guard always restores
-  the terminal on exit. Devices, macOS, and non-interactive/piped simulator runs
-  fall back to plain inline log following until Ctrl-C.
+- **interactive rebuild session** — at an interactive terminal, `app run` keeps
+  the loop under the developer's control instead of auto-watching files: the app's
+  output streams from a background child (sim `log stream`, device `--console`, or
+  the macOS executable itself) while a single-key reader sits in front. **`r`**
+  rebuilds + relaunches on demand; **`q`**, Ctrl-C, or Ctrl-D quit. On each `r`
+  the running app is **terminated first** (`simctl`/`devicectl terminate`, or
+  killing the macOS process) so the relaunch is always a fresh process picking up
+  the new binary — `simctl launch` alone would just foreground the stale one — and
+  the app is likewise terminated on quit. A failed rebuild keeps the session alive;
+  fix and press `r` again.
+
+  The reader uses a hand-rolled raw mode (`libc`, unix-only) that flips only
+  stdin's line discipline (`ICANON`/`ECHO`/`ISIG`/`IEXTEN`), leaving the terminal's
+  output post-processing on so streamed logs still render cleanly; clearing `ISIG`
+  routes Ctrl-C in as a byte we handle, so the RAII guard always restores the
+  terminal on exit. Reads are a non-blocking `VTIME` poll, which lets a watcher
+  thread keep reading stdin **during** a build: Ctrl-C there is forwarded as
+  `SIGINT` to xcodebuild's process group (so a long build stays abortable without
+  leaving raw mode), and any other key pressed mid-build is swallowed so it can't
+  queue a spurious rebuild. The build runs `xcodebuild` in its own process group
+  with piped stdout fed through the [`buildlog`] beautifier. Non-interactive /
+  piped runs (and `--no-logs`) fall back to a one-shot launch + inline follow.
 
 `destination list` aggregates **macOS + simulators + connected devices**, each
 with a ready `-destination` specifier. SPM containers are supported for
