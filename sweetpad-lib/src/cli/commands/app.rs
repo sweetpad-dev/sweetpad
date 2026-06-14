@@ -473,6 +473,16 @@ fn run_hot_session(ctx: &Context, plan: &RunPlan, mode: Mode) -> CliResult {
     let server =
         Arc::new(InjectServer::start(recompiler, Arc::clone(&log)).map_err(CliError::new)?);
 
+    // SwiftUI views need the Inject package to redraw on injection; warn once
+    // if it's absent (UIKit apps don't need it, so this is advisory only).
+    if inject::inject_dependency_present(&project_root) == Some(false) {
+        ctx.out.note(
+            "hot reload: the `Inject` package isn't in Package.resolved — SwiftUI views \
+             won't redraw on save until you add https://github.com/krzysztofzablocki/Inject \
+             and annotate them with @ObserveInjection + .enableInjection() (UIKit apps can ignore this)",
+        );
+    }
+
     // Install + launch with the client injected, then stream the app's logs.
     let mut stream = launch_hot(ctx, udid, &app, &launch_env)?;
     // Watch the workspace; each save drives `server.inject`.

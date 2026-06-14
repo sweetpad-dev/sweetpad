@@ -69,6 +69,66 @@ pub fn sdk_for_destination(destination: &str) -> Option<&'static str> {
     }
 }
 
+/// Whether the project depends on the `Inject` package (krzysztofzablocki/Inject),
+/// which SwiftUI views need (`@ObserveInjection` + `.enableInjection()`) to
+/// actually redraw on injection. Returns `None` when no `Package.resolved`
+/// exists yet (can't tell — likely pre-resolve), so callers stay quiet then.
+#[must_use]
+pub fn inject_dependency_present(root: &Path) -> Option<bool> {
+    let files = package_resolved_files(root);
+    if files.is_empty() {
+        return None;
+    }
+    Some(files.iter().any(|f| {
+        std::fs::read_to_string(f)
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            .is_some_and(|json| pins_contain_inject(&json))
+    }))
+}
+
+/// Likely `Package.resolved` locations: the SPM root, and the swiftpm dirs
+/// inside `*.xcworkspace` / `*.xcodeproj` bundles in `root`.
+fn package_resolved_files(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    let direct = root.join("Package.resolved");
+    if direct.exists() {
+        out.push(direct);
+    }
+    if let Ok(entries) = std::fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let inner = match path.extension().and_then(|e| e.to_str()) {
+                Some("xcworkspace") => path.join("xcshareddata/swiftpm/Package.resolved"),
+                Some("xcodeproj") => {
+                    path.join("project.xcworkspace/xcshareddata/swiftpm/Package.resolved")
+                }
+                _ => continue,
+            };
+            if inner.exists() {
+                out.push(inner);
+            }
+        }
+    }
+    out
+}
+
+/// Whether a parsed `Package.resolved` pins krzysztofzablocki/Inject.
+fn pins_contain_inject(json: &serde_json::Value) -> bool {
+    json.get("pins")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|pins| {
+            pins.iter().any(|pin| {
+                pin.get("location")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|loc| {
+                        let l = loc.to_ascii_lowercase();
+                        l.contains("krzysztofzablocki/inject")
+                    })
+            })
+        })
+}
+
 /// The host arch in Apple's spelling — the arch a simulator runs (the sim uses
 /// the host slice) and that we resolve/link injection dylibs for.
 #[must_use]
@@ -103,5 +163,37 @@ mod tests {
     fn host_arch_is_apple_spelling() {
         let a = host_arch();
         assert!(a == "arm64" || a == "x86_64", "unexpected arch {a}");
+    }
+
+    #[test]
+    fn inject_dependency_detection() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("sweetpad-inject-dep-{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // No Package.resolved → unknown (stay quiet).
+        assert_eq!(inject_dependency_present(&dir), None);
+
+        // Present but without Inject → false (warn).
+        std::fs::write(
+            dir.join("Package.resolved"),
+            r#"{"pins":[{"identity":"swift-foo","location":"https://github.com/x/swift-foo"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(inject_dependency_present(&dir), Some(false));
+
+        // With Inject → true (quiet).
+        std::fs::write(
+            dir.join("Package.resolved"),
+            r#"{"pins":[{"identity":"inject","location":"https://github.com/krzysztofzablocki/Inject.git"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(inject_dependency_present(&dir), Some(true));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
