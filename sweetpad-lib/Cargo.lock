@@ -512,6 +512,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "dialoguer",
+ "libc",
  "napi",
  "napi-build",
  "napi-derive",

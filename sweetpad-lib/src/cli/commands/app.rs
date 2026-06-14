@@ -2,20 +2,19 @@
 //! running session, on a simulator or a physical device. The app is the noun;
 //! these are its actions.
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::path::Path;
+use std::process::Child;
 
 use clap::Subcommand;
 
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Resolved};
 use crate::cli::xcodebuild::{self, AppBundle};
-use crate::cli::{CliError, CliResult, Context, devicectl, simctl};
+use crate::cli::{CliError, CliResult, Context, devicectl, rawmode, simctl};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Build, install, and launch; follows logs and watches by request.
+    /// Build, install, launch, and follow logs; press `r` to rebuild on demand.
     Run {
         /// Target a connected physical device instead of a simulator.
         #[arg(long)]
@@ -26,9 +25,6 @@ pub enum Action {
         /// Build and run as a native macOS app (launches the executable).
         #[arg(long, conflicts_with_all = ["device", "device_id"])]
         mac: bool,
-        /// Rebuild, reinstall, and relaunch whenever a source file changes.
-        #[arg(long)]
-        watch: bool,
         /// Don't stream the app's logs after launching (logs follow by default
         /// on simulators).
         #[arg(long = "no-logs")]
@@ -58,7 +54,6 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
             device,
             device_id,
             mac,
-            watch,
             no_logs,
         } => run_app(
             ctx,
@@ -66,7 +61,6 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
                 device: *device || device_id.is_some(),
                 device_id: device_id.as_deref(),
                 mac: *mac,
-                watch: *watch,
                 no_logs: *no_logs,
             },
         ),
@@ -100,12 +94,10 @@ fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CliResult 
 }
 
 /// Options for `app run`, gathered from the flags.
-#[allow(clippy::struct_excessive_bools)]
 struct RunOpts<'a> {
     device: bool,
     device_id: Option<&'a str>,
     mac: bool,
-    watch: bool,
     no_logs: bool,
 }
 
@@ -153,29 +145,26 @@ impl RunPlan {
 fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
     let plan = plan(ctx, opts)?;
 
-    // A Swift package executable runs (and streams) via `swift run`; deploy
-    // does exactly that, so every mode routes through it.
+    // A Swift package executable builds, runs, and streams in one `swift run`;
+    // there's no separate log stream to background, so it stays a one-shot.
     if matches!(plan.target, Target::SpmRun(_)) {
-        if opts.watch {
-            deploy(ctx, &plan)?;
-            return watch_loop(ctx, &plan);
-        }
         return deploy(ctx, &plan);
     }
 
-    // --watch: deploy once, then redeploy on change (no inline logs — they'd
-    // block the loop). --no-logs: deploy and return.
-    if opts.watch {
-        deploy(ctx, &plan)?;
-        return watch_loop(ctx, &plan);
-    }
+    // --no-logs: deploy and return, no session.
     if opts.no_logs {
         return deploy(ctx, &plan);
     }
 
-    // Default: deploy and follow logs inline until Ctrl-C.
+    // Default: deploy and follow logs. On a simulator at an interactive
+    // terminal this is the rebuild session — logs stream in the background and
+    // `r` rebuilds+relaunches on demand. Everything else (devices, macOS, and
+    // non-interactive simulator runs) follows logs inline until Ctrl-C.
     match &plan.target {
         Target::Simulator(udid) => {
+            if ctx.out.is_interactive() {
+                return run_session(ctx, &plan, udid);
+            }
             let app = build_and_install(&plan, &ctx.out)?;
             let out = simctl::launch(udid, &app.bundle_id)?;
             ctx.out
@@ -305,7 +294,7 @@ fn spm_run(ctx: &Context, plan: &RunPlan, product: &str) -> CliResult {
     crate::cli::process::stream("swift", &["run", product], cwd.as_deref())
 }
 
-/// Build, install, and launch (no log following) — the unit re-run by `--watch`.
+/// Build, install, and launch (no log following) — used by `--no-logs` and SPM.
 fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
     // SPM executables build+run in one `swift run` step, not build+install+launch.
     if let Target::SpmRun(product) = &plan.target {
@@ -338,61 +327,110 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
     Ok(())
 }
 
-/// Poll the project's source tree and redeploy on change.
-fn watch_loop(ctx: &Context, plan: &RunPlan) -> CliResult {
-    // The container's parent, or "." when it's a relative path (empty parent).
-    let root = plan
-        .resolved
-        .container
-        .path()
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-    let mut snapshot = scan_sources(&root);
-    ctx.out.note("watching for changes (Ctrl-C to stop)");
+/// Interactive simulator session: build+install+launch, stream the app's logs
+/// in the background, and rebuild+relaunch on demand. `r` rebuilds; `q`, Ctrl-C,
+/// or Ctrl-D quit. Logs keep streaming throughout — raw mode flips only stdin's
+/// line discipline, not the terminal's output handling (see [`rawmode`]).
+fn run_session(ctx: &Context, plan: &RunPlan, udid: &str) -> CliResult {
+    let app = build_and_install(plan, &ctx.out)?;
+    let launched = simctl::launch(udid, &app.bundle_id)?;
+    ctx.out
+        .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
+
+    // Raw mode needs a terminal on stdin; without one (piped input) fall back to
+    // plain inline log following.
+    let Ok(raw) = rawmode::RawMode::enable() else {
+        return stream_logs(ctx, udid, &app);
+    };
+
+    let mut logs = Some(spawn_logs(udid, &app)?);
+    session_hint(ctx);
     loop {
-        std::thread::sleep(Duration::from_millis(800));
-        let next = scan_sources(&root);
-        if next != snapshot {
-            snapshot = next;
-            ctx.out.note("change detected — rebuilding");
-            if let Err(e) = deploy(ctx, plan) {
-                // Keep watching after a failed build instead of bailing out.
-                ctx.out.error(&e.to_string());
+        match classify_key(raw.read_key()) {
+            SessionKey::Rebuild => {
+                stop_logs(&mut logs);
+                ctx.out.note("rebuilding…");
+                match build_and_relaunch(plan, udid, &ctx.out) {
+                    Ok(app) => {
+                        logs = Some(spawn_logs(udid, &app)?);
+                        session_hint(ctx);
+                    }
+                    // Keep the session alive after a failed build — fix and press
+                    // `r` again. No log stream runs until the next good build.
+                    Err(e) => ctx.out.error(&e.to_string()),
+                }
             }
+            SessionKey::Quit => break,
+            SessionKey::Ignore => {}
         }
+    }
+    stop_logs(&mut logs);
+    Ok(())
+}
+
+/// Build, install, and relaunch on the simulator, returning the launchable app.
+/// The rebuild unit re-run by the session's `r` key.
+fn build_and_relaunch(plan: &RunPlan, udid: &str, out: &Output) -> Result<AppBundle, CliError> {
+    let app = build_and_install(plan, out)?;
+    let launched = simctl::launch(udid, &app.bundle_id)?;
+    out.note(&format!("relaunched {} → {}", app.bundle_id, launched.trim()));
+    Ok(app)
+}
+
+/// What the session does with a keystroke.
+#[derive(Debug, PartialEq, Eq)]
+enum SessionKey {
+    Rebuild,
+    Quit,
+    Ignore,
+}
+
+/// Map a raw keystroke (or `None` for EOF) to a session action. `r` rebuilds;
+/// `q`, Ctrl-C (`0x03`), Ctrl-D (`0x04`), and a closed stdin quit.
+fn classify_key(key: Option<u8>) -> SessionKey {
+    match key {
+        Some(b'r' | b'R') => SessionKey::Rebuild,
+        Some(b'q' | b'Q' | 0x03 | 0x04) | None => SessionKey::Quit,
+        Some(_) => SessionKey::Ignore,
     }
 }
 
-/// A snapshot of `.swift` file modification times under `root`, skipping hidden
-/// and build directories.
-fn scan_sources(root: &Path) -> BTreeMap<PathBuf, SystemTime> {
-    let mut map = BTreeMap::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with('.')
-                || matches!(name.as_ref(), "DerivedData" | "build" | ".build" | "Pods")
-            {
-                continue;
-            }
-            let Ok(ft) = entry.file_type() else { continue };
-            if ft.is_dir() {
-                stack.push(path);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("swift")
-                && let Ok(mtime) = entry.metadata().and_then(|m| m.modified())
-            {
-                map.insert(path, mtime);
-            }
-        }
+fn session_hint(ctx: &Context) {
+    ctx.out.note("press r to rebuild & relaunch · q to quit");
+}
+
+/// Spawn the simulator log stream as a background child (best-effort predicate
+/// on the app's executable name), inheriting stdout so logs appear live.
+fn spawn_logs(udid: &str, app: &AppBundle) -> Result<Child, CliError> {
+    let name = app
+        .path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    let predicate = format!("processImagePath CONTAINS \"{name}\"");
+    crate::cli::process::spawn(
+        "xcrun",
+        &[
+            "simctl",
+            "spawn",
+            udid,
+            "log",
+            "stream",
+            "--level=debug",
+            "--style=compact",
+            "--predicate",
+            &predicate,
+        ],
+        None,
+    )
+}
+
+/// Kill and reap the background log stream, if one is running.
+fn stop_logs(logs: &mut Option<Child>) {
+    if let Some(mut child) = logs.take() {
+        let _ = child.kill();
+        let _ = child.wait();
     }
-    map
 }
 
 /// The stage-only `app` actions (install/launch/logs/stop) share resolution.
@@ -410,7 +448,6 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
         device: false,
         device_id: None,
         mac: false,
-        watch: false,
         no_logs: true,
     };
     let plan = plan(ctx, &opts)?;
@@ -443,33 +480,19 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
     Ok(())
 }
 
-/// Stream a simulator's log for the app's executable (best-effort predicate).
+/// Follow a simulator's log for the app inline until Ctrl-C — the non-interactive
+/// fallback (the interactive session backgrounds the same stream via [`spawn_logs`]).
 fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle) -> CliResult {
-    let name = app
-        .path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or_default();
-    let predicate = format!("processImagePath CONTAINS \"{name}\"");
     ctx.out.note(&format!(
         "streaming logs for {} (Ctrl-C to stop)",
         app.bundle_id
     ));
-    crate::cli::process::stream(
-        "xcrun",
-        &[
-            "simctl",
-            "spawn",
-            udid,
-            "log",
-            "stream",
-            "--level=debug",
-            "--style=compact",
-            "--predicate",
-            &predicate,
-        ],
-        None,
-    )
+    let mut child = spawn_logs(udid, app)?;
+    match child.wait() {
+        Ok(status) if status.success() => Ok(()),
+        Ok(_) => Err(CliError::new("log stream exited with a non-zero status")),
+        Err(e) => Err(CliError::new(format!("failed to wait for log stream: {e}"))),
+    }
 }
 
 /// Extract the simulator UDID from a `platform=…,id=<udid>` destination.
@@ -488,7 +511,6 @@ fn udid(destination: &str) -> Result<String, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn udid_extracted_from_destination() {
@@ -498,32 +520,18 @@ mod tests {
     }
 
     #[test]
-    fn scan_sources_picks_swift_and_skips_build_dirs() {
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("sweetpad-scan-{n}"));
-        std::fs::create_dir_all(root.join("Sources")).unwrap();
-        std::fs::create_dir_all(root.join("Pods")).unwrap();
-        std::fs::create_dir_all(root.join(".git")).unwrap();
-        std::fs::write(root.join("Sources/A.swift"), "a").unwrap();
-        std::fs::write(root.join("README.md"), "x").unwrap();
-        std::fs::write(root.join("Pods/B.swift"), "b").unwrap();
-        std::fs::write(root.join(".git/C.swift"), "c").unwrap();
-
-        let snap = scan_sources(&root);
-        let names: Vec<String> = snap
-            .keys()
-            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
-        // Only the real source file; non-swift, Pods, and .git are excluded.
-        assert_eq!(names, vec!["A.swift"]);
-
-        // Adding a new source file changes the snapshot.
-        std::fs::write(root.join("Sources/D.swift"), "d").unwrap();
-        assert_ne!(scan_sources(&root), snap);
-
-        std::fs::remove_dir_all(&root).unwrap();
+    fn session_keys_map_to_actions() {
+        // `r` rebuilds (either case).
+        assert_eq!(classify_key(Some(b'r')), SessionKey::Rebuild);
+        assert_eq!(classify_key(Some(b'R')), SessionKey::Rebuild);
+        // `q`, Ctrl-C, Ctrl-D, and EOF all quit.
+        assert_eq!(classify_key(Some(b'q')), SessionKey::Quit);
+        assert_eq!(classify_key(Some(b'Q')), SessionKey::Quit);
+        assert_eq!(classify_key(Some(0x03)), SessionKey::Quit);
+        assert_eq!(classify_key(Some(0x04)), SessionKey::Quit);
+        assert_eq!(classify_key(None), SessionKey::Quit);
+        // Anything else is ignored — the session keeps streaming logs.
+        assert_eq!(classify_key(Some(b'x')), SessionKey::Ignore);
+        assert_eq!(classify_key(Some(b'\n')), SessionKey::Ignore);
     }
 }

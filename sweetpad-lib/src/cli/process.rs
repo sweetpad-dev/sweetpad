@@ -4,7 +4,7 @@
 //! belongs on the user's terminal live (e.g. `xcodebuild`).
 
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 
 use crate::cli::CliError;
 
@@ -98,6 +98,22 @@ pub fn stream_lines(
     }
     let status = child.wait().map_err(|e| spawn_error(program, &e))?;
     Ok(status.success())
+}
+
+/// Spawn a long-running command in the background with stdio inherited, handing
+/// the [`Child`] back to the caller (who kills/waits it). Used by the `app run`
+/// interactive session to stream logs alongside the keypress loop without
+/// blocking. stdin is null so the child never competes for the terminal's keys.
+pub fn spawn(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, CliError> {
+    let mut cmd = Command::new(program);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    cmd.spawn().map_err(|e| spawn_error(program, &e))
 }
 
 fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
