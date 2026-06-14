@@ -430,11 +430,25 @@ Two hooks, mirroring the extension's proven `hot-reload.ts` path:
   and gated to simulator SDKs: `OTHER_LDFLAGS=$(inherited) -Xlinker -interposable`
   (lets dyld swap symbols at runtime) and `EMIT_FRONTEND_COMMAND_LINES=YES`
   (needed to recover compile commands on Xcode 16.3+; see the recompiler below).
+  Both are gated to `--hot` so ordinary `build`/`run` never pay for them.
 - **Launch env** — `[`crate::cli::simctl`]` gains an env-passing `launch`
   variant; `--hot` sets `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=<client dylib>`,
   `SIMCTL_CHILD_INJECTION_PROJECT_ROOT=<workspace root>`, and the XCTest
   `DYLD_FRAMEWORK_PATH`/`DYLD_LIBRARY_PATH` the client dylib's deps need
   (`simctl` forwards any `SIMCTL_CHILD_*` var into the launched process).
+
+**Beautifier interaction (`EMIT_FRONTEND_COMMAND_LINES` × §11).** The setting
+prints the `swift-frontend` invocations into xcodebuild's *raw* transcript, but
+those lines start with a tool path, not a task verb, so `[`buildlog::parse_line`]`
+classifies them as `Event::Other`, which `[`buildlog::render`]` suppresses unless
+`-v` — the same path that already swallows xcodebuild's per-task command echoes.
+So the **beautified default stream is unchanged** (no extra verbosity, nothing
+broken; they can't reach the diagnostic matcher, which requires `: error:`/
+`: warning:`/`: note:` markers a command line never carries). The only cost is a
+larger raw transcript, paid only under `--hot`. Because parsing is decoupled from
+rendering, path A captures the **raw** frontend lines for the recompiler index in
+parallel with (not instead of) beautification — both consume the same stream, so
+there is no double-printing and no leakage into the pretty output.
 
 The server must be listening on `:8887` before the app launches so the client's
 `+load` connect succeeds.
