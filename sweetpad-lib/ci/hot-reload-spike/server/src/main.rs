@@ -259,16 +259,23 @@ fn recompile(cfg: &Config) -> Result<PathBuf, String> {
     let log_text = std::fs::read_to_string(&cfg.build_log)
         .map_err(|e| format!("read build log {}: {e}", cfg.build_log.display()))?;
 
-    // Find the swift-frontend invocation that compiled our source.
+    // Pick the frontend invocation where our source is the actual -primary-file
+    // (a batch-mode build also emits lines where it's only a secondary input).
+    let is_primary_line = |l: &str| {
+        l.split_whitespace()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|w| w[0] == "-primary-file" && (w[1].ends_with(source_name) || w[1] == source))
+    };
     let line = log_text
         .lines()
-        .find(|l| l.contains("swift-frontend") && l.contains("-primary-file") && l.contains(source_name))
+        .find(|l| l.contains("-primary-file") && is_primary_line(l))
         .or_else(|| {
             log_text
                 .lines()
                 .find(|l| l.contains("swift-frontend") && l.contains(source_name))
         })
-        .ok_or_else(|| format!("no swift-frontend command for {source_name} in build log"))?;
+        .ok_or_else(|| format!("no swift-frontend -primary-file command for {source_name} in build log"))?;
     log(&format!("matched frontend command ({} chars)", line.len()));
 
     // CI paths have no spaces, so a whitespace split is sufficient for the spike.
