@@ -508,14 +508,38 @@ full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
 5. Polish: the "Inject package missing" advisory (port from `hot-reload.ts`),
    config/flag parity, teardown correctness.
 
+### Client dylib distribution — decided: **vendor (B)**
+
+The CLI **vendors** `libiphonesimulatorInjection.dylib` (the MIT-licensed
+InjectionNext client, © John Holdsworth) in its own resources and points
+`DYLD_INSERT_LIBRARIES` at that copy — so `app run --hot` works on an unmodified
+project with no `InjectionNext.app` install and no SPM edit. We carry the upkeep
+(re-vendor per Xcode injection-ABI change, codesign, license attribution); the
+SwiftUI `@ObserveInjection`/`.enableInjection()` annotations are still the user's
+to add (UIKit apps reload without them). The dylib needs the simulator's XCTest
+search paths on `DYLD_FRAMEWORK_PATH`/`DYLD_LIBRARY_PATH` (already in the launch
+wiring above).
+
 ### Open decisions
 
-- **Client dylib distribution.** Reuse a user-installed `InjectionNext.app`
-  dylib (same dependency the extension has today), or **vendor**
-  `libiphonesimulatorInjection.dylib` in the CLI so hot reload is fully
-  self-contained? Vendoring is the cleanest UX but adds a license/build step.
 - **ABI-match confidence for (F).** Milestone 1 is the gate; if resolver-built
   dylibs prove flaky to inject, (A) becomes primary and (F) an optimization.
+
+### Milestone-1 validation harness
+
+Since the spike needs macOS + Xcode + a simulator, it is validated by a
+**temporary** macOS GitHub Actions workflow (`hot-reload-spike.yaml`), not by
+local runs. The harness (`ci/hot-reload-spike/`) generates a minimal iOS app
+(XcodeGen) built with `-interposable` + `EMIT_FRONTEND_COMMAND_LINES`, downloads
+the InjectionNext client dylib (the vendoring-B artifact), launches the app on a
+booted sim with the dylib `DYLD_INSERT_LIBRARIES`-injected, and runs a std-only
+Rust server that speaks the `:8887` protocol: it completes the handshake,
+recompiles `ContentView.swift` (via the live build-log command, path A) into a
+dylib, sends `.load`, and **asserts `.injected`** over the socket — a machine-
+checkable signal that needs no screen. Reaching the handshake alone validates
+the (novel) socket protocol; `.injected` additionally validates the build+load
+chain. The workflow and harness are removed once the approach lands in the CLI
+proper.
 
 ## 10. Testing
 

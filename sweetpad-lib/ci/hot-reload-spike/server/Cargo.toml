@@ -1,0 +1,16 @@
+# Standalone crate (own workspace) so it never gets pulled into sweetpad-lib's
+# build. Pure std — no dependencies — to keep the spike trivially buildable on CI.
+[workspace]
+
+[package]
+name = "hot-reload-spike-server"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "spike-server"
+path = "src/main.rs"
+
+[profile.dev]
+panic = "abort"
