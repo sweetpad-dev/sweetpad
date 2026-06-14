@@ -517,16 +517,32 @@ full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
 > file, linked a dylib, sent `.load`, and the in-app client confirmed `.injected`.
 > The novel socket protocol and the build→load→patch chain are proven.
 
-1. **Socket spike — done.** Validated transport + a recompile/`.load`/`.injected`
-   round-trip using the **(A)** live build-log command. (The **(F)** resolver
-   path still needs its own ABI confirmation; A is proven.)
-2. Build-flag + launch-env plumbing behind `--hot` (simulator-gated).
-3. Recompiler: (A) live-capture + `/tmp` cache, then (F) resolver path.
-4. Watcher + session integration (debounce, status lines, `.failed`/`.unhide`).
-5. Vendored client build: `xcodebuild` the pinned InjectionNext project for the
-   simulator on-demand, cache the bundle per Xcode build id.
-6. Polish: the "Inject package missing" advisory (port from `hot-reload.ts`),
-   config/flag parity, teardown correctness.
+1. **Socket spike — ✅ done.** Validated transport + a recompile/`.load`/`.injected`
+   round-trip using the **(A)** live build-log command.
+2. **Build-flag + launch-env plumbing — ✅ done.** `BuildPlan.hot` appends
+   `-interposable` + `EMIT_FRONTEND_COMMAND_LINES`; `simctl::launch_with_env`
+   forwards the `SIMCTL_CHILD_*` injection vars (`app run --hot`, simulator-gated).
+3. **Recompiler — ✅ done.** Both strategies in `cli/inject/recompiler.rs`: **F**
+   (resolver-default, whole-module `swiftc -emit-library` via
+   `resolve_compiler_arguments`) and **A** (`--hot-recompiler buildlog`,
+   single-file frontend from the captured transcript). (The **(F)** codegen/ABI
+   match still wants the macOS spike's confirmation; A is proven.)
+4. **Watcher + session integration — ✅ done.** Polling watcher → `server.inject`;
+   `run_hot_session` builds + serves + launches + watches; key loop keeps `r`
+   (full rebuild, client reconnects) / `q`; `.injected`/`.failed` status lines.
+5. **Vendored client build — ◑ partial.** Resolution + per-Xcode cache +
+   `InjectionNext.app` fallback are implemented (`cli/inject/client.rs`); the
+   `xcodebuild`-from-vendored-source step is scaffolded behind `vendored_source()`
+   and activates once the InjectionNext source tree is vendored. `--hot` works
+   today via the fallback (Milestone-1's proven path).
+6. **Polish — ✅ mostly done.** "Inject package missing" advisory ported;
+   teardown (watcher/server/app/cleanup) wired. (Config-level default for the
+   recompiler mode — beyond the `--hot-recompiler` flag — is the remaining nicety.)
+
+> **Implementation status:** the `cli/inject/` module + `app run --hot` are
+> implemented, `clippy -D warnings`/`fmt` clean, with unit tests on Linux. The
+> one piece needing macOS is vendoring + the `xcodebuild` recipe for the client
+> (Milestone 5); runtime validation continues via the spike/CI.
 
 ### Client distribution — vendor full source, compile per Xcode (decided)
 
