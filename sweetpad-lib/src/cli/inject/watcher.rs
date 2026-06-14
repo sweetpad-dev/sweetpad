@@ -22,8 +22,15 @@ pub struct Watcher {
 /// Directory names whose subtrees never hold editable sources (build output,
 /// VCS, dependency checkouts) — skipped so a poll stays cheap.
 const IGNORED_DIRS: &[&str] = &[
-    ".git", ".build", "build", "DerivedData", "Pods", "Carthage", ".swiftpm",
-    "node_modules", ".cache",
+    ".git",
+    ".build",
+    "build",
+    "DerivedData",
+    "Pods",
+    "Carthage",
+    ".swiftpm",
+    "node_modules",
+    ".cache",
 ];
 
 const POLL_INTERVAL: Duration = Duration::from_millis(300);
@@ -92,10 +99,10 @@ fn scan(dir: &Path, visit: &mut impl FnMut(PathBuf, SystemTime)) {
                 continue;
             }
             scan(&path, visit);
-        } else if path.extension().is_some_and(|e| e == "swift") {
-            if let Ok(mtime) = entry.metadata().and_then(|m| m.modified()) {
-                visit(path, mtime);
-            }
+        } else if path.extension().is_some_and(|e| e == "swift")
+            && let Ok(mtime) = entry.metadata().and_then(|m| m.modified())
+        {
+            visit(path, mtime);
         }
     }
 }
@@ -107,7 +114,10 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_dir(tag: &str) -> PathBuf {
-        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("sweetpad-watch-{tag}-{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -123,7 +133,9 @@ mod tests {
         let hits: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&hits);
         let on_change: OnChange = Arc::new(move |p: &Path| {
-            sink.lock().unwrap().push(p.file_name().unwrap().to_string_lossy().into_owned());
+            sink.lock()
+                .unwrap()
+                .push(p.file_name().unwrap().to_string_lossy().into_owned());
         });
         let _w = Watcher::start(&dir, on_change);
 
@@ -134,9 +146,18 @@ mod tests {
         std::thread::sleep(Duration::from_millis(700));
 
         let seen = hits.lock().unwrap().clone();
-        assert!(seen.contains(&"Existing.swift".to_string()), "save should fire: {seen:?}");
-        assert!(seen.contains(&"New.swift".to_string()), "new file should fire: {seen:?}");
-        assert!(!seen.contains(&"Ignored.swift".to_string()), "DerivedData must be ignored");
+        assert!(
+            seen.contains(&"Existing.swift".to_string()),
+            "save should fire: {seen:?}"
+        );
+        assert!(
+            seen.contains(&"New.swift".to_string()),
+            "new file should fire: {seen:?}"
+        );
+        assert!(
+            !seen.contains(&"Ignored.swift".to_string()),
+            "DerivedData must be ignored"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }

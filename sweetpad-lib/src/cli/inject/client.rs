@@ -60,7 +60,10 @@ pub fn resolve_dylib(opts: &ClientOptions) -> Result<PathBuf, String> {
         if p.exists() {
             return Ok(p.clone());
         }
-        return Err(format!("hot-reload dylib override does not exist: {}", p.display()));
+        return Err(format!(
+            "hot-reload dylib override does not exist: {}",
+            p.display()
+        ));
     }
 
     let name = dylib_name_for(&opts.sdk)
@@ -95,14 +98,21 @@ pub fn resolve_dylib(opts: &ClientOptions) -> Result<PathBuf, String> {
 /// The `SIMCTL_CHILD_*` env that injects `dylib` into the launched app and
 /// points its client at our server. `simctl` forwards these (prefix stripped)
 /// into the child process.
+#[must_use]
 pub fn launch_env(dylib: &Path, opts: &ClientOptions) -> Vec<(String, String)> {
     let mut env = vec![
-        ("SIMCTL_CHILD_DYLD_INSERT_LIBRARIES".into(), dylib.display().to_string()),
+        (
+            "SIMCTL_CHILD_DYLD_INSERT_LIBRARIES".into(),
+            dylib.display().to_string(),
+        ),
         ("SIMCTL_CHILD_INJECTION_HOST".into(), "127.0.0.1".into()),
         // Only ever talk to our server — never fall back to the in-app standalone
         // watcher (which would inject without us and mask failures).
         ("SIMCTL_CHILD_INJECTION_NOSTANDALONE".into(), "1".into()),
-        ("SIMCTL_CHILD_INJECTION_PROJECT_ROOT".into(), opts.project_root.display().to_string()),
+        (
+            "SIMCTL_CHILD_INJECTION_PROJECT_ROOT".into(),
+            opts.project_root.display().to_string(),
+        ),
     ];
     // The injection dylib's XCTest deps resolve via the platform's search paths.
     if let Some((fw, lib)) = xctest_search_paths(&opts.developer_dir, &opts.sdk) {
@@ -188,7 +198,10 @@ mod tests {
 
     #[test]
     fn dylib_and_platform_map_simulator_sdks() {
-        assert_eq!(dylib_name_for("iphonesimulator"), Some("libiphonesimulatorInjection.dylib"));
+        assert_eq!(
+            dylib_name_for("iphonesimulator"),
+            Some("libiphonesimulatorInjection.dylib")
+        );
         assert_eq!(platform_dir_for("iphonesimulator"), Some("iPhoneSimulator"));
         // Devices / unknown SDKs aren't injectable.
         assert_eq!(dylib_name_for("iphoneos"), None);
@@ -205,12 +218,23 @@ mod tests {
         };
         let env = launch_env(Path::new("/cache/lib.dylib"), &opts);
         let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
-        assert_eq!(get("SIMCTL_CHILD_DYLD_INSERT_LIBRARIES").as_deref(), Some("/cache/lib.dylib"));
-        assert_eq!(get("SIMCTL_CHILD_INJECTION_PROJECT_ROOT").as_deref(), Some("/work/App"));
-        assert_eq!(get("SIMCTL_CHILD_INJECTION_NOSTANDALONE").as_deref(), Some("1"));
+        assert_eq!(
+            get("SIMCTL_CHILD_DYLD_INSERT_LIBRARIES").as_deref(),
+            Some("/cache/lib.dylib")
+        );
+        assert_eq!(
+            get("SIMCTL_CHILD_INJECTION_PROJECT_ROOT").as_deref(),
+            Some("/work/App")
+        );
+        assert_eq!(
+            get("SIMCTL_CHILD_INJECTION_NOSTANDALONE").as_deref(),
+            Some("1")
+        );
         // XCTest framework path points into the iPhoneSimulator platform.
-        assert!(get("SIMCTL_CHILD_DYLD_FRAMEWORK_PATH")
-            .unwrap()
-            .contains("iPhoneSimulator.platform/Developer/Library/Frameworks"));
+        assert!(
+            get("SIMCTL_CHILD_DYLD_FRAMEWORK_PATH")
+                .unwrap()
+                .contains("iPhoneSimulator.platform/Developer/Library/Frameworks")
+        );
     }
 }

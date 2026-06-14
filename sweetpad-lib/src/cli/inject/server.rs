@@ -51,47 +51,30 @@ impl InjectServer {
             stop: Arc::clone(&stop),
         };
 
+        // Non-blocking accept loop: serve each client in turn (a relaunch on `r`
+        // reconnects), polling `stop` so the session can shut down cleanly.
+        listener
+            .set_nonblocking(true)
+            .map_err(|e| format!("hot-reload socket setup: {e}"))?;
         std::thread::spawn(move || {
-            // One client is enough for a run session.
-            let stream = match listener.accept() {
-                Ok((s, _)) => s,
-                Err(e) => {
-                    log(&format!("[hot] accept failed: {e}"));
+            loop {
+                if stop.load(Ordering::Relaxed) {
                     return;
                 }
-            };
-            if stop.load(Ordering::Relaxed) {
-                return;
-            }
-            if let Err(e) = stream.set_read_timeout(Some(Duration::from_secs(10))) {
-                log(&format!("[hot] socket setup failed: {e}"));
-                return;
-            }
-            // Read the unsolicited handshake on the accepted stream.
-            let mut hs = stream;
-            if let Err(e) = read_handshake(&mut hs, &log) {
-                log(&format!("[hot] handshake failed: {e}"));
-                return;
-            }
-            // Tell the client which Xcode to reload against (best-effort).
-            let _ = protocol::write_command(
-                &mut hs,
-                command::XCODE_PATH,
-                Some(&recompiler.xcode_app_path()),
-            );
-            // Split: a read clone for the response loop, the original for writes.
-            let reader = match hs.try_clone() {
-                Ok(r) => r,
-                Err(e) => {
-                    log(&format!("[hot] socket clone failed: {e}"));
-                    return;
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        serve_client(stream, &recompiler, &log, &conn, &connected, &stop);
+                        connected.store(false, Ordering::Relaxed);
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                    Err(e) => {
+                        log(&format!("[hot] accept failed: {e}"));
+                        return;
+                    }
                 }
-            };
-            *conn.lock().unwrap() = Some(hs);
-            connected.store(true, Ordering::Relaxed);
-            log("[hot] connected — edit a Swift file to inject");
-            response_loop(reader, &log, &stop);
-            connected.store(false, Ordering::Relaxed);
+            }
         });
 
         Ok(server)
@@ -120,12 +103,11 @@ impl InjectServer {
             }
         };
         let mut guard = self.conn.lock().unwrap();
-        if let Some(stream) = guard.as_mut() {
-            if let Err(e) =
+        if let Some(stream) = guard.as_mut()
+            && let Err(e) =
                 protocol::write_command(stream, command::LOAD, Some(&dylib.to_string_lossy()))
-            {
-                (self.log)(&format!("[hot] ✗ failed to send {name}: {e}"));
-            }
+        {
+            (self.log)(&format!("[hot] ✗ failed to send {name}: {e}"));
         }
     }
 
@@ -136,6 +118,49 @@ impl InjectServer {
             let _ = stream.shutdown(std::net::Shutdown::Both);
         }
     }
+}
+
+/// Handshake one accepted client and serve it until its connection drops.
+fn serve_client(
+    mut stream: TcpStream,
+    recompiler: &Arc<Recompiler>,
+    log: &Logger,
+    conn: &Arc<Mutex<Option<TcpStream>>>,
+    connected: &AtomicBool,
+    stop: &AtomicBool,
+) {
+    // An accept off a non-blocking listener may inherit non-blocking; force
+    // blocking + a read timeout for the handshake.
+    if stream.set_nonblocking(false).is_err()
+        || stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .is_err()
+    {
+        log("[hot] socket setup failed");
+        return;
+    }
+    if let Err(e) = read_handshake(&mut stream, log) {
+        log(&format!("[hot] handshake failed: {e}"));
+        return;
+    }
+    // Tell the client which Xcode to reload against (best-effort).
+    let _ = protocol::write_command(
+        &mut stream,
+        command::XCODE_PATH,
+        Some(&recompiler.xcode_app_path()),
+    );
+    // Split: a read clone for the response loop, the original for writes.
+    let reader = match stream.try_clone() {
+        Ok(r) => r,
+        Err(e) => {
+            log(&format!("[hot] socket clone failed: {e}"));
+            return;
+        }
+    };
+    *conn.lock().unwrap() = Some(stream);
+    connected.store(true, Ordering::Relaxed);
+    log("[hot] connected — edit a Swift file to inject");
+    response_loop(reader, log, stop);
 }
 
 /// Read the handshake the client pushes on connect (`InjectionNext.swift`
@@ -186,14 +211,15 @@ fn response_loop(mut reader: TcpStream, log: &Logger, stop: &AtomicBool) {
         match protocol::read_int(&mut reader) {
             Ok(Some(response::INJECTED)) => log("[hot] ✓ injected"),
             Ok(Some(response::FAILED)) => log("[hot] ✗ injection failed (the patch did not apply)"),
-            Ok(Some(response::UNHIDE)) => {} // precedes .failed; quiet
             Ok(Some(response::DETAIL)) => {
                 if let Ok(msg) = protocol::read_string(&mut reader) {
                     log(&format!("[hot] {msg}"));
                 }
             }
-            Ok(Some(_)) | Ok(None) => {} // other/timeout — keep polling
-            Err(_) => break,             // connection closed
+            // .unhide (precedes .failed), other responses, and read timeouts:
+            // nothing to report — keep polling.
+            Ok(Some(_) | None) => {}
+            Err(_) => break, // connection closed
         }
     }
 }

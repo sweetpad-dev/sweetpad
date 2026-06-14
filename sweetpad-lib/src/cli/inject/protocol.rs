@@ -45,6 +45,7 @@ pub fn write_int(s: &mut TcpStream, v: i32) -> std::io::Result<()> {
 }
 
 /// Write a length-prefixed string (`int32` byte-length + UTF-8 bytes).
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)] // protocol strings are short paths
 pub fn write_string(s: &mut TcpStream, v: &str) -> std::io::Result<()> {
     write_int(s, v.len() as i32)?;
     s.write_all(v.as_bytes())
@@ -69,14 +70,14 @@ fn read_exact_timed(s: &mut TcpStream, buf: &mut [u8]) -> std::io::Result<bool> 
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::UnexpectedEof,
                     "connection closed",
-                ))
+                ));
             }
             Ok(n) => filled += n,
             Err(e)
                 if e.kind() == std::io::ErrorKind::WouldBlock
                     || e.kind() == std::io::ErrorKind::TimedOut =>
             {
-                return Ok(false)
+                return Ok(false);
             }
             Err(e) => return Err(e),
         }
@@ -92,6 +93,7 @@ pub fn read_int(s: &mut TcpStream) -> std::io::Result<Option<i32>> {
 
 /// Read a length-prefixed string. Blocks (ignoring intermediate timeouts) until
 /// the length and body arrive, since a partial string would desync the stream.
+#[allow(clippy::cast_sign_loss)] // length is checked non-negative above
 pub fn read_string(s: &mut TcpStream) -> std::io::Result<String> {
     let len = loop {
         if let Some(v) = read_int(s)? {
@@ -112,7 +114,7 @@ pub fn read_string(s: &mut TcpStream) -> std::io::Result<String> {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::UnexpectedEof,
                     "connection closed mid-string",
-                ))
+                ));
             }
             Ok(n) => filled += n,
             Err(e)

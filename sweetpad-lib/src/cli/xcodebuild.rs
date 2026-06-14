@@ -19,6 +19,10 @@ pub struct BuildPlan<'a> {
     /// Raw `-destination` specifier, e.g. `platform=iOS Simulator,id=<udid>`.
     pub destination: Option<&'a str>,
     pub clean: bool,
+    /// Hot-reload build: add `-Xlinker -interposable` (so dyld can swap symbols)
+    /// and `EMIT_FRONTEND_COMMAND_LINES=YES` (so the build-log recompiler can
+    /// recover per-file commands). Only set for simulator builds under `--hot`.
+    pub hot: bool,
 }
 
 impl BuildPlan<'_> {
@@ -39,6 +43,13 @@ impl BuildPlan<'_> {
             args.push(dest.into());
         }
         args.extend(container_args(self.container));
+        if self.hot {
+            // Build settings (KEY=VALUE) after the action; `$(inherited)` keeps
+            // any project OTHER_LDFLAGS. Mirrors the VS Code extension + the
+            // validated spike fixture.
+            args.push("OTHER_LDFLAGS=$(inherited) -Xlinker -interposable".into());
+            args.push("EMIT_FRONTEND_COMMAND_LINES=YES".into());
+        }
         args
     }
 
@@ -52,7 +63,8 @@ impl BuildPlan<'_> {
 
     /// Run the build. Human mode beautifies xcodebuild's output via
     /// [`buildlog`]; `-v` passes it through raw; `--json` stays quiet.
-    pub fn run(&self, out: &Output) -> Result<(), CliError> {        let parts = self.args();
+    pub fn run(&self, out: &Output) -> Result<(), CliError> {
+        let parts = self.args();
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
         let cwd = working_dir(self.container);
         let ok = if out.is_json() {
@@ -346,6 +358,7 @@ mod tests {
             configuration: "Debug",
             destination: Some("platform=iOS Simulator,id=UDID"),
             clean: true,
+            hot: false,
         };
         assert_eq!(
             plan.args(),
@@ -365,6 +378,22 @@ mod tests {
     }
 
     #[test]
+    fn hot_build_appends_interposable_and_frontend_settings() {
+        let c = project();
+        let plan = BuildPlan {
+            container: &c,
+            scheme: "App",
+            configuration: "Debug",
+            destination: Some("platform=iOS Simulator,id=UDID"),
+            clean: false,
+            hot: true,
+        };
+        let args = plan.args();
+        assert!(args.contains(&"OTHER_LDFLAGS=$(inherited) -Xlinker -interposable".to_string()));
+        assert!(args.contains(&"EMIT_FRONTEND_COMMAND_LINES=YES".to_string()));
+    }
+
+    #[test]
     fn build_args_workspace_omits_clean_and_destination() {
         let c = Container::Workspace(PathBuf::from("/work/App.xcworkspace"));
         let plan = BuildPlan {
@@ -373,6 +402,7 @@ mod tests {
             configuration: "Release",
             destination: None,
             clean: false,
+            hot: false,
         };
         assert_eq!(
             plan.args(),

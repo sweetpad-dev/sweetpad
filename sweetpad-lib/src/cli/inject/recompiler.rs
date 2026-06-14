@@ -69,6 +69,7 @@ pub struct Recompiler {
 
 impl Recompiler {
     #[allow(clippy::too_many_arguments)]
+    #[must_use]
     pub fn new(
         mode: Mode,
         container: &Container,
@@ -104,8 +105,7 @@ impl Recompiler {
 
     /// Recompile `source` into a fresh loadable dylib, returning its path.
     pub fn recompile(&self, source: &Path) -> Result<PathBuf, String> {
-        std::fs::create_dir_all(&self.out_dir)
-            .map_err(|e| format!("create inject dir: {e}"))?;
+        std::fs::create_dir_all(&self.out_dir).map_err(|e| format!("create inject dir: {e}"))?;
         let n = self.counter.fetch_add(1, Ordering::Relaxed);
         // The `eval_injection_` prefix is what the client's image scan expects.
         let dylib = self.out_dir.join(format!("eval_injection_{n}.dylib"));
@@ -144,9 +144,15 @@ impl Recompiler {
 
     /// Resolve (and cache) the target whose module owns `source`, returning its
     /// `swiftc` invocation. A cache miss (new file, or first call) re-resolves.
-    fn resolve_swift_for(&self, source: &Path) -> Result<crate::compiler_args::ToolInvocation, String> {
+    fn resolve_swift_for(
+        &self,
+        source: &Path,
+    ) -> Result<crate::compiler_args::ToolInvocation, String> {
         let canon = std::fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
-        let name = source.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let name = source
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
 
         let mut guard = self.resolved.lock().unwrap();
         for attempt in 0..2 {
@@ -157,7 +163,9 @@ impl Recompiler {
                 for t in targets {
                     if let Some(swift) = &t.swift
                         && swift.input_files.iter().any(|f| {
-                            std::fs::canonicalize(f).map(|c| c == canon).unwrap_or(false)
+                            std::fs::canonicalize(f)
+                                .map(|c| c == canon)
+                                .unwrap_or(false)
                                 || f.ends_with(name)
                         })
                     {
@@ -195,24 +203,37 @@ impl Recompiler {
             .as_ref()
             .ok_or("build-log recompiler needs the captured --hot build transcript")?;
         let source_str = source.to_string_lossy().into_owned();
-        let name = source.file_name().and_then(|s| s.to_str()).ok_or("bad source path")?;
+        let name = source
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or("bad source path")?;
         let text = std::fs::read_to_string(log).map_err(|e| format!("read build log: {e}"))?;
 
         let is_primary_line = |l: &str| {
-            l.split_whitespace().collect::<Vec<_>>().windows(2).any(|w| {
-                w[0] == "-primary-file" && (w[1].ends_with(name) || w[1] == source_str)
-            })
+            l.split_whitespace()
+                .collect::<Vec<_>>()
+                .windows(2)
+                .any(|w| w[0] == "-primary-file" && (w[1].ends_with(name) || w[1] == source_str))
         };
         let line = text
             .lines()
             .find(|l| l.contains("-primary-file") && is_primary_line(l))
-            .or_else(|| text.lines().find(|l| l.contains("swift-frontend") && l.contains(name)))
-            .ok_or_else(|| format!("no swift-frontend -primary-file command for {name} in build log"))?;
+            .or_else(|| {
+                text.lines()
+                    .find(|l| l.contains("swift-frontend") && l.contains(name))
+            })
+            .ok_or_else(|| {
+                format!("no swift-frontend -primary-file command for {name} in build log")
+            })?;
 
         // Transcript args are shell-escaped; we exec argv directly, so unescape.
         let tokens: Vec<String> = line.split_whitespace().map(unescape).collect();
         let object = self.out_dir.join(format!("eval_injection_{n}.o"));
-        run("", &single_file_command(&tokens, &source_str, &object)?, "compile")?;
+        run(
+            "",
+            &single_file_command(&tokens, &source_str, &object)?,
+            "compile",
+        )?;
         run("", &link_command(&tokens, &object, dylib)?, "link")
     }
 
@@ -236,6 +257,7 @@ fn prepend(first: &str, rest: &[String]) -> Vec<String> {
     v
 }
 
+#[allow(clippy::similar_names)] // prog/program/argv/args are the natural names here
 fn run(prog: &str, argv: &[String], what: &str) -> Result<(), String> {
     if argv.is_empty() {
         return Err(format!("{what}: empty command"));
@@ -299,7 +321,11 @@ const DROP_STANDALONE: &[&str] = &["-frontend-parseable-output", "-emit-module"]
 /// Rewrite the recovered frontend command to compile only `source` into one
 /// object: drop output geometry, keep a single `-primary-file <source>` (other
 /// primaries become plain secondary inputs), append `-c -o <object>`.
-fn single_file_command(tokens: &[String], source: &str, object: &Path) -> Result<Vec<String>, String> {
+fn single_file_command(
+    tokens: &[String],
+    source: &str,
+    object: &Path,
+) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = Vec::with_capacity(tokens.len());
     let mut i = 0;
     let mut kept_primary = false;
@@ -329,7 +355,9 @@ fn single_file_command(tokens: &[String], source: &str, object: &Path) -> Result
         i += 1;
     }
     if !kept_primary {
-        return Err(format!("source {source} was not a -primary-file in the command"));
+        return Err(format!(
+            "source {source} was not a -primary-file in the command"
+        ));
     }
     if !out.iter().any(|t| t == "-c" || t == "-emit-object") {
         out.push("-c".into());
@@ -343,7 +371,11 @@ fn single_file_command(tokens: &[String], source: &str, object: &Path) -> Result
 }
 
 fn token_after<'a>(tokens: &'a [String], flag: &str) -> Option<&'a str> {
-    tokens.iter().position(|t| t == flag).and_then(|i| tokens.get(i + 1)).map(String::as_str)
+    tokens
+        .iter()
+        .position(|t| t == flag)
+        .and_then(|i| tokens.get(i + 1))
+        .map(String::as_str)
 }
 
 /// Build the `clang` link line for a loadable simulator dylib, reusing the
@@ -396,7 +428,10 @@ mod tests {
 
     #[test]
     fn unescape_strips_backslashes() {
-        assert_eq!(unescape(r"-enforce-exclusivity\=checked"), "-enforce-exclusivity=checked");
+        assert_eq!(
+            unescape(r"-enforce-exclusivity\=checked"),
+            "-enforce-exclusivity=checked"
+        );
         assert_eq!(unescape("plain"), "plain");
     }
 
@@ -405,11 +440,18 @@ mod tests {
         let line = "/x/swift-frontend -frontend -c -primary-file /p/ContentView.swift \
                     -primary-file /p/App.swift -o /d/x.o -target arm64-apple-ios16.0-simulator";
         let toks: Vec<String> = line.split_whitespace().map(unescape).collect();
-        let cmd = single_file_command(&toks, "/p/ContentView.swift", Path::new("/t/eval.o")).unwrap();
+        let cmd =
+            single_file_command(&toks, "/p/ContentView.swift", Path::new("/t/eval.o")).unwrap();
         // ContentView stays primary; App.swift demoted to a bare input; one -o added.
-        assert!(cmd.windows(2).any(|w| w[0] == "-primary-file" && w[1].ends_with("ContentView.swift")));
+        assert!(
+            cmd.windows(2)
+                .any(|w| w[0] == "-primary-file" && w[1].ends_with("ContentView.swift"))
+        );
         assert!(cmd.contains(&"/p/App.swift".to_string()));
-        assert!(!cmd.windows(2).any(|w| w[0] == "-primary-file" && w[1].ends_with("App.swift")));
+        assert!(
+            !cmd.windows(2)
+                .any(|w| w[0] == "-primary-file" && w[1].ends_with("App.swift"))
+        );
         assert_eq!(cmd.last().unwrap(), "/t/eval.o");
         // The original -o /d/x.o was dropped.
         assert!(!cmd.contains(&"/d/x.o".to_string()));
@@ -426,14 +468,18 @@ mod tests {
 
     #[test]
     fn link_command_uses_build_target_and_sdk() {
-        let toks: Vec<String> = "swift-frontend -target arm64-apple-ios16.0-simulator -sdk /SDKs/Sim.sdk"
-            .split_whitespace()
-            .map(unescape)
-            .collect();
+        let toks: Vec<String> =
+            "swift-frontend -target arm64-apple-ios16.0-simulator -sdk /SDKs/Sim.sdk"
+                .split_whitespace()
+                .map(unescape)
+                .collect();
         let cmd = link_command(&toks, Path::new("/t/e.o"), Path::new("/t/e.dylib")).unwrap();
         assert!(cmd.contains(&"arm64-apple-ios16.0-simulator".to_string()));
         assert!(cmd.contains(&"/SDKs/Sim.sdk".to_string()));
         assert!(cmd.contains(&"-dynamiclib".to_string()));
-        assert!(cmd.windows(2).any(|w| w[0] == "-Xlinker" && w[1] == "-interposable"));
+        assert!(
+            cmd.windows(2)
+                .any(|w| w[0] == "-Xlinker" && w[1] == "-interposable")
+        );
     }
 }

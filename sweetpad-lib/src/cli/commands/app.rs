@@ -10,6 +10,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use clap::Subcommand;
 
+use crate::cli::inject::recompiler::{Mode, Recompiler};
+use crate::cli::inject::server::{InjectServer, Logger};
+use crate::cli::inject::{self, HotSession};
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Resolved};
 use crate::cli::xcodebuild::{self, AppBundle};
@@ -32,6 +35,16 @@ pub enum Action {
         /// on simulators).
         #[arg(long = "no-logs")]
         no_logs: bool,
+        /// Enable hot reload (iOS Simulator only): on each Swift save the file is
+        /// recompiled and injected into the running app — no relaunch, state
+        /// preserved. Requires the injection client (see CLI_DESIGN §9d).
+        #[arg(long)]
+        hot: bool,
+        /// Hot-reload recompiler: `resolver` (default — robust whole-module via
+        /// the build-settings resolver) or `buildlog` (fast single-file recovered
+        /// from the build transcript).
+        #[arg(long = "hot-recompiler", value_name = "MODE")]
+        hot_recompiler: Option<String>,
     },
     /// Build and install, without launching.
     Install,
@@ -58,15 +71,29 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
             device_id,
             mac,
             no_logs,
-        } => run_app(
-            ctx,
-            &RunOpts {
-                device: *device || device_id.is_some(),
-                device_id: device_id.as_deref(),
-                mac: *mac,
-                no_logs: *no_logs,
-            },
-        ),
+            hot,
+            hot_recompiler,
+        } => {
+            let hot_mode = match hot_recompiler.as_deref() {
+                None => Mode::Resolver,
+                Some(s) => Mode::parse(s).ok_or_else(|| {
+                    CliError::new(format!(
+                        "unknown --hot-recompiler {s:?} (use resolver|buildlog)"
+                    ))
+                })?,
+            };
+            run_app(
+                ctx,
+                &RunOpts {
+                    device: *device || device_id.is_some(),
+                    device_id: device_id.as_deref(),
+                    mac: *mac,
+                    no_logs: *no_logs,
+                    hot: *hot,
+                    hot_mode,
+                },
+            )
+        }
         Action::Install => simple(ctx, Stage::Install),
         Action::Launch => simple(ctx, Stage::Launch),
         Action::Logs => simple(ctx, Stage::Logs),
@@ -97,11 +124,14 @@ fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CliResult 
 }
 
 /// Options for `app run`, gathered from the flags.
+#[allow(clippy::struct_excessive_bools)] // independent CLI toggles, not a state machine
 struct RunOpts<'a> {
     device: bool,
     device_id: Option<&'a str>,
     mac: bool,
     no_logs: bool,
+    hot: bool,
+    hot_mode: Mode,
 }
 
 /// Where the app runs.
@@ -121,6 +151,8 @@ struct RunPlan {
     configuration: String,
     destination: String,
     target: Target,
+    /// Build with the hot-reload flags (`-interposable` + frontend command lines).
+    hot: bool,
 }
 
 impl RunPlan {
@@ -131,6 +163,7 @@ impl RunPlan {
             configuration: &self.configuration,
             destination: Some(&self.destination),
             clean: false,
+            hot: self.hot,
         }
     }
 
@@ -147,6 +180,11 @@ impl RunPlan {
 
 fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
     let plan = plan(ctx, opts)?;
+
+    // Hot reload owns its own build + launch + watch session (simulator only).
+    if opts.hot {
+        return run_hot_session(ctx, &plan, opts.hot_mode);
+    }
 
     // A Swift package executable builds, runs, and streams in one `swift run`;
     // there's no separate log stream to background, so it stays a one-shot.
@@ -226,6 +264,7 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         configuration,
         destination,
         target,
+        hot: opts.hot,
     };
     let bt = resolve::BuildTarget {
         scheme: plan.scheme.clone(),
@@ -319,7 +358,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
 
     // Initial build + launch. A failed/aborted first build exits — there's
     // nothing running to attach a session to.
-    build(plan, &ctx.out)?;
+    build(plan, &ctx.out, None)?;
     let mut running = Some(start_app(ctx, plan)?);
     session_hint(ctx);
 
@@ -333,7 +372,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                     if let Some(old) = running.take() {
                         terminate_app(old);
                     }
-                    match build(plan, &ctx.out) {
+                    match build(plan, &ctx.out, None) {
                         Ok(()) => match start_app(ctx, plan) {
                             Ok(r) => running = Some(r),
                             Err(e) => ctx.out.error(&e.to_string()),
@@ -354,6 +393,174 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
         terminate_app(r);
     }
     Ok(())
+}
+
+/// `app run --hot` — the built-in hot-reload session (iOS Simulator only).
+///
+/// Builds with the interposable / frontend-command flags, starts the injection
+/// server on `:8887`, launches the app with the client dylib injected, then
+/// watches the workspace: each Swift save is recompiled and `.load`-ed into the
+/// running app — no relaunch, state preserved. `r` still does a full
+/// rebuild+relaunch (the client reconnects); `q`/Ctrl-C/Ctrl-D quit.
+fn run_hot_session(ctx: &Context, plan: &RunPlan, mode: Mode) -> CliResult {
+    let Target::Simulator(udid) = &plan.target else {
+        return Err(CliError::new(
+            "--hot is only supported for the iOS Simulator (not devices, macOS, or SPM)",
+        ));
+    };
+    let sdk = inject::sdk_for_destination(&plan.destination).ok_or_else(|| {
+        CliError::new(format!(
+            "--hot needs a simulator destination; got {:?}",
+            plan.destination
+        ))
+    })?;
+
+    let developer_dir = process::capture("xcode-select", &["-p"], None)?
+        .trim()
+        .to_string();
+    let project_root = plan
+        .resolved
+        .container
+        .path()
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map_or_else(|| std::path::PathBuf::from("."), Path::to_path_buf);
+
+    // Per-session scratch dir for the recompiler's objects/dylibs + build log.
+    let work = std::env::temp_dir().join(format!("sweetpad-hot-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&work);
+    let build_log = work.join("build.log");
+
+    // Build first (capturing the transcript for the build-log recompiler).
+    ctx.out.note(&format!(
+        "hot reload: building {} ({}) for {} [{}]",
+        plan.scheme,
+        plan.configuration,
+        plan.destination,
+        match mode {
+            Mode::Resolver => "resolver",
+            Mode::BuildLog => "build-log",
+        }
+    ));
+    build(plan, &ctx.out, Some(&build_log))?;
+    let app = plan.app_bundle()?;
+
+    // Resolve the injection client dylib + the SIMCTL_CHILD_* launch env.
+    let client_opts = inject::client::ClientOptions {
+        developer_dir: developer_dir.clone(),
+        sdk: sdk.to_string(),
+        project_root: project_root.clone(),
+        override_path: None,
+    };
+    let dylib = inject::client::resolve_dylib(&client_opts).map_err(CliError::new)?;
+    let launch_env = inject::client::launch_env(&dylib, &client_opts);
+    ctx.out
+        .note(&format!("hot reload: injecting {}", dylib.display()));
+
+    // The recompiler + injection server (server must listen before launch).
+    let recompiler = Arc::new(Recompiler::new(
+        mode,
+        &plan.resolved.container,
+        plan.scheme.clone(),
+        plan.configuration.clone(),
+        sdk.to_string(),
+        inject::host_arch(),
+        developer_dir,
+        Some(build_log),
+        work,
+    ));
+    let log: Logger = Arc::new(|m: &str| println!("{m}"));
+    let server =
+        Arc::new(InjectServer::start(recompiler, Arc::clone(&log)).map_err(CliError::new)?);
+
+    // Install + launch with the client injected, then stream the app's logs.
+    let mut stream = launch_hot(ctx, udid, &app, &launch_env)?;
+    // Watch the workspace; each save drives `server.inject`.
+    let session = HotSession::start(Arc::clone(&server), &project_root);
+
+    // Interactive: key loop (`r` full rebuild, `q` quit). Non-TTY: block on logs.
+    if ctx.out.is_interactive() {
+        hot_key_loop(ctx, plan, udid, &launch_env, &mut stream);
+    } else {
+        ctx.out
+            .note("hot reload: watching for Swift changes (Ctrl-C to stop)");
+        let _ = stream.wait();
+    }
+
+    // Teardown: stop watcher + server, terminate the app, kill the log stream.
+    session.shutdown();
+    server.shutdown();
+    let _ = simctl::terminate(udid, &app.bundle_id);
+    let _ = stream.kill();
+    let _ = stream.wait();
+    let _ = std::fs::remove_dir_all(
+        std::env::temp_dir().join(format!("sweetpad-hot-{}", std::process::id())),
+    );
+    Ok(())
+}
+
+/// Boot, install, and launch the app with the hot-reload env, returning the
+/// backgrounded log-stream child. Shared by the first launch and each `r`.
+fn launch_hot(
+    ctx: &Context,
+    udid: &str,
+    app: &AppBundle,
+    env: &[(String, String)],
+) -> Result<Child, CliError> {
+    simctl::boot(udid)?;
+    simctl::install(udid, &app.path.display().to_string())?;
+    let launched = simctl::launch_with_env(udid, &app.bundle_id, env)?;
+    ctx.out
+        .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
+    spawn_logs(udid, app)
+}
+
+/// The `--hot` keypress loop: `r` full rebuild+relaunch (the client reconnects),
+/// `q`/Ctrl-C/Ctrl-D quit. Injection happens out-of-band via the watcher.
+fn hot_key_loop(
+    ctx: &Context,
+    plan: &RunPlan,
+    udid: &str,
+    env: &[(String, String)],
+    stream: &mut Child,
+) {
+    let Ok(_raw) = rawmode::RawMode::enable() else {
+        // No TTY for raw mode — just follow logs until the stream ends.
+        let _ = stream.wait();
+        return;
+    };
+    ctx.out
+        .note("hot reload ready · edit a Swift file to inject · r rebuilds · q quits");
+    loop {
+        match rawmode::poll_key() {
+            rawmode::Input::Key(key) => match classify_key(key) {
+                SessionKey::Rebuild => {
+                    ctx.out.note("↻ full rebuild — relaunching…");
+                    let app = match plan.app_bundle() {
+                        Ok(a) => a,
+                        Err(e) => {
+                            ctx.out.error(&e.to_string());
+                            continue;
+                        }
+                    };
+                    let _ = simctl::terminate(udid, &app.bundle_id);
+                    let _ = stream.kill();
+                    let _ = stream.wait();
+                    match build(plan, &ctx.out, None) {
+                        Ok(()) => match launch_hot(ctx, udid, &app, env) {
+                            Ok(child) => *stream = child,
+                            Err(e) => ctx.out.error(&e.to_string()),
+                        },
+                        Err(e) => ctx.out.error(&e.to_string()),
+                    }
+                }
+                SessionKey::Quit => break,
+                SessionKey::Ignore => {}
+            },
+            rawmode::Input::Idle => {}
+            rawmode::Input::Closed => break,
+        }
+    }
 }
 
 /// A launched app in the interactive session: the background process streaming
@@ -396,8 +603,10 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
         }
         Target::Device(id) => {
             devicectl::install(id, &app_path)?;
-            ctx.out
-                .note(&format!("launching {} on device with console", app.bundle_id));
+            ctx.out.note(&format!(
+                "launching {} on device with console",
+                app.bundle_id
+            ));
             Ok(Running {
                 stream: devicectl::spawn_console(id, &app.bundle_id)?,
                 kind: RunningKind::Device {
@@ -439,11 +648,16 @@ fn terminate_app(running: Running) {
 /// to the build's process group; any other key is swallowed so stray presses
 /// during a long build can't queue up as commands once we're back at the prompt.
 /// Returns `Ok` on success, `Err` on a failed or aborted build.
-fn build(plan: &RunPlan, out: &Output) -> CliResult {
+fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> CliResult {
+    use std::io::Write as _;
     let (parts, cwd) = plan.build_plan().command();
     let args: Vec<&str> = parts.iter().map(String::as_str).collect();
     let mut child = process::spawn_piped_group("xcodebuild", &args, cwd.as_deref())?;
     let pid = child.id();
+    // For the build-log recompiler (path A): tee the *raw* transcript (with its
+    // `EMIT_FRONTEND_COMMAND_LINES` frontend commands) to a file, while the
+    // beautifier still renders the structured stream below.
+    let mut capture_file = capture.and_then(|p| std::fs::File::create(p).ok());
 
     let aborted = Arc::new(AtomicBool::new(false));
     let done = Arc::new(AtomicBool::new(false));
@@ -468,6 +682,9 @@ fn build(plan: &RunPlan, out: &Output) -> CliResult {
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines() {
             let Ok(line) = line else { break };
+            if let Some(file) = capture_file.as_mut() {
+                let _ = writeln!(file, "{line}");
+            }
             if let Some(rendered) = buildlog::render(&buildlog::parse_line(&line), color, verbose) {
                 out.line(&rendered);
             }
@@ -591,6 +808,8 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
         device_id: None,
         mac: false,
         no_logs: true,
+        hot: false,
+        hot_mode: Mode::Resolver,
     };
     let plan = plan(ctx, &opts)?;
     let Target::Simulator(udid) = &plan.target else {
