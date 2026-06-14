@@ -44,7 +44,7 @@ bsp-server = []
 # The standalone `sweetpad` CLI. Pulls in clap (arg parsing) plus serde/toml
 # for the XDG config & state files — standard formats not worth reinventing
 # (DOCS.md §3.1). Off in the addon build, so the cdylib never links them.
-cli = ["dep:clap", "dep:clap_complete", "dep:dialoguer", "dep:serde", "dep:toml"]
+cli = ["dep:clap", "dep:clap_complete", "dep:dialoguer", "dep:serde", "dep:toml", "dep:libc"]
 # Compiles the `src/node.rs` N-API bindings into the cdylib. Off by default so
 # `cargo test` (and the interface-agnostic core) never link the Node runtime.
 node = ["dep:napi", "dep:napi-derive"]
@@ -66,6 +66,10 @@ clap_complete = { version = "4", optional = true }
 dialoguer = { version = "0.11", default-features = false, features = ["fuzzy-select"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 toml = { version = "0.8", optional = true }
+# Raw terminal mode for the `app run` interactive rebuild session (single-key
+# `r`/`q`), unix-only. We flip only the input line-discipline flags by hand so
+# streamed logs keep their newline post-processing — too surgical for a TUI crate.
+libc = { version = "0.2", optional = true }
 
 [build-dependencies]
 napi-build = "2"

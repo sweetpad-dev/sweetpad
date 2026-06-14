@@ -2,20 +2,22 @@
 //! running session, on a simulator or a physical device. The app is the noun;
 //! these are its actions.
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+use std::process::Child;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use clap::Subcommand;
 
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Resolved};
 use crate::cli::xcodebuild::{self, AppBundle};
-use crate::cli::{CliError, CliResult, Context, devicectl, simctl};
+use crate::cli::{CliError, CliResult, Context, buildlog, devicectl, process, rawmode, simctl};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Build, install, and launch; follows logs and watches by request.
+    /// Build, install, launch, and follow logs; press `r` to rebuild on demand.
     Run {
         /// Target a connected physical device instead of a simulator.
         #[arg(long)]
@@ -26,9 +28,6 @@ pub enum Action {
         /// Build and run as a native macOS app (launches the executable).
         #[arg(long, conflicts_with_all = ["device", "device_id"])]
         mac: bool,
-        /// Rebuild, reinstall, and relaunch whenever a source file changes.
-        #[arg(long)]
-        watch: bool,
         /// Don't stream the app's logs after launching (logs follow by default
         /// on simulators).
         #[arg(long = "no-logs")]
@@ -58,7 +57,6 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
             device,
             device_id,
             mac,
-            watch,
             no_logs,
         } => run_app(
             ctx,
@@ -66,7 +64,6 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
                 device: *device || device_id.is_some(),
                 device_id: device_id.as_deref(),
                 mac: *mac,
-                watch: *watch,
                 no_logs: *no_logs,
             },
         ),
@@ -100,12 +97,10 @@ fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CliResult 
 }
 
 /// Options for `app run`, gathered from the flags.
-#[allow(clippy::struct_excessive_bools)]
 struct RunOpts<'a> {
     device: bool,
     device_id: Option<&'a str>,
     mac: bool,
-    watch: bool,
     no_logs: bool,
 }
 
@@ -153,53 +148,25 @@ impl RunPlan {
 fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
     let plan = plan(ctx, opts)?;
 
-    // A Swift package executable runs (and streams) via `swift run`; deploy
-    // does exactly that, so every mode routes through it.
+    // A Swift package executable builds, runs, and streams in one `swift run`;
+    // there's no separate log stream to background, so it stays a one-shot.
     if matches!(plan.target, Target::SpmRun(_)) {
-        if opts.watch {
-            deploy(ctx, &plan)?;
-            return watch_loop(ctx, &plan);
-        }
         return deploy(ctx, &plan);
     }
 
-    // --watch: deploy once, then redeploy on change (no inline logs — they'd
-    // block the loop). --no-logs: deploy and return.
-    if opts.watch {
-        deploy(ctx, &plan)?;
-        return watch_loop(ctx, &plan);
-    }
+    // --no-logs: deploy and return, no session.
     if opts.no_logs {
         return deploy(ctx, &plan);
     }
 
-    // Default: deploy and follow logs inline until Ctrl-C.
-    match &plan.target {
-        Target::Simulator(udid) => {
-            let app = build_and_install(&plan, &ctx.out)?;
-            let out = simctl::launch(udid, &app.bundle_id)?;
-            ctx.out
-                .note(&format!("launched {} → {}", app.bundle_id, out.trim()));
-            stream_logs(ctx, udid, &app)
-        }
-        Target::Device(id) => {
-            // On device, logs come from launching with the console attached.
-            let app = build_and_install(&plan, &ctx.out)?;
-            ctx.out.note(&format!(
-                "launching {} with console (Ctrl-C to stop)",
-                app.bundle_id
-            ));
-            devicectl::launch_console(id, &app.bundle_id)
-        }
-        Target::Mac => {
-            // A macOS app runs its executable directly; that streams its output.
-            let app = build_and_install(&plan, &ctx.out)?;
-            ctx.out
-                .note(&format!("running {} (Ctrl-C to stop)", app.bundle_id));
-            crate::cli::process::stream(&app.executable.to_string_lossy(), &[], None)
-        }
-        // SPM is handled by the early return above.
-        Target::SpmRun(_) => unreachable!("SPM run handled before this match"),
+    // Default: build, launch, and follow the app's output. At an interactive
+    // terminal this is the rebuild session — output streams in the background
+    // and `r` rebuilds+relaunches on demand. Non-interactive (CI/piped) runs
+    // fall back to a one-shot launch + inline follow until Ctrl-C.
+    if ctx.out.is_interactive() {
+        run_session(ctx, &plan)
+    } else {
+        follow_once(ctx, &plan)
     }
 }
 
@@ -305,7 +272,7 @@ fn spm_run(ctx: &Context, plan: &RunPlan, product: &str) -> CliResult {
     crate::cli::process::stream("swift", &["run", product], cwd.as_deref())
 }
 
-/// Build, install, and launch (no log following) — the unit re-run by `--watch`.
+/// Build, install, and launch (no log following) — used by `--no-logs` and SPM.
 fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
     // SPM executables build+run in one `swift run` step, not build+install+launch.
     if let Target::SpmRun(product) = &plan.target {
@@ -338,61 +305,274 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
     Ok(())
 }
 
-/// Poll the project's source tree and redeploy on change.
-fn watch_loop(ctx: &Context, plan: &RunPlan) -> CliResult {
-    // The container's parent, or "." when it's a relative path (empty parent).
-    let root = plan
-        .resolved
-        .container
-        .path()
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-    let mut snapshot = scan_sources(&root);
-    ctx.out.note("watching for changes (Ctrl-C to stop)");
+/// Interactive rebuild session: build + launch + stream the app's output, then
+/// rebuild + relaunch on demand. `r` rebuilds; `q`, Ctrl-C, or Ctrl-D quit. Raw
+/// mode flips only stdin's line discipline (see [`rawmode`]) so output keeps
+/// streaming; the build is interruptible (Ctrl-C aborts it without leaving the
+/// session). The running app is terminated before each relaunch and on quit.
+fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
+    // Raw mode needs a terminal on stdin; without one (piped input) fall back to
+    // a one-shot launch + inline follow.
+    let Ok(_raw) = rawmode::RawMode::enable() else {
+        return follow_once(ctx, plan);
+    };
+
+    // Initial build + launch. A failed/aborted first build exits — there's
+    // nothing running to attach a session to.
+    build(plan, &ctx.out)?;
+    let mut running = Some(start_app(ctx, plan)?);
+    session_hint(ctx);
+
     loop {
-        std::thread::sleep(Duration::from_millis(800));
-        let next = scan_sources(&root);
-        if next != snapshot {
-            snapshot = next;
-            ctx.out.note("change detected — rebuilding");
-            if let Err(e) = deploy(ctx, plan) {
-                // Keep watching after a failed build instead of bailing out.
-                ctx.out.error(&e.to_string());
-            }
+        match rawmode::poll_key() {
+            rawmode::Input::Key(key) => match classify_key(key) {
+                SessionKey::Rebuild => {
+                    ctx.out.note("↻ restarting — rebuilding…");
+                    // Stop the old app first so build output is clean and the
+                    // relaunch is always a fresh process.
+                    if let Some(old) = running.take() {
+                        terminate_app(old);
+                    }
+                    match build(plan, &ctx.out) {
+                        Ok(()) => match start_app(ctx, plan) {
+                            Ok(r) => running = Some(r),
+                            Err(e) => ctx.out.error(&e.to_string()),
+                        },
+                        // Failed/aborted build: nothing runs until the next `r`.
+                        Err(e) => ctx.out.error(&e.to_string()),
+                    }
+                    session_hint(ctx);
+                }
+                SessionKey::Quit => break,
+                SessionKey::Ignore => {}
+            },
+            rawmode::Input::Idle => {}
+            rawmode::Input::Closed => break,
         }
+    }
+    if let Some(r) = running.take() {
+        terminate_app(r);
+    }
+    Ok(())
+}
+
+/// A launched app in the interactive session: the background process streaming
+/// its output (simulator log stream, device console, or — for macOS — the app
+/// itself), plus what's needed to terminate the app between rebuilds and on quit.
+struct Running {
+    stream: Child,
+    kind: RunningKind,
+}
+
+enum RunningKind {
+    /// The log stream is separate from the app; terminate via simctl.
+    Simulator { udid: String, bundle_id: String },
+    /// The console process launched the app; terminate via devicectl.
+    Device { id: String, bundle_id: String },
+    /// The streamed child *is* the macOS app; killing it stops the app.
+    Mac,
+}
+
+/// Install (where applicable) and launch the just-built app, starting the
+/// background stream of its output. Assumes [`build`] already produced the
+/// bundle, so it never builds itself.
+fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
+    let app = plan.app_bundle()?;
+    let app_path = app.path.display().to_string();
+    match &plan.target {
+        Target::Simulator(udid) => {
+            simctl::boot(udid)?;
+            simctl::install(udid, &app_path)?;
+            let launched = simctl::launch(udid, &app.bundle_id)?;
+            ctx.out
+                .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
+            Ok(Running {
+                stream: spawn_logs(udid, &app)?,
+                kind: RunningKind::Simulator {
+                    udid: udid.clone(),
+                    bundle_id: app.bundle_id,
+                },
+            })
+        }
+        Target::Device(id) => {
+            devicectl::install(id, &app_path)?;
+            ctx.out
+                .note(&format!("launching {} on device with console", app.bundle_id));
+            Ok(Running {
+                stream: devicectl::spawn_console(id, &app.bundle_id)?,
+                kind: RunningKind::Device {
+                    id: id.clone(),
+                    bundle_id: app.bundle_id,
+                },
+            })
+        }
+        Target::Mac => {
+            ctx.out.note(&format!("running {}", app.bundle_id));
+            Ok(Running {
+                stream: process::spawn(&app.executable.to_string_lossy(), &[], None)?,
+                kind: RunningKind::Mac,
+            })
+        }
+        Target::SpmRun(_) => unreachable!("SPM run does not use the interactive session"),
     }
 }
 
-/// A snapshot of `.swift` file modification times under `root`, skipping hidden
-/// and build directories.
-fn scan_sources(root: &Path) -> BTreeMap<PathBuf, SystemTime> {
-    let mut map = BTreeMap::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with('.')
-                || matches!(name.as_ref(), "DerivedData" | "build" | ".build" | "Pods")
-            {
-                continue;
+/// Terminate the running app and stop its output stream.
+fn terminate_app(running: Running) {
+    let Running { mut stream, kind } = running;
+    match kind {
+        RunningKind::Simulator { udid, bundle_id } => {
+            let _ = simctl::terminate(&udid, &bundle_id);
+        }
+        RunningKind::Device { id, bundle_id } => {
+            let _ = devicectl::terminate(&id, &bundle_id);
+        }
+        // The macOS app *is* the streamed child — killing it below stops it.
+        RunningKind::Mac => {}
+    }
+    let _ = stream.kill();
+    let _ = stream.wait();
+}
+
+/// Run the build, letting Ctrl-C abort it without leaving the session. While
+/// xcodebuild runs, a watcher thread polls stdin: Ctrl-C (`0x03`) sends SIGINT
+/// to the build's process group; any other key is swallowed so stray presses
+/// during a long build can't queue up as commands once we're back at the prompt.
+/// Returns `Ok` on success, `Err` on a failed or aborted build.
+fn build(plan: &RunPlan, out: &Output) -> CliResult {
+    let (parts, cwd) = plan.build_plan().command();
+    let args: Vec<&str> = parts.iter().map(String::as_str).collect();
+    let mut child = process::spawn_piped_group("xcodebuild", &args, cwd.as_deref())?;
+    let pid = child.id();
+
+    let aborted = Arc::new(AtomicBool::new(false));
+    let done = Arc::new(AtomicBool::new(false));
+    let watcher = std::thread::spawn({
+        let aborted = Arc::clone(&aborted);
+        let done = Arc::clone(&done);
+        move || {
+            while !done.load(Ordering::Relaxed) {
+                if let rawmode::Input::Key(0x03) = rawmode::poll_key() {
+                    signal_group(pid, libc::SIGINT);
+                    aborted.store(true, Ordering::Relaxed);
+                    break;
+                }
             }
-            let Ok(ft) = entry.file_type() else { continue };
-            if ft.is_dir() {
-                stack.push(path);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("swift")
-                && let Ok(mtime) = entry.metadata().and_then(|m| m.modified())
-            {
-                map.insert(path, mtime);
+        }
+    });
+
+    // Beautify xcodebuild's piped stdout on this thread (the same path as
+    // [`buildlog::run`], inlined so we own the child for the watcher).
+    let color = out.use_color();
+    let verbose = out.is_verbose();
+    if let Some(stdout) = child.stdout.take() {
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if let Some(rendered) = buildlog::render(&buildlog::parse_line(&line), color, verbose) {
+                out.line(&rendered);
             }
         }
     }
-    map
+
+    let status = child.wait();
+    done.store(true, Ordering::Relaxed);
+    let _ = watcher.join();
+
+    if aborted.load(Ordering::Relaxed) {
+        return Err(CliError::new("build aborted"));
+    }
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(_) => Err(CliError::new("xcodebuild exited with a non-zero status")),
+        Err(e) => Err(CliError::new(format!("failed to wait for xcodebuild: {e}"))),
+    }
+}
+
+/// SIGINT (etc.) a process group spawned via [`process::spawn_piped_group`].
+/// The child leads its own group, so its pid is the group id; the negative
+/// target signals the whole tree, mirroring a terminal Ctrl-C.
+fn signal_group(pid: u32, sig: libc::c_int) {
+    // Safety: kill() with a pgid and signal number; failure (already-exited
+    // group) is harmless and ignored.
+    unsafe {
+        libc::kill(-pid.cast_signed(), sig);
+    }
+}
+
+/// One build + launch + inline follow until Ctrl-C — the non-interactive path
+/// (CI/piped, or when stdin isn't a terminal).
+fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
+    let app = build_and_install(plan, &ctx.out)?;
+    match &plan.target {
+        Target::Simulator(udid) => {
+            let launched = simctl::launch(udid, &app.bundle_id)?;
+            ctx.out
+                .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
+            stream_logs(ctx, udid, &app)
+        }
+        Target::Device(id) => {
+            ctx.out.note(&format!(
+                "launching {} with console (Ctrl-C to stop)",
+                app.bundle_id
+            ));
+            devicectl::launch_console(id, &app.bundle_id)
+        }
+        Target::Mac => {
+            ctx.out
+                .note(&format!("running {} (Ctrl-C to stop)", app.bundle_id));
+            process::stream(&app.executable.to_string_lossy(), &[], None)
+        }
+        Target::SpmRun(_) => unreachable!("SPM run handled before this match"),
+    }
+}
+
+/// What the session does with a keystroke.
+#[derive(Debug, PartialEq, Eq)]
+enum SessionKey {
+    Rebuild,
+    Quit,
+    Ignore,
+}
+
+/// Map a keystroke to a session action. `r` rebuilds; `q`, Ctrl-C (`0x03`), and
+/// Ctrl-D (`0x04`) quit; everything else is ignored. (A closed stdin is handled
+/// separately as [`rawmode::Input::Closed`].)
+fn classify_key(key: u8) -> SessionKey {
+    match key {
+        b'r' | b'R' => SessionKey::Rebuild,
+        b'q' | b'Q' | 0x03 | 0x04 => SessionKey::Quit,
+        _ => SessionKey::Ignore,
+    }
+}
+
+fn session_hint(ctx: &Context) {
+    ctx.out.note("press r to rebuild & relaunch · q to quit");
+}
+
+/// Spawn the simulator log stream as a background child (best-effort predicate
+/// on the app's executable name), inheriting stdout so logs appear live.
+fn spawn_logs(udid: &str, app: &AppBundle) -> Result<Child, CliError> {
+    let name = app
+        .path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    let predicate = format!("processImagePath CONTAINS \"{name}\"");
+    crate::cli::process::spawn(
+        "xcrun",
+        &[
+            "simctl",
+            "spawn",
+            udid,
+            "log",
+            "stream",
+            "--level=debug",
+            "--style=compact",
+            "--predicate",
+            &predicate,
+        ],
+        None,
+    )
 }
 
 /// The stage-only `app` actions (install/launch/logs/stop) share resolution.
@@ -410,7 +590,6 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
         device: false,
         device_id: None,
         mac: false,
-        watch: false,
         no_logs: true,
     };
     let plan = plan(ctx, &opts)?;
@@ -443,33 +622,19 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
     Ok(())
 }
 
-/// Stream a simulator's log for the app's executable (best-effort predicate).
+/// Follow a simulator's log for the app inline until Ctrl-C — the non-interactive
+/// fallback (the interactive session backgrounds the same stream via [`spawn_logs`]).
 fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle) -> CliResult {
-    let name = app
-        .path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or_default();
-    let predicate = format!("processImagePath CONTAINS \"{name}\"");
     ctx.out.note(&format!(
         "streaming logs for {} (Ctrl-C to stop)",
         app.bundle_id
     ));
-    crate::cli::process::stream(
-        "xcrun",
-        &[
-            "simctl",
-            "spawn",
-            udid,
-            "log",
-            "stream",
-            "--level=debug",
-            "--style=compact",
-            "--predicate",
-            &predicate,
-        ],
-        None,
-    )
+    let mut child = spawn_logs(udid, app)?;
+    match child.wait() {
+        Ok(status) if status.success() => Ok(()),
+        Ok(_) => Err(CliError::new("log stream exited with a non-zero status")),
+        Err(e) => Err(CliError::new(format!("failed to wait for log stream: {e}"))),
+    }
 }
 
 /// Extract the simulator UDID from a `platform=…,id=<udid>` destination.
@@ -488,7 +653,6 @@ fn udid(destination: &str) -> Result<String, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn udid_extracted_from_destination() {
@@ -498,32 +662,17 @@ mod tests {
     }
 
     #[test]
-    fn scan_sources_picks_swift_and_skips_build_dirs() {
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("sweetpad-scan-{n}"));
-        std::fs::create_dir_all(root.join("Sources")).unwrap();
-        std::fs::create_dir_all(root.join("Pods")).unwrap();
-        std::fs::create_dir_all(root.join(".git")).unwrap();
-        std::fs::write(root.join("Sources/A.swift"), "a").unwrap();
-        std::fs::write(root.join("README.md"), "x").unwrap();
-        std::fs::write(root.join("Pods/B.swift"), "b").unwrap();
-        std::fs::write(root.join(".git/C.swift"), "c").unwrap();
-
-        let snap = scan_sources(&root);
-        let names: Vec<String> = snap
-            .keys()
-            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
-        // Only the real source file; non-swift, Pods, and .git are excluded.
-        assert_eq!(names, vec!["A.swift"]);
-
-        // Adding a new source file changes the snapshot.
-        std::fs::write(root.join("Sources/D.swift"), "d").unwrap();
-        assert_ne!(scan_sources(&root), snap);
-
-        std::fs::remove_dir_all(&root).unwrap();
+    fn session_keys_map_to_actions() {
+        // `r` rebuilds (either case).
+        assert_eq!(classify_key(b'r'), SessionKey::Rebuild);
+        assert_eq!(classify_key(b'R'), SessionKey::Rebuild);
+        // `q`, Ctrl-C, and Ctrl-D all quit.
+        assert_eq!(classify_key(b'q'), SessionKey::Quit);
+        assert_eq!(classify_key(b'Q'), SessionKey::Quit);
+        assert_eq!(classify_key(0x03), SessionKey::Quit);
+        assert_eq!(classify_key(0x04), SessionKey::Quit);
+        // Anything else is ignored — the session keeps streaming output.
+        assert_eq!(classify_key(b'x'), SessionKey::Ignore);
+        assert_eq!(classify_key(b'\n'), SessionKey::Ignore);
     }
 }

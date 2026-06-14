@@ -224,6 +224,30 @@ pub fn launch_console(device_id: &str, bundle_id: &str) -> Result<(), CliError> 
     )
 }
 
+/// Like [`launch_console`] but spawned in the background, handing back the child
+/// so the interactive `app run` session can stream the device console while
+/// watching for the rebuild key.
+pub fn spawn_console(
+    device_id: &str,
+    bundle_id: &str,
+) -> Result<std::process::Child, CliError> {
+    process::spawn(
+        "xcrun",
+        &[
+            "devicectl",
+            "device",
+            "process",
+            "launch",
+            "--console",
+            "--terminate-existing",
+            "--device",
+            device_id,
+            bundle_id,
+        ],
+        None,
+    )
+}
+
 /// Terminate a running app on a device.
 pub fn terminate(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
     process::stream(

@@ -22,6 +22,7 @@ pub mod devicectl;
 pub mod merge;
 pub mod output;
 pub mod process;
+pub mod rawmode;
 pub mod resolve;
 pub mod scaffold;
 pub mod simctl;
