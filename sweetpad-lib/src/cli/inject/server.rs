@@ -5,9 +5,9 @@
 //! surfaced through the session's logger.
 
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::protocol::{self, command, response};
 use super::recompiler::Recompiler;
@@ -24,6 +24,9 @@ pub struct InjectServer {
     conn: Arc<Mutex<Option<TcpStream>>>,
     connected: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
+    /// `.injected` / `.failed` counts (for the `--hot-selfcheck` CI assertion).
+    injected: Arc<AtomicUsize>,
+    failed: Arc<AtomicUsize>,
 }
 
 impl InjectServer {
@@ -42,6 +45,8 @@ impl InjectServer {
         let conn: Arc<Mutex<Option<TcpStream>>> = Arc::new(Mutex::new(None));
         let connected = Arc::new(AtomicBool::new(false));
         let stop = Arc::new(AtomicBool::new(false));
+        let injected = Arc::new(AtomicUsize::new(0));
+        let failed = Arc::new(AtomicUsize::new(0));
 
         let server = InjectServer {
             recompiler: Arc::clone(&recompiler),
@@ -49,6 +54,8 @@ impl InjectServer {
             conn: Arc::clone(&conn),
             connected: Arc::clone(&connected),
             stop: Arc::clone(&stop),
+            injected: Arc::clone(&injected),
+            failed: Arc::clone(&failed),
         };
 
         // Non-blocking accept loop: serve each client in turn (a relaunch on `r`
@@ -63,7 +70,16 @@ impl InjectServer {
                 }
                 match listener.accept() {
                     Ok((stream, _)) => {
-                        serve_client(stream, &recompiler, &log, &conn, &connected, &stop);
+                        serve_client(
+                            stream,
+                            &recompiler,
+                            &log,
+                            &conn,
+                            &connected,
+                            &stop,
+                            &injected,
+                            &failed,
+                        );
                         connected.store(false, Ordering::Relaxed);
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -111,6 +127,48 @@ impl InjectServer {
         }
     }
 
+    /// `(injected, failed)` response counts so far.
+    #[must_use]
+    pub fn result_counts(&self) -> (usize, usize) {
+        (
+            self.injected.load(Ordering::Relaxed),
+            self.failed.load(Ordering::Relaxed),
+        )
+    }
+
+    /// Block until the client connects, or `timeout` elapses. Used by
+    /// `--hot-selfcheck` (CI) to sequence the injection after the app is up.
+    #[must_use]
+    pub fn wait_connected(&self, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if self.is_connected() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        self.is_connected()
+    }
+
+    /// Wait for the next `.injected`/`.failed` past `(injected, failed)` baseline.
+    /// Returns `Some(true)` on a new `.injected`, `Some(false)` on `.failed`, or
+    /// `None` on timeout. For the CI self-check.
+    #[must_use]
+    pub fn wait_for_result(&self, baseline: (usize, usize), timeout: Duration) -> Option<bool> {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            let (inj, fail) = self.result_counts();
+            if inj > baseline.0 {
+                return Some(true);
+            }
+            if fail > baseline.1 {
+                return Some(false);
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        None
+    }
+
     /// Tear the session down (stop the reader, drop the connection).
     pub fn shutdown(&self) {
         self.stop.store(true, Ordering::Relaxed);
@@ -121,6 +179,7 @@ impl InjectServer {
 }
 
 /// Handshake one accepted client and serve it until its connection drops.
+#[allow(clippy::too_many_arguments)] // shared session state threaded into the worker
 fn serve_client(
     mut stream: TcpStream,
     recompiler: &Arc<Recompiler>,
@@ -128,6 +187,8 @@ fn serve_client(
     conn: &Arc<Mutex<Option<TcpStream>>>,
     connected: &AtomicBool,
     stop: &AtomicBool,
+    injected: &AtomicUsize,
+    failed: &AtomicUsize,
 ) {
     // An accept off a non-blocking listener may inherit non-blocking; force
     // blocking + a read timeout for the handshake.
@@ -160,7 +221,7 @@ fn serve_client(
     *conn.lock().unwrap() = Some(stream);
     connected.store(true, Ordering::Relaxed);
     log("[hot] connected — edit a Swift file to inject");
-    response_loop(reader, log, stop);
+    response_loop(reader, log, stop, injected, failed);
 }
 
 /// Read the handshake the client pushes on connect (`InjectionNext.swift`
@@ -204,13 +265,25 @@ fn read_handshake(s: &mut TcpStream, log: &Logger) -> Result<(), String> {
 }
 
 /// Loop reading post-handshake responses and reporting load results.
-fn response_loop(mut reader: TcpStream, log: &Logger, stop: &AtomicBool) {
+fn response_loop(
+    mut reader: TcpStream,
+    log: &Logger,
+    stop: &AtomicBool,
+    injected: &AtomicUsize,
+    failed: &AtomicUsize,
+) {
     // A long timeout so a slow load still resolves; we poll `stop` between reads.
     let _ = reader.set_read_timeout(Some(Duration::from_secs(2)));
     while !stop.load(Ordering::Relaxed) {
         match protocol::read_int(&mut reader) {
-            Ok(Some(response::INJECTED)) => log("[hot] ✓ injected"),
-            Ok(Some(response::FAILED)) => log("[hot] ✗ injection failed (the patch did not apply)"),
+            Ok(Some(response::INJECTED)) => {
+                injected.fetch_add(1, Ordering::Relaxed);
+                log("[hot] ✓ injected");
+            }
+            Ok(Some(response::FAILED)) => {
+                failed.fetch_add(1, Ordering::Relaxed);
+                log("[hot] ✗ injection failed (the patch did not apply)");
+            }
             Ok(Some(response::DETAIL)) => {
                 if let Ok(msg) = protocol::read_string(&mut reader) {
                     log(&format!("[hot] {msg}"));

@@ -45,6 +45,16 @@ pub enum Action {
         /// from the build transcript).
         #[arg(long = "hot-recompiler", value_name = "MODE")]
         hot_recompiler: Option<String>,
+        /// CI self-check (hidden): with `--hot`, after launch edit FILE once, wait
+        /// for `.injected`, and exit 0/1 instead of entering the session. Drives
+        /// the end-to-end hot-reload/injection test.
+        #[arg(
+            long = "hot-selfcheck",
+            value_name = "FILE",
+            hide = true,
+            requires = "hot"
+        )]
+        hot_selfcheck: Option<std::path::PathBuf>,
     },
     /// Build and install, without launching.
     Install,
@@ -73,6 +83,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
             no_logs,
             hot,
             hot_recompiler,
+            hot_selfcheck,
         } => {
             let hot_mode = match hot_recompiler.as_deref() {
                 None => Mode::Resolver,
@@ -91,6 +102,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
                     no_logs: *no_logs,
                     hot: *hot,
                     hot_mode,
+                    hot_selfcheck: hot_selfcheck.as_deref(),
                 },
             )
         }
@@ -132,6 +144,7 @@ struct RunOpts<'a> {
     no_logs: bool,
     hot: bool,
     hot_mode: Mode,
+    hot_selfcheck: Option<&'a Path>,
 }
 
 /// Where the app runs.
@@ -183,7 +196,7 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
 
     // Hot reload owns its own build + launch + watch session (simulator only).
     if opts.hot {
-        return run_hot_session(ctx, &plan, opts.hot_mode);
+        return run_hot_session(ctx, &plan, opts.hot_mode, opts.hot_selfcheck);
     }
 
     // A Swift package executable builds, runs, and streams in one `swift run`;
@@ -402,7 +415,12 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
 /// watches the workspace: each Swift save is recompiled and `.load`-ed into the
 /// running app — no relaunch, state preserved. `r` still does a full
 /// rebuild+relaunch (the client reconnects); `q`/Ctrl-C/Ctrl-D quit.
-fn run_hot_session(ctx: &Context, plan: &RunPlan, mode: Mode) -> CliResult {
+fn run_hot_session(
+    ctx: &Context,
+    plan: &RunPlan,
+    mode: Mode,
+    selfcheck: Option<&Path>,
+) -> CliResult {
     let Target::Simulator(udid) = &plan.target else {
         return Err(CliError::new(
             "--hot is only supported for the iOS Simulator (not devices, macOS, or SPM)",
@@ -446,11 +464,13 @@ fn run_hot_session(ctx: &Context, plan: &RunPlan, mode: Mode) -> CliResult {
     let app = plan.app_bundle()?;
 
     // Resolve the injection client dylib + the SIMCTL_CHILD_* launch env.
+    // `SWEETPAD_HOTRELOAD_DYLIB` overrides the lookup (used by CI to point at a
+    // downloaded client matching the active Xcode).
     let client_opts = inject::client::ClientOptions {
         developer_dir: developer_dir.clone(),
         sdk: sdk.to_string(),
         project_root: project_root.clone(),
-        override_path: None,
+        override_path: std::env::var_os("SWEETPAD_HOTRELOAD_DYLIB").map(std::path::PathBuf::from),
     };
     let dylib = inject::client::resolve_dylib(&client_opts).map_err(CliError::new)?;
     let launch_env = inject::client::launch_env(&dylib, &client_opts);
@@ -488,14 +508,19 @@ fn run_hot_session(ctx: &Context, plan: &RunPlan, mode: Mode) -> CliResult {
     // Watch the workspace; each save drives `server.inject`.
     let session = HotSession::start(Arc::clone(&server), &project_root);
 
-    // Interactive: key loop (`r` full rebuild, `q` quit). Non-TTY: block on logs.
-    if ctx.out.is_interactive() {
+    // CI self-check: edit a file once, assert `.injected`, exit. Otherwise the
+    // interactive key loop (`r`/`q`), or — non-TTY — follow logs until Ctrl-C.
+    let outcome = if let Some(file) = selfcheck {
+        hot_selfcheck(ctx, &server, file)
+    } else if ctx.out.is_interactive() {
         hot_key_loop(ctx, plan, udid, &launch_env, &mut stream);
+        Ok(())
     } else {
         ctx.out
             .note("hot reload: watching for Swift changes (Ctrl-C to stop)");
         let _ = stream.wait();
-    }
+        Ok(())
+    };
 
     // Teardown: stop watcher + server, terminate the app, kill the log stream.
     session.shutdown();
@@ -506,7 +531,51 @@ fn run_hot_session(ctx: &Context, plan: &RunPlan, mode: Mode) -> CliResult {
     let _ = std::fs::remove_dir_all(
         std::env::temp_dir().join(format!("sweetpad-hot-{}", std::process::id())),
     );
-    Ok(())
+    outcome
+}
+
+/// CI self-check: wait for the client to connect, edit `file` once (driving the
+/// watcher → recompile → `.load`), and assert a `.injected` response. Returns an
+/// error if the client never connects or injection fails/times out — so
+/// `app run --hot --hot-selfcheck FILE` is a hard pass/fail end-to-end test.
+fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path) -> CliResult {
+    use std::time::Duration;
+
+    ctx.out
+        .note("hot reload self-check: waiting for the app to connect…");
+    if !server.wait_connected(Duration::from_secs(30)) {
+        return Err(CliError::new(
+            "hot reload self-check: the in-app client never connected to :8887",
+        ));
+    }
+    let baseline = server.result_counts();
+
+    // Edit the file to drive the watcher (append a unique trailing comment).
+    let original = std::fs::read_to_string(file)
+        .map_err(|e| CliError::new(format!("self-check: read {}: {e}", file.display())))?;
+    let edited = format!(
+        "{original}\n// sweetpad hot-reload self-check {}\n",
+        std::process::id()
+    );
+    std::fs::write(file, &edited)
+        .map_err(|e| CliError::new(format!("self-check: write {}: {e}", file.display())))?;
+    ctx.out
+        .note(&format!("hot reload self-check: edited {}", file.display()));
+
+    let result = server.wait_for_result(baseline, Duration::from_secs(90));
+    // Restore the file regardless of outcome.
+    let _ = std::fs::write(file, original);
+
+    match result {
+        Some(true) => {
+            ctx.out.note("hot reload self-check: ✅ .injected");
+            Ok(())
+        }
+        Some(false) => Err(CliError::new("hot reload self-check: ❌ injection failed")),
+        None => Err(CliError::new(
+            "hot reload self-check: ❌ timed out waiting for .injected",
+        )),
+    }
 }
 
 /// Boot, install, and launch the app with the hot-reload env, returning the
@@ -820,6 +889,7 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
         no_logs: true,
         hot: false,
         hot_mode: Mode::Resolver,
+        hot_selfcheck: None,
     };
     let plan = plan(ctx, &opts)?;
     let Target::Simulator(udid) = &plan.target else {
