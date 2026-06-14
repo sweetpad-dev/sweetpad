@@ -16,7 +16,6 @@
 use std::collections::BTreeMap;
 use std::io::{BufReader, Write as _};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
 use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
@@ -460,52 +459,24 @@ fn error_envelope(code: &str, message: &str, hint: Option<&str>, data: Option<Va
 }
 
 /// The CLI talks to the single control server the extension advertised for this
-/// project in the host-wide index (last-writer-wins across windows). Resolve the
-/// socket; the connect itself surfaces a dead server as ECONNREFUSED.
+/// project in the host-wide index (last-writer-wins across windows). Walk up from
+/// cwd to the nearest registered ancestor and read its control socket; the connect
+/// itself surfaces a dead server as ECONNREFUSED.
 fn resolve_socket() -> Result<String, Value> {
     let no_server = |message: &str| error_envelope("NO_SERVER", message, None, None);
     let cwd = std::env::current_dir()
         .map_err(|_| no_server("Cannot determine the current working directory."))?;
-    let index = read_projects_index().ok_or_else(|| {
-        no_server(
-            "No SweetPad projects registered (~/.local/state/sweetpad/projects.json not found). Enable sweetpad.cliServer.enabled and open the project in VS Code.",
-        )
-    })?;
-    find_registered_socket(&cwd, &index).ok_or_else(|| {
-        no_server(
-            "No running SweetPad server for this project. Enable sweetpad.cliServer.enabled and open the project in VS Code.",
-        )
-    })
-}
-
-/// Read and parse the project-discovery index the extension maintains, or `None`
-/// when it's missing/unreadable.
-fn read_projects_index() -> Option<Value> {
-    let path = crate::paths::projects_index_file()?;
-    let text = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&text).ok()
-}
-
-/// Walk up from `start`, canonicalizing it first so the ancestor spellings match
-/// the extension's realpath'd keys, and return the control socket of the nearest
-/// ancestor registered in `index` — the index-backed equivalent of the old
-/// walk-up to `.sweetpad/`.
-fn find_registered_socket(start: &Path, index: &Value) -> Option<String> {
-    let projects = index.get("projects")?.as_object()?;
-    let mut dir = std::fs::canonicalize(start).unwrap_or_else(|_| start.to_path_buf());
-    loop {
-        if let Some(socket) = dir
-            .to_str()
-            .and_then(|key| projects.get(key))
-            .and_then(|entry| entry.get("socket"))
-            .and_then(Value::as_str)
-        {
-            return Some(socket.to_string());
-        }
-        if !dir.pop() {
-            return None;
-        }
-    }
+    crate::paths::lookup_index_entry(&cwd)
+        .as_ref()
+        .and_then(|entry| entry.get("control"))
+        .and_then(|control| control.get("socket"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            no_server(
+                "No running SweetPad server for this project. Enable sweetpad.cliServer.enabled and open the project in VS Code.",
+            )
+        })
 }
 
 /// One-shot JSON-RPC 2.0 call over the Unix socket using `Content-Length`

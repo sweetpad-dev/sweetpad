@@ -908,6 +908,95 @@ fn bsp_starts_from_extension_bsp_json() {
     );
 }
 
+/// When `buildServer.json` carries no `--config` (an older or hand-written stub),
+/// the server must still find its config by discovering it from the cwd via the
+/// extension's discovery index (`projects.json`, keyed by canonical workspace
+/// path, with a `bspConfig` pointer).
+#[test]
+fn bsp_discovers_config_from_cwd_index() {
+    let root = std::env::temp_dir().join(format!("sweetpad-bsp-cwd-{}", std::process::id()));
+    let workspace = root.join("workspace");
+    let state_home = root.join("xdg-state");
+    std::fs::create_dir_all(&workspace).expect("create workspace");
+
+    // The bsp.json lives out of the project tree, in the per-project state dir.
+    let config_dir = state_home.join("sweetpad").join("projects").join("hash");
+    std::fs::create_dir_all(&config_dir).expect("create config dir");
+    let config_path = config_dir.join("bsp.json");
+    let config = json!({
+        "name": "sweetpad",
+        "workspacePath": workspace.to_string_lossy(),
+        "projectPath": project(),
+        "configuration": "Debug",
+    });
+    std::fs::write(&config_path, config.to_string()).expect("write bsp.json");
+
+    // The index maps the canonical workspace path to that bsp.json.
+    let index_dir = state_home.join("sweetpad");
+    let key = std::fs::canonicalize(&workspace).unwrap();
+    let index = json!({
+        "version": 1,
+        "projects": { key.to_str().unwrap(): { "bspConfig": config_path.to_string_lossy() } },
+    });
+    std::fs::write(index_dir.join("projects.json"), index.to_string()).expect("write index");
+
+    let messages = [
+        json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
+        json!({"jsonrpc":"2.0","method":"build/initialized"}),
+        json!({"jsonrpc":"2.0","id":2,"method":"workspace/buildTargets"}),
+        json!({"jsonrpc":"2.0","method":"build/exit"}),
+    ];
+    let mut input = Vec::new();
+    for m in &messages {
+        input.extend(frame(m));
+    }
+    // No --config: discovery falls back to the cwd + index.
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+        .arg("bsp")
+        .current_dir(&workspace)
+        .env("XDG_STATE_HOME", &state_home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn bsp server");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&input)
+        .expect("write stdin");
+    let mut out = Vec::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_end(&mut out)
+        .expect("read stdout");
+    let status = child.wait().expect("wait");
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert!(status.success(), "server exited non-zero: {status:?}");
+    let frames = parse_frames(&out);
+    assert!(
+        result_for(&frames, 1).is_some(),
+        "no initialize result; frames: {frames:?}"
+    );
+    let names: Vec<&str> = result_for(&frames, 2)
+        .and_then(|r| r.get("targets"))
+        .and_then(Value::as_array)
+        .map(|ts| {
+            ts.iter()
+                .filter_map(|t| t.get("displayName").and_then(Value::as_str))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert!(
+        names.contains(&"ModuleA") && names.contains(&"ModuleB"),
+        "targets should be resolved from the cwd-discovered config: {names:?}"
+    );
+}
+
 /// A frame whose body isn't valid JSON must get a `-32700` parse-error reply
 /// (id null) instead of being silently dropped, and the session must continue.
 #[test]

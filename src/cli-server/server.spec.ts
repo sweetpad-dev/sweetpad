@@ -32,9 +32,9 @@ describe("CliServer", () => {
     await fs.rm(stateHome, { recursive: true, force: true });
   });
 
-  async function indexEntry(): Promise<Record<string, unknown> | undefined> {
+  async function controlEntry(): Promise<Record<string, unknown> | undefined> {
     const index = JSON.parse(await fs.readFile(getProjectsIndexFile(), "utf8"));
-    return index.projects[await projectKey(workspacePath)];
+    return index.projects[await projectKey(workspacePath)]?.control;
   }
 
   it("round-trips a JSON-RPC call end-to-end over the Unix socket", async () => {
@@ -55,7 +55,7 @@ describe("CliServer", () => {
     expect(result.received).toEqual({ hello: "world" });
   });
 
-  it("registers an index entry with correct fields", async () => {
+  it("registers a control-server index entry with correct fields", async () => {
     server = new CliServer({
       workspacePath,
       extensionVersion: "9.9.9",
@@ -63,7 +63,7 @@ describe("CliServer", () => {
     });
     await server.start();
 
-    const meta = await indexEntry();
+    const meta = await controlEntry();
     expect(meta?.name).toBe(server.name);
     expect(meta?.socket).toBe(server.socket);
     expect(meta?.workspacePath).toBe(workspacePath);
@@ -73,7 +73,7 @@ describe("CliServer", () => {
     expect(typeof meta?.startedAt).toBe("string");
   });
 
-  it("removes the socket and the index entry on dispose", async () => {
+  it("removes the socket and the control entry on dispose", async () => {
     server = new CliServer({
       workspacePath,
       extensionVersion: "test",
@@ -81,13 +81,13 @@ describe("CliServer", () => {
     });
     await server.start();
     const socketPath = server.socket;
-    expect(await indexEntry()).toBeDefined();
+    expect(await controlEntry()).toBeDefined();
 
     await server.dispose();
     server = undefined;
 
     await expect(fs.access(socketPath)).rejects.toThrow(/ENOENT/);
-    expect(await indexEntry()).toBeUndefined();
+    expect(await controlEntry()).toBeUndefined();
   });
 
   it("surfaces RPC errors with the application code in error.data", async () => {

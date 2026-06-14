@@ -6,7 +6,7 @@ import type { MessageConnection } from "vscode-jsonrpc/node";
 
 import { commonLogger } from "../common/logger";
 import { generateServerName, getSocketPath, safeUnlink } from "./paths";
-import { registerProject, unregisterProject } from "./registry";
+import { registerControlServer, unregisterControlServer } from "./registry";
 import { serveDispatch, type RpcDispatch } from "./rpc";
 import { PROTOCOL_VERSION, type CliServerMetadata } from "./types";
 
@@ -91,7 +91,7 @@ export class CliServer implements vscode.Disposable {
     };
     // Advertise this server in the host-wide discovery index, keyed by the
     // canonical workspace path. Last-writer-wins across windows.
-    await registerProject(this.options.workspacePath, metadata);
+    await registerControlServer(this.options.workspacePath, metadata);
 
     commonLogger.log("SweetPad RPC server started", {
       name: this.serverName,
@@ -116,9 +116,9 @@ export class CliServer implements vscode.Disposable {
     }
 
     await safeUnlink(this.socketPath);
-    // Drop our index entry (only if it still points at us — a newer window may
-    // have replaced it under last-writer-wins).
-    await unregisterProject(this.options.workspacePath, process.pid);
+    // Drop our control-server pointer (only if it still points at us — a newer
+    // window may have replaced it under last-writer-wins).
+    await unregisterControlServer(this.options.workspacePath, process.pid);
 
     commonLogger.log("SweetPad RPC server stopped", { name: this.serverName });
   }

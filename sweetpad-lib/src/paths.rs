@@ -6,7 +6,9 @@
 //! lets the BSP server and the `vscode` client share the discovery index that
 //! replaced the old in-project `.sweetpad/` directory.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use serde_json::Value;
 
 /// `$HOME`, if set and non-empty.
 #[must_use]
@@ -40,4 +42,26 @@ pub fn sweetpad_state_dir() -> Option<PathBuf> {
 #[must_use]
 pub fn projects_index_file() -> Option<PathBuf> {
     sweetpad_state_dir().map(|d| d.join("projects.json"))
+}
+
+/// The discovery-index entry for the nearest registered ancestor of `start`.
+///
+/// Walks up from `start` (canonicalized first, so the ancestor spellings match
+/// the extension's realpath'd keys), returning the first ancestor present in
+/// `projects.json`. This is the shared discovery primitive: the `vscode` client
+/// reads the entry's control socket, the BSP server its `bspConfig` path.
+#[must_use]
+pub fn lookup_index_entry(start: &Path) -> Option<Value> {
+    let text = std::fs::read_to_string(projects_index_file()?).ok()?;
+    let index: Value = serde_json::from_str(&text).ok()?;
+    let projects = index.get("projects")?.as_object()?;
+    let mut dir = std::fs::canonicalize(start).unwrap_or_else(|_| start.to_path_buf());
+    loop {
+        if let Some(entry) = dir.to_str().and_then(|key| projects.get(key)) {
+            return Some(entry.clone());
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
 }

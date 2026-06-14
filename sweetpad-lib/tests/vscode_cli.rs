@@ -71,15 +71,15 @@ fn state_home(root: &Path) -> PathBuf {
     root.join("xdg-state")
 }
 
-/// Register `root` in the discovery index advertising `socket`, keyed by the
-/// canonical project path the way the extension writes it.
+/// Register `root` in the discovery index advertising `socket` as its control
+/// server, keyed by the canonical project path the way the extension writes it.
 fn register_project(root: &Path, socket: &Path) {
     let dir = state_home(root).join("sweetpad");
     std::fs::create_dir_all(&dir).unwrap();
     let key = std::fs::canonicalize(root).unwrap();
     let index = json!({
         "version": 1,
-        "projects": { key.to_str().unwrap(): { "socket": socket } },
+        "projects": { key.to_str().unwrap(): { "control": { "socket": socket } } },
     });
     std::fs::write(dir.join("projects.json"), index.to_string()).unwrap();
 }

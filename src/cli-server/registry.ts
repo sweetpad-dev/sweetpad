@@ -7,16 +7,29 @@ import type { CliServerMetadata } from "./types";
 export const PROJECTS_INDEX_VERSION = 1;
 
 /**
+ * One project's entry in the discovery index. Each subsystem contributes its own
+ * pointer, keyed by canonical workspace path: the control server its socket
+ * metadata, the BSP service the absolute path to its `bsp.json`. They're
+ * independent — BSP works with the control server disabled and vice versa.
+ */
+export type ProjectEntry = {
+  /** The running CLI control server (when `sweetpad.cliServer.enabled`). */
+  control?: CliServerMetadata;
+  /** Absolute path to the project's BSP `bsp.json` (when SweetPad is the build-server provider). */
+  bspConfig?: string;
+};
+
+/**
  * The host-wide discovery index the extension maintains at
  * `<stateHome>/sweetpad/projects.json`. Keyed by canonical workspace path (the
- * `fs.realpath` of the VS Code workspace folder), each value is the running
- * control server's metadata. The `sweetpad vscode` CLI walks up from its cwd and
- * looks up the nearest registered ancestor — the index-backed replacement for the
- * old walk-up to an in-project `.sweetpad/cli.json`.
+ * `fs.realpath` of the VS Code workspace folder). The `sweetpad vscode` CLI and
+ * the BSP server both walk up from their cwd and look up the nearest registered
+ * ancestor — the index-backed replacement for the old walk-up to an in-project
+ * `.sweetpad/` directory.
  */
 type ProjectsIndex = {
   version: number;
-  projects: Record<string, CliServerMetadata>;
+  projects: Record<string, ProjectEntry>;
 };
 
 async function readIndex(): Promise<ProjectsIndex> {
@@ -30,10 +43,10 @@ async function readIndex(): Promise<ProjectsIndex> {
   return { version: PROJECTS_INDEX_VERSION, projects: {} };
 }
 
-// tmp+rename keeps the CLI's read side from ever seeing a half-written file. The
+// tmp+rename keeps the readers from ever seeing a half-written file. The
 // read-modify-write is not locked across processes: concurrent windows race, but
-// each key is owned by one window and the loser simply re-registers on its next
-// write — the same last-writer-wins contract the old per-project cli.json had.
+// each subsystem owns its own field and the loser re-registers on its next write
+// — the same last-writer-wins contract the old per-project cli.json had.
 async function writeIndex(index: ProjectsIndex): Promise<void> {
   await ensureDir(getSweetpadStateHome());
   const file = getProjectsIndexFile();
@@ -44,8 +57,8 @@ async function writeIndex(index: ProjectsIndex): Promise<void> {
 
 /**
  * The canonical index key for a workspace folder: its `realpath`, so the spelling
- * matches what the CLI computes when it canonicalizes its cwd's ancestors. Falls
- * back to the resolved path if the folder can't be realpath'd.
+ * matches what the CLI / BSP server compute when they canonicalize their cwd's
+ * ancestors. Falls back to the resolved path if the folder can't be realpath'd.
  */
 export async function projectKey(workspacePath: string): Promise<string> {
   try {
@@ -55,24 +68,54 @@ export async function projectKey(workspacePath: string): Promise<string> {
   }
 }
 
-/** Advertise (or refresh) the control server for `workspacePath`. */
-export async function registerProject(workspacePath: string, meta: CliServerMetadata): Promise<void> {
+/**
+ * Read-modify-write the entry for `workspacePath`. `mutate` receives the current
+ * entry (empty if none) and returns the next one; returning an entry with no
+ * fields (or `undefined`) drops the key entirely.
+ */
+async function mutateEntry(
+  workspacePath: string,
+  mutate: (entry: ProjectEntry) => ProjectEntry | undefined,
+): Promise<void> {
   const key = await projectKey(workspacePath);
   const index = await readIndex();
-  index.projects[key] = meta;
+  const next = mutate(index.projects[key] ?? {});
+  if (!next || (next.control === undefined && next.bspConfig === undefined)) {
+    delete index.projects[key];
+  } else {
+    index.projects[key] = next;
+  }
   await writeIndex(index);
 }
 
+/** Advertise (or refresh) the control server for `workspacePath`. */
+export async function registerControlServer(workspacePath: string, meta: CliServerMetadata): Promise<void> {
+  await mutateEntry(workspacePath, (entry) => ({ ...entry, control: meta }));
+}
+
 /**
- * Remove our entry for `workspacePath`, but only if it still points at us — a
- * newer window may have replaced it (last-writer-wins), and we must not delete
- * its pointer.
+ * Drop our control-server pointer, but only if it still points at us — a newer
+ * window may have replaced it (last-writer-wins). The BSP pointer is left intact.
  */
-export async function unregisterProject(workspacePath: string, pid: number): Promise<void> {
-  const key = await projectKey(workspacePath);
-  const index = await readIndex();
-  if (index.projects[key]?.pid === pid) {
-    delete index.projects[key];
-    await writeIndex(index);
-  }
+export async function unregisterControlServer(workspacePath: string, pid: number): Promise<void> {
+  await mutateEntry(workspacePath, (entry) => {
+    if (entry.control?.pid !== pid) return entry;
+    const rest = { ...entry };
+    delete rest.control;
+    return rest;
+  });
+}
+
+/** Advertise the BSP `bsp.json` path for `workspacePath` (absolute). */
+export async function registerBspConfig(workspacePath: string, bspConfig: string): Promise<void> {
+  await mutateEntry(workspacePath, (entry) => ({ ...entry, bspConfig }));
+}
+
+/** Drop our BSP pointer (best-effort, on shutdown). */
+export async function unregisterBspConfig(workspacePath: string): Promise<void> {
+  await mutateEntry(workspacePath, (entry) => {
+    const rest = { ...entry };
+    delete rest.bspConfig;
+    return rest;
+  });
 }

@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import type { BuildManager } from "../build/manager";
 import { getWorkspacePath } from "../build/utils";
 import { ensureDir, getProjectStateDir } from "../cli-server/paths";
+import { registerBspConfig, unregisterBspConfig } from "../cli-server/registry";
 import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceStateService } from "../common/workspace-state";
@@ -89,7 +90,12 @@ export class BspService implements vscode.Disposable {
         return;
       }
       await ensureDir(getProjectStateDir(workspacePath));
-      await fs.writeFile(getBspConfigFile(workspacePath), `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+      const configFile = getBspConfigFile(workspacePath);
+      await fs.writeFile(configFile, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+      // Advertise the config path so the BSP server can find it from its cwd when
+      // buildServer.json carries no explicit `--config` (an older or hand-written
+      // stub). Independent of the control server's index entry.
+      await registerBspConfig(workspacePath, configFile);
     } catch (err) {
       commonLogger.debug("Failed to write bsp.json", { error: err });
     }
@@ -125,6 +131,14 @@ export class BspService implements vscode.Disposable {
   dispose(): void {
     this.buildManager.removeAllListeners("defaultSchemeForBuildUpdated");
     this.buildManager.removeAllListeners("defaultConfigurationForBuildUpdated");
+
+    // Best-effort: drop our BSP pointer from the discovery index. Fire-and-forget
+    // — a missing workspace or write failure must not block teardown.
+    try {
+      void unregisterBspConfig(getWorkspacePath()).catch(() => {});
+    } catch {
+      // no workspace to unregister
+    }
 
     for (const s of this.subscriptions) s.dispose();
     this.subscriptions = [];

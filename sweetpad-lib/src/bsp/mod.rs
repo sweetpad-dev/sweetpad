@@ -261,6 +261,22 @@ fn env_log() -> Option<PathBuf> {
     std::env::var_os("SWEETPAD_BSP_LOG").map(PathBuf::from)
 }
 
+/// Locate the `bsp.json` for the project containing the cwd — the fallback when
+/// `buildServer.json` carries no explicit `--config`. Walks up from the cwd
+/// through the extension's discovery index and reads the nearest registered
+/// ancestor's `bspConfig` path.
+fn discover_config_from_cwd() -> Result<PathBuf, String> {
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    crate::paths::lookup_index_entry(&cwd)
+        .as_ref()
+        .and_then(|entry| entry.get("bspConfig"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            "no --config <bsp.json> given and no bspConfig registered for this directory; the SweetPad extension writes buildServer.json with --config, or use `bsp init` for a standalone config".to_string()
+        })
+}
+
 impl ResolvedConfig {
     fn from_flags(project_path: PathBuf, flags: &BTreeMap<String, String>) -> Self {
         ResolvedConfig {
@@ -361,9 +377,11 @@ impl ResolvedConfig {
 impl Server {
     /// Resolve the server config. An explicit `--project`/`--workspace` stays
     /// self-contained (no config file, no telemetry — used by `bsp init` and the
-    /// tests); otherwise the config file is named explicitly by `--config`
-    /// (`buildServer.json`'s `argv`, written by the extension into the host state
-    /// dir), read here and watched for live changes.
+    /// tests). Otherwise the `bsp.json` is located one of two ways: the explicit
+    /// `--config` path `buildServer.json` carries (the extension writes this), or
+    /// — when that's absent (an older or hand-written stub) — by discovering it
+    /// from the cwd via the host-wide index the extension maintains. Either way it
+    /// is then read and watched for live changes.
     fn resolve(args: &[String]) -> Result<Self, String> {
         let flags = parse_flags(args);
         let log_level = Arc::new(AtomicU8::new(LogLevel::Info as u8));
@@ -373,9 +391,10 @@ impl Server {
             return Self::build(config, None, log_level);
         }
 
-        let config_file = flags.get("config").map(PathBuf::from).ok_or(
-            "no --config <bsp.json> given and no --project/--workspace; the SweetPad extension writes buildServer.json with --config, or use `bsp init` for a standalone config",
-        )?;
+        let config_file = match flags.get("config") {
+            Some(path) => PathBuf::from(path),
+            None => discover_config_from_cwd()?,
+        };
         let config = ResolvedConfig::from_file(&config_file, &flags)?;
         Self::build(config, Some(config_file), log_level)
     }
