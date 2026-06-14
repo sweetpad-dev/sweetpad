@@ -3,26 +3,38 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { rpc, RpcError } from "../cli/client";
+import { getProjectsIndexFile } from "./paths";
+import { projectKey } from "./registry";
 import { CliServer } from "./server";
 
 describe("CliServer", () => {
-  // A real temp dir as the workspace: the connection file lands at
-  // <workspace>/.sweetpad/cli.json. The socket itself lives in tmpdir (short path).
+  // A real temp dir as the workspace; an isolated XDG_STATE_HOME so the discovery
+  // index never touches the developer's real ~/.local/state. The socket lives in
+  // tmpdir (short path).
   let workspacePath: string;
+  let stateHome: string;
+  let prevStateHome: string | undefined;
   let server: CliServer | undefined;
 
   beforeEach(async () => {
     workspacePath = await fs.mkdtemp(path.join(os.tmpdir(), "sweetpad-server-spec-"));
+    stateHome = await fs.mkdtemp(path.join(os.tmpdir(), "sweetpad-state-spec-"));
+    prevStateHome = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = stateHome;
   });
 
   afterEach(async () => {
     if (server) await server.dispose();
     server = undefined;
+    if (prevStateHome === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = prevStateHome;
     await fs.rm(workspacePath, { recursive: true, force: true });
+    await fs.rm(stateHome, { recursive: true, force: true });
   });
 
-  function cliConfigFile(): string {
-    return path.join(workspacePath, ".sweetpad", "cli.json");
+  async function controlEntry(): Promise<Record<string, unknown> | undefined> {
+    const index = JSON.parse(await fs.readFile(getProjectsIndexFile(), "utf8"));
+    return index.projects[await projectKey(workspacePath)]?.control;
   }
 
   it("round-trips a JSON-RPC call end-to-end over the Unix socket", async () => {
@@ -43,7 +55,7 @@ describe("CliServer", () => {
     expect(result.received).toEqual({ hello: "world" });
   });
 
-  it("writes a connection file with correct fields", async () => {
+  it("registers a control-server index entry with correct fields", async () => {
     server = new CliServer({
       workspacePath,
       extensionVersion: "9.9.9",
@@ -51,17 +63,17 @@ describe("CliServer", () => {
     });
     await server.start();
 
-    const meta = JSON.parse(await fs.readFile(cliConfigFile(), "utf8"));
-    expect(meta.name).toBe(server.name);
-    expect(meta.socket).toBe(server.socket);
-    expect(meta.workspacePath).toBe(workspacePath);
-    expect(meta.extensionVersion).toBe("9.9.9");
-    expect(meta.protocolVersion).toBe("1.0");
-    expect(typeof meta.pid).toBe("number");
-    expect(typeof meta.startedAt).toBe("string");
+    const meta = await controlEntry();
+    expect(meta?.name).toBe(server.name);
+    expect(meta?.socket).toBe(server.socket);
+    expect(meta?.workspacePath).toBe(workspacePath);
+    expect(meta?.extensionVersion).toBe("9.9.9");
+    expect(meta?.protocolVersion).toBe("1.0");
+    expect(typeof meta?.pid).toBe("number");
+    expect(typeof meta?.startedAt).toBe("string");
   });
 
-  it("removes the socket and connection file on dispose", async () => {
+  it("removes the socket and the control entry on dispose", async () => {
     server = new CliServer({
       workspacePath,
       extensionVersion: "test",
@@ -69,13 +81,13 @@ describe("CliServer", () => {
     });
     await server.start();
     const socketPath = server.socket;
-    const connPath = cliConfigFile();
+    expect(await controlEntry()).toBeDefined();
 
     await server.dispose();
     server = undefined;
 
     await expect(fs.access(socketPath)).rejects.toThrow(/ENOENT/);
-    await expect(fs.access(connPath)).rejects.toThrow(/ENOENT/);
+    expect(await controlEntry()).toBeUndefined();
   });
 
   it("surfaces RPC errors with the application code in error.data", async () => {

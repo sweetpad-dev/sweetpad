@@ -212,9 +212,9 @@ struct Server {
     /// out, `bsp/setLogLevel` in. The extension assigns the path in `bsp.json`;
     /// `None` until bound, and in `--project` standalone mode (which has none).
     telemetry: Mutex<Option<Arc<TelemetryServer>>>,
-    /// The watched `.sweetpad/bsp.json` path. Live scheme/configuration changes
-    /// the extension persists there are applied without a restart; immutable
-    /// fields are fixed at startup. `None` in `--project` standalone mode.
+    /// The watched `bsp.json` path (from `--config`). Live scheme/configuration
+    /// changes the extension persists there are applied without a restart;
+    /// immutable fields are fixed at startup. `None` in `--project` standalone mode.
     config_path: Option<PathBuf>,
     /// Verbosity of the `bsp/log` stream, retunable live via `bsp/setLogLevel`.
     log_level: Arc<AtomicU8>,
@@ -240,7 +240,7 @@ struct LiveConfig {
 }
 
 /// The inputs the server needs, however they were obtained — from `--project`
-/// flags or the extension's `.sweetpad/bsp.json`.
+/// flags or the extension's `bsp.json` (named by `--config`).
 struct ResolvedConfig {
     project_path: PathBuf,
     configuration: String,
@@ -261,6 +261,44 @@ fn env_log() -> Option<PathBuf> {
     std::env::var_os("SWEETPAD_BSP_LOG").map(PathBuf::from)
 }
 
+/// Cap on the debug log. The log now lives in the persistent per-project state
+/// dir (not a reboot-cleared tmpdir), so an append-only file would grow without
+/// bound; [`open_log`] truncates it on startup once it's over this size.
+const BSP_LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Open the debug log for append, creating its parent dir first so the first
+/// write after a cold start doesn't silently drop. Bounds growth by truncating
+/// on startup when the existing file is already over [`BSP_LOG_MAX_BYTES`].
+fn open_log(path: &Path) -> Option<std::fs::File> {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let mut opts = OpenOptions::new();
+    opts.create(true).write(true);
+    if std::fs::metadata(path).is_ok_and(|m| m.len() > BSP_LOG_MAX_BYTES) {
+        opts.truncate(true);
+    } else {
+        opts.append(true);
+    }
+    opts.open(path).ok()
+}
+
+/// Locate the `bsp.json` for the project containing the cwd — the fallback when
+/// `buildServer.json` carries no explicit `--config`. Walks up from the cwd
+/// through the extension's discovery index and reads the nearest registered
+/// ancestor's `bspConfig` path.
+fn discover_config_from_cwd() -> Result<PathBuf, String> {
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    crate::paths::lookup_index_entry(&cwd)
+        .as_ref()
+        .and_then(|entry| entry.get("bspConfig"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            "no --config <bsp.json> given and no bspConfig registered for this directory; the SweetPad extension writes buildServer.json with --config, or use `bsp init` for a standalone config".to_string()
+        })
+}
+
 impl ResolvedConfig {
     fn from_flags(project_path: PathBuf, flags: &BTreeMap<String, String>) -> Self {
         ResolvedConfig {
@@ -279,10 +317,9 @@ impl ResolvedConfig {
         }
     }
 
-    /// Build from a `.sweetpad/bsp.json` object (the key schema the extension
-    /// writes). Path fields may be written relative to the project root; they're
-    /// resolved against `base`. Any explicit flag still wins, so it can be combined
-    /// with targeted overrides.
+    /// Build from a `bsp.json` object (the key schema the extension writes). Path
+    /// fields are normally absolute; any relative one is resolved against `base`.
+    /// Any explicit flag still wins, so it can be combined with targeted overrides.
     fn from_json(
         value: &Value,
         base: &Path,
@@ -334,27 +371,39 @@ impl ResolvedConfig {
         })
     }
 
-    /// Read and parse `.sweetpad/bsp.json` (written by the extension). Relative
-    /// path fields resolve against the project root — the `.sweetpad` dir's
-    /// parent — which is what the extension wrote them relative to.
+    /// Read and parse the `bsp.json` the extension writes. The extension now
+    /// writes absolute paths (the config lives outside the project tree, in the
+    /// host state dir), but any relative field still resolves against the
+    /// workspace root the file names in `workspacePath`, falling back to the
+    /// config file's own directory.
     fn from_file(path: &Path, flags: &BTreeMap<String, String>) -> Result<Self, String> {
         let raw =
             std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let value: Value =
             serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))?;
-        let base = path
-            .parent()
-            .and_then(Path::parent)
-            .unwrap_or_else(|| Path::new("."));
-        Self::from_json(&value, base, flags)
+        let base = value
+            .get("workspacePath")
+            .and_then(Value::as_str)
+            .map_or_else(
+                || {
+                    path.parent()
+                        .unwrap_or_else(|| Path::new("."))
+                        .to_path_buf()
+                },
+                PathBuf::from,
+            );
+        Self::from_json(&value, &base, flags)
     }
 }
 
 impl Server {
-    /// Resolve the server config. An explicit `--project` stays self-contained
-    /// (no config file, no telemetry — used by `bsp-server config` and the
-    /// tests); otherwise the sole source is `.sweetpad/bsp.json` (written by the
-    /// extension), read here and watched for live changes.
+    /// Resolve the server config. An explicit `--project`/`--workspace` stays
+    /// self-contained (no config file, no telemetry — used by `bsp init` and the
+    /// tests). Otherwise the `bsp.json` is located one of two ways: the explicit
+    /// `--config` path `buildServer.json` carries (the extension writes this), or
+    /// — when that's absent (an older or hand-written stub) — by discovering it
+    /// from the cwd via the host-wide index the extension maintains. Either way it
+    /// is then read and watched for live changes.
     fn resolve(args: &[String]) -> Result<Self, String> {
         let flags = parse_flags(args);
         let log_level = Arc::new(AtomicU8::new(LogLevel::Info as u8));
@@ -364,13 +413,10 @@ impl Server {
             return Self::build(config, None, log_level);
         }
 
-        // Canonicalize to match the extension's realpath'd `workspacePath`
-        // (so `/var` vs `/private/var` symlinks don't defeat the lookup).
-        let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-        let cwd = std::fs::canonicalize(&cwd).unwrap_or(cwd);
-        let config_file = control::discover_config_file(&cwd).ok_or(
-            "no .sweetpad/bsp.json found from the working directory (the SweetPad extension or `bsp-server config` writes it)",
-        )?;
+        let config_file = match flags.get("config") {
+            Some(path) => PathBuf::from(path),
+            None => discover_config_from_cwd()?,
+        };
         let config = ResolvedConfig::from_file(&config_file, &flags)?;
         Self::build(config, Some(config_file), log_level)
     }
@@ -410,16 +456,8 @@ impl Server {
         // (tests); telemetry streams logs regardless of the file.
         let log = config
             .log_path
-            .as_ref()
-            .and_then(|p| {
-                // Create the parent dir (the per-workspace tmp state root) first so the
-                // first write after a cold start doesn't silently drop because the dir
-                // isn't there yet.
-                if let Some(parent) = p.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                OpenOptions::new().create(true).append(true).open(p).ok()
-            })
+            .as_deref()
+            .and_then(open_log)
             .map(Mutex::new);
         let server = Server {
             project_path: config.project_path,
@@ -484,7 +522,7 @@ impl Server {
         self.notify_targets_changed();
     }
 
-    /// Re-read `.sweetpad/bsp.json` after a change: apply the volatile selection
+    /// Re-read `bsp.json` after a change: apply the volatile selection
     /// (configuration + scheme) live via [`Self::apply_config`], and bind the
     /// telemetry socket if one has just appeared. Immutable fields (project/
     /// xcode/derived data) are deliberately not refreshed — they're fixed at
@@ -728,7 +766,7 @@ impl Server {
         }
     }
 
-    /// Watch the project file (and the `.sweetpad/bsp.json` config, when present)
+    /// Watch the project file (and the `bsp.json` config, when present)
     /// and react without an LSP restart: a project-structure change pushes
     /// `buildTarget/didChange` so the client re-queries targets/sources; a config
     /// change re-applies the live scheme/configuration. Per-request resolution is

@@ -40,7 +40,6 @@ import { CliServerService } from "./cli-server/service.js";
 import { type AppDeps, registerCommand, registerTreeDataProvider } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
 import { ExecutionScopeService } from "./common/execution-scope.js";
-import { GitignoreNotifier } from "./common/gitignore-notice.js";
 import { Logger } from "./common/logger.js";
 import { warmShellEnv } from "./common/tasks/shell-env.js";
 import { WorkspaceStateService } from "./common/workspace-state.js";
@@ -192,11 +191,6 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   const bspService = new BspService({
     buildManager: buildManager,
-    workspaceState: workspaceState,
-  });
-
-  const gitignoreNotifier = new GitignoreNotifier({
-    workspacePath: workspacePath,
     workspaceState: workspaceState,
   });
 
@@ -372,7 +366,6 @@ export async function activate(context: vscode.ExtensionContext) {
   d(diagnostics);
   d(serverService);
   d(bspService);
-  d(gitignoreNotifier);
 }
 
 export function deactivate() {}

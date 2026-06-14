@@ -4,7 +4,8 @@ import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
 import { getWorkspacePath } from "../build/utils";
-import { ensureDir, getStateRoot } from "../cli-server/paths";
+import { ensureDir, getProjectStateDir } from "../cli-server/paths";
+import { registerBspConfig, unregisterBspConfig } from "../cli-server/registry";
 import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceStateService } from "../common/workspace-state";
@@ -22,8 +23,9 @@ export type BspStatusSnapshot = {
 
 /**
  * Owns the BSP side end to end, independent of the CLI control server: persists
- * `.sweetpad/bsp.json` for the BSP server to read, and dials the server's
- * telemetry socket to surface its logs/status in VS Code. Activates whenever
+ * the per-project `bsp.json` (under the XDG state home) for the BSP server to
+ * read, and dials the server's telemetry socket to surface its logs/status in
+ * VS Code. Activates whenever
  * SweetPad is the build-server provider for the open workspace — it does not
  * depend on `sweetpad.cliServer.enabled`.
  */
@@ -65,10 +67,11 @@ export class BspService implements vscode.Disposable {
   }
 
   /**
-   * Persist the resolved config to `.sweetpad/bsp.json`, only when SweetPad is the
-   * provider and buildServer.json exists (otherwise sourcekit-lsp won't launch our
-   * server, so the file is moot). Best-effort — a write failure or a folder with no
-   * Xcode workspace is logged, not surfaced.
+   * Persist the resolved config to the per-project `bsp.json` (under the XDG
+   * state home), only when SweetPad is the provider and buildServer.json exists
+   * (otherwise sourcekit-lsp won't launch our server, so the file is moot).
+   * Best-effort — a write failure or a folder with no Xcode workspace is logged,
+   * not surfaced.
    */
   private async saveConfig(): Promise<void> {
     const workspacePath = getWorkspacePath();
@@ -86,10 +89,15 @@ export class BspService implements vscode.Disposable {
       if (!config) {
         return;
       }
-      await ensureDir(getStateRoot(workspacePath));
-      await fs.writeFile(getBspConfigFile(workspacePath), `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+      await ensureDir(getProjectStateDir(workspacePath));
+      const configFile = getBspConfigFile(workspacePath);
+      await fs.writeFile(configFile, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+      // Advertise the config path so the BSP server can find it from its cwd when
+      // buildServer.json carries no explicit `--config` (an older or hand-written
+      // stub). Independent of the control server's index entry.
+      await registerBspConfig(workspacePath, configFile);
     } catch (err) {
-      commonLogger.debug("Failed to write .sweetpad/bsp.json", { error: err });
+      commonLogger.debug("Failed to write bsp.json", { error: err });
     }
   }
 
@@ -123,6 +131,14 @@ export class BspService implements vscode.Disposable {
   dispose(): void {
     this.buildManager.removeAllListeners("defaultSchemeForBuildUpdated");
     this.buildManager.removeAllListeners("defaultConfigurationForBuildUpdated");
+
+    // Best-effort: drop our BSP pointer from the discovery index. Fire-and-forget
+    // — a missing workspace or write failure must not block teardown.
+    try {
+      void unregisterBspConfig(getWorkspacePath()).catch(() => {});
+    } catch {
+      // no workspace to unregister
+    }
 
     for (const s of this.subscriptions) s.dispose();
     this.subscriptions = [];

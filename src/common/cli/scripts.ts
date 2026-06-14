@@ -4,6 +4,7 @@ import path from "node:path";
 import * as sweetpadLib from "@sweetpad/lib";
 
 import { getBuildServerProvider } from "../../bsp/commands";
+import { getBspConfigFile } from "../../bsp/paths";
 import { detectWorkspaceType, getSwiftPMDirectory, getWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { getWorkspaceConfig } from "../config";
@@ -713,13 +714,13 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
 
 /**
  * Generate a minimal `buildServer.json` for SweetPad's own BSP server. `argv` is
- * a single entry — the bundled `bsp-server.js`, which carries a
- * `#!/usr/bin/env node` shebang (like the CLI) so sourcekit-lsp execs it directly
- * through the user's Node. No subcommand, so it works the same in any editor
- * (VS Code, Cursor, nvim, Zed).
+ * the bundled `bsp-server.js` (which carries a `#!/usr/bin/env node` shebang,
+ * like the CLI, so sourcekit-lsp execs it directly through the user's Node)
+ * followed by `--config <bsp.json>` naming the per-project config in the host
+ * state dir. Editor-agnostic — works the same in VS Code, Cursor, nvim, Zed.
  *
  * Project, Xcode, scheme, configuration, the log path and the telemetry socket
- * are all read from `.sweetpad/bsp.json`, which the extension writes.
+ * are all read from that `bsp.json`, which the extension writes.
  */
 async function generateSweetpadBuildServerConfig(): Promise<void> {
   const cwd = getWorkspacePath();
@@ -733,7 +734,7 @@ async function generateSweetpadBuildServerConfig(): Promise<void> {
     version: GLOBAL_RELEASE_VERSION ?? "0.1.0",
     bspVersion: "2.2.0",
     languages: ["swift", "objective-c", "objective-cpp", "c", "cpp"],
-    argv: [bspServer],
+    argv: [bspServer, "--config", getBspConfigFile(cwd)],
   };
   await fs.writeFile(path.join(cwd, "buildServer.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }

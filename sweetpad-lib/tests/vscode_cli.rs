@@ -1,9 +1,10 @@
 //! End-to-end oracle for the `sweetpad vscode` command: a mock extension
 //! control server on a Unix socket (Content-Length-framed JSON-RPC 2.0, like
-//! the real `cli-server`), a `.sweetpad/cli.json` pointing at it, and the
-//! `sweetpad` binary execed against both — pinning discovery, the request
-//! wire shape, output formatting, the error envelope, and the exit codes
-//! (0 ok / 1 RPC error / 2 client error) the JS CLI established.
+//! the real `cli-server`), a discovery index (`projects.json` under a private
+//! `XDG_STATE_HOME`) pointing at it, and the `sweetpad` binary execed against
+//! both — pinning discovery, the request wire shape, output formatting, the
+//! error envelope, and the exit codes (0 ok / 1 RPC error / 2 client error)
+//! the JS CLI established.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
@@ -64,22 +65,31 @@ fn spawn_server(
     })
 }
 
-/// Project dir with `.sweetpad/cli.json` advertising `socket`.
-fn write_project(root: &Path, socket: &Path) {
-    let state = root.join(".sweetpad");
-    std::fs::create_dir_all(&state).unwrap();
-    std::fs::write(
-        state.join("cli.json"),
-        json!({ "socket": socket }).to_string(),
-    )
-    .unwrap();
+/// The private `XDG_STATE_HOME` for a project dir, so the test never touches the
+/// developer's real `~/.local/state`.
+fn state_home(root: &Path) -> PathBuf {
+    root.join("xdg-state")
 }
 
-fn run_cli(cwd: &Path, args: &[&str]) -> Output {
+/// Register `root` in the discovery index advertising `socket` as its control
+/// server, keyed by the canonical project path the way the extension writes it.
+fn register_project(root: &Path, socket: &Path) {
+    let dir = state_home(root).join("sweetpad");
+    std::fs::create_dir_all(&dir).unwrap();
+    let key = std::fs::canonicalize(root).unwrap();
+    let index = json!({
+        "version": 1,
+        "projects": { key.to_str().unwrap(): { "control": { "socket": socket } } },
+    });
+    std::fs::write(dir.join("projects.json"), index.to_string()).unwrap();
+}
+
+fn run_cli(cwd: &Path, root: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_sweetpad"))
         .arg("vscode")
         .args(args)
         .current_dir(cwd)
+        .env("XDG_STATE_HOME", state_home(root))
         .output()
         .expect("run sweetpad vscode")
 }
@@ -97,7 +107,7 @@ fn stderr_envelope(output: &Output) -> Value {
 fn success_round_trip_pretty_and_request_shape() {
     let dir = temp_dir("ok");
     let socket = dir.join("srv.sock");
-    write_project(&dir, &socket);
+    register_project(&dir, &socket);
     let server = spawn_server(
         &socket,
         |req| json!({ "jsonrpc": "2.0", "id": req["id"], "result": { "schemes": ["App"] } }),
@@ -106,7 +116,7 @@ fn success_round_trip_pretty_and_request_shape() {
     // Run from a nested directory: discovery must walk up to the project root.
     let nested = dir.join("Sources/Deep");
     std::fs::create_dir_all(&nested).unwrap();
-    let output = run_cli(&nested, &["scheme.list"]);
+    let output = run_cli(&nested, &dir, &["scheme.list"]);
 
     let request = server.join().unwrap();
     assert_eq!(request["jsonrpc"], "2.0");
@@ -125,13 +135,17 @@ fn success_round_trip_pretty_and_request_shape() {
 fn raw_minifies_and_flags_reach_the_wire() {
     let dir = temp_dir("raw");
     let socket = dir.join("srv.sock");
-    write_project(&dir, &socket);
+    register_project(&dir, &socket);
     let server = spawn_server(
         &socket,
         |req| json!({ "jsonrpc": "2.0", "id": req["id"], "result": req["params"] }),
     );
 
-    let output = run_cli(&dir, &["build.wait", "b1", "--timeout", "5s", "--raw"]);
+    let output = run_cli(
+        &dir,
+        &dir,
+        &["build.wait", "b1", "--timeout", "5s", "--raw"],
+    );
 
     let request = server.join().unwrap();
     assert_eq!(
@@ -147,13 +161,13 @@ fn raw_minifies_and_flags_reach_the_wire() {
 fn string_results_print_bare() {
     let dir = temp_dir("str");
     let socket = dir.join("srv.sock");
-    write_project(&dir, &socket);
+    register_project(&dir, &socket);
     spawn_server(
         &socket,
         |req| json!({ "jsonrpc": "2.0", "id": req["id"], "result": "/Users/me/Proj.xcworkspace" }),
     );
 
-    let output = run_cli(&dir, &["meta.workspacePath"]);
+    let output = run_cli(&dir, &dir, &["meta.workspacePath"]);
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8(output.stdout).unwrap().trim(),
@@ -165,7 +179,7 @@ fn string_results_print_bare() {
 fn rpc_errors_exit_1_with_the_servers_stable_code() {
     let dir = temp_dir("err");
     let socket = dir.join("srv.sock");
-    write_project(&dir, &socket);
+    register_project(&dir, &socket);
     spawn_server(&socket, |req| {
         json!({
             "jsonrpc": "2.0",
@@ -178,7 +192,7 @@ fn rpc_errors_exit_1_with_the_servers_stable_code() {
         })
     });
 
-    let output = run_cli(&dir, &["scheme.get"]);
+    let output = run_cli(&dir, &dir, &["scheme.get"]);
     assert_eq!(output.status.code(), Some(1));
     let envelope = stderr_envelope(&output);
     assert_eq!(envelope["ok"], json!(false));
@@ -190,19 +204,19 @@ fn rpc_errors_exit_1_with_the_servers_stable_code() {
 
 #[test]
 fn missing_project_and_dead_socket_exit_2() {
-    // No .sweetpad anywhere up the tree (tmp root has none).
+    // No index registered (the private state home has none).
     let dir = temp_dir("none");
-    let output = run_cli(&dir, &["scheme.list"]);
+    let output = run_cli(&dir, &dir, &["scheme.list"]);
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(
         stderr_envelope(&output)["error"]["code"],
         json!("NO_SERVER")
     );
 
-    // cli.json points at a socket nobody listens on.
+    // The index points at a socket nobody listens on.
     let dir = temp_dir("dead");
-    write_project(&dir, &dir.join("gone.sock"));
-    let output = run_cli(&dir, &["scheme.list"]);
+    register_project(&dir, &dir.join("gone.sock"));
+    let output = run_cli(&dir, &dir, &["scheme.list"]);
     assert_eq!(output.status.code(), Some(2));
     let envelope = stderr_envelope(&output);
     assert_eq!(envelope["error"]["code"], json!("CLI_ERROR"));
@@ -215,7 +229,7 @@ fn usage_paths_exit_2() {
     let dir = temp_dir("usage");
     // No method / bare word / --help all print the USAGE envelope.
     for args in [&[][..], &["schemes"][..], &["--help"][..]] {
-        let output = run_cli(&dir, args);
+        let output = run_cli(&dir, &dir, args);
         assert_eq!(output.status.code(), Some(2), "args: {args:?}");
         let envelope = stderr_envelope(&output);
         assert_eq!(envelope["error"]["code"], json!("USAGE"));

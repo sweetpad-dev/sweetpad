@@ -68,12 +68,7 @@ impl State {
 
 /// `$XDG_STATE_HOME` or `$HOME/.local/state`.
 fn state_dir() -> Option<PathBuf> {
-    if let Some(xdg) = std::env::var_os("XDG_STATE_HOME")
-        && !xdg.is_empty()
-    {
-        return Some(PathBuf::from(xdg));
-    }
-    super::config::home_dir().map(|h| h.join(".local").join("state"))
+    crate::paths::state_dir()
 }
 
 #[cfg(test)]

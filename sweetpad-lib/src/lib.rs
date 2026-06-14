@@ -26,6 +26,7 @@ mod file_cache;
 mod framing;
 #[cfg(feature = "node")]
 pub mod node;
+pub mod paths;
 pub mod pbxproj;
 pub mod pbxproj_merge;
 pub mod pbxproj_writer;

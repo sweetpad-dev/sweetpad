@@ -1,8 +1,9 @@
 //! The telemetry channel to the SweetPad extension. The BSP server reads all of
-//! its config — including the Unix socket path to bind — from `.sweetpad/bsp.json`
-//! (written by the extension). It binds that socket, serves `bsp/log` and
-//! `bsp/status` to any extension that connects, and accepts `bsp/setLogLevel`
-//! back. Config never flows over this channel; it lives entirely in `bsp.json`.
+//! its config — including the Unix socket path to bind — from the `bsp.json`
+//! named by `--config` (written by the extension into the host state dir). It
+//! binds that socket, serves `bsp/log` and `bsp/status` to any extension that
+//! connects, and accepts `bsp/setLogLevel` back. Config never flows over this
+//! channel; it lives entirely in `bsp.json`.
 
 use std::io::BufReader;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -42,27 +43,6 @@ impl LogLevel {
             _ => LogLevel::Info,
         }
     }
-}
-
-/// Walk up from `start` to the nearest ancestor that contains a `.sweetpad`
-/// directory — the project root, found the way `git` finds `.git`.
-fn find_project_root(start: &Path) -> Option<PathBuf> {
-    let mut dir = start;
-    loop {
-        if dir.join(".sweetpad").is_dir() {
-            return Some(dir.to_path_buf());
-        }
-        dir = dir.parent()?;
-    }
-}
-
-/// The `.sweetpad/bsp.json` config file for the project containing `cwd`, if it
-/// exists — the persistent config the extension writes and the server reads at
-/// startup and watches for live changes. Walks up to the project root the way
-/// `git` finds `.git`.
-pub(crate) fn discover_config_file(cwd: &Path) -> Option<PathBuf> {
-    let path = find_project_root(cwd)?.join(".sweetpad").join("bsp.json");
-    path.is_file().then_some(path)
 }
 
 /// The telemetry socket the BSP binds — at the path the extension assigned in
