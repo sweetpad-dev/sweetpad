@@ -376,6 +376,147 @@ Notes / heuristics:
 - Later: a `Package.resolved`-style driver for other regenerated lockfiles is the
   same pattern; a built-in `git merge`-driver self-test could pin the integration.
 
+## 9d. v5 — built-in hot reload (`app run --hot`)
+
+`app run --hot` adds **live code injection** to the interactive session: save a
+Swift file and the running app picks up the change in-place, with state
+preserved — no relaunch, no `r`. **iOS Simulator only** for v5 (codesigning
+strips `DYLD_INSERT_LIBRARIES` on devices; watchOS ships no injection dylib).
+The full-rebuild `r` path (§9c) stays as the always-available fallback.
+
+> Status: committed design; implementation tracked in the milestones below.
+
+### Architecture — the CLI *is* the injection server
+
+Hot reload (John Holdsworth's InjectionNext/InjectionLite lineage) is always two
+halves: a small, stable **client** loaded into the running app, and a **server**
+that watches sources, recompiles the changed file to a `.dylib`, and hands it
+over. The injected app is the **TCP client** — its `+load` hook
+(`ClientBoot.mm`) connects *out* to `127.0.0.1:8887`; whatever is listening
+there is the server. `InjectionNext.app` is just one such listener.
+
+**So `sweetpad` becomes the listener.** It binds `:8887` before launch and
+serves the same prebuilt client the VS Code extension already injects
+(`libiphonesimulatorInjection.dylib` via `DYLD_INSERT_LIBRARIES`) — no new
+in-app code, and **`InjectionNext.app` is not required**. This is "Option Y":
+the CLI owns the watch + recompile + serve loop itself, rather than delegating
+to the menu-bar app or to the in-app standalone watcher.
+
+### Wire protocol (grounded in the upstream `InjectionNextC` source)
+
+- **Transport:** TCP, localhost, port `8887`. Framing is native little-endian:
+  `int` = 4-byte `int32`; `string`/`data` = `int32` length then bytes; the EOF
+  sentinel is `-1`. A command is an `int32` code then its optional payload
+  (`SimpleSocket.mm`).
+- **Handshake** — on connect the app pushes, and the server reads in order:
+  `int` `INJECTION_VERSION` (4001, validate) · `string` home dir · then an
+  `InjectionResponse` stream: `.platform`+string then a bare `string` arch ·
+  `.projectRoot`+string (when `INJECTION_PROJECT_ROOT` is set) · `.tmpPath`+string
+  · optionally `.executable`+string. These tell the server the platform/arch/sdk
+  context to compile for.
+- **Server → app** (`InjectionCommand`): the two that matter for v5 are
+  `.load`+`string dylibPath` (app `dlopen`s that host path directly — works on
+  the simulator, which shares the host filesystem) and `.inject`+`name`+`data`
+  (ship the bytes; for devices, out of scope now). Optionally `.xcodePath`+string
+  up front so the client's reloader knows the toolchain.
+- **App → server** after a load: `.injected` / `.failed` / `.unhide` — surfaced
+  as a session status line.
+
+### Build & launch wiring
+
+Two hooks, mirroring the extension's proven `hot-reload.ts` path:
+
+- **Build flags** — `[`crate::cli::xcodebuild::BuildPlan`]` gains, under `--hot`
+  and gated to simulator SDKs: `OTHER_LDFLAGS=$(inherited) -Xlinker -interposable`
+  (lets dyld swap symbols at runtime) and `EMIT_FRONTEND_COMMAND_LINES=YES`
+  (needed to recover compile commands on Xcode 16.3+; see the recompiler below).
+- **Launch env** — `[`crate::cli::simctl`]` gains an env-passing `launch`
+  variant; `--hot` sets `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=<client dylib>`,
+  `SIMCTL_CHILD_INJECTION_PROJECT_ROOT=<workspace root>`, and the XCTest
+  `DYLD_FRAMEWORK_PATH`/`DYLD_LIBRARY_PATH` the client dylib's deps need
+  (`simctl` forwards any `SIMCTL_CHILD_*` var into the launched process).
+
+The server must be listening on `:8887` before the app launches so the client's
+`+load` connect succeeds.
+
+### The recompiler — resolver-first (F), live-capture fallback (A)
+
+Turning a saved `Foo.swift` into a loadable `.dylib` is the load-bearing risk.
+The upstream approach (InjectionLite's `LogParser`/`Recompiler`) **scrapes the
+build logs**: `gunzip` the newest `*.xcactivitylog` in DerivedData, `grep` for
+the ` -primary-file Foo.swift ` frontend invocation, regex-rewrite it down to a
+single-primary `-c -o eval.o`, then regex out `-sdk` to assemble a fixed
+`clang -dylib -interposable …` link line. It works, but it rides an undocumented
+log format that shifts every Xcode release and breaks under log pruning, Whole-
+Module mode, and `COMPILATION_CACHE_ENABLE_CACHING`. We do **not** take that as
+the primary path.
+
+**(F) Primary — reuse the crate's own compiler-args generator.**
+`[`crate::compiler_args`]` already produces, from the resolved pbxproj/xcspec
+settings and snapshot-tested against real `xcodebuild` captures, both
+`swift_arguments` (module name, `-sdk`, `-target`, `-I`/`-F`, active-compilation
+`-D`s, search paths — everything bar output geometry) and `link_arguments` (the
+linker argv). The recompiler is then:
+
+1. resolve the changed file's target `swift_arguments` (exists),
+2. append `-primary-file <changed>` + the target's source list + `-c -o eval.o`,
+3. link via `link_arguments`, adjusted for a loadable image
+   (`-Xlinker -dylib -undefined dynamic_lookup -dead_strip -Xlinker -interposable`),
+4. send `.load eval.dylib`.
+
+No log discovery, no `gunzip`, no Xcode-version format drift — and producing
+correct compiler args is the crate's core competency. **The bet** is that the
+generated args match the build's *effective* args closely enough for ABI/symbol
+compatibility (same triple, sdk, module name, `-D`s, Swift version); log-scraping
+guarantees byte-identical args, the resolver reconstructs them. Matching
+xcodebuild's args is exactly what the crate is validated to do, so it is the same
+bet the resolver already makes everywhere — but it must be proven for the *codegen*
+path (see Milestone 1), since the args are validated for correctness sans geometry,
+not yet for a loadable dylib.
+
+**(A) Fallback — capture frontend command lines live from our own build.**
+Because the CLI *is* the builder, the `--hot` build tees the `swift-frontend`
+invocations straight out of `xcodebuild`'s stdout (`EMIT_FRONTEND_COMMAND_LINES`)
+and indexes them per source file in memory / `/tmp`. This yields the *exact*
+command the build used — InjectionLite's exactness without the DerivedData log
+discovery, gzip, or pruning race (something `InjectionNext.app` can't do, as it
+doesn't run the build). When (F) can't resolve a file's args, or its dylib fails
+to inject, fall back to the captured command for that file. A small `/tmp`
+command cache (keyed by source) survives across runs, mirroring InjectionLite.
+
+### Module layout & session integration
+
+A new `cli/inject/` tree, kept off the existing tool-spawning modules:
+`protocol.rs` (the two enums + framing primitives), `socket.rs` (the `:8887`
+TCP listener), `server.rs` (accept + handshake + command loop), `recompiler.rs`
+(F + A), `watcher.rs` (debounced FS watch of the workspace root, ignoring build
+output dirs). The server runs as a sidecar thread alongside the existing
+`Running` struct in `[`crate::cli::commands::app`]`; the watcher becomes a third
+event source next to the keypress reader and the log stream. `r` still does a
+full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
+
+### Milestones
+
+1. **Socket spike (highest risk first).** Bind `:8887`, launch a sim app with the
+   client dylib, complete the handshake, and `.load` a dylib built via the **(F)
+   resolver** path (not a hand-copied command). A SwiftUI view swapping in place
+   validates both the transport *and* the ABI-match assumption before any watcher
+   exists.
+2. Build-flag + launch-env plumbing behind `--hot` (simulator-gated).
+3. Recompiler: (F) resolver path, then (A) live-capture fallback + `/tmp` cache.
+4. Watcher + session integration (debounce, status lines, `.failed`/`.unhide`).
+5. Polish: the "Inject package missing" advisory (port from `hot-reload.ts`),
+   config/flag parity, teardown correctness.
+
+### Open decisions
+
+- **Client dylib distribution.** Reuse a user-installed `InjectionNext.app`
+  dylib (same dependency the extension has today), or **vendor**
+  `libiphonesimulatorInjection.dylib` in the CLI so hot reload is fully
+  self-contained? Vendoring is the cleanest UX but adds a license/build step.
+- **ABI-match confidence for (F).** Milestone 1 is the gate; if resolver-built
+  dylibs prove flaky to inject, (A) becomes primary and (F) an optimization.
+
 ## 10. Testing
 
 The CLI modules carry inline `#[cfg(test)]` units that need no Xcode, so the
@@ -389,6 +530,11 @@ tool-spawning code is pinned without a Mac:
 - **Pure logic** — resolution precedence, config/state TOML round-trips,
   `choose` fallback branches, destination/`udid` parsing, and the session
   key → action mapping (`r` rebuild / `q`·Ctrl-C·EOF quit / else ignore).
+- **Inject protocol** (§9d) — the little-endian `int`/`string`/`data` framing
+  and the handshake parse (version + platform/arch/projectRoot/tmpPath) round-
+  trip against captured byte sequences; the resolver→single-file→dylib argv
+  transform is an arg-vector snapshot, like `BuildPlan`. The live-injection
+  truth (a save actually swaps in the running sim) lands in the `cli-smoke` job.
 
 The *runtime* truth (does xcodebuild actually build, does the log
 predicate/console attach behave) is exercised by the `cli-smoke` macOS job.
