@@ -1,0 +1,122 @@
+name: xcode-tests
+
+# Permanent macOS CI for tests that need Xcode + simulators, run across multiple
+# Xcode versions. Two jobs:
+#   • cli         — the standalone CLI's full e2e (ci/smoke.sh) on each Xcode.
+#   • hot-reload  — the built-in hot-reload / injection e2e (ci/hot-reload-e2e.sh).
+# Also runs weekly so Xcode runner-image updates are caught even without a push.
+on:
+  push:
+    branches: [main, claude/cli-hot-reloading-c52yf2]
+    paths:
+      - "sweetpad-lib/**"
+      - ".github/workflows/xcode-tests.yaml"
+  pull_request:
+    paths:
+      - "sweetpad-lib/**"
+      - ".github/workflows/xcode-tests.yaml"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  cli:
+    name: cli e2e · ${{ matrix.os }} · Xcode ${{ matrix.xcode }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, xcode: "26" } # newest (Xcode 26.x)
+          - { os: macos-15, xcode: "16" } # prior major (Xcode 16.x)
+    defaults:
+      run:
+        working-directory: sweetpad-lib
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: |
+          APP=$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$APP" ] || APP=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Selecting $APP"
+          sudo xcode-select -s "$APP/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sweetpad-lib
+
+      - name: Build the sweetpad CLI
+        run: cargo build --bin sweetpad
+
+      - name: Unit tests
+        run: cargo test
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the fixture project
+        working-directory: sweetpad-lib/ci/fixture-app
+        run: xcodegen generate
+
+      - name: End-to-end CLI coverage
+        env:
+          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+        run: bash ci/smoke.sh
+
+  hot-reload:
+    name: hot reload e2e · ${{ matrix.os }} · Xcode ${{ matrix.xcode }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Injection asserts on the Xcode that matches the prebuilt InjectionNext
+        # client. Once the per-Xcode client build lands (Milestone 5), add 16.
+        include:
+          - { os: macos-15, xcode: "26" }
+    env:
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        working-directory: sweetpad-lib
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: |
+          APP=$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$APP" ] || APP=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Selecting $APP"
+          sudo xcode-select -s "$APP/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sweetpad-lib
+
+      - name: Build the sweetpad CLI
+        run: cargo build --bin sweetpad
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the fixture project
+        working-directory: sweetpad-lib/ci/fixture-app
+        run: xcodegen generate
+
+      - name: Hot-reload / injection e2e
+        env:
+          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+        run: bash ci/hot-reload-e2e.sh

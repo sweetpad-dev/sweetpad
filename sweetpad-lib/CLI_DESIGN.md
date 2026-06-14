@@ -585,24 +585,25 @@ is still app UI/code reload (SwiftUI/UIKit).
   rewrite; build it with `xcodebuild` for the simulator, cached per Xcode build
   id. See Client distribution above.)_
 
-### Milestone-1 validation harness
+### macOS test harness (permanent)
 
-Since the spike needs macOS + Xcode + a simulator, it is validated by a
-**temporary** macOS GitHub Actions workflow (`hot-reload-spike.yaml`), not by
-local runs. The harness (`ci/hot-reload-spike/`) generates a minimal iOS app
-(XcodeGen) built with `-interposable` + `EMIT_FRONTEND_COMMAND_LINES`, downloads
-the InjectionNext client dylib (the vendoring-B artifact), launches the app on a
-booted sim with the dylib `DYLD_INSERT_LIBRARIES`-injected, and runs a std-only
-Rust server that speaks the `:8887` protocol: it completes the handshake,
-recompiles `ContentView.swift` (via the live build-log command, path A) into a
-dylib, sends `.load`, and **asserts `.injected`** over the socket — a machine-
-checkable signal that needs no screen. Reaching the handshake alone validates
-the (novel) socket protocol; `.injected` additionally validates the build+load
-chain. **Result: passed on run #5** (`.injected` received). A secondary,
-non-fatal step probed the no-xcodebuild client build (`swift build` of the
-InjectionNext package for the simulator); it failed only on the upstream repo's
-dev symlinks, so it's inconclusive — and moot under the minimal-client decision.
-The workflow and harness are removed once the approach lands in the CLI proper.
+Hot reload needs macOS + Xcode + a simulator, so it's validated in CI by the
+permanent **`xcode-tests.yaml`** workflow — a reusable matrix harness for any
+Xcode/simulator-requiring test, across Xcode versions (16.x, 26.x; weekly + on
+push/PR). Two jobs:
+
+- **`cli`** — the full standalone-CLI e2e (`ci/smoke.sh`) on each Xcode.
+- **`hot-reload`** — the injection e2e (`ci/hot-reload-e2e.sh`): it generates the
+  fixture app, downloads the InjectionNext client dylib, and runs the *real*
+  `sweetpad app run --hot --hot-selfcheck` (hidden flag) for **both** recompilers
+  (resolver + build-log). The self-check builds with the interposable/frontend
+  flags, starts the `:8887` server, launches with the client injected, edits a
+  Swift file once, and asserts `.injected` — exiting non-zero otherwise. It runs
+  on the Xcode matching the prebuilt client; once the per-Xcode client build
+  lands (Milestone 5) it joins the full matrix.
+
+This supersedes the original throwaway spike (`hot-reload-spike.yaml`), whose
+run #5 first proved the socket + recompile→load→inject chain end-to-end.
 
 ## 10. Testing
 

@@ -1,5 +1,0 @@
-# Spike build/run artifacts — never committed.
-server/target/
-.work/
-fixture/HotReloadSpike.xcodeproj/
-fixture/*.xcodeproj/
