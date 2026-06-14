@@ -523,49 +523,48 @@ full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
 2. Build-flag + launch-env plumbing behind `--hot` (simulator-gated).
 3. Recompiler: (A) live-capture + `/tmp` cache, then (F) resolver path.
 4. Watcher + session integration (debounce, status lines, `.failed`/`.unhide`).
-5. Minimal client: compile-on-demand + cache per Xcode build id.
+5. Vendored client build: compile the pinned InjectionNext source on-demand,
+   cache per Xcode build id (settle the builder: `xcodebuild` vs `swift build`).
 6. Polish: the "Inject package missing" advisory (port from `hot-reload.ts`),
    config/flag parity, teardown correctness.
 
-### Scope — app UI/code reload only; no test hot-reloading
+### Client distribution — vendor full source, compile per Xcode (decided)
 
-`--hot` targets **application UI/code** reload (SwiftUI/UIKit), **not** XCTest
-hot-reloading (recompiling a test file and re-running its `XCTestSuite`
-in-process). That test feature is the *only* reason the InjectionNext client
-links XCTest (`Reloader.loadXCTest`, `Sweeper.runXCTestCase`), and that XCTest
-binary reference (`XCTIssue` in `libXCTestSwiftSupport`) is exactly what makes a
-prebuilt client **Xcode-version-bound** — Milestone 1 saw it fail to load under
-Xcode 16.4 while built against 26.x. **Dropping test-reload removes the XCTest
-linkage and the per-Xcode ABI-skew problem entirely.**
+The client is the **full InjectionNext source, vendored unmodified** (pinned
+revision; MIT — InjectionNext + InjectionImpl + SwiftTrace + DLKit + SwiftRegex),
+compiled **on-demand and cached per Xcode build id**, then
+`DYLD_INSERT_LIBRARIES`-injected at launch. The key move: building *from source
+against the user's active Xcode* makes the XCTest ABI match automatically — so
+the per-Xcode skew that broke a *prebuilt* binary under Xcode 16.4 (Milestone 1)
+never arises. Given that, there is **no reason to strip XCTest or write a minimal
+client** (the analysis — ~4 jobs; vendor-and-strip ≈ ½ week, from-scratch v0 ≈ a
+week and weeks for parity — concluded the effort buys nothing here). Test
+hot-reload therefore comes along as a **latent capability**; the promoted feature
+is still app UI/code reload (SwiftUI/UIKit).
 
-### Client distribution — minimal client, compiled from source
-
-With XCTest gone the client reduces to its core: connect to `:8887`, `dlopen`
-the patch dylib, swap class methods, and rebind `-interposable` symbols (via
-`SwiftTrace`/`DLKit`, or a from-scratch fishhook-style interposer). That image
-has no Xcode-ABI-sensitive references, so:
-
-- **No per-Xcode dylib matrix** — the skew was XCTest-only.
-- **Compile-on-demand, cached per Xcode build id** (so it always matches the
-  user's toolchain), `DYLD_INSERT_LIBRARIES`-injected at launch — keeping B's
-  drop-in UX: no project edit, no `InjectionNext.app`. The SwiftUI
-  `@ObserveInjection`/`.enableInjection()` annotations remain the user's to add.
-- Buildable with the toolchain directly (`swiftc`/`clang`). The Milestone-1
-  `swift build` experiment on the *full* InjectionNext package failed only on the
-  repo's dev symlinks to sibling `SwiftTrace`/`DLKit`/`InjectionImpl` checkouts —
-  moot once we own a slim client.
-
-Open question: reuse InjectionNext/`InjectionImpl`'s `Reloader` + `SwiftTrace`/
-`DLKit` rebinder (vendor those, strip the XCTest/test code) vs. a from-scratch
-minimal interposer. The former is proven; the latter is smaller.
+- **No per-Xcode binary matrix.** Cache key = Xcode build id (`xcodebuild
+  -version`); a miss recompiles the vendored client once (first `--hot` after an
+  Xcode change), hits reuse it. Cache at e.g.
+  `~/.cache/sweetpad/hot-reload/<xcode-build>/`.
+- **Drop-in UX preserved** — no project edit, no `InjectionNext.app`. The SwiftUI
+  `@ObserveInjection`/`.enableInjection()` annotations remain the user's to add
+  (UIKit reloads without them).
+- **Build mechanism (to settle in implementation):** the package set has C/asm
+  and multi-package deps, so the client is built with the package's *normal*
+  builder (`xcodebuild` on the InjectionNext project, or `swift build` with the
+  deps resolved), targeting the simulator SDK/triple — **not** raw `swiftc`. The
+  Milestone-1 `swift build` probe failed only on the upstream repo's dev symlinks
+  to sibling SwiftTrace/DLKit/InjectionImpl checkouts; vendoring resolves those.
 
 ### Open decisions
 
 - **ABI match — A proven, F pending.** Path A (exact build-log command) injects
   cleanly (Milestone 1), so it is primary. The (F) resolver path's ABI match is
   still to confirm; until then F is an optimization, not the default.
-- **Slim-client engine** — vendor `Reloader`+`SwiftTrace`/`DLKit` (XCTest stripped)
-  vs. a from-scratch interposer (see Client distribution above).
+- **Client builder** — `xcodebuild` on the vendored InjectionNext project vs.
+  `swift build` with deps resolved (both produce the cached per-Xcode client).
+  (Resolved *not* to strip XCTest or write a minimal client — compile-from-source
+  neutralizes the skew; see Client distribution above.)
 
 ### Milestone-1 validation harness
 
