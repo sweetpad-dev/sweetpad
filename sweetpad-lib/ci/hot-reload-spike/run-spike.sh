@@ -14,11 +14,20 @@ SERVER="$HERE/server"
 WORK="${SPIKE_WORK:-$HERE/.work}"
 rm -rf "$WORK" && mkdir -p "$WORK"
 
-DEVELOPER_DIR="$(xcode-select -p)"
 BUNDLE_ID="dev.sweetpad.spike.app"
 APP_SOURCE="$FIXTURE/Sources/ContentView.swift"
 
 section() { echo; echo "==== $* ===="; }
+
+section "Select newest Xcode (the prebuilt client dylib must match Xcode's XCTest ABI)"
+echo "installed Xcodes:"; ls -d /Applications/Xcode*.app 2>/dev/null || true
+NEWEST_XCODE="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
+if [[ -n "$NEWEST_XCODE" && -d "$NEWEST_XCODE/Contents/Developer" ]]; then
+  echo "selecting $NEWEST_XCODE"
+  sudo xcode-select -s "$NEWEST_XCODE/Contents/Developer"
+fi
+DEVELOPER_DIR="$(xcode-select -p)"
+echo "DEVELOPER_DIR=$DEVELOPER_DIR"
 
 section "Tooling"
 xcodebuild -version
