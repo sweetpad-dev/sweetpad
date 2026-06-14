@@ -523,8 +523,8 @@ full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
 2. Build-flag + launch-env plumbing behind `--hot` (simulator-gated).
 3. Recompiler: (A) live-capture + `/tmp` cache, then (F) resolver path.
 4. Watcher + session integration (debounce, status lines, `.failed`/`.unhide`).
-5. Vendored client build: compile the pinned InjectionNext source on-demand,
-   cache per Xcode build id (settle the builder: `xcodebuild` vs `swift build`).
+5. Vendored client build: `xcodebuild` the pinned InjectionNext project for the
+   simulator on-demand, cache the bundle per Xcode build id.
 6. Polish: the "Inject package missing" advisory (port from `hot-reload.ts`),
    config/flag parity, teardown correctness.
 
@@ -549,22 +549,25 @@ is still app UI/code reload (SwiftUI/UIKit).
 - **Drop-in UX preserved** — no project edit, no `InjectionNext.app`. The SwiftUI
   `@ObserveInjection`/`.enableInjection()` annotations remain the user's to add
   (UIKit reloads without them).
-- **Build mechanism (to settle in implementation):** the package set has C/asm
-  and multi-package deps, so the client is built with the package's *normal*
-  builder (`xcodebuild` on the InjectionNext project, or `swift build` with the
-  deps resolved), targeting the simulator SDK/triple — **not** raw `swiftc`. The
-  Milestone-1 `swift build` probe failed only on the upstream repo's dev symlinks
-  to sibling SwiftTrace/DLKit/InjectionImpl checkouts; vendoring resolves those.
+- **Build mechanism — `xcodebuild` on the vendored InjectionNext project
+  (decided).** The package set has C/asm and multi-package deps, so the client is
+  built with `xcodebuild` against InjectionNext's own Xcode project targeting the
+  simulator SDK — **not** raw `swiftc` or `swift build`. Rationale: first-class
+  iOS-simulator targeting, it produces the `iOSInjection.bundle`/dylib artifact
+  directly, and it reproduces (and inherits the per-Xcode maintenance of)
+  upstream's intended build. `swift build` was rejected — its iOS-sim support is
+  finicky, it doesn't naturally emit the bundle, and the recipe would become our
+  burden (the Milestone-1 `swift build` probe also tripped on the upstream repo's
+  dev symlinks to sibling SwiftTrace/DLKit/InjectionImpl checkouts).
 
 ### Open decisions
 
 - **ABI match — A proven, F pending.** Path A (exact build-log command) injects
   cleanly (Milestone 1), so it is primary. The (F) resolver path's ABI match is
   still to confirm; until then F is an optimization, not the default.
-- **Client builder** — `xcodebuild` on the vendored InjectionNext project vs.
-  `swift build` with deps resolved (both produce the cached per-Xcode client).
-  (Resolved *not* to strip XCTest or write a minimal client — compile-from-source
-  neutralizes the skew; see Client distribution above.)
+- _(Resolved: keep the full vendored client — no XCTest strip / no minimal
+  rewrite; build it with `xcodebuild` for the simulator, cached per Xcode build
+  id. See Client distribution above.)_
 
 ### Milestone-1 validation harness
 
