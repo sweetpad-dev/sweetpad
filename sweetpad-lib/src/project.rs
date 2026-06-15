@@ -1309,6 +1309,17 @@ pub fn built_in_settings(
         .unwrap_or("")
         .to_string();
     let derived_hash = derived_data_hash(&derived_container.display().to_string());
+    // We model the default "Unique" build location (`<Name>-<hash>`) plus the
+    // explicit `-derivedDataPath` override below. NOT modeled: the non-default
+    // styles a user can set in Xcode's Locations pref, persisted to
+    // `WorkspaceSettings.xcsettings` (`BuildLocationStyle` = `Shared` /
+    // `CustomLocation` {Absolute, RelativeToDerivedData, RelativeToWorkspace} /
+    // legacy `DeterminedByTargets`→`$(SRCROOT)/build`). When any of those is
+    // set the `<Name>-<hash>` segment doesn't apply and BUILD_DIR diverges, so
+    // the launcher would look in the wrong tree. We already locate + parse that
+    // plist (see `scheme.rs`), so wiring the build-location keys in here is
+    // plumbing — left demand-driven since it's rare and each style needs a real
+    // xcodebuild capture to pin.
     let derived_root = if let Some(override_path) = derived_data_path {
         override_path.display().to_string()
     } else if home.is_empty() {
@@ -1493,6 +1504,12 @@ pub fn built_in_settings(
         "CONFIGURATION_BUILD_DIR",
         "$(BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)".into(),
     );
+    // We model the BUILD action, where `DEPLOYMENT_LOCATION=NO` and the product
+    // sits in `BUILT_PRODUCTS_DIR`. REMINDER: if we ever resolve for `install`
+    // / `archive`, xcodebuild flips `DEPLOYMENT_LOCATION=YES` and the product
+    // moves to `$(DSTROOT)$(INSTALL_PATH)` (and `SKIP_INSTALL=YES` targets land
+    // in `$(TARGET_TEMP_DIR)/UninstalledProducts/<platform>` instead) — these
+    // path keys must branch on the action, not stay hard-wired to the build set.
     push("BUILT_PRODUCTS_DIR", "$(CONFIGURATION_BUILD_DIR)".into());
     // Including `$(TARGET_BUILD_SUBPATH)` here is what wires up parent-app
     // embedding. `TARGET_BUILD_SUBPATH` defaults to empty (so this expands
