@@ -19,13 +19,15 @@ DYLIB_NAME="lib${SDK}Injection.dylib"
 TAG="${INJECTIONNEXT_TAG:-$(gh release view --repo johnno1962/InjectionNext --json tagName -q .tagName)}"
 
 mkdir -p "$WORK"
-SRC="$WORK/InjectionNext-$TAG"
+# Must be literally "InjectionNext": the App/feedcommands target uses a relative
+# `#import "../../../InjectionNext/Sources/..."` that assumes the checkout dir is
+# named InjectionNext (upstream's dev layout).
+SRC="$WORK/InjectionNext"
 
-if [ ! -d "$SRC" ]; then
-  echo "==> cloning InjectionNext @ $TAG (with submodules)" >&2
-  git clone --recurse-submodules --depth 1 --shallow-submodules \
-    --branch "$TAG" https://github.com/johnno1962/InjectionNext "$SRC" >&2
-fi
+echo "==> cloning InjectionNext @ $TAG (with submodules)" >&2
+rm -rf "$SRC"
+git clone --recurse-submodules --depth 1 --shallow-submodules \
+  --branch "$TAG" https://github.com/johnno1962/InjectionNext "$SRC" >&2
 
 echo "==> building InjectionNext with $(xcodebuild -version | head -1) (this is slow; cached per Xcode)" >&2
 (
