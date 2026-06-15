@@ -1301,7 +1301,7 @@ pub fn built_in_settings(
     // so `BUILD_DIR = PATH/Build/Products` directly.
     let derived_container = derived_data_container.map_or_else(
         || find_derived_data_container(&absolutize(xcodeproj_path)),
-        absolutize,
+        |c| normalize_stub_workspace(&absolutize(c)),
     );
     let derived_name = derived_container
         .file_stem()
@@ -2945,6 +2945,29 @@ fn host_user() -> String {
 
 fn host_home() -> String {
     host_override(|o| o.home.as_ref()).unwrap_or_else(|| std::env::var("HOME").unwrap_or_default())
+}
+
+/// Collapse the `.xcodeproj/project.xcworkspace` stub Xcode auto-generates
+/// inside every project bundle down to its containing `.xcodeproj`.
+///
+/// A caller can declare that stub as the DerivedData container — e.g. a
+/// `xcodeWorkspacePath` pointed straight at `Foo.xcodeproj/project.xcworkspace`.
+/// Xcode never keys DerivedData by the stub: opening such a project hashes the
+/// `.xcodeproj` itself, producing `Foo-<hash>`. Hashing the stub instead yields
+/// the wrong folder name (`project-<hash>`) AND the wrong hash, so the built
+/// app can't be found (issue #285). `find_derived_data_container` already skips
+/// the stub during inference; this normalizes the explicit case to match.
+#[must_use]
+fn normalize_stub_workspace(container: &Path) -> PathBuf {
+    let is_stub = container.file_name().and_then(OsStr::to_str) == Some("project.xcworkspace")
+        && container.parent().and_then(Path::extension).and_then(OsStr::to_str)
+            == Some("xcodeproj");
+    if is_stub
+        && let Some(parent) = container.parent()
+    {
+        return parent.to_path_buf();
+    }
+    container.to_path_buf()
 }
 
 /// Return the path Xcode would hash for the DerivedData folder name: a
@@ -5024,5 +5047,123 @@ mod tests {
             "must not resolve the symlink"
         );
         let _ = fs::remove_dir_all(&root);
+    }
+
+    /// `normalize_stub_workspace` is pure-lexical (no filesystem), so pin it
+    /// with a table. It must collapse ONLY the `.xcodeproj/project.xcworkspace`
+    /// stub down to its bundle; everything else passes through untouched.
+    #[test]
+    fn normalize_stub_workspace_collapses_only_the_bundle_stub() {
+        let cases: &[(&str, &str)] = &[
+            // The auto-generated stub collapses to its containing bundle…
+            (
+                "/root/Foo.xcodeproj/project.xcworkspace",
+                "/root/Foo.xcodeproj",
+            ),
+            // …even spelled with a trailing slash (Path ignores it).
+            (
+                "/root/Foo.xcodeproj/project.xcworkspace/",
+                "/root/Foo.xcodeproj",
+            ),
+            // A real, user-authored workspace is left untouched.
+            ("/root/Foo.xcworkspace", "/root/Foo.xcworkspace"),
+            // A `project.xcworkspace` NOT inside an `.xcodeproj` is not the
+            // stub — don't eat a real directory that merely shares the name.
+            (
+                "/root/weird/project.xcworkspace",
+                "/root/weird/project.xcworkspace",
+            ),
+            // A bare `.xcodeproj` is already the container.
+            ("/root/Foo.xcodeproj", "/root/Foo.xcodeproj"),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(
+                normalize_stub_workspace(Path::new(input)),
+                PathBuf::from(expected),
+                "normalize_stub_workspace({input})"
+            );
+        }
+    }
+
+    /// The container-*inference* matrix (`find_derived_data_container`), which
+    /// chooses which path Xcode would hash for the DerivedData folder. Each
+    /// shape is built on disk because the function reads the tree.
+    #[test]
+    fn find_derived_data_container_selects_the_keyed_container() {
+        let root = std::env::temp_dir().join(format!("sweetpad-ddc-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+
+        // (a) Bare project, no workspace anywhere -> the `.xcodeproj` itself.
+        let a = root.join("a");
+        fs::create_dir_all(a.join("Foo.xcodeproj")).unwrap();
+        assert_eq!(
+            find_derived_data_container(&a.join("Foo.xcodeproj")),
+            a.join("Foo.xcodeproj"),
+            "no workspace: container is the project"
+        );
+
+        // (b) A real workspace sitting next to the project -> the workspace.
+        let b = root.join("b");
+        fs::create_dir_all(b.join("Foo.xcodeproj")).unwrap();
+        fs::create_dir_all(b.join("App.xcworkspace")).unwrap();
+        assert_eq!(
+            find_derived_data_container(&b.join("Foo.xcodeproj")),
+            b.join("App.xcworkspace"),
+            "sibling workspace wins over the project"
+        );
+
+        // (c) A real workspace one directory ABOVE the project -> the workspace
+        //     (the grandparent leg of the search). Note the folder prefix is
+        //     the WORKSPACE stem (`App`), not the project stem (`Foo`).
+        let c = root.join("c");
+        fs::create_dir_all(c.join("Sub/Foo.xcodeproj")).unwrap();
+        fs::create_dir_all(c.join("App.xcworkspace")).unwrap();
+        assert_eq!(
+            find_derived_data_container(&c.join("Sub/Foo.xcodeproj")),
+            c.join("App.xcworkspace"),
+            "grandparent workspace wins; name != project name"
+        );
+
+        // (d) A sub-project nested inside another `.xcodeproj` bundle: the only
+        //     workspace in view is that bundle's auto-generated stub, which the
+        //     search skips -> fall back to the sub-project itself.
+        let d = root.join("d");
+        fs::create_dir_all(d.join("Outer.xcodeproj/Sub.xcodeproj")).unwrap();
+        fs::create_dir_all(d.join("Outer.xcodeproj/project.xcworkspace")).unwrap();
+        assert_eq!(
+            find_derived_data_container(&d.join("Outer.xcodeproj/Sub.xcodeproj")),
+            d.join("Outer.xcodeproj/Sub.xcodeproj"),
+            "the bundle stub is skipped during inference too"
+        );
+
+        // (e) Two standalone workspaces beside the project: pick the
+        //     alphabetically-first. A documented heuristic, not captured Xcode
+        //     behaviour — pinned so any change is deliberate (DOCS open item).
+        let e = root.join("e");
+        fs::create_dir_all(e.join("Foo.xcodeproj")).unwrap();
+        fs::create_dir_all(e.join("Beta.xcworkspace")).unwrap();
+        fs::create_dir_all(e.join("Alpha.xcworkspace")).unwrap();
+        assert_eq!(
+            find_derived_data_container(&e.join("Foo.xcodeproj")),
+            e.join("Alpha.xcworkspace"),
+            "two workspaces: alphabetically-first heuristic"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// MD5 is byte-sensitive, so `Foo.xcodeproj` and `Foo.xcodeproj/` would
+    /// hash to different DerivedData folders if the trailing slash survived.
+    /// `absolutize` normalizes both spellings, keeping the folder stable
+    /// regardless of how the caller spelled the container path.
+    #[test]
+    fn trailing_slash_does_not_change_the_derived_data_hash() {
+        let with = absolutize(Path::new("/root/Foo.xcodeproj/"));
+        let without = absolutize(Path::new("/root/Foo.xcodeproj"));
+        assert_eq!(with, without, "trailing slash must normalize away");
+        assert_eq!(
+            derived_data_hash(&with.display().to_string()),
+            derived_data_hash(&without.display().to_string()),
+        );
     }
 }
