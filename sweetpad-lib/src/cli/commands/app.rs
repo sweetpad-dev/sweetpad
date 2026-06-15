@@ -562,7 +562,11 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path) -> CliR
     ctx.out
         .note(&format!("hot reload self-check: edited {}", file.display()));
 
-    let result = server.wait_for_result(baseline, Duration::from_secs(90));
+    // The first inject is the slowest: the resolver primes its frontend-command
+    // cache with a whole-module `swiftc -###` dry-run before compiling + linking.
+    // Be generous so a slow/contended CI runner doesn't flake (the real watcher
+    // loop has no such deadline — this bound only guards the self-check).
+    let result = server.wait_for_result(baseline, Duration::from_secs(180));
     // Restore the file regardless of outcome.
     let _ = std::fs::write(file, original);
 
