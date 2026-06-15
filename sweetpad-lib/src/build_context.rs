@@ -979,6 +979,36 @@ mod tests {
         assert_eq!(get(&per_arch, "BAR"), "arm64_val");
     }
 
+    /// ASan and UBSan are *orthogonal* (only ASan/TSan are mutually
+    /// exclusive), so a target can enable both at once. Swift Build appends the
+    /// per-sanitizer suffixes to `OBJECT_FILE_DIR_<variant>` in a fixed order —
+    /// address, then undefined-behaviour — giving `Objects-normal-asan-ubsan`.
+    /// The corpus only pins the single-sanitizer case (`-tsan`); this pins the
+    /// *combination* + ordering so a refactor can't silently reorder or drop a
+    /// suffix. (A real `xcodebuild` oracle for the combined dir would need a
+    /// macOS capture; this guards our concatenation against the Swift Build
+    /// source-derived order.)
+    #[test]
+    fn orthogonal_sanitizers_concatenate_object_dir_suffix_in_order() {
+        let xcconfig = scratch_xcconfig(
+            "sanitizers",
+            "ENABLE_ADDRESS_SANITIZER = YES\nENABLE_UNDEFINED_BEHAVIOR_SANITIZER = YES\n",
+        );
+        let ctx = BuildContext::open(&scratch_path())
+            .unwrap()
+            .with_extra_xcconfig(&xcconfig)
+            .unwrap();
+        let resolved = ctx
+            .resolve(&ResolveQuery::new("Scratch", "Debug", "macosx", "arm64"))
+            .unwrap();
+        let dir = get(&resolved, "OBJECT_FILE_DIR_normal");
+        assert!(
+            dir.ends_with("-normal-asan-ubsan"),
+            "address+undefined suffix must concatenate in order: {dir}"
+        );
+        assert!(!dir.contains("-tsan"), "thread sanitizer is off: {dir}");
+    }
+
     /// An `-xcconfig` overlay that resolves `GCC_OPTIMIZATION_LEVEL = 0` —
     /// through a `[config=…]` conditional AND `$(VAR)` indirection — flips
     /// the unoptimized-build gates, exactly like it changes xcodebuild's
