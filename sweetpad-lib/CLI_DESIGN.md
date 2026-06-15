@@ -597,14 +597,17 @@ Xcode/simulator-requiring test, across Xcode versions (16.x, 26.x; weekly + on
 push/PR). Two jobs:
 
 - **`cli`** — the full standalone-CLI e2e (`ci/smoke.sh`) on each Xcode.
-- **`hot-reload`** — the injection e2e (`ci/hot-reload-e2e.sh`): it generates the
-  fixture app, downloads the InjectionNext client dylib, and runs the *real*
-  `sweetpad app run --hot --hot-selfcheck` (hidden flag) for **both** recompilers
-  (resolver + build-log). The self-check builds with the interposable/frontend
-  flags, starts the `:8887` server, launches with the client injected, edits a
-  Swift file once, and asserts `.injected` — exiting non-zero otherwise. It runs
-  on the Xcode matching the prebuilt client; once the per-Xcode client build
-  lands (Milestone 5) it joins the full matrix.
+- **`hot-reload-src`** — the injection e2e (`ci/hot-reload-e2e.sh`) on **both
+  Xcode 16 and 26**: it generates the fixture app and runs the *real* `sweetpad
+  app run --hot --hot-selfcheck` (hidden flag) with **no** dylib override, so the
+  CLI builds the InjectionNext client from source against the active Xcode
+  (Milestone 5), for **both** recompilers (resolver + build-log). The self-check
+  builds with the interposable/frontend flags, starts the `:8887` server,
+  launches with the client injected, edits a Swift file once, and asserts
+  `.injected` — exiting non-zero otherwise. (An earlier `hot-reload` job ran the
+  same e2e against the *prebuilt-download* client, but that path carries the
+  per-Xcode ABI skew this from-source build replaces — it was flaky and was
+  removed in favor of these jobs.)
 
 This supersedes the original throwaway spike (`hot-reload-spike.yaml`), whose
 run #5 first proved the socket + recompile→load→inject chain end-to-end.
