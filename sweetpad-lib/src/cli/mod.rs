@@ -19,6 +19,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 pub mod buildlog;
 pub mod config;
 pub mod devicectl;
+pub mod inject;
 pub mod merge;
 pub mod output;
 pub mod process;

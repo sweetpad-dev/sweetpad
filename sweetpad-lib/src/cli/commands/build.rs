@@ -38,6 +38,7 @@ fn start(ctx: &mut Context, clean: bool) -> CliResult {
         configuration: &target.configuration,
         destination: Some(&target.destination),
         clean,
+        hot: false,
     }
     .run(&ctx.out)
 }

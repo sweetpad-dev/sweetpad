@@ -150,9 +150,52 @@ pub fn launch(udid: &str, bundle_id: &str) -> Result<String, CliError> {
     process::capture("xcrun", &["simctl", "launch", udid, bundle_id], None)
 }
 
-/// Terminate a running app by bundle id.
+/// Launch with extra environment forwarded to `xcrun simctl`. Used by `--hot` to
+/// pass `SIMCTL_CHILD_*` vars (which simctl strips and forwards into the app) so
+/// the injection client dylib is `DYLD_INSERT_LIBRARIES`-loaded. Returns stdout.
+pub fn launch_with_env(
+    udid: &str,
+    bundle_id: &str,
+    env: &[(String, String)],
+) -> Result<String, CliError> {
+    let output = std::process::Command::new("xcrun")
+        .args(["simctl", "launch", udid, bundle_id])
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .output()
+        .map_err(|e| CliError::new(format!("failed to run `xcrun simctl launch`: {e}")))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        Err(CliError::new(format!(
+            "simctl launch failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )))
+    }
+}
+
+/// Terminate a running app by bundle id. Already-stopped is treated as success
+/// (idempotent, mirroring [`boot`]/[`shutdown`]): `simctl` errors with "found
+/// nothing to terminate" when the app isn't running, which is not a failure for
+/// `app stop` / session teardown.
 pub fn terminate(udid: &str, bundle_id: &str) -> Result<(), CliError> {
-    process::stream("xcrun", &["simctl", "terminate", udid, bundle_id], None)
+    let output = std::process::Command::new("xcrun")
+        .args(["simctl", "terminate", udid, bundle_id])
+        .output()
+        .map_err(|e| CliError::new(format!("failed to run `xcrun simctl terminate`: {e}")))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("found nothing to terminate")
+        || stderr.contains("Unable to terminate")
+        || stderr.contains("No such process")
+    {
+        return Ok(());
+    }
+    Err(CliError::new(format!(
+        "simctl terminate failed: {}",
+        stderr.trim()
+    )))
 }
 
 /// Shut down a simulator. Already-shutdown is treated as success so the command

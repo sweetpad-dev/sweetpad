@@ -14,6 +14,8 @@ settings:
     # Simulator/unsigned builds don't need signing; keep CI free of provisioning.
     CODE_SIGNING_ALLOWED: "NO"
     SWIFT_VERSION: "5.0"
+    # CI doesn't need the index store; skipping it speeds every xcodebuild here.
+    COMPILER_INDEX_STORE_ENABLE: "NO"
 
 targets:
   SweetpadCIApp:
