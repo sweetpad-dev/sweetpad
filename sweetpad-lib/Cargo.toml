@@ -70,6 +70,12 @@ toml = { version = "0.8", optional = true }
 # `r`/`q`), unix-only. We flip only the input line-discipline flags by hand so
 # streamed logs keep their newline post-processing — too surgical for a TUI crate.
 libc = { version = "0.2", optional = true }
+# Unicode NFD for the DerivedData path hash: Xcode hashes the path string as the
+# filesystem hands it back, which on HFS+ is canonically decomposed. We MD5 the
+# NFD form so a project under a non-ASCII path resolves the same folder Xcode
+# wrote. UAX #15 is a standardized format with a de-facto crate — not worth
+# hand-rolling the decomposition tables (DOCS.md §3.1).
+unicode-normalization = "0.1"
 
 [build-dependencies]
 napi-build = "2"

@@ -9,10 +9,11 @@
 //! 3. Encode each u64 in base-26 over 14 lowercase letters, low digit at the
 //!    high index. Concatenate (head first) to get the 28-char output.
 //!
-//! No external dependencies — both MD5 (RFC 1321) and the base-26 encoder
-//! are spelled out below. The unit tests pin down the algorithm against
-//! four real path → hash mappings drawn from a captured Xcode DerivedData
-//! tree on the author's machine.
+//! No external dependencies for the hash itself — both MD5 (RFC 1321) and the
+//! base-26 encoder are spelled out below. Unicode NFD (the one thing worth a
+//! crate — see [`derived_data_hash`]) is the lone exception. The unit tests pin
+//! down the algorithm against four real path → hash mappings drawn from a
+//! captured Xcode DerivedData tree on the author's machine.
 
 // RFC 1321 uses single-letter variable names by long-standing convention
 // (`a`, `b`, `c`, `d` for the running state words). Keeping them improves
@@ -27,9 +28,20 @@
 
 /// Compute the DerivedData hash for `path` (the absolute path to a
 /// `.xcodeproj` or `.xcworkspace`).
+///
+/// The path is canonically decomposed (Unicode NFD) before hashing. Xcode's
+/// `hashStringForPath` MD5s the path NSString's UTF-8 bytes with no explicit
+/// normalization of its own — but that string is the one the filesystem handed
+/// back, and macOS's HFS+ stores (and returns) filenames in a decomposed form.
+/// So a path containing precomposed (NFC) characters — e.g. `é` typed as U+00E9
+/// rather than `e` + U+0301 — would hash to a folder Xcode never created unless
+/// we decompose first. ASCII paths are unaffected (NFD is a no-op), so the
+/// pinned ASCII vectors below still hold.
 #[must_use]
 pub fn derived_data_hash(path: &str) -> String {
-    let digest = md5(path.as_bytes());
+    use unicode_normalization::UnicodeNormalization;
+    let normalized: String = path.nfd().collect();
+    let digest = md5(normalized.as_bytes());
     let head = u64::from_be_bytes(digest[..8].try_into().expect("16-byte digest"));
     let tail = u64::from_be_bytes(digest[8..].try_into().expect("16-byte digest"));
     let mut out = [b'_'; 28];
@@ -328,5 +340,26 @@ mod tests {
         let h = derived_data_hash("/some/path");
         assert_eq!(h.len(), 28);
         assert!(h.bytes().all(|b| b.is_ascii_lowercase()));
+    }
+
+    /// A non-ASCII path hashes the same whether the caller spells it
+    /// precomposed (NFC) or decomposed (NFD): Xcode keys off the filesystem's
+    /// decomposed form, so we normalize to NFD before MD5. Here `é` is written
+    /// both as U+00E9 and as `e` + combining acute (U+0301); both must agree,
+    /// and both must equal hashing the explicit NFD spelling.
+    #[test]
+    fn hash_is_invariant_to_unicode_composition() {
+        let nfc = "/Users/me/Café.xcodeproj"; // 'é' = U+00E9
+        let nfd = "/Users/me/Cafe\u{0301}.xcodeproj"; // 'e' + U+0301
+        assert_ne!(nfc, nfd, "the two spellings differ byte-for-byte");
+        assert_eq!(derived_data_hash(nfc), derived_data_hash(nfd));
+    }
+
+    /// NFD normalization must not perturb the pinned ASCII vectors — it is a
+    /// no-op on ASCII, so the hash is exactly the MD5 of the raw bytes.
+    #[test]
+    fn ascii_paths_are_unchanged_by_normalization() {
+        let path = "/Users/hyzyla_home/Developer/sweetpad-lib/corpus/alamofire/Alamofire.xcworkspace";
+        assert_eq!(derived_data_hash(path), "feaqvuepuyjdicgjemrbxfrsxmtp");
     }
 }
