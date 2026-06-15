@@ -140,3 +140,71 @@ jobs:
         env:
           SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
         run: bash ci/hot-reload-e2e.sh
+
+  # Milestone 5: build the injection client from source against the active Xcode
+  # (no prebuilt-binary skew), then run the injection e2e — on both Xcode 16 and
+  # 26, so injection is proven across versions, not just the one the prebuilt
+  # release matches. The built client is cached per (release tag, Xcode build id).
+  hot-reload-src:
+    name: hot reload · client from source · Xcode ${{ matrix.xcode }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, xcode: "26" }
+          - { os: macos-15, xcode: "16" }
+    env:
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        working-directory: sweetpad-lib
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode ${{ matrix.xcode }}
+        id: xc
+        run: |
+          APP=$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$APP" ] || APP=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Selecting $APP"
+          sudo xcode-select -s "$APP/Contents/Developer"
+          xcodebuild -version
+          echo "build=$(xcodebuild -version | awk '/Build version/{print $3}')" >> "$GITHUB_OUTPUT"
+      - name: Install Rust toolchain
+        run: rustup show
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sweetpad-lib
+          shared-key: xcode-tests
+      - name: Build the sweetpad CLI
+        run: cargo build --bin sweetpad
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate the fixture project
+        working-directory: sweetpad-lib/ci/fixture-app
+        run: xcodegen generate
+      - name: Resolve InjectionNext release
+        id: inj
+        run: echo "tag=$(gh release view --repo johnno1962/InjectionNext --json tagName -q .tagName)" >> "$GITHUB_OUTPUT"
+      - name: Cache built injection client
+        id: built
+        uses: actions/cache@v4
+        with:
+          path: ~/injection-built
+          key: injbuilt-${{ steps.inj.outputs.tag }}-xcode-${{ steps.xc.outputs.build }}
+      - name: Build injection client from source (on cache miss)
+        if: steps.built.outputs.cache-hit != 'true'
+        run: |
+          DYLIB=$(bash ci/build-injection-client.sh "$HOME/injection-work")
+          mkdir -p ~/injection-built
+          cp "$DYLIB" ~/injection-built/
+      - name: Locate built client
+        run: |
+          DYLIB="$(find ~/injection-built -name 'libiphonesimulatorInjection.dylib' | head -1)"
+          test -n "$DYLIB" || { echo "built client missing"; exit 1; }
+          echo "SWEETPAD_HOTRELOAD_DYLIB=$DYLIB" >> "$GITHUB_ENV"
+      - name: Hot-reload / injection e2e (client built from source)
+        env:
+          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+        run: bash ci/hot-reload-e2e.sh
