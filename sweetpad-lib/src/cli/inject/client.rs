@@ -52,10 +52,10 @@ pub struct ClientOptions {
     pub override_path: Option<PathBuf>,
 }
 
-/// Resolve the client dylib to inject, building + caching it from vendored
-/// source on a miss (or, until that's vendored, falling back to a local
-/// `InjectionNext.app`).
-pub fn resolve_dylib(opts: &ClientOptions) -> Result<PathBuf, String> {
+/// Resolve the client dylib to inject: an explicit override, else a per-Xcode
+/// cached build, else build it from source and cache it, else an installed
+/// `InjectionNext.app`. `notify` reports slow steps (e.g. the first-run build).
+pub fn resolve_dylib(opts: &ClientOptions, notify: &dyn Fn(&str)) -> Result<PathBuf, String> {
     if let Some(p) = &opts.override_path {
         if p.exists() {
             return Ok(p.clone());
@@ -69,17 +69,32 @@ pub fn resolve_dylib(opts: &ClientOptions) -> Result<PathBuf, String> {
     let name = dylib_name_for(&opts.sdk)
         .ok_or_else(|| format!("hot reload is not supported for the {} SDK", opts.sdk))?;
 
+    // The per-Xcode cache dir, probing the active Xcode build id exactly once. If
+    // the build id can't be determined we deliberately get `None`: caching under
+    // a non-discriminating id would let two Xcodes share one client and silently
+    // reintroduce the ABI skew the from-source build exists to eliminate.
+    let cache = xcode_build_id().and_then(|id| cache_root().map(|r| r.join(id)));
+
     // 1. Per-Xcode cached build (built from source against the active Xcode).
-    if let Some(cached) = cached_dylib(name) {
+    if let Some(cached) = cache.as_deref().and_then(|dir| cached_dylib(dir, name)) {
         return Ok(cached);
     }
     // 2. Build it from source now and cache it (CLI_DESIGN §9d, Milestone 5).
     //    Opt out with SWEETPAD_HOTRELOAD_NO_BUILD to force the fallback.
     let mut build_err = None;
     if std::env::var_os("SWEETPAD_HOTRELOAD_NO_BUILD").is_none() {
-        match build_and_cache(name) {
-            Ok(p) => return Ok(p),
-            Err(e) => build_err = Some(e),
+        match &cache {
+            Some(dir) => {
+                notify(
+                    "hot reload: building the injection client from source against the active \
+                     Xcode (first run only; this can take a few minutes)…",
+                );
+                match build_and_cache(dir, name) {
+                    Ok(p) => return Ok(p),
+                    Err(e) => build_err = Some(e),
+                }
+            }
+            None => build_err = Some("could not determine the active Xcode build id".into()),
         }
     }
 
@@ -148,18 +163,31 @@ fn xctest_search_paths(developer_dir: &str, sdk: &str) -> Option<(String, String
 /// version the e2e validates; bump deliberately).
 const INJECTIONNEXT_REV: &str = "2.0.1RC8";
 
-/// Where a built-per-Xcode client is cached: `~/.cache/sweetpad/hot-reload/<id>/`.
-fn cache_dir() -> Option<PathBuf> {
+/// Root of the per-Xcode client cache: `~/.cache/sweetpad/hot-reload/`. The
+/// caller appends the Xcode build id.
+fn cache_root() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
         .or_else(|| crate::paths::home_dir().map(|h| h.join(".cache")))?;
-    let id = xcode_build_id().unwrap_or_else(|| "unknown".into());
-    Some(base.join("sweetpad").join("hot-reload").join(id))
+    Some(base.join("sweetpad").join("hot-reload"))
 }
 
-fn cached_dylib(name: &str) -> Option<PathBuf> {
-    let p = cached_app_dylib(&cache_dir()?, name);
+/// File written *last* by [`build_and_cache`] holding the built revision; its
+/// presence means the cached `.app` (bundle + companions) is complete, and its
+/// contents let a revision bump invalidate the cache.
+const CACHE_MARKER: &str = ".client-ready";
+
+/// A cached client dylib, but only if the cache is *complete and current*: the
+/// ready-marker must exist and name the pinned revision. This rejects a
+/// half-written cache (interrupted `ditto`) or one left by an older revision —
+/// both would otherwise load + connect but fail to inject — forcing a rebuild.
+fn cached_dylib(cache: &Path, name: &str) -> Option<PathBuf> {
+    let marker = std::fs::read_to_string(cache.join(CACHE_MARKER)).ok()?;
+    if marker.trim() != INJECTIONNEXT_REV {
+        return None;
+    }
+    let p = cached_app_dylib(cache, name);
     p.exists().then_some(p)
 }
 
@@ -186,9 +214,14 @@ fn cached_app_dylib(cache: &Path, name: &str) -> PathBuf {
 /// (`build_bundles.sh`). Copying the lone dereferenced Mach-O out and dropping
 /// the bundle loads + connects but then fails to inject. Keeping the bundle
 /// intact mirrors the proven installed-app and prebuilt-release layouts.
-fn build_and_cache(name: &str) -> Result<PathBuf, String> {
-    let cache = cache_dir().ok_or("no cache directory for the hot-reload client")?;
-    std::fs::create_dir_all(&cache).map_err(|e| format!("create cache dir: {e}"))?;
+///
+/// `cache` is the per-Xcode cache dir. The ready-marker is written *last*, so an
+/// interrupted build never leaves a cache that [`cached_dylib`] would trust.
+fn build_and_cache(cache: &Path, name: &str) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(cache).map_err(|e| format!("create cache dir: {e}"))?;
+    // Invalidate any prior marker up front: a crash mid-build must not leave the
+    // (now stale) marker pointing at a half-rebuilt cache.
+    let _ = std::fs::remove_file(cache.join(CACHE_MARKER));
     let work = cache.join("build");
     // Must be literally "InjectionNext": App/feedcommands uses a relative
     // `#import "../../../InjectionNext/..."` that assumes that dir name.
@@ -196,10 +229,11 @@ fn build_and_cache(name: &str) -> Result<PathBuf, String> {
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work).map_err(|e| format!("create build dir: {e}"))?;
 
-    run_status(
+    run_quiet(
         "git",
         &[
             "clone",
+            "--quiet",
             "--recurse-submodules",
             "--depth",
             "1",
@@ -214,7 +248,7 @@ fn build_and_cache(name: &str) -> Result<PathBuf, String> {
     )?;
 
     let app = src.join("App");
-    run_status(
+    run_quiet(
         "xcrun",
         &[
             "xcodebuild",
@@ -237,14 +271,19 @@ fn build_and_cache(name: &str) -> Result<PathBuf, String> {
         "build InjectionNext client",
     )?;
 
+    // The product path is deterministic for this Debug/macOS build invocation.
+    let built_app = app.join("build/Build/Products/Debug/InjectionNext.app");
+    if !built_app.exists() {
+        return Err(format!(
+            "InjectionNext.app not found at {}",
+            built_app.display()
+        ));
+    }
     // Cache the whole built .app (bundle + symlinks intact). `ditto` preserves
     // the symlinked dylib and its companion bundle faithfully.
-    let products = app.join("build/Build/Products");
-    let built_app = find_named(&products, "InjectionNext.app")
-        .ok_or_else(|| format!("InjectionNext.app not found under {}", products.display()))?;
     let dest_app = cache.join("InjectionNext.app");
     let _ = std::fs::remove_dir_all(&dest_app);
-    run_status(
+    run_quiet(
         "ditto",
         &[&built_app.to_string_lossy(), &dest_app.to_string_lossy()],
         None,
@@ -253,44 +292,29 @@ fn build_and_cache(name: &str) -> Result<PathBuf, String> {
     // Drop the multi-GB clone/derived-data; keep only the cached .app.
     let _ = std::fs::remove_dir_all(&work);
 
-    let dylib = cached_app_dylib(&cache, name);
+    let dylib = cached_app_dylib(cache, name);
     if !dylib.exists() {
         return Err(format!(
             "{name} missing from cached client at {}",
             dylib.display()
         ));
     }
+    // Mark the cache complete *last* — this is what `cached_dylib` trusts.
+    std::fs::write(cache.join(CACHE_MARKER), INJECTIONNEXT_REV)
+        .map_err(|e| format!("write cache marker: {e}"))?;
     Ok(dylib)
 }
 
-/// Run `program args` (optional cwd), mapping a non-zero exit to a `String` error.
-fn run_status(program: &str, args: &[&str], cwd: Option<&Path>, what: &str) -> Result<(), String> {
-    let mut cmd = std::process::Command::new(program);
-    cmd.args(args);
-    if let Some(dir) = cwd {
-        cmd.current_dir(dir);
+/// Run `program args` (optional cwd) with stdout suppressed, mapping a missing
+/// binary or non-zero exit to a `String` error. Delegates spawning to
+/// [`crate::cli::process::run`] (shared command-not-found diagnostics); stdout
+/// is suppressed so build chatter never pollutes the CLI's own output stream.
+fn run_quiet(program: &str, args: &[&str], cwd: Option<&Path>, what: &str) -> Result<(), String> {
+    match process::run(program, args, cwd, true) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(format!("{what}: {program} exited with a non-zero status")),
+        Err(e) => Err(format!("{what}: {e}")),
     }
-    match cmd.status() {
-        Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(format!("{what}: {program} exited with {s}")),
-        Err(e) => Err(format!("{what}: failed to run {program}: {e}")),
-    }
-}
-
-/// Recursively find the first entry named `name` under `dir`.
-fn find_named(dir: &Path, name: &str) -> Option<PathBuf> {
-    let entries = std::fs::read_dir(dir).ok()?;
-    let mut dirs = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.file_name().and_then(|n| n.to_str()) == Some(name) {
-            return Some(path);
-        }
-        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            dirs.push(path);
-        }
-    }
-    dirs.iter().find_map(|d| find_named(d, name))
 }
 
 /// `Build version` from `xcodebuild -version`, the per-Xcode cache key.
@@ -345,5 +369,31 @@ mod tests {
                 .unwrap()
                 .contains("iPhoneSimulator.platform/Developer/Library/Frameworks")
         );
+    }
+
+    #[test]
+    fn cached_dylib_requires_a_current_ready_marker() {
+        let name = "libiphonesimulatorInjection.dylib";
+        let cache = std::env::temp_dir().join(format!("sweetpad-hot-{}", std::process::id()));
+        let resources = cache.join("InjectionNext.app/Contents/Resources");
+        std::fs::create_dir_all(&resources).unwrap();
+        std::fs::write(resources.join(name), b"dylib").unwrap();
+
+        // Dylib present but no marker (e.g. interrupted ditto) → rebuild.
+        assert!(cached_dylib(&cache, name).is_none());
+
+        // Marker from a different revision → rebuild (no version skew).
+        std::fs::write(cache.join(CACHE_MARKER), "0.0.0-old").unwrap();
+        assert!(cached_dylib(&cache, name).is_none());
+
+        // Complete + current cache → served.
+        std::fs::write(cache.join(CACHE_MARKER), INJECTIONNEXT_REV).unwrap();
+        assert_eq!(cached_dylib(&cache, name), Some(resources.join(name)));
+
+        // Marker current but the dylib went missing → rebuild.
+        std::fs::remove_file(resources.join(name)).unwrap();
+        assert!(cached_dylib(&cache, name).is_none());
+
+        let _ = std::fs::remove_dir_all(&cache);
     }
 }

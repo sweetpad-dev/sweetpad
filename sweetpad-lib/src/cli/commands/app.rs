@@ -472,7 +472,8 @@ fn run_hot_session(
         project_root: project_root.clone(),
         override_path: std::env::var_os("SWEETPAD_HOTRELOAD_DYLIB").map(std::path::PathBuf::from),
     };
-    let dylib = inject::client::resolve_dylib(&client_opts).map_err(CliError::new)?;
+    let dylib = inject::client::resolve_dylib(&client_opts, &|msg| ctx.out.note(msg))
+        .map_err(CliError::new)?;
     let launch_env = inject::client::launch_env(&dylib, &client_opts);
     ctx.out
         .note(&format!("hot reload: injecting {}", dylib.display()));

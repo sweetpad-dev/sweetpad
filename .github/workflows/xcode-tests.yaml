@@ -183,7 +183,10 @@ jobs:
         working-directory: sweetpad-lib/ci/fixture-app
         run: xcodegen generate
       # Cache the client the CLI builds from source (keyed by Xcode build id, so
-      # only the first run per Xcode pays the InjectionNext build).
+      # only the first run per Xcode pays the InjectionNext build). The rev in
+      # this key mirrors INJECTIONNEXT_REV in client.rs — keep them in sync. Even
+      # if they drift, the CLI's per-rev ready-marker makes a stale restore
+      # rebuild rather than serve a mismatched client.
       - name: Cache CLI-built injection client
         uses: actions/cache@v4
         with:
