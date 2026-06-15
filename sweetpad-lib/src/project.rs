@@ -1309,6 +1309,17 @@ pub fn built_in_settings(
         .unwrap_or("")
         .to_string();
     let derived_hash = derived_data_hash(&derived_container.display().to_string());
+    // We model the default "Unique" build location (`<Name>-<hash>`) plus the
+    // explicit `-derivedDataPath` override below. NOT modeled: the non-default
+    // styles a user can set in Xcode's Locations pref, persisted to
+    // `WorkspaceSettings.xcsettings` (`BuildLocationStyle` = `Shared` /
+    // `CustomLocation` {Absolute, RelativeToDerivedData, RelativeToWorkspace} /
+    // legacy `DeterminedByTargets`→`$(SRCROOT)/build`). When any of those is
+    // set the `<Name>-<hash>` segment doesn't apply and BUILD_DIR diverges, so
+    // the launcher would look in the wrong tree. We already locate + parse that
+    // plist (see `scheme.rs`), so wiring the build-location keys in here is
+    // plumbing — left demand-driven since it's rare and each style needs a real
+    // xcodebuild capture to pin.
     let derived_root = if let Some(override_path) = derived_data_path {
         override_path.display().to_string()
     } else if home.is_empty() {
