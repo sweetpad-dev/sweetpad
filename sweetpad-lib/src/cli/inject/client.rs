@@ -69,17 +69,21 @@ pub fn resolve_dylib(opts: &ClientOptions) -> Result<PathBuf, String> {
     let name = dylib_name_for(&opts.sdk)
         .ok_or_else(|| format!("hot reload is not supported for the {} SDK", opts.sdk))?;
 
-    // 1. Per-Xcode cached build (the vendored-source distribution).
+    // 1. Per-Xcode cached build (built from source against the active Xcode).
     if let Some(cached) = cached_dylib(name) {
         return Ok(cached);
     }
-    match build_and_cache(opts, name) {
-        Ok(p) => return Ok(p),
-        Err(BuildError::NoVendoredSource) => {} // fall through to the app fallback
-        Err(BuildError::Failed(e)) => return Err(e),
+    // 2. Build it from source now and cache it (CLI_DESIGN §9d, Milestone 5).
+    //    Opt out with SWEETPAD_HOTRELOAD_NO_BUILD to force the fallback.
+    let mut build_err = None;
+    if std::env::var_os("SWEETPAD_HOTRELOAD_NO_BUILD").is_none() {
+        match build_and_cache(name) {
+            Ok(p) => return Ok(p),
+            Err(e) => build_err = Some(e),
+        }
     }
 
-    // 2. Fallback: an installed InjectionNext.app (Milestone-1's proven path).
+    // 3. Fallback: an installed InjectionNext.app (Milestone-1's proven path).
     let app_dylib = Path::new(INJECTIONNEXT_APP)
         .join("Contents/Resources")
         .join(name);
@@ -88,10 +92,12 @@ pub fn resolve_dylib(opts: &ClientOptions) -> Result<PathBuf, String> {
     }
 
     Err(format!(
-        "no injection client dylib found. Install InjectionNext.app (\
-         https://github.com/johnno1962/InjectionNext) or set the hot-reload \
-         dylib override. (Expected the vendored build cache or {})",
-        app_dylib.display()
+        "no injection client dylib available.{} Install InjectionNext.app \
+         (https://github.com/johnno1962/InjectionNext), set SWEETPAD_HOTRELOAD_DYLIB, \
+         or ensure git + Xcode can build the client.",
+        build_err
+            .map(|e| format!(" Building from source failed: {e}."))
+            .unwrap_or_default()
     ))
 }
 
@@ -138,12 +144,9 @@ fn xctest_search_paths(developer_dir: &str, sdk: &str) -> Option<(String, String
     Some((framework, library))
 }
 
-enum BuildError {
-    /// The vendored InjectionNext source isn't present in this build — use the
-    /// fallback. (Removed once the source is vendored under `vendor/`.)
-    NoVendoredSource,
-    Failed(String),
-}
+/// Pinned InjectionNext revision built from source (kept in lockstep with the
+/// version the e2e validates; bump deliberately).
+const INJECTIONNEXT_REV: &str = "2.0.1RC8";
 
 /// Where a built-per-Xcode client is cached: `~/.cache/sweetpad/hot-reload/<id>/`.
 fn cache_dir() -> Option<PathBuf> {
@@ -160,28 +163,103 @@ fn cached_dylib(name: &str) -> Option<PathBuf> {
     p.exists().then_some(p)
 }
 
-/// Build the client from vendored source with `xcodebuild` and cache it under
-/// the active Xcode's build id (CLI_DESIGN §9d: builder = xcodebuild). Until the
-/// source tree is vendored this is a no-op signalling the fallback.
-fn build_and_cache(_opts: &ClientOptions, _name: &str) -> Result<PathBuf, BuildError> {
-    let Some(source) = vendored_source() else {
-        return Err(BuildError::NoVendoredSource);
-    };
-    // Implementation note (executed once the source is vendored): `xcodebuild`
-    // the InjectionNext project for `-sdk <opts.sdk>`, then copy the produced
-    // `iOSInjection.bundle`/dylib into `cache_dir()`. Errors map to
-    // `BuildError::Failed`. Kept behind `vendored_source()` so the binary builds
-    // and runs (via the fallback) before the vendoring lands.
-    let _ = source;
-    Err(BuildError::Failed(
-        "vendored client build not yet implemented".into(),
-    ))
+/// Build the InjectionNext client from source against the **active Xcode** and
+/// cache it under the Xcode build id (CLI_DESIGN §9d, Milestone 5). Mirrors the
+/// CI-validated `ci/build-injection-client.sh`: clone the pinned revision with
+/// submodules, `xcodebuild` the app (which emits the per-platform injection
+/// dylibs), and cache the simulator one. Building against the user's own Xcode
+/// makes the client's XCTest ABI match — no prebuilt-binary version skew.
+fn build_and_cache(name: &str) -> Result<PathBuf, String> {
+    let cache = cache_dir().ok_or("no cache directory for the hot-reload client")?;
+    std::fs::create_dir_all(&cache).map_err(|e| format!("create cache dir: {e}"))?;
+    let work = cache.join("build");
+    // Must be literally "InjectionNext": App/feedcommands uses a relative
+    // `#import "../../../InjectionNext/..."` that assumes that dir name.
+    let src = work.join("InjectionNext");
+    let _ = std::fs::remove_dir_all(&src);
+    std::fs::create_dir_all(&work).map_err(|e| format!("create build dir: {e}"))?;
+
+    run_status(
+        "git",
+        &[
+            "clone",
+            "--recurse-submodules",
+            "--depth",
+            "1",
+            "--shallow-submodules",
+            "--branch",
+            INJECTIONNEXT_REV,
+            "https://github.com/johnno1962/InjectionNext",
+            &src.to_string_lossy(),
+        ],
+        None,
+        "clone InjectionNext",
+    )?;
+
+    let app = src.join("App");
+    run_status(
+        "xcrun",
+        &[
+            "xcodebuild",
+            "-project",
+            "InjectionNext.xcodeproj",
+            "-scheme",
+            "InjectionNext",
+            "-configuration",
+            "Debug",
+            "-destination",
+            "platform=macOS",
+            "-derivedDataPath",
+            "build",
+            "CODE_SIGNING_ALLOWED=NO",
+            "CODE_SIGNING_REQUIRED=NO",
+            "build",
+            "-quiet",
+        ],
+        Some(&app),
+        "build InjectionNext client",
+    )?;
+
+    // The dylib lives in the built .app's Resources (as a symlink).
+    let products = app.join("build/Build/Products");
+    let built = find_named(&products, name)
+        .ok_or_else(|| format!("{name} not found under {}", products.display()))?;
+    let dest = cache.join(name);
+    // `fs::copy` follows the symlink source, writing a standalone dylib.
+    std::fs::copy(&built, &dest).map_err(|e| format!("cache client dylib: {e}"))?;
+    // Drop the multi-GB clone/derived-data; keep only the cached dylib.
+    let _ = std::fs::remove_dir_all(&work);
+    Ok(dest)
 }
 
-/// The vendored InjectionNext source tree, if present in this build.
-fn vendored_source() -> Option<PathBuf> {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/InjectionNext");
-    p.is_dir().then_some(p)
+/// Run `program args` (optional cwd), mapping a non-zero exit to a `String` error.
+fn run_status(program: &str, args: &[&str], cwd: Option<&Path>, what: &str) -> Result<(), String> {
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(args);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    match cmd.status() {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("{what}: {program} exited with {s}")),
+        Err(e) => Err(format!("{what}: failed to run {program}: {e}")),
+    }
+}
+
+/// Recursively find the first entry named `name` under `dir`.
+fn find_named(dir: &Path, name: &str) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut dirs = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.file_name().and_then(|n| n.to_str()) == Some(name) {
+            return Some(path);
+        }
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            dirs.push(path);
+        }
+    }
+    dirs.iter().find_map(|d| find_named(d, name))
 }
 
 /// `Build version` from `xcodebuild -version`, the per-Xcode cache key.

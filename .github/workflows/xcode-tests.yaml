@@ -154,8 +154,6 @@ jobs:
         include:
           - { os: macos-15, xcode: "26" }
           - { os: macos-15, xcode: "16" }
-    env:
-      GH_TOKEN: ${{ github.token }}
     defaults:
       run:
         working-directory: sweetpad-lib
@@ -184,27 +182,16 @@ jobs:
       - name: Generate the fixture project
         working-directory: sweetpad-lib/ci/fixture-app
         run: xcodegen generate
-      - name: Resolve InjectionNext release
-        id: inj
-        run: echo "tag=$(gh release view --repo johnno1962/InjectionNext --json tagName -q .tagName)" >> "$GITHUB_OUTPUT"
-      - name: Cache built injection client
-        id: built
+      # Cache the client the CLI builds from source (keyed by Xcode build id, so
+      # only the first run per Xcode pays the InjectionNext build).
+      - name: Cache CLI-built injection client
         uses: actions/cache@v4
         with:
-          path: ~/injection-built
-          key: injbuilt-${{ steps.inj.outputs.tag }}-xcode-${{ steps.xc.outputs.build }}
-      - name: Build injection client from source (on cache miss)
-        if: steps.built.outputs.cache-hit != 'true'
-        run: |
-          DYLIB=$(bash ci/build-injection-client.sh "$HOME/injection-work")
-          mkdir -p ~/injection-built
-          cp -L "$DYLIB" ~/injection-built/  # -L: the source is a symlink in the .app
-      - name: Locate built client
-        run: |
-          DYLIB="$(find ~/injection-built -name 'libiphonesimulatorInjection.dylib' | head -1)"
-          test -n "$DYLIB" || { echo "built client missing"; exit 1; }
-          echo "SWEETPAD_HOTRELOAD_DYLIB=$DYLIB" >> "$GITHUB_ENV"
-      - name: Hot-reload / injection e2e (client built from source)
+          path: ~/.cache/sweetpad/hot-reload
+          key: injclient-2.0.1RC8-xcode-${{ steps.xc.outputs.build }}
+      # No SWEETPAD_HOTRELOAD_DYLIB override: the CLI resolves the client itself,
+      # building it from source against the active Xcode (Milestone 5).
+      - name: Hot-reload / injection e2e (CLI builds the client from source)
         env:
           SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
         run: bash ci/hot-reload-e2e.sh

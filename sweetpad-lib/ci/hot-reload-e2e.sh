@@ -9,7 +9,8 @@
 # (resolver default + build-log). Run by .github/workflows/xcode-tests.yaml.
 #
 # Requires: SWEETPAD_BIN (the built binary); the fixture generated with xcodegen.
-# Uses SWEETPAD_HOTRELOAD_DYLIB if set, else downloads the InjectionNext client.
+# Client resolution is the CLI's job: SWEETPAD_HOTRELOAD_DYLIB (override) if set,
+# else the CLI builds it from source per-Xcode (Milestone 5), else falls back.
 set -euo pipefail
 
 BIN="${SWEETPAD_BIN:?set SWEETPAD_BIN to the sweetpad binary}"
@@ -24,19 +25,7 @@ fail() { echo "  ✗ $*" >&2; exit 1; }
 section "tooling"
 xcodebuild -version
 test -f "$SRC" || fail "fixture source missing: $SRC (run xcodegen generate first)"
-
-section "injection client dylib"
-# Build from source per-Xcode is the long-term plan (CLI_DESIGN §9d Milestone 5);
-# until that's vendored, download the prebuilt client matching the active Xcode.
-if [[ -z "${SWEETPAD_HOTRELOAD_DYLIB:-}" ]]; then
-  INJ="$(mktemp -d)"
-  gh release download --repo johnno1962/InjectionNext --pattern '*.zip' --dir "$INJ" --clobber
-  ( cd "$INJ" && for z in *.zip; do unzip -q -o "$z" -d extracted; done )
-  DYLIB="$(find "$INJ/extracted" -name 'libiphonesimulatorInjection.dylib' | head -1 || true)"
-  [[ -n "$DYLIB" ]] || fail "could not find libiphonesimulatorInjection.dylib in the release"
-  export SWEETPAD_HOTRELOAD_DYLIB="$DYLIB"
-fi
-echo "  client: $SWEETPAD_HOTRELOAD_DYLIB"
+echo "  client: ${SWEETPAD_HOTRELOAD_DYLIB:-<built from source by the CLI>}"
 
 section "pick + boot a simulator"
 DEST=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")

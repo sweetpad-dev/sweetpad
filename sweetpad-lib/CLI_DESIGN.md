@@ -527,19 +527,21 @@ full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
 4. **Watcher + session integration — ✅ done.** Polling watcher → `server.inject`;
    `run_hot_session` builds + serves + launches + watches; key loop keeps `r`
    (full rebuild, client reconnects) / `q`; `.injected`/`.failed` status lines.
-5. **Vendored client build — ◑ partial.** Resolution + per-Xcode cache +
-   `InjectionNext.app` fallback are implemented (`cli/inject/client.rs`); the
-   `xcodebuild`-from-vendored-source step is scaffolded behind `vendored_source()`
-   and activates once the InjectionNext source tree is vendored. `--hot` works
-   today via the fallback (Milestone-1's proven path).
+5. **Client build from source — ✅ done & validated.** `client.rs::build_and_cache`
+   clones the pinned InjectionNext (with submodules) and `xcodebuild`s it against
+   the **active Xcode**, caching the simulator dylib per Xcode build id;
+   `resolve_dylib` order is override → per-Xcode cache → build-from-source →
+   `InjectionNext.app` fallback. Validated by the `hot-reload-src` CI job, which
+   runs the real `app run --hot` (no dylib override) and injects on **both Xcode
+   16 and 26** — the prebuilt-binary version skew is gone.
 6. **Polish — ✅ mostly done.** "Inject package missing" advisory ported;
    teardown (watcher/server/app/cleanup) wired. (Config-level default for the
    recompiler mode — beyond the `--hot-recompiler` flag — is the remaining nicety.)
 
 > **Implementation status:** the `cli/inject/` module + `app run --hot` are
-> implemented, `clippy -D warnings`/`fmt` clean, with unit tests on Linux. The
-> one piece needing macOS is vendoring + the `xcodebuild` recipe for the client
-> (Milestone 5); runtime validation continues via the spike/CI.
+> implemented and **validated end-to-end on real simulators** (Xcode 16 + 26),
+> both recompilers, with the client built from source per Xcode. `clippy -D
+> warnings`/`fmt` clean, unit tests on Linux, live e2e on the macOS matrix.
 
 ### Client distribution — vendor full source, compile per Xcode (decided)
 
