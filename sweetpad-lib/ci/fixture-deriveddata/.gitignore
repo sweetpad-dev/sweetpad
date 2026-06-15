@@ -1,0 +1,5 @@
+# Generated on CI by `xcodegen generate` and by deriveddata-oracle.sh.
+*.xcodeproj/
+*.xcworkspace/
+# Scratch trees the oracle builds for the sibling-workspace and non-ASCII cases.
+_work/

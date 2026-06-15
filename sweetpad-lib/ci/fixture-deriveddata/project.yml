@@ -1,0 +1,42 @@
+# Fixture for the DerivedData path-hash oracle (ci/deriveddata-oracle.sh).
+#
+# A minimal native-macOS app. The oracle never builds it — it only runs
+# `xcodebuild -showBuildSettings` to read the real DerivedData-anchored
+# BUILD_DIR (`~/Library/Developer/Xcode/DerivedData/<Name>-<hash>/Build/...`)
+# and compares it, byte-for-byte, against the in-process resolver's BUILD_DIR
+# across several container shapes (bare project, the `.xcodeproj/project.xcworkspace`
+# stub from issue #285, a real sibling workspace, and a non-ASCII path).
+#
+# macOS so EFFECTIVE_PLATFORM_NAME is empty and products land under `Debug/`
+# (the exact shape of the #285 report). Generated on CI with XcodeGen; the
+# .xcodeproj is not committed.
+name: DDProbe
+options:
+  bundleIdPrefix: dev.sweetpad.ci
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    CODE_SIGNING_ALLOWED: "NO"
+    SWIFT_VERSION: "5.0"
+
+targets:
+  DDProbe:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.ci.ddprobe
+
+schemes:
+  DDProbe:
+    build:
+      targets:
+        DDProbe: all
+    run:
+      config: Debug
