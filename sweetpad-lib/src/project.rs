@@ -1493,6 +1493,12 @@ pub fn built_in_settings(
         "CONFIGURATION_BUILD_DIR",
         "$(BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)".into(),
     );
+    // We model the BUILD action, where `DEPLOYMENT_LOCATION=NO` and the product
+    // sits in `BUILT_PRODUCTS_DIR`. REMINDER: if we ever resolve for `install`
+    // / `archive`, xcodebuild flips `DEPLOYMENT_LOCATION=YES` and the product
+    // moves to `$(DSTROOT)$(INSTALL_PATH)` (and `SKIP_INSTALL=YES` targets land
+    // in `$(TARGET_TEMP_DIR)/UninstalledProducts/<platform>` instead) — these
+    // path keys must branch on the action, not stay hard-wired to the build set.
     push("BUILT_PRODUCTS_DIR", "$(CONFIGURATION_BUILD_DIR)".into());
     // Including `$(TARGET_BUILD_SUBPATH)` here is what wires up parent-app
     // embedding. `TARGET_BUILD_SUBPATH` defaults to empty (so this expands
