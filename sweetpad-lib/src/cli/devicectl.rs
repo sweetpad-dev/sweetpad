@@ -227,10 +227,7 @@ pub fn launch_console(device_id: &str, bundle_id: &str) -> Result<(), CliError> 
 /// Like [`launch_console`] but spawned in the background, handing back the child
 /// so the interactive `app run` session can stream the device console while
 /// watching for the rebuild key.
-pub fn spawn_console(
-    device_id: &str,
-    bundle_id: &str,
-) -> Result<std::process::Child, CliError> {
+pub fn spawn_console(device_id: &str, bundle_id: &str) -> Result<std::process::Child, CliError> {
     process::spawn(
         "xcrun",
         &[

@@ -1,0 +1,137 @@
+name: xcode-tests
+
+# Permanent macOS CI for tests that need Xcode + simulators, run across multiple
+# Xcode versions. Two jobs:
+#   • cli             — the standalone CLI's full e2e (ci/smoke.sh) on each Xcode.
+#   • hot-reload-src  — the built-in hot-reload / injection e2e, with the client
+#                       built from source per Xcode (ci/hot-reload-e2e.sh).
+# Lean on push/PR (newest Xcode only); the full Xcode matrix runs on the weekly
+# schedule and on manual dispatch, so image updates are still caught.
+on:
+  push:
+    branches: [main, claude/cli-hot-reloading-c52yf2]
+    paths:
+      - "sweetpad-lib/**"
+      - ".github/workflows/xcode-tests.yaml"
+  pull_request:
+    paths:
+      - "sweetpad-lib/**"
+      - ".github/workflows/xcode-tests.yaml"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+# Don't stack macOS runs for the same ref — cancel the superseded one.
+concurrency:
+  group: xcode-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Better cache hit rate with Swatinem/rust-cache (no per-run incremental dir).
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  cli:
+    name: cli e2e · ${{ matrix.os }} · Xcode ${{ matrix.xcode }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # Full matrix on schedule / manual dispatch; just the newest Xcode on push/PR.
+      matrix:
+        include: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[{"os":"macos-15","xcode":"26"},{"os":"macos-15","xcode":"16"}]' || '[{"os":"macos-15","xcode":"26"}]') }}
+    defaults:
+      run:
+        working-directory: sweetpad-lib
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: |
+          APP=$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$APP" ] || APP=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Selecting $APP"
+          sudo xcode-select -s "$APP/Contents/Developer"
+          xcodebuild -version
+      - name: Install Rust toolchain
+        run: rustup show
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sweetpad-lib
+          shared-key: xcode-tests
+      - name: Build the sweetpad CLI
+        run: cargo build --bin sweetpad
+      - name: Unit tests
+        run: cargo test
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate the fixture project
+        working-directory: sweetpad-lib/ci/fixture-app
+        run: xcodegen generate
+      - name: End-to-end CLI coverage
+        env:
+          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+        run: bash ci/smoke.sh
+
+  # Build the injection client from source against the active Xcode (no
+  # prebuilt-binary skew), then run the injection e2e — on both Xcode 16 and 26,
+  # so injection is proven across versions. This is the path the CLI actually
+  # ships (CLI_DESIGN §9d, Milestone 5); the built client is cached per Xcode
+  # build id. (A prebuilt-download e2e job lived here previously but tested the
+  # ABI-skewed prebuilt client this from-source path deliberately replaces, so it
+  # was removed in favor of these jobs.)
+  hot-reload-src:
+    name: hot reload · client from source · Xcode ${{ matrix.xcode }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, xcode: "26" }
+          - { os: macos-15, xcode: "16" }
+    defaults:
+      run:
+        working-directory: sweetpad-lib
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode ${{ matrix.xcode }}
+        id: xc
+        run: |
+          APP=$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$APP" ] || APP=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Selecting $APP"
+          sudo xcode-select -s "$APP/Contents/Developer"
+          xcodebuild -version
+          echo "build=$(xcodebuild -version | awk '/Build version/{print $3}')" >> "$GITHUB_OUTPUT"
+      - name: Install Rust toolchain
+        run: rustup show
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sweetpad-lib
+          shared-key: xcode-tests
+      - name: Build the sweetpad CLI
+        run: cargo build --bin sweetpad
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate the fixture project
+        working-directory: sweetpad-lib/ci/fixture-app
+        run: xcodegen generate
+      # Cache the client the CLI builds from source (keyed by Xcode build id, so
+      # only the first run per Xcode pays the InjectionNext build). The rev in
+      # this key mirrors INJECTIONNEXT_REV in client.rs — keep them in sync. Even
+      # if they drift, the CLI's per-rev ready-marker makes a stale restore
+      # rebuild rather than serve a mismatched client.
+      - name: Cache CLI-built injection client
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/sweetpad/hot-reload
+          key: injclient-2.0.1RC8-xcode-${{ steps.xc.outputs.build }}
+      # No SWEETPAD_HOTRELOAD_DYLIB override: the CLI resolves the client itself,
+      # building it from source against the active Xcode (Milestone 5).
+      - name: Hot-reload / injection e2e (CLI builds the client from source)
+        env:
+          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+        run: bash ci/hot-reload-e2e.sh
