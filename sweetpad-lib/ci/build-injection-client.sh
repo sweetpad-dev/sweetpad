@@ -42,7 +42,8 @@ echo "==> building InjectionNext with $(xcodebuild -version | head -1) (this is 
     build -quiet >&2
 )
 
-DYLIB="$(find "$SRC/App/build/Build/Products" -name "$DYLIB_NAME" -type f 2>/dev/null | head -1)"
+# The dylib in the .app's Resources is a symlink, so don't restrict to -type f.
+DYLIB="$(find "$SRC/App/build/Build/Products" -name "$DYLIB_NAME" 2>/dev/null | head -1)"
 if [ -z "$DYLIB" ]; then
   echo "ERROR: $DYLIB_NAME not found after build. Injection dylibs produced:" >&2
   find "$SRC/App/build/Build/Products" -name '*Injection*.dylib' >&2 || true

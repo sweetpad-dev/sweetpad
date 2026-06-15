@@ -198,7 +198,7 @@ jobs:
         run: |
           DYLIB=$(bash ci/build-injection-client.sh "$HOME/injection-work")
           mkdir -p ~/injection-built
-          cp "$DYLIB" ~/injection-built/
+          cp -L "$DYLIB" ~/injection-built/  # -L: the source is a symlink in the .app
       - name: Locate built client
         run: |
           DYLIB="$(find ~/injection-built -name 'libiphonesimulatorInjection.dylib' | head -1)"
