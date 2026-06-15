@@ -4,9 +4,9 @@
 //!
 //! Resolution order: an explicit override, then the per-Xcode cached build, then
 //! a fall back to an installed `InjectionNext.app` (the path proven by the
-//! Milestone-1 spike). The cached build from vendored source — the long-term
-//! distribution — is wired here behind [`build_and_cache`]; until the source is
-//! vendored it returns a clear error and we use the fallback.
+//! Milestone-1 spike). The cached build ([`build_and_cache`]) clones + builds
+//! the pinned InjectionNext from source against the active Xcode and caches the
+//! resulting `.app` per Xcode build id — the long-term distribution.
 
 use std::path::{Path, PathBuf};
 
@@ -159,16 +159,33 @@ fn cache_dir() -> Option<PathBuf> {
 }
 
 fn cached_dylib(name: &str) -> Option<PathBuf> {
-    let p = cache_dir()?.join(name);
+    let p = cached_app_dylib(&cache_dir()?, name);
     p.exists().then_some(p)
 }
 
+/// The injection dylib *inside* a cached `InjectionNext.app`. The client must be
+/// loaded with its companion `*.bundle`/`Frameworks` next to it — see
+/// [`build_and_cache`] — so we always point at the symlink within the bundle,
+/// the same on-disk shape as an installed `InjectionNext.app`.
+fn cached_app_dylib(cache: &Path, name: &str) -> PathBuf {
+    cache
+        .join("InjectionNext.app")
+        .join("Contents/Resources")
+        .join(name)
+}
+
 /// Build the InjectionNext client from source against the **active Xcode** and
-/// cache it under the Xcode build id (CLI_DESIGN §9d, Milestone 5). Mirrors the
-/// CI-validated `ci/build-injection-client.sh`: clone the pinned revision with
-/// submodules, `xcodebuild` the app (which emits the per-platform injection
-/// dylibs), and cache the simulator one. Building against the user's own Xcode
-/// makes the client's XCTest ABI match — no prebuilt-binary version skew.
+/// cache it under the Xcode build id (CLI_DESIGN §9d, Milestone 5): clone the
+/// pinned revision with submodules and `xcodebuild` the app, then cache the
+/// whole built `InjectionNext.app`. Building against the user's own Xcode makes
+/// the client's XCTest ABI match — no prebuilt-binary version skew.
+///
+/// We cache the *entire* `.app`, not just the dylib, on purpose:
+/// `lib<sdk>Injection.dylib` is a symlink into a companion `*.bundle` whose
+/// Swift/XCTest dependencies are resolved at load time via `@loader_path`
+/// (`build_bundles.sh`). Copying the lone dereferenced Mach-O out and dropping
+/// the bundle loads + connects but then fails to inject. Keeping the bundle
+/// intact mirrors the proven installed-app and prebuilt-release layouts.
 fn build_and_cache(name: &str) -> Result<PathBuf, String> {
     let cache = cache_dir().ok_or("no cache directory for the hot-reload client")?;
     std::fs::create_dir_all(&cache).map_err(|e| format!("create cache dir: {e}"))?;
@@ -176,7 +193,7 @@ fn build_and_cache(name: &str) -> Result<PathBuf, String> {
     // Must be literally "InjectionNext": App/feedcommands uses a relative
     // `#import "../../../InjectionNext/..."` that assumes that dir name.
     let src = work.join("InjectionNext");
-    let _ = std::fs::remove_dir_all(&src);
+    let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work).map_err(|e| format!("create build dir: {e}"))?;
 
     run_status(
@@ -220,16 +237,30 @@ fn build_and_cache(name: &str) -> Result<PathBuf, String> {
         "build InjectionNext client",
     )?;
 
-    // The dylib lives in the built .app's Resources (as a symlink).
+    // Cache the whole built .app (bundle + symlinks intact). `ditto` preserves
+    // the symlinked dylib and its companion bundle faithfully.
     let products = app.join("build/Build/Products");
-    let built = find_named(&products, name)
-        .ok_or_else(|| format!("{name} not found under {}", products.display()))?;
-    let dest = cache.join(name);
-    // `fs::copy` follows the symlink source, writing a standalone dylib.
-    std::fs::copy(&built, &dest).map_err(|e| format!("cache client dylib: {e}"))?;
-    // Drop the multi-GB clone/derived-data; keep only the cached dylib.
+    let built_app = find_named(&products, "InjectionNext.app")
+        .ok_or_else(|| format!("InjectionNext.app not found under {}", products.display()))?;
+    let dest_app = cache.join("InjectionNext.app");
+    let _ = std::fs::remove_dir_all(&dest_app);
+    run_status(
+        "ditto",
+        &[&built_app.to_string_lossy(), &dest_app.to_string_lossy()],
+        None,
+        "cache InjectionNext.app",
+    )?;
+    // Drop the multi-GB clone/derived-data; keep only the cached .app.
     let _ = std::fs::remove_dir_all(&work);
-    Ok(dest)
+
+    let dylib = cached_app_dylib(&cache, name);
+    if !dylib.exists() {
+        return Err(format!(
+            "{name} missing from cached client at {}",
+            dylib.display()
+        ));
+    }
+    Ok(dylib)
 }
 
 /// Run `program args` (optional cwd), mapping a non-zero exit to a `String` error.

@@ -527,13 +527,17 @@ full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
 4. **Watcher + session integration — ✅ done.** Polling watcher → `server.inject`;
    `run_hot_session` builds + serves + launches + watches; key loop keeps `r`
    (full rebuild, client reconnects) / `q`; `.injected`/`.failed` status lines.
-5. **Client build from source — ✅ done & validated.** `client.rs::build_and_cache`
-   clones the pinned InjectionNext (with submodules) and `xcodebuild`s it against
-   the **active Xcode**, caching the simulator dylib per Xcode build id;
-   `resolve_dylib` order is override → per-Xcode cache → build-from-source →
-   `InjectionNext.app` fallback. Validated by the `hot-reload-src` CI job, which
-   runs the real `app run --hot` (no dylib override) and injects on **both Xcode
-   16 and 26** — the prebuilt-binary version skew is gone.
+5. **Client build from source — ✅ done.** `client.rs::build_and_cache` clones the
+   pinned InjectionNext (with submodules) and `xcodebuild`s it against the
+   **active Xcode**, caching the whole built **`InjectionNext.app`** per Xcode
+   build id; `resolve_dylib` order is override → per-Xcode cache →
+   build-from-source → `InjectionNext.app` fallback. We cache the *entire* `.app`
+   (not just the dylib): `lib<sdk>Injection.dylib` is a symlink into a companion
+   `*.bundle` whose Swift/XCTest deps resolve at load time via `@loader_path`
+   (`build_bundles.sh`), so a lone copied Mach-O loads + connects but fails to
+   inject — keeping the bundle intact mirrors the proven installed-app /
+   prebuilt-release layouts. Exercised by the `hot-reload-src` CI job, which runs
+   the real `app run --hot` (no dylib override) on **both Xcode 16 and 26**.
 6. **Polish — ✅ mostly done.** "Inject package missing" advisory ported;
    teardown (watcher/server/app/cleanup) wired. (Config-level default for the
    recompiler mode — beyond the `--hot-recompiler` flag — is the remaining nicety.)
