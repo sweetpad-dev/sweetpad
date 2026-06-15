@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.3] - 2026-06-15
+
+- Fix the built app not being found when `sweetpad.build.xcodeWorkspacePath` points at the `project.xcworkspace` stub Xcode auto-generates inside an `.xcodeproj` bundle: the DerivedData folder is now keyed by the outer `.xcodeproj` (`CSUSTPlanet-…`), matching Xcode, instead of the stub (`project-…`) ([#285](https://github.com/sweetpad-dev/sweetpad/issues/285), thanks [@zHElEARN](https://github.com/zHElEARN))
+
 ## [0.2.2] - 2026-06-13
 
 - Fix the built app not being found after 0.2.1 when building from a workspace whose `.xcodeproj` lives in a different directory than the `.xcworkspace`: build settings (`BUILD_DIR`/`TARGET_BUILD_DIR`) are now keyed by the workspace's DerivedData folder, matching Xcode, instead of the member project's ([#265](https://github.com/sweetpad-dev/sweetpad/issues/265))
