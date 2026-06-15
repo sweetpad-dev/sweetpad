@@ -1080,4 +1080,48 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    /// Regression for #285: when the declared DerivedData container is the
+    /// `.xcodeproj/project.xcworkspace` stub Xcode auto-generates inside every
+    /// project bundle (a user can point `xcodeWorkspacePath` straight at it),
+    /// the folder must still resolve as `<Project>-<hash-of-.xcodeproj>` — NOT
+    /// the literal `project-<hash-of-stub>`, which sends the launcher looking
+    /// for the built app in a directory Xcode never wrote to.
+    #[test]
+    fn xcodeproj_stub_workspace_container_resolves_to_the_outer_project() {
+        let root =
+            std::env::temp_dir().join(format!("sweetpad-bc-stub-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let xcodeproj = root.join("Scratch.xcodeproj");
+        std::fs::create_dir_all(&xcodeproj).unwrap();
+        std::fs::copy(
+            scratch_path().join("project.pbxproj"),
+            xcodeproj.join("project.pbxproj"),
+        )
+        .unwrap();
+        // The auto-generated stub workspace nested inside the bundle.
+        let stub = xcodeproj.join("project.xcworkspace");
+        std::fs::create_dir_all(&stub).unwrap();
+
+        let ctx = BuildContext::open(&xcodeproj)
+            .unwrap()
+            .with_derived_data_container(&stub);
+        let resolved = ctx
+            .resolve(&ResolveQuery::new("Scratch", "Debug", "macosx", "arm64"))
+            .unwrap();
+        let build_dir = get(&resolved, "BUILD_DIR");
+
+        let project_hash =
+            crate::xcode_hash::derived_data_hash(&xcodeproj.display().to_string());
+        let stub_hash = crate::xcode_hash::derived_data_hash(&stub.display().to_string());
+        assert!(
+            build_dir.contains(&format!("Scratch-{project_hash}")),
+            "BUILD_DIR must use the outer .xcodeproj name + hash: {build_dir}"
+        );
+        assert!(
+            !build_dir.contains(&format!("project-{stub_hash}")),
+            "BUILD_DIR must not use the project.xcworkspace stub: {build_dir}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

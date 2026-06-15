@@ -1301,7 +1301,7 @@ pub fn built_in_settings(
     // so `BUILD_DIR = PATH/Build/Products` directly.
     let derived_container = derived_data_container.map_or_else(
         || find_derived_data_container(&absolutize(xcodeproj_path)),
-        absolutize,
+        |c| normalize_stub_workspace(&absolutize(c)),
     );
     let derived_name = derived_container
         .file_stem()
@@ -2945,6 +2945,29 @@ fn host_user() -> String {
 
 fn host_home() -> String {
     host_override(|o| o.home.as_ref()).unwrap_or_else(|| std::env::var("HOME").unwrap_or_default())
+}
+
+/// Collapse the `.xcodeproj/project.xcworkspace` stub Xcode auto-generates
+/// inside every project bundle down to its containing `.xcodeproj`.
+///
+/// A caller can declare that stub as the DerivedData container — e.g. a
+/// `xcodeWorkspacePath` pointed straight at `Foo.xcodeproj/project.xcworkspace`.
+/// Xcode never keys DerivedData by the stub: opening such a project hashes the
+/// `.xcodeproj` itself, producing `Foo-<hash>`. Hashing the stub instead yields
+/// the wrong folder name (`project-<hash>`) AND the wrong hash, so the built
+/// app can't be found (issue #285). `find_derived_data_container` already skips
+/// the stub during inference; this normalizes the explicit case to match.
+#[must_use]
+fn normalize_stub_workspace(container: &Path) -> PathBuf {
+    let is_stub = container.file_name().and_then(OsStr::to_str) == Some("project.xcworkspace")
+        && container.parent().and_then(Path::extension).and_then(OsStr::to_str)
+            == Some("xcodeproj");
+    if is_stub
+        && let Some(parent) = container.parent()
+    {
+        return parent.to_path_buf();
+    }
+    container.to_path_buf()
 }
 
 /// Return the path Xcode would hash for the DerivedData folder name: a
