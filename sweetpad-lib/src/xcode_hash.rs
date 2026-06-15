@@ -30,13 +30,14 @@
 /// `.xcodeproj` or `.xcworkspace`).
 ///
 /// The path is canonically decomposed (Unicode NFD) before hashing. Xcode's
-/// `hashStringForPath` MD5s the path NSString's UTF-8 bytes with no explicit
-/// normalization of its own — but that string is the one the filesystem handed
-/// back, and macOS's HFS+ stores (and returns) filenames in a decomposed form.
-/// So a path containing precomposed (NFC) characters — e.g. `é` typed as U+00E9
-/// rather than `e` + U+0301 — would hash to a folder Xcode never created unless
-/// we decompose first. ASCII paths are unaffected (NFD is a no-op), so the
-/// pinned ASCII vectors below still hold.
+/// `hashStringForPath` MD5s the path NSString's UTF-8 bytes; macOS hands that
+/// string back in decomposed form, so a path containing precomposed (NFC)
+/// characters — e.g. `é` typed as U+00E9 rather than `e` + U+0301 — would hash
+/// to a folder Xcode never created unless we decompose first. Verified against
+/// real `xcodebuild -showBuildSettings` on a macOS runner: a project under a
+/// precomposed `Café/` directory resolves byte-identically only with NFD, and
+/// it holds on APFS (which preserves bytes on disk) too, not just HFS+. ASCII
+/// paths are unaffected (NFD is a no-op), so the pinned ASCII vectors hold.
 #[must_use]
 pub fn derived_data_hash(path: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
