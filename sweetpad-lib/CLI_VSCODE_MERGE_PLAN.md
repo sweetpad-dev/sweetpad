@@ -1,187 +1,193 @@
-# Plan — merging `sweetpad vscode` into the main CLI grammar
+# Plan — one CLI core, the VS Code extension as a thin frontend
 
-Status: **proposal for discussion.** No code changes yet; this documents the
-target shape and a phased path to it.
+Status: **proposal for discussion.** No code changes yet; this documents a
+target architecture and a phased path to it.
 
-## 1. The two surfaces today
+## 0. North star
 
-The single `sweetpad` binary exposes two command surfaces (`src/bin/sweetpad.rs`
-peels `vscode` off the front, everything else goes through clap):
+> Ideally the VS Code extension is built on top of the CLI — or an efficient CLI
+> core — so there is **one engine**, not two.
 
-- **`sweetpad vscode <method.name> [args] [--raw]`** — a one-shot JSON-RPC
-  client (`vscode_cli.rs`) for a *running* SweetPad VS Code extension. It walks
-  up to the project's control socket (`~/.local/state/sweetpad/projects.json`)
-  and calls a dotted method (`scheme.list`, `build.start`, …). The full method
-  set is the `METHOD_CATALOG` in `src/cli-server/method-catalog.ts`. Output and
-  errors mirror the former bundled JS CLI exactly.
+Today the same Xcode orchestration is implemented **twice**:
 
-- **`sweetpad <resource> <action> [flags]`** — the standalone, headless
-  "xcodebuild for humans" tree (`cli/mod.rs`, resources in
-  `cli/commands/*`). It drives Xcode itself (`xcodebuild`/`simctl`/`devicectl`)
-  through the resolver in this crate, with its **own** config/state stores
-  (`~/.config/sweetpad`, `~/.local/state/sweetpad`). No editor required.
+- in **TypeScript** inside the extension (`src/build`, `src/simulators`,
+  `src/devices`, `src/common/cli/scripts.ts` — ~9k lines that shell out to
+  `xcodebuild`/`simctl`/`devicectl`), and
+- in **Rust** inside `sweetpad-lib` under the `cli` feature (`cli/commands/*`,
+  `cli/{xcodebuild,simctl,devicectl,buildlog}.rs`) — reachable only through the
+  `sweetpad` binary.
 
-The two share noun names (`scheme`, `destination`, `simulator`, `device`,
-`build`, build settings) but mean different things:
+The extension already consumes the Rust core for the *resolver* (build settings,
+schemes, targets, compiler args, BSP, scheme parsing) via the N-API addon
+(`@sweetpad/lib`, `node.rs`). The goal is to extend that — make the core the
+single source of truth for **orchestration too**, and reduce the extension to UI
++ editor glue.
 
-| | `vscode <method>` | headless `<resource> <action>` |
-|---|---|---|
-| Acts on | the **running extension** | **Xcode directly** |
-| Source of truth | extension's live state / workspaceState | the pbxproj/xcconfig resolver |
-| Selection store | VS Code `workspaceState` | `~/.config` + `~/.local/state` |
-| Builds | async, tracked by the extension's build manager | synchronous, foreground |
-| Needs an editor open | **yes** | no |
-
-"Merging" means: wherever a `vscode` method is really just a **generic Xcode
-operation**, the headless resource command should be the one obvious way to do
-it — and the `vscode` surface shrinks to only what genuinely requires the live
-editor.
-
-## 2. Classifying every `vscode` method
-
-### Bucket A — pure Xcode ops → absorb into headless resources
-
-These need nothing from the editor; the headless command is (or should be) the
-canonical entry point.
-
-| `vscode` method | headless command | gap |
-|---|---|---|
-| `scheme.list` | `scheme list` | — exists |
-| `destination.list` | `destination list` | — exists |
-| `simulator.list` | `simulator list` | — exists |
-| `simulator.start` | `simulator boot` | — exists |
-| `simulator.stop` | `simulator shutdown` | — exists |
-| `simulator.screenshot` | `simulator screenshot` | — exists |
-| `simulator.openUrl` | `app open-url` | — exists (v3) |
-| `simulator.install` | `simulator install <udid> <app>` | **add** |
-| `simulator.uninstall` | `simulator uninstall <udid> <bundleId>` | **add** |
-| `simulator.launchApp` | `simulator launch` / `app launch` | **add** |
-| `simulator.terminateApp` | `simulator terminate` / `app stop` | **add** |
-| `device.install` | `device install <id> <app>` | **add** |
-| `device.launch` | `device launch` / `app run --device` | partial |
-| `device.terminate` | `device terminate <id> <bundleId>` | **add** |
-| `buildSettings.get` | `settings show [--keys …]` | mostly exists |
-| `xcodebuild.list` | `project info` (+ `--json` raw) | mostly exists |
-| `derivedData.path` | `derived-data path` | — exists |
-| `appPath.find` | `app path` | **add** |
-| `bundleId.get` | `app bundle-id` | **add** |
-| `build.start` build/clean | `build start [--clean]` | — exists |
-| `build.start` run/launch | `app run` / `app launch` | — exists |
-| `build.start` test | `test run` | — exists |
-
-After Bucket A, the only missing headless verbs are a handful of
-simulator/device app-lifecycle actions and two `app` lookups. They reuse the
-existing `simctl`/`devicectl` modules — small, mechanical additions.
-
-### Bucket B — selection state → optional headless get/set
-
-`scheme.get/set`, `destination.get/set`, `buildConfig.list/get/set` read and
-**persist a selection**. The headless CLI already resolves selection by layered
-precedence (flag > env > config > remembered state, see `cli/resolve.rs`) but
-only *reads* it — `set` would write `~/.local/state/sweetpad/state.toml`.
-
-The catch: the editor persists selection in VS Code `workspaceState`, the CLI in
-its own state file. They are **different stores** and won't agree unless the
-extension adopts the CLI's store (design `CLI_DESIGN.md` §7 — "adoptable later,
-not committed"). So:
-
-- Add `scheme use <name>` / `destination use <id>` / a `configuration`
-  resource with `list`/`use`, writing the CLI's own state. Low priority.
-- Keep `scheme get`/`set` over the *extension* state under `vscode` (Bucket C)
-  until/unless the extension shares the CLI store.
-
-### Bucket C — irreducibly editor-coupled → stay under `vscode`
-
-These have no headless meaning; they only exist because an editor is running.
-
-- `meta.usage` / `meta.schema` / `meta.version` / `meta.workspacePath` — describe
-  the *server*.
-- `state.get` — snapshot of the extension's live selection + build.
-- `build.stop` / `build.wait` / `build.status` / `build.list` / `build.logs` /
-  `build.diagnostics` — read the **extension's async build manager** (history,
-  in-flight builds, persisted logs/diagnostics). Headless builds are synchronous
-  and foreground; there is no build registry to query. Keeping these editor-side
-  is correct unless the headless CLI grows its own build-history store (out of
-  scope).
-- `simulator.refresh` — re-scan **and refresh the extension's tree view**.
-- `workspace.detect` / `workspace.use` / `workspace.recent` — manipulate the
-  editor's active-workspace selection.
-- `workspaceState.*` — raw `sweetpad.*` keys in the extension's workspaceState.
-- `vscode.executeCommand` — drive the editor / other extensions.
-- `vscodeSettings.*` — the VS Code settings space.
-- `logs.tail` — the extension's output channel.
-- `scheme.reveal` — disk-based (path + XML); could go headless as
-  `scheme reveal`, but it's minor — leave for later.
-
-## 3. Target grammar after the merge
+## 1. Where logic lives today
 
 ```
-# Headless — the primary, editor-free surface (Buckets A + optional B)
-sweetpad scheme list | use <name>
-sweetpad destination list | use <id>
-sweetpad simulator list | boot | shutdown | erase | open | screenshot
-                        | appearance | install | uninstall | launch | terminate
-sweetpad device list | install | launch | terminate
-sweetpad app run | install | launch | stop | logs | open-url | path | bundle-id
-sweetpad build start [--clean]
-sweetpad test run
-sweetpad settings show [--keys …]
-sweetpad project info | new
-sweetpad derived-data path | size | purge
-sweetpad configuration list | use <name>          # (Bucket B, optional)
-
-# Editor control — the residual, deliberately small `vscode` surface (Bucket C)
-sweetpad vscode <method.name> [args]   # meta/state/build-manager/workspace/
-                                       # workspaceState/executeCommand/settings/logs
+                        ┌──────────────────────────────────────┐
+                        │            sweetpad-lib (Rust)         │
+   resolver (shared) →  │  resolver: build_settings, schemes,    │
+                        │  pbxproj, compiler_args, bsp           │
+                        │  ── cli feature ──                     │
+   orchestration  →     │  cli/commands/*, simctl, devicectl,    │
+   (binary-only)        │  xcodebuild, buildlog                  │
+                        └──────────────┬───────────────┬─────────┘
+                          N-API (sync) │               │ binary (sweetpad …)
+                                       │               │
+        ┌──────────────────────────────▼──┐         ┌──▼───────────────────┐
+        │      VS Code extension (TS)      │         │  headless CLI user    │
+        │  resolver  → via @sweetpad/lib   │         │  (terminal / CI)      │
+        │  ORCHESTRATION → reimplemented    │         └───────────────────────┘
+        │  in TS (build/sim/device ~9k LOC) │
+        │  + UI: trees, status bar, editor  │
+        │  + cli-server (RPC) ← sweetpad vscode
+        └───────────────────────────────────┘
 ```
 
-The `vscode` RPC protocol **stays byte-compatible** — agents and scripts that
-call `sweetpad vscode build.start` keep working. We are removing *conceptual
-duplication and the need to reach for `vscode` for generic Xcode tasks*, not
-deleting the protocol.
+Two duplications fall out of this:
 
-## 4. How headless and editor-backed coexist (the one real decision)
+1. **Orchestration** — TS build/sim/device logic vs. the Rust `cli` module.
+2. **The `vscode` RPC** — `sweetpad vscode <method>` is a *client of the
+   extension* (`vscode_cli.rs` → cli-server). In the target it inverts: the
+   extension becomes a client of the **core**.
 
-When VS Code *is* running, should `sweetpad scheme list` reflect the editor's
-state or resolve fresh? Two models:
+## 2. Target architecture
 
-- **Model 1 — headless-first (recommended).** The merged commands always run
-  headless against Xcode. `vscode` remains the explicit escape hatch for live
-  editor state. Simplest, single code path, matches the standalone-first design.
-- **Model 2 — auto-proxy.** The shared nouns detect a running extension (via the
-  projects.json index) and proxy to it, else fall back to headless. One command
-  that "does the right thing," but two code paths and surprising behavior.
+**One core, two thin frontends, plus a small editor-control RPC.**
 
-**Recommendation: Model 1 now**, with Model 2 available later as an *opt-in*
-`--remote` / `SWEETPAD_REMOTE=1` flag on the shared nouns (proxy to the
-extension when asked, never implicitly). This keeps the headless CLI's core
-promise — it never needs the editor — while leaving a clean door to live data.
+```
+                ┌─────────────────────────────────────────────┐
+                │     sweetpad-lib core (interface-agnostic)   │
+                │  resolver  +  orchestration (build/run/test/ │
+                │  sim/device/format/doctor/derived-data)      │
+                │  command logic lives in LIBRARY modules,     │
+                │  not in print paths (CLI_DESIGN.md §8)       │
+                └───────┬───────────────────────┬──────────────┘
+            sync, in-proc│                       │ streaming, out-of-proc
+            (N-API addon)│                       │ (spawn `sweetpad … --json`)
+                         │                       │
+        ┌────────────────▼───────────────────────▼────────────┐
+        │            sweetpad binary  (already thin)           │
+        │            VS Code extension (BECOMES thin)          │
+        │   = UI: trees, status bar, QuickPicks, debug,        │
+        │     editor wiring; delegates work to the core        │
+        └──────────────────────────────────────────────────────┘
+                         ▲
+                         │  editor-control only
+        sweetpad vscode <method>  → cli-server (Bucket C below)
+```
 
-## 5. Phased execution
+### 2a. How the extension consumes the core — the key decision
 
-1. **Close the Bucket A gaps** (headless parity). Add `simulator
-   install/uninstall/launch/terminate`, `device install/launch/terminate`, and
-   `app path` / `app bundle-id`, reusing `simctl.rs` / `devicectl.rs`. Snapshot
-   the arg-vectors (per `CLI_DESIGN.md` §10) — no Mac needed for those tests.
-2. **Document the split.** Update `CLI_DESIGN.md`: the headless tree is the
-   default surface; `vscode` is the editor-control protocol (Bucket C). Add a
-   "coming from `vscode <method>`?" mapping table (Bucket A) so existing users
-   find the new home of each command.
-3. **(Optional) Bucket B selection state.** `scheme use` / `destination use` /
-   `configuration` writing the CLI's own state.
-4. **(Optional) Model 2 `--remote`.** A shared flag that proxies a headless noun
-   to the running extension, reusing `vscode_cli.rs`'s socket transport.
-5. **(Optional) Reshape the residual `vscode` surface** from dotted methods to a
-   clap subtree (`sweetpad vscode build status` ≈ `build.status`) for grammar
-   consistency — purely cosmetic, do last, keep the dotted form as an alias.
+Two mechanisms, each suited to a different call shape:
 
-## 6. Compatibility & non-goals
+- **N-API addon (`@sweetpad/lib`)** — in-process, typed, zero spawn cost. Right
+  for **synchronous, pure queries** (already used: resolution, build settings,
+  scheme parse). Awkward for long-running/streaming work (needs async + log
+  callbacks across the boundary).
+- **Spawn the `sweetpad` binary with `--json`** — out-of-process, streaming is
+  natural (stdout lines), the boundary is a **stable text protocol** the CLI was
+  *designed* to emit (`CLI_DESIGN.md` §4). Costs a process spawn per call and
+  output parsing; can't share in-memory caches.
 
-- **Keep** `sweetpad vscode <method>` working unchanged (the RPC protocol and
-  its JS-compatible output are a stable contract used by agents).
-- **No shared selection store** between editor and CLI is committed here; that
-  is the larger "extension adopts the CLI as its engine" question (`CLI_DESIGN.md`
-  §7) and stays out of scope.
-- The headless build/test commands stay **synchronous**; the async
-  build-manager queries (`build.status/list/logs/diagnostics/wait/stop`) remain
-  editor-only by design.
+**Recommendation — hybrid, matched to call shape:**
+
+| Call shape | Mechanism |
+|---|---|
+| Resolution, settings, scheme/target/config lists, paths | **N-API** (as today) |
+| Build / run / test / app lifecycle (streaming logs, cancelable) | **spawn `sweetpad … --json`**, stream stdout |
+| Simulator/device one-shots (boot, install, screenshot) | either; prefer N-API if cheap, else spawn |
+
+This keeps the hot, synchronous path in-process and makes the streaming path a
+clean, versionable CLI contract — which is exactly "the extension built on top of
+the CLI." A single TS `runSweetpad(args)` helper (spawn + parse `--json` +
+forward log lines to the build channel + map exit codes) becomes the one seam.
+
+### 2b. Precondition: orchestration logic must be library-shaped
+
+`cli/commands/*` today interleaves logic with human/`--json` printing. For the
+extension (and unit tests) to drive the same code, each orchestration must be a
+**library function returning structured results**, with the command layer only
+formatting. The design already commits to this (`CLI_DESIGN.md` §8: "command
+logic lives in testable library modules"); this plan makes it load-bearing.
+Whichever consumption mechanism wins, the refactor is the same and is the real
+work.
+
+## 3. What stays in the `vscode` / cli-server RPC
+
+With orchestration sourced from the core, the `vscode` surface shrinks to what
+genuinely needs the **live editor**. Classifying every method in
+`src/cli-server/method-catalog.ts`:
+
+### Bucket A — generic Xcode ops → served by the core (headless command)
+
+`scheme.list`, `destination.list`, `simulator.list/start/stop/screenshot/openUrl`,
+`derivedData.path`, `buildSettings.get`, `xcodebuild.list`, and the
+build/run/test/clean variants of `build.start`. Headless equivalents mostly
+exist; the gaps to add are `simulator install/uninstall/launch/terminate`,
+`device install/launch/terminate`, and `app path` / `app bundle-id` — thin
+wrappers over the existing `simctl.rs`/`devicectl.rs`.
+
+The extension calls these on the **core**, not over RPC.
+
+### Bucket B — selection state → core state, optional
+
+`scheme.get/set`, `destination.get/set`, `buildConfig.list/get/set` persist a
+*selection*. The editor persists in VS Code `workspaceState`; the CLI in its own
+`state.toml`. Unifying them is the deeper "shared store" question — once the
+extension is a core frontend, the core's state becomes the single store and these
+collapse into `scheme use` / `destination use` / a `configuration` resource.
+
+### Bucket C — irreducibly editor-coupled → keep in the RPC
+
+`meta.*`, `state.get`, the async **build-manager** queries
+(`build.stop/wait/status/list/logs/diagnostics`), `simulator.refresh` (tree
+view), `workspace.detect/use/recent`, `workspaceState.*`,
+`vscode.executeCommand`, `vscodeSettings.*`, `logs.tail`. These exist only
+because an editor is running and remain the legitimate purpose of `sweetpad
+vscode`: an agent driving the *editor*. (Some, like the build-manager history,
+shrink if the core gains a build-history store — out of scope.)
+
+## 4. Phased migration
+
+Incremental, command-by-command, each behind a flag with parity kept until the
+TS path is deleted:
+
+1. **Parity in the core (Bucket A gaps).** Add the missing simulator/device/app
+   verbs; arg-vector snapshot-tested, no Mac needed (`CLI_DESIGN.md` §10).
+2. **Library-shape one orchestration end-to-end** (suggest **build**): factor
+   `cli/commands/build` + run into a library API returning structured
+   events/results; the binary and a new `runSweetpad` TS helper both consume it.
+3. **Migrate the extension's build path** to call the core (spawn `--json`,
+   stream logs into the existing build channel/diagnostics), behind
+   `sweetpad.experimental.coreBuild`. Keep `src/build/manager.ts` as the *UI*
+   manager (status bar, tree, history) but delegate execution.
+4. **Repeat** for run/test, then simulators, then devices — deleting the
+   superseded TS in `scripts.ts`/`build`/`simulators`/`devices` as each lands.
+5. **Shrink cli-server** to Bucket C once Bucket A is core-served; document the
+   `vscode <method>` → core-command mapping for users/agents.
+6. **(Optional) Unify selection state** (Bucket B) on the core store.
+
+Each step is independently shippable and reversible; the extension keeps working
+throughout because the UI layer is untouched — only the engine under it swaps.
+
+## 5. Decisions to confirm
+
+1. **Consumption mechanism** — hybrid (N-API for sync queries, spawn `sweetpad
+   --json` for streaming orchestration) as recommended in §2a? Or push
+   everything through one mechanism?
+2. **First migration target** — build, or a lower-risk one-shot (e.g.
+   simulators) to prove the `runSweetpad` seam first?
+3. **Scope now** — implement Phase 1 (core parity) immediately, or keep this as
+   an agreed plan and sequence the work behind feature flags?
+
+## 6. Non-goals / compatibility
+
+- `sweetpad vscode <method>` stays byte-compatible (stable agent contract); it
+  is *narrowed* to editor-control, not removed.
+- The headless CLI stays editor-free; the extension dependency is one-directional
+  (extension → core), never core → editor.
+- No big-bang rewrite: the extension's UI, commands, and tree/status surfaces are
+  preserved; only the orchestration engine beneath them is replaced.
