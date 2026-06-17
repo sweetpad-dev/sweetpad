@@ -12,6 +12,7 @@ on:
 # grounds sweetpad's no-xcodebuild SPM path (src/cli/swiftpm.rs) against real
 # `swift package dump-package` / `xcodebuild -list` / `swift build` / `swift test`.
 # Delete this workflow once the fixtures are captured.
+# Re-run: edit this file (a push that touches it re-triggers the capture).
 
 permissions:
   contents: write
