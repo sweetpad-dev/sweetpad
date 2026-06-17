@@ -1,0 +1,8 @@
+{
+  "command": [
+    "swift",
+    "test"
+  ],
+  "exitCode": 0,
+  "ok": true
+}
