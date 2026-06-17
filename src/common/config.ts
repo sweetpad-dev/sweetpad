@@ -52,6 +52,7 @@ type Config = {
   "cliServer.enabled": boolean;
   "hotReload.enabled": boolean;
   "hotReload.dylibPath": string | null;
+  "previews.codeLensEnabled": boolean;
 };
 
 type ConfigKey = keyof Config;
