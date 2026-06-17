@@ -38,29 +38,45 @@ can't accidentally reintroduce host drift into a capture you mean to commit.
 | File | Role |
 |---|---|
 | `images.json` | Single source of truth: per-version image ref, corpus subset, runtimes, canonical paths. |
-| `capture.sh` | **Host driver** (Apple Silicon Mac + Tart). Clones the image, syncs this tree in, runs the capture, pulls the oracles back. |
-| `capture-runner.sh` | **In-VM** worker. Enforces identity, exposes the bundled Xcode without re-downloading, provisions runtimes, runs the §10.4 capture. |
+| `env.sh` | **Unified host driver** (Apple Silicon Mac + Tart). One VM per version for `test`, `capture`, `shell` (debug), `run`, `up`, `sync`, `down`. |
+| `env-setup.sh` | **In-VM** env prep shared by all modes: identity guard, Xcode symlink, Rust, persisted `DEVELOPER_DIR`/PATH/cwd. |
+| `capture-runner.sh` | **In-VM** capture body: env-setup + corpus tools + runtimes + the §10.4 capture. |
+| `capture.sh` | Back-compat shim for `env.sh capture`. |
 | `cirrus.yml.example` | **Cloud path** — copy to repo root as `.cirrus.yml` to capture on Cirrus-hosted Tart VMs (no local Mac). |
+
+## One environment for tests, capture, and debugging
+
+The same pinned VM is the substrate for all three, so a failing oracle
+reproduces under the exact paths/Xcode/toolchain it was captured with. `up` and
+`shell` create a **persistent** VM you keep reusing; `test`/`run`/`capture`
+reuse it if present, else run ephemerally and clean up after (`--keep` to
+persist).
+
+```sh
+brew install cirruslabs/cli/tart sshpass rsync
+cd sweetpad-lib
+
+ci/tart/env.sh up 26.5.0                       # bring the box up once
+ci/tart/env.sh test 26.5.0                     # cargo test in the canonical env
+ci/tart/env.sh test 26.5.0 -- --test per_target_oracle -- --nocapture
+ci/tart/env.sh shell 26.5.0                    # interactive debug shell (DEVELOPER_DIR + cargo ready)
+ci/tart/env.sh capture 26.5.0                  # recapture; pulls oracles back to the host
+ci/tart/env.sh sync 26.5.0                     # re-push local edits into the running VM
+ci/tart/env.sh down 26.5.0                     # delete it
+
+git status                                     # after capture: only real deltas, no /Users churn
+```
+
+Then triage + recalibrate floors + commit per [`DOCS.md` §10.5–10.8](../../DOCS.md).
 
 ## How a version reuses the image's Xcode (no download)
 
 `13_capture_version.py` reuses an Xcode already under
 `/Applications/Xcode-<ver>.app` instead of running `xcodes install`
 (`13_capture_version.py:468`). Cirrus images ship Xcode as the *selected*
-default (often `/Applications/Xcode.app`), so `capture-runner.sh` symlinks the
+default (often `/Applications/Xcode.app`), so `env-setup.sh` symlinks the
 versioned name to it. The orchestrator then finds it "already installed" and
 captures with zero download.
-
-## Run it — locally on a Mac
-
-```sh
-brew install cirruslabs/cli/tart sshpass rsync
-cd sweetpad-lib
-ci/tart/capture.sh 26.5.0           # clone image, capture, pull oracles back
-git status                          # only real behaviour deltas — no /Users churn
-```
-
-Then triage + recalibrate floors + commit per [`DOCS.md` §10.5–10.8](../../DOCS.md).
 
 ## Run it — in the cloud (Cirrus, no local Mac)
 
@@ -85,7 +101,7 @@ version test matrix is committed data.
 1. Find the image tag at
    [cirruslabs/macos-image-templates](https://github.com/cirruslabs/macos-image-templates)
    and add/update the version entry in `images.json`.
-2. `ci/tart/capture.sh <ver>` (or the Cirrus task).
+2. `ci/tart/env.sh capture <ver>` (or the Cirrus task).
 3. Follow the runbook: triage (§10.5), floors (§10.6), drop the old minor when
    refreshing a major (§10.7), embedded catalog (§10.7b), commit (§10.8).
 
@@ -101,7 +117,7 @@ tart run bake &                      # GUI; sign in once if needed
 # inside: xcodes install <ver> --experimental-unxip --empty-trash
 #         sudo xcodebuild -license accept && sudo xcodebuild -runFirstLaunch   (§10.2)
 tart stop bake
-# push to your registry, or keep it local and pass --image to capture.sh
+# push to your registry, or keep it local and pass --image to env.sh
 ```
 
 The license + first-launch sudo steps (`DOCS.md` §10.2) happen **once, when

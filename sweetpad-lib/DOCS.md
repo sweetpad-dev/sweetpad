@@ -1074,20 +1074,25 @@ path-derived DerivedData hash). The canonicalizer strips `$HOME`/hash/SDK so
 still rewrites every path string (unreviewable churn) and the hash (commits
 #287/#288/#289) is only **byte**-stable when the capture path is fixed.
 
-`ci/tart/` pins the capture environment so every recapture is byte-
-reproducible **and** needs no Xcode download onto your working Mac (Xcode
-lives in the image). [Tart](https://tart.run) runs macOS VMs on Apple Silicon
-from Cirrus's Xcode-bundled images (user `/Users/admin`). The pinned identity
-— VM home, checkout path (⇒ DerivedData hash), per-version image/subset/
-runtimes — lives in `ci/tart/images.json`; see `ci/tart/README.md`.
+`ci/tart/` pins **one environment for tests, capture, and debugging** so every
+recapture is byte-reproducible **and** a failing oracle reproduces under the
+exact paths/Xcode/toolchain it was captured with — needing no Xcode download
+onto your working Mac (Xcode lives in the image). [Tart](https://tart.run) runs
+macOS VMs on Apple Silicon from Cirrus's Xcode-bundled images (user
+`/Users/admin`). The pinned identity — VM home, checkout path (⇒ DerivedData
+hash), per-version image/subset/runtimes — lives in `ci/tart/images.json`; see
+`ci/tart/README.md`.
 
 ```
-ci/tart/capture.sh 26.5.0          # local: clone image, capture in VM, pull oracles back
+ci/tart/env.sh up 26.5.0           # persistent VM for this version
+ci/tart/env.sh test 26.5.0         # cargo test in the canonical env
+ci/tart/env.sh shell 26.5.0        # interactive debug shell at the canonical checkout
+ci/tart/env.sh capture 26.5.0      # recapture; pulls oracles back to the host
 # or copy ci/tart/cirrus.yml.example -> .cirrus.yml for the cloud (no local Mac)
 ```
 
-`capture-runner.sh` enforces the canonical home/path (so a stray capture can't
-reintroduce host drift), symlinks the image's bundled Xcode to
+`env-setup.sh` (shared by every mode) enforces the canonical home/path (so a
+stray run can't reintroduce host drift), symlinks the image's bundled Xcode to
 `/Applications/Xcode-<ver>.app` so the orchestrator reuses it with **zero
 download** (§10.1 install is skipped — the reuse branch at
 `13_capture_version.py:468`), pre-provisions the disposable runtimes (§10.3),
