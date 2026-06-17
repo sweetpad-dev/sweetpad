@@ -194,3 +194,29 @@ jobs:
         with:
           name: snapshotpreviews-build-log
           path: examples/snapshot-check/build.log
+
+  preview-bridge:
+    name: PreviewBridge discovery regression suite
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record toolchain (the Xcode this run validates against)
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Run PreviewBridge tests
+        run: |
+          set -euo pipefail
+          cd examples/preview-bridge
+          # Discovery scans loaded images and relies on preview conformances not
+          # being stripped — debug `swift test` keeps them.
+          swift test 2>&1 | tee test.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-bridge-test-log
+          path: examples/preview-bridge/test.log

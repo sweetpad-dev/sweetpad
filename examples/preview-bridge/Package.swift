@@ -1,0 +1,25 @@
+// swift-tools-version: 5.9
+import PackageDescription
+
+// Standalone package that reimplements the small, MIT-licensed part of
+// EmergeTools/SnapshotPreviews that SweetPad needs: runtime discovery of
+// SwiftUI previews via the Mach-O `__swift5_proto` section, plus resolving
+// each discovered preview to its source location (fileID:line) and a
+// renderable View. The test suite is a regression guard for the Swift/Xcode
+// ABI + SwiftUI SPI this relies on — see Tests/.
+let package = Package(
+  name: "PreviewBridge",
+  platforms: [.macOS(.v14)],
+  products: [
+    .library(name: "PreviewBridge", targets: ["PreviewBridge"]),
+    .library(name: "PreviewSamples", targets: ["PreviewSamples"]),
+  ],
+  targets: [
+    .target(name: "PreviewBridge"),
+    .target(name: "PreviewSamples"),
+    .testTarget(
+      name: "PreviewBridgeTests",
+      dependencies: ["PreviewBridge", "PreviewSamples"],
+    ),
+  ],
+)
