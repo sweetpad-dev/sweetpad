@@ -1,0 +1,58 @@
+{
+  "_comment": [
+    "Canonical capture environment for the oracle corpus (DOCS.md §10.10).",
+    "Single source of truth shared by capture.sh (host driver) and",
+    "capture-runner.sh (in-VM). Everything that would otherwise drift",
+    "byte-for-byte across machines is pinned here.",
+    "",
+    "IDENTITY INVARIANT — why this exists:",
+    "  Oracles are committed with absolute paths baked in (today ~95k",
+    "  `/Users/hyzyla` strings from the original Mac capture). The resolver's",
+    "  canonicalizer already strips $HOME / DerivedData-hash / SDK-version, so",
+    "  structural+canonical tiers pass cross-machine; but a recapture on a",
+    "  different host still rewrites every path string => unreviewable churn,",
+    "  and the path-derived DerivedData hash (see commits #287/#288/#289) only",
+    "  becomes BYTE-stable when the capture path is fixed. Pinning the VM user",
+    "  (`canonical_home`) and the checkout path (`checkout_path`) makes every",
+    "  recapture produce identical bytes, so a capture diff shows only real",
+    "  behaviour deltas.",
+    "",
+    "IMAGE TAGS — verify before a refresh:",
+    "  The `image` refs are Cirrus Labs Tart images (Xcode preinstalled, user",
+    "  `admin`, home `/Users/admin`). Tags move; confirm the exact tag exists",
+    "  at https://github.com/cirruslabs/macos-image-templates (ghcr.io) and",
+    "  update it here. For an Xcode minor Cirrus does NOT publish, bake your",
+    "  own from a `macos-<release>-base` image (README.md, 'Baking an image')."
+  ],
+
+  "canonical_home": "/Users/admin",
+  "checkout_path": "/Users/admin/sweetpad",
+
+  "defaults": {
+    "cpu": 6,
+    "memory": 12288,
+    "disk": 120
+  },
+
+  "versions": {
+    "26.5.0": {
+      "image": "ghcr.io/cirruslabs/macos-tahoe-xcode:26.5",
+      "subset": ["alamofire", "kingfisher", "ice-cubes", "netnewswire", "tuist-fixtures"],
+      "runtimes": ["iOS", "tvOS", "watchOS", "visionOS"],
+      "disk": 160,
+      "notes": "Latest non-beta 26.x — full corpus incl. simulator scheme captures."
+    },
+    "16.4.0": {
+      "image": "ghcr.io/cirruslabs/macos-sequoia-xcode:16.4",
+      "subset": ["alamofire", "kingfisher"],
+      "runtimes": [],
+      "notes": "macOS scheme + per-target + project-defaults; ice-cubes needs Swift-tools 6.2 (26.x)."
+    },
+    "15.4.0": {
+      "image": "ghcr.io/cirruslabs/macos-sonoma-xcode:15.4",
+      "subset": ["kingfisher", "tuist-fixtures"],
+      "runtimes": [],
+      "notes": "macOS-only captures; alamofire/netnewswire/ice-cubes walled off by objectVersion / Swift-tools."
+    }
+  }
+}

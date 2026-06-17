@@ -1065,6 +1065,36 @@ rm -rf /Applications/Xcode-<old>.app                         # the replaced Xcod
 
 Keep the new Xcode app + the other majors' apps if still capturing.
 
+### 10.10 The canonical capture environment (Tart VM) — byte-reproducible captures
+
+The corpus was first captured on a personal Mac, so the committed oracles
+carry that host's fingerprint (~95k literal `/Users/<user>` strings + a
+path-derived DerivedData hash). The canonicalizer strips `$HOME`/hash/SDK so
+`structural`+`canonical` pass cross-machine (§5.3), but a recapture elsewhere
+still rewrites every path string (unreviewable churn) and the hash (commits
+#287/#288/#289) is only **byte**-stable when the capture path is fixed.
+
+`ci/tart/` pins the capture environment so every recapture is byte-
+reproducible **and** needs no Xcode download onto your working Mac (Xcode
+lives in the image). [Tart](https://tart.run) runs macOS VMs on Apple Silicon
+from Cirrus's Xcode-bundled images (user `/Users/admin`). The pinned identity
+— VM home, checkout path (⇒ DerivedData hash), per-version image/subset/
+runtimes — lives in `ci/tart/images.json`; see `ci/tart/README.md`.
+
+```
+ci/tart/capture.sh 26.5.0          # local: clone image, capture in VM, pull oracles back
+# or copy ci/tart/cirrus.yml.example -> .cirrus.yml for the cloud (no local Mac)
+```
+
+`capture-runner.sh` enforces the canonical home/path (so a stray capture can't
+reintroduce host drift), symlinks the image's bundled Xcode to
+`/Applications/Xcode-<ver>.app` so the orchestrator reuses it with **zero
+download** (§10.1 install is skipped — the reuse branch at
+`13_capture_version.py:468`), pre-provisions the disposable runtimes (§10.3),
+then runs the §10.4 capture. The §10.2 license/first-launch sudo steps move to
+**image-bake time** (once), not every run. Validating against already-captured
+majors still needs no Xcode at all (the committed `fixtures/`+`xcspec-cache/`).
+
 ### Gotchas (all hit during the 26.5 refresh; fixes are in the repo)
 
 - **Newer-than-system Xcode ⇒ two sudo steps** (license + runFirstLaunch) —

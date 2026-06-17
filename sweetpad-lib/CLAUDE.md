@@ -19,7 +19,10 @@ matrix, roadmap, and the Xcode-version runbook. Key sections for an agent:
 - **Updating/refreshing an Xcode version:** follow the runbook in `DOCS.md`
   §10. Surface the human-required steps up front (the `xcodes` 2FA sign-in,
   and the two `sudo` commands when the new Xcode is newer than the system
-  one). Policy: latest non-beta minor of each major.
+  one). Policy: latest non-beta minor of each major. For **byte-reproducible**
+  captures in an isolated Tart VM (no Xcode on your Mac), use `ci/tart/`
+  (`DOCS.md` §10.10) — it pins the host identity so recaptures show only real
+  deltas, not `/Users` path churn.
 - **Known irreducibles** (`ENABLE_DEBUG_DYLIB`, the 15.x arch-reporting
   family): `DOCS.md` §6.2 — do not re-investigate without new evidence.
 - **Open work:** `DOCS.md` §11 (correctness roadmap + audit follow-ups).

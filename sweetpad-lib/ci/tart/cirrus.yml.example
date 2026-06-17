@@ -1,0 +1,50 @@
+# Cirrus CI oracle-capture template (the cloud path — no local Mac needed).
+#
+# Cirrus runs Tart macOS VMs natively, so the same pinned, Xcode-bundled
+# images (ci/tart/images.json) drive capture in the cloud. Copy this to the
+# repo root as `.cirrus.yml` to activate it (it is a template here so it does
+# NOT auto-run on every push). Tasks are manual — start them from the Cirrus
+# UI when refreshing a version.
+#
+# Identity invariant: CIRRUS_WORKING_DIR pins the checkout to the canonical
+# path, and the Cirrus base user is `admin` (/Users/admin) — the same identity
+# capture-runner.sh enforces — so cloud captures are byte-compatible with the
+# local Tart path. Keep the image tags in sync with ci/tart/images.json.
+#
+# Each task uploads the regenerated oracles as artifacts; download, review the
+# diff (no `/Users` churn expected), recalibrate floors (DOCS.md §10.6), commit.
+
+capture_template: &CAPTURE
+  trigger_type: manual
+  env:
+    CIRRUS_WORKING_DIR: /Users/admin/sweetpad
+  provision_script:
+    - cd sweetpad-lib && bash ci/tart/capture-runner.sh "$XCODE_VERSION"
+  fixtures_artifacts:
+    path: "sweetpad-lib/fixtures/**"
+  xcspec_artifacts:
+    path: "sweetpad-lib/xcspec-cache/**"
+
+task:
+  name: capture-26.5.0
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-tahoe-xcode:26.5
+  env:
+    XCODE_VERSION: 26.5.0
+  <<: *CAPTURE
+
+task:
+  name: capture-16.4.0
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-sequoia-xcode:16.4
+  env:
+    XCODE_VERSION: 16.4.0
+  <<: *CAPTURE
+
+task:
+  name: capture-15.4.0
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-sonoma-xcode:15.4
+  env:
+    XCODE_VERSION: 15.4.0
+  <<: *CAPTURE
