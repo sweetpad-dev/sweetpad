@@ -163,27 +163,30 @@ export class PreviewHostManager {
     previewId: string,
     appearance: Appearance | undefined,
   ): Promise<void> {
-    // `--console-pty` would block; we just launch and terminate any running
-    // instance so the env vars take effect on a fresh process.
-    const args = ["simctl", "launch", "--terminate-running-process"];
-
-    args.push("--setenv", `${ENV_PREVIEW_ID}=${previewId}`);
+    // `simctl launch` has no --setenv flag; it forwards env vars prefixed with
+    // `SIMCTL_CHILD_` (prefix stripped) to the launched app. We terminate any
+    // running instance so the env takes effect on a fresh process.
+    const env: Record<string, string> = {
+      [`SIMCTL_CHILD_${ENV_PREVIEW_ID}`]: previewId,
+    };
     if (appearance) {
-      args.push("--setenv", `${ENV_PREVIEW_APPEARANCE}=${appearance}`);
+      env[`SIMCTL_CHILD_${ENV_PREVIEW_APPEARANCE}`] = appearance;
     }
 
     // Phase 3: hot reload. When enabled and supported, inject InjectionNext so
     // edits to the previewed view refresh the streamed preview without relaunch.
     const dylib = resolveInjectionDylib("iOSSimulator");
     if (dylib) {
-      args.push("--setenv", `DYLD_INSERT_LIBRARIES=${dylib}`);
-      args.push("--setenv", `INJECTION_PROJECT_ROOT=${getWorkspacePath()}`);
+      env.SIMCTL_CHILD_DYLD_INSERT_LIBRARIES = dylib;
+      env.SIMCTL_CHILD_INJECTION_PROJECT_ROOT = getWorkspacePath();
     }
 
-    args.push(udid, bundleId);
-
     try {
-      await exec({ command: "xcrun", args: args });
+      await exec({
+        command: "xcrun",
+        args: ["simctl", "launch", "--terminate-running-process", udid, bundleId],
+        env: env,
+      });
     } catch (error) {
       commonLogger.error("Failed to launch preview host", { bundleId: bundleId, error: error });
       throw new ExtensionError(`Failed to launch preview host "${bundleId}" on the simulator`, {
