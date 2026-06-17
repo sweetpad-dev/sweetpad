@@ -207,6 +207,14 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Compile the scaffolded bootstrap (GeneratedHost)
+        run: |
+          set -euo pipefail
+          cd examples/preview-bridge
+          # The exact Swift file SweetPad scaffolds into a user's project. Builds
+          # it on the real toolchain so a compile break is caught here.
+          swift build --target GeneratedHost 2>&1 | tee generated-host.log
+
       - name: Run PreviewBridge tests (discovery + ABI + legacy render)
         run: |
           set -euo pipefail
@@ -232,5 +240,6 @@ jobs:
         with:
           name: preview-bridge-test-log
           path: |
+            examples/preview-bridge/generated-host.log
             examples/preview-bridge/test.log
             examples/preview-bridge/macro-render.log
