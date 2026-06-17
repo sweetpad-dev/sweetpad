@@ -1,4 +1,0 @@
-module DemoKit {
-    header "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit-Swift.h"
-    requires objc
-}

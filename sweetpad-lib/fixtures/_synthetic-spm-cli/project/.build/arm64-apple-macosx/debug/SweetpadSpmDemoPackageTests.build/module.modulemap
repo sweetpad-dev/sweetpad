@@ -1,4 +1,0 @@
-module SweetpadSpmDemoPackageTests {
-    header "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/SweetpadSpmDemoPackageTests-Swift.h"
-    requires objc
-}

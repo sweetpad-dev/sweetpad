@@ -1,0 +1,3 @@
+# SwiftPM build output from the oracle capture (swift build / swift test).
+# Only the captured JSON under ../xcode-<ver>/captures/ is committed.
+.build/
