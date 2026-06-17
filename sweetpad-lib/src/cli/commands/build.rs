@@ -33,8 +33,9 @@ fn start(ctx: &mut Context, clean: bool) -> CliResult {
             .configuration
             .clone()
             .unwrap_or_else(|| "Debug".to_string());
-        ctx.out
-            .note(&format!("building Swift package ({configuration}) with swift build"));
+        ctx.out.note(&format!(
+            "building Swift package ({configuration}) with swift build"
+        ));
         return swiftpm::build(&resolved.container, &configuration, clean);
     }
 

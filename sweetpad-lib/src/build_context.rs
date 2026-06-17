@@ -1119,8 +1119,7 @@ mod tests {
     /// for the built app in a directory Xcode never wrote to.
     #[test]
     fn xcodeproj_stub_workspace_container_resolves_to_the_outer_project() {
-        let root =
-            std::env::temp_dir().join(format!("sweetpad-bc-stub-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("sweetpad-bc-stub-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let xcodeproj = root.join("Scratch.xcodeproj");
         std::fs::create_dir_all(&xcodeproj).unwrap();
@@ -1141,8 +1140,7 @@ mod tests {
             .unwrap();
         let build_dir = get(&resolved, "BUILD_DIR");
 
-        let project_hash =
-            crate::xcode_hash::derived_data_hash(&xcodeproj.display().to_string());
+        let project_hash = crate::xcode_hash::derived_data_hash(&xcodeproj.display().to_string());
         let stub_hash = crate::xcode_hash::derived_data_hash(&stub.display().to_string());
         assert!(
             build_dir.contains(&format!("Scratch-{project_hash}")),

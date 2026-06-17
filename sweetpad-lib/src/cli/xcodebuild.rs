@@ -434,7 +434,9 @@ mod tests {
 
     #[test]
     fn app_bundle_errors_without_app() {
-        let settings = parse_settings(r#"[{"target":"Lib","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"Lib.framework","PRODUCT_BUNDLE_IDENTIFIER":"com.x.lib"}}]"#);
+        let settings = parse_settings(
+            r#"[{"target":"Lib","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"Lib.framework","PRODUCT_BUNDLE_IDENTIFIER":"com.x.lib"}}]"#,
+        );
         assert!(app_bundle(&settings).is_err());
     }
 

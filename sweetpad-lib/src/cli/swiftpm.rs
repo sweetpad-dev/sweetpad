@@ -208,9 +208,21 @@ mod tests {
         let m = parse_manifest(DUMP).unwrap();
         assert_eq!(m.name, "Demo");
         assert_eq!(m.products.len(), 2);
-        assert!(m.products.iter().any(|p| p.name == "demo" && p.is_executable()));
-        assert!(m.products.iter().any(|p| p.name == "DemoKit" && !p.is_executable()));
-        assert!(m.targets.iter().any(|t| t.name == "DemoKitTests" && t.is_test()));
+        assert!(
+            m.products
+                .iter()
+                .any(|p| p.name == "demo" && p.is_executable())
+        );
+        assert!(
+            m.products
+                .iter()
+                .any(|p| p.name == "DemoKit" && !p.is_executable())
+        );
+        assert!(
+            m.targets
+                .iter()
+                .any(|t| t.name == "DemoKitTests" && t.is_test())
+        );
     }
 
     #[test]

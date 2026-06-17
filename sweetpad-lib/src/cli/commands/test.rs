@@ -130,8 +130,9 @@ fn spm_test(
         .unwrap_or_else(|| "Debug".to_string());
 
     if !ctx.out.is_json() {
-        ctx.out
-            .note(&format!("testing Swift package ({configuration}) with swift test"));
+        ctx.out.note(&format!(
+            "testing Swift package ({configuration}) with swift test"
+        ));
     }
 
     let passed = swiftpm::test(
@@ -143,8 +144,7 @@ fn spm_test(
     )?;
 
     if ctx.out.is_json() {
-        ctx.out
-            .json_value(&serde_json::json!({ "passed": passed }));
+        ctx.out.json_value(&serde_json::json!({ "passed": passed }));
     }
 
     if passed {

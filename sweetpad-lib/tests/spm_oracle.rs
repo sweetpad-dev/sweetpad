@@ -49,7 +49,11 @@ fn xcodebuild_list_schemes(json: &str) -> Vec<String> {
         .or_else(|| v.get("project"))
         .and_then(|b| b.get("schemes"))
         .and_then(|s| s.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -108,7 +112,9 @@ fn captured_configurations_are_debug_release() {
         return;
     }
 
-    let allowed: BTreeSet<String> = ["Debug".to_string(), "Release".to_string()].into_iter().collect();
+    let allowed: BTreeSet<String> = ["Debug".to_string(), "Release".to_string()]
+        .into_iter()
+        .collect();
     for dir in &dirs {
         let list = std::fs::read_to_string(dir.join("list.json")).unwrap();
         let v: serde_json::Value = serde_json::from_str(&list).unwrap();
@@ -117,7 +123,11 @@ fn captured_configurations_are_debug_release() {
             .or_else(|| v.get("project"))
             .and_then(|b| b.get("configurations"))
             .and_then(|c| c.as_array())
-            .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         // Packages often report no configurations at all; only assert when present.
         assert!(
@@ -152,7 +162,9 @@ fn captured_build_and_test_succeeded() {
         }
     }
     if checked == 0 {
-        eprintln!("skipping: no SPM build/test captures — run scripts/22_spm_cli_oracle.py on macOS");
+        eprintln!(
+            "skipping: no SPM build/test captures — run scripts/22_spm_cli_oracle.py on macOS"
+        );
     }
 }
 
@@ -166,7 +178,10 @@ fn live_schemes_match_xcodebuild() {
     }
     let manifest_path = fixtures_root().join("project/Package.swift");
     if !manifest_path.exists() {
-        eprintln!("skipping: sample package missing at {}", manifest_path.display());
+        eprintln!(
+            "skipping: sample package missing at {}",
+            manifest_path.display()
+        );
         return;
     }
     let project_dir = manifest_path.parent().unwrap().to_path_buf();
@@ -188,5 +203,8 @@ fn live_schemes_match_xcodebuild() {
     let json = &stdout[stdout.find('{').expect("xcodebuild -list emits JSON")..];
     let theirs: BTreeSet<String> = xcodebuild_list_schemes(json).into_iter().collect();
 
-    assert_eq!(ours, theirs, "live SPM scheme mismatch: ours={ours:?} xcodebuild={theirs:?}");
+    assert_eq!(
+        ours, theirs,
+        "live SPM scheme mismatch: ours={ours:?} xcodebuild={theirs:?}"
+    );
 }

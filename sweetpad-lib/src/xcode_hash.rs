@@ -360,7 +360,8 @@ mod tests {
     /// no-op on ASCII, so the hash is exactly the MD5 of the raw bytes.
     #[test]
     fn ascii_paths_are_unchanged_by_normalization() {
-        let path = "/Users/hyzyla_home/Developer/sweetpad-lib/corpus/alamofire/Alamofire.xcworkspace";
+        let path =
+            "/Users/hyzyla_home/Developer/sweetpad-lib/corpus/alamofire/Alamofire.xcworkspace";
         assert_eq!(derived_data_hash(path), "feaqvuepuyjdicgjemrbxfrsxmtp");
     }
 }

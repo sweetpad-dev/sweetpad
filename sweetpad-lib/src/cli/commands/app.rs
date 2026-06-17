@@ -210,7 +210,8 @@ impl RunPlan {
             derived_data_path: None,
             keys: None,
         };
-        let resolved = crate::build_settings::resolve_build_settings(&opts).map_err(CliError::new)?;
+        let resolved =
+            crate::build_settings::resolve_build_settings(&opts).map_err(CliError::new)?;
         let settings: Vec<xcodebuild::TargetBuildSettings> = resolved
             .into_iter()
             .map(|t| xcodebuild::TargetBuildSettings {

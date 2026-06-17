@@ -117,7 +117,10 @@ mod tests {
     #[test]
     fn buildserver_path_honors_explicit_output() {
         assert_eq!(
-            buildserver_path(Path::new("/pkg/Package.swift"), Some(Path::new("/tmp/bs.json"))),
+            buildserver_path(
+                Path::new("/pkg/Package.swift"),
+                Some(Path::new("/tmp/bs.json"))
+            ),
             PathBuf::from("/tmp/bs.json")
         );
     }
