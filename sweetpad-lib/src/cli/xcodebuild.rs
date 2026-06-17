@@ -299,46 +299,6 @@ pub fn app_bundle(settings: &[TargetBuildSettings]) -> Result<AppBundle, CliErro
     ))
 }
 
-/// One project/workspace block of `xcodebuild -list -json`.
-#[derive(Debug, Default, Deserialize)]
-struct ListBlock {
-    #[serde(default)]
-    schemes: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListJson {
-    project: Option<ListBlock>,
-    workspace: Option<ListBlock>,
-}
-
-/// Scheme names via `xcodebuild -list -json`. Used for Swift packages, whose
-/// schemes xcodebuild synthesizes from the manifest (the in-process resolver
-/// only reads pbxproj). Xcode reports a package under the `workspace` key.
-pub fn list_schemes(container: &Container) -> Result<Vec<String>, CliError> {
-    let mut parts: Vec<String> = vec!["-list".into(), "-json".into()];
-    parts.extend(container_args(container));
-    let args: Vec<&str> = parts.iter().map(String::as_str).collect();
-    let stdout = process::capture("xcodebuild", &args, working_dir(container).as_deref())?;
-    parse_list_schemes(&stdout)
-}
-
-/// Parse `xcodebuild -list -json` schemes from either the project or workspace
-/// block, skipping any leading non-JSON.
-fn parse_list_schemes(stdout: &str) -> Result<Vec<String>, CliError> {
-    let json = stdout
-        .find('{')
-        .map(|i| &stdout[i..])
-        .ok_or_else(|| CliError::new("xcodebuild -list produced no JSON"))?;
-    let parsed: ListJson = serde_json::from_str(json)
-        .map_err(|e| CliError::new(format!("parsing xcodebuild -list: {e}")))?;
-    Ok(parsed
-        .workspace
-        .or(parsed.project)
-        .map(|b| b.schemes)
-        .unwrap_or_default())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -500,19 +460,6 @@ mod tests {
             working_dir(&Container::Project(PathBuf::from("/work/App.xcodeproj"))),
             Some(PathBuf::from("/work"))
         );
-    }
-
-    #[test]
-    fn parses_list_schemes_from_workspace_or_project() {
-        let ws = r#"xcodebuild noise
-        {"workspace":{"name":"Pkg","schemes":["Pkg","PkgTests"]}}"#;
-        assert_eq!(parse_list_schemes(ws).unwrap(), vec!["Pkg", "PkgTests"]);
-
-        let proj = r#"{"project":{"name":"App","schemes":["App"]}}"#;
-        assert_eq!(parse_list_schemes(proj).unwrap(), vec!["App"]);
-
-        // Neither block ⇒ empty, not an error.
-        assert!(parse_list_schemes("{}").unwrap().is_empty());
     }
 
     #[test]
