@@ -216,8 +216,11 @@ jobs:
           # view extraction is gated off here (runs in the next step).
           swift test 2>&1 | tee test.log
 
-      - name: Experimental — macro #Preview view extraction (non-blocking)
-        continue-on-error: true
+      # Macro #Preview view extraction reflects into private SwiftUI internals,
+      # so it's the most likely thing to break on an Xcode update. Run it as its
+      # own gating step (sequenced after the core suite so the stable results
+      # are always recorded first) — a failure here is the regression signal.
+      - name: macro #Preview view extraction
         env:
           PREVIEW_BRIDGE_MACRO_RENDER: "1"
         run: |
