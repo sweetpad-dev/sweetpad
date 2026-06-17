@@ -615,9 +615,10 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
         }
       }
 
-      // Fallback to the package name if nothing else found
-      if (schemeNames.size === 0 && packageInfo.name) {
-        schemeNames.add(packageInfo.name);
+      // xcodebuild also synthesizes a `<name>-Package` aggregate scheme that
+      // builds the whole package; include it to match Xcode's scheme list.
+      if (packageInfo.name) {
+        schemeNames.add(`${packageInfo.name}-Package`);
       }
 
       return Array.from(schemeNames).map((name) => ({ name }));

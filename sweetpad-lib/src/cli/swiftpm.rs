@@ -33,13 +33,14 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    /// Scheme candidates for the package: its product names — the same set
-    /// xcodebuild synthesizes from the manifest. Falls back to non-test target
-    /// names when a package declares no products, so scheme selection always
-    /// has candidates.
+    /// Scheme candidates for the package, matching `xcodebuild -list`: one
+    /// scheme per product, plus the `<name>-Package` aggregate scheme xcodebuild
+    /// synthesizes to build the whole package. Falls back to non-test target
+    /// names (still plus the aggregate) when a package declares no products, so
+    /// scheme selection always has candidates.
     #[must_use]
     pub fn scheme_names(&self) -> Vec<String> {
-        if self.products.is_empty() {
+        let mut names: Vec<String> = if self.products.is_empty() {
             self.targets
                 .iter()
                 .filter(|t| !t.is_test())
@@ -47,7 +48,9 @@ impl Manifest {
                 .collect()
         } else {
             self.products.iter().map(|p| p.name.clone()).collect()
-        }
+        };
+        names.push(format!("{}-Package", self.name));
+        names
     }
 }
 
@@ -211,9 +214,10 @@ mod tests {
     }
 
     #[test]
-    fn schemes_are_product_names() {
+    fn schemes_are_products_plus_package_aggregate() {
         let m = parse_manifest(DUMP).unwrap();
-        assert_eq!(m.scheme_names(), vec!["DemoKit", "demo"]);
+        // Products, then xcodebuild's `<name>-Package` aggregate scheme.
+        assert_eq!(m.scheme_names(), vec!["DemoKit", "demo", "Demo-Package"]);
     }
 
     #[test]
@@ -230,7 +234,7 @@ mod tests {
                               { "name": "LibTests", "type": "test" } ] }"#,
         )
         .unwrap();
-        assert_eq!(m.scheme_names(), vec!["Lib"]);
+        assert_eq!(m.scheme_names(), vec!["Lib", "P-Package"]);
     }
 
     #[test]
