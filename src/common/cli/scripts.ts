@@ -696,6 +696,14 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
 export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
   const provider = getBuildServerProvider();
   if (provider === "sweetpad") {
+    // Swift packages: sourcekit-lsp supports SwiftPM natively, and the sweetpad
+    // BSP server only understands Xcode projects. A buildServer.json pointing at
+    // it would override that native support and break package semantics, so take
+    // the native route — write nothing, and warn about a stale config.
+    if (detectWorkspaceType(options.xcworkspace) === "spm") {
+      await handleSwiftPackageNativeLsp(options.xcworkspace);
+      return;
+    }
     await generateSweetpadBuildServerConfig();
     return;
   }
@@ -737,6 +745,29 @@ async function generateSweetpadBuildServerConfig(): Promise<void> {
     argv: [bspServer, "--config", getBspConfigFile(cwd)],
   };
   await fs.writeFile(path.join(cwd, "buildServer.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
+/**
+ * The native-sourcekit-lsp route for a Swift package. sourcekit-lsp reads
+ * Package.swift and builds the index itself, so we never write a
+ * buildServer.json for a package — the sweetpad BSP server only handles Xcode
+ * projects, and a config pointing at it would override the native path. A
+ * pre-existing buildServer.json (e.g. left over from an Xcode setup) does
+ * exactly that, so warn about it. We don't delete it — that's the user's call.
+ */
+async function handleSwiftPackageNativeLsp(packageManifest: string): Promise<void> {
+  const cwd = getSwiftPMDirectory(packageManifest);
+  const buildServerJson = path.join(cwd, "buildServer.json");
+  if (await isFileExists(buildServerJson)) {
+    commonLogger.warn(
+      "Swift package: a buildServer.json is present and overrides sourcekit-lsp's native SwiftPM support — remove it so the package resolves correctly",
+      { buildServerJson },
+    );
+  } else {
+    commonLogger.log("Swift package: using sourcekit-lsp's native SwiftPM support (no buildServer.json needed)", {
+      cwd,
+    });
+  }
 }
 
 /**
