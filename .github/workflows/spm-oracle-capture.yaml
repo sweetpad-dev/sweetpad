@@ -33,8 +33,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14, xcode: "15.4" }
-          - { os: macos-15, xcode: "26.5" }
+          # 15.4 (macos-14) and 16.4 already captured; macos-26 carries the
+          # newest Xcode 26.x. Prefer 26.5, else fall back to the latest 26.x.
+          - { os: macos-26, xcode: "26.5" }
     defaults:
       run:
         working-directory: sweetpad-lib
@@ -45,9 +46,16 @@ jobs:
 
       - name: Select Xcode ${{ matrix.xcode }}
         run: |
+          # Prefer the exact minor; if the runner doesn't carry it, take the
+          # newest matching major so we still capture a useful 26.x oracle.
           APP=$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -1)
           if [ -z "$APP" ]; then
-            echo "Xcode ${{ matrix.xcode }} not found on ${{ matrix.os }}; available:"
+            MAJOR=$(echo "${{ matrix.xcode }}" | cut -d. -f1)
+            APP=$(ls -d /Applications/Xcode_${MAJOR}*.app 2>/dev/null | sort -V | tail -1)
+            echo "Xcode ${{ matrix.xcode }} not present; falling back to newest ${MAJOR}.x"
+          fi
+          if [ -z "$APP" ]; then
+            echo "No Xcode ${{ matrix.xcode }} (or its major) found on ${{ matrix.os }}; available:"
             ls -d /Applications/Xcode_*.app || true
             exit 1
           fi
