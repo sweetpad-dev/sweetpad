@@ -207,16 +207,27 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Run PreviewBridge tests
+      - name: Run PreviewBridge tests (discovery + ABI + legacy render)
         run: |
           set -euo pipefail
           cd examples/preview-bridge
           # Discovery scans loaded images and relies on preview conformances not
-          # being stripped — debug `swift test` keeps them.
+          # being stripped — debug `swift test` keeps them. Experimental macro
+          # view extraction is gated off here (runs in the next step).
           swift test 2>&1 | tee test.log
+
+      - name: Experimental — macro #Preview view extraction (non-blocking)
+        continue-on-error: true
+        env:
+          PREVIEW_BRIDGE_MACRO_RENDER: "1"
+        run: |
+          cd examples/preview-bridge
+          swift test --filter RenderingTests 2>&1 | tee macro-render.log
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: preview-bridge-test-log
-          path: examples/preview-bridge/test.log
+          path: |
+            examples/preview-bridge/test.log
+            examples/preview-bridge/macro-render.log

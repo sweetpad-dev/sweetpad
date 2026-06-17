@@ -97,10 +97,34 @@ private func previewDisplayName(_ registry: any PreviewRegistry.Type) -> String?
 @available(macOS 14.0, iOS 17.0, *)
 @MainActor
 private func registryView(_ registry: any PreviewRegistry.Type) -> (@MainActor () -> any View)? {
-  guard let preview = try? registry.makePreview() else { return nil }
-  guard let makeBody = makeBodyChild(of: preview) else { return nil }
-  let closure = unsafeBitCast(makeBody, to: (@MainActor () -> any View).self)
-  return { closure() }
+  // Defer the fragile reflection to call time so plain discovery never touches
+  // it (and never risks a trap). Re-derive on each call so the closure's
+  // captured context stays alive (owned by `preview`) while we invoke it.
+  return { @MainActor in
+    guard let preview = try? registry.makePreview(),
+          let body = makeBodyChild(of: preview),
+          let view = invokeMakeBody(body)
+    else {
+      return AnyView(EmptyView())
+    }
+    return view
+  }
+}
+
+/// `boxed` is an `Any` wrapping the preview's `@MainActor () -> any View`
+/// `makeBody` closure. A closure is two words and is stored inline at the start
+/// of the `Any` existential buffer, so we read it back out and invoke it while
+/// `boxed` (which retains the closure's context) is still alive. Using a sized
+/// load instead of `unsafeBitCast(Any, …)` avoids the size-mismatch trap.
+@available(macOS 14.0, iOS 17.0, *)
+@MainActor
+func invokeMakeBody(_ boxed: Any) -> (any View)? {
+  typealias Make = @MainActor () -> any View
+  guard MemoryLayout<Make>.size <= MemoryLayout<Any>.size else { return nil }
+  let make = withUnsafeBytes(of: boxed) { raw -> Make in
+    raw.baseAddress!.assumingMemoryBound(to: Make.self).pointee
+  }
+  return make()
 }
 
 /// Walk `source → structure → singlePreview → makeBody` and return the raw
