@@ -2,7 +2,7 @@
 #
 # End-to-end coverage for the standalone `sweetpad` CLI, exercising every command
 # against a real Xcode app (ci/fixture-app) and a real Swift package
-# (ci/fixture-spm) on a macOS runner with Xcode. Run by .github/workflows/cli-smoke.yaml.
+# (ci/fixture-spm) on macOS with Xcode. Run locally (e.g. via ci/tart/env.sh).
 #
 # Requires: SWEETPAD_BIN pointing at the built binary; the app fixture already
 # generated with `xcodegen generate`.

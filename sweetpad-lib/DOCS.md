@@ -610,9 +610,10 @@ All layers are headless and self-labeling (no human in the iteration):
   `SDKROOT=auto`) never had.
 - **Mutation audit** (`scripts/21_mutation_audit.py`): see §4.4.
 
-CI (`.github/workflows/sweetpad-lib.yaml`) runs the fast tier — fmt, clippy
-`-D warnings`, `cargo test` — on every push/PR; the build-gated tiers run
-locally/nightly against the corpus.
+The fast tier — fmt, clippy `-D warnings`, `cargo test` — runs **locally**
+(`ci/tart/env.sh test`, or a plain `cargo test`); the build-gated tiers run
+locally/nightly against the corpus. macOS GitHub-CI was removed — all macOS
+validation is local now (§10.10).
 
 **Expand later:** the build-gated BSP oracles (Layers 0/2, corpus run) are
 pinned to **Xcode 26.5 only**; expand to 15.4/16.4 by keying the harness by
@@ -1260,9 +1261,10 @@ A full library audit (line references against `54c40a1`) landed with commit
   features; `src/node.rs` first compiles on the tag-triggered release build).
   Add `cargo clippy --no-default-features --features node -- -D warnings` or a
   `napi build` smoke step; switch CI clippy to `--all-targets`.
-- No PR/push CI for the extension (`ci.yaml` triggers only on tags) — add a PR
-  workflow on `macos-latest`: `npm ci && npm run check:all && npm test && npm
-  run build`.
+- No PR/push CI for the extension (`ci.yaml` triggers only on tags). macOS
+  GitHub-CI was intentionally removed (validation is local now, §10.10): run
+  `npm ci && npm run check:all && npm test && npm run build` locally before
+  tagging.
 - Embedded-catalog staleness unguarded: no test calls
   `catalog_cache::embedded()`; bumping `FORMAT_VERSION` or refreshing
   `xcspec-cache/` without regenerating ships stale defaults with green CI. Add

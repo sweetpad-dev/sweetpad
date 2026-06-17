@@ -91,10 +91,11 @@ commit them.
 ## Validating across versions needs NO Xcode
 
 Scoring the resolver against the **already-captured** majors (15.4 / 16.4 /
-26.5) reads only the committed `fixtures/` + `xcspec-cache/` — that's what
-`.github/workflows/sweetpad-lib.yaml` does on a plain `macos-latest` with
-nothing installed. Tart is only for *(re)capturing* a version; the multi-
-version test matrix is committed data.
+26.5) reads only the committed `fixtures/` + `xcspec-cache/` — no Xcode, no
+simulator. Run it with `ci/tart/env.sh test <ver>` (the canonical env) or a
+plain local `cargo test`. Tart is only for *(re)capturing* a version; the
+multi-version test matrix is committed data. (macOS GitHub-CI was removed — all
+macOS work runs locally now.)
 
 ## Refreshing / adding a version
 

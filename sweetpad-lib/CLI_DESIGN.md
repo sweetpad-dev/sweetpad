@@ -589,12 +589,12 @@ is still app UI/code reload (SwiftUI/UIKit).
   rewrite; build it with `xcodebuild` for the simulator, cached per Xcode build
   id. See Client distribution above.)_
 
-### macOS test harness (permanent)
+### macOS test harness (local)
 
-Hot reload needs macOS + Xcode + a simulator, so it's validated in CI by the
-permanent **`xcode-tests.yaml`** workflow — a reusable matrix harness for any
-Xcode/simulator-requiring test, across Xcode versions (16.x, 26.x; weekly + on
-push/PR). Two jobs:
+Hot reload needs macOS + Xcode + a simulator, so it's validated **locally** in
+the canonical Tart VM (`ci/tart/env.sh`) via reusable harness scripts, across
+Xcode versions (16.x, 26.x). The GitHub `xcode-tests.yaml` workflow was removed
+when macOS CI moved local (`sweetpad-lib/DOCS.md` §10.10). Two parts:
 
 - **`cli`** — the full standalone-CLI e2e (`ci/smoke.sh`) on each Xcode.
 - **`hot-reload-src`** — the injection e2e (`ci/hot-reload-e2e.sh`) on **both

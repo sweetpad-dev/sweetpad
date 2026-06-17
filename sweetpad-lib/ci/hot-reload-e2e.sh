@@ -6,7 +6,7 @@
 # interposable / frontend-command flags, starts the :8887 injection server,
 # launches the fixture app with the InjectionNext client dylib injected, edits a
 # Swift file once, and asserts a `.injected` response — for *both* recompilers
-# (resolver default + build-log). Run by .github/workflows/xcode-tests.yaml.
+# (resolver default + build-log). Run locally (e.g. via ci/tart/env.sh).
 #
 # Requires: SWEETPAD_BIN (the built binary); the fixture generated with xcodegen.
 # Client resolution is the CLI's job: SWEETPAD_HOTRELOAD_DYLIB (override) if set,
