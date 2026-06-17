@@ -76,6 +76,27 @@ def _capture_status(cmd: list[str], out_path: Path) -> bool:
     return cp.returncode == 0
 
 
+def current_xcode() -> common.XcodeInstall:
+    """The active `xcode-select` toolchain, version from `xcodebuild -version`.
+
+    For CI runners (and any machine) where Xcodes aren't named
+    `/Applications/Xcode-<ver>.app`, so `common.discover_installed_xcodes`
+    finds nothing. `with_xcode` just pins DEVELOPER_DIR to the active dir, so
+    capture runs against exactly the selected toolchain.
+    """
+    dev = common.xcode_select_current()
+    out = subprocess.run(
+        ["xcodebuild", "-version"], capture_output=True, text=True, check=True
+    ).stdout
+    version = out.splitlines()[0].split()[-1] if out.strip() else "unknown"
+    return common.XcodeInstall(
+        slot="current",
+        version=version,
+        app_path=dev.parent.parent,
+        developer_dir=dev,
+    )
+
+
 def process(xcode: common.XcodeInstall, *, force: bool) -> None:
     captures = SYNTH_DIR / f"xcode-{xcode.version}" / "captures"
     captures.mkdir(parents=True, exist_ok=True)
@@ -119,6 +140,12 @@ def process(xcode: common.XcodeInstall, *, force: bool) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--xcode", help="restrict to one Xcode (version or slot)")
+    ap.add_argument(
+        "--current",
+        action="store_true",
+        help="capture against the active xcode-select toolchain (CI runners where "
+        "Xcodes aren't named /Applications/Xcode-<ver>.app)",
+    )
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
 
@@ -126,8 +153,11 @@ def main() -> int:
         common.log(f"ERROR: sample package missing at {PROJECT_DIR}")
         return 1
 
-    installs = common.discover_installed_xcodes()
-    xcodes = common.selected_xcodes(installs, args.xcode)
+    if args.current:
+        xcodes = [current_xcode()]
+    else:
+        installs = common.discover_installed_xcodes()
+        xcodes = common.selected_xcodes(installs, args.xcode)
 
     for x in xcodes:
         common.log(f"\n========= _synthetic-spm-cli :: xcode {x.version} =========")
