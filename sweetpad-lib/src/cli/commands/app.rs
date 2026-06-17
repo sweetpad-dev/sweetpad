@@ -181,29 +181,11 @@ impl RunPlan {
         }
     }
 
-    fn app_bundle(&self) -> Result<AppBundle, CliError> {
-        // Prefer the in-process resolver — it computes the same
-        // TARGET_BUILD_DIR/product the build produced, with no xcodebuild
-        // spawn. If the resolved `.app` isn't actually on disk (the resolver
-        // disagreed with the real build), fall back to asking xcodebuild for
-        // the values the build itself recorded.
-        if let Some(app) = self.resolve_app_bundle().ok().filter(|a| a.path.exists()) {
-            return Ok(app);
-        }
-        let settings = xcodebuild::show_settings(
-            &self.resolved.container,
-            &self.scheme,
-            &self.configuration,
-            Some(&self.destination),
-        )?;
-        xcodebuild::app_bundle(&settings)
-    }
-
     /// Locate the built `.app` via the in-process build-settings resolver (the
-    /// engine that powers `settings show`), avoiding an `xcodebuild
-    /// -showBuildSettings` spawn. Swift packages never reach here — they run via
-    /// `swift run`, not a build/install/launch.
-    fn resolve_app_bundle(&self) -> Result<AppBundle, CliError> {
+    /// engine behind `settings show`), with no xcodebuild spawn. It computes the
+    /// same TARGET_BUILD_DIR/product the build produced. Swift packages never
+    /// reach here — they run via `swift run`, not a build/install/launch.
+    fn app_bundle(&self) -> Result<AppBundle, CliError> {
         let (project, workspace) = match &self.resolved.container {
             resolve::Container::Project(p) => (Some(p.clone()), None),
             resolve::Container::Workspace(p) => (None, Some(p.clone())),
