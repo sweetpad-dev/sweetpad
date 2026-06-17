@@ -1,0 +1,168 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "DemoKit-arm64-apple-macosx15.0-debug.module": ["<DemoKit-arm64-apple-macosx15.0-debug.module>"]
+  "DemoKitTests-arm64-apple-macosx15.0-debug.module": ["<DemoKitTests-arm64-apple-macosx15.0-debug.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.module": ["<SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.module>"]
+  "SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.test": ["<SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.test>"]
+  "demo-arm64-apple-macosx15.0-debug.exe": ["<demo-arm64-apple-macosx15.0-debug.exe>"]
+  "demo-arm64-apple-macosx15.0-debug.module": ["<demo-arm64-apple-macosx15.0-debug.module>"]
+  "main": ["<DemoKit-arm64-apple-macosx15.0-debug.module>","<demo-arm64-apple-macosx15.0-debug.exe>","<demo-arm64-apple-macosx15.0-debug.module>"]
+  "test": ["<DemoKit-arm64-apple-macosx15.0-debug.module>","<DemoKitTests-arm64-apple-macosx15.0-debug.module>","<SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.test>","<demo-arm64-apple-macosx15.0-debug.exe>","<demo-arm64-apple-macosx15.0-debug.module>"]
+default: "main"
+nodes:
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Sources/DemoKit/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Sources/demo/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Tests/DemoKitTests/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo":
+    is-mutated: true
+commands:
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Sources/DemoKit/DemoKit.swift"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/sources"]
+    description: "Write auxiliary file /Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/sources"
+
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKitTests.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Tests/DemoKitTests/DemoKitTests.swift"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKitTests.build/sources"]
+    description: "Write auxiliary file /Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKitTests.build/sources"
+
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.derived/runner.swift"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/sources"]
+    description: "Write auxiliary file /Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/sources"
+
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.derived/runner.swift":
+    tool: test-entry-point-tool
+    inputs: []
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.derived/runner.swift"]
+
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKitTests.build/DemoKitTests.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/runner.swift.o"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.product/Objects.LinkFileList"
+
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo-entitlement.plist":
+    tool: write-auxiliary-file
+    inputs: ["<entitlement-plist>","<com.apple.security.get-task-allow>"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo-entitlement.plist"]
+    description: "Write auxiliary file /Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo-entitlement.plist"
+
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Sources/demo/main.swift"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.build/sources"]
+    description: "Write auxiliary file /Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.build/sources"
+
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.build/main.swift.o"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.product/Objects.LinkFileList"
+
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/swift-version--79AA4F9932D1E87A.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/swift-version--79AA4F9932D1E87A.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/swift-version--79AA4F9932D1E87A.txt"
+
+  "<DemoKit-arm64-apple-macosx15.0-debug.module>":
+    tool: phony
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKit.swiftmodule"]
+    outputs: ["<DemoKit-arm64-apple-macosx15.0-debug.module>"]
+
+  "<DemoKitTests-arm64-apple-macosx15.0-debug.module>":
+    tool: phony
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKitTests.build/DemoKitTests.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKitTests.swiftmodule"]
+    outputs: ["<DemoKitTests-arm64-apple-macosx15.0-debug.module>"]
+
+  "<SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.module>":
+    tool: phony
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/runner.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/SweetpadSpmDemoPackageTests.swiftmodule"]
+    outputs: ["<SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.module>"]
+
+  "<SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.test>":
+    tool: phony
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.xctest/Contents/MacOS/SweetpadSpmDemoPackageTests"]
+    outputs: ["<SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.test>"]
+
+  "<demo-arm64-apple-macosx15.0-debug.exe>":
+    tool: phony
+    inputs: ["<demo-arm64-apple-macosx15.0-debug.exe-CodeSigning>"]
+    outputs: ["<demo-arm64-apple-macosx15.0-debug.exe>"]
+
+  "<demo-arm64-apple-macosx15.0-debug.module>":
+    tool: phony
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.build/main.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/demo.swiftmodule"]
+    outputs: ["<demo-arm64-apple-macosx15.0-debug.module>"]
+
+  "C.DemoKit-arm64-apple-macosx15.0-debug.module":
+    tool: shell
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Sources/DemoKit/DemoKit.swift","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/swift-version--79AA4F9932D1E87A.txt","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/sources"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKit.swiftmodule"]
+    description: "Compiling Swift Module 'DemoKit' (1 sources)"
+    args: ["/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","DemoKit","-emit-dependencies","-emit-module","-emit-module-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKit.swiftmodule","-output-file-map","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/sources","-I","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx10.13","-enable-batch-mode","-index-store-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-j3","-DSWIFT_PACKAGE","-DDEBUG","-module-cache-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-emit-objc-header","-emit-objc-header-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit-Swift.h","-swift-version","5","-sdk","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","project"]
+
+  "C.DemoKitTests-arm64-apple-macosx15.0-debug.module":
+    tool: shell
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Tests/DemoKitTests/DemoKitTests.swift","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/swift-version--79AA4F9932D1E87A.txt","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKit.swiftmodule","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKitTests.build/sources"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKitTests.build/DemoKitTests.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKitTests.swiftmodule"]
+    description: "Compiling Swift Module 'DemoKitTests' (1 sources)"
+    args: ["/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","DemoKitTests","-emit-dependencies","-emit-module","-emit-module-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKitTests.swiftmodule","-output-file-map","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKitTests.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKitTests.build/sources","-I","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx14.0","-enable-batch-mode","-index-store-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-Xfrontend","-enable-cross-import-overlays","-j3","-DSWIFT_PACKAGE","-DDEBUG","-module-cache-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-swift-version","5","-sdk","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","project"]
+
+  "C.SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.module":
+    tool: shell
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.derived/runner.swift","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/swift-version--79AA4F9932D1E87A.txt","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKitTests.swiftmodule","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/sources"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/runner.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/SweetpadSpmDemoPackageTests.swiftmodule"]
+    description: "Compiling Swift Module 'SweetpadSpmDemoPackageTests' (1 sources)"
+    args: ["/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","SweetpadSpmDemoPackageTests","-emit-dependencies","-emit-module","-emit-module-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/SweetpadSpmDemoPackageTests.swiftmodule","-output-file-map","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/sources","-I","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx10.13","-enable-batch-mode","-index-store-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-Xfrontend","-enable-cross-import-overlays","-j3","-DSWIFT_PACKAGE","-DDEBUG","-module-cache-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-emit-objc-header","-emit-objc-header-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/SweetpadSpmDemoPackageTests-Swift.h","-sdk","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","project"]
+
+  "C.SweetpadSpmDemoPackageTests-arm64-apple-macosx15.0-debug.test":
+    tool: shell
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKitTests.build/DemoKitTests.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.build/runner.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.product/Objects.LinkFileList"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.xctest/Contents/MacOS/SweetpadSpmDemoPackageTests"]
+    description: "Linking ./.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.xctest/Contents/MacOS/SweetpadSpmDemoPackageTests"
+    args: ["/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug","-o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.xctest/Contents/MacOS/SweetpadSpmDemoPackageTests","-module-name","SweetpadSpmDemoPackageTests","-Xlinker","-no_warn_duplicate_libraries","-Xlinker","-bundle","-Xlinker","-rpath","-Xlinker","@loader_path/../../../","@/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/SweetpadSpmDemoPackageTests.product/Objects.LinkFileList","-target","arm64-apple-macosx14.0","-Xlinker","-add_ast_path","-Xlinker","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKit.swiftmodule","-Xlinker","-add_ast_path","-Xlinker","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKitTests.swiftmodule","-Xlinker","-add_ast_path","-Xlinker","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/SweetpadSpmDemoPackageTests.swiftmodule","-sdk","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.demo-arm64-apple-macosx15.0-debug.exe":
+    tool: shell
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.build/main.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.product/Objects.LinkFileList"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo"]
+    description: "Linking ./.build/arm64-apple-macosx/debug/demo"
+    args: ["/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug","-o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo","-module-name","demo","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-alias","-Xlinker","_demo_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.5/macosx","-target","arm64-apple-macosx10.13","-Xlinker","-add_ast_path","-Xlinker","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKit.swiftmodule","-Xlinker","-add_ast_path","-Xlinker","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/demo.swiftmodule","-sdk","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.demo-arm64-apple-macosx15.0-debug.exe-entitlements":
+    tool: shell
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo-entitlement.plist"]
+    outputs: ["<demo-arm64-apple-macosx15.0-debug.exe-CodeSigning>"]
+    description: "Applying debug entitlements to ./.build/arm64-apple-macosx/debug/demo"
+    args: ["codesign","--force","--sign","-","--entitlements","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo-entitlement.plist","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo"]
+
+  "C.demo-arm64-apple-macosx15.0-debug.module":
+    tool: shell
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Sources/demo/main.swift","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/swift-version--79AA4F9932D1E87A.txt","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/DemoKit.swiftmodule","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.build/sources"]
+    outputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.build/main.swift.o","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/demo.swiftmodule"]
+    description: "Compiling Swift Module 'demo' (1 sources)"
+    args: ["/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","demo","-emit-dependencies","-emit-module","-emit-module-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules/demo.swiftmodule","-output-file-map","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.build/output-file-map.json","-incremental","-c","@/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/demo.build/sources","-I","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx10.13","-enable-batch-mode","-index-store-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-j3","-DSWIFT_PACKAGE","-DDEBUG","-module-cache-path","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","demo_main","-swift-version","5","-sdk","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","project"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Sources/DemoKit/","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Sources/demo/","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Tests/DemoKitTests/","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Package.swift","/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

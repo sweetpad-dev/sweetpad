@@ -1,0 +1,10 @@
+{
+  "command": [
+    "swift",
+    "build",
+    "--configuration",
+    "debug"
+  ],
+  "exitCode": 0,
+  "ok": true
+}

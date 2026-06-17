@@ -1,0 +1,11 @@
+{
+  "": {
+    "swift-dependencies": "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/master.swiftdeps"
+  },
+  "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/Sources/DemoKit/DemoKit.swift": {
+    "dependencies": "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit.d",
+    "object": "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit.swift.o",
+    "swiftmodule": "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit~partial.swiftmodule",
+    "swift-dependencies": "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project/.build/arm64-apple-macosx/debug/DemoKit.build/DemoKit.swiftdeps"
+  }
+}
