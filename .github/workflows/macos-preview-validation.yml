@@ -1,0 +1,187 @@
+# Temporary macOS validation workflow for the serve-sim + SwiftUI Previews work.
+#
+# It exercises the Mac-only parts that can't run in the Linux dev container:
+#   1. serve-sim on an Apple Silicon runner (it requires arm64) — boot a
+#      simulator, stream it headless, and confirm the preview/stream ports
+#      respond.
+#   2. The SweetPad preview contract — build a sample app, launch it on the
+#      simulator pinned to a preview via SWEETPAD_PREVIEW_ID / *_APPEARANCE,
+#      screenshot it with simctl, and assert selection + appearance take effect.
+#   3. (non-blocking) confirm EmergeTools/SnapshotPreviews' PreviewGallery
+#      compiles on the real toolchain.
+#
+# This is scaffolding to validate the feature; remove it once the preview host
+# is finalized.
+name: macOS Preview Validation
+
+on:
+  push:
+    branches: [claude/serve-sim-vscode-cli-ofonig]
+    paths:
+      - ".github/workflows/macos-preview-validation.yml"
+      - "examples/**"
+  workflow_dispatch:
+
+jobs:
+  pipeline:
+    name: serve-sim + preview pipeline
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Print environment
+        run: |
+          echo "arch: $(uname -m)"
+          sw_vers
+          xcodebuild -version
+          xcrun simctl list runtimes | grep -i ios || true
+
+      - name: Boot an iOS simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          data = json.load(sys.stdin)["devices"]
+          best = None
+          for runtime, devices in data.items():
+              if "iOS" not in runtime:
+                  continue
+              for dev in devices:
+                  if "iPhone" in dev["name"]:
+                      best = dev["udid"]
+                      break
+              if best:
+                  break
+          print(best or "")
+          ')
+          if [ -z "$UDID" ]; then echo "No iOS iPhone simulator available"; exit 1; fi
+          echo "Using simulator $UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+
+      - name: serve-sim smoke test
+        continue-on-error: true
+        run: |
+          set -x
+          UDID="${{ steps.sim.outputs.udid }}"
+          npx -y serve-sim@latest --detach --no-preview "$UDID" || true
+          sleep 8
+          npx -y serve-sim@latest --list || true
+          echo "--- preview port 3200 ---"
+          curl -sS -m 5 -o /dev/null -w "http=%{http_code}\n" http://localhost:3200 || true
+          echo "--- stream port 3100 ---"
+          curl -sS -m 5 -o /dev/null -w "http=%{http_code}\n" http://localhost:3100 || true
+          npx -y serve-sim@latest --kill || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate & build sample app
+        run: |
+          set -euo pipefail
+          cd examples/preview-sample
+          xcodegen generate
+          xcodebuild \
+            -project PreviewSample.xcodeproj \
+            -scheme PreviewSample \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath dd \
+            CODE_SIGNING_ALLOWED=NO \
+            DEAD_CODE_STRIPPING=NO \
+            build | tee build.log
+
+      - name: Install app on simulator
+        id: install
+        run: |
+          set -euo pipefail
+          APP=$(find examples/preview-sample/dd/Build/Products -name "PreviewSample.app" -type d | head -1)
+          if [ -z "$APP" ]; then echo "PreviewSample.app not found"; exit 1; fi
+          echo "Installing $APP"
+          xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP"
+
+      - name: Render previews & screenshot
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          UDID="${{ steps.sim.outputs.udid }}"
+          BUNDLE=dev.sweetpad.PreviewSample
+          shoot() {
+            local id="$1" appearance="$2" out="$3"
+            local args=(simctl launch --terminate-running-process --setenv "SWEETPAD_PREVIEW_ID=$id")
+            if [ -n "$appearance" ]; then args+=(--setenv "SWEETPAD_PREVIEW_APPEARANCE=$appearance"); fi
+            args+=("$UDID" "$BUNDLE")
+            xcrun "${args[@]}"
+            sleep 5
+            xcrun simctl io "$UDID" screenshot "artifacts/$out"
+          }
+          shoot A "" A.png
+          shoot B "" B.png
+          shoot A dark A-dark.png
+          ls -l artifacts
+
+      - name: Assert selection & appearance took effect
+        run: |
+          set -euo pipefail
+          cd artifacts
+          for f in A.png B.png A-dark.png; do
+            [ -s "$f" ] || { echo "$f missing/empty"; exit 1; }
+            sz=$(stat -f%z "$f")
+            [ "$sz" -gt 1024 ] || { echo "$f suspiciously small ($sz bytes)"; exit 1; }
+          done
+          a=$(shasum -a 256 A.png | cut -d' ' -f1)
+          b=$(shasum -a 256 B.png | cut -d' ' -f1)
+          ad=$(shasum -a 256 A-dark.png | cut -d' ' -f1)
+          echo "A=$a B=$b A-dark=$ad"
+          [ "$a" != "$b" ] || { echo "FAIL: preview A and B are identical — id selection had no effect"; exit 1; }
+          [ "$a" != "$ad" ] || { echo "FAIL: A light and dark identical — appearance had no effect"; exit 1; }
+          echo "PASS: preview id selection and appearance both change the rendered output"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-screenshots
+          path: |
+            artifacts/*.png
+            examples/preview-sample/build.log
+
+  snapshotpreviews:
+    name: SnapshotPreviews compile probe (non-blocking)
+    runs-on: macos-15
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate & build SnapshotPreviews probe
+        run: |
+          set -euo pipefail
+          cd examples/snapshot-check
+          xcodegen generate
+          xcodebuild \
+            -project SnapshotCheck.xcodeproj \
+            -scheme SnapshotCheck \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath dd \
+            CODE_SIGNING_ALLOWED=NO \
+            DEAD_CODE_STRIPPING=NO \
+            build | tee build.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: snapshotpreviews-build-log
+          path: examples/snapshot-check/build.log
