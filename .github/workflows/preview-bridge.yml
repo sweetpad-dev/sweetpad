@@ -1,0 +1,92 @@
+# Regression guard for the runtime SwiftUI preview discovery that backs
+# SweetPad's "Preview in VSCode" feature (examples/preview-bridge). It walks the
+# Mach-O __swift5_proto section and reflects into private SwiftUI preview
+# internals — both can break when Xcode/Swift updates, so this runs on relevant
+# changes, on PRs, and weekly to catch GitHub's macOS runner-image / Xcode bumps.
+name: PreviewBridge regression
+
+on:
+  push:
+    branches: [main, claude/serve-sim-vscode-cli-ofonig]
+    paths: &paths
+      - ".github/workflows/preview-bridge.yml"
+      - "examples/preview-bridge/**"
+      - "src/previews/host-bootstrap.ts"
+      - "scripts/emit-preview-host.mjs"
+  pull_request:
+    paths: *paths
+  schedule:
+    - cron: "0 6 * * 1" # Mondays — catch Xcode runner-image updates
+  workflow_dispatch:
+
+jobs:
+  preview-bridge:
+    name: Discovery + render regression suite (macOS)
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record toolchain (the Xcode this run validates against)
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Compile the scaffolded bootstrap (GeneratedHost)
+        run: |
+          set -euo pipefail
+          cd examples/preview-bridge
+          # The exact Swift file SweetPad scaffolds into a user's project. Builds
+          # it on the real toolchain so a compile break is caught here.
+          swift build --target GeneratedHost 2>&1 | tee generated-host.log
+
+      - name: Run PreviewBridge tests (discovery + ABI + legacy render)
+        run: |
+          set -euo pipefail
+          cd examples/preview-bridge
+          # Discovery scans loaded images and relies on preview conformances not
+          # being stripped — debug `swift test` keeps them. The experimental
+          # macro view extraction is gated off here (runs in the next step).
+          swift test 2>&1 | tee test.log
+
+      - name: macro #Preview view extraction
+        env:
+          PREVIEW_BRIDGE_MACRO_RENDER: "1"
+        run: |
+          # Reflects into private SwiftUI Preview internals — the most
+          # Xcode-fragile path; a failure here is the regression signal.
+          cd examples/preview-bridge
+          swift test --filter RenderingTests 2>&1 | tee macro-render.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-bridge-logs
+          path: |
+            examples/preview-bridge/generated-host.log
+            examples/preview-bridge/test.log
+            examples/preview-bridge/macro-render.log
+
+  bootstrap-drift:
+    name: Scaffold drift + escaping (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check the committed GeneratedHost matches the TS source
+        run: |
+          # Regenerate and fail if it differs from the committed Swift, so an
+          # edit to host-bootstrap.ts without re-emitting can't slip through.
+          node scripts/emit-preview-host.mjs
+          git diff --exit-code -- examples/preview-bridge/Sources/GeneratedHost/SweetPadPreviewHost.swift
+
+      - name: Run bootstrap unit tests (escaping + drift)
+        run: npx vitest run src/previews/host-bootstrap.spec.ts
