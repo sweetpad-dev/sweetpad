@@ -206,51 +206,14 @@ fn parse_summary(out: &str) -> Result<TestSummary, CliError> {
     serde_json::from_str(json).map_err(|e| CliError::new(format!("parsing test summary: {e}")))
 }
 
-/// One target's settings from `xcodebuild -showBuildSettings -json`.
+/// One target's resolved build settings, the shape [`app_bundle`] reads to
+/// locate the built product. Field names mirror `xcodebuild -showBuildSettings
+/// -json` so the values can be deserialized straight from that format in tests.
 #[derive(Debug, Deserialize)]
 pub struct TargetBuildSettings {
     pub target: String,
     #[serde(rename = "buildSettings")]
     pub settings: BTreeMap<String, String>,
-}
-
-/// Read build settings via `xcodebuild -showBuildSettings -json`. Used at run
-/// time to locate the built `.app` and its bundle id (the in-process resolver
-/// needs an Xcode catalog; for the launch path we ask xcodebuild directly,
-/// matching the values the actual build produced).
-pub fn show_settings(
-    container: &Container,
-    scheme: &str,
-    configuration: &str,
-    destination: Option<&str>,
-) -> Result<Vec<TargetBuildSettings>, CliError> {
-    let mut parts: Vec<String> = vec![
-        "-showBuildSettings".into(),
-        "-json".into(),
-        "-scheme".into(),
-        scheme.into(),
-        "-configuration".into(),
-        configuration.into(),
-    ];
-    if let Some(dest) = destination {
-        parts.push("-destination".into());
-        parts.push(dest.into());
-    }
-    parts.extend(container_args(container));
-
-    let args: Vec<&str> = parts.iter().map(String::as_str).collect();
-    let stdout = process::capture("xcodebuild", &args, working_dir(container).as_deref())?;
-    parse_settings(&stdout)
-}
-
-/// Parse `xcodebuild -showBuildSettings -json` output, skipping any warnings
-/// printed before the JSON array.
-fn parse_settings(stdout: &str) -> Result<Vec<TargetBuildSettings>, CliError> {
-    let json = stdout
-        .find('[')
-        .map(|i| &stdout[i..])
-        .ok_or_else(|| CliError::new("xcodebuild -showBuildSettings produced no JSON"))?;
-    serde_json::from_str(json).map_err(|e| CliError::new(format!("parsing build settings: {e}")))
 }
 
 /// The launchable app produced by a build: the `.app` path, its bundle id, and
@@ -299,46 +262,6 @@ pub fn app_bundle(settings: &[TargetBuildSettings]) -> Result<AppBundle, CliErro
     ))
 }
 
-/// One project/workspace block of `xcodebuild -list -json`.
-#[derive(Debug, Default, Deserialize)]
-struct ListBlock {
-    #[serde(default)]
-    schemes: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListJson {
-    project: Option<ListBlock>,
-    workspace: Option<ListBlock>,
-}
-
-/// Scheme names via `xcodebuild -list -json`. Used for Swift packages, whose
-/// schemes xcodebuild synthesizes from the manifest (the in-process resolver
-/// only reads pbxproj). Xcode reports a package under the `workspace` key.
-pub fn list_schemes(container: &Container) -> Result<Vec<String>, CliError> {
-    let mut parts: Vec<String> = vec!["-list".into(), "-json".into()];
-    parts.extend(container_args(container));
-    let args: Vec<&str> = parts.iter().map(String::as_str).collect();
-    let stdout = process::capture("xcodebuild", &args, working_dir(container).as_deref())?;
-    parse_list_schemes(&stdout)
-}
-
-/// Parse `xcodebuild -list -json` schemes from either the project or workspace
-/// block, skipping any leading non-JSON.
-fn parse_list_schemes(stdout: &str) -> Result<Vec<String>, CliError> {
-    let json = stdout
-        .find('{')
-        .map(|i| &stdout[i..])
-        .ok_or_else(|| CliError::new("xcodebuild -list produced no JSON"))?;
-    let parsed: ListJson = serde_json::from_str(json)
-        .map_err(|e| CliError::new(format!("parsing xcodebuild -list: {e}")))?;
-    Ok(parsed
-        .workspace
-        .or(parsed.project)
-        .map(|b| b.schemes)
-        .unwrap_or_default())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,6 +270,13 @@ mod tests {
 
     fn project() -> Container {
         Container::Project(PathBuf::from("/work/App.xcodeproj"))
+    }
+
+    /// Build `TargetBuildSettings` from a `-showBuildSettings -json` payload,
+    /// skipping any preamble — a convenience for the `app_bundle` tests.
+    fn parse_settings(stdout: &str) -> Vec<TargetBuildSettings> {
+        let json = &stdout[stdout.find('[').expect("no JSON array")..];
+        serde_json::from_str(json).expect("invalid build settings JSON")
     }
 
     #[test]
@@ -457,7 +387,7 @@ mod tests {
     fn parses_settings_skipping_preamble() {
         let stdout =
             "warning: blah\n[{\"target\":\"App\",\"buildSettings\":{\"PRODUCT_NAME\":\"App\"}}]";
-        let parsed = parse_settings(stdout).unwrap();
+        let parsed = parse_settings(stdout);
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].target, "App");
         assert_eq!(parsed[0].settings.get("PRODUCT_NAME").unwrap(), "App");
@@ -469,7 +399,7 @@ mod tests {
           {"target":"AppTests","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"AppTests.xctest","PRODUCT_BUNDLE_IDENTIFIER":"com.x.tests"}},
           {"target":"App","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"App.app","PRODUCT_BUNDLE_IDENTIFIER":"com.x.app"}}
         ]"#;
-        let settings = parse_settings(stdout).unwrap();
+        let settings = parse_settings(stdout);
         let app = app_bundle(&settings).unwrap();
         assert_eq!(app.path, PathBuf::from("/d/App.app"));
         assert_eq!(app.bundle_id, "com.x.app");
@@ -480,7 +410,7 @@ mod tests {
         let stdout = r#"[{"target":"App","buildSettings":{
             "TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"App.app",
             "EXECUTABLE_PATH":"App.app/Contents/MacOS/App","PRODUCT_BUNDLE_IDENTIFIER":"com.x.app"}}]"#;
-        let settings = parse_settings(stdout).unwrap();
+        let settings = parse_settings(stdout);
         let app = app_bundle(&settings).unwrap();
         assert_eq!(
             app.executable,
@@ -503,21 +433,10 @@ mod tests {
     }
 
     #[test]
-    fn parses_list_schemes_from_workspace_or_project() {
-        let ws = r#"xcodebuild noise
-        {"workspace":{"name":"Pkg","schemes":["Pkg","PkgTests"]}}"#;
-        assert_eq!(parse_list_schemes(ws).unwrap(), vec!["Pkg", "PkgTests"]);
-
-        let proj = r#"{"project":{"name":"App","schemes":["App"]}}"#;
-        assert_eq!(parse_list_schemes(proj).unwrap(), vec!["App"]);
-
-        // Neither block ⇒ empty, not an error.
-        assert!(parse_list_schemes("{}").unwrap().is_empty());
-    }
-
-    #[test]
     fn app_bundle_errors_without_app() {
-        let settings = parse_settings(r#"[{"target":"Lib","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"Lib.framework","PRODUCT_BUNDLE_IDENTIFIER":"com.x.lib"}}]"#).unwrap();
+        let settings = parse_settings(
+            r#"[{"target":"Lib","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"Lib.framework","PRODUCT_BUNDLE_IDENTIFIER":"com.x.lib"}}]"#,
+        );
         assert!(app_bundle(&settings).is_err());
     }
 

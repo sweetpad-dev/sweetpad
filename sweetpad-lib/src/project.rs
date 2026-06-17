@@ -2977,11 +2977,12 @@ fn host_home() -> String {
 #[must_use]
 fn normalize_stub_workspace(container: &Path) -> PathBuf {
     let is_stub = container.file_name().and_then(OsStr::to_str) == Some("project.xcworkspace")
-        && container.parent().and_then(Path::extension).and_then(OsStr::to_str)
+        && container
+            .parent()
+            .and_then(Path::extension)
+            .and_then(OsStr::to_str)
             == Some("xcodeproj");
-    if is_stub
-        && let Some(parent) = container.parent()
-    {
+    if is_stub && let Some(parent) = container.parent() {
         return parent.to_path_buf();
     }
     container.to_path_buf()

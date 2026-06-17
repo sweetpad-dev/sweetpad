@@ -433,7 +433,10 @@ the imported `examples_xcode_<dir>` spelling.
 
 Schemes `xcodebuild` synthesizes from Swift *package* manifests (41 across
 ice-cubes/netnewswire) are outside the pbxproj surface and are tallied by the
-discovery oracle, not failed (scope decision pending — roadmap D15).
+discovery oracle, not failed. They are instead grounded directly against the
+toolchain by the SwiftPM CLI oracle (`tests/spm_oracle.rs`, roadmap D15 — done):
+sweetpad reads package schemes from `swift package dump-package` (products plus
+the `<name>-Package` aggregate) rather than the pbxproj resolver.
 
 ## 7. Compiler-argument resolution
 
@@ -690,7 +693,7 @@ below point at the current `xcode-26.5.0` capture (repointed from the dropped
 | `.xcworkspace` wrapping one project | ✅ | fixtures/alamofire/xcode-26.5.0/metadata/list.json (workspace=Alamofire), kingfisher |
 | `.xcworkspace` wrapping multiple projects | ✅ | fixtures/alamofire/xcode-26.5.0/raw/Alamofire.xcworkspace/contents.xcworkspacedata |
 | Nested sub-`.xcodeproj` referenced from a parent project | ✅ | fixtures/alamofire/xcode-26.5.0/raw/Example/iOS Example.xcodeproj/project.pbxproj |
-| Swift package as root project (Package.swift only) | ❌ | — (scope decision pending, roadmap D15) |
+| Swift package as root project (Package.swift only) | ✅ | fixtures/_synthetic-spm-cli/xcode-{15.4,16.4,26.5}/captures (tests/spm_oracle.rs); schemes/build/test/run via the Swift toolchain, LSP via sourcekit-lsp's native SwiftPM support (no buildServer.json) — see roadmap D15 |
 | Buildable Folders (Xcode 16+ groupless folders) | ✅ | fixtures/tuist-fixtures/xcode-26.5.0/raw/examples_xcode_generated_app_with_buildable_folders/App.xcodeproj |
 
 ### Target / product types
@@ -1145,11 +1148,21 @@ versions → raise that `(version, platform)` floor)
 
 **Track D — corpus expansion for the remaining ❌ rows (ranked)**
 
-15. **Swift package as root** (`Package.swift`, no xcodeproj) — the biggest
-    genuinely uncovered real-world surface (41 synthesized package schemes
-    tallied by the discovery oracle). A *scope decision* first: if the BSP
-    server should serve SPM-root repos, add a synthetic fixture + extend
-    discovery/resolution to manifests; if not, record 🚫 with rationale.
+15. **Swift package as root** (`Package.swift`, no xcodeproj) — ✅ *done*.
+    Scope decision: sweetpad serves SPM-root repos through the Swift toolchain,
+    not the pbxproj resolver or the BSP server. `Container::SwiftPackage` is a
+    first-class container across discovery/resolution (`src/cli/resolve.rs`):
+    schemes come from `swift package dump-package` (products + the
+    `<name>-Package` aggregate), build/test/run shell to `swift build`/`swift
+    test`/`swift run`, and `bsp init` deliberately writes *no* `buildServer.json`
+    so sourcekit-lsp uses its native SwiftPM support (`src/cli/commands/bsp.rs`,
+    warns on a stale config). Grounded by a synthetic fixture +
+    `tests/spm_oracle.rs` across all three corpus majors (Xcode 15.4, 16.4,
+    26.5). Not modeled: the pbxproj-level settings resolver (packages have no
+    pbxproj — `sweetpad settings` is xcodebuild-only) and custom build
+    configurations (SwiftPM is Debug/Release only). Remaining follow-up is
+    on-mac runtime verification of `app run`, tracked separately — not a
+    blocker for D15.
 16. **Weak/optional framework link + `-framework` vs `-l` styles** (3 ❌ rows,
     one fixture): a synthetic project with a `Weak` ATTRIBUTES entry + a
     `-l`-style link (`scripts/17_static_library.py` is the template).
@@ -1179,7 +1192,8 @@ versions → raise that `(version, platform)` floor)
     refresh them.
 
 **Suggested execution order:** A1 (+C7, same root cause) → A2/A3 → C8–C13 →
-B6 → D16 → D15 scope decision → E20–E24 interleaved. Mac-host capture steps
+B6 → D16 → E20–E24 interleaved (D15 scope decision is resolved — see item 15).
+Mac-host capture steps
 (A1, A3, D16, D17) need a macOS machine with the corpus Xcodes; everything
 else runs anywhere against committed fixtures.
 

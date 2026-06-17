@@ -1,0 +1,5 @@
+{
+  "description": "SwiftPM CLI oracle: dump-package vs xcodebuild -list, plus swift build/test status",
+  "package": "fixtures/_synthetic-spm-cli/project",
+  "xcode": "26.5"
+}

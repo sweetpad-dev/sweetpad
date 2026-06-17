@@ -1,0 +1,3 @@
+import DemoKit
+
+print(greeting())

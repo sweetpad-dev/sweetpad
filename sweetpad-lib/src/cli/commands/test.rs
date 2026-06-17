@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::Subcommand;
 
-use crate::cli::{CliError, CliResult, Context, resolve, xcodebuild};
+use crate::cli::{CliError, CliResult, Context, resolve, swiftpm, xcodebuild};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -32,6 +32,13 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
 
 fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> CliResult {
     let resolved = resolve::resolve(ctx)?;
+
+    // Swift packages run tests with the `swift` toolchain — no simulator
+    // destination, no `.xcresult` bundle to read a summary from.
+    if matches!(resolved.container, resolve::Container::SwiftPackage(_)) {
+        return spm_test(ctx, &resolved, only_testing, skip_testing);
+    }
+
     let target = resolve::build_target(ctx, &resolved)?;
     resolve::remember(ctx, &resolved, &target);
 
@@ -100,6 +107,44 @@ fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> 
                 f.target_name, f.test_name, f.failure_text
             ));
         }
+    }
+
+    if passed {
+        Ok(())
+    } else {
+        Err(CliError::new("tests failed"))
+    }
+}
+
+/// Run a Swift package's tests via `swift test`. Unlike xcodebuild there's no
+/// `.xcresult` to parse, so the `--json` summary is just the pass/fail result.
+fn spm_test(
+    ctx: &mut Context,
+    resolved: &resolve::Resolved,
+    only_testing: &[String],
+    skip_testing: &[String],
+) -> CliResult {
+    let configuration = resolved
+        .configuration
+        .clone()
+        .unwrap_or_else(|| "Debug".to_string());
+
+    if !ctx.out.is_json() {
+        ctx.out.note(&format!(
+            "testing Swift package ({configuration}) with swift test"
+        ));
+    }
+
+    let passed = swiftpm::test(
+        &resolved.container,
+        &configuration,
+        only_testing,
+        skip_testing,
+        ctx.out.is_json(),
+    )?;
+
+    if ctx.out.is_json() {
+        ctx.out.json_value(&serde_json::json!({ "passed": passed }));
     }
 
     if passed {

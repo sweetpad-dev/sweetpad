@@ -1,0 +1,85 @@
+{
+  "cLanguageStandard": null,
+  "cxxLanguageStandard": null,
+  "dependencies": [],
+  "name": "SweetpadSpmDemo",
+  "packageKind": {
+    "root": [
+      "/Users/runner/work/sweetpad/sweetpad/sweetpad-lib/fixtures/_synthetic-spm-cli/project"
+    ]
+  },
+  "pkgConfig": null,
+  "platforms": [],
+  "products": [
+    {
+      "name": "DemoKit",
+      "settings": [],
+      "targets": [
+        "DemoKit"
+      ],
+      "type": {
+        "library": [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name": "demo",
+      "settings": [],
+      "targets": [
+        "demo"
+      ],
+      "type": {
+        "executable": null
+      }
+    }
+  ],
+  "providers": null,
+  "swiftLanguageVersions": null,
+  "targets": [
+    {
+      "dependencies": [],
+      "exclude": [],
+      "name": "DemoKit",
+      "packageAccess": true,
+      "resources": [],
+      "settings": [],
+      "type": "regular"
+    },
+    {
+      "dependencies": [
+        {
+          "byName": [
+            "DemoKit",
+            null
+          ]
+        }
+      ],
+      "exclude": [],
+      "name": "demo",
+      "packageAccess": true,
+      "resources": [],
+      "settings": [],
+      "type": "executable"
+    },
+    {
+      "dependencies": [
+        {
+          "byName": [
+            "DemoKit",
+            null
+          ]
+        }
+      ],
+      "exclude": [],
+      "name": "DemoKitTests",
+      "packageAccess": true,
+      "resources": [],
+      "settings": [],
+      "type": "test"
+    }
+  ],
+  "toolsVersion": {
+    "_version": "5.9.0"
+  }
+}

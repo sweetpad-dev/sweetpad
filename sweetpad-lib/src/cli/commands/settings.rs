@@ -34,11 +34,18 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CliResult
         Container::Project(p) => (Some(p.clone()), None),
         Container::Workspace(p) => (None, Some(p.clone())),
         Container::SwiftPackage(p) => {
-            return Err(CliError::new(format!(
-                "settings show is not supported for Swift packages ({}); the \
-                 resolver reads Xcode project files",
-                p.display()
-            )));
+            // SwiftPM packages have no pbxproj/xcconfig for the resolver to
+            // compute settings from — surface that rather than erroring.
+            if ctx.out.is_json() {
+                ctx.out.json_value(&serde_json::json!({ "targets": [] }));
+            } else {
+                ctx.out.note(&format!(
+                    "settings show is not available for Swift packages ({}); \
+                     SwiftPM has no xcconfig/pbxproj build settings to resolve",
+                    p.display()
+                ));
+            }
+            return Ok(());
         }
     };
 

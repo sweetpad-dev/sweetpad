@@ -144,11 +144,12 @@ pub fn missing(what: &str) -> CliError {
     ))
 }
 
-/// The `xcodebuild -list` scheme set for a container. Workspaces merge member
-/// projects' schemes; bare projects use their own (file + autocreated) set.
-/// Swift packages aren't supported — xcodebuild synthesizes those schemes from
-/// the manifest, which the resolver doesn't model. Shared by every command that
-/// needs to enumerate or pick a scheme.
+/// The scheme set for a container, read without xcodebuild. Workspaces merge
+/// member projects' schemes; bare projects use their own (file + autocreated)
+/// set, both via the in-process pbxproj reader. Swift packages have no pbxproj,
+/// so their schemes — the product names xcodebuild would synthesize — are read
+/// straight from the manifest (`swift package dump-package`). Shared by every
+/// command that needs to enumerate or pick a scheme.
 pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
     match container {
         Container::Workspace(p) => crate::workspace::open(p)
@@ -157,9 +158,9 @@ pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
         Container::Project(p) => crate::project::open(p)
             .map(|proj| proj.schemes)
             .map_err(|e| CliError::new(format!("failed to read project {}: {e}", p.display()))),
-        // Swift packages have no pbxproj; ask xcodebuild for the synthesized
-        // schemes (this drives SPM build/test/run).
-        Container::SwiftPackage(_) => crate::cli::xcodebuild::list_schemes(container),
+        // Swift packages have no pbxproj; derive schemes from the manifest
+        // (this drives SPM build/test/run) — no xcodebuild needed.
+        Container::SwiftPackage(_) => crate::cli::swiftpm::schemes(container),
     }
 }
 

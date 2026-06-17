@@ -1,10 +1,10 @@
-//! `sweetpad build …` — compile the project (via `xcodebuild`). `build` stays
-//! purely "compile"; the run/install/launch lifecycle lives under
-//! [`crate::cli::commands::app`].
+//! `sweetpad build …` — compile the project (via `xcodebuild`, or `swift build`
+//! for a Swift package). `build` stays purely "compile"; the run/install/launch
+//! lifecycle lives under [`crate::cli::commands::app`].
 
 use clap::Subcommand;
 
-use crate::cli::{CliResult, Context, resolve, xcodebuild};
+use crate::cli::{CliResult, Context, resolve, swiftpm, xcodebuild};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -24,6 +24,21 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
 
 fn start(ctx: &mut Context, clean: bool) -> CliResult {
     let resolved = resolve::resolve(ctx)?;
+
+    // Swift packages have no simulator destination; build them with the `swift`
+    // toolchain rather than routing through xcodebuild (which would force a
+    // destination on us).
+    if matches!(resolved.container, resolve::Container::SwiftPackage(_)) {
+        let configuration = resolved
+            .configuration
+            .clone()
+            .unwrap_or_else(|| "Debug".to_string());
+        ctx.out.note(&format!(
+            "building Swift package ({configuration}) with swift build"
+        ));
+        return swiftpm::build(&resolved.container, &configuration, clean);
+    }
+
     let target = resolve::build_target(ctx, &resolved)?;
     resolve::remember(ctx, &resolved, &target);
 

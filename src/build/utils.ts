@@ -460,6 +460,12 @@ export async function generateBuildServerConfigOnBuild(options: {
 
   const provider = getBuildServerProvider();
   if (provider === "sweetpad") {
+    // Swift packages use sourcekit-lsp's native SwiftPM support; the sweetpad
+    // provider never writes a buildServer.json for them, so there's nothing to
+    // (re)generate or restart the LSP for.
+    if (detectWorkspaceType(options.xcworkspace) === "spm") {
+      return;
+    }
     // Our config is project-based (no scheme/build_root), so it's valid as long
     // as it's ours and its launcher is still the current one — regenerate only
     // when switching in from another provider or when `argv[0]` went stale
