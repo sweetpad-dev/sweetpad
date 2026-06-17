@@ -5,7 +5,7 @@ Captures a second (or Nth) Xcode version alongside the existing corpus inside a
 strict acquire -> capture -> validate -> teardown envelope, so the resolver is
 validated against more than one Xcode without ever holding two transient Xcodes
 on disk at once. See DOCS.md §10 (updating Xcode versions) for the
-design; this script only *drives* the existing numbered steps (02/03/04/07-12),
+design; this script only *drives* the existing numbered steps (02/03/04/07-12, 22),
 it does not re-implement them.
 
 Per version the loop is:
@@ -13,7 +13,7 @@ Per version the loop is:
   preflight disk -> `xcodes install <ver>` -> discover the real installed
   version -> switch xcode-select to it -> provision the iOS sim runtime ->
   snapshot xcspecs (04) -> per smoke-subset project: capture metadata+raw (02),
-  smoke build (03), reclaim its `.derived` -> settings steps (07-12) ->
+  smoke build (03), reclaim its `.derived` -> settings steps (07-12, 22) ->
   `cargo test` (version-aware oracle) -> tear the Xcode.app + runtime back down.
 
 The corpus clones under `corpus/<slug>/` are shared across versions (cloned once
@@ -421,6 +421,10 @@ def capture_settings_steps(version: str, subset: list[str], *, force: bool, dry:
     run_script("08_global_defaults.py", "--xcode", version, *force_args, dry=dry, allow_fail=True)
     run_script("11_synthetic_xcconfigs.py", "--xcode", version, *force_args,
                dry=dry, allow_fail=True)
+    # 22 SwiftPM CLI oracle: version-global, no corpus project — captures
+    # dump-package vs `xcodebuild -list` plus `swift build`/`swift test` status
+    # for the sample package (needs the toolchain, not a sim runtime).
+    run_script("22_spm_cli_oracle.py", "--xcode", version, *force_args, dry=dry, allow_fail=True)
     # 09 per-target/project-defaults, 10 real-xcconfig, 12 PIF dumps: per project.
     for slug in subset:
         run_script("09_per_project_settings.py", "--xcode", version, "--project", slug,
@@ -440,7 +444,7 @@ def validate(version: str, *, dry: bool) -> None:
     run_cmd(
         ["cargo", "test", "--test", "corpus_oracle", "--test", "per_target_oracle",
          "--test", "project_defaults_oracle", "--test", "synthetic_override_oracle",
-         "--test", "xcconfig_resolution_oracle"],
+         "--test", "xcconfig_resolution_oracle", "--test", "spm_oracle"],
         dry=dry, cwd=common.REPO_ROOT, allow_fail=True,
     )
 
