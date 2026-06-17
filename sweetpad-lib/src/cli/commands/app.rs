@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use clap::Subcommand;
 
+use crate::build_settings::BuildSettingsOptions;
 use crate::cli::inject::recompiler::{Mode, Recompiler};
 use crate::cli::inject::server::{InjectServer, Logger};
 use crate::cli::inject::{self, HotSession};
@@ -181,12 +182,60 @@ impl RunPlan {
     }
 
     fn app_bundle(&self) -> Result<AppBundle, CliError> {
+        // Prefer the in-process resolver — it computes the same
+        // TARGET_BUILD_DIR/product the build produced, with no xcodebuild
+        // spawn. If the resolved `.app` isn't actually on disk (the resolver
+        // disagreed with the real build), fall back to asking xcodebuild for
+        // the values the build itself recorded.
+        if let Some(app) = self.resolve_app_bundle().ok().filter(|a| a.path.exists()) {
+            return Ok(app);
+        }
         let settings = xcodebuild::show_settings(
             &self.resolved.container,
             &self.scheme,
             &self.configuration,
             Some(&self.destination),
         )?;
+        xcodebuild::app_bundle(&settings)
+    }
+
+    /// Locate the built `.app` via the in-process build-settings resolver (the
+    /// engine that powers `settings show`), avoiding an `xcodebuild
+    /// -showBuildSettings` spawn. Swift packages never reach here — they run via
+    /// `swift run`, not a build/install/launch.
+    fn resolve_app_bundle(&self) -> Result<AppBundle, CliError> {
+        let (project, workspace) = match &self.resolved.container {
+            resolve::Container::Project(p) => (Some(p.clone()), None),
+            resolve::Container::Workspace(p) => (None, Some(p.clone())),
+            resolve::Container::SwiftPackage(_) => {
+                return Err(CliError::new("Swift packages have no .app bundle"));
+            }
+        };
+        let opts = BuildSettingsOptions {
+            project,
+            workspace,
+            scheme: Some(self.scheme.clone()),
+            target: None,
+            configuration: self.configuration.clone(),
+            sdk: String::new(),
+            arch: String::new(),
+            destination: crate::destination::parse_destination_arg(&self.destination),
+            xcconfig: None,
+            xcode: None,
+            xcspec_root: None,
+            sdksettings_root: None,
+            catalog_cache: None,
+            derived_data_path: None,
+            keys: None,
+        };
+        let resolved = crate::build_settings::resolve_build_settings(&opts).map_err(CliError::new)?;
+        let settings: Vec<xcodebuild::TargetBuildSettings> = resolved
+            .into_iter()
+            .map(|t| xcodebuild::TargetBuildSettings {
+                target: t.target,
+                settings: t.settings,
+            })
+            .collect();
         xcodebuild::app_bundle(&settings)
     }
 }

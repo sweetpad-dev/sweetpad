@@ -645,10 +645,18 @@ fn gather(container: &Container) -> Result<Info, CliError> {
                 schemes: proj.schemes.clone(),
             })
         }
-        Container::SwiftPackage(p) => Err(CliError::new(format!(
-            "project info is not supported for Swift packages ({}); the resolver \
-             reads Xcode project files, not Package.swift",
-            p.display()
-        ))),
+        Container::SwiftPackage(_) => {
+            // No pbxproj to read; evaluate the manifest instead. Targets are
+            // every declared target; schemes mirror the synthesized set
+            // (products, or non-test targets). SwiftPM builds are debug/release.
+            let manifest = crate::cli::swiftpm::manifest(container)?;
+            Ok(Info {
+                kind: "package",
+                name: manifest.name.clone(),
+                targets: manifest.targets.iter().map(|t| t.name.clone()).collect(),
+                configurations: vec!["Debug".to_string(), "Release".to_string()],
+                schemes: manifest.scheme_names(),
+            })
+        }
     }
 }

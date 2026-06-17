@@ -32,6 +32,25 @@ pub struct Manifest {
     pub targets: Vec<Target>,
 }
 
+impl Manifest {
+    /// Scheme candidates for the package: its product names — the same set
+    /// xcodebuild synthesizes from the manifest. Falls back to non-test target
+    /// names when a package declares no products, so scheme selection always
+    /// has candidates.
+    #[must_use]
+    pub fn scheme_names(&self) -> Vec<String> {
+        if self.products.is_empty() {
+            self.targets
+                .iter()
+                .filter(|t| !t.is_test())
+                .map(|t| t.name.clone())
+                .collect()
+        } else {
+            self.products.iter().map(|p| p.name.clone()).collect()
+        }
+    }
+}
+
 /// A product declared by the package. In the dump, `type` is a single-key
 /// object (`{"library":[…]}`, `{"executable":null}`, `{"plugin":…}`, …); we
 /// keep it raw and inspect the key, which is robust against new product kinds.
@@ -99,22 +118,67 @@ fn parse_manifest(stdout: &str) -> Result<Manifest, CliError> {
         .map_err(|e| CliError::new(format!("parsing swift package dump-package: {e}")))
 }
 
-/// Scheme candidates for a package: its product names — the same set xcodebuild
-/// synthesizes from the manifest, but read directly so no xcodebuild (or even a
-/// full Xcode) is needed. Falls back to non-test target names when a package
-/// declares no products, so scheme selection always has candidates.
+/// Scheme candidates for a package, read directly from the manifest so no
+/// xcodebuild (or even a full Xcode) is needed. See [`Manifest::scheme_names`].
 pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
-    let manifest = manifest(container)?;
-    let mut names: Vec<String> = manifest.products.iter().map(|p| p.name.clone()).collect();
-    if names.is_empty() {
-        names = manifest
-            .targets
-            .iter()
-            .filter(|t| !t.is_test())
-            .map(|t| t.name.clone())
-            .collect();
+    Ok(manifest(container)?.scheme_names())
+}
+
+/// Map an Xcode configuration name to SwiftPM's `--configuration` value.
+/// SwiftPM only knows `debug`/`release`; anything that isn't "Release"
+/// (case-insensitive) builds debug, matching `swift build`'s default.
+#[must_use]
+pub fn configuration_arg(configuration: &str) -> &'static str {
+    if configuration.eq_ignore_ascii_case("release") {
+        "release"
+    } else {
+        "debug"
     }
-    Ok(names)
+}
+
+/// `swift build` for a package, streaming output to the terminal. `clean` wipes
+/// the build directory first — SwiftPM has no `build --clean`, so it's a
+/// separate `package clean`.
+pub fn build(container: &Container, configuration: &str, clean: bool) -> Result<(), CliError> {
+    let cwd = package_dir(container);
+    if clean {
+        process::stream("swift", &["package", "clean"], cwd.as_deref())?;
+    }
+    process::stream(
+        "swift",
+        &["build", "--configuration", configuration_arg(configuration)],
+        cwd.as_deref(),
+    )
+}
+
+/// `swift test` for a package. Returns whether the suite passed (a non-zero
+/// exit is a result, not a spawn error). `only`/`skip` map to SwiftPM's
+/// `--filter`/`--skip` regex selectors — the closest equivalent to xcodebuild's
+/// `-only-testing`/`-skip-testing` identifiers. `quiet` discards stdout (for
+/// `--json` callers whose stdout must hold only the summary).
+pub fn test(
+    container: &Container,
+    configuration: &str,
+    only: &[String],
+    skip: &[String],
+    quiet: bool,
+) -> Result<bool, CliError> {
+    let cwd = package_dir(container);
+    let mut args: Vec<String> = vec![
+        "test".into(),
+        "--configuration".into(),
+        configuration_arg(configuration).into(),
+    ];
+    for f in only {
+        args.push("--filter".into());
+        args.push(f.clone());
+    }
+    for s in skip {
+        args.push("--skip".into());
+        args.push(s.clone());
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    process::run("swift", &arg_refs, cwd.as_deref(), quiet)
 }
 
 #[cfg(test)]
@@ -149,8 +213,7 @@ mod tests {
     #[test]
     fn schemes_are_product_names() {
         let m = parse_manifest(DUMP).unwrap();
-        let names: Vec<&str> = m.products.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, vec!["DemoKit", "demo"]);
+        assert_eq!(m.scheme_names(), vec!["DemoKit", "demo"]);
     }
 
     #[test]
@@ -167,13 +230,15 @@ mod tests {
                               { "name": "LibTests", "type": "test" } ] }"#,
         )
         .unwrap();
-        let names: Vec<String> = m
-            .targets
-            .iter()
-            .filter(|t| !t.is_test())
-            .map(|t| t.name.clone())
-            .collect();
-        assert_eq!(names, vec!["Lib"]);
+        assert_eq!(m.scheme_names(), vec!["Lib"]);
+    }
+
+    #[test]
+    fn configuration_maps_to_debug_or_release() {
+        assert_eq!(configuration_arg("Release"), "release");
+        assert_eq!(configuration_arg("release"), "release");
+        assert_eq!(configuration_arg("Debug"), "debug");
+        assert_eq!(configuration_arg("Anything"), "debug");
     }
 
     #[test]
