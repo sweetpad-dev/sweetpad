@@ -59,13 +59,28 @@ import { TunnelManager } from "./devices/tunnel.js";
 import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
 import { createFormatStatusItem } from "./format/status.js";
+import { PreviewsCodeLensProvider } from "./previews/codelens.js";
 import {
+  refreshPreviewsCommand,
+  renderPreviewCommand,
+  screenshotPreviewCommand,
+  screenshotPreviewVariantsCommand,
+  setupPreviewHostCommand,
+} from "./previews/commands.js";
+import { PreviewHostManager } from "./previews/host.js";
+import { PreviewsManager } from "./previews/manager.js";
+import { PreviewsTreeProvider } from "./previews/tree.js";
+import {
+  copySimulatorStreamUrlCommand,
   openSimulatorCommand,
+  openSimulatorStreamInBrowserCommand,
   removeSimulatorCacheCommand,
   startSimulatorCommand,
   stopSimulatorCommand,
+  streamSimulatorCommand,
 } from "./simulators/commands.js";
 import { SimulatorsManager } from "./simulators/manager.js";
+import { ServeSimManager } from "./simulators/serve-sim.js";
 import {
   copyServerNameCommand,
   createIssueGenericCommand,
@@ -146,6 +161,13 @@ export async function activate(context: vscode.ExtensionContext) {
     diagnostics: diagnostics,
   });
   const toolsManager = new ToolsManager();
+  const serveSimManager = new ServeSimManager();
+  const previewsManager = new PreviewsManager();
+  const previewHostManager = new PreviewHostManager({
+    destinationsManager: destinationsManager,
+    serveSimManager: serveSimManager,
+    workspaceState: workspaceState,
+  });
   const testingManager = new TestingManager({
     workspaceState: workspaceState,
     progress: progressStatusBar,
@@ -164,6 +186,9 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   const destinationsTreeProvider = new DestinationsTreeProvider({
     manager: destinationsManager,
+  });
+  const previewsTreeProvider = new PreviewsTreeProvider({
+    manager: previewsManager,
   });
 
   // Status bars & providers 📊
@@ -214,6 +239,8 @@ export async function activate(context: vscode.ExtensionContext) {
   void buildTreeProvider.start();
   void toolsTreeProvider.start();
   void destinationsTreeProvider.start();
+  previewsManager.start();
+  previewsTreeProvider.start();
   void schemeStatusBar.start();
   void destinationBar.start();
   void schemeWatcher.start();
@@ -238,6 +265,9 @@ export async function activate(context: vscode.ExtensionContext) {
     lspDiagnostics: lspDiagnostics,
     serverService: serverService,
     bspService: bspService,
+    serveSimManager: serveSimManager,
+    previewsManager: previewsManager,
+    previewHostManager: previewHostManager,
   };
 
   // Shortcut helpers bound to the deps bag
@@ -326,6 +356,25 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
   d(command("sweetpad.simulators.start", startSimulatorCommand));
   d(command("sweetpad.simulators.stop", stopSimulatorCommand));
+  d(command("sweetpad.simulators.stream", streamSimulatorCommand));
+  d(command("sweetpad.simulators.streamOpenInBrowser", openSimulatorStreamInBrowserCommand));
+  d(command("sweetpad.simulators.streamCopyUrl", copySimulatorStreamUrlCommand));
+  d(serveSimManager);
+
+  // SwiftUI Previews
+  d(tree("sweetpad.previews.view", previewsTreeProvider));
+  d(
+    vscode.languages.registerCodeLensProvider(
+      { language: "swift", scheme: "file" },
+      new PreviewsCodeLensProvider({ manager: previewsManager }),
+    ),
+  );
+  d(command("sweetpad.previews.render", renderPreviewCommand));
+  d(command("sweetpad.previews.refresh", refreshPreviewsCommand));
+  d(command("sweetpad.previews.setup", setupPreviewHostCommand));
+  d(command("sweetpad.previews.screenshot", screenshotPreviewCommand));
+  d(command("sweetpad.previews.screenshotVariants", screenshotPreviewVariantsCommand));
+  d(previewsManager);
 
   // // Devices
   d(command("sweetpad.devices.refresh", async () => await destinationsManager.refreshDevices()));

@@ -281,6 +281,11 @@
           "visibility": "collapsed"
         },
         {
+          "id": "sweetpad.previews.view",
+          "name": "SwiftUI Previews",
+          "visibility": "collapsed"
+        },
+        {
           "id": "sweetpad.tools.view",
           "name": "Tools",
           "visibility": "collapsed"
@@ -516,6 +521,47 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "sweetpad.simulators.stream",
+        "title": "SweetPad: Stream simulator",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "sweetpad.simulators.streamOpenInBrowser",
+        "title": "SweetPad: Open simulator stream in browser",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "sweetpad.simulators.streamCopyUrl",
+        "title": "SweetPad: Copy simulator stream URL",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "sweetpad.previews.render",
+        "title": "SweetPad: Preview in VSCode",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "sweetpad.previews.refresh",
+        "title": "SweetPad: Refresh SwiftUI previews",
+        "icon": "$(sweetpad-refresh)",
+        "enablement": "view == sweetpad.previews.view"
+      },
+      {
+        "command": "sweetpad.previews.setup",
+        "title": "SweetPad: Set up SwiftUI preview host",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "sweetpad.previews.screenshot",
+        "title": "SweetPad: Screenshot preview",
+        "icon": "$(device-camera)"
+      },
+      {
+        "command": "sweetpad.previews.screenshotVariants",
+        "title": "SweetPad: Screenshot preview variants (light & dark)",
+        "icon": "$(versions)"
+      },
+      {
         "command": "sweetpad.devices.refresh",
         "title": "SweetPad: Refresh devices list",
         "icon": "$(sweetpad-refresh)"
@@ -667,6 +713,16 @@
           "command": "sweetpad.tools.refresh",
           "when": "view == sweetpad.tools.view",
           "group": "navigation"
+        },
+        {
+          "command": "sweetpad.previews.setup",
+          "when": "view == sweetpad.previews.view",
+          "group": "navigation@1"
+        },
+        {
+          "command": "sweetpad.previews.refresh",
+          "when": "view == sweetpad.previews.view",
+          "group": "navigation@0"
         }
       ],
       "view/item/context": [
@@ -756,6 +812,41 @@
           "group": "inline@2"
         },
         {
+          "command": "sweetpad.simulators.stream",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*&status=booted.*/",
+          "group": "inline@3"
+        },
+        {
+          "command": "sweetpad.simulators.stream",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/",
+          "group": "context@3"
+        },
+        {
+          "command": "sweetpad.simulators.streamOpenInBrowser",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/",
+          "group": "context@4"
+        },
+        {
+          "command": "sweetpad.simulators.streamCopyUrl",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/",
+          "group": "context@5"
+        },
+        {
+          "command": "sweetpad.previews.render",
+          "when": "view == sweetpad.previews.view && viewItem == preview-item",
+          "group": "inline@1"
+        },
+        {
+          "command": "sweetpad.previews.screenshot",
+          "when": "view == sweetpad.previews.view && viewItem == preview-item",
+          "group": "inline@2"
+        },
+        {
+          "command": "sweetpad.previews.screenshotVariants",
+          "when": "view == sweetpad.previews.view && viewItem == preview-item",
+          "group": "context@1"
+        },
+        {
           "command": "sweetpad.destinations.select",
           "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-.*/",
           "group": "inline@1"
@@ -800,6 +891,11 @@
       "type": "object",
       "title": "SweetPad",
       "properties": {
+        "sweetpad.previews.codeLensEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a 'Preview in VSCode' CodeLens above each SwiftUI #Preview / PreviewProvider."
+        },
         "sweetpad.format.path": {
           "type": "string",
           "examples": [

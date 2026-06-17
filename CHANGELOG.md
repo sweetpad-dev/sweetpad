@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [Unreleased]
+
+- Add simulator streaming via [serve-sim](https://github.com/EvanBacon/serve-sim): a new "Stream simulator" action on booted simulators in the Destinations view opens the live simulator inside a VS Code webview (useful in Remote-SSH/Codespaces where Simulator.app can't render). Context-menu entries also let you open the stream in a browser or copy its URL. Available as the `SweetPad: Stream simulator`, `SweetPad: Open simulator stream in browser`, and `SweetPad: Copy simulator stream URL` commands. Requires an Apple Silicon Mac.
+- Add SwiftUI Previews support (experimental): SweetPad now indexes every `#Preview` / `PreviewProvider` in the workspace and shows them in a new "SwiftUI Previews" view, with a "Preview in VSCode" CodeLens above each one. Selecting a preview relaunches your last-run app on its simulator pinned to that preview (via a scaffolded, dependency-free `SweetPadPreviewHost.swift` that discovers `#Preview` macros at runtime by walking the Mach-O `__swift5_proto` section — adapted from [EmergeTools/SnapshotPreviews](https://github.com/EmergeTools/SnapshotPreviews), MIT) and streams it into the editor through serve-sim; InjectionNext hot reload (when enabled) refreshes the streamed preview on save. Also adds light/dark screenshot capture via `simctl`. Commands: `SweetPad: Preview in VSCode`, `SweetPad: Set up SwiftUI preview host`, `SweetPad: Screenshot preview`, `SweetPad: Screenshot preview variants`. The CodeLens toggles via `sweetpad.previews.codeLensEnabled`. Run `Set up SwiftUI preview host` once to integrate the bootstrap; requires an Apple Silicon Mac.
+
 ## [0.2.3] - 2026-06-15
 
 - Fix the built app not being found when `sweetpad.build.xcodeWorkspacePath` points at the `project.xcworkspace` stub Xcode auto-generates inside an `.xcodeproj` bundle: the DerivedData folder is now keyed by the outer `.xcodeproj` (`CSUSTPlanet-…`), matching Xcode, instead of the stub (`project-…`) ([#285](https://github.com/sweetpad-dev/sweetpad/issues/285), thanks [@zHElEARN](https://github.com/zHElEARN))
