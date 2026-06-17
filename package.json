@@ -516,6 +516,21 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "sweetpad.simulators.stream",
+        "title": "SweetPad: Stream simulator",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "sweetpad.simulators.streamOpenInBrowser",
+        "title": "SweetPad: Open simulator stream in browser",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "sweetpad.simulators.streamCopyUrl",
+        "title": "SweetPad: Copy simulator stream URL",
+        "icon": "$(copy)"
+      },
+      {
         "command": "sweetpad.devices.refresh",
         "title": "SweetPad: Refresh devices list",
         "icon": "$(sweetpad-refresh)"
@@ -754,6 +769,26 @@
           "command": "sweetpad.simulators.stop",
           "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*&status=booted.*/",
           "group": "inline@2"
+        },
+        {
+          "command": "sweetpad.simulators.stream",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*&status=booted.*/",
+          "group": "inline@3"
+        },
+        {
+          "command": "sweetpad.simulators.stream",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/",
+          "group": "context@3"
+        },
+        {
+          "command": "sweetpad.simulators.streamOpenInBrowser",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/",
+          "group": "context@4"
+        },
+        {
+          "command": "sweetpad.simulators.streamCopyUrl",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/",
+          "group": "context@5"
         },
         {
           "command": "sweetpad.destinations.select",

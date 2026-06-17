@@ -3,7 +3,31 @@ import * as vscode from "vscode";
 import { askSimulator } from "../build/utils.js";
 import type { AppDeps } from "../common/commands.js";
 import { runTask } from "../common/tasks/run.js";
-import type { iOSSimulatorDestinationTreeItem } from "../destination/tree.js";
+import type { DestinationTreeItem, iOSSimulatorDestinationTreeItem } from "../destination/tree.js";
+import type { SimulatorDestination } from "./types.js";
+
+/**
+ * Tree items that carry a simulator destination. They all share the
+ * `destination-item-simulator` context prefix, so the serve-sim menu entries
+ * surface for iOS/watchOS/tvOS/visionOS simulators alike.
+ */
+type SimulatorDestinationTreeItem = Extract<DestinationTreeItem, { simulator: SimulatorDestination }>;
+
+/**
+ * Resolve the simulator a serve-sim command should act on: either the one the
+ * command was invoked on from the destinations tree, or (when run from the
+ * command palette) a booted simulator picked by the user.
+ */
+async function resolveSimulator(deps: AppDeps, item?: SimulatorDestinationTreeItem): Promise<SimulatorDestination> {
+  if (item) {
+    return item.simulator;
+  }
+  return await askSimulator(deps.destinationsManager, {
+    title: "Select simulator to stream",
+    state: "Booted",
+    error: "No booted simulators to stream. Start a simulator first.",
+  });
+}
 
 /**
  * Command to start simulator from the simulator tree view in the sidebar
@@ -112,4 +136,34 @@ export async function removeSimulatorCacheCommand(deps: AppDeps) {
       vscode.commands.executeCommand("sweetpad.simulators.refresh");
     },
   });
+}
+
+/**
+ * Stream the simulator into an in-editor webview using serve-sim. Works from
+ * the destinations tree (acts on the clicked simulator) or the command palette
+ * (prompts for a booted simulator).
+ */
+export async function streamSimulatorCommand(deps: AppDeps, item?: SimulatorDestinationTreeItem) {
+  const simulator = await resolveSimulator(deps, item);
+  deps.progressStatusBar.updateText(`Starting stream for ${simulator.name}`);
+  await deps.serveSimManager.stream(simulator);
+}
+
+/**
+ * Open the serve-sim live preview for the simulator in the default browser.
+ */
+export async function openSimulatorStreamInBrowserCommand(deps: AppDeps, item?: SimulatorDestinationTreeItem) {
+  const simulator = await resolveSimulator(deps, item);
+  deps.progressStatusBar.updateText(`Starting stream for ${simulator.name}`);
+  await deps.serveSimManager.openInBrowser(simulator);
+}
+
+/**
+ * Copy the serve-sim preview URL for the simulator to the clipboard, so it can
+ * be shared or opened elsewhere (e.g. through a tunnel).
+ */
+export async function copySimulatorStreamUrlCommand(deps: AppDeps, item?: SimulatorDestinationTreeItem) {
+  const simulator = await resolveSimulator(deps, item);
+  deps.progressStatusBar.updateText(`Starting stream for ${simulator.name}`);
+  await deps.serveSimManager.copyUrl(simulator);
 }

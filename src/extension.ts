@@ -60,12 +60,16 @@ import { formatCommand, showLogsCommand } from "./format/commands.js";
 import { SwiftFormattingProvider, registerFormatProvider, registerRangeFormatProvider } from "./format/formatter.js";
 import { createFormatStatusItem } from "./format/status.js";
 import {
+  copySimulatorStreamUrlCommand,
   openSimulatorCommand,
+  openSimulatorStreamInBrowserCommand,
   removeSimulatorCacheCommand,
   startSimulatorCommand,
   stopSimulatorCommand,
+  streamSimulatorCommand,
 } from "./simulators/commands.js";
 import { SimulatorsManager } from "./simulators/manager.js";
+import { ServeSimManager } from "./simulators/serve-sim.js";
 import {
   copyServerNameCommand,
   createIssueGenericCommand,
@@ -146,6 +150,7 @@ export async function activate(context: vscode.ExtensionContext) {
     diagnostics: diagnostics,
   });
   const toolsManager = new ToolsManager();
+  const serveSimManager = new ServeSimManager();
   const testingManager = new TestingManager({
     workspaceState: workspaceState,
     progress: progressStatusBar,
@@ -238,6 +243,7 @@ export async function activate(context: vscode.ExtensionContext) {
     lspDiagnostics: lspDiagnostics,
     serverService: serverService,
     bspService: bspService,
+    serveSimManager: serveSimManager,
   };
 
   // Shortcut helpers bound to the deps bag
@@ -326,6 +332,10 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
   d(command("sweetpad.simulators.start", startSimulatorCommand));
   d(command("sweetpad.simulators.stop", stopSimulatorCommand));
+  d(command("sweetpad.simulators.stream", streamSimulatorCommand));
+  d(command("sweetpad.simulators.streamOpenInBrowser", openSimulatorStreamInBrowserCommand));
+  d(command("sweetpad.simulators.streamCopyUrl", copySimulatorStreamUrlCommand));
+  d(serveSimManager);
 
   // // Devices
   d(command("sweetpad.devices.refresh", async () => await destinationsManager.refreshDevices()));

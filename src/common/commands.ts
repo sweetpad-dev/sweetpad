@@ -8,6 +8,7 @@ import type { CliServerService } from "../cli-server/service";
 import type { DestinationsManager } from "../destination/manager";
 import type { TunnelManager } from "../devices/tunnel";
 import type { SwiftFormattingProvider } from "../format/formatter";
+import type { ServeSimManager } from "../simulators/serve-sim";
 import type { ProgressStatusBar } from "../system/status-bar";
 import type { TestingManager } from "../testing/manager";
 import type { ToolsManager } from "../tools/manager";
@@ -47,6 +48,7 @@ export type AppDeps = {
   lspDiagnostics: LspDiagnosticsService;
   serverService: CliServerService;
   bspService: BspService;
+  serveSimManager: ServeSimManager;
 };
 
 /**
