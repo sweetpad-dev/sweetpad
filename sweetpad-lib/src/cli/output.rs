@@ -7,6 +7,7 @@
 
 use std::io::{IsTerminal, Write};
 
+use crate::cli::progress::Spinner;
 use crate::cli::{CliError, GlobalArgs};
 
 /// Resolved output mode shared across commands.
@@ -92,6 +93,15 @@ impl Output {
         if !self.json {
             let _ = writeln!(std::io::stderr(), "{}", self.dim(s));
         }
+    }
+
+    /// Run `f` while a transient `⠋ message` spinner animates on stderr, erased
+    /// when `f` returns — so the caller's next [`note`](Output::note) replaces it
+    /// in place. Animates only when interactive (TTY, not `--json`); otherwise
+    /// `f` just runs. Use for long, otherwise-silent steps (boot, install).
+    pub fn step<T>(&self, message: &str, f: impl FnOnce() -> T) -> T {
+        let _spinner = Spinner::start(message, self.is_interactive(), self.color);
+        f()
     }
 
     /// A verbose-only diagnostic to stderr, gated on `-v`.

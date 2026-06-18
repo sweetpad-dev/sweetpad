@@ -24,6 +24,7 @@ pub mod merge;
 pub mod oslog;
 pub mod output;
 pub mod process;
+pub mod progress;
 pub mod rawmode;
 pub mod resolve;
 pub mod scaffold;

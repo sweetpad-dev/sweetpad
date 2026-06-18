@@ -126,7 +126,8 @@ fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CliResult 
     let sims = simctl::list()?;
     let sim = resolve::select_simulator(ctx, &sims, simulator)?;
     if !sim.is_booted() {
-        simctl::boot(&sim.udid)?;
+        ctx.out
+            .step("booting simulator", || simctl::boot(&sim.udid))?;
     }
     simctl::open_url(&sim.udid, url)?;
     if ctx.out.is_json() {
@@ -333,11 +334,13 @@ fn build_and_install(plan: &RunPlan, out: &Output) -> Result<AppBundle, CliError
     let app_path = app.path.display().to_string();
     match &plan.target {
         Target::Simulator(udid) => {
-            simctl::boot(udid)?;
-            simctl::install(udid, &app_path)?;
+            out.step("booting simulator", || simctl::boot(udid))?;
+            out.step("installing app", || simctl::install(udid, &app_path))?;
         }
         Target::Device(id) => {
-            devicectl::install(id, &app_path)?;
+            out.step("installing app on device", || {
+                devicectl::install(id, &app_path)
+            })?;
         }
         // A macOS app is built in place; there's no install step.
         Target::Mac => {}
@@ -415,12 +418,16 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
     let app = build_and_install(plan, &ctx.out)?;
     match &plan.target {
         Target::Simulator(udid) => {
-            let out = simctl::launch(udid, &app.bundle_id)?;
+            let out = ctx
+                .out
+                .step("launching app", || simctl::launch(udid, &app.bundle_id))?;
             ctx.out
                 .note(&format!("launched {} → {}", app.bundle_id, out.trim()));
         }
         Target::Device(id) => {
-            let out = devicectl::launch(id, &app.bundle_id)?;
+            let out = ctx.out.step("launching app on device", || {
+                devicectl::launch(id, &app.bundle_id)
+            })?;
             ctx.out.note(&format!(
                 "launched {} on device → {}",
                 app.bundle_id,
@@ -675,15 +682,14 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path) -> CliR
 /// Boot, install, and launch the app with the hot-reload env. Shared by the
 /// first launch and each `r`. Logs stream separately for the whole session
 /// ([`start_logs`]), so this doesn't touch them.
-fn launch_hot(
-    ctx: &Context,
-    udid: &str,
-    app: &AppBundle,
-    env: &[(String, String)],
-) -> CliResult {
-    simctl::boot(udid)?;
-    simctl::install(udid, &app.path.display().to_string())?;
-    let launched = simctl::launch_with_env(udid, &app.bundle_id, env)?;
+fn launch_hot(ctx: &Context, udid: &str, app: &AppBundle, env: &[(String, String)]) -> CliResult {
+    ctx.out.step("booting simulator", || simctl::boot(udid))?;
+    ctx.out.step("installing app", || {
+        simctl::install(udid, &app.path.display().to_string())
+    })?;
+    let launched = ctx.out.step("launching app", || {
+        simctl::launch_with_env(udid, &app.bundle_id, env)
+    })?;
     ctx.out
         .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
     Ok(())
@@ -793,9 +799,12 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
     let app_path = app.path.display().to_string();
     match &plan.target {
         Target::Simulator(udid) => {
-            simctl::boot(udid)?;
-            simctl::install(udid, &app_path)?;
-            let launched = simctl::launch(udid, &app.bundle_id)?;
+            ctx.out.step("booting simulator", || simctl::boot(udid))?;
+            ctx.out
+                .step("installing app", || simctl::install(udid, &app_path))?;
+            let launched = ctx
+                .out
+                .step("launching app", || simctl::launch(udid, &app.bundle_id))?;
             ctx.out
                 .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
             Ok(Running {
@@ -809,7 +818,9 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
             })
         }
         Target::Device(id) => {
-            devicectl::install(id, &app_path)?;
+            ctx.out.step("installing app on device", || {
+                devicectl::install(id, &app_path)
+            })?;
             ctx.out.note(&format!(
                 "launching {} on device with console",
                 app.bundle_id
@@ -827,7 +838,11 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
         Target::Mac => {
             ctx.out.note(&format!("running {}", app.bundle_id));
             Ok(Running {
-                stream: Some(process::spawn(&app.executable.to_string_lossy(), &[], None)?),
+                stream: Some(process::spawn(
+                    &app.executable.to_string_lossy(),
+                    &[],
+                    None,
+                )?),
                 kind: RunningKind::Mac,
             })
         }
@@ -878,7 +893,7 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Cli
         let done = Arc::clone(&done);
         move || {
             while !done.load(Ordering::Relaxed) {
-                if let rawmode::Input::Key(0x03) = rawmode::poll_key() {
+                if let rawmode::Input::Key('\u{3}') = rawmode::poll_key() {
                     signal_group(pid, libc::SIGINT);
                     aborted.store(true, Ordering::Relaxed);
                     break;
@@ -968,14 +983,82 @@ enum SessionKey {
     Ignore,
 }
 
-/// Map a keystroke to a session action. `r` rebuilds; `q`, Ctrl-C (`0x03`), and
-/// Ctrl-D (`0x04`) quit; everything else is ignored. (A closed stdin is handled
-/// separately as [`rawmode::Input::Closed`].)
-fn classify_key(key: u8) -> SessionKey {
-    match key {
-        b'r' | b'R' => SessionKey::Rebuild,
-        b'q' | b'Q' | 0x03 | 0x04 => SessionKey::Quit,
+/// Map a keystroke to a session action. `r` rebuilds; `q`, Ctrl-C, and Ctrl-D
+/// quit; everything else is ignored. The key is first folded to the Latin letter
+/// on its physical position ([`map_key_to_latin`]), so the shortcuts work on
+/// non-Latin layouts (Cyrillic `к`/`й`) without switching. (A closed stdin is
+/// handled separately as [`rawmode::Input::Closed`].)
+fn classify_key(key: char) -> SessionKey {
+    match map_key_to_latin(key) {
+        'r' | 'R' => SessionKey::Rebuild,
+        'q' | 'Q' | '\u{3}' | '\u{4}' => SessionKey::Quit,
         _ => SessionKey::Ignore,
+    }
+}
+
+/// Fold a character typed on a non-Latin keyboard layout to the Latin letter on
+/// the same physical key, so the session shortcuts work without switching layouts.
+/// Ported from Flutter's `keyboardLayoutMappings` — mapped by key *position*, not
+/// visual resemblance (Cyrillic `р` sits on the QWERTY `h` key, so → `h`, not `p`).
+/// Covers the Cyrillic ЙЦУКЕН family over the letter positions: Russian, Ukrainian,
+/// and Belarusian share every letter key except `s`, which types `ы` (Russian) or
+/// `і` (Ukrainian/Belarusian). Every other character passes through. (The other
+/// Ukrainian-specific letters — є/ї/ґ — sit on punctuation keys, not shortcut keys.)
+fn map_key_to_latin(key: char) -> char {
+    match key {
+        'й' => 'q',
+        'ц' => 'w',
+        'у' => 'e',
+        'к' => 'r',
+        'е' => 't',
+        'н' => 'y',
+        'г' => 'u',
+        'ш' => 'i',
+        'щ' => 'o',
+        'з' => 'p',
+        'ф' => 'a',
+        'ы' | 'і' => 's',
+        'в' => 'd',
+        'а' => 'f',
+        'п' => 'g',
+        'р' => 'h',
+        'о' => 'j',
+        'л' => 'k',
+        'д' => 'l',
+        'я' => 'z',
+        'ч' => 'x',
+        'с' => 'c',
+        'м' => 'v',
+        'и' => 'b',
+        'т' => 'n',
+        'ь' => 'm',
+        'Й' => 'Q',
+        'Ц' => 'W',
+        'У' => 'E',
+        'К' => 'R',
+        'Е' => 'T',
+        'Н' => 'Y',
+        'Г' => 'U',
+        'Ш' => 'I',
+        'Щ' => 'O',
+        'З' => 'P',
+        'Ф' => 'A',
+        'Ы' | 'І' => 'S',
+        'В' => 'D',
+        'А' => 'F',
+        'П' => 'G',
+        'Р' => 'H',
+        'О' => 'J',
+        'Л' => 'K',
+        'Д' => 'L',
+        'Я' => 'Z',
+        'Ч' => 'X',
+        'С' => 'C',
+        'М' => 'V',
+        'И' => 'B',
+        'Т' => 'N',
+        'Ь' => 'M',
+        other => other,
     }
 }
 
@@ -1009,8 +1092,9 @@ fn log_args(udid: &str, app: &AppBundle, level: &str) -> Vec<String> {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or_default();
-    let predicate =
-        format!("process == \"{exe}\" AND (sender == \"{exe}\" OR sender == \"{exe}.debug.dylib\")");
+    let predicate = format!(
+        "process == \"{exe}\" AND (sender == \"{exe}\" OR sender == \"{exe}.debug.dylib\")"
+    );
     vec![
         "simctl".into(),
         "spawn".into(),
@@ -1085,19 +1169,25 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
     match stage {
         Stage::Install => {
             plan.build_plan().run(&ctx.out)?;
-            simctl::boot(udid)?;
-            simctl::install(udid, &app.path.display().to_string())?;
+            ctx.out.step("booting simulator", || simctl::boot(udid))?;
+            ctx.out.step("installing app", || {
+                simctl::install(udid, &app.path.display().to_string())
+            })?;
             ctx.out.note(&format!("installed {}", app.bundle_id));
         }
         Stage::Launch => {
-            simctl::boot(udid)?;
-            let out = simctl::launch(udid, &app.bundle_id)?;
+            ctx.out.step("booting simulator", || simctl::boot(udid))?;
+            let out = ctx
+                .out
+                .step("launching app", || simctl::launch(udid, &app.bundle_id))?;
             ctx.out
                 .note(&format!("launched {} → {}", app.bundle_id, out.trim()));
         }
         Stage::Logs => return stream_logs(ctx, udid, &app),
         Stage::Stop => {
-            simctl::terminate(udid, &app.bundle_id)?;
+            ctx.out.step("terminating app", || {
+                simctl::terminate(udid, &app.bundle_id)
+            })?;
             ctx.out.note(&format!("terminated {}", app.bundle_id));
         }
     }
@@ -1151,15 +1241,39 @@ mod tests {
     #[test]
     fn session_keys_map_to_actions() {
         // `r` rebuilds (either case).
-        assert_eq!(classify_key(b'r'), SessionKey::Rebuild);
-        assert_eq!(classify_key(b'R'), SessionKey::Rebuild);
+        assert_eq!(classify_key('r'), SessionKey::Rebuild);
+        assert_eq!(classify_key('R'), SessionKey::Rebuild);
         // `q`, Ctrl-C, and Ctrl-D all quit.
-        assert_eq!(classify_key(b'q'), SessionKey::Quit);
-        assert_eq!(classify_key(b'Q'), SessionKey::Quit);
-        assert_eq!(classify_key(0x03), SessionKey::Quit);
-        assert_eq!(classify_key(0x04), SessionKey::Quit);
+        assert_eq!(classify_key('q'), SessionKey::Quit);
+        assert_eq!(classify_key('Q'), SessionKey::Quit);
+        assert_eq!(classify_key('\u{3}'), SessionKey::Quit);
+        assert_eq!(classify_key('\u{4}'), SessionKey::Quit);
         // Anything else is ignored — the session keeps streaming output.
-        assert_eq!(classify_key(b'x'), SessionKey::Ignore);
-        assert_eq!(classify_key(b'\n'), SessionKey::Ignore);
+        assert_eq!(classify_key('x'), SessionKey::Ignore);
+        assert_eq!(classify_key('\n'), SessionKey::Ignore);
+    }
+
+    #[test]
+    fn cyrillic_layout_keys_map_to_the_same_actions() {
+        // The R and Q physical keys on the ЙЦУКЕН layout type к and й.
+        assert_eq!(classify_key('к'), SessionKey::Rebuild);
+        assert_eq!(classify_key('К'), SessionKey::Rebuild);
+        assert_eq!(classify_key('й'), SessionKey::Quit);
+        assert_eq!(classify_key('Й'), SessionKey::Quit);
+    }
+
+    #[test]
+    fn key_mapping_is_by_position_not_appearance() {
+        // Cyrillic р sits on the QWERTY h key — mapped by position, not its
+        // look-alike `p`. Latin input and unmapped chars pass through.
+        assert_eq!(map_key_to_latin('р'), 'h');
+        assert_eq!(map_key_to_latin('к'), 'r');
+        assert_eq!(map_key_to_latin('й'), 'q');
+        assert_eq!(map_key_to_latin('r'), 'r');
+        assert_eq!(map_key_to_latin('1'), '1');
+        // The S key types ы on Russian, і on Ukrainian/Belarusian — both → s.
+        assert_eq!(map_key_to_latin('ы'), 's');
+        assert_eq!(map_key_to_latin('і'), 's');
+        assert_eq!(map_key_to_latin('І'), 'S');
     }
 }
