@@ -123,12 +123,17 @@ jobs:
     # The user's "Linux container that mounts a frameworks dir": a Swift
     # container with the downloaded iOS SDK artifact.
     container: swift:6.1
+    # The swift image's default shell is dash (`sh`), which lacks `pipefail`;
+    # force bash for every run step in this job.
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Install build dependencies
         run: |
           set -euo pipefail
           apt-get update
-          apt-get install -y --no-install-recommends git curl ca-certificates libssl-dev pkg-config
+          apt-get install -y --no-install-recommends git curl ca-certificates libssl-dev pkg-config file
 
       - name: Download generated package
         uses: actions/download-artifact@v4
@@ -149,32 +154,42 @@ jobs:
           tar -C /opt/darwin-sdk -xzf sdk/iphoneos-sdk.tgz
           ls -la /opt/darwin-sdk
 
-      # BEST-EFFORT from here: build xtool from source, register the SDK, build.
-      # These steps encode the intended flow and are the iteration target.
-      - name: Build xtool from source
+      # BEST-EFFORT from here: install xtool, register the SDK, build. These
+      # steps encode the intended flow and are the iteration target.
+      #
+      # Install via the prebuilt Linux AppImage (extracted, so no FUSE needed in
+      # the container) — far faster than a from-source swift build of xtool.
+      - name: Install xtool (AppImage)
         run: |
           set -euo pipefail
-          git clone --depth 1 https://github.com/xtool-org/xtool.git /opt/xtool-src
-          cd /opt/xtool-src
-          swift build -c release --product xtool
-          echo "/opt/xtool-src/.build/release" >> "$GITHUB_PATH"
+          url="$(curl -fsSL https://api.github.com/repos/xtool-org/xtool/releases/latest \
+                  | grep -oE 'https://[^"]+\.AppImage' | head -1)"
+          if [ -z "$url" ]; then echo "no AppImage asset in latest release"; exit 1; fi
+          echo "Downloading $url"
+          curl -fsSL -o /tmp/xtool.AppImage "$url"
+          chmod +x /tmp/xtool.AppImage
+          ( cd /opt && /tmp/xtool.AppImage --appimage-extract >/dev/null )
+          if [ -x /opt/squashfs-root/usr/bin/xtool ]; then
+            ln -sf /opt/squashfs-root/usr/bin/xtool /usr/local/bin/xtool
+          else
+            ln -sf /opt/squashfs-root/AppRun /usr/local/bin/xtool
+          fi
 
-      - name: Tooling versions
+      - name: Tooling + xtool interface (diagnostics)
         run: |
+          set -euo pipefail
           swift --version
-          xtool --version || echo "xtool --version failed (best-effort step)"
+          xtool --version || echo "xtool --version failed"
+          # Surface the real, non-interactive SDK interface so we can wire the
+          # Mac-exported SDK into a Darwin Swift SDK in the next iteration.
+          xtool --help || true
+          xtool setup --help || true
+          xtool sdk --help || true
+          swift sdk list || true
 
       # The crux: xtool normally builds a Darwin Swift SDK from an Xcode.xip via
       # `xtool setup`. Here we already have the raw iOS SDK from the Mac job; the
       # remaining work is to register it as a Swift SDK xtool/swiftpm can target.
-      # This is the experimental step most likely to need adjustment.
-      - name: Register the Darwin SDK (experimental)
-        run: |
-          set -euo pipefail
-          swift sdk list || true
-          echo "TODO: register /opt/darwin-sdk as a Darwin Swift SDK for xtool."
-          echo "xtool sdk --help:"; xtool sdk --help || true
-
       - name: Cross-compile the iOS app
         working-directory: app
         run: |
