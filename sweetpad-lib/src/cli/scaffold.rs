@@ -150,6 +150,27 @@ pub fn validate_bundle_id(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Coerce a project name into a valid bundle-identifier segment for the default
+/// `com.example.<segment>` suggestion. [`validate_name`] permits underscores
+/// (the name doubles as a Swift identifier) but [`validate_bundle_id`] does not,
+/// so runs of disallowed characters collapse to a single hyphen and the ends are
+/// trimmed; falls back to `app` when nothing valid remains. This keeps the
+/// suggested default valid out of the box (`My_Cool_App` → `my-cool-app`'s
+/// shape, not the rejected `My_Cool_App`).
+#[must_use]
+pub fn bundle_id_segment(name: &str) -> String {
+    let segment = name
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if segment.is_empty() {
+        "app".to_string()
+    } else {
+        segment
+    }
+}
+
 /// A version-shaped string like `17.0` or `16`.
 pub fn validate_deployment_target(target: &str) -> Result<(), String> {
     let shaped = target.chars().next().is_some_and(|c| c.is_ascii_digit())
@@ -800,6 +821,23 @@ mod tests {
         assert!(validate_deployment_target("17.0").is_ok());
         assert!(validate_deployment_target("16").is_ok());
         assert!(validate_deployment_target("latest").is_err());
+    }
+
+    #[test]
+    fn bundle_id_segment_sanitizes_identifier_names() {
+        // The reported case: an underscored name yields a valid default segment.
+        assert_eq!(bundle_id_segment("test_sweetpad_cli"), "test-sweetpad-cli");
+        // Already-valid names pass through; leading/duplicate separators trim.
+        assert_eq!(bundle_id_segment("MyApp"), "MyApp");
+        assert_eq!(bundle_id_segment("_Internal2"), "Internal2");
+        assert_eq!(bundle_id_segment("My__Cool__App"), "My-Cool-App");
+        // Degenerate input still produces a usable segment.
+        assert_eq!(bundle_id_segment("___"), "app");
+        // Whatever it returns, `com.example.<segment>` must validate.
+        for name in ["test_sweetpad_cli", "_Internal2", "___", "MyApp"] {
+            let id = format!("com.example.{}", bundle_id_segment(name));
+            assert!(validate_bundle_id(&id).is_ok(), "{id} should be valid");
+        }
     }
 
     #[test]

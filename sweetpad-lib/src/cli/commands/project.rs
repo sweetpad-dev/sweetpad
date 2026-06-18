@@ -150,7 +150,7 @@ fn gather_answers(args: &NewArgs, cwd: &Path, interactive: bool) -> Result<Answe
         None => scaffold::Platform::Ios,
     };
 
-    let bundle_default = format!("com.example.{name}");
+    let bundle_default = format!("com.example.{}", scaffold::bundle_id_segment(&name));
     let bundle_id = match &args.bundle_id {
         Some(bundle_id) => bundle_id.clone(),
         None if interactive => input(
