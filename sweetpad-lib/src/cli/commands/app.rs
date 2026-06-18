@@ -16,6 +16,7 @@ use crate::cli::inject::server::{InjectServer, Logger};
 use crate::cli::inject::{self, HotSession};
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Resolved};
+use crate::cli::state::LastLaunchedApp;
 use crate::cli::xcodebuild::{self, AppBundle};
 use crate::cli::{
     CliError, CliResult, Context, ErrorContext, buildlog, devicectl, process, rawmode, simctl,
@@ -227,6 +228,7 @@ impl RunPlan {
 
 fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
     let plan = plan(ctx, opts)?;
+    record_last_launched(ctx, &plan);
 
     // Hot reload owns its own build + launch + watch session (simulator only).
     if opts.hot {
@@ -342,6 +344,49 @@ fn build_and_install(plan: &RunPlan, out: &Output) -> Result<AppBundle, CliError
         Target::SpmRun(_) => unreachable!("SPM run does not build/install via xcodebuild"),
     }
     Ok(app)
+}
+
+/// Record the app being launched into the project's state — for re-launch and
+/// `context show`, mirroring the extension's `lastLaunchedApp`. Best-effort: a
+/// missing bundle or write failure never derails a run. SPM executables have no
+/// `.app`, so they're skipped. Captures the intended launch (the bundle the
+/// resolver says the build produces), so it reflects `app run`, not `install`.
+fn record_last_launched(ctx: &mut Context, plan: &RunPlan) {
+    let (kind, simulator_udid, destination_id, destination_type) = match &plan.target {
+        Target::Simulator(udid) => ("simulator", Some(udid.clone()), None, None),
+        Target::Device(id) => (
+            "device",
+            None,
+            Some(id.clone()),
+            destination_platform(&plan.destination),
+        ),
+        Target::Mac => ("macos", None, None, None),
+        Target::SpmRun(_) => return,
+    };
+    let Ok(app) = plan.app_bundle() else {
+        return;
+    };
+    let file_name = |p: &Path| p.file_name().map(|n| n.to_string_lossy().into_owned());
+    let last = LastLaunchedApp {
+        kind: kind.to_string(),
+        app_path: app.path.display().to_string(),
+        bundle_identifier: app.bundle_id,
+        app_name: file_name(&app.path),
+        executable_name: file_name(&app.executable),
+        simulator_udid,
+        destination_id,
+        destination_type,
+    };
+    let key = plan.resolved.container.key();
+    ctx.state.project_mut(&key).last_launched_app = Some(last);
+    let _ = ctx.state.save();
+}
+
+/// The `platform=` value from a `-destination` specifier, e.g. `iOS`.
+fn destination_platform(spec: &str) -> Option<String> {
+    spec.split(',')
+        .find_map(|kv| kv.trim().strip_prefix("platform="))
+        .map(str::to_string)
 }
 
 /// `swift run <product>` in the package directory: builds and runs the

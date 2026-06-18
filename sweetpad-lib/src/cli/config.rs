@@ -30,6 +30,20 @@ pub struct Defaults {
     pub scheme: Option<String>,
     pub configuration: Option<String>,
     pub destination: Option<String>,
+    /// Test-action overrides, layered over the build defaults for `test` only
+    /// (e.g. a `TEST-Debug` configuration while the app builds `UAT-Debug`).
+    pub testing: TestingDefaults,
+}
+
+/// Test-action config overrides — the `[…​.testing]` sub-table. Mirrors the
+/// extension's `sweetpad.testing.*` settings. Unset fields fall back to the
+/// build defaults during test resolution.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct TestingDefaults {
+    pub scheme: Option<String>,
+    pub configuration: Option<String>,
+    pub destination: Option<String>,
 }
 
 impl Config {
@@ -58,17 +72,28 @@ impl Config {
     pub fn for_project(&self, project_key: &str) -> Defaults {
         let mut merged = self.defaults.clone();
         if let Some(over) = self.projects.get(project_key) {
-            if over.scheme.is_some() {
-                merged.scheme.clone_from(&over.scheme);
-            }
-            if over.configuration.is_some() {
-                merged.configuration.clone_from(&over.configuration);
-            }
-            if over.destination.is_some() {
-                merged.destination.clone_from(&over.destination);
-            }
+            layer(&mut merged.scheme, over.scheme.as_ref());
+            layer(&mut merged.configuration, over.configuration.as_ref());
+            layer(&mut merged.destination, over.destination.as_ref());
+            layer(&mut merged.testing.scheme, over.testing.scheme.as_ref());
+            layer(
+                &mut merged.testing.configuration,
+                over.testing.configuration.as_ref(),
+            );
+            layer(
+                &mut merged.testing.destination,
+                over.testing.destination.as_ref(),
+            );
         }
         merged
+    }
+}
+
+/// Overlay a per-project override onto a base value, keeping the base when the
+/// override is unset.
+fn layer(base: &mut Option<String>, over: Option<&String>) {
+    if let Some(v) = over {
+        *base = Some(v.clone());
     }
 }
 
@@ -125,5 +150,27 @@ mod tests {
         let cfg: Config = toml::from_str("").unwrap();
         assert!(cfg.projects.is_empty());
         assert_eq!(cfg.for_project("/x").scheme, None);
+    }
+
+    #[test]
+    fn testing_section_layers_separately_from_build() {
+        // The #219 setup: build on UAT-Debug, test on TEST-Debug.
+        let cfg: Config = toml::from_str(
+            r#"
+            [projects."/work/App.xcodeproj"]
+            configuration = "UAT-Debug"
+            [projects."/work/App.xcodeproj".testing]
+            configuration = "TEST-Debug"
+            scheme = "AppTests"
+            "#,
+        )
+        .unwrap();
+
+        let d = cfg.for_project("/work/App.xcodeproj");
+        assert_eq!(d.configuration.as_deref(), Some("UAT-Debug"));
+        assert_eq!(d.testing.configuration.as_deref(), Some("TEST-Debug"));
+        assert_eq!(d.testing.scheme.as_deref(), Some("AppTests"));
+        // A testing field left unset stays None (test resolution falls back to build).
+        assert_eq!(d.testing.destination, None);
     }
 }

@@ -3,6 +3,7 @@
 //! Mirrors the device shape the VS Code extension parses from
 //! `simctl list --json devices`.
 
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
@@ -57,6 +58,13 @@ impl Simulator {
     pub fn destination(&self) -> String {
         format!("platform={},id={}", platform(&self.os), self.udid)
     }
+
+    /// Destination kind for the remembered recents/usage records, e.g.
+    /// `iOSSimulator`. Pairs the OS with the simulator role.
+    #[must_use]
+    pub fn kind(&self) -> String {
+        format!("{}Simulator", self.os)
+    }
 }
 
 /// Map a simulator OS to its xcodebuild destination platform name.
@@ -70,8 +78,10 @@ pub fn platform(os: &str) -> &'static str {
     }
 }
 
-/// Enumerate every available simulator, sorted by OS then name. Unavailable
-/// devices are dropped (they can't be booted/targeted).
+/// Enumerate every available simulator in picker order — platform first (iOS
+/// before the rest), then newest OS version, then device family (iPhone before
+/// iPad) and a numeric-aware name sort. Unavailable devices are dropped (they
+/// can't be booted/targeted).
 pub fn list() -> Result<Vec<Simulator>, CliError> {
     let raw = process::capture("xcrun", &["simctl", "list", "--json", "devices"], None)?;
     parse_devices(&raw)
@@ -100,12 +110,92 @@ fn parse_devices(raw: &str) -> Result<Vec<Simulator>, CliError> {
             });
         }
     }
-    sims.sort_by(|a, b| {
-        a.os.cmp(&b.os)
-            .then_with(|| a.os_version.cmp(&b.os_version))
-            .then_with(|| a.name.cmp(&b.name))
-    });
+    sims.sort_by(cmp_for_picker);
     Ok(sims)
+}
+
+/// Order simulators for pickers and listings: platform priority, then newest OS
+/// version, then device family, then a numeric-aware name sort. Each tier is
+/// explicit so the order is intentional rather than a byte-compare side effect
+/// (which is what made 17.0 sort before 9.0 and "iPad" before "iPhone").
+fn cmp_for_picker(a: &Simulator, b: &Simulator) -> Ordering {
+    platform_rank(&a.os)
+        .cmp(&platform_rank(&b.os))
+        .then_with(|| version_key(&b.os_version).cmp(&version_key(&a.os_version))) // newest first
+        .then_with(|| device_rank(&a.name).cmp(&device_rank(&b.name)))
+        .then_with(|| natural_cmp(&a.name, &b.name))
+}
+
+/// Platform display order: iOS first (the common case), then the other
+/// families; anything unrecognized sorts last (so a future platform lands in a
+/// defined place rather than wherever its name's bytes happen to fall).
+fn platform_rank(os: &str) -> u8 {
+    match os {
+        "iOS" => 0,
+        "tvOS" => 1,
+        "watchOS" => 2,
+        "xrOS" => 3,
+        _ => 4,
+    }
+}
+
+/// Device-family order within a platform: iPhone before iPad (the common pick),
+/// then everything else. Platforms with a single family (Apple TV/Watch/Vision)
+/// all land in the last bucket and fall through to the name sort.
+fn device_rank(name: &str) -> u8 {
+    if name.starts_with("iPhone") {
+        0
+    } else if name.starts_with("iPad") {
+        1
+    } else {
+        2
+    }
+}
+
+/// Parse a dotted version ("26.5") into numeric components so it orders
+/// numerically: 9.0 before 17.0, where a byte compare puts "17.0" first.
+/// Missing or garbled components count as 0.
+fn version_key(version: &str) -> Vec<u32> {
+    version.split('.').map(|p| p.parse().unwrap_or(0)).collect()
+}
+
+/// Compare names so embedded numbers order numerically: "iPhone 9" before
+/// "iPhone 15", which a plain byte compare reverses. Digit runs compare as
+/// numbers; everything else compares byte-wise.
+fn natural_cmp(a: &str, b: &str) -> Ordering {
+    let (mut a, mut b) = (a.chars().peekable(), b.chars().peekable());
+    loop {
+        match (a.peek().copied(), b.peek().copied()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
+                match take_number(&mut a).cmp(&take_number(&mut b)) {
+                    Ordering::Equal => {}
+                    ord => return ord,
+                }
+            }
+            (Some(x), Some(y)) => {
+                a.next();
+                b.next();
+                match x.cmp(&y) {
+                    Ordering::Equal => {}
+                    ord => return ord,
+                }
+            }
+        }
+    }
+}
+
+/// Consume a leading run of digits as a number (saturating, so a pathologically
+/// long run can't overflow).
+fn take_number(it: &mut std::iter::Peekable<std::str::Chars<'_>>) -> u64 {
+    let mut n: u64 = 0;
+    while let Some(d) = it.peek().and_then(|c| c.to_digit(10)) {
+        n = n.saturating_mul(10).saturating_add(u64::from(d));
+        it.next();
+    }
+    n
 }
 
 /// Find a simulator by UDID (case-insensitive) or exact name. When several
@@ -286,11 +376,80 @@ mod tests {
     }
 
     #[test]
-    fn sorts_by_os_then_version_then_name() {
+    fn sorts_ios_before_watchos_then_by_name() {
         let sims = parse_devices(SAMPLE).unwrap();
         let order: Vec<&str> = sims.iter().map(|s| s.name.as_str()).collect();
         // iOS before watchOS; within iOS, name order.
         assert_eq!(order, vec!["iPhone 14", "iPhone 15", "Apple Watch"]);
+    }
+
+    // Several runtimes and families, to exercise every ordering tier at once.
+    const MIXED: &str = r#"{
+      "devices": {
+        "com.apple.CoreSimulator.SimRuntime.iOS-26-5": [
+          {"udid":"A","name":"iPhone 15","state":"Shutdown","isAvailable":true},
+          {"udid":"B","name":"iPhone 9","state":"Shutdown","isAvailable":true},
+          {"udid":"C","name":"iPad Air","state":"Shutdown","isAvailable":true}
+        ],
+        "com.apple.CoreSimulator.SimRuntime.iOS-17-0": [
+          {"udid":"D","name":"iPhone 14","state":"Shutdown","isAvailable":true}
+        ],
+        "com.apple.CoreSimulator.SimRuntime.tvOS-26-0": [
+          {"udid":"E","name":"Apple TV","state":"Shutdown","isAvailable":true}
+        ],
+        "com.apple.CoreSimulator.SimRuntime.watchOS-11-0": [
+          {"udid":"F","name":"Apple Watch","state":"Shutdown","isAvailable":true}
+        ],
+        "com.apple.CoreSimulator.SimRuntime.xrOS-2-0": [
+          {"udid":"G","name":"Apple Vision Pro","state":"Shutdown","isAvailable":true}
+        ]
+      }
+    }"#;
+
+    #[test]
+    fn picker_order_is_platform_then_newest_then_family_then_natural() {
+        let sims = parse_devices(MIXED).unwrap();
+        let order: Vec<&str> = sims.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(
+            order,
+            vec![
+                // iOS first; newest (26.5) before 17.0; iPhone before iPad;
+                // "iPhone 9" before "iPhone 15" (numeric, not byte order).
+                "iPhone 9",
+                "iPhone 15",
+                "iPad Air",
+                "iPhone 14",
+                // then the remaining platforms in priority order.
+                "Apple TV",
+                "Apple Watch",
+                "Apple Vision Pro",
+            ]
+        );
+    }
+
+    #[test]
+    fn natural_cmp_orders_numbers_numerically() {
+        assert_eq!(natural_cmp("iPhone 9", "iPhone 15"), Ordering::Less);
+        assert_eq!(natural_cmp("iPhone 15", "iPhone 15"), Ordering::Equal);
+        assert_eq!(natural_cmp("iPhone 15 Pro", "iPhone 15"), Ordering::Greater);
+        // A byte compare would put "iPhone 15" before "iPhone 9"; this must not.
+        assert_eq!("iPhone 15".cmp("iPhone 9"), Ordering::Less);
+        assert_eq!(natural_cmp("iPhone 15", "iPhone 9"), Ordering::Greater);
+    }
+
+    #[test]
+    fn version_key_compares_numerically() {
+        assert!(version_key("9.0") < version_key("17.0"));
+        assert!(version_key("26.5") > version_key("26.4"));
+        assert_eq!(version_key("26.5"), vec![26, 5]);
+    }
+
+    #[test]
+    fn ranks_put_ios_and_iphone_first() {
+        assert!(platform_rank("iOS") < platform_rank("tvOS"));
+        assert!(platform_rank("watchOS") < platform_rank("unknownOS"));
+        assert!(device_rank("iPhone 15") < device_rank("iPad Air"));
+        assert!(device_rank("iPad Air") < device_rank("Apple TV"));
     }
 
     #[test]

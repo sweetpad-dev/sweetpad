@@ -31,7 +31,8 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
 }
 
 fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> CliResult {
-    let resolved = resolve::resolve(ctx)?;
+    // Tests resolve their own context (testing overrides, falling back to build).
+    let resolved = resolve::resolve_testing(ctx)?;
 
     // Swift packages run tests with the `swift` toolchain — no simulator
     // destination, no `.xcresult` bundle to read a summary from.
@@ -40,7 +41,7 @@ fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> 
     }
 
     let target = resolve::build_target(ctx, &resolved)?;
-    resolve::remember(ctx, &resolved, &target);
+    resolve::remember_testing(ctx, &resolved, &target);
 
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

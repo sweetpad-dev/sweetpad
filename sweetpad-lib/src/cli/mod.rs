@@ -175,6 +175,13 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::destination::Action,
     },
+    /// Show, select, or clear the project's remembered build context.
+    Context {
+        #[command(flatten)]
+        target: ContainerArgs,
+        #[command(subcommand)]
+        action: commands::context::Action,
+    },
     /// Inspect the project: targets, configurations, schemes.
     Project {
         #[command(flatten)]
@@ -325,6 +332,10 @@ pub fn run(argv: &[String]) -> ExitCode {
             commands::scheme::run(&mut ctx, &action)
         }
         Resource::Destination { action } => commands::destination::run(&mut ctx, &action),
+        Resource::Context { target, action } => {
+            ctx.targeting = target.into();
+            commands::context::run(&mut ctx, &action)
+        }
         Resource::Project { target, action } => {
             ctx.targeting = target.into();
             commands::project::run(&mut ctx, &action)
