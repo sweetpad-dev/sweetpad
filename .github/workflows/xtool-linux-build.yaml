@@ -10,61 +10,76 @@ on:
 
 # End-to-end verification of the xtool backend (the Linux build story):
 #
-#   1. export-darwin-sdk  (macOS) — only the Mac can produce Apple's iOS SDK, so
-#      this job packages it into an artifact: the "frameworks dir" the Linux
-#      build consumes. This is the one piece that genuinely requires a Mac.
-#   2. linux-generate     (Linux) — builds the `sweetpad` CLI and runs
+#   1. build-darwin-sdk (macOS) — only the Mac has Xcode, so this job builds the
+#      Darwin Swift SDK bundle xtool needs and uploads it as an artifact. It also
+#      dumps `xtool sdk build --help` so we know its exact input.
+#   2. linux-generate   (Linux) — builds the `sweetpad` CLI and runs
 #      `sweetpad build generate --backend xtool` against a committed fixture,
-#      asserting it writes a Package.swift + xtool.yml. Proves the generator
-#      works on Linux with NO Mac involved. This is the reliable signal.
-#   3. linux-build        (Linux, swift container) — downloads the generated
-#      package + the SDK artifact (the "mounted frameworks"), installs xtool, and
-#      cross-compiles the iOS app. BEST-EFFORT: turning a raw iOS SDK into a
-#      registered Darwin Swift SDK without an Xcode.xip is the experimental part
-#      and is expected to need iteration — it is the actual thing under test.
+#      asserting it writes Package.swift + xtool.yml. Proves the generator works
+#      on Linux with NO Mac. This is the reliable signal.
+#   3. linux-build      (Linux arm64, swift container) — installs the Darwin
+#      Swift SDK from the artifact, installs xtool, and cross-compiles the iOS
+#      app with `xtool dev build`. BEST-EFFORT: depends on the Mac-built SDK
+#      bundle being usable from a Linux host.
 #
 # Jobs 1 and 2 run in parallel; job 3 needs both.
 
 jobs:
-  export-darwin-sdk:
-    name: export iOS SDK (macOS)
+  build-darwin-sdk:
+    name: build Darwin Swift SDK (macOS)
     runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
       - name: Tooling versions
         run: xcodebuild -version
 
-      # The installed Xcode already carries the iOS SDK (frameworks, headers,
-      # modulemaps). xtool's own flow extracts the SDK from an Xcode.xip; here we
-      # ship the SDK directory the runner already has, so the Linux job has real
-      # Apple frameworks to build against. (Apple's SDK license restricts use to
-      # Apple hardware — passing it between jobs in one run is a conscious,
-      # pragmatic choice for this verification, not redistribution.)
-      - name: Locate the iOS SDK
-        id: sdk
+      - name: Install xtool
+        run: brew install xtool-org/tap/xtool
+
+      - name: xtool SDK interface (diagnostics)
         run: |
           set -euo pipefail
-          SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
-          echo "Found iOS SDK at: $SDK_PATH"
-          echo "sdk_path=$SDK_PATH" >> "$GITHUB_OUTPUT"
+          xtool --version
+          # The exact input xtool needs to build the Darwin SDK — the key unknown.
+          xtool sdk --help || true
+          xtool sdk build --help || true
+          xtool sdk install --help || true
 
-      - name: Package the iOS SDK
+      # Best-effort: produce the Darwin Swift SDK without an Xcode.xip, using the
+      # runner's installed Xcode. stdin is closed so any interactive prompt fails
+      # fast instead of hanging. We try a few plausible forms; the diagnostics
+      # above record the real interface if all fail.
+      - name: Build the Darwin Swift SDK from the installed Xcode
+        run: |
+          set -uo pipefail
+          xtool sdk build "/Applications/Xcode.app" </dev/null \
+            || xtool sdk build "$(xcode-select -p)" </dev/null \
+            || xtool sdk build </dev/null \
+            || xtool sdk install </dev/null \
+            || true
+          swift sdk list || true
+
+      - name: Package the Swift SDK bundle
         run: |
           set -euo pipefail
-          # Resolve symlinks so the tar is self-contained, then archive the SDK
-          # bundle (e.g. iPhoneOS.sdk) by name from its parent dir.
-          SDK_REAL="$(python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "${{ steps.sdk.outputs.sdk_path }}")"
-          SDK_DIR="$(dirname "$SDK_REAL")"
-          SDK_NAME="$(basename "$SDK_REAL")"
-          tar -C "$SDK_DIR" -czf "$RUNNER_TEMP/iphoneos-sdk.tgz" "$SDK_NAME"
-          ls -lh "$RUNNER_TEMP/iphoneos-sdk.tgz"
+          SDK_DIR="$HOME/.swiftpm/swift-sdks"
+          if [ ! -d "$SDK_DIR" ] || [ -z "$(ls -A "$SDK_DIR" 2>/dev/null)" ]; then
+            echo "::error::No Swift SDK was produced — xtool sdk build likely requires an Xcode.xip."
+            echo "See the 'xtool SDK interface' step above for the exact requirement."
+            exit 1
+          fi
+          ls -la "$SDK_DIR"
+          tar -C "$HOME/.swiftpm" -czf "$RUNNER_TEMP/swift-sdks.tgz" swift-sdks
 
-      - name: Upload SDK artifact
+      - name: Upload Swift SDK bundle
         uses: actions/upload-artifact@v4
         with:
-          name: darwin-sdk
-          path: ${{ runner.temp }}/iphoneos-sdk.tgz
+          name: darwin-swift-sdk
+          path: ${{ runner.temp }}/swift-sdks.tgz
           if-no-files-found: error
 
   linux-generate:
@@ -77,7 +92,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        # Installs the channel + targets pinned in rust-toolchain.toml.
         run: rustup show
 
       - name: Cache cargo build
@@ -88,14 +102,10 @@ jobs:
       - name: Build the sweetpad CLI
         run: cargo build --bin sweetpad
 
-      # The fixture is a committed SwiftUI app project (.xcodeproj already in the
-      # tree), so no xcodegen/Xcode is needed to drive the generator on Linux.
       - name: Generate xtool config from the Xcode project
         env:
           PROJECT: fixtures/_synthetic-strcat/project/StringCatGen.xcodeproj
-        run: |
-          set -euo pipefail
-          ./target/debug/sweetpad --project "$PROJECT" build generate --backend xtool
+        run: ./target/debug/sweetpad --project "$PROJECT" build generate --backend xtool
 
       - name: Assert the generated config
         working-directory: sweetpad-lib/fixtures/_synthetic-strcat/project
@@ -112,22 +122,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: xtool-package
-          # The whole project dir: generated Package.swift/xtool.yml + Sources/.
           path: sweetpad-lib/fixtures/_synthetic-strcat/project
           if-no-files-found: error
 
   linux-build:
     name: cross-build with xtool (Linux, best-effort)
-    # arm64 runner: xtool only ships an aarch64 Linux AppImage, so an x86_64
-    # host hits "Exec format error". The iOS SDK and generated package are
-    # arch-neutral, so only this job needs to be arm64.
+    # arm64 runner: xtool only ships an aarch64 Linux AppImage.
     runs-on: ubuntu-24.04-arm
-    needs: [export-darwin-sdk, linux-generate]
-    # The user's "Linux container that mounts a frameworks dir": a Swift
-    # container with the downloaded iOS SDK artifact.
+    needs: [build-darwin-sdk, linux-generate]
     container: swift:6.1
-    # The swift image's default shell is dash (`sh`), which lacks `pipefail`;
-    # force bash for every run step in this job.
+    # The swift image defaults to dash, which lacks `pipefail`; force bash.
     defaults:
       run:
         shell: bash
@@ -144,33 +148,29 @@ jobs:
           name: xtool-package
           path: app
 
-      - name: Download iOS SDK (the mounted frameworks)
+      - name: Download Darwin Swift SDK (built on macOS)
         uses: actions/download-artifact@v4
         with:
-          name: darwin-sdk
+          name: darwin-swift-sdk
           path: sdk
 
-      - name: Unpack the iOS SDK
+      - name: Install the Darwin Swift SDK
         run: |
           set -euo pipefail
-          mkdir -p /opt/darwin-sdk
-          tar -C /opt/darwin-sdk -xzf sdk/iphoneos-sdk.tgz
-          ls -la /opt/darwin-sdk
+          # The "mounted frameworks": install the Mac-built bundle where SwiftPM
+          # looks for Swift SDKs ($HOME/.swiftpm/swift-sdks).
+          mkdir -p "$HOME/.swiftpm"
+          tar -C "$HOME/.swiftpm" -xzf sdk/swift-sdks.tgz
+          ls -la "$HOME/.swiftpm/swift-sdks"
+          swift sdk list
 
-      # BEST-EFFORT from here: install xtool, register the SDK, build. These
-      # steps encode the intended flow and are the iteration target.
-      #
-      # Install via the prebuilt Linux AppImage (extracted, so no FUSE needed in
-      # the container) — far faster than a from-source swift build of xtool.
       - name: Install xtool (AppImage)
         run: |
           set -euo pipefail
           assets="$(curl -fsSL https://api.github.com/repos/xtool-org/xtool/releases/latest \
                      | grep -oE 'https://[^"]+\.AppImage')"
-          # Prefer the AppImage matching the host arch (aarch64 on this runner).
           url="$(echo "$assets" | grep -i "$(uname -m)" | head -1 || true)"
           [ -z "$url" ] && url="$(echo "$assets" | head -1)"
-          if [ -z "$url" ]; then echo "no AppImage asset in latest release"; exit 1; fi
           echo "Downloading $url"
           curl -fsSL -o /tmp/xtool.AppImage "$url"
           chmod +x /tmp/xtool.AppImage
@@ -180,22 +180,8 @@ jobs:
           else
             ln -sf /opt/squashfs-root/AppRun /usr/local/bin/xtool
           fi
+          xtool --version
 
-      - name: Tooling + xtool interface (diagnostics)
-        run: |
-          set -euo pipefail
-          swift --version
-          xtool --version || echo "xtool --version failed"
-          # Surface the real, non-interactive SDK interface so we can wire the
-          # Mac-exported SDK into a Darwin Swift SDK in the next iteration.
-          xtool --help || true
-          xtool setup --help || true
-          xtool sdk --help || true
-          swift sdk list || true
-
-      # The crux: xtool normally builds a Darwin Swift SDK from an Xcode.xip via
-      # `xtool setup`. Here we already have the raw iOS SDK from the Mac job; the
-      # remaining work is to register it as a Swift SDK xtool/swiftpm can target.
       - name: Cross-compile the iOS app
         working-directory: app
         run: |
