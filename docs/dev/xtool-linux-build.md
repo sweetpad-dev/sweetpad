@@ -93,9 +93,11 @@ pluggable:
    differs and needs its own parsing.
 
 > **Update:** the integration is now framed as the first non-native backend of a
-> general pluggable build pipeline — see [Build Backends](./build-backends.md).
-> `xtool` is a *config-generating* backend (it can't read `.xcodeproj`, so we
-> materialize `Package.swift` + `xtool.yml` from the normalized Build Plan).
+> general pluggable build pipeline **in the Rust `sweetpad` CLI** (`sweetpad-lib`),
+> not the VS Code extension — see [Build Backends](./build-backends.md). `xtool`
+> is a *config-generating* backend (it can't read `.xcodeproj`, so its `prepare()`
+> materializes `Package.swift` + `xtool.yml` from the normalized Build Plan into a
+> scratch dir). The VS Code extension just passes `--backend xtool`.
 
 ## 4. Integration options
 
