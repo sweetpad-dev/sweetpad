@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::cli::{CliError, process};
+use crate::cli::{CliError, ErrorContext, process};
 
 /// `simctl list --json devices` output: runtime identifier → its devices.
 #[derive(Debug, Deserialize)]
@@ -143,11 +143,13 @@ pub fn boot(udid: &str) -> Result<(), CliError> {
 /// Install an `.app` bundle onto a booted simulator.
 pub fn install(udid: &str, app_path: &str) -> Result<(), CliError> {
     process::stream("xcrun", &["simctl", "install", udid, app_path], None)
+        .context("installing the app on the simulator")
 }
 
 /// Launch an installed app by bundle id; returns simctl's stdout (`bundle: pid`).
 pub fn launch(udid: &str, bundle_id: &str) -> Result<String, CliError> {
     process::capture("xcrun", &["simctl", "launch", udid, bundle_id], None)
+        .context("launching the app on the simulator")
 }
 
 /// Launch with extra environment forwarded to `xcrun simctl`. Used by `--hot` to

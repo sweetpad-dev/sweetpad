@@ -420,10 +420,10 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                     match build(plan, &ctx.out, None) {
                         Ok(()) => match start_app(ctx, plan) {
                             Ok(r) => running = Some(r),
-                            Err(e) => ctx.out.error(&e.to_string()),
+                            Err(e) => ctx.out.error(&e),
                         },
                         // Failed/aborted build: nothing runs until the next `r`.
-                        Err(e) => ctx.out.error(&e.to_string()),
+                        Err(e) => ctx.out.error(&e),
                     }
                     session_hint(ctx);
                 }
@@ -655,7 +655,7 @@ fn hot_key_loop(
                     let app = match plan.app_bundle() {
                         Ok(a) => a,
                         Err(e) => {
-                            ctx.out.error(&e.to_string());
+                            ctx.out.error(&e);
                             continue;
                         }
                     };
@@ -665,9 +665,9 @@ fn hot_key_loop(
                     match build(plan, &ctx.out, None) {
                         Ok(()) => match launch_hot(ctx, udid, &app, env) {
                             Ok(child) => *stream = child,
-                            Err(e) => ctx.out.error(&e.to_string()),
+                            Err(e) => ctx.out.error(&e),
                         },
-                        Err(e) => ctx.out.error(&e.to_string()),
+                        Err(e) => ctx.out.error(&e),
                     }
                 }
                 SessionKey::Quit => break,
@@ -816,8 +816,12 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Cli
     }
     match status {
         Ok(s) if s.success() => Ok(()),
-        Ok(_) => Err(CliError::new("xcodebuild exited with a non-zero status")),
-        Err(e) => Err(CliError::new(format!("failed to wait for xcodebuild: {e}"))),
+        Ok(_) => {
+            Err(CliError::new("xcodebuild exited with a non-zero status")
+                .context("building the app"))
+        }
+        Err(e) => Err(CliError::new(format!("failed to wait for xcodebuild: {e}"))
+            .context("building the app")),
     }
 }
 

@@ -294,7 +294,7 @@ pub fn run(argv: &[String]) -> ExitCode {
     let config = match config::Config::load() {
         Ok(c) => c,
         Err(e) => {
-            out.error(&format!("failed to load config: {e}"));
+            out.error(&CliError::new(format!("failed to load config: {e}")));
             return ExitCode::FAILURE;
         }
     };
@@ -366,21 +366,29 @@ pub fn run(argv: &[String]) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            ctx.out.error(&e.to_string());
+            ctx.out.error(&e);
             ExitCode::FAILURE
         }
     }
 }
 
-/// The error type every command returns. A thin string-backed wrapper for now;
-/// can grow structured variants (for richer `--json` error objects) as
-/// commands are implemented.
+/// The error type every command returns. Carries an optional operation
+/// [`context`](CliError::context) (the bold headline when rendered) separately
+/// from the underlying `message` (the dimmed detail) so [`output`] can style
+/// them on two lines; [`Display`](std::fmt::Display) flattens them to
+/// `context: message` for `--json` and plain logging.
 #[derive(Debug)]
-pub struct CliError(pub String);
+pub struct CliError {
+    context: Option<String>,
+    message: String,
+}
 
 impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        match &self.context {
+            Some(c) => write!(f, "{c}: {}", self.message),
+            None => f.write_str(&self.message),
+        }
     }
 }
 
@@ -388,9 +396,117 @@ impl std::error::Error for CliError {}
 
 impl CliError {
     pub fn new(msg: impl Into<String>) -> Self {
-        Self(msg.into())
+        Self {
+            context: None,
+            message: msg.into(),
+        }
+    }
+
+    /// Prepend operational context so a low-level tool failure says what we were
+    /// trying to do. `CliError::new("xcrun simctl install … exited")
+    /// .context("installing the app on the simulator")` renders as the headline
+    /// `installing the app on the simulator` over the dimmed detail
+    /// `xcrun simctl install … exited` — the operation plus the tool that
+    /// failed. Re-wrapping folds the previous layers into the detail.
+    #[must_use]
+    pub fn context(self, context: impl std::fmt::Display) -> Self {
+        Self {
+            message: self.to_string(),
+            context: Some(context.to_string()),
+        }
+    }
+
+    /// The operation context — rendered as the bold headline. `None` for a bare
+    /// error, where [`detail`](CliError::detail) is the whole message.
+    #[must_use]
+    pub fn headline(&self) -> Option<&str> {
+        self.context.as_deref()
+    }
+
+    /// The underlying message — rendered dimmed and indented beneath the
+    /// headline (or on its own when there is no context).
+    #[must_use]
+    pub fn detail(&self) -> &str {
+        &self.message
+    }
+}
+
+/// Attach operational context to a fallible step. Lets call sites read
+/// `simctl::install(…).context("installing the app on the simulator")?`, so the
+/// surfaced error names both the operation and (via the wrapped message) the
+/// tool — instead of a bare `xcrun exited with a non-zero status`.
+pub trait ErrorContext<T> {
+    /// Wrap any error with a fixed context string.
+    ///
+    /// # Errors
+    /// Returns the wrapped error unchanged on the `Err` path.
+    fn context(self, context: impl std::fmt::Display) -> Result<T, CliError>;
+
+    /// Wrap with a context computed lazily — only paid on the error path.
+    ///
+    /// # Errors
+    /// Returns the wrapped error unchanged on the `Err` path.
+    fn with_context<C: std::fmt::Display>(self, f: impl FnOnce() -> C) -> Result<T, CliError>;
+}
+
+impl<T> ErrorContext<T> for Result<T, CliError> {
+    fn context(self, context: impl std::fmt::Display) -> Result<T, CliError> {
+        self.map_err(|e| e.context(context))
+    }
+
+    fn with_context<C: std::fmt::Display>(self, f: impl FnOnce() -> C) -> Result<T, CliError> {
+        self.map_err(|e| e.context(f()))
     }
 }
 
 /// Convenience alias for command results.
 pub type CliResult = Result<(), CliError>;
+
+#[cfg(test)]
+mod error_tests {
+    use super::{CliError, ErrorContext};
+
+    #[test]
+    fn context_splits_into_headline_and_detail() {
+        let e = CliError::new("xcrun simctl install A B exited with a non-zero status")
+            .context("installing the app on the simulator");
+        assert_eq!(e.headline(), Some("installing the app on the simulator"));
+        assert_eq!(
+            e.detail(),
+            "xcrun simctl install A B exited with a non-zero status"
+        );
+        // Flattened form (used for `--json` and logging) keeps `context: detail`.
+        assert_eq!(
+            e.to_string(),
+            "installing the app on the simulator: xcrun simctl install A B exited with a non-zero status"
+        );
+    }
+
+    #[test]
+    fn bare_error_has_no_headline() {
+        let e = CliError::new("no .xcodeproj found");
+        assert_eq!(e.headline(), None);
+        assert_eq!(e.detail(), "no .xcodeproj found");
+        assert_eq!(e.to_string(), "no .xcodeproj found");
+    }
+
+    #[test]
+    fn re_wrapping_folds_prior_layers_into_the_detail() {
+        let e = CliError::new("xcrun … exited")
+            .context("installing the app on the simulator")
+            .context("running the app");
+        assert_eq!(e.headline(), Some("running the app"));
+        assert_eq!(
+            e.detail(),
+            "installing the app on the simulator: xcrun … exited"
+        );
+    }
+
+    #[test]
+    fn result_context_extension_wraps_the_error() {
+        let r: Result<(), CliError> = Err(CliError::new("boom"));
+        let wrapped = r.context("doing the thing").unwrap_err();
+        assert_eq!(wrapped.headline(), Some("doing the thing"));
+        assert_eq!(wrapped.detail(), "boom");
+    }
+}

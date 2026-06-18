@@ -7,7 +7,7 @@
 
 use std::io::{IsTerminal, Write};
 
-use crate::cli::GlobalArgs;
+use crate::cli::{CliError, GlobalArgs};
 
 /// Resolved output mode shared across commands.
 pub struct Output {
@@ -101,27 +101,48 @@ impl Output {
         }
     }
 
-    /// Render an error. JSON mode emits a structured object to stderr; human
-    /// mode prints a red-ish prefix.
-    pub fn error(&self, msg: &str) {
+    /// Render an error. JSON mode emits a structured object (the flattened
+    /// message) to stderr. Human mode prints a red `error:` prefix with the
+    /// operation [`headline`](CliError::headline) in bold; any underlying
+    /// [`detail`](CliError::detail) follows on the next line, dimmed and indented
+    /// two spaces — so "what we were doing" reads at a glance and the raw tool
+    /// output sits quietly beneath it.
+    pub fn error(&self, err: &CliError) {
         if self.json {
-            let payload = serde_json::json!({ "error": { "message": msg } });
+            let payload = serde_json::json!({ "error": { "message": err.to_string() } });
             if let Ok(s) = serde_json::to_string(&payload) {
                 let _ = writeln!(std::io::stderr(), "{s}");
             }
+            return;
+        }
+        let prefix = if self.color {
+            "\x1b[31merror:\x1b[0m"
         } else {
-            let prefix = if self.color {
-                "\x1b[31merror:\x1b[0m"
-            } else {
-                "error:"
-            };
-            let _ = writeln!(std::io::stderr(), "{prefix} {msg}");
+            "error:"
+        };
+        let stderr = std::io::stderr();
+        match err.headline() {
+            Some(headline) => {
+                let _ = writeln!(&stderr, "{prefix} {}", self.bold(headline));
+                let _ = writeln!(&stderr, "  {}", self.dim(err.detail()));
+            }
+            None => {
+                let _ = writeln!(&stderr, "{prefix} {}", err.detail());
+            }
         }
     }
 
     fn dim(&self, s: &str) -> String {
         if self.color {
             format!("\x1b[2m{s}\x1b[0m")
+        } else {
+            s.to_string()
+        }
+    }
+
+    fn bold(&self, s: &str) -> String {
+        if self.color {
+            format!("\x1b[1m{s}\x1b[0m")
         } else {
             s.to_string()
         }

@@ -39,7 +39,8 @@ pub fn stream(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<(), Cl
         Ok(())
     } else {
         Err(CliError::new(format!(
-            "{program} exited with a non-zero status"
+            "{program} {} exited with a non-zero status",
+            args.join(" ")
         )))
     }
 }

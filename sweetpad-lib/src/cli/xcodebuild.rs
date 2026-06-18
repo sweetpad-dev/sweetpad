@@ -77,7 +77,8 @@ impl BuildPlan<'_> {
         if ok {
             Ok(())
         } else {
-            Err(CliError::new("xcodebuild exited with a non-zero status"))
+            Err(CliError::new("xcodebuild exited with a non-zero status")
+                .context("building the project"))
         }
     }
 }

@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 
-use crate::cli::{CliError, process};
+use crate::cli::{CliError, ErrorContext, process};
 
 #[derive(Debug, Deserialize)]
 struct ListOutput {
@@ -183,6 +183,7 @@ pub fn install(device_id: &str, app_path: &str) -> Result<(), CliError> {
         ],
         None,
     )
+    .context("installing the app on the device")
 }
 
 /// Launch an installed app on a device, terminating any existing instance.
@@ -201,6 +202,7 @@ pub fn launch(device_id: &str, bundle_id: &str) -> Result<String, CliError> {
         ],
         None,
     )
+    .context("launching the app on the device")
 }
 
 /// Launch with the console attached, streaming the app's stdout/stderr and
