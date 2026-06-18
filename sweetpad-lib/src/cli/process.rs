@@ -117,6 +117,22 @@ pub fn spawn(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, 
     cmd.spawn().map_err(|e| spawn_error(program, &e))
 }
 
+/// Spawn a long-running command in the background with stdout **piped** for the
+/// caller to read/format on its own thread (stderr inherited, stdin null). Used
+/// by the `app run` session to render the simulator log stream while the
+/// keypress loop runs — unlike [`spawn`], whose inherited stdout can't be parsed.
+pub fn spawn_piped(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, CliError> {
+    let mut cmd = Command::new(program);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    cmd.spawn().map_err(|e| spawn_error(program, &e))
+}
+
 /// Spawn a command with stdout **piped** (for the caller to read line-by-line)
 /// and placed in its **own process group**, so a supervisor can signal just this
 /// process tree — e.g. forward Ctrl-C to an interruptible build without taking
