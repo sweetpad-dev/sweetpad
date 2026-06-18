@@ -178,9 +178,15 @@ available?" rather than a hard `darwin` check.
 2. ✅ **Generate command + seam.** *Done* — `build generate [--output]` plus the
    default-no-op `generate` trait method. Native backends report nothing to
    generate; the override point is ready for config-gen backends.
-3. **`BuildPlan` IR.** Promote `resolve::BuildTarget` to a richer plan carrying
-   product identity / signing / (lazily) the source graph, consumed by
-   `generate`.
+3. ✅ **`BuildPlan` IR + inspection.** *Done* — `sweetpad-lib/src/cli/plan.rs`
+   extracts a normalized `BuildPlan` (scheme, configuration, app target, product
+   name, bundle id, deployment target, supported platforms, **source graph**, and
+   target dependencies) from the resolved project: identity via the in-process
+   build-settings resolver, the source/dependency graph via the pbxproj reader
+   (`project::target_source_files` / `target_dependencies`). Surfaced by
+   `sweetpad build plan [--json]`, the tested consumer that config-gen backends
+   will render from. Covers `.xcodeproj` and `.xcworkspace` (owning member via
+   `workspace::project_for_scheme`); Swift packages are rejected (already SwiftPM).
 4. **xtool generator** (`render_package` / `render_xtool_yml`, pure + tested) and
    `XtoolBackend::build` (`xtool dev build`). First config-gen backend; lands the
    source-graph extraction. Linux build story.

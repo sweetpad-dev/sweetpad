@@ -23,6 +23,7 @@ pub mod devicectl;
 pub mod inject;
 pub mod merge;
 pub mod output;
+pub mod plan;
 pub mod process;
 pub mod rawmode;
 pub mod resolve;

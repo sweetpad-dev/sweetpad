@@ -28,12 +28,16 @@ pub enum Action {
         #[arg(long)]
         output: Option<PathBuf>,
     },
+    /// Show the normalized build plan (identity + source/dependency graph) that
+    /// config-generating backends consume. Use `--json` for machine output.
+    Plan,
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
     match action {
         Action::Start { clean } => start(ctx, *clean),
         Action::Generate { output } => generate(ctx, output.as_deref()),
+        Action::Plan => plan(ctx),
     }
 }
 
@@ -48,6 +52,41 @@ fn generate(ctx: &mut Context, output: Option<&Path>) -> CliResult {
     let backend = select_backend(ctx, &resolved)?;
     let out_dir = output.map_or_else(|| project_dir(&resolved.container), Path::to_path_buf);
     backend.generate(ctx, &resolved, &out_dir)
+}
+
+fn plan(ctx: &mut Context) -> CliResult {
+    let resolved = resolve::resolve(ctx)?;
+    let plan = crate::cli::plan::build_plan(ctx, &resolved)?;
+
+    if ctx.out.is_json() {
+        let value = serde_json::to_value(&plan).map_err(|e| CliError::new(e.to_string()))?;
+        ctx.out.json_value(&value);
+        return Ok(());
+    }
+
+    ctx.out.line(&format!("scheme:        {}", plan.scheme));
+    ctx.out
+        .line(&format!("configuration: {}", plan.configuration));
+    ctx.out.line(&format!("app target:    {}", plan.app_target));
+    ctx.out
+        .line(&format!("product name:  {}", plan.product_name));
+    ctx.out.line(&format!("bundle id:     {}", plan.bundle_id));
+    if let Some(dt) = &plan.deployment_target {
+        ctx.out.line(&format!("deployment:    iOS {dt}"));
+    }
+    if let Some(p) = &plan.supported_platforms {
+        ctx.out.line(&format!("platforms:     {p}"));
+    }
+    ctx.out
+        .line(&format!("sources:       {} file(s)", plan.sources.len()));
+    for s in &plan.sources {
+        ctx.out.line(&format!("  {}", s.display()));
+    }
+    if !plan.dependencies.is_empty() {
+        ctx.out
+            .line(&format!("dependencies:  {}", plan.dependencies.join(", ")));
+    }
+    Ok(())
 }
 
 /// Resolve the backend to use for a command. Precedence: explicit `--backend`
