@@ -18,9 +18,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::cli::CliError;
 use crate::cli::process;
 use crate::cli::resolve::Container;
+use crate::cli::{CliError, ErrorContext};
 
 /// The decoded `swift package dump-package` model — only the fields we use.
 #[derive(Debug, Deserialize)]
@@ -145,13 +145,15 @@ pub fn configuration_arg(configuration: &str) -> &'static str {
 pub fn build(container: &Container, configuration: &str, clean: bool) -> Result<(), CliError> {
     let cwd = package_dir(container);
     if clean {
-        process::stream("swift", &["package", "clean"], cwd.as_deref())?;
+        process::stream("swift", &["package", "clean"], cwd.as_deref())
+            .context("cleaning the package build")?;
     }
     process::stream(
         "swift",
         &["build", "--configuration", configuration_arg(configuration)],
         cwd.as_deref(),
     )
+    .context("building the package")
 }
 
 /// `swift test` for a package. Returns whether the suite passed (a non-zero
@@ -181,7 +183,7 @@ pub fn test(
         args.push(s.clone());
     }
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    process::run("swift", &arg_refs, cwd.as_deref(), quiet)
+    process::run("swift", &arg_refs, cwd.as_deref(), quiet).context("running the package tests")
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
-use crate::cli::{CliError, buildlog, process};
+use crate::cli::{CliError, ErrorContext, buildlog, process};
 
 /// Everything needed to invoke `xcodebuild build` for a resolved target.
 pub struct BuildPlan<'a> {
@@ -151,13 +151,14 @@ impl TestPlan<'_> {
         let parts = self.args();
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
         let cwd = working_dir(self.container);
-        if out.is_json() {
+        let result = if out.is_json() {
             process::run("xcodebuild", &args, cwd.as_deref(), true)
         } else if out.is_verbose() {
             process::run("xcodebuild", &args, cwd.as_deref(), false)
         } else {
             buildlog::run("xcodebuild", &args, cwd.as_deref(), out)
-        }
+        };
+        result.context("running the tests")
     }
 }
 
@@ -194,7 +195,8 @@ pub fn test_summary(bundle: &Path) -> Result<TestSummary, CliError> {
             &bundle.to_string_lossy(),
         ],
         None,
-    )?;
+    )
+    .context("reading the test results")?;
     parse_summary(&out)
 }
 

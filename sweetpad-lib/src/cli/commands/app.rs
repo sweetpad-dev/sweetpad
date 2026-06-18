@@ -17,7 +17,9 @@ use crate::cli::inject::{self, HotSession};
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Resolved};
 use crate::cli::xcodebuild::{self, AppBundle};
-use crate::cli::{CliError, CliResult, Context, buildlog, devicectl, process, rawmode, simctl};
+use crate::cli::{
+    CliError, CliResult, Context, ErrorContext, buildlog, devicectl, process, rawmode, simctl,
+};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -354,6 +356,7 @@ fn spm_run(ctx: &Context, plan: &RunPlan, product: &str) -> CliResult {
         .map(Path::to_path_buf);
     ctx.out.note(&format!("running {product} (swift run)"));
     crate::cli::process::stream("swift", &["run", product], cwd.as_deref())
+        .context("running the package executable")
 }
 
 /// Build, install, and launch (no log following) — used by `--no-logs` and SPM.
@@ -380,7 +383,8 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
         }
         Target::Mac => {
             // Non-blocking launch (the logs/foreground path runs the executable).
-            crate::cli::process::stream("open", &[&app.path.to_string_lossy()], None)?;
+            crate::cli::process::stream("open", &[&app.path.to_string_lossy()], None)
+                .context("launching the macOS app")?;
             ctx.out.note(&format!("launched {}", app.bundle_id));
         }
         // Handled by the early return above.
@@ -858,6 +862,7 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
             ctx.out
                 .note(&format!("running {} (Ctrl-C to stop)", app.bundle_id));
             process::stream(&app.executable.to_string_lossy(), &[], None)
+                .context("running the macOS app")
         }
         Target::SpmRun(_) => unreachable!("SPM run handled before this match"),
     }

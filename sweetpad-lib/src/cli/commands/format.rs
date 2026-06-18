@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::{Subcommand, ValueEnum};
 
-use crate::cli::{CliResult, Context, process};
+use crate::cli::{CliResult, Context, ErrorContext, process};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Tool {
@@ -57,7 +57,11 @@ fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> CliR
         "{} with {tool:?}",
         if check { "checking" } else { "formatting" }
     ));
-    process::stream(&program, &arg_refs, None)
+    process::stream(&program, &arg_refs, None).context(if check {
+        "checking Swift formatting"
+    } else {
+        "formatting Swift sources"
+    })
 }
 
 /// swift-format, preferring the Xcode-bundled copy (`xcrun swift-format`).

@@ -229,6 +229,7 @@ pub fn erase(udid: &str) -> Result<(), CliError> {
 /// universal links into the app.
 pub fn open_url(udid: &str, url: &str) -> Result<(), CliError> {
     process::stream("xcrun", &["simctl", "openurl", udid, url], None)
+        .context("opening the URL on the simulator")
 }
 
 /// Capture a PNG screenshot of a booted simulator to `path`.
