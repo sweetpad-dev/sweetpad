@@ -125,16 +125,21 @@ What the command acts on (workspace/project, scheme, configuration,
 destination) resolves by **layered precedence**:
 
 ```
-explicit flag  >  env var  >  config file  >  auto-discovery
+explicit flag  >  env var  >  config file  >  remembered state  >  auto-discovery
 ```
 
 - **Auto-discovery:** find the `.xcworkspace` / `.xcodeproj` / `Package.swift`
   in the working directory.
 - **Env vars:** `SWEETPAD_SCHEME`, `SWEETPAD_DESTINATION`,
   `SWEETPAD_CONFIGURATION`, `SWEETPAD_PROJECT` / `SWEETPAD_WORKSPACE`.
+- **Remembered state:** the last interactive picks, saved per project, feed the
+  layer just above auto-discovery so the daily loop doesn't re-prompt (§6).
 - **Interactive fallback:** when something is ambiguous/unset **and stdout is a
   TTY**, drop to a fuzzy picker (choose a scheme/destination from a menu).
   **Non-TTY/CI stays strict** and errors instead of prompting.
+- **Testing:** the `test` action resolves a *separate* testing context — testing
+  config/state layered over the build context — so tests can pin their own
+  scheme/configuration/destination (§6, "Context").
 
 ## 6. Configuration & state
 
@@ -155,17 +160,57 @@ configuration = "Debug"
 [projects."/Users/me/code/MyApp"]
 scheme = "MyApp"
 destination = "platform=iOS Simulator,name=iPhone 15"
+
+# Test-action overrides, layered over the build values for `test` only.
+[projects."/Users/me/code/MyApp".testing]
+configuration = "Test"
 ```
+
+- Each table accepts a `[….testing]` sub-table — `scheme`/`configuration`/
+  `destination` overrides used by `test`, falling back to the build values when
+  unset (mirrors the extension's `sweetpad.testing.*` settings).
 
 ### State — machine-managed
 - `~/.local/state/sweetpad/state.toml` (honoring `XDG_STATE_HOME`).
-- Holds **remembered interactive selections** (last scheme, destination, …),
-  keyed by **project identity = canonicalized workspace/project path**.
-- Churns freely; safe for the tool to rewrite.
+- Holds the **remembered build context** (scheme, configuration, sdk,
+  destination), a separate **testing context**, the **recent/most-used
+  destinations**, and the **last launched app** — keyed by **project identity =
+  canonicalized workspace/project path**.
+- Churns freely; safe for the tool to rewrite. Manage it with `context` (below),
+  not by hand.
 
 Precedence note: an authored per-project override in `config.toml` outranks
 remembered `state.toml` selections (config > auto, and remembered state feeds
 the auto/last-used layer).
+
+### Context — inspect & manage remembered state
+
+`sweetpad context` is the first-class way to view and edit the remembered
+selections, instead of hand-editing `state.toml` or relying on a build command's
+prompt-and-remember side effect. It mirrors the richer context the VS Code
+extension keeps in its workspace state (§7).
+
+```
+sweetpad context show                  print the build + testing context, recent
+                                       destinations, and last launched app (--json)
+sweetpad context select [VAR]          set a variable interactively (no VAR → the
+                                       core: scheme, configuration, destination)
+sweetpad context remove [VAR] [--all]  clear a variable, or the whole context
+```
+
+- **Variables:** `scheme`, `configuration`, `destination` (both contexts),
+  `sdk` (build-only), `target` (testing-only). `scheme`/`configuration` reuse the
+  project's pickers; `destination` uses the simulator picker below.
+- **`--testing`** on `select`/`remove` acts on the testing context; otherwise the
+  build context. `--all` clears the whole project entry (or just the testing
+  sub-context with `--testing`); emptied entries are pruned.
+- **Adaptive destination picker.** Picking a destination records it into the
+  project's recents and usage counts; the picker then orders **most-used first,
+  then booted (marked `●`), then a deterministic platform → newest-OS → family →
+  natural-name sort** — so your habitual target sits on top.
+- **Testing precedence.** `test` resolves each field as `flag > testing config >
+  testing state > build config > build state`, so a pinned testing override wins
+  and `test` otherwise follows the build selection.
 
 ## 7. Relationship to the VS Code extension
 
