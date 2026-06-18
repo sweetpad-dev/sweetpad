@@ -7,7 +7,6 @@ use std::path::Path;
 use std::process::Child;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread::JoinHandle;
 
 use clap::Subcommand;
 
@@ -456,6 +455,10 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     // nothing running to attach a session to.
     build(plan, &ctx.out, None)?;
     let mut running = Some(start_app(ctx, plan)?);
+    // Start the simulator log stream once and keep it for the whole session —
+    // its name-based predicate follows the app through each relaunch, so rebuilds
+    // never tear it down (which is what would otherwise hang). Dropped on exit.
+    let _logs = start_logs(ctx, plan);
     session_hint(ctx);
 
     loop {
@@ -587,8 +590,10 @@ fn run_hot_session(
         );
     }
 
-    // Install + launch with the client injected, then stream the app's logs.
-    let mut stream = launch_hot(ctx, udid, &app, &launch_env)?;
+    // Install + launch with the client injected, then start the session log
+    // stream (kept across `r` relaunches; its predicate follows the app by name).
+    launch_hot(ctx, udid, &app, &launch_env)?;
+    let mut logs = start_logs(ctx, plan);
     // Watch the workspace; each save drives `server.inject`.
     let session = HotSession::start(Arc::clone(&server), &project_root);
 
@@ -597,12 +602,14 @@ fn run_hot_session(
     let outcome = if let Some(file) = selfcheck {
         hot_selfcheck(ctx, &server, file)
     } else if ctx.out.is_interactive() {
-        hot_key_loop(ctx, plan, udid, &launch_env, &mut stream);
+        hot_key_loop(ctx, plan, udid, &launch_env, &mut logs);
         Ok(())
     } else {
         ctx.out
             .note("hot reload: watching for Swift changes (Ctrl-C to stop)");
-        let _ = stream.wait();
+        if let Some(logs) = logs.as_mut() {
+            logs.wait();
+        }
         Ok(())
     };
 
@@ -610,8 +617,7 @@ fn run_hot_session(
     session.shutdown();
     server.shutdown();
     let _ = simctl::terminate(udid, &app.bundle_id);
-    let _ = stream.kill();
-    let _ = stream.wait();
+    drop(logs);
     let _ = std::fs::remove_dir_all(
         std::env::temp_dir().join(format!("sweetpad-hot-{}", std::process::id())),
     );
@@ -666,20 +672,21 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path) -> CliR
     }
 }
 
-/// Boot, install, and launch the app with the hot-reload env, returning the
-/// backgrounded log-stream child. Shared by the first launch and each `r`.
+/// Boot, install, and launch the app with the hot-reload env. Shared by the
+/// first launch and each `r`. Logs stream separately for the whole session
+/// ([`start_logs`]), so this doesn't touch them.
 fn launch_hot(
     ctx: &Context,
     udid: &str,
     app: &AppBundle,
     env: &[(String, String)],
-) -> Result<Child, CliError> {
+) -> CliResult {
     simctl::boot(udid)?;
     simctl::install(udid, &app.path.display().to_string())?;
     let launched = simctl::launch_with_env(udid, &app.bundle_id, env)?;
     ctx.out
         .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
-    spawn_logs(udid, app)
+    Ok(())
 }
 
 /// The `--hot` keypress loop: `r` full rebuild+relaunch (the client reconnects),
@@ -689,11 +696,13 @@ fn hot_key_loop(
     plan: &RunPlan,
     udid: &str,
     env: &[(String, String)],
-    stream: &mut Child,
+    logs: &mut Option<LogStream>,
 ) {
     let Ok(_raw) = rawmode::RawMode::enable() else {
-        // No TTY for raw mode — just follow logs until the stream ends.
-        let _ = stream.wait();
+        // No TTY for raw mode — just follow the log stream until Ctrl-C.
+        if let Some(logs) = logs.as_mut() {
+            logs.wait();
+        }
         return;
     };
     ctx.out
@@ -710,14 +719,15 @@ fn hot_key_loop(
                             continue;
                         }
                     };
+                    // The session log stream follows the app by name, so it's
+                    // left running — just terminate, rebuild, and relaunch.
                     let _ = simctl::terminate(udid, &app.bundle_id);
-                    let _ = stream.kill();
-                    let _ = stream.wait();
                     match build(plan, &ctx.out, None) {
-                        Ok(()) => match launch_hot(ctx, udid, &app, env) {
-                            Ok(child) => *stream = child,
-                            Err(e) => ctx.out.error(&e),
-                        },
+                        Ok(()) => {
+                            if let Err(e) = launch_hot(ctx, udid, &app, env) {
+                                ctx.out.error(&e);
+                            }
+                        }
                         Err(e) => ctx.out.error(&e),
                     }
                 }
@@ -730,15 +740,14 @@ fn hot_key_loop(
     }
 }
 
-/// A launched app in the interactive session: the background process streaming
-/// its output (simulator log stream, device console, or — for macOS — the app
-/// itself), plus what's needed to terminate the app between rebuilds and on quit.
+/// A launched app in the interactive session, plus what's needed to terminate it
+/// between rebuilds and on quit. `stream` is the child whose output *is* the
+/// app's — the device console, or (macOS) the app process itself. A simulator
+/// has no such child: its app is managed via `simctl terminate` and its logs by
+/// a session-scoped [`LogStream`], so `stream` is `None`.
 struct Running {
-    stream: Child,
+    stream: Option<Child>,
     kind: RunningKind,
-    /// Thread rendering the simulator's os_log ndjson stream as colored lines
-    /// (simulator only). Joined on teardown once the child's stdout closes.
-    log_reader: Option<JoinHandle<()>>,
 }
 
 enum RunningKind {
@@ -750,9 +759,35 @@ enum RunningKind {
     Mac,
 }
 
-/// Install (where applicable) and launch the just-built app, starting the
-/// background stream of its output. Assumes [`build`] already produced the
-/// bundle, so it never builds itself.
+/// The simulator's os_log stream for the whole session. Its predicate matches by
+/// process name, so one stream follows the app across rebuild/relaunch — avoiding
+/// per-rebuild teardown of the `launchd_sim`-reparented `log` process, which
+/// outlives our `simctl` child and would block a join. The reader runs detached;
+/// [`Drop`] kills the `simctl` child at session end.
+struct LogStream {
+    child: Child,
+}
+
+impl LogStream {
+    /// Block until the stream ends on its own (e.g. the simulator shuts down).
+    /// Used by the non-interactive `--hot` follow; Ctrl-C usually ends the
+    /// process first.
+    fn wait(&mut self) {
+        let _ = self.child.wait();
+    }
+}
+
+impl Drop for LogStream {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// Install (where applicable) and launch the just-built app. Assumes [`build`]
+/// already produced the bundle, so it never builds itself. A simulator's logs are
+/// streamed separately for the whole session ([`start_logs`]); device and macOS
+/// output comes from the returned [`Running`]'s `stream`.
 fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
     let app = plan.app_bundle()?;
     let app_path = app.path.display().to_string();
@@ -763,15 +798,14 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
             let launched = simctl::launch(udid, &app.bundle_id)?;
             ctx.out
                 .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
-            let mut stream = spawn_logs(udid, &app)?;
-            let log_reader = render_logs(&mut stream, ctx.out.use_color());
             Ok(Running {
-                stream,
+                // The app runs in the simulator; there's no child to hold. Logs
+                // come from the session-scoped stream, not from here.
+                stream: None,
                 kind: RunningKind::Simulator {
                     udid: udid.clone(),
                     bundle_id: app.bundle_id,
                 },
-                log_reader,
             })
         }
         Target::Device(id) => {
@@ -783,33 +817,28 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
             Ok(Running {
                 // The device console streams the app's stdout/stderr directly
                 // (not os_log ndjson), so it's inherited rather than rendered.
-                stream: devicectl::spawn_console(id, &app.bundle_id)?,
+                stream: Some(devicectl::spawn_console(id, &app.bundle_id)?),
                 kind: RunningKind::Device {
                     id: id.clone(),
                     bundle_id: app.bundle_id,
                 },
-                log_reader: None,
             })
         }
         Target::Mac => {
             ctx.out.note(&format!("running {}", app.bundle_id));
             Ok(Running {
-                stream: process::spawn(&app.executable.to_string_lossy(), &[], None)?,
+                stream: Some(process::spawn(&app.executable.to_string_lossy(), &[], None)?),
                 kind: RunningKind::Mac,
-                log_reader: None,
             })
         }
         Target::SpmRun(_) => unreachable!("SPM run does not use the interactive session"),
     }
 }
 
-/// Terminate the running app and stop its output stream.
+/// Terminate the running app and stop its output stream. The session-scoped
+/// simulator log stream is left running — it's torn down once, at session end.
 fn terminate_app(running: Running) {
-    let Running {
-        mut stream,
-        kind,
-        log_reader,
-    } = running;
+    let Running { stream, kind } = running;
     match kind {
         RunningKind::Simulator { udid, bundle_id } => {
             let _ = simctl::terminate(&udid, &bundle_id);
@@ -820,11 +849,9 @@ fn terminate_app(running: Running) {
         // The macOS app *is* the streamed child — killing it below stops it.
         RunningKind::Mac => {}
     }
-    let _ = stream.kill();
-    let _ = stream.wait();
-    // Killing the child closes its stdout, so the reader hits EOF and exits.
-    if let Some(reader) = log_reader {
-        let _ = reader.join();
+    if let Some(mut stream) = stream {
+        let _ = stream.kill();
+        let _ = stream.wait();
     }
 }
 
@@ -958,18 +985,25 @@ fn session_hint(ctx: &Context) {
 
 /// Spawn the simulator's os_log stream as a background child with stdout piped,
 /// for [`render_logs`] to format. See [`log_args`] for the stream's shape.
-fn spawn_logs(udid: &str, app: &AppBundle) -> Result<Child, CliError> {
-    let args = log_args(udid, app);
+fn spawn_logs(udid: &str, app: &AppBundle, level: &str) -> Result<Child, CliError> {
+    let args = log_args(udid, app, level);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     process::spawn_piped("xcrun", &refs, None)
 }
 
+/// The os_log stream level: `info` by default — which hides `Debug`-level entries
+/// like the Xcode debug-dylib bootstrap chatter (and the app's own `.debug()`
+/// lines) — raised to `debug` under `-v`/`--verbose`.
+fn log_level(out: &Output) -> &'static str {
+    if out.is_verbose() { "debug" } else { "info" }
+}
+
 /// Build the `simctl spawn … log stream --style ndjson` argv for the app's
-/// os_log output. The predicate matches by process image — and the Xcode 15+
-/// `.debug.dylib` sender, which carries app code in Debug builds — so logs show
-/// even when the app sets no `Logger(subsystem:)`, while Apple framework chatter
-/// stays out. ndjson is what [`oslog`] parses; mirrors the extension's predicate.
-fn log_args(udid: &str, app: &AppBundle) -> Vec<String> {
+/// os_log output at `level` (see [`log_level`]). The predicate matches by process
+/// image — and the Xcode 15+ `.debug.dylib` sender, which carries app code in
+/// Debug builds — so logs show even when the app sets no `Logger(subsystem:)`,
+/// while Apple framework chatter stays out. ndjson is what [`oslog`] parses.
+fn log_args(udid: &str, app: &AppBundle, level: &str) -> Vec<String> {
     let exe = app
         .executable
         .file_name()
@@ -984,7 +1018,7 @@ fn log_args(udid: &str, app: &AppBundle) -> Vec<String> {
         "log".into(),
         "stream".into(),
         "--level".into(),
-        "debug".into(),
+        level.into(),
         "--style".into(),
         "ndjson".into(),
         "--predicate".into(),
@@ -992,17 +1026,32 @@ fn log_args(udid: &str, app: &AppBundle) -> Vec<String> {
     ]
 }
 
-/// Spawn a thread rendering the simulator log child's ndjson stdout as colored
-/// lines. Returns the handle to join after the child is killed; `None` if stdout
-/// wasn't piped.
-fn render_logs(child: &mut Child, color: bool) -> Option<JoinHandle<()>> {
-    let stdout = child.stdout.take()?;
-    Some(std::thread::spawn(move || {
+/// Render the simulator log child's ndjson stdout as colored lines on a detached
+/// thread. The thread ends when the child's stdout closes — i.e. when the stream
+/// is dropped/killed, or the process exits — so it's never joined.
+fn render_logs(child: &mut Child, color: bool) {
+    let Some(stdout) = child.stdout.take() else {
+        return;
+    };
+    std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines() {
             let Ok(line) = line else { break };
             println!("{}", oslog::render_ndjson_line(&line, color));
         }
-    }))
+    });
+}
+
+/// Start the session's simulator log stream (see [`LogStream`]). `None` for
+/// non-simulator targets — their output is the [`Running`] child — or if the app
+/// bundle or stream can't be resolved (logs are best-effort, never fatal).
+fn start_logs(ctx: &Context, plan: &RunPlan) -> Option<LogStream> {
+    let Target::Simulator(udid) = &plan.target else {
+        return None;
+    };
+    let app = plan.app_bundle().ok()?;
+    let mut child = spawn_logs(udid, &app, log_level(&ctx.out)).ok()?;
+    render_logs(&mut child, ctx.out.use_color());
+    Some(LogStream { child })
 }
 
 /// The stage-only `app` actions (install/launch/logs/stop) share resolution.
@@ -1063,7 +1112,7 @@ fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle) -> CliResult {
         app.bundle_id
     ));
     let color = ctx.out.use_color();
-    let args = log_args(udid, app);
+    let args = log_args(udid, app, log_level(&ctx.out));
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let ok = process::stream_lines("xcrun", &refs, None, |line| {
         println!("{}", oslog::render_ndjson_line(line, color));
