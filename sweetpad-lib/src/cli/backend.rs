@@ -13,6 +13,8 @@
 //! `doctor`, and on-the-fly config generation arrive with the non-native
 //! backends in later phases.
 
+use std::path::Path;
+
 use crate::cli::resolve::{self, Container, Resolved};
 use crate::cli::{CliError, CliResult, Context, swiftpm, xcodebuild};
 
@@ -38,6 +40,22 @@ pub trait BuildBackend {
     /// detail they need (scheme/destination for xcodebuild, configuration for
     /// SwiftPM) from `ctx` + `resolved`.
     fn build(&self, ctx: &mut Context, resolved: &Resolved, opts: &BuildOptions) -> CliResult;
+
+    /// Generate this backend's config files (e.g. `Package.swift` + `xtool.yml`,
+    /// or `MODULE.bazel` + `BUILD.bazel`) from the Xcode project into `out_dir`,
+    /// to be committed and then consumed by [`build`](BuildBackend::build).
+    ///
+    /// Native backends (xcodebuild, swiftpm) read the project directly and have
+    /// nothing to generate — the default reports that as a no-op. Config-generating
+    /// backends override this.
+    fn generate(&self, ctx: &mut Context, _resolved: &Resolved, _out_dir: &Path) -> CliResult {
+        ctx.out.note(&format!(
+            "the {} backend builds the project directly — no config to generate \
+             (use --backend with a config-generating tool)",
+            self.id()
+        ));
+        Ok(())
+    }
 }
 
 /// All registered backends, in auto-selection priority order. Adding a backend
