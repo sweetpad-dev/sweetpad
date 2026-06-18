@@ -92,6 +92,11 @@ pluggable:
    `swift build`, so SwiftPM/clang diagnostics are similar but the wrapper output
    differs and needs its own parsing.
 
+> **Update:** the integration is now framed as the first non-native backend of a
+> general pluggable build pipeline — see [Build Backends](./build-backends.md).
+> `xtool` is a *config-generating* backend (it can't read `.xcodeproj`, so we
+> materialize `Package.swift` + `xtool.yml` from the normalized Build Plan).
+
 ## 4. Integration options
 
 ### Option A — Minimal "build only" backend (recommended first step)
