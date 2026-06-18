@@ -30,6 +30,8 @@ pub struct Defaults {
     pub scheme: Option<String>,
     pub configuration: Option<String>,
     pub destination: Option<String>,
+    /// Build backend id (e.g. "xcodebuild", "swiftpm"); `None` ⇒ auto-select.
+    pub backend: Option<String>,
 }
 
 impl Config {
@@ -66,6 +68,9 @@ impl Config {
             }
             if over.destination.is_some() {
                 merged.destination.clone_from(&over.destination);
+            }
+            if over.backend.is_some() {
+                merged.backend.clone_from(&over.backend);
             }
         }
         merged

@@ -263,10 +263,14 @@ available?" answered by the CLI, rather than a hard `darwin` check.
 
 ## Phased plan
 
-1. **Lift the trait, no behavior change.** Introduce `BuildBackend` +
-   `Xcodebuild`/`SwiftPm` wrapping today's `xcodebuild.rs` / `swiftpm.rs`; replace
-   the `match` in `build.rs:25` with `backend::select` defaulting to current
-   behavior. Existing `cargo test` arg-vector tests carry over unchanged.
+1. ✅ **Lift the trait, no behavior change.** *Done* —
+   `sweetpad-lib/src/cli/backend.rs` adds the `BuildBackend` trait plus
+   `Xcodebuild`/`SwiftPm` wrapping `xcodebuild.rs` / `swiftpm.rs`; `build.rs`'s
+   container `match` is replaced by `backend::select`. Selection precedence is
+   `--backend` flag (`SWEETPAD_BACKEND`) > per-project config (`backend = …`) >
+   auto by container type, with auto reproducing the historical routing.
+   Existing arg-vector tests carry over unchanged; new `select`/`can_build` unit
+   tests cover the routing.
 2. **Promote `BuildTarget` → `BuildPlan`** with the extra identity/signing fields
    (still only consumed by xcodebuild at first).
 3. **Add `XtoolBackend`** (config-gen mode), build-only on Linux first — see the

@@ -16,6 +16,7 @@ use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser, Subcommand};
 
+pub mod backend;
 pub mod buildlog;
 pub mod config;
 pub mod devicectl;
@@ -89,6 +90,11 @@ pub struct GlobalArgs {
     /// Destination specifier (e.g. "platform=iOS Simulator,name=iPhone 15").
     #[arg(long, global = true, env = "SWEETPAD_DESTINATION")]
     pub destination: Option<String>,
+
+    /// Build backend to use (e.g. "xcodebuild", "swiftpm"). Overrides config;
+    /// defaults to auto-selection by project type.
+    #[arg(long, global = true, env = "SWEETPAD_BACKEND")]
+    pub backend: Option<String>,
 }
 
 /// Top-level resources. Each is a noun; actions are its subcommands.

@@ -4,7 +4,8 @@
 
 use clap::Subcommand;
 
-use crate::cli::{CliResult, Context, resolve, swiftpm, xcodebuild};
+use crate::cli::backend::{self, BuildOptions};
+use crate::cli::{CliResult, Context, resolve};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -25,35 +26,15 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
 fn start(ctx: &mut Context, clean: bool) -> CliResult {
     let resolved = resolve::resolve(ctx)?;
 
-    // Swift packages have no simulator destination; build them with the `swift`
-    // toolchain rather than routing through xcodebuild (which would force a
-    // destination on us).
-    if matches!(resolved.container, resolve::Container::SwiftPackage(_)) {
-        let configuration = resolved
-            .configuration
-            .clone()
-            .unwrap_or_else(|| "Debug".to_string());
-        ctx.out.note(&format!(
-            "building Swift package ({configuration}) with swift build"
-        ));
-        return swiftpm::build(&resolved.container, &configuration, clean);
-    }
+    // Backend precedence: explicit `--backend` flag > per-project config >
+    // auto-selection by project type. Auto-selection reproduces the historical
+    // routing (Swift packages → `swift build`, else `xcodebuild`).
+    let requested = ctx
+        .global
+        .backend
+        .clone()
+        .or_else(|| ctx.config.for_project(&resolved.container.key()).backend);
+    let backend = backend::select(requested.as_deref(), &resolved.container)?;
 
-    let target = resolve::build_target(ctx, &resolved)?;
-    resolve::remember(ctx, &resolved, &target);
-
-    ctx.out.note(&format!(
-        "building {} ({}) for {}",
-        target.scheme, target.configuration, target.destination
-    ));
-
-    xcodebuild::BuildPlan {
-        container: &resolved.container,
-        scheme: &target.scheme,
-        configuration: &target.configuration,
-        destination: Some(&target.destination),
-        clean,
-        hot: false,
-    }
-    .run(&ctx.out)
+    backend.build(ctx, &resolved, &BuildOptions { clean })
 }

@@ -311,6 +311,7 @@ mod tests {
             scheme: None,
             configuration: None,
             destination: None,
+            backend: None,
         };
         let out = Output::new(&global);
         Context {
