@@ -48,10 +48,10 @@ impl Container {
 /// Resolve the project container from explicit flags, else by auto-discovery in
 /// the current directory.
 pub fn container(ctx: &Context) -> Result<Container, CliError> {
-    if let Some(ws) = &ctx.global.workspace {
+    if let Some(ws) = &ctx.targeting.workspace {
         return Ok(Container::Workspace(ws.clone()));
     }
-    if let Some(proj) = &ctx.global.project {
+    if let Some(proj) = &ctx.targeting.project {
         return Ok(Container::Project(proj.clone()));
     }
     let cwd =
@@ -117,17 +117,17 @@ pub fn resolve(ctx: &Context) -> Result<Resolved, CliError> {
 
     Ok(Resolved {
         scheme: pick(
-            &ctx.global.scheme,
+            &ctx.targeting.scheme,
             &cfg.scheme,
             st.and_then(|s| s.scheme.as_ref()),
         ),
         configuration: pick(
-            &ctx.global.configuration,
+            &ctx.targeting.configuration,
             &cfg.configuration,
             st.and_then(|s| s.configuration.as_ref()),
         ),
         destination: pick(
-            &ctx.global.destination,
+            &ctx.targeting.destination,
             &cfg.destination,
             st.and_then(|s| s.destination.as_ref()),
         ),
@@ -288,7 +288,9 @@ fn prompt_choice(what: &str, candidates: &[String]) -> Result<String, CliError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::{Context, GlobalArgs, config::Config, output::Output, state::State};
+    use crate::cli::{
+        Context, GlobalArgs, Targeting, config::Config, output::Output, state::State,
+    };
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_dir(tag: &str) -> std::path::PathBuf {
@@ -306,15 +308,11 @@ mod tests {
             json: false,
             no_color: true,
             verbose: 0,
-            workspace: None,
-            project: None,
-            scheme: None,
-            configuration: None,
-            destination: None,
         };
         let out = Output::new(&global);
         Context {
             global,
+            targeting: Targeting::default(),
             config: Config::default(),
             state: State::default(),
             out,

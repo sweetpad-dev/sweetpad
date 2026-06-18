@@ -584,14 +584,14 @@ struct Info {
 }
 
 fn info(ctx: &mut Context) -> CliResult {
-    let resolved = resolve::resolve(ctx)?;
-    let info = gather(&resolved.container)?;
+    let container = resolve::container(ctx)?;
+    let info = gather(&container)?;
 
     if ctx.out.is_json() {
         ctx.out.json_value(&serde_json::json!({
             "kind": info.kind,
             "name": info.name,
-            "path": resolved.container.path().display().to_string(),
+            "path": container.path().display().to_string(),
             "targets": info.targets,
             "configurations": info.configurations,
             "schemes": info.schemes,
@@ -601,7 +601,7 @@ fn info(ctx: &mut Context) -> CliResult {
 
     ctx.out.line(&format!("{} ({})", info.name, info.kind));
     ctx.out
-        .line(&format!("  path: {}", resolved.container.path().display()));
+        .line(&format!("  path: {}", container.path().display()));
     section(ctx, "targets", &info.targets);
     section(ctx, "configurations", &info.configurations);
     section(ctx, "schemes", &info.schemes);

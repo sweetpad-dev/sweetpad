@@ -188,9 +188,14 @@ CLI.
   policy (don't reinvent *standard* things — a CLI parser is standard).
 - **TOML:** a `toml` crate (read-only for config) plus `serde` for
   config/state (de)serialization.
-- **Global flags:** `--json`, `--no-color`, `-v/--verbose`, plus the resolution
-  flags (`--scheme`, `--configuration`, `--destination`,
-  `--project`/`--workspace`).
+- **Universal flags:** `--json`, `--no-color`, `-v/--verbose` are global —
+  accepted on every command and its actions. The **targeting flags**
+  (`--workspace`/`--project`, `--scheme`, `--configuration`, `--destination`)
+  are *not* global: each lives only on the commands that consume it, in three
+  tiers — container-only (`project`, `bsp`, `derived-data`), container plus
+  `--scheme` (`scheme`), and the full build target (`build`, `test`,
+  `settings`, `app`). They precede the action token, e.g. `sweetpad build
+  --scheme App run`.
 - **Process orchestration:** spawn and stream `xcodebuild` / `xcrun simctl`;
   parse output for human and `--json` render paths.
 

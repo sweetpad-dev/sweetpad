@@ -53,8 +53,10 @@ pub struct Cli {
     pub resource: Resource,
 }
 
-/// Flags accepted on every command. Resolution flags follow the layered
-/// precedence documented in [`resolve`] (flag > env > config > auto-discovery).
+/// The truly universal flags — accepted on every command and propagated to
+/// nested actions. Targeting (which workspace/scheme/… a command acts on) is
+/// *not* here: those flags live on the commands that consume them, as the
+/// [`ContainerArgs`]/[`SchemeArgs`]/[`BuildTargetArgs`] tiers below.
 #[derive(Debug, clap::Args)]
 pub struct GlobalArgs {
     /// Emit machine-readable JSON instead of human output.
@@ -69,26 +71,93 @@ pub struct GlobalArgs {
     /// Increase log verbosity (repeatable: -v, -vv).
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     pub verbose: u8,
+}
 
+/// Tier 1 — which project container to act on. Flattened into every command
+/// that locates a workspace/project. Not `global`, so it must precede the
+/// action token (`sweetpad project --project App.xcodeproj info`).
+#[derive(Debug, clap::Args)]
+pub struct ContainerArgs {
     /// Path to the `.xcworkspace` to operate on (overrides auto-discovery).
-    #[arg(long, global = true, env = "SWEETPAD_WORKSPACE")]
+    #[arg(long, env = "SWEETPAD_WORKSPACE")]
     pub workspace: Option<std::path::PathBuf>,
 
     /// Path to the `.xcodeproj` to operate on (overrides auto-discovery).
-    #[arg(long, global = true, env = "SWEETPAD_PROJECT")]
+    #[arg(long, env = "SWEETPAD_PROJECT")]
     pub project: Option<std::path::PathBuf>,
+}
+
+/// Tier 2 — container plus a scheme. For commands that need to know *which*
+/// scheme but not a full build target (e.g. `scheme list`).
+#[derive(Debug, clap::Args)]
+pub struct SchemeArgs {
+    #[command(flatten)]
+    pub container: ContainerArgs,
 
     /// Scheme to use (overrides config and remembered selection).
-    #[arg(long, global = true, env = "SWEETPAD_SCHEME")]
+    #[arg(long, env = "SWEETPAD_SCHEME")]
     pub scheme: Option<String>,
+}
+
+/// Tier 3 — everything `xcodebuild` needs: container, scheme, configuration,
+/// and destination. For the build-ish commands (`build`, `test`, `settings`,
+/// `app`).
+#[derive(Debug, clap::Args)]
+pub struct BuildTargetArgs {
+    #[command(flatten)]
+    pub scheme: SchemeArgs,
 
     /// Build configuration to use (e.g. Debug, Release).
-    #[arg(long, global = true, env = "SWEETPAD_CONFIGURATION")]
+    #[arg(long, env = "SWEETPAD_CONFIGURATION")]
     pub configuration: Option<String>,
 
     /// Destination specifier (e.g. "platform=iOS Simulator,name=iPhone 15").
-    #[arg(long, global = true, env = "SWEETPAD_DESTINATION")]
+    #[arg(long, env = "SWEETPAD_DESTINATION")]
     pub destination: Option<String>,
+}
+
+/// The resolved-from-flags targeting handed to commands via [`Context`]. Each
+/// command populates the subset of fields its tier exposes; the rest stay
+/// `None`. Resolution precedence (flag > env > config > state > auto-discovery)
+/// is applied over this in [`resolve`].
+#[derive(Debug, Default)]
+pub struct Targeting {
+    pub workspace: Option<std::path::PathBuf>,
+    pub project: Option<std::path::PathBuf>,
+    pub scheme: Option<String>,
+    pub configuration: Option<String>,
+    pub destination: Option<String>,
+}
+
+impl From<ContainerArgs> for Targeting {
+    fn from(a: ContainerArgs) -> Self {
+        Self {
+            workspace: a.workspace,
+            project: a.project,
+            scheme: None,
+            configuration: None,
+            destination: None,
+        }
+    }
+}
+
+impl From<SchemeArgs> for Targeting {
+    fn from(a: SchemeArgs) -> Self {
+        Self {
+            scheme: a.scheme,
+            ..a.container.into()
+        }
+    }
+}
+
+impl From<BuildTargetArgs> for Targeting {
+    fn from(a: BuildTargetArgs) -> Self {
+        Self {
+            configuration: a.configuration,
+            destination: a.destination,
+            ..a.scheme.into()
+        }
+    }
 }
 
 /// Top-level resources. Each is a noun; actions are its subcommands.
@@ -96,6 +165,8 @@ pub struct GlobalArgs {
 pub enum Resource {
     /// Inspect schemes.
     Scheme {
+        #[command(flatten)]
+        target: SchemeArgs,
         #[command(subcommand)]
         action: commands::scheme::Action,
     },
@@ -106,11 +177,15 @@ pub enum Resource {
     },
     /// Inspect the project: targets, configurations, schemes.
     Project {
+        #[command(flatten)]
+        target: ContainerArgs,
         #[command(subcommand)]
         action: commands::project::Action,
     },
     /// Show resolved build settings.
     Settings {
+        #[command(flatten)]
+        target: BuildTargetArgs,
         #[command(subcommand)]
         action: commands::settings::Action,
     },
@@ -121,16 +196,22 @@ pub enum Resource {
     },
     /// Compile the project.
     Build {
+        #[command(flatten)]
+        target: BuildTargetArgs,
         #[command(subcommand)]
         action: commands::build::Action,
     },
     /// Run the project's tests.
     Test {
+        #[command(flatten)]
+        target: BuildTargetArgs,
         #[command(subcommand)]
         action: commands::test::Action,
     },
     /// Run, install, and manage the built app's lifecycle.
     App {
+        #[command(flatten)]
+        target: BuildTargetArgs,
         #[command(subcommand)]
         action: commands::app::Action,
     },
@@ -161,11 +242,15 @@ pub enum Resource {
     },
     /// Build Server Protocol integration (sourcekit-lsp autocomplete).
     Bsp {
+        #[command(flatten)]
+        target: ContainerArgs,
         #[command(subcommand)]
         action: commands::bsp::Action,
     },
     /// Inspect and purge Xcode's DerivedData.
     DerivedData {
+        #[command(flatten)]
+        target: ContainerArgs,
         #[command(subcommand)]
         action: commands::derived_data::Action,
     },
@@ -182,6 +267,9 @@ pub enum Resource {
 /// loaded config and state. Resolution helpers in [`resolve`] read from here.
 pub struct Context {
     pub global: GlobalArgs,
+    /// Targeting flags from the command that's running, folded into a uniform
+    /// shape. Empty for commands that don't target a project.
+    pub targeting: Targeting,
     pub config: config::Config,
     pub state: state::State,
     pub out: output::Output,
@@ -225,27 +313,52 @@ pub fn run(argv: &[String]) -> ExitCode {
 
     let mut ctx = Context {
         global: cli.global,
+        targeting: Targeting::default(),
         config,
         state,
         out,
     };
 
     let result = match cli.resource {
-        Resource::Scheme { action } => commands::scheme::run(&mut ctx, &action),
+        Resource::Scheme { target, action } => {
+            ctx.targeting = target.into();
+            commands::scheme::run(&mut ctx, &action)
+        }
         Resource::Destination { action } => commands::destination::run(&mut ctx, &action),
-        Resource::Project { action } => commands::project::run(&mut ctx, &action),
-        Resource::Settings { action } => commands::settings::run(&mut ctx, &action),
+        Resource::Project { target, action } => {
+            ctx.targeting = target.into();
+            commands::project::run(&mut ctx, &action)
+        }
+        Resource::Settings { target, action } => {
+            ctx.targeting = target.into();
+            commands::settings::run(&mut ctx, &action)
+        }
         Resource::Simulator { action } => commands::simulator::run(&mut ctx, &action),
-        Resource::Build { action } => commands::build::run(&mut ctx, &action),
-        Resource::Test { action } => commands::test::run(&mut ctx, &action),
-        Resource::App { action } => commands::app::run(&mut ctx, &action),
+        Resource::Build { target, action } => {
+            ctx.targeting = target.into();
+            commands::build::run(&mut ctx, &action)
+        }
+        Resource::Test { target, action } => {
+            ctx.targeting = target.into();
+            commands::test::run(&mut ctx, &action)
+        }
+        Resource::App { target, action } => {
+            ctx.targeting = target.into();
+            commands::app::run(&mut ctx, &action)
+        }
         Resource::Device { action } => commands::device::run(&mut ctx, &action),
         Resource::Format { action } => commands::format::run(&mut ctx, &action),
         Resource::Pbxproj { action } => commands::pbxproj::run(&mut ctx, &action),
         Resource::Spm { action } => commands::spm::run(&mut ctx, &action),
         Resource::Merge { action } => commands::merge::run(&mut ctx, &action),
-        Resource::Bsp { action } => commands::bsp::run(&mut ctx, &action),
-        Resource::DerivedData { action } => commands::derived_data::run(&mut ctx, &action),
+        Resource::Bsp { target, action } => {
+            ctx.targeting = target.into();
+            commands::bsp::run(&mut ctx, &action)
+        }
+        Resource::DerivedData { target, action } => {
+            ctx.targeting = target.into();
+            commands::derived_data::run(&mut ctx, &action)
+        }
         Resource::Doctor => commands::doctor::run(&mut ctx),
         Resource::Completions { .. } => unreachable!("handled above"),
     };
