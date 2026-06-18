@@ -118,7 +118,10 @@ jobs:
 
   linux-build:
     name: cross-build with xtool (Linux, best-effort)
-    runs-on: ubuntu-latest
+    # arm64 runner: xtool only ships an aarch64 Linux AppImage, so an x86_64
+    # host hits "Exec format error". The iOS SDK and generated package are
+    # arch-neutral, so only this job needs to be arm64.
+    runs-on: ubuntu-24.04-arm
     needs: [export-darwin-sdk, linux-generate]
     # The user's "Linux container that mounts a frameworks dir": a Swift
     # container with the downloaded iOS SDK artifact.
@@ -162,8 +165,11 @@ jobs:
       - name: Install xtool (AppImage)
         run: |
           set -euo pipefail
-          url="$(curl -fsSL https://api.github.com/repos/xtool-org/xtool/releases/latest \
-                  | grep -oE 'https://[^"]+\.AppImage' | head -1)"
+          assets="$(curl -fsSL https://api.github.com/repos/xtool-org/xtool/releases/latest \
+                     | grep -oE 'https://[^"]+\.AppImage')"
+          # Prefer the AppImage matching the host arch (aarch64 on this runner).
+          url="$(echo "$assets" | grep -i "$(uname -m)" | head -1 || true)"
+          [ -z "$url" ] && url="$(echo "$assets" | head -1)"
           if [ -z "$url" ]; then echo "no AppImage asset in latest release"; exit 1; fi
           echo "Downloading $url"
           curl -fsSL -o /tmp/xtool.AppImage "$url"
