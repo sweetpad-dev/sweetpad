@@ -276,7 +276,7 @@ pub fn remember(ctx: &mut Context, resolved: &Resolved, target: &BuildTarget) {
 /// Interactive fuzzy picker (the design's TTY fallback): type to filter, arrows
 /// to move, Enter to select. Only reached when stdout is a TTY.
 fn prompt_choice(what: &str, candidates: &[String]) -> Result<String, CliError> {
-    let idx = dialoguer::FuzzySelect::new()
+    let idx = dialoguer::FuzzySelect::with_theme(&dialoguer::theme::ColorfulTheme::default())
         .with_prompt(format!("Select a {what}"))
         .items(candidates)
         .default(0)
