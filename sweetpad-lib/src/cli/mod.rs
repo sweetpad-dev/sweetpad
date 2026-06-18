@@ -32,6 +32,7 @@ pub mod simctl;
 pub mod state;
 pub mod swiftpm;
 pub mod xcodebuild;
+pub mod xtool;
 
 pub mod commands;
 

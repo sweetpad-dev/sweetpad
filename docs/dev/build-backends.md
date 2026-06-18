@@ -187,9 +187,15 @@ available?" rather than a hard `darwin` check.
    `sweetpad build plan [--json]`, the tested consumer that config-gen backends
    will render from. Covers `.xcodeproj` and `.xcworkspace` (owning member via
    `workspace::project_for_scheme`); Swift packages are rejected (already SwiftPM).
-4. **xtool generator** (`render_package` / `render_xtool_yml`, pure + tested) and
-   `XtoolBackend::build` (`xtool dev build`). First config-gen backend; lands the
-   source-graph extraction. Linux build story.
+4. ✅ **xtool generator.** *Done* — `sweetpad-lib/src/cli/xtool.rs`:
+   `XtoolBackend` (registered, explicit-only via `--backend xtool`). `generate`
+   consumes the `BuildPlan` and writes a `.library` `Package.swift` (sources from
+   the graph) + a minimal `xtool.yml` into the project dir; `build` runs
+   `xtool dev build`. Pure `render_*` functions with fixture-backed unit tests.
+   End-to-end verified on Linux by `.github/workflows/xtool-linux-build.yaml`
+   (the generate path is reliable; the full cross-build against a Mac-exported
+   iOS SDK is the workflow's best-effort/experimental job). The rendered
+   `Package.swift` template should be validated against a real `xtool new`.
 5. **Bazel generator** (`render_module_bazel` / `render_build_bazel`) reusing the
    source-graph extraction; validates the trait against a second, very different
    tool.

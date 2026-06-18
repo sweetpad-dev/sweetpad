@@ -61,7 +61,7 @@ pub trait BuildBackend {
 /// All registered backends, in auto-selection priority order. Adding a backend
 /// is a single line here.
 fn registry() -> &'static [&'static dyn BuildBackend] {
-    &[&Xcodebuild, &SwiftPm]
+    &[&Xcodebuild, &SwiftPm, &crate::cli::xtool::XtoolBackend]
 }
 
 /// Pick the backend to run. An explicit `requested` id wins (and is validated);
