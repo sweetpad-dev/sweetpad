@@ -1,0 +1,8 @@
+{
+  "description": "Bare .xcodeproj nested under an UNRELATED .xcworkspace it is not a member of. xcodebuild -project keys DerivedData by the project (Hello-<hash>), never the foreign workspace (Pulse) — the resolver must agree or `app run` installs from the wrong DerivedData folder.",
+  "project": "project/Hello/Hello.xcodeproj",
+  "foreign_workspace": "project/Pulse.xcworkspace",
+  "target": "Hello",
+  "captured": ["Debug"],
+  "capture_command": "xcodebuild -project project/Hello/Hello.xcodeproj -scheme Hello -configuration Debug -sdk iphonesimulator -showBuildSettings -json"
+}

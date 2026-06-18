@@ -2989,11 +2989,16 @@ fn normalize_stub_workspace(container: &Path) -> PathBuf {
 }
 
 /// Return the path Xcode would hash for the DerivedData folder name: a
-/// standalone `.xcworkspace` if one sits next to (or one directory above)
-/// the `.xcodeproj`, else the `.xcodeproj` itself.
+/// standalone `.xcworkspace` this `.xcodeproj` is a *member* of (one sitting
+/// next to it or one directory above), else the `.xcodeproj` itself.
 ///
 /// The `.xcodeproj`'s own embedded `project.xcworkspace` (Xcode's auto-
-/// generated stub) is skipped — only USER-authored workspaces count.
+/// generated stub) is skipped — only USER-authored workspaces count. A
+/// workspace that merely sits in a parent directory without referencing this
+/// project is **not** adopted: Xcode keys DerivedData by such a workspace only
+/// when the project actually belongs to it. (A bare `.xcodeproj` nested under
+/// an unrelated project's `.xcworkspace` must hash by itself, or the resolved
+/// build path points into the wrong DerivedData folder.)
 fn find_derived_data_container(xcodeproj: &Path) -> PathBuf {
     let parent = xcodeproj.parent();
     for dir in [parent, parent.and_then(Path::parent)].iter().flatten() {
@@ -3012,11 +3017,35 @@ fn find_derived_data_container(xcodeproj: &Path) -> PathBuf {
             })
             .collect();
         workspaces.sort();
-        if let Some(ws) = workspaces.into_iter().next() {
+        if let Some(ws) = workspaces
+            .into_iter()
+            .find(|ws| workspace_contains_project(ws, xcodeproj))
+        {
             return ws;
         }
     }
     xcodeproj.to_path_buf()
+}
+
+/// Whether `workspace` lists `xcodeproj` among its `FileRef`s. Gates
+/// DerivedData-container adoption on real membership rather than mere directory
+/// proximity; a workspace that fails to parse counts as "does not contain".
+fn workspace_contains_project(workspace: &Path, xcodeproj: &Path) -> bool {
+    crate::workspace::open(workspace).is_ok_and(|ws| {
+        ws.project_refs
+            .iter()
+            .any(|member| paths_equivalent(member, xcodeproj))
+    })
+}
+
+/// Whether two paths point at the same location: by `fs::canonicalize` when
+/// both exist (handles symlinks and `/tmp` aliasing), else by lexical
+/// [`absolutize`].
+fn paths_equivalent(a: &Path, b: &Path) -> bool {
+    match (fs::canonicalize(a), fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => absolutize(a) == absolutize(b),
+    }
 }
 
 pub(crate) fn canonicalize_sdk_base(sdk: &str) -> String {
@@ -5105,11 +5134,30 @@ mod tests {
 
     /// The container-*inference* matrix (`find_derived_data_container`), which
     /// chooses which path Xcode would hash for the DerivedData folder. Each
-    /// shape is built on disk because the function reads the tree.
+    /// shape is built on disk because the function reads the tree — including
+    /// each candidate workspace's `contents.xcworkspacedata`, since only a
+    /// workspace this project actually belongs to keys its DerivedData.
     #[test]
     fn find_derived_data_container_selects_the_keyed_container() {
         let root = std::env::temp_dir().join(format!("sweetpad-ddc-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
+
+        // Write a `.xcworkspace` whose `contents.xcworkspacedata` lists `refs`
+        // (each a `group:`-relative `.xcodeproj`).
+        let mk_ws = |path: &Path, refs: &[&str]| {
+            fs::create_dir_all(path).unwrap();
+            let body: String = refs
+                .iter()
+                .map(|r| format!("  <FileRef location = \"group:{r}\"></FileRef>\n"))
+                .collect();
+            fs::write(
+                path.join("contents.xcworkspacedata"),
+                format!(
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n{body}</Workspace>\n"
+                ),
+            )
+            .unwrap();
+        };
 
         // (a) Bare project, no workspace anywhere -> the `.xcodeproj` itself.
         let a = root.join("a");
@@ -5120,26 +5168,27 @@ mod tests {
             "no workspace: container is the project"
         );
 
-        // (b) A real workspace sitting next to the project -> the workspace.
+        // (b) A sibling workspace that lists the project as a member -> the
+        //     workspace keys DerivedData (Xcode opens the project through it).
         let b = root.join("b");
         fs::create_dir_all(b.join("Foo.xcodeproj")).unwrap();
-        fs::create_dir_all(b.join("App.xcworkspace")).unwrap();
+        mk_ws(&b.join("App.xcworkspace"), &["Foo.xcodeproj"]);
         assert_eq!(
             find_derived_data_container(&b.join("Foo.xcodeproj")),
             b.join("App.xcworkspace"),
-            "sibling workspace wins over the project"
+            "member sibling workspace wins over the project"
         );
 
-        // (c) A real workspace one directory ABOVE the project -> the workspace
-        //     (the grandparent leg of the search). Note the folder prefix is
-        //     the WORKSPACE stem (`App`), not the project stem (`Foo`).
+        // (c) A member workspace one directory ABOVE the project -> the
+        //     workspace (the grandparent leg). The folder prefix is the
+        //     WORKSPACE stem (`App`), not the project stem (`Foo`).
         let c = root.join("c");
         fs::create_dir_all(c.join("Sub/Foo.xcodeproj")).unwrap();
-        fs::create_dir_all(c.join("App.xcworkspace")).unwrap();
+        mk_ws(&c.join("App.xcworkspace"), &["Sub/Foo.xcodeproj"]);
         assert_eq!(
             find_derived_data_container(&c.join("Sub/Foo.xcodeproj")),
             c.join("App.xcworkspace"),
-            "grandparent workspace wins; name != project name"
+            "member grandparent workspace wins; name != project name"
         );
 
         // (d) A sub-project nested inside another `.xcodeproj` bundle: the only
@@ -5154,17 +5203,30 @@ mod tests {
             "the bundle stub is skipped during inference too"
         );
 
-        // (e) Two standalone workspaces beside the project: pick the
+        // (e) Two member workspaces beside the project: pick the
         //     alphabetically-first. A documented heuristic, not captured Xcode
         //     behaviour — pinned so any change is deliberate (DOCS open item).
         let e = root.join("e");
         fs::create_dir_all(e.join("Foo.xcodeproj")).unwrap();
-        fs::create_dir_all(e.join("Beta.xcworkspace")).unwrap();
-        fs::create_dir_all(e.join("Alpha.xcworkspace")).unwrap();
+        mk_ws(&e.join("Beta.xcworkspace"), &["Foo.xcodeproj"]);
+        mk_ws(&e.join("Alpha.xcworkspace"), &["Foo.xcodeproj"]);
         assert_eq!(
             find_derived_data_container(&e.join("Foo.xcodeproj")),
             e.join("Alpha.xcworkspace"),
-            "two workspaces: alphabetically-first heuristic"
+            "two member workspaces: alphabetically-first heuristic"
+        );
+
+        // (f) A nearby workspace that does NOT list the project -> the project
+        //     keys its own DerivedData. A bare `.xcodeproj` scaffolded beneath
+        //     an unrelated project's workspace must not borrow its folder (the
+        //     `app run` install-path regression).
+        let f = root.join("f");
+        fs::create_dir_all(f.join("Sub/Foo.xcodeproj")).unwrap();
+        mk_ws(&f.join("Other.xcworkspace"), &["Sub/Bar.xcodeproj"]);
+        assert_eq!(
+            find_derived_data_container(&f.join("Sub/Foo.xcodeproj")),
+            f.join("Sub/Foo.xcodeproj"),
+            "non-member workspace is ignored; the project keys itself"
         );
 
         let _ = fs::remove_dir_all(&root);

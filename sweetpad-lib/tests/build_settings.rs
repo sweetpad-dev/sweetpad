@@ -617,6 +617,71 @@ fn workspace_keys_derived_data_by_the_workspace_not_a_nested_member() {
     );
 }
 
+/// A bare `.xcodeproj` nested one directory below an UNRELATED project's
+/// `.xcworkspace` that does not reference it (`<root>/foreign.xcworkspace` +
+/// `<root>/app/Scratch.xcodeproj`). The workspace's basename differs from the
+/// project so a wrongly-adopted container is unambiguous.
+fn foreign_workspace_over_bare_project(tag: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "sweetpad-bs-foreign-{tag}-{}-{n}",
+        std::process::id()
+    ));
+    // An unrelated workspace one directory above, referencing some OTHER
+    // project — never this one.
+    let ws = root.join("foreign.xcworkspace");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(
+        ws.join("contents.xcworkspacedata"),
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n  <FileRef location=\"group:Other.xcodeproj\"/>\n</Workspace>\n",
+    )
+    .unwrap();
+    let proj = root.join("app/Scratch.xcodeproj");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::copy(
+        scratch_proj().join("project.pbxproj"),
+        proj.join("project.pbxproj"),
+    )
+    .unwrap();
+    proj
+}
+
+#[test]
+fn bare_project_under_foreign_workspace_keys_derived_data_by_itself() {
+    // Regression: `sweetpad app run` on a project scaffolded under an unrelated
+    // `.xcworkspace` resolved BUILD_DIR into the FOREIGN workspace's DerivedData
+    // folder, so the build (keyed `-project`, by the project) and the install
+    // (keyed by the resolver) disagreed and the .app was "not found".
+    // `find_derived_data_container` must require workspace membership.
+    let proj = foreign_workspace_over_bare_project("derived-data");
+    let opts = BuildSettingsOptions {
+        project: Some(proj.clone()),
+        target: Some("Scratch".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let s = resolve_one(opts);
+    let build_dir = s.get("BUILD_DIR").expect("BUILD_DIR present");
+
+    // Keyed by the project itself (its absolutized path), exactly as xcodebuild
+    // keys a bare `-project` build.
+    let proj_abs = sweetpad::project::absolutize(&proj);
+    let hash = sweetpad::xcode_hash::derived_data_hash(&proj_abs.display().to_string());
+    let expected = format!("/DerivedData/Scratch-{hash}/Build/Products");
+    assert!(
+        build_dir.ends_with(&expected),
+        "BUILD_DIR must be keyed under the project itself (Scratch-{hash}); got {build_dir}"
+    );
+    assert!(
+        !build_dir.contains("/DerivedData/foreign-"),
+        "BUILD_DIR must not be keyed under the unrelated workspace: {build_dir}"
+    );
+}
+
 /// A native macOS target that inherits an iOS-family Base SDK but explicitly
 /// opts out of Mac Catalyst, resolved for a macOS destination. Regression for
 /// the misdetection fixed in #264: an explicit `SUPPORTS_MACCATALYST = NO` must
