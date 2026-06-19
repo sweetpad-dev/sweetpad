@@ -236,11 +236,13 @@ CLI.
 - **Universal flags:** `--json`, `--no-color`, `-v/--verbose` are global —
   accepted on every command and its actions. The **targeting flags**
   (`--workspace`/`--project`, `--scheme`, `--configuration`, `--destination`)
-  are *not* global: each lives only on the commands that consume it, in three
-  tiers — container-only (`project`, `bsp`, `derived-data`), container plus
-  `--scheme` (`scheme`), and the full build target (`build`, `test`,
-  `settings`, `app`). They precede the action token, e.g. `sweetpad build
-  --scheme App run`.
+  are scoped to the commands that consume them, in three tiers — container-only
+  (`project`, `bsp`, `derived-data`), container plus `--scheme` (`scheme`), and
+  the full build target (`build`, `test`, `settings`, `app`). Within a resource
+  they are global, so they parse on either side of the action token: both
+  `sweetpad build --scheme App run` and `sweetpad build run --scheme App` work.
+  A resource that doesn't consume a tier never advertises its flags (e.g.
+  `project info` rejects `--destination`).
 - **Process orchestration:** spawn and stream `xcodebuild` / `xcrun simctl`;
   parse output for human and `--json` render paths.
 

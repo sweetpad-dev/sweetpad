@@ -76,16 +76,20 @@ pub struct GlobalArgs {
 }
 
 /// Tier 1 — which project container to act on. Flattened into every command
-/// that locates a workspace/project. Not `global`, so it must precede the
-/// action token (`sweetpad project --project App.xcodeproj info`).
+/// that locates a workspace/project. The flags are `global` *within* the
+/// resource they're flattened into, so they parse on either side of the action
+/// token (`sweetpad project --project App.xcodeproj info` and
+/// `sweetpad project info --project App.xcodeproj` both work), while staying
+/// scoped to the resources that actually consume them — a resource that doesn't
+/// flatten this tier never advertises `--project`/`--workspace`.
 #[derive(Debug, clap::Args)]
 pub struct ContainerArgs {
     /// Path to the `.xcworkspace` to operate on (overrides auto-discovery).
-    #[arg(long, env = "SWEETPAD_WORKSPACE")]
+    #[arg(long, env = "SWEETPAD_WORKSPACE", global = true)]
     pub workspace: Option<std::path::PathBuf>,
 
     /// Path to the `.xcodeproj` to operate on (overrides auto-discovery).
-    #[arg(long, env = "SWEETPAD_PROJECT")]
+    #[arg(long, env = "SWEETPAD_PROJECT", global = true)]
     pub project: Option<std::path::PathBuf>,
 }
 
@@ -97,7 +101,7 @@ pub struct SchemeArgs {
     pub container: ContainerArgs,
 
     /// Scheme to use (overrides config and remembered selection).
-    #[arg(long, env = "SWEETPAD_SCHEME")]
+    #[arg(long, env = "SWEETPAD_SCHEME", global = true)]
     pub scheme: Option<String>,
 }
 
@@ -110,11 +114,11 @@ pub struct BuildTargetArgs {
     pub scheme: SchemeArgs,
 
     /// Build configuration to use (e.g. Debug, Release).
-    #[arg(long, env = "SWEETPAD_CONFIGURATION")]
+    #[arg(long, env = "SWEETPAD_CONFIGURATION", global = true)]
     pub configuration: Option<String>,
 
     /// Destination specifier (e.g. "platform=iOS Simulator,name=iPhone 15").
-    #[arg(long, env = "SWEETPAD_DESTINATION")]
+    #[arg(long, env = "SWEETPAD_DESTINATION", global = true)]
     pub destination: Option<String>,
 }
 
