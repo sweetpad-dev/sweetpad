@@ -126,6 +126,14 @@ export async function activate(context: vscode.ExtensionContext) {
   // An activation event matched this workspace — reveal SweetPad UI.
   await vscode.commands.executeCommand("setContext", "sweetpad.enabled", true);
 
+  // SwiftUI Previews and simulator streaming are still in development, so they
+  // surface only when the extension runs from source (the Extension Development
+  // Host), never in a published install. The context key gates their
+  // package.json contributions (the view, command palette, and menus); the
+  // guards below skip registering the entrypoints and starting the indexer.
+  const devFeaturesEnabled = context.extensionMode === vscode.ExtensionMode.Development;
+  await vscode.commands.executeCommand("setContext", "sweetpad.devFeatures", devFeaturesEnabled);
+
   const workspacePath = getWorkspacePath();
 
   warmShellEnv();
@@ -239,8 +247,10 @@ export async function activate(context: vscode.ExtensionContext) {
   void buildTreeProvider.start();
   void toolsTreeProvider.start();
   void destinationsTreeProvider.start();
-  previewsManager.start();
-  previewsTreeProvider.start();
+  if (devFeaturesEnabled) {
+    previewsManager.start();
+    previewsTreeProvider.start();
+  }
   void schemeStatusBar.start();
   void destinationBar.start();
   void schemeWatcher.start();
@@ -356,25 +366,29 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.simulators.removeCache", removeSimulatorCacheCommand));
   d(command("sweetpad.simulators.start", startSimulatorCommand));
   d(command("sweetpad.simulators.stop", stopSimulatorCommand));
-  d(command("sweetpad.simulators.stream", streamSimulatorCommand));
-  d(command("sweetpad.simulators.streamOpenInBrowser", openSimulatorStreamInBrowserCommand));
-  d(command("sweetpad.simulators.streamCopyUrl", copySimulatorStreamUrlCommand));
-  d(serveSimManager);
+  if (devFeaturesEnabled) {
+    d(command("sweetpad.simulators.stream", streamSimulatorCommand));
+    d(command("sweetpad.simulators.streamOpenInBrowser", openSimulatorStreamInBrowserCommand));
+    d(command("sweetpad.simulators.streamCopyUrl", copySimulatorStreamUrlCommand));
+    d(serveSimManager);
+  }
 
   // SwiftUI Previews
-  d(tree("sweetpad.previews.view", previewsTreeProvider));
-  d(
-    vscode.languages.registerCodeLensProvider(
-      { language: "swift", scheme: "file" },
-      new PreviewsCodeLensProvider({ manager: previewsManager }),
-    ),
-  );
-  d(command("sweetpad.previews.render", renderPreviewCommand));
-  d(command("sweetpad.previews.refresh", refreshPreviewsCommand));
-  d(command("sweetpad.previews.setup", setupPreviewHostCommand));
-  d(command("sweetpad.previews.screenshot", screenshotPreviewCommand));
-  d(command("sweetpad.previews.screenshotVariants", screenshotPreviewVariantsCommand));
-  d(previewsManager);
+  if (devFeaturesEnabled) {
+    d(tree("sweetpad.previews.view", previewsTreeProvider));
+    d(
+      vscode.languages.registerCodeLensProvider(
+        { language: "swift", scheme: "file" },
+        new PreviewsCodeLensProvider({ manager: previewsManager }),
+      ),
+    );
+    d(command("sweetpad.previews.render", renderPreviewCommand));
+    d(command("sweetpad.previews.refresh", refreshPreviewsCommand));
+    d(command("sweetpad.previews.setup", setupPreviewHostCommand));
+    d(command("sweetpad.previews.screenshot", screenshotPreviewCommand));
+    d(command("sweetpad.previews.screenshotVariants", screenshotPreviewVariantsCommand));
+    d(previewsManager);
+  }
 
   // // Devices
   d(command("sweetpad.devices.refresh", async () => await destinationsManager.refreshDevices()));

@@ -283,7 +283,8 @@
         {
           "id": "sweetpad.previews.view",
           "name": "SwiftUI Previews",
-          "visibility": "collapsed"
+          "visibility": "collapsed",
+          "when": "sweetpad.devFeatures"
         },
         {
           "id": "sweetpad.tools.view",
@@ -678,7 +679,40 @@
       }
     ],
     "menus": {
-      "commandPalette": [],
+      "commandPalette": [
+        {
+          "command": "sweetpad.simulators.stream",
+          "when": "sweetpad.devFeatures"
+        },
+        {
+          "command": "sweetpad.simulators.streamOpenInBrowser",
+          "when": "sweetpad.devFeatures"
+        },
+        {
+          "command": "sweetpad.simulators.streamCopyUrl",
+          "when": "sweetpad.devFeatures"
+        },
+        {
+          "command": "sweetpad.previews.render",
+          "when": "sweetpad.devFeatures"
+        },
+        {
+          "command": "sweetpad.previews.refresh",
+          "when": "sweetpad.devFeatures"
+        },
+        {
+          "command": "sweetpad.previews.setup",
+          "when": "sweetpad.devFeatures"
+        },
+        {
+          "command": "sweetpad.previews.screenshot",
+          "when": "sweetpad.devFeatures"
+        },
+        {
+          "command": "sweetpad.previews.screenshotVariants",
+          "when": "sweetpad.devFeatures"
+        }
+      ],
       "view/title": [
         {
           "command": "sweetpad.build.refreshSchemes",
@@ -813,22 +847,22 @@
         },
         {
           "command": "sweetpad.simulators.stream",
-          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*&status=booted.*/",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*&status=booted.*/ && sweetpad.devFeatures",
           "group": "inline@3"
         },
         {
           "command": "sweetpad.simulators.stream",
-          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/ && sweetpad.devFeatures",
           "group": "context@3"
         },
         {
           "command": "sweetpad.simulators.streamOpenInBrowser",
-          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/ && sweetpad.devFeatures",
           "group": "context@4"
         },
         {
           "command": "sweetpad.simulators.streamCopyUrl",
-          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/",
+          "when": "view == sweetpad.destinations.view && viewItem =~ /destination-item-simulator.*/ && sweetpad.devFeatures",
           "group": "context@5"
         },
         {
