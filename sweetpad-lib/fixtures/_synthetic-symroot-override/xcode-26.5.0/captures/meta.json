@@ -1,0 +1,9 @@
+{
+  "description": "Reproduces sweetpad issue #292 (Launch fails after successful build when project uses custom SYMROOT). An iOS app whose xcconfig relocates the build products with `SYMROOT = $(SRCROOT)/../build/products`. Real xcodebuild makes BUILD_DIR/BUILD_ROOT/CONFIGURATION_BUILD_DIR/BUILT_PRODUCTS_DIR/TARGET_BUILD_DIR all follow SYMROOT, while OBJROOT stays under DerivedData. The resolver must agree or `app run` looks for the .app under DerivedData and reports `App path does not exist`.",
+  "project": "project/Hello/Hello.xcodeproj",
+  "xcconfig": "project/Hello/Custom.xcconfig",
+  "scheme": "Hello",
+  "target": "Hello",
+  "captured": ["Debug"],
+  "capture_command": "xcodebuild -project project/Hello/Hello.xcodeproj -scheme Hello -configuration Debug -sdk iphonesimulator -xcconfig project/Hello/Custom.xcconfig -showBuildSettings -json"
+}
