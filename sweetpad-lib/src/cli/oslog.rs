@@ -23,6 +23,39 @@ struct Entry {
     event_message: Option<String>,
 }
 
+/// os_log severity, ordered low→high so a live filter can compare against a
+/// threshold. `Default`/`Notice` collapse to `Notice`; an unknown `messageType`
+/// is treated as `Notice`.
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Level {
+    Debug = 0,
+    Info = 1,
+    Notice = 2,
+    Error = 3,
+    Fault = 4,
+}
+
+impl Level {
+    fn from_message_type(message_type: &str) -> Self {
+        match message_type {
+            "Debug" => Level::Debug,
+            "Info" => Level::Info,
+            "Error" => Level::Error,
+            "Fault" => Level::Fault,
+            // "Default"/"Notice" and the unknown fallback.
+            _ => Level::Notice,
+        }
+    }
+
+    /// The level as a `u8`, for storing the live filter threshold in an atomic and
+    /// comparing rendered lines against it.
+    #[must_use]
+    pub fn as_u8(self) -> u8 {
+        self as u8
+    }
+}
+
 /// Single-letter severity tag. `Default` and `Notice` are indistinguishable at
 /// the os_log layer, so both render as `N`; anything unrecognized is `?`.
 fn level_letter(message_type: &str) -> &'static str {
@@ -48,27 +81,41 @@ fn level_color(message_type: &str) -> u8 {
     }
 }
 
-/// Render one ndjson line as a colored log line. Non-JSON input (the stream's
-/// banner, or anything unexpected) is shown as a blue `system` note.
+/// A rendered log line plus its severity, so callers can filter by [`Level`]
+/// against a live threshold before printing.
+pub struct Line {
+    pub level: Level,
+    pub text: String,
+}
+
+/// Render one ndjson line as a colored log line with its severity. Non-JSON input
+/// (the stream's banner, or anything unexpected) is shown as a blue `system` note
+/// at `Notice` level.
 #[must_use]
-pub fn render_ndjson_line(line: &str, color: bool) -> String {
+pub fn render_ndjson_line(line: &str, color: bool) -> Line {
     match serde_json::from_str::<Entry>(line) {
         Ok(entry) => {
             let msg_type = entry.message_type.as_deref().unwrap_or("Default");
             let time = entry.timestamp.as_deref().and_then(clock_time);
             let category = entry.category.as_deref().unwrap_or("?");
             let message = entry.event_message.as_deref().unwrap_or("");
-            format_line(
-                time.as_deref(),
-                level_letter(msg_type),
-                category,
-                message,
-                level_color(msg_type),
-                color,
-            )
+            Line {
+                level: Level::from_message_type(msg_type),
+                text: format_line(
+                    time.as_deref(),
+                    level_letter(msg_type),
+                    category,
+                    message,
+                    level_color(msg_type),
+                    color,
+                ),
+            }
         }
         // Banner / non-JSON: a blue `N [system]` note carrying the raw line.
-        Err(_) => format_line(None, "N", "system", line, 34, color),
+        Err(_) => Line {
+            level: Level::Notice,
+            text: format_line(None, "N", "system", line, 34, color),
+        },
     }
 }
 
@@ -154,14 +201,13 @@ mod tests {
     #[test]
     fn renders_an_ndjson_entry_with_level_letter_and_category() {
         let line = r#"{"timestamp":"2024-12-31 23:59:59.123456-0800","messageType":"Info","category":"networking","eventMessage":"Request started"}"#;
+        let plain = render_ndjson_line(line, false);
+        assert_eq!(plain.level, Level::Info);
         // No color: plain "HH:MM:SS.sss L [cat] msg".
-        assert_eq!(
-            render_ndjson_line(line, false),
-            "23:59:59.123 I [networking] Request started"
-        );
+        assert_eq!(plain.text, "23:59:59.123 I [networking] Request started");
         // Color: bold + cyan (36) prefix, reset before the (uncolored) message.
         assert_eq!(
-            render_ndjson_line(line, true),
+            render_ndjson_line(line, true).text,
             "\x1b[1;36m23:59:59.123 I [networking]\x1b[0m Request started"
         );
     }
@@ -181,11 +227,21 @@ mod tests {
     #[test]
     fn non_json_lines_become_a_system_note() {
         let line = "Filtering the log data using \"process == ...\"";
-        assert_eq!(render_ndjson_line(line, false), format!("N [system] {line}"));
+        let plain = render_ndjson_line(line, false);
+        assert_eq!(plain.level, Level::Notice);
+        assert_eq!(plain.text, format!("N [system] {line}"));
         assert_eq!(
-            render_ndjson_line(line, true),
+            render_ndjson_line(line, true).text,
             format!("\x1b[1;34mN [system]\x1b[0m {line}")
         );
+    }
+
+    #[test]
+    fn levels_order_low_to_high_for_filtering() {
+        // The live filter compares `as_u8`, so the ordering must be monotonic.
+        assert!(Level::Debug < Level::Info && Level::Info < Level::Error);
+        assert!(Level::Debug.as_u8() < Level::Info.as_u8());
+        assert!(Level::Info.as_u8() < Level::Error.as_u8());
     }
 
     #[test]
@@ -205,7 +261,9 @@ mod tests {
     #[test]
     fn missing_timestamp_drops_only_the_time_token() {
         let line = r#"{"messageType":"Error","category":"db","eventMessage":"boom"}"#;
-        assert_eq!(render_ndjson_line(line, false), "E [db] boom");
+        let rendered = render_ndjson_line(line, false);
+        assert_eq!(rendered.level, Level::Error);
+        assert_eq!(rendered.text, "E [db] boom");
     }
 
     #[test]

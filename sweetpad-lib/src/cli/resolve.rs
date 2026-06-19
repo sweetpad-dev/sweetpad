@@ -417,7 +417,7 @@ fn destination_choices<'a>(
             .then_with(|| b.is_booted().cmp(&a.is_booted()))
     });
     let any_booted = sims.iter().any(crate::cli::simctl::Simulator::is_booted);
-    let labels = ordered
+    let mut labels: Vec<String> = ordered
         .iter()
         .map(|s| match (any_booted, s.is_booted()) {
             (false, _) => s.label(),
@@ -425,7 +425,30 @@ fn destination_choices<'a>(
             (true, false) => format!("  {}", s.label()),
         })
         .collect();
+    disambiguate_labels(&mut labels, &ordered);
     (ordered, labels)
+}
+
+/// Append a short udid suffix to any labels that would otherwise be identical
+/// (same name, OS version, and boot marker), so the picker shows distinct rows
+/// and the chosen label maps back to exactly one simulator in [`pick_destination`].
+fn disambiguate_labels(labels: &mut [String], ordered: &[&crate::cli::simctl::Simulator]) {
+    use std::fmt::Write as _;
+    let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for label in labels.iter() {
+        *counts.entry(label.as_str()).or_insert(0) += 1;
+    }
+    let collisions: std::collections::HashSet<String> = counts
+        .into_iter()
+        .filter(|&(_, n)| n > 1)
+        .map(|(label, _)| label.to_string())
+        .collect();
+    for (label, sim) in labels.iter_mut().zip(ordered) {
+        if collisions.contains(label.as_str()) {
+            let short = sim.udid.get(..8).unwrap_or(sim.udid.as_str());
+            let _ = write!(label, " [{short}]");
+        }
+    }
 }
 
 /// Interactive fuzzy picker (the design's TTY fallback): type to filter, arrows
@@ -631,6 +654,24 @@ mod tests {
         let (_, labels) = destination_choices(&sims, None);
         // No booted simulator → no marker, no gutter.
         assert_eq!(labels, vec!["iPhone 15 (17.0)", "iPhone 14 (17.0)"]);
+    }
+
+    #[test]
+    fn destination_choices_disambiguate_identical_labels() {
+        // Two simulators with the same name + OS version would collide; each row
+        // must stay distinct so a pick maps back to exactly one simulator.
+        let sims = vec![
+            sim("AAAA1111BBBB", "iPhone 15", false),
+            sim("CCCC2222DDDD", "iPhone 15", false),
+            sim("EEEE", "iPad Air", false),
+        ];
+        let (_, labels) = destination_choices(&sims, None);
+        assert_eq!(labels[0], "iPhone 15 (17.0) [AAAA1111]");
+        assert_eq!(labels[1], "iPhone 15 (17.0) [CCCC2222]");
+        // A unique label is left untouched.
+        assert_eq!(labels[2], "iPad Air (17.0)");
+        let unique: std::collections::HashSet<&String> = labels.iter().collect();
+        assert_eq!(unique.len(), labels.len());
     }
 
     #[test]

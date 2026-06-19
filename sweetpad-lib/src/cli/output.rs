@@ -95,6 +95,19 @@ impl Output {
         }
     }
 
+    /// A prominent (non-dimmed, yellow) status line to stderr — e.g. the running
+    /// app exiting. Stands out from the dim session notes.
+    pub fn alert(&self, s: &str) {
+        if !self.json {
+            let line = if self.color {
+                format!("\x1b[33m{s}\x1b[0m")
+            } else {
+                s.to_string()
+            };
+            let _ = writeln!(std::io::stderr(), "{line}");
+        }
+    }
+
     /// Run `f` while a transient `⠋ message` spinner animates on stderr, erased
     /// when `f` returns — so the caller's next [`note`](Output::note) replaces it
     /// in place. Animates only when interactive (TTY, not `--json`); otherwise

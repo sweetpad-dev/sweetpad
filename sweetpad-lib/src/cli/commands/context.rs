@@ -26,7 +26,11 @@ pub enum Variable {
 impl Variable {
     /// The variables `select` sets when given no specific one: the common core,
     /// shared by both contexts. `sdk`/`target` are set only when named.
-    const CORE: [Variable; 3] = [Variable::Scheme, Variable::Configuration, Variable::Destination];
+    const CORE: [Variable; 3] = [
+        Variable::Scheme,
+        Variable::Configuration,
+        Variable::Destination,
+    ];
 
     /// The variable's name, as shown and as the `select`/`remove` argument.
     fn name(self) -> &'static str {
@@ -57,7 +61,11 @@ enum Scope {
 
 impl Scope {
     fn from_flag(testing: bool) -> Self {
-        if testing { Scope::Testing } else { Scope::Build }
+        if testing {
+            Scope::Testing
+        } else {
+            Scope::Build
+        }
     }
 
     fn label(self) -> &'static str {
@@ -115,13 +123,14 @@ fn show(ctx: &mut Context) -> CliResult {
     let st = ctx.state.projects.get(&key).cloned().unwrap_or_default();
 
     if ctx.out.is_json() {
-        ctx.out
-            .json_value(&serde_json::json!({ "container": container.path().display().to_string(),
+        ctx.out.json_value(
+            &serde_json::json!({ "container": container.path().display().to_string(),
                 "build": scope_json(&st, Scope::Build),
                 "testing": scope_json(&st, Scope::Testing),
                 "recentDestinations": recents_json(&st),
                 "lastLaunchedApp": serde_json::to_value(&st.last_launched_app).unwrap_or_default(),
-            }));
+            }),
+        );
         return Ok(());
     }
 
@@ -174,7 +183,8 @@ fn remove(ctx: &mut Context, variable: Option<Variable>, all: bool, scope: Scope
             }
         }
         ctx.state.save().map_err(CliError::new)?;
-        ctx.out.note(&format!("cleared the {} context", scope.label()));
+        ctx.out
+            .note(&format!("cleared the {} context", scope.label()));
         return Ok(());
     }
 
@@ -243,7 +253,8 @@ fn prompt_value(
 /// A free-text prompt prefilled with the current value (for `sdk`/`target`).
 fn input(label: &str, current: Option<&str>) -> Result<String, CliError> {
     let theme = dialoguer::theme::ColorfulTheme::default();
-    let mut builder = dialoguer::Input::<String>::with_theme(&theme).with_prompt(format!("Enter {label}"));
+    let mut builder =
+        dialoguer::Input::<String>::with_theme(&theme).with_prompt(format!("Enter {label}"));
     if let Some(c) = current {
         builder = builder.with_initial_text(c);
     }
@@ -331,7 +342,8 @@ fn print_recents(ctx: &Context, st: &ProjectState) {
     }
     // Most-used first, matching the picker order.
     let mut recents: Vec<_> = st.destination_recents.iter().collect();
-    recents.sort_by_key(|d| std::cmp::Reverse(st.destination_usage.get(&d.id).copied().unwrap_or(0)));
+    recents
+        .sort_by_key(|d| std::cmp::Reverse(st.destination_usage.get(&d.id).copied().unwrap_or(0)));
     ctx.out.line("");
     ctx.out.line("recent destinations");
     for d in recents {
@@ -387,7 +399,12 @@ mod tests {
     #[test]
     fn set_field_routes_to_the_right_context() {
         let mut state = State::default();
-        set_field(project(&mut state), Scope::Build, Variable::Scheme, Some("App".into()));
+        set_field(
+            project(&mut state),
+            Scope::Build,
+            Variable::Scheme,
+            Some("App".into()),
+        );
         set_field(
             project(&mut state),
             Scope::Testing,
@@ -410,7 +427,12 @@ mod tests {
     #[test]
     fn prune_drops_an_emptied_entry_but_keeps_recents() {
         let mut state = State::default();
-        set_field(project(&mut state), Scope::Build, Variable::Scheme, Some("App".into()));
+        set_field(
+            project(&mut state),
+            Scope::Build,
+            Variable::Scheme,
+            Some("App".into()),
+        );
         set_field(project(&mut state), Scope::Build, Variable::Scheme, None);
         prune(&mut state, KEY);
         assert!(!state.projects.contains_key(KEY));

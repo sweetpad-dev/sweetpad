@@ -224,7 +224,11 @@ mod tests {
         assert_eq!(p.destination_recents[0].name, "iPhone 17");
         assert_eq!(p.destination_usage.get("UDID-1"), Some(&3));
         assert_eq!(
-            p.last_launched_app.as_ref().unwrap().simulator_udid.as_deref(),
+            p.last_launched_app
+                .as_ref()
+                .unwrap()
+                .simulator_udid
+                .as_deref(),
             Some("UDID-1")
         );
     }

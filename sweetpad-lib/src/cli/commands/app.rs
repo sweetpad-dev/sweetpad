@@ -6,7 +6,8 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::Child;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
+use std::time::Instant;
 
 use clap::Subcommand;
 
@@ -230,33 +231,34 @@ impl RunPlan {
 
 fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
     let plan = plan(ctx, opts)?;
-    record_last_launched(ctx, &plan);
+    print_summary(ctx, &plan);
 
-    // Hot reload owns its own build + launch + watch session (simulator only).
-    if opts.hot {
-        return run_hot_session(ctx, &plan, opts.hot_mode, opts.hot_selfcheck);
-    }
-
-    // A Swift package executable builds, runs, and streams in one `swift run`;
-    // there's no separate log stream to background, so it stays a one-shot.
-    if matches!(plan.target, Target::SpmRun(_)) {
-        return deploy(ctx, &plan);
-    }
-
-    // --no-logs: deploy and return, no session.
-    if opts.no_logs {
-        return deploy(ctx, &plan);
-    }
-
-    // Default: build, launch, and follow the app's output. At an interactive
-    // terminal this is the rebuild session — output streams in the background
-    // and `r` rebuilds+relaunches on demand. Non-interactive (CI/piped) runs
-    // fall back to a one-shot launch + inline follow until Ctrl-C.
-    if ctx.out.is_interactive() {
+    let result = if opts.hot {
+        // Hot reload owns its own build + launch + watch session (simulator only).
+        run_hot_session(ctx, &plan, opts.hot_mode, opts.hot_selfcheck)
+    } else if matches!(plan.target, Target::SpmRun(_)) {
+        // A Swift package executable builds, runs, and streams in one `swift run`;
+        // there's no separate log stream to background, so it stays a one-shot.
+        deploy(ctx, &plan)
+    } else if opts.no_logs {
+        // --no-logs: deploy and return, no session.
+        deploy(ctx, &plan)
+    } else if ctx.out.is_interactive() {
+        // The interactive rebuild session: output streams in the background and
+        // `r` rebuilds+relaunches on demand.
         run_session(ctx, &plan)
     } else {
+        // Non-interactive (CI/piped): one-shot launch + inline follow until Ctrl-C.
         follow_once(ctx, &plan)
+    };
+
+    // Record the launch only once it actually happened: an `Ok` result means the
+    // app built and launched, so the state never advertises a `last launched`
+    // bundle that a failed/aborted build never produced. Best-effort.
+    if result.is_ok() {
+        record_last_launched(ctx, &plan);
     }
+    result
 }
 
 /// Resolve a full run plan, choosing a simulator (default), a device, or macOS.
@@ -458,47 +460,75 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
         return follow_once(ctx, plan);
     };
 
-    // Initial build + launch. A failed/aborted first build exits — there's
-    // nothing running to attach a session to.
-    build(plan, &ctx.out, None)?;
-    let mut running = Some(start_app(ctx, plan)?);
-    // Start the simulator log stream once and keep it for the whole session —
-    // its name-based predicate follows the app through each relaunch, so rebuilds
-    // never tear it down (which is what would otherwise hang). Dropped on exit.
-    let _logs = start_logs(ctx, plan);
-    session_hint(ctx);
+    // The live filter only governs the simulator's os_log stream; device and
+    // macOS output isn't filtered, so the level keys are advertised and acted on
+    // only when they'd do something.
+    let is_sim = matches!(plan.target, Target::Simulator(_));
+
+    // Live log filter: the stream carries every level; show those at or above this
+    // threshold, set live by the 1/2/3 keys.
+    let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
+    // Build + launch. A failure keeps the session (nothing running) so you can fix
+    // the error and press `r`, instead of being dropped back to the shell.
+    let started = Instant::now();
+    let mut ever_launched = false;
+    let mut running = match build(plan, &ctx.out, None).and_then(|()| start_app(ctx, plan)) {
+        Ok(r) => {
+            note_launch(ctx, "launched", started);
+            ever_launched = true;
+            Some(r)
+        }
+        Err(e) => {
+            ctx.out.error(&e);
+            None
+        }
+    };
+    // The log stream is session-scoped: started once and kept across rebuilds (its
+    // name-based predicate follows the relaunched app), so rebuilds never tear it
+    // down. Dropped on exit.
+    let _logs = start_logs(ctx, plan, &filter);
+    session_hint(ctx, is_sim);
 
     loop {
         match rawmode::poll_key() {
-            rawmode::Input::Key(key) => match classify_key(key) {
+            rawmode::Input::Key(ch) => match classify_key(ch) {
                 SessionKey::Rebuild => {
-                    ctx.out.note("↻ restarting — rebuilding…");
-                    // Stop the old app first so build output is clean and the
-                    // relaunch is always a fresh process.
-                    if let Some(old) = running.take() {
-                        terminate_app(old);
+                    if do_rebuild(ctx, plan, &mut running) {
+                        ever_launched = true;
                     }
-                    match build(plan, &ctx.out, None) {
-                        Ok(()) => match start_app(ctx, plan) {
-                            Ok(r) => running = Some(r),
-                            Err(e) => ctx.out.error(&e),
-                        },
-                        // Failed/aborted build: nothing runs until the next `r`.
-                        Err(e) => ctx.out.error(&e),
-                    }
-                    session_hint(ctx);
+                    session_hint(ctx, is_sim);
                 }
                 SessionKey::Quit => break,
+                // The level keys only mean something where there's an os_log
+                // stream to filter (the simulator); elsewhere they're inert.
+                SessionKey::Filter(level) => {
+                    if is_sim {
+                        set_filter(ctx, &filter, level);
+                    }
+                }
                 SessionKey::Ignore => {}
             },
             rawmode::Input::Idle => {}
             rawmode::Input::Closed => break,
         }
+        // Notice if the app crashed/exited, so the logs going quiet isn't a mystery.
+        if let Some(r) = running.as_mut() {
+            check_exit(ctx, r);
+        }
     }
     if let Some(r) = running.take() {
         terminate_app(r);
     }
-    Ok(())
+    // A session that never produced a running app (the build kept failing) exits
+    // non-zero, so a script or wrapper around `app run` sees the failure even
+    // though the session stayed open for you to retry.
+    if ever_launched {
+        Ok(())
+    } else {
+        Err(CliError::new(
+            "app run ended without a successful build — nothing was launched",
+        ))
+    }
 }
 
 /// `app run --hot` — the built-in hot-reload session (iOS Simulator only).
@@ -600,7 +630,9 @@ fn run_hot_session(
     // Install + launch with the client injected, then start the session log
     // stream (kept across `r` relaunches; its predicate follows the app by name).
     launch_hot(ctx, udid, &app, &launch_env)?;
-    let mut logs = start_logs(ctx, plan);
+    // Hot reload has no live filter UI; use the default threshold, never cycled.
+    let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
+    let mut logs = start_logs(ctx, plan, &filter);
     // Watch the workspace; each save drives `server.inject`.
     let session = HotSession::start(Arc::clone(&server), &project_root);
 
@@ -738,7 +770,8 @@ fn hot_key_loop(
                     }
                 }
                 SessionKey::Quit => break,
-                SessionKey::Ignore => {}
+                // The hot session has no in-session filter keys — ignore them.
+                SessionKey::Filter(_) | SessionKey::Ignore => {}
             },
             rawmode::Input::Idle => {}
             rawmode::Input::Closed => break,
@@ -754,11 +787,21 @@ fn hot_key_loop(
 struct Running {
     stream: Option<Child>,
     kind: RunningKind,
+    /// App identifier for status lines (bundle id, or the macOS executable name).
+    name: String,
+    /// Set once we've reported the app exiting, so we don't repeat it each tick.
+    reported_exit: bool,
 }
 
 enum RunningKind {
-    /// The log stream is separate from the app; terminate via simctl.
-    Simulator { udid: String, bundle_id: String },
+    /// The log stream is separate from the app; terminate via simctl. `pid` is the
+    /// launched host process (simulator apps run as host processes), probed for
+    /// liveness to detect a crash/exit; `None` if it couldn't be confirmed.
+    Simulator {
+        udid: String,
+        bundle_id: String,
+        pid: Option<i32>,
+    },
     /// The console process launched the app; terminate via devicectl.
     Device { id: String, bundle_id: String },
     /// The streamed child *is* the macOS app; killing it stops the app.
@@ -772,6 +815,10 @@ enum RunningKind {
 /// [`Drop`] kills the `simctl` child at session end.
 struct LogStream {
     child: Child,
+    /// A session-unique, regex-safe tag embedded in the stream's predicate, used to
+    /// reap the reparented `log` process on drop without touching another session's
+    /// stream for the same app (see [`log_stream_marker`]).
+    marker: String,
 }
 
 impl LogStream {
@@ -787,6 +834,10 @@ impl Drop for LogStream {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        // `simctl spawn … log stream` reparents the `log` process to launchd_sim,
+        // so killing our simctl child leaves it running — reap it by the
+        // session-unique tag embedded in its predicate. Best-effort.
+        let _ = process::run("pkill", &["-f", &self.marker], None, true);
     }
 }
 
@@ -805,47 +856,48 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
             let launched = ctx
                 .out
                 .step("launching app", || simctl::launch(udid, &app.bundle_id))?;
-            ctx.out
-                .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
+            // Track the launched host pid for crash/exit detection, but only if we
+            // can confirm it's alive now — guards against a bogus parse.
+            let pid = parse_pid(&launched).filter(|&p| pid_alive(p));
             Ok(Running {
                 // The app runs in the simulator; there's no child to hold. Logs
                 // come from the session-scoped stream, not from here.
                 stream: None,
                 kind: RunningKind::Simulator {
                     udid: udid.clone(),
-                    bundle_id: app.bundle_id,
+                    bundle_id: app.bundle_id.clone(),
+                    pid,
                 },
+                name: app.bundle_id,
+                reported_exit: false,
             })
         }
         Target::Device(id) => {
             ctx.out.step("installing app on device", || {
                 devicectl::install(id, &app_path)
             })?;
-            ctx.out.note(&format!(
-                "launching {} on device with console",
-                app.bundle_id
-            ));
             Ok(Running {
                 // The device console streams the app's stdout/stderr directly
                 // (not os_log ndjson), so it's inherited rather than rendered.
                 stream: Some(devicectl::spawn_console(id, &app.bundle_id)?),
                 kind: RunningKind::Device {
                     id: id.clone(),
-                    bundle_id: app.bundle_id,
+                    bundle_id: app.bundle_id.clone(),
                 },
+                name: app.bundle_id,
+                reported_exit: false,
             })
         }
-        Target::Mac => {
-            ctx.out.note(&format!("running {}", app.bundle_id));
-            Ok(Running {
-                stream: Some(process::spawn(
-                    &app.executable.to_string_lossy(),
-                    &[],
-                    None,
-                )?),
-                kind: RunningKind::Mac,
-            })
-        }
+        Target::Mac => Ok(Running {
+            stream: Some(process::spawn(
+                &app.executable.to_string_lossy(),
+                &[],
+                None,
+            )?),
+            kind: RunningKind::Mac,
+            name: app.bundle_id,
+            reported_exit: false,
+        }),
         Target::SpmRun(_) => unreachable!("SPM run does not use the interactive session"),
     }
 }
@@ -853,9 +905,11 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
 /// Terminate the running app and stop its output stream. The session-scoped
 /// simulator log stream is left running — it's torn down once, at session end.
 fn terminate_app(running: Running) {
-    let Running { stream, kind } = running;
+    let Running { stream, kind, .. } = running;
     match kind {
-        RunningKind::Simulator { udid, bundle_id } => {
+        RunningKind::Simulator {
+            udid, bundle_id, ..
+        } => {
             let _ = simctl::terminate(&udid, &bundle_id);
         }
         RunningKind::Device { id, bundle_id } => {
@@ -980,18 +1034,25 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
 enum SessionKey {
     Rebuild,
     Quit,
+    /// Set the live log filter (the `1`–`4` keys).
+    Filter(LogFilter),
     Ignore,
 }
 
 /// Map a keystroke to a session action. `r` rebuilds; `q`, Ctrl-C, and Ctrl-D
-/// quit; everything else is ignored. The key is first folded to the Latin letter
-/// on its physical position ([`map_key_to_latin`]), so the shortcuts work on
-/// non-Latin layouts (Cyrillic `к`/`й`) without switching. (A closed stdin is
-/// handled separately as [`rawmode::Input::Closed`].)
+/// quit; `1`–`4` set the log filter (debug/info/error/off); everything else is
+/// ignored. The key is first folded to the Latin letter on its physical position
+/// ([`map_key_to_latin`]), so the shortcuts work on non-Latin layouts (Cyrillic
+/// `к`/`й`) without switching. (A closed stdin is handled separately as
+/// [`rawmode::Input::Closed`].)
 fn classify_key(key: char) -> SessionKey {
     match map_key_to_latin(key) {
         'r' | 'R' => SessionKey::Rebuild,
         'q' | 'Q' | '\u{3}' | '\u{4}' => SessionKey::Quit,
+        '1' => SessionKey::Filter(LogFilter::Debug),
+        '2' => SessionKey::Filter(LogFilter::Info),
+        '3' => SessionKey::Filter(LogFilter::Error),
+        '4' => SessionKey::Filter(LogFilter::Off),
         _ => SessionKey::Ignore,
     }
 }
@@ -1062,14 +1123,188 @@ fn map_key_to_latin(key: char) -> char {
     }
 }
 
-fn session_hint(ctx: &Context) {
-    ctx.out.note("press r to rebuild & relaunch · q to quit");
+/// The session's key hint. The log-level keys are shown only when there's an
+/// os_log stream to filter (the simulator); device/macOS sessions just rebuild
+/// and quit.
+fn session_hint(ctx: &Context, filterable: bool) {
+    let hint = if filterable {
+        "r rebuild · q quit  │  log level: 1 debug · 2 info · 3 error · 4 off"
+    } else {
+        "r rebuild · q quit"
+    };
+    ctx.out.note(hint);
+}
+
+/// A live log-filter choice (the `1`–`4` keys). `Debug`/`Info`/`Error` show that
+/// level *and above*; `Off` mutes the stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LogFilter {
+    Debug,
+    Info,
+    Error,
+    Off,
+}
+
+impl LogFilter {
+    /// The minimum entry level to show, as a `u8` compared against
+    /// [`oslog::Level::as_u8`]. `Off` sits above the highest level — nothing matches.
+    fn threshold(self) -> u8 {
+        match self {
+            LogFilter::Debug => oslog::Level::Debug.as_u8(),
+            LogFilter::Info => oslog::Level::Info.as_u8(),
+            LogFilter::Error => oslog::Level::Error.as_u8(),
+            LogFilter::Off => oslog::Level::Fault.as_u8() + 1,
+        }
+    }
+
+    /// A plain-English description of what this filter shows.
+    fn description(self) -> &'static str {
+        match self {
+            LogFilter::Debug => "showing all logs",
+            LogFilter::Info => "showing info and above",
+            LogFilter::Error => "showing errors only",
+            LogFilter::Off => "showing nothing",
+        }
+    }
+}
+
+/// The default live filter: `info` (hides Debug noise like the Xcode debug-dylib
+/// bootstrap), or `debug` under `-v`/`--verbose`.
+fn default_filter(out: &Output) -> LogFilter {
+    if out.is_verbose() {
+        LogFilter::Debug
+    } else {
+        LogFilter::Info
+    }
+}
+
+/// Apply a log filter and print a self-explanatory inline marker, so the change is
+/// visible in the stream and unambiguous (got everything vs. nothing).
+fn set_filter(ctx: &Context, filter: &AtomicU8, choice: LogFilter) {
+    filter.store(choice.threshold(), Ordering::Relaxed);
+    ctx.out.note(&format!("── {} ──", choice.description()));
+}
+
+/// Stop the running app, rebuild, and relaunch (the `r` key). The session log
+/// stream is left running; it follows the relaunched app by process name. Returns
+/// whether the app relaunched, so the session can track if it ever ran.
+fn do_rebuild(ctx: &Context, plan: &RunPlan, running: &mut Option<Running>) -> bool {
+    ctx.out.note("↻ restarting — rebuilding…");
+    if let Some(old) = running.take() {
+        terminate_app(old);
+    }
+    let started = Instant::now();
+    match build(plan, &ctx.out, None) {
+        Ok(()) => match start_app(ctx, plan) {
+            Ok(r) => {
+                *running = Some(r);
+                note_launch(ctx, "relaunched", started);
+                true
+            }
+            Err(e) => {
+                ctx.out.error(&e);
+                false
+            }
+        },
+        // Failed/aborted build: nothing runs until the next rebuild.
+        Err(e) => {
+            ctx.out.error(&e);
+            false
+        }
+    }
+}
+
+/// `▶ scheme · configuration · destination` — the run summary shown before the
+/// build, so what's about to run (and what was auto-selected) is clear up front.
+fn print_summary(ctx: &Context, plan: &RunPlan) {
+    ctx.out.note(&format!(
+        "▶ {} · {} · {}",
+        plan.scheme,
+        plan.configuration,
+        destination_label(plan)
+    ));
+}
+
+/// A human-readable destination name for the summary (simulator/device name where
+/// available, else a generic label).
+fn destination_label(plan: &RunPlan) -> String {
+    match &plan.target {
+        Target::Simulator(udid) => sim_name(udid).unwrap_or_else(|| "iOS Simulator".to_string()),
+        Target::Device(_) => "device".to_string(),
+        Target::Mac => "macOS".to_string(),
+        Target::SpmRun(product) => format!("swift run {product}"),
+    }
+}
+
+/// Look up a booted/known simulator's name by udid (best-effort).
+fn sim_name(udid: &str) -> Option<String> {
+    simctl::list()
+        .ok()?
+        .into_iter()
+        .find(|s| s.udid == udid)
+        .map(|s| s.name)
+}
+
+/// Print `✓ {verb} in {N.N}s` for the build+launch that began at `started`.
+fn note_launch(ctx: &Context, verb: &str, started: Instant) {
+    ctx.out.note(&format!(
+        "✓ {verb} in {:.1}s",
+        started.elapsed().as_secs_f64()
+    ));
+}
+
+/// Parse the host pid from `simctl launch` output (`"com.example.app: 12345"`).
+/// Takes the first whitespace-delimited token after the final colon, so a stray
+/// trailing annotation doesn't defeat the parse.
+fn parse_pid(launch_output: &str) -> Option<i32> {
+    launch_output
+        .rsplit(':')
+        .next()?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// Whether a host process still exists. `kill(pid, 0)` never delivers a signal —
+/// it only probes existence (0 = alive, -1 = gone).
+fn pid_alive(pid: i32) -> bool {
+    // Safety: signal 0 is a pure existence check; no process is affected.
+    unsafe { libc::kill(pid, 0) == 0 }
+}
+
+/// Notice (once) if the running app has exited/crashed — the simulator app via its
+/// host pid, the device console / macOS app via the streamed child's exit. The
+/// simulator probe is best-effort: it can't tell a recycled pid from a still-live
+/// app, so a missed notice only costs the convenience alert, never correctness.
+fn check_exit(ctx: &Context, running: &mut Running) {
+    if running.reported_exit {
+        return;
+    }
+    let exited = if let RunningKind::Simulator { pid, .. } = &running.kind {
+        matches!(pid, Some(p) if !pid_alive(*p))
+    } else {
+        running
+            .stream
+            .as_mut()
+            .and_then(|c| c.try_wait().ok().flatten())
+            .is_some()
+    };
+    if exited {
+        ctx.out.alert(&format!("✗ {} exited", running.name));
+        running.reported_exit = true;
+    }
 }
 
 /// Spawn the simulator's os_log stream as a background child with stdout piped,
 /// for [`render_logs`] to format. See [`log_args`] for the stream's shape.
-fn spawn_logs(udid: &str, app: &AppBundle, level: &str) -> Result<Child, CliError> {
-    let args = log_args(udid, app, level);
+fn spawn_logs(
+    udid: &str,
+    app: &AppBundle,
+    level: &str,
+    marker: Option<&str>,
+) -> Result<Child, CliError> {
+    let args = log_args(udid, app, level, marker);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     process::spawn_piped("xcrun", &refs, None)
 }
@@ -1086,15 +1321,23 @@ fn log_level(out: &Output) -> &'static str {
 /// image — and the Xcode 15+ `.debug.dylib` sender, which carries app code in
 /// Debug builds — so logs show even when the app sets no `Logger(subsystem:)`,
 /// while Apple framework chatter stays out. ndjson is what [`oslog`] parses.
-fn log_args(udid: &str, app: &AppBundle, level: &str) -> Vec<String> {
-    let exe = app
-        .executable
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or_default();
-    let predicate = format!(
+///
+/// A `marker` appends an always-true clause that embeds a session-unique tag in
+/// the predicate (and so in the reparented `log` process's argv), so the session
+/// can later reap exactly its own stream. No process is named the tag, so
+/// `process != "<tag>"` holds for every entry — the matched set is unchanged.
+fn log_args(udid: &str, app: &AppBundle, level: &str, marker: Option<&str>) -> Vec<String> {
+    use std::fmt::Write as _;
+    let exe = process_name(app);
+    let mut predicate = format!(
         "process == \"{exe}\" AND (sender == \"{exe}\" OR sender == \"{exe}.debug.dylib\")"
     );
+    if let Some(marker) = marker {
+        let _ = write!(
+            predicate,
+            " AND (process CONTAINS \"{marker}\" OR process != \"{marker}\")"
+        );
+    }
     vec![
         "simctl".into(),
         "spawn".into(),
@@ -1111,31 +1354,57 @@ fn log_args(udid: &str, app: &AppBundle, level: &str) -> Vec<String> {
 }
 
 /// Render the simulator log child's ndjson stdout as colored lines on a detached
-/// thread. The thread ends when the child's stdout closes — i.e. when the stream
-/// is dropped/killed, or the process exits — so it's never joined.
-fn render_logs(child: &mut Child, color: bool) {
+/// thread, dropping entries below the live `filter` threshold. The thread ends
+/// when the child's stdout closes — i.e. when the stream is dropped/killed, or the
+/// process exits — so it's never joined.
+fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
     let Some(stdout) = child.stdout.take() else {
         return;
     };
     std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines() {
             let Ok(line) = line else { break };
-            println!("{}", oslog::render_ndjson_line(&line, color));
+            let rendered = oslog::render_ndjson_line(&line, color);
+            if rendered.level.as_u8() >= filter.load(Ordering::Relaxed) {
+                println!("{}", rendered.text);
+            }
         }
     });
 }
 
 /// Start the session's simulator log stream (see [`LogStream`]). `None` for
 /// non-simulator targets — their output is the [`Running`] child — or if the app
-/// bundle or stream can't be resolved (logs are best-effort, never fatal).
-fn start_logs(ctx: &Context, plan: &RunPlan) -> Option<LogStream> {
+/// bundle or stream can't be resolved (logs are best-effort, never fatal). The
+/// stream carries every level; `filter` decides what's shown, so the live filter
+/// can reveal debug on demand without restarting it.
+fn start_logs(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Option<LogStream> {
     let Target::Simulator(udid) = &plan.target else {
         return None;
     };
     let app = plan.app_bundle().ok()?;
-    let mut child = spawn_logs(udid, &app, log_level(&ctx.out)).ok()?;
-    render_logs(&mut child, ctx.out.use_color());
-    Some(LogStream { child })
+    let marker = log_stream_marker();
+    let mut child = spawn_logs(udid, &app, "debug", Some(&marker)).ok()?;
+    render_logs(&mut child, ctx.out.use_color(), Arc::clone(filter));
+    Some(LogStream { child, marker })
+}
+
+/// A per-session, regex-safe tag for the log stream's predicate, so its reparented
+/// `log` process can be reaped by exactly this session on drop (see [`LogStream`]).
+/// Unique across concurrent runs (our pid) and across streams within one run (a
+/// counter); plain ASCII, so `pkill -f` matches it literally rather than as a regex.
+fn log_stream_marker() -> String {
+    static SEQ: AtomicU32 = AtomicU32::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    format!("sweetpad-logstream-{}-{seq}", std::process::id())
+}
+
+/// The app's process name (CFBundleExecutable) — the predicate key for the log
+/// stream and the marker used to reap it.
+fn process_name(app: &AppBundle) -> &str {
+    app.executable
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
 }
 
 /// The stage-only `app` actions (install/launch/logs/stop) share resolution.
@@ -1202,10 +1471,10 @@ fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle) -> CliResult {
         app.bundle_id
     ));
     let color = ctx.out.use_color();
-    let args = log_args(udid, app, log_level(&ctx.out));
+    let args = log_args(udid, app, log_level(&ctx.out), None);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let ok = process::stream_lines("xcrun", &refs, None, |line| {
-        println!("{}", oslog::render_ndjson_line(line, color));
+        println!("{}", oslog::render_ndjson_line(line, color).text);
     })?;
     if ok {
         Ok(())
@@ -1248,6 +1517,11 @@ mod tests {
         assert_eq!(classify_key('Q'), SessionKey::Quit);
         assert_eq!(classify_key('\u{3}'), SessionKey::Quit);
         assert_eq!(classify_key('\u{4}'), SessionKey::Quit);
+        // 1–4 set the log filter to debug/info/error/off.
+        assert_eq!(classify_key('1'), SessionKey::Filter(LogFilter::Debug));
+        assert_eq!(classify_key('2'), SessionKey::Filter(LogFilter::Info));
+        assert_eq!(classify_key('3'), SessionKey::Filter(LogFilter::Error));
+        assert_eq!(classify_key('4'), SessionKey::Filter(LogFilter::Off));
         // Anything else is ignored — the session keeps streaming output.
         assert_eq!(classify_key('x'), SessionKey::Ignore);
         assert_eq!(classify_key('\n'), SessionKey::Ignore);
@@ -1275,5 +1549,36 @@ mod tests {
         assert_eq!(map_key_to_latin('ы'), 's');
         assert_eq!(map_key_to_latin('і'), 's');
         assert_eq!(map_key_to_latin('І'), 'S');
+    }
+
+    #[test]
+    fn parses_the_pid_from_simctl_launch_output() {
+        assert_eq!(parse_pid("com.example.app: 12345"), Some(12345));
+        assert_eq!(parse_pid("com.example.app: 12345\n"), Some(12345));
+        // A trailing annotation after the pid is tolerated.
+        assert_eq!(
+            parse_pid("com.example.app: 12345 (foreground)"),
+            Some(12345)
+        );
+        assert_eq!(parse_pid("nonsense"), None);
+    }
+
+    #[test]
+    fn log_stream_markers_are_unique_and_regex_safe() {
+        let (a, b) = (log_stream_marker(), log_stream_marker());
+        assert_ne!(a, b);
+        // Only ASCII alphanumerics and hyphens, so `pkill -f` matches it literally
+        // (no regex metacharacters) — see [`LogStream`].
+        assert!(a.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-'));
+    }
+
+    #[test]
+    fn filter_descriptions_are_unambiguous() {
+        assert_eq!(LogFilter::Debug.description(), "showing all logs");
+        assert_eq!(LogFilter::Info.description(), "showing info and above");
+        assert_eq!(LogFilter::Error.description(), "showing errors only");
+        assert_eq!(LogFilter::Off.description(), "showing nothing");
+        // `Off` sits above every real level, so nothing passes the filter.
+        assert!(LogFilter::Off.threshold() > LogFilter::Error.threshold());
     }
 }
