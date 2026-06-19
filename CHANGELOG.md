@@ -2,9 +2,12 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [Unreleased]
+## [0.2.4] - 2026-06-19
 
+- Add Swift Package Manager support: build and run `Package.swift` packages by driving the Swift toolchain directly instead of `xcodebuild` ([#290](https://github.com/sweetpad-dev/sweetpad/pull/290))
 - Fix the built app not being found at launch when a project relocates its build products with a custom `SYMROOT` (e.g. `SYMROOT = $(SRCROOT)/../build/products` in an xcconfig): the bundled resolver now derives `BUILD_DIR`/`BUILD_ROOT` from `SYMROOT`, so `TARGET_BUILD_DIR` follows the custom location instead of assuming the default DerivedData layout ([#292](https://github.com/sweetpad-dev/sweetpad/issues/292), thanks [@foltri](https://github.com/foltri))
+- Fix the built app not being found when a bare `.xcodeproj` sits beside or below an unrelated `.xcworkspace` it isn't a member of: the DerivedData folder is now keyed by the project, matching Xcode, instead of the neighbouring workspace
+- Fix the built app not being found for projects whose path contains non-ASCII characters: the DerivedData hash now matches Xcode's NFD path normalization ([#288](https://github.com/sweetpad-dev/sweetpad/pull/288))
 
 ## [0.2.3] - 2026-06-15
 

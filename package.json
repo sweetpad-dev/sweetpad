@@ -1,7 +1,7 @@
 {
   "name": "sweetpad",
   "displayName": "SweetPad (iOS/Swift development)",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Develop Swift/iOS projects in VS Code",
   "categories": [
     "Extension Packs",
