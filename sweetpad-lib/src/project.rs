@@ -1450,12 +1450,17 @@ pub fn built_in_settings(
     }
 
     // --- Build / output roots (overridable; we fill in xcodebuild's defaults) -
-    // `BUILD_DIR`, `BUILD_ROOT`, and `SYMROOT` all point at the Products
-    // directory of the DerivedData container; `OBJROOT` and `TEMP_ROOT`
-    // point at the Intermediates directory.
-    push("BUILD_DIR", build_dir.clone());
-    push("BUILD_ROOT", build_dir.clone());
+    // `SYMROOT` is the Products directory of the DerivedData container, and
+    // `BUILD_DIR` / `BUILD_ROOT` derive from it via `$(SYMROOT)` so that a user
+    // who relocates the build products with a custom `SYMROOT` (commonly
+    // `SYMROOT = $(SRCROOT)/../build/products` in an xcconfig) carries
+    // `BUILD_DIR` — and the whole `CONFIGURATION_BUILD_DIR` / `BUILT_PRODUCTS_DIR`
+    // / `TARGET_BUILD_DIR` chain below it — to the same place, matching
+    // xcodebuild. `OBJROOT` / `TEMP_ROOT` are independent: xcodebuild keeps the
+    // intermediates under DerivedData even when the products move.
     push("SYMROOT", build_dir);
+    push("BUILD_DIR", "$(SYMROOT)".into());
+    push("BUILD_ROOT", "$(SYMROOT)".into());
     push("OBJROOT", obj_root.clone());
     push("TEMP_ROOT", obj_root);
     // `DSTROOT` is keyed on the *project*, not the target —

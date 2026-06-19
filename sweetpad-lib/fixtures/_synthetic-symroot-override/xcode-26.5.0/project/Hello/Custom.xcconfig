@@ -1,0 +1,3 @@
+// Reproduces sweetpad issue #292: a custom build-products dir via SYMROOT.
+// xcodebuild relocates BUILD_DIR/CONFIGURATION_BUILD_DIR/TARGET_BUILD_DIR to follow it.
+SYMROOT = $(SRCROOT)/../build/products
