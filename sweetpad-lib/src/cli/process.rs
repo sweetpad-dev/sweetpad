@@ -101,15 +101,15 @@ pub fn stream_lines(
     Ok(status.success())
 }
 
-/// Spawn a long-running command in the background with stdio inherited, handing
-/// the [`Child`] back to the caller (who kills/waits it). Used by the `app run`
-/// interactive session to stream logs alongside the keypress loop without
-/// blocking. stdin is null so the child never competes for the terminal's keys.
-pub fn spawn(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, CliError> {
+/// Spawn a long-running command in the background with stdout **piped** for the
+/// caller to read/format on its own thread (stderr inherited, stdin null). Used
+/// by the `app run` session to render the simulator log stream while the keypress
+/// loop runs; stdin is null so the child never competes for the terminal's keys.
+pub fn spawn_piped(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, CliError> {
     let mut cmd = Command::new(program);
     cmd.args(args)
         .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
+        .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
@@ -117,16 +117,16 @@ pub fn spawn(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, 
     cmd.spawn().map_err(|e| spawn_error(program, &e))
 }
 
-/// Spawn a long-running command in the background with stdout **piped** for the
-/// caller to read/format on its own thread (stderr inherited, stdin null). Used
-/// by the `app run` session to render the simulator log stream while the
-/// keypress loop runs — unlike [`spawn`], whose inherited stdout can't be parsed.
-pub fn spawn_piped(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, CliError> {
+/// Like [`spawn_piped`], but with **stderr also piped** so the caller can drain and
+/// filter it on its own thread instead of letting it reach the terminal raw. Used by
+/// the `app run` os_log stream, whose `log` / `simctl spawn … log` child writes
+/// boot-time diagnostics to stderr that we'd rather reformat or drop. stdin is null.
+pub fn spawn_piped_both(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, CliError> {
     let mut cmd = Command::new(program);
     cmd.args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit());
+        .stderr(Stdio::piped());
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }

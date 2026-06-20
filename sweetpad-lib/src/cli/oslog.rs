@@ -133,6 +133,16 @@ pub fn render_fields(
     }
 }
 
+/// Render one line of an app's own stdout/stderr — its direct console output
+/// (`print()`, etc.), as opposed to os_log — as a blue `N [print]` note at `Notice`
+/// level, the analog of the VS Code extension's `print` lines. The app owns the
+/// text, so it's shown verbatim (its ANSI is stripped by [`format_line`], which the
+/// prefix's own coloring replaces).
+#[must_use]
+pub fn render_console_line(line: &str, color: bool) -> Line {
+    render_fields(None, "Default", "print", line, color)
+}
+
 /// Assemble `HH:MM:SS.sss L [cat] message`, the prefix in bold + `code` when
 /// color is on. A missing time drops just that token. The message's own ANSI is
 /// stripped — os_log payloads are plain text, and the prefix owns the coloring.
@@ -236,6 +246,18 @@ mod tests {
         assert_eq!((level_letter("Fault"), level_color("Fault")), ("F", 35));
         // Unknown messageType → "?" / gray.
         assert_eq!((level_letter("Weird"), level_color("Weird")), ("?", 90));
+    }
+
+    #[test]
+    fn renders_app_console_output_as_a_print_note() {
+        let plain = render_console_line("hello from print()", false);
+        assert_eq!(plain.level, Level::Notice);
+        assert_eq!(plain.text, "N [print] hello from print()");
+        // Color: bold + blue (34) prefix, message left uncolored.
+        assert_eq!(
+            render_console_line("hello from print()", true).text,
+            "\x1b[1;34mN [print]\x1b[0m hello from print()"
+        );
     }
 
     #[test]

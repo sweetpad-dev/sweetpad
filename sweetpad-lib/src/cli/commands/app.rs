@@ -233,6 +233,13 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
     let plan = plan(ctx, opts)?;
     print_summary(ctx, &plan);
 
+    // Bring the Simulator window up so the running app is visible. Best-effort and
+    // once per run — rebuilds reuse the same window, and only a simulator has a UI
+    // to reveal (devices and macOS don't).
+    if matches!(plan.target, Target::Simulator(_)) {
+        let _ = simctl::open_app();
+    }
+
     let result = if opts.hot {
         // Hot reload owns its own build + launch + watch session (simulator only).
         run_hot_session(ctx, &plan, opts.hot_mode, opts.hot_selfcheck)
@@ -473,7 +480,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     let started = Instant::now();
     let mut ever_launched = false;
     let mut running = match build(plan, &ctx.out, None) {
-        BuildOutcome::Ok => match start_app(ctx, plan) {
+        BuildOutcome::Ok => match start_app(ctx, plan, &filter) {
             Ok(r) => {
                 note_launch(ctx, "Launched", started);
                 ever_launched = true;
@@ -504,7 +511,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     loop {
         match rawmode::poll_key() {
             rawmode::Input::Key(ch) => match classify_key(ch) {
-                SessionKey::Rebuild => match do_rebuild(ctx, plan, &mut running) {
+                SessionKey::Rebuild => match do_rebuild(ctx, plan, &mut running, &filter) {
                     RebuildOutcome::Continue { launched } => {
                         ever_launched |= launched;
                         session_hint(ctx, filterable);
@@ -806,10 +813,10 @@ fn hot_key_loop(
 }
 
 /// A launched app in the interactive session, plus what's needed to terminate it
-/// between rebuilds and on quit. `stream` is the child whose output *is* the
-/// app's — the device console, or (macOS) the app process itself. A simulator
-/// has no such child: its app is managed via `simctl terminate` and its logs by
-/// a session-scoped [`LogStream`], so `stream` is `None`.
+/// between rebuilds and on quit. `stream` is the child whose stdout/stderr *is* the
+/// app's console output: the simulator's `simctl launch --console-pty`, the device
+/// console, or (macOS) the app process itself. Its exit signals the app's own exit
+/// ([`check_exit`]); os_log is streamed separately ([`LogStream`]).
 struct Running {
     stream: Option<Child>,
     kind: RunningKind,
@@ -820,14 +827,9 @@ struct Running {
 }
 
 enum RunningKind {
-    /// The log stream is separate from the app; terminate via simctl. `pid` is the
-    /// launched host process (simulator apps run as host processes), probed for
-    /// liveness to detect a crash/exit; `None` if it couldn't be confirmed.
-    Simulator {
-        udid: String,
-        bundle_id: String,
-        pid: Option<i32>,
-    },
+    /// Terminate via `simctl`; the attached console child (`Running.stream`) is what
+    /// liveness is probed on.
+    Simulator { udid: String, bundle_id: String },
     /// The console process launched the app; terminate via devicectl.
     Device { id: String, bundle_id: String },
     /// The streamed child *is* the macOS app; killing it stops the app.
@@ -872,11 +874,12 @@ impl Drop for LogStream {
     }
 }
 
-/// Install (where applicable) and launch the just-built app. Assumes [`build`]
-/// already produced the bundle, so it never builds itself. A simulator's logs are
-/// streamed separately for the whole session ([`start_logs`]); device and macOS
-/// output comes from the returned [`Running`]'s `stream`.
-fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
+/// Install (where applicable) and launch the just-built app, returning a [`Running`]
+/// whose `stream` is the launched child carrying the app's console output — rendered
+/// as `N [print]` by [`render_console`] and gated by `filter` like os_log. Assumes
+/// [`build`] already produced the bundle, so it never builds itself; os_log is
+/// streamed separately ([`start_logs`]).
+fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Running, CliError> {
     let app = plan.app_bundle()?;
     let app_path = app.path.display().to_string();
     match &plan.target {
@@ -884,20 +887,17 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
             ctx.out
                 .step("Installing app", || simctl::install(udid, &app_path))?;
-            let launched = ctx
+            // `--console-pty` keeps the launch attached, so this child's stdout/stderr
+            // are the app's; its exit means the app exited.
+            let mut child = ctx
                 .out
-                .step("Launching app", || simctl::launch(udid, &app.bundle_id))?;
-            // Track the launched host pid for crash/exit detection, but only if we
-            // can confirm it's alive now — guards against a bogus parse.
-            let pid = parse_pid(&launched).filter(|&p| pid_alive(p));
+                .step("Launching app", || simctl::spawn_console(udid, &app.bundle_id))?;
+            render_console(&mut child, ctx.out.use_color(), filter);
             Ok(Running {
-                // The app runs in the simulator; there's no child to hold. Logs
-                // come from the session-scoped stream, not from here.
-                stream: None,
+                stream: Some(child),
                 kind: RunningKind::Simulator {
                     udid: udid.clone(),
                     bundle_id: app.bundle_id.clone(),
-                    pid,
                 },
                 name: app.bundle_id,
                 reported_exit: false,
@@ -907,10 +907,10 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
             ctx.out.step("Installing app on device", || {
                 devicectl::install(id, &app_path)
             })?;
+            let mut child = devicectl::spawn_console(id, &app.bundle_id)?;
+            render_console(&mut child, ctx.out.use_color(), filter);
             Ok(Running {
-                // The device console streams the app's stdout/stderr directly
-                // (not os_log ndjson), so it's inherited rather than rendered.
-                stream: Some(devicectl::spawn_console(id, &app.bundle_id)?),
+                stream: Some(child),
                 kind: RunningKind::Device {
                     id: id.clone(),
                     bundle_id: app.bundle_id.clone(),
@@ -919,16 +919,17 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
                 reported_exit: false,
             })
         }
-        Target::Mac => Ok(Running {
-            stream: Some(process::spawn(
-                &app.executable.to_string_lossy(),
-                &[],
-                None,
-            )?),
-            kind: RunningKind::Mac,
-            name: app.bundle_id,
-            reported_exit: false,
-        }),
+        Target::Mac => {
+            let mut child =
+                process::spawn_piped_both(&app.executable.to_string_lossy(), &[], None)?;
+            render_console(&mut child, ctx.out.use_color(), filter);
+            Ok(Running {
+                stream: Some(child),
+                kind: RunningKind::Mac,
+                name: app.bundle_id,
+                reported_exit: false,
+            })
+        }
         Target::SpmRun(_) => unreachable!("SPM run does not use the interactive session"),
     }
 }
@@ -1253,14 +1254,19 @@ enum RebuildOutcome {
 /// Stop the running app, rebuild, and relaunch (the `r` key). The session log
 /// stream is left running; it follows the relaunched app by process name. Ctrl-C
 /// during the rebuild returns [`RebuildOutcome::Quit`] so the session ends.
-fn do_rebuild(ctx: &Context, plan: &RunPlan, running: &mut Option<Running>) -> RebuildOutcome {
+fn do_rebuild(
+    ctx: &Context,
+    plan: &RunPlan,
+    running: &mut Option<Running>,
+    filter: &Arc<AtomicU8>,
+) -> RebuildOutcome {
     ctx.out.note("»  Restarting — rebuilding…");
     if let Some(old) = running.take() {
         terminate_app(old);
     }
     let started = Instant::now();
     match build(plan, &ctx.out, None) {
-        BuildOutcome::Ok => match start_app(ctx, plan) {
+        BuildOutcome::Ok => match start_app(ctx, plan, filter) {
             Ok(r) => {
                 *running = Some(r);
                 note_launch(ctx, "Relaunched", started);
@@ -1319,43 +1325,18 @@ fn note_launch(ctx: &Context, verb: &str, started: Instant) {
     ));
 }
 
-/// Parse the host pid from `simctl launch` output (`"com.example.app: 12345"`).
-/// Takes the first whitespace-delimited token after the final colon, so a stray
-/// trailing annotation doesn't defeat the parse.
-fn parse_pid(launch_output: &str) -> Option<i32> {
-    launch_output
-        .rsplit(':')
-        .next()?
-        .split_whitespace()
-        .next()?
-        .parse()
-        .ok()
-}
-
-/// Whether a host process still exists. `kill(pid, 0)` never delivers a signal —
-/// it only probes existence (0 = alive, -1 = gone).
-fn pid_alive(pid: i32) -> bool {
-    // Safety: signal 0 is a pure existence check; no process is affected.
-    unsafe { libc::kill(pid, 0) == 0 }
-}
-
-/// Notice (once) if the running app has exited/crashed — the simulator app via its
-/// host pid, the device console / macOS app via the streamed child's exit. The
-/// simulator probe is best-effort: it can't tell a recycled pid from a still-live
-/// app, so a missed notice only costs the convenience alert, never correctness.
+/// Notice (once) if the running app has exited/crashed, detected by its launched
+/// child (the attached console / app process) exiting. Best-effort: a missed notice
+/// only costs the convenience alert, never correctness.
 fn check_exit(ctx: &Context, running: &mut Running) {
     if running.reported_exit {
         return;
     }
-    let exited = if let RunningKind::Simulator { pid, .. } = &running.kind {
-        matches!(pid, Some(p) if !pid_alive(*p))
-    } else {
-        running
-            .stream
-            .as_mut()
-            .and_then(|c| c.try_wait().ok().flatten())
-            .is_some()
-    };
+    let exited = running
+        .stream
+        .as_mut()
+        .and_then(|c| c.try_wait().ok().flatten())
+        .is_some();
     if exited {
         ctx.out.alert(&format!("✗ {} exited", running.name));
         running.reported_exit = true;
@@ -1370,8 +1351,9 @@ enum LogSource<'a> {
     Mac,
 }
 
-/// Spawn an os_log stream as a background child with stdout piped, for
-/// [`render_logs`] to format. See [`log_command`] for the stream's shape.
+/// Spawn an os_log stream as a background child with both stdout and stderr piped,
+/// for [`render_logs`] to format and [`render_log_stderr`] to filter. See
+/// [`log_command`] for the stream's shape.
 fn spawn_logs(
     source: &LogSource,
     app: &AppBundle,
@@ -1380,7 +1362,7 @@ fn spawn_logs(
 ) -> Result<Child, CliError> {
     let (program, args) = log_command(source, app, level, marker);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    process::spawn_piped(program, &refs, None)
+    process::spawn_piped_both(program, &refs, None)
 }
 
 /// The os_log stream level: `info` by default — which hides `Debug`-level entries
@@ -1463,6 +1445,72 @@ fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
     });
 }
 
+/// Render a launched app's own stdout and stderr as blue `N [print]` lines on
+/// detached threads — its direct console output (`print()`, etc.), distinct from
+/// os_log ([`render_logs`]). Both pipes are drained so neither blocks the app; known
+/// boot noise ([`is_boot_noise`]) is dropped, and lines obey the live `filter` like
+/// os_log, so `4 off` silences them too.
+fn render_console(child: &mut Child, color: bool, filter: &Arc<AtomicU8>) {
+    let pipes: [Option<Box<dyn std::io::Read + Send>>; 2] = [
+        child
+            .stdout
+            .take()
+            .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+        child
+            .stderr
+            .take()
+            .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+    ];
+    for pipe in pipes.into_iter().flatten() {
+        let filter = Arc::clone(filter);
+        std::thread::spawn(move || {
+            for line in BufReader::new(pipe).lines() {
+                let Ok(line) = line else { break };
+                if is_boot_noise(&line) {
+                    continue;
+                }
+                let rendered = oslog::render_console_line(&line, color);
+                if rendered.level.as_u8() >= filter.load(Ordering::Relaxed) {
+                    println!("{}", rendered.text);
+                }
+            }
+        });
+    }
+}
+
+/// Render the os_log stream child's **stderr** on a detached thread: drop known
+/// boot-time noise (see [`is_boot_noise`]) and surface anything else as an
+/// `E [system]` line, so a genuine `log` / `simctl` diagnostic (a rejected
+/// predicate, say) reads like the rest of the output instead of an unprefixed raw
+/// line. Gated by the live `filter` like [`render_logs`], so `4 off` silences it too.
+fn render_log_stderr(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
+    let Some(stderr) = child.stderr.take() else {
+        return;
+    };
+    std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines() {
+            let Ok(line) = line else { break };
+            if line.trim().is_empty() || is_boot_noise(&line) {
+                continue;
+            }
+            let rendered = oslog::render_fields(None, "Error", "system", &line, color);
+            if rendered.level.as_u8() >= filter.load(Ordering::Relaxed) {
+                println!("{}", rendered.text);
+            }
+        }
+    });
+}
+
+/// Whether a line is harmless boot-time noise worth hiding wherever it surfaces — the
+/// log-stream stderr ([`render_log_stderr`]) or the app's own console
+/// ([`render_console`]). A process launched into the simulator's user context can't
+/// resolve the host uid against the sim's user database, so libSystem prints
+/// `getpwuid_r did not find a match for uid <n>`. It says nothing useful, so drop it;
+/// genuine diagnostics fall through to their renderer.
+fn is_boot_noise(line: &str) -> bool {
+    line.contains("getpwuid_r did not find a match for uid")
+}
+
 /// Render a device's `pymobiledevice3` syslog stdout on a detached thread, mirroring
 /// [`render_logs`]: parse each line, keep only the app's own images (its executable
 /// or `.debug.dylib`, the analog of the `log stream` `sender ==` predicate), drop
@@ -1512,6 +1560,7 @@ fn start_logs(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Option<L
     };
     let mut child = spawn_logs(&source, &app, "debug", marker.as_deref()).ok()?;
     render_logs(&mut child, ctx.out.use_color(), Arc::clone(filter));
+    render_log_stderr(&mut child, ctx.out.use_color(), Arc::clone(filter));
     Some(LogStream { child, marker })
 }
 
@@ -1701,15 +1750,14 @@ mod tests {
     }
 
     #[test]
-    fn parses_the_pid_from_simctl_launch_output() {
-        assert_eq!(parse_pid("com.example.app: 12345"), Some(12345));
-        assert_eq!(parse_pid("com.example.app: 12345\n"), Some(12345));
-        // A trailing annotation after the pid is tolerated.
-        assert_eq!(
-            parse_pid("com.example.app: 12345 (foreground)"),
-            Some(12345)
-        );
-        assert_eq!(parse_pid("nonsense"), None);
+    fn drops_getpwuid_boot_noise_but_keeps_real_diagnostics() {
+        // The libSystem uid-lookup warning the simulator's `log` prints on every
+        // launch — dropped, for any uid.
+        assert!(is_boot_noise("getpwuid_r did not find a match for uid 503"));
+        assert!(is_boot_noise("getpwuid_r did not find a match for uid 0"));
+        // A genuine `log`/`simctl` diagnostic survives, to render as `E [system]`.
+        assert!(!is_boot_noise("log: Invalid predicate"));
+        assert!(!is_boot_noise(""));
     }
 
     #[test]

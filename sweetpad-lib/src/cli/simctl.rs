@@ -265,6 +265,26 @@ pub fn launch_with_env(
     }
 }
 
+/// Launch an installed app attached to its console, returning the piped child whose
+/// stdout/stderr carry the app's own output (`print()`, etc.). `--console-pty` gives
+/// the app a pty so its stdout is line-buffered and arrives promptly; the terminate
+/// flag replaces any prior instance so a relaunch starts clean. os_log is streamed
+/// separately by the run session.
+pub fn spawn_console(udid: &str, bundle_id: &str) -> Result<std::process::Child, CliError> {
+    process::spawn_piped_both(
+        "xcrun",
+        &[
+            "simctl",
+            "launch",
+            "--console-pty",
+            "--terminate-running-process",
+            udid,
+            bundle_id,
+        ],
+        None,
+    )
+}
+
 /// Terminate a running app by bundle id. Already-stopped is treated as success
 /// (idempotent, mirroring [`boot`]/[`shutdown`]): `simctl` errors with "found
 /// nothing to terminate" when the app isn't running, which is not a failure for
