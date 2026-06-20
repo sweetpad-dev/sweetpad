@@ -72,7 +72,7 @@ impl BuildPlan<'_> {
         } else if out.is_verbose() {
             process::run("xcodebuild", &args, cwd.as_deref(), false)?
         } else {
-            buildlog::run("xcodebuild", &args, cwd.as_deref(), out)?
+            buildlog::run("xcodebuild", &args, cwd.as_deref(), out, "Building")?
         };
         if ok {
             Ok(())
@@ -156,7 +156,7 @@ impl TestPlan<'_> {
         } else if out.is_verbose() {
             process::run("xcodebuild", &args, cwd.as_deref(), false)
         } else {
-            buildlog::run("xcodebuild", &args, cwd.as_deref(), out)
+            buildlog::run("xcodebuild", &args, cwd.as_deref(), out, "Testing")
         };
         result.context("running the tests")
     }

@@ -983,6 +983,9 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
         Err(e) => return BuildOutcome::Failed(e),
     };
     let pid = child.id();
+    // Spinner + elapsed timer while xcodebuild is silent (its planning prelude,
+    // or a no-op up-to-date build); erased as soon as the first line renders.
+    let mut progress = buildlog::BuildProgress::start(out, "Building");
     // For the build-log recompiler (path A): tee the *raw* transcript (with its
     // `EMIT_FRONTEND_COMMAND_LINES` frontend commands) to a file, while the
     // beautifier still renders the structured stream below.
@@ -1006,19 +1009,20 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
 
     // Beautify xcodebuild's piped stdout on this thread (the same path as
     // [`buildlog::run`], inlined so we own the child for the watcher).
-    let color = out.use_color();
-    let verbose = out.is_verbose();
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines() {
             let Ok(line) = line else { break };
             if let Some(file) = capture_file.as_mut() {
                 let _ = writeln!(file, "{line}");
             }
-            if let Some(rendered) = buildlog::render(&buildlog::parse_line(&line), color, verbose) {
+            if let Some(rendered) = progress.line(&line) {
                 out.line(&rendered);
             }
         }
     }
+    // Erase the spinner before the post-build notes in case nothing ever
+    // rendered (e.g. Ctrl-C during the silent prelude).
+    drop(progress);
 
     let status = child.wait();
     done.store(true, Ordering::Relaxed);

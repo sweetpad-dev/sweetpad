@@ -11,7 +11,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const TICK: Duration = Duration::from_millis(80);
@@ -27,6 +27,18 @@ impl Spinner {
     /// returns an inert handle that animates nothing and erases nothing.
     #[must_use]
     pub fn start(message: &str, active: bool, color: bool) -> Self {
+        Self::start_inner(message, active, color, false)
+    }
+
+    /// Like [`start`](Spinner::start), but appends a live elapsed-seconds counter
+    /// (`⠋ Building 7s`) — for long steps where watching the time accrue reassures
+    /// the user it hasn't hung.
+    #[must_use]
+    pub fn start_timed(message: &str, active: bool, color: bool) -> Self {
+        Self::start_inner(message, active, color, true)
+    }
+
+    fn start_inner(message: &str, active: bool, color: bool, elapsed: bool) -> Self {
         if !active {
             return Self {
                 stop: Arc::new(AtomicBool::new(true)),
@@ -37,7 +49,7 @@ impl Spinner {
         let message = message.to_string();
         let handle = thread::spawn({
             let stop = Arc::clone(&stop);
-            move || animate(&message, &stop, color)
+            move || animate(&message, &stop, color, elapsed)
         });
         Self {
             stop,
@@ -55,18 +67,28 @@ impl Drop for Spinner {
     }
 }
 
-/// Redraw `⠋ message` in place each tick until told to stop, then erase the line.
-fn animate(message: &str, stop: &AtomicBool, color: bool) {
+/// Redraw `⠋ message` (optionally trailed by an elapsed `Ns` counter) in place
+/// each tick until told to stop, then erase the line.
+fn animate(message: &str, stop: &AtomicBool, color: bool, elapsed: bool) {
     let mut err = std::io::stderr();
+    let start = Instant::now();
     let mut i = 0;
     while !stop.load(Ordering::Relaxed) {
         let frame = FRAMES[i % FRAMES.len()];
+        let secs = start.elapsed().as_secs();
+        // Hold the counter back until a second has actually passed, so quick
+        // steps don't flash a distracting `0s`.
+        let timer = if elapsed && secs > 0 {
+            format!(" {secs}s")
+        } else {
+            String::new()
+        };
         // `\r` to column 0, then `\x1b[K` to clear any leftover from a longer
         // earlier frame/message.
         let _ = if color {
-            write!(err, "\r\x1b[36m{frame}\x1b[0m {message}\x1b[K")
+            write!(err, "\r\x1b[36m{frame}\x1b[0m {message}{timer}\x1b[K")
         } else {
-            write!(err, "\r{frame} {message}\x1b[K")
+            write!(err, "\r{frame} {message}{timer}\x1b[K")
         };
         let _ = err.flush();
         i += 1;

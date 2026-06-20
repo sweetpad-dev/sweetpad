@@ -7,8 +7,10 @@
 //! wires it to a live `xcodebuild` via [`crate::cli::process::stream_lines`].
 
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use crate::cli::output::Output;
+use crate::cli::progress::Spinner;
 use crate::cli::{CliError, process};
 
 /// A structured event parsed from one line of `xcodebuild` output.
@@ -226,18 +228,82 @@ pub fn render(event: &Event, color: bool, verbose: bool) -> Option<String> {
     }
 }
 
-/// Run a command, beautifying its stdout line-by-line via [`parse_line`] /
-/// [`render`]. Returns whether it succeeded.
+/// The live progress of a build: a `⠋ label Ns` spinner shown while
+/// `xcodebuild` is in one of its silent stretches — the planning prelude, or an
+/// up-to-date build that compiles nothing — erased the moment the first real
+/// line renders so the streamed output takes its place. Inert off an
+/// interactive TTY. The same start instant stamps the elapsed time onto the
+/// closing success banner.
+pub struct BuildProgress {
+    spinner: Option<Spinner>,
+    start: Instant,
+    color: bool,
+    verbose: bool,
+}
+
+impl BuildProgress {
+    /// Begin tracking a build, animating `⠋ label …` until the first line prints.
+    /// `label` names the action (`Building`, `Testing`).
+    #[must_use]
+    pub fn start(out: &Output, label: &str) -> Self {
+        Self {
+            spinner: Some(Spinner::start_timed(
+                label,
+                out.is_interactive(),
+                out.use_color(),
+            )),
+            start: Instant::now(),
+            color: out.use_color(),
+            verbose: out.is_verbose(),
+        }
+    }
+
+    /// Render one raw `xcodebuild` line for display, or `None` to suppress it.
+    /// The first line that renders stops and erases the spinner; the closing
+    /// success banner is stamped with the elapsed build time.
+    pub fn line(&mut self, raw: &str) -> Option<String> {
+        let event = parse_line(raw);
+        let rendered = render(&event, self.color, self.verbose)?;
+        // First line through — hand the terminal over from the spinner to the
+        // streamed output (dropping the spinner erases its line).
+        self.spinner = None;
+        Some(stamp_time(
+            rendered,
+            &event,
+            self.start.elapsed(),
+            self.color,
+        ))
+    }
+}
+
+/// Append the elapsed time to a terminal *success* banner (`✓ Build succeeded
+/// (5.3s)`); every other line passes through untouched.
+fn stamp_time(rendered: String, event: &Event, elapsed: Duration, color: bool) -> String {
+    if matches!(
+        event,
+        Event::Result(
+            ResultKind::BuildSucceeded | ResultKind::CleanSucceeded | ResultKind::TestSucceeded
+        )
+    ) {
+        let time = Colors::new(color).green_bold(&format!("({:.1}s)", elapsed.as_secs_f64()));
+        format!("{rendered} {time}")
+    } else {
+        rendered
+    }
+}
+
+/// Run a command, beautifying its stdout line-by-line via [`BuildProgress`].
+/// Returns whether it succeeded.
 pub fn run(
     program: &str,
     args: &[&str],
     cwd: Option<&Path>,
     out: &Output,
+    label: &str,
 ) -> Result<bool, CliError> {
-    let color = out.use_color();
-    let verbose = out.is_verbose();
+    let mut progress = BuildProgress::start(out, label);
     process::stream_lines(program, args, cwd, |line| {
-        if let Some(rendered) = render(&parse_line(line), color, verbose) {
+        if let Some(rendered) = progress.line(line) {
             out.line(&rendered);
         }
     })
@@ -449,5 +515,36 @@ mod tests {
         let colored = render(&ok, true, false).unwrap();
         assert!(!plain.contains('\x1b'));
         assert!(colored.contains('\x1b'));
+    }
+
+    #[test]
+    fn stamp_time_marks_success_banners_only() {
+        let ok = Event::Result(ResultKind::BuildSucceeded);
+        let banner = render(&ok, false, false).unwrap();
+        assert_eq!(
+            stamp_time(banner, &ok, Duration::from_millis(5340), false),
+            "✓ Build succeeded (5.3s)"
+        );
+
+        // Failures and ordinary lines are left exactly as rendered.
+        let failed = Event::Result(ResultKind::BuildFailed);
+        let failed_banner = render(&failed, false, false).unwrap();
+        assert_eq!(
+            stamp_time(
+                failed_banner.clone(),
+                &failed,
+                Duration::from_secs(9),
+                false
+            ),
+            failed_banner
+        );
+        let compile = Event::Compile {
+            name: "ContentView.swift".to_string(),
+        };
+        let line = render(&compile, false, false).unwrap();
+        assert_eq!(
+            stamp_time(line.clone(), &compile, Duration::from_secs(9), false),
+            line
+        );
     }
 }
