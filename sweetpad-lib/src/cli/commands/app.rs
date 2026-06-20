@@ -774,7 +774,7 @@ fn hot_key_loop(
         match rawmode::poll_key() {
             rawmode::Input::Key(key) => match classify_key(key) {
                 SessionKey::Rebuild => {
-                    ctx.out.note("↻ full rebuild — relaunching…");
+                    ctx.out.note("»  Full rebuild — relaunching…");
                     let app = match plan.app_bundle() {
                         Ok(a) => a,
                         Err(e) => {
@@ -1201,13 +1201,13 @@ impl LogFilter {
         }
     }
 
-    /// A plain-English description of what this filter shows.
+    /// What this level shows, for the inline `log level:` marker.
     fn description(self) -> &'static str {
         match self {
-            LogFilter::Debug => "showing all logs",
-            LogFilter::Info => "showing info and above",
-            LogFilter::Error => "showing errors only",
-            LogFilter::Off => "showing nothing",
+            LogFilter::Debug => "all logs",
+            LogFilter::Info => "info and above",
+            LogFilter::Error => "errors only",
+            LogFilter::Off => "muted",
         }
     }
 }
@@ -1222,11 +1222,11 @@ fn default_filter(out: &Output) -> LogFilter {
     }
 }
 
-/// Apply a log filter and print a self-explanatory inline marker, so the change is
-/// visible in the stream and unambiguous (got everything vs. nothing).
+/// Apply a log filter and print an inline marker, so the new threshold is visible
+/// in the stream and reads as a setting that governs the logs from here on.
 fn set_filter(ctx: &Context, filter: &AtomicU8, choice: LogFilter) {
     filter.store(choice.threshold(), Ordering::Relaxed);
-    ctx.out.note(&format!("── {} ──", choice.description()));
+    ctx.out.note(&format!("── log level: {} ──", choice.description()));
 }
 
 /// What an `r` rebuild asks the session to do next.
@@ -1242,7 +1242,7 @@ enum RebuildOutcome {
 /// stream is left running; it follows the relaunched app by process name. Ctrl-C
 /// during the rebuild returns [`RebuildOutcome::Quit`] so the session ends.
 fn do_rebuild(ctx: &Context, plan: &RunPlan, running: &mut Option<Running>) -> RebuildOutcome {
-    ctx.out.note("↻ restarting — rebuilding…");
+    ctx.out.note("»  Restarting — rebuilding…");
     if let Some(old) = running.take() {
         terminate_app(old);
     }
@@ -1628,10 +1628,10 @@ mod tests {
 
     #[test]
     fn filter_descriptions_are_unambiguous() {
-        assert_eq!(LogFilter::Debug.description(), "showing all logs");
-        assert_eq!(LogFilter::Info.description(), "showing info and above");
-        assert_eq!(LogFilter::Error.description(), "showing errors only");
-        assert_eq!(LogFilter::Off.description(), "showing nothing");
+        assert_eq!(LogFilter::Debug.description(), "all logs");
+        assert_eq!(LogFilter::Info.description(), "info and above");
+        assert_eq!(LogFilter::Error.description(), "errors only");
+        assert_eq!(LogFilter::Off.description(), "muted");
         // `Off` sits above every real level, so nothing passes the filter.
         assert!(LogFilter::Off.threshold() > LogFilter::Error.threshold());
     }
