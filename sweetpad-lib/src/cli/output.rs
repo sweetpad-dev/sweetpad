@@ -13,6 +13,7 @@ use crate::cli::{CliError, GlobalArgs};
 /// Resolved output mode shared across commands.
 pub struct Output {
     json: bool,
+    non_interactive: bool,
     color: bool,
     verbose: u8,
 }
@@ -23,8 +24,11 @@ impl Output {
         let color = !global.no_color
             && std::env::var_os("NO_COLOR").is_none()
             && std::io::stdout().is_terminal();
+        let non_interactive =
+            global.non_interactive || std::env::var_os("SWEETPAD_NONINTERACTIVE").is_some();
         Self {
             json: global.json,
+            non_interactive,
             color,
             verbose: global.verbose,
         }
@@ -40,11 +44,13 @@ impl Output {
         self.color
     }
 
-    /// True when stdout is interactive — gates the interactive picker fallback
-    /// in [`crate::cli::resolve`].
+    /// True when the terminal is interactive — gates the picker fallback in
+    /// [`crate::cli::resolve`], spinners, and `app run`'s rebuild session. False
+    /// under `--json`, `--non-interactive`/`SWEETPAD_NONINTERACTIVE`, or when
+    /// stderr is not a TTY.
     #[must_use]
     pub fn is_interactive(&self) -> bool {
-        !self.json && std::io::stderr().is_terminal()
+        !self.json && !self.non_interactive && std::io::stderr().is_terminal()
     }
 
     /// True when `-v`/`--verbose` was passed — surfaces raw/extra output.

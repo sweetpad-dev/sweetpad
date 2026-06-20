@@ -66,6 +66,13 @@ pub struct GlobalArgs {
     #[arg(long, global = true)]
     pub json: bool,
 
+    /// Assume no interactive terminal: never prompt or animate a spinner, turn a
+    /// missing scheme/destination into an error instead of a picker, and run
+    /// `app run` as a plain follow rather than the rebuild session. Also honored
+    /// via the `SWEETPAD_NONINTERACTIVE` env var.
+    #[arg(long, global = true)]
+    pub non_interactive: bool,
+
     /// Disable colored output (also honored via the `NO_COLOR` env var and
     /// when stdout is not a TTY).
     #[arg(long, global = true)]

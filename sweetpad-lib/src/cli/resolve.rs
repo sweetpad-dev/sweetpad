@@ -484,6 +484,7 @@ mod tests {
     fn ctx() -> Context {
         let global = GlobalArgs {
             json: false,
+            non_interactive: false,
             no_color: true,
             verbose: 0,
         };
