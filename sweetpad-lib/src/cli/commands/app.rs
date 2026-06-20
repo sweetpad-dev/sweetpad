@@ -305,10 +305,14 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
             Target::Device(dev.udid.clone()),
         )
     } else {
-        // Reuse the simulator-aware build-target resolution for the destination.
-        let bt = resolve::build_target(ctx, &resolved)?;
-        let udid = udid(&bt.destination)?;
-        (bt.destination, Target::Simulator(udid))
+        // Scheme and configuration are already settled above; resolve only the
+        // destination here so the scheme picker doesn't run a second time.
+        let destination = match resolved.destination.clone() {
+            Some(d) => d,
+            None => resolve::pick_destination(ctx, &resolved.container.key(), &simctl::list()?)?,
+        };
+        let udid = udid(&destination)?;
+        (destination, Target::Simulator(udid))
     };
 
     let plan = RunPlan {
