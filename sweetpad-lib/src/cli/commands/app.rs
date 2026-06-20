@@ -230,6 +230,17 @@ impl RunPlan {
 }
 
 fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
+    // `app run` is a live build-and-run session that streams logs until you quit —
+    // there's no coherent one-shot JSON for it (a `--json` run would emit a silent
+    // build and then human-formatted logs). Fail fast; build and launch as separate
+    // steps if you need machine-readable output.
+    if ctx.out.is_json() {
+        return Err(CliError::new(
+            "`app run` streams a live session and does not support --json; \
+             build and launch as separate steps for machine-readable output",
+        ));
+    }
+
     let plan = plan(ctx, opts)?;
     print_summary(ctx, &plan);
 
