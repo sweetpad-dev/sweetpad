@@ -1659,6 +1659,8 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
         }
         Stage::Launch => {
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
+            // Bring the Simulator window up so the launched app is visible (best-effort).
+            let _ = simctl::open_app();
             let out = ctx
                 .out
                 .step("Launching app", || simctl::launch(udid, &app.bundle_id))?;
