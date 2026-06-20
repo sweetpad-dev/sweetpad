@@ -128,7 +128,7 @@ fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CliResult 
     let sim = resolve::select_simulator(ctx, &sims, simulator)?;
     if !sim.is_booted() {
         ctx.out
-            .step("booting simulator", || simctl::boot(&sim.udid))?;
+            .step("Booting simulator", || simctl::boot(&sim.udid))?;
     }
     simctl::open_url(&sim.udid, url)?;
     if ctx.out.is_json() {
@@ -137,7 +137,7 @@ fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CliResult 
             "url": url,
         }));
     } else {
-        ctx.out.note(&format!("opened {url} on {}", sim.label()));
+        ctx.out.note(&format!("Opened {url} on {}", sim.label()));
     }
     Ok(())
 }
@@ -340,11 +340,11 @@ fn build_and_install(plan: &RunPlan, out: &Output) -> Result<AppBundle, CliError
     let app_path = app.path.display().to_string();
     match &plan.target {
         Target::Simulator(udid) => {
-            out.step("booting simulator", || simctl::boot(udid))?;
-            out.step("installing app", || simctl::install(udid, &app_path))?;
+            out.step("Booting simulator", || simctl::boot(udid))?;
+            out.step("Installing app", || simctl::install(udid, &app_path))?;
         }
         Target::Device(id) => {
-            out.step("installing app on device", || {
+            out.step("Installing app on device", || {
                 devicectl::install(id, &app_path)
             })?;
         }
@@ -409,7 +409,7 @@ fn spm_run(ctx: &Context, plan: &RunPlan, product: &str) -> CliResult {
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .map(Path::to_path_buf);
-    ctx.out.note(&format!("running {product} (swift run)"));
+    ctx.out.note(&format!("Running {product} (swift run)"));
     crate::cli::process::stream("swift", &["run", product], cwd.as_deref())
         .context("running the package executable")
 }
@@ -426,16 +426,16 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
         Target::Simulator(udid) => {
             let out = ctx
                 .out
-                .step("launching app", || simctl::launch(udid, &app.bundle_id))?;
+                .step("Launching app", || simctl::launch(udid, &app.bundle_id))?;
             ctx.out
-                .note(&format!("launched {} → {}", app.bundle_id, out.trim()));
+                .note(&format!("Launched {} → {}", app.bundle_id, out.trim()));
         }
         Target::Device(id) => {
-            let out = ctx.out.step("launching app on device", || {
+            let out = ctx.out.step("Launching app on device", || {
                 devicectl::launch(id, &app.bundle_id)
             })?;
             ctx.out.note(&format!(
-                "launched {} on device → {}",
+                "Launched {} on device → {}",
                 app.bundle_id,
                 out.trim()
             ));
@@ -444,7 +444,7 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
             // Non-blocking launch (the logs/foreground path runs the executable).
             crate::cli::process::stream("open", &[&app.path.to_string_lossy()], None)
                 .context("launching the macOS app")?;
-            ctx.out.note(&format!("launched {}", app.bundle_id));
+            ctx.out.note(&format!("Launched {}", app.bundle_id));
         }
         // Handled by the early return above.
         Target::SpmRun(_) => {}
@@ -740,15 +740,15 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path) -> CliR
 /// first launch and each `r`. Logs stream separately for the whole session
 /// ([`start_logs`]), so this doesn't touch them.
 fn launch_hot(ctx: &Context, udid: &str, app: &AppBundle, env: &[(String, String)]) -> CliResult {
-    ctx.out.step("booting simulator", || simctl::boot(udid))?;
-    ctx.out.step("installing app", || {
+    ctx.out.step("Booting simulator", || simctl::boot(udid))?;
+    ctx.out.step("Installing app", || {
         simctl::install(udid, &app.path.display().to_string())
     })?;
-    let launched = ctx.out.step("launching app", || {
+    let launched = ctx.out.step("Launching app", || {
         simctl::launch_with_env(udid, &app.bundle_id, env)
     })?;
     ctx.out
-        .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
+        .note(&format!("Launched {} → {}", app.bundle_id, launched.trim()));
     Ok(())
 }
 
@@ -877,12 +877,12 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
     let app_path = app.path.display().to_string();
     match &plan.target {
         Target::Simulator(udid) => {
-            ctx.out.step("booting simulator", || simctl::boot(udid))?;
+            ctx.out.step("Booting simulator", || simctl::boot(udid))?;
             ctx.out
-                .step("installing app", || simctl::install(udid, &app_path))?;
+                .step("Installing app", || simctl::install(udid, &app_path))?;
             let launched = ctx
                 .out
-                .step("launching app", || simctl::launch(udid, &app.bundle_id))?;
+                .step("Launching app", || simctl::launch(udid, &app.bundle_id))?;
             // Track the launched host pid for crash/exit detection, but only if we
             // can confirm it's alive now — guards against a bogus parse.
             let pid = parse_pid(&launched).filter(|&p| pid_alive(p));
@@ -900,7 +900,7 @@ fn start_app(ctx: &Context, plan: &RunPlan) -> Result<Running, CliError> {
             })
         }
         Target::Device(id) => {
-            ctx.out.step("installing app on device", || {
+            ctx.out.step("Installing app on device", || {
                 devicectl::install(id, &app_path)
             })?;
             Ok(Running {
@@ -1053,19 +1053,19 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
         Target::Simulator(udid) => {
             let launched = simctl::launch(udid, &app.bundle_id)?;
             ctx.out
-                .note(&format!("launched {} → {}", app.bundle_id, launched.trim()));
+                .note(&format!("Launched {} → {}", app.bundle_id, launched.trim()));
             stream_logs(ctx, udid, &app)
         }
         Target::Device(id) => {
             ctx.out.note(&format!(
-                "launching {} with console (Ctrl-C to stop)",
+                "Launching {} with console (Ctrl-C to stop)",
                 app.bundle_id
             ));
             devicectl::launch_console(id, &app.bundle_id)
         }
         Target::Mac => {
             ctx.out
-                .note(&format!("running {} (Ctrl-C to stop)", app.bundle_id));
+                .note(&format!("Running {} (Ctrl-C to stop)", app.bundle_id));
             process::stream(&app.executable.to_string_lossy(), &[], None)
                 .context("running the macOS app")
         }
@@ -1492,26 +1492,26 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
     match stage {
         Stage::Install => {
             plan.build_plan().run(&ctx.out)?;
-            ctx.out.step("booting simulator", || simctl::boot(udid))?;
-            ctx.out.step("installing app", || {
+            ctx.out.step("Booting simulator", || simctl::boot(udid))?;
+            ctx.out.step("Installing app", || {
                 simctl::install(udid, &app.path.display().to_string())
             })?;
-            ctx.out.note(&format!("installed {}", app.bundle_id));
+            ctx.out.note(&format!("Installed {}", app.bundle_id));
         }
         Stage::Launch => {
-            ctx.out.step("booting simulator", || simctl::boot(udid))?;
+            ctx.out.step("Booting simulator", || simctl::boot(udid))?;
             let out = ctx
                 .out
-                .step("launching app", || simctl::launch(udid, &app.bundle_id))?;
+                .step("Launching app", || simctl::launch(udid, &app.bundle_id))?;
             ctx.out
-                .note(&format!("launched {} → {}", app.bundle_id, out.trim()));
+                .note(&format!("Launched {} → {}", app.bundle_id, out.trim()));
         }
         Stage::Logs => return stream_logs(ctx, udid, &app),
         Stage::Stop => {
-            ctx.out.step("terminating app", || {
+            ctx.out.step("Terminating app", || {
                 simctl::terminate(udid, &app.bundle_id)
             })?;
-            ctx.out.note(&format!("terminated {}", app.bundle_id));
+            ctx.out.note(&format!("Terminated {}", app.bundle_id));
         }
     }
     Ok(())
@@ -1521,7 +1521,7 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
 /// fallback (the interactive session backgrounds the same stream via [`spawn_logs`]).
 fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle) -> CliResult {
     ctx.out.note(&format!(
-        "streaming logs for {} (Ctrl-C to stop)",
+        "Streaming logs for {} (Ctrl-C to stop)",
         app.bundle_id
     ));
     let color = ctx.out.use_color();
