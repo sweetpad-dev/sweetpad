@@ -20,8 +20,8 @@ use crate::cli::resolve::{self, Resolved};
 use crate::cli::state::LastLaunchedApp;
 use crate::cli::xcodebuild::{self, AppBundle};
 use crate::cli::{
-    CliError, CliResult, Context, ErrorContext, buildlog, devicectl, oslog, process, rawmode,
-    simctl,
+    CliError, CliResult, Context, ErrorContext, buildlog, devicectl, oslog, process,
+    pymobiledevice3, rawmode, simctl,
 };
 
 #[derive(Debug, Subcommand)]
@@ -465,11 +465,6 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
         return follow_once(ctx, plan);
     };
 
-    // The live filter only governs the simulator's os_log stream; device and
-    // macOS output isn't filtered, so the level keys are advertised and acted on
-    // only when they'd do something.
-    let is_sim = matches!(plan.target, Target::Simulator(_));
-
     // Live log filter: the stream carries every level; show those at or above this
     // threshold, set live by the 1/2/3 keys.
     let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
@@ -499,8 +494,12 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     // The log stream is session-scoped: started once and kept across rebuilds (its
     // name-based predicate follows the relaunched app), so rebuilds never tear it
     // down. Dropped on exit.
-    let _logs = start_logs(ctx, plan, &filter);
-    session_hint(ctx, is_sim);
+    let logs = start_logs(ctx, plan, &filter);
+    // The level keys are meaningful only when there's an os_log stream to filter
+    // (the simulator, a macOS app, or a device with pymobiledevice3) — not a device
+    // on its raw console.
+    let filterable = logs.is_some();
+    session_hint(ctx, filterable);
 
     loop {
         match rawmode::poll_key() {
@@ -508,7 +507,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                 SessionKey::Rebuild => match do_rebuild(ctx, plan, &mut running) {
                     RebuildOutcome::Continue { launched } => {
                         ever_launched |= launched;
-                        session_hint(ctx, is_sim);
+                        session_hint(ctx, filterable);
                     }
                     // Ctrl-C during the rebuild cancels the whole run.
                     RebuildOutcome::Quit => {
@@ -519,10 +518,10 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                     }
                 },
                 SessionKey::Quit => break,
-                // The level keys only mean something where there's an os_log
-                // stream to filter (the simulator); elsewhere they're inert.
+                // Inert unless an os_log stream is actually being filtered (see
+                // `filterable`).
                 SessionKey::Filter(level) => {
-                    if is_sim {
+                    if filterable {
                         set_filter(ctx, &filter, level);
                     }
                 }
@@ -835,17 +834,19 @@ enum RunningKind {
     Mac,
 }
 
-/// The simulator's os_log stream for the whole session. Its predicate matches by
-/// process name, so one stream follows the app across rebuild/relaunch — avoiding
-/// per-rebuild teardown of the `launchd_sim`-reparented `log` process, which
-/// outlives our `simctl` child and would block a join. The reader runs detached;
-/// [`Drop`] kills the `simctl` child at session end.
+/// The session's os_log stream — the simulator's (via `simctl spawn`) or a macOS
+/// app's (the host `log stream`). Its predicate matches by process name, so one
+/// stream follows the app across rebuild/relaunch. The simulator's `log` process is
+/// reparented to `launchd_sim` and outlives our `simctl` child, so it's reaped by a
+/// predicate marker; the host stream is a direct child, killed directly. The reader
+/// runs detached; [`Drop`] stops the stream at session end.
 struct LogStream {
     child: Child,
-    /// A session-unique, regex-safe tag embedded in the stream's predicate, used to
-    /// reap the reparented `log` process on drop without touching another session's
-    /// stream for the same app (see [`log_stream_marker`]).
-    marker: String,
+    /// The simulator stream's session-unique, regex-safe predicate tag, used to reap
+    /// its reparented `log` process on drop without touching another session's stream
+    /// for the same app (see [`log_stream_marker`]). `None` for the host macOS
+    /// stream, which is a direct child and needs no reaping.
+    marker: Option<String>,
 }
 
 impl LogStream {
@@ -863,8 +864,11 @@ impl Drop for LogStream {
         let _ = self.child.wait();
         // `simctl spawn … log stream` reparents the `log` process to launchd_sim,
         // so killing our simctl child leaves it running — reap it by the
-        // session-unique tag embedded in its predicate. Best-effort.
-        let _ = process::run("pkill", &["-f", &self.marker], None, true);
+        // session-unique tag embedded in its predicate. Best-effort. The host macOS
+        // stream is a direct child (no marker), already killed above.
+        if let Some(marker) = &self.marker {
+            let _ = process::run("pkill", &["-f", marker], None, true);
+        }
     }
 }
 
@@ -1061,11 +1065,19 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
                 "Launching {} with console (Ctrl-C to stop)",
                 app.bundle_id
             ));
+            // Stream the device's os_log (pymobiledevice3) alongside the devicectl
+            // console; no live filter on the non-interactive path, so use the default.
+            let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
+            let _logs = start_logs(ctx, plan, &filter);
             devicectl::launch_console(id, &app.bundle_id)
         }
         Target::Mac => {
             ctx.out
                 .note(&format!("Running {} (Ctrl-C to stop)", app.bundle_id));
+            // Stream the app's os_log alongside its inherited stdout/stderr; the
+            // non-interactive path has no live filter, so use the default threshold.
+            let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
+            let _logs = start_logs(ctx, plan, &filter);
             process::stream(&app.executable.to_string_lossy(), &[], None)
                 .context("running the macOS app")
         }
@@ -1168,8 +1180,8 @@ fn map_key_to_latin(key: char) -> char {
 }
 
 /// The session's key hint. The log-level keys are shown only when there's an
-/// os_log stream to filter (the simulator); device/macOS sessions just rebuild
-/// and quit.
+/// os_log stream to filter (the simulator or a macOS app); a device session just
+/// rebuilds and quits.
 fn session_hint(ctx: &Context, filterable: bool) {
     let hint = if filterable {
         "r rebuild · q quit  │  log level: 1 debug · 2 info · 3 error · 4 off"
@@ -1350,17 +1362,25 @@ fn check_exit(ctx: &Context, running: &mut Running) {
     }
 }
 
-/// Spawn the simulator's os_log stream as a background child with stdout piped,
-/// for [`render_logs`] to format. See [`log_args`] for the stream's shape.
+/// Where an os_log stream is tapped: a simulator (via `simctl spawn`) or the host
+/// (a macOS app). Both speak the same `log stream --style ndjson` format, so
+/// [`render_logs`] formats either.
+enum LogSource<'a> {
+    Simulator(&'a str),
+    Mac,
+}
+
+/// Spawn an os_log stream as a background child with stdout piped, for
+/// [`render_logs`] to format. See [`log_command`] for the stream's shape.
 fn spawn_logs(
-    udid: &str,
+    source: &LogSource,
     app: &AppBundle,
     level: &str,
     marker: Option<&str>,
 ) -> Result<Child, CliError> {
-    let args = log_args(udid, app, level, marker);
+    let (program, args) = log_command(source, app, level, marker);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    process::spawn_piped("xcrun", &refs, None)
+    process::spawn_piped(program, &refs, None)
 }
 
 /// The os_log stream level: `info` by default — which hides `Debug`-level entries
@@ -1370,17 +1390,25 @@ fn log_level(out: &Output) -> &'static str {
     if out.is_verbose() { "debug" } else { "info" }
 }
 
-/// Build the `simctl spawn … log stream --style ndjson` argv for the app's
-/// os_log output at `level` (see [`log_level`]). The predicate matches by process
-/// image — and the Xcode 15+ `.debug.dylib` sender, which carries app code in
-/// Debug builds — so logs show even when the app sets no `Logger(subsystem:)`,
+/// Build the `log stream --style ndjson` command for the app's os_log output at
+/// `level` (see [`log_level`]) — `xcrun simctl spawn <udid> log stream …` for a
+/// simulator, or the host `log stream …` for a macOS app. The predicate matches by
+/// process image — and the Xcode 15+ `.debug.dylib` sender, which carries app code
+/// in Debug builds — so logs show even when the app sets no `Logger(subsystem:)`,
 /// while Apple framework chatter stays out. ndjson is what [`oslog`] parses.
 ///
-/// A `marker` appends an always-true clause that embeds a session-unique tag in
-/// the predicate (and so in the reparented `log` process's argv), so the session
-/// can later reap exactly its own stream. No process is named the tag, so
-/// `process != "<tag>"` holds for every entry — the matched set is unchanged.
-fn log_args(udid: &str, app: &AppBundle, level: &str, marker: Option<&str>) -> Vec<String> {
+/// A `marker` appends an always-true clause that embeds a session-unique tag in the
+/// predicate (and so in the reparented `log` process's argv), so the session can
+/// later reap exactly its own stream. No process is named the tag, so
+/// `process != "<tag>"` holds for every entry — the matched set is unchanged. Only
+/// the simulator reparents its `log` process; the host stream is a direct child, so
+/// it's spawned without a marker.
+fn log_command(
+    source: &LogSource,
+    app: &AppBundle,
+    level: &str,
+    marker: Option<&str>,
+) -> (&'static str, Vec<String>) {
     use std::fmt::Write as _;
     let exe = process_name(app);
     let mut predicate = format!(
@@ -1392,25 +1420,34 @@ fn log_args(udid: &str, app: &AppBundle, level: &str, marker: Option<&str>) -> V
             " AND (process CONTAINS \"{marker}\" OR process != \"{marker}\")"
         );
     }
-    vec![
-        "simctl".into(),
-        "spawn".into(),
-        udid.into(),
-        "log".into(),
-        "stream".into(),
-        "--level".into(),
-        level.into(),
-        "--style".into(),
-        "ndjson".into(),
-        "--predicate".into(),
+    let mut stream = vec![
+        "stream".to_string(),
+        "--level".to_string(),
+        level.to_string(),
+        "--style".to_string(),
+        "ndjson".to_string(),
+        "--predicate".to_string(),
         predicate,
-    ]
+    ];
+    match source {
+        LogSource::Mac => ("log", stream),
+        LogSource::Simulator(udid) => {
+            let mut args = vec![
+                "simctl".to_string(),
+                "spawn".to_string(),
+                (*udid).to_string(),
+                "log".to_string(),
+            ];
+            args.append(&mut stream);
+            ("xcrun", args)
+        }
+    }
 }
 
-/// Render the simulator log child's ndjson stdout as colored lines on a detached
-/// thread, dropping entries below the live `filter` threshold. The thread ends
-/// when the child's stdout closes — i.e. when the stream is dropped/killed, or the
-/// process exits — so it's never joined.
+/// Render a `log stream` child's ndjson stdout (the simulator or a macOS app) as
+/// colored lines on a detached thread, dropping entries below the live `filter`
+/// threshold. The thread ends when the child's stdout closes — i.e. when the stream
+/// is dropped/killed, or the process exits — so it's never joined.
 fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
     let Some(stdout) = child.stdout.take() else {
         return;
@@ -1426,20 +1463,78 @@ fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
     });
 }
 
-/// Start the session's simulator log stream (see [`LogStream`]). `None` for
-/// non-simulator targets — their output is the [`Running`] child — or if the app
-/// bundle or stream can't be resolved (logs are best-effort, never fatal). The
+/// Render a device's `pymobiledevice3` syslog stdout on a detached thread, mirroring
+/// [`render_logs`]: parse each line, keep only the app's own images (its executable
+/// or `.debug.dylib`, the analog of the `log stream` `sender ==` predicate), drop
+/// entries below the live `filter` threshold, and format via [`oslog::render_fields`]
+/// so device logs read identically to the simulator's.
+fn render_device_logs(child: &mut Child, color: bool, exe: String, filter: Arc<AtomicU8>) {
+    let Some(stdout) = child.stdout.take() else {
+        return;
+    };
+    let debug_dylib = format!("{exe}.debug.dylib");
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            let Some(entry) = pymobiledevice3::parse_line(&line) else {
+                continue;
+            };
+            if entry.image != exe && entry.image != debug_dylib {
+                continue;
+            }
+            let rendered = oslog::render_fields(
+                Some(entry.timestamp),
+                entry.level,
+                entry.category,
+                entry.message,
+                color,
+            );
+            if rendered.level.as_u8() >= filter.load(Ordering::Relaxed) {
+                println!("{}", rendered.text);
+            }
+        }
+    });
+}
+
+/// Start the session's os_log stream (see [`LogStream`]) — the simulator's or a
+/// macOS app's via `log stream`, or a device's via `pymobiledevice3`. `None` if the
+/// app bundle or stream can't be resolved, or (for a device) when `pymobiledevice3`
+/// is missing — logs are best-effort and the device console keeps working. The
 /// stream carries every level; `filter` decides what's shown, so the live filter
 /// can reveal debug on demand without restarting it.
 fn start_logs(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Option<LogStream> {
-    let Target::Simulator(udid) = &plan.target else {
-        return None;
-    };
     let app = plan.app_bundle().ok()?;
-    let marker = log_stream_marker();
-    let mut child = spawn_logs(udid, &app, "debug", Some(&marker)).ok()?;
+    let (source, marker) = match &plan.target {
+        Target::Simulator(udid) => (LogSource::Simulator(udid), Some(log_stream_marker())),
+        Target::Mac => (LogSource::Mac, None),
+        Target::Device(_) => return start_device_logs(ctx, &app, filter),
+        Target::SpmRun(_) => return None,
+    };
+    let mut child = spawn_logs(&source, &app, "debug", marker.as_deref()).ok()?;
     render_logs(&mut child, ctx.out.use_color(), Arc::clone(filter));
     Some(LogStream { child, marker })
+}
+
+/// Start a physical device's os_log stream via `pymobiledevice3` — the host `log`
+/// can't target a device, and the devicectl console carries only stdout/stderr, so
+/// this is where `os_log`/`Logger` output comes from. Augments the console; returns
+/// `None` with an install hint when `pymobiledevice3` is absent, so the run keeps
+/// its console output.
+fn start_device_logs(ctx: &Context, app: &AppBundle, filter: &Arc<AtomicU8>) -> Option<LogStream> {
+    if !pymobiledevice3::is_available() {
+        ctx.out.alert(&format!(
+            "{} not found — device os_log won't be streamed (the console still shows stdout/stderr).",
+            pymobiledevice3::BINARY
+        ));
+        ctx.out
+            .note("  install: brew install uv && uv tool install pymobiledevice3");
+        return None;
+    }
+    let exe = process_name(app).to_string();
+    let mut child = pymobiledevice3::spawn(&exe).ok()?;
+    render_device_logs(&mut child, ctx.out.use_color(), exe, Arc::clone(filter));
+    // `pymobiledevice3` is a direct child, killed on drop — no reparented `log` to reap.
+    Some(LogStream { child, marker: None })
 }
 
 /// A per-session, regex-safe tag for the log stream's predicate, so its reparented
@@ -1525,9 +1620,9 @@ fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle) -> CliResult {
         app.bundle_id
     ));
     let color = ctx.out.use_color();
-    let args = log_args(udid, app, log_level(&ctx.out), None);
+    let (program, args) = log_command(&LogSource::Simulator(udid), app, log_level(&ctx.out), None);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let ok = process::stream_lines("xcrun", &refs, None, |line| {
+    let ok = process::stream_lines(program, &refs, None, |line| {
         println!("{}", oslog::render_ndjson_line(line, color).text);
     })?;
     if ok {
@@ -1634,5 +1729,45 @@ mod tests {
         assert_eq!(LogFilter::Off.description(), "muted");
         // `Off` sits above every real level, so nothing passes the filter.
         assert!(LogFilter::Off.threshold() > LogFilter::Error.threshold());
+    }
+
+    fn test_app() -> AppBundle {
+        AppBundle {
+            path: std::path::PathBuf::from("/tmp/MyApp.app"),
+            bundle_id: "com.example.MyApp".to_string(),
+            executable: std::path::PathBuf::from("/tmp/MyApp.app/Contents/MacOS/MyApp"),
+        }
+    }
+
+    #[test]
+    fn log_command_simulator_wraps_simctl_spawn_with_marker() {
+        let app = test_app();
+        let (program, args) =
+            log_command(&LogSource::Simulator("UDID-1"), &app, "info", Some("tag-7"));
+        assert_eq!(program, "xcrun");
+        assert_eq!(
+            &args[..5],
+            &["simctl", "spawn", "UDID-1", "log", "stream"]
+        );
+        let predicate = args.last().unwrap();
+        // Matches the app's process and both its bare + `.debug.dylib` senders.
+        assert!(predicate.contains(r#"process == "MyApp""#));
+        assert!(predicate.contains(r#"sender == "MyApp.debug.dylib""#));
+        // The marker rides in the predicate so the reparented `log` process is reapable.
+        assert!(predicate.contains("tag-7"));
+    }
+
+    #[test]
+    fn log_command_mac_runs_host_log_without_marker() {
+        let app = test_app();
+        let (program, args) = log_command(&LogSource::Mac, &app, "debug", None);
+        // The host `log` binary directly — no `simctl spawn` wrapper.
+        assert_eq!(program, "log");
+        assert_eq!(&args[..2], &["stream", "--level"]);
+        assert!(!args.contains(&"spawn".to_string()));
+        let predicate = args.last().unwrap();
+        assert!(predicate.contains(r#"process == "MyApp""#));
+        // A direct child needs no reaping tag, so no marker clause is appended.
+        assert!(!predicate.contains("CONTAINS"));
     }
 }

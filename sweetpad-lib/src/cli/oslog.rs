@@ -94,28 +94,42 @@ pub struct Line {
 #[must_use]
 pub fn render_ndjson_line(line: &str, color: bool) -> Line {
     match serde_json::from_str::<Entry>(line) {
-        Ok(entry) => {
-            let msg_type = entry.message_type.as_deref().unwrap_or("Default");
-            let time = entry.timestamp.as_deref().and_then(clock_time);
-            let category = entry.category.as_deref().unwrap_or("?");
-            let message = entry.event_message.as_deref().unwrap_or("");
-            Line {
-                level: Level::from_message_type(msg_type),
-                text: format_line(
-                    time.as_deref(),
-                    level_letter(msg_type),
-                    category,
-                    message,
-                    level_color(msg_type),
-                    color,
-                ),
-            }
-        }
+        Ok(entry) => render_fields(
+            entry.timestamp.as_deref(),
+            entry.message_type.as_deref().unwrap_or("Default"),
+            entry.category.as_deref().unwrap_or("?"),
+            entry.event_message.as_deref().unwrap_or(""),
+            color,
+        ),
         // Banner / non-JSON: a blue `N [system]` note carrying the raw line.
-        Err(_) => Line {
-            level: Level::Notice,
-            text: format_line(None, "N", "system", line, 34, color),
-        },
+        Err(_) => render_fields(None, "Default", "system", line, color),
+    }
+}
+
+/// Render already-parsed log fields into a [`Line`], shared by [`render_ndjson_line`]
+/// and the device syslog renderer so both produce identical
+/// `HH:MM:SS.sss L [category] message` output. `timestamp` is a raw Apple timestamp
+/// (clocked here, or dropped if it doesn't parse); `message_type` is the os_log
+/// severity name (`Debug`/`Info`/`Notice`/`Default`/`Error`/`Fault`).
+#[must_use]
+pub fn render_fields(
+    timestamp: Option<&str>,
+    message_type: &str,
+    category: &str,
+    message: &str,
+    color: bool,
+) -> Line {
+    let time = timestamp.and_then(clock_time);
+    Line {
+        level: Level::from_message_type(message_type),
+        text: format_line(
+            time.as_deref(),
+            level_letter(message_type),
+            category,
+            message,
+            level_color(message_type),
+            color,
+        ),
     }
 }
 
