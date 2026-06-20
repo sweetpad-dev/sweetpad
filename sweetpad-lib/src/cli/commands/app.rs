@@ -455,8 +455,9 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
 /// Interactive rebuild session: build + launch + stream the app's output, then
 /// rebuild + relaunch on demand. `r` rebuilds; `q`, Ctrl-C, or Ctrl-D quit. Raw
 /// mode flips only stdin's line discipline (see [`rawmode`]) so output keeps
-/// streaming; the build is interruptible (Ctrl-C aborts it without leaving the
-/// session). The running app is terminated before each relaunch and on quit.
+/// streaming. Ctrl-C while a build is running cancels the build *and* the session;
+/// a failed build keeps the session open to retry. The running app is terminated
+/// before each relaunch and on quit.
 fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     // Raw mode needs a terminal on stdin; without one (piped input) fall back to
     // a one-shot launch + inline follow.
@@ -476,16 +477,24 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     // the error and press `r`, instead of being dropped back to the shell.
     let started = Instant::now();
     let mut ever_launched = false;
-    let mut running = match build(plan, &ctx.out, None).and_then(|()| start_app(ctx, plan)) {
-        Ok(r) => {
-            note_launch(ctx, "launched", started);
-            ever_launched = true;
-            Some(r)
-        }
-        Err(e) => {
+    let mut running = match build(plan, &ctx.out, None) {
+        BuildOutcome::Ok => match start_app(ctx, plan) {
+            Ok(r) => {
+                note_launch(ctx, "Launched", started);
+                ever_launched = true;
+                Some(r)
+            }
+            Err(e) => {
+                ctx.out.error(&e);
+                None
+            }
+        },
+        BuildOutcome::Failed(e) => {
             ctx.out.error(&e);
             None
         }
+        // Ctrl-C during the build cancels the whole run, not just the build.
+        BuildOutcome::Aborted => return Ok(()),
     };
     // The log stream is session-scoped: started once and kept across rebuilds (its
     // name-based predicate follows the relaunched app), so rebuilds never tear it
@@ -496,12 +505,19 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     loop {
         match rawmode::poll_key() {
             rawmode::Input::Key(ch) => match classify_key(ch) {
-                SessionKey::Rebuild => {
-                    if do_rebuild(ctx, plan, &mut running) {
-                        ever_launched = true;
+                SessionKey::Rebuild => match do_rebuild(ctx, plan, &mut running) {
+                    RebuildOutcome::Continue { launched } => {
+                        ever_launched |= launched;
+                        session_hint(ctx, is_sim);
                     }
-                    session_hint(ctx, is_sim);
-                }
+                    // Ctrl-C during the rebuild cancels the whole run.
+                    RebuildOutcome::Quit => {
+                        if let Some(r) = running.take() {
+                            terminate_app(r);
+                        }
+                        return Ok(());
+                    }
+                },
                 SessionKey::Quit => break,
                 // The level keys only mean something where there's an os_log
                 // stream to filter (the simulator); elsewhere they're inert.
@@ -587,7 +603,12 @@ fn run_hot_session(
             Mode::BuildLog => "build-log",
         }
     ));
-    build(plan, &ctx.out, Some(&build_log))?;
+    match build(plan, &ctx.out, Some(&build_log)) {
+        BuildOutcome::Ok => {}
+        BuildOutcome::Failed(e) => return Err(e),
+        // Ctrl-C during the build cancels the hot session before it starts.
+        BuildOutcome::Aborted => return Ok(()),
+    }
     let app = plan.app_bundle()?;
 
     // Resolve the injection client dylib + the SIMCTL_CHILD_* launch env.
@@ -765,12 +786,14 @@ fn hot_key_loop(
                     // left running — just terminate, rebuild, and relaunch.
                     let _ = simctl::terminate(udid, &app.bundle_id);
                     match build(plan, &ctx.out, None) {
-                        Ok(()) => {
+                        BuildOutcome::Ok => {
                             if let Err(e) = launch_hot(ctx, udid, &app, env) {
                                 ctx.out.error(&e);
                             }
                         }
-                        Err(e) => ctx.out.error(&e),
+                        BuildOutcome::Failed(e) => ctx.out.error(&e),
+                        // Ctrl-C during the rebuild quits the hot session.
+                        BuildOutcome::Aborted => break,
                     }
                 }
                 SessionKey::Quit => break,
@@ -928,16 +951,32 @@ fn terminate_app(running: Running) {
     }
 }
 
-/// Run the build, letting Ctrl-C abort it without leaving the session. While
-/// xcodebuild runs, a watcher thread polls stdin: Ctrl-C (`0x03`) sends SIGINT
-/// to the build's process group; any other key is swallowed so stray presses
-/// during a long build can't queue up as commands once we're back at the prompt.
-/// Returns `Ok` on success, `Err` on a failed or aborted build.
-fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> CliResult {
+/// The result of an interactive [`build`]. A Ctrl-C [`BuildOutcome::Aborted`]
+/// cancels the whole session; a [`BuildOutcome::Failed`] build keeps the session
+/// open so the error can be fixed and rebuilt with `r`.
+enum BuildOutcome {
+    /// Built successfully.
+    Ok,
+    /// The user pressed Ctrl-C — cancel the session.
+    Aborted,
+    /// Build failed (non-zero exit, or a spawn/wait error); carries the error.
+    Failed(CliError),
+}
+
+/// Run the build, with Ctrl-C cancelling both the build and the session. While
+/// xcodebuild runs, a watcher thread polls stdin: Ctrl-C (`0x03`) sends SIGINT to
+/// the build's process group and reports [`BuildOutcome::Aborted`]; any other key
+/// is swallowed so stray presses during a long build can't queue up as commands
+/// once we're back at the prompt. A non-zero exit is [`BuildOutcome::Failed`],
+/// which keeps the session open to fix and rebuild.
+fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> BuildOutcome {
     use std::io::Write as _;
     let (parts, cwd) = plan.build_plan().command();
     let args: Vec<&str> = parts.iter().map(String::as_str).collect();
-    let mut child = process::spawn_piped_group("xcodebuild", &args, cwd.as_deref())?;
+    let mut child = match process::spawn_piped_group("xcodebuild", &args, cwd.as_deref()) {
+        Ok(child) => child,
+        Err(e) => return BuildOutcome::Failed(e),
+    };
     let pid = child.id();
     // For the build-log recompiler (path A): tee the *raw* transcript (with its
     // `EMIT_FRONTEND_COMMAND_LINES` frontend commands) to a file, while the
@@ -981,16 +1020,17 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Cli
     let _ = watcher.join();
 
     if aborted.load(Ordering::Relaxed) {
-        return Err(CliError::new("build aborted"));
+        out.note("Build cancelled");
+        return BuildOutcome::Aborted;
     }
     match status {
-        Ok(s) if s.success() => Ok(()),
-        Ok(_) => {
-            Err(CliError::new("xcodebuild exited with a non-zero status")
-                .context("building the app"))
-        }
-        Err(e) => Err(CliError::new(format!("failed to wait for xcodebuild: {e}"))
-            .context("building the app")),
+        Ok(s) if s.success() => BuildOutcome::Ok,
+        Ok(_) => BuildOutcome::Failed(
+            CliError::new("xcodebuild exited with a non-zero status").context("building the app"),
+        ),
+        Err(e) => BuildOutcome::Failed(
+            CliError::new(format!("failed to wait for xcodebuild: {e}")).context("building the app"),
+        ),
     }
 }
 
@@ -1189,32 +1229,42 @@ fn set_filter(ctx: &Context, filter: &AtomicU8, choice: LogFilter) {
     ctx.out.note(&format!("── {} ──", choice.description()));
 }
 
+/// What an `r` rebuild asks the session to do next.
+enum RebuildOutcome {
+    /// Carry on; `launched` records whether the app came back up (a failed build
+    /// keeps the session open with nothing running).
+    Continue { launched: bool },
+    /// Ctrl-C during the rebuild: cancel the whole session.
+    Quit,
+}
+
 /// Stop the running app, rebuild, and relaunch (the `r` key). The session log
-/// stream is left running; it follows the relaunched app by process name. Returns
-/// whether the app relaunched, so the session can track if it ever ran.
-fn do_rebuild(ctx: &Context, plan: &RunPlan, running: &mut Option<Running>) -> bool {
+/// stream is left running; it follows the relaunched app by process name. Ctrl-C
+/// during the rebuild returns [`RebuildOutcome::Quit`] so the session ends.
+fn do_rebuild(ctx: &Context, plan: &RunPlan, running: &mut Option<Running>) -> RebuildOutcome {
     ctx.out.note("↻ restarting — rebuilding…");
     if let Some(old) = running.take() {
         terminate_app(old);
     }
     let started = Instant::now();
     match build(plan, &ctx.out, None) {
-        Ok(()) => match start_app(ctx, plan) {
+        BuildOutcome::Ok => match start_app(ctx, plan) {
             Ok(r) => {
                 *running = Some(r);
-                note_launch(ctx, "relaunched", started);
-                true
+                note_launch(ctx, "Relaunched", started);
+                RebuildOutcome::Continue { launched: true }
             }
             Err(e) => {
                 ctx.out.error(&e);
-                false
+                RebuildOutcome::Continue { launched: false }
             }
         },
-        // Failed/aborted build: nothing runs until the next rebuild.
-        Err(e) => {
+        // Failed build: nothing runs until the next rebuild; the session stays open.
+        BuildOutcome::Failed(e) => {
             ctx.out.error(&e);
-            false
+            RebuildOutcome::Continue { launched: false }
         }
+        BuildOutcome::Aborted => RebuildOutcome::Quit,
     }
 }
 
