@@ -55,7 +55,7 @@
     "verify-font": "node ./scripts/font-tools.mts verify"
   },
   "dependencies": {
-    "@sentry/node": "^8.34.0",
+    "@sentry/node": "^10.59.0",
     "@sweetpad/lib": "*",
     "execa": "npm:@esm2cjs/execa@^6.1.1-cjs.1",
     "shell-quote": "^1.8.1",
@@ -79,7 +79,9 @@
   "overrides": {
     "vscode-languageclient": {
       "brace-expansion": "^2.0.3"
-    }
+    },
+    "@babel/core": "^7.29.6",
+    "vite": "^8.0.16"
   },
   "contributes": {
     "taskDefinitions": [
