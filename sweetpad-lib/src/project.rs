@@ -5143,7 +5143,9 @@ mod tests {
     /// each candidate workspace's `contents.xcworkspacedata`, since only a
     /// workspace this project actually belongs to keys its DerivedData.
     #[test]
+    #[allow(clippy::many_single_char_names)] // a/b/c… mirror the (a)/(b)/(c) case labels
     fn find_derived_data_container_selects_the_keyed_container() {
+        use std::fmt::Write as _;
         let root = std::env::temp_dir().join(format!("sweetpad-ddc-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
 
@@ -5151,10 +5153,10 @@ mod tests {
         // (each a `group:`-relative `.xcodeproj`).
         let mk_ws = |path: &Path, refs: &[&str]| {
             fs::create_dir_all(path).unwrap();
-            let body: String = refs
-                .iter()
-                .map(|r| format!("  <FileRef location = \"group:{r}\"></FileRef>\n"))
-                .collect();
+            let mut body = String::new();
+            for r in refs {
+                let _ = writeln!(body, "  <FileRef location = \"group:{r}\"></FileRef>");
+            }
             fs::write(
                 path.join("contents.xcworkspacedata"),
                 format!(

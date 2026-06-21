@@ -276,7 +276,7 @@ fn bsp_lsp_e2e() {
             );
         }
         None => {
-            eprintln!("definition(Greeter): no result within window (index async) — not failing")
+            eprintln!("definition(Greeter): no result within window (index async) — not failing");
         }
     }
 

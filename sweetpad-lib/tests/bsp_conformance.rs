@@ -121,6 +121,7 @@ fn sourcekit_args(frames: &[Value], id: i64) -> Vec<String> {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn bsp_conformance() {
     let b_uri = b_swift_uri();
     let module_b = json!({ "uri": "sweetpad://target/ModuleB" });

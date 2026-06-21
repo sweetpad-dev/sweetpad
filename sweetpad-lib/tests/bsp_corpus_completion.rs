@@ -464,6 +464,7 @@ fn sample<T: Clone>(items: &[T], cap: usize) -> Vec<T> {
         .collect()
 }
 
+#[allow(clippy::too_many_lines)]
 fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
     let mut report = Report {
         slug: p.slug.into(),
