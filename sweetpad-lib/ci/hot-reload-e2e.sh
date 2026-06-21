@@ -10,7 +10,7 @@
 #
 # Requires: SWEETPAD_BIN (the built binary); the fixture generated with xcodegen.
 # Client resolution is the CLI's job: SWEETPAD_HOTRELOAD_DYLIB (override) if set,
-# else the CLI builds it from source per-Xcode (Milestone 5), else falls back.
+# else the client bundled into the binary (vendor/injection-client), else falls back.
 set -euo pipefail
 
 BIN="${SWEETPAD_BIN:?set SWEETPAD_BIN to the sweetpad binary}"
@@ -25,7 +25,7 @@ fail() { echo "  ✗ $*" >&2; exit 1; }
 section "tooling"
 xcodebuild -version
 test -f "$SRC" || fail "fixture source missing: $SRC (run xcodegen generate first)"
-echo "  client: ${SWEETPAD_HOTRELOAD_DYLIB:-<built from source by the CLI>}"
+echo "  client: ${SWEETPAD_HOTRELOAD_DYLIB:-<bundled into the CLI>}"
 
 section "pick + boot a simulator"
 DEST=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")

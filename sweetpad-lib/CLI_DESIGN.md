@@ -579,67 +579,76 @@ full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
 4. **Watcher + session integration — ✅ done.** Polling watcher → `server.inject`;
    `run_hot_session` builds + serves + launches + watches; key loop keeps `r`
    (full rebuild, client reconnects) / `q`; `.injected`/`.failed` status lines.
-5. **Client build from source — ✅ done & validated.** `client.rs::build_and_cache`
-   clones the pinned InjectionNext (with submodules) and `xcodebuild`s it against
-   the **active Xcode**, caching the whole built **`InjectionNext.app`** per Xcode
-   build id; `resolve_dylib` order is override → per-Xcode cache →
-   build-from-source → `InjectionNext.app` fallback. We cache the *entire* `.app`
-   (not just the dylib): `lib<sdk>Injection.dylib` is a symlink into a companion
-   `*.bundle` whose Swift/XCTest deps resolve at load time via `@loader_path`
-   (`build_bundles.sh`), so a lone copied Mach-O loads + connects but fails to
-   inject — keeping the bundle intact mirrors the proven installed-app /
-   prebuilt-release layouts. Validated green by the `hot-reload-src` CI job, which
-   runs the real `app run --hot` (no dylib override) and injects on **both Xcode
-   16 and 26** — the prebuilt-binary version skew is gone.
+5. **Bundled client — ✅ done & validated.** The client is built once from the
+   pinned InjectionNext **SPM product** (XCTest-free — see Client distribution
+   below; `vendor/injection-client`) and embedded into the binary via `build.rs`;
+   `resolve_dylib` order is override → bundled (materialized under a content key) →
+   `InjectionNext.app` fallback. Validated green by the `hot-reload-src` CI job,
+   which runs the real `app run --hot` (no dylib override) and injects on **both
+   Xcode 16 and 26** from one prebuilt — no clone, no per-Xcode build.
 6. **Polish — ✅ mostly done.** "Inject package missing" advisory ported;
    teardown (watcher/server/app/cleanup) wired. (Config-level default for the
    recompiler mode — beyond the `--hot-recompiler` flag — is the remaining nicety.)
 
 > **Implementation status:** the `cli/inject/` module + `app run --hot` are
 > implemented and **validated end-to-end on real simulators** (Xcode 16 + 26),
-> both recompilers, with the client built from source per Xcode. `clippy -D
-> warnings`/`fmt` clean, unit tests on Linux, live e2e on the macOS matrix.
+> both recompilers, with the client bundled from the pinned InjectionNext SPM
+> product. `clippy -D warnings`/`fmt` clean, unit tests on Linux, live e2e on the
+> macOS matrix.
 
-### Client distribution — vendor full source, compile per Xcode (decided)
+### Client distribution — bundle one prebuilt, built from the upstream SPM product (decided)
 
-The client is the **full InjectionNext source, vendored unmodified** (pinned
-revision; MIT — InjectionNext + InjectionImpl + SwiftTrace + DLKit + SwiftRegex),
-compiled **on-demand and cached per Xcode build id**, then
-`DYLD_INSERT_LIBRARIES`-injected at launch. The key move: building *from source
-against the user's active Xcode* makes the XCTest ABI match automatically — so
-the per-Xcode skew that broke a *prebuilt* binary under Xcode 16.4 (Milestone 1)
-never arises. Given that, there is **no reason to strip XCTest or write a minimal
-client** (the analysis — ~4 jobs; vendor-and-strip ≈ ½ week, from-scratch v0 ≈ a
-week and weeks for parity — concluded the effort buys nothing here). Test
-hot-reload therefore comes along as a **latent capability**; the promoted feature
-is still app UI/code reload (SwiftUI/UIKit).
+The client is **compiled once and bundled into the `sweetpad` binary**, not built
+on the user's machine. `vendor/injection-client/build.sh` builds it from the
+**pinned upstream InjectionNext SPM product** (MIT) for the iOS simulator, `build.rs`
+embeds the result via `include_bytes!`, and on the first `--hot` the CLI writes it
+to a content-addressed cache and `DYLD_INSERT_LIBRARIES`-injects it. No git clone,
+no per-Xcode `xcodebuild`, no runtime network.
 
-- **No per-Xcode binary matrix.** Cache key = Xcode build id (`xcodebuild
-  -version`); a miss recompiles the vendored client once (first `--hot` after an
-  Xcode change), hits reuse it. Cache at e.g.
-  `~/.cache/sweetpad/hot-reload/<xcode-build>/`.
-- **Drop-in UX preserved** — no project edit, no `InjectionNext.app`. The SwiftUI
-  `@ObserveInjection`/`.enableInjection()` annotations remain the user's to add
-  (UIKit reloads without them).
-- **Build mechanism — `xcodebuild` on the vendored InjectionNext project
-  (decided).** The package set has C/asm and multi-package deps, so the client is
-  built with `xcodebuild` against InjectionNext's own Xcode project targeting the
-  simulator SDK — **not** raw `swiftc` or `swift build`. Rationale: first-class
-  iOS-simulator targeting, it produces the `iOSInjection.bundle`/dylib artifact
-  directly, and it reproduces (and inherits the per-Xcode maintenance of)
-  upstream's intended build. `swift build` was rejected — its iOS-sim support is
-  finicky, it doesn't naturally emit the bundle, and the recipe would become our
-  burden (the Milestone-1 `swift build` probe also tripped on the upstream repo's
-  dev symlinks to sibling SwiftTrace/DLKit/InjectionImpl checkouts).
+The key move is **dropping XCTest** — the one Xcode-versioned dependency in the
+client. InjectionNext's *Xcode* `InjectionBundle` target links XCTest + Quick +
+Nimble for its test-reload feature, and that ABI skew is what broke a *prebuilt*
+binary under Xcode 16.4 (Milestone 1). But its *SPM* product references none of
+them, and an SPM build defines `SWIFT_PACKAGE` — exactly the flag the engine's
+`canImport(Nimble)` build sentinel keys on — so the product compiles the full
+engine **without** Quick/Nimble/XCTest. The resulting dylib depends only on
+ABI-stable OS/runtime libraries (`/usr/lib/swift/*`, `/System/...`), so **one
+prebuilt is portable across Xcode versions** and can be shipped. (Verified: `otool
+-L` shows zero XCTest, and the e2e injects on Xcode 16 + 26.) Test hot-reload is
+dropped along with XCTest; the promoted feature is app UI/code reload (SwiftUI/UIKit).
+
+- **Zero-edit wrapper, not a fork.** `vendor/injection-client/Package.swift` is a
+  thin SPM package that depends on pinned InjectionNext and re-exposes its product
+  as a `.dynamic` library (upstream ships only static ones) so it's loadable via
+  `DYLD_INSERT_LIBRARIES`. Upstream is unpatched; bumping the client = bumping one
+  `revision` pin. `-all_load` keeps the client's ObjC `+load` connect hook from
+  being dead-stripped, and the extracted Mach-O is ad-hoc re-signed (a `.framework`
+  signature doesn't survive extraction, and the simulator won't load a mismatched
+  insert).
+- **`xcodebuild` drives the SPM build**, targeting `generic/platform=iOS
+  Simulator`. This sidesteps raw `swift build`'s finicky iOS-sim support and the
+  dev-symlink snag from Milestone 1, while SPM still resolves InjectionNext's
+  submodules automatically.
+- **Not committed.** The ~4.7 MB dylib is gitignored; CI (`hot-reload-src`) and the
+  release CLI scripts (`build:cli` / `build:cli:universal`) run `build.sh` before
+  the cargo build, and `build.rs` embeds whatever is present. Builds without it
+  compile fine (empty embed) and fall back to `InjectionNext.app` at runtime.
+- **Drop-in UX preserved** — no project edit, no `InjectionNext.app` required. The
+  SwiftUI `@ObserveInjection`/`.enableInjection()` annotations remain the user's to
+  add (UIKit reloads without them).
+
+> Supersedes the earlier "vendor full source, compile per Xcode" plan: the
+> from-source per-Xcode build (and its `~/.cache/.../<xcode-build>/` cache) existed
+> only to keep XCTest's ABI matched against the active Xcode. Building the
+> XCTest-free SPM product removes that need, so one bundled prebuilt suffices. The
+> earlier strip-the-bundle analysis (≈ ½ week) is moot — the SPM product is already
+> XCTest-free with no patching.
 
 ### Open decisions
 
 - **ABI match — A proven, F pending.** Path A (exact build-log command) injects
   cleanly (Milestone 1), so it is primary. The (F) resolver path's ABI match is
   still to confirm; until then F is an optimization, not the default.
-- _(Resolved: keep the full vendored client — no XCTest strip / no minimal
-  rewrite; build it with `xcodebuild` for the simulator, cached per Xcode build
-  id. See Client distribution above.)_
 
 ### macOS test harness (permanent)
 
@@ -650,16 +659,16 @@ push/PR). Two jobs:
 
 - **`cli`** — the full standalone-CLI e2e (`ci/smoke.sh`) on each Xcode.
 - **`hot-reload-src`** — the injection e2e (`ci/hot-reload-e2e.sh`) on **both
-  Xcode 16 and 26**: it generates the fixture app and runs the *real* `sweetpad
-  app run --hot --hot-selfcheck` (hidden flag) with **no** dylib override, so the
-  CLI builds the InjectionNext client from source against the active Xcode
-  (Milestone 5), for **both** recompilers (resolver + build-log). The self-check
-  builds with the interposable/frontend flags, starts the `:8887` server,
-  launches with the client injected, edits a Swift file once, and asserts
-  `.injected` — exiting non-zero otherwise. (An earlier `hot-reload` job ran the
-  same e2e against the *prebuilt-download* client, but that path carries the
-  per-Xcode ABI skew this from-source build replaces — it was flaky and was
-  removed in favor of these jobs.)
+  Xcode 16 and 26**: it builds the bundled client (`vendor/injection-client/build.sh`),
+  generates the fixture app, and runs the *real* `sweetpad app run --hot
+  --hot-selfcheck` (hidden flag) with **no** dylib override, so it exercises the
+  client **bundled into the binary** (Milestone 5), for **both** recompilers
+  (resolver + build-log). The self-check builds with the interposable/frontend
+  flags, starts the `:8887` server, launches with the client injected, edits a
+  Swift file once, and asserts `.injected` — exiting non-zero otherwise. (An
+  earlier `hot-reload` job ran the same e2e against a *prebuilt-download* client
+  that still linked XCTest, so it carried the per-Xcode ABI skew — flaky, and
+  removed once the bundled XCTest-free client made one prebuilt portable.)
 
 This supersedes the original throwaway spike (`hot-reload-spike.yaml`), whose
 run #5 first proved the socket + recompile→load→inject chain end-to-end.

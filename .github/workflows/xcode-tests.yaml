@@ -3,8 +3,9 @@ name: xcode-tests
 # Permanent macOS CI for tests that need Xcode + simulators, run across multiple
 # Xcode versions. Two jobs:
 #   • cli             — the standalone CLI's full e2e (ci/smoke.sh) on each Xcode.
-#   • hot-reload-src  — the built-in hot-reload / injection e2e, with the client
-#                       built from source per Xcode (ci/hot-reload-e2e.sh).
+#   • hot-reload-src  — the built-in hot-reload / injection e2e against the client
+#                       bundled into the CLI (vendor/injection-client/build.sh →
+#                       embedded by build.rs), run on each Xcode (ci/hot-reload-e2e.sh).
 # Lean on push/PR (newest Xcode only); the full Xcode matrix runs on the weekly
 # schedule and on manual dispatch, so image updates are still caught.
 on:
@@ -112,6 +113,11 @@ jobs:
         with:
           workspaces: sweetpad-lib
           shared-key: xcode-tests
+      # Build the injection client (XCTest-free, from the pinned InjectionNext SPM
+      # product — vendor/injection-client) *before* cargo build, so build.rs embeds
+      # it into the CLI. This is the same step the release scripts run.
+      - name: Build the bundled injection client
+        run: bash vendor/injection-client/build.sh
       - name: Build the sweetpad CLI
         run: cargo build --bin sweetpad
       - name: Install XcodeGen
@@ -119,19 +125,9 @@ jobs:
       - name: Generate the fixture project
         working-directory: sweetpad-lib/ci/fixture-app
         run: xcodegen generate
-      # Cache the client the CLI builds from source (keyed by Xcode build id, so
-      # only the first run per Xcode pays the InjectionNext build). The rev in
-      # this key mirrors INJECTIONNEXT_REV in client.rs — keep them in sync. Even
-      # if they drift, the CLI's per-rev ready-marker makes a stale restore
-      # rebuild rather than serve a mismatched client.
-      - name: Cache CLI-built injection client
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/sweetpad/hot-reload
-          key: injclient-2.0.1RC8-xcode-${{ steps.xc.outputs.build }}
-      # No SWEETPAD_HOTRELOAD_DYLIB override: the CLI resolves the client itself,
-      # building it from source against the active Xcode (Milestone 5).
-      - name: Hot-reload / injection e2e (CLI builds the client from source)
+      # No SWEETPAD_HOTRELOAD_DYLIB override: the CLI uses the client embedded at
+      # build time, so this exercises the real shipping path on this Xcode.
+      - name: Hot-reload / injection e2e (embedded client)
         env:
           SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
         run: bash ci/hot-reload-e2e.sh

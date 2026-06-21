@@ -1,0 +1,7 @@
+# SPM / xcodebuild scratch + the built client. Nothing here is committed; the
+# dylib is rebuilt by build.sh in CI / release and embedded via build.rs.
+.build-dd/
+.build/
+.swiftpm/
+Package.resolved
+prebuilt/
