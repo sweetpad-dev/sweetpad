@@ -82,6 +82,14 @@ pub enum Input {
 /// [`Input::Idle`], not a close.
 #[must_use]
 pub fn poll_key() -> Input {
+    // Wait up to ~0.1s for stdin to be readable *before* reading, so the read never
+    // blocks when the caller hasn't enabled raw mode (where VMIN/VTIME would bound
+    // it). The build's Ctrl-C watcher runs without raw mode on the interactive
+    // `--hot` path; a bare blocking read there wedges its loop in canonical mode and
+    // hangs the join after the build. Nothing readable this tick → [`Input::Idle`].
+    if !readable(STDIN_POLL_MS) {
+        return Input::Idle;
+    }
     let mut buf = [0u8; 1];
     // Safety: reading one byte into a stack buffer we own.
     let n = unsafe { libc::read(libc::STDIN_FILENO, buf.as_mut_ptr().cast(), 1) };
@@ -90,6 +98,24 @@ pub fn poll_key() -> Input {
         0 => Input::Idle,
         _ => Input::Closed,
     }
+}
+
+/// The per-tick poll budget, matching the old `VTIME` cadence so the session loop
+/// stays responsive without busy-spinning when stdin is a quiet terminal/pipe.
+const STDIN_POLL_MS: i32 = 100;
+
+/// Whether stdin has data within `timeout_ms`, via `poll(2)` — independent of the
+/// terminal's line discipline, so the subsequent read won't block on a cooked TTY
+/// or an open-but-idle pipe.
+fn readable(timeout_ms: i32) -> bool {
+    let mut fd = libc::pollfd {
+        fd: libc::STDIN_FILENO,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // Safety: poll over a single pollfd we own; revents is filled on return.
+    let n = unsafe { libc::poll(&raw mut fd, 1, timeout_ms) };
+    n > 0 && (fd.revents & libc::POLLIN) != 0
 }
 
 /// Decode a full UTF-8 character from its first byte, reading any continuation

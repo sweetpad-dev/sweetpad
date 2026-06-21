@@ -120,10 +120,23 @@ pub fn render_fields(
     color: bool,
 ) -> Line {
     let time = timestamp.and_then(clock_time);
+    render_clocked(time.as_deref(), message_type, category, message, color)
+}
+
+/// Assemble a [`Line`] from an already-formatted `HH:MM:SS.sss` clock string (or
+/// `None`). Shared by [`render_fields`] — which parses the clock out of a raw Apple
+/// timestamp — and [`render_console_line`], which is handed a wall-clock stamp.
+fn render_clocked(
+    time: Option<&str>,
+    message_type: &str,
+    category: &str,
+    message: &str,
+    color: bool,
+) -> Line {
     Line {
         level: Level::from_message_type(message_type),
         text: format_line(
-            time.as_deref(),
+            time,
             level_letter(message_type),
             category,
             message,
@@ -135,12 +148,14 @@ pub fn render_fields(
 
 /// Render one line of an app's own stdout/stderr — its direct console output
 /// (`print()`, etc.), as opposed to os_log — as a blue `N [print]` note at `Notice`
-/// level, the analog of the VS Code extension's `print` lines. The app owns the
-/// text, so it's shown verbatim (its ANSI is stripped by [`format_line`], which the
-/// prefix's own coloring replaces).
+/// level, the analog of the VS Code extension's `print` lines. `time` is the local
+/// wall-clock stamp for when the line was read (see [`now_clock`]): console output
+/// carries no timestamp of its own, so the reader supplies one, aligning these lines
+/// with the `HH:MM:SS.sss` os_log lines. The app owns the text, so it's shown
+/// verbatim (its ANSI is stripped by [`format_line`], whose prefix coloring replaces it).
 #[must_use]
-pub fn render_console_line(line: &str, color: bool) -> Line {
-    render_fields(None, "Default", "print", line, color)
+pub fn render_console_line(time: Option<&str>, line: &str, color: bool) -> Line {
+    render_clocked(time, "Default", "print", line, color)
 }
 
 /// Assemble `HH:MM:SS.sss L [cat] message`, the prefix in bold + `code` when
@@ -189,6 +204,44 @@ fn clock_time(timestamp: &str) -> Option<String> {
         return None;
     }
     Some(format!("{h}:{m}:{s}.{millis:0<3}"))
+}
+
+/// The current local wall-clock time as `HH:MM:SS.sss` — the same shape as the
+/// os_log [`clock_time`] stamps. App console output (`print`/stderr) carries no
+/// timestamp of its own, so [`render_console_line`] stamps each line with the moment
+/// it's read.
+#[must_use]
+pub fn now_clock() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let (h, m, s) = local_hms(now.as_secs());
+    format_clock(h, m, s, now.subsec_millis())
+}
+
+/// Split an epoch-second count into local `(hour, minute, second)` via
+/// `localtime_r`, so the stamp honors the machine's timezone the way the
+/// simulator's os_log timestamps already do.
+fn local_hms(epoch_secs: u64) -> (u32, u32, u32) {
+    let t: libc::time_t = i64::try_from(epoch_secs).unwrap_or(i64::MAX);
+    // SAFETY: `localtime_r` fills the caller-owned `tm` from `t` — the reentrant,
+    // thread-safe form (console lines render on detached threads). We read only the
+    // always-in-range clock fields, so `unsigned_abs` can't lose information.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    unsafe {
+        libc::localtime_r(&raw const t, &raw mut tm);
+    }
+    (
+        tm.tm_hour.unsigned_abs(),
+        tm.tm_min.unsigned_abs(),
+        tm.tm_sec.unsigned_abs(),
+    )
+}
+
+/// `HH:MM:SS.sss`, zero-padded — the os_log clock format produced by [`clock_time`].
+fn format_clock(hour: u32, min: u32, sec: u32, millis: u32) -> String {
+    format!("{hour:02}:{min:02}:{sec:02}.{millis:03}")
 }
 
 /// Strip SGR color escapes (`ESC[…m`) from a message. Operates on bytes — SGR
@@ -250,14 +303,39 @@ mod tests {
 
     #[test]
     fn renders_app_console_output_as_a_print_note() {
-        let plain = render_console_line("hello from print()", false);
+        // No stamp: a bare "N [print] msg".
+        let plain = render_console_line(None, "hello from print()", false);
         assert_eq!(plain.level, Level::Notice);
         assert_eq!(plain.text, "N [print] hello from print()");
-        // Color: bold + blue (34) prefix, message left uncolored.
+        // With a local-time stamp it reads like the os_log lines: "HH:MM:SS.sss N [print] msg".
         assert_eq!(
-            render_console_line("hello from print()", true).text,
-            "\x1b[1;34mN [print]\x1b[0m hello from print()"
+            render_console_line(Some("15:02:13.053"), "hello from print()", false).text,
+            "15:02:13.053 N [print] hello from print()"
         );
+        // Color: bold + blue (34) prefix (the stamp included), message left uncolored.
+        assert_eq!(
+            render_console_line(Some("15:02:13.053"), "hello from print()", true).text,
+            "\x1b[1;34m15:02:13.053 N [print]\x1b[0m hello from print()"
+        );
+    }
+
+    #[test]
+    fn format_clock_zero_pads_each_field() {
+        assert_eq!(format_clock(15, 2, 13, 53), "15:02:13.053");
+        assert_eq!(format_clock(0, 0, 0, 0), "00:00:00.000");
+        assert_eq!(format_clock(23, 59, 59, 999), "23:59:59.999");
+    }
+
+    #[test]
+    fn now_clock_matches_the_oslog_clock_shape() {
+        // Same `HH:MM:SS.sss` shape as `clock_time`, so console and os_log lines align.
+        let c = now_clock();
+        assert_eq!(c.len(), 12);
+        assert!(c.as_bytes().iter().enumerate().all(|(i, &b)| match i {
+            2 | 5 => b == b':',
+            8 => b == b'.',
+            _ => b.is_ascii_digit(),
+        }));
     }
 
     #[test]

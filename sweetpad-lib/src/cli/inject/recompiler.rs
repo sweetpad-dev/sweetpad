@@ -125,26 +125,38 @@ impl Recompiler {
         let object = self.out_dir.join(format!("eval_injection_{n}.o"));
         let source_str = source.to_string_lossy().into_owned();
 
-        // Single-file frontend command (cached); both modes converge here.
-        match self.frontend_tokens(source) {
-            Ok(tokens) => {
-                run(
-                    "",
-                    &single_file_command(&tokens, &source_str, &object)?,
-                    "compile",
-                )?;
-                run("", &link_command(&tokens, &object, &dylib)?, "link")?;
-                Ok(dylib)
-            }
-            // Resolver mode degrades to a robust whole-module build if single-file
-            // recovery (`-###`) failed for any reason.
-            Err(single_err) if self.mode == Mode::Resolver => {
+        // Primary: the recovered single-file frontend command (resolver `-###`, or
+        // the build log in `BuildLog` mode), compiled and linked into the dylib.
+        let primary = self
+            .frontend_tokens(source)
+            .and_then(|tokens| compile_and_link(&tokens, &source_str, &object, &dylib));
+        match primary {
+            Ok(()) => Ok(dylib),
+            // Only resolver mode degrades; build-log mode surfaces its own failure.
+            Err(e) if self.mode != Mode::Resolver => Err(e),
+            Err(primary_err) => {
+                // The reconstructed `-###` command can fail to yield a per-file job,
+                // or build against the wrong SDK, on some projects (e.g. Tuist's
+                // file-system synchronized groups). Degrade to the *exact* frontend
+                // command from the `--hot` build transcript — correct SDK/args, still
+                // single-file — and cache it so later saves of this file skip the
+                // broken `-###` path. Whole-module `-emit-library` is the last resort.
+                if let Ok(tokens) = self.buildlog_tokens(source)
+                    && compile_and_link(&tokens, &source_str, &object, &dylib).is_ok()
+                {
+                    let canon =
+                        std::fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
+                    self.frontend_cache.lock().unwrap().insert(canon, tokens);
+                    return Ok(dylib);
+                }
                 self.recompile_wholemodule(source, &dylib).map_err(|wm| {
-                    format!("single-file recovery failed ({single_err}); whole-module fallback failed: {wm}")
+                    format!(
+                        "single-file recovery failed ({primary_err}); \
+                         build-log and whole-module fallbacks failed: {wm}"
+                    )
                 })?;
                 Ok(dylib)
             }
-            Err(e) => Err(e),
         }
     }
 
@@ -385,13 +397,24 @@ fn parse_quoted_tokens(line: &str) -> Vec<String> {
     }
 }
 
-/// Drop resolver driver flags that the build system only emits alongside build
-/// *geometry* (output-file-maps, module-cache session files, explicit-module
-/// scanner output) which `compiler_args` deliberately omits. For a standalone
-/// recompile these orphans make `swiftc` reject the args (e.g.
-/// `-validate-clang-modules-once` without `-clang-build-session-file`) or emit a
-/// frontend command referencing missing files. We drop them and let swiftc build
-/// modules implicitly — the same approach InjectionLite's recompiler takes.
+/// Strip the driver flags that orchestrate xcodebuild's *incremental, batched,
+/// module-emitting* build but have no place in a one-shot recompile. Two families:
+///
+/// - **Build geometry** the `compiler_args` resolver deliberately omits the paths
+///   for (output-file-maps, module-cache session files, explicit-module scanner
+///   output): left in, these orphans make `swiftc` reject the args (e.g.
+///   `-validate-clang-modules-once` without `-clang-build-session-file`) or emit a
+///   command referencing missing files.
+/// - **Compile orchestration** (`-enable-batch-mode`, `-incremental`, `-c`,
+///   `-emit-module`/`-emit-objc-header`/`-emit-dependencies`, `-save-temps`):
+///   `-enable-batch-mode` is the critical one — it overrides the `-disable-batch-mode`
+///   the `-###` recovery prepends, collapsing every file into one batched frontend
+///   job so only the first `-primary-file` is recoverable (the rest, incl. the
+///   edited file, get no job). The others emit unwanted products or, with
+///   `-emit-library`, fight the link (the recovered per-file job carries its own `-c`).
+///
+/// We drop them all and let swiftc build modules implicitly — the same approach
+/// InjectionLite's recompiler takes.
 fn sanitize_driver_args(args: &[String]) -> Vec<String> {
     const DROP_FLAG: &[&str] = &[
         "-validate-clang-modules-once", // needs -clang-build-session-file
@@ -399,6 +422,13 @@ fn sanitize_driver_args(args: &[String]) -> Vec<String> {
         "-experimental-emit-module-separately", // module emission; not for a -c recompile
         "-emit-const-values",           // needs -emit-const-values-path
         "-use-frontend-parseable-output", // output-format noise
+        "-enable-batch-mode", // batches all files into one frontend job, defeating -### recovery
+        "-incremental",       // needs an output-file-map; orphaned in a one-shot recompile
+        "-c",                 // compile-only; fights the whole-module -emit-library link
+        "-emit-module",       // emits a .swiftmodule we don't need
+        "-emit-objc-header",  // emits a -Swift.h we don't need
+        "-emit-dependencies", // emits .d files we don't need
+        "-save-temps",        // retains intermediates we don't need
     ];
     const DROP_PAIR: &[&str] = &["-clang-build-session-file"];
     let mut out = Vec::with_capacity(args.len());
@@ -456,6 +486,20 @@ fn run(prog: &str, argv: &[String], what: &str) -> Result<(), String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ))
     }
+}
+
+/// Compile `source` into one object via the recovered single-file frontend
+/// command, then link it into a loadable `dylib`. Shared by the primary attempt
+/// and the build-log fallback.
+fn compile_and_link(
+    tokens: &[String],
+    source: &str,
+    object: &Path,
+    dylib: &Path,
+) -> Result<(), String> {
+    run("", &single_file_command(tokens, source, object)?, "compile")?;
+    run("", &link_command(tokens, object, dylib)?, "link")?;
+    Ok(())
 }
 
 /// Strip shell-escaping backslashes from a transcript token (`a\=b` -> `a=b`).
@@ -659,6 +703,42 @@ mod tests {
         .to_vec();
         let out = sanitize_driver_args(&args);
         assert_eq!(out, vec!["-module-name", "App", "-sdk", "/SDK"]);
+    }
+
+    #[test]
+    fn sanitize_drops_batch_and_module_orchestration() {
+        let args: Vec<String> = [
+            "-module-name",
+            "App",
+            "-enable-batch-mode",
+            "-incremental",
+            "-c",
+            "-emit-module",
+            "-emit-objc-header",
+            "-emit-dependencies",
+            "-save-temps",
+            "-sdk",
+            "/SDK",
+            "-target",
+            "arm64-apple-ios17.0-simulator",
+        ]
+        .map(String::from)
+        .to_vec();
+        let out = sanitize_driver_args(&args);
+        // `-enable-batch-mode` is the critical drop: left in, it overrides the
+        // `-disable-batch-mode` the `-###` recovery prepends and collapses every
+        // file into one un-keyable batched job. The compile-defining flags survive.
+        assert_eq!(
+            out,
+            vec![
+                "-module-name",
+                "App",
+                "-sdk",
+                "/SDK",
+                "-target",
+                "arm64-apple-ios17.0-simulator"
+            ]
+        );
     }
 
     #[test]

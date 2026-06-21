@@ -350,15 +350,52 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     Ok(plan)
 }
 
+/// A simulator boot kicked off on a background thread so it comes up *while* the
+/// project builds, rather than serializing boot-after-build. [`wait`](BgBoot::wait)
+/// joins it at the point install/launch needs the device — so the device is up by
+/// then, but the boot's seconds overlapped the build instead of adding to it. Every
+/// caller must `wait` before any further `simctl boot` on the same device, so the two
+/// never run concurrently. A no-op for device/macOS targets (nothing to boot).
+struct BgBoot {
+    handle: Option<std::thread::JoinHandle<Result<(), CliError>>>,
+}
+
+impl BgBoot {
+    /// Spawn the boot for a simulator target; do nothing for any other target.
+    fn start(target: &Target) -> Self {
+        let handle = if let Target::Simulator(udid) = target {
+            let udid = udid.clone();
+            Some(std::thread::spawn(move || simctl::boot(&udid)))
+        } else {
+            None
+        };
+        BgBoot { handle }
+    }
+
+    /// Join the background boot, surfacing its result (`Ok` if there was none, e.g. a
+    /// non-simulator target or an already-joined handle).
+    fn wait(&mut self) -> Result<(), CliError> {
+        match self.handle.take() {
+            Some(h) => h
+                .join()
+                .unwrap_or_else(|_| Err(CliError::new("simulator boot thread panicked"))),
+            None => Ok(()),
+        }
+    }
+}
+
 /// Build and install onto the target, returning the launchable app. Shared by
 /// every flow; the launch step is chosen by the caller.
 fn build_and_install(plan: &RunPlan, out: &Output) -> Result<AppBundle, CliError> {
+    // Boot the simulator while the build runs; joined at the boot step below so it's
+    // ready for install without the boot serializing after the build.
+    let mut boot = BgBoot::start(&plan.target);
     plan.build_plan().run(out)?;
     let app = plan.app_bundle()?;
     let app_path = app.path.display().to_string();
     match &plan.target {
         Target::Simulator(udid) => {
-            out.step("Booting simulator", || simctl::boot(udid))?;
+            out.step("Booting simulator", || boot.wait())?;
             out.step("Installing app", || simctl::install(udid, &app_path))?;
         }
         Target::Device(id) => {
@@ -486,24 +523,38 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     // Live log filter: the stream carries every level; show those at or above this
     // threshold, set live by the 1/2/3 keys.
     let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
+    // Boot the simulator on a background thread so it comes up while the project
+    // builds. Joined below before install — or, on a failed build, before the log
+    // stream so it attaches to a booted device instead of failing with "device is
+    // not booted". A no-op for device/macOS targets.
+    let mut boot = BgBoot::start(&plan.target);
     // Build + launch. A failure keeps the session (nothing running) so you can fix
     // the error and press `r`, instead of being dropped back to the shell.
     let started = Instant::now();
     let mut ever_launched = false;
     let mut running = match build(plan, &ctx.out, None) {
-        BuildOutcome::Ok => match start_app(ctx, plan, &filter) {
-            Ok(r) => {
-                note_launch(ctx, "Launched", started);
-                ever_launched = true;
-                Some(r)
+        BuildOutcome::Ok => {
+            // Finish the background boot before installing; start_app's own boot then
+            // confirms it (a fast no-op now the device is already up).
+            let _ = boot.wait();
+            match start_app(ctx, plan, &filter) {
+                Ok(r) => {
+                    note_launch(ctx, "Launched", started);
+                    ever_launched = true;
+                    Some(r)
+                }
+                Err(e) => {
+                    ctx.out.error(&e);
+                    None
+                }
             }
-            Err(e) => {
-                ctx.out.error(&e);
-                None
-            }
-        },
+        }
         BuildOutcome::Failed(e) => {
             ctx.out.error(&e);
+            // Nothing launched, but the session stays open to fix and rebuild. Finish
+            // the boot so the log stream ([`start_logs`]) attaches to a booted device
+            // and it's ready for the next `r`. Best-effort.
+            let _ = boot.wait();
             None
         }
         // Ctrl-C during the build cancels the whole run, not just the build.
@@ -575,6 +626,25 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
 /// watches the workspace: each Swift save is recompiled and `.load`-ed into the
 /// running app — no relaunch, state preserved. `r` still does a full
 /// rebuild+relaunch (the client reconnects); `q`/Ctrl-C/Ctrl-D quit.
+/// The hot-session status logger: bold magenta (when color is on) so the lines stand
+/// out from the streamed os_log. One save stays on one line — an in-progress message
+/// (ends with `…`) is drawn in place (carriage-return + clear-line, no newline) so the
+/// outcome overwrites it; any other line commits with a newline and stays in the
+/// scrollback. Without color (non-TTY) every line is a plain committed line.
+fn hot_logger(color: bool) -> Logger {
+    use std::io::Write as _;
+    Arc::new(move |m: &str| {
+        if !color {
+            println!("{m}");
+        } else if m.ends_with('…') {
+            print!("\r\x1b[2K\x1b[1;35m{m}\x1b[0m");
+            let _ = std::io::stdout().flush();
+        } else {
+            println!("\r\x1b[2K\x1b[1;35m{m}\x1b[0m");
+        }
+    })
+}
+
 fn run_hot_session(
     ctx: &Context,
     plan: &RunPlan,
@@ -608,6 +678,10 @@ fn run_hot_session(
     let work = std::env::temp_dir().join(format!("sweetpad-hot-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&work);
     let build_log = work.join("build.log");
+
+    // Boot the simulator on a background thread so it comes up while the project
+    // builds (and the injection server/dylib are resolved); joined before launch_hot.
+    let mut boot = BgBoot::start(&plan.target);
 
     // Build first (capturing the transcript for the build-log recompiler).
     ctx.out.note(&format!(
@@ -655,7 +729,7 @@ fn run_hot_session(
         Some(build_log),
         work,
     ));
-    let log: Logger = Arc::new(|m: &str| println!("{m}"));
+    let log = hot_logger(ctx.out.use_color());
     let server =
         Arc::new(InjectServer::start(recompiler, Arc::clone(&log)).map_err(CliError::new)?);
 
@@ -671,6 +745,8 @@ fn run_hot_session(
 
     // Install + launch with the client injected, then start the session log
     // stream (kept across `r` relaunches; its predicate follows the app by name).
+    // Finish the background boot first; launch_hot's own boot then confirms it.
+    let _ = boot.wait();
     launch_hot(ctx, udid, &app, &launch_env)?;
     // Hot reload has no live filter UI; use the default threshold, never cycled.
     let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
@@ -1517,9 +1593,10 @@ fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
     });
 }
 
-/// Render a launched app's own stdout and stderr as blue `N [print]` lines on
-/// detached threads — its direct console output (`print()`, etc.), distinct from
-/// os_log ([`render_logs`]). Both pipes are drained so neither blocks the app; known
+/// Render a launched app's own stdout and stderr as blue `HH:MM:SS.sss N [print]`
+/// lines on detached threads — its direct console output (`print()`, etc.), stamped
+/// with the local arrival time, distinct from os_log ([`render_logs`]). Both pipes
+/// are drained so neither blocks the app; known
 /// boot noise ([`is_boot_noise`]) is dropped, and lines obey the live `filter` like
 /// os_log, so `4 off` silences them too.
 fn render_console(child: &mut Child, color: bool, filter: &Arc<AtomicU8>) {
@@ -1541,7 +1618,10 @@ fn render_console(child: &mut Child, color: bool, filter: &Arc<AtomicU8>) {
                 if is_boot_noise(&line) {
                     continue;
                 }
-                let rendered = oslog::render_console_line(&line, color);
+                // Console output has no timestamp of its own; stamp it with the local
+                // time the line arrived, so it lines up with the os_log stream.
+                let now = oslog::now_clock();
+                let rendered = oslog::render_console_line(Some(&now), &line, color);
                 if rendered.level.as_u8() >= filter.load(Ordering::Relaxed) {
                     println!("{}", rendered.text);
                 }
@@ -1724,7 +1804,12 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
             ctx.out
                 .note(&format!("Launched {} → {}", app.bundle_id, out.trim()));
         }
-        Stage::Logs => return stream_logs(ctx, udid, &app),
+        Stage::Logs => {
+            // Boot first so the stream attaches instead of failing with "device is
+            // not booted" when the simulator is shut down.
+            ctx.out.step("Booting simulator", || simctl::boot(udid))?;
+            return stream_logs(ctx, udid, &app);
+        }
         Stage::Stop => {
             ctx.out.step("Terminating app", || {
                 simctl::terminate(udid, &app.bundle_id)
@@ -1777,6 +1862,16 @@ mod tests {
         assert_eq!(udid("platform=iOS Simulator,id=ABCD").unwrap(), "ABCD");
         assert_eq!(udid("id=XYZ,platform=iOS Simulator").unwrap(), "XYZ");
         assert!(udid("platform=iOS Simulator,name=iPhone 15").is_err());
+    }
+
+    #[test]
+    fn bg_boot_is_a_noop_for_non_simulator_targets() {
+        // No simulator → no thread is spawned and waiting just succeeds; a second
+        // wait (handle already taken) is still Ok. The simulator path spawns a real
+        // `simctl boot`, so it's covered by the run e2e rather than here.
+        let mut boot = BgBoot::start(&Target::Mac);
+        assert!(boot.wait().is_ok());
+        assert!(boot.wait().is_ok());
     }
 
     #[test]

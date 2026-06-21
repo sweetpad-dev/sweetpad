@@ -237,21 +237,43 @@ pub fn install(udid: &str, app_path: &str) -> Result<(), CliError> {
 }
 
 /// Launch an installed app by bundle id; returns simctl's stdout (`bundle: pid`).
+/// `--terminate-running-process` replaces any already-running instance, so the
+/// freshly-installed build actually starts — a plain `simctl launch` attaches to the
+/// existing process and the new binary never runs.
 pub fn launch(udid: &str, bundle_id: &str) -> Result<String, CliError> {
-    process::capture("xcrun", &["simctl", "launch", udid, bundle_id], None)
-        .context("launching the app on the simulator")
+    process::capture(
+        "xcrun",
+        &[
+            "simctl",
+            "launch",
+            "--terminate-running-process",
+            udid,
+            bundle_id,
+        ],
+        None,
+    )
+    .context("launching the app on the simulator")
 }
 
 /// Launch with extra environment forwarded to `xcrun simctl`. Used by `--hot` to
 /// pass `SIMCTL_CHILD_*` vars (which simctl strips and forwards into the app) so
 /// the injection client dylib is `DYLD_INSERT_LIBRARIES`-loaded. Returns stdout.
+/// `--terminate-running-process` forces a fresh launch: the forwarded env only takes
+/// effect on a new process, so an already-running instance must be replaced or the
+/// client dylib silently never loads.
 pub fn launch_with_env(
     udid: &str,
     bundle_id: &str,
     env: &[(String, String)],
 ) -> Result<String, CliError> {
     let output = std::process::Command::new("xcrun")
-        .args(["simctl", "launch", udid, bundle_id])
+        .args([
+            "simctl",
+            "launch",
+            "--terminate-running-process",
+            udid,
+            bundle_id,
+        ])
         .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .output()
         .map_err(|e| CliError::new(format!("failed to run `xcrun simctl launch`: {e}")))?;

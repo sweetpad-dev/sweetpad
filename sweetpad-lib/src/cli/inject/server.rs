@@ -112,7 +112,7 @@ impl InjectServer {
                         std::thread::sleep(Duration::from_millis(100));
                     }
                     Err(e) => {
-                        log(&format!("[hot] accept failed: {e}"));
+                        log(&format!("[hot] Accept failed: {e}"));
                         return;
                     }
                 }
@@ -128,28 +128,47 @@ impl InjectServer {
         self.connected.load(Ordering::Relaxed)
     }
 
-    /// Recompile `file` and ship it to the app via `.load`. The result
-    /// (`.injected` / `.failed`) is reported asynchronously by the reader thread.
+    /// Recompile `file`, ship it via `.load`, and report the outcome — a save stays
+    /// on one updating line. The in-progress `… recompiling…` message (the terminal
+    /// logger draws any line ending in `…` in place) is overwritten by the
+    /// `.injected` / `.failed` result, awaited here (the reader thread
+    /// [`response_loop`] tallies it) so the final line can name the file too.
     pub fn inject(&self, file: &std::path::Path) {
+        let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("file");
         if !self.is_connected() {
-            (self.log)("[hot] app not connected yet — skipping injection");
+            (self.log)(&format!("[hot] ✗ {name} not connected (press r to relaunch)"));
             return;
         }
-        let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-        (self.log)(&format!("[hot] ↻ {name} — recompiling…"));
+        // In-progress line: the filename leads (so the line starts capitalized and the
+        // save is acknowledged) and it ends with `…`, so the logger draws it in place
+        // and the outcome below overwrites it.
+        (self.log)(&format!("[hot] » {name} recompiling…"));
         let dylib = match self.recompiler.recompile(file) {
             Ok(p) => p,
             Err(e) => {
-                (self.log)(&format!("[hot] ✗ {name}: {e}"));
+                (self.log)(&format!("[hot] ✗ {name} recompile failed: {e}"));
                 return;
             }
         };
-        let mut guard = self.conn.lock().unwrap();
-        if let Some(stream) = guard.as_mut()
-            && let Err(e) =
-                protocol::write_command(stream, command::LOAD, Some(&dylib.to_string_lossy()))
+        let baseline = self.result_counts();
         {
-            (self.log)(&format!("[hot] ✗ failed to send {name}: {e}"));
+            let mut guard = self.conn.lock().unwrap();
+            let Some(stream) = guard.as_mut() else {
+                (self.log)(&format!("[hot] ✗ {name} connection lost"));
+                return;
+            };
+            if let Err(e) =
+                protocol::write_command(stream, command::LOAD, Some(&dylib.to_string_lossy()))
+            {
+                (self.log)(&format!("[hot] ✗ {name} send failed: {e}"));
+                return;
+            }
+        }
+        // Await the app's verdict so the final line can name the file too.
+        match self.wait_for_result(baseline, Duration::from_secs(15)) {
+            Some(true) => (self.log)(&format!("[hot] ✓ {name} injected")),
+            Some(false) => (self.log)(&format!("[hot] ✗ {name} injection rejected")),
+            None => (self.log)(&format!("[hot] ✗ {name} timed out")),
         }
     }
 
@@ -223,11 +242,11 @@ fn serve_client(
             .set_read_timeout(Some(Duration::from_secs(10)))
             .is_err()
     {
-        log("[hot] socket setup failed");
+        log("[hot] Socket setup failed");
         return;
     }
     if let Err(e) = read_handshake(&mut stream, log) {
-        log(&format!("[hot] handshake failed: {e}"));
+        log(&format!("[hot] Handshake failed: {e}"));
         return;
     }
     // Tell the client which Xcode to reload against (best-effort).
@@ -240,13 +259,13 @@ fn serve_client(
     let reader = match stream.try_clone() {
         Ok(r) => r,
         Err(e) => {
-            log(&format!("[hot] socket clone failed: {e}"));
+            log(&format!("[hot] Socket clone failed: {e}"));
             return;
         }
     };
     *conn.lock().unwrap() = Some(stream);
     connected.store(true, Ordering::Relaxed);
-    log("[hot] connected — edit a Swift file to inject");
+    log("[hot] Connected — edit a Swift file to inject");
     response_loop(reader, log, stop, injected, failed);
 }
 
@@ -259,7 +278,7 @@ fn read_handshake(s: &mut TcpStream, log: &Logger) -> Result<(), String> {
         .ok_or("timed out waiting for version")?;
     if version != protocol::INJECTION_VERSION {
         log(&format!(
-            "[hot] client protocol {version} != expected {}; continuing",
+            "[hot] Client protocol {version} != expected {}; continuing",
             protocol::INJECTION_VERSION
         ));
     }
@@ -275,7 +294,7 @@ fn read_handshake(s: &mut TcpStream, log: &Logger) -> Result<(), String> {
             response::PLATFORM => {
                 let platform = protocol::read_string(s).map_err(|e| e.to_string())?;
                 let arch = protocol::read_string(s).map_err(|e| e.to_string())?;
-                log(&format!("[hot] client: {platform} {arch}"));
+                log(&format!("[hot] Client: {platform} {arch}"));
             }
             response::PROJECT_ROOT
             | response::TMP_PATH
@@ -302,13 +321,13 @@ fn response_loop(
     let _ = reader.set_read_timeout(Some(Duration::from_secs(2)));
     while !stop.load(Ordering::Relaxed) {
         match protocol::read_int(&mut reader) {
+            // Tallied for `inject`'s wait and the self-check; `inject` prints the
+            // outcome (with the filename), so the loop doesn't log it here.
             Ok(Some(response::INJECTED)) => {
                 injected.fetch_add(1, Ordering::Relaxed);
-                log("[hot] ✓ injected");
             }
             Ok(Some(response::FAILED)) => {
                 failed.fetch_add(1, Ordering::Relaxed);
-                log("[hot] ✗ injection failed (the patch did not apply)");
             }
             Ok(Some(response::DETAIL)) => {
                 if let Ok(msg) = protocol::read_string(&mut reader) {
@@ -490,9 +509,12 @@ mod tests {
         });
         server.inject(Path::new("/work/App/ContentView.swift")); // no client yet
         server.shutdown();
+        let log = sink.lock().unwrap().join("\n");
+        // The skip names the file and explains why nothing was injected.
+        assert!(log.contains("ContentView.swift"), "the file should be named: {log}");
         assert!(
-            sink.lock().unwrap().join("\n").contains("not connected"),
-            "should warn and skip when no app is connected"
+            log.contains("not connected"),
+            "should explain the skip when no app is connected: {log}"
         );
     }
 
