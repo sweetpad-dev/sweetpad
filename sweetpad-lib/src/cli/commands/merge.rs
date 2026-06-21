@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use clap::{Subcommand, ValueEnum};
 
 use crate::cli::merge::{self, Kind};
-use crate::cli::{CliResult, Context};
+use crate::cli::{CommandResult, Context, Rendered};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum DriverKind {
@@ -56,15 +56,16 @@ pub enum Action {
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(_ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
-        Action::Install { global } => merge::install(ctx, *global),
+        Action::Install { global } => merge::install(*global),
         Action::Driver {
             kind,
             base,
             ours,
             theirs,
             pathname,
-        } => merge::run_driver((*kind).into(), base, ours, theirs, pathname.as_deref()),
+        } => merge::run_driver((*kind).into(), base, ours, theirs, pathname.as_deref())
+            .map(|()| Rendered::Streamed),
     }
 }

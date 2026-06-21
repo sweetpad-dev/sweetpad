@@ -4,7 +4,10 @@
 
 use clap::Subcommand;
 
-use crate::cli::{CliResult, Context, resolve, swiftpm, xcodebuild};
+use crate::cli::output::Output;
+use crate::cli::{
+    CommandResult, Context, ErrorKind, Render, Rendered, resolve, swiftpm, xcodebuild,
+};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -16,13 +19,34 @@ pub enum Action {
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Start { clean } => start(ctx, *clean),
     }
 }
 
-fn start(ctx: &mut Context, clean: bool) -> CliResult {
+/// The build result. Human mode already streamed the beautified log, so this
+/// renders nothing extra there; `--json` emits it as the terminal envelope.
+struct BuildReport {
+    scheme: Option<String>,
+    configuration: String,
+    destination: Option<String>,
+}
+
+impl Render for BuildReport {
+    fn human(&self, _out: &Output) {}
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "built": true,
+            "scheme": self.scheme,
+            "configuration": self.configuration,
+            "destination": self.destination,
+        })
+    }
+}
+
+fn start(ctx: &mut Context, clean: bool) -> CommandResult {
     let resolved = resolve::resolve(ctx)?;
 
     // Swift packages have no simulator destination; build them with the `swift`
@@ -36,7 +60,13 @@ fn start(ctx: &mut Context, clean: bool) -> CliResult {
         ctx.out.note(&format!(
             "building Swift package ({configuration}) with swift build"
         ));
-        return swiftpm::build(&resolved.container, &configuration, clean);
+        swiftpm::build(&resolved.container, &configuration, clean, ctx.out.is_json())
+            .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
+        return Ok(Rendered::data(BuildReport {
+            scheme: None,
+            configuration,
+            destination: None,
+        }));
     }
 
     let target = resolve::build_target(ctx, &resolved)?;
@@ -56,4 +86,11 @@ fn start(ctx: &mut Context, clean: bool) -> CliResult {
         hot: false,
     }
     .run(&ctx.out)
+    .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
+
+    Ok(Rendered::data(BuildReport {
+        scheme: Some(target.scheme),
+        configuration: target.configuration,
+        destination: Some(target.destination),
+    }))
 }

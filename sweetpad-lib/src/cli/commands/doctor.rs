@@ -7,7 +7,8 @@
 
 use std::process::{Command, Stdio};
 
-use crate::cli::{CliError, CliResult, Context};
+use crate::cli::output::Output;
+use crate::cli::{CommandResult, Context, Render, Rendered};
 
 /// One diagnostic line.
 struct Check {
@@ -36,11 +37,57 @@ impl Status {
     }
 }
 
-pub fn run(ctx: &mut Context) -> CliResult {
+pub fn run(_ctx: &mut Context) -> CommandResult {
     let checks = gather();
+    let (ok, warn, fail) = summarize(&checks);
+    let report = DoctorReport {
+        checks,
+        ok,
+        warn,
+        fail,
+    };
+    // The report renders in both modes; a problem still forces a non-zero exit
+    // (so CI catches a broken toolchain) without a separate error line.
+    if fail > 0 {
+        Ok(Rendered::data_with_exit(report, 1))
+    } else {
+        Ok(Rendered::data(report))
+    }
+}
 
-    if ctx.out.is_json() {
-        let items: Vec<serde_json::Value> = checks
+/// The toolchain report: the checks plus tallies. Renders as glyph lines and a
+/// summary note, or `{checks, summary}` in the JSON envelope.
+struct DoctorReport {
+    checks: Vec<Check>,
+    ok: usize,
+    warn: usize,
+    fail: usize,
+}
+
+impl Render for DoctorReport {
+    fn human(&self, out: &Output) {
+        for c in &self.checks {
+            out.line(&format!(
+                "{} {}  {}",
+                symbol(c.status, out.use_color()),
+                c.name,
+                c.detail
+            ));
+            if c.status != Status::Ok
+                && let Some(hint) = c.hint
+            {
+                out.note(&format!("    ↳ {hint}"));
+            }
+        }
+        out.note(&format!(
+            "\n{} problem(s), {} warning(s)",
+            self.fail, self.warn
+        ));
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let checks: Vec<serde_json::Value> = self
+            .checks
             .iter()
             .map(|c| {
                 serde_json::json!({
@@ -51,37 +98,11 @@ pub fn run(ctx: &mut Context) -> CliResult {
                 })
             })
             .collect();
-        let (ok, warn, fail) = summarize(&checks);
-        ctx.out.json_value(&serde_json::json!({
-            "checks": items,
-            "summary": { "ok": ok, "warnings": warn, "problems": fail },
-        }));
-    } else {
-        for c in &checks {
-            ctx.out.line(&format!(
-                "{} {}  {}",
-                symbol(c.status, ctx.out.use_color()),
-                c.name,
-                c.detail
-            ));
-            if c.status != Status::Ok
-                && let Some(hint) = c.hint
-            {
-                ctx.out.note(&format!("    ↳ {hint}"));
-            }
-        }
-        let (_, warn, fail) = summarize(&checks);
-        ctx.out
-            .note(&format!("\n{fail} problem(s), {warn} warning(s)"));
+        serde_json::json!({
+            "checks": checks,
+            "summary": { "ok": self.ok, "warnings": self.warn, "problems": self.fail },
+        })
     }
-
-    let (_, _, fail) = summarize(&checks);
-    if fail > 0 {
-        return Err(CliError::new(format!(
-            "doctor found {fail} problem(s) — see above"
-        )));
-    }
-    Ok(())
 }
 
 /// Run every probe and collect the results.

@@ -20,8 +20,8 @@ use crate::cli::resolve::{self, Resolved};
 use crate::cli::state::LastLaunchedApp;
 use crate::cli::xcodebuild::{self, AppBundle};
 use crate::cli::{
-    CliError, CliResult, Context, ErrorContext, buildlog, devicectl, oslog, process,
-    pymobiledevice3, rawmode, simctl,
+    CliError, CliResult, CommandResult, Context, ErrorContext, ErrorKind, Render, Rendered,
+    buildlog, devicectl, oslog, process, pymobiledevice3, rawmode, simctl,
 };
 
 #[derive(Debug, Subcommand)]
@@ -80,7 +80,7 @@ pub enum Action {
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Run {
             device,
@@ -99,6 +99,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
                     ))
                 })?,
             };
+            // The live build-and-run session streams its own output until you quit.
             run_app(
                 ctx,
                 &RunOpts {
@@ -111,6 +112,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
                     hot_selfcheck: hot_selfcheck.as_deref(),
                 },
             )
+            .map(|()| Rendered::Streamed)
         }
         Action::Install => simple(ctx, Stage::Install),
         Action::Launch => simple(ctx, Stage::Launch),
@@ -123,7 +125,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
 /// Open a URL on a simulator. Unlike the install/launch lifecycle, this needs
 /// no scheme or build — just a target simulator — so it resolves one directly
 /// rather than going through the build plan.
-fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CliResult {
+fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CommandResult {
     let sims = simctl::list()?;
     let sim = resolve::select_simulator(ctx, &sims, simulator)?;
     if !sim.is_booted() {
@@ -131,15 +133,29 @@ fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CliResult 
             .step("Booting simulator", || simctl::boot(&sim.udid))?;
     }
     simctl::open_url(&sim.udid, url)?;
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({
-            "udid": sim.udid,
-            "url": url,
-        }));
-    } else {
-        ctx.out.note(&format!("Opened {url} on {}", sim.label()));
+    Ok(Rendered::data(OpenUrlReport {
+        udid: sim.udid.clone(),
+        url: url.to_string(),
+        label: sim.label(),
+    }))
+}
+
+/// The result of `app open-url`: a confirmation note in human mode, or
+/// `{ udid, url }` in the JSON envelope.
+struct OpenUrlReport {
+    udid: String,
+    url: String,
+    label: String,
+}
+
+impl Render for OpenUrlReport {
+    fn human(&self, out: &Output) {
+        out.note(&format!("Opened {} on {}", self.url, self.label));
     }
-    Ok(())
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({ "udid": self.udid, "url": self.url })
+    }
 }
 
 /// Options for `app run`, gathered from the flags.
@@ -631,6 +647,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
 /// (ends with `…`) is drawn in place (carriage-return + clear-line, no newline) so the
 /// outcome overwrites it; any other line commits with a newline and stays in the
 /// scrollback. Without color (non-TTY) every line is a plain committed line.
+#[allow(clippy::print_stdout)] // live hot-reload status line, drawn in place
 fn hot_logger(color: bool) -> Logger {
     use std::io::Write as _;
     Arc::new(move |m: &str| {
@@ -1179,7 +1196,9 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
     match status {
         Ok(s) if s.success() => BuildOutcome::Ok,
         Ok(_) => BuildOutcome::Failed(
-            CliError::new("xcodebuild exited with a non-zero status").context("building the app"),
+            CliError::new("xcodebuild exited with a non-zero status")
+                .context("building the app")
+                .kind(ErrorKind::BuildFailure),
         ),
         Err(e) => BuildOutcome::Failed(
             CliError::new(format!("failed to wait for xcodebuild: {e}")).context("building the app"),
@@ -1578,6 +1597,7 @@ fn log_command(
 /// colored lines on a detached thread, dropping entries below the live `filter`
 /// threshold. The thread ends when the child's stdout closes — i.e. when the stream
 /// is dropped/killed, or the process exits — so it's never joined.
+#[allow(clippy::print_stdout)] // live os_log stream on a detached thread
 fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
     let Some(stdout) = child.stdout.take() else {
         return;
@@ -1599,6 +1619,7 @@ fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
 /// are drained so neither blocks the app; known
 /// boot noise ([`is_boot_noise`]) is dropped, and lines obey the live `filter` like
 /// os_log, so `4 off` silences them too.
+#[allow(clippy::print_stdout)] // live app stdout/stderr stream on detached threads
 fn render_console(child: &mut Child, color: bool, filter: &Arc<AtomicU8>) {
     let pipes: [Option<Box<dyn std::io::Read + Send>>; 2] = [
         child
@@ -1635,6 +1656,7 @@ fn render_console(child: &mut Child, color: bool, filter: &Arc<AtomicU8>) {
 /// `E [system]` line, so a genuine `log` / `simctl` diagnostic (a rejected
 /// predicate, say) reads like the rest of the output instead of an unprefixed raw
 /// line. Gated by the live `filter` like [`render_logs`], so `4 off` silences it too.
+#[allow(clippy::print_stdout)] // live log-tool stderr stream on a detached thread
 fn render_log_stderr(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
     let Some(stderr) = child.stderr.take() else {
         return;
@@ -1668,6 +1690,7 @@ fn is_boot_noise(line: &str) -> bool {
 /// or `.debug.dylib`, the analog of the `log stream` `sender ==` predicate), drop
 /// entries below the live `filter` threshold, and format via [`oslog::render_fields`]
 /// so device logs read identically to the simulator's.
+#[allow(clippy::print_stdout)] // live device syslog stream on a detached thread
 fn render_device_logs(child: &mut Child, color: bool, exe: String, filter: Arc<AtomicU8>) {
     let Some(stdout) = child.stdout.take() else {
         return;
@@ -1766,7 +1789,7 @@ enum Stage {
     Stop,
 }
 
-fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
+fn simple(ctx: &mut Context, stage: Stage) -> CommandResult {
     // These default to a simulator target (the common headless case).
     let opts = RunOpts {
         device: false,
@@ -1785,14 +1808,22 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
     };
     let app = plan.app_bundle()?;
 
-    match stage {
+    let report = match stage {
         Stage::Install => {
-            plan.build_plan().run(&ctx.out)?;
+            plan.build_plan()
+                .run(&ctx.out)
+                .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
             ctx.out.step("Installing app", || {
                 simctl::install(udid, &app.path.display().to_string())
             })?;
-            ctx.out.note(&format!("Installed {}", app.bundle_id));
+            AppStageReport {
+                action: "installed",
+                note: format!("Installed {}", app.bundle_id),
+                bundle_id: app.bundle_id.clone(),
+                udid: udid.clone(),
+                detail: None,
+            }
         }
         Stage::Launch => {
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
@@ -1801,27 +1832,65 @@ fn simple(ctx: &mut Context, stage: Stage) -> CliResult {
             let out = ctx
                 .out
                 .step("Launching app", || simctl::launch(udid, &app.bundle_id))?;
-            ctx.out
-                .note(&format!("Launched {} → {}", app.bundle_id, out.trim()));
+            let detail = out.trim().to_string();
+            AppStageReport {
+                action: "launched",
+                note: format!("Launched {} → {detail}", app.bundle_id),
+                bundle_id: app.bundle_id.clone(),
+                udid: udid.clone(),
+                detail: Some(detail),
+            }
         }
         Stage::Logs => {
             // Boot first so the stream attaches instead of failing with "device is
             // not booted" when the simulator is shut down.
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
-            return stream_logs(ctx, udid, &app);
+            return stream_logs(ctx, udid, &app).map(|()| Rendered::Streamed);
         }
         Stage::Stop => {
             ctx.out.step("Terminating app", || {
                 simctl::terminate(udid, &app.bundle_id)
             })?;
-            ctx.out.note(&format!("Terminated {}", app.bundle_id));
+            AppStageReport {
+                action: "terminated",
+                note: format!("Terminated {}", app.bundle_id),
+                bundle_id: app.bundle_id.clone(),
+                udid: udid.clone(),
+                detail: None,
+            }
         }
+    };
+    Ok(Rendered::data(report))
+}
+
+/// The result of an `app install`/`launch`/`stop` stage: a status note in human
+/// mode, or `{ action, bundleId, udid, detail }` in the JSON envelope.
+struct AppStageReport {
+    action: &'static str,
+    note: String,
+    bundle_id: String,
+    udid: String,
+    detail: Option<String>,
+}
+
+impl Render for AppStageReport {
+    fn human(&self, out: &Output) {
+        out.note(&self.note);
     }
-    Ok(())
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "action": self.action,
+            "bundleId": self.bundle_id,
+            "udid": self.udid,
+            "detail": self.detail,
+        })
+    }
 }
 
 /// Follow a simulator's log for the app inline until Ctrl-C — the non-interactive
 /// fallback (the interactive session backgrounds the same stream via [`spawn_logs`]).
+#[allow(clippy::print_stdout)] // non-interactive inline log follow
 fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle) -> CliResult {
     ctx.out.note(&format!(
         "Streaming logs for {} (Ctrl-C to stop)",

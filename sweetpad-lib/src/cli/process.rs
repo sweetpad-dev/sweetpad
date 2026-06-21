@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
-use crate::cli::CliError;
+use crate::cli::{CliError, ErrorKind};
 
 /// Run a command to completion, capturing stdout. Stderr is inherited so the
 /// user still sees diagnostics. Errors if the process can't be spawned or exits
@@ -161,6 +161,7 @@ fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
         CliError::new(format!(
             "`{program}` not found on PATH (Xcode command-line tools are required)"
         ))
+        .kind(ErrorKind::ToolMissing)
     } else {
         CliError::new(format!("failed to run `{program}`: {e}"))
     }

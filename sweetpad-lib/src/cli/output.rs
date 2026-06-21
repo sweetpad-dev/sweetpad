@@ -5,32 +5,44 @@
 //! goes to stdout (so `--json` payloads pipe cleanly). This is intentionally
 //! small for the scaffold — render helpers grow alongside the commands.
 
+// `Output` IS the sanctioned stdout/stderr sink: every emitter here writes
+// directly, so the crate-level print lint is allowed for this module.
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
 use std::io::{IsTerminal, Write};
 
 use crate::cli::progress::Spinner;
 use crate::cli::{CliError, GlobalArgs};
 
 /// Resolved output mode shared across commands.
+#[allow(clippy::struct_excessive_bools)] // independent output toggles, not a state machine
 pub struct Output {
     json: bool,
     non_interactive: bool,
     color: bool,
-    verbose: u8,
+    verbose: bool,
+    quiet: bool,
 }
 
 impl Output {
     #[must_use]
     pub fn new(global: &GlobalArgs) -> Self {
-        let color = !global.no_color
-            && std::env::var_os("NO_COLOR").is_none()
-            && std::io::stdout().is_terminal();
+        // `--no-color`/`NO_COLOR` always win; otherwise `CLICOLOR_FORCE`/
+        // `FORCE_COLOR` force color even when piped, else default to a TTY check.
+        let no_color = global.no_color || std::env::var_os("NO_COLOR").is_some();
+        let force_color = std::env::var_os("CLICOLOR_FORCE").is_some()
+            || std::env::var_os("FORCE_COLOR").is_some();
+        let color = !no_color && (force_color || std::io::stdout().is_terminal());
         let non_interactive =
             global.non_interactive || std::env::var_os("SWEETPAD_NONINTERACTIVE").is_some();
         Self {
             json: global.json,
             non_interactive,
             color,
-            verbose: global.verbose,
+            // `--quiet` wins over `--verbose`, so a script that always passes
+            // `-v` can still be quieted.
+            verbose: global.verbose && !global.quiet,
+            quiet: global.quiet,
         }
     }
 
@@ -56,7 +68,13 @@ impl Output {
     /// True when `-v`/`--verbose` was passed — surfaces raw/extra output.
     #[must_use]
     pub fn is_verbose(&self) -> bool {
-        self.verbose > 0
+        self.verbose
+    }
+
+    /// True when `-q`/`--quiet` was passed — mutes advisory chatter.
+    #[must_use]
+    pub fn is_quiet(&self) -> bool {
+        self.quiet
     }
 
     /// Print a primary data line to stdout (human mode only — JSON commands
@@ -67,10 +85,18 @@ impl Output {
         }
     }
 
-    /// Emit a JSON value to stdout. No-op in human mode.
-    pub fn json_value(&self, value: &serde_json::Value) {
+    /// Emit a command's result as the standardized JSON success envelope
+    /// (`{schema, ok: true, data}`) on stdout. No-op in human mode. This is the
+    /// single success-envelope site — the dispatcher routes migrated commands'
+    /// payloads here, and self-emitting commands call it directly, so every
+    /// `--json` result is wrapped identically.
+    pub fn json_value(&self, data: &serde_json::Value) {
         if self.json
-            && let Ok(s) = serde_json::to_string_pretty(value)
+            && let Ok(s) = serde_json::to_string_pretty(&serde_json::json!({
+                "schema": 1,
+                "ok": true,
+                "data": data,
+            }))
         {
             println!("{s}");
         }
@@ -94,9 +120,9 @@ impl Output {
         }
     }
 
-    /// An informational note to stderr (human mode only).
+    /// An informational note to stderr (human mode only, muted by `--quiet`).
     pub fn note(&self, s: &str) {
-        if !self.json {
+        if !self.json && !self.quiet {
             let _ = writeln!(std::io::stderr(), "{}", self.dim(s));
         }
     }
@@ -104,7 +130,7 @@ impl Output {
     /// A prominent (non-dimmed, yellow) status line to stderr — e.g. the running
     /// app exiting. Stands out from the dim session notes.
     pub fn alert(&self, s: &str) {
-        if !self.json {
+        if !self.json && !self.quiet {
             let line = if self.color {
                 format!("\x1b[33m{s}\x1b[0m")
             } else {
@@ -119,13 +145,13 @@ impl Output {
     /// in place. Animates only when interactive (TTY, not `--json`); otherwise
     /// `f` just runs. Use for long, otherwise-silent steps (boot, install).
     pub fn step<T>(&self, message: &str, f: impl FnOnce() -> T) -> T {
-        let _spinner = Spinner::start(message, self.is_interactive(), self.color);
+        let _spinner = Spinner::start(message, self.is_interactive() && !self.quiet, self.color);
         f()
     }
 
     /// A verbose-only diagnostic to stderr, gated on `-v`.
     pub fn debug(&self, s: &str) {
-        if self.verbose > 0 && !self.json {
+        if self.verbose && !self.json {
             let _ = writeln!(std::io::stderr(), "{}", self.dim(&format!("[debug] {s}")));
         }
     }
@@ -138,7 +164,11 @@ impl Output {
     /// output sits quietly beneath it.
     pub fn error(&self, err: &CliError) {
         if self.json {
-            let payload = serde_json::json!({ "error": { "message": err.to_string() } });
+            let payload = serde_json::json!({
+                "schema": 1,
+                "ok": false,
+                "error": { "code": err.error_kind().code_str(), "message": err.to_string() },
+            });
             if let Ok(s) = serde_json::to_string(&payload) {
                 let _ = writeln!(std::io::stderr(), "{s}");
             }

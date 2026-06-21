@@ -139,21 +139,34 @@ pub fn configuration_arg(configuration: &str) -> &'static str {
     }
 }
 
-/// `swift build` for a package, streaming output to the terminal. `clean` wipes
-/// the build directory first — SwiftPM has no `build --clean`, so it's a
-/// separate `package clean`.
-pub fn build(container: &Container, configuration: &str, clean: bool) -> Result<(), CliError> {
+/// `swift build` for a package. Streams output to the terminal unless `quiet`
+/// (for `--json` callers whose stdout must hold only the result envelope).
+/// `clean` wipes the build directory first — SwiftPM has no `build --clean`, so
+/// it's a separate `package clean`.
+pub fn build(
+    container: &Container,
+    configuration: &str,
+    clean: bool,
+    quiet: bool,
+) -> Result<(), CliError> {
     let cwd = package_dir(container);
     if clean {
-        process::stream("swift", &["package", "clean"], cwd.as_deref())
+        process::run("swift", &["package", "clean"], cwd.as_deref(), quiet)
             .context("cleaning the package build")?;
     }
-    process::stream(
+    let ok = process::run(
         "swift",
         &["build", "--configuration", configuration_arg(configuration)],
         cwd.as_deref(),
+        quiet,
     )
-    .context("building the package")
+    .context("building the package")?;
+    if ok {
+        Ok(())
+    } else {
+        Err(CliError::new("swift build exited with a non-zero status")
+            .context("building the package"))
+    }
 }
 
 /// `swift test` for a package. Returns whether the suite passed (a non-zero

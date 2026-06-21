@@ -7,7 +7,8 @@
 
 use clap::Subcommand;
 
-use crate::cli::{CliResult, Context, devicectl, simctl};
+use crate::cli::output::Output;
+use crate::cli::{CommandResult, Context, Render, Rendered, devicectl, simctl};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -15,9 +16,9 @@ pub enum Action {
     List,
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(_ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
-        Action::List => list(ctx),
+        Action::List => list(),
     }
 }
 
@@ -45,7 +46,51 @@ impl Dest {
     }
 }
 
-fn list(ctx: &mut Context) -> CliResult {
+/// The destination list: human lines (kind · name + specifier), or the `data`
+/// of the JSON envelope as `{destinations: […]}`.
+struct DestList {
+    dests: Vec<Dest>,
+}
+
+impl Render for DestList {
+    fn human(&self, out: &Output) {
+        for d in &self.dests {
+            let booted = if d.booted == Some(true) {
+                " [booted]"
+            } else {
+                ""
+            };
+            out.line(&format!(
+                "{} · {} ({}){booted}",
+                d.kind,
+                d.name,
+                d.os_label()
+            ));
+            out.line(&format!("    {}", d.specifier));
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let items: Vec<serde_json::Value> = self
+            .dests
+            .iter()
+            .map(|d| {
+                serde_json::json!({
+                    "kind": d.kind,
+                    "name": d.name,
+                    "os": d.os,
+                    "osVersion": d.os_version,
+                    "udid": d.udid,
+                    "booted": d.booted,
+                    "destination": d.specifier,
+                })
+            })
+            .collect();
+        serde_json::json!({ "destinations": items })
+    }
+}
+
+fn list() -> CommandResult {
     let mut dests = vec![Dest {
         kind: "macOS",
         name: "My Mac".to_string(),
@@ -83,41 +128,7 @@ fn list(ctx: &mut Context) -> CliResult {
         });
     }
 
-    if ctx.out.is_json() {
-        let items: Vec<serde_json::Value> = dests
-            .iter()
-            .map(|d| {
-                serde_json::json!({
-                    "kind": d.kind,
-                    "name": d.name,
-                    "os": d.os,
-                    "osVersion": d.os_version,
-                    "udid": d.udid,
-                    "booted": d.booted,
-                    "destination": d.specifier,
-                })
-            })
-            .collect();
-        ctx.out
-            .json_value(&serde_json::json!({ "destinations": items }));
-        return Ok(());
-    }
-
-    for d in &dests {
-        let booted = if d.booted == Some(true) {
-            " [booted]"
-        } else {
-            ""
-        };
-        ctx.out.line(&format!(
-            "{} · {} ({}){booted}",
-            d.kind,
-            d.name,
-            d.os_label()
-        ));
-        ctx.out.line(&format!("    {}", d.specifier));
-    }
-    Ok(())
+    Ok(Rendered::data(DestList { dests }))
 }
 
 /// xcodebuild destination platform name for a physical device's platform.

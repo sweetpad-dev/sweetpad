@@ -4,9 +4,10 @@ use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 
+use crate::cli::output::Output;
 use crate::cli::resolve::{self, Container};
 use crate::cli::scaffold::{self, ProjectSpec, ScaffoldFile};
-use crate::cli::{CliError, CliResult, Context};
+use crate::cli::{CliError, CliResult, CommandResult, Context, ErrorKind, Render, Rendered};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -52,21 +53,22 @@ pub struct NewArgs {
     pub force: bool,
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Info => info(ctx),
         Action::New(args) => new(ctx, args),
     }
 }
 
-fn new(ctx: &mut Context, args: &NewArgs) -> CliResult {
+fn new(ctx: &mut Context, args: &NewArgs) -> CommandResult {
     let interactive = ctx.out.is_interactive();
+    let color = ctx.out.use_color();
     let cwd = std::env::current_dir()
         .map_err(|e| CliError::new(format!("cannot read current directory: {e}")))?;
 
     // On a TTY each still-unset field is prompted; off a TTY it's flags +
     // defaults, strictly. Both paths share the same defaults.
-    let answers = gather_answers(args, &cwd, interactive)?;
+    let answers = gather_answers(args, &cwd, interactive, color)?;
 
     let spec = ProjectSpec::new(
         &answers.name,
@@ -81,21 +83,19 @@ fn new(ctx: &mut Context, args: &NewArgs) -> CliResult {
     } else {
         cwd.join(&spec.name)
     };
-    ensure_writable(&root, args.force, interactive)?;
+    ensure_writable(&root, args.force, interactive, color)?;
 
     let files = scaffold::scaffold(&spec);
     let written = write_files(&root, &files)?;
     let git_initialized = answers.git && init_git(ctx, &root);
 
-    report(
-        ctx,
+    Ok(Rendered::data(created(
         &spec,
         &root,
         &written,
         answers.current_dir,
         git_initialized,
-    );
-    Ok(())
+    )))
 }
 
 /// The fully-resolved choices a `project new` run operates on, however they were
@@ -117,11 +117,16 @@ fn dir_basename(dir: &Path) -> Option<String> {
 /// when set; otherwise it's prompted on a TTY and falls back to its default off
 /// one. Defaults are computed here once, so the interactive and headless paths
 /// can't drift apart.
-fn gather_answers(args: &NewArgs, cwd: &Path, interactive: bool) -> Result<Answers, CliError> {
+fn gather_answers(
+    args: &NewArgs,
+    cwd: &Path,
+    interactive: bool,
+    color: bool,
+) -> Result<Answers, CliError> {
     let current_dir = if args.current_dir {
         true
     } else if interactive {
-        confirm("Scaffold into the current directory?", false)?
+        confirm("Scaffold into the current directory?", false, color)?
     } else {
         false
     };
@@ -135,6 +140,7 @@ fn gather_answers(args: &NewArgs, cwd: &Path, interactive: bool) -> Result<Answe
             "Project name",
             name_default.as_deref(),
             scaffold::validate_name,
+            color,
         )?,
         None => name_default.ok_or_else(|| {
             CliError::new(
@@ -146,7 +152,7 @@ fn gather_answers(args: &NewArgs, cwd: &Path, interactive: bool) -> Result<Answe
 
     let platform = match args.platform {
         Some(platform) => platform,
-        None if interactive => select_platform(scaffold::Platform::Ios)?,
+        None if interactive => select_platform(scaffold::Platform::Ios, color)?,
         None => scaffold::Platform::Ios,
     };
 
@@ -157,6 +163,7 @@ fn gather_answers(args: &NewArgs, cwd: &Path, interactive: bool) -> Result<Answe
             "Bundle identifier",
             Some(&bundle_default),
             scaffold::validate_bundle_id,
+            color,
         )?,
         None => bundle_default,
     };
@@ -168,6 +175,7 @@ fn gather_answers(args: &NewArgs, cwd: &Path, interactive: bool) -> Result<Answe
             &format!("{} deployment target", platform.label()),
             Some(&target_default),
             scaffold::validate_deployment_target,
+            color,
         )?,
         None => target_default,
     };
@@ -175,7 +183,7 @@ fn gather_answers(args: &NewArgs, cwd: &Path, interactive: bool) -> Result<Answe
     let git = if args.no_git {
         false
     } else if interactive {
-        confirm("Initialize a git repository?", true)?
+        confirm("Initialize a git repository?", true, color)?
     } else {
         true
     };
@@ -190,10 +198,14 @@ fn gather_answers(args: &NewArgs, cwd: &Path, interactive: bool) -> Result<Answe
     })
 }
 
-/// A shared dialoguer theme so every prompt (`input`, `select`, `confirm`)
-/// renders consistently.
-fn theme() -> dialoguer::theme::ColorfulTheme {
-    dialoguer::theme::ColorfulTheme::default()
+/// The dialoguer theme honoring `--no-color`: colorful on a color terminal, a
+/// plain theme otherwise. Boxed so the prompts can take `&dyn Theme`.
+fn prompt_theme(color: bool) -> Box<dyn dialoguer::theme::Theme> {
+    if color {
+        Box::new(dialoguer::theme::ColorfulTheme::default())
+    } else {
+        Box::new(dialoguer::theme::SimpleTheme)
+    }
 }
 
 /// Prompt for free text with a pre-filled default (Enter accepts it) and inline
@@ -202,49 +214,55 @@ fn input(
     prompt: &str,
     default: Option<&str>,
     validate: fn(&str) -> Result<(), String>,
+    color: bool,
 ) -> Result<String, CliError> {
-    let theme = theme();
-    let mut input = dialoguer::Input::<String>::with_theme(&theme).with_prompt(prompt);
+    let theme = prompt_theme(color);
+    let mut input = dialoguer::Input::<String>::with_theme(theme.as_ref()).with_prompt(prompt);
     if let Some(default) = default {
         input = input.default(default.to_string());
     }
     input
         .validate_with(|s: &String| validate(s))
         .interact_text()
-        .map_err(|e| CliError::new(format!("prompt failed: {e}")))
+        .map_err(|e| CliError::new(format!("prompt failed: {e}")).kind(ErrorKind::UserCancel))
 }
 
 /// Pick a platform from the supported set, pre-selecting `default`.
-fn select_platform(default: scaffold::Platform) -> Result<scaffold::Platform, CliError> {
+fn select_platform(
+    default: scaffold::Platform,
+    color: bool,
+) -> Result<scaffold::Platform, CliError> {
     let platforms = [scaffold::Platform::Ios, scaffold::Platform::Macos];
     let labels: Vec<&str> = platforms.iter().map(|p| p.label()).collect();
     let default_idx = platforms.iter().position(|&p| p == default).unwrap_or(0);
-    Ok(platforms[select("Platform", &labels, default_idx)?])
+    Ok(platforms[select("Platform", &labels, default_idx, color)?])
 }
 
 /// A `Select` menu returning the chosen index.
-fn select(prompt: &str, items: &[&str], default: usize) -> Result<usize, CliError> {
-    dialoguer::Select::with_theme(&theme())
+fn select(prompt: &str, items: &[&str], default: usize, color: bool) -> Result<usize, CliError> {
+    let theme = prompt_theme(color);
+    dialoguer::Select::with_theme(theme.as_ref())
         .with_prompt(prompt)
         .items(items)
         .default(default)
         .interact()
-        .map_err(|e| CliError::new(format!("prompt failed: {e}")))
+        .map_err(|e| CliError::new(format!("prompt failed: {e}")).kind(ErrorKind::UserCancel))
 }
 
 /// A yes/no prompt with a default that Enter accepts.
-fn confirm(prompt: &str, default: bool) -> Result<bool, CliError> {
-    dialoguer::Confirm::with_theme(&theme())
+fn confirm(prompt: &str, default: bool, color: bool) -> Result<bool, CliError> {
+    let theme = prompt_theme(color);
+    dialoguer::Confirm::with_theme(theme.as_ref())
         .with_prompt(prompt)
         .default(default)
         .interact()
-        .map_err(|e| CliError::new(format!("prompt failed: {e}")))
+        .map_err(|e| CliError::new(format!("prompt failed: {e}")).kind(ErrorKind::UserCancel))
 }
 
 /// Refuse to scaffold over an existing non-empty directory. `--force` waives the
 /// check outright; on a TTY without it, the user is asked (default no); off a
 /// TTY it's a hard error.
-fn ensure_writable(root: &Path, force: bool, interactive: bool) -> CliResult {
+fn ensure_writable(root: &Path, force: bool, interactive: bool, color: bool) -> CliResult {
     let mut entries = match std::fs::read_dir(root) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -262,6 +280,7 @@ fn ensure_writable(root: &Path, force: bool, interactive: bool) -> CliResult {
         && confirm(
             &format!("{} is not empty. Scaffold into it anyway?", root.display()),
             false,
+            color,
         )?
     {
         return Ok(());
@@ -307,95 +326,129 @@ fn init_git(ctx: &Context, root: &Path) -> bool {
     }
 }
 
-fn report(
-    ctx: &Context,
+/// The outcome of a `project new` scaffold: the created project's facts. JSON
+/// reports the full object; human mode prints a "Created … / Next steps" summary.
+struct Created {
+    name: String,
+    path: String,
+    xcodeproj: String,
+    scheme: String,
+    platform: &'static str,
+    bundle_id: String,
+    deployment_target: String,
+    git_initialized: bool,
+    files: Vec<String>,
+    /// Whether we scaffolded into the current directory — drops the `cd` step.
+    current_dir: bool,
+}
+
+impl Render for Created {
+    fn human(&self, out: &Output) {
+        out.line(&format!("Created {} at {}", self.name, self.path));
+        out.line("");
+        out.line("Next steps:");
+        if !self.current_dir {
+            out.line(&format!("  cd {}", self.name));
+        }
+        out.line("  sweetpad app run");
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "name": self.name,
+            "path": self.path,
+            "xcodeproj": self.xcodeproj,
+            "scheme": self.scheme,
+            "platform": self.platform,
+            "bundleId": self.bundle_id,
+            "deploymentTarget": self.deployment_target,
+            "gitInitialized": self.git_initialized,
+            "files": self.files,
+        })
+    }
+}
+
+/// Assemble the `Created` payload from the scaffold result. Derives the
+/// `.xcodeproj`/`.xcscheme` paths the same way the report always has.
+fn created(
     spec: &ProjectSpec,
     root: &Path,
     written: &[PathBuf],
     current_dir: bool,
     git_initialized: bool,
-) {
+) -> Created {
     let xcodeproj = root.join(format!("{}.xcodeproj", spec.name));
     let scheme = xcodeproj
         .join("xcshareddata")
         .join("xcschemes")
         .join(format!("{}.xcscheme", spec.name));
 
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({
-            "name": spec.name,
-            "path": root.display().to_string(),
-            "xcodeproj": xcodeproj.display().to_string(),
-            "scheme": scheme.display().to_string(),
-            "platform": spec.platform.label(),
-            "bundleId": spec.bundle_id,
-            "deploymentTarget": spec.deployment_target,
-            "gitInitialized": git_initialized,
-            "files": written
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect::<Vec<_>>(),
-        }));
-        return;
+    Created {
+        name: spec.name.clone(),
+        path: root.display().to_string(),
+        xcodeproj: xcodeproj.display().to_string(),
+        scheme: scheme.display().to_string(),
+        platform: spec.platform.label(),
+        bundle_id: spec.bundle_id.clone(),
+        deployment_target: spec.deployment_target.clone(),
+        git_initialized,
+        files: written.iter().map(|p| p.display().to_string()).collect(),
+        current_dir,
     }
-
-    ctx.out
-        .line(&format!("Created {} at {}", spec.name, root.display()));
-    ctx.out.line("");
-    ctx.out.line("Next steps:");
-    if !current_dir {
-        ctx.out.line(&format!("  cd {}", spec.name));
-    }
-    ctx.out.line("  sweetpad app run");
 }
 
 /// Gathered project facts, container-agnostic so workspace and project render
-/// the same way.
+/// the same way. Renders as a name/path header with sectioned lists, or
+/// `{kind, name, path, targets, configurations, schemes}` in the JSON envelope.
 struct Info {
     kind: &'static str,
     name: String,
+    path: String,
     targets: Vec<String>,
     configurations: Vec<String>,
     schemes: Vec<String>,
 }
 
-fn info(ctx: &mut Context) -> CliResult {
-    let container = resolve::container(ctx)?;
-    let info = gather(&container)?;
-
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({
-            "kind": info.kind,
-            "name": info.name,
-            "path": container.path().display().to_string(),
-            "targets": info.targets,
-            "configurations": info.configurations,
-            "schemes": info.schemes,
-        }));
-        return Ok(());
+impl Render for Info {
+    fn human(&self, out: &Output) {
+        out.line(&format!("{} ({})", self.name, self.kind));
+        out.line(&format!("  path: {}", self.path));
+        section(out, "targets", &self.targets);
+        section(out, "configurations", &self.configurations);
+        section(out, "schemes", &self.schemes);
     }
 
-    ctx.out.line(&format!("{} ({})", info.name, info.kind));
-    ctx.out
-        .line(&format!("  path: {}", container.path().display()));
-    section(ctx, "targets", &info.targets);
-    section(ctx, "configurations", &info.configurations);
-    section(ctx, "schemes", &info.schemes);
-    Ok(())
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "kind": self.kind,
+            "name": self.name,
+            "path": self.path,
+            "targets": self.targets,
+            "configurations": self.configurations,
+            "schemes": self.schemes,
+        })
+    }
 }
 
-fn section(ctx: &Context, title: &str, items: &[String]) {
-    ctx.out.line(&format!("  {title}:"));
+fn info(ctx: &mut Context) -> CommandResult {
+    let container = resolve::container(ctx)?;
+    let info = gather(&container)?;
+    Ok(Rendered::data(info))
+}
+
+fn section(out: &Output, title: &str, items: &[String]) {
+    out.line(&format!("  {title}:"));
     if items.is_empty() {
-        ctx.out.line("    (none)");
+        out.line("    (none)");
     } else {
         for item in items {
-            ctx.out.line(&format!("    {item}"));
+            out.line(&format!("    {item}"));
         }
     }
 }
 
 fn gather(container: &Container) -> Result<Info, CliError> {
+    let path = container.path().display().to_string();
     match container {
         Container::Workspace(p) => {
             let ws = crate::workspace::open(p).map_err(|e| {
@@ -404,6 +457,7 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             Ok(Info {
                 kind: "workspace",
                 name: ws.name.clone(),
+                path,
                 targets: ws.merged_targets(),
                 configurations: ws.merged_configurations(),
                 schemes: ws.merged_schemes(),
@@ -416,6 +470,7 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             Ok(Info {
                 kind: "project",
                 name: proj.name.clone(),
+                path,
                 targets: proj.targets.iter().map(|t| t.name.clone()).collect(),
                 configurations: proj.configurations.clone(),
                 schemes: proj.schemes.clone(),
@@ -429,6 +484,7 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             Ok(Info {
                 kind: "package",
                 name: manifest.name.clone(),
+                path,
                 targets: manifest.targets.iter().map(|t| t.name.clone()).collect(),
                 configurations: vec!["Debug".to_string(), "Release".to_string()],
                 schemes: manifest.scheme_names(),

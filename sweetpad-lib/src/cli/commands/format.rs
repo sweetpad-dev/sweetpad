@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 use clap::{Subcommand, ValueEnum};
 
-use crate::cli::{CliResult, Context, ErrorContext, process};
+use crate::cli::output::Output;
+use crate::cli::{CommandResult, Context, ErrorContext, ErrorKind, Render, Rendered, process};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Tool {
@@ -30,13 +31,33 @@ pub enum Action {
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Run { paths, tool, check } => format(ctx, paths, *tool, *check),
     }
 }
 
-fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> CliResult {
+/// The format/lint result. The tool's own output already streamed in human
+/// mode; `--json` reports the tool, mode, and whether the check passed.
+struct FormatReport {
+    tool: String,
+    check: bool,
+    passed: bool,
+}
+
+impl Render for FormatReport {
+    fn human(&self, _out: &Output) {}
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "tool": self.tool,
+            "mode": if self.check { "check" } else { "format" },
+            "passed": self.passed,
+        })
+    }
+}
+
+fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> CommandResult {
     // Default to the current directory when no paths are given.
     let default_dir = PathBuf::from(".");
     let targets: Vec<String> = if paths.is_empty() {
@@ -57,11 +78,36 @@ fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> CliR
         "{} with {tool:?}",
         if check { "checking" } else { "formatting" }
     ));
-    process::stream(&program, &arg_refs, None).context(if check {
-        "checking Swift formatting"
-    } else {
-        "formatting Swift sources"
-    })
+
+    // JSON reserves stdout for the result, so run the tool quietly — its own
+    // stdout would otherwise corrupt the envelope. A failed `--check` still
+    // reports a result, but exits non-zero so CI catches it.
+    if ctx.out.is_json() {
+        let passed = process::run(&program, &arg_refs, None, true)?;
+        let report = FormatReport {
+            tool: format!("{tool:?}"),
+            check,
+            passed,
+        };
+        return if passed {
+            Ok(Rendered::data(report))
+        } else {
+            Ok(Rendered::data_with_exit(report, 3))
+        };
+    }
+
+    process::stream(&program, &arg_refs, None)
+        .map_err(|e| e.or_kind(ErrorKind::BuildFailure))
+        .context(if check {
+            "checking Swift formatting"
+        } else {
+            "formatting Swift sources"
+        })?;
+    Ok(Rendered::data(FormatReport {
+        tool: format!("{tool:?}"),
+        check,
+        passed: true,
+    }))
 }
 
 /// swift-format, preferring the Xcode-bundled copy (`xcrun swift-format`).

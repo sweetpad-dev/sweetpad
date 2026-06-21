@@ -18,7 +18,8 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::cli::{CliError, CliResult, Context};
+use crate::cli::output::Output;
+use crate::cli::{CliError, CliResult, CommandResult, Render, Rendered};
 use crate::pbxproj_merge::Conflict;
 
 /// A file kind sweetpad knows how to merge semantically.
@@ -153,7 +154,7 @@ enum Outcome {
 /// git's recorded merge inputs. Writes and stages each clean result; leaves
 /// genuinely conflicted files untouched with a report. Errors (non-zero exit)
 /// if anything is left unresolved.
-pub fn resolve(ctx: &mut Context, kind: Kind, paths: &[PathBuf], force: bool) -> CliResult {
+pub fn resolve(kind: Kind, paths: &[PathBuf], force: bool) -> CommandResult {
     let repo = PathBuf::from(git(None, &["rev-parse", "--show-toplevel"])?.trim());
 
     let targets: Vec<String> = if paths.is_empty() {
@@ -168,11 +169,13 @@ pub fn resolve(ctx: &mut Context, kind: Kind, paths: &[PathBuf], force: bool) ->
     };
 
     if targets.is_empty() {
-        ctx.out.line(&format!(
-            "No conflicted {} files to resolve.",
-            kind.attr_pattern()
-        ));
-        return Ok(());
+        return Ok(Rendered::data(MergeReport {
+            results: Vec::new(),
+            empty_note: Some(format!(
+                "No conflicted {} files to resolve.",
+                kind.attr_pattern()
+            )),
+        }));
     }
 
     let merge_head = if force {
@@ -199,18 +202,19 @@ pub fn resolve(ctx: &mut Context, kind: Kind, paths: &[PathBuf], force: bool) ->
         })
         .collect();
 
-    report(ctx, &results);
-
     let failed = results
         .iter()
         .filter(|(_, o)| !matches!(o, Outcome::Resolved))
         .count();
+    let report = MergeReport {
+        results,
+        empty_note: None,
+    };
     if failed > 0 {
-        Err(CliError::new(format!(
-            "{failed} file(s) left unresolved — see report above"
-        )))
+        // Render the per-file report, but exit non-zero on unresolved conflicts.
+        Ok(Rendered::data_with_exit(report, 1))
     } else {
-        Ok(())
+        Ok(Rendered::data(report))
     }
 }
 
@@ -262,9 +266,42 @@ fn read_inputs(
     }
 }
 
-fn report(ctx: &Context, results: &[(String, Outcome)]) {
-    if ctx.out.is_json() {
-        let files: Vec<serde_json::Value> = results
+/// The per-file merge outcomes: a status line per file in human mode (or the
+/// "no conflicted files" note when there was nothing to do), or `{ "files": […] }`
+/// in the JSON envelope.
+struct MergeReport {
+    results: Vec<(String, Outcome)>,
+    empty_note: Option<String>,
+}
+
+impl Render for MergeReport {
+    fn human(&self, out: &Output) {
+        if let Some(note) = &self.empty_note {
+            out.line(note);
+            return;
+        }
+        for (path, outcome) in &self.results {
+            match outcome {
+                Outcome::Resolved => out.line(&format!("  resolved  {path}")),
+                Outcome::Skipped(reason) => out.line(&format!("  skipped   {path} — {reason}")),
+                Outcome::Conflicted(conflicts) => {
+                    out.line(&format!("  CONFLICT  {path}"));
+                    for c in conflicts {
+                        out.line(&format!(
+                            "      [{}] {} — {}",
+                            c.kind.as_str(),
+                            c.path,
+                            c.detail
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let files: Vec<serde_json::Value> = self
+            .results
             .iter()
             .map(|(path, outcome)| match outcome {
                 Outcome::Resolved => serde_json::json!({ "path": path, "status": "resolved" }),
@@ -280,26 +317,7 @@ fn report(ctx: &Context, results: &[(String, Outcome)]) {
                 }
             })
             .collect();
-        ctx.out.json_value(&serde_json::json!({ "files": files }));
-        return;
-    }
-
-    for (path, outcome) in results {
-        match outcome {
-            Outcome::Resolved => ctx.out.line(&format!("  resolved  {path}")),
-            Outcome::Skipped(reason) => ctx.out.line(&format!("  skipped   {path} — {reason}")),
-            Outcome::Conflicted(conflicts) => {
-                ctx.out.line(&format!("  CONFLICT  {path}"));
-                for c in conflicts {
-                    ctx.out.line(&format!(
-                        "      [{}] {} — {}",
-                        c.kind.as_str(),
-                        c.path,
-                        c.detail
-                    ));
-                }
-            }
-        }
+        serde_json::json!({ "files": files })
     }
 }
 
@@ -352,7 +370,7 @@ pub fn run_driver(
 /// Configure git to route `.pbxproj` and `Package.resolved` through sweetpad's
 /// drivers: a `git config` driver definition (local or `--global`) per kind,
 /// plus the matching `.gitattributes` lines.
-pub fn install(ctx: &mut Context, global: bool) -> CliResult {
+pub fn install(global: bool) -> CommandResult {
     let repo = PathBuf::from(git(None, &["rev-parse", "--show-toplevel"])?.trim());
     let exe = std::env::current_exe()
         .map_err(|e| CliError::new(format!("cannot locate the sweetpad executable: {e}")))?;
@@ -395,26 +413,54 @@ pub fn install(ctx: &mut Context, global: bool) -> CliResult {
     };
     let changed = ensure_lines(&attr_path, &lines)?;
 
-    ctx.out.line(&format!(
-        "Configured sweetpad merge drivers ({} git config).",
-        if global { "global" } else { "local" }
-    ));
-    ctx.out.line(&format!(
-        "{} {}:",
-        if changed {
-            "Updated"
-        } else {
-            "Already present in"
-        },
-        attr_path.display()
-    ));
-    for line in &lines {
-        ctx.out.line(&format!("  {line}"));
+    Ok(Rendered::data(InstallReport {
+        global,
+        changed,
+        attributes_file: attr_path.display().to_string(),
+        patterns: lines,
+    }))
+}
+
+/// The result of `merge install`: the configured-drivers summary lines in human
+/// mode, or `{ scope, attributesFile, changed, patterns }` in the JSON envelope.
+struct InstallReport {
+    global: bool,
+    changed: bool,
+    attributes_file: String,
+    patterns: Vec<String>,
+}
+
+impl Render for InstallReport {
+    fn human(&self, out: &Output) {
+        out.line(&format!(
+            "Configured sweetpad merge drivers ({} git config).",
+            if self.global { "global" } else { "local" }
+        ));
+        out.line(&format!(
+            "{} {}:",
+            if self.changed {
+                "Updated"
+            } else {
+                "Already present in"
+            },
+            self.attributes_file
+        ));
+        for line in &self.patterns {
+            out.line(&format!("  {line}"));
+        }
+        if !self.global {
+            out.note("commit .gitattributes so collaborators get the same behavior (the driver config is per-clone — they run `sweetpad merge install` once).");
+        }
     }
-    if !global {
-        ctx.out.note("commit .gitattributes so collaborators get the same behavior (the driver config is per-clone — they run `sweetpad merge install` once).");
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "scope": if self.global { "global" } else { "local" },
+            "attributesFile": self.attributes_file,
+            "changed": self.changed,
+            "patterns": self.patterns,
+        })
     }
-    Ok(())
 }
 
 /// The global gitattributes file (`core.attributesFile`), defaulting to

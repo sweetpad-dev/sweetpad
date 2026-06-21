@@ -1,8 +1,10 @@
 //! `sweetpad scheme …` — inspect schemes.
 
 use clap::Subcommand;
+use serde::Serialize;
 
-use crate::cli::{CliResult, Context, resolve};
+use crate::cli::output::Output;
+use crate::cli::{CommandResult, Context, Render, Rendered, resolve};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -10,43 +12,61 @@ pub enum Action {
     List,
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::List => list(ctx),
     }
 }
 
-/// Enumerate schemes for the resolved container and render them. The currently
-/// selected scheme (flag > config > remembered state) is marked.
-fn list(ctx: &mut Context) -> CliResult {
+/// The scheme list: a marked human list, or the `data` of the JSON envelope.
+#[derive(Serialize)]
+struct SchemeList {
+    container: String,
+    selected: Option<String>,
+    schemes: Vec<SchemeEntry>,
+}
+
+#[derive(Serialize)]
+struct SchemeEntry {
+    name: String,
+    selected: bool,
+}
+
+impl Render for SchemeList {
+    fn human(&self, out: &Output) {
+        if self.schemes.is_empty() {
+            out.note("no schemes found");
+            return;
+        }
+        for s in &self.schemes {
+            out.item(&s.name, s.selected);
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+/// Enumerate schemes for the resolved container. The currently selected scheme
+/// (flag > config > remembered state) is marked.
+fn list(ctx: &mut Context) -> CommandResult {
     let resolved = resolve::resolve(ctx)?;
     let schemes = resolve::schemes(&resolved.container)?;
-    let selected = resolved.scheme.as_deref();
-
-    if ctx.out.is_json() {
-        let items: Vec<serde_json::Value> = schemes
-            .iter()
-            .map(|name| {
-                serde_json::json!({
-                    "name": name,
-                    "selected": Some(name.as_str()) == selected,
-                })
-            })
-            .collect();
-        ctx.out.json_value(&serde_json::json!({
-            "container": resolved.container.path().display().to_string(),
-            "selected": selected,
-            "schemes": items,
-        }));
-        return Ok(());
-    }
-
-    if schemes.is_empty() {
-        ctx.out.note("no schemes found");
-        return Ok(());
-    }
-    for name in &schemes {
-        ctx.out.item(name, Some(name.as_str()) == selected);
-    }
-    Ok(())
+    let selected = resolved.scheme.clone();
+    let entries = schemes
+        .into_iter()
+        .map(|name| {
+            let is_selected = Some(&name) == selected.as_ref();
+            SchemeEntry {
+                name,
+                selected: is_selected,
+            }
+        })
+        .collect();
+    Ok(Rendered::data(SchemeList {
+        container: resolved.container.path().display().to_string(),
+        selected,
+        schemes: entries,
+    }))
 }

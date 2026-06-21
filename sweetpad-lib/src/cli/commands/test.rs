@@ -6,7 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::Subcommand;
 
-use crate::cli::{CliError, CliResult, Context, resolve, swiftpm, xcodebuild};
+use crate::cli::output::Output;
+use crate::cli::{CommandResult, Context, Render, Rendered, resolve, swiftpm, xcodebuild};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -21,7 +22,7 @@ pub enum Action {
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Run {
             only_testing,
@@ -30,7 +31,69 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
     }
 }
 
-fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> CliResult {
+/// The xcodebuild test result: a pass/fail summary line and failure list in
+/// human mode, the parsed counts + failures as JSON `data`.
+struct TestReport {
+    passed: bool,
+    summary: xcodebuild::TestSummary,
+}
+
+impl Render for TestReport {
+    fn human(&self, out: &Output) {
+        out.line(&format!(
+            "{} passed, {} failed, {} skipped ({} total)",
+            self.summary.passed_tests,
+            self.summary.failed_tests,
+            self.summary.skipped_tests,
+            self.summary.total_test_count
+        ));
+        for f in &self.summary.test_failures {
+            out.line(&format!(
+                "  ✗ {}/{}: {}",
+                f.target_name, f.test_name, f.failure_text
+            ));
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let failures: Vec<serde_json::Value> = self
+            .summary
+            .test_failures
+            .iter()
+            .map(|f| {
+                serde_json::json!({
+                    "test": f.test_name,
+                    "target": f.target_name,
+                    "message": f.failure_text,
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "passed": self.passed,
+            "total": self.summary.total_test_count,
+            "passedTests": self.summary.passed_tests,
+            "failedTests": self.summary.failed_tests,
+            "skippedTests": self.summary.skipped_tests,
+            "failures": failures,
+        })
+    }
+}
+
+/// A Swift package test result — `swift test` gives no `.xcresult`, so the only
+/// machine-readable fact is the pass/fail flag (no human summary line).
+struct SpmTestReport {
+    passed: bool,
+}
+
+impl Render for SpmTestReport {
+    fn human(&self, _out: &Output) {}
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({ "passed": self.passed })
+    }
+}
+
+fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> CommandResult {
     // Tests resolve their own context (testing overrides, falling back to build).
     let resolved = resolve::resolve_testing(ctx)?;
 
@@ -69,62 +132,29 @@ fn test(ctx: &mut Context, only_testing: &[String], skip_testing: &[String]) -> 
         ));
     }
 
-    // Human mode beautifies output; JSON stays quiet so stdout holds only the summary.
+    // Human mode beautifies output; JSON stays quiet so stdout holds only the
+    // enveloped summary the dispatcher renders from the returned payload.
     let passed = plan.run(&ctx.out)?;
     let summary = xcodebuild::test_summary(&bundle)?;
     let _ = std::fs::remove_dir_all(&bundle);
 
-    if ctx.out.is_json() {
-        let failures: Vec<serde_json::Value> = summary
-            .test_failures
-            .iter()
-            .map(|f| {
-                serde_json::json!({
-                    "test": f.test_name,
-                    "target": f.target_name,
-                    "message": f.failure_text,
-                })
-            })
-            .collect();
-        ctx.out.json_value(&serde_json::json!({
-            "passed": passed,
-            "total": summary.total_test_count,
-            "passedTests": summary.passed_tests,
-            "failedTests": summary.failed_tests,
-            "skippedTests": summary.skipped_tests,
-            "failures": failures,
-        }));
-    } else {
-        ctx.out.line(&format!(
-            "{} passed, {} failed, {} skipped ({} total)",
-            summary.passed_tests,
-            summary.failed_tests,
-            summary.skipped_tests,
-            summary.total_test_count
-        ));
-        for f in &summary.test_failures {
-            ctx.out.line(&format!(
-                "  ✗ {}/{}: {}",
-                f.target_name, f.test_name, f.failure_text
-            ));
-        }
-    }
-
+    let report = TestReport { passed, summary };
     if passed {
-        Ok(())
+        Ok(Rendered::data(report))
     } else {
-        Err(CliError::new("tests failed"))
+        // A red suite still renders its summary, but exits 3 (build/test failure).
+        Ok(Rendered::data_with_exit(report, 3))
     }
 }
 
 /// Run a Swift package's tests via `swift test`. Unlike xcodebuild there's no
-/// `.xcresult` to parse, so the `--json` summary is just the pass/fail result.
+/// `.xcresult` to parse, so the result is just the pass/fail flag.
 fn spm_test(
     ctx: &mut Context,
     resolved: &resolve::Resolved,
     only_testing: &[String],
     skip_testing: &[String],
-) -> CliResult {
+) -> CommandResult {
     let configuration = resolved
         .configuration
         .clone()
@@ -144,13 +174,10 @@ fn spm_test(
         ctx.out.is_json(),
     )?;
 
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({ "passed": passed }));
-    }
-
+    let report = SpmTestReport { passed };
     if passed {
-        Ok(())
+        Ok(Rendered::data(report))
     } else {
-        Err(CliError::new("tests failed"))
+        Ok(Rendered::data_with_exit(report, 3))
     }
 }

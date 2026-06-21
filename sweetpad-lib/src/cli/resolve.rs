@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use crate::cli::config::Defaults;
 use crate::cli::state::{SelectedDestination, State};
-use crate::cli::{CliError, Context};
+use crate::cli::{CliError, Context, ErrorKind};
 
 /// A discovered project container in the working directory.
 #[derive(Debug, Clone)]
@@ -62,6 +62,7 @@ pub fn container(ctx: &Context) -> Result<Container, CliError> {
             "no .xcworkspace, .xcodeproj, or Package.swift found in the current \
              directory (pass --workspace/--project)",
         )
+        .kind(ErrorKind::TargetResolution)
     })
 }
 
@@ -196,6 +197,7 @@ pub fn missing(what: &str) -> CliError {
     CliError::new(format!(
         "no {what} specified and stdout is not a TTY; pass --{what} or set it in config"
     ))
+    .kind(ErrorKind::TargetResolution)
 }
 
 /// The scheme set for a container, read without xcodebuild. Workspaces merge
@@ -248,9 +250,9 @@ pub fn choose(
         return Ok(c);
     }
     match candidates.len() {
-        0 => Err(CliError::new(format!("no {what} available"))),
+        0 => Err(CliError::new(format!("no {what} available")).kind(ErrorKind::TargetResolution)),
         1 => Ok(candidates[0].clone()),
-        _ if ctx.out.is_interactive() => prompt_choice(what, candidates),
+        _ if ctx.out.is_interactive() => prompt_choice(what, candidates, ctx.out.use_color()),
         _ => Err(missing(what)),
     }
 }
@@ -269,8 +271,9 @@ pub fn select_simulator<'a>(
     use crate::cli::simctl::Simulator;
 
     if let Some(t) = target {
-        return crate::cli::simctl::find(sims, t)
-            .ok_or_else(|| CliError::new(format!("no simulator matching {t:?}")));
+        return crate::cli::simctl::find(sims, t).ok_or_else(|| {
+            CliError::new(format!("no simulator matching {t:?}")).kind(ErrorKind::TargetResolution)
+        });
     }
 
     let booted: Vec<&Simulator> = sims.iter().filter(|s| s.is_booted()).collect();
@@ -288,7 +291,7 @@ pub fn select_simulator<'a>(
     let chosen = choose(ctx, "simulator", None, &labels)?;
     pool.into_iter()
         .find(|s| s.label() == chosen)
-        .ok_or_else(|| CliError::new("simulator not found"))
+        .ok_or_else(|| CliError::new("simulator not found").kind(ErrorKind::TargetResolution))
 }
 
 /// A fully-settled build target: the three things `xcodebuild` always needs.
@@ -374,7 +377,7 @@ pub fn pick_destination(
     let idx = labels
         .iter()
         .position(|l| *l == chosen)
-        .ok_or_else(|| CliError::new("destination not found"))?;
+        .ok_or_else(|| CliError::new("destination not found").kind(ErrorKind::TargetResolution))?;
     let sim = ordered[idx];
     track_destination(&mut ctx.state, key, sim);
     let _ = ctx.state.save();
@@ -453,13 +456,20 @@ fn disambiguate_labels(labels: &mut [String], ordered: &[&crate::cli::simctl::Si
 
 /// Interactive fuzzy picker (the design's TTY fallback): type to filter, arrows
 /// to move, Enter to select. Only reached when stdout is a TTY.
-fn prompt_choice(what: &str, candidates: &[String]) -> Result<String, CliError> {
-    let idx = dialoguer::FuzzySelect::with_theme(&dialoguer::theme::ColorfulTheme::default())
+fn prompt_choice(what: &str, candidates: &[String], color: bool) -> Result<String, CliError> {
+    use dialoguer::theme::{ColorfulTheme, SimpleTheme, Theme};
+    // Honor `--no-color`/`NO_COLOR` for the prompt itself, not just the output.
+    let colorful = ColorfulTheme::default();
+    let simple = SimpleTheme;
+    let theme: &dyn Theme = if color { &colorful } else { &simple };
+    let idx = dialoguer::FuzzySelect::with_theme(theme)
         .with_prompt(format!("Select a {what}"))
         .items(candidates)
         .default(0)
         .interact()
-        .map_err(|e| CliError::new(format!("selection cancelled: {e}")))?;
+        .map_err(|e| {
+            CliError::new(format!("selection cancelled: {e}")).kind(ErrorKind::UserCancel)
+        })?;
     Ok(candidates[idx].clone())
 }
 
@@ -486,7 +496,8 @@ mod tests {
             json: false,
             non_interactive: false,
             no_color: true,
-            verbose: 0,
+            verbose: false,
+            quiet: false,
         };
         let out = Output::new(&global);
         Context {

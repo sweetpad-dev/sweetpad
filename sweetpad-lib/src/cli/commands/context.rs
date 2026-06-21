@@ -8,9 +8,12 @@
 
 use clap::{Subcommand, ValueEnum};
 
+use crate::cli::output::Output;
 use crate::cli::resolve::Container;
 use crate::cli::state::{ProjectState, State, TestingState};
-use crate::cli::{CliError, CliResult, Context, resolve, simctl};
+use crate::cli::{
+    CliError, CommandResult, Context, ErrorKind, Render, Rendered, resolve, simctl,
+};
 
 /// A single context variable. `sdk` exists only in the build context and
 /// `target` only in the testing context; the rest exist in both.
@@ -103,7 +106,7 @@ pub enum Action {
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Show => show(ctx),
         Action::Select { variable, testing } => select(ctx, *variable, Scope::from_flag(*testing)),
@@ -115,37 +118,58 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
     }
 }
 
-/// Print the saved build and testing context, recents, and last launched app.
-fn show(ctx: &mut Context) -> CliResult {
-    let container = resolve::container(ctx)?;
-    let key = container.key();
-    // Clone so the immutable borrow of state ends before touching `out`.
-    let st = ctx.state.projects.get(&key).cloned().unwrap_or_default();
-
-    if ctx.out.is_json() {
-        ctx.out.json_value(
-            &serde_json::json!({ "container": container.path().display().to_string(),
-                "build": scope_json(&st, Scope::Build),
-                "testing": scope_json(&st, Scope::Testing),
-                "recentDestinations": recents_json(&st),
-                "lastLaunchedApp": serde_json::to_value(&st.last_launched_app).unwrap_or_default(),
-            }),
-        );
-        return Ok(());
-    }
-
-    print_scope(ctx, &st, Scope::Build);
-    if !st.testing.is_empty() {
-        ctx.out.line("");
-        print_scope(ctx, &st, Scope::Testing);
-    }
-    print_recents(ctx, &st);
-    print_last_launched(ctx, &st);
-    Ok(())
+/// The saved build and testing context, recents, and last launched app. Renders
+/// as the scope/recents/last-launched blocks, or
+/// `{container, build, testing, recentDestinations, lastLaunchedApp}` in the JSON
+/// envelope. Carries the container path and a snapshot of the project state.
+struct ContextReport {
+    container: String,
+    state: ProjectState,
 }
 
-/// Interactively set one variable (or the core), persisting to state.
-fn select(ctx: &mut Context, variable: Option<Variable>, scope: Scope) -> CliResult {
+impl Render for ContextReport {
+    fn human(&self, out: &Output) {
+        let st = &self.state;
+        print_scope(out, st, Scope::Build);
+        if !st.testing.is_empty() {
+            out.line("");
+            print_scope(out, st, Scope::Testing);
+        }
+        print_recents(out, st);
+        print_last_launched(out, st);
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let st = &self.state;
+        serde_json::json!({ "container": self.container,
+            "build": scope_json(st, Scope::Build),
+            "testing": scope_json(st, Scope::Testing),
+            "recentDestinations": recents_json(st),
+            "lastLaunchedApp": serde_json::to_value(&st.last_launched_app).unwrap_or_default(),
+        })
+    }
+}
+
+/// Build the context report for the resolved container — the payload both `show`
+/// and `select` render after their work.
+fn report(ctx: &mut Context) -> CommandResult {
+    let container = resolve::container(ctx)?;
+    let key = container.key();
+    let state = ctx.state.projects.get(&key).cloned().unwrap_or_default();
+    Ok(Rendered::data(ContextReport {
+        container: container.path().display().to_string(),
+        state,
+    }))
+}
+
+/// Show the saved build and testing context, recents, and last launched app.
+fn show(ctx: &mut Context) -> CommandResult {
+    report(ctx)
+}
+
+/// Interactively set one variable (or the core), persisting to state, then show
+/// the updated context.
+fn select(ctx: &mut Context, variable: Option<Variable>, scope: Scope) -> CommandResult {
     let container = resolve::container(ctx)?;
     let key = container.key();
 
@@ -161,11 +185,39 @@ fn select(ctx: &mut Context, variable: Option<Variable>, scope: Scope) -> CliRes
         set_field(ctx.state.project_mut(&key), scope, v, Some(value));
     }
     ctx.state.save().map_err(CliError::new)?;
-    show(ctx)
+    report(ctx)
+}
+
+/// What `remove` cleared, for rendering the note and the JSON `removed` field.
+struct RemoveReport {
+    /// The whole context was cleared (`--all`); otherwise a single variable.
+    cleared_all: bool,
+    /// The variable cleared, when not `--all`.
+    variable: Option<&'static str>,
+    scope: &'static str,
+}
+
+impl Render for RemoveReport {
+    fn human(&self, out: &Output) {
+        if self.cleared_all {
+            out.note(&format!("cleared the {} context", self.scope));
+        } else if let Some(v) = self.variable {
+            out.note(&format!("removed {} {}", self.scope, v));
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let removed = if self.cleared_all {
+            "all"
+        } else {
+            self.variable.unwrap_or_default()
+        };
+        serde_json::json!({ "removed": removed, "scope": self.scope })
+    }
 }
 
 /// Clear one variable, or the whole context with `--all`.
-fn remove(ctx: &mut Context, variable: Option<Variable>, all: bool, scope: Scope) -> CliResult {
+fn remove(ctx: &mut Context, variable: Option<Variable>, all: bool, scope: Scope) -> CommandResult {
     let key = resolve::container(ctx)?.key();
 
     if all {
@@ -183,9 +235,11 @@ fn remove(ctx: &mut Context, variable: Option<Variable>, all: bool, scope: Scope
             }
         }
         ctx.state.save().map_err(CliError::new)?;
-        ctx.out
-            .note(&format!("cleared the {} context", scope.label()));
-        return Ok(());
+        return Ok(Rendered::data(RemoveReport {
+            cleared_all: true,
+            variable: None,
+            scope: scope.label(),
+        }));
     }
 
     let Some(v) = variable else {
@@ -199,9 +253,11 @@ fn remove(ctx: &mut Context, variable: Option<Variable>, all: bool, scope: Scope
     }
     prune(&mut ctx.state, &key);
     ctx.state.save().map_err(CliError::new)?;
-    ctx.out
-        .note(&format!("removed {} {}", scope.label(), v.name()));
-    Ok(())
+    Ok(Rendered::data(RemoveReport {
+        cleared_all: false,
+        variable: Some(v.name()),
+        scope: scope.label(),
+    }))
 }
 
 /// Reject a variable that doesn't belong to the chosen context.
@@ -245,22 +301,26 @@ fn prompt_value(
                 .projects
                 .get(key)
                 .and_then(|st| get(st, scope, v).map(String::from));
-            input(v.name(), current.as_deref())
+            input(v.name(), current.as_deref(), ctx.out.use_color())
         }
     }
 }
 
 /// A free-text prompt prefilled with the current value (for `sdk`/`target`).
-fn input(label: &str, current: Option<&str>) -> Result<String, CliError> {
-    let theme = dialoguer::theme::ColorfulTheme::default();
+/// Honors `--no-color` with a plain theme.
+fn input(label: &str, current: Option<&str>, color: bool) -> Result<String, CliError> {
+    use dialoguer::theme::{ColorfulTheme, SimpleTheme, Theme};
+    let colorful = ColorfulTheme::default();
+    let simple = SimpleTheme;
+    let theme: &dyn Theme = if color { &colorful } else { &simple };
     let mut builder =
-        dialoguer::Input::<String>::with_theme(&theme).with_prompt(format!("Enter {label}"));
+        dialoguer::Input::<String>::with_theme(theme).with_prompt(format!("Enter {label}"));
     if let Some(c) = current {
         builder = builder.with_initial_text(c);
     }
     builder
         .interact_text()
-        .map_err(|e| CliError::new(format!("input cancelled: {e}")))
+        .map_err(|e| CliError::new(format!("input cancelled: {e}")).kind(ErrorKind::UserCancel))
 }
 
 /// Read a variable's value in the given context.
@@ -328,15 +388,15 @@ fn scope_vars(scope: Scope) -> [Variable; 4] {
     }
 }
 
-fn print_scope(ctx: &Context, st: &ProjectState, scope: Scope) {
-    ctx.out.line(scope.label());
+fn print_scope(out: &Output, st: &ProjectState, scope: Scope) {
+    out.line(scope.label());
     for v in scope_vars(scope) {
         let shown = get(st, scope, v).unwrap_or("(not set)");
-        ctx.out.line(&format!("  {:<13} {shown}", v.name()));
+        out.line(&format!("  {:<13} {shown}", v.name()));
     }
 }
 
-fn print_recents(ctx: &Context, st: &ProjectState) {
+fn print_recents(out: &Output, st: &ProjectState) {
     if st.destination_recents.is_empty() {
         return;
     }
@@ -344,21 +404,20 @@ fn print_recents(ctx: &Context, st: &ProjectState) {
     let mut recents: Vec<_> = st.destination_recents.iter().collect();
     recents
         .sort_by_key(|d| std::cmp::Reverse(st.destination_usage.get(&d.id).copied().unwrap_or(0)));
-    ctx.out.line("");
-    ctx.out.line("recent destinations");
+    out.line("");
+    out.line("recent destinations");
     for d in recents {
         let uses = st.destination_usage.get(&d.id).copied().unwrap_or(0);
-        ctx.out.line(&format!("  {} ({uses})", d.name));
+        out.line(&format!("  {} ({uses})", d.name));
     }
 }
 
-fn print_last_launched(ctx: &Context, st: &ProjectState) {
+fn print_last_launched(out: &Output, st: &ProjectState) {
     if let Some(app) = &st.last_launched_app {
-        ctx.out.line("");
-        ctx.out.line("last launched");
-        ctx.out
-            .line(&format!("  {} {}", app.kind, app.bundle_identifier));
-        ctx.out.line(&format!("  {}", app.app_path));
+        out.line("");
+        out.line("last launched");
+        out.line(&format!("  {} {}", app.kind, app.bundle_identifier));
+        out.line(&format!("  {}", app.app_path));
     }
 }
 

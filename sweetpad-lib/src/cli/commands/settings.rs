@@ -3,9 +3,10 @@
 
 use clap::Subcommand;
 
-use crate::build_settings::{BuildSettingsOptions, resolve_build_settings};
+use crate::build_settings::{BuildSettingsOptions, TargetSettings, resolve_build_settings};
+use crate::cli::output::Output;
 use crate::cli::resolve::{self, Container};
-use crate::cli::{CliError, CliResult, Context};
+use crate::cli::{CliError, CommandResult, Context, Render, Rendered};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -21,13 +22,49 @@ pub enum Action {
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Show { target, key } => show(ctx, target.as_deref(), key.as_deref()),
     }
 }
 
-fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CliResult {
+/// The resolved build settings for the query: a `# target:` block per target in
+/// human mode, or `{ "targets": [ { "target", "settings" } ] }` in the JSON
+/// envelope. When empty, `empty_note` carries the reason to print in human mode
+/// (a Swift-package explanation, or "no build settings resolved").
+struct SettingsResult {
+    targets: Vec<TargetSettings>,
+    empty_note: String,
+}
+
+impl Render for SettingsResult {
+    fn human(&self, out: &Output) {
+        if self.targets.is_empty() {
+            out.note(&self.empty_note);
+            return;
+        }
+        for (i, t) in self.targets.iter().enumerate() {
+            if i > 0 {
+                out.line("");
+            }
+            out.line(&format!("# target: {}", t.target));
+            for (k, v) in &t.settings {
+                out.line(&format!("{k} = {v}"));
+            }
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let targets: Vec<serde_json::Value> = self
+            .targets
+            .iter()
+            .map(|t| serde_json::json!({ "target": t.target, "settings": t.settings }))
+            .collect();
+        serde_json::json!({ "targets": targets })
+    }
+}
+
+fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandResult {
     let resolved = resolve::resolve(ctx)?;
 
     let (project, workspace) = match &resolved.container {
@@ -36,16 +73,14 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CliResult
         Container::SwiftPackage(p) => {
             // SwiftPM packages have no pbxproj/xcconfig for the resolver to
             // compute settings from — surface that rather than erroring.
-            if ctx.out.is_json() {
-                ctx.out.json_value(&serde_json::json!({ "targets": [] }));
-            } else {
-                ctx.out.note(&format!(
+            return Ok(Rendered::data(SettingsResult {
+                targets: Vec::new(),
+                empty_note: format!(
                     "settings show is not available for Swift packages ({}); \
                      SwiftPM has no xcconfig/pbxproj build settings to resolve",
                     p.display()
-                ));
-            }
-            return Ok(());
+                ),
+            }));
         }
     };
 
@@ -91,28 +126,8 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CliResult
 
     let results = resolve_build_settings(&opts).map_err(CliError::new)?;
 
-    if ctx.out.is_json() {
-        let targets: Vec<serde_json::Value> = results
-            .iter()
-            .map(|t| serde_json::json!({ "target": t.target, "settings": t.settings }))
-            .collect();
-        ctx.out
-            .json_value(&serde_json::json!({ "targets": targets }));
-        return Ok(());
-    }
-
-    if results.is_empty() {
-        ctx.out.note("no build settings resolved");
-        return Ok(());
-    }
-    for (i, t) in results.iter().enumerate() {
-        if i > 0 {
-            ctx.out.line("");
-        }
-        ctx.out.line(&format!("# target: {}", t.target));
-        for (k, v) in &t.settings {
-            ctx.out.line(&format!("{k} = {v}"));
-        }
-    }
-    Ok(())
+    Ok(Rendered::data(SettingsResult {
+        targets: results,
+        empty_note: "no build settings resolved".to_string(),
+    }))
 }

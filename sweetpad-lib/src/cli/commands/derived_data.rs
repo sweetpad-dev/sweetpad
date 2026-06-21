@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 
+use crate::cli::output::Output;
 use crate::cli::resolve::Container;
-use crate::cli::{CliError, CliResult, Context, resolve};
+use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, resolve};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -37,7 +38,7 @@ pub enum Action {
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Path { all } => path(ctx, *all),
         Action::Size { all } => size(ctx, *all),
@@ -45,57 +46,107 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
     }
 }
 
-fn path(ctx: &mut Context, all: bool) -> CliResult {
+/// The resolved DerivedData folder(s): one path per line in human mode (or a
+/// "none found" note when empty), or `{ "root", "paths" }` in the JSON envelope.
+struct PathResult {
+    root: String,
+    paths: Vec<String>,
+}
+
+impl Render for PathResult {
+    fn human(&self, out: &Output) {
+        if self.paths.is_empty() {
+            out.note("no matching DerivedData folders found");
+            return;
+        }
+        for p in &self.paths {
+            out.line(p);
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "root": self.root,
+            "paths": self.paths,
+        })
+    }
+}
+
+/// The on-disk size of the resolved DerivedData folder(s): a "<size> across N
+/// folder(s)" line in human mode, or `{ "bytes", "human", "folders" }` in JSON.
+struct SizeResult {
+    bytes: u64,
+    folders: usize,
+}
+
+impl Render for SizeResult {
+    fn human(&self, out: &Output) {
+        out.line(&format!(
+            "{} across {} folder(s)",
+            format_size(self.bytes),
+            self.folders
+        ));
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "bytes": self.bytes,
+            "human": format_size(self.bytes),
+            "folders": self.folders,
+        })
+    }
+}
+
+/// The outcome of a purge: a status note in human mode, or `{ "removed" }` in
+/// JSON. `note` is what human mode prints — "purged N folder(s)" on a real
+/// purge, or "nothing to purge"/"aborted" on the early paths (which carry an
+/// empty `removed`, so `--json` still reports an outcome).
+struct PurgeResult {
+    removed: Vec<String>,
+    note: String,
+}
+
+impl Render for PurgeResult {
+    fn human(&self, out: &Output) {
+        out.note(&self.note);
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({ "removed": self.removed })
+    }
+}
+
+fn path(ctx: &mut Context, all: bool) -> CommandResult {
     let root = root()?;
     let targets = targets(ctx, &root, all)?;
 
-    if ctx.out.is_json() {
-        let paths: Vec<String> = targets.iter().map(|p| p.display().to_string()).collect();
-        ctx.out.json_value(&serde_json::json!({
-            "root": root.display().to_string(),
-            "paths": paths,
-        }));
-        return Ok(());
-    }
-
-    if targets.is_empty() {
-        ctx.out.note("no matching DerivedData folders found");
-        return Ok(());
-    }
-    for p in &targets {
-        ctx.out.line(&p.display().to_string());
-    }
-    Ok(())
+    let paths: Vec<String> = targets.iter().map(|p| p.display().to_string()).collect();
+    Ok(Rendered::data(PathResult {
+        root: root.display().to_string(),
+        paths,
+    }))
 }
 
-fn size(ctx: &mut Context, all: bool) -> CliResult {
+fn size(ctx: &mut Context, all: bool) -> CommandResult {
     let root = root()?;
     let targets = targets(ctx, &root, all)?;
     let bytes: u64 = targets.iter().map(|p| dir_size(p)).sum();
 
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({
-            "bytes": bytes,
-            "human": format_size(bytes),
-            "folders": targets.len(),
-        }));
-    } else {
-        ctx.out.line(&format!(
-            "{} across {} folder(s)",
-            format_size(bytes),
-            targets.len()
-        ));
-    }
-    Ok(())
+    Ok(Rendered::data(SizeResult {
+        bytes,
+        folders: targets.len(),
+    }))
 }
 
-fn purge(ctx: &mut Context, all: bool, yes: bool) -> CliResult {
+fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
     let root = root()?;
     let targets = targets(ctx, &root, all)?;
 
     if targets.is_empty() {
-        ctx.out.note("nothing to purge");
-        return Ok(());
+        return Ok(Rendered::data(PurgeResult {
+            removed: Vec::new(),
+            note: "nothing to purge".to_string(),
+        }));
     }
 
     // Confirm before deleting when we can prompt and weren't told `--yes`.
@@ -112,10 +163,14 @@ fn purge(ctx: &mut Context, all: bool, yes: bool) -> CliResult {
             .with_prompt(prompt)
             .default(false)
             .interact()
-            .map_err(|e| CliError::new(format!("confirmation cancelled: {e}")))?;
+            .map_err(|e| {
+                CliError::new(format!("confirmation cancelled: {e}")).kind(ErrorKind::UserCancel)
+            })?;
         if !confirmed {
-            ctx.out.note("aborted");
-            return Ok(());
+            return Ok(Rendered::data(PurgeResult {
+                removed: Vec::new(),
+                note: "aborted".to_string(),
+            }));
         }
     }
 
@@ -126,13 +181,8 @@ fn purge(ctx: &mut Context, all: bool, yes: bool) -> CliResult {
         removed.push(p.display().to_string());
     }
 
-    if ctx.out.is_json() {
-        ctx.out
-            .json_value(&serde_json::json!({ "removed": removed }));
-    } else {
-        ctx.out.note(&format!("purged {} folder(s)", removed.len()));
-    }
-    Ok(())
+    let note = format!("purged {} folder(s)", removed.len());
+    Ok(Rendered::data(PurgeResult { removed, note }))
 }
 
 /// The DerivedData root, honoring `$HOME`.

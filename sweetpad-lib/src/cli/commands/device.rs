@@ -3,7 +3,8 @@
 
 use clap::Subcommand;
 
-use crate::cli::{CliResult, Context, devicectl};
+use crate::cli::output::Output;
+use crate::cli::{CommandResult, Context, Render, Rendered, devicectl};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -11,17 +12,38 @@ pub enum Action {
     List,
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(_ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
-        Action::List => list(ctx),
+        Action::List => list(),
     }
 }
 
-fn list(ctx: &mut Context) -> CliResult {
-    let devices = devicectl::list()?;
+/// The device list: human lines (label + udid) with a note when empty, or the
+/// `data` of the JSON envelope as `{devices: […]}`.
+struct DeviceList {
+    devices: Vec<devicectl::Device>,
+}
 
-    if ctx.out.is_json() {
-        let items: Vec<serde_json::Value> = devices
+impl Render for DeviceList {
+    fn human(&self, out: &Output) {
+        if self.devices.is_empty() {
+            out.note("no devices connected");
+            return;
+        }
+        for d in &self.devices {
+            let conn = if d.connection.is_empty() {
+                String::new()
+            } else {
+                format!("  [{}]", d.connection)
+            };
+            out.line(&format!("{}{conn}", d.label()));
+            out.line(&format!("    {}", d.udid));
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let items: Vec<serde_json::Value> = self
+            .devices
             .iter()
             .map(|d| {
                 serde_json::json!({
@@ -34,22 +56,11 @@ fn list(ctx: &mut Context) -> CliResult {
                 })
             })
             .collect();
-        ctx.out.json_value(&serde_json::json!({ "devices": items }));
-        return Ok(());
+        serde_json::json!({ "devices": items })
     }
+}
 
-    if devices.is_empty() {
-        ctx.out.note("no devices connected");
-        return Ok(());
-    }
-    for d in &devices {
-        let conn = if d.connection.is_empty() {
-            String::new()
-        } else {
-            format!("  [{}]", d.connection)
-        };
-        ctx.out.line(&format!("{}{conn}", d.label()));
-        ctx.out.line(&format!("    {}", d.udid));
-    }
-    Ok(())
+fn list() -> CommandResult {
+    let devices = devicectl::list()?;
+    Ok(Rendered::data(DeviceList { devices }))
 }

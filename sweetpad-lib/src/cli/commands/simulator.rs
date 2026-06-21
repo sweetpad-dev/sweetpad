@@ -4,8 +4,10 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Subcommand, ValueEnum};
+use serde::Serialize;
 
-use crate::cli::{CliError, CliResult, Context, resolve, simctl};
+use crate::cli::output::Output;
+use crate::cli::{CliError, CommandResult, Context, Render, Rendered, resolve, simctl};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -61,13 +63,13 @@ impl Appearance {
     }
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
-        Action::List => list(ctx),
+        Action::List => list(),
         Action::Boot { target } => boot(ctx, target.as_deref()),
         Action::Shutdown { target } => shutdown(ctx, target.as_deref()),
         Action::Erase { target } => erase(ctx, target.as_deref()),
-        Action::Open => open(ctx),
+        Action::Open => open(),
         Action::Screenshot { target, output } => {
             screenshot(ctx, target.as_deref(), output.as_deref())
         }
@@ -75,43 +77,64 @@ pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
     }
 }
 
-fn list(ctx: &mut Context) -> CliResult {
-    let sims = simctl::list()?;
-
-    if ctx.out.is_json() {
-        let items: Vec<serde_json::Value> = sims
-            .iter()
-            .map(|s| {
-                serde_json::json!({
-                    "udid": s.udid,
-                    "name": s.name,
-                    "os": s.os,
-                    "osVersion": s.os_version,
-                    "state": s.state,
-                    "booted": s.is_booted(),
-                })
-            })
-            .collect();
-        ctx.out
-            .json_value(&serde_json::json!({ "simulators": items }));
-        return Ok(());
-    }
-
-    if sims.is_empty() {
-        ctx.out.note("no simulators available");
-        return Ok(());
-    }
-    for s in &sims {
-        let state = if s.is_booted() { " [booted]" } else { "" };
-        ctx.out.item(
-            &format!("{} {}  {}{state}", s.os, s.label(), s.udid),
-            s.is_booted(),
-        );
-    }
-    Ok(())
+/// The simulator list: a marked human list, or the `data` of the JSON envelope.
+#[derive(Serialize)]
+struct SimList {
+    simulators: Vec<SimEntry>,
 }
 
-fn boot(ctx: &mut Context, target: Option<&str>) -> CliResult {
+#[derive(Serialize)]
+struct SimEntry {
+    udid: String,
+    name: String,
+    os: String,
+    #[serde(rename = "osVersion")]
+    os_version: String,
+    state: String,
+    booted: bool,
+    /// Display label (name + OS version); carried for `human`, not serialized.
+    #[serde(skip)]
+    label: String,
+}
+
+impl Render for SimList {
+    fn human(&self, out: &Output) {
+        if self.simulators.is_empty() {
+            out.note("no simulators available");
+            return;
+        }
+        for s in &self.simulators {
+            let marker = if s.booted { " [booted]" } else { "" };
+            out.item(
+                &format!("{} {}  {}{marker}", s.os, s.label, s.udid),
+                s.booted,
+            );
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+fn list() -> CommandResult {
+    let sims = simctl::list()?;
+    let simulators = sims
+        .iter()
+        .map(|s| SimEntry {
+            udid: s.udid.clone(),
+            name: s.name.clone(),
+            os: s.os.clone(),
+            os_version: s.os_version.clone(),
+            state: s.state.clone(),
+            booted: s.is_booted(),
+            label: s.label(),
+        })
+        .collect();
+    Ok(Rendered::data(SimList { simulators }))
+}
+
+fn boot(ctx: &mut Context, target: Option<&str>) -> CommandResult {
     let sims = simctl::list()?;
 
     let sim = if let Some(t) = target {
@@ -126,28 +149,31 @@ fn boot(ctx: &mut Context, target: Option<&str>) -> CliResult {
     };
 
     if sim.is_booted() {
-        ctx.out.note(&format!("{} is already booted", sim.label()));
-        return Ok(());
+        return Ok(Rendered::data(SimAction::already(
+            sim,
+            "already booted",
+            format!("{} is already booted", sim.label()),
+        )));
     }
     simctl::boot(&sim.udid)?;
-    report(ctx, "booted", sim);
-    Ok(())
+    Ok(Rendered::data(report("booted", sim)))
 }
 
-fn shutdown(ctx: &mut Context, target: Option<&str>) -> CliResult {
+fn shutdown(ctx: &mut Context, target: Option<&str>) -> CommandResult {
     let sims = simctl::list()?;
     let sim = resolve::select_simulator(ctx, &sims, target)?;
     if !sim.is_booted() {
-        ctx.out
-            .note(&format!("{} is already shut down", sim.label()));
-        return Ok(());
+        return Ok(Rendered::data(SimAction::already(
+            sim,
+            "already shut down",
+            format!("{} is already shut down", sim.label()),
+        )));
     }
     simctl::shutdown(&sim.udid)?;
-    report(ctx, "shut down", sim);
-    Ok(())
+    Ok(Rendered::data(report("shut down", sim)))
 }
 
-fn erase(ctx: &mut Context, target: Option<&str>) -> CliResult {
+fn erase(ctx: &mut Context, target: Option<&str>) -> CommandResult {
     let sims = simctl::list()?;
     let sim = resolve::select_simulator(ctx, &sims, target)?;
     if sim.is_booted() {
@@ -157,25 +183,19 @@ fn erase(ctx: &mut Context, target: Option<&str>) -> CliResult {
         )));
     }
     simctl::erase(&sim.udid)?;
-    report(ctx, "erased", sim);
-    Ok(())
+    Ok(Rendered::data(report("erased", sim)))
 }
 
-fn open(ctx: &mut Context) -> CliResult {
+fn open() -> CommandResult {
     simctl::open_app()?;
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({ "opened": true }));
-    } else {
-        ctx.out.note("opened Simulator.app");
-    }
-    Ok(())
+    Ok(Rendered::data(SimOpen))
 }
 
 fn screenshot(
     ctx: &mut Context,
     target: Option<&str>,
     output: Option<&std::path::Path>,
-) -> CliResult {
+) -> CommandResult {
     let sims = simctl::list()?;
     let sim = resolve::select_simulator(ctx, &sims, target)?;
 
@@ -183,50 +203,125 @@ fn screenshot(
     let path_str = path.display().to_string();
     simctl::screenshot(&sim.udid, &path_str)?;
 
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({
-            "udid": sim.udid,
-            "path": path_str,
-        }));
-    } else {
-        ctx.out.note(&format!(
-            "saved screenshot of {} to {path_str}",
-            sim.label()
-        ));
-    }
-    Ok(())
+    Ok(Rendered::data(SimScreenshot {
+        udid: sim.udid.clone(),
+        path: path_str,
+        label: sim.label(),
+    }))
 }
 
-fn appearance(ctx: &mut Context, mode: Appearance, target: Option<&str>) -> CliResult {
+fn appearance(ctx: &mut Context, mode: Appearance, target: Option<&str>) -> CommandResult {
     let sims = simctl::list()?;
     let sim = resolve::select_simulator(ctx, &sims, target)?;
     simctl::set_appearance(&sim.udid, mode.as_str())?;
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({
-            "udid": sim.udid,
-            "appearance": mode.as_str(),
-        }));
-    } else {
-        ctx.out.note(&format!(
-            "set {} appearance to {}",
-            sim.label(),
-            mode.as_str()
-        ));
-    }
-    Ok(())
+    Ok(Rendered::data(SimAppearance {
+        udid: sim.udid.clone(),
+        appearance: mode.as_str(),
+        label: sim.label(),
+    }))
 }
 
-/// Report a completed side-effecting action: a small JSON object under `--json`,
-/// a human note otherwise.
-fn report(ctx: &Context, verb: &str, sim: &simctl::Simulator) {
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({
-            "udid": sim.udid,
-            "name": sim.name,
-            "action": verb,
-        }));
-    } else {
-        ctx.out.note(&format!("{verb} {}", sim.label()));
+/// A completed side-effecting action on a simulator (`boot`/`shutdown`/`erase`,
+/// or an early no-op). Renders as a small JSON object (`{udid, name, action}`),
+/// or a human note otherwise.
+struct SimAction {
+    udid: String,
+    name: String,
+    action: &'static str,
+    /// The human note to print; carried so the no-op paths keep their wording.
+    note: String,
+}
+
+impl SimAction {
+    /// An early no-op (already booted / already shut down): the same JSON shape
+    /// with a status `action`, and the original note for human mode.
+    fn already(sim: &simctl::Simulator, action: &'static str, note: String) -> Self {
+        Self {
+            udid: sim.udid.clone(),
+            name: sim.name.clone(),
+            action,
+            note,
+        }
+    }
+}
+
+impl Render for SimAction {
+    fn human(&self, out: &Output) {
+        out.note(&self.note);
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "udid": self.udid,
+            "name": self.name,
+            "action": self.action,
+        })
+    }
+}
+
+/// Build a `SimAction` for a completed action: `{udid, name, action: verb}` JSON,
+/// `"<verb> <label>"` note.
+fn report(verb: &'static str, sim: &simctl::Simulator) -> SimAction {
+    SimAction {
+        udid: sim.udid.clone(),
+        name: sim.name.clone(),
+        action: verb,
+        note: format!("{verb} {}", sim.label()),
+    }
+}
+
+/// `simulator open`: opened the GUI. `{opened: true}` / "opened Simulator.app".
+struct SimOpen;
+
+impl Render for SimOpen {
+    fn human(&self, out: &Output) {
+        out.note("opened Simulator.app");
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({ "opened": true })
+    }
+}
+
+/// `simulator screenshot`: `{udid, path}` / a saved note.
+struct SimScreenshot {
+    udid: String,
+    path: String,
+    /// Display label for the human note; not serialized.
+    label: String,
+}
+
+impl Render for SimScreenshot {
+    fn human(&self, out: &Output) {
+        out.note(&format!("saved screenshot of {} to {}", self.label, self.path));
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "udid": self.udid,
+            "path": self.path,
+        })
+    }
+}
+
+/// `simulator appearance`: `{udid, appearance}` / a set note.
+struct SimAppearance {
+    udid: String,
+    appearance: &'static str,
+    /// Display label for the human note; not serialized.
+    label: String,
+}
+
+impl Render for SimAppearance {
+    fn human(&self, out: &Output) {
+        out.note(&format!("set {} appearance to {}", self.label, self.appearance));
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "udid": self.udid,
+            "appearance": self.appearance,
+        })
     }
 }
 

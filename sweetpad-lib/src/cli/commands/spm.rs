@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use clap::Subcommand;
 
 use crate::cli::merge::{self, Kind};
-use crate::cli::{CliResult, Context};
+use crate::cli::{CommandResult, Context};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -28,8 +28,8 @@ pub enum Action {
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(_ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
-        Action::Resolve { paths, force } => merge::resolve(ctx, Kind::Spm, paths, *force),
+        Action::Resolve { paths, force } => merge::resolve(Kind::Spm, paths, *force),
     }
 }

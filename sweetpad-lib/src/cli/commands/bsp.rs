@@ -6,8 +6,9 @@ use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 
+use crate::cli::output::Output;
 use crate::cli::resolve::{self, Container};
-use crate::cli::{CliError, CliResult, Context};
+use crate::cli::{CliError, CommandResult, Context, Render, Rendered};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -19,21 +20,20 @@ pub enum Action {
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CliResult {
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Init { output } => init(ctx, output.as_deref()),
     }
 }
 
-fn init(ctx: &mut Context, output: Option<&std::path::Path>) -> CliResult {
+fn init(ctx: &mut Context, output: Option<&std::path::Path>) -> CommandResult {
     let container = resolve::container(ctx)?;
 
     let mut args: Vec<String> = match &container {
         Container::Workspace(p) => vec!["--workspace".into(), p.display().to_string()],
         Container::Project(p) => vec!["--project".into(), p.display().to_string()],
         Container::SwiftPackage(p) => {
-            init_swift_package(ctx, p, output);
-            return Ok(());
+            return Ok(Rendered::data(init_swift_package(p, output)));
         }
     };
     if let Some(out) = output {
@@ -43,13 +43,60 @@ fn init(ctx: &mut Context, output: Option<&std::path::Path>) -> CliResult {
 
     crate::bsp::write_config(&args).map_err(CliError::new)?;
 
-    if ctx.out.is_json() {
-        let path = buildserver_path(container.path(), output);
-        ctx.out.json_value(&serde_json::json!({
-            "buildServerJson": path.display().to_string(),
-        }));
+    let path = buildserver_path(container.path(), output);
+    Ok(Rendered::data(BspInit {
+        build_server_json: path.display().to_string(),
+    }))
+}
+
+/// `bsp init` for an Xcode project/workspace: the config is written for its side
+/// effect, and JSON reports the `buildServer.json` path. Human mode prints
+/// nothing (the file on disk is the result).
+struct BspInit {
+    build_server_json: String,
+}
+
+impl Render for BspInit {
+    fn human(&self, _out: &Output) {}
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "buildServerJson": self.build_server_json,
+        })
     }
-    Ok(())
+}
+
+/// `bsp init` for a Swift package: no `buildServer.json` is written (sourcekit-lsp
+/// handles SwiftPM natively). JSON reports `{buildServerJson: null, native: true,
+/// staleBuildServerJson}`; human mode prints the native-support note plus a stale
+/// warning when a leftover config exists.
+struct BspSwiftPackage {
+    /// A pre-existing `buildServer.json` to warn about, if any.
+    stale: Option<String>,
+}
+
+impl Render for BspSwiftPackage {
+    fn human(&self, out: &Output) {
+        out.note(
+            "Swift package detected; sourcekit-lsp supports SwiftPM natively, so no \
+             buildServer.json is written",
+        );
+        if let Some(stale) = &self.stale {
+            out.note(&format!(
+                "a buildServer.json already exists at {stale} — remove it so sourcekit-lsp \
+                 uses its native SwiftPM support instead of the BSP server (which only \
+                 handles Xcode projects)"
+            ));
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "buildServerJson": null,
+            "native": true,
+            "staleBuildServerJson": self.stale,
+        })
+    }
 }
 
 /// `bsp init` for a Swift package. sourcekit-lsp supports SwiftPM natively — it
@@ -62,30 +109,12 @@ fn init(ctx: &mut Context, output: Option<&std::path::Path>) -> CliResult {
 /// makes sourcekit-lsp use BSP and breaks SPM semantics, so flag it loudly. We
 /// warn rather than delete — removing a file the user may have authored is their
 /// call (or the extension's).
-fn init_swift_package(ctx: &mut Context, manifest_path: &Path, output: Option<&Path>) {
+fn init_swift_package(manifest_path: &Path, output: Option<&Path>) -> BspSwiftPackage {
     let config_path = buildserver_path(manifest_path, output);
-    let stale = config_path.exists();
-
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({
-            "buildServerJson": null,
-            "native": true,
-            "staleBuildServerJson": stale.then(|| config_path.display().to_string()),
-        }));
-    } else {
-        ctx.out.note(
-            "Swift package detected; sourcekit-lsp supports SwiftPM natively, so no \
-             buildServer.json is written",
-        );
-        if stale {
-            ctx.out.note(&format!(
-                "a buildServer.json already exists at {} — remove it so sourcekit-lsp \
-                 uses its native SwiftPM support instead of the BSP server (which only \
-                 handles Xcode projects)",
-                config_path.display()
-            ));
-        }
-    }
+    let stale = config_path
+        .exists()
+        .then(|| config_path.display().to_string());
+    BspSwiftPackage { stale }
 }
 
 /// Where sourcekit-lsp looks for a `buildServer.json`: the explicit `--output`,

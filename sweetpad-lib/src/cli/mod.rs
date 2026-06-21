@@ -12,6 +12,14 @@
 //! resources at the top level, over shared plumbing ([`config`], [`state`],
 //! [`resolve`], [`output`]).
 
+// Every byte of stdout/stderr in the CLI must route through `Output` so the
+// `--json`/color/quiet contract holds; a raw `println!`/`eprintln!` here is a
+// bug, denied under `cargo clippy`. The sanctioned sinks (`output` itself, the
+// `app run` live-log threads) opt out locally with `#[allow]`. Scoped to this
+// module so it never touches the BSP server or `vscode` client, which own their
+// own output.
+#![deny(clippy::print_stdout, clippy::print_stderr)]
+
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser, Subcommand};
@@ -27,6 +35,7 @@ pub mod process;
 pub mod pymobiledevice3;
 pub mod progress;
 pub mod rawmode;
+pub mod render;
 pub mod resolve;
 pub mod scaffold;
 pub mod simctl;
@@ -35,6 +44,8 @@ pub mod swiftpm;
 pub mod xcodebuild;
 
 pub mod commands;
+
+pub use render::{Render, Rendered};
 
 /// Top-level CLI definition. Note this parses the *non-`vscode`* argument
 /// vector: the binary peels off the `vscode` subcommand before we get here, so
@@ -61,6 +72,7 @@ pub struct Cli {
 /// *not* here: those flags live on the commands that consume them, as the
 /// [`ContainerArgs`]/[`SchemeArgs`]/[`BuildTargetArgs`] tiers below.
 #[derive(Debug, clap::Args)]
+#[allow(clippy::struct_excessive_bools)] // independent CLI toggles, not a state machine
 pub struct GlobalArgs {
     /// Emit machine-readable JSON instead of human output.
     #[arg(long, global = true)]
@@ -73,14 +85,20 @@ pub struct GlobalArgs {
     #[arg(long, global = true)]
     pub non_interactive: bool,
 
-    /// Disable colored output (also honored via the `NO_COLOR` env var and
-    /// when stdout is not a TTY).
+    /// Disable colored output (also honored via the `NO_COLOR` env var and when
+    /// stdout is not a TTY). `CLICOLOR_FORCE`/`FORCE_COLOR` force color back on
+    /// when piped; an explicit `--no-color`/`NO_COLOR` still wins.
     #[arg(long, global = true)]
     pub no_color: bool,
 
-    /// Increase log verbosity (repeatable: -v, -vv).
-    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    /// Print verbose diagnostics (raw tool output, extra detail).
+    #[arg(short, long, global = true)]
+    pub verbose: bool,
+
+    /// Suppress progress chatter (notes, spinners, step labels). Errors and
+    /// primary data/JSON are still emitted; wins over `--verbose`.
+    #[arg(short, long, global = true)]
+    pub quiet: bool,
 }
 
 /// Tier 1 — which project container to act on. Flattened into every command
@@ -389,10 +407,60 @@ pub fn run(argv: &[String]) -> ExitCode {
     };
 
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(Rendered::Data { payload, exit }) => {
+            // The single success-render site: human view, or the JSON envelope
+            // (`json_value` wraps the payload's data in `{schema, ok, data}`).
+            if ctx.out.is_json() {
+                ctx.out.json_value(&payload.json());
+            } else {
+                payload.human(&ctx.out);
+            }
+            ExitCode::from(exit)
+        }
+        // The command streamed its own output (or self-emitted); nothing to render.
+        Ok(Rendered::Streamed) => ExitCode::SUCCESS,
         Err(e) => {
             ctx.out.error(&e);
-            ExitCode::FAILURE
+            ExitCode::from(e.error_kind().exit_code())
+        }
+    }
+}
+
+/// The class of a failure. Drives both the process exit code and the `--json`
+/// error envelope's `code`, from one taxonomy. Exit code 2 is owned by clap
+/// (usage errors) and 0 is success, so neither is an `ErrorKind`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    Generic,
+    BuildFailure,
+    TargetResolution,
+    ToolMissing,
+    UserCancel,
+}
+
+impl ErrorKind {
+    /// The process exit code for this class (never 0 or 2).
+    #[must_use]
+    pub fn exit_code(self) -> u8 {
+        match self {
+            ErrorKind::Generic => 1,
+            ErrorKind::BuildFailure => 3,
+            ErrorKind::TargetResolution => 4,
+            ErrorKind::ToolMissing => 5,
+            ErrorKind::UserCancel => 6,
+        }
+    }
+
+    /// The `error.code` string in the JSON envelope — the same taxonomy as
+    /// [`exit_code`](ErrorKind::exit_code).
+    #[must_use]
+    pub fn code_str(self) -> &'static str {
+        match self {
+            ErrorKind::Generic => "generic",
+            ErrorKind::BuildFailure => "build_failure",
+            ErrorKind::TargetResolution => "target_resolution",
+            ErrorKind::ToolMissing => "tool_missing",
+            ErrorKind::UserCancel => "user_cancel",
         }
     }
 }
@@ -401,11 +469,13 @@ pub fn run(argv: &[String]) -> ExitCode {
 /// [`context`](CliError::context) (the bold headline when rendered) separately
 /// from the underlying `message` (the dimmed detail) so [`output`] can style
 /// them on two lines; [`Display`](std::fmt::Display) flattens them to
-/// `context: message` for `--json` and plain logging.
+/// `context: message` for `--json` and plain logging. A [`kind`](ErrorKind)
+/// classifies the failure for the exit code and JSON `code`.
 #[derive(Debug)]
 pub struct CliError {
     context: Option<String>,
     message: String,
+    kind: ErrorKind,
 }
 
 impl std::fmt::Display for CliError {
@@ -424,7 +494,34 @@ impl CliError {
         Self {
             context: None,
             message: msg.into(),
+            kind: ErrorKind::Generic,
         }
+    }
+
+    /// Tag this error's failure class. Defaults to [`ErrorKind::Generic`]; set it
+    /// at the chokepoint where the cause is known (target resolution, a missing
+    /// tool, a build failure, a user cancel).
+    #[must_use]
+    pub fn kind(mut self, kind: ErrorKind) -> Self {
+        self.kind = kind;
+        self
+    }
+
+    /// Set the kind only if it is still the default [`ErrorKind::Generic`], so a
+    /// more specific classification from a deeper layer (e.g. a `ToolMissing`
+    /// from the process spawn) survives an outer `.or_kind` at a build site.
+    #[must_use]
+    pub fn or_kind(mut self, kind: ErrorKind) -> Self {
+        if self.kind == ErrorKind::Generic {
+            self.kind = kind;
+        }
+        self
+    }
+
+    /// This error's failure class — drives the exit code and JSON `code`.
+    #[must_use]
+    pub fn error_kind(&self) -> ErrorKind {
+        self.kind
     }
 
     /// Prepend operational context so a low-level tool failure says what we were
@@ -432,12 +529,15 @@ impl CliError {
     /// .context("installing the app on the simulator")` renders as the headline
     /// `installing the app on the simulator` over the dimmed detail
     /// `xcrun simctl install … exited` — the operation plus the tool that
-    /// failed. Re-wrapping folds the previous layers into the detail.
+    /// failed. Re-wrapping folds the previous layers into the detail and
+    /// preserves the [`kind`](ErrorKind), so a classified error keeps its exit
+    /// code through every `?`-with-context layer.
     #[must_use]
     pub fn context(self, context: impl std::fmt::Display) -> Self {
         Self {
             message: self.to_string(),
             context: Some(context.to_string()),
+            kind: self.kind,
         }
     }
 
@@ -484,12 +584,37 @@ impl<T> ErrorContext<T> for Result<T, CliError> {
     }
 }
 
-/// Convenience alias for command results.
+/// Convenience alias for the unit results that helpers and side-effecting steps
+/// return — they emit through [`output`] and carry no payload.
 pub type CliResult = Result<(), CliError>;
+
+/// What a command's top-level `run` returns: a [`Rendered`] payload the
+/// dispatcher renders once (human vs the JSON envelope), or
+/// [`Rendered::Streamed`] when the command emitted its own output live.
+pub type CommandResult = Result<Rendered, CliError>;
 
 #[cfg(test)]
 mod error_tests {
-    use super::{CliError, ErrorContext};
+    use super::{CliError, ErrorContext, ErrorKind};
+
+    #[test]
+    fn default_kind_is_generic() {
+        assert_eq!(CliError::new("boom").error_kind(), ErrorKind::Generic);
+        assert_eq!(ErrorKind::Generic.exit_code(), 1);
+    }
+
+    #[test]
+    fn context_preserves_the_error_kind() {
+        // Nearly every surfaced error is `.context`-wrapped through `?`; the
+        // classification (and thus the exit code) must survive every layer.
+        let e = CliError::new("`xcrun` not found on PATH")
+            .kind(ErrorKind::ToolMissing)
+            .context("installing the app on the simulator")
+            .context("running the app");
+        assert_eq!(e.error_kind(), ErrorKind::ToolMissing);
+        assert_eq!(e.error_kind().exit_code(), 5);
+        assert_eq!(e.error_kind().code_str(), "tool_missing");
+    }
 
     #[test]
     fn context_splits_into_headline_and_detail() {
