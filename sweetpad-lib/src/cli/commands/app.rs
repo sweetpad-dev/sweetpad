@@ -681,7 +681,7 @@ fn run_hot_session(
     // CI self-check: edit a file once, assert `.injected`, exit. Otherwise the
     // interactive key loop (`r`/`q`), or — non-TTY — follow logs until Ctrl-C.
     let outcome = if let Some(file) = selfcheck {
-        hot_selfcheck(ctx, &server, file)
+        hot_selfcheck(ctx, &server, file, udid)
     } else if ctx.out.is_interactive() {
         hot_key_loop(ctx, plan, udid, &launch_env, &mut logs);
         Ok(())
@@ -705,11 +705,16 @@ fn run_hot_session(
     outcome
 }
 
-/// CI self-check: wait for the client to connect, edit `file` once (driving the
-/// watcher → recompile → `.load`), and assert a `.injected` response. Returns an
-/// error if the client never connects or injection fails/times out — so
-/// `app run --hot --hot-selfcheck FILE` is a hard pass/fail end-to-end test.
-fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path) -> CliResult {
+/// Marker token in the hot-reload fixture's `ContentView.swift` that the
+/// self-check rewrites to a unique nonce. See `ci/fixture-app`.
+const SELFCHECK_MARKER: &str = "SWEETPAD_MARKER_ORIGINAL";
+
+/// CI self-check: wait for the client to connect, rewrite the fixture's marker to
+/// a unique nonce (driving the watcher → recompile → `.load`), assert `.injected`,
+/// then confirm the running app logged the **new** nonce — proving the injected
+/// code actually ran, not merely that the patch was accepted. A hard pass/fail
+/// end-to-end test for `app run --hot --hot-selfcheck FILE`.
+fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path, udid: &str) -> CliResult {
     use std::time::Duration;
 
     ctx.out
@@ -721,14 +726,19 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path) -> CliR
     }
     let baseline = server.result_counts();
 
-    // Edit the file to drive the watcher (append a unique trailing comment).
+    // Rewrite the marker to a unique nonce: a real behavioral change (the
+    // interposed `sweetpadHotReloadMarker()` returns the nonce) that the fixture
+    // logs on the injection notification.
     let original = std::fs::read_to_string(file)
         .map_err(|e| CliError::new(format!("self-check: read {}: {e}", file.display())))?;
-    let edited = format!(
-        "{original}\n// sweetpad hot-reload self-check {}\n",
-        std::process::id()
-    );
-    std::fs::write(file, &edited)
+    if !original.contains(SELFCHECK_MARKER) {
+        return Err(CliError::new(format!(
+            "self-check: {} has no `{SELFCHECK_MARKER}` marker (expected the hot-reload fixture)",
+            file.display()
+        )));
+    }
+    let nonce = format!("SWEETPAD_NONCE_{}", std::process::id());
+    std::fs::write(file, original.replace(SELFCHECK_MARKER, &nonce))
         .map_err(|e| CliError::new(format!("self-check: write {}: {e}", file.display())))?;
     ctx.out
         .note(&format!("hot reload self-check: edited {}", file.display()));
@@ -738,19 +748,66 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path) -> CliR
     // Be generous so a slow/contended CI runner doesn't flake (the real watcher
     // loop has no such deadline — this bound only guards the self-check).
     let result = server.wait_for_result(baseline, Duration::from_secs(180));
-    // Restore the file regardless of outcome.
-    let _ = std::fs::write(file, original);
+    // Restore the fixture regardless of outcome.
+    let _ = std::fs::write(file, &original);
 
     match result {
-        Some(true) => {
-            ctx.out.note("hot reload self-check: ✅ .injected");
-            Ok(())
+        Some(true) => ctx.out.note("hot reload self-check: ✅ .injected"),
+        Some(false) => return Err(CliError::new("hot reload self-check: ❌ injection failed")),
+        None => {
+            return Err(CliError::new(
+                "hot reload self-check: ❌ timed out waiting for .injected",
+            ));
         }
-        Some(false) => Err(CliError::new("hot reload self-check: ❌ injection failed")),
-        None => Err(CliError::new(
-            "hot reload self-check: ❌ timed out waiting for .injected",
-        )),
     }
+
+    // Behavioral check: the app must have logged the new nonce, proving the
+    // injected code executed (not just that the client accepted the patch).
+    ctx.out
+        .note("hot reload self-check: confirming the new code ran…");
+    if app_logged_marker(udid, &nonce, Duration::from_secs(20)) {
+        ctx.out
+            .note("hot reload self-check: ✅ new code ran (marker observed in the app log)");
+        Ok(())
+    } else {
+        Err(CliError::new(
+            "hot reload self-check: ❌ injected, but the app never logged the new marker \
+             (the patch was accepted but the new code did not run)",
+        ))
+    }
+}
+
+/// Poll the simulator's unified log for `nonce` (emitted by the fixture's
+/// injection observer via `os_log`), returning true once it appears or false
+/// after `timeout`.
+fn app_logged_marker(udid: &str, nonce: &str, timeout: std::time::Duration) -> bool {
+    use std::time::{Duration, Instant};
+    let predicate = format!("eventMessage CONTAINS \"{nonce}\"");
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        let shown = process::capture(
+            "xcrun",
+            &[
+                "simctl",
+                "spawn",
+                udid,
+                "log",
+                "show",
+                "--last",
+                "1m",
+                "--style",
+                "compact",
+                "--predicate",
+                &predicate,
+            ],
+            None,
+        );
+        if shown.is_ok_and(|out| out.contains(nonce)) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(1500));
+    }
+    false
 }
 
 /// Boot, install, and launch the app with the hot-reload env. Shared by the
