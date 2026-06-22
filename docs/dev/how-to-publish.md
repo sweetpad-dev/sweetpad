@@ -17,10 +17,10 @@ SweetPad ships two artifacts, versioned and released independently:
 
 1. Update & commit CHANGELOG.md
 
-2. Update the version number and publish to Github:
+2. Update the version number and publish to Github (the extension lives in `sweetpad-vscode/`):
 
 ```shell
-npm run publish-patch
+npm run publish-patch -w sweetpad
 ```
 
 3. Check publishing status on github actions page:

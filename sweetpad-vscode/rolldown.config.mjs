@@ -16,7 +16,7 @@ const isProduction = process.env.NODE_ENV === "production";
 // It can't be bundled into the JS, so we copy the loader + binary next to the
 // extension bundle as `out/lib/` and rewrite the import to require it by path —
 // keeping the heavy `sweetpad-lib/` source tree out of the VSIX entirely.
-const SWEETPAD_LIB_DIR = path.resolve("sweetpad-lib");
+const SWEETPAD_LIB_DIR = path.resolve("..", "sweetpad-lib");
 const sweetpadLibPlugin = {
   name: "sweetpad-lib-addon",
   resolveId(source) {

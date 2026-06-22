@@ -6,11 +6,11 @@ node_modules
 
 
 # Ensure .vscode is not ignored in this project
-!.vscode/
-.vscode/extensions.json
-.vscode/settings.json
+!sweetpad-vscode/.vscode/
+sweetpad-vscode/.vscode/extensions.json
+sweetpad-vscode/.vscode/settings.json
 
 .env
 
-tests/examples/*
-!tests/examples/README.md
+sweetpad-vscode/tests/examples/*
+!sweetpad-vscode/tests/examples/README.md
