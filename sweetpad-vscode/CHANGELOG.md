@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.6] - 2026-06-22
+
+- The `sweetpad` CLI is now distributed via Homebrew (`brew install sweetpad-dev/tap/sweetpad`) instead of being bundled in the extension; the "Install CLI on PATH" command is removed
+
 ## [0.2.5] - 2026-06-22
 
 - Sign and notarize the bundled native resolver and `sweetpad` CLI with a Developer ID, so macOS no longer blocks them from loading on Gatekeeper-restricted setups that rejected the previously ad-hoc-signed builds
