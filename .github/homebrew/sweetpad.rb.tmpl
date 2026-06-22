@@ -1,0 +1,18 @@
+class Sweetpad < Formula
+  desc "Build, run, and explore Xcode projects from the terminal"
+  homepage "https://github.com/sweetpad-dev/sweetpad"
+  version "{{VERSION}}"
+  url "{{URL}}"
+  sha256 "{{SHA256}}"
+  license "MIT"
+
+  depends_on :macos
+
+  def install
+    bin.install "sweetpad"
+  end
+
+  test do
+    assert_match "sweetpad #{version}", shell_output("#{bin}/sweetpad --version")
+  end
+end

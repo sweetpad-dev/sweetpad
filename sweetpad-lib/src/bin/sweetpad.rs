@@ -1,8 +1,7 @@
 //! `sweetpad` — the SweetPad command-line interface.
 //!
-//! A pure native binary (no Node runtime needed), distributed inside the VS
-//! Code extension (`out/sweetpad`); the `sweetpad.system.installCli` command
-//! symlinks it onto the user's PATH.
+//! A pure native binary (no Node runtime needed), distributed via Homebrew
+//! (`brew install sweetpad-dev/tap/sweetpad`).
 //!
 //! Two halves share this one binary:
 //!

@@ -53,6 +53,7 @@ pub use render::{Render, Rendered};
 #[derive(Debug, Parser)]
 #[command(
     name = "sweetpad",
+    version,
     about = "Build, run, and explore Xcode projects from the terminal",
     long_about = "sweetpad — xcodebuild for humans.\n\nA standalone, headless \
         CLI for Xcode projects. Use `sweetpad vscode` to control the VS Code \

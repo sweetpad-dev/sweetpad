@@ -1,0 +1,138 @@
+on:
+  push:
+    tags:
+      - "cli-v*"
+  # Manual runs build + sign + notarize without publishing, since the release and
+  # tap-bump steps below are gated on a tag ref.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+name: Release CLI
+jobs:
+  release:
+    name: Build, sign, notarize CLI (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+      - name: Install NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install Rust toolchain
+        working-directory: sweetpad-lib
+        # Installs the channel + Apple targets pinned in sweetpad-lib/rust-toolchain.toml
+        run: rustup show
+
+      - name: Resolve version
+        # On a cli-v* tag the version is the tag; manual runs get a -dryrun suffix
+        # off the crate version and skip publishing.
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF:-}" == refs/tags/cli-v* ]]; then
+            VERSION="${GITHUB_REF_NAME#cli-v}"
+          else
+            VERSION="$(grep -m1 '^version' sweetpad-lib/Cargo.toml | cut -d'"' -f2)-dryrun"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "TARBALL=sweetpad-cli-$VERSION-macos-universal.tar.gz" >> "$GITHUB_ENV"
+          echo "Building sweetpad CLI $VERSION"
+
+      - name: Build universal CLI
+        # Builds the bundled injection client + the universal sweetpad binary into
+        # sweetpad-lib/sweetpad-cli.
+        run: npm run build:cli:universal -w @sweetpad/lib
+
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/"//g')
+          rm -f "$CERT_PATH"
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Codesign the CLI
+        # Developer ID + hardened runtime + secure timestamp, required for notarization.
+        run: |
+          set -euo pipefail
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
+          test -n "$IDENTITY"
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" sweetpad-lib/sweetpad-cli
+          codesign --verify --strict --verbose=2 sweetpad-lib/sweetpad-cli
+
+      - name: Notarize the CLI
+        env:
+          MACOS_NOTARY_KEY_P8: ${{ secrets.MACOS_NOTARY_KEY_P8 }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          KEY_PATH="$RUNNER_TEMP/notary_key.p8"
+          echo "$MACOS_NOTARY_KEY_P8" | base64 --decode > "$KEY_PATH"
+          /usr/bin/zip -j "$RUNNER_TEMP/notarize.zip" sweetpad-lib/sweetpad-cli
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --key "$KEY_PATH" --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER_ID" --wait
+          rm -f "$KEY_PATH"
+
+      - name: Package tarball
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp sweetpad-lib/sweetpad-cli dist/sweetpad
+          chmod +x dist/sweetpad
+          tar -C dist -czf "$TARBALL" sweetpad
+          echo "SHA256=$(shasum -a 256 "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          shasum -a 256 "$TARBALL"
+
+      - name: Upload tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-tarball
+          path: "*.tar.gz"
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: "*.tar.gz"
+
+      - name: Update Homebrew tap formula
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${TARBALL}"
+          sed -e "s|{{VERSION}}|${VERSION}|g" -e "s|{{URL}}|${URL}|g" -e "s|{{SHA256}}|${SHA256}|g" \
+            .github/homebrew/sweetpad.rb.tmpl > "$RUNNER_TEMP/sweetpad.rb"
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/tap_key
+          chmod 600 ~/.ssh/tap_key
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap_key -o IdentitiesOnly=yes"
+
+          git clone --depth 1 git@github.com:sweetpad-dev/homebrew-tap.git "$RUNNER_TEMP/tap"
+          mkdir -p "$RUNNER_TEMP/tap/Formula"
+          cp "$RUNNER_TEMP/sweetpad.rb" "$RUNNER_TEMP/tap/Formula/sweetpad.rb"
+          git -C "$RUNNER_TEMP/tap" config user.name "sweetpad-ci"
+          git -C "$RUNNER_TEMP/tap" config user.email "ci@sweetpad.dev"
+          git -C "$RUNNER_TEMP/tap" add Formula/sweetpad.rb
+          git -C "$RUNNER_TEMP/tap" commit -m "sweetpad ${VERSION}"
+          git -C "$RUNNER_TEMP/tap" push
+          rm -f ~/.ssh/tap_key
