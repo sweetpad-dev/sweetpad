@@ -2,6 +2,9 @@ on:
   push:
     tags:
       - "*"
+  # Manual runs (Actions tab) exercise build + sign + notarize without publishing,
+  # since the deploy jobs below are gated on a tag ref.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -24,9 +27,65 @@ jobs:
         run: rustup show
       - name: Install Dependencies
         run: npm ci
+
+      - name: Build extension bundle
+        # Builds the universal .node addon + sweetpad CLI into out/ so the binaries
+        # exist for signing; the packaging step below reuses out/ without rebuilding.
+        run: npm run vscode:prepublish
+
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/"//g')
+          rm -f "$CERT_PATH"
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Codesign CLI and addon
+        # Developer ID + hardened runtime + secure timestamp, required for notarization.
+        run: |
+          set -euo pipefail
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
+          test -n "$IDENTITY"
+          for f in out/sweetpad out/lib/*.node; do
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$f"
+            codesign --verify --strict --verbose=2 "$f"
+          done
+
+      - name: Notarize CLI and addon
+        env:
+          MACOS_NOTARY_KEY_P8: ${{ secrets.MACOS_NOTARY_KEY_P8 }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          KEY_PATH="$RUNNER_TEMP/notary_key.p8"
+          ZIP="$RUNNER_TEMP/notarize.zip"
+          echo "$MACOS_NOTARY_KEY_P8" | base64 --decode > "$KEY_PATH"
+          # A loose Mach-O can't be stapled, so notarytool only registers each binary's
+          # hash with Apple; Gatekeeper verifies online when the file is quarantined.
+          /usr/bin/zip -j "$ZIP" out/sweetpad out/lib/*.node
+          xcrun notarytool submit "$ZIP" --key "$KEY_PATH" --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER_ID" --wait
+          rm -f "$KEY_PATH"
+
       - name: Package VSIX
-        # vscode:prepublish builds the universal .node addon, then bundles the extension
-        run: npx --yes @vscode/vsce package --no-dependencies
+        # Drop the prepublish hook so vsce zips the signed out/ instead of rebuilding it.
+        run: |
+          set -euo pipefail
+          npm pkg delete 'scripts.vscode:prepublish'
+          npx --yes @vscode/vsce package --no-dependencies
+
       - name: Upload VSIX
         uses: actions/upload-artifact@v4
         with:
@@ -37,6 +96,7 @@ jobs:
   deploy-ovsx:
     name: Deploy to Open VSX
     needs: build
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Download VSIX
@@ -57,6 +117,7 @@ jobs:
   deploy-vsmarketplace:
     name: Deploy to Visual Studio Marketplace
     needs: build
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Download VSIX
@@ -77,6 +138,7 @@ jobs:
   publish-github-release:
     name: Publish GitHub Release
     needs: build
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Download VSIX
