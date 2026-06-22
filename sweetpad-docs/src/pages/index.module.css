@@ -1,0 +1,107 @@
+.hero {
+    background-color: #2b3137;
+    padding: 4rem 6rem;
+    text-align: center;
+    font-size: 45px;
+    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    justify-content: center; 
+    align-items: center;
+}
+
+.heroTextAndButtons {
+    display: flex;
+    align-items: start;
+    flex-direction: column;
+    gap: 4rem;
+}
+
+.heroTextAndImage {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    flex-direction: row;
+    gap: 2rem;
+    max-width: 800px;
+}
+
+.heroImage {
+    width: 200px;
+    height: 200px;
+}
+
+.heroText {
+    color: var(--ifm-color-primary);
+    text-wrap: balance;
+    text-align: left;
+}
+
+.heroText > b {
+    color: white
+}
+
+.heroButtons {
+    display: flex;
+    justify-content: left;
+}
+
+
+@media (max-width: 768px) {
+    .hero {
+        padding: 2rem 1rem;
+        font-size: 30px;
+    }
+
+    .heroTextAndImage {
+        flex-direction: column-reverse;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .heroTextAndButtons {
+        gap: 2rem;
+    }
+
+    .heroImage {
+        width: 150px;
+        height: 150px;
+    }
+
+    .heroText {
+        text-align: center;
+    }
+    
+    .heroTextAndButtons {
+        align-items: center;
+    }
+}
+
+
+
+/* Features sections */
+.features {
+    padding: 4rem 6rem;
+    display: flex;
+    justify-content: center;
+    flex-direction: row;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.featureLink {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--ifm-link-color);
+}
+
+.featureLink:hover {
+    color: var(--ifm-link-hover-color);
+    text-decoration: none;
+}
+
+@media (max-width: 768px) {
+    .features {
+        padding: 2rem 1rem;
+    }
+}
