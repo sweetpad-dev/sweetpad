@@ -20,6 +20,7 @@ src/
 package-lock.json
 tsconfig.json
 tests/
+examples/
 *.spec.ts
 eslint.config.mjs
 jest.config.js
