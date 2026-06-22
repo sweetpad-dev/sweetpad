@@ -1,7 +1,8 @@
 on:
   push:
     tags:
-      - "*"
+      # Extension releases only — the CLI uses cli-v* tags (see cli-release.yaml).
+      - "v*"
   # Manual runs (Actions tab) exercise build + sign + notarize without publishing,
   # since the deploy jobs below are gated on a tag ref.
   workflow_dispatch:
