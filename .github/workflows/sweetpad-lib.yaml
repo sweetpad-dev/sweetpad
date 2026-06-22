@@ -29,7 +29,7 @@ jobs:
       run:
         working-directory: sweetpad-lib
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         # Installs the channel + components pinned in sweetpad-lib/rust-toolchain.toml.

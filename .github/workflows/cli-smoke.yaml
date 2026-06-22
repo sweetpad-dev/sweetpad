@@ -24,7 +24,7 @@ jobs:
       run:
         working-directory: sweetpad-lib
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         # Installs the channel + Apple targets pinned in rust-toolchain.toml.

@@ -47,7 +47,7 @@ jobs:
       run:
         working-directory: sweetpad-lib
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Select Xcode ${{ matrix.xcode }}
         run: |
           APP=$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -1)
@@ -96,7 +96,7 @@ jobs:
       run:
         working-directory: sweetpad-lib
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Select Xcode ${{ matrix.xcode }}
         id: xc
         run: |
