@@ -21,7 +21,7 @@ Develop Swift/iOS projects using VSCode or Cursor.
 The long-term goal is to make VSCode/Cursor a viable alternative to Xcode for iOS development by integrating open-source
 tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcode-build-server**, **sourcekit-lsp**.
 
-![iOS simulator](./docs/images/build-demo.gif)
+![iOS simulator](./images/build-demo.gif)
 
 ## Feature
 

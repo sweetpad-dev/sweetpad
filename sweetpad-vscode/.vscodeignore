@@ -14,21 +14,19 @@ vsc-extension-quickstart.md
 .vscode/
 node_modules/
 src/
-# The sweetpad-lib workspace source/fixtures are build-only — the compiled addon
-# ships via out/lib/ (copied by rolldown), so the whole tree stays out of the VSIX.
-sweetpad-lib/
 .gitignore
 .prettierrc
 .vscodeignore
 package-lock.json
 tsconfig.json
-docs/
 tests/
 *.spec.ts
 eslint.config.mjs
 jest.config.js
 
 images/icons/tabler-icons.original.woff
+# 1.8 MB demo gif — the marketplace renders it from GitHub raw, so keep it out of the VSIX.
+images/build-demo.gif
 
 # Dev-only config / tooling — not referenced by the bundled extension at runtime.
 rolldown.config.mjs
@@ -38,4 +36,3 @@ TODO.md
 .oxfmtrc.json
 .env.example
 scripts/
-.github/
