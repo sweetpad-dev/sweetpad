@@ -18,6 +18,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DD="$HERE/.build-dd"
 OUT="$HERE/prebuilt/SweetpadInjectionClient.dylib"
 
+# xcodebuild resolves the SPM package from the working directory, and the
+# build:cli npm scripts invoke this from sweetpad-lib/, so run from the package
+# directory where Package.swift lives.
+cd "$HERE"
+
 echo "==> building injection client for iphonesimulator (arm64 + x86_64)…"
 rm -rf "$DD"
 xcodebuild -scheme SweetpadInjectionClient \
