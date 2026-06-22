@@ -29,8 +29,8 @@ jobs:
         run: npm ci
 
       - name: Build extension bundle
-        # Builds the universal .node addon + sweetpad CLI into out/ so the binaries
-        # exist for signing; the packaging step below reuses out/ without rebuilding.
+        # Builds the universal .node addon into out/ so it exists for signing;
+        # the packaging step below reuses out/ without rebuilding.
         run: npm run vscode:prepublish
 
       - name: Import Developer ID certificate
@@ -52,18 +52,18 @@ jobs:
           rm -f "$CERT_PATH"
           echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
-      - name: Codesign CLI and addon
+      - name: Codesign the addon
         # Developer ID + hardened runtime + secure timestamp, required for notarization.
         run: |
           set -euo pipefail
           IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
           test -n "$IDENTITY"
-          for f in out/sweetpad out/lib/*.node; do
+          for f in out/lib/*.node; do
             codesign --force --options runtime --timestamp --sign "$IDENTITY" "$f"
             codesign --verify --strict --verbose=2 "$f"
           done
 
-      - name: Notarize CLI and addon
+      - name: Notarize the addon
         env:
           MACOS_NOTARY_KEY_P8: ${{ secrets.MACOS_NOTARY_KEY_P8 }}
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
@@ -75,7 +75,7 @@ jobs:
           echo "$MACOS_NOTARY_KEY_P8" | base64 --decode > "$KEY_PATH"
           # A loose Mach-O can't be stapled, so notarytool only registers each binary's
           # hash with Apple; Gatekeeper verifies online when the file is quarantined.
-          /usr/bin/zip -j "$ZIP" out/sweetpad out/lib/*.node
+          /usr/bin/zip -j "$ZIP" out/lib/*.node
           xcrun notarytool submit "$ZIP" --key "$KEY_PATH" --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER_ID" --wait
           rm -f "$KEY_PATH"
 

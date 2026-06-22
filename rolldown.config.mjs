@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { sentryRollupPlugin } from "@sentry/rollup-plugin";
@@ -40,19 +40,6 @@ const sweetpadLibPlugin = {
     for (const file of ["index.js", ...addons]) {
       copyFileSync(path.join(SWEETPAD_LIB_DIR, file), path.join(outLibDir, file));
     }
-
-    // The native `sweetpad` CLI (compiled by `build:cli:*` into `sweetpad-cli`)
-    // ships next to the extension bundle; the `sweetpad.system.installCli`
-    // command symlinks `out/sweetpad` to a directory on the user's PATH.
-    const cliBinary = path.join(SWEETPAD_LIB_DIR, "sweetpad-cli");
-    if (!existsSync(cliBinary)) {
-      this.error("No compiled sweetpad CLI found in sweetpad-lib/ — run build:sweetpad-lib:debug first.");
-    }
-    const outCli = path.join(path.dirname(outputOptions.file), "sweetpad");
-    copyFileSync(cliBinary, outCli);
-    // The VSIX zip drops file modes, so the exec bit is also restored at
-    // install time (installCliCommand); this keeps local runs working.
-    chmodSync(outCli, 0o755);
   },
 };
 

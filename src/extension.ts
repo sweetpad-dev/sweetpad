@@ -85,7 +85,6 @@ import {
   copyServerNameCommand,
   createIssueGenericCommand,
   createIssueNoSchemesCommand,
-  installCliCommand,
   openTerminalPanel,
   refreshShellEnvCommand,
   resetSweetPadCache,
@@ -416,7 +415,6 @@ export async function activate(context: vscode.ExtensionContext) {
   d(command("sweetpad.system.testErrorReporting", testErrorReportingCommand));
   d(command("sweetpad.system.openTerminalPanel", openTerminalPanel));
   d(command("sweetpad.system.refreshShellEnv", refreshShellEnvCommand));
-  d(command("sweetpad.system.installCli", installCliCommand));
 
   // Server
   d(command("sweetpad.cliServer.copyName", copyServerNameCommand));
