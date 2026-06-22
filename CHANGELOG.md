@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.5] - 2026-06-22
+
+- Sign and notarize the bundled native resolver and `sweetpad` CLI with a Developer ID, so macOS no longer blocks them from loading on Gatekeeper-restricted setups that rejected the previously ad-hoc-signed builds
+
 ## [0.2.4] - 2026-06-19
 
 - Add Swift Package Manager support: build and run `Package.swift` packages by driving the Swift toolchain directly instead of `xcodebuild` ([#290](https://github.com/sweetpad-dev/sweetpad/pull/290))
