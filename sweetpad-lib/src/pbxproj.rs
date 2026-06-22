@@ -51,6 +51,26 @@ impl Dict {
         }
     }
 
+    /// Mutable access to a value by key, for in-place edits (e.g. pushing a GUID
+    /// into a `packageReferences` array when adding a dependency).
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        let i = *self.index.get(key)?;
+        Some(&mut self.entries[i].1)
+    }
+
+    /// Remove an entry, returning its value. Re-indexes the trailing entries so
+    /// later lookups stay correct (positions after the gap shift down by one).
+    pub fn remove(&mut self, key: &str) -> Option<Value> {
+        let i = self.index.remove(key)?;
+        let (_, value) = self.entries.remove(i);
+        for pos in self.index.values_mut() {
+            if *pos > i {
+                *pos -= 1;
+            }
+        }
+        Some(value)
+    }
+
     /// Key/value pairs in insertion (source) order.
     pub fn iter(&self) -> impl Iterator<Item = (&String, &Value)> {
         self.entries.iter().map(|(k, v)| (k, v))
@@ -164,6 +184,27 @@ impl Value {
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.as_dict().and_then(|d| d.get(key))
+    }
+
+    pub fn as_dict_mut(&mut self) -> Option<&mut Dict> {
+        if let Value::Dict(d) = self {
+            Some(d)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_array_mut(&mut self) -> Option<&mut Vec<Value>> {
+        if let Value::Array(a) = self {
+            Some(a)
+        } else {
+            None
+        }
+    }
+
+    /// Mutable lookup of a key when this value is a dict.
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        self.as_dict_mut().and_then(|d| d.get_mut(key))
     }
 }
 
@@ -583,6 +624,35 @@ mod tests {
         let v = parse("{ z = 1; a = 2; m = 3; }").unwrap();
         let keys: Vec<&str> = v.as_dict().unwrap().keys().map(String::as_str).collect();
         assert_eq!(keys, vec!["z", "a", "m"]);
+    }
+
+    #[test]
+    fn remove_drops_entry_and_keeps_index_consistent() {
+        let mut d = Dict::new();
+        d.insert("z".into(), Value::String("1".into()));
+        d.insert("a".into(), Value::String("2".into()));
+        d.insert("m".into(), Value::String("3".into()));
+
+        // Remove the middle entry; surviving keys keep order and resolve.
+        assert_eq!(d.remove("a"), Some(Value::String("2".into())));
+        assert_eq!(d.remove("a"), None);
+        let keys: Vec<&str> = d.keys().map(String::as_str).collect();
+        assert_eq!(keys, vec!["z", "m"]);
+        // The re-indexed trailing key still points at the right value.
+        assert_eq!(d.get("m").and_then(Value::as_str), Some("3"));
+        assert_eq!(d.get("z").and_then(Value::as_str), Some("1"));
+    }
+
+    #[test]
+    fn get_mut_edits_in_place() {
+        let mut v = parse("{ items = ( a ); }").unwrap();
+        v.get_mut("items")
+            .and_then(Value::as_array_mut)
+            .unwrap()
+            .push(Value::String("b".into()));
+        let items = v.get("items").and_then(Value::as_array).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[1].as_str(), Some("b"));
     }
 
     #[test]

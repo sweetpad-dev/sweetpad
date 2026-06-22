@@ -33,6 +33,7 @@ pub mod pbxproj_writer;
 pub mod project;
 pub mod resolver;
 pub mod scheme;
+pub mod spm_pbxproj;
 pub mod spm_resolved;
 pub mod vscode_cli;
 pub mod workspace;

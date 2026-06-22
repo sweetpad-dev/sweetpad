@@ -6,6 +6,7 @@ pub mod app;
 pub mod bsp;
 pub mod build;
 pub mod context;
+pub mod dependency;
 pub mod derived_data;
 pub mod destination;
 pub mod device;

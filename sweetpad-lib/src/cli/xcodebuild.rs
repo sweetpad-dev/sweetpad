@@ -84,8 +84,9 @@ impl BuildPlan<'_> {
 }
 
 /// `-workspace <path>` / `-project <path>`; nothing for a Swift package (it's
-/// driven from the package directory).
-fn container_args(container: &Container) -> Vec<String> {
+/// driven from the package directory). Shared with the `dependency` command's
+/// `-resolvePackageDependencies` invocation.
+pub(crate) fn container_args(container: &Container) -> Vec<String> {
     match container {
         Container::Workspace(p) => vec!["-workspace".into(), p.display().to_string()],
         Container::Project(p) => vec!["-project".into(), p.display().to_string()],
@@ -97,7 +98,7 @@ fn container_args(container: &Container) -> Vec<String> {
 /// directory for SPM). A relative container like `App.xcodeproj` has an empty
 /// parent — that means "the current directory", so return `None` rather than
 /// trying to `chdir("")` (which fails the spawn and looks like a missing tool).
-fn working_dir(container: &Container) -> Option<PathBuf> {
+pub(crate) fn working_dir(container: &Container) -> Option<PathBuf> {
     container
         .path()
         .parent()

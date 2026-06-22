@@ -30,6 +30,26 @@ pub struct Manifest {
     pub products: Vec<Product>,
     #[serde(default)]
     pub targets: Vec<Target>,
+    /// The declared dependencies array, kept raw: its encoding varies across
+    /// `swift-tools-version`s (tagged unions of `sourceControl`/`fileSystem`,
+    /// older `scm`/`local`), so [`Manifest::declared_dependencies`] decodes it
+    /// best-effort rather than failing the whole parse on an unknown shape.
+    #[serde(default)]
+    pub dependencies: Vec<serde_json::Value>,
+}
+
+/// A dependency declared in a `Package.swift` manifest — what `dependency list`
+/// shows for a Swift-package container. Best-effort, read-only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredDep {
+    /// SwiftPM identity (used to correlate with a `Package.resolved` pin).
+    pub identity: String,
+    /// Repository URL or local path.
+    pub location: String,
+    /// A compact requirement rendering (e.g. `1.0.0 ..< 2.0.0`, `branch main`,
+    /// `local`), or `(unparsed)` for an encoding we don't recognize.
+    pub requirement: String,
+    pub remote: bool,
 }
 
 impl Manifest {
@@ -52,6 +72,86 @@ impl Manifest {
         names.push(format!("{}-Package", self.name));
         names
     }
+
+    /// The package's declared dependencies, decoded best-effort from the raw
+    /// `dependencies` array. Unknown entries are skipped (never an error).
+    #[must_use]
+    pub fn declared_dependencies(&self) -> Vec<DeclaredDep> {
+        self.dependencies
+            .iter()
+            .filter_map(parse_dependency)
+            .collect()
+    }
+}
+
+/// Decode one `dump-package` dependency entry. Handles the modern
+/// `sourceControl`/`fileSystem` tagged-union shape; returns `None` for shapes we
+/// don't recognize so the caller drops it rather than failing.
+fn parse_dependency(dep: &serde_json::Value) -> Option<DeclaredDep> {
+    if let Some(sc) = first_of(dep, "sourceControl") {
+        let identity = str_at(sc, "identity").unwrap_or_default().to_string();
+        let location = sc
+            .get("location")
+            .and_then(|loc| {
+                first_of(loc, "remote")
+                    .and_then(|m| str_at(m, "urlString").or_else(|| str_at(m, "url")))
+                    .or_else(|| loc.as_str())
+            })
+            .unwrap_or_default()
+            .to_string();
+        let requirement = sc
+            .get("requirement")
+            .map_or_else(|| "(unparsed)".to_string(), requirement_string);
+        return Some(DeclaredDep {
+            identity,
+            location,
+            requirement,
+            remote: true,
+        });
+    }
+    if let Some(fs) = first_of(dep, "fileSystem") {
+        let identity = str_at(fs, "identity").unwrap_or_default().to_string();
+        let location = str_at(fs, "path").unwrap_or_default().to_string();
+        return Some(DeclaredDep {
+            identity,
+            location,
+            requirement: "local".to_string(),
+            remote: false,
+        });
+    }
+    None
+}
+
+/// The first element of `dep[key]` when it's a non-empty array (the SwiftPM
+/// tagged-union encoding wraps each case's payload in a one-element array).
+fn first_of<'a>(value: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {
+    value.get(key)?.as_array()?.first()
+}
+
+fn str_at<'a>(value: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    value.get(key)?.as_str()
+}
+
+/// Render a `dump-package` requirement object compactly. Tolerates the
+/// array-wrapped (`{"exact":["1.0.0"]}`) and bare (`{"exact":"1.0.0"}`) forms.
+fn requirement_string(req: &serde_json::Value) -> String {
+    if let Some(range) = first_of(req, "range") {
+        let lo = str_at(range, "lowerBound").unwrap_or("?");
+        let hi = str_at(range, "upperBound").unwrap_or("?");
+        return format!("{lo} ..< {hi}");
+    }
+    for key in ["exact", "branch", "revision"] {
+        if let Some(v) = req.get(key) {
+            let val = v
+                .as_array()
+                .and_then(|a| a.first())
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| v.as_str())
+                .unwrap_or_default();
+            return format!("{key} {val}");
+        }
+    }
+    "(unparsed)".to_string()
 }
 
 /// A product declared by the package. In the dump, `type` is a single-key
@@ -108,6 +208,106 @@ pub fn manifest(container: &Container) -> Result<Manifest, CliError> {
     let cwd = package_dir(container);
     let stdout = process::capture("swift", &["package", "dump-package"], cwd.as_deref())?;
     parse_manifest(&stdout)
+}
+
+/// Evaluate the `Package.swift` at an explicit directory — e.g. a resolved
+/// dependency checkout, so `dependency add` can read the package's real products
+/// before linking them. Mirrors [`manifest`] but with `--package-path`.
+pub fn manifest_at(package_path: &Path) -> Result<Manifest, CliError> {
+    let path = package_path.to_string_lossy();
+    let stdout = process::capture(
+        "swift",
+        &["package", "dump-package", "--package-path", &path],
+        None,
+    )?;
+    parse_manifest(&stdout)
+}
+
+/// `swift package add-dependency <url> <requirement…>` (Swift 6+). `requirement`
+/// is the already-assembled SwiftPM flag list (e.g. `["--from", "1.2.3"]`).
+/// Streams output to the terminal.
+pub fn add_dependency(
+    container: &Container,
+    url: &str,
+    requirement: &[String],
+) -> Result<(), CliError> {
+    let cwd = package_dir(container);
+    let mut args: Vec<&str> = vec!["package", "add-dependency", url];
+    args.extend(requirement.iter().map(String::as_str));
+    process::stream("swift", &args, cwd.as_deref()).context("adding the package dependency")
+}
+
+/// `swift package add-target-dependency <product> <target> --package <name>`
+/// (Swift 6+) — link a product of an added package into a target.
+pub fn add_target_dependency(
+    container: &Container,
+    product: &str,
+    target: &str,
+    package: &str,
+) -> Result<(), CliError> {
+    let cwd = package_dir(container);
+    process::stream(
+        "swift",
+        &[
+            "package",
+            "add-target-dependency",
+            product,
+            target,
+            "--package",
+            package,
+        ],
+        cwd.as_deref(),
+    )
+    .context("linking the product to the target")
+}
+
+/// `swift package resolve` — fetch and pin dependencies into `Package.resolved`.
+/// `quiet` discards stdout (for `--json` callers).
+pub fn resolve(container: &Container, quiet: bool) -> Result<(), CliError> {
+    let cwd = package_dir(container);
+    if process::run("swift", &["package", "resolve"], cwd.as_deref(), quiet)? {
+        Ok(())
+    } else {
+        Err(
+            CliError::new("swift package resolve exited with a non-zero status")
+                .context("resolving package dependencies"),
+        )
+    }
+}
+
+/// `swift package update [name]` — bump pinned versions to the latest the
+/// requirements allow (one dependency, or all). `quiet` discards stdout.
+pub fn update(container: &Container, name: Option<&str>, quiet: bool) -> Result<(), CliError> {
+    let cwd = package_dir(container);
+    let mut args = vec!["package", "update"];
+    if let Some(name) = name {
+        args.push(name);
+    }
+    if process::run("swift", &args, cwd.as_deref(), quiet)? {
+        Ok(())
+    } else {
+        Err(
+            CliError::new("swift package update exited with a non-zero status")
+                .context("updating package dependencies"),
+        )
+    }
+}
+
+/// The toolchain's major Swift version (`swift --version`), for gating features
+/// like `swift package add-dependency` (Swift 6+). `None` if it can't be read.
+#[must_use]
+pub fn swift_major_version() -> Option<u32> {
+    let out = process::capture("swift", &["--version"], None).ok()?;
+    parse_swift_major(&out)
+}
+
+/// Parse the major version from `swift --version` output, e.g. "Apple Swift
+/// version 6.0.3 (...)" or "Swift version 6.1-dev" → `6`.
+fn parse_swift_major(text: &str) -> Option<u32> {
+    let after = text.split("Swift version ").nth(1)?;
+    let number = after.trim_start();
+    let major: String = number.chars().take_while(char::is_ascii_digit).collect();
+    major.parse().ok()
 }
 
 /// Parse the JSON object emitted by `swift package dump-package`, skipping any
@@ -275,5 +475,49 @@ mod tests {
     #[test]
     fn errors_without_json() {
         assert!(parse_manifest("not json at all").is_err());
+    }
+
+    #[test]
+    fn parses_swift_major_version() {
+        assert_eq!(
+            parse_swift_major("Apple Swift version 6.0.3 (swiftlang-...)"),
+            Some(6)
+        );
+        assert_eq!(
+            parse_swift_major("Swift version 6.1-dev (LLVM ...)"),
+            Some(6)
+        );
+        assert_eq!(
+            parse_swift_major("Swift version 5.10 (swift-5.10...)"),
+            Some(5)
+        );
+        assert_eq!(parse_swift_major("garbage"), None);
+    }
+
+    #[test]
+    fn decodes_declared_dependencies() {
+        let m: Manifest = serde_json::from_str(
+            r#"{ "name": "P",
+                 "dependencies": [
+                   { "sourceControl": [ {
+                       "identity": "alamofire",
+                       "location": { "remote": [ { "urlString": "https://github.com/Alamofire/Alamofire.git" } ] },
+                       "requirement": { "range": [ { "lowerBound": "5.9.0", "upperBound": "6.0.0" } ] } } ] },
+                   { "fileSystem": [ { "identity": "dep", "path": "/abs/Dep" } ] }
+                 ] }"#,
+        )
+        .unwrap();
+        let deps = m.declared_dependencies();
+        assert_eq!(deps.len(), 2);
+        assert_eq!(deps[0].identity, "alamofire");
+        assert!(deps[0].remote);
+        assert_eq!(
+            deps[0].location,
+            "https://github.com/Alamofire/Alamofire.git"
+        );
+        assert_eq!(deps[0].requirement, "5.9.0 ..< 6.0.0");
+        assert_eq!(deps[1].identity, "dep");
+        assert!(!deps[1].remote);
+        assert_eq!(deps[1].requirement, "local");
     }
 }

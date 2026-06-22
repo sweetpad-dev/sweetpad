@@ -637,6 +637,57 @@ dropped along with XCTest; the promoted feature is app UI/code reload (SwiftUI/U
   SwiftUI `@ObserveInjection`/`.enableInjection()` annotations remain the user's to
   add (UIKit reloads without them).
 
+## 9e. `dependency` — Swift Package Manager dependencies (`dep`)
+
+View, add, remove, and resolve a project's SPM dependencies without opening
+Xcode — the one package operation Xcode otherwise gates behind its GUI.
+
+```
+sweetpad dependency list [--transitive]      declared packages + locked versions
+sweetpad dependency add <url> <requirement>  add a package, link a product
+sweetpad dependency remove <pkg>             remove a package (or unlink a product)
+sweetpad dependency update [<pkg>] [req]      bump pins, or change a requirement
+sweetpad dependency resolve                  refresh Package.resolved
+```
+
+Works on all three containers. For an `.xcodeproj`/`.xcworkspace` there is no
+Apple CLI for this, so the object graph is edited directly via
+`crate::spm_pbxproj` (parse → mutate → `pbxproj_writer::serialize` → write,
+byte-for-byte, like the scaffold/merge paths); for a `Package.swift` it drives
+the Swift 6 `swift package add-dependency`/`add-target-dependency`/`resolve`.
+
+- **`list`** shows each directly-declared package's requested requirement next to
+  its locked version, correlated by SwiftPM identity against `Package.resolved`,
+  plus its `product → target` links. `--transitive` adds the resolved-only pins.
+- **`add`** takes one SPM-style requirement flag (`--from`/`--exact`/
+  `--up-to-next-minor-from`/`--branch`/`--revision`, plus `--to` for a range),
+  resolves the package to read its real products, then prompts for the
+  product(s)/target(s) to link (or takes `--product`/`--target`; strict-errors
+  off a TTY). Auto-resolves afterward unless `--no-resolve`. Supports remote git
+  URLs and local paths (`XCLocalSwiftPackageReference`); the product is linked via
+  a Frameworks `PBXBuildFile`, or a `PBXTargetDependency` for static-library
+  targets.
+- **`remove`** drops the whole package (reference, product dependencies, target
+  links, build files, and its `Package.resolved` pin) by name/URL/identity, or
+  narrows to unlinking one product from one target with `--product`/`--target`.
+  Removing a *local* package also matches products Xcode wrote without a
+  `package` back-ref (by the names its manifest declares). Naming a transitive
+  pin yields a hint to change/remove the direct package that pulls it in.
+- **`update`** with no requirement re-pins to the latest the current
+  requirements allow — `swift package update [name]` for a package, or dropping
+  the pin(s) (one, or the whole lockfile) and re-resolving for an xcodeproj.
+  With a requirement (`dep update <pkg> --exact 6.0.0`) it rewrites that
+  package's `requirement` in place — a bump, pin, or **downgrade** — then drops
+  the stale pin and re-resolves.
+- `add`/`update` discovery resolves **once**: it reads the package's products
+  from the resolved checkout located precisely via SourcePackages'
+  `workspace-state.json` (robust to monorepo sub-paths and case), so there's no
+  second resolve and no checkout-name guessing.
+- A workspace `add`/`remove`/`update` targets the member project that declares
+  the package (for remove/update), else its sole member, else an interactive
+  pick (strict `--project` error off a TTY). All `xcodebuild
+  -resolvePackageDependencies` calls pass a `-scheme` (required for a workspace).
+
 > Supersedes the earlier "vendor full source, compile per Xcode" plan: the
 > from-source per-Xcode build (and its `~/.cache/.../<xcode-build>/` cache) existed
 > only to keep XCTest's ABI matched against the active Xcode. Building the

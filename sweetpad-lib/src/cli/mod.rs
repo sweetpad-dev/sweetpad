@@ -221,6 +221,14 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::project::Action,
     },
+    /// View and manage the project's Swift Package Manager dependencies.
+    #[command(visible_alias = "dep")]
+    Dependency {
+        #[command(flatten)]
+        target: ContainerArgs,
+        #[command(subcommand)]
+        action: commands::dependency::Action,
+    },
     /// Show resolved build settings.
     Settings {
         #[command(flatten)]
@@ -371,6 +379,10 @@ pub fn run(argv: &[String]) -> ExitCode {
         Resource::Project { target, action } => {
             ctx.targeting = target.into();
             commands::project::run(&mut ctx, &action)
+        }
+        Resource::Dependency { target, action } => {
+            ctx.targeting = target.into();
+            commands::dependency::run(&mut ctx, &action)
         }
         Resource::Settings { target, action } => {
             ctx.targeting = target.into();
