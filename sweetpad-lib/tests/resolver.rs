@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use sweetpad::resolver::{ResolveContext, flatten_xcconfig, resolve};
+use sweetpad_lib::resolver::{ResolveContext, flatten_xcconfig, resolve};
 
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")

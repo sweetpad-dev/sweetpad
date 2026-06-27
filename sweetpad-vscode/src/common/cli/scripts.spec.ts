@@ -1,4 +1,4 @@
-import * as sweetpadLib from "@sweetpad/lib";
+import * as sweetpadLib from "@sweetpad/native";
 import type { Mock } from "vitest";
 import * as vscode from "vscode";
 
@@ -9,8 +9,8 @@ import { getBuildSettingsList, getXcodeBuildCommand, parseCliJsonOutput } from "
 
 vi.mock("../exec", () => ({ exec: vi.fn() }));
 vi.mock("../tasks/shell-env", () => ({ getShellDeveloperDir: vi.fn() }));
-vi.mock("@sweetpad/lib", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@sweetpad/lib")>()),
+vi.mock("@sweetpad/native", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sweetpad/native")>()),
   buildSettings: vi.fn(),
 }));
 

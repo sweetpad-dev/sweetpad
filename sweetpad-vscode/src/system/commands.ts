@@ -1,4 +1,4 @@
-import * as sweetpadLib from "@sweetpad/lib";
+import * as sweetpadLib from "@sweetpad/native";
 import * as vscode from "vscode";
 
 import { type AppDeps, resetSweetPadState } from "../common/commands";

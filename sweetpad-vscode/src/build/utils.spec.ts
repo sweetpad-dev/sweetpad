@@ -6,9 +6,9 @@ import { isFileExists, readJsonFile } from "../common/files";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import { generateBuildServerConfigOnBuild, launchActionToSettings } from "./utils";
 
-// `./utils` imports the native `@sweetpad/lib` addon at module level; stub it so
+// `./utils` imports the native `@sweetpad/native` addon at module level; stub it so
 // this spec runs without the compiled addon (none of the tested paths touch it).
-vi.mock("@sweetpad/lib", () => ({}));
+vi.mock("@sweetpad/native", () => ({}));
 
 vi.mock("../common/cli/scripts", () => ({
   generateBuildServerConfig: vi.fn(),

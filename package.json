@@ -4,6 +4,6 @@
   "private": true,
   "workspaces": [
     "sweetpad-vscode",
-    "sweetpad-lib"
+    "sweetpad-vscode/native"
   ]
 }

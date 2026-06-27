@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "sweetpad-lib",
+    "sweetpad-core",
+    "sweetpad-cli",
+    "sweetpad-vscode/native",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+authors = ["Yevhenii Hyzyla <hyzyla@gmail.com>"]
+
+[workspace.dependencies]
+sweetpad-lib = { path = "sweetpad-lib" }
+sweetpad-core = { path = "sweetpad-core" }
+# JSON is a well-known standard format, not worth reinventing; hand-rolled
+# parsing is reserved for Apple's project-domain formats (DOCS.md §3.1).
+serde_json = "1"
+# Unicode NFD for the DerivedData path hash (xcode_hash); UAX #15 with a
+# de-facto crate — not worth hand-rolling the decomposition tables.
+unicode-normalization = "0.1"
+# CLI-only: clap derives the resource-first command tree, help, completions;
+# serde+toml read/write the XDG config & state files; dialoguer is the TTY
+# picker; libc flips raw-input flags for the interactive rebuild session.
+clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
+dialoguer = { version = "0.11", default-features = false, features = ["fuzzy-select"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+libc = "0.2"
+# N-API addon only (sweetpad-vscode/native).
+napi = { version = "3", default-features = false, features = ["napi8"] }
+napi-derive = "3"
+napi-build = "2"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+# Apple identifiers (ProductType, OpenStep, BuildSystem, etc.) appear in doc
+# comments in their natural casing; backtick-wrapping all of them is noise.
+doc_markdown = "allow"

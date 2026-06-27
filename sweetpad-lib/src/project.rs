@@ -3053,7 +3053,8 @@ fn paths_equivalent(a: &Path, b: &Path) -> bool {
     }
 }
 
-pub(crate) fn canonicalize_sdk_base(sdk: &str) -> String {
+#[must_use]
+pub fn canonicalize_sdk_base(sdk: &str) -> String {
     let trimmed = sdk.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
     if trimmed.is_empty() {
         sdk.to_string()

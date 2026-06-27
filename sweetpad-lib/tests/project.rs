@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use sweetpad::project::{
+use sweetpad_lib::project::{
     Target, is_self_buildable, open, target_dependencies, target_has_package_products,
     target_source_files, transitive_dependencies,
 };

@@ -5,10 +5,18 @@ on:
     branches: [main]
     paths:
       - "sweetpad-lib/**"
+      - "sweetpad-core/**"
+      - "sweetpad-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - ".github/workflows/catalyst-oracle.yaml"
   pull_request:
     paths:
       - "sweetpad-lib/**"
+      - "sweetpad-core/**"
+      - "sweetpad-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - ".github/workflows/catalyst-oracle.yaml"
   workflow_dispatch:
 
@@ -37,7 +45,7 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: sweetpad-lib
+          workspaces: .
 
       - name: Tooling versions
         run: |
@@ -56,5 +64,5 @@ jobs:
 
       - name: Catalyst misdetection oracle
         env:
-          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+          SWEETPAD_BIN: ${{ github.workspace }}/target/debug/sweetpad
         run: bash ci/catalyst-oracle.sh

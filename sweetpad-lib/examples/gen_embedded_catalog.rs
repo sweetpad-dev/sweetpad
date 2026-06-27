@@ -16,8 +16,8 @@
 
 use std::path::{Path, PathBuf};
 
-use sweetpad::catalog_cache;
-use sweetpad::xcspec;
+use sweetpad_lib::catalog_cache;
+use sweetpad_lib::xcspec;
 
 /// The version baked in by default — keep pointed at the newest captured major.
 const DEFAULT_VERSION: &str = "26.5.0";

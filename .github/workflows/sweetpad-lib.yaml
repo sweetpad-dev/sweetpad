@@ -5,46 +5,53 @@ on:
     branches: [main]
     paths:
       - "sweetpad-lib/**"
+      - "sweetpad-core/**"
+      - "sweetpad-cli/**"
+      - "sweetpad-vscode/native/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/sweetpad-lib.yaml"
   pull_request:
     paths:
       - "sweetpad-lib/**"
+      - "sweetpad-core/**"
+      - "sweetpad-cli/**"
+      - "sweetpad-vscode/native/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/sweetpad-lib.yaml"
 
-# The fast nets resolve against the committed `xcspec-cache/`, so they need no
-# Xcode and form the always-on regression gate — including the BSP arg-invariant
-# linter (the SDKROOT=auto class) and the compiler-args/settings oracles.
+# The fast nets resolve against the committed `sweetpad-lib/xcspec-cache/`, so
+# they need no Xcode and form the always-on regression gate — the BSP
+# arg-invariant linter, the compiler-args/settings oracles, and the parsers.
 #
 # The heavy tiers are NOT run here: they need a real Xcode 26.5 plus the
 # gitignored OSS corpus, so they're run locally / nightly off-CI —
-#   BSP_CORPUS=1            cargo test --test bsp_corpus_completion   (e2e clean-rate)
-#   BSP_LIVE_DIFF=1         cargo test --test showbuildsettings_live_diff
-#   python3 scripts/21_mutation_audit.py [--e2e]                     (coverage audit)
+#   BSP_CORPUS=1     cargo test -p sweetpad-core --test bsp_corpus_completion
+#   BSP_LIVE_DIFF=1  cargo test -p sweetpad-core --test showbuildsettings_live_diff
+#   python3 sweetpad-lib/scripts/21_mutation_audit.py [--e2e]
 
 jobs:
   check:
     name: fmt · clippy · test
     runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: sweetpad-lib
     steps:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        # Installs the channel + components pinned in sweetpad-lib/rust-toolchain.toml.
+        # Installs the channel + components pinned in rust-toolchain.toml.
         run: rustup show
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: sweetpad-lib
 
       - name: Format
-        run: cargo fmt --check
+        run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test
+        run: cargo test --workspace

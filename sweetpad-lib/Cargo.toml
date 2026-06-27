@@ -1,94 +1,16 @@
 [package]
-name = "sweetpad"
-version = "0.1.0"
-edition = "2024"
-rust-version = "1.94"
-license = "MIT OR Apache-2.0"
-description = "Resolver and tooling for Xcode project files (pbxproj, xcconfig, schemes) and build settings."
-authors = ["Yevhenii Hyzyla <hyzyla@gmail.com>"]
+name = "sweetpad-lib"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
 publish = false
-
-# The resolver is interface-agnostic: every `src/*` module except `node.rs`
-# knows nothing about any binding technology. `rlib` for integration tests and
-# future bindings; `cdylib` for the N-API node addon. A second interface (e.g. a
-# PyO3 `python.rs`) would be another feature-gated thin module over the same core.
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-# Standalone entry point for the `bsp` Build Server Protocol server (see DOCS.md
-# §8 (BSP server)) — execed by the BSP integration tests and by sourcekit-lsp via
-# `bsp::write_config`'s buildServer.json; the extension runs the same server
-# through the N-API addon. Gated on the (default) `bsp-server` feature so the
-# addon build (`--no-default-features --features node`) skips it — a standalone
-# bin can't link napi's node-host-provided symbols.
-[[bin]]
-name = "bsp-server"
-path = "src/bin/bsp_server.rs"
-required-features = ["bsp-server"]
-
-# The `sweetpad` CLI — a pure native binary shipped inside the VS Code
-# extension (the installCli command symlinks it onto PATH). One command for
-# now: `vscode`, the JSON-RPC client over the extension's control server (see
-# src/vscode_cli.rs). Same feature-gating rationale as the bsp-server bin.
-[[bin]]
-name = "sweetpad"
-path = "src/bin/sweetpad.rs"
-required-features = ["cli"]
-
-[features]
-# `bsp-server` builds the BSP server binary and `cli` the `sweetpad` CLI;
-# default-on so `cargo build`/`cargo test` get them (the integration tests exec
-# both), and skipped by the addon build.
-default = ["bsp-server", "cli"]
-bsp-server = []
-# The standalone `sweetpad` CLI. Pulls in clap (arg parsing) plus serde/toml
-# for the XDG config & state files — standard formats not worth reinventing
-# (DOCS.md §3.1). Off in the addon build, so the cdylib never links them.
-cli = ["dep:clap", "dep:clap_complete", "dep:dialoguer", "dep:serde", "dep:toml", "dep:libc"]
-# Compiles the `src/node.rs` N-API bindings into the cdylib. Off by default so
-# `cargo test` (and the interface-agnostic core) never link the Node runtime.
-node = ["dep:napi", "dep:napi-derive"]
+description = "Interface-agnostic utilities for Xcode project files (pbxproj, xcconfig, schemes) and build-settings resolution."
 
 [dependencies]
-napi = { version = "3", default-features = false, features = ["napi8"], optional = true }
-napi-derive = { version = "3", optional = true }
-# JSON-RPC for the BSP server. We hand-roll project-domain parsing (pbxproj,
-# xcconfig) where Apple's formats have no good crate, but a well-known standard
-# like JSON is not worth reinventing — see DOCS.md §3.1 (Dependencies).
-serde_json = "1"
-# CLI-only dependencies (gated behind the `cli` feature). clap derives the
-# resource-first command tree, help, and completions; serde+toml read the
-# hand-authored ~/.config/sweetpad/config.toml and read/write the machine
-# ~/.local/state/sweetpad/state.toml.
-clap = { version = "4", features = ["derive", "env"], optional = true }
-clap_complete = { version = "4", optional = true }
-# Interactive fuzzy picker for the TTY resolution fallback.
-dialoguer = { version = "0.11", default-features = false, features = ["fuzzy-select"], optional = true }
-serde = { version = "1", features = ["derive"], optional = true }
-toml = { version = "0.8", optional = true }
-# Raw terminal mode for the `app run` interactive rebuild session (single-key
-# `r`/`q`), unix-only. We flip only the input line-discipline flags by hand so
-# streamed logs keep their newline post-processing — too surgical for a TUI crate.
-libc = { version = "0.2", optional = true }
-# Unicode NFD for the DerivedData path hash: Xcode hashes the path string as the
-# filesystem hands it back, which on HFS+ is canonically decomposed. We MD5 the
-# NFD form so a project under a non-ASCII path resolves the same folder Xcode
-# wrote. UAX #15 is a standardized format with a de-facto crate — not worth
-# hand-rolling the decomposition tables (DOCS.md §3.1).
-unicode-normalization = "0.1"
+serde_json.workspace = true
+unicode-normalization.workspace = true
 
-[build-dependencies]
-napi-build = "2"
-
-[dev-dependencies]
-# Integration tests (the BSP conformance harness) build/parse JSON-RPC messages.
-serde_json = "1"
-
-[lints.clippy]
-pedantic = { level = "warn", priority = -1 }
-missing_errors_doc = "allow"
-missing_panics_doc = "allow"
-module_name_repetitions = "allow"
-# Apple identifiers (ProductType, OpenStep, BuildSystem, etc.) appear in doc
-# comments in their natural casing; backtick-wrapping all of them is noise.
-doc_markdown = "allow"
+[lints]
+workspace = true

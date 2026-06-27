@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use sweetpad::{bplist, pbxproj, pbxproj_writer, xcscheme};
+use sweetpad_lib::{bplist, pbxproj, pbxproj_writer, xcscheme};
 
 // ---------------------------------------------------------------------------
 // pbxproj: unbounded recursion in parse_value/parse_array/parse_dict
@@ -257,7 +257,7 @@ fn project_group_cycles_resolve_without_overflow() {
     let handle = std::thread::Builder::new()
         .stack_size(512 * 1024)
         .spawn(move || {
-            let files = sweetpad::project::target_source_files(&proj, "App")
+            let files = sweetpad_lib::project::target_source_files(&proj, "App")
                 .expect("cyclic groups should still resolve");
             assert!(
                 files.iter().any(|f| f.ends_with("a.swift")),
@@ -285,9 +285,9 @@ fn condition_rejects_deeply_nested_parens() {
         .spawn(move || {
             // Either outcome (recovered parse or None → always-true fallback)
             // is acceptable; aborting the process is not.
-            let _ = sweetpad::condition::parse(&input);
+            let _ = sweetpad_lib::condition::parse(&input);
             let bangs = format!("{}YES", "!".repeat(200_000));
-            let _ = sweetpad::condition::parse(&bangs);
+            let _ = sweetpad_lib::condition::parse(&bangs);
         })
         .expect("spawn");
     handle.join().expect("condition parse must not overflow");

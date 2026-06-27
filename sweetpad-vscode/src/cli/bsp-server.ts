@@ -4,6 +4,6 @@
 // Node, which loads the native addon and runs the BSP loop over stdio. The
 // extension passes `--config <bsp.json>` in argv; absent that, the server
 // discovers the config from its cwd via the host-wide project index.
-import { bsp } from "@sweetpad/lib";
+import { bsp } from "@sweetpad/native";
 
 bsp(process.argv.slice(2));

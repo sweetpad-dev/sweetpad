@@ -21,8 +21,8 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use sweetpad::pbxproj::{self, Value};
-use sweetpad::{pbxproj_writer, xcconfig, xcscheme};
+use sweetpad_lib::pbxproj::{self, Value};
+use sweetpad_lib::{pbxproj_writer, xcconfig, xcscheme};
 
 /// Fixture files whose source formatting is not Xcode-canonical (hand-written
 /// synthetic projects), with the reason they can't be byte-exact.

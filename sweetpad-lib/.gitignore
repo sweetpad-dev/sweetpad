@@ -30,9 +30,6 @@ __pycache__/
 # Local-only state for build runner
 .cache/
 
-# Rust
-/target
-
 # Personal IDE/agent state
 .claude/
 
@@ -41,12 +38,3 @@ __pycache__/
 
 # Compressed activity log — redundant with xcactivitylog.parsed.json
 **/xcactivitylog.gz
-
-# napi node addon (generated build outputs)
-/node_modules/
-/*.node
-/index.js
-/index.d.ts
-
-# Native `sweetpad` CLI staged for the extension bundle (build:cli:*)
-/sweetpad-cli

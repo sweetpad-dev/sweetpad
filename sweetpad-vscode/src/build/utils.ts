@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import * as sweetpadLib from "@sweetpad/lib";
+import * as sweetpadLib from "@sweetpad/native";
 import { execa } from "execa";
 import * as vscode from "vscode";
 

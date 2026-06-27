@@ -23,8 +23,7 @@ jobs:
         with:
           node-version: 24
       - name: Install Rust toolchain
-        working-directory: sweetpad-lib
-        # Installs the channel + Apple targets pinned in sweetpad-lib/rust-toolchain.toml
+        # Installs the channel + Apple targets pinned in rust-toolchain.toml
         run: rustup show
       - name: Install Dependencies
         run: npm ci

@@ -13,10 +13,18 @@ on:
     branches: [main, claude/cli-hot-reloading-c52yf2]
     paths:
       - "sweetpad-lib/**"
+      - "sweetpad-core/**"
+      - "sweetpad-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - ".github/workflows/xcode-tests.yaml"
   pull_request:
     paths:
       - "sweetpad-lib/**"
+      - "sweetpad-core/**"
+      - "sweetpad-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - ".github/workflows/xcode-tests.yaml"
   workflow_dispatch:
   schedule:
@@ -60,12 +68,12 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: sweetpad-lib
+          workspaces: .
           shared-key: xcode-tests
       - name: Build the sweetpad CLI
         run: cargo build --bin sweetpad
       - name: Unit tests
-        run: cargo test
+        run: cargo test --workspace
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate the fixture project
@@ -73,7 +81,7 @@ jobs:
         run: xcodegen generate
       - name: End-to-end CLI coverage
         env:
-          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+          SWEETPAD_BIN: ${{ github.workspace }}/target/debug/sweetpad
         run: bash ci/smoke.sh
 
   # Build the injection client from source against the active Xcode (no
@@ -111,13 +119,13 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: sweetpad-lib
+          workspaces: .
           shared-key: xcode-tests
       # Build the injection client (XCTest-free, from the pinned InjectionNext SPM
       # product — vendor/injection-client) *before* cargo build, so build.rs embeds
       # it into the CLI. This is the same step the release scripts run.
       - name: Build the bundled injection client
-        run: bash vendor/injection-client/build.sh
+        run: bash ../sweetpad-cli/vendor/injection-client/build.sh
       - name: Build the sweetpad CLI
         run: cargo build --bin sweetpad
       - name: Install XcodeGen
@@ -129,5 +137,5 @@ jobs:
       # build time, so this exercises the real shipping path on this Xcode.
       - name: Hot-reload / injection e2e (embedded client)
         env:
-          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+          SWEETPAD_BIN: ${{ github.workspace }}/target/debug/sweetpad
         run: bash ci/hot-reload-e2e.sh

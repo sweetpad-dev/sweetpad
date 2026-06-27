@@ -1,8 +1,12 @@
 # sweetpad-lib
 
-A Rust resolver for Xcode `pbxproj` / `xcconfig` build settings, snapshot-tested
-against real `xcodebuild` captures, plus a compiler-args generator and a BSP
-server for sourcekit-lsp.
+Interface-agnostic utilities for Xcode project files (`pbxproj`, `xcconfig`,
+schemes) and the build-settings / compiler-args resolver, snapshot-tested against
+real `xcodebuild` captures. The shared orchestration on top — the
+`resolve_build_settings` entry points and the BSP server — lives in the sibling
+`sweetpad-core` crate; `sweetpad-cli` and the VS Code addon (`sweetpad-vscode/native`)
+are the interfaces. `DOCS.md` predates the crate split and still describes these
+as one crate.
 
 **All documentation lives in `DOCS.md`** — overview, corpus, oracles, coverage
 matrix, roadmap, and the Xcode-version runbook. Key sections for an agent:
@@ -12,8 +16,10 @@ matrix, roadmap, and the Xcode-version runbook. Key sections for an agent:
   minimum abstraction, fixture-driven tests, and the grounding order for any
   build-setting investigation: **xcspec → corpus → web**, then document
   irreducible heuristics in code instead of over-fitting.
-- **Validating changes:** `cargo test` scores the full pipeline against every
-  capture. Judge correctness by the **structural %** and the per-key
+- **Validating changes:** `cargo test --workspace` scores the full pipeline
+  against every capture (the oracle suites moved to `sweetpad-core/tests`, which
+  read this crate's `fixtures/` via `SWEETPAD_LIB_DIR`). Judge correctness by the
+  **structural %** and the per-key
   "systematic mismatches" tally — not the geometry-capped exact % (`DOCS.md`
   §5.3). Re-run all versions after every change; ratchet floors.
 - **Updating/refreshing an Xcode version:** follow the runbook in `DOCS.md`

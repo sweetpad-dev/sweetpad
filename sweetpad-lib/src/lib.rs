@@ -1,32 +1,21 @@
-//! Xcode build-settings resolver.
+//! Interface-agnostic utilities for Xcode project files and build-settings
+//! resolution.
 //!
-//! Every module here is **interface-agnostic** — it knows nothing about Node,
-//! Python, or any binding technology. The public entry points the bindings wrap
-//! are plain Rust: [`xcode::active_install`], [`project::open`],
-//! [`workspace::open`], and [`build_settings::resolve_build_settings`].
-//!
-//! `node` is the *only* binding-aware module: a thin, feature-gated N-API layer
-//! (`--features node`) that maps those core functions to JS-facing types. A
-//! second interface (e.g. a PyO3 `python` module) would be another sibling thin
-//! layer over the same core — nothing in the core would have to change.
+//! This crate is the foundation layer: it parses and serializes Apple's
+//! project-domain formats (pbxproj, xcconfig, schemes, binary plists), models
+//! Xcode projects and workspaces, and resolves build settings and compiler
+//! arguments. It knows nothing about any frontend — the `sweetpad` CLI, the VS
+//! Code extension's N-API addon, and the BSP server all build on top of it
+//! (`sweetpad-core` adds the shared orchestration; the CLI and addon are the
+//! interfaces). Public entry points are plain Rust: [`xcode::active_install`],
+//! [`project::open`], [`workspace::open`].
 
 pub mod bplist;
-pub mod bsp;
-pub mod build_context;
-pub mod build_settings;
 pub mod catalog_cache;
-// The standalone CLI (resource-first command tree). Gated on the `cli` feature
-// so the N-API addon build never pulls in clap/serde/toml. See `CLI_DESIGN.md`.
-#[cfg(feature = "cli")]
-pub mod cli;
 pub mod compiler_args;
 pub mod condition;
 pub mod destination;
 mod file_cache;
-mod framing;
-#[cfg(feature = "node")]
-pub mod node;
-pub mod paths;
 pub mod pbxproj;
 pub mod pbxproj_merge;
 pub mod pbxproj_writer;
@@ -35,7 +24,6 @@ pub mod resolver;
 pub mod scheme;
 pub mod spm_pbxproj;
 pub mod spm_resolved;
-pub mod vscode_cli;
 pub mod workspace;
 pub mod xcconfig;
 pub mod xcode;

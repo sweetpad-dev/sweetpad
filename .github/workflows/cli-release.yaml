@@ -22,8 +22,7 @@ jobs:
         with:
           node-version: 24
       - name: Install Rust toolchain
-        working-directory: sweetpad-lib
-        # Installs the channel + Apple targets pinned in sweetpad-lib/rust-toolchain.toml
+        # Installs the channel + Apple targets pinned in rust-toolchain.toml
         run: rustup show
 
       - name: Resolve version
@@ -34,16 +33,24 @@ jobs:
           if [[ "${GITHUB_REF:-}" == refs/tags/cli-v* ]]; then
             VERSION="${GITHUB_REF_NAME#cli-v}"
           else
-            VERSION="$(grep -m1 '^version' sweetpad-lib/Cargo.toml | cut -d'"' -f2)-dryrun"
+            VERSION="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)-dryrun"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "TARBALL=sweetpad-cli-$VERSION-macos-universal.tar.gz" >> "$GITHUB_ENV"
           echo "Building sweetpad CLI $VERSION"
 
       - name: Build universal CLI
-        # Builds the bundled injection client + the universal sweetpad binary into
-        # sweetpad-lib/sweetpad-cli.
-        run: npm run build:cli:universal -w @sweetpad/lib
+        # Build the bundled injection client, then the universal `sweetpad` binary.
+        run: |
+          set -euo pipefail
+          bash sweetpad-cli/vendor/injection-client/build.sh
+          cargo build --release --bin sweetpad --target aarch64-apple-darwin
+          cargo build --release --bin sweetpad --target x86_64-apple-darwin
+          mkdir -p dist
+          lipo -create -output dist/sweetpad \
+            target/aarch64-apple-darwin/release/sweetpad \
+            target/x86_64-apple-darwin/release/sweetpad
+          chmod +x dist/sweetpad
 
       - name: Import Developer ID certificate
         env:
@@ -70,8 +77,8 @@ jobs:
           set -euo pipefail
           IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
           test -n "$IDENTITY"
-          codesign --force --options runtime --timestamp --sign "$IDENTITY" sweetpad-lib/sweetpad-cli
-          codesign --verify --strict --verbose=2 sweetpad-lib/sweetpad-cli
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" dist/sweetpad
+          codesign --verify --strict --verbose=2 dist/sweetpad
 
       - name: Notarize the CLI
         env:
@@ -82,16 +89,13 @@ jobs:
           set -euo pipefail
           KEY_PATH="$RUNNER_TEMP/notary_key.p8"
           echo "$MACOS_NOTARY_KEY_P8" | base64 --decode > "$KEY_PATH"
-          /usr/bin/zip -j "$RUNNER_TEMP/notarize.zip" sweetpad-lib/sweetpad-cli
+          /usr/bin/zip -j "$RUNNER_TEMP/notarize.zip" dist/sweetpad
           xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --key "$KEY_PATH" --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER_ID" --wait
           rm -f "$KEY_PATH"
 
       - name: Package tarball
         run: |
           set -euo pipefail
-          mkdir -p dist
-          cp sweetpad-lib/sweetpad-cli dist/sweetpad
-          chmod +x dist/sweetpad
           tar -C dist -czf "$TARBALL" sweetpad
           echo "SHA256=$(shasum -a 256 "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_ENV"
           shasum -a 256 "$TARBALL"

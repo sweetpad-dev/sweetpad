@@ -35,11 +35,11 @@
     "vadimcn.vscode-lldb"
   ],
   "scripts": {
-    "build": "npm run build:sweetpad-lib:debug && rolldown -c rolldown.config.mjs",
-    "watch": "npm run build:sweetpad-lib:debug && rolldown -c rolldown.config.mjs --watch",
-    "vscode:prepublish": "npm run build:sweetpad-lib:release && cross-env NODE_ENV=production rolldown -c rolldown.config.mjs",
-    "build:sweetpad-lib:debug": "npm run build:addon:debug -w @sweetpad/lib",
-    "build:sweetpad-lib:release": "npm run build:addon:universal -w @sweetpad/lib",
+    "build": "npm run build:native:debug && rolldown -c rolldown.config.mjs",
+    "watch": "npm run build:native:debug && rolldown -c rolldown.config.mjs --watch",
+    "vscode:prepublish": "npm run build:native:release && cross-env NODE_ENV=production rolldown -c rolldown.config.mjs",
+    "build:native:debug": "npm run build:addon:debug -w @sweetpad/native",
+    "build:native:release": "npm run build:addon:universal -w @sweetpad/native",
     "test": "vitest run",
     "test:watch": "vitest",
     "check:format": "oxfmt src scripts rolldown.config.mjs vitest.config.ts",
@@ -53,7 +53,7 @@
   },
   "dependencies": {
     "@sentry/node": "^10.59.0",
-    "@sweetpad/lib": "*",
+    "@sweetpad/native": "*",
     "execa": "npm:@esm2cjs/execa@^6.1.1-cjs.1",
     "shell-quote": "^1.8.1",
     "vscode-jsonrpc": "^8.2.0",

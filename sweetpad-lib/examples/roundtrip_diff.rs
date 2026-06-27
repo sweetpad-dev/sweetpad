@@ -19,32 +19,32 @@ fn main() {
         total += 1;
         let raw = std::fs::read_to_string(f).unwrap();
         let ser = if f.extension().and_then(|s| s.to_str()) == Some("pbxproj") {
-            let parsed = match sweetpad::pbxproj::parse(&raw) {
+            let parsed = match sweetpad_lib::pbxproj::parse(&raw) {
                 Ok(v) => v,
                 Err(e) => {
                     println!("PARSE FAIL {rel}: {e}");
                     continue;
                 }
             };
-            sweetpad::pbxproj_writer::serialize(&parsed, &project_name(f))
+            sweetpad_lib::pbxproj_writer::serialize(&parsed, &project_name(f))
         } else if f.extension().and_then(|s| s.to_str()) == Some("xcconfig") {
-            let parsed = match sweetpad::xcconfig::parse(&raw) {
+            let parsed = match sweetpad_lib::xcconfig::parse(&raw) {
                 Ok(v) => v,
                 Err(e) => {
                     println!("PARSE FAIL {rel}: {e}");
                     continue;
                 }
             };
-            sweetpad::xcconfig::serialize(&parsed)
+            sweetpad_lib::xcconfig::serialize(&parsed)
         } else {
-            let parsed = match sweetpad::xcscheme::parse(&raw) {
+            let parsed = match sweetpad_lib::xcscheme::parse(&raw) {
                 Ok(v) => v,
                 Err(e) => {
                     println!("PARSE FAIL {rel}: {e}");
                     continue;
                 }
             };
-            sweetpad::xcscheme::serialize(&parsed)
+            sweetpad_lib::xcscheme::serialize(&parsed)
         };
         if ser == raw {
             exact += 1;

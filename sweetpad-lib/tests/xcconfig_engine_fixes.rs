@@ -8,9 +8,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
-use sweetpad::condition;
-use sweetpad::resolver::{ResolveContext, expand_one, flatten_xcconfig, resolve};
-use sweetpad::xcconfig::{Assignment, Entry, parse};
+use sweetpad_lib::condition;
+use sweetpad_lib::resolver::{ResolveContext, expand_one, flatten_xcconfig, resolve};
+use sweetpad_lib::xcconfig::{Assignment, Entry, parse};
 
 fn ctx_macos() -> ResolveContext {
     ResolveContext {
@@ -35,7 +35,7 @@ fn conditional(key: &str, conds: &[(&str, &str)], value: &str) -> Assignment {
         key: key.into(),
         conditions: conds
             .iter()
-            .map(|(k, v)| sweetpad::xcconfig::Condition {
+            .map(|(k, v)| sweetpad_lib::xcconfig::Condition {
                 key: (*k).into(),
                 value: (*v).into(),
             })

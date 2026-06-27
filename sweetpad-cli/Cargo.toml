@@ -1,0 +1,28 @@
+[package]
+name = "sweetpad-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+description = "The `sweetpad` command-line interface over sweetpad-core."
+
+# A pure native binary, distributed via Homebrew.
+[[bin]]
+name = "sweetpad"
+path = "src/bin/sweetpad.rs"
+
+[dependencies]
+sweetpad-lib.workspace = true
+sweetpad-core.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+dialoguer.workspace = true
+serde.workspace = true
+toml.workspace = true
+libc.workspace = true
+
+[lints]
+workspace = true

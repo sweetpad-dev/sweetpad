@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import * as sweetpadLib from "@sweetpad/lib";
+import * as sweetpadLib from "@sweetpad/native";
 
 import { getBuildServerProvider } from "../../bsp/commands";
 import { getBspConfigFile } from "../../bsp/paths";

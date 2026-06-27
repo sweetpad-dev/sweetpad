@@ -1,0 +1,26 @@
+[package]
+name = "sweetpad-native"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+description = "N-API addon exposing sweetpad-core to the SweetPad VS Code extension."
+
+# The Node addon the extension loads. `cdylib` only — N-API symbols resolve from
+# the host (`node`/Electron) at load time, so this never links the Node runtime.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+sweetpad-lib.workspace = true
+sweetpad-core.workspace = true
+napi.workspace = true
+napi-derive.workspace = true
+
+[build-dependencies]
+napi-build.workspace = true
+
+[lints]
+workspace = true

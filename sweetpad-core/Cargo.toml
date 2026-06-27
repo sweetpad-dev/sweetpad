@@ -1,0 +1,23 @@
+[package]
+name = "sweetpad-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+description = "Shared SweetPad business logic: build-settings orchestration and the Build Server Protocol server, over sweetpad-lib."
+
+# Standalone entry point for the BSP server (DOCS.md §8). Execed by the BSP
+# integration tests and by sourcekit-lsp via `bsp::write_config`'s
+# buildServer.json; the extension runs the same server through the N-API addon.
+[[bin]]
+name = "bsp-server"
+path = "src/bin/bsp_server.rs"
+
+[dependencies]
+sweetpad-lib.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

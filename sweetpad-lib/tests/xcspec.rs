@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
-use sweetpad::xcspec::load_catalog;
+use sweetpad_lib::xcspec::load_catalog;
 
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -151,8 +151,8 @@ fn macos_layer_contains_canonical_apple_defaults() {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn scratch_resolves_against_captured_oracle_with_decent_coverage() {
-    use sweetpad::xcconfig::Assignment;
-    use sweetpad::{project, resolver, xcspec};
+    use sweetpad_lib::xcconfig::Assignment;
+    use sweetpad_lib::{project, resolver, xcspec};
 
     let xcodeproj =
         project_root().join("_synthetic-xcconfigs/xcode-26.5.0/project/Scratch.xcodeproj");
@@ -183,7 +183,7 @@ fn scratch_resolves_against_captured_oracle_with_decent_coverage() {
         catalog.developer_dir.as_deref(),
         None,
         false,
-        sweetpad::scheme::SanitizerEnables::default(),
+        sweetpad_lib::scheme::SanitizerEnables::default(),
     );
 
     let mut layers: Vec<Vec<Assignment>> = vec![defaults, built_in];

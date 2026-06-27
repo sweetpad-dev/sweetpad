@@ -5,10 +5,18 @@ on:
     branches: [main]
     paths:
       - "sweetpad-lib/**"
+      - "sweetpad-core/**"
+      - "sweetpad-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - ".github/workflows/cli-smoke.yaml"
   pull_request:
     paths:
       - "sweetpad-lib/**"
+      - "sweetpad-core/**"
+      - "sweetpad-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - ".github/workflows/cli-smoke.yaml"
   workflow_dispatch:
 
@@ -33,7 +41,7 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: sweetpad-lib
+          workspaces: .
 
       - name: Tooling versions
         run: |
@@ -52,6 +60,6 @@ jobs:
 
       - name: End-to-end CLI coverage (app + Swift package)
         env:
-          SWEETPAD_BIN: ${{ github.workspace }}/sweetpad-lib/target/debug/sweetpad
+          SWEETPAD_BIN: ${{ github.workspace }}/target/debug/sweetpad
         # Steps inherit `working-directory: sweetpad-lib`, so the path is relative to it.
         run: bash ci/smoke.sh

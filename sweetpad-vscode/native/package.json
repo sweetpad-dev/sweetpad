@@ -1,0 +1,24 @@
+{
+  "name": "@sweetpad/native",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Internal — N-API addon exposing sweetpad-core to the SweetPad VS Code extension. Do not use directly.",
+  "license": "MIT OR Apache-2.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "binaryName": "sweetpad-native",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "universal-apple-darwin"
+    ]
+  },
+  "scripts": {
+    "build:addon:debug": "napi build --platform",
+    "build:addon:universal": "napi build --platform --release --target aarch64-apple-darwin && napi build --platform --release --target x86_64-apple-darwin && napi universalize"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.0.0"
+  }
+}

@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use sweetpad::resolver::{self, ResolveContext};
+use sweetpad_lib::resolver::{self, ResolveContext};
 
 fn xcconfig_fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
