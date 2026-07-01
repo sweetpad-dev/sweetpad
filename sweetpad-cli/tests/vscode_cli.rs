@@ -141,10 +141,11 @@ fn raw_minifies_and_flags_reach_the_wire() {
         |req| json!({ "jsonrpc": "2.0", "id": req["id"], "result": req["params"] }),
     );
 
+    // Flags map straight to params: strings stay strings, numbers coerce.
     let output = run_cli(
         &dir,
         &dir,
-        &["build.wait", "b1", "--timeout", "5s", "--raw"],
+        &["build.wait", "--buildId", "b1", "--timeoutMs", "5000", "--raw"],
     );
 
     let request = server.join().unwrap();
@@ -155,6 +156,23 @@ fn raw_minifies_and_flags_reach_the_wire() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_eq!(stdout.trim(), r#"{"buildId":"b1","timeoutMs":5000}"#);
+}
+
+#[test]
+fn positional_arguments_are_rejected() {
+    // The generic client takes named flags only; a positional exits 2 (usage).
+    let dir = temp_dir("positional");
+    register_project(&dir, &dir.join("unused.sock"));
+    let output = run_cli(&dir, &dir, &["scheme.set", "MyApp"]);
+    assert_eq!(output.status.code(), Some(2));
+    let envelope = stderr_envelope(&output);
+    assert_eq!(envelope["error"]["code"], json!("USAGE"));
+    assert!(
+        envelope["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("positional"),
+    );
 }
 
 #[test]
@@ -225,19 +243,35 @@ fn missing_project_and_dead_socket_exit_2() {
 }
 
 #[test]
-fn usage_paths_exit_2() {
+fn help_and_usage_paths() {
     let dir = temp_dir("usage");
-    // No method / bare word / --help all print the USAGE envelope.
-    for args in [&[][..], &["schemes"][..], &["--help"][..]] {
+
+    // --help is a success: a short pointer printed to stdout (exit 0).
+    let help = run_cli(&dir, &dir, &["--help"]);
+    assert!(help.status.success(), "stderr: {:?}", help.stderr);
+    assert!(
+        String::from_utf8(help.stdout).unwrap().contains("meta.usage"),
+        "help output should point at meta.usage"
+    );
+
+    // No method / a bare word (no dot) are usage errors: USAGE envelope, exit 2.
+    for args in [&[][..], &["schemes"][..]] {
         let output = run_cli(&dir, &dir, args);
         assert_eq!(output.status.code(), Some(2), "args: {args:?}");
         let envelope = stderr_envelope(&output);
-        assert_eq!(envelope["error"]["code"], json!("USAGE"));
+        assert_eq!(envelope["error"]["code"], json!("USAGE"), "args: {args:?}");
         assert!(
             envelope["error"]["message"]
                 .as_str()
                 .unwrap()
-                .contains("sweetpad vscode <method>"),
+                .contains("method"),
+            "args: {args:?}"
+        );
+        assert!(
+            envelope["error"]["hint"]
+                .as_str()
+                .unwrap()
+                .contains("--help"),
             "args: {args:?}"
         );
     }

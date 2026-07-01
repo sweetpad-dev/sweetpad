@@ -32,7 +32,7 @@ function resolveBuildId(ctx: RpcContext, buildId: string | undefined): BuildEnti
     entity = ctx.buildRegistry.getLatest();
     if (!entity) {
       throw new SweetpadRpcError(ERROR_CODES.NO_LAST_BUILD, "No builds have been recorded yet for this workspace.", {
-        hint: "sweetpad vscode build.start build",
+        hint: "sweetpad vscode build.start --command build",
       });
     }
   }
@@ -69,7 +69,8 @@ export const buildStart: HandlerFn<
       ERROR_CODES.MISSING_PREREQUISITES,
       `Cannot start ${command}: missing ${missing.join(", ")}.`,
       {
-        hint: missing[0] === "scheme" ? "sweetpad vscode scheme.set <name>" : `sweetpad vscode ${missing[0]}.list`,
+        hint:
+          missing[0] === "scheme" ? "sweetpad vscode scheme.set --name <name>" : `sweetpad vscode ${missing[0]}.list`,
         data: { missing },
       },
     );

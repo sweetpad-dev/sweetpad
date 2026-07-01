@@ -84,7 +84,9 @@ server switching needed.
 
 ## Common workflows
 
-Each method prints JSON; pipe through `jq` to pretty-print.
+Each method prints JSON (pretty by default; add `--raw` to minify). Arguments are passed as
+`--flags` whose names match the method's params — a bare `--flag` is `true`, and a `--flag value` is
+parsed as JSON with a string fallback. Run `meta.schema --method <name>` to see a method's params.
 
 ```bash
 # Snapshot: scheme + destination + configuration + current/latest build
@@ -94,13 +96,12 @@ sweetpad vscode state.get
 sweetpad vscode scheme.list
 
 # Pick a scheme and a destination, then build & run
-sweetpad vscode scheme.set MyApp
-sweetpad vscode destination.set <udid>
-sweetpad vscode build.start launch
+sweetpad vscode scheme.set --name MyApp
+sweetpad vscode destination.set --id <udid>
+sweetpad vscode build.start --command launch
 
-# Wait for the build (--timeout accepts "30s" / "5m" / "1h" or bare seconds; the
-# server caps each call ~30s, so poll in a loop for longer waits)
-sweetpad vscode build.wait --timeout 30s
+# Wait for the build (timeoutMs is capped ~30s server-side, so poll in a loop for longer waits)
+sweetpad vscode build.wait --timeoutMs 30000
 
 # Diagnostics from the last build
 sweetpad vscode build.diagnostics
@@ -111,12 +112,13 @@ sweetpad vscode build.stop
 
 ## The method catalog
 
-Every RPC the server exposes is discoverable at runtime:
+The client itself has no built-in method list — `sweetpad vscode --help` is just a short pointer
+here. Every RPC the server exposes is discoverable at runtime:
 
 ```bash
-sweetpad vscode meta.usage              # one-line summary per method
-sweetpad vscode meta.schema             # JSON schema for every method
-sweetpad vscode meta.schema build.start
+sweetpad vscode meta.usage                        # one-line summary per method
+sweetpad vscode meta.schema                        # JSON schema for every method
+sweetpad vscode meta.schema --method build.start   # params for one method
 ```
 
 Broad strokes of what's available:

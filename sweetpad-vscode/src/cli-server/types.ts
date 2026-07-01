@@ -67,7 +67,7 @@ export type BuildEntity = {
   destination: string | null;
   status: BuildStatus;
   originator: BuildOriginator;
-  /** Free-form label set by the caller (CLI `--caller` flag or SWEETPAD_CALLER env). */
+  /** Free-form label set by the caller (the `--caller` flag on build.start). */
   caller: string | null;
   startedAt: string;
   finishedAt: string | null;

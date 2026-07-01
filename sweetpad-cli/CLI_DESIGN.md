@@ -5,8 +5,8 @@ humans."** A pure native front-end to the `sweetpad-lib` Rust engine for
 running, building, and exploring Xcode projects without an editor.
 
 It lives in the **same `sweetpad` binary** as the existing `vscode` namespace
-(the JSON-RPC client that controls the VS Code extension — see
-`src/vscode_cli.rs`). `vscode` is unchanged; the new resources sit beside it.
+(a generic JSON-RPC client that controls the VS Code extension — see
+`src/vscode_cli.rs`). `vscode` stands on its own; the new resources sit beside it.
 
 > Status: committed design goals. Implementation tracked in §8.
 
@@ -50,7 +50,7 @@ sweetpad app launch                  launch an already-installed app
 sweetpad app logs                    stream app logs
 sweetpad app stop                    kill the running app
 
-sweetpad vscode <method>             control the VS Code extension (unchanged)
+sweetpad vscode <method> [--flag …]  control the VS Code extension (JSON-RPC)
 ```
 
 `build` stays purely "compile"; the full run/install/launch/logs/stop lifecycle

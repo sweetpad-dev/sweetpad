@@ -112,7 +112,7 @@ export const METHOD_CATALOG: Record<string, MethodSchema> = {
       debug: { type: "boolean", description: "Pass debug: true to the underlying command." },
       caller: {
         type: "string",
-        description: "Free-form label stored on the BuildEntity (also accepts SWEETPAD_CALLER env).",
+        description: "Free-form label stored on the BuildEntity.",
       },
     },
     returns: "{ buildId: string }",
