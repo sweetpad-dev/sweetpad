@@ -183,7 +183,7 @@ the one structured error line. Consider capturing child stderr when
 `SWEETPAD_NONINTERACTIVE` from §5's env list; `CLICOLOR_FORCE`/`FORCE_COLOR`
 are implemented (`output.rs:33-35`) but undocumented. `SWEETPAD_NONINTERACTIVE`
 is checked with `is_some()` — `=0` still triggers it; standardize truthy
-parsing (see also §9.12).
+parsing (see also §9.10).
 
 **2.6 Strict-mode error text lies in places.** `missing()` always says
 "pass --{what} or set it in config" (`resolve.rs:196-201`) — wrong for
@@ -557,19 +557,15 @@ failure attachments/logs are otherwise unrecoverable, and retention enables
 most-loved flag) and §9.2's xcresult tooling. No `test list` to enumerate
 what `--only-testing` accepts.
 
-**8.6 Tuist/XcodeGen regeneration. [add]** `tuist generate` / `xcodegen
-generate` with optional watch. The design's "no XcodeGen" decision covers
-*scaffolding*, not regenerating an existing project the user already has.
-
-**8.7 Medium.** BSP `doctor`/log access (the extension has both; the CLI
+**8.6 Medium.** BSP `doctor`/log access (the extension has both; the CLI
 tells users to delete a stale `buildServer.json` by hand, `bsp.rs:84-90`);
 log-stream shaping (custom predicate / subsystem allow-deny lists vs the
 fixed `processImagePath CONTAINS` predicate, `app.rs:1549` — see §9.6);
 simulator video streaming (`serve-sim`).
 
-**8.8 Declared out of scope — don't re-litigate.** `tools` (Homebrew
-installs) and `config`/`state` subcommands (CLI_DESIGN §12). Noted so this
-list doesn't resurrect settled decisions.
+**8.7 Declared out of scope — don't re-litigate.** `tools` (Homebrew
+installs) and `config`/`state` subcommands (CLI_DESIGN §12) stay out of the
+CLI. Noted so this list doesn't resurrect settled decisions.
 
 ## 9. Ecosystem features & small delights
 
@@ -600,7 +596,7 @@ sim-run case.
 
 **9.6 `app logs` filters. [add]** `--subsystem/--category/--predicate/
 --level` — both `log stream` and pymobiledevice3 support them natively;
-closes 8.7's shaping gap from the flag side.
+closes 8.6's shaping gap from the flag side.
 
 **9.7 `sweetpad open [xcode|sim|dd|config]`. [small]** Open the container
 in Xcode, Simulator.app, the DerivedData folder, or the config file.
@@ -616,15 +612,7 @@ MyApp, MyAppTests)`. The resolver knows the candidates; today they die
 inside xcodebuild's error. Same for configurations (fixes the sharp edge of
 bug 1.14).
 
-**9.10 Build-time history. [small]** Append per-build duration to state;
-`sweetpad stats` sparkline; `status`/session header show the trend
-(cold/warm annotated via derived-data presence). Local-only.
-
-**9.11 Trash, don't delete. [small]** `derived-data purge` moves to
-`~/.Trash` when interactive; rm only with `--yes`/non-interactive.
-Forgiveness > confirmation (and softens bug 1.2's blast radius).
-
-**9.12 Housekeeping. [small]** Standardize truthy parsing for all
+**9.10 Housekeeping. [small]** Standardize truthy parsing for all
 `SWEETPAD_*` env vars (see 2.5) and document the set in `help environment`;
 `--version --json`; `sweetpad self-update` (or brew-aware upgrade hint).
 
