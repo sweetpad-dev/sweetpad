@@ -189,10 +189,27 @@ fn parse_task(line: &str, t: &str) -> Event {
 }
 
 /// Render an event for the terminal, or `None` to suppress it. `verbose` keeps
-/// low-signal lines (copies, plist, notes, unrecognized output).
+/// low-signal lines (copies, plist, notes, unrecognized output); `quiet` keeps
+/// only what can't be ignored — errors, warnings, and failure banners — so
+/// `sweetpad -q build start` is silent until something is wrong.
 #[must_use]
-pub fn render(event: &Event, color: bool, verbose: bool) -> Option<String> {
+pub fn render(event: &Event, color: bool, verbose: bool, quiet: bool) -> Option<String> {
     let c = Colors::new(color);
+    if quiet {
+        return match event {
+            Event::Diagnostic {
+                kind: DiagKind::Error,
+                ..
+            }
+            | Event::Diagnostic {
+                kind: DiagKind::Warning,
+                ..
+            }
+            | Event::Result(ResultKind::BuildFailed | ResultKind::TestFailed)
+            | Event::TestFailed { .. } => render(event, color, verbose, false),
+            _ => None,
+        };
+    }
     match event {
         Event::Compile { name } => Some(c.dim(&format!("  Compiling {name}"))),
         Event::Link { target } => Some(c.dim(&format!("  Linking {target}"))),
@@ -234,39 +251,53 @@ pub fn render(event: &Event, color: bool, verbose: bool) -> Option<String> {
 /// line renders so the streamed output takes its place. Inert off an
 /// interactive TTY. The same start instant stamps the elapsed time onto the
 /// closing success banner.
+#[allow(clippy::struct_excessive_bools)] // captured Output toggles, not a state machine
 pub struct BuildProgress {
     spinner: Option<Spinner>,
     start: Instant,
     color: bool,
     verbose: bool,
+    quiet: bool,
+    gh_annotations: bool,
 }
 
 impl BuildProgress {
     /// Begin tracking a build, animating `⠋ label …` until the first line prints.
-    /// `label` names the action (`Building`, `Testing`).
+    /// `label` names the action (`Building`, `Testing`). `--quiet` suppresses
+    /// the spinner along with the rest of the progress chatter.
     #[must_use]
     pub fn start(out: &Output, label: &str) -> Self {
         Self {
             spinner: Some(Spinner::start_timed(
                 label,
-                out.is_interactive(),
+                out.is_interactive() && !out.is_quiet(),
                 out.use_color(),
             )),
             start: Instant::now(),
             color: out.use_color(),
             verbose: out.is_verbose(),
+            quiet: out.is_quiet(),
+            gh_annotations: out.gh_annotations(),
         }
     }
 
     /// Render one raw `xcodebuild` line for display, or `None` to suppress it.
     /// The first line that renders stops and erases the spinner; the closing
-    /// success banner is stamped with the elapsed build time.
+    /// success banner is stamped with the elapsed build time. With
+    /// `--gh-annotations`, a diagnostic also carries its `::error`/`::warning`
+    /// workflow-command line.
     pub fn line(&mut self, raw: &str) -> Option<String> {
         let event = parse_line(raw);
-        let rendered = render(&event, self.color, self.verbose)?;
+        let mut rendered = render(&event, self.color, self.verbose, self.quiet)?;
         // First line through — hand the terminal over from the spinner to the
         // streamed output (dropping the spinner erases its line).
         self.spinner = None;
+        if self.gh_annotations
+            && let Some(annotation) = gh_annotation(&event)
+        {
+            rendered.push('\n');
+            rendered.push_str(&annotation);
+        }
         Some(stamp_time(
             rendered,
             &event,
@@ -274,6 +305,54 @@ impl BuildProgress {
             self.color,
         ))
     }
+}
+
+/// The GitHub Actions workflow-command line for a diagnostic
+/// (`::error file=…,line=…::message`), or `None` for everything else.
+#[must_use]
+pub fn gh_annotation(event: &Event) -> Option<String> {
+    let Event::Diagnostic {
+        kind,
+        location,
+        message,
+    } = event
+    else {
+        return None;
+    };
+    let level = match kind {
+        DiagKind::Error => "error",
+        DiagKind::Warning => "warning",
+        DiagKind::Note => return None,
+    };
+    // Workflow commands need %/\r/\n escaped in the message.
+    let escaped = message
+        .replace('%', "%25")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A");
+    let props = location.as_deref().map(location_props).unwrap_or_default();
+    Some(format!("::{level}{props}::{escaped}"))
+}
+
+/// `file:line:col` → ` file=…,line=…,col=…` annotation properties; a location
+/// that doesn't parse still anchors as a bare `file=`.
+fn location_props(loc: &str) -> String {
+    use std::fmt::Write as _;
+    let mut parts = loc.rsplitn(3, ':');
+    let col = parts.next().and_then(|p| p.parse::<u32>().ok());
+    let (line, file) = match (col, parts.next(), parts.next()) {
+        (Some(_), Some(line), Some(file)) if line.parse::<u32>().is_ok() => {
+            (Some(line.to_string()), file.to_string())
+        }
+        _ => (None, loc.to_string()),
+    };
+    let mut props = format!(" file={file}");
+    if let Some(line) = line {
+        let _ = write!(props, ",line={line}");
+        if let Some(col) = col {
+            let _ = write!(props, ",col={col}");
+        }
+    }
+    props
 }
 
 /// Append the elapsed time to a terminal *success* banner (`✓ Build succeeded
@@ -301,12 +380,123 @@ pub fn run(
     out: &Output,
     label: &str,
 ) -> Result<bool, CliError> {
+    Ok(run_collecting(program, args, cwd, out, label)?.0)
+}
+
+/// Like [`run`], but also collects each diagnostic as its
+/// [`event_json`]-shaped object — the input to the last-build diagnostics
+/// artifact.
+pub fn run_collecting(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    out: &Output,
+    label: &str,
+) -> Result<(bool, Vec<serde_json::Value>), CliError> {
     let mut progress = BuildProgress::start(out, label);
-    process::stream_lines(program, args, cwd, |line| {
+    let mut diagnostics = Vec::new();
+    let ok = process::stream_lines(program, args, cwd, |line| {
+        if let Event::Diagnostic { .. } = parse_line(line)
+            && let Some(json) = event_json(&parse_line(line))
+        {
+            diagnostics.push(json);
+        }
         if let Some(rendered) = progress.line(line) {
             out.line(&rendered);
         }
+    })?;
+    Ok((ok, diagnostics))
+}
+
+/// Diagnostics parsed out of a full captured transcript (the `--json` path).
+#[must_use]
+pub fn diagnostics_from_transcript(text: &str) -> Vec<serde_json::Value> {
+    text.lines()
+        .filter_map(|line| {
+            let event = parse_line(line);
+            matches!(event, Event::Diagnostic { .. })
+                .then(|| event_json(&event))
+                .flatten()
+        })
+        .collect()
+}
+
+/// One parsed [`Event`] as an NDJSON object for `-o ndjson` consumers, or
+/// `None` for lines with no machine value (unrecognized output, and the raw
+/// `** … **` banners — the stream's own terminal result event carries the
+/// outcome instead).
+#[must_use]
+pub fn event_json(event: &Event) -> Option<serde_json::Value> {
+    use serde_json::json;
+    let task = |kind: &str, name: &str| json!({ "event": "task", "kind": kind, "name": name });
+    Some(match event {
+        Event::Compile { name } => task("compile", name),
+        Event::Link { target } => task("link", target),
+        Event::CodeSign { name } => task("codesign", name),
+        Event::Copy { name } => task("copy", name),
+        Event::ProcessPlist { name } => task("plist", name),
+        Event::Diagnostic {
+            kind,
+            location,
+            message,
+        } => json!({
+            "event": "diagnostic",
+            "severity": match kind {
+                DiagKind::Error => "error",
+                DiagKind::Warning => "warning",
+                DiagKind::Note => "note",
+            },
+            "location": location,
+            "message": message,
+        }),
+        Event::TestPassed { name, duration } => {
+            json!({ "event": "test", "status": "passed", "name": name, "duration": duration })
+        }
+        Event::TestFailed { name } => json!({ "event": "test", "status": "failed", "name": name }),
+        Event::SuiteStarted { name } => json!({ "event": "suite", "name": name }),
+        Event::Result(_) | Event::Other(_) => return None,
     })
+}
+
+/// Error/warning counts, elapsed time, and the diagnostic events accumulated
+/// by [`run_ndjson`] — counts fold into the terminal result payload, the
+/// diagnostics into the last-build artifact.
+#[derive(Debug, Default)]
+pub struct StreamStats {
+    pub errors: u32,
+    pub warnings: u32,
+    pub duration_ms: u64,
+    pub diagnostics: Vec<serde_json::Value>,
+}
+
+/// Run a command emitting each parsed event as an NDJSON line on stdout — the
+/// `-o ndjson` path for builds/tests. The caller folds the returned
+/// [`StreamStats`] into its terminal `{"event":"result"}` payload, so the
+/// stream ends with exactly one summary line.
+pub fn run_ndjson(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    out: &Output,
+) -> Result<(bool, StreamStats), CliError> {
+    let start = Instant::now();
+    let mut stats = StreamStats::default();
+    let ok = process::stream_lines(program, args, cwd, |line| {
+        let event = parse_line(line);
+        if let Some(json) = event_json(&event) {
+            if let Event::Diagnostic { kind, .. } = &event {
+                match kind {
+                    DiagKind::Error => stats.errors += 1,
+                    DiagKind::Warning => stats.warnings += 1,
+                    DiagKind::Note => {}
+                }
+                stats.diagnostics.push(json.clone());
+            }
+            out.ndjson_event(&json);
+        }
+    })?;
+    stats.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    Ok((ok, stats))
 }
 
 // --- helpers ---
@@ -395,6 +585,47 @@ impl Colors {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gh_annotations_carry_location_and_escapes() {
+        let with_loc = parse_line("/src/Foo.swift:12:5: error: bad % thing");
+        assert_eq!(
+            gh_annotation(&with_loc).unwrap(),
+            "::error file=/src/Foo.swift,line=12,col=5::bad %25 thing"
+        );
+        let bare = parse_line("error: no signing certificate");
+        assert_eq!(
+            gh_annotation(&bare).unwrap(),
+            "::error::no signing certificate"
+        );
+        let warn = parse_line("/a.swift:1:1: warning: unused");
+        assert!(gh_annotation(&warn).unwrap().starts_with("::warning file="));
+        // Tasks and notes carry no annotation.
+        assert!(gh_annotation(&parse_line("CompileSwift x.swift")).is_none());
+    }
+
+    #[test]
+    fn ndjson_events_serialize_tasks_diagnostics_and_tests() {
+        let compile = event_json(&parse_line("CompileSwift normal arm64 /src/Foo.swift")).unwrap();
+        assert_eq!(compile["event"], "task");
+        assert_eq!(compile["kind"], "compile");
+
+        let diag = event_json(&parse_line("/src/Foo.swift:3:1: warning: unused")).unwrap();
+        assert_eq!(diag["event"], "diagnostic");
+        assert_eq!(diag["severity"], "warning");
+        assert_eq!(diag["location"], "/src/Foo.swift:3:1");
+
+        let test =
+            event_json(&parse_line("Test Case 'LoginTests.testFoo' passed (0.001 seconds)"))
+                .unwrap();
+        assert_eq!(test["event"], "test");
+        assert_eq!(test["status"], "passed");
+
+        // Banners and unrecognized lines emit nothing (the terminal result
+        // event is the caller's).
+        assert!(event_json(&parse_line("** BUILD SUCCEEDED **")).is_none());
+        assert!(event_json(&parse_line("random noise")).is_none());
+    }
 
     #[test]
     fn parses_compile_lines() {
@@ -496,8 +727,8 @@ mod tests {
         let copy = Event::Copy {
             name: "x".to_string(),
         };
-        assert!(render(&copy, false, false).is_none());
-        assert!(render(&copy, false, true).is_some());
+        assert!(render(&copy, false, false, false).is_none());
+        assert!(render(&copy, false, true, false).is_some());
 
         // Errors always show.
         let err = Event::Diagnostic {
@@ -505,14 +736,14 @@ mod tests {
             location: None,
             message: "boom".into(),
         };
-        assert_eq!(render(&err, false, false), Some("error: boom".to_string()));
+        assert_eq!(render(&err, false, false, false), Some("error: boom".to_string()));
     }
 
     #[test]
     fn render_colorizes_when_enabled() {
         let ok = Event::Result(ResultKind::BuildSucceeded);
-        let plain = render(&ok, false, false).unwrap();
-        let colored = render(&ok, true, false).unwrap();
+        let plain = render(&ok, false, false, false).unwrap();
+        let colored = render(&ok, true, false, false).unwrap();
         assert!(!plain.contains('\x1b'));
         assert!(colored.contains('\x1b'));
     }
@@ -520,7 +751,7 @@ mod tests {
     #[test]
     fn stamp_time_marks_success_banners_only() {
         let ok = Event::Result(ResultKind::BuildSucceeded);
-        let banner = render(&ok, false, false).unwrap();
+        let banner = render(&ok, false, false, false).unwrap();
         assert_eq!(
             stamp_time(banner, &ok, Duration::from_millis(5340), false),
             "✓ Build succeeded (5.3s)"
@@ -528,7 +759,7 @@ mod tests {
 
         // Failures and ordinary lines are left exactly as rendered.
         let failed = Event::Result(ResultKind::BuildFailed);
-        let failed_banner = render(&failed, false, false).unwrap();
+        let failed_banner = render(&failed, false, false, false).unwrap();
         assert_eq!(
             stamp_time(
                 failed_banner.clone(),
@@ -541,7 +772,7 @@ mod tests {
         let compile = Event::Compile {
             name: "ContentView.swift".to_string(),
         };
-        let line = render(&compile, false, false).unwrap();
+        let line = render(&compile, false, false, false).unwrap();
         assert_eq!(
             stamp_time(line.clone(), &compile, Duration::from_secs(9), false),
             line

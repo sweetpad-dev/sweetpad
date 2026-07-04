@@ -7,7 +7,7 @@ use clap::{Subcommand, ValueEnum};
 use serde::Serialize;
 
 use crate::cli::output::Output;
-use crate::cli::{CliError, CommandResult, Context, Render, Rendered, resolve, simctl};
+use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, resolve, simctl};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -16,6 +16,90 @@ pub enum Action {
     /// Boot a simulator (by name or UDID; prompts when omitted).
     Boot {
         /// Simulator name or UDID to boot.
+        target: Option<String>,
+        /// Block until the simulator is fully booted (simctl bootstatus).
+        #[arg(long)]
+        wait: bool,
+    },
+    /// Create a new simulator.
+    Create {
+        /// Name for the new simulator.
+        name: String,
+        /// Device type (e.g. "iPhone 16 Pro", or a simctl devicetype id).
+        device_type: String,
+        /// Runtime (e.g. "iOS 18.0"); the newest available when omitted.
+        #[arg(long)]
+        runtime: Option<String>,
+    },
+    /// Delete a simulator (no undo).
+    Delete {
+        /// Simulator name or UDID to delete.
+        target: String,
+        /// Skip the confirmation prompt.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Clone a shut-down simulator under a new name.
+    Clone {
+        /// Simulator name or UDID to clone.
+        target: String,
+        /// Name for the clone.
+        new_name: String,
+    },
+    /// Deliver an APNs push payload (a JSON file) to an app.
+    Push {
+        /// The app's bundle identifier.
+        bundle_id: String,
+        /// Path to the payload .json (apns format).
+        payload: std::path::PathBuf,
+        /// Simulator name or UDID (defaults to the booted one).
+        target: Option<String>,
+    },
+    /// Grant or revoke a privacy permission for an app.
+    Privacy {
+        /// grant or revoke.
+        #[arg(value_parser = ["grant", "revoke", "reset"])]
+        action: String,
+        /// The service: photos, camera, microphone, location, contacts, calendar, …
+        service: String,
+        /// The app's bundle identifier.
+        bundle_id: String,
+        /// Simulator name or UDID (defaults to the booted one).
+        target: Option<String>,
+    },
+    /// Override the status bar for clean screenshots (9:41, full bars), or
+    /// clear it.
+    StatusBar {
+        /// Clear the override instead of setting it.
+        #[arg(long)]
+        clear: bool,
+        /// Simulator name or UDID (defaults to the booted one).
+        target: Option<String>,
+    },
+    /// Set the simulated location.
+    Location {
+        /// Latitude (e.g. 50.4501).
+        latitude: f64,
+        /// Longitude (e.g. 30.5234).
+        longitude: f64,
+        /// Simulator name or UDID (defaults to the booted one).
+        target: Option<String>,
+    },
+    /// Add photos/videos to the media library.
+    MediaAdd {
+        /// Files to add.
+        #[arg(required = true)]
+        paths: Vec<std::path::PathBuf>,
+        /// Simulator name or UDID (defaults to the booted one).
+        #[arg(long)]
+        target: Option<String>,
+    },
+    /// Record the screen to an .mp4 (Ctrl-C stops and finalizes).
+    Record {
+        /// Output file (default: ./sweetpad-shots/<device>-<time>.mp4).
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Simulator name or UDID (defaults to the booted one).
         target: Option<String>,
     },
     /// Shut down a simulator (defaults to the booted one).
@@ -34,9 +118,13 @@ pub enum Action {
     Screenshot {
         /// Simulator name or UDID to capture (defaults to the booted one).
         target: Option<String>,
-        /// File to write the screenshot to (defaults to a timestamped PNG).
+        /// File to write the screenshot to (default:
+        /// ./sweetpad-shots/<device>-<time>.png).
         #[arg(long)]
         output: Option<PathBuf>,
+        /// Also copy the screenshot to the clipboard.
+        #[arg(long)]
+        clipboard: bool,
     },
     /// Override a booted simulator's light/dark appearance.
     Appearance {
@@ -66,15 +154,151 @@ impl Appearance {
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::List => list(),
-        Action::Boot { target } => boot(ctx, target.as_deref()),
+        Action::Boot { target, wait } => boot(ctx, target.as_deref(), *wait),
         Action::Shutdown { target } => shutdown(ctx, target.as_deref()),
         Action::Erase { target } => erase(ctx, target.as_deref()),
         Action::Open => open(),
-        Action::Screenshot { target, output } => {
-            screenshot(ctx, target.as_deref(), output.as_deref())
-        }
+        Action::Screenshot {
+            target,
+            output,
+            clipboard,
+        } => screenshot(ctx, target.as_deref(), output.as_deref(), *clipboard),
         Action::Appearance { mode, target } => appearance(ctx, *mode, target.as_deref()),
+        Action::Create {
+            name,
+            device_type,
+            runtime,
+        } => create(name, device_type, runtime.as_deref()),
+        Action::Delete { target, yes } => delete(ctx, target, *yes),
+        Action::Clone { target, new_name } => clone(ctx, target, new_name),
+        Action::Push {
+            bundle_id,
+            payload,
+            target,
+        } => {
+            let sims = simctl::list()?;
+            let sim = resolve::select_simulator(ctx, &sims, target.as_deref())?;
+            simctl::push(&sim.udid, bundle_id, &payload.display().to_string())?;
+            Ok(Rendered::data(report("pushed payload to", sim)))
+        }
+        Action::Privacy {
+            action,
+            service,
+            bundle_id,
+            target,
+        } => {
+            let sims = simctl::list()?;
+            let sim = resolve::select_simulator(ctx, &sims, target.as_deref())?;
+            simctl::privacy(&sim.udid, action, service, bundle_id)?;
+            Ok(Rendered::data(report("changed privacy on", sim)))
+        }
+        Action::StatusBar { clear, target } => {
+            let sims = simctl::list()?;
+            let sim = resolve::select_simulator(ctx, &sims, target.as_deref())?;
+            simctl::status_bar(&sim.udid, *clear)?;
+            Ok(Rendered::data(report(
+                if *clear {
+                    "cleared the status bar on"
+                } else {
+                    "overrode the status bar on"
+                },
+                sim,
+            )))
+        }
+        Action::Location {
+            latitude,
+            longitude,
+            target,
+        } => {
+            let sims = simctl::list()?;
+            let sim = resolve::select_simulator(ctx, &sims, target.as_deref())?;
+            simctl::location(&sim.udid, *latitude, *longitude)?;
+            Ok(Rendered::data(report("set the location on", sim)))
+        }
+        Action::MediaAdd { paths, target } => {
+            let sims = simctl::list()?;
+            let sim = resolve::select_simulator(ctx, &sims, target.as_deref())?;
+            let paths: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+            simctl::media_add(&sim.udid, &paths)?;
+            Ok(Rendered::data(report("added media to", sim)))
+        }
+        Action::Record { output, target } => record(ctx, target.as_deref(), output.as_deref()),
     }
+}
+
+fn create(name: &str, device_type: &str, runtime: Option<&str>) -> CommandResult {
+    let udid = simctl::create(name, device_type, runtime)?;
+    Ok(Rendered::data(SimAction {
+        udid,
+        name: name.to_string(),
+        action: "created",
+        note: format!("created {name}"),
+    }))
+}
+
+fn delete(ctx: &mut Context, target: &str, yes: bool) -> CommandResult {
+    let sims = simctl::list()?;
+    let sim = resolve::select_simulator(ctx, &sims, Some(target))?;
+    // Deleting is unrecoverable: confirm interactively, or require --yes.
+    if !yes {
+        if !ctx.out.is_interactive() {
+            return Err(CliError::new(
+                "refusing to delete a simulator without confirmation; pass --yes",
+            ));
+        }
+        let confirmed = dialoguer::Confirm::new()
+            .with_prompt(format!("Delete {}?", sim.label()))
+            .default(false)
+            .interact()
+            .map_err(|e| {
+                CliError::new(format!("confirmation cancelled: {e}")).kind(ErrorKind::UserCancel)
+            })?;
+        if !confirmed {
+            return Ok(Rendered::data(SimAction::already(
+                sim,
+                "aborted",
+                "aborted".to_string(),
+            )));
+        }
+    }
+    simctl::delete(&sim.udid)?;
+    Ok(Rendered::data(report("deleted", sim)))
+}
+
+fn clone(ctx: &mut Context, target: &str, new_name: &str) -> CommandResult {
+    let sims = simctl::list()?;
+    let sim = resolve::select_simulator(ctx, &sims, Some(target))?;
+    let udid = simctl::clone(&sim.udid, new_name)?;
+    Ok(Rendered::data(SimAction {
+        udid,
+        name: new_name.to_string(),
+        action: "cloned",
+        note: format!("cloned {} as {new_name}", sim.label()),
+    }))
+}
+
+fn record(ctx: &mut Context, target: Option<&str>, output: Option<&std::path::Path>) -> CommandResult {
+    let sims = simctl::list()?;
+    let sim = resolve::select_simulator(ctx, &sims, target)?;
+    let path = output.map_or_else(
+        || {
+            let mut p = default_screenshot_path(&sim.name);
+            p.set_extension("mp4");
+            p
+        },
+        std::path::Path::to_path_buf,
+    );
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    ctx.out
+        .note(&format!("recording {} — Ctrl-C to stop", sim.label()));
+    simctl::record(&sim.udid, &path.display().to_string())?;
+    Ok(Rendered::data(SimScreenshot {
+        udid: sim.udid.clone(),
+        path: path.display().to_string(),
+        label: sim.label(),
+    }))
 }
 
 /// The simulator list: a marked human list, or the `data` of the JSON envelope.
@@ -134,18 +358,19 @@ fn list() -> CommandResult {
     Ok(Rendered::data(SimList { simulators }))
 }
 
-fn boot(ctx: &mut Context, target: Option<&str>) -> CommandResult {
+fn boot(ctx: &mut Context, target: Option<&str>, wait: bool) -> CommandResult {
     let sims = simctl::list()?;
 
     let sim = if let Some(t) = target {
-        simctl::find(&sims, t)
-            .ok_or_else(|| CliError::new(format!("no simulator matching {t:?}")))?
+        simctl::find(&sims, t).ok_or_else(|| {
+            CliError::new(format!("no simulator matching {t:?}")).kind(ErrorKind::TargetResolution)
+        })?
     } else {
         let labels: Vec<String> = sims.iter().map(simctl::Simulator::label).collect();
         let chosen = resolve::choose(ctx, "simulator", None, &labels)?;
         sims.iter()
             .find(|s| s.label() == chosen)
-            .ok_or_else(|| CliError::new("simulator not found"))?
+            .ok_or_else(|| CliError::new("simulator not found").kind(ErrorKind::TargetResolution))?
     };
 
     if sim.is_booted() {
@@ -156,6 +381,10 @@ fn boot(ctx: &mut Context, target: Option<&str>) -> CommandResult {
         )));
     }
     simctl::boot(&sim.udid)?;
+    if wait {
+        ctx.out
+            .step("Waiting for boot to finish", || simctl::boot_wait(&sim.udid))?;
+    }
     Ok(Rendered::data(report("booted", sim)))
 }
 
@@ -195,19 +424,43 @@ fn screenshot(
     ctx: &mut Context,
     target: Option<&str>,
     output: Option<&std::path::Path>,
+    clipboard: bool,
 ) -> CommandResult {
     let sims = simctl::list()?;
     let sim = resolve::select_simulator(ctx, &sims, target)?;
 
-    let path = output.map_or_else(default_screenshot_path, std::path::Path::to_path_buf);
+    let path = output.map_or_else(
+        || default_screenshot_path(&sim.name),
+        std::path::Path::to_path_buf,
+    );
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let path_str = path.display().to_string();
     simctl::screenshot(&sim.udid, &path_str)?;
+
+    if clipboard {
+        copy_png_to_clipboard(&path)?;
+        ctx.out.note("copied to the clipboard");
+    }
 
     Ok(Rendered::data(SimScreenshot {
         udid: sim.udid.clone(),
         path: path_str,
         label: sim.label(),
     }))
+}
+
+/// Put a PNG file on the macOS clipboard via osascript (`«class PNGf»`) — the
+/// only pasteboard route that needs no extra dependency.
+fn copy_png_to_clipboard(path: &std::path::Path) -> Result<(), CliError> {
+    let script = format!(
+        "set the clipboard to (read (POSIX file \"{}\") as «class PNGf»)",
+        path.display()
+    );
+    crate::cli::process::capture("osascript", &["-e", &script], None)
+        .map(|_| ())
+        .map_err(|e| e.context("copying the screenshot to the clipboard"))
 }
 
 fn appearance(ctx: &mut Context, mode: Appearance, target: Option<&str>) -> CommandResult {
@@ -331,13 +584,25 @@ impl Render for SimAppearance {
     }
 }
 
-/// `simulator-screenshot-<epoch-secs>.png` in the working directory.
-fn default_screenshot_path() -> PathBuf {
+/// `./sweetpad-shots/<device>-<epoch-secs>.png` — one predictable folder
+/// instead of screenshots scattering through the working directory. Shared
+/// with the run session's `s` key.
+pub(crate) fn default_screenshot_path(device_name: &str) -> PathBuf {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or_default();
-    PathBuf::from(format!("simulator-screenshot-{secs}.png"))
+    let slug: String = device_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    PathBuf::from("sweetpad-shots").join(format!("{slug}-{secs}.png"))
 }
 
 #[cfg(test)]
@@ -351,10 +616,11 @@ mod tests {
     }
 
     #[test]
-    fn default_screenshot_path_is_timestamped_png() {
-        let path = default_screenshot_path();
+    fn default_screenshot_path_is_slugged_and_timestamped() {
+        let path = default_screenshot_path("iPhone 16 Pro");
+        assert_eq!(path.parent().unwrap(), std::path::Path::new("sweetpad-shots"));
         let name = path.file_name().unwrap().to_string_lossy();
-        assert!(name.starts_with("simulator-screenshot-"));
+        assert!(name.starts_with("iphone-16-pro-"), "name: {name}");
         assert!(name.ends_with(".png"));
     }
 }

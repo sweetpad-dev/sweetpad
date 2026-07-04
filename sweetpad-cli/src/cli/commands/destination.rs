@@ -47,9 +47,12 @@ impl Dest {
 }
 
 /// The destination list: human lines (kind · name + specifier), or the `data`
-/// of the JSON envelope as `{destinations: […]}`.
+/// of the JSON envelope as `{destinations: […]}`. The `devices` view adds a
+/// `selected` mark (the project's remembered destination) on top.
 struct DestList {
     dests: Vec<Dest>,
+    /// The remembered destination's specifier, when a project resolves.
+    selected: Option<String>,
 }
 
 impl Render for DestList {
@@ -60,8 +63,14 @@ impl Render for DestList {
             } else {
                 ""
             };
+            let selected = self.selected.as_deref() == Some(d.specifier.as_str())
+                || (self.selected.is_some()
+                    && d.udid
+                        .as_deref()
+                        .is_some_and(|u| self.selected.as_deref().unwrap_or_default().contains(u)));
+            let marker = if selected { "* " } else { "" };
             out.line(&format!(
-                "{} · {} ({}){booted}",
+                "{marker}{} · {} ({}){booted}",
                 d.kind,
                 d.name,
                 d.os_label()
@@ -91,6 +100,42 @@ impl Render for DestList {
 }
 
 fn list() -> CommandResult {
+    Ok(Rendered::data(DestList {
+        dests: gather()?,
+        selected: None,
+    }))
+}
+
+/// `sweetpad devices` — the same aggregation, ordered most-used-first from the
+/// project's usage stats (booted next), with the remembered destination
+/// marked. The container is best-effort: outside a project the plain order
+/// stands.
+pub fn devices(ctx: &mut Context) -> CommandResult {
+    let mut dests = gather()?;
+    let mut selected = None;
+    if let Ok(container) = crate::cli::resolve::container(ctx) {
+        let key = container.key();
+        if let Some(st) = ctx.state.projects.get(&key) {
+            selected.clone_from(&st.destination);
+            let usage = st.destination_usage.clone();
+            let used = |d: &Dest| {
+                d.udid
+                    .as_deref()
+                    .and_then(|u| usage.get(u).copied())
+                    .unwrap_or(0)
+            };
+            dests.sort_by(|a, b| {
+                used(b)
+                    .cmp(&used(a))
+                    .then_with(|| b.booted.unwrap_or(false).cmp(&a.booted.unwrap_or(false)))
+            });
+        }
+    }
+    Ok(Rendered::data(DestList { dests, selected }))
+}
+
+/// Everything `xcodebuild -destination` can address, in the resolver's order.
+fn gather() -> Result<Vec<Dest>, crate::cli::CliError> {
     let mut dests = vec![Dest {
         kind: "macOS",
         name: "My Mac".to_string(),
@@ -127,8 +172,7 @@ fn list() -> CommandResult {
             udid: Some(d.udid),
         });
     }
-
-    Ok(Rendered::data(DestList { dests }))
+    Ok(dests)
 }
 
 /// xcodebuild destination platform name for a physical device's platform.

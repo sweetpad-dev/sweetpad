@@ -14,15 +14,133 @@ use crate::cli::{CliError, CommandResult, Context, Render, Rendered};
 pub enum Action {
     /// Generate buildServer.json for sourcekit-lsp autocomplete.
     Init {
-        /// Where to write buildServer.json (defaults to the project's parent).
+        /// Where to write buildServer.json (defaults next to the container —
+        /// its parent directory; for a Swift package, the package directory).
         #[arg(long)]
         output: Option<PathBuf>,
     },
+    /// Check the buildServer.json wiring: does it exist, is it complete, and
+    /// does it point at a binary that's still there?
+    Doctor,
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Init { output } => init(ctx, output.as_deref()),
+        Action::Doctor => doctor(ctx),
+    }
+}
+
+/// One `bsp doctor` check line.
+struct BspCheck {
+    ok: bool,
+    what: String,
+}
+
+/// The `bsp doctor` report: ✓/✗ per check; exits 1 when anything failed.
+struct BspDoctor {
+    path: String,
+    checks: Vec<BspCheck>,
+}
+
+impl Render for BspDoctor {
+    fn human(&self, out: &Output) {
+        out.line(&format!("buildServer.json: {}", self.path));
+        for c in &self.checks {
+            out.line(&format!("  {} {}", if c.ok { "✓" } else { "✗" }, c.what));
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let checks: Vec<serde_json::Value> = self
+            .checks
+            .iter()
+            .map(|c| serde_json::json!({ "ok": c.ok, "check": c.what }))
+            .collect();
+        serde_json::json!({ "buildServerJson": self.path, "checks": checks })
+    }
+}
+
+/// sourcekit-lsp silently skips a buildServer.json missing any of these.
+const REQUIRED_FIELDS: [&str; 5] = ["name", "version", "bspVersion", "languages", "argv"];
+
+fn doctor(ctx: &mut Context) -> CommandResult {
+    let container = resolve::container(ctx)?;
+    if matches!(container, Container::SwiftPackage(_)) {
+        return Ok(Rendered::data(init_swift_package(container.path(), None)));
+    }
+    let path = buildserver_path(container.path(), None);
+    let mut checks = Vec::new();
+
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        checks.push(BspCheck {
+            ok: false,
+            what: "file exists (run `sweetpad bsp init` to create it)".to_string(),
+        });
+        return Ok(Rendered::data_with_exit(
+            BspDoctor {
+                path: path.display().to_string(),
+                checks,
+            },
+            1,
+        ));
+    };
+    checks.push(BspCheck {
+        ok: true,
+        what: "file exists".to_string(),
+    });
+
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        Err(e) => checks.push(BspCheck {
+            ok: false,
+            what: format!("valid JSON ({e})"),
+        }),
+        Ok(json) => {
+            for field in REQUIRED_FIELDS {
+                let present = !json.get(field).is_none_or(serde_json::Value::is_null);
+                checks.push(BspCheck {
+                    ok: present,
+                    what: format!(
+                        "`{field}` present{}",
+                        if present {
+                            ""
+                        } else {
+                            " (sourcekit-lsp silently skips the file without it — rerun `sweetpad bsp init`)"
+                        }
+                    ),
+                });
+            }
+            let server = json
+                .get("argv")
+                .and_then(|a| a.get(0))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+            if let Some(server) = server {
+                let exists = std::path::Path::new(&server).exists();
+                checks.push(BspCheck {
+                    ok: exists,
+                    what: format!(
+                        "server binary {server}{}",
+                        if exists {
+                            " exists"
+                        } else {
+                            " is missing — rerun `sweetpad bsp init`"
+                        }
+                    ),
+                });
+            }
+        }
+    }
+
+    let failed = checks.iter().any(|c| !c.ok);
+    let report = BspDoctor {
+        path: path.display().to_string(),
+        checks,
+    };
+    if failed {
+        Ok(Rendered::data_with_exit(report, 1))
+    } else {
+        Ok(Rendered::data(report))
     }
 }
 

@@ -255,26 +255,54 @@ pub fn launch(udid: &str, bundle_id: &str) -> Result<String, CliError> {
     .context("launching the app on the simulator")
 }
 
+/// Extra launch inputs: process arguments, environment pairs (forwarded via
+/// `SIMCTL_CHILD_*` vars, which simctl strips and passes into the app), and
+/// `--wait-for-debugger` for attach-first debugging flows.
+#[derive(Debug, Default)]
+pub struct LaunchOptions<'a> {
+    pub args: &'a [String],
+    /// Environment pairs, already `SIMCTL_CHILD_`-prefixed where needed.
+    pub env: &'a [(String, String)],
+    pub wait_for_debugger: bool,
+}
+
 /// Launch with extra environment forwarded to `xcrun simctl`. Used by `--hot` to
-/// pass `SIMCTL_CHILD_*` vars (which simctl strips and forwards into the app) so
-/// the injection client dylib is `DYLD_INSERT_LIBRARIES`-loaded. Returns stdout.
-/// `--terminate-running-process` forces a fresh launch: the forwarded env only takes
-/// effect on a new process, so an already-running instance must be replaced or the
-/// client dylib silently never loads.
+/// pass `SIMCTL_CHILD_*` vars so the injection client dylib is
+/// `DYLD_INSERT_LIBRARIES`-loaded. Returns stdout.
 pub fn launch_with_env(
     udid: &str,
     bundle_id: &str,
     env: &[(String, String)],
 ) -> Result<String, CliError> {
+    launch_opts(
+        udid,
+        bundle_id,
+        &LaunchOptions {
+            env,
+            ..LaunchOptions::default()
+        },
+    )
+}
+
+/// Launch with [`LaunchOptions`]. Returns stdout (`<bundle>: <pid>`).
+/// `--terminate-running-process` forces a fresh launch: forwarded env and args
+/// only take effect on a new process, so an already-running instance must be
+/// replaced or they silently never apply.
+pub fn launch_opts(
+    udid: &str,
+    bundle_id: &str,
+    opts: &LaunchOptions,
+) -> Result<String, CliError> {
+    let mut argv: Vec<&str> = vec!["simctl", "launch", "--terminate-running-process"];
+    if opts.wait_for_debugger {
+        argv.push("--wait-for-debugger");
+    }
+    argv.push(udid);
+    argv.push(bundle_id);
+    argv.extend(opts.args.iter().map(String::as_str));
     let output = std::process::Command::new("xcrun")
-        .args([
-            "simctl",
-            "launch",
-            "--terminate-running-process",
-            udid,
-            bundle_id,
-        ])
-        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .args(&argv)
+        .envs(opts.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .output()
         .map_err(|e| CliError::new(format!("failed to run `xcrun simctl launch`: {e}")))?;
     if output.status.success() {
@@ -291,20 +319,34 @@ pub fn launch_with_env(
 /// stdout/stderr carry the app's own output (`print()`, etc.). `--console-pty` gives
 /// the app a pty so its stdout is line-buffered and arrives promptly; the terminate
 /// flag replaces any prior instance so a relaunch starts clean. os_log is streamed
-/// separately by the run session.
-pub fn spawn_console(udid: &str, bundle_id: &str) -> Result<std::process::Child, CliError> {
-    process::spawn_piped_both(
-        "xcrun",
-        &[
-            "simctl",
-            "launch",
-            "--console-pty",
-            "--terminate-running-process",
-            udid,
-            bundle_id,
-        ],
-        None,
-    )
+/// separately by the run session. [`LaunchOptions`] ride along like
+/// [`launch_opts`]'s.
+pub fn spawn_console(
+    udid: &str,
+    bundle_id: &str,
+    opts: &LaunchOptions,
+) -> Result<std::process::Child, CliError> {
+    let mut argv: Vec<&str> = vec![
+        "simctl",
+        "launch",
+        "--console-pty",
+        "--terminate-running-process",
+    ];
+    if opts.wait_for_debugger {
+        argv.push("--wait-for-debugger");
+    }
+    argv.push(udid);
+    argv.push(bundle_id);
+    argv.extend(opts.args.iter().map(String::as_str));
+    // spawn_piped_both has no env hook; build the child directly, mirroring it.
+    let mut cmd = std::process::Command::new("xcrun");
+    cmd.args(&argv)
+        .envs(opts.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    cmd.spawn()
+        .map_err(|e| CliError::new(format!("failed to run `xcrun simctl launch`: {e}")))
 }
 
 /// Terminate a running app by bundle id. Already-stopped is treated as success
@@ -357,6 +399,12 @@ pub fn erase(udid: &str) -> Result<(), CliError> {
     process::stream("xcrun", &["simctl", "erase", udid], None)
 }
 
+/// Remove an installed app from a simulator.
+pub fn uninstall(udid: &str, bundle_id: &str) -> Result<(), CliError> {
+    process::stream("xcrun", &["simctl", "uninstall", udid, bundle_id], None)
+        .context("uninstalling the app from the simulator")
+}
+
 /// Open a URL on a booted simulator (`simctl openurl`) — drives deep links and
 /// universal links into the app.
 pub fn open_url(udid: &str, url: &str) -> Result<(), CliError> {
@@ -381,6 +429,124 @@ pub fn set_appearance(udid: &str, appearance: &str) -> Result<(), CliError> {
 /// Open the Simulator.app GUI (no specific device required).
 pub fn open_app() -> Result<(), CliError> {
     process::stream("open", &["-a", "Simulator"], None)
+}
+
+/// Block until a booting simulator is fully up (`simctl bootstatus -b`).
+pub fn boot_wait(udid: &str) -> Result<(), CliError> {
+    process::run("xcrun", &["simctl", "bootstatus", udid, "-b"], None, true)
+        .map(|_| ())
+        .context("waiting for the simulator to finish booting")
+}
+
+/// Create a new simulator; returns its UDID. `device_type` and `runtime` take
+/// simctl identifiers or the friendly names `simctl list` shows; omitted
+/// runtime uses the newest available.
+pub fn create(name: &str, device_type: &str, runtime: Option<&str>) -> Result<String, CliError> {
+    let mut args = vec!["simctl", "create", name, device_type];
+    if let Some(runtime) = runtime {
+        args.push(runtime);
+    }
+    process::capture("xcrun", &args, None)
+        .map(|s| s.trim().to_string())
+        .context("creating the simulator")
+}
+
+/// Delete a simulator (its data is gone; there is no undo).
+pub fn delete(udid: &str) -> Result<(), CliError> {
+    process::stream("xcrun", &["simctl", "delete", udid], None).context("deleting the simulator")
+}
+
+/// Clone a (shutdown) simulator under a new name; returns the clone's UDID.
+pub fn clone(udid: &str, new_name: &str) -> Result<String, CliError> {
+    process::capture("xcrun", &["simctl", "clone", udid, new_name], None)
+        .map(|s| s.trim().to_string())
+        .context("cloning the simulator")
+}
+
+/// Deliver an APNs push payload (JSON file) to an app on a booted simulator.
+pub fn push(udid: &str, bundle_id: &str, payload: &str) -> Result<(), CliError> {
+    process::stream("xcrun", &["simctl", "push", udid, bundle_id, payload], None)
+        .context("delivering the push payload")
+}
+
+/// Grant or revoke a privacy service for an app (`simctl privacy`).
+pub fn privacy(udid: &str, action: &str, service: &str, bundle_id: &str) -> Result<(), CliError> {
+    process::stream(
+        "xcrun",
+        &["simctl", "privacy", udid, action, service, bundle_id],
+        None,
+    )
+    .context("changing the privacy permission")
+}
+
+/// Override the status bar for clean screenshots (`simctl status_bar`): 9:41,
+/// full battery/signal — or clear the override.
+pub fn status_bar(udid: &str, clear: bool) -> Result<(), CliError> {
+    if clear {
+        return process::stream("xcrun", &["simctl", "status_bar", udid, "clear"], None)
+            .context("clearing the status bar override");
+    }
+    process::stream(
+        "xcrun",
+        &[
+            "simctl",
+            "status_bar",
+            udid,
+            "override",
+            "--time",
+            "9:41",
+            "--batteryState",
+            "charged",
+            "--batteryLevel",
+            "100",
+            "--cellularMode",
+            "active",
+            "--cellularBars",
+            "4",
+            "--wifiBars",
+            "3",
+        ],
+        None,
+    )
+    .context("overriding the status bar")
+}
+
+/// Set a booted simulator's simulated location.
+pub fn location(udid: &str, latitude: f64, longitude: f64) -> Result<(), CliError> {
+    let coords = format!("{latitude},{longitude}");
+    process::stream(
+        "xcrun",
+        &["simctl", "location", udid, "set", &coords],
+        None,
+    )
+    .context("setting the simulated location")
+}
+
+/// Add photos/videos to a booted simulator's media library.
+pub fn media_add(udid: &str, paths: &[String]) -> Result<(), CliError> {
+    let mut args = vec!["simctl", "addmedia", udid];
+    args.extend(paths.iter().map(String::as_str));
+    process::stream("xcrun", &args, None).context("adding media to the simulator")
+}
+
+/// Record the booted simulator's screen to an .mp4 until the child is stopped
+/// (Ctrl-C); `simctl io recordVideo` finalizes the file on SIGINT.
+pub fn record(udid: &str, path: &str) -> Result<(), CliError> {
+    process::stream(
+        "xcrun",
+        &[
+            "simctl",
+            "io",
+            udid,
+            "recordVideo",
+            "--codec",
+            "h264",
+            "--force",
+            path,
+        ],
+        None,
+    )
+    .context("recording the simulator screen")
 }
 
 /// `com.apple.CoreSimulator.SimRuntime.iOS-17-0` → (`iOS`, `17.0`).

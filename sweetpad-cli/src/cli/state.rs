@@ -51,6 +51,11 @@ pub struct ProjectState {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub destination_usage: BTreeMap<String, u32>,
 
+    /// Named destination aliases (`context alias work-phone <UDID>`), resolved
+    /// by `--on NAME`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub destination_aliases: BTreeMap<String, String>,
+
     /// The app launched most recently, for re-launch and inspection.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_launched_app: Option<LastLaunchedApp>,
@@ -68,6 +73,7 @@ impl ProjectState {
             && self.testing.is_empty()
             && self.destination_recents.is_empty()
             && self.destination_usage.is_empty()
+            && self.destination_aliases.is_empty()
             && self.last_launched_app.is_none()
     }
 }
@@ -149,7 +155,43 @@ impl State {
         }
     }
 
-    /// Persist state, creating the parent directory as needed.
+    /// Load remembered state, preserving evidence on corruption: a file that
+    /// exists but doesn't parse is moved aside to `state.toml.corrupt` and a
+    /// warning describing both paths is returned with the defaults. Without
+    /// this, the next best-effort [`save`](State::save) would rewrite the whole
+    /// file from the near-empty in-memory state — every project's remembered
+    /// context lost without a trace.
+    #[must_use]
+    pub fn load_or_quarantine() -> (Self, Option<String>) {
+        match Self::load() {
+            Ok(state) => (state, None),
+            Err(parse_err) => {
+                let warning = Self::path().map_or_else(
+                    || format!("state file is corrupt and was ignored: {parse_err}"),
+                    |path| {
+                        let backup = path.with_extension("toml.corrupt");
+                        match std::fs::rename(&path, &backup) {
+                            Ok(()) => format!(
+                                "state file is corrupt ({parse_err}); moved it to {} and starting fresh",
+                                backup.display()
+                            ),
+                            Err(_) => format!(
+                                "state file is corrupt and will be overwritten on the next save: {parse_err}"
+                            ),
+                        }
+                    },
+                );
+                (Self::default(), Some(warning))
+            }
+        }
+    }
+
+    /// Persist state, creating the parent directory as needed. Written to a
+    /// temp file and renamed into place, so a crash or a concurrent session
+    /// can never leave a torn half-written `state.toml` (concurrent saves are
+    /// last-writer-wins with each writer's *complete* file). What lands on disk
+    /// is the [`pruned_view`](State::pruned_view), so the file can't grow
+    /// forever.
     pub fn save(&self) -> Result<(), String> {
         let Some(path) = Self::path() else {
             return Ok(());
@@ -157,8 +199,39 @@ impl State {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
-        let text = toml::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))
+        let text = toml::to_string_pretty(&self.pruned_view()).map_err(|e| e.to_string())?;
+        let tmp = path.with_extension(format!("toml.tmp.{}", std::process::id()));
+        std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
+        std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// The save-time view: entries for deleted projects dropped, recents capped
+    /// at [`MAX_RECENTS`] (oldest first out), and usage stats pruned to the
+    /// remembered destinations. "Deleted" means the container vanished while
+    /// its parent directory remains — a missing parent (an unmounted volume, a
+    /// temporarily absent checkout) keeps the entry, so ejecting a disk never
+    /// loses a project's context.
+    fn pruned_view(&self) -> State {
+        let projects = self
+            .projects
+            .iter()
+            .filter(|(key, _)| !project_deleted(std::path::Path::new(key)))
+            .map(|(key, entry)| {
+                let mut entry = entry.clone();
+                if entry.destination_recents.len() > MAX_RECENTS {
+                    let excess = entry.destination_recents.len() - MAX_RECENTS;
+                    entry.destination_recents.drain(..excess);
+                }
+                let keep: std::collections::BTreeSet<String> = entry
+                    .destination_recents
+                    .iter()
+                    .map(|d| d.id.clone())
+                    .collect();
+                entry.destination_usage.retain(|id, _| keep.contains(id));
+                (key.clone(), entry)
+            })
+            .collect();
+        State { projects }
     }
 
     /// Mutable access to a project's remembered selections, inserting an empty
@@ -166,6 +239,15 @@ impl State {
     pub fn project_mut(&mut self, key: &str) -> &mut ProjectState {
         self.projects.entry(key.to_string()).or_default()
     }
+}
+
+/// How many destination recents (and their usage entries) a project keeps.
+const MAX_RECENTS: usize = 12;
+
+/// Whether a state key points at a deleted container: the path is gone but its
+/// parent directory still exists.
+fn project_deleted(path: &std::path::Path) -> bool {
+    !path.exists() && path.parent().is_some_and(std::path::Path::exists)
 }
 
 /// `$XDG_STATE_HOME` or `$HOME/.local/state`.
@@ -244,6 +326,56 @@ mod tests {
         assert!(!text.contains("destination_recents"));
         assert!(!text.contains("destination_usage"));
         assert!(!text.contains("last_launched_app"));
+    }
+
+    #[test]
+    fn pruned_view_drops_deleted_projects_but_keeps_unmounted_ones() {
+        let dir = std::env::temp_dir().join(format!("sweetpad-state-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut state = State::default();
+        // Parent exists, container doesn't → deleted → pruned.
+        let deleted = dir.join("Gone.xcodeproj");
+        state.project_mut(&deleted.to_string_lossy()).scheme = Some("X".into());
+        // Neither parent nor container exists (unmounted volume) → kept.
+        let unmounted = "/Volumes/nonexistent-sweetpad-test/App.xcodeproj";
+        state.project_mut(unmounted).scheme = Some("Y".into());
+        // Container exists → kept.
+        let live = dir.join("Live.xcodeproj");
+        std::fs::create_dir_all(&live).unwrap();
+        state.project_mut(&live.to_string_lossy()).scheme = Some("Z".into());
+
+        let pruned = state.pruned_view();
+        assert!(!pruned.projects.contains_key(&*deleted.to_string_lossy()));
+        assert!(pruned.projects.contains_key(unmounted));
+        assert!(pruned.projects.contains_key(&*live.to_string_lossy()));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn pruned_view_caps_recents_and_prunes_usage() {
+        let mut state = State::default();
+        let p = state.project_mut("/Volumes/nonexistent-sweetpad-test/App.xcodeproj");
+        for i in 0..20 {
+            let id = format!("UDID-{i}");
+            p.destination_recents.push(SelectedDestination {
+                id: id.clone(),
+                kind: "iOSSimulator".into(),
+                name: format!("Sim {i}"),
+            });
+            p.destination_usage.insert(id, i);
+        }
+        let pruned = state.pruned_view();
+        let entry = pruned
+            .projects
+            .get("/Volumes/nonexistent-sweetpad-test/App.xcodeproj")
+            .unwrap();
+        assert_eq!(entry.destination_recents.len(), MAX_RECENTS);
+        // Oldest dropped first: the newest ids survive.
+        assert_eq!(entry.destination_recents[0].id, "UDID-8");
+        // Usage entries follow the surviving recents.
+        assert_eq!(entry.destination_usage.len(), MAX_RECENTS);
+        assert!(!entry.destination_usage.contains_key("UDID-0"));
+        assert!(entry.destination_usage.contains_key("UDID-19"));
     }
 
     #[test]

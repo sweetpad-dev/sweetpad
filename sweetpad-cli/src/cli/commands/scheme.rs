@@ -4,17 +4,23 @@ use clap::Subcommand;
 use serde::Serialize;
 
 use crate::cli::output::Output;
-use crate::cli::{CommandResult, Context, Render, Rendered, resolve};
+use crate::cli::{CommandResult, ContainerArgs, Context, Render, Rendered, resolve};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
     /// List the schemes available in the resolved project/workspace.
-    List,
+    List {
+        #[command(flatten)]
+        target: ContainerArgs,
+    },
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
-        Action::List => list(ctx),
+        Action::List { target } => {
+            ctx.targeting = target.clone().into();
+            list(ctx)
+        }
     }
 }
 

@@ -45,6 +45,48 @@ pub fn stream(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<(), Cl
     }
 }
 
+/// The result of a fully-captured [`run_captured`]: whether the command
+/// succeeded, the tail of its combined output for error reporting, and the
+/// full combined transcript for callers that post-parse it (diagnostics).
+pub struct CapturedRun {
+    pub success: bool,
+    pub tail: String,
+    pub combined: String,
+}
+
+/// Run a command with **both stdout and stderr captured** — the `--json` path,
+/// where raw child noise must not interleave with the structured output. The
+/// last lines of the combined output ride back in
+/// [`tail`](CapturedRun::tail) so a failure's cause isn't swallowed with the
+/// capture.
+pub fn run_captured(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+) -> Result<CapturedRun, CliError> {
+    let mut cmd = Command::new(program);
+    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    let output = cmd.output().map_err(|e| spawn_error(program, &e))?;
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    Ok(CapturedRun {
+        success: output.status.success(),
+        tail: tail_lines(&text, 25),
+        combined: text,
+    })
+}
+
+/// The last `n` non-blank lines of `text`, joined — enough context to explain
+/// a failure without replaying a whole transcript inside an error message.
+fn tail_lines(text: &str, n: usize) -> String {
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    let start = lines.len().saturating_sub(n);
+    lines[start..].join("\n")
+}
+
 /// Run a command to completion, returning whether it succeeded rather than
 /// erroring on a non-zero exit. `quiet` discards stdout (stderr is always
 /// inherited) — used when only the exit status / a side-effect matters, e.g.

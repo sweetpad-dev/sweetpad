@@ -52,10 +52,10 @@ pub fn run(args: &[String]) -> u8 {
     }
     let raw = parsed.raw;
     if parsed.method.is_none() {
-        return emit_failure(
-            &usage_error("No RPC method given (expected a dotted name like `scheme.list`)."),
-            raw,
-        );
+        // A human typing `sweetpad vscode` (or a bare word) gets the usage
+        // text, not a machine envelope — scripts always pass a dotted method.
+        eprintln!("{HELP}");
+        return 2;
     }
 
     let socket = match resolve_socket() {
@@ -205,7 +205,10 @@ fn error_envelope(code: &str, message: &str, hint: Option<&str>, data: Option<Va
     error.insert("message".into(), Value::from(message));
     put_opt(&mut error, "hint", hint);
     put_opt(&mut error, "data", data);
-    json!({ "ok": false, "error": error })
+    // The same envelope shape as the standalone CLI (`{schema, ok, error}`),
+    // so one consumer parses both namespaces; the `error.code` vocabulary
+    // stays the RPC server's.
+    json!({ "schema": 1, "ok": false, "error": error })
 }
 
 /// The CLI talks to the single control server the extension advertised for this

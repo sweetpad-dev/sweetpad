@@ -24,53 +24,195 @@ use crate::cli::{
 };
 use sweetpad_core::build_settings::BuildSettingsOptions;
 
+/// The `app run` flags — also the top-level `sweetpad run`'s, so the flagship
+/// spelling and the resource-first one stay a single definition.
+#[derive(Debug, Clone, Default, clap::Args)]
+#[allow(clippy::struct_excessive_bools)] // independent CLI toggles, not a state machine
+pub struct RunArgs {
+    #[command(flatten)]
+    pub target: crate::cli::BuildTargetArgs,
+
+    /// Target a connected physical device instead of a simulator
+    /// (`--on device` is the same thing).
+    #[arg(long, conflicts_with = "on")]
+    pub device: bool,
+
+    /// Specific device UDID/name to target (implies --device).
+    #[arg(long = "device-id", conflicts_with = "on")]
+    pub device_id: Option<String>,
+
+    /// Build and run as a native macOS app (`--on mac` is the same thing).
+    #[arg(long, conflicts_with_all = ["device", "device_id", "on"])]
+    pub mac: bool,
+
+    /// Don't stream the app's logs after launching (logs follow by default
+    /// on simulators).
+    #[arg(long = "no-logs")]
+    pub no_logs: bool,
+
+    /// Enable hot reload (iOS Simulator only): on each Swift save the file is
+    /// recompiled and injected into the running app — no relaunch, state
+    /// preserved. Requires the injection client (see CLI_DESIGN §9d). A
+    /// project can default this on via `[run] hot = true` in sweetpad.toml.
+    #[arg(long)]
+    pub hot: bool,
+
+    /// Disable hot reload for this run (overrides a `[run] hot = true`
+    /// project default).
+    #[arg(long = "no-hot", conflicts_with = "hot")]
+    pub no_hot: bool,
+
+    /// Hot-reload recompiler.
+    #[arg(long = "hot-recompiler", value_name = "MODE", value_enum)]
+    pub hot_recompiler: Option<HotRecompiler>,
+
+    /// CI self-check (hidden): with `--hot`, after launch edit FILE once, wait
+    /// for `.injected`, and exit 0/1 instead of entering the session. Drives
+    /// the end-to-end hot-reload/injection test.
+    #[arg(
+        long = "hot-selfcheck",
+        value_name = "FILE",
+        hide = true,
+        requires = "hot"
+    )]
+    pub hot_selfcheck: Option<std::path::PathBuf>,
+
+    #[command(flatten)]
+    pub launch: LaunchArgs,
+
+    /// Extra arguments passed to xcodebuild verbatim (after `--`).
+    #[arg(last = true, value_name = "XCODEBUILD_ARGS")]
+    pub passthrough: Vec<String>,
+}
+
+/// Launch inputs shared by `run` and `launch`: process arguments,
+/// environment, and wait-for-debugger. Simulator and macOS targets honor all
+/// three; physical devices don't yet.
+#[derive(Debug, Clone, Default, clap::Args)]
+pub struct LaunchArgs {
+    /// Argument passed to the app process (repeatable).
+    #[arg(long = "arg", value_name = "ARG")]
+    pub args: Vec<String>,
+
+    /// Environment variable for the app process, KEY=VALUE (repeatable).
+    #[arg(long = "env", value_name = "KEY=VALUE")]
+    pub env: Vec<String>,
+
+    /// Launch suspended, waiting for a debugger to attach (`lldb -p <pid>`).
+    #[arg(long = "wait-for-debugger")]
+    pub wait_for_debugger: bool,
+}
+
+impl LaunchArgs {
+    /// Parse the `KEY=VALUE` pairs, `prefix`ed per key (simctl forwards only
+    /// `SIMCTL_CHILD_*`; the macOS direct spawn takes them raw).
+    fn env_pairs(&self, prefix: &str) -> Result<Vec<(String, String)>, CliError> {
+        self.env
+            .iter()
+            .map(|pair| {
+                pair.split_once('=')
+                    .map(|(k, v)| (format!("{prefix}{k}"), v.to_string()))
+                    .ok_or_else(|| {
+                        CliError::new(format!("--env takes KEY=VALUE (got {pair:?})"))
+                    })
+            })
+            .collect()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.args.is_empty() && self.env.is_empty() && !self.wait_for_debugger
+    }
+}
+
+/// `app logs` stream shaping: narrow the predicate or change the level.
+/// Simulator/macOS streams honor all of these (`log stream` natively);
+/// physical-device logs (pymobiledevice3) keep their fixed process filter.
+#[derive(Debug, Clone, Default, clap::Args)]
+pub struct LogFilterArgs {
+    /// Only entries from this subsystem (e.g. com.example.app.networking).
+    #[arg(long)]
+    pub subsystem: Option<String>,
+
+    /// Only entries from this category.
+    #[arg(long)]
+    pub category: Option<String>,
+
+    /// A raw `log stream` predicate, replacing the default process match
+    /// entirely (the escape hatch).
+    #[arg(long, conflicts_with_all = ["subsystem", "category"])]
+    pub predicate: Option<String>,
+
+    /// Minimum level to stream: default, info, or debug.
+    #[arg(long, value_parser = ["default", "info", "debug"])]
+    pub level: Option<String>,
+}
+
+/// Where a lifecycle stage acts: the default simulator flow, or a
+/// connected physical device.
+#[derive(Debug, Clone, Default, clap::Args)]
+pub struct StageTargetArgs {
+    /// Act on a connected physical device instead of a simulator.
+    #[arg(long)]
+    pub device: bool,
+
+    /// Specific device UDID/name (implies --device).
+    #[arg(long = "device-id")]
+    pub device_id: Option<String>,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Build, install, launch, and follow logs; press `r` to rebuild on demand.
-    Run {
-        /// Target a connected physical device instead of a simulator.
-        #[arg(long)]
-        device: bool,
-        /// Specific device UDID/name to target (implies --device).
-        #[arg(long = "device-id")]
-        device_id: Option<String>,
-        /// Build and run as a native macOS app (launches the executable).
-        #[arg(long, conflicts_with_all = ["device", "device_id"])]
-        mac: bool,
-        /// Don't stream the app's logs after launching (logs follow by default
-        /// on simulators).
-        #[arg(long = "no-logs")]
-        no_logs: bool,
-        /// Enable hot reload (iOS Simulator only): on each Swift save the file is
-        /// recompiled and injected into the running app — no relaunch, state
-        /// preserved. Requires the injection client (see CLI_DESIGN §9d).
-        #[arg(long)]
-        hot: bool,
-        /// Hot-reload recompiler: `resolver` (default — robust whole-module via
-        /// the build-settings resolver) or `buildlog` (fast single-file recovered
-        /// from the build transcript).
-        #[arg(long = "hot-recompiler", value_name = "MODE")]
-        hot_recompiler: Option<String>,
-        /// CI self-check (hidden): with `--hot`, after launch edit FILE once, wait
-        /// for `.injected`, and exit 0/1 instead of entering the session. Drives
-        /// the end-to-end hot-reload/injection test.
-        #[arg(
-            long = "hot-selfcheck",
-            value_name = "FILE",
-            hide = true,
-            requires = "hot"
-        )]
-        hot_selfcheck: Option<std::path::PathBuf>,
-    },
+    /// Build, install, launch, and follow logs; at an interactive terminal,
+    /// press `r` to rebuild on demand.
+    Run(RunArgs),
     /// Build and install, without launching.
-    Install,
+    Install {
+        #[command(flatten)]
+        target: crate::cli::BuildTargetArgs,
+        #[command(flatten)]
+        stage: StageTargetArgs,
+    },
     /// Launch an already-installed app.
-    Launch,
-    /// Stream the running app's logs (simulator).
-    Logs,
-    /// Terminate the running app.
-    Stop,
-    /// Open a URL on a simulator — drives deep links / universal links in.
+    Launch {
+        #[command(flatten)]
+        target: crate::cli::BuildTargetArgs,
+        #[command(flatten)]
+        stage: StageTargetArgs,
+        #[command(flatten)]
+        launch: LaunchArgs,
+    },
+    /// Build, install, and launch suspended, then attach lldb (simulator).
+    Debug {
+        #[command(flatten)]
+        target: crate::cli::BuildTargetArgs,
+        #[command(flatten)]
+        launch: LaunchArgs,
+    },
+    /// Remove the app from a simulator or device.
+    Uninstall {
+        #[command(flatten)]
+        target: crate::cli::BuildTargetArgs,
+        #[command(flatten)]
+        stage: StageTargetArgs,
+    },
+    /// Stream the running app's logs (simulator). Uses the last-launched app
+    /// when one is recorded; otherwise resolves the build target. With --json,
+    /// emits the raw `log stream` NDJSON events — one JSON object per line —
+    /// instead of the rendered text.
+    Logs {
+        #[command(flatten)]
+        target: crate::cli::BuildTargetArgs,
+        #[command(flatten)]
+        filters: LogFilterArgs,
+    },
+    /// Terminate the running app (the last-launched one when recorded).
+    Stop {
+        #[command(flatten)]
+        target: crate::cli::BuildTargetArgs,
+        #[command(flatten)]
+        stage: StageTargetArgs,
+    },
+    /// Open a URL on a simulator (deep links / universal links).
     OpenUrl {
         /// The URL to open (e.g. `myapp://path` or `https://example.com/x`).
         url: String,
@@ -80,44 +222,114 @@ pub enum Action {
     },
 }
 
+impl Action {
+    /// The default action for a bare `sweetpad app`: `app run` with no flags
+    /// (everything resolves from config/state/pickers).
+    #[must_use]
+    pub fn default_run() -> Self {
+        Action::Run(RunArgs::default())
+    }
+}
+
+/// Settle hot reload for a run: the `--hot` flag, else the project's
+/// `[run] hot` default (opted out per run with `--no-hot`); the recompiler
+/// from `--hot-recompiler`, else `[run] hot_recompiler`. Simulator-only
+/// enforcement stays in [`run_hot_session`]; here a `[run] hot = true`
+/// project default is simply ignored for `--mac`/`--device` runs rather than
+/// erroring on a committed file.
+fn hot_settings(ctx: &Context, args: &RunArgs) -> (bool, Mode) {
+    let run_defaults = resolve::container(ctx)
+        .ok()
+        .map(|c| ctx.project_file(&c).run.clone())
+        .unwrap_or_default();
+    let default_hot =
+        run_defaults.hot.unwrap_or(false) && !args.mac && !args.device && args.device_id.is_none();
+    let hot = !args.no_hot && (args.hot || default_hot);
+    let config_mode = run_defaults.hot_recompiler.as_deref().and_then(|s| {
+        let mode = Mode::parse(s);
+        if mode.is_none() {
+            ctx.out.warn(&format!(
+                "sweetpad.toml: unknown [run] hot_recompiler {s:?} (use resolver|buildlog)"
+            ));
+        }
+        mode
+    });
+    let hot_mode = args
+        .hot_recompiler
+        .map(HotRecompiler::mode)
+        .or(config_mode)
+        .unwrap_or(Mode::Resolver);
+    (hot, hot_mode)
+}
+
+/// The two hot-reload recompilers (see CLI_DESIGN §9d).
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum HotRecompiler {
+    /// Robust whole-module recompiles via the build-settings resolver (default).
+    Resolver,
+    /// Fast single-file recompiles recovered from the build transcript.
+    Buildlog,
+}
+
+impl HotRecompiler {
+    fn mode(self) -> Mode {
+        match self {
+            HotRecompiler::Resolver => Mode::Resolver,
+            HotRecompiler::Buildlog => Mode::BuildLog,
+        }
+    }
+}
+
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
-        Action::Run {
-            device,
-            device_id,
-            mac,
-            no_logs,
-            hot,
-            hot_recompiler,
-            hot_selfcheck,
-        } => {
-            let hot_mode = match hot_recompiler.as_deref() {
-                None => Mode::Resolver,
-                Some(s) => Mode::parse(s).ok_or_else(|| {
-                    CliError::new(format!(
-                        "unknown --hot-recompiler {s:?} (use resolver|buildlog)"
-                    ))
-                })?,
-            };
+        Action::Run(args) => {
+            ctx.targeting = args.target.clone().into();
+            let (hot, hot_mode) = hot_settings(ctx, args);
             // The live build-and-run session streams its own output until you quit.
             run_app(
                 ctx,
                 &RunOpts {
-                    device: *device || device_id.is_some(),
-                    device_id: device_id.as_deref(),
-                    mac: *mac,
-                    no_logs: *no_logs,
-                    hot: *hot,
+                    device: args.device || args.device_id.is_some(),
+                    device_id: args.device_id.as_deref(),
+                    mac: args.mac,
+                    no_logs: args.no_logs,
+                    hot,
                     hot_mode,
-                    hot_selfcheck: hot_selfcheck.as_deref(),
+                    hot_selfcheck: args.hot_selfcheck.as_deref(),
+                    launch: &args.launch,
+                    passthrough: &args.passthrough,
                 },
             )
             .map(|()| Rendered::Streamed)
         }
-        Action::Install => simple(ctx, Stage::Install),
-        Action::Launch => simple(ctx, Stage::Launch),
-        Action::Logs => simple(ctx, Stage::Logs),
-        Action::Stop => simple(ctx, Stage::Stop),
+        Action::Install { target, stage } => {
+            ctx.targeting = target.clone().into();
+            simple(ctx, Stage::Install, &LaunchArgs::default(), stage)
+        }
+        Action::Launch {
+            target,
+            stage,
+            launch,
+        } => {
+            ctx.targeting = target.clone().into();
+            simple(ctx, Stage::Launch, launch, stage)
+        }
+        Action::Debug { target, launch } => {
+            ctx.targeting = target.clone().into();
+            debug(ctx, launch)
+        }
+        Action::Uninstall { target, stage } => {
+            ctx.targeting = target.clone().into();
+            simple(ctx, Stage::Uninstall, &LaunchArgs::default(), stage)
+        }
+        Action::Logs { target, filters } => {
+            ctx.targeting = target.clone().into();
+            simple_logs(ctx, filters)
+        }
+        Action::Stop { target, stage } => {
+            ctx.targeting = target.clone().into();
+            simple(ctx, Stage::Stop, &LaunchArgs::default(), stage)
+        }
         Action::OpenUrl { url, simulator } => open_url(ctx, url, simulator.as_deref()),
     }
 }
@@ -168,6 +380,10 @@ struct RunOpts<'a> {
     hot: bool,
     hot_mode: Mode,
     hot_selfcheck: Option<&'a Path>,
+    /// Launch args/env/wait-for-debugger for the app process.
+    launch: &'a LaunchArgs,
+    /// Extra xcodebuild arguments (after `--`), passed through verbatim.
+    passthrough: &'a [String],
 }
 
 /// Where the app runs.
@@ -189,6 +405,24 @@ struct RunPlan {
     target: Target,
     /// Build with the hot-reload flags (`-interposable` + frontend command lines).
     hot: bool,
+    /// Launch args/env/wait-for-debugger for the app process.
+    launch: LaunchArgs,
+    /// Extra xcodebuild arguments (after `--`), passed through verbatim.
+    passthrough: Vec<String>,
+}
+
+impl RunPlan {
+    /// The simctl launch options for this plan (env `SIMCTL_CHILD_`-prefixed).
+    fn simctl_launch<'a>(
+        &'a self,
+        env: &'a [(String, String)],
+    ) -> crate::cli::simctl::LaunchOptions<'a> {
+        crate::cli::simctl::LaunchOptions {
+            args: &self.launch.args,
+            env,
+            wait_for_debugger: self.launch.wait_for_debugger,
+        }
+    }
 }
 
 impl RunPlan {
@@ -198,8 +432,10 @@ impl RunPlan {
             scheme: &self.scheme,
             configuration: &self.configuration,
             destination: Some(&self.destination),
+            sdk: self.resolved.sdk.as_deref(),
             clean: false,
             hot: self.hot,
+            passthrough: &self.passthrough,
         }
     }
 
@@ -221,7 +457,9 @@ impl RunPlan {
             scheme: Some(self.scheme.clone()),
             target: None,
             configuration: self.configuration.clone(),
-            sdk: String::new(),
+            // Must match the build's own -sdk (if any), or TARGET_BUILD_DIR
+            // points at a different products dir than the one just built.
+            sdk: self.resolved.sdk.clone().unwrap_or_default(),
             arch: String::new(),
             destination: sweetpad_lib::destination::parse_destination_arg(&self.destination),
             xcconfig: None,
@@ -250,10 +488,11 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
     // there's no coherent one-shot JSON for it (a `--json` run would emit a silent
     // build and then human-formatted logs). Fail fast; build and launch as separate
     // steps if you need machine-readable output.
-    if ctx.out.is_json() {
+    if ctx.out.is_json() || ctx.out.is_ndjson() {
         return Err(CliError::new(
-            "`app run` streams a live session and does not support --json; \
-             build and launch as separate steps for machine-readable output",
+            "`app run` streams a live session and has no machine-readable form; use \
+             `build start -o ndjson`, `app install`/`app launch --json`, and \
+             `app logs -o ndjson` as separate steps",
         ));
     }
 
@@ -299,35 +538,48 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
 fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     let resolved = resolve::resolve(ctx)?;
     let schemes = resolve::schemes(&resolved.container)?;
+    if let Some(s) = &resolved.scheme {
+        resolve::validate_choice("scheme", s, &schemes)?;
+    }
     let scheme = resolve::choose(ctx, "scheme", resolved.scheme.clone(), &schemes)?;
-    let configuration = resolved
-        .configuration
-        .clone()
-        .unwrap_or_else(|| "Debug".to_string());
+    let configuration = resolve::settle_configuration(ctx, &resolved)?;
 
     let (destination, target) = if matches!(resolved.container, resolve::Container::SwiftPackage(_))
     {
-        if opts.device || opts.mac {
+        if opts.device || opts.mac || ctx.targeting.on.is_some() {
             return Err(CliError::new(
-                "a Swift package executable runs on the host; --device/--mac don't apply",
+                "a Swift package executable runs on the host; --device/--mac/--on don't apply",
             ));
         }
         // No xcodebuild destination — `swift run` builds and runs the product.
         (String::new(), Target::SpmRun(scheme.clone()))
+    } else if let Some(reference) = ctx.targeting.on.clone() {
+        // `--on` picks the concrete target — simulator, device, or Mac — from
+        // one human reference; it replaces the --mac/--device mode flags.
+        let key = resolved.container.key();
+        match resolve::resolve_on(ctx, &key, &reference)? {
+            resolve::OnTarget::Mac => ("platform=macOS".to_string(), Target::Mac),
+            resolve::OnTarget::Simulator { udid, specifier } => {
+                (specifier, Target::Simulator(udid))
+            }
+            resolve::OnTarget::Device { udid, specifier } => (specifier, Target::Device(udid)),
+        }
     } else if opts.mac {
         ("platform=macOS".to_string(), Target::Mac)
     } else if opts.device {
         let devices = devicectl::list()?;
         let dev = if let Some(id) = opts.device_id {
-            devicectl::find(&devices, id)
-                .ok_or_else(|| CliError::new(format!("no device matching {id:?}")))?
+            devicectl::find(&devices, id).ok_or_else(|| {
+                CliError::new(format!("no device matching {id:?}"))
+                    .kind(ErrorKind::TargetResolution)
+            })?
         } else {
             let labels: Vec<String> = devices.iter().map(devicectl::Device::label).collect();
             let chosen = resolve::choose(ctx, "device", None, &labels)?;
             devices
                 .iter()
                 .find(|d| d.label() == chosen)
-                .ok_or_else(|| CliError::new("device not found"))?
+                .ok_or_else(|| CliError::new("device not found").kind(ErrorKind::TargetResolution))?
         };
         let platform = if dev.platform.is_empty() {
             "iOS"
@@ -349,6 +601,14 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         (destination, Target::Simulator(udid))
     };
 
+    // Launch inputs reach simulator and macOS processes; devicectl has no
+    // equivalent plumbing here yet — say so instead of silently dropping them.
+    if matches!(target, Target::Device(_)) && !opts.launch.is_empty() {
+        return Err(CliError::new(
+            "--arg/--env/--wait-for-debugger aren't supported for physical devices yet",
+        ));
+    }
+
     let plan = RunPlan {
         resolved,
         scheme,
@@ -356,13 +616,19 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         destination,
         target,
         hot: opts.hot,
+        launch: opts.launch.clone(),
+        passthrough: opts.passthrough.to_vec(),
     };
     let bt = resolve::BuildTarget {
         scheme: plan.scheme.clone(),
         configuration: plan.configuration.clone(),
         destination: plan.destination.clone(),
     };
-    resolve::remember(ctx, &plan.resolved, &bt);
+    // Remember the picks — but a `--mac`/`--device`/SPM destination is a
+    // one-off mode, never the remembered simulator context (persisting it would
+    // silently retarget the next plain `build start`).
+    let simulator = matches!(plan.target, Target::Simulator(_));
+    resolve::remember(ctx, &plan.resolved, &bt, simulator);
     Ok(plan)
 }
 
@@ -495,9 +761,11 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
     let app = build_and_install(plan, &ctx.out)?;
     match &plan.target {
         Target::Simulator(udid) => {
-            let out = ctx
-                .out
-                .step("Launching app", || simctl::launch(udid, &app.bundle_id))?;
+            let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
+            let opts = plan.simctl_launch(&env);
+            let out = ctx.out.step("Launching app", || {
+                simctl::launch_opts(udid, &app.bundle_id, &opts)
+            })?;
             ctx.out
                 .note(&format!("Launched {} → {}", app.bundle_id, out.trim()));
         }
@@ -513,7 +781,18 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
         }
         Target::Mac => {
             // Non-blocking launch (the logs/foreground path runs the executable).
-            crate::cli::process::stream("open", &[&app.path.to_string_lossy()], None)
+            // `open` can forward arguments but not per-process env.
+            let mut args: Vec<String> = vec![app.path.to_string_lossy().into_owned()];
+            if !plan.launch.args.is_empty() {
+                args.push("--args".to_string());
+                args.extend(plan.launch.args.iter().cloned());
+            }
+            if !plan.launch.env.is_empty() {
+                ctx.out
+                    .warn("--env is not forwarded through `open`; run without --no-logs to launch the executable directly");
+            }
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            crate::cli::process::stream("open", &arg_refs, None)
                 .context("launching the macOS app")?;
             ctx.out.note(&format!("Launched {}", app.bundle_id));
         }
@@ -573,8 +852,11 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
             let _ = boot.wait();
             None
         }
-        // Ctrl-C during the build cancels the whole run, not just the build.
-        BuildOutcome::Aborted => return Ok(()),
+        // Ctrl-C during the initial build cancels the whole run before anything
+        // launched — exit as a user cancel (6), not success.
+        BuildOutcome::Aborted => {
+            return Err(CliError::new("cancelled").kind(ErrorKind::UserCancel));
+        }
     };
     // The log stream is session-scoped: started once and kept across rebuilds (its
     // name-based predicate follows the relaunched app), so rebuilds never tear it
@@ -586,6 +868,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     let filterable = logs.is_some();
     session_hint(ctx, filterable);
 
+    let mut detach = false;
     loop {
         match rawmode::poll_key() {
             rawmode::Input::Key(ch) => match classify_key(ch) {
@@ -594,15 +877,23 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                         ever_launched |= launched;
                         session_hint(ctx, filterable);
                     }
-                    // Ctrl-C during the rebuild cancels the whole run.
-                    RebuildOutcome::Quit => {
-                        if let Some(r) = running.take() {
-                            terminate_app(r);
-                        }
-                        return Ok(());
-                    }
+                    // Ctrl-C during the rebuild cancels the whole run; fall
+                    // through to the shared teardown so a session that never
+                    // launched anything still exits non-zero.
+                    RebuildOutcome::Quit => break,
                 },
                 SessionKey::Quit => break,
+                // `d`: stop watching but leave the app running.
+                SessionKey::Detach => {
+                    detach = true;
+                    break;
+                }
+                SessionKey::Screenshot => session_screenshot(ctx, plan),
+                SessionKey::Foreground => {
+                    let _ = simctl::open_app();
+                }
+                SessionKey::Clear => ctx.out.line("\x1b[2J\x1b[H"),
+                SessionKey::Help => session_keys_help(ctx, filterable),
                 // Inert unless an os_log stream is actually being filtered (see
                 // `filterable`).
                 SessionKey::Filter(level) => {
@@ -621,7 +912,13 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
         }
     }
     if let Some(r) = running.take() {
-        terminate_app(r);
+        if detach {
+            ctx.out
+                .note(&format!("detached — {} keeps running", r.name));
+            detach_app(r);
+        } else {
+            terminate_app(r);
+        }
     }
     // A session that never produced a running app (the build kept failing) exits
     // non-zero, so a script or wrapper around `app run` sees the failure even
@@ -646,22 +943,30 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
 /// out from the streamed os_log. One save stays on one line — an in-progress message
 /// (ends with `…`) is drawn in place (carriage-return + clear-line, no newline) so the
 /// outcome overwrites it; any other line commits with a newline and stays in the
-/// scrollback. Without color (non-TTY) every line is a plain committed line.
-#[allow(clippy::print_stdout)] // live hot-reload status line, drawn in place
-fn hot_logger(color: bool) -> Logger {
+/// scrollback. Status lines are progress chatter, so they follow the output
+/// contract: stderr (stdout stays the app's own output) and muted by `--quiet`.
+/// Without color (non-TTY) every line is a plain committed line.
+#[allow(clippy::print_stderr)] // live hot-reload status line, drawn in place
+fn hot_logger(out: &Output) -> Logger {
     use std::io::Write as _;
+    let color = out.use_color();
+    let quiet = out.is_quiet();
     Arc::new(move |m: &str| {
+        if quiet {
+            return;
+        }
         if !color {
-            println!("{m}");
+            eprintln!("{m}");
         } else if m.ends_with('…') {
-            print!("\r\x1b[2K\x1b[1;35m{m}\x1b[0m");
-            let _ = std::io::stdout().flush();
+            eprint!("\r\x1b[2K\x1b[1;35m{m}\x1b[0m");
+            let _ = std::io::stderr().flush();
         } else {
-            println!("\r\x1b[2K\x1b[1;35m{m}\x1b[0m");
+            eprintln!("\r\x1b[2K\x1b[1;35m{m}\x1b[0m");
         }
     })
 }
 
+#[allow(clippy::too_many_lines)] // linear session setup/teardown, clearer unsplit
 fn run_hot_session(
     ctx: &Context,
     plan: &RunPlan,
@@ -714,8 +1019,11 @@ fn run_hot_session(
     match build(plan, &ctx.out, Some(&build_log)) {
         BuildOutcome::Ok => {}
         BuildOutcome::Failed(e) => return Err(e),
-        // Ctrl-C during the build cancels the hot session before it starts.
-        BuildOutcome::Aborted => return Ok(()),
+        // Ctrl-C during the build cancels the hot session before it starts —
+        // a user cancel (exit 6), not a success.
+        BuildOutcome::Aborted => {
+            return Err(CliError::new("cancelled").kind(ErrorKind::UserCancel));
+        }
     }
     let app = plan.app_bundle()?;
 
@@ -730,7 +1038,9 @@ fn run_hot_session(
     };
     let dylib = inject::client::resolve_dylib(&client_opts, &|msg| ctx.out.note(msg))
         .map_err(CliError::new)?;
-    let launch_env = inject::client::launch_env(&dylib, &client_opts);
+    let mut launch_env = inject::client::launch_env(&dylib, &client_opts);
+    // User --env pairs ride alongside the injection client's.
+    launch_env.extend(plan.launch.env_pairs("SIMCTL_CHILD_")?);
     ctx.out
         .note(&format!("hot reload: injecting {}", dylib.display()));
 
@@ -746,7 +1056,7 @@ fn run_hot_session(
         Some(build_log),
         work,
     ));
-    let log = hot_logger(ctx.out.use_color());
+    let log = hot_logger(&ctx.out);
     let server =
         Arc::new(InjectServer::start(recompiler, Arc::clone(&log)).map_err(CliError::new)?);
 
@@ -764,7 +1074,7 @@ fn run_hot_session(
     // stream (kept across `r` relaunches; its predicate follows the app by name).
     // Finish the background boot first; launch_hot's own boot then confirms it.
     let _ = boot.wait();
-    launch_hot(ctx, udid, &app, &launch_env)?;
+    launch_hot(ctx, udid, &app, &launch_env, &plan.launch.args)?;
     // Hot reload has no live filter UI; use the default threshold, never cycled.
     let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
     let mut logs = start_logs(ctx, plan, &filter);
@@ -773,10 +1083,11 @@ fn run_hot_session(
 
     // CI self-check: edit a file once, assert `.injected`, exit. Otherwise the
     // interactive key loop (`r`/`q`), or — non-TTY — follow logs until Ctrl-C.
+    let mut terminate_on_exit = true;
     let outcome = if let Some(file) = selfcheck {
         hot_selfcheck(ctx, &server, file, udid)
     } else if ctx.out.is_interactive() {
-        hot_key_loop(ctx, plan, udid, &launch_env, &mut logs);
+        terminate_on_exit = hot_key_loop(ctx, plan, udid, &launch_env, &mut logs);
         Ok(())
     } else {
         ctx.out
@@ -787,10 +1098,13 @@ fn run_hot_session(
         Ok(())
     };
 
-    // Teardown: stop watcher + server, terminate the app, kill the log stream.
+    // Teardown: stop watcher + server, terminate the app (unless detached),
+    // kill the log stream.
     session.shutdown();
     server.shutdown();
-    let _ = simctl::terminate(udid, &app.bundle_id);
+    if terminate_on_exit {
+        let _ = simctl::terminate(udid, &app.bundle_id);
+    }
     drop(logs);
     let _ = std::fs::remove_dir_all(
         std::env::temp_dir().join(format!("sweetpad-hot-{}", std::process::id())),
@@ -903,40 +1217,54 @@ fn app_logged_marker(udid: &str, nonce: &str, timeout: std::time::Duration) -> b
     false
 }
 
-/// Boot, install, and launch the app with the hot-reload env. Shared by the
-/// first launch and each `r`. Logs stream separately for the whole session
-/// ([`start_logs`]), so this doesn't touch them.
-fn launch_hot(ctx: &Context, udid: &str, app: &AppBundle, env: &[(String, String)]) -> CliResult {
+/// Boot, install, and launch the app with the hot-reload env (plus any user
+/// `--arg`s). Shared by the first launch and each `r`. Logs stream separately
+/// for the whole session ([`start_logs`]), so this doesn't touch them.
+fn launch_hot(
+    ctx: &Context,
+    udid: &str,
+    app: &AppBundle,
+    env: &[(String, String)],
+    args: &[String],
+) -> CliResult {
     ctx.out.step("Booting simulator", || simctl::boot(udid))?;
     ctx.out.step("Installing app", || {
         simctl::install(udid, &app.path.display().to_string())
     })?;
+    let opts = simctl::LaunchOptions {
+        args,
+        env,
+        wait_for_debugger: false,
+    };
     let launched = ctx.out.step("Launching app", || {
-        simctl::launch_with_env(udid, &app.bundle_id, env)
+        simctl::launch_opts(udid, &app.bundle_id, &opts)
     })?;
     ctx.out
         .note(&format!("Launched {} → {}", app.bundle_id, launched.trim()));
     Ok(())
 }
 
-/// The `--hot` keypress loop: `r` full rebuild+relaunch (the client reconnects),
-/// `q`/Ctrl-C/Ctrl-D quit. Injection happens out-of-band via the watcher.
+/// The `--hot` keypress loop: `r` full rebuild+relaunch (the client
+/// reconnects), `s`/`o`/`c`/`h` as in the plain session, `d` detaches (the app
+/// keeps running), `q`/Ctrl-C/Ctrl-D quit. Injection happens out-of-band via
+/// the watcher. Returns whether the app should be terminated on teardown
+/// (false after a detach).
 fn hot_key_loop(
     ctx: &Context,
     plan: &RunPlan,
     udid: &str,
     env: &[(String, String)],
     logs: &mut Option<LogStream>,
-) {
+) -> bool {
     let Ok(_raw) = rawmode::RawMode::enable() else {
         // No TTY for raw mode — just follow the log stream until Ctrl-C.
         if let Some(logs) = logs.as_mut() {
             logs.wait();
         }
-        return;
+        return true;
     };
     ctx.out
-        .note("hot reload ready · edit a Swift file to inject · r rebuilds · q quits");
+        .note("hot reload ready · edit a Swift file to inject · r rebuilds · d detaches · q quits");
     loop {
         match rawmode::poll_key() {
             rawmode::Input::Key(key) => match classify_key(key) {
@@ -954,7 +1282,7 @@ fn hot_key_loop(
                     let _ = simctl::terminate(udid, &app.bundle_id);
                     match build(plan, &ctx.out, None) {
                         BuildOutcome::Ok => {
-                            if let Err(e) = launch_hot(ctx, udid, &app, env) {
+                            if let Err(e) = launch_hot(ctx, udid, &app, env, &plan.launch.args) {
                                 ctx.out.error(&e);
                             }
                         }
@@ -964,6 +1292,19 @@ fn hot_key_loop(
                     }
                 }
                 SessionKey::Quit => break,
+                SessionKey::Detach => {
+                    ctx.out.note("detached — the app keeps running");
+                    return false;
+                }
+                SessionKey::Screenshot => session_screenshot(ctx, plan),
+                SessionKey::Foreground => {
+                    let _ = simctl::open_app();
+                }
+                SessionKey::Clear => ctx.out.line("\x1b[2J\x1b[H"),
+                SessionKey::Help => ctx.out.note(
+                    "r rebuild+relaunch · s screenshot · o focus simulator · c clear · \
+                     d detach · q quit",
+                ),
                 // The hot session has no in-session filter keys — ignore them.
                 SessionKey::Filter(_) | SessionKey::Ignore => {}
             },
@@ -971,6 +1312,7 @@ fn hot_key_loop(
             rawmode::Input::Closed => break,
         }
     }
+    true
 }
 
 /// A launched app in the interactive session, plus what's needed to terminate it
@@ -1010,6 +1352,9 @@ struct LogStream {
     /// for the same app (see [`log_stream_marker`]). `None` for the host macOS
     /// stream, which is a direct child and needs no reaping.
     marker: Option<String>,
+    /// Slot in the signal handler's child registry, so a SIGTERM mid-session
+    /// still kills the stream child.
+    reap_slot: Option<usize>,
 }
 
 impl LogStream {
@@ -1025,6 +1370,7 @@ impl Drop for LogStream {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        crate::cli::signals::unregister_child(self.reap_slot.take());
         // `simctl spawn … log stream` reparents the `log` process to launchd_sim,
         // so killing our simctl child leaves it running — reap it by the
         // session-unique tag embedded in its predicate. Best-effort. The host macOS
@@ -1050,8 +1396,10 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 .step("Installing app", || simctl::install(udid, &app_path))?;
             // `--console-pty` keeps the launch attached, so this child's stdout/stderr
             // are the app's; its exit means the app exited.
+            let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
+            let opts = plan.simctl_launch(&env);
             let mut child = ctx.out.step("Launching app", || {
-                simctl::spawn_console(udid, &app.bundle_id)
+                simctl::spawn_console(udid, &app.bundle_id, &opts)
             })?;
             render_console(&mut child, ctx.out.use_color(), filter);
             Ok(Running {
@@ -1081,8 +1429,21 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             })
         }
         Target::Mac => {
-            let mut child =
-                process::spawn_piped_both(&app.executable.to_string_lossy(), &[], None)?;
+            // The direct spawn honors both --arg and --env (no simctl between
+            // us and the process).
+            let env = plan.launch.env_pairs("")?;
+            let mut cmd = std::process::Command::new(app.executable.as_os_str());
+            cmd.args(&plan.launch.args)
+                .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+            let mut child = cmd.spawn().map_err(|e| {
+                CliError::new(format!(
+                    "failed to run `{}`: {e}",
+                    app.executable.display()
+                ))
+            })?;
             render_console(&mut child, ctx.out.use_color(), filter);
             Ok(Running {
                 stream: Some(child),
@@ -1092,6 +1453,24 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             })
         }
         Target::SpmRun(_) => unreachable!("SPM run does not use the interactive session"),
+    }
+}
+
+/// Detach from the running app: stop watching without stopping the app (the
+/// `d` key). For simulator/device targets the console child is only an
+/// observer — reap it and go. A macOS target's streamed child *is* the app, so
+/// it's left completely alone (it keeps running; its stdout may stall once the
+/// unread pipe fills — relaunch from Finder for a long-lived detach).
+fn detach_app(running: Running) {
+    let Running { stream, kind, .. } = running;
+    match kind {
+        RunningKind::Mac => drop(stream),
+        RunningKind::Simulator { .. } | RunningKind::Device { .. } => {
+            if let Some(mut stream) = stream {
+                let _ = stream.kill();
+                let _ = stream.wait();
+            }
+        }
     }
 }
 
@@ -1144,6 +1523,10 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
         Err(e) => return BuildOutcome::Failed(e),
     };
     let pid = child.id();
+    // The child leads its own process group, so a SIGINT delivered to *us*
+    // (e.g. Ctrl-C during the `--hot` initial build, before raw mode is on)
+    // must be forwarded or the build keeps running detached.
+    crate::cli::signals::set_build_pgid(pid);
     // Spinner + elapsed timer while xcodebuild is silent (its planning prelude,
     // or a no-op up-to-date build); erased as soon as the first line renders.
     let mut progress = buildlog::BuildProgress::start(out, "Building");
@@ -1169,12 +1552,20 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
     });
 
     // Beautify xcodebuild's piped stdout on this thread (the same path as
-    // [`buildlog::run`], inlined so we own the child for the watcher).
+    // [`buildlog::run`], inlined so we own the child for the watcher), also
+    // collecting diagnostics for the last-build artifact.
+    let mut diagnostics: Vec<serde_json::Value> = Vec::new();
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines() {
             let Ok(line) = line else { break };
             if let Some(file) = capture_file.as_mut() {
                 let _ = writeln!(file, "{line}");
+            }
+            let event = buildlog::parse_line(&line);
+            if matches!(event, buildlog::Event::Diagnostic { .. })
+                && let Some(json) = buildlog::event_json(&event)
+            {
+                diagnostics.push(json);
             }
             if let Some(rendered) = progress.line(&line) {
                 out.line(&rendered);
@@ -1186,6 +1577,7 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
     drop(progress);
 
     let status = child.wait();
+    crate::cli::signals::clear_build_pgid();
     done.store(true, Ordering::Relaxed);
     let _ = watcher.join();
 
@@ -1193,6 +1585,11 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
         out.note("Build cancelled");
         return BuildOutcome::Aborted;
     }
+    xcodebuild::record_build_diagnostics(
+        &plan.resolved.container,
+        matches!(&status, Ok(s) if s.success()),
+        &diagnostics,
+    );
     match status {
         Ok(s) if s.success() => BuildOutcome::Ok,
         Ok(_) => BuildOutcome::Failed(
@@ -1224,10 +1621,11 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
     let app = build_and_install(plan, &ctx.out)?;
     match &plan.target {
         Target::Simulator(udid) => {
-            let launched = simctl::launch(udid, &app.bundle_id)?;
+            let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
+            let launched = simctl::launch_opts(udid, &app.bundle_id, &plan.simctl_launch(&env))?;
             ctx.out
                 .note(&format!("Launched {} → {}", app.bundle_id, launched.trim()));
-            stream_logs(ctx, udid, &app)
+            stream_logs(ctx, udid, &app, &LogFilterArgs::default())
         }
         Target::Device(id) => {
             ctx.out.note(&format!(
@@ -1247,8 +1645,24 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
             // non-interactive path has no live filter, so use the default threshold.
             let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
             let _logs = start_logs(ctx, plan, &filter);
-            process::stream(&app.executable.to_string_lossy(), &[], None)
-                .context("running the macOS app")
+            // Direct spawn (inherited stdio) so --arg/--env reach the process.
+            let env = plan.launch.env_pairs("")?;
+            let status = std::process::Command::new(app.executable.as_os_str())
+                .args(&plan.launch.args)
+                .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+                .status()
+                .map_err(|e| {
+                    CliError::new(format!("failed to run `{}`: {e}", app.executable.display()))
+                })?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(CliError::new(format!(
+                    "{} exited with {status}",
+                    app.executable.display()
+                ))
+                .context("running the macOS app"))
+            }
         }
         Target::SpmRun(_) => unreachable!("SPM run handled before this match"),
     }
@@ -1259,13 +1673,25 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
 enum SessionKey {
     Rebuild,
     Quit,
+    /// Leave the app running and end the session (the flutter `d`).
+    Detach,
+    /// Save a simulator screenshot into ./sweetpad-shots/.
+    Screenshot,
+    /// Bring Simulator.app to the foreground.
+    Foreground,
+    /// Clear the terminal.
+    Clear,
+    /// Show the key list.
+    Help,
     /// Set the live log filter (the `1`–`4` keys).
     Filter(LogFilter),
     Ignore,
 }
 
-/// Map a keystroke to a session action. `r` rebuilds; `q`, Ctrl-C, and Ctrl-D
-/// quit; `1`–`4` set the log filter (debug/info/error/off); everything else is
+/// Map a keystroke to a session action (the flutter-run keymap): `r`/`R`
+/// rebuild; `d` detaches (app keeps running); `s` screenshot; `o` foregrounds
+/// the simulator; `c` clears; `h` lists keys; `q`, Ctrl-C, and Ctrl-D quit;
+/// `1`–`4` set the log filter (debug/info/error/off); everything else is
 /// ignored. The key is first folded to the Latin letter on its physical position
 /// ([`map_key_to_latin`]), so the shortcuts work on non-Latin layouts (Cyrillic
 /// `к`/`й`) without switching. (A closed stdin is handled separately as
@@ -1274,6 +1700,11 @@ fn classify_key(key: char) -> SessionKey {
     match map_key_to_latin(key) {
         'r' | 'R' => SessionKey::Rebuild,
         'q' | 'Q' | '\u{3}' | '\u{4}' => SessionKey::Quit,
+        'd' | 'D' => SessionKey::Detach,
+        's' | 'S' => SessionKey::Screenshot,
+        'o' | 'O' => SessionKey::Foreground,
+        'c' | 'C' => SessionKey::Clear,
+        'h' | 'H' => SessionKey::Help,
         '1' => SessionKey::Filter(LogFilter::Debug),
         '2' => SessionKey::Filter(LogFilter::Info),
         '3' => SessionKey::Filter(LogFilter::Error),
@@ -1348,16 +1779,39 @@ fn map_key_to_latin(key: char) -> char {
     }
 }
 
-/// The session's key hint. The log-level keys are shown only when there's an
-/// os_log stream to filter (the simulator or a macOS app); a device session just
-/// rebuilds and quits.
-fn session_hint(ctx: &Context, filterable: bool) {
-    let hint = if filterable {
-        "r rebuild · q quit  │  log level: 1 debug · 2 info · 3 error · 4 off"
-    } else {
-        "r rebuild · q quit"
+/// The session's short key hint; `h` prints the full list.
+fn session_hint(ctx: &Context, _filterable: bool) {
+    ctx.out.note("r rebuild · d detach · q quit · h keys");
+}
+
+/// The full keymap, on `h`. The log-level keys are shown only when there's an
+/// os_log stream to filter (the simulator or a macOS app).
+fn session_keys_help(ctx: &Context, filterable: bool) {
+    ctx.out.note(
+        "r rebuild+relaunch · s screenshot · o focus simulator · c clear · \
+         d detach (leave the app running) · q quit (terminate the app)",
+    );
+    if filterable {
+        ctx.out
+            .note("log level: 1 debug · 2 info · 3 error · 4 off");
+    }
+}
+
+/// The `s` key: screenshot a simulator target into ./sweetpad-shots/.
+fn session_screenshot(ctx: &Context, plan: &RunPlan) {
+    let Target::Simulator(udid) = &plan.target else {
+        ctx.out.note("screenshots need a simulator target");
+        return;
     };
-    ctx.out.note(hint);
+    let name = sim_name(udid).unwrap_or_else(|| "simulator".to_string());
+    let path = super::simulator::default_screenshot_path(&name);
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match simctl::screenshot(udid, &path.display().to_string()) {
+        Ok(()) => ctx.out.note(&format!("📸 {}", path.display())),
+        Err(e) => ctx.out.error(&e),
+    }
 }
 
 /// A live log-filter choice (the `1`–`4` keys). `Debug`/`Info`/`Error` show that
@@ -1455,11 +1909,14 @@ fn do_rebuild(
     }
 }
 
-/// `▶ scheme · configuration · destination` — the run summary shown before the
-/// build, so what's about to run (and what was auto-selected) is clear up front.
+/// `▶ scheme · configuration · destination [· hot reload]` — the session
+/// header shown before the build, so what's about to run (and what was
+/// auto-selected) is clear up front; the build time lands on the `✓ Launched
+/// in N.Ns` line once it's known.
 fn print_summary(ctx: &Context, plan: &RunPlan) {
+    let hot = if plan.hot { " · hot reload on" } else { "" };
     ctx.out.note(&format!(
-        "▶ {} · {} · {}",
+        "▶ {} · {} · {}{hot}",
         plan.scheme,
         plan.configuration,
         destination_label(plan)
@@ -1529,7 +1986,7 @@ fn spawn_logs(
     level: &str,
     marker: Option<&str>,
 ) -> Result<Child, CliError> {
-    let (program, args) = log_command(source, app, level, marker);
+    let (program, args) = log_command(source, app, level, marker, &LogFilterArgs::default());
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     process::spawn_piped_both(program, &refs, None)
 }
@@ -1559,12 +2016,23 @@ fn log_command(
     app: &AppBundle,
     level: &str,
     marker: Option<&str>,
+    filters: &LogFilterArgs,
 ) -> (&'static str, Vec<String>) {
     use std::fmt::Write as _;
     let exe = process_name(app);
-    let mut predicate = format!(
-        "process == \"{exe}\" AND (sender == \"{exe}\" OR sender == \"{exe}.debug.dylib\")"
-    );
+    // A raw --predicate replaces the default process match wholesale;
+    // --subsystem/--category narrow it.
+    let mut predicate = filters.predicate.clone().unwrap_or_else(|| {
+        format!(
+            "process == \"{exe}\" AND (sender == \"{exe}\" OR sender == \"{exe}.debug.dylib\")"
+        )
+    });
+    if let Some(subsystem) = &filters.subsystem {
+        let _ = write!(predicate, " AND subsystem == \"{subsystem}\"");
+    }
+    if let Some(category) = &filters.category {
+        let _ = write!(predicate, " AND category == \"{category}\"");
+    }
     if let Some(marker) = marker {
         let _ = write!(
             predicate,
@@ -1738,7 +2206,12 @@ fn start_logs(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Option<L
     let mut child = spawn_logs(&source, &app, "debug", marker.as_deref()).ok()?;
     render_logs(&mut child, ctx.out.use_color(), Arc::clone(filter));
     render_log_stderr(&mut child, ctx.out.use_color(), Arc::clone(filter));
-    Some(LogStream { child, marker })
+    let reap_slot = crate::cli::signals::register_child(child.id());
+    Some(LogStream {
+        child,
+        marker,
+        reap_slot,
+    })
 }
 
 /// Start a physical device's os_log stream via `pymobiledevice3` — the host `log`
@@ -1759,10 +2232,12 @@ fn start_device_logs(ctx: &Context, app: &AppBundle, filter: &Arc<AtomicU8>) -> 
     let exe = process_name(app).to_string();
     let mut child = pymobiledevice3::spawn(&exe).ok()?;
     render_device_logs(&mut child, ctx.out.use_color(), exe, Arc::clone(filter));
+    let reap_slot = crate::cli::signals::register_child(child.id());
     // `pymobiledevice3` is a direct child, killed on drop — no reparented `log` to reap.
     Some(LogStream {
         child,
         marker: None,
+        reap_slot,
     })
 }
 
@@ -1790,12 +2265,59 @@ fn process_name(app: &AppBundle) -> &str {
 enum Stage {
     Install,
     Launch,
-    Logs,
+    Uninstall,
     Stop,
 }
 
-fn simple(ctx: &mut Context, stage: Stage) -> CommandResult {
-    // These default to a simulator target (the common headless case).
+fn simple(
+    ctx: &mut Context,
+    stage: Stage,
+    launch: &LaunchArgs,
+    stage_target: &StageTargetArgs,
+) -> CommandResult {
+    let on_device = stage_target.device || stage_target.device_id.is_some();
+    // `stop` acts on the *running* app: when a launch is recorded, use it
+    // directly instead of resolving (and possibly prompting for, and
+    // remembering) a whole build target just to kill a process.
+    if matches!(stage, Stage::Stop)
+        && !on_device
+        && let Some(result) = simple_from_last_launched(ctx, stage)
+    {
+        return result;
+    }
+
+    // Simulator by default (the common headless case); --device/--device-id
+    // switch every stage to devicectl.
+    let opts = RunOpts {
+        device: on_device,
+        device_id: stage_target.device_id.as_deref(),
+        mac: false,
+        no_logs: true,
+        hot: false,
+        hot_mode: Mode::Resolver,
+        hot_selfcheck: None,
+        launch,
+        passthrough: &[],
+    };
+    let plan = plan(ctx, &opts)?;
+    let app = plan.app_bundle()?;
+
+    let report = match &plan.target {
+        Target::Simulator(udid) => simple_on_simulator(ctx, stage, &plan, &app, udid)?,
+        Target::Device(id) => simple_on_device(ctx, stage, &plan, &app, id)?,
+        Target::Mac | Target::SpmRun(_) => {
+            return Err(CliError::new(
+                "app install/launch/uninstall/stop act on a simulator or device",
+            ));
+        }
+    };
+    Ok(Rendered::data(report))
+}
+
+/// `app debug`: build + install, launch with `--wait-for-debugger`
+/// (the process starts suspended), then attach `lldb -p <pid>` interactively —
+/// type `continue` in lldb to resume the app. Simulator-only for now.
+fn debug(ctx: &mut Context, launch: &LaunchArgs) -> CommandResult {
     let opts = RunOpts {
         device: false,
         device_id: None,
@@ -1804,16 +2326,55 @@ fn simple(ctx: &mut Context, stage: Stage) -> CommandResult {
         hot: false,
         hot_mode: Mode::Resolver,
         hot_selfcheck: None,
+        launch,
+        passthrough: &[],
     };
     let plan = plan(ctx, &opts)?;
     let Target::Simulator(udid) = &plan.target else {
         return Err(CliError::new(
-            "app install/launch/logs/stop are only supported for simulator targets",
+            "app debug currently supports simulator targets only",
         ));
     };
-    let app = plan.app_bundle()?;
+    let app = build_and_install(&plan, &ctx.out)?;
 
-    let report = match stage {
+    let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
+    let mut launch_opts = plan.simctl_launch(&env);
+    launch_opts.wait_for_debugger = true;
+    let launched = ctx.out.step("Launching app (suspended)", || {
+        simctl::launch_opts(udid, &app.bundle_id, &launch_opts)
+    })?;
+
+    // `simctl launch` prints `<bundle>: <pid>`.
+    let pid = launched
+        .trim()
+        .rsplit(':')
+        .next()
+        .map(str::trim)
+        .and_then(|p| p.parse::<u32>().ok())
+        .ok_or_else(|| {
+            CliError::new(format!(
+                "could not read the launched pid from simctl output {launched:?}"
+            ))
+        })?;
+
+    ctx.out.note(&format!(
+        "attaching lldb to {} (pid {pid}) — type `continue` to resume the app",
+        app.bundle_id
+    ));
+    process::stream("lldb", &["-p", &pid.to_string()], None)
+        .map(|()| Rendered::Streamed)
+        .map_err(|e| e.context("attaching lldb"))
+}
+
+/// The simulator side of a lifecycle stage.
+fn simple_on_simulator(
+    ctx: &mut Context,
+    stage: Stage,
+    plan: &RunPlan,
+    app: &AppBundle,
+    udid: &str,
+) -> Result<AppStageReport, CliError> {
+    Ok(match stage {
         Stage::Install => {
             plan.build_plan()
                 .run(&ctx.out)
@@ -1822,50 +2383,206 @@ fn simple(ctx: &mut Context, stage: Stage) -> CommandResult {
             ctx.out.step("Installing app", || {
                 simctl::install(udid, &app.path.display().to_string())
             })?;
-            AppStageReport {
-                action: "installed",
-                note: format!("Installed {}", app.bundle_id),
-                bundle_id: app.bundle_id.clone(),
-                udid: udid.clone(),
-                detail: None,
-            }
+            stage_report("installed", &format!("Installed {}", app.bundle_id), app, udid, None)
         }
         Stage::Launch => {
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
             // Bring the Simulator window up so the launched app is visible (best-effort).
             let _ = simctl::open_app();
-            let out = ctx
-                .out
-                .step("Launching app", || simctl::launch(udid, &app.bundle_id))?;
+            let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
+            let launch_opts = plan.simctl_launch(&env);
+            let out = ctx.out.step("Launching app", || {
+                simctl::launch_opts(udid, &app.bundle_id, &launch_opts)
+            })?;
             let detail = out.trim().to_string();
-            AppStageReport {
-                action: "launched",
-                note: format!("Launched {} → {detail}", app.bundle_id),
-                bundle_id: app.bundle_id.clone(),
-                udid: udid.clone(),
-                detail: Some(detail),
-            }
+            stage_report(
+                "launched",
+                &format!("Launched {} → {detail}", app.bundle_id),
+                app,
+                udid,
+                Some(detail),
+            )
         }
-        Stage::Logs => {
-            // Boot first so the stream attaches instead of failing with "device is
-            // not booted" when the simulator is shut down.
+        Stage::Uninstall => {
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
-            return stream_logs(ctx, udid, &app).map(|()| Rendered::Streamed);
+            ctx.out.step("Uninstalling app", || {
+                simctl::uninstall(udid, &app.bundle_id)
+            })?;
+            stage_report(
+                "uninstalled",
+                &format!("Uninstalled {}", app.bundle_id),
+                app,
+                udid,
+                None,
+            )
         }
         Stage::Stop => {
             ctx.out.step("Terminating app", || {
                 simctl::terminate(udid, &app.bundle_id)
             })?;
-            AppStageReport {
-                action: "terminated",
-                note: format!("Terminated {}", app.bundle_id),
-                bundle_id: app.bundle_id.clone(),
-                udid: udid.clone(),
-                detail: None,
-            }
+            stage_report(
+                "terminated",
+                &format!("Terminated {}", app.bundle_id),
+                app,
+                udid,
+                None,
+            )
         }
+    })
+}
+
+/// The devicectl side of a lifecycle stage.
+fn simple_on_device(
+    ctx: &mut Context,
+    stage: Stage,
+    plan: &RunPlan,
+    app: &AppBundle,
+    id: &str,
+) -> Result<AppStageReport, CliError> {
+    Ok(match stage {
+        Stage::Install => {
+            plan.build_plan()
+                .run(&ctx.out)
+                .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
+            ctx.out.step("Installing app on device", || {
+                devicectl::install(id, &app.path.display().to_string())
+            })?;
+            stage_report("installed", &format!("Installed {} on device", app.bundle_id), app, id, None)
+        }
+        Stage::Launch => {
+            let out = ctx.out.step("Launching app on device", || {
+                devicectl::launch(id, &app.bundle_id)
+            })?;
+            let detail = out.trim().to_string();
+            stage_report(
+                "launched",
+                &format!("Launched {} on device → {detail}", app.bundle_id),
+                app,
+                id,
+                Some(detail),
+            )
+        }
+        Stage::Uninstall => {
+            ctx.out.step("Uninstalling app from device", || {
+                devicectl::uninstall(id, &app.bundle_id)
+            })?;
+            stage_report(
+                "uninstalled",
+                &format!("Uninstalled {} from device", app.bundle_id),
+                app,
+                id,
+                None,
+            )
+        }
+        Stage::Stop => {
+            ctx.out.step("Terminating app on device", || {
+                devicectl::terminate(id, &app.bundle_id)
+            })?;
+            stage_report(
+                "terminated",
+                &format!("Terminated {} on device", app.bundle_id),
+                app,
+                id,
+                None,
+            )
+        }
+    })
+}
+
+fn stage_report(
+    action: &'static str,
+    note: &str,
+    app: &AppBundle,
+    udid: &str,
+    detail: Option<String>,
+) -> AppStageReport {
+    AppStageReport {
+        action,
+        note: note.to_string(),
+        bundle_id: app.bundle_id.clone(),
+        udid: udid.to_string(),
+        detail,
+    }
+}
+
+/// Serve `app logs`/`app stop` from the recorded last launch when it targeted a
+/// simulator — no scheme resolution, no build-settings query, no prompting.
+/// `None` (fall back to the full plan) when nothing was recorded or the record
+/// is for a device/macOS run.
+fn simple_from_last_launched(ctx: &mut Context, stage: Stage) -> Option<CommandResult> {
+    let (udid, app) = last_launched_sim(ctx)?;
+    Some(match stage {
+        Stage::Stop => ctx
+            .out
+            .step("Terminating app", || simctl::terminate(&udid, &app.bundle_id))
+            .map(|()| {
+                Rendered::data(AppStageReport {
+                    action: "terminated",
+                    note: format!("Terminated {}", app.bundle_id),
+                    bundle_id: app.bundle_id.clone(),
+                    udid: udid.clone(),
+                    detail: None,
+                })
+            }),
+        Stage::Install | Stage::Launch | Stage::Uninstall => {
+            unreachable!("gated to Stop by the caller")
+        }
+    })
+}
+
+/// `app logs` — its own entry point so the stream filters reach
+/// [`stream_logs`]. Uses the recorded last launch when available, else the
+/// resolved build target.
+fn simple_logs(ctx: &mut Context, filters: &LogFilterArgs) -> CommandResult {
+    if let Some((udid, app)) = last_launched_sim(ctx) {
+        ctx.out.step("Booting simulator", || simctl::boot(&udid))?;
+        stream_logs(ctx, &udid, &app, filters)?;
+        return Ok(Rendered::Streamed);
+    }
+    let opts = RunOpts {
+        device: false,
+        device_id: None,
+        mac: false,
+        no_logs: true,
+        hot: false,
+        hot_mode: Mode::Resolver,
+        hot_selfcheck: None,
+        launch: &LaunchArgs::default(),
+        passthrough: &[],
     };
-    Ok(Rendered::data(report))
+    let plan = plan(ctx, &opts)?;
+    let Target::Simulator(udid) = &plan.target else {
+        return Err(CliError::new(
+            "app logs is only supported for simulator targets",
+        ));
+    };
+    let app = plan.app_bundle()?;
+    // Boot first so the stream attaches instead of failing with "device is
+    // not booted" when the simulator is shut down.
+    ctx.out.step("Booting simulator", || simctl::boot(udid))?;
+    stream_logs(ctx, udid, &app, filters)?;
+    Ok(Rendered::Streamed)
+}
+
+/// The recorded last launch, when it targeted a simulator: `(udid, bundle)`.
+fn last_launched_sim(ctx: &Context) -> Option<(String, AppBundle)> {
+    let container = resolve::container(ctx).ok()?;
+    let last = ctx
+        .state
+        .projects
+        .get(&container.key())?
+        .last_launched_app
+        .clone()?;
+    if last.kind != "simulator" {
+        return None;
+    }
+    let udid = last.simulator_udid.clone()?;
+    let app = AppBundle {
+        path: std::path::PathBuf::from(&last.app_path),
+        bundle_id: last.bundle_identifier.clone(),
+        executable: std::path::PathBuf::from(last.executable_name.as_deref().unwrap_or_default()),
+    };
+    Some((udid, app))
 }
 
 /// The result of an `app install`/`launch`/`stop` stage: a status note in human
@@ -1895,17 +2612,30 @@ impl Render for AppStageReport {
 
 /// Follow a simulator's log for the app inline until Ctrl-C — the non-interactive
 /// fallback (the interactive session backgrounds the same stream via [`spawn_logs`]).
+/// Under `--json` each os_log event is passed through as the raw NDJSON object
+/// `log stream --style ndjson` produced — one JSON event per line on stdout —
+/// instead of the human-rendered text (a stream has no single success envelope
+/// to wrap).
 #[allow(clippy::print_stdout)] // non-interactive inline log follow
-fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle) -> CliResult {
+fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle, filters: &LogFilterArgs) -> CliResult {
     ctx.out.note(&format!(
         "Streaming logs for {} (Ctrl-C to stop)",
         app.bundle_id
     ));
     let color = ctx.out.use_color();
-    let (program, args) = log_command(&LogSource::Simulator(udid), app, log_level(&ctx.out), None);
+    let json = ctx.out.is_json() || ctx.out.is_ndjson();
+    let level = filters.level.as_deref().unwrap_or(log_level(&ctx.out));
+    let (program, args) = log_command(&LogSource::Simulator(udid), app, level, None, filters);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let ok = process::stream_lines(program, &refs, None, |line| {
-        println!("{}", oslog::render_ndjson_line(line, color).text);
+        if json {
+            // Already one JSON object per line; emit the event verbatim.
+            if line.trim_start().starts_with('{') {
+                println!("{line}");
+            }
+        } else {
+            println!("{}", oslog::render_ndjson_line(line, color).text);
+        }
     })?;
     if ok {
         Ok(())
@@ -1924,6 +2654,7 @@ fn udid(destination: &str) -> Result<String, CliError> {
             CliError::new(format!(
                 "app commands need a destination with an id= (got {destination:?})"
             ))
+            .kind(ErrorKind::TargetResolution)
         })
 }
 
@@ -2033,8 +2764,13 @@ mod tests {
     #[test]
     fn log_command_simulator_wraps_simctl_spawn_with_marker() {
         let app = test_app();
-        let (program, args) =
-            log_command(&LogSource::Simulator("UDID-1"), &app, "info", Some("tag-7"));
+        let (program, args) = log_command(
+            &LogSource::Simulator("UDID-1"),
+            &app,
+            "info",
+            Some("tag-7"),
+            &LogFilterArgs::default(),
+        );
         assert_eq!(program, "xcrun");
         assert_eq!(&args[..5], &["simctl", "spawn", "UDID-1", "log", "stream"]);
         let predicate = args.last().unwrap();
@@ -2048,7 +2784,8 @@ mod tests {
     #[test]
     fn log_command_mac_runs_host_log_without_marker() {
         let app = test_app();
-        let (program, args) = log_command(&LogSource::Mac, &app, "debug", None);
+        let (program, args) =
+            log_command(&LogSource::Mac, &app, "debug", None, &LogFilterArgs::default());
         // The host `log` binary directly — no `simctl spawn` wrapper.
         assert_eq!(program, "log");
         assert_eq!(&args[..2], &["stream", "--level"]);

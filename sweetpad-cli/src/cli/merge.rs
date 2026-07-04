@@ -179,20 +179,7 @@ pub fn resolve(kind: Kind, paths: &[PathBuf], force: bool) -> CommandResult {
         }));
     }
 
-    let merge_head = if force {
-        Some(
-            git_opt(&repo, &["rev-parse", "MERGE_HEAD"])
-                .map(|s| s.trim().to_string())
-                .ok_or_else(|| {
-                    CliError::new(
-                        "--force needs an in-progress merge (MERGE_HEAD), but none was found",
-                    )
-                })?,
-        )
-    } else {
-        None
-    };
-
+    let merge_head = force_merge_head(&repo, force)?;
     let results: Vec<(String, Outcome)> = targets
         .iter()
         .map(|path| {
@@ -202,7 +189,77 @@ pub fn resolve(kind: Kind, paths: &[PathBuf], force: bool) -> CommandResult {
             )
         })
         .collect();
+    Ok(finish_resolve(results))
+}
 
+/// `merge run`: resolve conflicted `.pbxproj` *and* `Package.resolved`
+/// files in one command, auto-detecting each path's kind; with no paths, every
+/// conflicted file of either kind.
+pub fn resolve_auto(paths: &[PathBuf], force: bool) -> CommandResult {
+    let repo = PathBuf::from(git(None, &["rev-parse", "--show-toplevel"])?.trim());
+
+    let targets: Vec<String> = if paths.is_empty() {
+        git(Some(&repo), &["diff", "--name-only", "--diff-filter=U"])?
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && (Kind::Pbxproj.matches(l) || Kind::Spm.matches(l)))
+            .map(String::from)
+            .collect()
+    } else {
+        paths.iter().map(|p| to_repo_relative(&repo, p)).collect()
+    };
+
+    if targets.is_empty() {
+        return Ok(Rendered::data(MergeReport {
+            results: Vec::new(),
+            empty_note: Some(
+                "No conflicted .pbxproj or Package.resolved files to resolve.".to_string(),
+            ),
+        }));
+    }
+
+    let merge_head = force_merge_head(&repo, force)?;
+    let results: Vec<(String, Outcome)> = targets
+        .iter()
+        .map(|path| {
+            let kind = if Kind::Pbxproj.matches(path) {
+                Kind::Pbxproj
+            } else if Kind::Spm.matches(path) {
+                Kind::Spm
+            } else {
+                return (
+                    path.clone(),
+                    Outcome::Skipped(
+                        "not a .pbxproj or Package.resolved file — nothing to merge semantically"
+                            .into(),
+                    ),
+                );
+            };
+            (
+                path.clone(),
+                resolve_one(&repo, kind, path, merge_head.as_deref()),
+            )
+        })
+        .collect();
+    Ok(finish_resolve(results))
+}
+
+/// The `--force` re-merge inputs: HEAD/MERGE_HEAD, which requires an
+/// in-progress merge.
+fn force_merge_head(repo: &Path, force: bool) -> Result<Option<String>, CliError> {
+    if !force {
+        return Ok(None);
+    }
+    git_opt(repo, &["rev-parse", "MERGE_HEAD"])
+        .map(|s| Some(s.trim().to_string()))
+        .ok_or_else(|| {
+            CliError::new("--force needs an in-progress merge (MERGE_HEAD), but none was found")
+        })
+}
+
+/// Package the per-file outcomes: render the report, exiting non-zero when
+/// anything stayed unresolved.
+fn finish_resolve(results: Vec<(String, Outcome)>) -> Rendered {
     let failed = results
         .iter()
         .filter(|(_, o)| !matches!(o, Outcome::Resolved))
@@ -213,9 +270,9 @@ pub fn resolve(kind: Kind, paths: &[PathBuf], force: bool) -> CommandResult {
     };
     if failed > 0 {
         // Render the per-file report, but exit non-zero on unresolved conflicts.
-        Ok(Rendered::data_with_exit(report, 1))
+        Rendered::data_with_exit(report, 1)
     } else {
-        Ok(Rendered::data(report))
+        Rendered::data(report)
     }
 }
 

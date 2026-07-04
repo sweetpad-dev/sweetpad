@@ -30,6 +30,30 @@ It lives in the **same `sweetpad` binary** as the existing `vscode` namespace
 Consistent and discoverable (like `kubectl`/`docker`/`gh`). Resources live at
 the **top level**; `vscode` is just one more top-level entry.
 
+**Verb shortcuts for the daily loop.** The hot-path commands also work without
+their action token — `sweetpad build` (= `build start`), `sweetpad test`
+(= `test run`), `sweetpad app` / the flagship `sweetpad run` (= `app run`),
+`sweetpad format` (= `format run`) — plus `sweetpad clean` and the aggregated
+`sweetpad devices` view. Bare `sweetpad` prints the status view inside a
+project. Aliases: `dep`, `sim`, `dd`, `fmt`.
+
+**Flag policy.** `--yes` skips a confirmation prompt (the action is unchanged);
+`--force` overrides a safety check (e.g. `project new --force` scaffolds into a
+non-empty directory; `merge`-family `--force` redoes work git considers done).
+`--all` widens scope to "everything in this store" (`derived-data --all`,
+`context remove --all`); commands that act on "every item" by default express
+it by *omitting* a positional (`dependency update`), not with `--all`.
+
+**Deletion verbs are domain-faithful, not uniform:** `simulator erase` (Apple's
+term for factory-reset), `context remove`/`dependency remove` (take something
+out of a collection), `derived-data purge` (delete stored data wholesale).
+
+**`--target` glossary.** The word is overloaded by the domain itself: a build
+target (`settings show --target`), a link target (`dependency add --target`),
+the default *test* target (`context select target --testing`), and the
+positional simulator argument named TARGET on `simulator` verbs. Each command's
+help says which one it means.
+
 ## 3. Command surface (v1)
 
 v1 scope is **explore + build/run** — the minimum to actually develop headless.
@@ -58,6 +82,33 @@ groups under `app`, the noun it acts on.
 
 Out of scope for v1 (later iterations): `test`, `format`, `device` (physical)
 management, `bsp` (autocomplete config), `tools` (Homebrew).
+
+### The surface as shipped (post-audit, July 2026)
+
+The audit pass grew the tree beyond the v1 sketch:
+
+```
+sweetpad                          status view in a project; help outside one
+sweetpad run [--on X] [--hot]     the flagship loop (= app run)
+sweetpad build [--clean|--watch|--show-command] [-- XCODEBUILD_ARGS]
+sweetpad build diagnostics        last build's errors/warnings, no rebuild
+sweetpad test [--failed|--retry-flaky N|--coverage|--junit P|--watch]
+sweetpad clean [--purge]          xcodebuild clean; --purge adds DerivedData
+sweetpad archive [--export-method M] [--no-export]
+sweetpad devices                  everything runnable, specifier-ready
+sweetpad status / open / doctor / self-update / help <topic>
+sweetpad simulator <boot|create|delete|clone|push|privacy|status-bar|
+                    location|media-add|record|screenshot|…>   (alias: sim)
+sweetpad app <run|install|launch|debug|uninstall|logs|stop|open-url>
+sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
+                                  are hidden aliases)
+sweetpad context <show|select|set|alias|remove>
+```
+
+Destination selection is `--on <ref>` (fuzzy name / `booted` / `mac` /
+`device` / platform word / UDID / a `context alias` name), with
+`--destination` as the raw escape hatch. `-o json|ndjson` is the machine
+surface (§4).
 
 ## 3a. `project new` — scaffolding
 
@@ -114,10 +165,43 @@ builds it with real `xcodebuild`.
 - **Human/colored by default** — tables, spinners, formatted build logs.
 - **`--json`** on any command emits stable, machine-readable JSON for
   scripting/CI.
-- Color **auto-disables** when stdout is not a TTY or when `NO_COLOR` is set;
-  `--no-color` forces it off.
+- Color **auto-disables** when stdout is not a TTY or when `NO_COLOR` is set
+  (non-empty, per the no-color.org spec); `--no-color` forces it off;
+  `CLICOLOR_FORCE`/`FORCE_COLOR` force it back on when piped (an explicit
+  `--no-color`/`NO_COLOR` still wins).
 - Errors: human messages on **stderr** by default; **structured error objects**
   under `--json`. Meaningful exit codes.
+
+### The JSON envelope
+
+- Success: `{"schema": 1, "ok": true, "data": …}` on **stdout**,
+  pretty-printed. Errors: `{"schema": 1, "ok": false, "error": {code,
+  message}}` on **stderr**, compact single-line by design (robust to scrape
+  even when child-process stderr interleaves).
+- **`ok` means "the command executed"**, not "the outcome was good": a red
+  test suite is `ok: true` with `data.passed: false` (exit 3), `doctor` with
+  problems is `ok: true` with per-check statuses (exit 1), `format --check`
+  reports findings in `data` (exit 3). Every such payload carries its own
+  status field — read that, not `ok`.
+- **`schema` bump policy:** additive fields never bump it; a removed or
+  re-typed field bumps it. Consumers should tolerate unknown fields.
+- **Exceptions:** the live session `app run` rejects `--json` (build and
+  launch as separate steps instead); `app logs --json` emits a *stream* of raw
+  `log stream` NDJSON events (one JSON object per line, no envelope);
+  `completions` ignores it. Clap usage errors (exit 2) print clap's human
+  text on stderr regardless of `--json`.
+
+### Exit codes
+
+```
+0  success                      4  target resolution failed (no/unknown
+1  generic failure                 scheme, destination, simulator, …)
+2  usage error (owned by clap)  5  required tool missing (xcodebuild, …)
+3  build or test failure        6  cancelled by the user (prompt/Ctrl-C)
+```
+
+A SIGINT/SIGTERM that kills the process exits `128 + signo` (130/143), after
+the handler restores the terminal and reaps children.
 
 ## 5. Target resolution
 
@@ -129,14 +213,30 @@ explicit flag  >  env var  >  config file  >  remembered state  >  auto-discover
 ```
 
 - **Auto-discovery:** find the `.xcworkspace` / `.xcodeproj` / `Package.swift`
-  in the working directory.
+  in the working directory (deterministic: same-kind siblings resolve to the
+  alphabetically first, with a warning; pass `--workspace`/`--project` to
+  disambiguate).
 - **Env vars:** `SWEETPAD_SCHEME`, `SWEETPAD_DESTINATION`,
-  `SWEETPAD_CONFIGURATION`, `SWEETPAD_PROJECT` / `SWEETPAD_WORKSPACE`.
+  `SWEETPAD_CONFIGURATION`, `SWEETPAD_SDK`, `SWEETPAD_PROJECT` /
+  `SWEETPAD_WORKSPACE` (value-carrying, folded into the flag layer — but an
+  explicitly *typed* flag still beats an exported env var, so
+  `SWEETPAD_WORKSPACE` can't override a typed `--project`), and
+  `SWEETPAD_NONINTERACTIVE` (boolean). Boolean `SWEETPAD_*` vars parse
+  truthiness: `0`/`false`/`no`/`off`/empty mean **off**.
 - **Remembered state:** the last interactive picks, saved per project, feed the
   layer just above auto-discovery so the daily loop doesn't re-prompt (§6).
-- **Interactive fallback:** when something is ambiguous/unset **and stdout is a
-  TTY**, drop to a fuzzy picker (choose a scheme/destination from a menu).
-  **Non-TTY/CI stays strict** and errors instead of prompting.
+  Only picker-settled values are remembered — a one-off flag/env/config
+  override never rewrites the stored context, and `app run --mac`/`--device`
+  destinations are never remembered.
+- **Interactive fallback:** when something is ambiguous/unset **and the
+  terminal is interactive** (stderr is a TTY, no `--json`, no
+  `--non-interactive`/`SWEETPAD_NONINTERACTIVE`), drop to a fuzzy picker
+  (choose a scheme/destination from a menu). **Non-interactive/CI stays
+  strict** and errors instead of prompting.
+- **Validation:** an explicitly-requested scheme/configuration is checked
+  against the project's candidates up front, with a did-you-mean hint — and
+  the `Debug` configuration default applies only when the project actually has
+  a `Debug`; otherwise the configuration picker runs.
 - **Testing:** the `test` action resolves a *separate* testing context — testing
   config/state layered over the build context — so tests can pin their own
   scheme/configuration/destination (§6, "Context").
@@ -148,27 +248,64 @@ the tool never clobbers hand-authored config:
 
 ### Config — hand-authored only
 - `~/.config/sweetpad/config.toml` (honoring `XDG_CONFIG_HOME`).
-- **Global settings** plus optional **per-project overrides** keyed by project
-  path: `[projects."/abs/path/to/Proj"]`.
+- **Global settings** plus optional **per-project overrides** keyed by the
+  canonicalized **container** path — the `.xcworkspace`/`.xcodeproj`/
+  `Package.swift` itself, *not* the directory holding it:
+  `[projects."/abs/path/to/Proj.xcodeproj"]`.
 - The tool **reads** this and **never rewrites** it (preserves comments/format).
+  Unknown keys and `[projects."…"]` keys that can't match a real container are
+  **warned about** on load (with a did-you-mean where possible), never
+  silently ignored.
 
 ```toml
 # ~/.config/sweetpad/config.toml
 [defaults]
 configuration = "Debug"
 
-[projects."/Users/me/code/MyApp"]
+[projects."/Users/me/code/MyApp/MyApp.xcodeproj"]
 scheme = "MyApp"
 destination = "platform=iOS Simulator,name=iPhone 15"
 
 # Test-action overrides, layered over the build values for `test` only.
-[projects."/Users/me/code/MyApp".testing]
+[projects."/Users/me/code/MyApp/MyApp.xcodeproj".testing]
 configuration = "Test"
 ```
 
-- Each table accepts a `[….testing]` sub-table — `scheme`/`configuration`/
-  `destination` overrides used by `test`, falling back to the build values when
-  unset (mirrors the extension's `sweetpad.testing.*` settings).
+- Keys per table: `scheme`, `configuration`, `destination`, `sdk`. Each table
+  also accepts a `[….testing]` sub-table — `scheme`/`configuration`/
+  `destination`/`target` overrides used by `test`, falling back to the build
+  values when unset (mirrors the extension's `sweetpad.testing.*` settings);
+  `target` narrows the run to `-only-testing:<target>` when no explicit
+  selector is given.
+
+### Project file — committed, team-shared
+- An *optional, hand-authored* `sweetpad.toml` at the project root (next to
+  the container). This is how a team standardizes: it travels with the clone,
+  needs no absolute paths, and sweetpad still **never writes** to the project
+  root — the file is read-only to the tool, like the user config.
+- Precedence slot: **user config > sweetpad.toml > remembered state**.
+- Keys: `scheme`, `configuration`, `destination`, `sdk`, a `[testing]`
+  sub-table (`scheme`/`configuration`/`destination`/`target`), plus the tool
+  defaults that previously had flags but no home:
+
+```toml
+# sweetpad.toml (committed)
+scheme = "MyApp"
+configuration = "Debug"
+
+[testing]
+configuration = "Test"
+
+[run]
+hot = true                 # `app run` defaults to hot reload (--no-hot opts out)
+hot_recompiler = "resolver"
+
+[format]
+tool = "swiftlint"
+```
+
+- Unknown keys are warned about; a malformed file is warned about and ignored
+  (a broken committed file must not brick every teammate's CLI).
 
 ### State — machine-managed
 - `~/.local/state/sweetpad/state.toml` (honoring `XDG_STATE_HOME`).
@@ -233,16 +370,22 @@ CLI.
   policy (don't reinvent *standard* things — a CLI parser is standard).
 - **TOML:** a `toml` crate (read-only for config) plus `serde` for
   config/state (de)serialization.
-- **Universal flags:** `--json`, `--no-color`, `-v/--verbose` are global —
-  accepted on every command and its actions. The **targeting flags**
-  (`--workspace`/`--project`, `--scheme`, `--configuration`, `--destination`)
-  are scoped to the commands that consume them, in three tiers — container-only
-  (`project`, `bsp`, `derived-data`), container plus `--scheme` (`scheme`), and
-  the full build target (`build`, `test`, `settings`, `app`). Within a resource
-  they are global, so they parse on either side of the action token: both
-  `sweetpad build --scheme App run` and `sweetpad build run --scheme App` work.
-  A resource that doesn't consume a tier never advertises its flags (e.g.
-  `project info` rejects `--destination`).
+- **Universal flags:** `--json`, `--no-color`, `-v/--verbose`, `-q/--quiet`,
+  and `--non-interactive` are global — accepted on every command and its
+  actions. `--quiet` mutes progress chatter (notes, spinners, step labels, the
+  beautified build stream apart from diagnostics and failure banners) while
+  errors and primary data/JSON still emit; it wins over `--verbose`.
+  `--non-interactive` (or `SWEETPAD_NONINTERACTIVE`) forces the strict no-
+  prompt behavior at a TTY. The **targeting flags**
+  (`--workspace`/`--project`, `--scheme`, `--configuration`, `--destination`,
+  `--sdk`) are scoped to the commands that consume them, in three tiers —
+  container-only (`project`, `bsp`, `derived-data`), container plus `--scheme`
+  (`scheme`), and the full build target (`build`, `test`, `settings`, `app`).
+  Within a resource they are global, so they parse on either side of the
+  action token: both `sweetpad build --scheme App run` and
+  `sweetpad build run --scheme App` work. A resource that doesn't consume a
+  tier never advertises its flags (e.g. `project info` rejects
+  `--destination`).
 - **Process orchestration:** spawn and stream `xcodebuild` / `xcrun simctl`;
   parse output for human and `--json` render paths.
 
@@ -298,8 +441,9 @@ sweetpad completions <shell>          clap_complete-generated scripts
 
 `destination list` aggregates **macOS + simulators + connected devices**, each
 with a ready `-destination` specifier. SPM containers are supported for
-`scheme`/`build`/`test`/`run`: schemes come from `xcodebuild -list -json` (Xcode
-synthesizes them from the manifest, which the pbxproj resolver can't).
+`scheme`/`build`/`test`/`run`: schemes are read straight from the manifest via
+`swift package dump-package` (the product names xcodebuild would synthesize —
+no xcodebuild spawn, no pbxproj needed).
 
 Notes / heuristics:
 - `test run` exits non-zero on failures; the `--json` summary lands on stdout

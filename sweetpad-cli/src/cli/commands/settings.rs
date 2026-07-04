@@ -16,7 +16,8 @@ pub enum Action {
         #[arg(long)]
         target: Option<String>,
 
-        /// Show only this one setting key.
+        /// Show only this one setting key — printed as the bare value, ready
+        /// for `$(…)` capture.
         #[arg(long)]
         key: Option<String>,
     },
@@ -30,17 +31,29 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
 
 /// The resolved build settings for the query: a `# target:` block per target in
 /// human mode, or `{ "targets": [ { "target", "settings" } ] }` in the JSON
-/// envelope. When empty, `empty_note` carries the reason to print in human mode
-/// (a Swift-package explanation, or "no build settings resolved").
+/// envelope. A single-`--key` query prints the bare value(s) instead, so
+/// `P=$(sweetpad settings show --key PRODUCT_NAME)` needs no sed. When empty,
+/// `empty_note` carries the reason to print in human mode (a Swift-package
+/// explanation, or "no build settings resolved").
 struct SettingsResult {
     targets: Vec<TargetSettings>,
     empty_note: String,
+    /// Set when the query was `--key X`: human mode prints only the values.
+    bare_key: Option<String>,
 }
 
 impl Render for SettingsResult {
     fn human(&self, out: &Output) {
         if self.targets.is_empty() {
             out.note(&self.empty_note);
+            return;
+        }
+        if let Some(key) = &self.bare_key {
+            for t in &self.targets {
+                if let Some(v) = t.settings.get(key) {
+                    out.line(v);
+                }
+            }
             return;
         }
         for (i, t) in self.targets.iter().enumerate() {
@@ -80,6 +93,7 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandRe
                      SwiftPM has no xcconfig/pbxproj build settings to resolve",
                     p.display()
                 ),
+                bare_key: key.map(str::to_string),
             }));
         }
     };
@@ -97,10 +111,7 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandRe
         )?)
     };
 
-    let configuration = resolved
-        .configuration
-        .clone()
-        .unwrap_or_else(|| "Debug".to_string());
+    let configuration = resolve::settle_configuration(ctx, &resolved)?;
     let destination = resolved
         .destination
         .as_deref()
@@ -112,7 +123,7 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandRe
         scheme,
         target: target.map(str::to_string),
         configuration,
-        sdk: String::new(),
+        sdk: resolved.sdk.clone().unwrap_or_default(),
         arch: String::new(),
         destination,
         xcconfig: None,
@@ -129,5 +140,6 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandRe
     Ok(Rendered::data(SettingsResult {
         targets: results,
         empty_note: "no build settings resolved".to_string(),
+        bare_key: key.map(str::to_string),
     }))
 }

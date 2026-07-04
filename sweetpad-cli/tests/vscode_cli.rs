@@ -254,25 +254,16 @@ fn help_and_usage_paths() {
         "help output should point at meta.usage"
     );
 
-    // No method / a bare word (no dot) are usage errors: USAGE envelope, exit 2.
+    // No method / a bare word (no dot) are usage errors: the human usage text
+    // on stderr (a human typed this — scripts always pass a dotted method),
+    // exit 2.
     for args in [&[][..], &["schemes"][..]] {
         let output = run_cli(&dir, &dir, args);
         assert_eq!(output.status.code(), Some(2), "args: {args:?}");
-        let envelope = stderr_envelope(&output);
-        assert_eq!(envelope["error"]["code"], json!("USAGE"), "args: {args:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
         assert!(
-            envelope["error"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("method"),
-            "args: {args:?}"
-        );
-        assert!(
-            envelope["error"]["hint"]
-                .as_str()
-                .unwrap()
-                .contains("--help"),
-            "args: {args:?}"
+            stderr.contains("meta.usage"),
+            "bare usage should print the help text; args: {args:?}, stderr: {stderr:?}"
         );
     }
 

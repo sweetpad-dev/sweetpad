@@ -17,10 +17,15 @@ use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, 
 /// `target` only in the testing context; the rest exist in both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Variable {
+    /// The scheme to build/test.
     Scheme,
+    /// The build configuration (e.g. Debug).
     Configuration,
+    /// The -sdk override for builds and settings (build context only).
     Sdk,
+    /// The -destination specifier (picked from the simulator list).
     Destination,
+    /// The default test target `-only-testing:` narrows to (testing only).
     Target,
 }
 
@@ -81,8 +86,10 @@ impl Scope {
 pub enum Action {
     /// Show the project's saved build and testing context.
     Show,
-    /// Set a context variable interactively; with no variable, set the core
-    /// (scheme, configuration, destination).
+    /// Set a context variable interactively.
+    ///
+    /// With no variable, sets the core three: scheme, configuration, and
+    /// destination. Use `context set` to assign a value without a prompt.
     Select {
         /// Which variable to set; omit to set the core variables.
         variable: Option<Variable>,
@@ -90,9 +97,33 @@ pub enum Action {
         #[arg(long)]
         testing: bool,
     },
+    /// Set a context variable to VALUE without prompting (script/CI-friendly).
+    Set {
+        /// Which variable to set.
+        variable: Variable,
+        /// The value to assign (validated for scheme/configuration).
+        value: String,
+        /// Act on the testing context instead of the build context.
+        #[arg(long)]
+        testing: bool,
+    },
+    /// Name a destination: `context alias work-phone <UDID>`, then
+    /// `--on work-phone` anywhere.
+    Alias {
+        /// The alias name.
+        name: String,
+        /// Any `--on` reference (UDID, fuzzy name, booted, mac, …); omit with
+        /// --remove.
+        #[arg(required_unless_present = "remove")]
+        reference: Option<String>,
+        /// Remove the alias instead.
+        #[arg(long, conflicts_with = "reference")]
+        remove: bool,
+    },
     /// Clear a saved context variable; `--all` clears the whole context.
     Remove {
         /// Which variable to clear.
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
         variable: Option<Variable>,
         /// Clear the entire context (the project entry, or just the testing
         /// sub-context with `--testing`).
@@ -108,6 +139,16 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Show => show(ctx),
         Action::Select { variable, testing } => select(ctx, *variable, Scope::from_flag(*testing)),
+        Action::Set {
+            variable,
+            value,
+            testing,
+        } => set(ctx, *variable, value, Scope::from_flag(*testing)),
+        Action::Alias {
+            name,
+            reference,
+            remove,
+        } => alias(ctx, name, reference.as_deref(), *remove),
         Action::Remove {
             variable,
             all,
@@ -117,21 +158,29 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
 }
 
 /// The saved build and testing context, recents, and last launched app. Renders
-/// as the scope/recents/last-launched blocks, or
-/// `{container, build, testing, recentDestinations, lastLaunchedApp}` in the JSON
-/// envelope. Carries the container path and a snapshot of the project state.
+/// as the scope/recents/last-launched blocks — each variable with its effective
+/// value *and provenance* (config file vs remembered state), so "why is it
+/// building the wrong thing" is a glance, not a bug report. JSON:
+/// `{container, build, testing, effective, recentDestinations, lastLaunchedApp}`.
 struct ContextReport {
     container: String,
     state: ProjectState,
+    /// The authored config defaults for this project — the layer above state.
+    cfg: crate::cli::config::Defaults,
+    /// The committed sweetpad.toml's targeting keys — between cfg and state.
+    project: crate::cli::config::Defaults,
 }
 
 impl Render for ContextReport {
     fn human(&self, out: &Output) {
         let st = &self.state;
-        print_scope(out, st, Scope::Build);
-        if !st.testing.is_empty() {
+        print_scope(out, st, &self.cfg, &self.project, Scope::Build);
+        if !st.testing.is_empty()
+            || !testing_cfg_is_empty(&self.cfg)
+            || !testing_cfg_is_empty(&self.project)
+        {
             out.line("");
-            print_scope(out, st, Scope::Testing);
+            print_scope(out, st, &self.cfg, &self.project, Scope::Testing);
         }
         print_recents(out, st);
         print_last_launched(out, st);
@@ -142,10 +191,22 @@ impl Render for ContextReport {
         serde_json::json!({ "container": self.container,
             "build": scope_json(st, Scope::Build),
             "testing": scope_json(st, Scope::Testing),
+            "effective": {
+                "build": effective_json(st, &self.cfg, &self.project, Scope::Build),
+                "testing": effective_json(st, &self.cfg, &self.project, Scope::Testing),
+            },
             "recentDestinations": recents_json(st),
             "lastLaunchedApp": serde_json::to_value(&st.last_launched_app).unwrap_or_default(),
         })
     }
+}
+
+/// Whether the config's testing sub-table pins anything for this project.
+fn testing_cfg_is_empty(cfg: &crate::cli::config::Defaults) -> bool {
+    cfg.testing.scheme.is_none()
+        && cfg.testing.configuration.is_none()
+        && cfg.testing.destination.is_none()
+        && cfg.testing.target.is_none()
 }
 
 /// Build the context report for the resolved container — the payload both `show`
@@ -154,14 +215,69 @@ fn report(ctx: &mut Context) -> CommandResult {
     let container = resolve::container(ctx)?;
     let key = container.key();
     let state = ctx.state.projects.get(&key).cloned().unwrap_or_default();
+    let cfg = ctx.config.for_project(&key);
+    let pf = ctx.project_file(&container);
+    let project = crate::cli::config::Defaults {
+        scheme: pf.scheme.clone(),
+        configuration: pf.configuration.clone(),
+        destination: pf.destination.clone(),
+        sdk: pf.sdk.clone(),
+        testing: pf.testing.clone(),
+    };
     Ok(Rendered::data(ContextReport {
         container: container.path().display().to_string(),
         state,
+        cfg,
+        project,
     }))
 }
 
 /// Show the saved build and testing context, recents, and last launched app.
 fn show(ctx: &mut Context) -> CommandResult {
+    report(ctx)
+}
+
+/// Non-interactive setter: `context set scheme MyApp` — the script/CI path the
+/// prompt-only `select` can't serve. Scheme/configuration values are validated
+/// against the project's candidates (with the build path's did-you-mean);
+/// sdk/target/destination are taken verbatim (a destination may name hardware
+/// that isn't currently attached).
+fn set(ctx: &mut Context, v: Variable, value: &str, scope: Scope) -> CommandResult {
+    let container = resolve::container(ctx)?;
+    let key = container.key();
+    ensure_in_scope(v, scope)?;
+    match v {
+        Variable::Scheme => {
+            resolve::validate_choice("scheme", value, &resolve::schemes(&container)?)?;
+        }
+        Variable::Configuration => {
+            let candidates = resolve::configurations(&container).unwrap_or_default();
+            resolve::validate_choice("configuration", value, &candidates)?;
+        }
+        Variable::Sdk | Variable::Destination | Variable::Target => {}
+    }
+    set_field(
+        ctx.state.project_mut(&key),
+        scope,
+        v,
+        Some(value.to_string()),
+    );
+    ctx.state.save().map_err(CliError::new)?;
+    report(ctx)
+}
+
+/// Name (or drop) a destination alias for `--on`.
+fn alias(ctx: &mut Context, name: &str, reference: Option<&str>, remove: bool) -> CommandResult {
+    let key = resolve::container(ctx)?.key();
+    let st = ctx.state.project_mut(&key);
+    if remove {
+        st.destination_aliases.remove(name);
+    } else if let Some(reference) = reference {
+        st.destination_aliases
+            .insert(name.to_string(), reference.to_string());
+    }
+    prune(&mut ctx.state, &key);
+    ctx.state.save().map_err(CliError::new)?;
     report(ctx)
 }
 
@@ -241,6 +357,7 @@ fn remove(ctx: &mut Context, variable: Option<Variable>, all: bool, scope: Scope
     }
 
     let Some(v) = variable else {
+        // Unreachable: clap requires VARIABLE unless --all (exit 2 up front).
         return Err(CliError::new(
             "specify a variable (scheme, configuration, sdk, destination, target) or --all",
         ));
@@ -386,12 +503,91 @@ fn scope_vars(scope: Scope) -> [Variable; 4] {
     }
 }
 
-fn print_scope(out: &Output, st: &ProjectState, scope: Scope) {
+/// A scope's view of one Defaults-shaped table.
+fn defaults_value(cfg: &crate::cli::config::Defaults, scope: Scope, v: Variable) -> Option<&str> {
+    match scope {
+        Scope::Build => match v {
+            Variable::Scheme => cfg.scheme.as_deref(),
+            Variable::Configuration => cfg.configuration.as_deref(),
+            Variable::Sdk => cfg.sdk.as_deref(),
+            Variable::Destination => cfg.destination.as_deref(),
+            Variable::Target => None,
+        },
+        Scope::Testing => match v {
+            Variable::Scheme => cfg.testing.scheme.as_deref(),
+            Variable::Configuration => cfg.testing.configuration.as_deref(),
+            Variable::Target => cfg.testing.target.as_deref(),
+            Variable::Destination => cfg.testing.destination.as_deref(),
+            Variable::Sdk => None,
+        },
+    }
+}
+
+/// The effective value of a variable in a scope, plus where it came from —
+/// authored config beats the committed sweetpad.toml beats remembered state
+/// (the same order the resolver uses; flags/env aren't inputs to
+/// `context show` itself).
+fn effective<'a>(
+    st: &'a ProjectState,
+    cfg: &'a crate::cli::config::Defaults,
+    project: &'a crate::cli::config::Defaults,
+    scope: Scope,
+    v: Variable,
+) -> (Option<&'a str>, &'static str) {
+    if let Some(value) = defaults_value(cfg, scope, v) {
+        return (Some(value), "config");
+    }
+    if let Some(value) = defaults_value(project, scope, v) {
+        return (Some(value), "sweetpad.toml");
+    }
+    match get(st, scope, v) {
+        Some(value) => (Some(value), "remembered"),
+        None => (None, ""),
+    }
+}
+
+fn print_scope(
+    out: &Output,
+    st: &ProjectState,
+    cfg: &crate::cli::config::Defaults,
+    project: &crate::cli::config::Defaults,
+    scope: Scope,
+) {
     out.line(scope.label());
     for v in scope_vars(scope) {
-        let shown = get(st, scope, v).unwrap_or("(not set)");
-        out.line(&format!("  {:<13} {shown}", v.name()));
+        let (value, source) = effective(st, cfg, project, scope, v);
+        let source = if source.is_empty() {
+            String::new()
+        } else {
+            format!("  ({source})")
+        };
+        out.line(&format!(
+            "  {:<13} {}{source}",
+            v.name(),
+            value.unwrap_or("(not set)")
+        ));
     }
+}
+
+/// The effective view for JSON: `{value, source}` per variable.
+fn effective_json(
+    st: &ProjectState,
+    cfg: &crate::cli::config::Defaults,
+    project: &crate::cli::config::Defaults,
+    scope: Scope,
+) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    for v in scope_vars(scope) {
+        let (value, source) = effective(st, cfg, project, scope, v);
+        map.insert(
+            v.name().to_string(),
+            serde_json::json!({
+                "value": value,
+                "source": if source.is_empty() { None } else { Some(source) },
+            }),
+        );
+    }
+    serde_json::Value::Object(map)
 }
 
 fn print_recents(out: &Output, st: &ProjectState) {

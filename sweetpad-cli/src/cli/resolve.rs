@@ -36,18 +36,43 @@ impl Container {
     }
 
     /// Stable identity used to key per-project config overrides and remembered
-    /// state — the canonicalized absolute path.
+    /// state — the canonicalized absolute path. When canonicalization fails
+    /// (e.g. the path just disappeared), fall back to a lexically absolutized
+    /// form rather than the raw argument, so a relative `--project` can't mint
+    /// a second, cwd-dependent state key for the same project.
     #[must_use]
     pub fn key(&self) -> String {
         std::fs::canonicalize(self.path())
-            .unwrap_or_else(|_| self.path().to_path_buf())
+            .unwrap_or_else(|_| absolutize(self.path()))
             .to_string_lossy()
             .into_owned()
     }
 }
 
+/// Join a path onto the cwd (when relative) and squash `.`/`..` lexically — the
+/// canonicalize fallback that never touches the filesystem.
+fn absolutize(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = if path.is_absolute() {
+        PathBuf::new()
+    } else {
+        std::env::current_dir().unwrap_or_default()
+    };
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            c => out.push(c.as_os_str()),
+        }
+    }
+    out
+}
+
 /// Resolve the project container from explicit flags, else by auto-discovery in
-/// the current directory.
+/// the current directory (warning when same-kind siblings make the pick
+/// ambiguous).
 pub fn container(ctx: &Context) -> Result<Container, CliError> {
     if let Some(ws) = &ctx.targeting.workspace {
         return Ok(Container::Workspace(ws.clone()));
@@ -57,39 +82,112 @@ pub fn container(ctx: &Context) -> Result<Container, CliError> {
     }
     let cwd =
         std::env::current_dir().map_err(|e| CliError::new(format!("cannot read cwd: {e}")))?;
-    discover(&cwd).ok_or_else(|| {
+    let found = discover_walk_up(&cwd);
+    if let Some(ambiguous) = found.ambiguity() {
+        ctx.out.warn(&ambiguous);
+    }
+    found.best().ok_or_else(|| {
         CliError::new(
             "no .xcworkspace, .xcodeproj, or Package.swift found in the current \
-             directory (pass --workspace/--project)",
+             directory or its ancestors (pass --workspace/--project)",
         )
         .kind(ErrorKind::TargetResolution)
     })
 }
 
+/// Walk from `start` up toward the root, returning the first directory whose
+/// discovery finds a container — so `sweetpad build` works from
+/// `Sources/Feature/` like git/cargo/npm would. The walk stops at the git root
+/// (a repository above this one must not donate its project) and at the
+/// filesystem root.
+fn discover_walk_up(start: &Path) -> Discovery {
+    let mut dir = start.to_path_buf();
+    loop {
+        let found = discover_all(&dir);
+        if found.best().is_some() || dir.join(".git").exists() {
+            return found;
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent.to_path_buf(),
+            None => return found,
+        }
+    }
+}
+
 /// Auto-discovery: prefer a workspace, then a project, then a Swift package.
-/// Mirrors how Xcode/xcodebuild pick a container.
+/// Mirrors how Xcode/xcodebuild pick a container. Deterministic: same-kind
+/// siblings resolve to the alphabetically first (see [`Discovery::ambiguity`]).
 #[must_use]
 pub fn discover(dir: &Path) -> Option<Container> {
-    let mut workspace = None;
-    let mut project = None;
-    let mut package = None;
-    let entries = std::fs::read_dir(dir).ok()?;
+    discover_all(dir).best()
+}
+
+/// Everything discoverable in a directory, each kind sorted by name so the
+/// pick never depends on `read_dir` order.
+#[derive(Debug, Default)]
+pub struct Discovery {
+    workspaces: Vec<PathBuf>,
+    projects: Vec<PathBuf>,
+    package: Option<PathBuf>,
+}
+
+impl Discovery {
+    /// The winning container: workspace > project > package, alphabetically
+    /// first within a kind.
+    #[must_use]
+    pub fn best(&self) -> Option<Container> {
+        self.workspaces
+            .first()
+            .cloned()
+            .map(Container::Workspace)
+            .or_else(|| self.projects.first().cloned().map(Container::Project))
+            .or_else(|| self.package.clone().map(Container::SwiftPackage))
+    }
+
+    /// A warning when the *winning kind* has several candidates — the pick is
+    /// then a policy (alphabetical), not the user's intent.
+    #[must_use]
+    pub fn ambiguity(&self) -> Option<String> {
+        let (kind, flag, candidates) = if self.workspaces.len() > 1 {
+            ("workspaces", "--workspace", &self.workspaces)
+        } else if self.workspaces.is_empty() && self.projects.len() > 1 {
+            ("projects", "--project", &self.projects)
+        } else {
+            return None;
+        };
+        let names: Vec<String> = candidates
+            .iter()
+            .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .collect();
+        Some(format!(
+            "multiple {kind} here ({}); using {} — pass {flag} to disambiguate",
+            names.join(", "),
+            names.first().map(String::as_str).unwrap_or_default(),
+        ))
+    }
+}
+
+/// Collect every container in `dir`, sorted by file name within each kind.
+fn discover_all(dir: &Path) -> Discovery {
+    let mut found = Discovery::default();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return found;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         match path.extension().and_then(|e| e.to_str()) {
-            Some("xcworkspace") => workspace = workspace.or(Some(path)),
-            Some("xcodeproj") => project = project.or(Some(path)),
+            Some("xcworkspace") => found.workspaces.push(path),
+            Some("xcodeproj") => found.projects.push(path),
             _ => {
                 if path.file_name().and_then(|f| f.to_str()) == Some("Package.swift") {
-                    package = package.or(Some(path));
+                    found.package = Some(path);
                 }
             }
         }
     }
-    workspace
-        .map(Container::Workspace)
-        .or(project.map(Container::Project))
-        .or(package.map(Container::SwiftPackage))
+    found.workspaces.sort();
+    found.projects.sort();
+    found
 }
 
 /// The fully resolved targeting for a command, after layering.
@@ -99,6 +197,9 @@ pub struct Resolved {
     pub scheme: Option<String>,
     pub configuration: Option<String>,
     pub destination: Option<String>,
+    /// SDK override (`--sdk` / config / `context select sdk`). `None` lets the
+    /// destination imply it, which is the common case.
+    pub sdk: Option<String>,
 }
 
 /// Apply the layered precedence (flag > config > state) for the soft targeting
@@ -109,11 +210,16 @@ pub fn resolve(ctx: &Context) -> Result<Resolved, CliError> {
     let container = container(ctx)?;
     let key = container.key();
     let cfg: Defaults = ctx.config.for_project(&key);
+    let pf = ctx.project_file(&container);
     let st = ctx.state.projects.get(&key);
 
-    let pick = |flag: &Option<String>, cfg: &Option<String>, state: Option<&String>| {
+    let pick = |flag: &Option<String>,
+                cfg: &Option<String>,
+                project: &Option<String>,
+                state: Option<&String>| {
         flag.clone()
             .or_else(|| cfg.clone())
+            .or_else(|| project.clone())
             .or_else(|| state.cloned())
     };
 
@@ -121,17 +227,26 @@ pub fn resolve(ctx: &Context) -> Result<Resolved, CliError> {
         scheme: pick(
             &ctx.targeting.scheme,
             &cfg.scheme,
+            &pf.scheme,
             st.and_then(|s| s.scheme.as_ref()),
         ),
         configuration: pick(
             &ctx.targeting.configuration,
             &cfg.configuration,
+            &pf.configuration,
             st.and_then(|s| s.configuration.as_ref()),
         ),
         destination: pick(
             &ctx.targeting.destination,
             &cfg.destination,
+            &pf.destination,
             st.and_then(|s| s.destination.as_ref()),
+        ),
+        sdk: pick(
+            &ctx.targeting.sdk,
+            &cfg.sdk,
+            &pf.sdk,
+            st.and_then(|s| s.sdk.as_ref()),
         ),
         container,
     })
@@ -150,17 +265,22 @@ pub fn resolve_testing(ctx: &Context) -> Result<Resolved, CliError> {
     let container = container(ctx)?;
     let key = container.key();
     let cfg: Defaults = ctx.config.for_project(&key);
+    let pf = ctx.project_file(&container);
     let st = ctx.state.projects.get(&key);
 
     let pick = |flag: &Option<String>,
                 test_cfg: &Option<String>,
+                test_project: &Option<String>,
                 test_state: Option<&String>,
                 build_cfg: &Option<String>,
+                build_project: &Option<String>,
                 build_state: Option<&String>| {
         flag.clone()
             .or_else(|| test_cfg.clone())
+            .or_else(|| test_project.clone())
             .or_else(|| test_state.cloned())
             .or_else(|| build_cfg.clone())
+            .or_else(|| build_project.clone())
             .or_else(|| build_state.cloned())
     };
 
@@ -168,34 +288,80 @@ pub fn resolve_testing(ctx: &Context) -> Result<Resolved, CliError> {
         scheme: pick(
             &ctx.targeting.scheme,
             &cfg.testing.scheme,
+            &pf.testing.scheme,
             st.and_then(|s| s.testing.scheme.as_ref()),
             &cfg.scheme,
+            &pf.scheme,
             st.and_then(|s| s.scheme.as_ref()),
         ),
         configuration: pick(
             &ctx.targeting.configuration,
             &cfg.testing.configuration,
+            &pf.testing.configuration,
             st.and_then(|s| s.testing.configuration.as_ref()),
             &cfg.configuration,
+            &pf.configuration,
             st.and_then(|s| s.configuration.as_ref()),
         ),
         destination: pick(
             &ctx.targeting.destination,
             &cfg.testing.destination,
+            &pf.testing.destination,
             st.and_then(|s| s.testing.destination.as_ref()),
             &cfg.destination,
+            &pf.destination,
             st.and_then(|s| s.destination.as_ref()),
         ),
+        // The testing context has no sdk of its own; follow the build layers.
+        sdk: ctx
+            .targeting
+            .sdk
+            .clone()
+            .or_else(|| cfg.sdk.clone())
+            .or_else(|| pf.sdk.clone())
+            .or_else(|| st.and_then(|s| s.sdk.clone())),
         container,
     })
 }
 
+/// The pinned default test target (config `[….testing] target`, then the
+/// committed `sweetpad.toml`, then `context select target --testing`) —
+/// `test run` narrows to it when no explicit `--only-testing` selector is
+/// given.
+#[must_use]
+pub fn testing_target(ctx: &Context, container: &Container) -> Option<String> {
+    let key = container.key();
+    ctx.config
+        .for_project(&key)
+        .testing
+        .target
+        .clone()
+        .or_else(|| ctx.project_file(container).testing.target.clone())
+        .or_else(|| {
+            ctx.state
+                .projects
+                .get(&key)
+                .and_then(|s| s.testing.target.clone())
+        })
+}
+
 /// Helper for commands: a value is required but unresolved, and we cannot
-/// prompt (non-interactive). Produces the standard strict error.
+/// prompt (non-interactive). Produces the standard strict error, with a hint
+/// matching how *this* value can actually be supplied — not every `what` has a
+/// `--{what}` flag or a config key.
 #[must_use]
 pub fn missing(what: &str) -> CliError {
+    let hint = match what {
+        "scheme" | "configuration" | "destination" => {
+            format!("pass --{what} or set it in config")
+        }
+        "simulator" => "name one (the TARGET argument, or --simulator where offered)".to_string(),
+        "device" => "pass --device-id".to_string(),
+        "project" => "pass --project".to_string(),
+        _ => format!("specify the {what} explicitly"),
+    };
     CliError::new(format!(
-        "no {what} specified and stdout is not a TTY; pass --{what} or set it in config"
+        "no {what} specified and the terminal is not interactive; {hint}"
     ))
     .kind(ErrorKind::TargetResolution)
 }
@@ -294,6 +460,221 @@ pub fn select_simulator<'a>(
         .ok_or_else(|| CliError::new("simulator not found").kind(ErrorKind::TargetResolution))
 }
 
+/// A resolved `--on` reference: the concrete run target plus its ready
+/// `-destination` specifier.
+#[derive(Debug, Clone)]
+pub enum OnTarget {
+    Mac,
+    Simulator { udid: String, specifier: String },
+    Device { udid: String, specifier: String },
+}
+
+impl OnTarget {
+    /// The raw `-destination` specifier for this target.
+    #[must_use]
+    pub fn specifier(&self) -> String {
+        match self {
+            OnTarget::Mac => "platform=macOS".to_string(),
+            OnTarget::Simulator { specifier, .. } | OnTarget::Device { specifier, .. } => {
+                specifier.clone()
+            }
+        }
+    }
+}
+
+/// Resolve a human `--on` reference against the live device lists —
+/// xcodebuild's raw specifier grammar stays the `--destination` escape hatch.
+/// Accepted forms:
+///
+/// - `mac`/`macos` — the local Mac
+/// - `booted` — the booted simulator (most-used first when several are up)
+/// - `device` — the sole connected physical device
+/// - `ios`/`watchos`/`tvos`/`visionos` — the newest matching simulator,
+///   most-used-first tiebreak
+/// - a UDID — that simulator or device
+/// - anything else — a fuzzy (case-insensitive substring) name match over
+///   simulators and connected devices, preferring exact name, then booted,
+///   then newest OS, then most-used
+#[allow(clippy::too_many_lines)] // one linear match ladder per reference form
+pub fn resolve_on(ctx: &Context, key: &str, reference: &str) -> Result<OnTarget, CliError> {
+    // A named alias (`context alias work-phone <UDID>`) substitutes its stored
+    // reference up front — resolved once, so an alias can't point at another.
+    let alias = ctx
+        .state
+        .projects
+        .get(key)
+        .and_then(|s| s.destination_aliases.get(reference))
+        .cloned();
+    let reference = alias.as_deref().unwrap_or(reference);
+    let lower = reference.to_ascii_lowercase();
+    if lower == "mac" || lower == "macos" {
+        return Ok(OnTarget::Mac);
+    }
+
+    let usage = ctx
+        .state
+        .projects
+        .get(key)
+        .map(|s| s.destination_usage.clone())
+        .unwrap_or_default();
+    let used = |udid: &str| usage.get(udid).copied().unwrap_or(0);
+    let sims = crate::cli::simctl::list()?;
+    let sim_target = |s: &crate::cli::simctl::Simulator| OnTarget::Simulator {
+        udid: s.udid.clone(),
+        specifier: s.destination(),
+    };
+
+    if lower == "booted" {
+        let mut booted: Vec<&crate::cli::simctl::Simulator> =
+            sims.iter().filter(|s| s.is_booted()).collect();
+        booted.sort_by_key(|s| std::cmp::Reverse(used(&s.udid)));
+        return booted.first().map(|s| sim_target(s)).ok_or_else(|| {
+            CliError::new("--on booted: no simulator is booted")
+                .kind(ErrorKind::TargetResolution)
+        });
+    }
+
+    if lower == "device" {
+        let devices = crate::cli::devicectl::list()?;
+        return match devices.as_slice() {
+            [] => Err(CliError::new("--on device: no physical device is connected")
+                .kind(ErrorKind::TargetResolution)),
+            [dev] => Ok(device_target(dev)),
+            many => Err(CliError::new(format!(
+                "--on device is ambiguous — connected: {}; name one",
+                many.iter()
+                    .map(crate::cli::devicectl::Device::label)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+            .kind(ErrorKind::TargetResolution)),
+        };
+    }
+
+    // Platform words: the newest matching simulator, most-used first among
+    // equals.
+    let platform = match lower.as_str() {
+        "ios" | "iphone" | "ipad" => Some("iOS"),
+        "watchos" => Some("watchOS"),
+        "tvos" => Some("tvOS"),
+        "visionos" | "xros" => Some("visionOS"),
+        _ => None,
+    };
+    if let Some(platform) = platform {
+        let mut candidates: Vec<&crate::cli::simctl::Simulator> = sims
+            .iter()
+            .filter(|s| {
+                s.os.eq_ignore_ascii_case(platform)
+                    && (lower != "ipad" || s.name.to_ascii_lowercase().contains("ipad"))
+                    && (lower != "iphone" || s.name.to_ascii_lowercase().contains("iphone"))
+            })
+            .collect();
+        candidates.sort_by(|a, b| {
+            version_key(&b.os_version)
+                .cmp(&version_key(&a.os_version))
+                .then_with(|| used(&b.udid).cmp(&used(&a.udid)))
+        });
+        return candidates.first().map(|s| sim_target(s)).ok_or_else(|| {
+            CliError::new(format!("--on {reference}: no matching simulator"))
+                .kind(ErrorKind::TargetResolution)
+        });
+    }
+
+    // A UDID names one simulator or device outright.
+    if let Some(s) = sims.iter().find(|s| s.udid.eq_ignore_ascii_case(reference)) {
+        return Ok(sim_target(s));
+    }
+    let devices = crate::cli::devicectl::list().unwrap_or_default();
+    if let Some(d) = devices
+        .iter()
+        .find(|d| d.udid.eq_ignore_ascii_case(reference))
+    {
+        return Ok(device_target(d));
+    }
+
+    // Fuzzy name match over simulators + devices.
+    let matches_name = |name: &str| name.to_ascii_lowercase().contains(&lower);
+    let exact_sims: Vec<&crate::cli::simctl::Simulator> = sims
+        .iter()
+        .filter(|s| s.name.eq_ignore_ascii_case(reference))
+        .collect();
+    let mut candidates: Vec<&crate::cli::simctl::Simulator> = if exact_sims.is_empty() {
+        sims.iter().filter(|s| matches_name(&s.name)).collect()
+    } else {
+        exact_sims
+    };
+    if let Some(d) = devices
+        .iter()
+        .find(|d| d.name.eq_ignore_ascii_case(reference) || matches_name(&d.name))
+    {
+        // A physical device wins only when no simulator matches at all —
+        // simulators are the common daily target.
+        if candidates.is_empty() {
+            return Ok(device_target(d));
+        }
+    }
+    candidates.sort_by(|a, b| {
+        b.is_booted()
+            .cmp(&a.is_booted())
+            .then_with(|| version_key(&b.os_version).cmp(&version_key(&a.os_version)))
+            .then_with(|| used(&b.udid).cmp(&used(&a.udid)))
+    });
+    match candidates.as_slice() {
+        [] => {
+            let known: Vec<String> = sims.iter().map(|s| s.name.clone()).collect();
+            let mut names: Vec<String> = known;
+            names.extend(devices.iter().map(|d| d.name.clone()));
+            names.sort();
+            names.dedup();
+            Err(CliError::new(format!(
+                "--on {reference:?} matches nothing (try one of: {})",
+                names.join(", ")
+            ))
+            .kind(ErrorKind::TargetResolution))
+        }
+        [one] => Ok(sim_target(one)),
+        several => {
+            // Distinct names → genuinely ambiguous; same name across OS
+            // versions → the sort already put the newest/booted first.
+            let mut names: Vec<&str> = several.iter().map(|s| s.name.as_str()).collect();
+            names.dedup();
+            if names.len() > 1 {
+                Err(CliError::new(format!(
+                    "--on {reference:?} is ambiguous ({}) — be more specific",
+                    several
+                        .iter()
+                        .map(|s| s.label())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+                .kind(ErrorKind::TargetResolution))
+            } else {
+                Ok(sim_target(several[0]))
+            }
+        }
+    }
+}
+
+fn device_target(dev: &crate::cli::devicectl::Device) -> OnTarget {
+    let platform = if dev.platform.is_empty() {
+        "iOS"
+    } else {
+        &dev.platform
+    };
+    OnTarget::Device {
+        udid: dev.udid.clone(),
+        specifier: format!("platform={platform},id={}", dev.udid),
+    }
+}
+
+/// Numeric sort key for an OS version string (`"17.0"` → `[17, 0]`).
+fn version_key(version: &str) -> Vec<u32> {
+    version
+        .split('.')
+        .map(|part| part.parse().unwrap_or(0))
+        .collect()
+}
+
 /// A fully-settled build target: the three things `xcodebuild` always needs.
 #[derive(Debug, Clone)]
 pub struct BuildTarget {
@@ -305,19 +686,34 @@ pub struct BuildTarget {
 
 /// Settle a complete build target from the layered resolution, falling back to
 /// interactive pickers (scheme from the project, destination from `simctl`)
-/// when a TTY is available. Configuration defaults to `Debug`.
+/// when a TTY is available. An explicitly-requested scheme or configuration is
+/// validated against the project's candidates with a did-you-mean hint, so a
+/// typo dies here instead of deep inside xcodebuild.
 pub fn build_target(ctx: &mut Context, resolved: &Resolved) -> Result<BuildTarget, CliError> {
     let candidates = schemes(&resolved.container)?;
+    if let Some(s) = &resolved.scheme {
+        validate_choice("scheme", s, &candidates)?;
+    }
     let scheme = choose(ctx, "scheme", resolved.scheme.clone(), &candidates)?;
-    let configuration = resolved
-        .configuration
-        .clone()
-        .unwrap_or_else(|| "Debug".to_string());
+    let configuration = settle_configuration(ctx, resolved)?;
 
-    let destination = if let Some(d) = resolved.destination.clone() {
+    let key = resolved.container.key();
+    // An explicit `--on` reference outranks every persisted destination layer
+    // (it's a flag); the resolved simulator's usage is bumped so it floats in
+    // future pickers, but — per the picker-sourced-only rule — it is never
+    // written as the remembered destination itself.
+    let destination = if let Some(reference) = ctx.targeting.on.clone() {
+        let target = resolve_on(ctx, &key, &reference)?;
+        if let OnTarget::Simulator { udid, .. } = &target
+            && let Some(sim) = crate::cli::simctl::list()?.iter().find(|s| &s.udid == udid)
+        {
+            track_destination(&mut ctx.state, &key, sim);
+            let _ = ctx.state.save();
+        }
+        target.specifier()
+    } else if let Some(d) = resolved.destination.clone() {
         d
     } else {
-        let key = resolved.container.key();
         pick_destination(ctx, &key, &crate::cli::simctl::list()?)?
     };
 
@@ -328,34 +724,116 @@ pub fn build_target(ctx: &mut Context, resolved: &Resolved) -> Result<BuildTarge
     })
 }
 
-/// Persist the settled selections to the machine state file so later commands
-/// don't re-prompt. Best-effort: failures to write state never fail a command.
-pub fn remember(ctx: &mut Context, resolved: &Resolved, target: &BuildTarget) {
-    let key = resolved.container.key();
-    let st = ctx.state.project_mut(&key);
-    st.scheme = Some(target.scheme.clone());
-    st.configuration = Some(target.configuration.clone());
-    st.destination = Some(target.destination.clone());
-    let _ = ctx.state.save();
+/// Settle the build configuration: an explicit/remembered value is validated
+/// against the project's configurations, and the `Debug` default applies only
+/// when the project actually has a `Debug` — a project with only, say,
+/// `UAT-Debug`/`Prod` drops to the configuration picker instead of invoking
+/// xcodebuild with a nonexistent configuration. Swift packages skip validation
+/// (SwiftPM maps any name onto debug/release itself).
+pub fn settle_configuration(ctx: &Context, resolved: &Resolved) -> Result<String, CliError> {
+    if matches!(resolved.container, Container::SwiftPackage(_)) {
+        return Ok(resolved
+            .configuration
+            .clone()
+            .unwrap_or_else(|| "Debug".to_string()));
+    }
+    // Candidate enumeration is advisory: if the project can't be read here the
+    // build command itself will surface that, so fall back to the old behavior.
+    let candidates = configurations(&resolved.container).unwrap_or_default();
+    if let Some(c) = resolved.configuration.clone() {
+        validate_choice("configuration", &c, &candidates)?;
+        return Ok(c);
+    }
+    if candidates.is_empty() || candidates.iter().any(|c| c == "Debug") {
+        return Ok("Debug".to_string());
+    }
+    choose(ctx, "configuration", None, &candidates)
 }
 
-/// Persist a test run's selections. Writes the *build* context for the fields
-/// the test took from it (so `test` keeps the build selection fresh, like
-/// `build` does) but never overwrites a pinned testing override — those are
-/// owned solely by `context … --testing`. Best-effort.
+/// Reject an explicitly-requested value that isn't in the candidate list, with
+/// a did-you-mean hint and the full list — instead of handing xcodebuild a
+/// scheme/configuration it will die on with a cryptic error. An empty candidate
+/// list (enumeration failed) validates nothing.
+///
+/// # Errors
+/// Returns a `TargetResolution` error when `value` matches no candidate.
+pub(crate) fn validate_choice(what: &str, value: &str, candidates: &[String]) -> Result<(), CliError> {
+    if candidates.is_empty() || candidates.iter().any(|c| c == value) {
+        return Ok(());
+    }
+    let suggestion = candidates
+        .iter()
+        .map(|c| {
+            (
+                crate::cli::config::edit_distance(&c.to_lowercase(), &value.to_lowercase()),
+                c,
+            )
+        })
+        .filter(|(d, _)| *d <= 2)
+        .min_by_key(|(d, _)| *d)
+        .map(|(_, c)| format!(" — did you mean {c:?}?"))
+        .unwrap_or_default();
+    Err(CliError::new(format!(
+        "unknown {what} {value:?}{suggestion} ({what}s: {})",
+        candidates.join(", ")
+    ))
+    .kind(ErrorKind::TargetResolution))
+}
+
+/// Persist the just-settled picks to the state file so later commands don't
+/// re-prompt. Only values that were *unresolved* before the pickers ran are
+/// written — a value that arrived via flag/env/config (or is already
+/// remembered) never overwrites the stored context. State stays "the last
+/// interactive picks": a one-off `--configuration Release` or `--destination …`
+/// can't poison the next plain `build`. `destination: false` skips the
+/// destination entirely (the `--mac`/`--device` runs, whose synthesized
+/// specifier must never become the remembered simulator context). Best-effort:
+/// failures to write state never fail a command.
+pub fn remember(ctx: &mut Context, resolved: &Resolved, target: &BuildTarget, destination: bool) {
+    let key = resolved.container.key();
+    let st = ctx.state.project_mut(&key);
+    let mut dirty = false;
+    if resolved.scheme.is_none() {
+        st.scheme = Some(target.scheme.clone());
+        dirty = true;
+    }
+    if resolved.configuration.is_none() {
+        st.configuration = Some(target.configuration.clone());
+        dirty = true;
+    }
+    if destination && resolved.destination.is_none() {
+        st.destination = Some(target.destination.clone());
+        dirty = true;
+    }
+    if dirty {
+        let _ = ctx.state.save();
+    }
+}
+
+/// Persist a test run's picks, mirroring [`remember`]'s picker-sourced-only
+/// rule. A field is unresolved here only when neither a flag, config, testing
+/// pin, nor build context supplied it — so writing the pick into the *build*
+/// context keeps `test` and `build` sharing one selection, and a pinned testing
+/// override (owned by `context … --testing`) is never touched. Best-effort.
 pub fn remember_testing(ctx: &mut Context, resolved: &Resolved, target: &BuildTarget) {
     let key = resolved.container.key();
     let st = ctx.state.project_mut(&key);
-    if st.testing.scheme.is_none() {
+    let mut dirty = false;
+    if resolved.scheme.is_none() {
         st.scheme = Some(target.scheme.clone());
+        dirty = true;
     }
-    if st.testing.configuration.is_none() {
+    if resolved.configuration.is_none() {
         st.configuration = Some(target.configuration.clone());
+        dirty = true;
     }
-    if st.testing.destination.is_none() {
+    if resolved.destination.is_none() {
         st.destination = Some(target.destination.clone());
+        dirty = true;
     }
-    let _ = ctx.state.save();
+    if dirty {
+        let _ = ctx.state.save();
+    }
 }
 
 /// Prompt for a destination from the simulator list and return the chosen
@@ -493,11 +971,15 @@ mod tests {
 
     fn ctx() -> Context {
         let global = GlobalArgs {
+            chdir: None,
+            developer_dir: None,
+            output: None,
             json: false,
             non_interactive: false,
             no_color: true,
             verbose: false,
             quiet: false,
+            gh_annotations: false,
         };
         let out = Output::new(&global);
         Context {
@@ -506,6 +988,7 @@ mod tests {
             config: Config::default(),
             state: State::default(),
             out,
+            project_toml: std::cell::OnceCell::new(),
         }
     }
 

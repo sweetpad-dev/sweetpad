@@ -38,6 +38,16 @@ pub enum Action {
         #[arg(long)]
         global: bool,
     },
+    /// Semantically merge conflicted `.pbxproj` / `Package.resolved` files
+    /// (auto-detected per file; both kinds when no paths are given).
+    Run {
+        /// Files to resolve; defaults to every conflicted file of either kind.
+        paths: Vec<PathBuf>,
+        /// Re-merge from HEAD/MERGE_HEAD even when git already auto-merged the
+        /// file textually.
+        #[arg(long)]
+        force: bool,
+    },
     /// Internal: the merge driver git invokes per conflicted file. Reads the
     /// base/ours/theirs temp files git passes and writes the merged result
     /// over the ours file.
@@ -59,6 +69,7 @@ pub enum Action {
 pub fn run(_ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Install { global } => merge::install(*global),
+        Action::Run { paths, force } => merge::resolve_auto(paths, *force),
         Action::Driver {
             kind,
             base,

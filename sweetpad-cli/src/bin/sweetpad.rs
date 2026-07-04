@@ -19,6 +19,14 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    // The Rust runtime ignores SIGPIPE, so a consumer closing the pipe early
+    // (`sweetpad … | head`) surfaces as a "failed printing to stdout: Broken
+    // pipe" panic (exit 101, backtrace on stderr). Restore the default
+    // disposition so the process dies quietly like every other Unix tool.
+    // Safety: setting a signal disposition before any threads exist.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("vscode") => ExitCode::from(sweetpad_cli::vscode_cli::run(&args[1..])),

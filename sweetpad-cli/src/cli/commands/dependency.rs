@@ -34,8 +34,11 @@ pub enum Action {
     Add(AddArgs),
     /// Remove a whole package, or unlink one product from one target.
     Remove(RemoveArgs),
-    /// Update resolved versions, or change a package's requirement (bump,
-    /// pin, or downgrade) and re-resolve.
+    /// Update resolved versions, or change a package's requirement.
+    ///
+    /// With no requirement flags, re-resolves to the latest allowed versions;
+    /// with one, rewrites the package's requirement (bump, pin, or downgrade)
+    /// and then re-resolves.
     Update(UpdateArgs),
     /// Resolve dependencies into `Package.resolved`.
     Resolve,
@@ -44,7 +47,8 @@ pub enum Action {
 /// Flags for `dependency update`.
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
-    /// Package to update (identity/URL/path/name). Omitted → update everything.
+    /// Package to update (identity/URL/path/name); when omitted, every
+    /// package updates.
     pub package: Option<String>,
 
     #[command(flatten)]
@@ -64,11 +68,13 @@ pub struct AddArgs {
     #[command(flatten)]
     pub requirement: RequirementArgs,
 
-    /// Product(s) to link (repeatable). Omitted → you are prompted after resolve.
+    /// Product(s) to link (repeatable); when omitted you're prompted after
+    /// the resolve.
     #[arg(long = "product")]
     pub products: Vec<String>,
 
-    /// Target(s) to link the product(s) into (repeatable). Omitted → prompted.
+    /// Target(s) to link the product(s) into (repeatable); when omitted
+    /// you're prompted.
     #[arg(long = "target")]
     pub targets: Vec<String>,
 
@@ -84,27 +90,27 @@ pub struct AddArgs {
 /// group that would also force one on a local add.
 #[derive(Debug, Args)]
 pub struct RequirementArgs {
-    /// `from: "x.y.z"` — up to the next major version.
+    /// This version up to the next major (SwiftPM `from: "x.y.z"`).
     #[arg(long, value_name = "VERSION")]
     pub from: Option<String>,
 
-    /// `exact: "x.y.z"`.
+    /// Exactly this version (SwiftPM `exact: "x.y.z"`).
     #[arg(long, value_name = "VERSION")]
     pub exact: Option<String>,
 
-    /// `.upToNextMinor(from: "x.y.z")`.
+    /// This version up to the next minor (SwiftPM `.upToNextMinor(from:)`).
     #[arg(long = "up-to-next-minor-from", value_name = "VERSION")]
     pub up_to_next_minor_from: Option<String>,
 
-    /// `branch: "name"`.
+    /// Follow a branch (SwiftPM `branch: "name"`).
     #[arg(long, value_name = "BRANCH")]
     pub branch: Option<String>,
 
-    /// `revision: "sha"`.
+    /// Pin to a commit (SwiftPM `revision: "sha"`).
     #[arg(long, value_name = "SHA")]
     pub revision: Option<String>,
 
-    /// Upper bound of a half-open `from ..< to` range. Requires `--from`.
+    /// Upper bound of a half-open `from ..< to` range; requires `--from`.
     #[arg(long, value_name = "VERSION", requires = "from")]
     pub to: Option<String>,
 }
@@ -121,17 +127,19 @@ impl RequirementArgs {
     }
 }
 
-/// Flags for `dependency remove`.
+/// Flags for `dependency remove`. Unlike `add`'s repeatable link lists, the
+/// narrowing flags here are deliberately single: `remove` unlinks one
+/// product/target edge (or drops the whole package when neither is given).
 #[derive(Debug, Args)]
 pub struct RemoveArgs {
     /// Package to remove: identity, repository URL, local path, or its name.
     pub package: String,
 
-    /// Narrow to unlinking this product only (keep the package reference).
+    /// Narrow to unlinking this one product only (keep the package reference).
     #[arg(long = "product")]
     pub product: Option<String>,
 
-    /// Narrow to this target only.
+    /// Narrow to this one target only.
     #[arg(long = "target")]
     pub target: Option<String>,
 }
@@ -421,6 +429,16 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
     if swiftpm::swift_major_version().is_some_and(|v| v < 6) {
         return Err(CliError::new(
             "adding a dependency to a Package.swift needs Swift 6+ (swift package add-dependency); edit Package.swift and run `dep resolve` instead",
+        ));
+    }
+
+    // Fail before mutating anything if we can neither be told nor prompt for
+    // the products/targets to link — the same guard as the xcodeproj path, so a
+    // non-interactive add never leaves a dangling manifest edit behind a
+    // misclassified prompt failure.
+    if (args.products.is_empty() || args.targets.is_empty()) && !ctx.out.is_interactive() {
+        return Err(CliError::new(
+            "non-interactive: pass --product and --target to add without prompting",
         ));
     }
 
@@ -781,10 +799,17 @@ fn resolve_packages(
     }
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let cwd = xcodebuild::working_dir(container);
-    // Beautify like `build`: quiet/JSON stays silent, `-v` passes raw output
-    // through, otherwise the buildlog renderer shows a clean "Resolving" spinner.
+    // Beautify like `build`: quiet/JSON captures both streams (so nothing
+    // interleaves with the envelope; the tail rides back in the error), `-v`
+    // passes raw output through, otherwise the buildlog renderer shows a clean
+    // "Resolving" spinner.
+    let mut failure_detail = String::new();
     let ok = if quiet || out.is_json() {
-        process::run("xcodebuild", &arg_refs, cwd.as_deref(), true)?
+        let run = process::run_captured("xcodebuild", &arg_refs, cwd.as_deref())?;
+        if !run.success {
+            failure_detail = format!(":\n{}", run.tail);
+        }
+        run.success
     } else if out.is_verbose() {
         process::run("xcodebuild", &arg_refs, cwd.as_deref(), false)?
     } else {
@@ -793,10 +818,10 @@ fn resolve_packages(
     if ok {
         Ok(())
     } else {
-        Err(
-            CliError::new("xcodebuild -resolvePackageDependencies exited with a non-zero status")
-                .context("resolving package dependencies"),
-        )
+        Err(CliError::new(format!(
+            "xcodebuild -resolvePackageDependencies exited with a non-zero status{failure_detail}"
+        ))
+        .context("resolving package dependencies"))
     }
 }
 

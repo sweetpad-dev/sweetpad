@@ -15,25 +15,59 @@ pub enum Tool {
     Swiftlint,
 }
 
+/// The format flags — `--tool`/`--check` are global at the `format` resource
+/// so `sweetpad format --check` and `sweetpad format run --check` both parse;
+/// the positional paths (which can't be global) are declared at both levels.
+#[derive(Debug, clap::Args)]
+pub struct FormatArgs {
+    /// Files or directories to format; defaults to the project directory.
+    pub paths: Vec<PathBuf>,
+
+    /// Which formatter to use (default: `[format] tool` in sweetpad.toml,
+    /// else swift-format).
+    #[arg(long, value_enum, global = true)]
+    pub tool: Option<Tool>,
+
+    /// Check formatting without modifying files (non-zero exit if changes
+    /// are needed).
+    #[arg(long, global = true)]
+    pub check: bool,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Format the given files (or the whole project when none are given).
+    /// Format the given files (the default action: `sweetpad format`).
     Run {
         /// Files or directories to format; defaults to the project directory.
         paths: Vec<PathBuf>,
-        /// Which formatter to use.
-        #[arg(long, value_enum, default_value_t = Tool::SwiftFormat)]
-        tool: Tool,
-        /// Check formatting without modifying files (non-zero exit if changes
-        /// are needed).
-        #[arg(long)]
-        check: bool,
     },
 }
 
-pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
-    match action {
-        Action::Run { paths, tool, check } => format(ctx, paths, *tool, *check),
+pub fn run(ctx: &mut Context, args: &FormatArgs, action: Option<&Action>) -> CommandResult {
+    // Paths may arrive at either level (`format A/` or `format run A/`).
+    let paths = match action {
+        Some(Action::Run { paths }) if !paths.is_empty() => paths,
+        _ => &args.paths,
+    };
+    let tool = args.tool.unwrap_or_else(|| project_default_tool(ctx));
+    format(ctx, paths, tool, args.check)
+}
+
+/// The project's `[format] tool` from sweetpad.toml, defaulting to
+/// swift-format; a typo'd value is warned about rather than silently ignored.
+fn project_default_tool(ctx: &Context) -> Tool {
+    let Ok(container) = crate::cli::resolve::container(ctx) else {
+        return Tool::SwiftFormat;
+    };
+    match ctx.project_file(&container).format.tool.as_deref() {
+        None | Some("swift-format") => Tool::SwiftFormat,
+        Some("swiftlint") => Tool::Swiftlint,
+        Some(other) => {
+            ctx.out.warn(&format!(
+                "sweetpad.toml: unknown [format] tool {other:?} (use swift-format|swiftlint); using swift-format"
+            ));
+            Tool::SwiftFormat
+        }
     }
 }
 

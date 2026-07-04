@@ -248,6 +248,23 @@ pub fn spawn_console(device_id: &str, bundle_id: &str) -> Result<std::process::C
 }
 
 /// Terminate a running app on a device.
+pub fn uninstall(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
+    process::stream(
+        "xcrun",
+        &[
+            "devicectl",
+            "device",
+            "uninstall",
+            "app",
+            "--device",
+            device_id,
+            bundle_id,
+        ],
+        None,
+    )
+    .context("uninstalling the app from the device")
+}
+
 pub fn terminate(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
     process::stream(
         "xcrun",

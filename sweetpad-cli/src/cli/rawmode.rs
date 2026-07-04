@@ -47,6 +47,9 @@ impl RawMode {
             if libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const term) != 0 {
                 return Err(io::Error::last_os_error());
             }
+            // Let the SIGTERM handler restore the terminal too — a kill during
+            // the session must not leave the shell in no-echo mode.
+            crate::cli::signals::set_raw(original);
             Ok(Self { original })
         }
     }
@@ -54,6 +57,7 @@ impl RawMode {
 
 impl Drop for RawMode {
     fn drop(&mut self) {
+        crate::cli::signals::clear_raw();
         // Safety: restoring the exact termios we captured in `enable`.
         unsafe {
             libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const self.original);

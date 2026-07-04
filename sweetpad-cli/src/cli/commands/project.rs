@@ -12,7 +12,10 @@ use crate::cli::{CliError, CliResult, CommandResult, Context, ErrorKind, Render,
 #[derive(Debug, Subcommand)]
 pub enum Action {
     /// Show targets, configurations, and schemes for the resolved project.
-    Info,
+    Info {
+        #[command(flatten)]
+        target: crate::cli::ContainerArgs,
+    },
     /// Create a new minimal SwiftUI app project (iOS or macOS).
     ///
     /// Run with no flags on a terminal to be walked through a short wizard;
@@ -36,7 +39,7 @@ pub struct NewArgs {
     #[arg(long)]
     pub bundle_id: Option<String>,
 
-    /// iOS deployment target (default: `17.0`).
+    /// Deployment target (defaults: iOS `17.0`, macOS `14.0`).
     #[arg(long)]
     pub deployment_target: Option<String>,
 
@@ -55,7 +58,10 @@ pub struct NewArgs {
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
-        Action::Info => info(ctx),
+        Action::Info { target } => {
+            ctx.targeting = target.clone().into();
+            info(ctx)
+        }
         Action::New(args) => new(ctx, args),
     }
 }

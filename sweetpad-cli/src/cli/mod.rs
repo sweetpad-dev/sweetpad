@@ -38,6 +38,7 @@ pub mod rawmode;
 pub mod render;
 pub mod resolve;
 pub mod scaffold;
+pub mod signals;
 pub mod simctl;
 pub mod state;
 pub mod swiftpm;
@@ -64,8 +65,10 @@ pub struct Cli {
     #[command(flatten)]
     pub global: GlobalArgs,
 
+    /// Bare `sweetpad` (no subcommand) prints the status view inside a
+    /// project, and the help outside one.
     #[command(subcommand)]
-    pub resource: Resource,
+    pub resource: Option<Resource>,
 }
 
 /// The truly universal flags — accepted on every command and propagated to
@@ -73,9 +76,27 @@ pub struct Cli {
 /// *not* here: those flags live on the commands that consume them, as the
 /// [`ContainerArgs`]/[`SchemeArgs`]/[`BuildTargetArgs`] tiers below.
 #[derive(Debug, clap::Args)]
+#[command(next_help_heading = "Global")]
 #[allow(clippy::struct_excessive_bools)] // independent CLI toggles, not a state machine
 pub struct GlobalArgs {
-    /// Emit machine-readable JSON instead of human output.
+    /// Run as if started in DIR (chdir before anything else), like `git -C`.
+    #[arg(short = 'C', value_name = "DIR", global = true)]
+    pub chdir: Option<std::path::PathBuf>,
+
+    /// Xcode to use: sets DEVELOPER_DIR for every spawned tool (e.g.
+    /// /Applications/Xcode-16.4.app/Contents/Developer). A project can pin one
+    /// via `developer_dir` in sweetpad.toml.
+    #[arg(long, value_name = "DIR", global = true, env = "DEVELOPER_DIR")]
+    pub developer_dir: Option<std::path::PathBuf>,
+
+    /// Output format. `json` is the one-shot envelope; `ndjson` streams one
+    /// JSON event per line from the long-running verbs (build, test, logs) and
+    /// ends with a `{"event":"result", …}` line. Wins over `--json`.
+    #[arg(short = 'o', long = "output", global = true, value_enum)]
+    pub output: Option<OutputMode>,
+
+    /// Emit machine-readable JSON instead of human output (alias for
+    /// `-o json`).
     #[arg(long, global = true)]
     pub json: bool,
 
@@ -100,16 +121,35 @@ pub struct GlobalArgs {
     /// primary data/JSON are still emitted; wins over `--verbose`.
     #[arg(short, long, global = true)]
     pub quiet: bool,
+
+    /// Emit GitHub Actions annotations (`::error file=…::…`) for build/test
+    /// diagnostics, so failures surface inline on the PR.
+    #[arg(long, global = true)]
+    pub gh_annotations: bool,
+}
+
+/// The output axis (`-o`): how results reach stdout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum OutputMode {
+    /// Colored human output (the default).
+    Human,
+    /// The `{schema, ok, data}` envelope, one JSON document per command.
+    Json,
+    /// Streaming events, one compact JSON object per line; the final line is
+    /// `{"event":"result","ok":…,"data":…}`. Non-streaming commands emit just
+    /// that final line.
+    Ndjson,
+    /// Human output with progress chatter muted (same as `--quiet`).
+    Quiet,
 }
 
 /// Tier 1 — which project container to act on. Flattened into every command
-/// that locates a workspace/project. The flags are `global` *within* the
-/// resource they're flattened into, so they parse on either side of the action
-/// token (`sweetpad project --project App.xcodeproj info` and
-/// `sweetpad project info --project App.xcodeproj` both work), while staying
-/// scoped to the resources that actually consume them — a resource that doesn't
-/// flatten this tier never advertises `--project`/`--workspace`.
-#[derive(Debug, clap::Args)]
+/// that locates a workspace/project — either at the resource level (when every
+/// action consumes it, the flags being `global` within that resource so they
+/// parse on either side of the action token) or directly on the consuming
+/// action (so a sibling like `project new` never advertises flags it ignores).
+#[derive(Debug, Clone, Default, clap::Args)]
+#[command(next_help_heading = "Target selection")]
 pub struct ContainerArgs {
     /// Path to the `.xcworkspace` to operate on (overrides auto-discovery).
     #[arg(long, env = "SWEETPAD_WORKSPACE", global = true)]
@@ -121,8 +161,9 @@ pub struct ContainerArgs {
 }
 
 /// Tier 2 — container plus a scheme. For commands that need to know *which*
-/// scheme but not a full build target (e.g. `scheme list`).
-#[derive(Debug, clap::Args)]
+/// scheme but not a full build target.
+#[derive(Debug, Clone, Default, clap::Args)]
+#[command(next_help_heading = "Target selection")]
 pub struct SchemeArgs {
     #[command(flatten)]
     pub container: ContainerArgs,
@@ -135,7 +176,8 @@ pub struct SchemeArgs {
 /// Tier 3 — everything `xcodebuild` needs: container, scheme, configuration,
 /// and destination. For the build-ish commands (`build`, `test`, `settings`,
 /// `app`).
-#[derive(Debug, clap::Args)]
+#[derive(Debug, Clone, Default, clap::Args)]
+#[command(next_help_heading = "Target selection")]
 pub struct BuildTargetArgs {
     #[command(flatten)]
     pub scheme: SchemeArgs,
@@ -147,6 +189,18 @@ pub struct BuildTargetArgs {
     /// Destination specifier (e.g. "platform=iOS Simulator,name=iPhone 15").
     #[arg(long, env = "SWEETPAD_DESTINATION", global = true)]
     pub destination: Option<String>,
+
+    /// Where to build/run, as a human reference: a fuzzy simulator/device name
+    /// ("iPhone 16 Pro"), `booted`, `mac`, `device`, a platform word (`ios`,
+    /// `watchos`, …), or a UDID. Resolved against the live device list;
+    /// --destination stays the raw escape hatch.
+    #[arg(long, env = "SWEETPAD_ON", global = true, conflicts_with = "destination")]
+    pub on: Option<String>,
+
+    /// SDK to build against (e.g. iphonesimulator, macosx). Rarely needed —
+    /// the destination usually implies it.
+    #[arg(long, env = "SWEETPAD_SDK", global = true)]
+    pub sdk: Option<String>,
 }
 
 /// The resolved-from-flags targeting handed to commands via [`Context`]. Each
@@ -160,17 +214,59 @@ pub struct Targeting {
     pub scheme: Option<String>,
     pub configuration: Option<String>,
     pub destination: Option<String>,
+    /// The human `--on` destination reference, resolved lazily against the
+    /// device list where a destination is settled.
+    pub on: Option<String>,
+    pub sdk: Option<String>,
 }
 
 impl From<ContainerArgs> for Targeting {
     fn from(a: ContainerArgs) -> Self {
+        // clap's `env = …` folds `SWEETPAD_WORKSPACE`/`SWEETPAD_PROJECT` into
+        // the flag layer, which would let an exported workspace silently beat
+        // an explicit `--project` (the container check prefers workspace).
+        // Consult the real argv to restore the documented flag > env order.
+        let (workspace, project) = disambiguate_container(
+            a.workspace,
+            a.project,
+            flag_typed("--workspace"),
+            flag_typed("--project"),
+        );
         Self {
-            workspace: a.workspace,
-            project: a.project,
+            workspace,
+            project,
             scheme: None,
             configuration: None,
             destination: None,
+            on: None,
+            sdk: None,
         }
+    }
+}
+
+/// Whether the literal flag token was typed on the command line, as opposed to
+/// the value arriving through the flag's `env = …` fallback (clap reports both
+/// identically). A value-carrying flag can't itself be consumed as a value, so
+/// a matching token is the flag.
+fn flag_typed(flag: &str) -> bool {
+    std::env::args().any(|a| a == flag || (a.starts_with(flag) && a[flag.len()..].starts_with('=')))
+}
+
+/// Apply flag > env between the two container flags: when both are set and
+/// exactly one was typed on the command line, the env-sourced one is dropped.
+/// Both-typed stays meaningful (a workspace container plus `--project` as the
+/// member to mutate, used by `dependency`), and both-from-env keeps the
+/// documented workspace-first preference.
+fn disambiguate_container(
+    workspace: Option<std::path::PathBuf>,
+    project: Option<std::path::PathBuf>,
+    workspace_typed: bool,
+    project_typed: bool,
+) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
+    match (workspace.is_some(), project.is_some()) {
+        (true, true) if project_typed && !workspace_typed => (None, project),
+        (true, true) if workspace_typed && !project_typed => (workspace, None),
+        _ => (workspace, project),
     }
 }
 
@@ -188,6 +284,8 @@ impl From<BuildTargetArgs> for Targeting {
         Self {
             configuration: a.configuration,
             destination: a.destination,
+            on: a.on,
+            sdk: a.sdk,
             ..a.scheme.into()
         }
     }
@@ -198,15 +296,21 @@ impl From<BuildTargetArgs> for Targeting {
 pub enum Resource {
     /// Inspect schemes.
     Scheme {
-        #[command(flatten)]
-        target: SchemeArgs,
         #[command(subcommand)]
         action: commands::scheme::Action,
     },
-    /// Inspect build destinations.
+    /// Inspect build destinations (hidden alias — see `devices`).
+    #[command(hide = true)]
     Destination {
         #[command(subcommand)]
         action: commands::destination::Action,
+    },
+    /// Everything runnable — macOS, simulators, connected devices — each with
+    /// its ready `-destination` specifier, most-used first, the remembered
+    /// one marked.
+    Devices {
+        #[command(flatten)]
+        target: ContainerArgs,
     },
     /// Show, select, or clear the project's remembered build context.
     Context {
@@ -217,8 +321,6 @@ pub enum Resource {
     },
     /// Inspect the project: targets, configurations, schemes.
     Project {
-        #[command(flatten)]
-        target: ContainerArgs,
         #[command(subcommand)]
         action: commands::project::Action,
     },
@@ -238,47 +340,67 @@ pub enum Resource {
         action: commands::settings::Action,
     },
     /// Manage iOS simulators.
+    #[command(visible_alias = "sim")]
     Simulator {
         #[command(subcommand)]
         action: commands::simulator::Action,
     },
-    /// Compile the project.
+    /// Build, install, launch, and follow logs (the flagship loop; same as
+    /// `app run`).
+    Run(commands::app::RunArgs),
+    /// Compile the project (`build` alone runs `build start`).
     Build {
         #[command(flatten)]
-        target: BuildTargetArgs,
+        args: commands::build::StartArgs,
         #[command(subcommand)]
-        action: commands::build::Action,
+        action: Option<commands::build::Action>,
     },
-    /// Run the project's tests.
+    /// Run the project's tests (`test` alone runs `test run`).
     Test {
         #[command(flatten)]
-        target: BuildTargetArgs,
+        args: commands::test::TestArgs,
         #[command(subcommand)]
-        action: commands::test::Action,
+        action: Option<commands::test::Action>,
     },
-    /// Run, install, and manage the built app's lifecycle.
-    App {
+    /// Archive the app and export an .ipa (xcodebuild archive + -exportArchive).
+    Archive(commands::archive::ArchiveArgs),
+    /// Clean build artifacts (xcodebuild clean; --purge adds DerivedData).
+    Clean {
         #[command(flatten)]
         target: BuildTargetArgs,
-        #[command(subcommand)]
-        action: commands::app::Action,
+        /// Also delete this project's DerivedData folder(s).
+        #[arg(long)]
+        purge: bool,
     },
-    /// Inspect connected physical devices.
+    /// Run, install, and manage the built app's lifecycle (`app` alone runs
+    /// `app run`).
+    App {
+        #[command(subcommand)]
+        action: Option<commands::app::Action>,
+    },
+    /// Inspect connected physical devices (hidden alias — see `devices`).
+    #[command(hide = true)]
     Device {
         #[command(subcommand)]
         action: commands::device::Action,
     },
-    /// Format or lint Swift sources.
+    /// Format or lint Swift sources (`format` alone runs `format run`).
+    #[command(visible_alias = "fmt")]
     Format {
+        #[command(flatten)]
+        args: commands::format::FormatArgs,
         #[command(subcommand)]
-        action: commands::format::Action,
+        action: Option<commands::format::Action>,
     },
-    /// Work with `project.pbxproj` files (semantic git-conflict merge).
+    /// Work with `project.pbxproj` files (hidden alias — see `merge run`).
+    #[command(hide = true)]
     Pbxproj {
         #[command(subcommand)]
         action: commands::pbxproj::Action,
     },
-    /// Work with SwiftPM `Package.resolved` files (semantic git-conflict merge).
+    /// Work with SwiftPM `Package.resolved` files (hidden alias — see
+    /// `merge run`).
+    #[command(hide = true)]
     Spm {
         #[command(subcommand)]
         action: commands::spm::Action,
@@ -296,14 +418,37 @@ pub enum Resource {
         action: commands::bsp::Action,
     },
     /// Inspect and purge Xcode's DerivedData.
+    #[command(visible_alias = "dd")]
     DerivedData {
         #[command(flatten)]
         target: ContainerArgs,
         #[command(subcommand)]
         action: commands::derived_data::Action,
     },
+    /// Open the project in Xcode, Simulator.app, the DerivedData folder, or
+    /// the config file.
+    Open {
+        #[command(flatten)]
+        target: ContainerArgs,
+        /// What to open.
+        #[arg(value_enum)]
+        what: commands::open::What,
+    },
     /// Diagnose the local Xcode/Swift toolchain.
     Doctor,
+    /// Show the effective build context — what would build, and where each
+    /// value comes from (flag/config/remembered/default).
+    Status {
+        #[command(flatten)]
+        target: ContainerArgs,
+    },
+    /// Update sweetpad (Homebrew installs run `brew upgrade sweetpad`).
+    SelfUpdate,
+    /// Explain a topic: config, environment, exit-codes, destinations, hot-reload.
+    Help {
+        /// The topic to explain (omit to list the topics).
+        topic: Option<String>,
+    },
     /// Generate shell completion scripts.
     Completions {
         /// Shell to generate completions for.
@@ -321,12 +466,61 @@ pub struct Context {
     pub config: config::Config,
     pub state: state::State,
     pub out: output::Output,
+    /// The committed `sweetpad.toml`, loaded once on first use (see
+    /// [`Context::project_file`]).
+    project_toml: std::cell::OnceCell<config::ProjectFile>,
+}
+
+impl Context {
+    /// The committed `sweetpad.toml` next to `container` — the team-shared
+    /// defaults layer between the user config and remembered state. Loaded
+    /// once per process; lint warnings surface on that first load, and a
+    /// pinned `developer_dir` takes effect (unless a flag/env already set it).
+    pub fn project_file(&self, container: &resolve::Container) -> &config::ProjectFile {
+        self.project_toml.get_or_init(|| {
+            let dir = container
+                .path()
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map_or_else(|| std::path::PathBuf::from("."), std::path::Path::to_path_buf);
+            let (pf, warnings) = config::ProjectFile::load_for(&dir);
+            for w in &warnings {
+                self.out.warn(w);
+            }
+            if let Some(dev_dir) = &pf.developer_dir
+                && std::env::var_os("DEVELOPER_DIR").is_none()
+            {
+                // Safety: first project-file access happens on the main thread
+                // before tool children spawn.
+                unsafe { std::env::set_var("DEVELOPER_DIR", dev_dir) };
+            }
+            pf
+        })
+    }
 }
 
 /// Entry point for the CLI half of the binary. `argv` is the full process
 /// argument vector minus `argv[0]` (clap re-prepends the program name).
 #[must_use]
+#[allow(clippy::too_many_lines)] // the one-arm-per-resource dispatch table
 pub fn run(argv: &[String]) -> ExitCode {
+    // SIGINT/SIGTERM cleanup (terminal restore, build-group forwarding, child
+    // reaping) — installed before anything spawns or flips terminal modes.
+    signals::install();
+
+    // `--version --json`: clap's own --version is plain text; agents get the
+    // envelope.
+    if argv.iter().any(|a| a == "--version" || a == "-V") && argv.iter().any(|a| a == "--json") {
+        #[allow(clippy::print_stdout)] // pre-clap fast path; Output isn't built yet
+        {
+            println!(
+                r#"{{"schema":1,"ok":true,"data":{{"version":"{}"}}}}"#,
+                env!("CARGO_PKG_VERSION")
+            );
+        }
+        return ExitCode::SUCCESS;
+    }
+
     let cli = match Cli::try_parse_from(
         std::iter::once("sweetpad".to_string()).chain(argv.iter().cloned()),
     ) {
@@ -339,6 +533,22 @@ pub fn run(argv: &[String]) -> ExitCode {
     };
 
     let out = output::Output::new(&cli.global);
+    // `-C DIR` chdirs before any discovery/config touches the filesystem.
+    if let Some(dir) = &cli.global.chdir
+        && let Err(e) = std::env::set_current_dir(dir)
+    {
+        out.error(&CliError::new(format!(
+            "cannot change directory to {}: {e}",
+            dir.display()
+        )));
+        return ExitCode::FAILURE;
+    }
+    // `--developer-dir` pins the Xcode every spawned tool uses (xcrun,
+    // xcodebuild, simctl all honor DEVELOPER_DIR).
+    if let Some(dir) = &cli.global.developer_dir {
+        // Safety: single-threaded startup; no other thread reads the env yet.
+        unsafe { std::env::set_var("DEVELOPER_DIR", dir) };
+    }
     let config = match config::Config::load() {
         Ok(c) => c,
         Err(e) => {
@@ -346,10 +556,18 @@ pub fn run(argv: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let state = state::State::load().unwrap_or_default();
+    for w in &config.warnings {
+        out.warn(w);
+    }
+    // A corrupt state file is quarantined (renamed) and reported, never
+    // silently wiped by the next save.
+    let (state, state_warning) = state::State::load_or_quarantine();
+    if let Some(w) = state_warning {
+        out.warn(&w);
+    }
 
     // Completions need nothing from config/state — emit and return.
-    if let Resource::Completions { shell } = &cli.resource {
+    if let Some(Resource::Completions { shell }) = &cli.resource {
         clap_complete::generate(
             *shell,
             &mut Cli::command(),
@@ -365,22 +583,38 @@ pub fn run(argv: &[String]) -> ExitCode {
         config,
         state,
         out,
+        project_toml: std::cell::OnceCell::new(),
     };
 
-    let result = match cli.resource {
-        Resource::Scheme { target, action } => {
-            ctx.targeting = target.into();
-            commands::scheme::run(&mut ctx, &action)
+    // Bare `sweetpad`: the status view inside a project (the daily "where am
+    // I" glance), the help wall only outside one.
+    let Some(resource) = cli.resource else {
+        if resolve::container(&ctx).is_ok() {
+            let result = commands::status::run(&mut ctx);
+            return render_result(&ctx, result);
+        }
+        let _ = Cli::command().print_help();
+        return ExitCode::SUCCESS;
+    };
+
+    let result = match resource {
+        // Scheme/project/app carry their targeting per action (a sibling like
+        // `project new` or `app open-url` consumes none), so their `run`s set
+        // `ctx.targeting` themselves.
+        Resource::Scheme { action } => commands::scheme::run(&mut ctx, &action),
+        Resource::Run(run_args) => {
+            commands::app::run(&mut ctx, &commands::app::Action::Run(run_args))
         }
         Resource::Destination { action } => commands::destination::run(&mut ctx, &action),
+        Resource::Devices { target } => {
+            ctx.targeting = target.into();
+            commands::destination::devices(&mut ctx)
+        }
         Resource::Context { target, action } => {
             ctx.targeting = target.into();
             commands::context::run(&mut ctx, &action)
         }
-        Resource::Project { target, action } => {
-            ctx.targeting = target.into();
-            commands::project::run(&mut ctx, &action)
-        }
+        Resource::Project { action } => commands::project::run(&mut ctx, &action),
         Resource::Dependency { target, action } => {
             ctx.targeting = target.into();
             commands::dependency::run(&mut ctx, &action)
@@ -390,20 +624,23 @@ pub fn run(argv: &[String]) -> ExitCode {
             commands::settings::run(&mut ctx, &action)
         }
         Resource::Simulator { action } => commands::simulator::run(&mut ctx, &action),
-        Resource::Build { target, action } => {
+        // `build`/`test` carry their flags as resource-level globals; the bare
+        // `start`/`run` tokens are optional markers, so both spellings land here.
+        Resource::Build { args, action } => commands::build::run(&mut ctx, &args, action.as_ref()),
+        Resource::Test { args, action: _ } => commands::test::run(&mut ctx, &args),
+        Resource::Archive(archive_args) => commands::archive::run(&mut ctx, &archive_args),
+        Resource::Clean { target, purge } => {
             ctx.targeting = target.into();
-            commands::build::run(&mut ctx, &action)
+            commands::clean::run(&mut ctx, purge)
         }
-        Resource::Test { target, action } => {
-            ctx.targeting = target.into();
-            commands::test::run(&mut ctx, &action)
-        }
-        Resource::App { target, action } => {
-            ctx.targeting = target.into();
+        Resource::App { action } => {
+            let action = action.unwrap_or_else(commands::app::Action::default_run);
             commands::app::run(&mut ctx, &action)
         }
         Resource::Device { action } => commands::device::run(&mut ctx, &action),
-        Resource::Format { action } => commands::format::run(&mut ctx, &action),
+        Resource::Format { args, action } => {
+            commands::format::run(&mut ctx, &args, action.as_ref())
+        }
         Resource::Pbxproj { action } => commands::pbxproj::run(&mut ctx, &action),
         Resource::Spm { action } => commands::spm::run(&mut ctx, &action),
         Resource::Merge { action } => commands::merge::run(&mut ctx, &action),
@@ -415,15 +652,39 @@ pub fn run(argv: &[String]) -> ExitCode {
             ctx.targeting = target.into();
             commands::derived_data::run(&mut ctx, &action)
         }
+        Resource::Open { target, what } => {
+            ctx.targeting = target.into();
+            commands::open::run(&mut ctx, what)
+        }
         Resource::Doctor => commands::doctor::run(&mut ctx),
+        Resource::Status { target } => {
+            ctx.targeting = target.into();
+            commands::status::run(&mut ctx)
+        }
+        Resource::SelfUpdate => commands::self_update::run(&mut ctx),
+        Resource::Help { topic } => commands::help_topics::run(&mut ctx, topic.as_deref()),
         Resource::Completions { .. } => unreachable!("handled above"),
     };
 
+    let code = render_result(&ctx, result);
+    first_run_hint(&ctx.out);
+    code
+}
+
+/// The single success/error render site: human view, the JSON envelope
+/// (`json_value` wraps the payload's data in `{schema, ok, data}`), or — under
+/// `-o ndjson` — the terminal `{"event":"result","ok":true,"data":…}` line
+/// closing the event stream. Also maps errors to exit codes.
+fn render_result(ctx: &Context, result: CommandResult) -> ExitCode {
     match result {
         Ok(Rendered::Data { payload, exit }) => {
-            // The single success-render site: human view, or the JSON envelope
-            // (`json_value` wraps the payload's data in `{schema, ok, data}`).
-            if ctx.out.is_json() {
+            if ctx.out.is_ndjson() {
+                ctx.out.ndjson_event(&serde_json::json!({
+                    "event": "result",
+                    "ok": true,
+                    "data": payload.json(),
+                }));
+            } else if ctx.out.is_json() {
                 ctx.out.json_value(&payload.json());
             } else {
                 payload.human(&ctx.out);
@@ -436,6 +697,30 @@ pub fn run(argv: &[String]) -> ExitCode {
             ctx.out.error(&e);
             ExitCode::from(e.error_kind().exit_code())
         }
+    }
+}
+
+/// A one-time tip after the very first invocation, pointing at the setup
+/// commands. A marker file in the state dir suppresses every later showing;
+/// interactive-only, so scripts, CI, and `--json` consumers never see it.
+fn first_run_hint(out: &output::Output) {
+    if !out.is_interactive() || out.is_quiet() {
+        return;
+    }
+    let Some(dir) = sweetpad_core::paths::state_dir().map(|d| d.join("sweetpad")) else {
+        return;
+    };
+    let marker = dir.join("first-run");
+    if marker.exists() {
+        return;
+    }
+    let _ = std::fs::create_dir_all(&dir);
+    if std::fs::write(&marker, b"shown\n").is_ok() {
+        out.note(
+            "tip: `sweetpad doctor` checks your toolchain, `sweetpad completions <shell>` \
+             sets up tab-completion, and `sweetpad help config` explains configuration \
+             (this tip shows once)",
+        );
     }
 }
 
@@ -605,6 +890,54 @@ pub type CliResult = Result<(), CliError>;
 /// dispatcher renders once (human vs the JSON envelope), or
 /// [`Rendered::Streamed`] when the command emitted its own output live.
 pub type CommandResult = Result<Rendered, CliError>;
+
+#[cfg(test)]
+mod targeting_tests {
+    use super::disambiguate_container;
+    use std::path::PathBuf;
+
+    #[allow(clippy::unnecessary_wraps)] // the Option is the type under test
+    fn p(s: &str) -> Option<PathBuf> {
+        Some(PathBuf::from(s))
+    }
+
+    #[test]
+    fn typed_flag_beats_env_sourced_value() {
+        // SWEETPAD_WORKSPACE exported, `--project` typed → the env workspace yields.
+        assert_eq!(
+            disambiguate_container(p("/ws.xcworkspace"), p("/p.xcodeproj"), false, true),
+            (None, p("/p.xcodeproj"))
+        );
+        // And the mirror image.
+        assert_eq!(
+            disambiguate_container(p("/ws.xcworkspace"), p("/p.xcodeproj"), true, false),
+            (p("/ws.xcworkspace"), None)
+        );
+    }
+
+    #[test]
+    fn both_typed_and_both_env_are_kept() {
+        // `--workspace … --project …` is meaningful (member selection).
+        assert_eq!(
+            disambiguate_container(p("/ws.xcworkspace"), p("/p.xcodeproj"), true, true),
+            (p("/ws.xcworkspace"), p("/p.xcodeproj"))
+        );
+        // Two exported env vars keep the documented workspace-first order.
+        assert_eq!(
+            disambiguate_container(p("/ws.xcworkspace"), p("/p.xcodeproj"), false, false),
+            (p("/ws.xcworkspace"), p("/p.xcodeproj"))
+        );
+    }
+
+    #[test]
+    fn single_values_pass_through() {
+        assert_eq!(
+            disambiguate_container(None, p("/p.xcodeproj"), false, false),
+            (None, p("/p.xcodeproj"))
+        );
+        assert_eq!(disambiguate_container(None, None, false, false), (None, None));
+    }
+}
 
 #[cfg(test)]
 mod error_tests {

@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
+use dialoguer::theme::{ColorfulTheme, SimpleTheme, Theme};
 
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
@@ -29,7 +30,7 @@ pub enum Action {
     },
     /// Delete DerivedData — this project's folder(s) by default, or --all.
     Purge {
-        /// Delete the whole DerivedData store, not just this project.
+        /// Operate on the whole DerivedData store, not just this project.
         #[arg(long)]
         all: bool,
         /// Skip the interactive confirmation prompt.
@@ -149,8 +150,16 @@ fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
         }));
     }
 
-    // Confirm before deleting when we can prompt and weren't told `--yes`.
-    if !yes && ctx.out.is_interactive() {
+    // Deleting needs consent: an interactive confirmation, or an explicit
+    // `--yes`. Non-interactive contexts (`--json`, CI, piped) can't prompt, so
+    // they *require* `--yes` — a scripted `purge --all --json` must never
+    // silently rm -rf the DerivedData store.
+    if !yes {
+        if !ctx.out.is_interactive() {
+            return Err(CliError::new(
+                "refusing to delete DerivedData without confirmation; pass --yes to purge non-interactively",
+            ));
+        }
         let prompt = if all {
             format!("Delete ALL DerivedData under {}?", root.display())
         } else {
@@ -159,7 +168,15 @@ fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
                 targets.len()
             )
         };
-        let confirmed = dialoguer::Confirm::new()
+        // The same color-aware theme as every other prompt, so `--no-color` holds.
+        let colorful = ColorfulTheme::default();
+        let simple = SimpleTheme;
+        let theme: &dyn Theme = if ctx.out.use_color() {
+            &colorful
+        } else {
+            &simple
+        };
+        let confirmed = dialoguer::Confirm::with_theme(theme)
             .with_prompt(prompt)
             .default(false)
             .interact()
@@ -183,6 +200,13 @@ fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
 
     let note = format!("purged {} folder(s)", removed.len());
     Ok(Rendered::data(PurgeResult { removed, note }))
+}
+
+/// The project-scoped DerivedData folder(s) — shared with `sweetpad clean
+/// --purge`.
+pub(crate) fn project_paths(ctx: &Context) -> Result<Vec<PathBuf>, CliError> {
+    let root = root()?;
+    targets(ctx, &root, false)
 }
 
 /// The DerivedData root, honoring `$HOME`.
@@ -231,12 +255,18 @@ fn targets(ctx: &Context, root: &Path, all: bool) -> Result<Vec<PathBuf>, CliErr
 }
 
 /// The container's base name — the stem Xcode prefixes DerivedData folders
-/// with (e.g. `MyApp.xcodeproj` → `MyApp`).
+/// with (e.g. `MyApp.xcodeproj` → `MyApp`). For a Swift package the manifest is
+/// always literally `Package.swift`, and Xcode names the folder after the
+/// package *directory* — so use that, never the constant `Package` stem (which
+/// would match a foreign `Package-<hash>` entry).
 fn project_base_name(container: &Container) -> Option<String> {
-    container
-        .path()
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
+    let name = match container {
+        Container::SwiftPackage(p) => p.parent()?.file_name()?.to_string_lossy().into_owned(),
+        Container::Workspace(p) | Container::Project(p) => {
+            p.file_stem()?.to_string_lossy().into_owned()
+        }
+    };
+    Some(name)
 }
 
 /// Xcode names DerivedData folders `<Name>-<hash>`. Match the exact name (older
@@ -299,6 +329,16 @@ mod tests {
             root,
             Path::new("/Users/me/Library/Developer/Xcode/DerivedData")
         );
+    }
+
+    #[test]
+    fn spm_base_name_is_the_package_directory() {
+        // Every manifest is literally `Package.swift`; the DerivedData folder is
+        // named after the package directory (`MyLib-<hash>`), never `Package-…`.
+        let pkg = Container::SwiftPackage(PathBuf::from("/work/MyLib/Package.swift"));
+        assert_eq!(project_base_name(&pkg).as_deref(), Some("MyLib"));
+        let proj = Container::Project(PathBuf::from("/work/MyApp.xcodeproj"));
+        assert_eq!(project_base_name(&proj).as_deref(), Some("MyApp"));
     }
 
     #[test]

@@ -37,6 +37,10 @@ fn tmp(tag: &str) -> PathBuf {
         .as_nanos();
     let dir = std::env::temp_dir().join(format!("sweetpad-json-{tag}-{n}"));
     std::fs::create_dir_all(&dir).unwrap();
+    // A `.git` marker stops walk-up discovery at this directory — without it
+    // the CLI would walk into the shared temp root, where concurrently-running
+    // tests drop `.xcodeproj` fixtures.
+    std::fs::create_dir_all(dir.join(".git")).unwrap();
     dir
 }
 
@@ -48,10 +52,18 @@ fn parse_stdout(out: &Output, args: &[&str]) -> Value {
         .unwrap_or_else(|e| panic!("{args:?}: stdout is not one JSON value ({e}):\n{stdout:?}"))
 }
 
+/// The error envelope is the *last* line of stderr, compact by design — earlier
+/// lines may legitimately be warnings (config typos, ambiguity notes), which
+/// the documented contract keeps out of the machine-parsed envelope itself.
 fn parse_stderr_error(out: &Output, args: &[&str]) -> Value {
     let stderr = String::from_utf8(out.stderr.clone()).unwrap();
-    let v: Value = serde_json::from_str(stderr.trim()).unwrap_or_else(|e| {
-        panic!("{args:?}: stderr is not a JSON error envelope ({e}):\n{stderr:?}")
+    let last = stderr
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or_default();
+    let v: Value = serde_json::from_str(last.trim()).unwrap_or_else(|e| {
+        panic!("{args:?}: stderr's last line is not a JSON error envelope ({e}):\n{stderr:?}")
     });
     assert_eq!(v["schema"], 1, "{args:?}: error envelope schema");
     assert_eq!(v["ok"], Value::Bool(false), "{args:?}: error envelope ok");
