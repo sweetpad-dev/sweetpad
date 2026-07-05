@@ -1,3 +1,78 @@
+# CLI audit — round 3 (July 2026)
+
+A fresh adversarial pass over the whole workspace (CLI, core, lib), run
+against `main` at c155570 (0.2.7). Method: thirteen independent review passes
+partitioned by module group, each finding verified against the source (and
+where possible reproduced with a compiled repro) before fixing. **Every
+verified finding is fixed** (commits `addcb1e`, `a12631c`) except the "known
+open" list below.
+
+## Worst findings (all fixed)
+
+- **`stream_lines` hung every streamed build/test at completion.** The
+  `Command` kept the merged pipe's two write ends after spawn (spawn only
+  borrows fds > 2), so the reader never saw EOF once xcodebuild exited.
+  Reproduced with a compiled repro; regression introduced by round 2's 4.7
+  fix. Also: the hand-rolled pipe lacked `FD_CLOEXEC`, so a child spawned
+  concurrently on another thread (BgBoot, watcher compiles) could hold the
+  pipe open with the same hang. (process.rs)
+- **The BSP server died on a percent-encoded URI panic.** `path_from_uri`
+  sliced the `&str` by byte index; a client URI with unencoded non-ASCII
+  after `%` (several BSP clients don't percent-encode) panicked the request
+  loop — in the extension, inside the extension host. Reproduced.
+  (bsp/mod.rs)
+- **xcconfig `#include` flattening was exponential.** The chain-only cycle
+  guard admitted 2^n re-inlining of diamond graphs — ~22 two-include files
+  took 14.6 s and 2M assignments; ~30 is an OOM. Reproduced. Now
+  include-once per flatten (matching Xcode's "already included" skip) plus a
+  depth cap. (resolver.rs)
+- **pbxproj merge silently corrupted duplicate-bearing token lists**
+  (`OTHER_LDFLAGS = ("-framework", A, "-framework", B)` lost the second
+  `-framework`) while reporting a clean merge; such arrays now conflict
+  instead. (pbxproj_merge.rs)
+- **A stale `--testing` pick failed every `sweetpad test` forever** —
+  `recover_stale` never looked at (or cleared) the testing-state layer.
+  (resolve.rs)
+- **`dep update` destroyed `Package.resolved` on a failed resolve** (deleted
+  before resolving, no restore), and the interactive `Package.swift` add
+  wrote a `--package` value (manifest name) that broke the next resolve for
+  packages whose identity differs (firebase-ios-sdk). (dependency.rs)
+
+The remaining ~35 fixes span: signal-registry pid-recycle windows
+(`check_exit`, `simctl record`), inject-server robustness (bounded protocol
+strings, stop-aware waits, straggling-payload desync, transient accept
+failures, shell-aware transcript tokenizing, path-boundary file matching),
+picker twins acting on the wrong simulator, `boot --wait` reporting failed
+boots as success, `core.quotePath` hiding conflicted non-ASCII paths, ndjson
+result events on pre-dispatch errors, empty `SWEETPAD_*` vars poisoning
+resolution, OpenStep octal/surrogate escapes, writer comments containing
+`*/`, cleared-setting flags (`-swift-version ""`, bare `-O`), quote-aware
+preprocessor-define splitting, JSON-RPC header caps, and scratch/clone dir
+leaks. See the two commit messages for the per-fix rationale.
+
+## Verified but deliberately not fixed (known open)
+
+- **xcconfig `serialize` corrupts files where a multi-line `/* … */` comment
+  ends on an entry line** (the raw-capture replay leaves an unterminated
+  comment that swallows the rest of the file on the next parse). `serialize`
+  has no callers outside the lib's own tests — no CLI write path reaches it —
+  so the fix (capturing raw spans from comment-stripped source) is deferred
+  until a write path exists.
+- **`<hex>` data literals round-trip as bare strings** in the pbxproj writer
+  (no `Value::Data` representation). Real Xcode projects don't carry them;
+  parse-only paths are unaffected.
+- **`spm unlink` with a target filter removes a product dependency shared by
+  several targets from all of them** (shared product-dependency objects are
+  a Tuist/hand-edit shape; single-target in practice).
+- **Inject-server verdicts are attributed by global counters**, so a verdict
+  arriving after its 15 s timeout is credited to the next load. Fixing this
+  needs a sequence tag the InjectionNext wire protocol doesn't carry.
+- **`file_cache` stamps are `(len, mtime)`**, so a same-length rewrite within
+  the filesystem's mtime granularity can serve a stale parse to the
+  long-lived addon. Needs a content hash or a don't-cache-recent rule.
+
+---
+
 # CLI audit — round 2 (July 2026)
 
 A fresh bugs/correctness/stability audit of the whole `sweetpad` CLI, run
