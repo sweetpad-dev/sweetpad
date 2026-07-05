@@ -44,7 +44,7 @@ print(eval(sys.argv[1], {"d": d}).get(sys.argv[2], ""))
 ' "$1" "$2"
 }
 oracle_key()   { get_key 'd[0]["buildSettings"]' "$1" <<<"$oracle_json"; }
-resolver_key() { get_key 'd["targets"][0]["settings"]' "$1" <<<"$resolver_json"; }
+resolver_key() { get_key 'd["data"]["targets"][0]["settings"]' "$1" <<<"$resolver_json"; }
 
 echo "==== PR #264 native-macOS Catalyst differential ===="
 echo "project: $PROJ"

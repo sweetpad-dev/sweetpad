@@ -47,10 +47,12 @@ run_briefly() {
 }
 
 # A JSON field assertion via python3: <json> <python-expr over `d`> <expected>.
+# Every `--json` result is the standardized `{schema, ok, data}` success
+# envelope (see output.rs::json_value), so `d` is bound to the `data` payload.
 assert_json() {
   python3 - "$@" <<'PY'
 import json, sys
-data = json.loads(sys.argv[1])
+data = json.loads(sys.argv[1])["data"]
 got = str(eval(sys.argv[2], {"d": data}))
 want = sys.argv[3]
 if got != want:
@@ -111,7 +113,7 @@ ok "destination list (human)"
 "$BIN" simulator list --json >/dev/null
 ok "simulator list"
 
-DEST=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
+DEST=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['data']['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
 UDID="${DEST##*id=}"
 echo "  using $DEST"
 xcrun simctl boot "$UDID" || true
