@@ -40,7 +40,9 @@ export const deviceLaunch: HandlerFn<
   const argv = ["device", "process", "launch"];
   if (params?.terminateExisting !== false) argv.push("--terminate-existing");
   argv.push("--device", deviceId, bundleId);
-  if (params?.args) argv.push(...params.args);
+  // A `--` separator keeps devicectl from parsing app arguments that start with
+  // `-` as its own options (see issue #296).
+  if (params?.args?.length) argv.push("--", ...params.args);
   // devicectl forwards env entries prefixed with DEVICECTL_CHILD_ to the
   // launched process.
   const env: Record<string, string> = {};

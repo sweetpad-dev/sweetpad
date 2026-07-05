@@ -829,7 +829,11 @@ export class BuildManager {
         "--device",
         deviceId,
         bundlerId,
-        ...option.launchArgs,
+        // A `--` separator tells devicectl that everything after it belongs to
+        // the launched app, not to devicectl itself. Without it, launch args
+        // that start with `-` (common NSUserDefaults-style flags) are parsed as
+        // devicectl options and the launch fails. See issue #296.
+        ...(option.launchArgs.length ? ["--", ...option.launchArgs] : []),
       ].filter((arg) => arg !== null); // Filter out null arguments
 
       this.progress.updateText(`Running "${option.scheme}" on "${option.destination.name}"`);
