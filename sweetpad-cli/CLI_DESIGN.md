@@ -191,13 +191,31 @@ builds it with real `xcodebuild`.
   `completions` ignores it. Clap usage errors (exit 2) print clap's human
   text on stderr regardless of `--json`.
 
+### The NDJSON stream (`-o ndjson`)
+
+- **stdout carries only events**: one compact JSON object per line, each with
+  an `event` discriminator (`task`, `diagnostic`, `test`, `suite`), and the
+  stream ends with exactly **one** terminal line —
+  `{"event":"result","ok":true,"data":…}` on success, or
+  `{"event":"result","ok":false,"error":{code,message}}` on failure (the
+  compact stderr envelope is also emitted, as the machine-parsed error
+  surface). Non-streaming commands degenerate to just the result line.
+- Human chatter stays on stderr; child tools are run captured/quiet so their
+  raw stdout never interleaves with the events.
+- **Exceptions:** `app run` rejects ndjson like it rejects `--json`;
+  `--watch` is refused under both machine modes (a rerun-forever loop has no
+  terminal result); `app logs` passes through the raw `log stream` events.
+- `--gh-annotations` conflicts with both machine modes (workflow commands and
+  the envelope/event stream both claim stdout) and is rejected up front.
+
 ### Exit codes
 
 ```
 0  success                      4  target resolution failed (no/unknown
 1  generic failure                 scheme, destination, simulator, …)
 2  usage error (owned by clap)  5  required tool missing (xcodebuild, …)
-3  build or test failure        6  cancelled by the user (prompt/Ctrl-C)
+3  build or test failure        6  cancelled by the user (a declined or
+                                   Esc'd prompt, Ctrl-C in a session)
 ```
 
 A SIGINT/SIGTERM that kills the process exits `128 + signo` (130/143), after

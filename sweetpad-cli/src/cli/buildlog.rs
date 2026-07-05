@@ -125,10 +125,26 @@ fn parse_diagnostic(line: &str, t: &str) -> Option<Event> {
         (": note: ", DiagKind::Note),
     ] {
         if let Some(idx) = line.find(marker) {
+            // Tool-prefixed diagnostics (`clang: error: …`, `xcodebuild:
+            // error: …`) put the tool name where a location would sit; a
+            // non-path prefix folds into the message instead of becoming a
+            // bogus `file=clang` in artifacts and annotations.
+            let prefix = line[..idx].trim();
+            let (location, message) = if location_like(prefix) {
+                (
+                    Some(prefix.to_string()),
+                    line[idx + marker.len()..].trim().to_string(),
+                )
+            } else {
+                (
+                    None,
+                    format!("{prefix}: {}", line[idx + marker.len()..].trim()),
+                )
+            };
             return Some(Event::Diagnostic {
                 kind,
-                location: Some(line[..idx].trim().to_string()),
-                message: line[idx + marker.len()..].trim().to_string(),
+                location,
+                message,
             });
         }
     }
@@ -307,6 +323,17 @@ impl BuildProgress {
     }
 }
 
+/// Whether a diagnostic prefix names a source location (`file[:line[:col]]`)
+/// rather than the emitting tool: path-shaped (contains a separator), or a
+/// bare file with a plausible extension.
+fn location_like(prefix: &str) -> bool {
+    if prefix.is_empty() {
+        return false;
+    }
+    let file = prefix.split(':').next().unwrap_or(prefix);
+    file.contains('/') || Path::new(file).extension().is_some()
+}
+
 /// The GitHub Actions workflow-command line for a diagnostic
 /// (`::error file=…,line=…::message`), or `None` for everything else.
 #[must_use]
@@ -334,7 +361,10 @@ pub fn gh_annotation(event: &Event) -> Option<String> {
 }
 
 /// `file:line:col` → ` file=…,line=…,col=…` annotation properties; a location
-/// that doesn't parse still anchors as a bare `file=`.
+/// that doesn't parse still anchors as a bare `file=`. Property values get
+/// the workflow-command escaping GitHub requires (`%`, `\r`, `\n`, `:`, `,`)
+/// — an unescaped comma in a path would split the property list and anchor
+/// the annotation to the wrong file.
 fn location_props(loc: &str) -> String {
     use std::fmt::Write as _;
     let mut parts = loc.rsplitn(3, ':');
@@ -345,7 +375,7 @@ fn location_props(loc: &str) -> String {
         }
         _ => (None, loc.to_string()),
     };
-    let mut props = format!(" file={file}");
+    let mut props = format!(" file={}", escape_property(&file));
     if let Some(line) = line {
         let _ = write!(props, ",line={line}");
         if let Some(col) = col {
@@ -353,6 +383,17 @@ fn location_props(loc: &str) -> String {
         }
     }
     props
+}
+
+/// GitHub workflow-command *property* escaping (stricter than the message's:
+/// `:` and `,` delimit properties).
+fn escape_property(value: &str) -> String {
+    value
+        .replace('%', "%25")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A")
+        .replace(':', "%3A")
+        .replace(',', "%2C")
 }
 
 /// Append the elapsed time to a terminal *success* banner (`✓ Build succeeded
@@ -602,6 +643,45 @@ mod tests {
         assert!(gh_annotation(&warn).unwrap().starts_with("::warning file="));
         // Tasks and notes carry no annotation.
         assert!(gh_annotation(&parse_line("CompileSwift x.swift")).is_none());
+    }
+
+    #[test]
+    fn tool_prefixed_errors_fold_the_tool_into_the_message() {
+        // `clang:`/`xcodebuild:` prefixes are tools, not files — a location of
+        // "clang" would anchor annotations and artifacts to a bogus file.
+        let e = parse_line("clang: error: linker command failed with exit code 1");
+        assert_eq!(
+            e,
+            Event::Diagnostic {
+                kind: DiagKind::Error,
+                location: None,
+                message: "clang: linker command failed with exit code 1".to_string(),
+            }
+        );
+        assert_eq!(
+            gh_annotation(&e).unwrap(),
+            "::error::clang: linker command failed with exit code 1"
+        );
+        assert!(matches!(
+            parse_line("xcodebuild: error: Scheme Demo is not currently configured for the test action."),
+            Event::Diagnostic { location: None, .. }
+        ));
+        // Real locations keep anchoring, path-shaped or bare-file-with-extension.
+        assert!(matches!(
+            parse_line("Foo.swift:3:1: warning: unused"),
+            Event::Diagnostic { location: Some(_), .. }
+        ));
+    }
+
+    #[test]
+    fn annotation_property_values_are_escaped() {
+        // GitHub splits properties on `,` and `:` — a path containing them
+        // must ride escaped or the annotation anchors to the wrong file.
+        let e = parse_line("/Users/x/My Project,v2/Foo.swift:12:5: error: bad thing");
+        assert_eq!(
+            gh_annotation(&e).unwrap(),
+            "::error file=/Users/x/My Project%2Cv2/Foo.swift,line=12,col=5::bad thing"
+        );
     }
 
     #[test]

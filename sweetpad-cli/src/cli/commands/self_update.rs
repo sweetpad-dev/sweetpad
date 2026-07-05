@@ -20,7 +20,12 @@ impl Render for UpdateReport {
 }
 
 pub fn run(ctx: &mut Context) -> CommandResult {
-    let exe = std::env::current_exe().unwrap_or_default();
+    // Canonicalize first: Homebrew launches through a bin/ symlink
+    // (/usr/local/bin on Intel matches neither substring), and current_exe
+    // doesn't resolve it.
+    let exe = std::env::current_exe()
+        .and_then(std::fs::canonicalize)
+        .unwrap_or_default();
     let path = exe.to_string_lossy();
     let brewed = path.contains("/Cellar/") || path.contains("/homebrew/");
     if brewed {

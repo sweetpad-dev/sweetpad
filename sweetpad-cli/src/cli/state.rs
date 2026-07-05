@@ -20,6 +20,12 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct State {
     pub projects: BTreeMap<String, ProjectState>,
+    /// Set when the on-disk file exists but couldn't be *read* (permissions,
+    /// I/O error): the in-memory state is then a guess, and [`save`](State::save)
+    /// becomes a no-op — writing would replace every project's remembered
+    /// context with near-emptiness.
+    #[serde(skip)]
+    pub read_only: bool,
 }
 
 /// Remembered selections for a single project. Scalar fields come first so the
@@ -143,44 +149,58 @@ impl State {
         state_dir().map(|d| d.join("sweetpad").join("state.toml"))
     }
 
-    /// Load remembered state. A missing or unreadable file yields defaults —
-    /// state is best-effort and must never block a command.
-    pub fn load() -> Result<Self, String> {
-        let Some(path) = Self::path() else {
-            return Ok(Self::default());
-        };
-        match std::fs::read_to_string(&path) {
-            Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display())),
-            Err(_) => Ok(Self::default()),
-        }
-    }
-
-    /// Load remembered state, preserving evidence on corruption: a file that
-    /// exists but doesn't parse is moved aside to `state.toml.corrupt` and a
-    /// warning describing both paths is returned with the defaults. Without
-    /// this, the next best-effort [`save`](State::save) would rewrite the whole
-    /// file from the near-empty in-memory state — every project's remembered
-    /// context lost without a trace.
+    /// Load remembered state, preserving what's on disk against both failure
+    /// modes:
+    ///
+    /// - a file that exists but can't be **read** (permissions, I/O error)
+    ///   yields defaults flagged [`read_only`](State::read_only) — saves are
+    ///   skipped for this run, so the unreadable file survives intact;
+    /// - a file that reads but doesn't **parse** is moved aside to a unique
+    ///   `state.toml.corrupt[.N]` backup and a warning names both paths.
+    ///
+    /// Without either guard, the next best-effort [`save`](State::save) would
+    /// rewrite the whole file from the near-empty in-memory state — every
+    /// project's remembered context lost without a trace.
     #[must_use]
     pub fn load_or_quarantine() -> (Self, Option<String>) {
-        match Self::load() {
+        let Some(path) = Self::path() else {
+            return (Self::default(), None);
+        };
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return (Self::default(), None);
+            }
+            Err(e) => {
+                let state = Self {
+                    read_only: true,
+                    ..Self::default()
+                };
+                return (
+                    state,
+                    Some(format!(
+                        "cannot read the state file {} ({e}); continuing without remembered \
+                         context, and skipping state saves so it isn't overwritten",
+                        path.display()
+                    )),
+                );
+            }
+        };
+        match toml::from_str(&text) {
             Ok(state) => (state, None),
             Err(parse_err) => {
-                let warning = Self::path().map_or_else(
-                    || format!("state file is corrupt and was ignored: {parse_err}"),
-                    |path| {
-                        let backup = path.with_extension("toml.corrupt");
-                        match std::fs::rename(&path, &backup) {
-                            Ok(()) => format!(
-                                "state file is corrupt ({parse_err}); moved it to {} and starting fresh",
-                                backup.display()
-                            ),
-                            Err(_) => format!(
-                                "state file is corrupt and will be overwritten on the next save: {parse_err}"
-                            ),
-                        }
-                    },
-                );
+                let backup = quarantine_path(&path);
+                let warning = match std::fs::rename(&path, &backup) {
+                    Ok(()) => format!(
+                        "state file is corrupt ({}: {parse_err}); moved it to {} and starting fresh",
+                        path.display(),
+                        backup.display()
+                    ),
+                    Err(_) => format!(
+                        "state file is corrupt and will be overwritten on the next save: {}: {parse_err}",
+                        path.display()
+                    ),
+                };
                 (Self::default(), Some(warning))
             }
         }
@@ -193,6 +213,11 @@ impl State {
     /// is the [`pruned_view`](State::pruned_view), so the file can't grow
     /// forever.
     pub fn save(&self) -> Result<(), String> {
+        // An unreadable-on-load file must never be replaced by this run's
+        // near-empty view (see `read_only`).
+        if self.read_only {
+            return Ok(());
+        }
         let Some(path) = Self::path() else {
             return Ok(());
         };
@@ -231,7 +256,10 @@ impl State {
                 (key.clone(), entry)
             })
             .collect();
-        State { projects }
+        State {
+            projects,
+            read_only: self.read_only,
+        }
     }
 
     /// Mutable access to a project's remembered selections, inserting an empty
@@ -243,6 +271,23 @@ impl State {
 
 /// How many destination recents (and their usage entries) a project keeps.
 const MAX_RECENTS: usize = 12;
+
+/// A quarantine path that never clobbers an earlier backup: `state.toml.corrupt`,
+/// then `.corrupt.1`, `.corrupt.2`, … — the first backup may hold the only
+/// surviving copy of the remembered context.
+fn quarantine_path(path: &std::path::Path) -> PathBuf {
+    let base = path.with_extension("toml.corrupt");
+    if !base.exists() {
+        return base;
+    }
+    for n in 1..100 {
+        let candidate = path.with_extension(format!("toml.corrupt.{n}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    base
+}
 
 /// Whether a state key points at a deleted container: the path is gone but its
 /// parent directory still exists.
@@ -376,6 +421,31 @@ mod tests {
         assert_eq!(entry.destination_usage.len(), MAX_RECENTS);
         assert!(!entry.destination_usage.contains_key("UDID-0"));
         assert!(entry.destination_usage.contains_key("UDID-19"));
+    }
+
+    #[test]
+    fn read_only_state_never_saves() {
+        let mut state = State {
+            read_only: true,
+            ..State::default()
+        };
+        state.project_mut("/x").scheme = Some("App".into());
+        // No path is touched: read_only short-circuits before Self::path().
+        assert!(state.save().is_ok());
+    }
+
+    #[test]
+    fn quarantine_paths_never_clobber_an_earlier_backup() {
+        let dir = std::env::temp_dir().join(format!("sweetpad-quarantine-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.toml");
+        let first = quarantine_path(&path);
+        assert!(first.to_string_lossy().ends_with("state.toml.corrupt"));
+        std::fs::write(&first, "old backup").unwrap();
+        let second = quarantine_path(&path);
+        assert!(second.to_string_lossy().ends_with("state.toml.corrupt.1"));
+        assert_ne!(first, second);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

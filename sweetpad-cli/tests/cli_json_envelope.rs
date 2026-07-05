@@ -165,6 +165,24 @@ fn unresolved_target_is_an_error_envelope() {
     assert_eq!(out.status.code(), Some(4), "target resolution → exit 4");
 }
 
+/// Bare `sweetpad --json` outside a project must speak JSON like everything
+/// else: an error envelope and exit 4 — never the human help wall on stdout.
+#[test]
+fn bare_json_outside_a_project_is_an_error_envelope() {
+    let home = tmp("bare-home");
+    let cwd = tmp("bare-cwd"); // empty dir → no project to discover
+    let args: &[&str] = &["--json"];
+    let out = sweetpad(args, &cwd, &home);
+    let stdout = String::from_utf8(out.stdout.clone()).unwrap();
+    assert!(
+        stdout.trim().is_empty(),
+        "bare --json must not write text to stdout, got {stdout:?}"
+    );
+    let err = parse_stderr_error(&out, args);
+    assert_eq!(err["error"]["code"], "target_resolution");
+    assert_eq!(out.status.code(), Some(4));
+}
+
 /// `app run` streams a live session, so it deliberately rejects `--json` rather
 /// than emit a degenerate payload — it must never produce a success envelope.
 #[test]

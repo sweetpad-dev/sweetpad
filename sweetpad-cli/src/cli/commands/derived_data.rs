@@ -184,10 +184,11 @@ fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
                 CliError::new(format!("confirmation cancelled: {e}")).kind(ErrorKind::UserCancel)
             })?;
         if !confirmed {
-            return Ok(Rendered::data(PurgeResult {
-                removed: Vec::new(),
-                note: "aborted".to_string(),
-            }));
+            // A declined prompt exits 6 like an Esc'd one — scripts must be
+            // able to tell "purged" from "declined" (`help exit-codes`
+            // documents this).
+            return Err(CliError::new("purge declined")
+                .kind(crate::cli::ErrorKind::UserCancel));
         }
     }
 

@@ -44,12 +44,16 @@ impl RawMode {
             // a read never blocks the loop indefinitely (see [`poll_key`]).
             term.c_cc[libc::VMIN] = 0;
             term.c_cc[libc::VTIME] = 1;
+            // Arm the signal handler's restore *before* flipping the terminal:
+            // a signal in the gap then restores an already-original terminal
+            // (idempotent) instead of skipping a needed restore. The applied
+            // termios rides along so SIGCONT can re-assert raw after a
+            // suspend.
+            crate::cli::signals::set_raw(original, term);
             if libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const term) != 0 {
+                crate::cli::signals::clear_raw();
                 return Err(io::Error::last_os_error());
             }
-            // Let the SIGTERM handler restore the terminal too — a kill during
-            // the session must not leave the shell in no-echo mode.
-            crate::cli::signals::set_raw(original);
             Ok(Self { original })
         }
     }
@@ -57,11 +61,14 @@ impl RawMode {
 
 impl Drop for RawMode {
     fn drop(&mut self) {
-        crate::cli::signals::clear_raw();
+        // Restore first, then disarm the handler's restore — a signal between
+        // the two re-restores idempotently; the reverse order would leave a
+        // raw terminal if the signal landed in the gap.
         // Safety: restoring the exact termios we captured in `enable`.
         unsafe {
             libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const self.original);
         }
+        crate::cli::signals::clear_raw();
     }
 }
 
@@ -81,9 +88,9 @@ pub enum Input {
 /// pressed. Reads the raw fd directly (not std's buffered `Stdin`) so concurrent
 /// users — the idle loop and the build-time watcher — never fight over a shared
 /// buffer. A multi-byte UTF-8 keystroke (e.g. a Cyrillic letter) is read whole.
-/// Only valid while a [`RawMode`] guard is active. On a terminal a zero-byte read
-/// is the `VTIME` timeout (EOF arrives as a `^D` byte), so it maps to
-/// [`Input::Idle`], not a close.
+/// A zero-byte read after a positive poll is EOF (a raw-mode terminal never
+/// returns 0 once poll saw data; Ctrl-D arrives as a `0x04` byte), so it maps
+/// to [`Input::Closed`].
 #[must_use]
 pub fn poll_key() -> Input {
     // Wait up to ~0.1s for stdin to be readable *before* reading, so the read never
@@ -99,9 +106,21 @@ pub fn poll_key() -> Input {
     let n = unsafe { libc::read(libc::STDIN_FILENO, buf.as_mut_ptr().cast(), 1) };
     match n {
         1 => decode_char(buf[0]),
-        0 => Input::Idle,
+        // poll(2) said readable, so a zero read is genuine EOF (`/dev/null`, a
+        // closed pipe) — never a raw-mode VTIME timeout, which can't fire once
+        // data is waiting. Mapping it to Idle would busy-spin on an
+        // always-readable EOF fd.
+        0 => Input::Closed,
+        // A signal can interrupt the read between poll and completion; that's
+        // a retry, not a closed stdin (Closed would quit the session and
+        // terminate the app).
+        _ if last_errno_is_eintr() => Input::Idle,
         _ => Input::Closed,
     }
+}
+
+fn last_errno_is_eintr() -> bool {
+    io::Error::last_os_error().raw_os_error() == Some(libc::EINTR)
 }
 
 /// The per-tick poll budget, matching the old `VTIME` cadence so the session loop

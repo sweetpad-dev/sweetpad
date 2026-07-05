@@ -194,7 +194,7 @@ pub struct BuildTargetArgs {
     /// ("iPhone 16 Pro"), `booted`, `mac`, `device`, a platform word (`ios`,
     /// `watchos`, …), or a UDID. Resolved against the live device list;
     /// --destination stays the raw escape hatch.
-    #[arg(long, env = "SWEETPAD_ON", global = true, conflicts_with = "destination")]
+    #[arg(long, env = "SWEETPAD_ON", global = true)]
     pub on: Option<String>,
 
     /// SDK to build against (e.g. iphonesimulator, macosx). Rarely needed —
@@ -247,9 +247,13 @@ impl From<ContainerArgs> for Targeting {
 /// Whether the literal flag token was typed on the command line, as opposed to
 /// the value arriving through the flag's `env = …` fallback (clap reports both
 /// identically). A value-carrying flag can't itself be consumed as a value, so
-/// a matching token is the flag.
+/// a matching token is the flag. The scan stops at the first bare `--`:
+/// passthrough tokens belong to the child tool and must not flip
+/// disambiguation.
 fn flag_typed(flag: &str) -> bool {
-    std::env::args().any(|a| a == flag || (a.starts_with(flag) && a[flag.len()..].starts_with('=')))
+    std::env::args()
+        .take_while(|a| a != "--")
+        .any(|a| a == flag || (a.starts_with(flag) && a[flag.len()..].starts_with('=')))
 }
 
 /// Apply flag > env between the two container flags: when both are set and
@@ -270,6 +274,66 @@ fn disambiguate_container(
     }
 }
 
+/// The machine output mode the pre-clap fast path should honor: the last
+/// `-o`/`--output` value wins outright (including `-o human` *disabling* a
+/// `--json`); with no `-o`, `--json` selects the envelope. `None` = human.
+fn machine_output_mode(head: &[&str]) -> Option<OutputMode> {
+    let mut from_o: Option<Option<OutputMode>> = None;
+    let mut json_flag = false;
+    let parse = |v: &str| match v {
+        "json" => Some(OutputMode::Json),
+        "ndjson" => Some(OutputMode::Ndjson),
+        _ => None, // human/quiet — machine output off
+    };
+    let mut i = 0;
+    while i < head.len() {
+        let a = head[i];
+        if a == "--json" {
+            json_flag = true;
+        } else if a == "-o" || a == "--output" {
+            if let Some(v) = head.get(i + 1) {
+                from_o = Some(parse(v));
+                i += 1;
+            }
+        } else if let Some(v) = a.strip_prefix("--output=") {
+            from_o = Some(parse(v));
+        } else if let Some(v) = a.strip_prefix("-o=").or_else(|| {
+            (a.len() > 2 && a.starts_with("-o") && !a.starts_with("--")).then(|| &a[2..])
+        }) {
+            from_o = Some(parse(v));
+        }
+        i += 1;
+    }
+    match from_o {
+        Some(mode) => mode,
+        None => json_flag.then_some(OutputMode::Json),
+    }
+}
+
+impl Targeting {
+    /// The env-var layer alone. The bare `sweetpad` status view parses no
+    /// resource, so clap never folds `SWEETPAD_*` into flags there — without
+    /// this the bare view would show a context the very next `build` ignores.
+    fn from_env() -> Self {
+        let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        let (on, destination) = disambiguate_on_destination(
+            var("SWEETPAD_ON"),
+            var("SWEETPAD_DESTINATION"),
+            false,
+            false,
+        );
+        Self {
+            workspace: var("SWEETPAD_WORKSPACE").map(Into::into),
+            project: var("SWEETPAD_PROJECT").map(Into::into),
+            scheme: var("SWEETPAD_SCHEME"),
+            configuration: var("SWEETPAD_CONFIGURATION"),
+            destination,
+            on,
+            sdk: var("SWEETPAD_SDK"),
+        }
+    }
+}
+
 impl From<SchemeArgs> for Targeting {
     fn from(a: SchemeArgs) -> Self {
         Self {
@@ -281,13 +345,40 @@ impl From<SchemeArgs> for Targeting {
 
 impl From<BuildTargetArgs> for Targeting {
     fn from(a: BuildTargetArgs) -> Self {
+        // `--on` and `--destination` are exclusive ways to name the same
+        // thing. A clap-level conflict would fire on *env-sourced* values
+        // (an exported SWEETPAD_DESTINATION breaking a typed `--on`), so the
+        // pair resolves post-parse like the container flags: the typed one
+        // wins; both-typed is rejected where the destination settles.
+        let (on, destination) = disambiguate_on_destination(
+            a.on,
+            a.destination,
+            flag_typed("--on"),
+            flag_typed("--destination"),
+        );
         Self {
             configuration: a.configuration,
-            destination: a.destination,
-            on: a.on,
+            destination,
+            on,
             sdk: a.sdk,
             ..a.scheme.into()
         }
+    }
+}
+
+/// Apply flag > env between `--on` and `--destination`: when both are set and
+/// exactly one was typed, the env-sourced one yields. Both-typed (and
+/// both-env) keep both, and the resolver errors when it has to choose.
+fn disambiguate_on_destination(
+    on: Option<String>,
+    destination: Option<String>,
+    on_typed: bool,
+    destination_typed: bool,
+) -> (Option<String>, Option<String>) {
+    match (on.is_some(), destination.is_some()) {
+        (true, true) if on_typed && !destination_typed => (on, None),
+        (true, true) if destination_typed && !on_typed => (None, destination),
+        _ => (on, destination),
     }
 }
 
@@ -365,13 +456,7 @@ pub enum Resource {
     /// Archive the app and export an .ipa (xcodebuild archive + -exportArchive).
     Archive(commands::archive::ArchiveArgs),
     /// Clean build artifacts (xcodebuild clean; --purge adds DerivedData).
-    Clean {
-        #[command(flatten)]
-        target: BuildTargetArgs,
-        /// Also delete this project's DerivedData folder(s).
-        #[arg(long)]
-        purge: bool,
-    },
+    Clean(commands::clean::CleanArgs),
     /// Run, install, and manage the built app's lifecycle (`app` alone runs
     /// `app run`).
     App {
@@ -437,10 +522,10 @@ pub enum Resource {
     /// Diagnose the local Xcode/Swift toolchain.
     Doctor,
     /// Show the effective build context — what would build, and where each
-    /// value comes from (flag/config/remembered/default).
+    /// value comes from (flag/env/config/remembered/default).
     Status {
         #[command(flatten)]
-        target: ContainerArgs,
+        target: BuildTargetArgs,
     },
     /// Update sweetpad (Homebrew installs run `brew upgrade sweetpad`).
     SelfUpdate,
@@ -508,15 +593,27 @@ pub fn run(argv: &[String]) -> ExitCode {
     // reaping) — installed before anything spawns or flips terminal modes.
     signals::install();
 
-    // `--version --json`: clap's own --version is plain text; agents get the
-    // envelope.
-    if argv.iter().any(|a| a == "--version" || a == "-V") && argv.iter().any(|a| a == "--json") {
+    // `--version` under a machine output mode: clap's own --version is plain
+    // text; agents get the envelope (or, under ndjson, the terminal result
+    // event). Only tokens before `--` count — passthrough belongs to the
+    // spawned tool — and `-o` wins over `--json` per that flag's contract.
+    let head: Vec<&str> = argv
+        .iter()
+        .take_while(|a| *a != "--")
+        .map(String::as_str)
+        .collect();
+    if head.iter().any(|a| *a == "--version" || *a == "-V")
+        && let Some(mode) = machine_output_mode(&head)
+    {
         #[allow(clippy::print_stdout)] // pre-clap fast path; Output isn't built yet
         {
-            println!(
-                r#"{{"schema":1,"ok":true,"data":{{"version":"{}"}}}}"#,
-                env!("CARGO_PKG_VERSION")
-            );
+            let version = env!("CARGO_PKG_VERSION");
+            match mode {
+                OutputMode::Ndjson => println!(
+                    r#"{{"event":"result","ok":true,"data":{{"version":"{version}"}}}}"#
+                ),
+                _ => println!(r#"{{"schema":1,"ok":true,"data":{{"version":"{version}"}}}}"#),
+            }
         }
         return ExitCode::SUCCESS;
     }
@@ -549,11 +646,21 @@ pub fn run(argv: &[String]) -> ExitCode {
         // Safety: single-threaded startup; no other thread reads the env yet.
         unsafe { std::env::set_var("DEVELOPER_DIR", dir) };
     }
+    if cli.global.gh_annotations && (out.is_json() || out.is_ndjson()) {
+        out.error(&CliError::new(
+            "--gh-annotations writes ::error workflow commands to stdout, which -o json/ndjson \
+             reserve for the envelope/event stream; use --gh-annotations with human output",
+        ));
+        return ExitCode::FAILURE;
+    }
     let config = match config::Config::load() {
         Ok(c) => c,
         Err(e) => {
-            out.error(&CliError::new(format!("failed to load config: {e}")));
-            return ExitCode::FAILURE;
+            out.warn(&format!(
+                "failed to load config: {e} — continuing with defaults \
+                 (`sweetpad open config` to fix it)"
+            ));
+            config::Config::default()
         }
     };
     for w in &config.warnings {
@@ -587,11 +694,22 @@ pub fn run(argv: &[String]) -> ExitCode {
     };
 
     // Bare `sweetpad`: the status view inside a project (the daily "where am
-    // I" glance), the help wall only outside one.
+    // I" glance), the help wall only outside one — and under a machine mode,
+    // an error envelope instead of a help wall on stdout. The probe is
+    // silent; status itself resolves (and warns about ambiguity) once.
     let Some(resource) = cli.resource else {
-        if resolve::container(&ctx).is_ok() {
+        ctx.targeting = Targeting::from_env();
+        if resolve::container_silently(&ctx).is_some() {
             let result = commands::status::run(&mut ctx);
             return render_result(&ctx, result);
+        }
+        if ctx.out.is_json() || ctx.out.is_ndjson() {
+            let err = CliError::new(
+                "no .xcworkspace, .xcodeproj, or Package.swift found in the current \
+                 directory or its ancestors (run inside a project, or pass -C/--project)",
+            )
+            .kind(ErrorKind::TargetResolution);
+            return render_result(&ctx, Err(err));
         }
         let _ = Cli::command().print_help();
         return ExitCode::SUCCESS;
@@ -629,9 +747,11 @@ pub fn run(argv: &[String]) -> ExitCode {
         Resource::Build { args, action } => commands::build::run(&mut ctx, &args, action.as_ref()),
         Resource::Test { args, action: _ } => commands::test::run(&mut ctx, &args),
         Resource::Archive(archive_args) => commands::archive::run(&mut ctx, &archive_args),
-        Resource::Clean { target, purge } => {
-            ctx.targeting = target.into();
-            commands::clean::run(&mut ctx, purge)
+        Resource::Clean(clean_args) => {
+            let mut targeting: Targeting = clean_args.scheme.clone().into();
+            targeting.configuration.clone_from(&clean_args.configuration);
+            ctx.targeting = targeting;
+            commands::clean::run(&mut ctx, clean_args.purge)
         }
         Resource::App { action } => {
             let action = action.unwrap_or_else(commands::app::Action::default_run);
@@ -694,6 +814,17 @@ fn render_result(ctx: &Context, result: CommandResult) -> ExitCode {
         // The command streamed its own output (or self-emitted); nothing to render.
         Ok(Rendered::Streamed) => ExitCode::SUCCESS,
         Err(e) => {
+            // Under ndjson the stream must still end with exactly one result
+            // line on stdout; the compact envelope on stderr stays the
+            // machine-parsed error surface.
+            ctx.out.ndjson_event(&serde_json::json!({
+                "event": "result",
+                "ok": false,
+                "error": {
+                    "code": e.error_kind().code_str(),
+                    "message": e.to_string(),
+                },
+            }));
             ctx.out.error(&e);
             ExitCode::from(e.error_kind().exit_code())
         }
@@ -936,6 +1067,73 @@ mod targeting_tests {
             (None, p("/p.xcodeproj"))
         );
         assert_eq!(disambiguate_container(None, None, false, false), (None, None));
+    }
+}
+
+#[cfg(test)]
+mod fast_path_tests {
+    use super::{OutputMode, machine_output_mode};
+
+    #[test]
+    fn json_flag_selects_the_envelope() {
+        assert_eq!(
+            machine_output_mode(&["--version", "--json"]),
+            Some(OutputMode::Json)
+        );
+        assert_eq!(machine_output_mode(&["--version"]), None);
+    }
+
+    #[test]
+    fn output_flag_wins_over_json_in_both_directions() {
+        // `-o` selects a machine mode --json alone wouldn't…
+        assert_eq!(
+            machine_output_mode(&["-o", "json", "--version"]),
+            Some(OutputMode::Json)
+        );
+        assert_eq!(
+            machine_output_mode(&["--output=ndjson"]),
+            Some(OutputMode::Ndjson)
+        );
+        assert_eq!(machine_output_mode(&["-ojson"]), Some(OutputMode::Json));
+        // …and `-o human` disables a --json (the flag's documented priority).
+        assert_eq!(machine_output_mode(&["--json", "-o", "human"]), None);
+        assert_eq!(machine_output_mode(&["--json", "-o", "quiet"]), None);
+    }
+}
+
+#[cfg(test)]
+mod on_destination_tests {
+    use super::disambiguate_on_destination;
+
+    #[allow(clippy::unnecessary_wraps)] // the Option is the type under test
+    fn s(v: &str) -> Option<String> {
+        Some(v.to_string())
+    }
+
+    #[test]
+    fn typed_flag_beats_env_sourced_value() {
+        // SWEETPAD_DESTINATION exported, `--on` typed → the env value yields
+        // (previously a hard clap conflict).
+        assert_eq!(
+            disambiguate_on_destination(s("mac"), s("platform=iOS"), true, false),
+            (s("mac"), None)
+        );
+        assert_eq!(
+            disambiguate_on_destination(s("mac"), s("platform=iOS"), false, true),
+            (None, s("platform=iOS"))
+        );
+    }
+
+    #[test]
+    fn both_typed_and_both_env_are_kept_for_the_resolver_to_reject() {
+        assert_eq!(
+            disambiguate_on_destination(s("mac"), s("platform=iOS"), true, true),
+            (s("mac"), s("platform=iOS"))
+        );
+        assert_eq!(
+            disambiguate_on_destination(s("mac"), s("platform=iOS"), false, false),
+            (s("mac"), s("platform=iOS"))
+        );
     }
 }
 

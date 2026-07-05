@@ -43,10 +43,15 @@ about on every run — a typo is never silently ignored.
 
 Resolution precedence, highest first:
 
-  explicit flag > env var > config file > remembered state > auto-discovery
+  explicit flag > env var > config file > sweetpad.toml > remembered state
+  > auto-discovery
 
-Remembered state lives separately in ~/.local/state/sweetpad/state.toml
-(machine-managed — inspect and edit it with `sweetpad context`, not by hand).",
+A committed `sweetpad.toml` next to the project is the team-shared defaults
+layer (scheme/configuration/destination/sdk, `developer_dir`, `[run]`,
+`[format]`, `[testing]`) — personal config beats it, remembered picks yield
+to it. Remembered state lives separately in
+~/.local/state/sweetpad/state.toml (machine-managed — inspect and edit it
+with `sweetpad context`, not by hand).",
     },
     Topic {
         name: "environment",
@@ -61,6 +66,8 @@ Value-carrying (folded into the flag layer; a typed flag still wins):
   SWEETPAD_SCHEME           scheme name
   SWEETPAD_CONFIGURATION    build configuration
   SWEETPAD_DESTINATION      raw -destination specifier
+  SWEETPAD_ON               human destination reference (see `help
+                            destinations`); overrides SWEETPAD_DESTINATION
   SWEETPAD_SDK              -sdk override
 
 Boolean (truthy parsing: 0 / false / no / off / empty mean OFF):

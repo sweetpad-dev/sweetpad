@@ -479,7 +479,9 @@ impl RunPlan {
                 settings: t.settings,
             })
             .collect();
-        xcodebuild::app_bundle(&settings)
+        // The destination narrows multi-app schemes (iOS + watch companion)
+        // to the app that actually runs there.
+        xcodebuild::app_bundle(&settings, Some(&self.destination))
     }
 }
 
@@ -557,7 +559,8 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         // `--on` picks the concrete target — simulator, device, or Mac — from
         // one human reference; it replaces the --mac/--device mode flags.
         let key = resolved.container.key();
-        match resolve::resolve_on(ctx, &key, &reference)? {
+        let sims = simctl::list()?;
+        match resolve::resolve_on(ctx, &key, &reference, &sims)? {
             resolve::OnTarget::Mac => ("platform=macOS".to_string(), Target::Mac),
             resolve::OnTarget::Simulator { udid, specifier } => {
                 (specifier, Target::Simulator(udid))
@@ -597,8 +600,14 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
             Some(d) => d,
             None => resolve::pick_destination(ctx, &resolved.container.key(), &simctl::list()?)?,
         };
-        let udid = udid(&destination)?;
-        (destination, Target::Simulator(udid))
+        if destination == "platform=macOS" {
+            // The picker's "My Mac" row (or a config/remembered macOS
+            // destination) runs the native-app flow, not a simulator.
+            (destination, Target::Mac)
+        } else {
+            let udid = destination_udid(&destination)?;
+            (destination, Target::Simulator(udid))
+        }
     };
 
     // Launch inputs reach simulator and macOS processes; devicectl has no
@@ -624,11 +633,16 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         configuration: plan.configuration.clone(),
         destination: plan.destination.clone(),
     };
-    // Remember the picks — but a `--mac`/`--device`/SPM destination is a
-    // one-off mode, never the remembered simulator context (persisting it would
-    // silently retarget the next plain `build start`).
-    let simulator = matches!(plan.target, Target::Simulator(_));
-    resolve::remember(ctx, &plan.resolved, &bt, simulator);
+    // Remember the picks — but a `--mac`/`--device`/`--on`/SPM destination is
+    // a one-off mode, never the remembered context (persisting it would
+    // silently retarget the next plain `build start`). A *picker* choice —
+    // simulator or the "My Mac" row — is exactly what state is for.
+    let picker_sourced = ctx.targeting.on.is_none()
+        && !opts.mac
+        && !opts.device
+        && opts.device_id.is_none()
+        && !matches!(plan.target, Target::SpmRun(_));
+    resolve::remember(ctx, &plan.resolved, &bt, picker_sourced);
     Ok(plan)
 }
 
@@ -901,6 +915,13 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                         set_filter(ctx, &filter, level);
                     }
                 }
+                SessionKey::Suspend => {
+                    // The TSTP handler restores the cooked terminal for the
+                    // shell; SIGCONT re-asserts raw mode on `fg`.
+                    crate::cli::signals::suspend_self();
+                    ctx.out.note("resumed");
+                    session_hint(ctx, filterable);
+                }
                 SessionKey::Ignore => {}
             },
             rawmode::Input::Idle => {}
@@ -915,6 +936,12 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
         if detach {
             ctx.out
                 .note(&format!("detached — {} keeps running", r.name));
+            if matches!(r.kind, RunningKind::Mac) {
+                ctx.out.warn(
+                    "the macOS app's output pipes close when sweetpad exits — its next \
+                     print may terminate it; relaunch from Finder for a long-lived detach",
+                );
+            }
             detach_app(r);
         } else {
             terminate_app(r);
@@ -1133,6 +1160,18 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path, udid: &
     }
     let baseline = server.result_counts();
 
+    // A signal can kill the process anywhere in the (long) wait below, after
+    // the nonce write but before the restore — so the pristine source is
+    // first copied to a sibling backup, and a leftover backup from such a
+    // death is restored on entry (the next run self-heals the fixture).
+    let backup = selfcheck_backup_path(file);
+    if backup.exists() {
+        let _ = std::fs::copy(&backup, file);
+        let _ = std::fs::remove_file(&backup);
+        ctx.out
+            .note("hot reload self-check: restored the fixture from a previous run's backup");
+    }
+
     // Rewrite the marker to a unique nonce: a real behavioral change (the
     // interposed `sweetpadHotReloadMarker()` returns the nonce) that the fixture
     // logs on the injection notification.
@@ -1144,6 +1183,8 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path, udid: &
             file.display()
         )));
     }
+    std::fs::write(&backup, &original)
+        .map_err(|e| CliError::new(format!("self-check: write {}: {e}", backup.display())))?;
     let nonce = format!("SWEETPAD_NONCE_{}", std::process::id());
     std::fs::write(file, original.replace(SELFCHECK_MARKER, &nonce))
         .map_err(|e| CliError::new(format!("self-check: write {}: {e}", file.display())))?;
@@ -1155,8 +1196,10 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path, udid: &
     // Be generous so a slow/contended CI runner doesn't flake (the real watcher
     // loop has no such deadline — this bound only guards the self-check).
     let result = server.wait_for_result(baseline, Duration::from_secs(180));
-    // Restore the fixture regardless of outcome.
+    // Restore the fixture regardless of outcome, and drop the backup once the
+    // pristine content is back in place.
     let _ = std::fs::write(file, &original);
+    let _ = std::fs::remove_file(&backup);
 
     match result {
         Some(true) => ctx.out.note("hot reload self-check: ✅ .injected"),
@@ -1182,6 +1225,15 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path, udid: &
              (the patch was accepted but the new code did not run)",
         ))
     }
+}
+
+/// Where [`hot_selfcheck`] keeps the pristine copy of the fixture while the
+/// nonce edit is live: `<file>.sweetpad-selfcheck-backup`, next to the file.
+fn selfcheck_backup_path(file: &Path) -> std::path::PathBuf {
+    let name = file
+        .file_name()
+        .map_or_else(|| "fixture".to_string(), |n| n.to_string_lossy().into_owned());
+    file.with_file_name(format!("{name}.sweetpad-selfcheck-backup"))
 }
 
 /// Poll the simulator's unified log for `nonce` (emitted by the fixture's
@@ -1305,6 +1357,10 @@ fn hot_key_loop(
                     "r rebuild+relaunch · s screenshot · o focus simulator · c clear · \
                      d detach · q quit",
                 ),
+                SessionKey::Suspend => {
+                    crate::cli::signals::suspend_self();
+                    ctx.out.note("resumed");
+                }
                 // The hot session has no in-session filter keys — ignore them.
                 SessionKey::Filter(_) | SessionKey::Ignore => {}
             },
@@ -1327,6 +1383,9 @@ struct Running {
     name: String,
     /// Set once we've reported the app exiting, so we don't repeat it each tick.
     reported_exit: bool,
+    /// The console child's slot in the signal handler's registry, so a
+    /// SIGTERM mid-session reaps it alongside the log streams.
+    reap_slot: Option<usize>,
 }
 
 enum RunningKind {
@@ -1368,9 +1427,11 @@ impl LogStream {
 
 impl Drop for LogStream {
     fn drop(&mut self) {
+        // Deregister before the reap: after wait() the pid can be recycled,
+        // and the handler must never signal a stranger.
+        crate::cli::signals::unregister_child(self.reap_slot.take());
         let _ = self.child.kill();
         let _ = self.child.wait();
-        crate::cli::signals::unregister_child(self.reap_slot.take());
         // `simctl spawn … log stream` reparents the `log` process to launchd_sim,
         // so killing our simctl child leaves it running — reap it by the
         // session-unique tag embedded in its predicate. Best-effort. The host macOS
@@ -1402,6 +1463,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 simctl::spawn_console(udid, &app.bundle_id, &opts)
             })?;
             render_console(&mut child, ctx.out.use_color(), filter);
+            let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
                 stream: Some(child),
                 kind: RunningKind::Simulator {
@@ -1410,6 +1472,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 },
                 name: app.bundle_id,
                 reported_exit: false,
+                reap_slot,
             })
         }
         Target::Device(id) => {
@@ -1418,6 +1481,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             })?;
             let mut child = devicectl::spawn_console(id, &app.bundle_id)?;
             render_console(&mut child, ctx.out.use_color(), filter);
+            let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
                 stream: Some(child),
                 kind: RunningKind::Device {
@@ -1426,6 +1490,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 },
                 name: app.bundle_id,
                 reported_exit: false,
+                reap_slot,
             })
         }
         Target::Mac => {
@@ -1445,11 +1510,13 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 ))
             })?;
             render_console(&mut child, ctx.out.use_color(), filter);
+            let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
                 stream: Some(child),
                 kind: RunningKind::Mac,
                 name: app.bundle_id,
                 reported_exit: false,
+                reap_slot,
             })
         }
         Target::SpmRun(_) => unreachable!("SPM run does not use the interactive session"),
@@ -1458,11 +1525,18 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
 
 /// Detach from the running app: stop watching without stopping the app (the
 /// `d` key). For simulator/device targets the console child is only an
-/// observer — reap it and go. A macOS target's streamed child *is* the app, so
-/// it's left completely alone (it keeps running; its stdout may stall once the
-/// unread pipe fills — relaunch from Finder for a long-lived detach).
+/// observer — reap it and go. A macOS target's streamed child *is* the app,
+/// so it's left alone — but its stdout/stderr are pipes into this process,
+/// and once the CLI exits their read ends close, so the app's next print
+/// raises SIGPIPE and likely terminates it (the session warns on `d`).
 fn detach_app(running: Running) {
-    let Running { stream, kind, .. } = running;
+    let Running {
+        stream,
+        kind,
+        reap_slot,
+        ..
+    } = running;
+    crate::cli::signals::unregister_child(reap_slot);
     match kind {
         RunningKind::Mac => drop(stream),
         RunningKind::Simulator { .. } | RunningKind::Device { .. } => {
@@ -1477,7 +1551,13 @@ fn detach_app(running: Running) {
 /// Terminate the running app and stop its output stream. The session-scoped
 /// simulator log stream is left running — it's torn down once, at session end.
 fn terminate_app(running: Running) {
-    let Running { stream, kind, .. } = running;
+    let Running {
+        stream,
+        kind,
+        reap_slot,
+        ..
+    } = running;
+    crate::cli::signals::unregister_child(reap_slot);
     match kind {
         RunningKind::Simulator {
             udid, bundle_id, ..
@@ -1518,8 +1598,9 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
     use std::io::Write as _;
     let (parts, cwd) = plan.build_plan().command();
     let args: Vec<&str> = parts.iter().map(String::as_str).collect();
-    let mut child = match process::spawn_piped_group("xcodebuild", &args, cwd.as_deref()) {
-        Ok(child) => child,
+    let (mut child, reader) = match process::spawn_piped_group("xcodebuild", &args, cwd.as_deref())
+    {
+        Ok(pair) => pair,
         Err(e) => return BuildOutcome::Failed(e),
     };
     let pid = child.id();
@@ -1542,42 +1623,51 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
         let done = Arc::clone(&done);
         move || {
             while !done.load(Ordering::Relaxed) {
-                if let rawmode::Input::Key('\u{3}') = rawmode::poll_key() {
-                    signal_group(pid, libc::SIGINT);
-                    aborted.store(true, Ordering::Relaxed);
-                    break;
+                match rawmode::poll_key() {
+                    rawmode::Input::Key('\u{3}') => {
+                        signal_group(pid, libc::SIGINT);
+                        aborted.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                    // EOF on stdin (`/dev/null`, a closed pipe): nothing will
+                    // ever arrive — stop polling instead of spinning on an
+                    // always-readable fd for the whole build.
+                    rawmode::Input::Closed => break,
+                    rawmode::Input::Key(_) | rawmode::Input::Idle => {}
                 }
             }
         }
     });
 
-    // Beautify xcodebuild's piped stdout on this thread (the same path as
+    // Beautify xcodebuild's merged output on this thread (the same path as
     // [`buildlog::run`], inlined so we own the child for the watcher), also
-    // collecting diagnostics for the last-build artifact.
+    // collecting diagnostics for the last-build artifact. Lossy decoding —
+    // one bad byte from a run-script must not end the stream and SIGPIPE a
+    // still-writing xcodebuild.
     let mut diagnostics: Vec<serde_json::Value> = Vec::new();
-    if let Some(stdout) = child.stdout.take() {
-        for line in BufReader::new(stdout).lines() {
-            let Ok(line) = line else { break };
-            if let Some(file) = capture_file.as_mut() {
-                let _ = writeln!(file, "{line}");
-            }
-            let event = buildlog::parse_line(&line);
-            if matches!(event, buildlog::Event::Diagnostic { .. })
-                && let Some(json) = buildlog::event_json(&event)
-            {
-                diagnostics.push(json);
-            }
-            if let Some(rendered) = progress.line(&line) {
-                out.line(&rendered);
-            }
+    process::read_lines_lossy(reader, &mut |line: &str| {
+        if let Some(file) = capture_file.as_mut() {
+            let _ = writeln!(file, "{line}");
         }
-    }
+        let event = buildlog::parse_line(line);
+        if matches!(event, buildlog::Event::Diagnostic { .. })
+            && let Some(json) = buildlog::event_json(&event)
+        {
+            diagnostics.push(json);
+        }
+        if let Some(rendered) = progress.line(line) {
+            out.line(rendered.as_str());
+        }
+    });
     // Erase the spinner before the post-build notes in case nothing ever
     // rendered (e.g. Ctrl-C during the silent prelude).
     drop(progress);
 
-    let status = child.wait();
+    // The output stream has ended, so the build is exiting: clear the forward
+    // target *before* the reap, or a signal in the gap could target a recycled
+    // process group.
     crate::cli::signals::clear_build_pgid();
+    let status = child.wait();
     done.store(true, Ordering::Relaxed);
     let _ = watcher.join();
 
@@ -1685,6 +1775,8 @@ enum SessionKey {
     Help,
     /// Set the live log filter (the `1`–`4` keys).
     Filter(LogFilter),
+    /// Suspend to the shell (Ctrl-Z — raw mode eats the real one).
+    Suspend,
     Ignore,
 }
 
@@ -1700,6 +1792,9 @@ fn classify_key(key: char) -> SessionKey {
     match map_key_to_latin(key) {
         'r' | 'R' => SessionKey::Rebuild,
         'q' | 'Q' | '\u{3}' | '\u{4}' => SessionKey::Quit,
+        // Ctrl-Z arrives as a byte with ISIG off; hand control back to the
+        // shell properly instead of silently ignoring job control.
+        '\u{1a}' => SessionKey::Suspend,
         'd' | 'D' => SessionKey::Detach,
         's' | 'S' => SessionKey::Screenshot,
         'o' | 'O' => SessionKey::Foreground,
@@ -2278,9 +2373,12 @@ fn simple(
     let on_device = stage_target.device || stage_target.device_id.is_some();
     // `stop` acts on the *running* app: when a launch is recorded, use it
     // directly instead of resolving (and possibly prompting for, and
-    // remembering) a whole build target just to kill a process.
+    // remembering) a whole build target just to kill a process. Explicit
+    // targeting flags opt out — `app stop --scheme Other` means that scheme's
+    // app, not whatever launched last.
     if matches!(stage, Stage::Stop)
         && !on_device
+        && !explicit_targeting(ctx)
         && let Some(result) = simple_from_last_launched(ctx, stage)
     {
         return result;
@@ -2361,9 +2459,14 @@ fn debug(ctx: &mut Context, launch: &LaunchArgs) -> CommandResult {
         "attaching lldb to {} (pid {pid}) — type `continue` to resume the app",
         app.bundle_id
     ));
-    process::stream("lldb", &["-p", &pid.to_string()], None)
-        .map(|()| Rendered::Streamed)
-        .map_err(|e| e.context("attaching lldb"))
+    // Ctrl-C inside lldb is its break-into-the-debuggee gesture; the terminal
+    // delivers it to the whole foreground group, and the CLI dying underneath
+    // would orphan lldb against the shell prompt.
+    crate::cli::signals::with_sigint_ignored(|| {
+        process::stream("lldb", &["-p", &pid.to_string()], None)
+    })
+    .map(|()| Rendered::Streamed)
+    .map_err(|e| e.context("attaching lldb"))
 }
 
 /// The simulator side of a lifecycle stage.
@@ -2534,7 +2637,9 @@ fn simple_from_last_launched(ctx: &mut Context, stage: Stage) -> Option<CommandR
 /// [`stream_logs`]. Uses the recorded last launch when available, else the
 /// resolved build target.
 fn simple_logs(ctx: &mut Context, filters: &LogFilterArgs) -> CommandResult {
-    if let Some((udid, app)) = last_launched_sim(ctx) {
+    if !explicit_targeting(ctx)
+        && let Some((udid, app)) = last_launched_sim(ctx)
+    {
         ctx.out.step("Booting simulator", || simctl::boot(&udid))?;
         stream_logs(ctx, &udid, &app, filters)?;
         return Ok(Rendered::Streamed);
@@ -2562,6 +2667,17 @@ fn simple_logs(ctx: &mut Context, filters: &LogFilterArgs) -> CommandResult {
     ctx.out.step("Booting simulator", || simctl::boot(udid))?;
     stream_logs(ctx, udid, &app, filters)?;
     Ok(Rendered::Streamed)
+}
+
+/// Whether the invocation named its target explicitly (scheme, configuration,
+/// destination, or `--on`) — the last-launched fast paths yield to it.
+/// Container flags don't count: the recorded launch is already keyed per
+/// container.
+fn explicit_targeting(ctx: &Context) -> bool {
+    ctx.targeting.scheme.is_some()
+        || ctx.targeting.configuration.is_some()
+        || ctx.targeting.destination.is_some()
+        || ctx.targeting.on.is_some()
 }
 
 /// The recorded last launch, when it targeted a simulator: `(udid, bundle)`.
@@ -2616,6 +2732,13 @@ impl Render for AppStageReport {
 /// `log stream --style ndjson` produced — one JSON event per line on stdout —
 /// instead of the human-rendered text (a stream has no single success envelope
 /// to wrap).
+///
+/// Interruption runs through the handler's forward-only mode: Ctrl-C/SIGTERM
+/// forward SIGINT to the `simctl` child and *return*, so this function
+/// finishes normally — which is what lets it `pkill` the `log` process the
+/// simulator reparented to `launchd_sim` (a marker rides in the predicate;
+/// without this reap every stopped `app logs` left one streaming forever) —
+/// and a user-stopped follow exits 0.
 #[allow(clippy::print_stdout)] // non-interactive inline log follow
 fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle, filters: &LogFilterArgs) -> CliResult {
     ctx.out.note(&format!(
@@ -2625,22 +2748,38 @@ fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle, filters: &LogFilterAr
     let color = ctx.out.use_color();
     let json = ctx.out.is_json() || ctx.out.is_ndjson();
     let level = filters.level.as_deref().unwrap_or(log_level(&ctx.out));
-    let (program, args) = log_command(&LogSource::Simulator(udid), app, level, None, filters);
+    let marker = log_stream_marker();
+    let (program, args) =
+        log_command(&LogSource::Simulator(udid), app, level, Some(&marker), filters);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let ok = process::stream_lines(program, &refs, None, |line| {
-        if json {
-            // Already one JSON object per line; emit the event verbatim.
-            if line.trim_start().starts_with('{') {
-                println!("{line}");
+    let mut child = process::spawn_piped(program, &refs, None)?;
+    let reap_slot = crate::cli::signals::register_child(child.id());
+    crate::cli::signals::set_forward_child(child.id());
+    if let Some(stdout) = child.stdout.take() {
+        process::read_lines_lossy(stdout, &mut |line: &str| {
+            if json {
+                // Already one JSON object per line; emit the event verbatim.
+                if line.trim_start().starts_with('{') {
+                    println!("{line}");
+                }
+            } else {
+                println!("{}", oslog::render_ndjson_line(line, color).text);
             }
-        } else {
-            println!("{}", oslog::render_ndjson_line(line, color).text);
-        }
-    })?;
-    if ok {
-        Ok(())
-    } else {
-        Err(CliError::new("log stream exited with a non-zero status"))
+        });
+    }
+    // The stream has ended (child exiting): disarm before the reap so the
+    // handler can never signal a recycled pid.
+    crate::cli::signals::clear_forward_child();
+    crate::cli::signals::unregister_child(reap_slot);
+    let status = child.wait();
+    let _ = process::run("pkill", &["-f", &marker], None, true);
+    if crate::cli::signals::take_forwarded() {
+        ctx.out.note("log stream stopped");
+        return Ok(());
+    }
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        _ => Err(CliError::new("log stream exited with a non-zero status")),
     }
 }
 
@@ -2656,6 +2795,32 @@ fn udid(destination: &str) -> Result<String, CliError> {
             ))
             .kind(ErrorKind::TargetResolution)
         })
+}
+
+/// The simulator a destination addresses: `id=` names it outright; a `name=`
+/// specifier — the form the config examples use, valid for xcodebuild — is
+/// resolved against `simctl list` (booted preferred, `simctl::find`'s
+/// policy), so `run` accepts every destination `build` does.
+fn destination_udid(destination: &str) -> Result<String, CliError> {
+    if let Ok(u) = udid(destination) {
+        return Ok(u);
+    }
+    let Some(name) = destination
+        .split(',')
+        .find_map(|kv| kv.trim().strip_prefix("name="))
+    else {
+        return Err(CliError::new(format!(
+            "app commands need a destination with an id= or name= (got {destination:?})"
+        ))
+        .kind(ErrorKind::TargetResolution));
+    };
+    let sims = simctl::list()?;
+    simctl::find(&sims, name).map(|s| s.udid.clone()).ok_or_else(|| {
+        CliError::new(format!(
+            "the destination names the simulator {name:?}, but no such simulator exists"
+        ))
+        .kind(ErrorKind::TargetResolution)
+    })
 }
 
 #[cfg(test)]
@@ -2694,6 +2859,8 @@ mod tests {
         assert_eq!(classify_key('2'), SessionKey::Filter(LogFilter::Info));
         assert_eq!(classify_key('3'), SessionKey::Filter(LogFilter::Error));
         assert_eq!(classify_key('4'), SessionKey::Filter(LogFilter::Off));
+        // Ctrl-Z suspends (raw mode eats the real one).
+        assert_eq!(classify_key('\u{1a}'), SessionKey::Suspend);
         // Anything else is ignored — the session keeps streaming output.
         assert_eq!(classify_key('x'), SessionKey::Ignore);
         assert_eq!(classify_key('\n'), SessionKey::Ignore);

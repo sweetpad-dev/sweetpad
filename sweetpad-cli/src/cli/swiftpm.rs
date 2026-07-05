@@ -339,34 +339,76 @@ pub fn configuration_arg(configuration: &str) -> &'static str {
     }
 }
 
+/// The `swift build` argv for a package — shared by [`build`] and the
+/// `--show-command` preview, so the dry run prints exactly what would run.
+#[must_use]
+pub fn build_args(configuration: &str, passthrough: &[String]) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "build".into(),
+        "--configuration".into(),
+        configuration_arg(configuration).into(),
+    ];
+    args.extend(passthrough.iter().cloned());
+    args
+}
+
 /// `swift build` for a package. Streams output to the terminal unless `quiet`
 /// (for `--json` callers whose stdout must hold only the result envelope).
 /// `clean` wipes the build directory first — SwiftPM has no `build --clean`, so
-/// it's a separate `package clean`.
+/// it's a separate `package clean`. `passthrough` (everything after `--`) rides
+/// through verbatim, e.g. `-Xswiftc -DFOO`.
 pub fn build(
     container: &Container,
     configuration: &str,
     clean: bool,
     quiet: bool,
+    passthrough: &[String],
 ) -> Result<(), CliError> {
     let cwd = package_dir(container);
     if clean {
         process::run("swift", &["package", "clean"], cwd.as_deref(), quiet)
             .context("cleaning the package build")?;
     }
-    let ok = process::run(
-        "swift",
-        &["build", "--configuration", configuration_arg(configuration)],
-        cwd.as_deref(),
-        quiet,
-    )
-    .context("building the package")?;
+    let args = build_args(configuration, passthrough);
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let ok = process::run("swift", &arg_refs, cwd.as_deref(), quiet)
+        .context("building the package")?;
     if ok {
         Ok(())
     } else {
         Err(CliError::new("swift build exited with a non-zero status")
             .context("building the package"))
     }
+}
+
+/// The `swift test` argv for a package — shared by [`test`] and the
+/// `--show-command` preview.
+#[must_use]
+pub fn test_args(
+    configuration: &str,
+    only: &[String],
+    skip: &[String],
+    coverage: bool,
+    passthrough: &[String],
+) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "test".into(),
+        "--configuration".into(),
+        configuration_arg(configuration).into(),
+    ];
+    if coverage {
+        args.push("--enable-code-coverage".into());
+    }
+    for f in only {
+        args.push("--filter".into());
+        args.push(f.clone());
+    }
+    for s in skip {
+        args.push("--skip".into());
+        args.push(s.clone());
+    }
+    args.extend(passthrough.iter().cloned());
+    args
 }
 
 /// `swift test` for a package. Returns whether the suite passed (a non-zero
@@ -379,22 +421,12 @@ pub fn test(
     configuration: &str,
     only: &[String],
     skip: &[String],
+    coverage: bool,
     quiet: bool,
+    passthrough: &[String],
 ) -> Result<bool, CliError> {
     let cwd = package_dir(container);
-    let mut args: Vec<String> = vec![
-        "test".into(),
-        "--configuration".into(),
-        configuration_arg(configuration).into(),
-    ];
-    for f in only {
-        args.push("--filter".into());
-        args.push(f.clone());
-    }
-    for s in skip {
-        args.push("--skip".into());
-        args.push(s.clone());
-    }
+    let args = test_args(configuration, only, skip, coverage, passthrough);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     process::run("swift", &arg_refs, cwd.as_deref(), quiet).context("running the package tests")
 }

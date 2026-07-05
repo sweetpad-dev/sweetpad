@@ -157,6 +157,8 @@ pub struct TestPlan<'a> {
     pub scheme: &'a str,
     pub configuration: &'a str,
     pub destination: Option<&'a str>,
+    /// `-sdk` override; `None` lets the destination imply it.
+    pub sdk: Option<&'a str>,
     /// `-only-testing:` selectors (Target/Class/method); empty runs everything.
     pub only_testing: &'a [String],
     /// `-skip-testing:` selectors.
@@ -170,6 +172,15 @@ pub struct TestPlan<'a> {
     pub coverage: bool,
     /// Extra xcodebuild arguments passed through verbatim (after `--`).
     pub passthrough: &'a [String],
+}
+
+/// What a [`TestPlan::run`] produced: the raw pass/fail, plus — in the
+/// captured (`--json`) mode — the transcript tail, so a run that failed
+/// before any test ran can surface *why* instead of a vacuous zero-count
+/// summary.
+pub struct TestRunOutcome {
+    pub passed: bool,
+    pub tail: Option<String>,
 }
 
 impl TestPlan<'_> {
@@ -186,6 +197,10 @@ impl TestPlan<'_> {
         if let Some(dest) = self.destination {
             args.push("-destination".into());
             args.push(dest.into());
+        }
+        if let Some(sdk) = self.sdk {
+            args.push("-sdk".into());
+            args.push(sdk.into());
         }
         if let Some(iterations) = self.retry_flaky {
             args.push("-retry-tests-on-failure".into());
@@ -215,58 +230,71 @@ impl TestPlan<'_> {
 
     /// Run the tests. `--json` captures both child streams (stdout holds only
     /// the enveloped summary), `-o ndjson` streams per-test events, `-v` is
-    /// raw, otherwise xcodebuild output is beautified. Returns whether the run
-    /// passed; a test failure is `false`, not an error — but a run that failed
-    /// *before producing a result bundle* (e.g. its build step) is an error.
-    pub fn run(&self, out: &Output) -> Result<bool, CliError> {
+    /// raw, otherwise xcodebuild output is beautified. A test failure is
+    /// `passed: false`, not an error; whether the run got far enough to
+    /// produce a usable result bundle is the *caller's* judgment (it owns the
+    /// bundle lifecycle) — the tail rides back for its error message.
+    pub fn run(&self, out: &Output) -> Result<TestRunOutcome, CliError> {
         let parts = self.args();
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
         let cwd = working_dir(self.container);
-        let result = if out.is_ndjson() {
+        let outcome = if out.is_ndjson() {
             let (ok, _stats) = buildlog::run_ndjson("xcodebuild", &args, cwd.as_deref(), out)?;
-            if !ok && !self.result_bundle.exists() {
-                return Err(CliError::new(
-                    "xcodebuild test failed before producing results (see the diagnostic events)",
-                )
-                .kind(ErrorKind::BuildFailure)
-                .context("running the tests"));
+            TestRunOutcome {
+                passed: ok,
+                tail: None,
             }
-            Ok(ok)
         } else if out.is_json() {
             let run = process::run_captured("xcodebuild", &args, cwd.as_deref())?;
-            if !run.success && !self.result_bundle.exists() {
-                return Err(CliError::new(format!(
-                    "xcodebuild test failed before producing results:\n{}",
-                    run.tail
-                ))
-                .kind(ErrorKind::BuildFailure)
-                .context("running the tests"));
+            TestRunOutcome {
+                passed: run.success,
+                tail: (!run.success).then_some(run.tail),
             }
-            Ok(run.success)
         } else if out.is_verbose() {
-            process::run("xcodebuild", &args, cwd.as_deref(), false)
+            let ok = process::run("xcodebuild", &args, cwd.as_deref(), false)
+                .context("running the tests")?;
+            TestRunOutcome {
+                passed: ok,
+                tail: None,
+            }
         } else {
-            buildlog::run("xcodebuild", &args, cwd.as_deref(), out, "Testing")
+            let ok = buildlog::run("xcodebuild", &args, cwd.as_deref(), out, "Testing")
+                .context("running the tests")?;
+            TestRunOutcome {
+                passed: ok,
+                tail: None,
+            }
         };
-        result.context("running the tests")
+        Ok(outcome)
     }
 }
 
 /// One per-project artifact slot in the state dir
 /// (`…/sweetpad/results/<stem>-<hash><suffix>`): the container stem keeps it
-/// findable, the key hash keeps two same-named projects apart.
+/// findable, the key hash keeps two same-named projects apart. FNV-1a rather
+/// than `DefaultHasher`, whose algorithm is unspecified across Rust releases —
+/// a toolchain bump must not orphan every retained bundle and diagnostics
+/// artifact.
 pub(crate) fn project_artifact(container: &Container, suffix: &str) -> std::path::PathBuf {
-    use std::hash::{Hash, Hasher as _};
-    let mut hasher = std::hash::DefaultHasher::new();
-    container.key().hash(&mut hasher);
     let stem = container
         .path()
         .file_stem().map_or_else(|| "project".to_string(), |s| s.to_string_lossy().into_owned());
-    let name = format!("{stem}-{:016x}{suffix}", hasher.finish());
+    let name = format!("{stem}-{:016x}{suffix}", fnv1a64(container.key().as_bytes()));
     sweetpad_core::paths::state_dir().map_or_else(
         || std::env::temp_dir().join(&name),
         |d| d.join("sweetpad").join("results").join(&name),
     )
+}
+
+/// FNV-1a, 64-bit: tiny, dependency-free, and stable forever — the properties
+/// an on-disk slot name needs (`DefaultHasher` guarantees none of them).
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in bytes {
+        hash ^= u64::from(b);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash
 }
 
 /// Persist the last build's parsed diagnostics for `build diagnostics`
@@ -497,9 +525,19 @@ pub struct AppBundle {
     pub executable: PathBuf,
 }
 
-/// Pick the launchable app from resolved settings: the first target that builds
-/// a `.app` wrapper and declares a bundle id.
-pub fn app_bundle(settings: &[TargetBuildSettings]) -> Result<AppBundle, CliError> {
+/// Pick the launchable app from resolved settings. Candidates are targets
+/// that build a `.app` wrapper and declare a bundle id; among them, one whose
+/// `SUPPORTED_PLATFORMS` covers the destination's platform wins — in an
+/// iOS + watchOS scheme the watch companion builds *first* (dependency
+/// order), and blind first-pick would install the watch app onto the iPhone
+/// simulator. Targets that don't state their platforms (or an unmappable/
+/// absent destination) fall back to first-candidate order.
+pub fn app_bundle(
+    settings: &[TargetBuildSettings],
+    destination: Option<&str>,
+) -> Result<AppBundle, CliError> {
+    let wanted = destination.and_then(destination_sdk_token);
+    let mut fallback: Option<AppBundle> = None;
     for t in settings {
         let wrapper = t
             .settings
@@ -512,25 +550,64 @@ pub fn app_bundle(settings: &[TargetBuildSettings]) -> Result<AppBundle, CliErro
         ) else {
             continue;
         };
-        if Path::new(wrapper)
+        if !Path::new(wrapper)
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("app"))
         {
-            let build_dir = Path::new(build_dir);
-            let executable = t
-                .settings
-                .get("EXECUTABLE_PATH")
-                .map_or_else(|| build_dir.join(wrapper), |rel| build_dir.join(rel));
-            return Ok(AppBundle {
-                path: build_dir.join(wrapper),
-                bundle_id: bundle_id.clone(),
-                executable,
-            });
+            continue;
+        }
+        let build_dir = Path::new(build_dir);
+        let executable = t
+            .settings
+            .get("EXECUTABLE_PATH")
+            .map_or_else(|| build_dir.join(wrapper), |rel| build_dir.join(rel));
+        let bundle = AppBundle {
+            path: build_dir.join(wrapper),
+            bundle_id: bundle_id.clone(),
+            executable,
+        };
+        let supported = t.settings.get("SUPPORTED_PLATFORMS");
+        match (wanted, supported) {
+            // The target states its platforms and covers the destination —
+            // a definitive pick.
+            (Some(tok), Some(platforms)) if platforms.split_whitespace().any(|p| p == tok) => {
+                return Ok(bundle);
+            }
+            // States its platforms and the destination is not among them —
+            // not this app (the watch-companion case).
+            (Some(_), Some(_)) => {}
+            // No filter requested, or the target doesn't say — candidate in
+            // declaration order.
+            _ => {
+                if fallback.is_none() {
+                    fallback = Some(bundle);
+                }
+            }
         }
     }
-    Err(CliError::new(
-        "could not find a launchable .app in the resolved build settings",
-    ))
+    fallback.ok_or_else(|| {
+        CliError::new("could not find a launchable .app in the resolved build settings")
+    })
+}
+
+/// The SDK token a `-destination platform=…` implies, as spelled in
+/// `SUPPORTED_PLATFORMS` (e.g. `iOS Simulator` → `iphonesimulator`).
+fn destination_sdk_token(spec: &str) -> Option<&'static str> {
+    let platform = spec
+        .split(',')
+        .find_map(|kv| kv.trim().strip_prefix("platform="))?;
+    Some(match platform {
+        "iOS Simulator" => "iphonesimulator",
+        "iOS" => "iphoneos",
+        "macOS" => "macosx",
+        "watchOS Simulator" => "watchsimulator",
+        "watchOS" => "watchos",
+        "tvOS Simulator" => "appletvsimulator",
+        "tvOS" => "appletvos",
+        "visionOS Simulator" => "xrsimulator",
+        "visionOS" => "xros",
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
@@ -639,6 +716,7 @@ mod tests {
             only_testing: &only,
             skip_testing: &skip,
             result_bundle: &bundle,
+            sdk: None,
             retry_flaky: None,
             coverage: false,
             passthrough: &[],
@@ -680,7 +758,7 @@ mod tests {
           {"target":"App","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"App.app","PRODUCT_BUNDLE_IDENTIFIER":"com.x.app"}}
         ]"#;
         let settings = parse_settings(stdout);
-        let app = app_bundle(&settings).unwrap();
+        let app = app_bundle(&settings, None).unwrap();
         assert_eq!(app.path, PathBuf::from("/d/App.app"));
         assert_eq!(app.bundle_id, "com.x.app");
     }
@@ -691,7 +769,7 @@ mod tests {
             "TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"App.app",
             "EXECUTABLE_PATH":"App.app/Contents/MacOS/App","PRODUCT_BUNDLE_IDENTIFIER":"com.x.app"}}]"#;
         let settings = parse_settings(stdout);
-        let app = app_bundle(&settings).unwrap();
+        let app = app_bundle(&settings, None).unwrap();
         assert_eq!(
             app.executable,
             PathBuf::from("/d/App.app/Contents/MacOS/App")
@@ -717,7 +795,34 @@ mod tests {
         let settings = parse_settings(
             r#"[{"target":"Lib","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"Lib.framework","PRODUCT_BUNDLE_IDENTIFIER":"com.x.lib"}}]"#,
         );
-        assert!(app_bundle(&settings).is_err());
+        assert!(app_bundle(&settings, None).is_err());
+    }
+
+    #[test]
+    fn app_bundle_prefers_the_destination_platform() {
+        // Dependency order builds the watch companion first; the destination
+        // platform must pick the iOS app anyway.
+        let stdout = r#"[
+          {"target":"WatchApp","buildSettings":{"TARGET_BUILD_DIR":"/w","WRAPPER_NAME":"Watch App.app","PRODUCT_BUNDLE_IDENTIFIER":"com.x.watch","SUPPORTED_PLATFORMS":"watchos watchsimulator"}},
+          {"target":"App","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"App.app","PRODUCT_BUNDLE_IDENTIFIER":"com.x.app","SUPPORTED_PLATFORMS":"iphoneos iphonesimulator"}}
+        ]"#;
+        let settings = parse_settings(stdout);
+        let ios = app_bundle(&settings, Some("platform=iOS Simulator,id=U")).unwrap();
+        assert_eq!(ios.bundle_id, "com.x.app");
+        let watch = app_bundle(&settings, Some("platform=watchOS Simulator,id=U")).unwrap();
+        assert_eq!(watch.bundle_id, "com.x.watch");
+        // No destination (or targets without SUPPORTED_PLATFORMS) keeps the
+        // declaration-order pick.
+        let first = app_bundle(&settings, None).unwrap();
+        assert_eq!(first.bundle_id, "com.x.watch");
+    }
+
+    #[test]
+    fn artifact_hash_is_stable_fnv1a() {
+        // Pinned FNV-1a test vectors: the slot names must never change across
+        // toolchains (that would orphan every retained artifact).
+        assert_eq!(fnv1a64(b""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(fnv1a64(b"a"), 0xaf63_dc4c_8601_ec8c);
     }
 
     #[test]

@@ -10,6 +10,25 @@ use crate::cli::{
     xcodebuild,
 };
 
+/// `clean`'s flags: exactly the values `xcodebuild clean` consumes — the
+/// container, a scheme, and a configuration. The full build tier would
+/// advertise `--destination`/`--on`/`--sdk` only to ignore them.
+#[derive(Debug, clap::Args)]
+pub struct CleanArgs {
+    #[command(flatten)]
+    pub scheme: crate::cli::SchemeArgs,
+
+    /// Build configuration whose products to clean (e.g. Debug, Release).
+    #[arg(long, env = "SWEETPAD_CONFIGURATION")]
+    pub configuration: Option<String>,
+
+    /// Also delete this project's DerivedData folder(s). The flag itself is
+    /// the consent — it only ever touches this project's folders, unlike the
+    /// store-wide `derived-data purge` (which prompts).
+    #[arg(long)]
+    pub purge: bool,
+}
+
 /// The clean outcome: what was cleaned, and any DerivedData folders purged.
 struct CleanReport {
     cleaned: &'static str,

@@ -529,10 +529,15 @@ pub fn media_add(udid: &str, paths: &[String]) -> Result<(), CliError> {
     process::stream("xcrun", &args, None).context("adding media to the simulator")
 }
 
-/// Record the booted simulator's screen to an .mp4 until the child is stopped
-/// (Ctrl-C); `simctl io recordVideo` finalizes the file on SIGINT.
-pub fn record(udid: &str, path: &str) -> Result<(), CliError> {
-    process::stream(
+/// Record the booted simulator's screen to an .mp4 until interrupted.
+/// `recordVideo` finalizes the file on SIGINT and *only* SIGINT, so the child
+/// runs in its own process group (the terminal's Ctrl-C can't hit it twice)
+/// and the signal handler's forward-only mode delivers exactly one SIGINT and
+/// returns — the wait below then outlasts the finalization, and the caller
+/// renders a real result instead of dying at 130 mid-write. Returns whether
+/// the user stopped it (vs. the recorder failing on its own).
+pub fn record(udid: &str, path: &str) -> Result<bool, CliError> {
+    let child = process::spawn_group_inherit(
         "xcrun",
         &[
             "simctl",
@@ -546,7 +551,19 @@ pub fn record(udid: &str, path: &str) -> Result<(), CliError> {
         ],
         None,
     )
-    .context("recording the simulator screen")
+    .context("recording the simulator screen")?;
+    let mut child = child;
+    crate::cli::signals::set_forward_child(child.id());
+    let status = child.wait();
+    crate::cli::signals::clear_forward_child();
+    let stopped = crate::cli::signals::take_forwarded();
+    match status {
+        Ok(s) if s.success() || stopped => Ok(stopped),
+        Ok(s) => Err(CliError::new(format!("simctl io recordVideo exited with {s}"))
+            .context("recording the simulator screen")),
+        Err(e) => Err(CliError::new(format!("failed to wait for recordVideo: {e}"))
+            .context("recording the simulator screen")),
+    }
 }
 
 /// `com.apple.CoreSimulator.SimRuntime.iOS-17-0` → (`iOS`, `17.0`).

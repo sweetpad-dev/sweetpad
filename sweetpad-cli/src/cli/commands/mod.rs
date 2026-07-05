@@ -13,6 +13,16 @@ pub(crate) fn watch_swift(
     mut once: impl FnMut(&mut crate::cli::Context) -> crate::cli::CommandResult,
 ) -> crate::cli::CommandResult {
     use std::sync::mpsc;
+    // A watch loop reruns forever and renders per-iteration — there is no
+    // single envelope to emit, so a --json consumer would block on silence
+    // (and ndjson would interleave iteration payloads with no terminal
+    // event). Mirror `app run` and refuse up front.
+    if ctx.out.is_json() || ctx.out.is_ndjson() {
+        return Err(crate::cli::CliError::new(
+            "--watch reruns continuously and has no machine-readable form; drop --watch, or \
+             run single passes with -o json/ndjson yourself",
+        ));
+    }
     loop {
         match once(ctx) {
             Ok(_) => {}

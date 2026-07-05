@@ -266,8 +266,25 @@ fn set(ctx: &mut Context, v: Variable, value: &str, scope: Scope) -> CommandResu
     report(ctx)
 }
 
+/// The `--on` reference forms an alias may not shadow: alias lookup runs
+/// before the keyword ladder, so `context alias mac …` would silently
+/// redefine `--on mac` for the project.
+const RESERVED_ON_WORDS: [&str; 11] = [
+    "mac", "macos", "booted", "device", "ios", "iphone", "ipad", "watchos", "tvos", "visionos",
+    "xros",
+];
+
 /// Name (or drop) a destination alias for `--on`.
 fn alias(ctx: &mut Context, name: &str, reference: Option<&str>, remove: bool) -> CommandResult {
+    if !remove
+        && RESERVED_ON_WORDS
+            .iter()
+            .any(|w| name.eq_ignore_ascii_case(w))
+    {
+        return Err(CliError::new(format!(
+            "{name:?} is a built-in --on reference and can't be an alias name"
+        )));
+    }
     let key = resolve::container(ctx)?.key();
     let st = ctx.state.project_mut(&key);
     if remove {
@@ -284,6 +301,16 @@ fn alias(ctx: &mut Context, name: &str, reference: Option<&str>, remove: bool) -
 /// Interactively set one variable (or the core), persisting to state, then show
 /// the updated context.
 fn select(ctx: &mut Context, variable: Option<Variable>, scope: Scope) -> CommandResult {
+    // The generic strict-mode hint ("pass --scheme…") names flags this
+    // command doesn't have — fail up front with the spelling that works
+    // here.
+    if !ctx.out.is_interactive() {
+        return Err(CliError::new(
+            "context select prompts interactively and the terminal is not interactive; use \
+             `sweetpad context set <variable> <value>` instead",
+        )
+        .kind(ErrorKind::TargetResolution));
+    }
     let container = resolve::container(ctx)?;
     let key = container.key();
 

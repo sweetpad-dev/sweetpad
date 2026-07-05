@@ -385,6 +385,15 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
         ));
     }
 
+    // The reference must be written *before* product discovery (resolution
+    // needs it on disk), but everything after can still fail or be cancelled
+    // at a picker — snapshot the pristine pbxproj so no path leaves a
+    // dangling, unlinked package reference behind.
+    let pbxproj_path = xcodeproj.join("project.pbxproj");
+    let pristine = std::fs::read_to_string(&pbxproj_path).map_err(|e| {
+        CliError::new(format!("failed to read {}: {e}", pbxproj_path.display()))
+    })?;
+
     // 1. Add the package reference (only) and write it, so resolution can fetch.
     let mut root = parse_owned(&xcodeproj)?;
     let ref_guid = if let Some(spec) = &spec {
@@ -396,29 +405,42 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
     write_pbxproj(&xcodeproj, &root)?;
     ctx.out.note(&format!("added package {}", args.url));
 
-    // 2. Settle the products and targets to link (resolve-then-prompt).
-    let products = resolve_products(ctx, container, &args.url, remote, &args.products)?;
-    let targets = settle_targets(ctx, &xcodeproj, &args.targets)?;
+    let linked = (|| -> Result<(Vec<String>, Vec<String>), CliError> {
+        // 2. Settle the products and targets to link (resolve-then-prompt).
+        let products = resolve_products(ctx, container, &args.url, remote, &args.products)?;
+        let targets = settle_targets(ctx, &xcodeproj, &args.targets)?;
 
-    // 3. Link each product into each target and write.
-    for product in &products {
-        for target in &targets {
-            spm_pbxproj::link_product(&mut root, &ref_guid, product, target)
-                .map_err(CliError::new)?;
+        // 3. Link each product into each target and write.
+        for product in &products {
+            for target in &targets {
+                spm_pbxproj::link_product(&mut root, &ref_guid, product, target)
+                    .map_err(CliError::new)?;
+            }
+        }
+        write_pbxproj(&xcodeproj, &root)?;
+
+        // 4. Ensure Package.resolved is current. Discovering a remote package's
+        //    products already resolved (and wrote the lockfile), so only resolve
+        //    here when discovery didn't — and unless told to skip.
+        let resolved_in_discovery = remote && args.products.is_empty();
+        if !args.no_resolve && !resolved_in_discovery {
+            resolve_packages(container, None, &ctx.out, false)?;
+        }
+        Ok((products, targets))
+    })();
+
+    match linked {
+        Ok((products, targets)) => {
+            report_added(ctx, &args.url, &products, &targets);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = std::fs::write(&pbxproj_path, &pristine);
+            ctx.out
+                .note("rolled the package reference back out of the project (nothing linked)");
+            Err(e)
         }
     }
-    write_pbxproj(&xcodeproj, &root)?;
-
-    // 4. Ensure Package.resolved is current. Discovering a remote package's
-    //    products already resolved (and wrote the lockfile), so only resolve
-    //    here when discovery didn't — and unless told to skip.
-    let resolved_in_discovery = remote && args.products.is_empty();
-    if !args.no_resolve && !resolved_in_discovery {
-        resolve_packages(container, None, &ctx.out, false)?;
-    }
-
-    report_added(ctx, &args.url, &products, &targets);
-    Ok(())
 }
 
 fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> CliResult {
@@ -442,6 +464,14 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
         ));
     }
 
+    // Package.swift is edited in step 1 but the pickers below can still be
+    // cancelled — snapshot the pristine manifest so no path leaves a
+    // dependency declared and linked nowhere.
+    let manifest_path = container.path().to_path_buf();
+    let pristine = std::fs::read_to_string(&manifest_path).map_err(|e| {
+        CliError::new(format!("failed to read {}: {e}", manifest_path.display()))
+    })?;
+
     // 1. Add the dependency to the manifest.
     let requirement = if remote {
         swift_flags_for(&requirement_spec(&args.requirement)?)
@@ -451,36 +481,49 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
     swiftpm::add_dependency(container, &args.url, &requirement)?;
     ctx.out.note(&format!("added package {}", args.url));
 
-    // 2. Resolve to fetch the package (needed to discover its products).
-    let need_discovery = args.products.is_empty();
-    if !args.no_resolve || need_discovery {
-        ctx.out.step("Resolving package dependencies", || {
-            swiftpm::resolve(container, ctx.out.is_json())
-        })?;
-    }
+    let linked = (|| -> Result<(Vec<String>, Vec<String>), CliError> {
+        // 2. Resolve to fetch the package (needed to discover its products).
+        let need_discovery = args.products.is_empty();
+        if !args.no_resolve || need_discovery {
+            ctx.out.step("Resolving package dependencies", || {
+                swiftpm::resolve(container, ctx.out.is_json() || ctx.out.is_ndjson())
+            })?;
+        }
 
-    // 3. Settle products + targets and link each pair.
-    let (package_name, products) = if need_discovery {
-        let (name, available) = package_products(container, &args.url)?;
-        (name, choose("product", &available, &args.products, ctx)?)
-    } else {
-        (package_display_name(&args.url), args.products.clone())
-    };
-    let target_names = swiftpm::manifest(container)?
-        .targets
-        .iter()
-        .map(|t| t.name.clone())
-        .collect::<Vec<_>>();
-    let targets = choose("target", &target_names, &args.targets, ctx)?;
+        // 3. Settle products + targets and link each pair.
+        let (package_name, products) = if need_discovery {
+            let (name, available) = package_products(container, &args.url)?;
+            (name, choose("product", &available, &args.products, ctx)?)
+        } else {
+            (package_display_name(&args.url), args.products.clone())
+        };
+        let target_names = swiftpm::manifest(container)?
+            .targets
+            .iter()
+            .map(|t| t.name.clone())
+            .collect::<Vec<_>>();
+        let targets = choose("target", &target_names, &args.targets, ctx)?;
 
-    for product in &products {
-        for target in &targets {
-            swiftpm::add_target_dependency(container, product, target, &package_name)?;
+        for product in &products {
+            for target in &targets {
+                swiftpm::add_target_dependency(container, product, target, &package_name)?;
+            }
+        }
+        Ok((products, targets))
+    })();
+
+    match linked {
+        Ok((products, targets)) => {
+            report_added(ctx, &args.url, &products, &targets);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = std::fs::write(&manifest_path, &pristine);
+            ctx.out
+                .note("rolled the dependency back out of Package.swift (nothing linked)");
+            Err(e)
         }
     }
-
-    report_added(ctx, &args.url, &products, &targets);
-    Ok(())
 }
 
 /// Settle the product list for an xcodeproj add: explicit `--product` flags, or
@@ -731,7 +774,7 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
 /// requirements allow, for one package or everything.
 fn update_resolve(ctx: &mut Context, container: &Container, package: Option<&str>) -> CliResult {
     if let Container::SwiftPackage(_) = container {
-        swiftpm::update(container, package, ctx.out.is_json())?;
+        swiftpm::update(container, package, ctx.out.is_json() || ctx.out.is_ndjson())?;
     } else {
         // xcodebuild has no "update"; drop the pin(s) so the resolve re-pins to
         // the latest allowed — one package, or the whole lockfile.
@@ -751,8 +794,8 @@ fn delete_lockfile(container: &Container) {
 }
 
 fn report_updated(ctx: &Context, what: &str) {
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({ "updated": what }));
+    if ctx.out.is_json() || ctx.out.is_ndjson() {
+        ctx.out.result_value(&serde_json::json!({ "updated": what }));
     } else {
         ctx.out.note(&format!("updated {what}"));
     }
@@ -765,8 +808,8 @@ fn report_updated(ctx: &Context, what: &str) {
 fn resolve_action(ctx: &mut Context) -> CliResult {
     let container = resolve::container(ctx)?;
     resolve_packages(&container, None, &ctx.out, false)?;
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({ "resolved": true }));
+    if ctx.out.is_json() || ctx.out.is_ndjson() {
+        ctx.out.result_value(&serde_json::json!({ "resolved": true }));
     } else {
         ctx.out.note("resolved package dependencies");
     }
@@ -783,7 +826,7 @@ fn resolve_packages(
     quiet: bool,
 ) -> CliResult {
     if let Container::SwiftPackage(_) = container {
-        return swiftpm::resolve(container, quiet || out.is_json());
+        return swiftpm::resolve(container, quiet || out.is_json() || out.is_ndjson());
     }
     let mut args = vec!["-resolvePackageDependencies".to_string()];
     args.extend(xcodebuild::container_args(container));
@@ -804,7 +847,7 @@ fn resolve_packages(
     // passes raw output through, otherwise the buildlog renderer shows a clean
     // "Resolving" spinner.
     let mut failure_detail = String::new();
-    let ok = if quiet || out.is_json() {
+    let ok = if quiet || out.is_json() || out.is_ndjson() {
         let run = process::run_captured("xcodebuild", &arg_refs, cwd.as_deref())?;
         if !run.success {
             failure_detail = format!(":\n{}", run.tail);
@@ -1169,8 +1212,8 @@ fn package_display_name(url: &str) -> String {
 }
 
 fn report_added(ctx: &Context, url: &str, products: &[String], targets: &[String]) {
-    if ctx.out.is_json() {
-        ctx.out.json_value(&serde_json::json!({
+    if ctx.out.is_json() || ctx.out.is_ndjson() {
+        ctx.out.result_value(&serde_json::json!({
             "added": url,
             "products": products,
             "targets": targets,
@@ -1187,7 +1230,7 @@ fn report_added(ctx: &Context, url: &str, products: &[String], targets: &[String
 }
 
 fn report_removed(ctx: &Context, package: &str, unlinked: Option<&[(String, String)]>) {
-    if ctx.out.is_json() {
+    if ctx.out.is_json() || ctx.out.is_ndjson() {
         let payload = match unlinked {
             None => serde_json::json!({ "removed": package }),
             Some(links) => serde_json::json!({
@@ -1196,7 +1239,7 @@ fn report_removed(ctx: &Context, package: &str, unlinked: Option<&[(String, Stri
                     .collect::<Vec<_>>(),
             }),
         };
-        ctx.out.json_value(&payload);
+        ctx.out.result_value(&payload);
     } else {
         match unlinked {
             None => ctx.out.note(&format!("removed package {package}")),

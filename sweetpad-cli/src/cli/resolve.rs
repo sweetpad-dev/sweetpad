@@ -95,6 +95,21 @@ pub fn container(ctx: &Context) -> Result<Container, CliError> {
     })
 }
 
+/// The container the bare-`sweetpad` gate probes — the same resolution as
+/// [`container`], minus the ambiguity warning: the status view resolves again
+/// immediately after and warns exactly once.
+#[must_use]
+pub fn container_silently(ctx: &Context) -> Option<Container> {
+    if let Some(ws) = &ctx.targeting.workspace {
+        return Some(Container::Workspace(ws.clone()));
+    }
+    if let Some(proj) = &ctx.targeting.project {
+        return Some(Container::Project(proj.clone()));
+    }
+    let cwd = std::env::current_dir().ok()?;
+    discover_walk_up(&cwd).best()
+}
+
 /// Walk from `start` up toward the root, returning the first directory whose
 /// discovery finds a container — so `sweetpad build` works from
 /// `Sources/Feature/` like git/cargo/npm would. The walk stops at the git root
@@ -492,11 +507,20 @@ impl OnTarget {
 /// - `ios`/`watchos`/`tvos`/`visionos` — the newest matching simulator,
 ///   most-used-first tiebreak
 /// - a UDID — that simulator or device
-/// - anything else — a fuzzy (case-insensitive substring) name match over
-///   simulators and connected devices, preferring exact name, then booted,
-///   then newest OS, then most-used
+/// - anything else — a name match over simulators and connected devices: an
+///   exact (case-insensitive) name wins outright, simulators before devices;
+///   otherwise a substring match over simulators (booted, then newest OS,
+///   then most-used), falling back to a substring-matched device.
+///
+/// `sims` is the caller's `simctl list` — passed in so one listing serves
+/// resolution, usage tracking, and display.
 #[allow(clippy::too_many_lines)] // one linear match ladder per reference form
-pub fn resolve_on(ctx: &Context, key: &str, reference: &str) -> Result<OnTarget, CliError> {
+pub fn resolve_on(
+    ctx: &Context,
+    key: &str,
+    reference: &str,
+    sims: &[crate::cli::simctl::Simulator],
+) -> Result<OnTarget, CliError> {
     // A named alias (`context alias work-phone <UDID>`) substitutes its stored
     // reference up front — resolved once, so an alias can't point at another.
     let alias = ctx
@@ -518,7 +542,6 @@ pub fn resolve_on(ctx: &Context, key: &str, reference: &str) -> Result<OnTarget,
         .map(|s| s.destination_usage.clone())
         .unwrap_or_default();
     let used = |udid: &str| usage.get(udid).copied().unwrap_or(0);
-    let sims = crate::cli::simctl::list()?;
     let sim_target = |s: &crate::cli::simctl::Simulator| OnTarget::Simulator {
         udid: s.udid.clone(),
         specifier: s.destination(),
@@ -592,26 +615,30 @@ pub fn resolve_on(ctx: &Context, key: &str, reference: &str) -> Result<OnTarget,
         return Ok(device_target(d));
     }
 
-    // Fuzzy name match over simulators + devices.
+    // Name match over simulators + devices. Exactness outranks the
+    // sims-before-devices policy: a device the user named outright must not
+    // lose to a simulator that merely contains the reference.
     let matches_name = |name: &str| name.to_ascii_lowercase().contains(&lower);
     let exact_sims: Vec<&crate::cli::simctl::Simulator> = sims
         .iter()
         .filter(|s| s.name.eq_ignore_ascii_case(reference))
         .collect();
+    if exact_sims.is_empty()
+        && let Some(d) = devices.iter().find(|d| d.name.eq_ignore_ascii_case(reference))
+    {
+        return Ok(device_target(d));
+    }
     let mut candidates: Vec<&crate::cli::simctl::Simulator> = if exact_sims.is_empty() {
         sims.iter().filter(|s| matches_name(&s.name)).collect()
     } else {
         exact_sims
     };
-    if let Some(d) = devices
-        .iter()
-        .find(|d| d.name.eq_ignore_ascii_case(reference) || matches_name(&d.name))
+    // A substring-matched physical device wins only when no simulator matches
+    // at all — simulators are the common daily target.
+    if candidates.is_empty()
+        && let Some(d) = devices.iter().find(|d| matches_name(&d.name))
     {
-        // A physical device wins only when no simulator matches at all —
-        // simulators are the common daily target.
-        if candidates.is_empty() {
-            return Ok(device_target(d));
-        }
+        return Ok(device_target(d));
     }
     candidates.sort_by(|a, b| {
         b.is_booted()
@@ -688,24 +715,36 @@ pub struct BuildTarget {
 /// interactive pickers (scheme from the project, destination from `simctl`)
 /// when a TTY is available. An explicitly-requested scheme or configuration is
 /// validated against the project's candidates with a did-you-mean hint, so a
-/// typo dies here instead of deep inside xcodebuild.
-pub fn build_target(ctx: &mut Context, resolved: &Resolved) -> Result<BuildTarget, CliError> {
+/// typo dies here instead of deep inside xcodebuild; a *remembered* value that
+/// no longer exists is cleared and re-resolved instead of failing forever.
+/// `track` gates the usage/recents bookkeeping — dry runs (`--show-command`)
+/// pass `false` so a preview never mutates state.
+pub fn build_target(
+    ctx: &mut Context,
+    resolved: &Resolved,
+    track: bool,
+) -> Result<BuildTarget, CliError> {
     let candidates = schemes(&resolved.container)?;
-    if let Some(s) = &resolved.scheme {
-        validate_choice("scheme", s, &candidates)?;
-    }
-    let scheme = choose(ctx, "scheme", resolved.scheme.clone(), &candidates)?;
+    let scheme = settle_scheme(ctx, resolved, &candidates)?;
     let configuration = settle_configuration(ctx, resolved)?;
 
     let key = resolved.container.key();
     // An explicit `--on` reference outranks every persisted destination layer
     // (it's a flag); the resolved simulator's usage is bumped so it floats in
     // future pickers, but — per the picker-sourced-only rule — it is never
-    // written as the remembered destination itself.
+    // written as the remembered destination itself (callers gate `remember`'s
+    // destination on `--on` being absent).
     let destination = if let Some(reference) = ctx.targeting.on.clone() {
-        let target = resolve_on(ctx, &key, &reference)?;
-        if let OnTarget::Simulator { udid, .. } = &target
-            && let Some(sim) = crate::cli::simctl::list()?.iter().find(|s| &s.udid == udid)
+        if ctx.targeting.destination.is_some() {
+            return Err(CliError::new(
+                "--on and --destination are mutually exclusive; pass one",
+            ));
+        }
+        let sims = crate::cli::simctl::list()?;
+        let target = resolve_on(ctx, &key, &reference, &sims)?;
+        if track
+            && let OnTarget::Simulator { udid, .. } = &target
+            && let Some(sim) = sims.iter().find(|s| &s.udid == udid)
         {
             track_destination(&mut ctx.state, &key, sim);
             let _ = ctx.state.save();
@@ -724,13 +763,34 @@ pub fn build_target(ctx: &mut Context, resolved: &Resolved) -> Result<BuildTarge
     })
 }
 
+/// Settle the scheme: validate an explicit/remembered value against the
+/// project's schemes, recovering from a stale *remembered* one (see
+/// [`recover_stale`]), then auto-pick/prompt via [`choose`].
+fn settle_scheme(
+    ctx: &mut Context,
+    resolved: &Resolved,
+    candidates: &[String],
+) -> Result<String, CliError> {
+    let mut current = resolved.scheme.clone();
+    if let Some(s) = current.clone()
+        && let Err(err) = validate_choice("scheme", &s, candidates)
+    {
+        current = recover_stale(ctx, &resolved.container, "scheme", &s, err)?;
+        if let Some(higher) = &current {
+            validate_choice("scheme", higher, candidates)?;
+        }
+    }
+    choose(ctx, "scheme", current, candidates)
+}
+
 /// Settle the build configuration: an explicit/remembered value is validated
-/// against the project's configurations, and the `Debug` default applies only
-/// when the project actually has a `Debug` — a project with only, say,
-/// `UAT-Debug`/`Prod` drops to the configuration picker instead of invoking
-/// xcodebuild with a nonexistent configuration. Swift packages skip validation
-/// (SwiftPM maps any name onto debug/release itself).
-pub fn settle_configuration(ctx: &Context, resolved: &Resolved) -> Result<String, CliError> {
+/// against the project's configurations (a stale remembered one recovers, see
+/// [`recover_stale`]), and the `Debug` default applies only when the project
+/// actually has a `Debug` — a project with only, say, `UAT-Debug`/`Prod`
+/// drops to the configuration picker instead of invoking xcodebuild with a
+/// nonexistent configuration. Swift packages skip validation (SwiftPM maps
+/// any name onto debug/release itself).
+pub fn settle_configuration(ctx: &mut Context, resolved: &Resolved) -> Result<String, CliError> {
     if matches!(resolved.container, Container::SwiftPackage(_)) {
         return Ok(resolved
             .configuration
@@ -740,14 +800,73 @@ pub fn settle_configuration(ctx: &Context, resolved: &Resolved) -> Result<String
     // Candidate enumeration is advisory: if the project can't be read here the
     // build command itself will surface that, so fall back to the old behavior.
     let candidates = configurations(&resolved.container).unwrap_or_default();
-    if let Some(c) = resolved.configuration.clone() {
-        validate_choice("configuration", &c, &candidates)?;
+    let mut current = resolved.configuration.clone();
+    if let Some(c) = current.clone()
+        && let Err(err) = validate_choice("configuration", &c, &candidates)
+    {
+        current = recover_stale(ctx, &resolved.container, "configuration", &c, err)?;
+        if let Some(higher) = &current {
+            validate_choice("configuration", higher, &candidates)?;
+        }
+    }
+    if let Some(c) = current {
         return Ok(c);
     }
     if candidates.is_empty() || candidates.iter().any(|c| c == "Debug") {
         return Ok("Debug".to_string());
     }
     choose(ctx, "configuration", None, &candidates)
+}
+
+/// Recovery for a value that failed validation: when it came from *remembered
+/// state* (the project changed under a stale pick), clear it, warn with the
+/// provenance, and hand back the layer above it (flag/config/sweetpad.toml) —
+/// `None` drops the caller to its auto-pick/prompt path. A failing value from
+/// any other layer re-raises `err` untouched: flags and config are the user's
+/// to fix.
+fn recover_stale(
+    ctx: &mut Context,
+    container: &Container,
+    what: &str,
+    value: &str,
+    err: CliError,
+) -> Result<Option<String>, CliError> {
+    let key = container.key();
+    let field = |p: &crate::cli::state::ProjectState| match what {
+        "scheme" => p.scheme.clone(),
+        _ => p.configuration.clone(),
+    };
+    let remembered = ctx.state.projects.get(&key).and_then(field);
+    if remembered.as_deref() != Some(value) {
+        return Err(err);
+    }
+    let flag = match what {
+        "scheme" => ctx.targeting.scheme.clone(),
+        _ => ctx.targeting.configuration.clone(),
+    };
+    if flag.as_deref() == Some(value) {
+        // The flag independently names the same bad value — blame the flag.
+        return Err(err);
+    }
+    let entry = ctx.state.project_mut(&key);
+    match what {
+        "scheme" => entry.scheme = None,
+        _ => entry.configuration = None,
+    }
+    let _ = ctx.state.save();
+    ctx.out.warn(&format!(
+        "the remembered {what} {value:?} no longer exists in the project — cleared it \
+         (`sweetpad context remove {what}` does this by hand)"
+    ));
+    let cfg = ctx.config.for_project(&key);
+    let pf = ctx.project_file(container);
+    let higher = match what {
+        "scheme" => flag.or_else(|| cfg.scheme.clone()).or_else(|| pf.scheme.clone()),
+        _ => flag
+            .or_else(|| cfg.configuration.clone())
+            .or_else(|| pf.configuration.clone()),
+    };
+    Ok(higher)
 }
 
 /// Reject an explicitly-requested value that isn't in the candidate list, with
@@ -786,9 +905,9 @@ pub(crate) fn validate_choice(what: &str, value: &str, candidates: &[String]) ->
 /// remembered) never overwrites the stored context. State stays "the last
 /// interactive picks": a one-off `--configuration Release` or `--destination …`
 /// can't poison the next plain `build`. `destination: false` skips the
-/// destination entirely (the `--mac`/`--device` runs, whose synthesized
-/// specifier must never become the remembered simulator context). Best-effort:
-/// failures to write state never fail a command.
+/// destination entirely — the `--mac`/`--device`/`--on` runs, whose
+/// synthesized specifier must never become the remembered simulator context.
+/// Best-effort: failures to write state never fail a command.
 pub fn remember(ctx: &mut Context, resolved: &Resolved, target: &BuildTarget, destination: bool) {
     let key = resolved.container.key();
     let st = ctx.state.project_mut(&key);
@@ -811,11 +930,18 @@ pub fn remember(ctx: &mut Context, resolved: &Resolved, target: &BuildTarget, de
 }
 
 /// Persist a test run's picks, mirroring [`remember`]'s picker-sourced-only
-/// rule. A field is unresolved here only when neither a flag, config, testing
-/// pin, nor build context supplied it — so writing the pick into the *build*
-/// context keeps `test` and `build` sharing one selection, and a pinned testing
-/// override (owned by `context … --testing`) is never touched. Best-effort.
-pub fn remember_testing(ctx: &mut Context, resolved: &Resolved, target: &BuildTarget) {
+/// rule (including its `destination` gate — a `--on`-sourced specifier is a
+/// one-off, never the remembered context). A field is unresolved here only
+/// when neither a flag, config, testing pin, nor build context supplied it —
+/// so writing the pick into the *build* context keeps `test` and `build`
+/// sharing one selection, and a pinned testing override (owned by
+/// `context … --testing`) is never touched. Best-effort.
+pub fn remember_testing(
+    ctx: &mut Context,
+    resolved: &Resolved,
+    target: &BuildTarget,
+    destination: bool,
+) {
     let key = resolved.container.key();
     let st = ctx.state.project_mut(&key);
     let mut dirty = false;
@@ -827,7 +953,7 @@ pub fn remember_testing(ctx: &mut Context, resolved: &Resolved, target: &BuildTa
         st.configuration = Some(target.configuration.clone());
         dirty = true;
     }
-    if resolved.destination.is_none() {
+    if destination && resolved.destination.is_none() {
         st.destination = Some(target.destination.clone());
         dirty = true;
     }
@@ -848,8 +974,16 @@ pub fn pick_destination(
     sims: &[crate::cli::simctl::Simulator],
 ) -> Result<String, CliError> {
     let usage = ctx.state.projects.get(key).map(|s| &s.destination_usage);
-    let (ordered, labels) = destination_choices(sims, usage);
+    let (ordered, mut labels) = destination_choices(sims, usage);
+    // The local Mac is always addressable (`platform=macOS`); listed last so
+    // the simulator daily loop stays on top, but present so a macOS-app
+    // project can settle its destination without knowing `--on mac`.
+    let mac_label = "My Mac (macOS)".to_string();
+    labels.push(mac_label.clone());
     let chosen = choose(ctx, "destination", None, &labels)?;
+    if chosen == mac_label {
+        return Ok("platform=macOS".to_string());
+    }
     // Match by label position, not `Simulator::label`, since the displayed
     // labels carry the booted marker.
     let idx = labels
@@ -862,13 +996,19 @@ pub fn pick_destination(
     Ok(sim.destination())
 }
 
-/// Record a freshly-picked simulator into the project's recents (unique by id,
-/// first-seen order) and bump its usage count — the inputs to most-used-first
-/// ordering. Mirrors the extension's `trackSelectedDestination`.
+/// Record a freshly-picked simulator into the project's recents (unique by
+/// id, least-recently-picked first) and bump its usage count — the inputs to
+/// most-used-first ordering. A re-pick moves the entry to the back, so the
+/// recents cap ([`crate::cli::state`]'s prune) evicts genuinely stale
+/// destinations rather than the daily driver that happened to be picked
+/// first. Mirrors the extension's `trackSelectedDestination`.
 fn track_destination(state: &mut State, key: &str, sim: &crate::cli::simctl::Simulator) {
     let st = state.project_mut(key);
     *st.destination_usage.entry(sim.udid.clone()).or_insert(0) += 1;
-    if !st.destination_recents.iter().any(|d| d.id == sim.udid) {
+    if let Some(pos) = st.destination_recents.iter().position(|d| d.id == sim.udid) {
+        let entry = st.destination_recents.remove(pos);
+        st.destination_recents.push(entry);
+    } else {
         st.destination_recents.push(SelectedDestination {
             id: sim.udid.clone(),
             kind: sim.kind(),
@@ -990,6 +1130,28 @@ mod tests {
             out,
             project_toml: std::cell::OnceCell::new(),
         }
+    }
+
+    #[test]
+    fn track_destination_moves_a_repick_to_the_back() {
+        let sim = |udid: &str| crate::cli::simctl::Simulator {
+            udid: udid.into(),
+            name: format!("Sim {udid}"),
+            state: "Shutdown".into(),
+            available: true,
+            os: "iOS".into(),
+            os_version: "17.0".into(),
+        };
+        let mut state = State::default();
+        track_destination(&mut state, "/p", &sim("A"));
+        track_destination(&mut state, "/p", &sim("B"));
+        track_destination(&mut state, "/p", &sim("A"));
+        let entry = &state.projects["/p"];
+        // Front = least recently picked, so the recents cap evicts B before
+        // the re-picked A (true LRU, not first-seen).
+        let order: Vec<&str> = entry.destination_recents.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(order, vec!["B", "A"]);
+        assert_eq!(entry.destination_usage["A"], 2);
     }
 
     #[test]

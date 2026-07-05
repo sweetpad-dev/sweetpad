@@ -183,12 +183,14 @@ impl Render for SpmTestReport {
     }
 }
 
+#[allow(clippy::too_many_lines)] // one linear run: resolve, guard, run, promote, report
 fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // Tests resolve their own context (testing overrides, falling back to build).
     let resolved = resolve::resolve_testing(ctx)?;
 
     // Swift packages run tests with the `swift` toolchain — no simulator
-    // destination, no `.xcresult` bundle to retain, rerun from, or report on.
+    // destination, no `.xcresult` bundle to retain, rerun from, or report on;
+    // no `-retry-tests-on-failure` equivalent either.
     if matches!(resolved.container, resolve::Container::SwiftPackage(_)) {
         if args.failed || args.result_bundle.is_some() || args.junit.is_some() {
             return Err(CliError::new(
@@ -196,19 +198,24 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
                  produces none for a Swift package",
             ));
         }
+        if args.retry_flaky.is_some() {
+            return Err(CliError::new(
+                "--retry-flaky is xcodebuild's -retry-tests-on-failure; `swift test` has no \
+                 equivalent for a Swift package",
+            ));
+        }
         return spm_test(ctx, &resolved, args);
     }
 
-    let target = resolve::build_target(ctx, &resolved)?;
-    resolve::remember_testing(ctx, &resolved, &target);
+    let target = resolve::build_target(ctx, &resolved, !args.show_command)?;
 
-    let bundle = args
+    let final_bundle = args
         .result_bundle.map_or_else(|| retained_bundle_path(&resolved.container), Path::to_path_buf);
 
-    // `--failed`: the selectors come from the *previous* run's bundle — read
-    // them before that bundle is cleared for the new run.
+    // `--failed`: the selectors come from the *previous* run's retained
+    // bundle, read before anything touches it.
     let only: Vec<String> = if args.failed {
-        let selectors = xcodebuild::failed_test_selectors(&bundle)?;
+        let selectors = xcodebuild::failed_test_selectors(&final_bundle)?;
         if selectors.is_empty() {
             return Err(CliError::new(
                 "the previous run recorded no failures to rerun (or no previous run exists)",
@@ -226,19 +233,26 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         args.only_testing.to_vec()
     };
 
+    // The run writes into a scratch sibling; it replaces the retained slot
+    // only once it actually holds test results — a rerun that dies in its
+    // build step must not destroy the previous run's failure set (`--failed`).
+    let run_bundle = final_bundle.with_extension("new.xcresult");
+
     let plan = xcodebuild::TestPlan {
         container: &resolved.container,
         scheme: &target.scheme,
         configuration: &target.configuration,
         destination: Some(&target.destination),
+        sdk: resolved.sdk.as_deref(),
         only_testing: &only,
         skip_testing: args.skip_testing,
-        result_bundle: &bundle,
+        result_bundle: &run_bundle,
         retry_flaky: args.retry_flaky,
         coverage: args.coverage,
         passthrough: args.passthrough,
     };
 
+    // A dry run prints and exits before any state or bundle is touched.
     if args.show_command {
         let (command_args, cwd) = plan.command();
         return Ok(Rendered::data(xcodebuild::CommandPreview {
@@ -247,11 +261,12 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
             cwd,
         }));
     }
+    // Remember the picks — never a `--on`-sourced destination (one-off).
+    resolve::remember_testing(ctx, &resolved, &target, ctx.targeting.on.is_none());
 
-    // xcodebuild refuses to overwrite an existing bundle; the retained slot
-    // holds only the latest run.
-    let _ = std::fs::remove_dir_all(&bundle);
-    if let Some(parent) = bundle.parent() {
+    // xcodebuild refuses to overwrite an existing bundle.
+    let _ = std::fs::remove_dir_all(&run_bundle);
+    if let Some(parent) = run_bundle.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
 
@@ -262,8 +277,40 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
 
     // Human mode beautifies output; JSON stays quiet so stdout holds only the
     // enveloped summary the dispatcher renders from the returned payload.
-    let passed = plan.run(&ctx.out)?;
-    let summary = xcodebuild::test_summary(&bundle)?;
+    let outcome = plan.run(&ctx.out)?;
+    let summary = run_bundle
+        .exists()
+        .then(|| xcodebuild::test_summary(&run_bundle).ok())
+        .flatten();
+
+    // No tests ran: xcodebuild died before/inside its build step (it usually
+    // still writes a bundle, so "bundle exists" proves nothing). Surface the
+    // real cause instead of a vacuous `0 passed, 0 failed` summary — and keep
+    // the previous retained bundle so `--failed` still works.
+    let ran_tests = summary
+        .as_ref()
+        .is_some_and(|s| s.total_test_count > 0 || outcome.passed);
+    if !ran_tests {
+        let _ = std::fs::remove_dir_all(&run_bundle);
+        let detail = outcome
+            .tail
+            .map_or_else(String::new, |tail| format!(":\n{tail}"));
+        return Err(CliError::new(format!(
+            "xcodebuild test failed before any test ran{detail}"
+        ))
+        .kind(crate::cli::ErrorKind::BuildFailure)
+        .context("running the tests"));
+    }
+    // The scratch run is the project's latest real result: promote it to the
+    // retained slot.
+    let _ = std::fs::remove_dir_all(&final_bundle);
+    let bundle = if std::fs::rename(&run_bundle, &final_bundle).is_ok() {
+        final_bundle
+    } else {
+        run_bundle
+    };
+    let summary = summary.unwrap_or_default();
+    let passed = outcome.passed;
 
     if let Some(junit) = args.junit {
         write_junit(junit, &target.scheme, &summary)?;
@@ -343,12 +390,28 @@ fn xml_escape(s: &str) -> String {
 }
 
 /// Run a Swift package's tests via `swift test`. Unlike xcodebuild there's no
-/// `.xcresult` to parse, so the result is just the pass/fail flag.
+/// `.xcresult` to parse, so the result is just the pass/fail flag. Honors the
+/// dry run (`--show-command` previews instead of executing), `--coverage`
+/// (`--enable-code-coverage`), and `--` passthrough.
 fn spm_test(ctx: &mut Context, resolved: &resolve::Resolved, args: &RunArgs) -> CommandResult {
     let configuration = resolved
         .configuration
         .clone()
         .unwrap_or_else(|| "Debug".to_string());
+
+    if args.show_command {
+        return Ok(Rendered::data(xcodebuild::CommandPreview {
+            program: "swift",
+            args: swiftpm::test_args(
+                &configuration,
+                args.only_testing,
+                args.skip_testing,
+                args.coverage,
+                args.passthrough,
+            ),
+            cwd: swiftpm::package_dir(&resolved.container),
+        }));
+    }
 
     ctx.out.note(&format!(
         "testing Swift package ({configuration}) with swift test"
@@ -359,7 +422,9 @@ fn spm_test(ctx: &mut Context, resolved: &resolve::Resolved, args: &RunArgs) -> 
         &configuration,
         args.only_testing,
         args.skip_testing,
+        args.coverage,
         ctx.out.is_json() || ctx.out.is_ndjson(),
+        args.passthrough,
     )?;
 
     let report = SpmTestReport { passed };

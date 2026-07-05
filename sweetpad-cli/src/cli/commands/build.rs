@@ -160,12 +160,19 @@ fn start(
 
     // Swift packages have no simulator destination; build them with the `swift`
     // toolchain rather than routing through xcodebuild (which would force a
-    // destination on us).
+    // destination on us). The dry run and `--` passthrough apply here too.
     if matches!(resolved.container, resolve::Container::SwiftPackage(_)) {
         let configuration = resolved
             .configuration
             .clone()
             .unwrap_or_else(|| "Debug".to_string());
+        if show_command {
+            return Ok(Rendered::data(xcodebuild::CommandPreview {
+                program: "swift",
+                args: swiftpm::build_args(&configuration, passthrough),
+                cwd: swiftpm::package_dir(&resolved.container),
+            }));
+        }
         ctx.out.note(&format!(
             "building Swift package ({configuration}) with swift build"
         ));
@@ -174,6 +181,7 @@ fn start(
             &configuration,
             clean,
             ctx.out.is_json() || ctx.out.is_ndjson(),
+            passthrough,
         )
         .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
         return Ok(Rendered::data(BuildReport {
@@ -184,8 +192,7 @@ fn start(
         }));
     }
 
-    let target = resolve::build_target(ctx, &resolved)?;
-    resolve::remember(ctx, &resolved, &target, true);
+    let target = resolve::build_target(ctx, &resolved, !show_command)?;
 
     let plan = xcodebuild::BuildPlan {
         container: &resolved.container,
@@ -198,6 +205,7 @@ fn start(
         passthrough,
     };
 
+    // A dry run prints and exits before any state is persisted.
     if show_command {
         let (args, cwd) = plan.command();
         return Ok(Rendered::data(xcodebuild::CommandPreview {
@@ -206,6 +214,9 @@ fn start(
             cwd,
         }));
     }
+    // Remember the picks — but never a `--on`-sourced destination (a one-off
+    // reference must not retarget the next plain build).
+    resolve::remember(ctx, &resolved, &target, ctx.targeting.on.is_none());
 
     ctx.out.note(&format!(
         "building {} ({}) for {}",

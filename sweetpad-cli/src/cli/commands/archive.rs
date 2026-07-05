@@ -53,7 +53,12 @@ pub struct ArchiveArgs {
     pub export_method: ExportMethod,
 
     /// Use an existing ExportOptions.plist instead of generating one.
-    #[arg(long, value_name = "PLIST", conflicts_with = "export_method")]
+    #[arg(
+        long,
+        value_name = "PLIST",
+        conflicts_with = "export_method",
+        conflicts_with = "no_export"
+    )]
     pub export_options: Option<PathBuf>,
 
     /// Archive only; skip the IPA export.
@@ -106,11 +111,8 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
         resolve::validate_choice("scheme", s, &schemes)?;
     }
     let scheme = resolve::choose(ctx, "scheme", resolved.scheme.clone(), &schemes)?;
-    // Archives distribute: Release unless something explicitly says otherwise.
-    let configuration = resolved
-        .configuration
-        .clone()
-        .unwrap_or_else(|| "Release".to_string());
+    let configuration = archive_configuration(ctx, &resolved)?;
+    let destination = archive_destination(ctx)?;
 
     let out_dir = args
         .output
@@ -125,23 +127,57 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
         "-configuration".into(),
         configuration,
         "-destination".into(),
-        "generic/platform=iOS".into(),
+        destination,
         "-archivePath".into(),
         archive_path.display().to_string(),
     ];
+    if let Some(sdk) = &resolved.sdk {
+        archive_args.push("-sdk".into());
+        archive_args.push(sdk.clone());
+    }
     archive_args.extend(xcodebuild::container_args(&resolved.container));
     archive_args.extend(args.passthrough.iter().cloned());
 
+    let cwd = xcodebuild::working_dir(&resolved.container);
+    let export_dir = out_dir.join("export");
+    let plist_path = args
+        .export_options
+        .clone()
+        .unwrap_or_else(|| out_dir.join("ExportOptions.plist"));
+    let export_args: Vec<String> = vec![
+        "-exportArchive".into(),
+        "-archivePath".into(),
+        archive_path.display().to_string(),
+        "-exportPath".into(),
+        export_dir.display().to_string(),
+        "-exportOptionsPlist".into(),
+        plist_path.display().to_string(),
+    ];
+
+    // The dry run previews *both* steps (the flag says "invocation(s)"), plus
+    // the plist that would be generated.
     if args.show_command {
-        return Ok(Rendered::data(xcodebuild::CommandPreview {
+        let archive_preview = xcodebuild::CommandPreview {
             program: "xcodebuild",
             args: archive_args,
-            cwd: xcodebuild::working_dir(&resolved.container),
+            cwd: cwd.clone(),
+        };
+        let export_preview = (!args.no_export).then(|| xcodebuild::CommandPreview {
+            program: "xcodebuild",
+            args: export_args,
+            cwd: cwd.clone(),
+        });
+        let generated_plist = (!args.no_export && args.export_options.is_none())
+            .then(|| plist_path.display().to_string());
+        return Ok(Rendered::data(ArchivePreview {
+            archive: archive_preview,
+            export: export_preview,
+            generated_plist,
+            export_method: args.export_method,
         }));
     }
 
     let _ = std::fs::create_dir_all(&out_dir);
-    let cwd = xcodebuild::working_dir(&resolved.container);
     run_xcodebuild(ctx, &archive_args, cwd.as_deref(), "Archiving")
         .map_err(|e| e.context("archiving the app"))?;
 
@@ -154,23 +190,11 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
 
     // Export: an explicit plist wins; otherwise generate one with automatic
     // signing for the chosen method.
-    let export_dir = out_dir.join("export");
-    let plist = if let Some(p) = &args.export_options { p.clone() } else {
-        let path = out_dir.join("ExportOptions.plist");
-        std::fs::write(&path, export_options_plist(args.export_method)).map_err(|e| {
-            CliError::new(format!("failed to write {}: {e}", path.display()))
+    if args.export_options.is_none() {
+        std::fs::write(&plist_path, export_options_plist(args.export_method)).map_err(|e| {
+            CliError::new(format!("failed to write {}: {e}", plist_path.display()))
         })?;
-        path
-    };
-    let export_args: Vec<String> = vec![
-        "-exportArchive".into(),
-        "-archivePath".into(),
-        archive_path.display().to_string(),
-        "-exportPath".into(),
-        export_dir.display().to_string(),
-        "-exportOptionsPlist".into(),
-        plist.display().to_string(),
-    ];
+    }
     run_xcodebuild(ctx, &export_args, cwd.as_deref(), "Exporting")
         .map_err(|e| e.context("exporting the archive"))?;
 
@@ -178,6 +202,98 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
         archive: archive_path.display().to_string(),
         ipa_dir: Some(export_dir.display().to_string()),
     }))
+}
+
+/// The archive's configuration: flag > user config > sweetpad.toml >
+/// `Release`. The *remembered* layer is deliberately skipped — a Debug pick
+/// remembered from the daily build loop must not silently turn distribution
+/// archives into Debug builds.
+fn archive_configuration(
+    ctx: &mut Context,
+    resolved: &resolve::Resolved,
+) -> Result<String, CliError> {
+    let key = resolved.container.key();
+    let cfg = ctx.config.for_project(&key);
+    let pf = ctx.project_file(&resolved.container).configuration.clone();
+    let configuration = ctx
+        .targeting
+        .configuration
+        .clone()
+        .or(cfg.configuration)
+        .or(pf)
+        .unwrap_or_else(|| "Release".to_string());
+    let candidates = resolve::configurations(&resolved.container).unwrap_or_default();
+    if configuration == "Release" && !candidates.is_empty() && !candidates.contains(&configuration)
+    {
+        // A project without a Release configuration drops to the picker
+        // rather than dying inside xcodebuild.
+        return resolve::choose(ctx, "configuration", None, &candidates);
+    }
+    resolve::validate_choice("configuration", &configuration, &candidates)?;
+    Ok(configuration)
+}
+
+/// The archive's `-destination`: an explicit `--destination` passes through
+/// verbatim; `--on` takes a platform word (`mac`, `ios`, `watchos`, `tvos`,
+/// `visionos`) or `device` and maps it to the matching `generic/platform=…`;
+/// default iOS. Archives target device platforms, so a simulator reference
+/// is rejected rather than resolved.
+fn archive_destination(ctx: &Context) -> Result<String, CliError> {
+    if let Some(dest) = &ctx.targeting.destination {
+        return Ok(dest.clone());
+    }
+    let Some(on) = &ctx.targeting.on else {
+        return Ok("generic/platform=iOS".to_string());
+    };
+    let platform = match on.to_ascii_lowercase().as_str() {
+        "mac" | "macos" => "macOS",
+        "ios" | "iphone" | "ipad" | "device" => "iOS",
+        "watchos" => "watchOS",
+        "tvos" => "tvOS",
+        "visionos" | "xros" => "visionOS",
+        other => {
+            return Err(CliError::new(format!(
+                "archive targets a generic device platform; --on {other:?} doesn't name one \
+                 (use mac, ios, watchos, tvos, or visionos — or --destination for the raw form)"
+            )));
+        }
+    };
+    Ok(format!("generic/platform={platform}"))
+}
+
+/// The `--show-command` payload: both xcodebuild invocations, and the
+/// ExportOptions.plist that would be generated.
+struct ArchivePreview {
+    archive: xcodebuild::CommandPreview,
+    export: Option<xcodebuild::CommandPreview>,
+    generated_plist: Option<String>,
+    export_method: ExportMethod,
+}
+
+impl Render for ArchivePreview {
+    fn human(&self, out: &Output) {
+        self.archive.human(out);
+        if let Some(export) = &self.export {
+            export.human(out);
+        }
+        if let Some(plist) = &self.generated_plist {
+            out.note(&format!(
+                "{plist} will be generated (method {}, automatic signing)",
+                self.export_method.plist_value()
+            ));
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let mut commands = vec![self.archive.json()];
+        if let Some(export) = &self.export {
+            commands.push(export.json());
+        }
+        serde_json::json!({
+            "commands": commands,
+            "generatedExportOptions": self.generated_plist,
+        })
+    }
 }
 
 /// Run one xcodebuild step with the standard output modes (beautified /

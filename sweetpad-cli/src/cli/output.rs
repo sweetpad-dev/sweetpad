@@ -142,6 +142,22 @@ impl Output {
         }
     }
 
+    /// Emit a self-rendered command's machine result: the success envelope
+    /// under `--json`, the terminal `{"event":"result"}` line under
+    /// `-o ndjson` — so a Streamed command still honors both stdout
+    /// contracts. No-op in human mode.
+    pub fn result_value(&self, data: &serde_json::Value) {
+        if self.ndjson {
+            self.ndjson_event(&serde_json::json!({
+                "event": "result",
+                "ok": true,
+                "data": data,
+            }));
+        } else {
+            self.json_value(data);
+        }
+    }
+
     /// Print a list item to stdout (human mode only), optionally marked as the
     /// currently selected entry (green `*` when color is on).
     pub fn item(&self, name: &str, selected: bool) {

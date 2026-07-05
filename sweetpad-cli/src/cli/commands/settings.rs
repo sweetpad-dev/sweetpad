@@ -112,9 +112,19 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandRe
     };
 
     let configuration = resolve::settle_configuration(ctx, &resolved)?;
-    let destination = resolved
-        .destination
+    // `--on` resolves to a concrete specifier here like it does for builds;
+    // an explicit --destination (the resolved layer) otherwise applies.
+    let on_specifier = match ctx.targeting.on.clone() {
+        Some(reference) => {
+            let sims = crate::cli::simctl::list()?;
+            let key = resolved.container.key();
+            Some(resolve::resolve_on(ctx, &key, &reference, &sims)?.specifier())
+        }
+        None => None,
+    };
+    let destination = on_specifier
         .as_deref()
+        .or(resolved.destination.as_deref())
         .and_then(sweetpad_lib::destination::parse_destination_arg);
 
     let opts = BuildSettingsOptions {

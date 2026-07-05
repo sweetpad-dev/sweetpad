@@ -148,6 +148,16 @@ pub fn run(ctx: &mut Context) -> CommandResult {
         source,
     });
 
+    // `--on`/`SWEETPAD_ON` outranks every destination layer at build time;
+    // surface it so the shown context is the one a build will actually use.
+    if let Some(on) = &ctx.targeting.on {
+        rows.push(Row {
+            name: "on",
+            value: Some(format!("{on} (overrides destination)")),
+            source: "flag/env",
+        });
+    }
+
     if resolved.sdk.is_some() {
         let (value, source) = provenance(&resolved.sdk, &cfg.sdk, &pf_sdk, &st.sdk);
         rows.push(Row {

@@ -254,11 +254,8 @@ fn delete(ctx: &mut Context, target: &str, yes: bool) -> CommandResult {
                 CliError::new(format!("confirmation cancelled: {e}")).kind(ErrorKind::UserCancel)
             })?;
         if !confirmed {
-            return Ok(Rendered::data(SimAction::already(
-                sim,
-                "aborted",
-                "aborted".to_string(),
-            )));
+            // A declined prompt exits 6 like an Esc'd one (`help exit-codes`).
+            return Err(CliError::new("delete declined").kind(ErrorKind::UserCancel));
         }
     }
     simctl::delete(&sim.udid)?;
@@ -293,7 +290,15 @@ fn record(ctx: &mut Context, target: Option<&str>, output: Option<&std::path::Pa
     }
     ctx.out
         .note(&format!("recording {} — Ctrl-C to stop", sim.label()));
-    simctl::record(&sim.udid, &path.display().to_string())?;
+    let stopped = simctl::record(&sim.udid, &path.display().to_string())?;
+    if !path.exists() {
+        return Err(crate::cli::CliError::new(
+            "recordVideo ended without producing a file",
+        ));
+    }
+    if stopped {
+        ctx.out.note("recording stopped");
+    }
     Ok(Rendered::data(SimScreenshot {
         udid: sim.udid.clone(),
         path: path.display().to_string(),

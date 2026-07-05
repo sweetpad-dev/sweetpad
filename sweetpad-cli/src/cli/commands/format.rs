@@ -113,10 +113,11 @@ fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> Comm
         if check { "checking" } else { "formatting" }
     ));
 
-    // JSON reserves stdout for the result, so run the tool quietly — its own
-    // stdout would otherwise corrupt the envelope. A failed `--check` still
-    // reports a result, but exits non-zero so CI catches it.
-    if ctx.out.is_json() {
+    // JSON/ndjson reserve stdout for the result, so run the tool quietly —
+    // its own stdout would otherwise corrupt the envelope/event stream. A
+    // failed `--check` still reports a result, but exits non-zero so CI
+    // catches it.
+    if ctx.out.is_json() || ctx.out.is_ndjson() {
         let passed = process::run(&program, &arg_refs, None, true)?;
         let report = FormatReport {
             tool: format!("{tool:?}"),
@@ -157,7 +158,11 @@ fn swift_format_command(check: bool, recursive: bool) -> (String, Vec<String>) {
     } else {
         "format".into()
     });
-    if !check {
+    if check {
+        // Without --strict, `lint` prints findings but exits 0 — `--check`'s
+        // whole contract is a non-zero exit when changes are needed.
+        args.push("--strict".into());
+    } else {
         args.push("--in-place".into());
     }
     if recursive {
@@ -166,10 +171,15 @@ fn swift_format_command(check: bool, recursive: bool) -> (String, Vec<String>) {
     (program, args)
 }
 
-/// SwiftLint: `lint` to check, `--fix` to autocorrect.
+/// SwiftLint: `lint --strict` to check (warnings alone exit 0 otherwise,
+/// which would let `--check` pass on findings), `--fix` to autocorrect.
 fn swiftlint_command(check: bool) -> (String, Vec<String>) {
     let args = if check {
-        vec!["lint".to_string(), "--quiet".to_string()]
+        vec![
+            "lint".to_string(),
+            "--strict".to_string(),
+            "--quiet".to_string(),
+        ]
     } else {
         vec!["--fix".to_string(), "--quiet".to_string()]
     };

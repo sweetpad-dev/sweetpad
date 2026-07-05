@@ -112,35 +112,83 @@ pub fn run(
     Ok(status.success())
 }
 
-/// Run a command, invoking `on_line` for each line of stdout as it arrives
-/// (stderr inherited). Returns whether the process succeeded. Used to feed
-/// xcodebuild output through the native log beautifier ([`crate::cli::buildlog`]).
+/// Run a command, invoking `on_line` for each line of output as it arrives.
+/// Both stdout and stderr flow through one merged pipe (chronologically, at
+/// pipe level), so tool errors that only reach stderr — `xcodebuild: error:
+/// Scheme X is not currently configured…` — hit the parser like any other
+/// line instead of bypassing diagnostics collection. Returns whether the
+/// process succeeded. Used to feed xcodebuild output through the native log
+/// beautifier ([`crate::cli::buildlog`]).
 pub fn stream_lines(
     program: &str,
     args: &[&str],
     cwd: Option<&Path>,
     mut on_line: impl FnMut(&str),
 ) -> Result<bool, CliError> {
-    use std::io::{BufRead, BufReader};
-
     let mut cmd = Command::new(program);
-    cmd.args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit());
+    cmd.args(args);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
+    let (reader, out, err) = merged_output_pipe(program)?;
+    cmd.stdout(out).stderr(err);
     let mut child = cmd.spawn().map_err(|e| spawn_error(program, &e))?;
-    // Safe: stdout was set to piped above.
-    let stdout = child.stdout.take().expect("piped stdout");
-    for line in BufReader::new(stdout).lines() {
-        match line {
-            Ok(line) => on_line(&line),
-            Err(_) => break, // non-UTF-8 / closed pipe — stop reading, still wait()
-        }
-    }
+    read_lines_lossy(reader, &mut on_line);
     let status = child.wait().map_err(|e| spawn_error(program, &e))?;
     Ok(status.success())
+}
+
+/// One pipe whose write end is duplicated for a child's stdout and stderr, so
+/// the parent reads both streams merged in arrival order. The read end comes
+/// back as a `File`.
+fn merged_output_pipe(program: &str) -> Result<(std::fs::File, Stdio, Stdio), CliError> {
+    use std::os::fd::FromRawFd;
+    let mut fds = [0 as libc::c_int; 2];
+    // Safety: pipe(2) into a stack array; on success both fds are valid and
+    // owned exclusively by the wrappers constructed below.
+    unsafe {
+        if libc::pipe(fds.as_mut_ptr()) != 0 {
+            return Err(CliError::new(format!(
+                "failed to run `{program}`: {}",
+                std::io::Error::last_os_error()
+            )));
+        }
+        let dup = libc::dup(fds[1]);
+        if dup < 0 {
+            let e = std::io::Error::last_os_error();
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+            return Err(CliError::new(format!("failed to run `{program}`: {e}")));
+        }
+        Ok((
+            std::fs::File::from_raw_fd(fds[0]),
+            Stdio::from_raw_fd(fds[1]),
+            Stdio::from_raw_fd(dup),
+        ))
+    }
+}
+
+/// Feed `reader` to `on_line` line by line, decoding lossily — one non-UTF-8
+/// byte from a build script degrades to U+FFFD instead of ending the stream
+/// (which would close the pipe and SIGPIPE a still-writing child, turning a
+/// successful build into a reported failure). Interrupted reads retry inside
+/// `read_until`; any other read error ends the stream.
+pub(crate) fn read_lines_lossy(reader: impl std::io::Read, on_line: &mut impl FnMut(&str)) {
+    use std::io::{BufRead, BufReader};
+    let mut reader = BufReader::new(reader);
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {
+                while matches!(buf.last(), Some(b'\n' | b'\r')) {
+                    buf.pop();
+                }
+                on_line(&String::from_utf8_lossy(&buf));
+            }
+        }
+    }
 }
 
 /// Spawn a long-running command in the background with stdout **piped** for the
@@ -179,11 +227,38 @@ pub fn spawn_piped_both(
     cmd.spawn().map_err(|e| spawn_error(program, &e))
 }
 
-/// Spawn a command with stdout **piped** (for the caller to read line-by-line)
-/// and placed in its **own process group**, so a supervisor can signal just this
-/// process tree — e.g. forward Ctrl-C to an interruptible build without taking
-/// down the parent. stdin is null so it never competes for the terminal's keys.
+/// Spawn a command with its output **piped** (stdout+stderr merged into the
+/// returned reader — see [`stream_lines`] for why) and placed in its **own
+/// process group**, so a supervisor can signal just this process tree — e.g.
+/// forward Ctrl-C to an interruptible build without taking down the parent.
+/// stdin is null so it never competes for the terminal's keys.
 pub fn spawn_piped_group(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+) -> Result<(Child, std::fs::File), CliError> {
+    use std::os::unix::process::CommandExt;
+
+    let mut cmd = Command::new(program);
+    let (reader, out, err) = merged_output_pipe(program)?;
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(out)
+        .stderr(err)
+        .process_group(0);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    let child = cmd.spawn().map_err(|e| spawn_error(program, &e))?;
+    Ok((child, reader))
+}
+
+/// Spawn a command with **inherited** stdio in its **own process group**: the
+/// terminal's Ctrl-C no longer reaches it directly, so the signal handler's
+/// forward-only mode ([`crate::cli::signals::set_forward_child`]) delivers
+/// exactly one, well-chosen signal instead — `simctl io recordVideo` needs a
+/// single SIGINT to finalize its file.
+pub fn spawn_group_inherit(
     program: &str,
     args: &[&str],
     cwd: Option<&Path>,
@@ -191,11 +266,7 @@ pub fn spawn_piped_group(
     use std::os::unix::process::CommandExt;
 
     let mut cmd = Command::new(program);
-    cmd.args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .process_group(0);
+    cmd.args(args).stdin(Stdio::null()).process_group(0);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
@@ -204,10 +275,14 @@ pub fn spawn_piped_group(
 
 fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
     if e.kind() == std::io::ErrorKind::NotFound {
-        CliError::new(format!(
-            "`{program}` not found on PATH (Xcode command-line tools are required)"
-        ))
-        .kind(ErrorKind::ToolMissing)
+        let hint = match program {
+            "xcrun" | "xcodebuild" | "xcode-select" | "swift" | "simctl" => {
+                " (Xcode command-line tools are required)"
+            }
+            "brew" => " (install Homebrew from https://brew.sh)",
+            _ => "",
+        };
+        CliError::new(format!("`{program}` not found on PATH{hint}")).kind(ErrorKind::ToolMissing)
     } else {
         CliError::new(format!("failed to run `{program}`: {e}"))
     }
