@@ -91,19 +91,47 @@ pub fn read_int(s: &mut TcpStream) -> std::io::Result<Option<i32>> {
     Ok(read_exact_timed(s, &mut b)?.then(|| i32::from_le_bytes(b)))
 }
 
-/// Read a length-prefixed string. Blocks (ignoring intermediate timeouts) until
-/// the length and body arrive, since a partial string would desync the stream.
+/// Longest accepted length-prefixed string. Protocol strings are short paths
+/// and messages; without a cap, any local process connecting to the port
+/// could declare a ~2 GiB length and wedge the accept/serve thread on the
+/// allocation plus a read that never completes.
+const MAX_STRING_LEN: i32 = 1 << 20;
+
+/// Overall deadline for one string read. Retrying socket timeouts forever
+/// would let a peer that stops mid-string (or a desynced stream) hang the
+/// reading thread for the life of the connection.
+const STRING_READ_DEADLINE: Duration = Duration::from_secs(30);
+
+/// Read a length-prefixed string. Tolerates intermediate socket-timeout ticks
+/// (a partial string would desync the stream) but gives up after
+/// [`STRING_READ_DEADLINE`], and rejects lengths beyond [`MAX_STRING_LEN`].
 #[allow(clippy::cast_sign_loss)] // length is checked non-negative above
 pub fn read_string(s: &mut TcpStream) -> std::io::Result<String> {
+    let timed_out = || {
+        std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "timed out reading protocol string",
+        )
+    };
+    let deadline = std::time::Instant::now() + STRING_READ_DEADLINE;
     let len = loop {
         if let Some(v) = read_int(s)? {
             break v;
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(timed_out());
         }
     };
     if len < 0 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::UnexpectedEof,
             "EOF reading string length",
+        ));
+    }
+    if len > MAX_STRING_LEN {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("protocol string length {len} exceeds the {MAX_STRING_LEN}-byte maximum"),
         ));
     }
     let mut buf = vec![0u8; len as usize];
@@ -119,7 +147,12 @@ pub fn read_string(s: &mut TcpStream) -> std::io::Result<String> {
             Ok(n) => filled += n,
             Err(e)
                 if e.kind() == std::io::ErrorKind::WouldBlock
-                    || e.kind() == std::io::ErrorKind::TimedOut => {}
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                if std::time::Instant::now() >= deadline {
+                    return Err(timed_out());
+                }
+            }
             Err(e) => return Err(e),
         }
     }

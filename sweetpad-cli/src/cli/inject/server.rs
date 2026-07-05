@@ -112,8 +112,12 @@ impl InjectServer {
                         std::thread::sleep(Duration::from_millis(100));
                     }
                     Err(e) => {
-                        log(&format!("[hot] Accept failed: {e}"));
-                        return;
+                        // accept(2) fails transiently (ECONNABORTED when a
+                        // peer resets between SYN and accept, EINTR); exiting
+                        // here would kill hot reload for the rest of the
+                        // session with no way to reconnect.
+                        log(&format!("[hot] Accept failed: {e} (still listening)"));
+                        std::thread::sleep(Duration::from_millis(500));
                     }
                 }
             }
@@ -192,6 +196,9 @@ impl InjectServer {
             if self.is_connected() {
                 return true;
             }
+            if self.stop.load(Ordering::Relaxed) {
+                return false;
+            }
             std::thread::sleep(Duration::from_millis(100));
         }
         self.is_connected()
@@ -210,6 +217,12 @@ impl InjectServer {
             }
             if fail > baseline.1 {
                 return Some(false);
+            }
+            // Shutdown closes the connection, so the verdict can never
+            // arrive — returning early keeps teardown from hanging the
+            // watcher join for the full timeout.
+            if self.stop.load(Ordering::Relaxed) {
+                return None;
             }
             std::thread::sleep(Duration::from_millis(100));
         }
@@ -335,6 +348,21 @@ fn response_loop(
                 if let Ok(msg) = protocol::read_string(&mut reader) {
                     log(&format!("[hot] {msg}"));
                 }
+            }
+            // Payload-bearing responses that straggle in after the handshake
+            // drain: consume their string(s), or the leftover bytes desync
+            // the stream and every later verdict is garbage.
+            Ok(Some(response::PLATFORM)) => {
+                let _ = protocol::read_string(&mut reader);
+                let _ = protocol::read_string(&mut reader);
+            }
+            Ok(Some(
+                response::TMP_PATH
+                | response::PROJECT_ROOT
+                | response::EXECUTABLE
+                | response::BAZEL_TARGET,
+            )) => {
+                let _ = protocol::read_string(&mut reader);
             }
             // .unhide (precedes .failed), other responses, and read timeouts:
             // nothing to report — keep polling.

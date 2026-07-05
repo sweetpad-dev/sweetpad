@@ -802,7 +802,10 @@ pub fn target_linked_libraries(
                 .and_then(|l| l.rsplit('/').next())
                 .and_then(|n| n.strip_suffix(".dylib"))
             {
-                out.push(name.trim_start_matches("lib").to_string());
+                // Strip the `lib` prefix exactly once: `trim_start_matches`
+                // repeats, so `liblibtls.dylib` would collapse to `tls` and
+                // the caller would emit the wrong `-l` flag.
+                out.push(name.strip_prefix("lib").unwrap_or(name).to_string());
             }
         }
     }

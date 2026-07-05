@@ -270,7 +270,7 @@ impl Recompiler {
                             std::fs::canonicalize(f)
                                 .map(|c| c == canon)
                                 .unwrap_or(false)
-                                || f.ends_with(name)
+                                || path_suffix_matches(f, name)
                         })
                     {
                         return Ok(swift.clone());
@@ -316,10 +316,9 @@ impl Recompiler {
         let text = std::fs::read_to_string(log).map_err(|e| format!("read build log: {e}"))?;
 
         let is_primary_line = |l: &str| {
-            l.split_whitespace()
-                .collect::<Vec<_>>()
+            shell_tokens(l)
                 .windows(2)
-                .any(|w| w[0] == "-primary-file" && (w[1].ends_with(name) || w[1] == source_str))
+                .any(|w| w[0] == "-primary-file" && (path_suffix_matches(&w[1], name) || w[1] == source_str))
         };
         let line = text
             .lines()
@@ -332,8 +331,9 @@ impl Recompiler {
                 format!("no swift-frontend -primary-file command for {name} in build log")
             })?;
 
-        // Transcript args are shell-escaped; we exec argv directly, so unescape.
-        Ok(line.split_whitespace().map(unescape).collect())
+        // Transcript args are shell-escaped; we exec argv directly, so
+        // tokenize with escapes and quotes honored.
+        Ok(shell_tokens(line))
     }
 
     /// The `Xcode.app` path the client wants for `.xcodePath` (drops the
@@ -502,20 +502,61 @@ fn compile_and_link(
     Ok(())
 }
 
-/// Strip shell-escaping backslashes from a transcript token (`a\=b` -> `a=b`).
-fn unescape(t: &str) -> String {
-    let mut out = String::with_capacity(t.len());
-    let mut chars = t.chars();
+/// Tokenize a shell-escaped transcript line: an unquoted backslash escapes
+/// the next character (so `My\ Project` stays one token), quotes group, and
+/// only unescaped whitespace splits. A plain `split_whitespace` + unescape
+/// would tear every path containing a space into garbage tokens — routine on
+/// macOS ("My Project", "Application Support", iCloud Drive).
+fn shell_tokens(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut started = false;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut chars = line.chars();
     while let Some(c) = chars.next() {
-        if c == '\\' {
-            if let Some(n) = chars.next() {
-                out.push(n);
+        match c {
+            '\\' if !in_single => {
+                if let Some(n) = chars.next() {
+                    cur.push(n);
+                    started = true;
+                }
             }
-        } else {
-            out.push(c);
+            '\'' if !in_double => {
+                in_single = !in_single;
+                started = true;
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                started = true;
+            }
+            c if c.is_whitespace() && !in_single && !in_double => {
+                if started {
+                    out.push(std::mem::take(&mut cur));
+                    started = false;
+                }
+            }
+            c => {
+                cur.push(c);
+                started = true;
+            }
         }
     }
+    if started {
+        out.push(cur);
+    }
     out
+}
+
+/// Path-suffix match at a component boundary: `/a/b/View.swift` matches
+/// `b/View.swift` and `View.swift`, but a save of `View.swift` must not
+/// match `GridView.swift` (a bare `ends_with` would, selecting the wrong
+/// module or frontend command).
+fn path_suffix_matches(path: &str, suffix: &str) -> bool {
+    path == suffix
+        || (path.len() > suffix.len()
+            && path.ends_with(suffix)
+            && path.as_bytes()[path.len() - suffix.len() - 1] == b'/')
 }
 
 const DROP_WITH_NEXT: &[&str] = &[
@@ -561,7 +602,7 @@ fn single_file_command(
         }
         if t == "-primary-file" {
             let file = tokens.get(i + 1).ok_or("dangling -primary-file")?;
-            if file.ends_with(source) || source.ends_with(file.as_str()) {
+            if path_suffix_matches(file, source) || path_suffix_matches(source, file) {
                 out.push("-primary-file".into());
                 out.push(file.clone());
                 kept_primary = true;
@@ -647,19 +688,31 @@ mod tests {
     }
 
     #[test]
-    fn unescape_strips_backslashes() {
+    fn shell_tokens_unescapes_and_splits() {
         assert_eq!(
-            unescape(r"-enforce-exclusivity\=checked"),
-            "-enforce-exclusivity=checked"
+            shell_tokens(r"swiftc -primary-file /Users/me/My\ Project/Foo.swift x\=y"),
+            vec!["swiftc", "-primary-file", "/Users/me/My Project/Foo.swift", "x=y"]
         );
-        assert_eq!(unescape("plain"), "plain");
+        assert_eq!(shell_tokens("plain  two"), vec!["plain", "two"]);
+        assert_eq!(
+            shell_tokens(r#"a "quoted arg" 'single arg'"#),
+            vec!["a", "quoted arg", "single arg"]
+        );
+    }
+
+    #[test]
+    fn path_suffix_needs_component_boundary() {
+        assert!(path_suffix_matches("/a/b/View.swift", "View.swift"));
+        assert!(path_suffix_matches("/a/b/View.swift", "b/View.swift"));
+        assert!(!path_suffix_matches("/a/b/GridView.swift", "View.swift"));
+        assert!(path_suffix_matches("View.swift", "View.swift"));
     }
 
     #[test]
     fn single_file_keeps_our_primary_and_demotes_others() {
         let line = "/x/swift-frontend -frontend -c -primary-file /p/ContentView.swift \
                     -primary-file /p/App.swift -o /d/x.o -target arm64-apple-ios16.0-simulator";
-        let toks: Vec<String> = line.split_whitespace().map(unescape).collect();
+        let toks: Vec<String> = shell_tokens(line);
         let cmd =
             single_file_command(&toks, "/p/ContentView.swift", Path::new("/t/eval.o")).unwrap();
         // ContentView stays primary; App.swift demoted to a bare input; one -o added.
@@ -679,10 +732,8 @@ mod tests {
 
     #[test]
     fn single_file_errors_when_source_not_primary() {
-        let toks: Vec<String> = "swift-frontend -c -primary-file /p/Other.swift /p/X.swift"
-            .split_whitespace()
-            .map(unescape)
-            .collect();
+        let toks: Vec<String> =
+            shell_tokens("swift-frontend -c -primary-file /p/Other.swift /p/X.swift");
         assert!(single_file_command(&toks, "/p/X.swift", Path::new("/t/e.o")).is_err());
     }
 
@@ -770,10 +821,7 @@ mod tests {
     #[test]
     fn link_command_uses_build_target_and_sdk() {
         let toks: Vec<String> =
-            "swift-frontend -target arm64-apple-ios16.0-simulator -sdk /SDKs/Sim.sdk"
-                .split_whitespace()
-                .map(unescape)
-                .collect();
+            shell_tokens("swift-frontend -target arm64-apple-ios16.0-simulator -sdk /SDKs/Sim.sdk");
         let cmd = link_command(&toks, Path::new("/t/e.o"), Path::new("/t/e.dylib")).unwrap();
         assert!(cmd.contains(&"arm64-apple-ios16.0-simulator".to_string()));
         assert!(cmd.contains(&"/SDKs/Sim.sdk".to_string()));

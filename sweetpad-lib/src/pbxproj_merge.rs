@@ -121,7 +121,31 @@ impl Merger {
                 Value::Dict(self.merge_dict(path, base.and_then(Value::as_dict), o, t))
             }
             (Value::Array(o), Value::Array(t)) => {
-                Value::Array(merge_array(base.and_then(Value::as_array), o, t))
+                let b = base.and_then(Value::as_array);
+                // The ordered-set merge below is only sound when the arrays
+                // really are sets (pbxproj GUID ref-lists all are). A repeated
+                // element — routine in build-setting token lists like
+                // OTHER_LDFLAGS = ("-framework", A, "-framework", B) — would
+                // be silently dropped by the union walk, corrupting the list
+                // while reporting a clean merge; report a conflict instead.
+                if has_duplicates(o) || has_duplicates(t) || b.is_some_and(has_duplicates) {
+                    self.conflicts.push(Conflict {
+                        path: path.to_string(),
+                        kind: if base.is_none() {
+                            ConflictKind::AddAdd
+                        } else {
+                            ConflictKind::BothModified
+                        },
+                        detail: format!(
+                            "list with repeated elements changed on both sides: ours={}, theirs={}",
+                            summarize(ours),
+                            summarize(theirs)
+                        ),
+                    });
+                    ours.clone()
+                } else {
+                    Value::Array(merge_array(b, o, t))
+                }
             }
             _ => {
                 self.conflicts.push(Conflict {
@@ -202,6 +226,15 @@ impl Merger {
 /// every pbxproj reference list: `children`, `files`, `buildPhases`, …).
 /// Honors one-sided deletions and unions additions from both sides, biased
 /// to ours' ordering. Reorder-only differences resolve to ours.
+/// Whether an array repeats any element — the signal that it is a token list
+/// (build-setting flags), not a reference set, and must not be set-merged.
+fn has_duplicates(items: &[Value]) -> bool {
+    items
+        .iter()
+        .enumerate()
+        .any(|(i, v)| contains(&items[..i], v))
+}
+
 fn merge_array(base: Option<&[Value]>, ours: &[Value], theirs: &[Value]) -> Vec<Value> {
     let base = base.unwrap_or(&[]);
     let mut result: Vec<Value> = Vec::new();

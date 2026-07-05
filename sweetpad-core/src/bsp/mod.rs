@@ -1272,11 +1272,16 @@ fn path_from_uri(uri: &str) -> PathBuf {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
+        // Decode on bytes only: slicing `raw` here would panic on a non-char
+        // boundary when a client sends `%` followed by unencoded non-ASCII
+        // (several BSP clients don't percent-encode), and hex is validated
+        // per digit so a stray `%+5` stays literal.
         if bytes[i] == b'%'
             && i + 2 < bytes.len()
-            && let Ok(b) = u8::from_str_radix(&raw[i + 1..i + 3], 16)
+            && let Some(hi) = (bytes[i + 1] as char).to_digit(16)
+            && let Some(lo) = (bytes[i + 2] as char).to_digit(16)
         {
-            out.push(b);
+            out.push((hi * 16 + lo) as u8);
             i += 3;
             continue;
         }

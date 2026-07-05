@@ -172,8 +172,13 @@ fn materialize_client(bytes: &[u8], cache_root: &Path) -> Result<PathBuf, String
     }
     std::fs::create_dir_all(&dir).map_err(|e| format!("create client cache dir: {e}"))?;
     // Write to a temp path then rename, so a concurrent session never observes a
-    // half-written dylib at the final path.
-    let tmp = dir.join(".SweetpadInjectionClient.dylib.tmp");
+    // half-written dylib at the final path. The temp name carries our pid: with
+    // a fixed name, two concurrent processes would write through the same file
+    // and one could rename the other's half-written inode into place.
+    let tmp = dir.join(format!(
+        ".SweetpadInjectionClient.dylib.tmp.{}",
+        std::process::id()
+    ));
     std::fs::write(&tmp, bytes).map_err(|e| format!("write injection client: {e}"))?;
     std::fs::rename(&tmp, &dylib).map_err(|e| format!("install injection client: {e}"))?;
     Ok(dylib)

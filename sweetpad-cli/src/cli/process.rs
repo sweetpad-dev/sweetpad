@@ -133,6 +133,10 @@ pub fn stream_lines(
     let (reader, out, err) = merged_output_pipe(program)?;
     cmd.stdout(out).stderr(err);
     let mut child = cmd.spawn().map_err(|e| spawn_error(program, &e))?;
+    // `spawn` only borrows fds > 2, so `cmd` still owns the pipe's two write
+    // ends — drop it now or the read below never sees EOF after the child
+    // exits, hanging the whole command.
+    drop(cmd);
     read_lines_lossy(reader, &mut on_line);
     let status = child.wait().map_err(|e| spawn_error(program, &e))?;
     Ok(status.success())
@@ -159,6 +163,14 @@ fn merged_output_pipe(program: &str) -> Result<(std::fs::File, Stdio, Stdio), Cl
             libc::close(fds[0]);
             libc::close(fds[1]);
             return Err(CliError::new(format!("failed to run `{program}`: {e}")));
+        }
+        // CLOEXEC on all three (macOS has no pipe2): a child spawned
+        // concurrently on another thread (BgBoot, the hot-reload watcher)
+        // must not inherit the write ends, or EOF waits for *that* child
+        // too. posix_spawn's dup2 file actions clear the flag on the
+        // intended child's stdio copies, so it still gets them.
+        for fd in [fds[0], fds[1], dup] {
+            libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
         }
         Ok((
             std::fs::File::from_raw_fd(fds[0]),
