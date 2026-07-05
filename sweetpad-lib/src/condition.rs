@@ -322,6 +322,13 @@ impl Parser {
 
     fn parse_equality(&mut self) -> Expr {
         let mut left = self.parse_unary();
+        // This loop is iterative, but each combine deepens the *left spine* of
+        // the Expr tree by one, and the evaluator recurses down that spine —
+        // so an unbounded `a == b == c == …` chain would overflow the stack at
+        // evaluation time. Cap the chain with the same budget as the nesting
+        // guards; past it, remaining operators degrade to best-effort (the
+        // chain so far stands, the tail is ignored).
+        let mut chain = 0;
         loop {
             let op = match self.peek() {
                 Some(Token::EqEq) => Token::EqEq,
@@ -329,6 +336,10 @@ impl Parser {
                 Some(Token::Contains) => Token::Contains,
                 _ => break,
             };
+            if chain >= MAX_DEPTH {
+                break;
+            }
+            chain += 1;
             self.pos += 1;
             let right = self.parse_unary();
             left = match op {

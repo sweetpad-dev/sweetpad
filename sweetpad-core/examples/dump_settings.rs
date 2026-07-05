@@ -7,8 +7,12 @@ use sweetpad_lib::xcspec;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (proj, target, config, sdk, arch, ver) =
-        (&args[0], &args[1], &args[2], &args[3], &args[4], &args[5]);
+    let [proj, target, config, sdk, arch, ver, ..] = args.as_slice() else {
+        eprintln!(
+            "usage: dump_settings <xcodeproj> <target> <config> <sdk> <arch> <xcspec-ver> [KEY ...]"
+        );
+        std::process::exit(2);
+    };
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let xcspec_root = root.join(format!("xcspec-cache/xcode-{ver}"));
     let sdks = xcspec_root.join("sdksettings");

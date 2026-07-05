@@ -550,7 +550,16 @@ impl<'a> Parser<'a> {
                                 None => return Err(self.error("bad octal escape")),
                             }
                         }
-                        Some(other) => out.push(other as char),
+                        // An unrecognized ASCII escape is the literal char
+                        // (`\/` → `/`, CF semantics).
+                        Some(other) if other.is_ascii() => out.push(other as char),
+                        // A `\` before a multi-byte char also escapes the
+                        // literal char, but `other` here is only its *lead
+                        // byte* — `other as char` would mis-decode it as
+                        // Latin-1 and strand the continuation bytes to fail
+                        // the next run's UTF-8 check. Rewind and let the run
+                        // loop consume (and validate) the whole character.
+                        Some(_) => self.pos -= 1,
                     }
                 }
                 None => return Err(self.error("unterminated string")),
@@ -680,6 +689,16 @@ mod tests {
         assert_eq!(v.get("bmp").and_then(Value::as_str), Some("é"));
         // A lone high surrogate is still rejected.
         assert!(parse(r#"{ bad = "\Ud83d"; }"#).is_err());
+    }
+
+    #[test]
+    fn quoted_string_escaped_non_ascii_is_the_literal_char() {
+        // CF reads an unrecognized `\<char>` escape as the literal char. A
+        // multi-byte char used to be decoded lead-byte-as-Latin-1, stranding
+        // its continuation bytes to fail the UTF-8 check.
+        let v = parse("{ a = \"\\é\"; slash = \"\\/\"; }").unwrap();
+        assert_eq!(v.get("a").and_then(Value::as_str), Some("é"));
+        assert_eq!(v.get("slash").and_then(Value::as_str), Some("/"));
     }
 
     #[test]

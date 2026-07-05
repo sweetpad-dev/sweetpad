@@ -270,14 +270,31 @@ impl Recompiler {
                 *guard = Some(self.resolve_all()?);
             }
             if let Some(targets) = guard.as_ref() {
+                // Exact canonical match first: in a multi-target project two
+                // targets can each own a same-named file (App/Settings.swift
+                // vs AppClip/Settings.swift), and a basename first-hit would
+                // return the *other* target's invocation — whose primaries
+                // don't include this file at all (same two-tier logic as
+                // `buildlog_tokens`).
                 for t in targets {
                     if let Some(swift) = &t.swift
                         && swift.input_files.iter().any(|f| {
                             std::fs::canonicalize(f)
                                 .map(|c| c == canon)
                                 .unwrap_or(false)
-                                || path_suffix_matches(f, name)
                         })
+                    {
+                        return Ok(swift.clone());
+                    }
+                }
+                // Fallback: basename suffix, for resolved paths that differ
+                // from the watched path by a symlink prefix.
+                for t in targets {
+                    if let Some(swift) = &t.swift
+                        && swift
+                            .input_files
+                            .iter()
+                            .any(|f| path_suffix_matches(f, name))
                     {
                         return Ok(swift.clone());
                     }
@@ -572,6 +589,14 @@ fn shell_tokens(line: &str) -> Vec<String> {
 /// `b/View.swift` and `View.swift`, but a save of `View.swift` must not
 /// match `GridView.swift` (a bare `ends_with` would, selecting the wrong
 /// module or frontend command).
+/// Whether two path spellings name the same file once symlinks resolve.
+fn canonically_same(a: &str, b: &str) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => false,
+    }
+}
+
 fn path_suffix_matches(path: &str, suffix: &str) -> bool {
     path == suffix
         || (path.len() > suffix.len()
@@ -622,7 +647,15 @@ fn single_file_command(
         }
         if t == "-primary-file" {
             let file = tokens.get(i + 1).ok_or("dangling -primary-file")?;
-            if path_suffix_matches(file, source) || path_suffix_matches(source, file) {
+            // The canonical comparison catches spellings that differ by a
+            // symlink prefix (`/var/…` in the transcript vs the canonicalized
+            // `/private/var/…` source) — neither is a component-boundary
+            // suffix of the other, so the string checks alone would reject
+            // the exact command the build log handed us.
+            if path_suffix_matches(file, source)
+                || path_suffix_matches(source, file)
+                || canonically_same(file, source)
+            {
                 out.push("-primary-file".into());
                 out.push(file.clone());
                 kept_primary = true;

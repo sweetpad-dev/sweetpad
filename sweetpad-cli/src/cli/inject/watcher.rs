@@ -124,7 +124,11 @@ fn scan_inner(
             }
             scan_inner(&path, visit, seen_links);
         } else if path.extension().is_some_and(|e| e == "swift")
-            && let Ok(mtime) = entry.metadata().and_then(|m| m.modified())
+            // `fs::metadata` (follows symlinks), not `entry.metadata()`: a
+            // symlinked .swift file must report the *target's* mtime — the
+            // link's own mtime never changes on edit, so its saves would
+            // otherwise be invisible.
+            && let Ok(mtime) = std::fs::metadata(&path).and_then(|m| m.modified())
         {
             visit(path, mtime);
         }
