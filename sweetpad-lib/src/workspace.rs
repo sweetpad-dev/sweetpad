@@ -181,11 +181,13 @@ impl Workspace {
 
     /// Locate the `.xcodeproj` member that owns a scheme by name. Returns
     /// the first project with a `<name>.xcscheme` file (shared or per-user).
-    /// When no scheme file exists anywhere — Xcode's autocreation regime,
-    /// the same gate [`Workspace::merged_schemes`] applies — falls back to
-    /// the first project owning a same-named target (an autocreated scheme
-    /// builds exactly its target). Used by callers (the CLI) that need to
-    /// dispatch a scheme-driven build to the right project.
+    /// Otherwise — under the same autocreation gate as
+    /// [`Workspace::merged_schemes`] — falls back to the first project whose
+    /// scheme list ([`project::open`]'s files-plus-autocreated set) includes
+    /// the name: scheme files elsewhere do NOT suppress a member's
+    /// autocreated per-target schemes, so every name `merged_schemes`
+    /// surfaces must dispatch. Used by callers (the CLI) that need to route
+    /// a scheme-driven build to the right project.
     #[must_use]
     pub fn project_for_scheme(&self, scheme_name: &str) -> Option<&Path> {
         if let Some(p) = self
@@ -195,19 +197,14 @@ impl Workspace {
         {
             return Some(p.as_path());
         }
-        let any_scheme_files = !self.schemes.is_empty()
-            || self
-                .project_refs
-                .iter()
-                .any(|p| !crate::scheme::container_schemes(p).is_empty());
-        if any_scheme_files || !crate::scheme::autocreation_allowed(&self.path) {
+        if !crate::scheme::autocreation_allowed(&self.path) {
             return None;
         }
         self.project_refs
             .iter()
             .find(|p| {
                 project::open(p)
-                    .map(|proj| proj.targets.iter().any(|t| t.name == scheme_name))
+                    .map(|proj| proj.schemes.iter().any(|s| s == scheme_name))
                     .unwrap_or(false)
             })
             .map(PathBuf::as_path)
@@ -470,6 +467,9 @@ mod tests {
         );
         // And the user scheme makes the project dispatchable by name.
         assert_eq!(ws.project_for_scheme("ProjPersonal"), Some(proj.as_path()));
+        // The autocreated scheme stays dispatchable even though scheme files
+        // exist elsewhere — every name merged_schemes lists must resolve.
+        assert_eq!(ws.project_for_scheme("Scratch"), Some(proj.as_path()));
     }
 
     #[test]

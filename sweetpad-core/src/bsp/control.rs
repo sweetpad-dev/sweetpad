@@ -122,7 +122,18 @@ impl TelemetryServer {
     pub(crate) fn broadcast(&self, method: &str, params: Value) {
         let body = json!({ "jsonrpc": "2.0", "method": method, "params": params }).to_string();
         if let Ok(mut clients) = self.clients.lock() {
-            clients.retain_mut(|c| write_message(c, &body).is_ok());
+            clients.retain_mut(|c| {
+                if write_message(c, &body).is_ok() {
+                    return true;
+                }
+                // A failed (or timed-out mid-frame) write may have left half a
+                // frame on the wire, so the stream is unusable. Shut the socket
+                // down — not just drop the write half — so the extension sees
+                // EOF and reconnects instead of blocking forever on the missing
+                // bytes (its reader thread here exits on the same EOF).
+                let _ = c.shutdown(std::net::Shutdown::Both);
+                false
+            });
         }
     }
 

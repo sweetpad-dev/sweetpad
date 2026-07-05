@@ -50,6 +50,16 @@ impl HotSession {
     }
 }
 
+impl Drop for HotSession {
+    fn drop(&mut self) {
+        // Keeps the doc contract above: a plain drop (e.g. a `?` early return
+        // in the caller) also stops the server's accept loop and connection,
+        // not just the watcher. `InjectServer::shutdown` is idempotent, so the
+        // explicit `shutdown` path re-running this in its drop is harmless.
+        self.server.shutdown();
+    }
+}
+
 /// Map an `xcodebuild` `-destination` specifier to the simulator SDK short name
 /// (the value SDK conditionals and the client dylib lookup key on). Returns
 /// `None` for non-simulator destinations (devices, generic).

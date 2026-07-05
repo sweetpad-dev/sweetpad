@@ -461,8 +461,12 @@ impl Iterator for LineIter<'_> {
 }
 
 fn ends_with_unescaped_backslash(s: &str) -> bool {
+    // A continuation is an ODD run of trailing backslashes: each `\\` pair is
+    // one escaped literal backslash, and only a leftover unpaired `\` continues
+    // the line. Checking just the last two chars would misread `foo\\\` (an
+    // escaped backslash followed by a real continuation) as no continuation.
     let trimmed = s.trim_end();
-    trimmed.ends_with('\\') && !trimmed.ends_with("\\\\")
+    trimmed.bytes().rev().take_while(|&b| b == b'\\').count() % 2 == 1
 }
 
 fn strip_trailing_backslash(s: &str) -> String {
@@ -587,6 +591,17 @@ mod tests {
     fn joins_continuation_lines() {
         let c = parse("FOO = a \\\n    b \\\n    c\n").unwrap();
         assert_eq!(c.entries, vec![assign("FOO", "a b c")]);
+    }
+
+    #[test]
+    fn continuation_counts_the_whole_trailing_backslash_run() {
+        // `\\` = escaped literal backslash, no continuation.
+        let c = parse("FOO = a\\\\\nBAR = b\n").unwrap();
+        assert_eq!(c.entries.len(), 2);
+        // `\\\` = escaped backslash THEN a continuation — the odd leftover
+        // continues the line (the last-two-chars check used to miss this).
+        let c = parse("FOO = a\\\\\\\n    b\n").unwrap();
+        assert_eq!(c.entries, vec![assign("FOO", "a\\\\ b")]);
     }
 
     #[test]

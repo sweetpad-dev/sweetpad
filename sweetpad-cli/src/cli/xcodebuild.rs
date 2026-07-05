@@ -478,7 +478,10 @@ pub fn coverage_percent(bundle: &Path) -> Option<f64> {
         None,
     )
     .ok()?;
-    let json: serde_json::Value = serde_json::from_str(out.trim()).ok()?;
+    // Skip any leading non-JSON, like the sibling `xcresulttool` readers do —
+    // a preamble line on stdout would otherwise silently read as "no coverage".
+    let json = out.find('{').map(|i| &out[i..])?;
+    let json: serde_json::Value = serde_json::from_str(json).ok()?;
     json.get("lineCoverage").and_then(serde_json::Value::as_f64)
 }
 

@@ -13,9 +13,9 @@ mod control;
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -117,6 +117,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 // The frame boundary is lost; log why before dying so the
                 // failure is diagnosable instead of a silent exit.
                 server.trace(&format!("fatal framing error: {e}"));
+                server.kill_prepare();
                 server.shutdown_telemetry();
                 return Err(e);
             }
@@ -183,6 +184,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
         }
     }
+    server.kill_prepare();
     server.shutdown_telemetry();
     Ok(())
 }
@@ -218,6 +220,11 @@ struct Server {
     config_path: Option<PathBuf>,
     /// Verbosity of the `bsp/log` stream, retunable live via `bsp/setLogLevel`.
     log_level: Arc<AtomicU8>,
+    /// The in-flight `buildTarget/prepare` xcodebuild, if one is running. Held
+    /// so shutdown can kill it: `build/exit` during a prepare would otherwise
+    /// orphan a minutes-long xcodebuild (reparented to init, still burning CPU
+    /// after every editor restart). The prepare worker reaps it.
+    prepare_child: Mutex<Option<std::process::Child>>,
 }
 
 const TARGET_SCHEME: &str = "sweetpad://target/";
@@ -475,6 +482,7 @@ impl Server {
             telemetry: Mutex::new(None),
             config_path,
             log_level,
+            prepare_child: Mutex::new(None),
         };
         server.bind_telemetry(config.socket.as_deref());
         server.log(&format!(
@@ -984,22 +992,71 @@ impl Server {
         self.log(&format!(
             "prepare: building scheme {scheme} ({destination}) for target {target}"
         ));
-        match cmd.output() {
-            Ok(out) => {
-                let code = out.status.code().unwrap_or(-1);
-                if out.status.success() {
-                    self.log(&format!("prepare: {target} build ok"));
-                } else {
-                    // Best-effort: log the tail and carry on (sourcekit-lsp uses
-                    // whatever modules did build).
-                    let stderr = String::from_utf8_lossy(&out.stderr);
-                    let tail: String = stderr.lines().rev().take(8).collect::<Vec<_>>().join(" | ");
-                    self.log(&format!("prepare: {target} build exit={code}: {tail}"));
-                }
+        // Spawn (rather than `output()`) so the child stays killable: the pipe
+        // handles are taken first, then the child is parked in `prepare_child`
+        // where shutdown can reach it while this thread drains the pipes.
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                self.log(&format!(
+                    "prepare: {target} failed to launch xcodebuild: {e}"
+                ));
+                return;
             }
-            Err(e) => self.log(&format!(
-                "prepare: {target} failed to launch xcodebuild: {e}"
-            )),
+        };
+        let stdout_pipe = child.stdout.take();
+        let stderr_pipe = child.stderr.take();
+        if let Ok(mut slot) = self.prepare_child.lock() {
+            *slot = Some(child);
+        }
+        // Drain stdout on a helper thread so neither pipe fills and wedges the
+        // build; stderr (the interesting stream on failure) drains here.
+        let stdout_drain = stdout_pipe.map(|mut s| {
+            std::thread::spawn(move || {
+                let mut sink = Vec::new();
+                let _ = s.read_to_end(&mut sink);
+            })
+        });
+        let mut stderr_buf = Vec::new();
+        if let Some(mut s) = stderr_pipe {
+            let _ = s.read_to_end(&mut stderr_buf);
+        }
+        if let Some(t) = stdout_drain {
+            let _ = t.join();
+        }
+        // Reap. Shutdown may have killed the child, but it leaves the handle in
+        // the slot for us — `wait` then just collects the killed status.
+        let status = self
+            .prepare_child
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
+            .and_then(|mut c| c.wait().ok());
+        match status {
+            Some(st) if st.success() => self.log(&format!("prepare: {target} build ok")),
+            Some(st) => {
+                // Best-effort: log the tail and carry on (sourcekit-lsp uses
+                // whatever modules did build).
+                let code = st.code().unwrap_or(-1);
+                let stderr = String::from_utf8_lossy(&stderr_buf);
+                let tail: String = stderr.lines().rev().take(8).collect::<Vec<_>>().join(" | ");
+                self.log(&format!("prepare: {target} build exit={code}: {tail}"));
+            }
+            None => self.log(&format!("prepare: {target} xcodebuild status unavailable")),
+        }
+    }
+
+    /// Kill the in-flight prepare build, if any (the prepare worker still owns
+    /// reaping — the handle stays in the slot). Called on shutdown so
+    /// `build/exit` doesn't orphan a running xcodebuild.
+    fn kill_prepare(&self) {
+        if let Ok(mut slot) = self.prepare_child.lock()
+            && let Some(child) = slot.as_mut()
+        {
+            let _ = child.kill();
         }
     }
 
@@ -1169,9 +1226,21 @@ impl Server {
     }
 
     fn options_for(&self, target: &str, sdk: &str, arch: &str) -> BuildSettingsOptions {
+        // For a `.xcworkspace` root, resolve *through the workspace* rather than
+        // the owning member project: `xcodebuild_prepare` builds with
+        // `-workspace`, so DerivedData is keyed by the workspace path, and the
+        // resolver only hashes that container when the workspace is declared
+        // (container *inference* only finds a workspace in the project's parent
+        // or grandparent dir — a member nested deeper would resolve search
+        // paths in a DerivedData tree the prepare build never populates).
+        let (project, workspace) = if self.is_workspace() {
+            (None, Some(self.project_path.clone()))
+        } else {
+            (Some(self.project_for_target(target)), None)
+        };
         BuildSettingsOptions {
-            project: Some(self.project_for_target(target)),
-            workspace: None,
+            project,
+            workspace,
             scheme: None,
             target: Some(target.to_string()),
             configuration: self.configuration(),
@@ -1241,16 +1310,33 @@ fn parse_flags(args: &[String]) -> BTreeMap<String, String> {
 }
 
 fn target_id(name: &str) -> Value {
-    json!({ "uri": format!("{TARGET_SCHEME}{name}") })
+    // Percent-encode the name so the id is a syntactically valid URI: a target
+    // like `My App` must not emit a raw space — a client that parses and
+    // re-serializes the id would normalize it to `My%20App`, which would then
+    // fail to round-trip back to a known target name on our side.
+    let mut uri = String::from(TARGET_SCHEME);
+    percent_encode_into(&mut uri, name);
+    json!({ "uri": uri })
 }
 
 fn target_name_from_uri(uri: &str) -> String {
-    uri.strip_prefix(TARGET_SCHEME).unwrap_or(uri).to_string()
+    percent_decode(uri.strip_prefix(TARGET_SCHEME).unwrap_or(uri))
 }
 
 fn file_uri(path: &Path) -> String {
     let mut out = String::from("file://");
-    for b in path.to_string_lossy().bytes() {
+    percent_encode_into(&mut out, &path.to_string_lossy());
+    out
+}
+
+fn path_from_uri(uri: &str) -> PathBuf {
+    PathBuf::from(percent_decode(uri.strip_prefix("file://").unwrap_or(uri)))
+}
+
+/// Append `s` to `out` percent-encoded: RFC 3986 unreserved bytes and `/` pass
+/// through, everything else becomes `%XX`.
+fn percent_encode_into(out: &mut String, s: &str) {
+    for b in s.bytes() {
         match b {
             b'/' | b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
                 out.push(b as char);
@@ -1263,11 +1349,9 @@ fn file_uri(path: &Path) -> String {
             }
         }
     }
-    out
 }
 
-fn path_from_uri(uri: &str) -> PathBuf {
-    let raw = uri.strip_prefix("file://").unwrap_or(uri);
+fn percent_decode(raw: &str) -> String {
     let bytes = raw.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -1289,7 +1373,7 @@ fn path_from_uri(uri: &str) -> PathBuf {
         out.push(bytes[i]);
         i += 1;
     }
-    PathBuf::from(String::from_utf8_lossy(&out).into_owned())
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// A change fingerprint for a file — `(len, mtime)`, or `None` if it can't be

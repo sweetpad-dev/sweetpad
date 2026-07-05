@@ -288,6 +288,13 @@ fn condition_rejects_deeply_nested_parens() {
             let _ = sweetpad_lib::condition::parse(&input);
             let bangs = format!("{}YES", "!".repeat(200_000));
             let _ = sweetpad_lib::condition::parse(&bangs);
+            // Equality chains nest in the *built tree* (left spine), not the
+            // parser's stack, so evaluation is where an uncapped chain would
+            // overflow — evaluate as well as parse.
+            let chain = format!("x{}", " == x".repeat(200_000));
+            if let Some(expr) = sweetpad_lib::condition::parse(&chain) {
+                let _ = sweetpad_lib::condition::evaluate(&expr, &Default::default());
+            }
         })
         .expect("spawn");
     handle.join().expect("condition parse must not overflow");

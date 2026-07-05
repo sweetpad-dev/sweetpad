@@ -1078,6 +1078,7 @@ fn condition_holds(cond: &str, settings: &Settings) -> bool {
     let mut p = CondParser {
         toks: &toks,
         pos: 0,
+        depth: 0,
         settings,
     };
     match p.parse_or() {
@@ -1189,8 +1190,15 @@ fn tokenize_condition(cond: &str) -> Option<Vec<CondTok>> {
 struct CondParser<'a> {
     toks: &'a [CondTok],
     pos: usize,
+    depth: usize,
     settings: &'a Settings,
 }
+
+/// Recursion cap for [`CondParser`], matching the sibling parsers' guards
+/// (`condition::MAX_DEPTH` et al.): a pathologically nested condition must
+/// fall back to "applies" (the caller maps `None` to `true`) instead of
+/// overflowing the stack.
+const COND_MAX_DEPTH: usize = 64;
 
 impl CondParser<'_> {
     fn parse_or(&mut self) -> Option<bool> {
@@ -1212,6 +1220,18 @@ impl CondParser<'_> {
     }
 
     fn parse_unary(&mut self) -> Option<bool> {
+        // `parse_or`/`parse_and` iterate; all recursion funnels through here
+        // (`!` and `( … )`), so this is the one spot that needs the cap.
+        if self.depth >= COND_MAX_DEPTH {
+            return None;
+        }
+        self.depth += 1;
+        let v = self.parse_unary_inner();
+        self.depth -= 1;
+        v
+    }
+
+    fn parse_unary_inner(&mut self) -> Option<bool> {
         let toks = self.toks;
         match toks.get(self.pos)? {
             CondTok::Not => {

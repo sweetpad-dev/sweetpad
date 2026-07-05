@@ -168,9 +168,12 @@ pub fn find<'a>(devices: &'a [Device], query: &str) -> Option<&'a Device> {
         .or_else(|| devices.iter().find(|d| d.name == query))
 }
 
-/// Install an `.app` bundle onto a device.
+/// Install an `.app` bundle onto a device. Captures stdout (stderr stays
+/// visible): `devicectl` prints install progress there, which is noise under
+/// the caller's step line — and in `--json` mode it would interleave with the
+/// envelope on the same stream and break the consumer's parse.
 pub fn install(device_id: &str, app_path: &str) -> Result<(), CliError> {
-    process::stream(
+    process::capture(
         "xcrun",
         &[
             "devicectl",
@@ -183,6 +186,7 @@ pub fn install(device_id: &str, app_path: &str) -> Result<(), CliError> {
         ],
         None,
     )
+    .map(|_| ())
     .context("installing the app on the device")
 }
 
@@ -247,9 +251,11 @@ pub fn spawn_console(device_id: &str, bundle_id: &str) -> Result<std::process::C
     )
 }
 
-/// Uninstall an app from a device.
+/// Uninstall an app from a device. Stdout is captured for the same reason as
+/// [`install`] — keep `devicectl`'s progress chatter off the stream the
+/// `--json` envelope goes to.
 pub fn uninstall(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
-    process::stream(
+    process::capture(
         "xcrun",
         &[
             "devicectl",
@@ -262,6 +268,7 @@ pub fn uninstall(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
         ],
         None,
     )
+    .map(|_| ())
     .context("uninstalling the app from the device")
 }
 
