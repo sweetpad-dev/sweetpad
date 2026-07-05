@@ -293,8 +293,21 @@ impl ProjectFile {
     #[must_use]
     pub fn load_for(container_dir: &std::path::Path) -> (Self, Vec<String>) {
         let path = container_dir.join("sweetpad.toml");
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return (Self::default(), Vec::new());
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            // Only a *missing* file is silently defaults. A present-but-
+            // unreadable committed file (permissions, I/O error on a network
+            // mount) must warn like a malformed one — silently dropping the
+            // team's pinned defaults would build with the wrong Xcode.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return (Self::default(), Vec::new());
+            }
+            Err(e) => {
+                return (
+                    Self::default(),
+                    vec![format!("{}: {e} (file ignored)", path.display())],
+                );
+            }
         };
         match toml::from_str::<ProjectFile>(&text) {
             Ok(pf) => {

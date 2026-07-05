@@ -90,13 +90,19 @@ impl Manifest {
 fn parse_dependency(dep: &serde_json::Value) -> Option<DeclaredDep> {
     if let Some(sc) = first_of(dep, "sourceControl") {
         let identity = str_at(sc, "identity").unwrap_or_default().to_string();
-        let location = sc
-            .get("location")
-            .and_then(|loc| {
-                first_of(loc, "remote")
-                    .and_then(|m| str_at(m, "urlString").or_else(|| str_at(m, "url")))
-                    .or_else(|| loc.as_str())
-            })
+        // The location union has a `local` case too (a local *git* URL like
+        // `.package(url: "../Sibling", …)`) — without it the location column
+        // rendered blank for such dependencies.
+        let loc = sc.get("location");
+        let remote_url = loc
+            .and_then(|l| first_of(l, "remote"))
+            .and_then(|m| str_at(m, "urlString").or_else(|| str_at(m, "url")));
+        let local_path = loc
+            .and_then(|l| first_of(l, "local"))
+            .and_then(|m| m.as_str().or_else(|| str_at(m, "path")));
+        let location = remote_url
+            .or(local_path)
+            .or_else(|| loc.and_then(serde_json::Value::as_str))
             .unwrap_or_default()
             .to_string();
         let requirement = sc
@@ -106,7 +112,7 @@ fn parse_dependency(dep: &serde_json::Value) -> Option<DeclaredDep> {
             identity,
             location,
             requirement,
-            remote: true,
+            remote: remote_url.is_some() || local_path.is_none(),
         });
     }
     if let Some(fs) = first_of(dep, "fileSystem") {
@@ -366,8 +372,17 @@ pub fn build(
 ) -> Result<(), CliError> {
     let cwd = package_dir(container);
     if clean {
-        process::run("swift", &["package", "clean"], cwd.as_deref(), quiet)
+        // The user explicitly asked for a clean build — a failed clean
+        // followed by an incremental build would silently hand back stale
+        // artifacts, so a non-zero `swift package clean` is an error here.
+        let cleaned = process::run("swift", &["package", "clean"], cwd.as_deref(), quiet)
             .context("cleaning the package build")?;
+        if !cleaned {
+            return Err(
+                CliError::new("swift package clean exited with a non-zero status")
+                    .context("cleaning the package build"),
+            );
+        }
     }
     let args = build_args(configuration, passthrough);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();

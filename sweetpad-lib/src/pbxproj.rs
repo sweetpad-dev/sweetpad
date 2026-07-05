@@ -663,6 +663,26 @@ mod tests {
     }
 
     #[test]
+    fn quoted_string_decodes_octal_escapes() {
+        // CF's old-style parser reads `\ddd` as up to three octal digits;
+        // consuming only `\0` used to leak the remaining digits as literals.
+        let v = parse(r#"{ a = "\101\012x"; nul = "\0z"; }"#).unwrap();
+        assert_eq!(v.get("a").and_then(Value::as_str), Some("A\nx"));
+        assert_eq!(v.get("nul").and_then(Value::as_str), Some("\0z"));
+    }
+
+    #[test]
+    fn quoted_string_recombines_surrogate_pairs() {
+        // Apple's serializer escapes per UTF-16 code unit, so an emoji is a
+        // `\Ud83d\Ude00` pair — previously a hard "bad unicode codepoint".
+        let v = parse(r#"{ e = "\Ud83d\Ude00"; bmp = "\U00e9"; }"#).unwrap();
+        assert_eq!(v.get("e").and_then(Value::as_str), Some("😀"));
+        assert_eq!(v.get("bmp").and_then(Value::as_str), Some("é"));
+        // A lone high surrogate is still rejected.
+        assert!(parse(r#"{ bad = "\Ud83d"; }"#).is_err());
+    }
+
+    #[test]
     fn preserves_key_insertion_order() {
         let v = parse("{ z = 1; a = 2; m = 3; }").unwrap();
         let keys: Vec<&str> = v.as_dict().unwrap().keys().map(String::as_str).collect();

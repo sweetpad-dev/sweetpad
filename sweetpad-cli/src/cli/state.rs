@@ -286,7 +286,10 @@ fn quarantine_path(path: &std::path::Path) -> PathBuf {
             return candidate;
         }
     }
-    base
+    // 100 backups already exist (a recurring corruption source). Returning
+    // `base` here would rename over the oldest — possibly only intact —
+    // snapshot; a pid-suffixed name stays collision-free instead.
+    path.with_extension(format!("toml.corrupt.pid{}", std::process::id()))
 }
 
 /// Whether a state key points at a deleted container: the path is gone but its

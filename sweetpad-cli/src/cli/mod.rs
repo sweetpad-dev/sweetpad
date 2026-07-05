@@ -220,6 +220,19 @@ pub struct Targeting {
     pub sdk: Option<String>,
 }
 
+/// Normalize clap's `env = …` fallback: an exported-but-empty `SWEETPAD_*`
+/// var arrives as `Some("")`, which would skip the resolution layers below it
+/// and hand xcodebuild an empty `-scheme`/`-destination`. Empty means unset —
+/// matching `Targeting::from_env`, which the bare status view uses.
+fn non_empty(v: Option<String>) -> Option<String> {
+    v.filter(|s| !s.is_empty())
+}
+
+/// [`non_empty`] for path-valued flags.
+fn non_empty_path(v: Option<std::path::PathBuf>) -> Option<std::path::PathBuf> {
+    v.filter(|p| !p.as_os_str().is_empty())
+}
+
 impl From<ContainerArgs> for Targeting {
     fn from(a: ContainerArgs) -> Self {
         // clap's `env = …` folds `SWEETPAD_WORKSPACE`/`SWEETPAD_PROJECT` into
@@ -227,8 +240,8 @@ impl From<ContainerArgs> for Targeting {
         // an explicit `--project` (the container check prefers workspace).
         // Consult the real argv to restore the documented flag > env order.
         let (workspace, project) = disambiguate_container(
-            a.workspace,
-            a.project,
+            non_empty_path(a.workspace),
+            non_empty_path(a.project),
             flag_typed("--workspace"),
             flag_typed("--project"),
         );
@@ -337,7 +350,7 @@ impl Targeting {
 impl From<SchemeArgs> for Targeting {
     fn from(a: SchemeArgs) -> Self {
         Self {
-            scheme: a.scheme,
+            scheme: non_empty(a.scheme),
             ..a.container.into()
         }
     }
@@ -351,16 +364,16 @@ impl From<BuildTargetArgs> for Targeting {
         // pair resolves post-parse like the container flags: the typed one
         // wins; both-typed is rejected where the destination settles.
         let (on, destination) = disambiguate_on_destination(
-            a.on,
-            a.destination,
+            non_empty(a.on),
+            non_empty(a.destination),
             flag_typed("--on"),
             flag_typed("--destination"),
         );
         Self {
-            configuration: a.configuration,
+            configuration: non_empty(a.configuration),
             destination,
             on,
-            sdk: a.sdk,
+            sdk: non_empty(a.sdk),
             ..a.scheme.into()
         }
     }
@@ -634,11 +647,9 @@ pub fn run(argv: &[String]) -> ExitCode {
     if let Some(dir) = &cli.global.chdir
         && let Err(e) = std::env::set_current_dir(dir)
     {
-        out.error(&CliError::new(format!(
-            "cannot change directory to {}: {e}",
-            dir.display()
-        )));
-        return ExitCode::FAILURE;
+        let err = CliError::new(format!("cannot change directory to {}: {e}", dir.display()));
+        render_early_error(&out, &err);
+        return ExitCode::from(err.error_kind().exit_code());
     }
     // `--developer-dir` pins the Xcode every spawned tool uses (xcrun,
     // xcodebuild, simctl all honor DEVELOPER_DIR).
@@ -647,11 +658,12 @@ pub fn run(argv: &[String]) -> ExitCode {
         unsafe { std::env::set_var("DEVELOPER_DIR", dir) };
     }
     if cli.global.gh_annotations && (out.is_json() || out.is_ndjson()) {
-        out.error(&CliError::new(
+        let err = CliError::new(
             "--gh-annotations writes ::error workflow commands to stdout, which -o json/ndjson \
              reserve for the envelope/event stream; use --gh-annotations with human output",
-        ));
-        return ExitCode::FAILURE;
+        );
+        render_early_error(&out, &err);
+        return ExitCode::from(err.error_kind().exit_code());
     }
     let config = match config::Config::load() {
         Ok(c) => c,
@@ -795,6 +807,22 @@ pub fn run(argv: &[String]) -> ExitCode {
 /// (`json_value` wraps the payload's data in `{schema, ok, data}`), or — under
 /// `-o ndjson` — the terminal `{"event":"result","ok":true,"data":…}` line
 /// closing the event stream. Also maps errors to exit codes.
+/// Mirror [`render_result`]'s error path for failures raised before a
+/// `Context` exists (`-C` chdir, flag conflicts): the ndjson stream's
+/// documented contract — it ends with a `{"event":"result",…}` line — must
+/// hold for these errors too.
+fn render_early_error(out: &output::Output, err: &CliError) {
+    out.ndjson_event(&serde_json::json!({
+        "event": "result",
+        "ok": false,
+        "error": {
+            "code": err.error_kind().code_str(),
+            "message": err.to_string(),
+        },
+    }));
+    out.error(err);
+}
+
 fn render_result(ctx: &Context, result: CommandResult) -> ExitCode {
     match result {
         Ok(Rendered::Data { payload, exit }) => {

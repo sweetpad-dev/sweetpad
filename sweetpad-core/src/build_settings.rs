@@ -180,6 +180,13 @@ pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetS
                 settings: resolved.settings,
             });
         }
+        // Zero queries (a scheme whose entries are all testing-only, or whose
+        // container references another project) must error like the workspace
+        // branch does — an empty Ok would surface downstream as a misleading
+        // "no app bundle"-style failure instead of naming the real cause.
+        if out.is_empty() {
+            return Err(format!("no target matched {}", selection.describe()));
+        }
         project_keys(&mut out, opts.keys.as_deref());
         Ok(out)
     } else {

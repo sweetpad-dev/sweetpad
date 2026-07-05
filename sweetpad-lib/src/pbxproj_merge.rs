@@ -362,6 +362,31 @@ mod tests {
     }
 
     #[test]
+    fn arrays_with_repeated_tokens_conflict_instead_of_dropping_them() {
+        // OTHER_LDFLAGS-style token lists legitimately repeat elements
+        // ("-framework" A "-framework" B); the set-merge used to silently
+        // drop the second "-framework", leaving a bare library name on the
+        // link line while reporting a clean merge.
+        let base = dict(vec![("FLAGS", arr(vec![s("-framework"), s("A")]))]);
+        let ours = dict(vec![(
+            "FLAGS",
+            arr(vec![s("-framework"), s("A"), s("-framework"), s("B")]),
+        )]);
+        let theirs = dict(vec![("FLAGS", arr(vec![s("-framework"), s("A"), s("-ObjC")]))]);
+
+        let m = merge(Some(&base), &ours, &theirs);
+
+        assert!(!m.is_clean(), "duplicate-bearing lists must not set-merge");
+        // Ours is kept verbatim — nothing silently dropped.
+        assert_eq!(
+            m.value.get("FLAGS").unwrap().as_array().unwrap().len(),
+            4,
+            "{:?}",
+            m.value.get("FLAGS")
+        );
+    }
+
+    #[test]
     fn one_sided_deletion_is_honored() {
         // ours deletes B; theirs leaves it untouched → B is gone.
         let base = objects(vec![("A", file_ref("A.swift")), ("B", file_ref("B.swift"))]);

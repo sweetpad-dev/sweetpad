@@ -171,10 +171,16 @@ pub fn bundle_id_segment(name: &str) -> String {
     }
 }
 
-/// A version-shaped string like `17.0` or `16`.
+/// A version-shaped string like `17.0` or `16`: one to three dot-separated
+/// digit runs. A digits-and-dots test alone admits `17.`, `1..2`, and
+/// `1.2.3.4` — shapes Xcode rejects or misreads once scaffolded into
+/// `IPHONEOS_DEPLOYMENT_TARGET`.
 pub fn validate_deployment_target(target: &str) -> Result<(), String> {
-    let shaped = target.chars().next().is_some_and(|c| c.is_ascii_digit())
-        && target.chars().all(|c| c.is_ascii_digit() || c == '.');
+    let segments: Vec<&str> = target.split('.').collect();
+    let shaped = (1..=3).contains(&segments.len())
+        && segments
+            .iter()
+            .all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()));
     if shaped {
         Ok(())
     } else {
@@ -820,7 +826,12 @@ mod tests {
         assert!(validate_bundle_id("com.example app").is_err());
         assert!(validate_deployment_target("17.0").is_ok());
         assert!(validate_deployment_target("16").is_ok());
+        assert!(validate_deployment_target("17.0.1").is_ok());
         assert!(validate_deployment_target("latest").is_err());
+        // Digits-and-dots isn't enough: these scaffold settings Xcode rejects.
+        assert!(validate_deployment_target("17.").is_err());
+        assert!(validate_deployment_target("1..2").is_err());
+        assert!(validate_deployment_target("1.2.3.4").is_err());
     }
 
     #[test]

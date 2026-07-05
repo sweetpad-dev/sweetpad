@@ -367,15 +367,30 @@ pub fn gh_annotation(event: &Event) -> Option<String> {
 /// the annotation to the wrong file.
 fn location_props(loc: &str) -> String {
     use std::fmt::Write as _;
-    let mut parts = loc.rsplitn(3, ':');
-    let col = parts.next().and_then(|p| p.parse::<u32>().ok());
-    let (line, file) = match (col, parts.next(), parts.next()) {
-        (Some(_), Some(line), Some(file)) if line.parse::<u32>().is_ok() => {
-            (Some(line.to_string()), file.to_string())
+    // Peel up to two trailing `:<number>` segments off the right; whatever
+    // remains — colons and all — is the file. A column-less `file:line`
+    // (SwiftLint's file-level violations) must still anchor to its line
+    // rather than degrade to a bare `file=path%3Aline` GitHub can't map.
+    let mut file = loc;
+    let mut nums: Vec<u32> = Vec::new();
+    for _ in 0..2 {
+        if let Some((rest, tail)) = file.rsplit_once(':')
+            && let Ok(n) = tail.parse::<u32>()
+            && !rest.is_empty()
+        {
+            nums.push(n);
+            file = rest;
+        } else {
+            break;
         }
-        _ => (None, loc.to_string()),
+    }
+    // Peeled right-to-left: one number is the line; two are col then line.
+    let (line, col) = match nums.as_slice() {
+        [line] => (Some(*line), None),
+        [col, line] => (Some(*line), Some(*col)),
+        _ => (None, None),
     };
-    let mut props = format!(" file={}", escape_property(&file));
+    let mut props = format!(" file={}", escape_property(file));
     if let Some(line) = line {
         let _ = write!(props, ",line={line}");
         if let Some(col) = col {
@@ -643,6 +658,21 @@ mod tests {
         assert!(gh_annotation(&warn).unwrap().starts_with("::warning file="));
         // Tasks and notes carry no annotation.
         assert!(gh_annotation(&parse_line("CompileSwift x.swift")).is_none());
+    }
+
+    #[test]
+    fn column_less_locations_still_anchor_line() {
+        // SwiftLint-style file-level diagnostics have no column; `file:line`
+        // used to degrade to a bogus `file=path%3Aline` GitHub can't map.
+        assert_eq!(
+            location_props("/x/File.swift:10"),
+            " file=/x/File.swift,line=10"
+        );
+        assert_eq!(
+            location_props("/x/File.swift:10:3"),
+            " file=/x/File.swift,line=10,col=3"
+        );
+        assert_eq!(location_props("/x/File.swift"), " file=/x/File.swift");
     }
 
     #[test]

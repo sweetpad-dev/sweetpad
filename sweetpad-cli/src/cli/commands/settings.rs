@@ -116,6 +116,14 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandRe
     // an explicit --destination (the resolved layer) otherwise applies.
     let on_specifier = match ctx.targeting.on.clone() {
         Some(reference) => {
+            // Same rule as the build path: silently letting `--on` win would
+            // show settings for a destination a build with identical flags
+            // refuses to accept.
+            if ctx.targeting.destination.is_some() {
+                return Err(CliError::new(
+                    "--on and --destination are mutually exclusive; pass one",
+                ));
+            }
             let sims = crate::cli::simctl::list()?;
             let key = resolved.container.key();
             Some(resolve::resolve_on(ctx, &key, &reference, &sims)?.specifier())
