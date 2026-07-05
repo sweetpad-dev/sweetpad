@@ -124,10 +124,10 @@ ok "simulator boot"
 # Operations on the booted sim (screenshot/appearance leave it booted, so the
 # app-lifecycle section below can reuse it; shutdown/erase run at teardown).
 SHOT="$(mktemp -u)-sweetpad.png"
-"$BIN" simulator screenshot "$UDID" --output "$SHOT"
+"$BIN" simulator screenshot "$UDID" --output-file "$SHOT"
 test -f "$SHOT" || fail "screenshot file not written: $SHOT"
 ok "simulator screenshot"
-out=$("$BIN" simulator screenshot "$UDID" --output "$SHOT" --json)
+out=$("$BIN" simulator screenshot "$UDID" --output-file "$SHOT" --json)
 assert_json "$out" "d['udid']" "$UDID"
 ok "simulator screenshot --json"
 "$BIN" simulator appearance dark "$UDID"

@@ -97,8 +97,10 @@ pub enum Action {
     /// Record the screen to an .mp4 (Ctrl-C stops and finalizes).
     Record {
         /// Output file (default: ./sweetpad-shots/<device>-<time>.mp4).
-        #[arg(long)]
-        output: Option<PathBuf>,
+        // `--output-file`, not `--output`: the global `-o/--output` owns that
+        // flag for selecting the output mode (json/ndjson).
+        #[arg(long = "output-file")]
+        output_file: Option<PathBuf>,
         /// Simulator name or UDID (defaults to the booted one).
         target: Option<String>,
     },
@@ -120,8 +122,10 @@ pub enum Action {
         target: Option<String>,
         /// File to write the screenshot to (default:
         /// ./sweetpad-shots/<device>-<time>.png).
-        #[arg(long)]
-        output: Option<PathBuf>,
+        // `--output-file`, not `--output`: the global `-o/--output` owns that
+        // flag for selecting the output mode (json/ndjson).
+        #[arg(long = "output-file")]
+        output_file: Option<PathBuf>,
         /// Also copy the screenshot to the clipboard.
         #[arg(long)]
         clipboard: bool,
@@ -160,9 +164,9 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         Action::Open => open(),
         Action::Screenshot {
             target,
-            output,
+            output_file,
             clipboard,
-        } => screenshot(ctx, target.as_deref(), output.as_deref(), *clipboard),
+        } => screenshot(ctx, target.as_deref(), output_file.as_deref(), *clipboard),
         Action::Appearance { mode, target } => appearance(ctx, *mode, target.as_deref()),
         Action::Create {
             name,
@@ -222,7 +226,10 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             simctl::media_add(&sim.udid, &paths)?;
             Ok(Rendered::data(report("added media to", sim)))
         }
-        Action::Record { output, target } => record(ctx, target.as_deref(), output.as_deref()),
+        Action::Record {
+            output_file,
+            target,
+        } => record(ctx, target.as_deref(), output_file.as_deref()),
     }
 }
 

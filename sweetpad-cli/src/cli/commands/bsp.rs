@@ -16,8 +16,10 @@ pub enum Action {
     Init {
         /// Where to write buildServer.json (defaults next to the container —
         /// its parent directory; for a Swift package, the package directory).
-        #[arg(long)]
-        output: Option<PathBuf>,
+        // `--output-file`, not `--output`: the global `-o/--output` selects the
+        // output *mode* (json/ndjson) on every command, so it owns that flag.
+        #[arg(long = "output-file")]
+        output_file: Option<PathBuf>,
     },
     /// Check the buildServer.json wiring: does it exist, is it complete, and
     /// does it point at a binary that's still there?
@@ -26,7 +28,7 @@ pub enum Action {
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
-        Action::Init { output } => init(ctx, output.as_deref()),
+        Action::Init { output_file } => init(ctx, output_file.as_deref()),
         Action::Doctor => doctor(ctx),
     }
 }
