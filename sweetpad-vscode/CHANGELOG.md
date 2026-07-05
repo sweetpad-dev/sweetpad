@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.7] - 2026-07-05
+
+- Fix launching on a physical device (iOS 17+) failing when the scheme has "Arguments Passed On Launch" values that start with `-` (common `NSUserDefaults`-style flags): SweetPad now inserts a `--` separator before the forwarded arguments so `devicectl` treats them as app arguments instead of parsing them as its own options ([#296](https://github.com/sweetpad-dev/sweetpad/issues/296), thanks [@rodrigosoldi](https://github.com/rodrigosoldi))
+
 ## [0.2.6] - 2026-06-22
 
 - The `sweetpad` CLI is now distributed via Homebrew (`brew install sweetpad-dev/tap/sweetpad`) instead of being bundled in the extension; the "Install CLI on PATH" command is removed
