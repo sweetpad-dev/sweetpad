@@ -171,7 +171,7 @@ fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
         // The same color-aware theme as every other prompt, so `--no-color` holds.
         let colorful = ColorfulTheme::default();
         let simple = SimpleTheme;
-        let theme: &dyn Theme = if ctx.out.use_color() {
+        let theme: &dyn Theme = if ctx.out.use_color_stderr() {
             &colorful
         } else {
             &simple
@@ -270,10 +270,17 @@ fn project_base_name(container: &Container) -> Option<String> {
     Some(name)
 }
 
-/// Xcode names DerivedData folders `<Name>-<hash>`. Match the exact name (older
-/// layouts) or the `<Name>-` prefix.
+/// Xcode names DerivedData folders `<Name>-<hash>`, sanitizing the name by
+/// replacing non-alphanumeric characters with `_` (`My App` → `My_App-<hash>`).
+/// Match the exact name (older layouts) or the raw/sanitized `<Name>-` prefix.
 fn matches_project(entry: &str, base: &str) -> bool {
-    entry == base || entry.starts_with(&format!("{base}-"))
+    let sanitized: String = base
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    entry == base
+        || entry.starts_with(&format!("{base}-"))
+        || entry.starts_with(&format!("{sanitized}-"))
 }
 
 /// Recursively sum the size of regular files under `path` (symlinks are not
@@ -349,6 +356,10 @@ mod tests {
         // A different project sharing a prefix must not match.
         assert!(!matches_project("MyAppHelper-abc", "MyApp"));
         assert!(!matches_project("Other-xyz", "MyApp"));
+        // Xcode replaces non-alphanumerics with `_` in the folder name.
+        assert!(matches_project("My_App-abcdef123", "My App"));
+        assert!(matches_project("My_App-abcdef123", "My-App"));
+        assert!(!matches_project("My_AppHelper-abc", "My App"));
     }
 
     #[test]

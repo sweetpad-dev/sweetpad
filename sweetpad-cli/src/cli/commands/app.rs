@@ -294,6 +294,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
                     mac: args.mac,
                     no_logs: args.no_logs,
                     hot,
+                    hot_explicit: args.hot,
                     hot_mode,
                     hot_selfcheck: args.hot_selfcheck.as_deref(),
                     launch: &args.launch,
@@ -378,6 +379,10 @@ struct RunOpts<'a> {
     mac: bool,
     no_logs: bool,
     hot: bool,
+    /// Whether `--hot` was typed (vs. the `[run] hot` config default) — a
+    /// config default is silently ignored for non-simulator targets instead
+    /// of erroring on a committed file.
+    hot_explicit: bool,
     hot_mode: Mode,
     hot_selfcheck: Option<&'a Path>,
     /// Launch args/env/wait-for-debugger for the app process.
@@ -498,7 +503,35 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         ));
     }
 
-    let plan = plan(ctx, opts)?;
+    let mut plan = plan(ctx, opts)?;
+
+    // Hot reload is simulator-only. A typed `--hot` on another target errors
+    // inside `run_hot_session`; the `[run] hot = true` *config default* is
+    // simply ignored for `--on mac`/device/SPM runs — a committed file must
+    // not break them (the flag-gated variants are pre-filtered in
+    // `hot_settings`, but only the resolved plan knows about `--on` and
+    // remembered macOS destinations). Clearing `plan.hot` also drops the
+    // hot-only build flags and the summary's "hot reload on" tag.
+    let hot = opts.hot && (opts.hot_explicit || matches!(plan.target, Target::Simulator(_)));
+    plan.hot = hot;
+    let plan = plan;
+
+    // The hot session launches without debugger suspension and owns the log
+    // stream as part of its UI — reject the flags it can't honor instead of
+    // silently dropping them.
+    if hot && plan.launch.wait_for_debugger {
+        return Err(CliError::new(
+            "--wait-for-debugger isn't supported with --hot; run without --hot to \
+             attach a debugger at launch",
+        ));
+    }
+    if hot && opts.no_logs {
+        return Err(CliError::new(
+            "--no-logs isn't supported with --hot; the hot session streams logs \
+             as part of its UI",
+        ));
+    }
+
     print_summary(ctx, &plan);
 
     // Bring the Simulator window up so the running app is visible. Best-effort and
@@ -508,7 +541,7 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         let _ = simctl::open_app();
     }
 
-    let result = if opts.hot {
+    let result = if hot {
         // Hot reload owns its own build + launch + watch session (simulator only).
         run_hot_session(ctx, &plan, opts.hot_mode, opts.hot_selfcheck)
     } else if matches!(plan.target, Target::SpmRun(_)) {
@@ -534,6 +567,26 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         record_last_launched(ctx, &plan);
     }
     result
+}
+
+/// The in-process resolver that locates the built .app can't see passthrough
+/// flags that move xcodebuild's output — installing a stale bundle from
+/// default DerivedData would silently run old code. Warn instead.
+fn warn_if_passthrough_moves_output(ctx: &Context, passthrough: &[String]) {
+    let moves_output = |t: &String| {
+        t == "-derivedDataPath"
+            || t == "-xcconfig"
+            || t.starts_with("SYMROOT=")
+            || t.starts_with("OBJROOT=")
+            || t.starts_with("CONFIGURATION_BUILD_DIR=")
+            || t.starts_with("TARGET_BUILD_DIR=")
+    };
+    if let Some(flag) = passthrough.iter().find(|t| moves_output(t)) {
+        ctx.out.warn(&format!(
+            "{flag} can move the build output, but the app is installed from the \
+             default build location — the launched bundle may be stale or missing"
+        ));
+    }
 }
 
 /// Resolve a full run plan, choosing a simulator (default), a device, or macOS.
@@ -630,6 +683,8 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
             "--arg/--env/--wait-for-debugger aren't supported for physical devices yet",
         ));
     }
+
+    warn_if_passthrough_moves_output(ctx, opts.passthrough);
 
     let plan = RunPlan {
         resolved,
@@ -771,8 +826,23 @@ fn destination_platform(spec: &str) -> Option<String> {
 }
 
 /// `swift run <product>` in the package directory: builds and runs the
-/// executable, streaming its output until it exits.
+/// executable, streaming its output until it exits. `--arg` rides after the
+/// product name (SwiftPM passes everything there to the program) and `--env`
+/// lands in the child's environment; `--wait-for-debugger` has no `swift run`
+/// equivalent, so it errors instead of being silently dropped.
 fn spm_run(ctx: &Context, plan: &RunPlan, product: &str) -> CliResult {
+    if plan.launch.wait_for_debugger {
+        return Err(CliError::new(
+            "--wait-for-debugger isn't supported for a Swift package executable; \
+             use `swift build` and attach lldb to the binary directly",
+        ));
+    }
+    if !plan.passthrough.is_empty() {
+        return Err(CliError::new(
+            "`--` passthrough args are xcodebuild flags; a Swift package runs via \
+             `swift run` (use --arg for program arguments)",
+        ));
+    }
     let cwd = plan
         .resolved
         .container
@@ -780,8 +850,11 @@ fn spm_run(ctx: &Context, plan: &RunPlan, product: &str) -> CliResult {
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .map(Path::to_path_buf);
+    let env = plan.launch.env_pairs("")?;
+    let mut args: Vec<&str> = vec!["run", product];
+    args.extend(plan.launch.args.iter().map(String::as_str));
     ctx.out.note(&format!("Running {product} (swift run)"));
-    crate::cli::process::stream("swift", &["run", product], cwd.as_deref())
+    crate::cli::process::stream_env("swift", &args, cwd.as_deref(), &env)
         .context("running the package executable")
 }
 
@@ -1435,8 +1508,10 @@ enum RunningKind {
     /// Terminate via `simctl`; the attached console child (`Running.stream`) is what
     /// liveness is probed on.
     Simulator { udid: String, bundle_id: String },
-    /// The console process launched the app; terminate via devicectl.
-    Device { id: String, bundle_id: String },
+    /// The console process launched the app; terminate via devicectl, which
+    /// addresses processes by the `.app` directory name in their executable
+    /// path (there is no terminate-by-bundle-id).
+    Device { id: String, app_dir: String },
     /// The streamed child *is* the macOS app; killing it stops the app.
     Mac,
 }
@@ -1529,7 +1604,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 stream: Some(child),
                 kind: RunningKind::Device {
                     id: id.clone(),
-                    bundle_id: app.bundle_id.clone(),
+                    app_dir: app_dir_name(&app.path),
                 },
                 name: app.bundle_id,
                 reported_exit: false,
@@ -1593,6 +1668,14 @@ fn detach_app(running: Running) {
 
 /// Terminate the running app and stop its output stream. The session-scoped
 /// simulator log stream is left running — it's torn down once, at session end.
+/// The `.app` directory name of a built bundle (`/…/My.app` → `My.app`) — the
+/// key [`devicectl::terminate`] matches running processes by.
+fn app_dir_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
 fn terminate_app(running: Running) {
     let Running {
         stream,
@@ -1607,8 +1690,8 @@ fn terminate_app(running: Running) {
         } => {
             let _ = simctl::terminate(&udid, &bundle_id);
         }
-        RunningKind::Device { id, bundle_id } => {
-            let _ = devicectl::terminate(&id, &bundle_id);
+        RunningKind::Device { id, app_dir } => {
+            let _ = devicectl::terminate(&id, &app_dir);
         }
         // The macOS app *is* the streamed child — killing it below stops it.
         RunningKind::Mac => {}
@@ -2309,12 +2392,21 @@ fn render_device_logs(child: &mut Child, color: bool, exe: String, filter: Arc<A
     };
     let debug_dylib = format!("{exe}.debug.dylib");
     std::thread::spawn(move || {
+        // Multi-line messages (JSON dumps, stack traces) span several physical
+        // lines; only the first matches the syslog shape. Print the rest
+        // verbatim while they continue an entry that was just shown, instead
+        // of silently dropping lines 2..n of the app's own message.
+        let mut continuing = false;
         for line in BufReader::new(stdout).lines() {
             let Ok(line) = line else { break };
             let Some(entry) = pymobiledevice3::parse_line(&line) else {
+                if continuing {
+                    println!("{line}");
+                }
                 continue;
             };
             if entry.image != exe && entry.image != debug_dylib {
+                continuing = false;
                 continue;
             }
             let rendered = oslog::render_fields(
@@ -2324,7 +2416,8 @@ fn render_device_logs(child: &mut Child, color: bool, exe: String, filter: Arc<A
                 entry.message,
                 color,
             );
-            if rendered.level.as_u8() >= filter.load(Ordering::Relaxed) {
+            continuing = rendered.level.as_u8() >= filter.load(Ordering::Relaxed);
+            if continuing {
                 println!("{}", rendered.text);
             }
         }
@@ -2439,6 +2532,7 @@ fn simple(
         mac: false,
         no_logs: true,
         hot: false,
+        hot_explicit: false,
         hot_mode: Mode::Resolver,
         hot_selfcheck: None,
         launch,
@@ -2469,6 +2563,7 @@ fn debug(ctx: &mut Context, launch: &LaunchArgs) -> CommandResult {
         mac: false,
         no_logs: true,
         hot: false,
+        hot_explicit: false,
         hot_mode: Mode::Resolver,
         hot_selfcheck: None,
         launch,
@@ -2626,7 +2721,7 @@ fn simple_on_device(
         }
         Stage::Stop => {
             ctx.out.step("Terminating app on device", || {
-                devicectl::terminate(id, &app.bundle_id)
+                devicectl::terminate(id, &app_dir_name(&app.path))
             })?;
             stage_report(
                 "terminated",
@@ -2697,6 +2792,7 @@ fn simple_logs(ctx: &mut Context, filters: &LogFilterArgs) -> CommandResult {
         mac: false,
         no_logs: true,
         hot: false,
+        hot_explicit: false,
         hot_mode: Mode::Resolver,
         hot_selfcheck: None,
         launch: &LaunchArgs::default(),

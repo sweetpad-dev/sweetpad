@@ -439,9 +439,7 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
             Ok(())
         }
         Err(e) => {
-            if let Some(text) = pristine_lockfile {
-                let _ = std::fs::write(resolved_path(container), text);
-            }
+            restore_or_remove_lockfile(container, pristine_lockfile);
             // Report the rollback honestly — claiming success while the
             // dangling reference remains would hide exactly the state this
             // rollback exists to prevent.
@@ -488,6 +486,10 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
     let pristine = std::fs::read_to_string(&manifest_path).map_err(|e| {
         CliError::new(format!("failed to read {}: {e}", manifest_path.display()))
     })?;
+    // The resolve in step 2 writes the new package's pins into
+    // Package.resolved — snapshot it too, so a cancel doesn't leave ghost
+    // pins that make `dep list`/`dep remove` misreport the abandoned package.
+    let pristine_lockfile = read_lockfile(container);
 
     // 1. Add the dependency to the manifest.
     let requirement = if remote {
@@ -541,9 +543,25 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
         }
         Err(e) => {
             let _ = std::fs::write(&manifest_path, &pristine);
+            restore_or_remove_lockfile(container, pristine_lockfile);
             ctx.out
                 .note("rolled the dependency back out of Package.swift (nothing linked)");
             Err(e)
+        }
+    }
+}
+
+/// Roll `Package.resolved` back to a [`read_lockfile`] snapshot after a
+/// cancelled add: restore the pristine text, or — when no lockfile existed
+/// before — remove the one the discovery resolve created, so no ghost pins
+/// for the abandoned package survive either way.
+fn restore_or_remove_lockfile(container: &Container, pristine: Option<String>) {
+    match pristine {
+        Some(text) => {
+            let _ = std::fs::write(resolved_path(container), text);
+        }
+        None => {
+            let _ = std::fs::remove_file(resolved_path(container));
         }
     }
 }
@@ -690,18 +708,34 @@ fn remove_pin(container: &Container, query: &str) {
         return;
     };
     let id = spm_pbxproj::identity_from_url(query);
-    if let Some(pins) = json
-        .get_mut("pins")
-        .and_then(serde_json::Value::as_array_mut)
-    {
-        pins.retain(|p| {
-            p.get("identity")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_ascii_lowercase)
-                != Some(id.clone())
-        });
+    // v2/v3 store `pins` at the top level; v1 nested them under `object` (and
+    // its pins carry no `identity` key — derive one, as `read_resolved` does).
+    let has_top = json.get("pins").is_some_and(serde_json::Value::is_array);
+    let pins = if has_top {
+        json.get_mut("pins").and_then(serde_json::Value::as_array_mut)
+    } else {
+        json.get_mut("object")
+            .and_then(|o| o.get_mut("pins"))
+            .and_then(serde_json::Value::as_array_mut)
+    };
+    if let Some(pins) = pins {
+        pins.retain(|p| pin_identity(p).map(|i| i.to_ascii_lowercase()) != Some(id.clone()));
     }
     let _ = std::fs::write(&path, sweetpad_lib::spm_resolved::serialize(&json));
+}
+
+/// A pin's identity: the `identity` key (v2/v3), or derived from
+/// `repositoryURL`/`package` for v1 pins that carry none.
+fn pin_identity(pin: &serde_json::Value) -> Option<String> {
+    pin.get("identity")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            pin.get("repositoryURL")
+                .or_else(|| pin.get("package"))
+                .and_then(serde_json::Value::as_str)
+                .map(spm_pbxproj::identity_from_url)
+        })
 }
 
 /// The product names a local package declares — passed to `remove_package` so
@@ -1025,22 +1059,22 @@ fn choose(
     if !flags.is_empty() {
         return Ok(flags.to_vec());
     }
-    multi_select(&format!("Select {kind}(s)"), available, ctx.out.use_color())
+    multi_select(kind, available, ctx.out.use_color_stderr())
 }
 
-fn multi_select(prompt: &str, items: &[String], color: bool) -> Result<Vec<String>, CliError> {
+fn multi_select(kind: &str, items: &[String], color: bool) -> Result<Vec<String>, CliError> {
     let theme: Box<dyn dialoguer::theme::Theme> = if color {
         Box::new(dialoguer::theme::ColorfulTheme::default())
     } else {
         Box::new(dialoguer::theme::SimpleTheme)
     };
     let chosen = dialoguer::MultiSelect::with_theme(theme.as_ref())
-        .with_prompt(prompt)
+        .with_prompt(format!("Select {kind}(s)"))
         .items(items)
         .interact()
         .map_err(|e| CliError::new(format!("prompt failed: {e}")).kind(ErrorKind::UserCancel))?;
     if chosen.is_empty() {
-        return Err(CliError::new(format!("no {prompt} chosen")).kind(ErrorKind::UserCancel));
+        return Err(CliError::new(format!("no {kind} chosen")).kind(ErrorKind::UserCancel));
     }
     Ok(chosen.into_iter().map(|i| items[i].clone()).collect())
 }

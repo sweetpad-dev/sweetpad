@@ -57,8 +57,22 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
     let cleaned = match &resolved.container {
         Container::SwiftPackage(_) => {
             let cwd = xcodebuild::working_dir(&resolved.container);
-            process::stream("swift", &["package", "clean"], cwd.as_deref())
-                .context("cleaning the package")?;
+            // Under --json/-o ndjson, capture the toolchain's output so
+            // nothing interleaves with the envelope on stdout — the same
+            // discipline as the xcodebuild branch below.
+            if ctx.out.is_json() || ctx.out.is_ndjson() {
+                let run = process::run_captured("swift", &["package", "clean"], cwd.as_deref())?;
+                if !run.success {
+                    return Err(CliError::new(format!(
+                        "swift package clean exited with a non-zero status:\n{}",
+                        run.tail
+                    ))
+                    .context("cleaning the package"));
+                }
+            } else {
+                process::stream("swift", &["package", "clean"], cwd.as_deref())
+                    .context("cleaning the package")?;
+            }
             "swift package clean"
         }
         Container::Project(_) | Container::Workspace(_) => {

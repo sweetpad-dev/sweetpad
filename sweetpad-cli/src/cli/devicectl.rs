@@ -247,7 +247,7 @@ pub fn spawn_console(device_id: &str, bundle_id: &str) -> Result<std::process::C
     )
 }
 
-/// Terminate a running app on a device.
+/// Uninstall an app from a device.
 pub fn uninstall(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
     process::stream(
         "xcrun",
@@ -265,20 +265,115 @@ pub fn uninstall(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
     .context("uninstalling the app from the device")
 }
 
-pub fn terminate(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
-    process::stream(
+/// Terminate a running app on a device. `devicectl` has no
+/// terminate-by-bundle-id — processes are addressed by pid — so the app's
+/// pid(s) are looked up in the device's process list by the `.app` directory
+/// name in the executable path, then signalled. Nothing running is success,
+/// mirroring `simctl terminate`'s idempotence.
+pub fn terminate(device_id: &str, app_dir_name: &str) -> Result<(), CliError> {
+    if app_dir_name.is_empty() {
+        return Err(CliError::new(
+            "cannot terminate: the app bundle's name is unknown",
+        ));
+    }
+    for pid in app_pids(device_id, app_dir_name)? {
+        // Best-effort per pid: the process may have exited between the list
+        // and the signal, which devicectl reports as a failure.
+        let _ = process::run(
+            "xcrun",
+            &[
+                "devicectl",
+                "device",
+                "process",
+                "signal",
+                "--signal",
+                "15",
+                "--pid",
+                &pid.to_string(),
+                "--device",
+                device_id,
+            ],
+            None,
+            true,
+        );
+    }
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct ProcessesOutput {
+    result: ProcessesResult,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProcessesResult {
+    #[serde(default)]
+    running_processes: Vec<RawProcess>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawProcess {
+    #[serde(default)]
+    process_identifier: i64,
+    #[serde(default)]
+    executable: String,
+}
+
+/// Pids of running processes whose executable lives inside the named `.app`
+/// directory. `devicectl device info processes` routes through a
+/// `--json-output` temp file like [`list`].
+fn app_pids(device_id: &str, app_dir_name: &str) -> Result<Vec<i64>, CliError> {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp: PathBuf = std::env::temp_dir().join(format!(
+        "sweetpad-processes-{}-{nanos}.json",
+        std::process::id()
+    ));
+    let ok = process::run(
         "xcrun",
         &[
             "devicectl",
             "device",
-            "process",
-            "terminate",
+            "info",
+            "processes",
             "--device",
             device_id,
-            bundle_id,
+            "--json-output",
+            &tmp.to_string_lossy(),
         ],
         None,
-    )
+        true,
+    )?;
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(CliError::new(
+            "`xcrun devicectl device info processes` failed",
+        ));
+    }
+    let raw = std::fs::read_to_string(&tmp)
+        .map_err(|e| CliError::new(format!("reading devicectl output: {e}")))?;
+    let _ = std::fs::remove_file(&tmp);
+    parse_app_pids(&raw, app_dir_name)
+}
+
+/// Parse the process list, keeping pids whose executable path contains the
+/// `.app` directory (executables are reported as `file://` URLs, e.g.
+/// `file:///private/var/.../My.app/My`).
+fn parse_app_pids(raw: &str, app_dir_name: &str) -> Result<Vec<i64>, CliError> {
+    let parsed: ProcessesOutput = serde_json::from_str(raw)
+        .map_err(|e| CliError::new(format!("parsing devicectl output: {e}")))?;
+    let needle = format!("/{app_dir_name}/");
+    Ok(parsed
+        .result
+        .running_processes
+        .into_iter()
+        .filter(|p| p.process_identifier > 0 && p.executable.contains(&needle))
+        .map(|p| p.process_identifier)
+        .collect())
 }
 
 #[cfg(test)]
@@ -325,6 +420,23 @@ mod tests {
     fn drops_devices_without_any_id() {
         let raw = r#"{"result":{"devices":[{"identifier":"","hardwareProperties":{}}]}}"#;
         assert!(parse_devices(raw).unwrap().is_empty());
+    }
+
+    #[test]
+    fn app_pids_match_the_bundle_directory() {
+        let raw = r#"{
+          "result": {
+            "runningProcesses": [
+              {"processIdentifier": 496, "executable": "file:///usr/libexec/backboardd"},
+              {"processIdentifier": 1201, "executable": "file:///private/var/containers/Bundle/Application/AAAA/My.app/My"},
+              {"processIdentifier": 1300, "executable": "file:///private/var/containers/Bundle/Application/BBBB/MyOther.app/MyOther"},
+              {"processIdentifier": 0, "executable": "file:///x/My.app/My"}
+            ]
+          }
+        }"#;
+        assert_eq!(parse_app_pids(raw, "My.app").unwrap(), vec![1201]);
+        assert_eq!(parse_app_pids(raw, "MyOther.app").unwrap(), vec![1300]);
+        assert!(parse_app_pids(raw, "Absent.app").unwrap().is_empty());
     }
 
     #[test]

@@ -85,20 +85,44 @@ impl Drop for Watcher {
 }
 
 /// Walk `dir` recursively, invoking `visit` for each `.swift` file with its
-/// modification time. Skips [`IGNORED_DIRS`] and hidden directories.
+/// modification time. Skips [`IGNORED_DIRS`] and hidden directories. Follows
+/// symlinked directories (monorepos commonly link `Sources` elsewhere), with
+/// a canonical-path guard so a symlink cycle can't loop the walk.
 fn scan(dir: &Path, visit: &mut impl FnMut(PathBuf, SystemTime)) {
+    let mut seen_links = std::collections::HashSet::new();
+    scan_inner(dir, visit, &mut seen_links);
+}
+
+fn scan_inner(
+    dir: &Path,
+    visit: &mut impl FnMut(PathBuf, SystemTime),
+    seen_links: &mut std::collections::HashSet<PathBuf>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         let Ok(ft) = entry.file_type() else { continue };
-        if ft.is_dir() {
+        // `file_type()` doesn't follow symlinks — treat a symlink-to-directory
+        // as a directory so linked source trees are watched too.
+        let is_dir = ft.is_dir() || (ft.is_symlink() && path.is_dir());
+        if is_dir {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if name.starts_with('.') || IGNORED_DIRS.contains(&name) {
                 continue;
             }
-            scan(&path, visit);
+            // Every cycle must pass through a symlink — guarding those alone
+            // breaks all loops.
+            if ft.is_symlink() {
+                let Ok(canon) = std::fs::canonicalize(&path) else {
+                    continue;
+                };
+                if !seen_links.insert(canon) {
+                    continue;
+                }
+            }
+            scan_inner(&path, visit, seen_links);
         } else if path.extension().is_some_and(|e| e == "swift")
             && let Ok(mtime) = entry.metadata().and_then(|m| m.modified())
         {

@@ -27,7 +27,10 @@ pub fn run(ctx: &mut Context) -> CommandResult {
         .and_then(std::fs::canonicalize)
         .unwrap_or_default();
     let path = exe.to_string_lossy();
-    let brewed = path.contains("/Cellar/") || path.contains("/homebrew/");
+    // `/Cellar/` covers resolved keg paths everywhere (incl. Linuxbrew);
+    // `/opt/homebrew/` is the Apple-silicon prefix. A bare `/homebrew/` would
+    // also match unrelated checkouts like ~/dev/homebrew-tools/.
+    let brewed = path.contains("/Cellar/") || path.contains("/opt/homebrew/");
     if brewed {
         ctx.out.note("updating via Homebrew…");
         process::stream("brew", &["upgrade", "sweetpad"], None)

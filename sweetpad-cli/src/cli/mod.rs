@@ -761,7 +761,9 @@ pub fn run(argv: &[String]) -> ExitCode {
         Resource::Archive(archive_args) => commands::archive::run(&mut ctx, &archive_args),
         Resource::Clean(clean_args) => {
             let mut targeting: Targeting = clean_args.scheme.clone().into();
-            targeting.configuration.clone_from(&clean_args.configuration);
+            // Same `env = SWEETPAD_CONFIGURATION` normalization as
+            // `BuildTargetArgs`: exported-but-empty means unset.
+            targeting.configuration = non_empty(clean_args.configuration.clone());
             ctx.targeting = targeting;
             commands::clean::run(&mut ctx, clean_args.purge)
         }

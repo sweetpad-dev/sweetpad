@@ -443,7 +443,7 @@ fn prompt_value(
                 .projects
                 .get(key)
                 .and_then(|st| get(st, scope, v).map(String::from));
-            input(v.name(), current.as_deref(), ctx.out.use_color())
+            input(v.name(), current.as_deref(), ctx.out.use_color_stderr())
         }
     }
 }

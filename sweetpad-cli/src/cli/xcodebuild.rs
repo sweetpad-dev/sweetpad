@@ -87,6 +87,9 @@ impl BuildPlan<'_> {
         let mut failure_detail = String::new();
         let mut stats = None;
         let mut diagnostics = Vec::new();
+        // Only the raw `-v` human passthrough leaves output unparsed; every
+        // parsing mode (including ndjson under `-v`) records the artifact.
+        let mut parsed = true;
         let ok = if out.is_ndjson() {
             let (ok, s) = buildlog::run_ndjson("xcodebuild", &args, cwd.as_deref(), out)?;
             diagnostics.clone_from(&s.diagnostics);
@@ -101,6 +104,7 @@ impl BuildPlan<'_> {
             run.success
         } else if out.is_verbose() {
             // Raw passthrough is unparsed — no artifact for this mode.
+            parsed = false;
             process::run("xcodebuild", &args, cwd.as_deref(), false)?
         } else {
             let (ok, d) =
@@ -108,7 +112,7 @@ impl BuildPlan<'_> {
             diagnostics = d;
             ok
         };
-        if !out.is_verbose() {
+        if parsed {
             record_build_diagnostics(self.container, ok, &diagnostics);
         }
         if ok {

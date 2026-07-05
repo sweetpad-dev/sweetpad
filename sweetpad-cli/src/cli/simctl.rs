@@ -385,7 +385,11 @@ pub fn shutdown(udid: &str) -> Result<(), CliError> {
         return Ok(());
     }
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if stderr.contains("current state: Shutdown") || stderr.contains("Unable to shutdown") {
+    // Only the already-shutdown no-op is success. A broader "Unable to
+    // shutdown" match would also swallow real failures — notably `current
+    // state: Shutting Down`, where reporting success lets a follow-up
+    // `erase` run against a device that isn't down yet.
+    if stderr.contains("current state: Shutdown") {
         return Ok(());
     }
     Err(CliError::new(format!(
