@@ -274,7 +274,11 @@ fn clone(ctx: &mut Context, target: &str, new_name: &str) -> CommandResult {
     }))
 }
 
-fn record(ctx: &mut Context, target: Option<&str>, output: Option<&std::path::Path>) -> CommandResult {
+fn record(
+    ctx: &mut Context,
+    target: Option<&str>,
+    output: Option<&std::path::Path>,
+) -> CommandResult {
     let sims = simctl::list()?;
     let sim = resolve::select_simulator(ctx, &sims, target)?;
     let path = output.map_or_else(
@@ -393,8 +397,9 @@ fn boot(ctx: &mut Context, target: Option<&str>, wait: bool) -> CommandResult {
     }
     simctl::boot(&sim.udid)?;
     if wait {
-        ctx.out
-            .step("Waiting for boot to finish", || simctl::boot_wait(&sim.udid))?;
+        ctx.out.step("Waiting for boot to finish", || {
+            simctl::boot_wait(&sim.udid)
+        })?;
     }
     Ok(Rendered::data(report("booted", sim)))
 }
@@ -633,7 +638,10 @@ mod tests {
     #[test]
     fn default_screenshot_path_is_slugged_and_timestamped() {
         let path = default_screenshot_path("iPhone 16 Pro");
-        assert_eq!(path.parent().unwrap(), std::path::Path::new("sweetpad-shots"));
+        assert_eq!(
+            path.parent().unwrap(),
+            std::path::Path::new("sweetpad-shots")
+        );
         let name = path.file_name().unwrap().to_string_lossy();
         assert!(name.starts_with("iphone-16-pro-"), "name: {name}");
         assert!(name.ends_with(".png"));

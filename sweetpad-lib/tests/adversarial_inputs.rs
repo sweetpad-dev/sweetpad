@@ -293,7 +293,10 @@ fn condition_rejects_deeply_nested_parens() {
             // overflow — evaluate as well as parse.
             let chain = format!("x{}", " == x".repeat(200_000));
             if let Some(expr) = sweetpad_lib::condition::parse(&chain) {
-                let _ = sweetpad_lib::condition::evaluate(&expr, &Default::default());
+                let _ = sweetpad_lib::condition::evaluate(
+                    &expr,
+                    &std::collections::BTreeMap::default(),
+                );
             }
         })
         .expect("spawn");

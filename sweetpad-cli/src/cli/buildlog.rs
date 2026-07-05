@@ -725,13 +725,18 @@ mod tests {
             "::error::clang: linker command failed with exit code 1"
         );
         assert!(matches!(
-            parse_line("xcodebuild: error: Scheme Demo is not currently configured for the test action."),
+            parse_line(
+                "xcodebuild: error: Scheme Demo is not currently configured for the test action."
+            ),
             Event::Diagnostic { location: None, .. }
         ));
         // Real locations keep anchoring, path-shaped or bare-file-with-extension.
         assert!(matches!(
             parse_line("Foo.swift:3:1: warning: unused"),
-            Event::Diagnostic { location: Some(_), .. }
+            Event::Diagnostic {
+                location: Some(_),
+                ..
+            }
         ));
     }
 
@@ -757,9 +762,10 @@ mod tests {
         assert_eq!(diag["severity"], "warning");
         assert_eq!(diag["location"], "/src/Foo.swift:3:1");
 
-        let test =
-            event_json(&parse_line("Test Case 'LoginTests.testFoo' passed (0.001 seconds)"))
-                .unwrap();
+        let test = event_json(&parse_line(
+            "Test Case 'LoginTests.testFoo' passed (0.001 seconds)",
+        ))
+        .unwrap();
         assert_eq!(test["event"], "test");
         assert_eq!(test["status"], "passed");
 
@@ -808,13 +814,17 @@ mod tests {
         // The `(in target 'X' from project 'Y')` suffix is metadata, not a
         // file — `Copying 'App')` was the old rendering.
         assert_eq!(
-            parse_line("CpResource /d/App.app/Foo.png /src/Foo.png (in target 'App' from project 'App')"),
+            parse_line(
+                "CpResource /d/App.app/Foo.png /src/Foo.png (in target 'App' from project 'App')"
+            ),
             Event::Copy {
                 name: "Foo.png".to_string()
             }
         );
         assert_eq!(
-            parse_line("ProcessInfoPlistFile /d/App.app/Info.plist /src/Info.plist (in target 'App' from project 'App')"),
+            parse_line(
+                "ProcessInfoPlistFile /d/App.app/Info.plist /src/Info.plist (in target 'App' from project 'App')"
+            ),
             Event::ProcessPlist {
                 name: "Info.plist".to_string()
             }
@@ -824,7 +834,9 @@ mod tests {
     #[test]
     fn task_paths_with_spaces_survive() {
         assert_eq!(
-            parse_line("Ld /d/My App.app/My App normal arm64 (in target 'My App' from project 'My App')"),
+            parse_line(
+                "Ld /d/My App.app/My App normal arm64 (in target 'My App' from project 'My App')"
+            ),
             Event::Link {
                 target: "My App".to_string()
             }
@@ -843,7 +855,9 @@ mod tests {
         // block repeats task lines tab-indented; they must not render as
         // fresh `Compiling …` tasks after the failure banner.
         assert_eq!(
-            parse_line("\tCompileSwift normal arm64 /a/File.swift (in target 'App' from project 'App')"),
+            parse_line(
+                "\tCompileSwift normal arm64 /a/File.swift (in target 'App' from project 'App')"
+            ),
             Event::Other(
                 "\tCompileSwift normal arm64 /a/File.swift (in target 'App' from project 'App')"
                     .to_string()
@@ -931,7 +945,10 @@ mod tests {
             location: None,
             message: "boom".into(),
         };
-        assert_eq!(render(&err, false, false, false), Some("error: boom".to_string()));
+        assert_eq!(
+            render(&err, false, false, false),
+            Some("error: boom".to_string())
+        );
     }
 
     #[test]

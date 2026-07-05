@@ -619,7 +619,8 @@ pub fn link_arguments(
     }
     // A cleared `GCC_OPTIMIZATION_LEVEL =` must emit nothing — a bare `-O`
     // would silently link at clang's -O1 instead of the project's level.
-    if let Some(level) = get("GCC_OPTIMIZATION_LEVEL").filter(|v| !v.is_empty() && !v.contains("$("))
+    if let Some(level) =
+        get("GCC_OPTIMIZATION_LEVEL").filter(|v| !v.is_empty() && !v.contains("$("))
     {
         a.flag(&format!("-O{level}"));
     }

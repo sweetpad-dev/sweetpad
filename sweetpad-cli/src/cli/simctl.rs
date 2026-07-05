@@ -288,11 +288,7 @@ pub fn launch_with_env(
 /// `--terminate-running-process` forces a fresh launch: forwarded env and args
 /// only take effect on a new process, so an already-running instance must be
 /// replaced or they silently never apply.
-pub fn launch_opts(
-    udid: &str,
-    bundle_id: &str,
-    opts: &LaunchOptions,
-) -> Result<String, CliError> {
+pub fn launch_opts(udid: &str, bundle_id: &str, opts: &LaunchOptions) -> Result<String, CliError> {
     let mut argv: Vec<&str> = vec!["simctl", "launch", "--terminate-running-process"];
     if opts.wait_for_debugger {
         argv.push("--wait-for-debugger");
@@ -528,12 +524,8 @@ pub fn status_bar(udid: &str, clear: bool) -> Result<(), CliError> {
 /// Set a booted simulator's simulated location.
 pub fn location(udid: &str, latitude: f64, longitude: f64) -> Result<(), CliError> {
     let coords = format!("{latitude},{longitude}");
-    process::stream(
-        "xcrun",
-        &["simctl", "location", udid, "set", &coords],
-        None,
-    )
-    .context("setting the simulated location")
+    process::stream("xcrun", &["simctl", "location", udid, "set", &coords], None)
+        .context("setting the simulated location")
 }
 
 /// Add photos/videos to a booted simulator's media library.
@@ -589,10 +581,14 @@ pub fn record(udid: &str, path: &str) -> Result<bool, CliError> {
     let stopped = crate::cli::signals::take_forwarded();
     match status {
         Ok(s) if s.success() || stopped => Ok(stopped),
-        Ok(s) => Err(CliError::new(format!("simctl io recordVideo exited with {s}"))
-            .context("recording the simulator screen")),
-        Err(e) => Err(CliError::new(format!("failed to wait for recordVideo: {e}"))
-            .context("recording the simulator screen")),
+        Ok(s) => Err(
+            CliError::new(format!("simctl io recordVideo exited with {s}"))
+                .context("recording the simulator screen"),
+        ),
+        Err(e) => Err(
+            CliError::new(format!("failed to wait for recordVideo: {e}"))
+                .context("recording the simulator screen"),
+        ),
     }
 }
 

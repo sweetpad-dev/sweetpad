@@ -580,7 +580,10 @@ impl Context {
                 .path()
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
-                .map_or_else(|| std::path::PathBuf::from("."), std::path::Path::to_path_buf);
+                .map_or_else(
+                    || std::path::PathBuf::from("."),
+                    std::path::Path::to_path_buf,
+                );
             let (pf, warnings) = config::ProjectFile::load_for(&dir);
             for w in &warnings {
                 self.out.warn(w);
@@ -622,9 +625,9 @@ pub fn run(argv: &[String]) -> ExitCode {
         {
             let version = env!("CARGO_PKG_VERSION");
             match mode {
-                OutputMode::Ndjson => println!(
-                    r#"{{"event":"result","ok":true,"data":{{"version":"{version}"}}}}"#
-                ),
+                OutputMode::Ndjson => {
+                    println!(r#"{{"event":"result","ok":true,"data":{{"version":"{version}"}}}}"#);
+                }
                 _ => println!(r#"{{"schema":1,"ok":true,"data":{{"version":"{version}"}}}}"#),
             }
         }
@@ -1096,7 +1099,10 @@ mod targeting_tests {
             disambiguate_container(None, p("/p.xcodeproj"), false, false),
             (None, p("/p.xcodeproj"))
         );
-        assert_eq!(disambiguate_container(None, None, false, false), (None, None));
+        assert_eq!(
+            disambiguate_container(None, None, false, false),
+            (None, None)
+        );
     }
 }
 

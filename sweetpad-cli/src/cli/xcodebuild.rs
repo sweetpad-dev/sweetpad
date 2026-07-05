@@ -121,13 +121,11 @@ impl BuildPlan<'_> {
             // Classified here, the one chokepoint every build goes through, so
             // `build start` and `app run`'s build step both exit 3 on a failed
             // compile instead of the generic 1.
-            Err(
-                CliError::new(format!(
-                    "xcodebuild exited with a non-zero status{failure_detail}"
-                ))
-                .kind(ErrorKind::BuildFailure)
-                .context("building the project"),
-            )
+            Err(CliError::new(format!(
+                "xcodebuild exited with a non-zero status{failure_detail}"
+            ))
+            .kind(ErrorKind::BuildFailure)
+            .context("building the project"))
         }
     }
 }
@@ -280,10 +278,14 @@ impl TestPlan<'_> {
 /// a toolchain bump must not orphan every retained bundle and diagnostics
 /// artifact.
 pub(crate) fn project_artifact(container: &Container, suffix: &str) -> std::path::PathBuf {
-    let stem = container
-        .path()
-        .file_stem().map_or_else(|| "project".to_string(), |s| s.to_string_lossy().into_owned());
-    let name = format!("{stem}-{:016x}{suffix}", fnv1a64(container.key().as_bytes()));
+    let stem = container.path().file_stem().map_or_else(
+        || "project".to_string(),
+        |s| s.to_string_lossy().into_owned(),
+    );
+    let name = format!(
+        "{stem}-{:016x}{suffix}",
+        fnv1a64(container.key().as_bytes())
+    );
     sweetpad_core::paths::state_dir().map_or_else(
         || std::env::temp_dir().join(&name),
         |d| d.join("sweetpad").join("results").join(&name),
@@ -304,7 +306,11 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 /// Persist the last build's parsed diagnostics for `build diagnostics`
 /// — agents stop re-running builds just to re-read the errors. Best-effort: a
 /// write failure never fails the build.
-pub(crate) fn record_build_diagnostics(container: &Container, ok: bool, diagnostics: &[serde_json::Value]) {
+pub(crate) fn record_build_diagnostics(
+    container: &Container,
+    ok: bool,
+    diagnostics: &[serde_json::Value],
+) {
     let path = project_artifact(container, "-build.json");
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -333,7 +339,7 @@ pub(crate) fn record_build_diagnostics(container: &Container, ok: bool, diagnost
 }
 
 /// Read the project's last-build diagnostics artifact, if a build recorded one.
-#[must_use] 
+#[must_use]
 pub fn last_build_diagnostics(container: &Container) -> Option<serde_json::Value> {
     let text = std::fs::read_to_string(project_artifact(container, "-build.json")).ok()?;
     serde_json::from_str(&text).ok()
@@ -455,7 +461,9 @@ fn collect_failed(node: &serde_json::Value, out: &mut Vec<String>) {
         .is_some_and(|r| r.eq_ignore_ascii_case("failed"));
     if is_case
         && failed
-        && let Some(id) = node.get("nodeIdentifier").and_then(serde_json::Value::as_str)
+        && let Some(id) = node
+            .get("nodeIdentifier")
+            .and_then(serde_json::Value::as_str)
     {
         out.push(id.trim_end_matches("()").to_string());
     }

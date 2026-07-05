@@ -433,7 +433,9 @@ pub fn choose(
     match candidates.len() {
         0 => Err(CliError::new(format!("no {what} available")).kind(ErrorKind::TargetResolution)),
         1 => Ok(candidates[0].clone()),
-        _ if ctx.out.is_interactive() => prompt_choice(what, candidates, ctx.out.use_color_stderr()),
+        _ if ctx.out.is_interactive() => {
+            prompt_choice(what, candidates, ctx.out.use_color_stderr())
+        }
         _ => Err(missing(what)),
     }
 }
@@ -558,16 +560,17 @@ pub fn resolve_on(
             sims.iter().filter(|s| s.is_booted()).collect();
         booted.sort_by_key(|s| std::cmp::Reverse(used(&s.udid)));
         return booted.first().map(|s| sim_target(s)).ok_or_else(|| {
-            CliError::new("--on booted: no simulator is booted")
-                .kind(ErrorKind::TargetResolution)
+            CliError::new("--on booted: no simulator is booted").kind(ErrorKind::TargetResolution)
         });
     }
 
     if lower == "device" {
         let devices = crate::cli::devicectl::list()?;
         return match devices.as_slice() {
-            [] => Err(CliError::new("--on device: no physical device is connected")
-                .kind(ErrorKind::TargetResolution)),
+            [] => Err(
+                CliError::new("--on device: no physical device is connected")
+                    .kind(ErrorKind::TargetResolution),
+            ),
             [dev] => Ok(device_target(dev)),
             many => Err(CliError::new(format!(
                 "--on device is ambiguous — connected: {}; name one",
@@ -630,7 +633,9 @@ pub fn resolve_on(
         .filter(|s| s.name.eq_ignore_ascii_case(reference))
         .collect();
     if exact_sims.is_empty()
-        && let Some(d) = devices.iter().find(|d| d.name.eq_ignore_ascii_case(reference))
+        && let Some(d) = devices
+            .iter()
+            .find(|d| d.name.eq_ignore_ascii_case(reference))
     {
         return Ok(device_target(d));
     }
@@ -843,18 +848,14 @@ fn recover_stale(
     // layers, so recovery must clear whichever one(s) hold it, or a stale
     // testing pick fails every `sweetpad test` forever.
     let st = ctx.state.projects.get(&key);
-    let build_match = st
-        .and_then(|p| match what {
-            "scheme" => p.scheme.as_deref(),
-            _ => p.configuration.as_deref(),
-        })
-        == Some(value);
-    let testing_match = st
-        .and_then(|p| match what {
-            "scheme" => p.testing.scheme.as_deref(),
-            _ => p.testing.configuration.as_deref(),
-        })
-        == Some(value);
+    let build_match = st.and_then(|p| match what {
+        "scheme" => p.scheme.as_deref(),
+        _ => p.configuration.as_deref(),
+    }) == Some(value);
+    let testing_match = st.and_then(|p| match what {
+        "scheme" => p.testing.scheme.as_deref(),
+        _ => p.testing.configuration.as_deref(),
+    }) == Some(value);
     if !build_match && !testing_match {
         return Err(err);
     }
@@ -923,7 +924,11 @@ fn recover_stale(
 ///
 /// # Errors
 /// Returns a `TargetResolution` error when `value` matches no candidate.
-pub(crate) fn validate_choice(what: &str, value: &str, candidates: &[String]) -> Result<(), CliError> {
+pub(crate) fn validate_choice(
+    what: &str,
+    value: &str,
+    candidates: &[String],
+) -> Result<(), CliError> {
     if candidates.is_empty() || candidates.iter().any(|c| c == value) {
         return Ok(());
     }
@@ -1100,7 +1105,10 @@ fn destination_choices<'a>(
 /// Append a short udid suffix to any labels that would otherwise be identical
 /// (same name, OS version, and boot marker), so the picker shows distinct rows
 /// and the chosen label maps back to exactly one simulator in [`pick_destination`].
-pub(crate) fn disambiguate_labels(labels: &mut [String], ordered: &[&crate::cli::simctl::Simulator]) {
+pub(crate) fn disambiguate_labels(
+    labels: &mut [String],
+    ordered: &[&crate::cli::simctl::Simulator],
+) {
     use std::fmt::Write as _;
     let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for label in labels.iter() {
@@ -1196,7 +1204,11 @@ mod tests {
         let entry = &state.projects["/p"];
         // Front = least recently picked, so the recents cap evicts B before
         // the re-picked A (true LRU, not first-seen).
-        let order: Vec<&str> = entry.destination_recents.iter().map(|d| d.id.as_str()).collect();
+        let order: Vec<&str> = entry
+            .destination_recents
+            .iter()
+            .map(|d| d.id.as_str())
+            .collect();
         assert_eq!(order, vec!["B", "A"]);
         assert_eq!(entry.destination_usage["A"], 2);
     }

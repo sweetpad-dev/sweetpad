@@ -6,8 +6,7 @@
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Container};
 use crate::cli::{
-    CliError, CommandResult, Context, ErrorContext, Render, Rendered, buildlog, process,
-    xcodebuild,
+    CliError, CommandResult, Context, ErrorContext, Render, Rendered, buildlog, process, xcodebuild,
 };
 
 /// `clean`'s flags: exactly the values `xcodebuild clean` consumes — the
@@ -104,11 +103,19 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
                 }
                 true
             } else {
-                buildlog::run("xcodebuild", &arg_refs, cwd.as_deref(), &ctx.out, "Cleaning")?
+                buildlog::run(
+                    "xcodebuild",
+                    &arg_refs,
+                    cwd.as_deref(),
+                    &ctx.out,
+                    "Cleaning",
+                )?
             };
             if !ok {
-                return Err(CliError::new("xcodebuild clean exited with a non-zero status")
-                    .context("cleaning the project"));
+                return Err(
+                    CliError::new("xcodebuild clean exited with a non-zero status")
+                        .context("cleaning the project"),
+                );
             }
             "xcodebuild clean"
         }

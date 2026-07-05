@@ -349,9 +349,9 @@ impl Recompiler {
                 .any(|w| w[0] == "-primary-file" && w[1] == source_str)
         };
         let is_primary_line = |l: &str| {
-            shell_tokens(l)
-                .windows(2)
-                .any(|w| w[0] == "-primary-file" && (path_suffix_matches(&w[1], name) || w[1] == source_str))
+            shell_tokens(l).windows(2).any(|w| {
+                w[0] == "-primary-file" && (path_suffix_matches(&w[1], name) || w[1] == source_str)
+            })
         };
         let line = text
             .lines()
@@ -744,7 +744,12 @@ mod tests {
     fn shell_tokens_unescapes_and_splits() {
         assert_eq!(
             shell_tokens(r"swiftc -primary-file /Users/me/My\ Project/Foo.swift x\=y"),
-            vec!["swiftc", "-primary-file", "/Users/me/My Project/Foo.swift", "x=y"]
+            vec![
+                "swiftc",
+                "-primary-file",
+                "/Users/me/My Project/Foo.swift",
+                "x=y"
+            ]
         );
         assert_eq!(shell_tokens("plain  two"), vec!["plain", "two"]);
         assert_eq!(

@@ -67,10 +67,11 @@ pub fn run(ctx: &mut Context, what: What) -> CommandResult {
                         CliError::new(format!("failed to create {}: {e}", parent.display()))
                     })?;
                 }
-                std::fs::write(&path, "# sweetpad configuration — see `sweetpad help config`\n")
-                    .map_err(|e| {
-                        CliError::new(format!("failed to create {}: {e}", path.display()))
-                    })?;
+                std::fs::write(
+                    &path,
+                    "# sweetpad configuration — see `sweetpad help config`\n",
+                )
+                .map_err(|e| CliError::new(format!("failed to create {}: {e}", path.display())))?;
             }
             let path_str = path.display().to_string();
             process::stream("open", &["-t", &path_str], None)?;

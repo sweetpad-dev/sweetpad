@@ -91,7 +91,9 @@ impl Output {
     /// Emit one NDJSON event line to stdout (compact). No-op outside ndjson
     /// mode, so emitters can call it unconditionally.
     pub fn ndjson_event(&self, event: &serde_json::Value) {
-        if self.ndjson && let Ok(s) = serde_json::to_string(event) {
+        if self.ndjson
+            && let Ok(s) = serde_json::to_string(event)
+        {
             println!("{s}");
         }
     }

@@ -28,8 +28,7 @@ pub(crate) fn watch_swift(
             Ok(_) => {}
             Err(e) => ctx.out.error(&e),
         }
-        ctx.out
-            .note("watching for Swift changes (Ctrl-C to stop)…");
+        ctx.out.note("watching for Swift changes (Ctrl-C to stop)…");
         let (tx, rx) = mpsc::channel::<()>();
         let watcher = crate::cli::inject::watcher::Watcher::start(
             root,
@@ -69,6 +68,6 @@ pub mod scheme;
 pub mod self_update;
 pub mod settings;
 pub mod simulator;
-pub mod status;
 pub mod spm;
+pub mod status;
 pub mod test;
