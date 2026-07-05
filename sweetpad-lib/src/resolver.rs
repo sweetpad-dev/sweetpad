@@ -104,36 +104,47 @@ impl std::error::Error for Error {}
 /// producing a flat list of assignments in source order.
 pub fn flatten_xcconfig(path: &Path) -> Result<Vec<Assignment>, Error> {
     let mut out = Vec::new();
-    flatten_into(path, &mut out, &mut Vec::new())?;
+    flatten_into(path, &mut out, &mut Vec::new(), 0)?;
     Ok(out)
 }
+
+/// Recursion depth cap for `#include` chains. Real chains are single digits;
+/// past this the file is skipped rather than overflowing the stack on a
+/// pathological thousands-deep chain of distinct files.
+const MAX_INCLUDE_DEPTH: usize = 64;
 
 fn flatten_into(
     path: &Path,
     out: &mut Vec<Assignment>,
-    chain: &mut Vec<PathBuf>,
+    included: &mut Vec<PathBuf>,
+    depth: usize,
 ) -> Result<(), Error> {
-    // Cycle guard: Xcode warns ("Skipping the inclusion of … because it is
-    // already included") and skips a file already on the include chain rather
-    // than failing the build — or, as naive recursion would here, overflowing
-    // the stack. Canonicalize so the same file reached through different
-    // lexical spellings is still caught; fall back to the lexical path when
-    // canonicalize fails (e.g. the file is missing — the read below reports
-    // that properly).
-    let id = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    if chain.contains(&id) {
+    // Include-once guard: Xcode warns ("Skipping the inclusion of … because it
+    // is already included") and skips a file that was already included
+    // *anywhere* in this flatten — not just on the current chain. Tracking the
+    // whole flatten matches that behavior and also bounds total work: a
+    // chain-only guard (popped on return) still admits 2^n re-inlining of a
+    // diamond include graph — ~20 two-include files was already a multi-second
+    //, multi-million-assignment blowup. Canonicalize so the same file reached
+    // through different lexical spellings is still caught; fall back to the
+    // lexical path when canonicalize fails (e.g. the file is missing — the
+    // read below reports that properly).
+    if depth > MAX_INCLUDE_DEPTH {
         return Ok(());
     }
-    chain.push(id);
-    let result = flatten_entries(path, out, chain);
-    chain.pop();
-    result
+    let id = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if included.contains(&id) {
+        return Ok(());
+    }
+    included.push(id);
+    flatten_entries(path, out, included, depth)
 }
 
 fn flatten_entries(
     path: &Path,
     out: &mut Vec<Assignment>,
-    chain: &mut Vec<PathBuf>,
+    included: &mut Vec<PathBuf>,
+    depth: usize,
 ) -> Result<(), Error> {
     // Shared cache entry — iterate by reference and clone each assignment out
     // rather than consuming the (now `Arc`-owned) parse.
@@ -160,7 +171,7 @@ fn flatten_entries(
                 } else {
                     base_dir.join(&inc.path)
                 };
-                match flatten_into(&inc_path, out, chain) {
+                match flatten_into(&inc_path, out, included, depth + 1) {
                     Ok(()) => {}
                     // `#include?` forgives exactly one failure mode: the
                     // optional file *itself* being absent. A present-but-
@@ -318,7 +329,15 @@ fn substitute_inherited(key: &str, value: &str, inherited: &str) -> String {
     let mut out = String::new();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'$' && i + 1 < bytes.len() && (bytes[i + 1] == b'(' || bytes[i + 1] == b'{')
+        if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'$' {
+            // `$$` escapes a literal `$` — it can never start an inherited/
+            // self reference. Copy both so `$$(inherited)` survives to the
+            // expansion pass, which collapses the escape.
+            out.push_str("$$");
+            i += 2;
+        } else if bytes[i] == b'$'
+            && i + 1 < bytes.len()
+            && (bytes[i + 1] == b'(' || bytes[i + 1] == b'{')
         {
             let open = bytes[i + 1];
             let close = if open == b'(' { b')' } else { b'}' };
@@ -367,18 +386,15 @@ fn substitute_inherited(key: &str, value: &str, inherited: &str) -> String {
 }
 
 fn expand_variables(map: &mut BTreeMap<String, String>) {
-    for _ in 0..16 {
-        let snapshot = map.clone();
-        let mut changed = false;
-        for value in map.values_mut() {
-            let expanded = expand_one(value, &snapshot);
-            if *value != expanded {
-                *value = expanded;
-                changed = true;
-            }
-        }
-        if !changed {
-            return;
+    // A single pass suffices: `expand_one` fully resolves referenced values
+    // recursively (see `resolve_var_with_depth`). Re-running it over its own
+    // output is not idempotent — a `$$(FOO)` escape collapses to the literal
+    // `$(FOO)` on the first pass, and a second pass would wrongly expand it.
+    let snapshot = map.clone();
+    for value in map.values_mut() {
+        let expanded = expand_one(value, &snapshot);
+        if *value != expanded {
+            *value = expanded;
         }
     }
 }

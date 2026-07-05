@@ -220,14 +220,19 @@ pub fn swift_arguments(
     }
     // SWIFT_OPTIMIZATION_LEVEL: the spec enum maps `-Owholemodule` specially and
     // passes everything else (`-Onone`/`-O`/`-Osize`) through as the flag itself.
+    // The hand-coded fallbacks apply the same empty/unexpanded guard as
+    // `spec`: a cleared `SWIFT_OPTIMIZATION_LEVEL =` xcconfig idiom would
+    // otherwise emit a bare empty flag, and an empty `SWIFT_VERSION` an
+    // invalid `-swift-version ""` swiftc rejects.
+    let present = |v: &str| !v.is_empty() && !v.contains("$(");
     if let Some(args) = spec("SWIFT_OPTIMIZATION_LEVEL") {
         a.extend(args);
-    } else if let Some(opt) = get("SWIFT_OPTIMIZATION_LEVEL") {
+    } else if let Some(opt) = get("SWIFT_OPTIMIZATION_LEVEL").filter(|v| present(v)) {
         a.flag(opt);
     }
     // SWIFT_VERSION has no swift-spec encoding — the build system passes it,
     // collapsing `5.0` → `5`.
-    if let Some(v) = get("SWIFT_VERSION") {
+    if let Some(v) = get("SWIFT_VERSION").filter(|v| present(v)) {
         a.pair("-swift-version", swift_version(v));
     }
 
@@ -306,7 +311,9 @@ pub fn swift_arguments(
 
     // --- Clang importer flags ----------------------------------------------
     // GCC_PREPROCESSOR_DEFINITIONS reach the embedded clang importer as -Xcc -D.
-    for def in ws(get("GCC_PREPROCESSOR_DEFINITIONS")) {
+    // Quote-aware: `APP_NAME='My App'` is one define — a plain whitespace
+    // split would tear it into two garbage macros with unbalanced quotes.
+    for def in ws_quoted(get("GCC_PREPROCESSOR_DEFINITIONS")) {
         a.pair("-Xcc", &format!("-D{def}"));
     }
     // The products `include` dir, where Xcode drops generated module maps.
@@ -610,7 +617,10 @@ pub fn link_arguments(
     if mach_o == Some("mh_bundle") {
         a.flag("-bundle");
     }
-    if let Some(level) = get("GCC_OPTIMIZATION_LEVEL") {
+    // A cleared `GCC_OPTIMIZATION_LEVEL =` must emit nothing — a bare `-O`
+    // would silently link at clang's -O1 instead of the project's level.
+    if let Some(level) = get("GCC_OPTIMIZATION_LEVEL").filter(|v| !v.is_empty() && !v.contains("$("))
+    {
         a.flag(&format!("-O{level}"));
     }
     let library_paths = emit_library_paths(&mut a, settings);
@@ -1273,6 +1283,47 @@ fn ws(v: Option<&str>) -> Vec<&str> {
 /// string as a literal (relative) path and never find the framework / header /
 /// module map. (Distinct from [`ws`], which leaves quotes intact for value
 /// lists like preprocessor defines.)
+/// Like [`ws_unquoted`], but the quote characters are *kept* in each token —
+/// for value lists (preprocessor defines) where the quoting is part of the
+/// value, yet a quoted segment's spaces still must not split the token:
+/// `APP_NAME='My App'` is one define, not two.
+fn ws_quoted(v: Option<&str>) -> Vec<String> {
+    let Some(s) = v else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    let mut started = false;
+    for ch in s.chars() {
+        match (ch, quote) {
+            (c @ ('"' | '\''), None) => {
+                quote = Some(c);
+                cur.push(c);
+                started = true;
+            }
+            (c, Some(q)) if c == q => {
+                quote = None;
+                cur.push(c);
+            }
+            (c, None) if c.is_whitespace() => {
+                if started {
+                    out.push(std::mem::take(&mut cur));
+                    started = false;
+                }
+            }
+            (c, _) => {
+                cur.push(c);
+                started = true;
+            }
+        }
+    }
+    if started {
+        out.push(cur);
+    }
+    out
+}
+
 fn ws_unquoted(v: Option<&str>) -> Vec<String> {
     let Some(s) = v else {
         return Vec::new();

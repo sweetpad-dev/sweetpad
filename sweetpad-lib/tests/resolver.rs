@@ -114,6 +114,58 @@ fn inherited_without_lower_layer_starts_with_space() {
 }
 
 #[test]
+fn diamond_includes_are_flattened_once() {
+    // A doubling include graph must not re-inline subtrees 2^n times — the
+    // include-once rule (matching Xcode's "already included" skip) keeps the
+    // flatten linear. Before the fix, 24 two-include files meant 2^23
+    // assignments and a multi-second hang.
+    let dir = std::env::temp_dir().join(format!("sweetpad-include-once-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for i in 0..24 {
+        let body = if i == 23 {
+            "LEAF = yes\n".to_string()
+        } else {
+            format!(
+                "#include \"f{next}.xcconfig\"\n#include \"f{next}.xcconfig\"\n",
+                next = i + 1
+            )
+        };
+        std::fs::write(dir.join(format!("f{i}.xcconfig")), body).unwrap();
+    }
+    let ass = flatten_xcconfig(&dir.join("f0.xcconfig")).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(ass.len(), 1, "LEAF must be inlined exactly once");
+}
+
+#[test]
+fn double_dollar_escape_stays_literal() {
+    // `$$` means a literal `$` (swift-build semantics): `$$(inherited)` must
+    // not be folded at merge time nor expanded by a later pass.
+    let dir = std::env::temp_dir().join(format!("sweetpad-dollar-escape-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("lower.xcconfig"), "FOO = bar\n").unwrap();
+    std::fs::write(
+        dir.join("upper.xcconfig"),
+        "FOO = $$(inherited) extra\nBAZ = $$(FOO) end\n",
+    )
+    .unwrap();
+    let lower = flatten_xcconfig(&dir.join("lower.xcconfig")).unwrap();
+    let upper = flatten_xcconfig(&dir.join("upper.xcconfig")).unwrap();
+    let r = resolve(&[&lower, &upper], &ctx("macosx", "arm64", "Debug"));
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        r.get("FOO").map(String::as_str),
+        Some("$(inherited) extra"),
+        "$$(inherited) is a literal, not a fold"
+    );
+    assert_eq!(
+        r.get("BAZ").map(String::as_str),
+        Some("$(FOO) end"),
+        "$$(FOO) must not be re-expanded by a second pass"
+    );
+}
+
+#[test]
 fn include_directive_brings_in_referenced_xcconfig() {
     let ass = flatten_xcconfig(&xcconfig_path("include-directive")).unwrap();
     let r = resolve(&[&ass], &ctx("macosx", "arm64", "Debug"));

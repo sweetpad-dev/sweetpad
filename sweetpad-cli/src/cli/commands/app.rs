@@ -600,10 +600,23 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
             Some(d) => d,
             None => resolve::pick_destination(ctx, &resolved.container.key(), &simctl::list()?)?,
         };
-        if destination == "platform=macOS" {
+        let platform = destination_platform(&destination).unwrap_or_default();
+        if platform.eq_ignore_ascii_case("macOS") {
             // The picker's "My Mac" row (or a config/remembered macOS
-            // destination) runs the native-app flow, not a simulator.
+            // destination, with or without extra keys like arch=) runs the
+            // native-app flow, not a simulator.
             (destination, Target::Mac)
+        } else if !platform.is_empty() && !platform.to_ascii_lowercase().contains("simulator") {
+            // A physical-device destination (platform=iOS,id=…) routes to
+            // devicectl — handing its udid to simctl would fail with an
+            // unrelated "Invalid device" much later.
+            let udid = udid(&destination).map_err(|_| {
+                CliError::new(format!(
+                    "physical-device destinations need an id= (got {destination:?})"
+                ))
+                .kind(ErrorKind::TargetResolution)
+            })?;
+            (destination, Target::Device(udid))
         } else {
             let udid = destination_udid(&destination)?;
             (destination, Target::Simulator(udid))
@@ -741,6 +754,13 @@ fn record_last_launched(ctx: &mut Context, plan: &RunPlan) {
     let key = plan.resolved.container.key();
     ctx.state.project_mut(&key).last_launched_app = Some(last);
     let _ = ctx.state.save();
+}
+
+/// Escape a value for embedding inside a double-quoted NSPredicate string
+/// literal: a raw `"` or `\` would otherwise terminate the literal and make
+/// `log stream` reject the whole predicate.
+fn predicate_escape(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// The `platform=` value from a `-destination` specifier, e.g. `iOS`.
@@ -1024,8 +1044,12 @@ fn run_hot_session(
         .map_or_else(|| std::path::PathBuf::from("."), Path::to_path_buf);
 
     // Per-session scratch dir for the recompiler's objects/dylibs + build log.
+    // The guard removes it on every exit path — the early error returns below
+    // would otherwise leak a multi-MB transcript per failed run (the pid-keyed
+    // name means no later run cleans it up either).
     let work = std::env::temp_dir().join(format!("sweetpad-hot-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&work);
+    let _work_guard = RemoveDirOnDrop(work.clone());
     let build_log = work.join("build.log");
 
     // Boot the simulator on a background thread so it comes up while the project
@@ -1080,7 +1104,7 @@ fn run_hot_session(
         sdk.to_string(),
         inject::host_arch(),
         developer_dir,
-        Some(build_log),
+        Some(build_log.clone()),
         work,
     ));
     let log = hot_logger(&ctx.out);
@@ -1114,7 +1138,7 @@ fn run_hot_session(
     let outcome = if let Some(file) = selfcheck {
         hot_selfcheck(ctx, &server, file, udid)
     } else if ctx.out.is_interactive() {
-        terminate_on_exit = hot_key_loop(ctx, plan, udid, &launch_env, &mut logs);
+        terminate_on_exit = hot_key_loop(ctx, plan, udid, &launch_env, &mut logs, &build_log);
         Ok(())
     } else {
         ctx.out
@@ -1133,10 +1157,17 @@ fn run_hot_session(
         let _ = simctl::terminate(udid, &app.bundle_id);
     }
     drop(logs);
-    let _ = std::fs::remove_dir_all(
-        std::env::temp_dir().join(format!("sweetpad-hot-{}", std::process::id())),
-    );
     outcome
+}
+
+/// Removes a scratch directory on drop, so every exit path — including the
+/// hot session's early error returns — cleans up after itself.
+struct RemoveDirOnDrop(std::path::PathBuf);
+
+impl Drop for RemoveDirOnDrop {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// Marker token in the hot-reload fixture's `ContentView.swift` that the
@@ -1196,10 +1227,19 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path, udid: &
     // Be generous so a slow/contended CI runner doesn't flake (the real watcher
     // loop has no such deadline — this bound only guards the self-check).
     let result = server.wait_for_result(baseline, Duration::from_secs(180));
-    // Restore the fixture regardless of outcome, and drop the backup once the
-    // pristine content is back in place.
-    let _ = std::fs::write(file, &original);
-    let _ = std::fs::remove_file(&backup);
+    // Restore the fixture regardless of outcome, and drop the backup only
+    // once the pristine content is verifiably back in place — a failed
+    // restore must keep the backup so the next run can self-heal.
+    match std::fs::write(file, &original) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&backup);
+        }
+        Err(e) => ctx.out.alert(&format!(
+            "self-check: failed to restore {}: {e} (backup kept at {})",
+            file.display(),
+            backup.display()
+        )),
+    }
 
     match result {
         Some(true) => ctx.out.note("hot reload self-check: ✅ .injected"),
@@ -1307,6 +1347,7 @@ fn hot_key_loop(
     udid: &str,
     env: &[(String, String)],
     logs: &mut Option<LogStream>,
+    build_log: &Path,
 ) -> bool {
     let Ok(_raw) = rawmode::RawMode::enable() else {
         // No TTY for raw mode — just follow the log stream until Ctrl-C.
@@ -1331,8 +1372,10 @@ fn hot_key_loop(
                     };
                     // The session log stream follows the app by name, so it's
                     // left running — just terminate, rebuild, and relaunch.
+                    // Re-tee the transcript so the build-log recompiler keeps
+                    // seeing current frontend commands after the rebuild.
                     let _ = simctl::terminate(udid, &app.bundle_id);
-                    match build(plan, &ctx.out, None) {
+                    match build(plan, &ctx.out, Some(build_log)) {
                         BuildOutcome::Ok => {
                             if let Err(e) = launch_hot(ctx, udid, &app, env, &plan.launch.args) {
                                 ctx.out.error(&e);
@@ -2059,6 +2102,10 @@ fn check_exit(ctx: &Context, running: &mut Running) {
         .and_then(|c| c.try_wait().ok().flatten())
         .is_some();
     if exited {
+        // try_wait() reaped the child, so its pid can now be recycled —
+        // drop it from the signal handler's registry immediately rather than
+        // at session end, or a later SIGTERM could signal a stranger.
+        crate::cli::signals::unregister_child(running.reap_slot.take());
         ctx.out.alert(&format!("✗ {} exited", running.name));
         running.reported_exit = true;
     }
@@ -2114,7 +2161,7 @@ fn log_command(
     filters: &LogFilterArgs,
 ) -> (&'static str, Vec<String>) {
     use std::fmt::Write as _;
-    let exe = process_name(app);
+    let exe = predicate_escape(process_name(app));
     // A raw --predicate replaces the default process match wholesale;
     // --subsystem/--category narrow it.
     let mut predicate = filters.predicate.clone().unwrap_or_else(|| {
@@ -2123,10 +2170,10 @@ fn log_command(
         )
     });
     if let Some(subsystem) = &filters.subsystem {
-        let _ = write!(predicate, " AND subsystem == \"{subsystem}\"");
+        let _ = write!(predicate, " AND subsystem == \"{}\"", predicate_escape(subsystem));
     }
     if let Some(category) = &filters.category {
-        let _ = write!(predicate, " AND category == \"{category}\"");
+        let _ = write!(predicate, " AND category == \"{}\"", predicate_escape(category));
     }
     if let Some(marker) = marker {
         let _ = write!(

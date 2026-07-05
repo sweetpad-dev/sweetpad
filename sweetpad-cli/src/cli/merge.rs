@@ -159,7 +159,13 @@ pub fn resolve(kind: Kind, paths: &[PathBuf], force: bool) -> CommandResult {
     let repo = PathBuf::from(git(None, &["rev-parse", "--show-toplevel"])?.trim());
 
     let targets: Vec<String> = if paths.is_empty() {
-        git(Some(&repo), &["diff", "--name-only", "--diff-filter=U"])?
+        git(
+            Some(&repo),
+            // quotePath off: with the default on, any non-ASCII path comes
+            // back C-quoted ("Caf\\303\\251…"), fails the extension match,
+            // and the conflict is silently skipped.
+            &["-c", "core.quotePath=off", "diff", "--name-only", "--diff-filter=U"],
+        )?
             .lines()
             .map(str::trim)
             .filter(|l| !l.is_empty() && kind.matches(l))
@@ -199,7 +205,13 @@ pub fn resolve_auto(paths: &[PathBuf], force: bool) -> CommandResult {
     let repo = PathBuf::from(git(None, &["rev-parse", "--show-toplevel"])?.trim());
 
     let targets: Vec<String> = if paths.is_empty() {
-        git(Some(&repo), &["diff", "--name-only", "--diff-filter=U"])?
+        git(
+            Some(&repo),
+            // quotePath off: with the default on, any non-ASCII path comes
+            // back C-quoted ("Caf\\303\\251…"), fails the extension match,
+            // and the conflict is silently skipped.
+            &["-c", "core.quotePath=off", "diff", "--name-only", "--diff-filter=U"],
+        )?
             .lines()
             .map(str::trim)
             .filter(|l| !l.is_empty() && (Kind::Pbxproj.matches(l) || Kind::Spm.matches(l)))

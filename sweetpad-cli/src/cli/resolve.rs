@@ -468,10 +468,16 @@ pub fn select_simulator<'a>(
     } else {
         sims.iter().collect()
     };
-    let labels: Vec<String> = pool.iter().map(|s| s.label()).collect();
+    // Disambiguate identical labels (same name + OS clones) and map the choice
+    // back by position — matching on the label string alone would silently act
+    // on the *first* twin no matter which row the user picked.
+    let mut labels: Vec<String> = pool.iter().map(|s| s.label()).collect();
+    disambiguate_labels(&mut labels, &pool);
     let chosen = choose(ctx, "simulator", None, &labels)?;
-    pool.into_iter()
-        .find(|s| s.label() == chosen)
+    labels
+        .iter()
+        .position(|l| *l == chosen)
+        .map(|i| pool[i])
         .ok_or_else(|| CliError::new("simulator not found").kind(ErrorKind::TargetResolution))
 }
 
@@ -832,12 +838,24 @@ fn recover_stale(
     err: CliError,
 ) -> Result<Option<String>, CliError> {
     let key = container.key();
-    let field = |p: &crate::cli::state::ProjectState| match what {
-        "scheme" => p.scheme.clone(),
-        _ => p.configuration.clone(),
-    };
-    let remembered = ctx.state.projects.get(&key).and_then(field);
-    if remembered.as_deref() != Some(value) {
+    // The stale value may live in the build state, the testing state
+    // (`context select … --testing`), or both — `resolve_testing` reads both
+    // layers, so recovery must clear whichever one(s) hold it, or a stale
+    // testing pick fails every `sweetpad test` forever.
+    let st = ctx.state.projects.get(&key);
+    let build_match = st
+        .and_then(|p| match what {
+            "scheme" => p.scheme.as_deref(),
+            _ => p.configuration.as_deref(),
+        })
+        == Some(value);
+    let testing_match = st
+        .and_then(|p| match what {
+            "scheme" => p.testing.scheme.as_deref(),
+            _ => p.testing.configuration.as_deref(),
+        })
+        == Some(value);
+    if !build_match && !testing_match {
         return Err(err);
     }
     let flag = match what {
@@ -849,20 +867,49 @@ fn recover_stale(
         return Err(err);
     }
     let entry = ctx.state.project_mut(&key);
-    match what {
-        "scheme" => entry.scheme = None,
-        _ => entry.configuration = None,
+    if what == "scheme" {
+        if build_match {
+            entry.scheme = None;
+        }
+        if testing_match {
+            entry.testing.scheme = None;
+        }
+    } else {
+        if build_match {
+            entry.configuration = None;
+        }
+        if testing_match {
+            entry.testing.configuration = None;
+        }
     }
     let _ = ctx.state.save();
+    let hint = if testing_match {
+        format!("`sweetpad context remove {what} --testing` does this by hand")
+    } else {
+        format!("`sweetpad context remove {what}` does this by hand")
+    };
     ctx.out.warn(&format!(
-        "the remembered {what} {value:?} no longer exists in the project — cleared it \
-         (`sweetpad context remove {what}` does this by hand)"
+        "the remembered {what} {value:?} no longer exists in the project — cleared it ({hint})"
     ));
     let cfg = ctx.config.for_project(&key);
     let pf = ctx.project_file(container);
     let higher = match what {
-        "scheme" => flag.or_else(|| cfg.scheme.clone()).or_else(|| pf.scheme.clone()),
+        "scheme" => flag
+            .or_else(|| testing_match.then(|| cfg.testing.scheme.clone()).flatten())
+            .or_else(|| testing_match.then(|| pf.testing.scheme.clone()).flatten())
+            .or_else(|| cfg.scheme.clone())
+            .or_else(|| pf.scheme.clone()),
         _ => flag
+            .or_else(|| {
+                testing_match
+                    .then(|| cfg.testing.configuration.clone())
+                    .flatten()
+            })
+            .or_else(|| {
+                testing_match
+                    .then(|| pf.testing.configuration.clone())
+                    .flatten()
+            })
             .or_else(|| cfg.configuration.clone())
             .or_else(|| pf.configuration.clone()),
     };
@@ -1053,7 +1100,7 @@ fn destination_choices<'a>(
 /// Append a short udid suffix to any labels that would otherwise be identical
 /// (same name, OS version, and boot marker), so the picker shows distinct rows
 /// and the chosen label maps back to exactly one simulator in [`pick_destination`].
-fn disambiguate_labels(labels: &mut [String], ordered: &[&crate::cli::simctl::Simulator]) {
+pub(crate) fn disambiguate_labels(labels: &mut [String], ordered: &[&crate::cli::simctl::Simulator]) {
     use std::fmt::Write as _;
     let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for label in labels.iter() {

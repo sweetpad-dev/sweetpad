@@ -1272,11 +1272,17 @@ fn path_from_uri(uri: &str) -> PathBuf {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
+        // Decode on bytes only: slicing `raw` here would panic on a non-char
+        // boundary when a client sends `%` followed by unencoded non-ASCII
+        // (several BSP clients don't percent-encode), and hex is validated
+        // per digit so a stray `%+5` stays literal.
         if bytes[i] == b'%'
             && i + 2 < bytes.len()
-            && let Ok(b) = u8::from_str_radix(&raw[i + 1..i + 3], 16)
+            && let Some(hi) = (bytes[i + 1] as char).to_digit(16)
+            && let Some(lo) = (bytes[i + 2] as char).to_digit(16)
         {
-            out.push(b);
+            // Two hex digits are ≤ 0xFF by construction.
+            out.push(u8::try_from(hi * 16 + lo).unwrap_or(u8::MAX));
             i += 3;
             continue;
         }
@@ -1382,7 +1388,27 @@ fn editor_sdk_for(sdkroot: &str, supported_platforms: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::editor_sdk_for;
+    use super::{editor_sdk_for, path_from_uri};
+
+    #[test]
+    fn path_from_uri_survives_unencoded_non_ascii_after_percent() {
+        // A `%` followed within two bytes by a multi-byte char used to panic
+        // (str slice off a char boundary) and kill the whole BSP server.
+        assert_eq!(
+            path_from_uri("file:///tmp/100%€/x.swift"),
+            std::path::PathBuf::from("/tmp/100%€/x.swift")
+        );
+        // Normal decoding still works, and per-digit hex validation keeps a
+        // stray `%+5` literal instead of decoding it.
+        assert_eq!(
+            path_from_uri("file:///a%20b/c.swift"),
+            std::path::PathBuf::from("/a b/c.swift")
+        );
+        assert_eq!(
+            path_from_uri("file:///x%+5y"),
+            std::path::PathBuf::from("/x%+5y")
+        );
+    }
 
     #[test]
     fn editor_sdk_from_concrete_sdkroot() {

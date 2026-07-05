@@ -567,10 +567,31 @@ fn effective<'a>(
     if let Some(value) = defaults_value(project, scope, v) {
         return (Some(value), "sweetpad.toml");
     }
-    match get(st, scope, v) {
-        Some(value) => (Some(value), "remembered"),
-        None => (None, ""),
+    if let Some(value) = get(st, scope, v) {
+        return (Some(value), "remembered");
     }
+    // `sweetpad test` falls back to the *build* context for scheme /
+    // configuration / destination (`resolve_testing`'s documented order), so
+    // the effective view must show that value — reporting "(not set)" here
+    // would tell a script the opposite of what `test` will actually use.
+    if matches!(scope, Scope::Testing)
+        && matches!(
+            v,
+            Variable::Scheme | Variable::Configuration | Variable::Destination
+        )
+    {
+        let (value, source) = effective(st, cfg, project, Scope::Build, v);
+        if value.is_some() {
+            let source = match source {
+                "config" => "build config",
+                "sweetpad.toml" => "build sweetpad.toml",
+                "remembered" => "build remembered",
+                other => other,
+            };
+            return (value, source);
+        }
+    }
+    (None, "")
 }
 
 fn print_scope(

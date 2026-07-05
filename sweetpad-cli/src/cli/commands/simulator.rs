@@ -371,10 +371,16 @@ fn boot(ctx: &mut Context, target: Option<&str>, wait: bool) -> CommandResult {
             CliError::new(format!("no simulator matching {t:?}")).kind(ErrorKind::TargetResolution)
         })?
     } else {
-        let labels: Vec<String> = sims.iter().map(simctl::Simulator::label).collect();
+        // Disambiguate identical labels (name + OS clones) and map back by
+        // position, so the picker can never boot the wrong twin.
+        let refs: Vec<&simctl::Simulator> = sims.iter().collect();
+        let mut labels: Vec<String> = refs.iter().map(|s| s.label()).collect();
+        resolve::disambiguate_labels(&mut labels, &refs);
         let chosen = resolve::choose(ctx, "simulator", None, &labels)?;
-        sims.iter()
-            .find(|s| s.label() == chosen)
+        labels
+            .iter()
+            .position(|l| *l == chosen)
+            .map(|i| refs[i])
             .ok_or_else(|| CliError::new("simulator not found").kind(ErrorKind::TargetResolution))?
     };
 
@@ -459,11 +465,14 @@ fn screenshot(
 /// Put a PNG file on the macOS clipboard via osascript (`«class PNGf»`) — the
 /// only pasteboard route that needs no extra dependency.
 fn copy_png_to_clipboard(path: &std::path::Path) -> Result<(), CliError> {
-    let script = format!(
-        "set the clipboard to (read (POSIX file \"{}\") as «class PNGf»)",
-        path.display()
-    );
-    crate::cli::process::capture("osascript", &["-e", &script], None)
+    // The path rides in as an argv item (`on run argv`) instead of being
+    // spliced into the script source, where a `"` or `\` in the path would
+    // break compilation — or execute the path's content as AppleScript.
+    let script = "on run argv\n\
+                  set the clipboard to (read (POSIX file (item 1 of argv)) as «class PNGf»)\n\
+                  end run";
+    let path = path.to_string_lossy();
+    crate::cli::process::capture("osascript", &["-e", script, path.as_ref()], None)
         .map(|_| ())
         .map_err(|e| e.context("copying the screenshot to the clipboard"))
 }

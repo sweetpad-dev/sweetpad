@@ -501,28 +501,53 @@ impl<'a> Parser<'a> {
                         Some(b'n') => out.push('\n'),
                         Some(b'r') => out.push('\r'),
                         Some(b't') => out.push('\t'),
-                        Some(b'0') => out.push('\0'),
                         Some(b'a') => out.push('\x07'),
                         Some(b'b') => out.push('\x08'),
                         Some(b'f') => out.push('\x0c'),
                         Some(b'v') => out.push('\x0b'),
                         Some(b'U') => {
-                            let mut code: u32 = 0;
-                            for _ in 0..4 {
-                                let d = self
-                                    .advance()
-                                    .ok_or_else(|| self.error("incomplete unicode escape"))?;
-                                let v: u32 = match d {
-                                    b'0'..=b'9' => u32::from(d - b'0'),
-                                    b'a'..=b'f' => u32::from(d - b'a' + 10),
-                                    b'A'..=b'F' => u32::from(d - b'A' + 10),
-                                    _ => return Err(self.error("bad hex digit")),
-                                };
-                                code = code * 16 + v;
-                            }
+                            // Apple's old-style serializer escapes per UTF-16
+                            // code unit, so an astral char (emoji) arrives as
+                            // a surrogate pair of two \U escapes — recombine
+                            // it like CF does instead of rejecting the file.
+                            let hi = self.unicode_escape_unit()?;
+                            let code = if (0xD800..=0xDBFF).contains(&hi)
+                                && self.peek() == Some(b'\\')
+                                && self.peek_at(1) == Some(b'U')
+                            {
+                                self.pos += 2;
+                                let lo = self.unicode_escape_unit()?;
+                                if (0xDC00..=0xDFFF).contains(&lo) {
+                                    0x10000 + ((hi - 0xD800) << 10) + (lo - 0xDC00)
+                                } else {
+                                    return Err(self.error("bad unicode codepoint"));
+                                }
+                            } else {
+                                hi
+                            };
                             match char::from_u32(code) {
                                 Some(c) => out.push(c),
                                 None => return Err(self.error("bad unicode codepoint")),
+                            }
+                        }
+                        Some(d @ b'0'..=b'7') => {
+                            // OpenStep octal escape: up to three octal digits
+                            // (`\101` = 'A'); a bare `\0` is NUL. Consuming
+                            // only the first digit would leak the rest into
+                            // the value as literal characters.
+                            let mut code = u32::from(d - b'0');
+                            for _ in 0..2 {
+                                match self.peek() {
+                                    Some(d @ b'0'..=b'7') => {
+                                        self.pos += 1;
+                                        code = code * 8 + u32::from(d - b'0');
+                                    }
+                                    _ => break,
+                                }
+                            }
+                            match char::from_u32(code) {
+                                Some(c) => out.push(c),
+                                None => return Err(self.error("bad octal escape")),
                             }
                         }
                         Some(other) => out.push(other as char),
@@ -532,6 +557,24 @@ impl<'a> Parser<'a> {
                 _ => unreachable!(),
             }
         }
+    }
+
+    /// Four hex digits of a `\Uxxxx` escape — one UTF-16 code unit.
+    fn unicode_escape_unit(&mut self) -> Result<u32, ParseError> {
+        let mut code: u32 = 0;
+        for _ in 0..4 {
+            let d = self
+                .advance()
+                .ok_or_else(|| self.error("incomplete unicode escape"))?;
+            let v: u32 = match d {
+                b'0'..=b'9' => u32::from(d - b'0'),
+                b'a'..=b'f' => u32::from(d - b'a' + 10),
+                b'A'..=b'F' => u32::from(d - b'A' + 10),
+                _ => return Err(self.error("bad hex digit")),
+            };
+            code = code * 16 + v;
+        }
+        Ok(code)
     }
 
     fn parse_bare_string(&mut self) -> Result<String, ParseError> {
@@ -617,6 +660,26 @@ mod tests {
     fn parses_empty_dict() {
         let v = parse("{}").unwrap();
         assert_eq!(v, Value::Dict(Dict::new()));
+    }
+
+    #[test]
+    fn quoted_string_decodes_octal_escapes() {
+        // CF's old-style parser reads `\ddd` as up to three octal digits;
+        // consuming only `\0` used to leak the remaining digits as literals.
+        let v = parse(r#"{ a = "\101\012x"; nul = "\0z"; }"#).unwrap();
+        assert_eq!(v.get("a").and_then(Value::as_str), Some("A\nx"));
+        assert_eq!(v.get("nul").and_then(Value::as_str), Some("\0z"));
+    }
+
+    #[test]
+    fn quoted_string_recombines_surrogate_pairs() {
+        // Apple's serializer escapes per UTF-16 code unit, so an emoji is a
+        // `\Ud83d\Ude00` pair — previously a hard "bad unicode codepoint".
+        let v = parse(r#"{ e = "\Ud83d\Ude00"; bmp = "\U00e9"; }"#).unwrap();
+        assert_eq!(v.get("e").and_then(Value::as_str), Some("😀"));
+        assert_eq!(v.get("bmp").and_then(Value::as_str), Some("é"));
+        // A lone high surrogate is still rejected.
+        assert!(parse(r#"{ bad = "\Ud83d"; }"#).is_err());
     }
 
     #[test]

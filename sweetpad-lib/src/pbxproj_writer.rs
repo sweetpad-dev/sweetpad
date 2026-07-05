@@ -233,7 +233,12 @@ fn build_comments(root: &Value, project_name: &str) -> HashMap<String, String> {
     };
     let mut comments = HashMap::new();
     for (guid, _) in objects {
-        if let Some(c) = ctx.comment_for(guid, 0) {
+        // A name containing `*/` would terminate the block comment early and
+        // make the written file unparseable (by Xcode too); the annotation is
+        // cosmetic, so drop it rather than corrupt the file.
+        if let Some(c) = ctx.comment_for(guid, 0)
+            && !c.contains("*/")
+        {
             comments.insert(guid.clone(), c);
         }
     }

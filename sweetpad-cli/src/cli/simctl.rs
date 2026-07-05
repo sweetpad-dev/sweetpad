@@ -434,7 +434,17 @@ pub fn open_app() -> Result<(), CliError> {
 /// Block until a booting simulator is fully up (`simctl bootstatus -b`).
 pub fn boot_wait(udid: &str) -> Result<(), CliError> {
     process::run("xcrun", &["simctl", "bootstatus", udid, "-b"], None, true)
-        .map(|_| ())
+        .and_then(|ok| {
+            // `run` returns Ok(false) on a non-zero exit — a bootstatus that
+            // errored mid-boot must not report the boot as finished.
+            if ok {
+                Ok(())
+            } else {
+                Err(CliError::new(
+                    "simctl bootstatus exited with a non-zero status",
+                ))
+            }
+        })
         .context("waiting for the simulator to finish booting")
 }
 
@@ -554,8 +564,24 @@ pub fn record(udid: &str, path: &str) -> Result<bool, CliError> {
     .context("recording the simulator screen")?;
     let mut child = child;
     crate::cli::signals::set_forward_child(child.id());
-    let status = child.wait();
-    crate::cli::signals::clear_forward_child();
+    // Poll-reap instead of a blocking wait: recordVideo takes seconds to
+    // finalize after the forwarded SIGINT, and users double-tap Ctrl-C. With
+    // a blocking wait the forward pid stayed armed for that whole window
+    // after the reap, so a second Ctrl-C could signal a freed (recyclable)
+    // pid. Polling shrinks the armed-after-reap window to one loop tick.
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                crate::cli::signals::clear_forward_child();
+                break child.wait();
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Err(e) => {
+                crate::cli::signals::clear_forward_child();
+                break Err(e);
+            }
+        }
+    };
     let stopped = crate::cli::signals::take_forwarded();
     match status {
         Ok(s) if s.success() || stopped => Ok(stopped),

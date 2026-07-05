@@ -393,6 +393,10 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
     let pristine = std::fs::read_to_string(&pbxproj_path).map_err(|e| {
         CliError::new(format!("failed to read {}: {e}", pbxproj_path.display()))
     })?;
+    // The discovery resolve rewrites Package.resolved with the new package's
+    // pins — snapshot it too, so a cancel doesn't leave ghost pins that make
+    // `dep list`/`dep remove` misreport the abandoned package.
+    let pristine_lockfile = read_lockfile(container);
 
     // 1. Add the package reference (only) and write it, so resolution can fetch.
     let mut root = parse_owned(&xcodeproj)?;
@@ -435,9 +439,22 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
             Ok(())
         }
         Err(e) => {
-            let _ = std::fs::write(&pbxproj_path, &pristine);
-            ctx.out
-                .note("rolled the package reference back out of the project (nothing linked)");
+            if let Some(text) = pristine_lockfile {
+                let _ = std::fs::write(resolved_path(container), text);
+            }
+            // Report the rollback honestly — claiming success while the
+            // dangling reference remains would hide exactly the state this
+            // rollback exists to prevent.
+            if std::fs::write(&pbxproj_path, &pristine).is_ok() {
+                ctx.out
+                    .note("rolled the package reference back out of the project (nothing linked)");
+            } else {
+                ctx.out.warn(&format!(
+                    "could not roll the package reference back out of {} — the project may \
+                     reference the package without linking it",
+                    pbxproj_path.display()
+                ));
+            }
             Err(e)
         }
     }
@@ -490,12 +507,17 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
             })?;
         }
 
-        // 3. Settle products + targets and link each pair.
-        let (package_name, products) = if need_discovery {
-            let (name, available) = package_products(container, &args.url)?;
-            (name, choose("product", &available, &args.products, ctx)?)
+        // 3. Settle products + targets and link each pair. The `--package`
+        // value must be the dependency's *identity* (the URL basename), not
+        // the checkout manifest's declared name — for firebase-ios-sdk the
+        // manifest says "Firebase", and `.product(package: "Firebase")`
+        // fails the next resolve with "unknown package".
+        let package_name = package_display_name(&args.url);
+        let products = if need_discovery {
+            let available = package_products(container, &args.url)?;
+            choose("product", &available, &args.products, ctx)?
         } else {
-            (package_display_name(&args.url), args.products.clone())
+            args.products.clone()
         };
         let target_names = swiftpm::manifest(container)?
             .targets
@@ -587,21 +609,28 @@ fn discover_products(
     ctx.out.step("Resolving package dependencies", || {
         resolve_packages(container, Some(&clone), &ctx.out, true)
     })?;
-    let checkout = resolve_checkout(&clone, url).ok_or_else(|| {
-        CliError::new("could not locate the resolved package checkout to read its products")
-    })?;
-    Ok(product_names(&swiftpm::manifest_at(&checkout)?))
+    let products = (|| {
+        let checkout = resolve_checkout(&clone, url).ok_or_else(|| {
+            CliError::new("could not locate the resolved package checkout to read its products")
+        })?;
+        Ok(product_names(&swiftpm::manifest_at(&checkout)?))
+    })();
+    // The discovery checkouts (a full source clone of the package graph) are
+    // only needed to read the manifest — the pid-keyed dir would otherwise
+    // accumulate hundreds of MB per `dep add` with no later cleanup.
+    let _ = std::fs::remove_dir_all(&clone);
+    products
 }
 
-/// For a `Package.swift` add: resolve, then read the just-added package's name
-/// and products from its `.build` checkout.
-fn package_products(container: &Container, url: &str) -> Result<(String, Vec<String>), CliError> {
+/// For a `Package.swift` add: resolve, then read the just-added package's
+/// products from its `.build` checkout.
+fn package_products(container: &Container, url: &str) -> Result<Vec<String>, CliError> {
     let pkg_dir = swiftpm::package_dir(container).unwrap_or_else(|| PathBuf::from("."));
     let checkout = resolve_checkout(&pkg_dir.join(".build"), url).ok_or_else(|| {
         CliError::new("could not locate the resolved package checkout to read its products")
     })?;
     let manifest = swiftpm::manifest_at(&checkout)?;
-    Ok((manifest.name.clone(), product_names(&manifest)))
+    Ok(product_names(&manifest))
 }
 
 // ---------------------------------------------------------------------------
@@ -762,12 +791,35 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
 
     if !args.no_resolve {
         // Drop the stale pin so resolution re-pins to the new requirement
-        // (needed when downgrading), then resolve.
+        // (needed when downgrading), then resolve — restoring the lockfile
+        // if the resolve fails (e.g. offline) so the pin isn't lost.
+        let snapshot = read_lockfile(&container);
         remove_pin(&container, package);
-        resolve_packages(&container, None, &ctx.out, false)?;
+        if let Err(e) = resolve_packages(&container, None, &ctx.out, false) {
+            restore_lockfile(ctx, &container, snapshot);
+            return Err(e);
+        }
     }
     report_updated(ctx, package);
     Ok(())
+}
+
+/// Snapshot the lockfile's text (if it exists) before a destructive prune, so
+/// a failed resolve can put it back instead of losing every pinned version.
+fn read_lockfile(container: &Container) -> Option<String> {
+    std::fs::read_to_string(resolved_path(container)).ok()
+}
+
+/// Best-effort restore of a [`read_lockfile`] snapshot after a failed resolve.
+fn restore_lockfile(ctx: &Context, container: &Container, snapshot: Option<String>) {
+    let Some(text) = snapshot else { return };
+    if std::fs::write(resolved_path(container), text).is_ok() {
+        ctx.out
+            .note("restored Package.resolved after the failed resolve");
+    } else {
+        ctx.out
+            .warn("the resolve failed and Package.resolved could not be restored");
+    }
 }
 
 /// Plain update (no requirement change): bump pins to the latest the current
@@ -776,13 +828,26 @@ fn update_resolve(ctx: &mut Context, container: &Container, package: Option<&str
     if let Container::SwiftPackage(_) = container {
         swiftpm::update(container, package, ctx.out.is_json() || ctx.out.is_ndjson())?;
     } else {
+        // Verify the named package is actually declared before pruning, so a
+        // typo errors (with the did-you-mean hint) instead of reporting
+        // "updated <typo>" after a no-op resolve.
+        if let Some(p) = package {
+            let xcodeproj = pick_xcodeproj(ctx, container, Some(p))?;
+            let root = parse_owned(&xcodeproj)?;
+            find_package_or_hint(&root, container, p, &xcodeproj)?;
+        }
         // xcodebuild has no "update"; drop the pin(s) so the resolve re-pins to
-        // the latest allowed — one package, or the whole lockfile.
+        // the latest allowed — one package, or the whole lockfile. Snapshot
+        // first: a failed resolve (offline) must not destroy the lockfile.
+        let snapshot = read_lockfile(container);
         match package {
             Some(p) => remove_pin(container, p),
             None => delete_lockfile(container),
         }
-        resolve_packages(container, None, &ctx.out, false)?;
+        if let Err(e) = resolve_packages(container, None, &ctx.out, false) {
+            restore_lockfile(ctx, container, snapshot);
+            return Err(e);
+        }
     }
     report_updated(ctx, package.unwrap_or("all packages"));
     Ok(())
@@ -1110,7 +1175,13 @@ fn local_relative_path(xcodeproj: &Path, url: &str) -> Result<String, CliError> 
             "local package path `{url}` does not exist"
         )));
     }
-    let proj_dir = xcodeproj.parent().unwrap_or_else(|| Path::new("."));
+    // A bare `--project App.xcodeproj` has parent `Some("")`, not `None` —
+    // and canonicalizing "" fails, which would write an absolute (machine-
+    // specific) relativePath into the project.
+    let proj_dir = match xcodeproj.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
+    };
     Ok(relative_path(proj_dir, &target))
 }
 
@@ -1335,7 +1406,21 @@ fn read_resolved(path: &Path) -> HashMap<String, Pin> {
         return map;
     };
     for pin in pins {
-        let Some(identity) = pin.get("identity").and_then(serde_json::Value::as_str) else {
+        // v2/v3 pins carry `identity`; v1 pins have no such key — derive it
+        // from `repositoryURL` (or the `package` display name) instead of
+        // silently skipping every v1 pin the branch above went to the
+        // trouble of finding.
+        let identity = pin
+            .get("identity")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .or_else(|| {
+                pin.get("repositoryURL")
+                    .or_else(|| pin.get("package"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(spm_pbxproj::identity_from_url)
+            });
+        let Some(identity) = identity else {
             continue;
         };
         let state = pin.get("state");
@@ -1353,6 +1438,7 @@ fn read_resolved(path: &Path) -> HashMap<String, Pin> {
                 revision: field("revision"),
                 location: pin
                     .get("location")
+                    .or_else(|| pin.get("repositoryURL"))
                     .and_then(serde_json::Value::as_str)
                     .map(str::to_string),
             },
