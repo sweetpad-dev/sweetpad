@@ -433,7 +433,7 @@ pub fn choose(
     match candidates.len() {
         0 => Err(CliError::new(format!("no {what} available")).kind(ErrorKind::TargetResolution)),
         1 => Ok(candidates[0].clone()),
-        _ if ctx.out.is_interactive() => prompt_choice(what, candidates, ctx.out.use_color()),
+        _ if ctx.out.is_interactive() => prompt_choice(what, candidates, ctx.out.use_color_stderr()),
         _ => Err(missing(what)),
     }
 }

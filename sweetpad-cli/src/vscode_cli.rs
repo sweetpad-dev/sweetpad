@@ -133,7 +133,10 @@ fn parse_argv(args: &[String]) -> Result<ParsedArgv, String> {
                     .flags
                     .insert(key.to_string(), FlagValue::Str(value.to_string()));
                 i += 1;
-            } else if let Some(next) = args.get(i + 1).filter(|n| !n.starts_with('-')) {
+            } else if let Some(next) = args
+                .get(i + 1)
+                .filter(|n| !n.starts_with('-') && (method_seen || !method_shaped(n)))
+            {
                 result
                     .flags
                     .insert(body.to_string(), FlagValue::Str(next.clone()));
@@ -158,6 +161,21 @@ fn parse_argv(args: &[String]) -> Result<ParsedArgv, String> {
         }
     }
     Ok(result)
+}
+
+/// Whether a token has the dotted-method shape (`resource.verb`, identifier
+/// segments only). Used so a boolean `--flag` typed *before* the method
+/// doesn't swallow the method token as its value — `sweetpad vscode --booted
+/// destination.list` must call `destination.list`, not send `{booted:
+/// "destination.list"}` to nothing (or, worse, to a later token's method).
+fn method_shaped(token: &str) -> bool {
+    token.contains('.')
+        && token.split('.').all(|s| {
+            !s.is_empty()
+                && s.starts_with(|c: char| c.is_ascii_alphabetic())
+                && s.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
 }
 
 /// Build the JSON-RPC `params` object from the parsed flags. Each flag name
@@ -395,6 +413,20 @@ mod tests {
 
         let r = argv(&["destination.list", "--booted"]);
         assert_eq!(r.flags["booted"], FlagValue::True);
+    }
+
+    #[test]
+    fn boolean_flag_before_the_method_does_not_swallow_it() {
+        // `--booted` is a toggle here — the dotted token is the method, not
+        // its value.
+        let r = argv(&["--booted", "destination.list"]);
+        assert_eq!(r.method.as_deref(), Some("destination.list"));
+        assert_eq!(r.flags["booted"], FlagValue::True);
+
+        // After the method, values that merely contain a dot still work.
+        let r = argv(&["scheme.set", "--name", "My.App"]);
+        assert_eq!(r.method.as_deref(), Some("scheme.set"));
+        assert_eq!(r.flags["name"], FlagValue::Str("My.App".into()));
     }
 
     #[test]

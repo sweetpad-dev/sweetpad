@@ -60,10 +60,19 @@ pub fn write_command(s: &mut TcpStream, cmd: i32, arg: Option<&str>) -> std::io:
     Ok(())
 }
 
+/// How long a frame that has *started* arriving may stall before the read
+/// errors. Bytes already consumed can't be pushed back, so giving up mid-frame
+/// silently would desync every later read on the connection.
+const PARTIAL_FRAME_DEADLINE: Duration = Duration::from_secs(30);
+
 /// Read exactly `buf.len()` bytes. `Ok(false)` distinguishes a clean read
-/// timeout (the socket's read timeout fired) from EOF/error (`Err`).
+/// timeout (the socket's read timeout fired with nothing consumed) from
+/// EOF/error (`Err`). Once any byte has arrived the frame is committed:
+/// timeout ticks keep waiting (up to [`PARTIAL_FRAME_DEADLINE`]) instead of
+/// discarding the prefix and desyncing the stream.
 fn read_exact_timed(s: &mut TcpStream, buf: &mut [u8]) -> std::io::Result<bool> {
     let mut filled = 0;
+    let mut deadline: Option<std::time::Instant> = None;
     while filled < buf.len() {
         match s.read(&mut buf[filled..]) {
             Ok(0) => {
@@ -77,7 +86,17 @@ fn read_exact_timed(s: &mut TcpStream, buf: &mut [u8]) -> std::io::Result<bool> 
                 if e.kind() == std::io::ErrorKind::WouldBlock
                     || e.kind() == std::io::ErrorKind::TimedOut =>
             {
-                return Ok(false);
+                if filled == 0 {
+                    return Ok(false);
+                }
+                let d = *deadline
+                    .get_or_insert_with(|| std::time::Instant::now() + PARTIAL_FRAME_DEADLINE);
+                if std::time::Instant::now() >= d {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "timed out mid-frame; stream would desync",
+                    ));
+                }
             }
             Err(e) => return Err(e),
         }

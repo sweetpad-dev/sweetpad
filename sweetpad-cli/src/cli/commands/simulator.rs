@@ -598,13 +598,14 @@ impl Render for SimAppearance {
     }
 }
 
-/// `./sweetpad-shots/<device>-<epoch-secs>.png` — one predictable folder
+/// `./sweetpad-shots/<device>-<epoch-millis>.png` — one predictable folder
 /// instead of screenshots scattering through the working directory. Shared
-/// with the run session's `s` key.
+/// with the run session's `s` key. Millisecond resolution so two quick
+/// captures (double-tapping `s`) don't overwrite each other.
 pub(crate) fn default_screenshot_path(device_name: &str) -> PathBuf {
-    let secs = SystemTime::now()
+    let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
+        .map(|d| d.as_millis())
         .unwrap_or_default();
     let slug: String = device_name
         .chars()
@@ -616,7 +617,7 @@ pub(crate) fn default_screenshot_path(device_name: &str) -> PathBuf {
             }
         })
         .collect();
-    PathBuf::from("sweetpad-shots").join(format!("{slug}-{secs}.png"))
+    PathBuf::from("sweetpad-shots").join(format!("{slug}-{millis}.png"))
 }
 
 #[cfg(test)]

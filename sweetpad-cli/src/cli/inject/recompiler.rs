@@ -123,6 +123,12 @@ impl Recompiler {
         // The `eval_injection_` prefix is what the client's image scan expects.
         let dylib = self.out_dir.join(format!("eval_injection_{n}.dylib"));
         let object = self.out_dir.join(format!("eval_injection_{n}.o"));
+        // The watcher hands over whatever shape the walk produced — a relative
+        // `./Sources/Foo.swift` (relative `--project`) or a symlink-prefixed
+        // path (`/var` vs `/private/var`) matches the build system's absolute
+        // `-primary-file` tokens in neither direction; canonicalize first.
+        let source = std::fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
+        let source = source.as_path();
         let source_str = source.to_string_lossy().into_owned();
 
         // Primary: the recovered single-file frontend command (resolver `-###`, or
@@ -315,6 +321,16 @@ impl Recompiler {
             .ok_or("bad source path")?;
         let text = std::fs::read_to_string(log).map_err(|e| format!("read build log: {e}"))?;
 
+        // Prefer a line whose `-primary-file` is the *exact* path: in a
+        // multi-target project two targets can both compile a `ContentView.swift`,
+        // and a basename first-hit would pick the other target's command (whose
+        // primaries don't include this file at all). The suffix match stays as
+        // the fallback for logs whose paths differ by a symlink prefix.
+        let exact_primary_line = |l: &str| {
+            shell_tokens(l)
+                .windows(2)
+                .any(|w| w[0] == "-primary-file" && w[1] == source_str)
+        };
         let is_primary_line = |l: &str| {
             shell_tokens(l)
                 .windows(2)
@@ -322,7 +338,11 @@ impl Recompiler {
         };
         let line = text
             .lines()
-            .find(|l| l.contains("-primary-file") && is_primary_line(l))
+            .find(|l| l.contains("-primary-file") && exact_primary_line(l))
+            .or_else(|| {
+                text.lines()
+                    .find(|l| l.contains("-primary-file") && is_primary_line(l))
+            })
             .or_else(|| {
                 text.lines()
                     .find(|l| l.contains("swift-frontend") && l.contains(name))

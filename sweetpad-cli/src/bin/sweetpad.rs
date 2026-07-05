@@ -23,6 +23,8 @@ fn main() -> ExitCode {
     // (`sweetpad … | head`) surfaces as a "failed printing to stdout: Broken
     // pipe" panic (exit 101, backtrace on stderr). Restore the default
     // disposition so the process dies quietly like every other Unix tool.
+    // (The runtime already clobbered any disposition inherited from the
+    // parent, so a pre-exec `SIG_IGN` cannot be detected or preserved here.)
     // Safety: setting a signal disposition before any threads exist.
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);

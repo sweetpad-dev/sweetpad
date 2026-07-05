@@ -71,7 +71,14 @@ pub fn run_captured(
     }
     let output = cmd.output().map_err(|e| spawn_error(program, &e))?;
     let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    let stderr_text = String::from_utf8_lossy(&output.stderr);
+    // Keep the streams line-separated: without this, a stdout that doesn't
+    // end in a newline fuses its last line with stderr's first, and the
+    // diagnostics post-parse misreads the fused line.
+    if !text.is_empty() && !text.ends_with('\n') && !stderr_text.is_empty() {
+        text.push('\n');
+    }
+    text.push_str(&stderr_text);
     Ok(CapturedRun {
         success: output.status.success(),
         tail: tail_lines(&text, 25),
@@ -85,6 +92,31 @@ fn tail_lines(text: &str, n: usize) -> String {
     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
     let start = lines.len().saturating_sub(n);
     lines[start..].join("\n")
+}
+
+/// [`stream`] with extra environment variables set on the child — used where
+/// the child *is* the user's program (`swift run`) and `--env` must reach it.
+pub fn stream_env(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, String)],
+) -> Result<(), CliError> {
+    let mut cmd = Command::new(program);
+    cmd.args(args)
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    let status = cmd.status().map_err(|e| spawn_error(program, &e))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(CliError::new(format!(
+            "{program} {} exited with a non-zero status",
+            args.join(" ")
+        )))
+    }
 }
 
 /// Run a command to completion, returning whether it succeeded rather than

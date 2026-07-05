@@ -209,8 +209,14 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
 
     let target = resolve::build_target(ctx, &resolved, !args.show_command)?;
 
-    let final_bundle = args
-        .result_bundle.map_or_else(|| retained_bundle_path(&resolved.container), Path::to_path_buf);
+    // xcodebuild resolves `-resultBundlePath` against the *container's* parent
+    // (its cwd), while the CLI's own exists/summary/rename steps resolve
+    // against the CLI's cwd — absolutize so a relative `--result-bundle`
+    // means the same directory on both sides.
+    let final_bundle = args.result_bundle.map_or_else(
+        || retained_bundle_path(&resolved.container),
+        |p| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()),
+    );
 
     // `--failed`: the selectors come from the *previous* run's retained
     // bundle, read before anything touches it.
@@ -287,9 +293,10 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // still writes a bundle, so "bundle exists" proves nothing). Surface the
     // real cause instead of a vacuous `0 passed, 0 failed` summary — and keep
     // the previous retained bundle so `--failed` still works.
-    let ran_tests = summary
-        .as_ref()
-        .is_some_and(|s| s.total_test_count > 0 || outcome.passed);
+    // A green xcodebuild exit means the tests ran even if the summary can't be
+    // read back (xcresulttool hiccup / older syntax) — misclassifying that as
+    // "failed before any test ran" would delete a perfectly good bundle.
+    let ran_tests = outcome.passed || summary.as_ref().is_some_and(|s| s.total_test_count > 0);
     if !ran_tests {
         let _ = std::fs::remove_dir_all(&run_bundle);
         let detail = outcome
@@ -309,6 +316,10 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     } else {
         run_bundle
     };
+    if summary.is_none() {
+        ctx.out
+            .warn("could not read the result bundle's summary; counts show as 0");
+    }
     let summary = summary.unwrap_or_default();
     let passed = outcome.passed;
 

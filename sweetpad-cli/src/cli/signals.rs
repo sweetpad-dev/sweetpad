@@ -13,9 +13,12 @@
 //! terminal must stop the build group, not detach it), SIGPIPE (a session
 //! writing its log stream into a gone pipe must still restore the terminal),
 //! and SIGTSTP/SIGCONT (suspending mid-session hands the shell a cooked
-//! terminal and resuming re-asserts raw mode). Each of INT/TERM/HUP/PIPE/TSTP
+//! terminal and resuming re-asserts raw mode). Each of INT/TERM/HUP/TSTP
 //! honors an inherited `SIG_IGN` — a background job a shell protected from
-//! Ctrl-C stays protected.
+//! Ctrl-C stays protected. SIGPIPE is the exception: the Rust runtime sets it
+//! to `SIG_IGN` before `main` (and `main` resets it to default), so a
+//! parent's deliberate ignore-disposition is unobservable by the time this
+//! runs — PIPE always gets the handler.
 //!
 //! The interactive `app run` session disables `ISIG`, so Ctrl-C there arrives
 //! as a key byte and never reaches this handler; it exists for everything

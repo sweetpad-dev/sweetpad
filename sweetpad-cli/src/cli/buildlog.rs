@@ -167,6 +167,14 @@ fn parse_diagnostic(line: &str, t: &str) -> Option<Event> {
 
 /// Task lines, keyed on the leading verb; unrecognized lines become `Other`.
 fn parse_task(line: &str, t: &str) -> Event {
+    // Task headers start at column 0. Indented occurrences of the same verbs
+    // are not fresh tasks — notably the tab-indented "The following build
+    // commands failed:" summary after a failure, which would otherwise render
+    // as spurious `Compiling …` lines *after* the failure banner.
+    if line.starts_with(char::is_whitespace) {
+        return Event::Other(line.to_string());
+    }
+    let stripped = strip_target_annotation(t);
     match t.split_whitespace().next().unwrap_or("") {
         "CompileSwift" | "SwiftCompile" | "CompileC" | "CompileXIB" | "CompileStoryboard" => {
             Event::Compile {
@@ -180,28 +188,52 @@ fn parse_task(line: &str, t: &str) -> Event {
             name: "asset catalog".to_string(),
         },
         "Ld" => Event::Link {
-            target: t
-                .split_whitespace()
-                .nth(1)
-                .map_or_else(|| "binary".to_string(), base),
+            target: ld_target(stripped).unwrap_or_else(|| "binary".to_string()),
         },
         "CodeSign" => Event::CodeSign {
-            name: t
-                .split_whitespace()
-                .nth(1)
-                .map_or_else(|| "bundle".to_string(), base),
+            name: verb_argument(stripped).map_or_else(|| "bundle".to_string(), base),
         },
         "CpResource" | "PBXCp" | "Copy" | "CpHeader" | "Ditto" | "CopySwiftLibs" => Event::Copy {
-            name: last_token(t).map_or_else(|| "files".to_string(), |s| base(&s)),
+            name: last_token(stripped).map_or_else(|| "files".to_string(), |s| base(&s)),
         },
         "ProcessInfoPlistFile" => Event::ProcessPlist {
-            name: t
+            name: stripped
                 .split_whitespace()
-                .nth(1)
+                .find(|tok| Path::new(tok).extension().is_some_and(|e| e == "plist"))
                 .map_or_else(|| "Info.plist".to_string(), base),
         },
         _ => Event::Other(line.to_string()),
     }
+}
+
+/// Strip xcodebuild's trailing `(in target 'X' from project 'Y')` (or the
+/// older `(in target 'X')`) annotation from a task line — its tokens would
+/// otherwise be mistaken for the task's file arguments.
+fn strip_target_annotation(t: &str) -> &str {
+    t.rfind(" (in target '").map_or(t, |i| t[..i].trim_end())
+}
+
+/// The linked binary's path from an annotation-stripped `Ld` line: everything
+/// between the verb and the trailing `normal [<arch>]` tokens, so a product
+/// path containing spaces survives intact.
+fn ld_target(stripped: &str) -> Option<String> {
+    const ARCHS: [&str; 6] = ["arm64", "arm64e", "armv7", "armv7s", "x86_64", "i386"];
+    let mut rest = verb_argument(stripped)?;
+    while let Some((head, tail)) = rest.rsplit_once(char::is_whitespace) {
+        if tail == "normal" || ARCHS.contains(&tail) {
+            rest = head.trim_end();
+        } else {
+            break;
+        }
+    }
+    (!rest.is_empty()).then(|| base(rest))
+}
+
+/// Everything after the leading verb of a task line — the argument as one
+/// string, not whitespace-split (paths may contain spaces).
+fn verb_argument(stripped: &str) -> Option<&str> {
+    let rest = stripped.split_once(char::is_whitespace)?.1.trim();
+    (!rest.is_empty()).then_some(rest)
 }
 
 /// Render an event for the terminal, or `None` to suppress it. `verbose` keeps
@@ -287,7 +319,7 @@ impl BuildProgress {
             spinner: Some(Spinner::start_timed(
                 label,
                 out.is_interactive() && !out.is_quiet(),
-                out.use_color(),
+                out.use_color_stderr(),
             )),
             start: Instant::now(),
             color: out.use_color(),
@@ -769,6 +801,59 @@ mod tests {
                 name: "App.app".to_string()
             }
         );
+    }
+
+    #[test]
+    fn task_names_exclude_the_target_annotation() {
+        // The `(in target 'X' from project 'Y')` suffix is metadata, not a
+        // file — `Copying 'App')` was the old rendering.
+        assert_eq!(
+            parse_line("CpResource /d/App.app/Foo.png /src/Foo.png (in target 'App' from project 'App')"),
+            Event::Copy {
+                name: "Foo.png".to_string()
+            }
+        );
+        assert_eq!(
+            parse_line("ProcessInfoPlistFile /d/App.app/Info.plist /src/Info.plist (in target 'App' from project 'App')"),
+            Event::ProcessPlist {
+                name: "Info.plist".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn task_paths_with_spaces_survive() {
+        assert_eq!(
+            parse_line("Ld /d/My App.app/My App normal arm64 (in target 'My App' from project 'My App')"),
+            Event::Link {
+                target: "My App".to_string()
+            }
+        );
+        assert_eq!(
+            parse_line("CodeSign /d/My App.app (in target 'My App' from project 'My App')"),
+            Event::CodeSign {
+                name: "My App.app".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn indented_failure_summary_lines_are_not_tasks() {
+        // xcodebuild's post-failure "The following build commands failed:"
+        // block repeats task lines tab-indented; they must not render as
+        // fresh `Compiling …` tasks after the failure banner.
+        assert_eq!(
+            parse_line("\tCompileSwift normal arm64 /a/File.swift (in target 'App' from project 'App')"),
+            Event::Other(
+                "\tCompileSwift normal arm64 /a/File.swift (in target 'App' from project 'App')"
+                    .to_string()
+            )
+        );
+        // Unindented task lines still parse.
+        assert!(matches!(
+            parse_line("CompileSwift normal arm64 /a/File.swift"),
+            Event::Compile { .. }
+        ));
     }
 
     #[test]

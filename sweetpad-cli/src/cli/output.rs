@@ -21,6 +21,7 @@ pub struct Output {
     ndjson: bool,
     non_interactive: bool,
     color: bool,
+    color_stderr: bool,
     verbose: bool,
     quiet: bool,
     gh_annotations: bool,
@@ -45,7 +46,11 @@ impl Output {
         let no_color =
             global.no_color || std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
         let force_color = env_truthy("CLICOLOR_FORCE") || env_truthy("FORCE_COLOR");
+        // Color is decided per stream: `sweetpad build 2> err.log` must not
+        // write ANSI escapes into the log, and `sweetpad build > out.txt`
+        // must not strip color from the interactive stderr chatter.
         let color = !no_color && (force_color || std::io::stdout().is_terminal());
+        let color_stderr = !no_color && (force_color || std::io::stderr().is_terminal());
         // CI is first-class non-interactive: prompts must strict-error there
         // even when the runner fakes a TTY.
         let non_interactive =
@@ -55,6 +60,7 @@ impl Output {
             ndjson,
             non_interactive,
             color,
+            color_stderr,
             // `--quiet` wins over `--verbose`, so a script that always passes
             // `-v` can still be quieted.
             verbose: global.verbose && !quiet,
@@ -93,6 +99,13 @@ impl Output {
     #[must_use]
     pub fn use_color(&self) -> bool {
         self.color
+    }
+
+    /// Color for *stderr* writes (status chatter, spinners, prompts) — decided
+    /// by stderr's own TTY-ness, independent of stdout's.
+    #[must_use]
+    pub fn use_color_stderr(&self) -> bool {
+        self.color_stderr
     }
 
     /// True when the terminal is interactive — gates the picker fallback in
@@ -188,7 +201,7 @@ impl Output {
     /// corrupt state file, a config typo) that should surface even in scripts;
     /// stderr keeps them out of any JSON payload on stdout.
     pub fn warn(&self, s: &str) {
-        let prefix = if self.color {
+        let prefix = if self.color_stderr {
             "\x1b[33mwarning:\x1b[0m"
         } else {
             "warning:"
@@ -200,7 +213,7 @@ impl Output {
     /// app exiting. Stands out from the dim session notes.
     pub fn alert(&self, s: &str) {
         if !self.json && !self.ndjson && !self.quiet {
-            let line = if self.color {
+            let line = if self.color_stderr {
                 format!("\x1b[33m{s}\x1b[0m")
             } else {
                 s.to_string()
@@ -214,7 +227,11 @@ impl Output {
     /// in place. Animates only when interactive (TTY, not `--json`); otherwise
     /// `f` just runs. Use for long, otherwise-silent steps (boot, install).
     pub fn step<T>(&self, message: &str, f: impl FnOnce() -> T) -> T {
-        let _spinner = Spinner::start(message, self.is_interactive() && !self.quiet, self.color);
+        let _spinner = Spinner::start(
+            message,
+            self.is_interactive() && !self.quiet,
+            self.color_stderr,
+        );
         f()
     }
 
@@ -243,7 +260,7 @@ impl Output {
             }
             return;
         }
-        let prefix = if self.color {
+        let prefix = if self.color_stderr {
             "\x1b[31merror:\x1b[0m"
         } else {
             "error:"
@@ -260,8 +277,10 @@ impl Output {
         }
     }
 
+    // `dim`/`bold` style stderr messages only (note/debug/error) — they follow
+    // the stderr color decision.
     fn dim(&self, s: &str) -> String {
-        if self.color {
+        if self.color_stderr {
             format!("\x1b[2m{s}\x1b[0m")
         } else {
             s.to_string()
@@ -279,7 +298,7 @@ impl Output {
     }
 
     fn bold(&self, s: &str) -> String {
-        if self.color {
+        if self.color_stderr {
             format!("\x1b[1m{s}\x1b[0m")
         } else {
             s.to_string()

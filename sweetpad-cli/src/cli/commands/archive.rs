@@ -114,10 +114,14 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     let configuration = archive_configuration(ctx, &resolved)?;
     let destination = archive_destination(ctx)?;
 
+    // Both xcodebuild steps run with the *container's* parent as cwd, while
+    // sweetpad itself creates the output dir and writes the plist from the
+    // CLI's cwd — absolutize so the two sides agree on where `build/` is.
     let out_dir = args
         .output
         .clone()
         .unwrap_or_else(|| PathBuf::from("build"));
+    let out_dir = std::path::absolute(&out_dir).unwrap_or(out_dir);
     let archive_path = out_dir.join(format!("{scheme}.xcarchive"));
 
     let mut archive_args: Vec<String> = vec![
@@ -144,6 +148,7 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
         .export_options
         .clone()
         .unwrap_or_else(|| out_dir.join("ExportOptions.plist"));
+    let plist_path = std::path::absolute(&plist_path).unwrap_or(plist_path);
     let export_args: Vec<String> = vec![
         "-exportArchive".into(),
         "-archivePath".into(),
