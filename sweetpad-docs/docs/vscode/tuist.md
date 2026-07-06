@@ -1,5 +1,6 @@
 ---
-sidebar_position: 14
+sidebar_position: 13
+slug: /tuist
 ---
 
 # Tuist

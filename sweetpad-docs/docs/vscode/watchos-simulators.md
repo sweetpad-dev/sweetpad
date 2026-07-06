@@ -1,5 +1,6 @@
 ---
 sidebar_position: 10
+slug: /watchos-simulators
 ---
 
 # watchOS Simulators

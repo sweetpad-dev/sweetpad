@@ -1,5 +1,6 @@
 ---
 sidebar_position: 9
+slug: /simulators
 ---
 
 import ReactPlayer from 'react-player'

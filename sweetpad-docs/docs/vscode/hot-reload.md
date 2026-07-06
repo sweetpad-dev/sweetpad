@@ -1,5 +1,6 @@
 ---
-sidebar_position: 6.5
+sidebar_position: 4
+slug: /hot-reload
 ---
 
 # Hot reload

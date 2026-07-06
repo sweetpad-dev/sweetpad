@@ -1,5 +1,7 @@
 ---
-sidebar_position: 2
+sidebar_position: 1
+slug: /getting-started-vscode
+sidebar_label: Get started
 ---
 
 import ReactPlayer from 'react-player'
@@ -59,7 +61,7 @@ That's it — you just built and ran an Xcode app from VSCode. 🎉
 - [Configure format on save](./format.md) so your Swift files tidy themselves up as you save.
 - Install `xcbeautify` from the [Tools](./tools.md) panel for cleaner build logs.
 - Set up [debugging](./debug.md) with breakpoints.
-- Browse the full [feature list](./intro.md#what-you-get).
+- Browse the full [feature list](../intro.md#what-you-get).
 
 ## Demo
 

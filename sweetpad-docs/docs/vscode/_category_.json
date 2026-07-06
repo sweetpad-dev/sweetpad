@@ -1,0 +1,10 @@
+{
+  "label": "VS Code extension",
+  "position": 2,
+  "collapsed": false,
+  "link": {
+    "type": "generated-index",
+    "slug": "/category/vscode-extension",
+    "description": "Build, run, debug, and test Xcode projects from the VS Code (or Cursor) sidebar."
+  }
+}

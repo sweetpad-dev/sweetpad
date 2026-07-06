@@ -1,5 +1,7 @@
 ---
-sidebar_position: 17
+sidebar_position: 2
+slug: /cli
+sidebar_label: Overview
 ---
 
 # SweetPad CLI
@@ -8,7 +10,7 @@ The SweetPad CLI is a command-line tool named `sweetpad` that builds, runs, and 
 Swift Package apps from the terminal — no editor needed. If you've ever wished `xcodebuild` were
 friendlier, this is that.
 
-It's the command-line side of SweetPad, alongside the [VSCode extension](./intro.md).
+It's the command-line side of SweetPad, alongside the [VSCode extension](../intro.md).
 
 :::tip
 
