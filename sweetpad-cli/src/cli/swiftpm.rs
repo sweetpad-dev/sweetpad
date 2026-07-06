@@ -386,8 +386,8 @@ pub fn build(
     }
     let args = build_args(configuration, passthrough);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let ok = process::run("swift", &arg_refs, cwd.as_deref(), quiet)
-        .context("building the package")?;
+    let ok =
+        process::run("swift", &arg_refs, cwd.as_deref(), quiet).context("building the package")?;
     if ok {
         Ok(())
     } else {

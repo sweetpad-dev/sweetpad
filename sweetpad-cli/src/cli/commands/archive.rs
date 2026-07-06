@@ -196,9 +196,8 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     // Export: an explicit plist wins; otherwise generate one with automatic
     // signing for the chosen method.
     if args.export_options.is_none() {
-        std::fs::write(&plist_path, export_options_plist(args.export_method)).map_err(|e| {
-            CliError::new(format!("failed to write {}: {e}", plist_path.display()))
-        })?;
+        std::fs::write(&plist_path, export_options_plist(args.export_method))
+            .map_err(|e| CliError::new(format!("failed to write {}: {e}", plist_path.display())))?;
     }
     run_xcodebuild(ctx, &export_args, cwd.as_deref(), "Exporting")
         .map_err(|e| e.context("exporting the archive"))?;
@@ -328,8 +327,7 @@ fn run_xcodebuild(
     if ok {
         Ok(())
     } else {
-        Err(CliError::new("xcodebuild exited with a non-zero status")
-            .kind(ErrorKind::BuildFailure))
+        Err(CliError::new("xcodebuild exited with a non-zero status").kind(ErrorKind::BuildFailure))
     }
 }
 

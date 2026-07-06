@@ -164,13 +164,19 @@ pub fn resolve(kind: Kind, paths: &[PathBuf], force: bool) -> CommandResult {
             // quotePath off: with the default on, any non-ASCII path comes
             // back C-quoted ("Caf\\303\\251…"), fails the extension match,
             // and the conflict is silently skipped.
-            &["-c", "core.quotePath=off", "diff", "--name-only", "--diff-filter=U"],
+            &[
+                "-c",
+                "core.quotePath=off",
+                "diff",
+                "--name-only",
+                "--diff-filter=U",
+            ],
         )?
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty() && kind.matches(l))
-            .map(String::from)
-            .collect()
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && kind.matches(l))
+        .map(String::from)
+        .collect()
     } else {
         paths.iter().map(|p| to_repo_relative(&repo, p)).collect()
     };
@@ -210,13 +216,19 @@ pub fn resolve_auto(paths: &[PathBuf], force: bool) -> CommandResult {
             // quotePath off: with the default on, any non-ASCII path comes
             // back C-quoted ("Caf\\303\\251…"), fails the extension match,
             // and the conflict is silently skipped.
-            &["-c", "core.quotePath=off", "diff", "--name-only", "--diff-filter=U"],
+            &[
+                "-c",
+                "core.quotePath=off",
+                "diff",
+                "--name-only",
+                "--diff-filter=U",
+            ],
         )?
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty() && (Kind::Pbxproj.matches(l) || Kind::Spm.matches(l)))
-            .map(String::from)
-            .collect()
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && (Kind::Pbxproj.matches(l) || Kind::Spm.matches(l)))
+        .map(String::from)
+        .collect()
     } else {
         paths.iter().map(|p| to_repo_relative(&repo, p)).collect()
     };

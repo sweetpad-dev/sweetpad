@@ -72,10 +72,7 @@ pub fn run(ctx: &mut Context) -> CommandResult {
     let key = resolved.container.key();
     let cfg = ctx.config.for_project(&key);
     let pf_scheme = ctx.project_file(&resolved.container).scheme.clone();
-    let pf_configuration = ctx
-        .project_file(&resolved.container)
-        .configuration
-        .clone();
+    let pf_configuration = ctx.project_file(&resolved.container).configuration.clone();
     let pf_destination = ctx.project_file(&resolved.container).destination.clone();
     let pf_sdk = ctx.project_file(&resolved.container).sdk.clone();
     let st = ctx.state.projects.get(&key).cloned().unwrap_or_default();
@@ -120,7 +117,9 @@ pub fn run(ctx: &mut Context) -> CommandResult {
     );
     // An unset configuration falls to `Debug` only when the project has one
     // (otherwise the picker runs) — show which of those will happen.
-    let (value, source) = if let Some(v) = value { (Some(v), source) } else {
+    let (value, source) = if let Some(v) = value {
+        (Some(v), source)
+    } else {
         let has_debug = resolve::configurations(&resolved.container)
             .map(|c| c.is_empty() || c.iter().any(|x| x == "Debug"))
             .unwrap_or(true);

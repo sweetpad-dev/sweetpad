@@ -372,7 +372,10 @@ mod tests {
             "FLAGS",
             arr(vec![s("-framework"), s("A"), s("-framework"), s("B")]),
         )]);
-        let theirs = dict(vec![("FLAGS", arr(vec![s("-framework"), s("A"), s("-ObjC")]))]);
+        let theirs = dict(vec![(
+            "FLAGS",
+            arr(vec![s("-framework"), s("A"), s("-ObjC")]),
+        )]);
 
         let m = merge(Some(&base), &ours, &theirs);
 

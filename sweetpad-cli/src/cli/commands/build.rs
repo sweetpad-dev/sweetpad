@@ -48,9 +48,7 @@ pub fn run(ctx: &mut Context, args: &StartArgs, action: Option<&Action>) -> Comm
     match action {
         Some(Action::Diagnostics) => diagnostics(ctx),
         Some(Action::Start) | None if args.watch => watch(ctx, args),
-        Some(Action::Start) | None => {
-            start(ctx, args.clean, args.show_command, &args.passthrough)
-        }
+        Some(Action::Start) | None => start(ctx, args.clean, args.show_command, &args.passthrough),
     }
 }
 
@@ -63,7 +61,10 @@ fn watch(ctx: &mut Context, args: &StartArgs) -> CommandResult {
         .path()
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
-        .map_or_else(|| std::path::PathBuf::from("."), std::path::Path::to_path_buf);
+        .map_or_else(
+            || std::path::PathBuf::from("."),
+            std::path::Path::to_path_buf,
+        );
 
     // Only the first iteration honors --clean.
     let mut clean = args.clean;

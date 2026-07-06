@@ -213,6 +213,10 @@ impl State {
     /// is the [`pruned_view`](State::pruned_view), so the file can't grow
     /// forever.
     pub fn save(&self) -> Result<(), String> {
+        // PID alone distinguishes processes; the counter distinguishes saves
+        // within this process, so two same-process saves can never interleave
+        // writes into one temp file and rename a torn mix into place.
+        static SAVE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         // An unreadable-on-load file must never be replaced by this run's
         // near-empty view (see `read_only`).
         if self.read_only {
@@ -225,10 +229,6 @@ impl State {
             std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
         let text = toml::to_string_pretty(&self.pruned_view()).map_err(|e| e.to_string())?;
-        // PID alone distinguishes processes; the counter distinguishes saves
-        // within this process, so two same-process saves can never interleave
-        // writes into one temp file and rename a torn mix into place.
-        static SAVE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let seq = SAVE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let tmp = path.with_extension(format!("toml.tmp.{}.{seq}", std::process::id()));
         std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;

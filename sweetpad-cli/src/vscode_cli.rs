@@ -188,7 +188,9 @@ fn build_params(parsed: &ParsedArgv) -> Value {
     for (key, value) in &parsed.flags {
         let json = match value {
             FlagValue::True => Value::Bool(true),
-            FlagValue::Str(raw) => serde_json::from_str(raw).unwrap_or_else(|_| Value::from(raw.as_str())),
+            FlagValue::Str(raw) => {
+                serde_json::from_str(raw).unwrap_or_else(|_| Value::from(raw.as_str()))
+            }
         };
         map.insert(key.clone(), json);
     }
@@ -265,7 +267,13 @@ fn call_rpc(socket: &str, parsed: &ParsedArgv) -> Result<Option<Value>, Failure>
     writer.flush().ok();
 
     let deadline = Instant::now() + Duration::from_millis(TIMEOUT_MS);
-    let timeout = || failure(2, "CLI_ERROR", &format!("Request timed out after {TIMEOUT_MS}ms"));
+    let timeout = || {
+        failure(
+            2,
+            "CLI_ERROR",
+            &format!("Request timed out after {TIMEOUT_MS}ms"),
+        )
+    };
     let mut reader = BufReader::new(stream);
     loop {
         let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
@@ -400,7 +408,10 @@ mod tests {
 
     #[test]
     fn positional_after_method_is_rejected() {
-        let owned: Vec<String> = ["scheme.set", "MyApp"].iter().map(ToString::to_string).collect();
+        let owned: Vec<String> = ["scheme.set", "MyApp"]
+            .iter()
+            .map(ToString::to_string)
+            .collect();
         let err = parse_argv(&owned).unwrap_err();
         assert!(err.contains("positional"), "message: {err}");
     }
@@ -451,7 +462,10 @@ mod tests {
             params_for(&["scheme.set", "--name", "MyApp"]),
             json!({ "name": "MyApp" })
         );
-        assert_eq!(params_for(&["build.list", "--limit", "5"]), json!({ "limit": 5 }));
+        assert_eq!(
+            params_for(&["build.list", "--limit", "5"]),
+            json!({ "limit": 5 })
+        );
         assert_eq!(
             params_for(&["destination.list", "--type", "simulator", "--booted"]),
             json!({ "type": "simulator", "booted": true })

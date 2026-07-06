@@ -460,7 +460,12 @@ mod tests {
         assert_eq!(pa, retained_bundle_path(&a));
         assert_ne!(pa, pb);
         assert!(pa.to_string_lossy().ends_with(".xcresult"));
-        assert!(pa.file_name().unwrap().to_string_lossy().starts_with("App-"));
+        assert!(
+            pa.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("App-")
+        );
     }
 
     #[test]

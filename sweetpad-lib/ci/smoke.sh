@@ -47,10 +47,12 @@ run_briefly() {
 }
 
 # A JSON field assertion via python3: <json> <python-expr over `d`> <expected>.
+# Every `--json` result is the standardized `{schema, ok, data}` success
+# envelope (see output.rs::json_value), so `d` is bound to the `data` payload.
 assert_json() {
   python3 - "$@" <<'PY'
 import json, sys
-data = json.loads(sys.argv[1])
+data = json.loads(sys.argv[1])["data"]
 got = str(eval(sys.argv[2], {"d": data}))
 want = sys.argv[3]
 if got != want:
@@ -111,7 +113,7 @@ ok "destination list (human)"
 "$BIN" simulator list --json >/dev/null
 ok "simulator list"
 
-DEST=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
+DEST=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['data']['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
 UDID="${DEST##*id=}"
 echo "  using $DEST"
 xcrun simctl boot "$UDID" || true
@@ -122,10 +124,10 @@ ok "simulator boot"
 # Operations on the booted sim (screenshot/appearance leave it booted, so the
 # app-lifecycle section below can reuse it; shutdown/erase run at teardown).
 SHOT="$(mktemp -u)-sweetpad.png"
-"$BIN" simulator screenshot "$UDID" --output "$SHOT"
+"$BIN" simulator screenshot "$UDID" --output-file "$SHOT"
 test -f "$SHOT" || fail "screenshot file not written: $SHOT"
 ok "simulator screenshot"
-out=$("$BIN" simulator screenshot "$UDID" --output "$SHOT" --json)
+out=$("$BIN" simulator screenshot "$UDID" --output-file "$SHOT" --json)
 assert_json "$out" "d['udid']" "$UDID"
 ok "simulator screenshot --json"
 "$BIN" simulator appearance dark "$UDID"
@@ -276,14 +278,17 @@ ok "simulator erase"
 section "error paths"
 expect_code 2 "$BIN" bogus-command
 ok "unknown command exits 2"
-expect_code 1 "$BIN" build start --project "$APP" --scheme NoSuchScheme --destination "$DEST"
-ok "unknown scheme exits 1"
+# Unknown scheme / simulator / missing container are all TargetResolution
+# errors, which the CLI's exit-code taxonomy maps to 4 (Generic is 1,
+# BuildFailure 3, TargetResolution 4, ToolMissing 5 — see ErrorKind::exit_code).
+expect_code 4 "$BIN" build start --project "$APP" --scheme NoSuchScheme --destination "$DEST"
+ok "unknown scheme exits 4 (target resolution)"
 # Project-scoped derived-data with no container in cwd (sweetpad-lib has no
 # Xcode project/package) is a strict error, not a silent empty result.
-expect_code 1 "$BIN" derived-data path
-ok "derived-data --project with no container exits 1"
-expect_code 1 "$BIN" simulator screenshot definitely-not-a-real-sim
-ok "simulator op with unknown target exits 1"
+expect_code 4 "$BIN" derived-data path
+ok "derived-data --project with no container exits 4 (target resolution)"
+expect_code 4 "$BIN" simulator screenshot definitely-not-a-real-sim
+ok "simulator op with unknown target exits 4 (target resolution)"
 
 # ---------------------------------------------------------------------------
 echo

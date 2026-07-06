@@ -28,7 +28,7 @@ test -f "$SRC" || fail "fixture source missing: $SRC (run xcodegen generate firs
 echo "  client: ${SWEETPAD_HOTRELOAD_DYLIB:-<bundled into the CLI>}"
 
 section "pick + boot a simulator"
-DEST=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
+DEST=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['data']['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
 echo "  $DEST"
 UDID="${DEST##*id=}"
 xcrun simctl boot "$UDID" 2>/dev/null || true

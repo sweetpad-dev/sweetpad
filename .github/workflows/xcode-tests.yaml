@@ -71,7 +71,7 @@ jobs:
           workspaces: .
           shared-key: xcode-tests
       - name: Build the sweetpad CLI
-        run: cargo build --bin sweetpad
+        run: cargo build -p sweetpad-cli --bin sweetpad
       - name: Unit tests
         run: cargo test --workspace
       - name: Install XcodeGen
@@ -127,7 +127,7 @@ jobs:
       - name: Build the bundled injection client
         run: bash ../sweetpad-cli/vendor/injection-client/build.sh
       - name: Build the sweetpad CLI
-        run: cargo build --bin sweetpad
+        run: cargo build -p sweetpad-cli --bin sweetpad
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate the fixture project

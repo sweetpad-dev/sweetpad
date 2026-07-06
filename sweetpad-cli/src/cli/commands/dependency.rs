@@ -390,9 +390,8 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
     // at a picker — snapshot the pristine pbxproj so no path leaves a
     // dangling, unlinked package reference behind.
     let pbxproj_path = xcodeproj.join("project.pbxproj");
-    let pristine = std::fs::read_to_string(&pbxproj_path).map_err(|e| {
-        CliError::new(format!("failed to read {}: {e}", pbxproj_path.display()))
-    })?;
+    let pristine = std::fs::read_to_string(&pbxproj_path)
+        .map_err(|e| CliError::new(format!("failed to read {}: {e}", pbxproj_path.display())))?;
     // The discovery resolve rewrites Package.resolved with the new package's
     // pins — snapshot it too, so a cancel doesn't leave ghost pins that make
     // `dep list`/`dep remove` misreport the abandoned package.
@@ -483,9 +482,8 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
     // cancelled — snapshot the pristine manifest so no path leaves a
     // dependency declared and linked nowhere.
     let manifest_path = container.path().to_path_buf();
-    let pristine = std::fs::read_to_string(&manifest_path).map_err(|e| {
-        CliError::new(format!("failed to read {}: {e}", manifest_path.display()))
-    })?;
+    let pristine = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| CliError::new(format!("failed to read {}: {e}", manifest_path.display())))?;
     // The resolve in step 2 writes the new package's pins into
     // Package.resolved — snapshot it too, so a cancel doesn't leave ghost
     // pins that make `dep list`/`dep remove` misreport the abandoned package.
@@ -712,7 +710,8 @@ fn remove_pin(container: &Container, query: &str) {
     // its pins carry no `identity` key — derive one, as `read_resolved` does).
     let has_top = json.get("pins").is_some_and(serde_json::Value::is_array);
     let pins = if has_top {
-        json.get_mut("pins").and_then(serde_json::Value::as_array_mut)
+        json.get_mut("pins")
+            .and_then(serde_json::Value::as_array_mut)
     } else {
         json.get_mut("object")
             .and_then(|o| o.get_mut("pins"))
@@ -894,7 +893,8 @@ fn delete_lockfile(container: &Container) {
 
 fn report_updated(ctx: &Context, what: &str) {
     if ctx.out.is_json() || ctx.out.is_ndjson() {
-        ctx.out.result_value(&serde_json::json!({ "updated": what }));
+        ctx.out
+            .result_value(&serde_json::json!({ "updated": what }));
     } else {
         ctx.out.note(&format!("updated {what}"));
     }
@@ -908,7 +908,8 @@ fn resolve_action(ctx: &mut Context) -> CliResult {
     let container = resolve::container(ctx)?;
     resolve_packages(&container, None, &ctx.out, false)?;
     if ctx.out.is_json() || ctx.out.is_ndjson() {
-        ctx.out.result_value(&serde_json::json!({ "resolved": true }));
+        ctx.out
+            .result_value(&serde_json::json!({ "resolved": true }));
     } else {
         ctx.out.note("resolved package dependencies");
     }

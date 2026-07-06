@@ -145,7 +145,14 @@ fn raw_minifies_and_flags_reach_the_wire() {
     let output = run_cli(
         &dir,
         &dir,
-        &["build.wait", "--buildId", "b1", "--timeoutMs", "5000", "--raw"],
+        &[
+            "build.wait",
+            "--buildId",
+            "b1",
+            "--timeoutMs",
+            "5000",
+            "--raw",
+        ],
     );
 
     let request = server.join().unwrap();
@@ -250,7 +257,9 @@ fn help_and_usage_paths() {
     let help = run_cli(&dir, &dir, &["--help"]);
     assert!(help.status.success(), "stderr: {:?}", help.stderr);
     assert!(
-        String::from_utf8(help.stdout).unwrap().contains("meta.usage"),
+        String::from_utf8(help.stdout)
+            .unwrap()
+            .contains("meta.usage"),
         "help output should point at meta.usage"
     );
 

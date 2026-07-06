@@ -49,7 +49,7 @@ jobs:
           rustc --version
 
       - name: Build the sweetpad CLI
-        run: cargo build --bin sweetpad
+        run: cargo build -p sweetpad-cli --bin sweetpad
 
       - name: Install XcodeGen
         run: brew install xcodegen

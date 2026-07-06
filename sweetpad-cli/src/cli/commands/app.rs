@@ -112,9 +112,7 @@ impl LaunchArgs {
             .map(|pair| {
                 pair.split_once('=')
                     .map(|(k, v)| (format!("{prefix}{k}"), v.to_string()))
-                    .ok_or_else(|| {
-                        CliError::new(format!("--env takes KEY=VALUE (got {pair:?})"))
-                    })
+                    .ok_or_else(|| CliError::new(format!("--env takes KEY=VALUE (got {pair:?})")))
             })
             .collect()
     }
@@ -590,6 +588,7 @@ fn warn_if_passthrough_moves_output(ctx: &Context, passthrough: &[String]) {
 }
 
 /// Resolve a full run plan, choosing a simulator (default), a device, or macOS.
+#[allow(clippy::too_many_lines)]
 fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     let resolved = resolve::resolve(ctx)?;
     let schemes = resolve::schemes(&resolved.container)?;
@@ -635,7 +634,9 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
             devices
                 .iter()
                 .find(|d| d.label() == chosen)
-                .ok_or_else(|| CliError::new("device not found").kind(ErrorKind::TargetResolution))?
+                .ok_or_else(|| {
+                    CliError::new("device not found").kind(ErrorKind::TargetResolution)
+                })?
         };
         let platform = if dev.platform.is_empty() {
             "iOS"
@@ -1343,9 +1344,10 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path, udid: &
 /// Where [`hot_selfcheck`] keeps the pristine copy of the fixture while the
 /// nonce edit is live: `<file>.sweetpad-selfcheck-backup`, next to the file.
 fn selfcheck_backup_path(file: &Path) -> std::path::PathBuf {
-    let name = file
-        .file_name()
-        .map_or_else(|| "fixture".to_string(), |n| n.to_string_lossy().into_owned());
+    let name = file.file_name().map_or_else(
+        || "fixture".to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    );
     file.with_file_name(format!("{name}.sweetpad-selfcheck-backup"))
 }
 
@@ -1622,10 +1624,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
             let mut child = cmd.spawn().map_err(|e| {
-                CliError::new(format!(
-                    "failed to run `{}`: {e}",
-                    app.executable.display()
-                ))
+                CliError::new(format!("failed to run `{}`: {e}", app.executable.display()))
             })?;
             render_console(&mut child, ctx.out.use_color(), filter);
             let reap_slot = crate::cli::signals::register_child(child.id());
@@ -1873,11 +1872,10 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
             if status.success() {
                 Ok(())
             } else {
-                Err(CliError::new(format!(
-                    "{} exited with {status}",
-                    app.executable.display()
-                ))
-                .context("running the macOS app"))
+                Err(
+                    CliError::new(format!("{} exited with {status}", app.executable.display()))
+                        .context("running the macOS app"),
+                )
             }
         }
         Target::SpmRun(_) => unreachable!("SPM run handled before this match"),
@@ -2248,15 +2246,21 @@ fn log_command(
     // A raw --predicate replaces the default process match wholesale;
     // --subsystem/--category narrow it.
     let mut predicate = filters.predicate.clone().unwrap_or_else(|| {
-        format!(
-            "process == \"{exe}\" AND (sender == \"{exe}\" OR sender == \"{exe}.debug.dylib\")"
-        )
+        format!("process == \"{exe}\" AND (sender == \"{exe}\" OR sender == \"{exe}.debug.dylib\")")
     });
     if let Some(subsystem) = &filters.subsystem {
-        let _ = write!(predicate, " AND subsystem == \"{}\"", predicate_escape(subsystem));
+        let _ = write!(
+            predicate,
+            " AND subsystem == \"{}\"",
+            predicate_escape(subsystem)
+        );
     }
     if let Some(category) = &filters.category {
-        let _ = write!(predicate, " AND category == \"{}\"", predicate_escape(category));
+        let _ = write!(
+            predicate,
+            " AND category == \"{}\"",
+            predicate_escape(category)
+        );
     }
     if let Some(marker) = marker {
         let _ = write!(
@@ -2628,7 +2632,13 @@ fn simple_on_simulator(
             ctx.out.step("Installing app", || {
                 simctl::install(udid, &app.path.display().to_string())
             })?;
-            stage_report("installed", &format!("Installed {}", app.bundle_id), app, udid, None)
+            stage_report(
+                "installed",
+                &format!("Installed {}", app.bundle_id),
+                app,
+                udid,
+                None,
+            )
         }
         Stage::Launch => {
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
@@ -2692,7 +2702,13 @@ fn simple_on_device(
             ctx.out.step("Installing app on device", || {
                 devicectl::install(id, &app.path.display().to_string())
             })?;
-            stage_report("installed", &format!("Installed {} on device", app.bundle_id), app, id, None)
+            stage_report(
+                "installed",
+                &format!("Installed {} on device", app.bundle_id),
+                app,
+                id,
+                None,
+            )
         }
         Stage::Launch => {
             let out = ctx.out.step("Launching app on device", || {
@@ -2759,7 +2775,9 @@ fn simple_from_last_launched(ctx: &mut Context, stage: Stage) -> Option<CommandR
     Some(match stage {
         Stage::Stop => ctx
             .out
-            .step("Terminating app", || simctl::terminate(&udid, &app.bundle_id))
+            .step("Terminating app", || {
+                simctl::terminate(&udid, &app.bundle_id)
+            })
             .map(|()| {
                 Rendered::data(AppStageReport {
                     action: "terminated",
@@ -2892,8 +2910,13 @@ fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle, filters: &LogFilterAr
     let json = ctx.out.is_json() || ctx.out.is_ndjson();
     let level = filters.level.as_deref().unwrap_or(log_level(&ctx.out));
     let marker = log_stream_marker();
-    let (program, args) =
-        log_command(&LogSource::Simulator(udid), app, level, Some(&marker), filters);
+    let (program, args) = log_command(
+        &LogSource::Simulator(udid),
+        app,
+        level,
+        Some(&marker),
+        filters,
+    );
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let mut child = process::spawn_piped(program, &refs, None)?;
     let reap_slot = crate::cli::signals::register_child(child.id());
@@ -2958,12 +2981,14 @@ fn destination_udid(destination: &str) -> Result<String, CliError> {
         .kind(ErrorKind::TargetResolution));
     };
     let sims = simctl::list()?;
-    simctl::find(&sims, name).map(|s| s.udid.clone()).ok_or_else(|| {
-        CliError::new(format!(
-            "the destination names the simulator {name:?}, but no such simulator exists"
-        ))
-        .kind(ErrorKind::TargetResolution)
-    })
+    simctl::find(&sims, name)
+        .map(|s| s.udid.clone())
+        .ok_or_else(|| {
+            CliError::new(format!(
+                "the destination names the simulator {name:?}, but no such simulator exists"
+            ))
+            .kind(ErrorKind::TargetResolution)
+        })
 }
 
 #[cfg(test)]
@@ -3094,8 +3119,13 @@ mod tests {
     #[test]
     fn log_command_mac_runs_host_log_without_marker() {
         let app = test_app();
-        let (program, args) =
-            log_command(&LogSource::Mac, &app, "debug", None, &LogFilterArgs::default());
+        let (program, args) = log_command(
+            &LogSource::Mac,
+            &app,
+            "debug",
+            None,
+            &LogFilterArgs::default(),
+        );
         // The host `log` binary directly — no `simctl spawn` wrapper.
         assert_eq!(program, "log");
         assert_eq!(&args[..2], &["stream", "--level"]);

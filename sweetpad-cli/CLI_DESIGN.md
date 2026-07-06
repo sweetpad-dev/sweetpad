@@ -419,7 +419,7 @@ sweetpad format run [paths…] [--tool swift-format|swiftlint] [--check]
                                      formats in place (or lints with --check);
                                      each tool reads its own project config
 sweetpad device list                 connected physical devices (xcrun devicectl)
-sweetpad bsp init [--output PATH]     write buildServer.json for sourcekit-lsp
+sweetpad bsp init [--output-file PATH]  write buildServer.json for sourcekit-lsp
                                      (reuses the crate's bsp::write_config)
 sweetpad completions <shell>          clap_complete-generated scripts
 ```
@@ -497,7 +497,7 @@ sweetpad derived-data purge [--all] [--yes]
 sweetpad simulator shutdown [NAME]   shut down a sim (defaults to the booted one)
 sweetpad simulator erase [NAME]      erase contents & settings (must be shut down)
 sweetpad simulator open              open the Simulator.app GUI
-sweetpad simulator screenshot [NAME] [--output PATH]
+sweetpad simulator screenshot [NAME] [--output-file PATH]
                                      PNG of a booted sim (timestamped by default)
 sweetpad simulator appearance <light|dark> [NAME]
                                      toggle a booted sim's UI appearance
