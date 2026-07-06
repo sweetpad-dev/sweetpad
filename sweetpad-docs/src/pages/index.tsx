@@ -9,8 +9,8 @@ function HeroBanner() {
 			<div className={styles.heroTextAndImage}>
 				<div className={styles.heroTextAndButtons}>
 					<span className={styles.heroText}>
-						Build <b>iOS/Swift</b> apps from <b>VS Code</b> or the{" "}
-						<b>terminal</b>
+						A suite of tools to work with <b>Xcode</b> projects — from{" "}
+						<b>VS Code</b> and the <b>terminal</b>
 					</span>
 					<div className={styles.heroButtons}>
 						<Link
@@ -38,8 +38,8 @@ function Products() {
 		<section className={styles.features}>
 			<div className="container">
 				<p style={{ textAlign: "center", maxWidth: 760, margin: "0 auto 2rem" }}>
-					SweetPad works two ways — from your editor, or from the terminal. Pick
-					whichever fits how you work.
+					SweetPad is a suite of tools for working with Xcode projects. It comes
+					in two forms — pick whichever fits how you work:
 				</p>
 				<div className="row">
 					<FeatureItem
