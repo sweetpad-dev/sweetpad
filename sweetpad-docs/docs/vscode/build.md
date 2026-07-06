@@ -1,5 +1,6 @@
 ---
-sidebar_position: 5
+sidebar_position: 2
+slug: /build
 ---
 
 # Build & Run
@@ -175,7 +176,7 @@ override the path:
 }
 ```
 
-## Pass extra arguments to `xcodebuild`
+## Pass extra arguments to xcodebuild
 
 Pass any extra `xcodebuild` flags through `sweetpad.build.args`. For example, to skip Swift macro validation:
 
@@ -199,7 +200,7 @@ This is useful for forwarding tokens or paths that your project's build scripts 
 
 Set a value to `null` to explicitly unset an inherited variable.
 
-## Use a different `xcodebuild` (e.g. Xcode-beta)
+## Use a different xcodebuild (e.g. Xcode-beta)
 
 If you need a non-default `xcodebuild` — to build against Xcode-beta, to pin a specific toolchain, or to wrap
 `xcodebuild` with a logger — point SweetPad at the binary you want:

@@ -1,5 +1,6 @@
 ---
-sidebar_position: 12
+sidebar_position: 5
+slug: /tests
 ---
 
 # Tests
@@ -78,7 +79,7 @@ without needing a scheme selection:
 
 See [Tuist](./tuist.md) for the rest of the Tuist integration.
 
-## Tasks for `tasks.json`
+## Tasks for tasks.json
 
 You can wire SweetPad's test action into VSCode tasks:
 

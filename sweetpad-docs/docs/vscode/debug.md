@@ -1,5 +1,6 @@
 ---
-sidebar_position: 6
+sidebar_position: 3
+slug: /debug
 ---
 
 # Debugging
@@ -57,7 +58,7 @@ extension — powered by [LLDB](https://lldb.llvm.org/) — so you can debug you
 
    ![Breakpoints](/images/debug-breakpoints.png)
 
-## Customize `preLaunchTask`
+## Customize preLaunchTask
 
 If you need more control, you can point the `preLaunchTask` property to a custom task defined in `.vscode/tasks.json`.  
 For example, the task below builds the app with the **Release** scheme before launching the debugger:
@@ -131,7 +132,7 @@ generally work out of the box, but there are some differences compared to the si
 On iOS 17+ the device launch goes through a developer tunnel managed by `pymobiledevice3`; see
 [Devices → iOS 17+: the developer tunnel](./devices.md#ios-17-the-developer-tunnel) for the one-time setup.
 
-### Merging `codelldbAttributes`
+### Merging codelldbAttributes
 
 When attaching to an app running **on a physical device**, SweetPad injects its own LLDB commands into
 `initCommands`, `preRunCommands`, and `processCreateCommands`. If you supply your own commands through
@@ -147,9 +148,8 @@ When attaching to an app running **on a physical device**, SweetPad injects its 
 }
 ```
 
-For the exact commands SweetPad injects, see
-[resolveDeviceDebugConfiguration](https://github.com/sweetpad-dev/sweetpad/blob/main/src/debugger/provider.ts) in the
-extension source.
+SweetPad's injected commands take care of connecting to the device and finding the remote process. Your commands run
+first, so anything you set up (logging, breakpoint behavior) is in place before SweetPad's connection steps run.
 
 ### Stop on attach
 

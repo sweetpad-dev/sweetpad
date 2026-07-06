@@ -1,5 +1,6 @@
 ---
-sidebar_position: 14
+sidebar_position: 13
+slug: /tuist
 ---
 
 # Tuist
@@ -16,7 +17,7 @@ SweetPad surfaces the most common Tuist commands directly in the VSCode command 
 - **SweetPad: Test Generated project using Tuist** — runs `tuist test`, building and testing every target Tuist
   knows about. Useful as a one-shot "did I break anything" check without picking a scheme.
 
-## Auto-regenerate on `.swift` file changes
+## Auto-regenerate on .swift file changes
 
 If you frequently add or remove `.swift` files, let SweetPad re-run `tuist generate` automatically when those files
 change so new files show up in the project without a manual regeneration:

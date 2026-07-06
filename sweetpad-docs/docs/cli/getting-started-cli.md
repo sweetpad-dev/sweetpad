@@ -1,5 +1,7 @@
 ---
-sidebar_position: 3
+sidebar_position: 1
+slug: /getting-started-cli
+sidebar_label: Get started
 ---
 
 # Get started with the CLI
@@ -130,5 +132,6 @@ sweetpad help config         # settings you can save
 
 - The [SweetPad CLI](./cli.md) page covers every command group, saving your settings, and using the
   CLI in scripts and CI.
-- Prefer working in an editor? The [VSCode extension](./getting-started-vscode.md) does all of this
+- The [CLI reference](./reference.md) lists every command, flag, config key, and exit code on one page.
+- Prefer working in an editor? The [VSCode extension](../vscode/getting-started-vscode.md) does all of this
   from a sidebar.
