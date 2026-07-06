@@ -48,7 +48,7 @@ Pairing only needs to happen once per device/Mac combination:
 4. Back in VSCode, click ↻ on the Destinations panel or run `> SweetPad: Refresh devices list` to pick up the new
    device.
 
-## Stream `os_log` and `print` output from the device
+## Stream os_log and print output from the device
 
 By default, when you launch an app on a physical device, SweetPad streams the device's syslog into the build terminal
 and filters it down to your app — `os_log`, `Logger`, `print`, and `NSLog` output all surface there, alongside the
@@ -103,7 +103,7 @@ which only runs for simulators and macOS. See
 
 :::
 
-### Pass extra args to `pymobiledevice3`
+### Pass extra args to pymobiledevice3
 
 If you need flags that aren't covered above, append them with:
 
@@ -113,7 +113,7 @@ If you need flags that aren't covered above, append them with:
 }
 ```
 
-### Use a non-default `pymobiledevice3`
+### Use a non-default pymobiledevice3
 
 If the binary isn't on `PATH`, point at it explicitly:
 

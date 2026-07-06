@@ -132,5 +132,6 @@ sweetpad help config         # settings you can save
 
 - The [SweetPad CLI](./cli.md) page covers every command group, saving your settings, and using the
   CLI in scripts and CI.
+- The [CLI reference](./reference.md) lists every command, flag, config key, and exit code on one page.
 - Prefer working in an editor? The [VSCode extension](../vscode/getting-started-vscode.md) does all of this
   from a sidebar.

@@ -16,7 +16,8 @@ The tools listed in the panel:
 - [**Homebrew**](https://brew.sh/) — package manager used to install most of the others.
 - [**swift-format**](https://github.com/apple/swift-format) — the default Swift formatter. Xcode 16+ ships it
   bundled; older Xcodes need a Homebrew install. See [Format code](./format.md).
-- [**XcodeGen**](https://github.com/yonaskolb/XcodeGen) — generates `.xcodeproj` from a YAML manifest.
+- [**XcodeGen**](https://github.com/yonaskolb/XcodeGen) — generates `.xcodeproj` from a YAML manifest. SweetPad has
+  deeper integration here; see [XcodeGen](./xcodegen.md).
 - [**SwiftLint**](https://github.com/realm/SwiftLint) — Swift linter.
 - [**xcbeautify**](https://github.com/cpisciotta/xcbeautify) — formats `xcodebuild` output into something readable.
 - [**xcode-build-server**](https://github.com/SolaWing/xcode-build-server) — exposes Xcode's build outputs to

@@ -42,8 +42,8 @@ The VSCode extension gives you:
   Swift Testing.
 - ✍️ **[Format on save](./vscode/format.md)** with `swift-format` (Xcode's bundled copy by default) or any other Swift
   formatter you prefer.
-- 💡 **[Autocomplete](./vscode/autocomplete.md)** via SourceKit-LSP backed by `xcode-build-server`, including inline
-  compiler diagnostics in the Problems panel.
+- 💡 **[Autocomplete](./vscode/autocomplete.md)** via SourceKit-LSP — backed by `xcode-build-server` or SweetPad's
+  built-in build server — including inline compiler diagnostics in the Problems panel.
 - 🌳 **[Git worktrees](./vscode/worktree.md)** — switch the active workspace between parallel checkouts of the same project
   in one command.
 
@@ -53,3 +53,11 @@ And the same building, running, and testing is available from the terminal:
   your projects, and to script them into git hooks and CI.
 - 🤖 **[Agent CLI / RPC server](./cli/agent-cli.md)** — an opt-in server so scripts and AI coding agents can
   drive your VSCode session from the outside.
+
+## Reference
+
+When you need the exact name of something:
+
+- [Settings reference](./vscode/settings.md) — every extension setting, grouped by area.
+- [Commands reference](./vscode/commands.md) — every command-palette command.
+- [CLI reference](./cli/reference.md) — every terminal command, flag, config key, and exit code.

@@ -85,8 +85,8 @@ sweetpad devices
 
 ```bash
 sweetpad scheme list             # the schemes SweetPad found
-sweetpad project                 # targets and configurations
-sweetpad settings get            # the resolved build settings
+sweetpad project info            # targets and configurations
+sweetpad settings show           # the resolved build settings
 sweetpad dependency list         # Swift Package dependencies
 ```
 
@@ -106,7 +106,8 @@ sweetpad archive
 ```
 
 There's more — Swift Package tools, git merge helpers, and shell completions among them. Run
-`sweetpad --help` to see the whole list.
+`sweetpad --help` to see the whole list, or browse the [CLI reference](./reference.md) for every
+command on one page.
 
 ## Choosing where to run
 
@@ -161,7 +162,7 @@ Every command can print JSON instead of text, which makes it easy to use from sc
 CI pipelines. Add `--json` for a single JSON result:
 
 ```bash
-sweetpad --json settings get
+sweetpad --json settings show
 ```
 
 A few options help in automation:
@@ -190,6 +191,7 @@ Alongside `--help` on each command, the tool ships a few longer explanations you
 ```bash
 sweetpad help                 # list the guides
 sweetpad help config          # settings you can save
+sweetpad help environment     # every SWEETPAD_* variable
 sweetpad help destinations    # how to describe where to run
 sweetpad help exit-codes      # what each exit code means
 sweetpad help hot-reload      # setting up live reload
