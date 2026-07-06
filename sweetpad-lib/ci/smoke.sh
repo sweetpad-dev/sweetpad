@@ -278,14 +278,17 @@ ok "simulator erase"
 section "error paths"
 expect_code 2 "$BIN" bogus-command
 ok "unknown command exits 2"
-expect_code 1 "$BIN" build start --project "$APP" --scheme NoSuchScheme --destination "$DEST"
-ok "unknown scheme exits 1"
+# Unknown scheme / simulator / missing container are all TargetResolution
+# errors, which the CLI's exit-code taxonomy maps to 4 (Generic is 1,
+# BuildFailure 3, TargetResolution 4, ToolMissing 5 — see ErrorKind::exit_code).
+expect_code 4 "$BIN" build start --project "$APP" --scheme NoSuchScheme --destination "$DEST"
+ok "unknown scheme exits 4 (target resolution)"
 # Project-scoped derived-data with no container in cwd (sweetpad-lib has no
 # Xcode project/package) is a strict error, not a silent empty result.
-expect_code 1 "$BIN" derived-data path
-ok "derived-data --project with no container exits 1"
-expect_code 1 "$BIN" simulator screenshot definitely-not-a-real-sim
-ok "simulator op with unknown target exits 1"
+expect_code 4 "$BIN" derived-data path
+ok "derived-data --project with no container exits 4 (target resolution)"
+expect_code 4 "$BIN" simulator screenshot definitely-not-a-real-sim
+ok "simulator op with unknown target exits 4 (target resolution)"
 
 # ---------------------------------------------------------------------------
 echo
