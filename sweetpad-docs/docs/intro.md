@@ -13,6 +13,10 @@ like [xcode-build-server](https://github.com/SolaWing/xcode-build-server),
 [swift-format](https://github.com/swiftlang/swift-format), and
 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3).
 
+Prefer the terminal? The same power ships as a standalone [`sweetpad` CLI](./cli.md) — a single native
+binary that builds, runs, and tests the same projects without an editor. This guide is about the
+extension; the [SweetPad CLI](./cli.md) page covers the command-line tool.
+
 :::info
 
 You still need to have Xcode installed on your machine to use the extension because it heavily relies on the Xcode CLI
@@ -37,8 +41,10 @@ tools to build and run your project.
   compiler diagnostics in the Problems panel.
 - 🌳 **[Git worktrees](./worktree.md)** — switch the active workspace between parallel checkouts of the same project
   in one command.
-- 🤖 **[Agent CLI / RPC server](./agent-cli.md)** — opt-in JSON-RPC server and bundled `sweetpad` CLI so scripts and
-  AI coding agents can drive your VSCode session from the outside.
+- 💻 **[SweetPad CLI](./cli.md)** — the standalone `sweetpad` command-line tool ("xcodebuild for humans")
+  to build, run, and test the same projects straight from the terminal.
+- 🤖 **[Agent CLI / RPC server](./agent-cli.md)** — opt-in JSON-RPC server so scripts and AI coding agents
+  can drive your VSCode session from the outside.
 
 ## Getting started
 
