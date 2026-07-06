@@ -13,9 +13,10 @@ like [xcode-build-server](https://github.com/SolaWing/xcode-build-server),
 [swift-format](https://github.com/swiftlang/swift-format), and
 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3).
 
-Prefer the terminal? The same power ships as a standalone [`sweetpad` CLI](./cli.md) — a single native
-binary that builds, runs, and tests the same projects without an editor. This guide is about the
-extension; the [SweetPad CLI](./cli.md) page covers the command-line tool.
+SweetPad is a family of tools. This extension is one product; its sibling is the standalone
+[SweetPad CLI](./cli.md) — a single native binary that builds, runs, and tests the same projects from
+the terminal, no editor needed. This guide is about the extension; the [CLI](./cli.md) page covers the
+command-line tool.
 
 :::info
 

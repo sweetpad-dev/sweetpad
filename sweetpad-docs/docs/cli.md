@@ -4,13 +4,13 @@ sidebar_position: 15
 
 # SweetPad CLI
 
-SweetPad ships a standalone `sweetpad` command-line tool — "xcodebuild for humans". It builds, runs,
-tests, and inspects the same Xcode and Swift Package projects the [VSCode extension](./intro.md) does,
-but from the terminal, with no editor running.
+The SweetPad CLI is a standalone `sweetpad` command-line tool — "xcodebuild for humans". It builds,
+runs, tests, and inspects Xcode and Swift Package projects from the terminal, with no editor running.
 
-It's a single native macOS binary (no Node runtime), and it shares the same build-settings resolver
-the extension uses — so a scheme, destination, or configuration you pick on the command line resolves
-exactly the way it would in the sidebar.
+It's one of the two SweetPad products, a sibling to the [VSCode extension](./intro.md) — use either on
+its own. It's a single native macOS binary (no Node runtime), and it shares the same build-settings
+resolver the extension uses, so a scheme, destination, or configuration you pick on the command line
+resolves exactly the way it would in the sidebar.
 
 :::info
 
