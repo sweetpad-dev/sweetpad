@@ -3,7 +3,7 @@
 SweetPad is a family of tools for developing Swift/iOS projects — building, running, debugging, and
 testing your Xcode projects for iOS, macOS, tvOS, watchOS, and visionOS without living inside Xcode.
 
-There are two separate products, and you can use either on its own:
+It comes in two forms — pick whichever fits how you work:
 
 ## VS Code extension
 

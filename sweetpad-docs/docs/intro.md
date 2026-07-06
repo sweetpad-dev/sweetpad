@@ -8,16 +8,12 @@ SweetPad helps you build, run, debug, and test your Xcode projects for iOS, macO
 visionOS — without living inside Xcode. It works with Xcode workspaces and projects, [Tuist](./tuist.md),
 XcodeGen, and Swift Packages.
 
-SweetPad is a family of tools, and there are two separate products:
+SweetPad comes in two forms — pick whichever fits how you work:
 
 - **[VSCode extension](./getting-started-vscode.md)** — build, run, and debug from the editor sidebar,
   with logs, tests, formatting, and autocomplete built in. This works in [Cursor](https://www.cursor.com/) too.
-- **[SweetPad CLI](./getting-started-cli.md)** — the standalone `sweetpad` command-line tool
-  ("xcodebuild for humans") that does the same from the terminal, no editor needed.
-
-The two are independent. Pick whichever fits how you work — you can use either one on its own, and
-neither requires the other. (If you happen to use both, they can also
-[work together](./agent-cli.md), but that's entirely optional.)
+- **[SweetPad CLI](./getting-started-cli.md)** — the `sweetpad` command-line tool ("xcodebuild for
+  humans") that does the same from the terminal, no editor needed.
 
 :::info
 

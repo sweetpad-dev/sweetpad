@@ -26,8 +26,7 @@ to build and run your app, use the SweetPad sidebar and skip this page.
 
 ## Install
 
-The `sweetpad` CLI is distributed via Homebrew — a signed, notarized universal macOS binary,
-independent of the VS Code extension:
+The `sweetpad` CLI is distributed via Homebrew:
 
 ```bash
 brew install sweetpad-dev/tap/sweetpad

@@ -38,9 +38,8 @@ function Products() {
 		<section className={styles.features}>
 			<div className="container">
 				<p style={{ textAlign: "center", maxWidth: 760, margin: "0 auto 2rem" }}>
-					SweetPad is two separate tools for iOS/Swift development. Pick whichever
-					fits how you work — you can use either one on its own, and neither
-					needs the other.
+					SweetPad works two ways — from your editor, or from the terminal. Pick
+					whichever fits how you work.
 				</p>
 				<div className="row">
 					<FeatureItem

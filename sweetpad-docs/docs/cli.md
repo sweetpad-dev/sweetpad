@@ -8,9 +8,7 @@ The SweetPad CLI is a command-line tool named `sweetpad` that builds, runs, and 
 Swift Package apps from the terminal — no editor needed. If you've ever wished `xcodebuild` were
 friendlier, this is that.
 
-It's one of the two SweetPad products, a sibling to the [VSCode extension](./intro.md). The two are
-completely independent: the CLI is a standalone tool, so you **don't** need VSCode (or the extension)
-installed to use it, and it doesn't touch your editor.
+It's the command-line side of SweetPad, alongside the [VSCode extension](./intro.md).
 
 :::tip
 
@@ -205,10 +203,8 @@ sweetpad completions zsh > /path/to/completions/_sweetpad
 
 Bash, zsh, fish, elvish, and PowerShell are all supported.
 
-## Optional: controlling VSCode from the terminal
+## Controlling VSCode from the terminal
 
-If you _do_ use the VSCode extension, the `sweetpad` tool has a second, optional side —
-`sweetpad vscode` — that can talk to a running VSCode window so a script or an AI coding agent can
-trigger builds and read results inside your editor session. This is entirely optional and unrelated to
-the standalone commands above; it only matters if you want the CLI and the extension to work together.
-It has its own page: [Agent CLI & RPC server](./agent-cli.md).
+The `sweetpad` tool has a second side — `sweetpad vscode` — that talks to a running VSCode window so a
+script or an AI coding agent can trigger builds and read results inside your editor session. It's an
+advanced topic with its own page: [Agent CLI & RPC server](./agent-cli.md).
