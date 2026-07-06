@@ -1,5 +1,5 @@
 ---
-sidebar_position: 15
+sidebar_position: 18
 ---
 
 # Agent CLI & RPC Server
@@ -8,14 +8,14 @@ SweetPad ships a standalone `sweetpad` command-line tool plus an opt-in JSON-RPC
 processes — scripts, CI jobs, AI coding agents — can drive your Xcode project and your live VS Code
 session without screen-scraping the UI.
 
-The CLI has two halves:
+The `sweetpad` binary has two halves:
 
 - **`sweetpad <command>`** — a standalone, headless CLI ("xcodebuild for humans"): inspect schemes
   and destinations, build, run, manage simulators, resolve Swift Package dependencies, and more. It
-  needs nothing running — run `sweetpad --help` to explore.
+  needs nothing running. This half has its own page — [SweetPad CLI](./cli.md).
 - **`sweetpad vscode <method>`** — a JSON-RPC client that talks to a running VS Code window's SweetPad
   server (read state, trigger builds, drive simulators _inside_ your editor session). This page is
-  mostly about this half.
+  about this half.
 
 :::tip
 
@@ -26,8 +26,7 @@ to build and run your app, use the SweetPad sidebar and skip this page.
 
 ## Install
 
-The `sweetpad` CLI is distributed via Homebrew — a signed, notarized universal macOS binary,
-independent of the VS Code extension:
+The `sweetpad` CLI is distributed via Homebrew:
 
 ```bash
 brew install sweetpad-dev/tap/sweetpad
