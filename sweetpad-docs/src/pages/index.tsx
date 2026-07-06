@@ -9,20 +9,53 @@ function HeroBanner() {
 			<div className={styles.heroTextAndImage}>
 				<div className={styles.heroTextAndButtons}>
 					<span className={styles.heroText}>
-						Build <b>iOS/Swift</b> apps using <b>Visual Studio Code</b>
+						Build <b>iOS/Swift</b> apps from <b>VS Code</b> or the{" "}
+						<b>terminal</b>
 					</span>
 					<div className={styles.heroButtons}>
 						<Link
 							className="button button--primary button--lg"
-							to="/docs/intro"
+							to="/docs/getting-started-vscode"
 						>
-							Get Started
+							VS Code extension
+						</Link>
+						<Link
+							className="button button--secondary button--lg"
+							to="/docs/getting-started-cli"
+						>
+							Command-line tool
 						</Link>
 					</div>
 				</div>
 				<img className={styles.heroImage} src="/images/logo.png" alt="Hero" />
 			</div>
 		</div>
+	);
+}
+
+function Products() {
+	return (
+		<section className={styles.features}>
+			<div className="container">
+				<p style={{ textAlign: "center", maxWidth: 760, margin: "0 auto 2rem" }}>
+					SweetPad is two separate tools for iOS/Swift development. Pick whichever
+					fits how you work — you can use either one on its own, and neither
+					needs the other.
+				</p>
+				<div className="row">
+					<FeatureItem
+						title="🧩 VS Code extension"
+						description="Build, run, debug, and test from the editor sidebar. Works in Cursor too."
+						link="/docs/getting-started-vscode"
+					/>
+					<FeatureItem
+						title="💻 Command-line tool"
+						description="The standalone sweetpad CLI: build, run, and test from the terminal — no editor required."
+						link="/docs/getting-started-cli"
+					/>
+				</div>
+			</div>
+		</section>
 	);
 }
 
@@ -45,6 +78,9 @@ function Features() {
 	return (
 		<section className={styles.features}>
 			<div className="container">
+				<h2 style={{ textAlign: "center", marginBottom: "2rem" }}>
+					Inside the VS Code extension
+				</h2>
 				<div className="row">
 					<FeatureItem
 						title="✅ Autocomplete"
@@ -104,6 +140,7 @@ export default function Home(): React.JSX.Element {
 		>
 			<main>
 				<HeroBanner />
+				<Products />
 				<Features />
 			</main>
 		</Layout>

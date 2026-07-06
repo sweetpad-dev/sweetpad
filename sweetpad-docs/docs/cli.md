@@ -1,189 +1,205 @@
 ---
-sidebar_position: 15
+sidebar_position: 17
 ---
 
 # SweetPad CLI
 
-The SweetPad CLI is a standalone `sweetpad` command-line tool — "xcodebuild for humans". It builds,
-runs, tests, and inspects Xcode and Swift Package projects from the terminal, with no editor running.
+The SweetPad CLI is a command-line tool named `sweetpad` that builds, runs, and tests your Xcode and
+Swift Package apps from the terminal — no editor needed. If you've ever wished `xcodebuild` were
+friendlier, this is that.
 
-It's one of the two SweetPad products, a sibling to the [VSCode extension](./intro.md) — use either on
-its own. It's a single native macOS binary (no Node runtime), and it shares the same build-settings
-resolver the extension uses, so a scheme, destination, or configuration you pick on the command line
-resolves exactly the way it would in the sidebar.
+It's one of the two SweetPad products, a sibling to the [VSCode extension](./intro.md). The two are
+completely independent: the CLI is a standalone tool, so you **don't** need VSCode (or the extension)
+installed to use it, and it doesn't touch your editor.
 
-:::info
+:::tip
 
-Like the extension, the CLI drives Xcode's own command-line tools under the hood, so you still need
-Xcode installed.
+New here? Start with [Get started with the CLI](./getting-started-cli.md) — install, then build and
+run your app in a few minutes. This page is the fuller tour.
 
 :::
 
-## Install
+## Installing and updating
 
-The CLI is distributed via Homebrew as a signed, notarized universal binary, independent of the VSCode
-extension:
+Install with [Homebrew](https://brew.sh/):
 
 ```bash
 brew install sweetpad-dev/tap/sweetpad
 ```
 
-Verify it:
+Update it later the same way you update anything else with Homebrew:
 
 ```bash
-sweetpad --version
+brew upgrade sweetpad
 ```
 
-Upgrade it later with `brew upgrade sweetpad`.
+You'll need Xcode installed too — SweetPad uses Xcode's own tools to do the actual building.
 
-## Quick start
+## How commands are shaped
 
-Run `sweetpad` from inside a project — a folder containing an `.xcworkspace`, `.xcodeproj`, or
-`Package.swift`. It finds the project by walking up from the current directory, the same way `git`
-finds its repo.
+Most commands read as a thing followed by an action — for example `sweetpad simulator list` or
+`sweetpad scheme list`. The common actions have a shortcut, so you can usually just say the thing:
+
+- `sweetpad build` builds your app.
+- `sweetpad test` runs your tests.
+- `sweetpad run` builds, launches, and shows the logs.
+
+Not sure what's available? `--help` always works:
 
 ```bash
-cd ~/Developer/MyApp
+sweetpad --help              # every command
+sweetpad run --help          # options for one command
+```
 
-# Where am I? Show the resolved build context.
-sweetpad status
+## Everyday commands
 
-# List everything you can run on — simulators, devices, macOS.
+Run these from inside your project folder.
+
+**Build and run.** `sweetpad run` is the one you'll use most — it builds the app, launches it on your
+chosen simulator or device, and streams the logs into your terminal.
+
+```bash
+sweetpad run                       # build, launch, and follow logs
+sweetpad run --on "iPhone 16 Pro"  # ...on a specific simulator
+sweetpad build                     # just build
+sweetpad test                      # run the tests
+```
+
+**See where you can run.** `sweetpad devices` lists every simulator, connected device, and macOS —
+each with a copy-paste-ready name.
+
+```bash
 sweetpad devices
-
-# Build, install, launch, and stream logs — the flagship loop.
-sweetpad run
 ```
 
-The first time you run inside a project, SweetPad prompts you to pick a scheme and a destination, then
-remembers them per project so later commands don't ask again. Run `sweetpad status` any time to see
-what's currently selected and where each value came from.
-
-## What the CLI can do
-
-The command tree is resource-first — a noun, then a verb (`sweetpad simulator list`). Most nouns also
-have a bare shortcut for their most common verb, so `sweetpad build` is `sweetpad build start` and
-`sweetpad test` is `sweetpad test run`. Run `sweetpad --help` to explore the full tree, or
-`sweetpad <command> --help` for one command.
-
-The main groups:
-
-- **Build & run** — `build`, `run` (build + install + launch + logs), `test`, `archive` (export an
-  `.ipa`), and `clean`.
-- **Explore the project** — `scheme`, `project` (targets and configurations), `settings` (resolved
-  build settings), and `dependency` (Swift Package dependencies).
-- **Pick where to run** — `devices` lists every runnable target with its ready specifier; `simulator`
-  and `context` (the remembered selection) manage the details.
-- **Format** — `format` runs or lints Swift sources with `swift-format` or a formatter you point it at.
-- **Maintenance** — `doctor` diagnoses the local toolchain, `derived-data` inspects and purges Xcode's
-  DerivedData, and `open` jumps to the project in Xcode, the Simulator, or the config file.
-- **Utilities** — `bsp` sets up SourceKit-LSP autocomplete, `merge` installs git merge drivers for
-  `project.pbxproj` and `Package.resolved`, `completions` generates shell completions, and
-  `self-update` upgrades the binary.
-
-### Hot reload
-
-`sweetpad run --hot` recompiles and injects each Swift save into the running app without relaunching,
-preserving state — the CLI counterpart of the extension's [hot reload](./hot-reload.md). It's iOS
-Simulator only. See `sweetpad help hot-reload` for the SwiftUI setup and recompiler options.
-
-## Selecting a target
-
-Every build command needs to know four things: which project container, which scheme, which
-configuration, and which destination. You can supply any of them explicitly, but you rarely have to —
-SweetPad resolves each value from the first source that has it, highest priority first:
-
-1. An explicit flag (`--scheme`, `--configuration`, `--on`, `--destination`).
-2. A `SWEETPAD_*` environment variable.
-3. Your personal config file.
-4. A committed `sweetpad.toml` next to the project (team-shared defaults).
-5. The selection SweetPad remembered from a previous run.
-6. Auto-discovery (a single obvious scheme, a booted simulator, and so on).
-
-The friendliest way to choose a destination is `--on`, which takes a human reference — a fuzzy
-simulator name, `booted`, `mac`, `device`, or a platform word:
+**Look at your project.** Handy when you're not sure what's inside a project:
 
 ```bash
-sweetpad run --on "iPhone 16 Pro"
-sweetpad build --on mac
-sweetpad test --on booted
+sweetpad scheme list             # the schemes SweetPad found
+sweetpad project                 # targets and configurations
+sweetpad settings get            # the resolved build settings
+sweetpad dependency list         # Swift Package dependencies
 ```
 
-`--destination` remains the raw escape hatch when you need to pass an exact `xcodebuild` specifier.
-Run `sweetpad help destinations` for the full grammar.
+**Tidy up and fix things.**
 
-## Configuration
+```bash
+sweetpad format                  # format your Swift files
+sweetpad clean                   # remove build artifacts
+sweetpad doctor                  # check your Xcode setup for problems
+sweetpad open xcode              # open the project in Xcode
+```
 
-SweetPad reads two hand-authored files, and never writes to either:
+**Ship a build.** `sweetpad archive` produces an `.ipa` you can upload or distribute.
 
-- Your personal `~/.config/sweetpad/config.toml` holds global defaults plus per-project overrides.
-- A committed `sweetpad.toml` next to the project is the team-shared defaults layer — scheme,
-  configuration, destination, the Xcode to use, and more — that everyone on the project inherits.
+```bash
+sweetpad archive
+```
 
-Remembered selections live separately in a machine-managed state file; inspect and edit them with
-`sweetpad context`, not by hand. For the full list of keys and the resolution precedence, run:
+There's more — Swift Package tools, git merge helpers, and shell completions among them. Run
+`sweetpad --help` to see the whole list.
+
+## Choosing where to run
+
+Commands like `build`, `run`, and `test` need to know which scheme to build and where to run it. The
+easiest way to say where is `--on`, which understands plain descriptions:
+
+```bash
+sweetpad run --on "iPhone 16 Pro"   # a simulator by name
+sweetpad build --on mac             # your Mac
+sweetpad test --on booted           # whatever simulator is already open
+```
+
+You usually don't have to say any of this, though. The first time you build in a project, SweetPad
+asks which scheme and destination to use, then **remembers your answer** so it won't ask again. Check
+what's currently chosen — and where each choice came from — with:
+
+```bash
+sweetpad status
+```
+
+To change or clear the remembered choices, use `sweetpad context`. For all the ways to describe a
+destination, run `sweetpad help destinations`.
+
+## Live reload while you edit
+
+`sweetpad run --hot` keeps your app running and applies each Swift file you save without a full
+rebuild — so the app updates in place, keeping its current screen and state. It works on the iOS
+Simulator. SwiftUI needs one small setup step; run `sweetpad help hot-reload` for the details.
+
+```bash
+sweetpad run --hot
+```
+
+## Saving your settings
+
+If you'd rather not answer the scheme/destination prompt each time — or you want your whole team to
+share the same defaults — you can write them down.
+
+- Put your personal defaults in `~/.config/sweetpad/config.toml`.
+- Put shared, checked-in defaults in a `sweetpad.toml` file next to your project, so everyone who
+  clones the repo gets them.
+
+For the exact keys you can set, run:
 
 ```bash
 sweetpad help config
 ```
 
-## Scripting and CI
+## Using the CLI in scripts and CI
 
-Every command speaks JSON, so the CLI drops into scripts, git hooks, and CI without screen-scraping.
-Pass `--json` (or `-o json`) for a single result envelope, or `-o ndjson` to stream one event per line
-from the long-running verbs (`build`, `test`, logs):
+Every command can print JSON instead of text, which makes it easy to use from scripts, git hooks, and
+CI pipelines. Add `--json` for a single JSON result:
 
 ```bash
-sweetpad -o json settings get
-sweetpad -o ndjson build
+sweetpad --json settings get
 ```
 
-A few flags earn their keep in automation:
+A few options help in automation:
 
-- `--non-interactive` (also `SWEETPAD_NONINTERACTIVE`, and implied by `CI`) never prompts — a missing
-  scheme or destination becomes an error instead of a picker.
-- `-C DIR` runs as if started in `DIR`, like `git -C`.
-- `--developer-dir` pins the Xcode every spawned tool uses.
-- `--gh-annotations` emits GitHub Actions `::error` annotations for build and test diagnostics, so
-  failures surface inline on the PR.
+- `--non-interactive` never stops to ask a question — a missing scheme or destination becomes an error
+  instead of a prompt. (SweetPad also turns this on automatically when it detects a CI environment.)
+- `-C <folder>` runs as if you'd started in that folder.
+- `--gh-annotations` makes build and test errors show up inline on your GitHub pull request.
 
-Commands exit with a small, stable set of codes — `0` success, `3` build/test failure, `4` target
-resolution failed, `5` a required tool is missing, and so on — so a script can branch on the outcome.
-Run `sweetpad help exit-codes` for the full table.
+Commands also return meaningful exit codes — `0` when everything's fine, and specific non-zero codes
+for a failed build, a missing tool, and so on — so a script can react to what happened. Run
+`sweetpad help exit-codes` for the list.
 
 :::tip
 
-`ok: true` in the JSON envelope means the command ran, not that the outcome was good. A red test suite
-still exits non-zero with `passed: false` in its payload — read the payload's own status field.
+When you ask for JSON, a successful response means "the command ran," not "the result was good." A
+failing test run, for example, still reports its own failure inside the result — so check the status
+in the payload, not just whether the command completed.
 
 :::
 
-## Built-in help topics
+## Built-in guides
 
-Beyond `--help` on each command, the CLI ships longer-form topics you can read offline:
+Alongside `--help` on each command, the tool ships a few longer explanations you can read offline:
 
 ```bash
-sweetpad help                 # list the topics
-sweetpad help config          # the config file: keys and precedence
-sweetpad help environment     # every SWEETPAD_* variable
-sweetpad help destinations    # destination specifiers and the picker
+sweetpad help                 # list the guides
+sweetpad help config          # settings you can save
+sweetpad help destinations    # how to describe where to run
 sweetpad help exit-codes      # what each exit code means
-sweetpad help hot-reload      # requirements and recompilers for --hot
+sweetpad help hot-reload      # setting up live reload
 ```
 
 ## Shell completions
 
-Generate a completion script for your shell and load it however your shell prefers:
+Turn on tab-completion for your shell. For example, with zsh:
 
 ```bash
 sweetpad completions zsh > /path/to/completions/_sweetpad
 ```
 
-`bash`, `zsh`, `fish`, `elvish`, and `powershell` are all supported.
+Bash, zsh, fish, elvish, and PowerShell are all supported.
 
-## Driving a live VSCode session
+## Optional: controlling VSCode from the terminal
 
-The same binary has a second half — `sweetpad vscode <method>` — that talks over JSON-RPC to a running
-VSCode window, so a script or AI agent can read state and trigger builds _inside_ your editor session
-rather than in a headless project. That's covered on its own page:
-[Agent CLI & RPC server](./agent-cli.md).
+If you _do_ use the VSCode extension, the `sweetpad` tool has a second, optional side —
+`sweetpad vscode` — that can talk to a running VSCode window so a script or an AI coding agent can
+trigger builds and read results inside your editor session. This is entirely optional and unrelated to
+the standalone commands above; it only matters if you want the CLI and the extension to work together.
+It has its own page: [Agent CLI & RPC server](./agent-cli.md).
