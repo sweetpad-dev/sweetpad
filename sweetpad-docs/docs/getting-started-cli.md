@@ -22,9 +22,35 @@ Check that it worked:
 sweetpad --version
 ```
 
-## 2. Go to your project
+## 2. Get a project
 
-Open a terminal and `cd` into your project folder — anywhere inside a folder that has an `.xcworkspace`,
+You can start a brand-new app or point SweetPad at one you already have.
+
+### Create a new project
+
+`sweetpad project new` scaffolds a minimal SwiftUI app. Run it with no options and it walks you through
+a short set of questions — project name, iOS or macOS, bundle identifier, and so on — then creates the
+project for you:
+
+```bash
+sweetpad project new
+```
+
+Prefer to skip the questions? Pass a name (and any options you want) and it uses sensible defaults:
+
+```bash
+sweetpad project new MyApp --platform ios
+```
+
+When it's done, hop into the new folder:
+
+```bash
+cd MyApp
+```
+
+### Or use an existing project
+
+Already have a project? Just `cd` into it — anywhere inside a folder that has an `.xcworkspace`,
 `.xcodeproj`, or `Package.swift`. SweetPad finds the project by looking in the current folder and its
 parents, just like `git` does.
 

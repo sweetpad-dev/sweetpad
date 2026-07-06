@@ -53,7 +53,16 @@ sweetpad run --help          # options for one command
 
 ## Everyday commands
 
-Run these from inside your project folder.
+**Start a project.** `sweetpad project new` scaffolds a minimal SwiftUI app — run it with no options
+for a short wizard, or pass a name to use defaults. Already have a project? Skip this and just `cd`
+into it.
+
+```bash
+sweetpad project new              # answer a few questions
+sweetpad project new MyApp        # or use defaults
+```
+
+The rest of these run from inside your project folder.
 
 **Build and run.** `sweetpad run` is the one you'll use most — it builds the app, launches it on your
 chosen simulator or device, and streams the logs into your terminal.
