@@ -33,8 +33,21 @@ pub fn run(ctx: &mut Context) -> CommandResult {
     let brewed = path.contains("/Cellar/") || path.contains("/opt/homebrew/");
     if brewed {
         ctx.out.note("updating via Homebrew…");
-        process::stream("brew", &["upgrade", "sweetpad"], None)
-            .context("running `brew upgrade sweetpad`")?;
+        // brew always writes `==> …` progress to stdout — captured under the
+        // machine modes so it can't interleave with the envelope.
+        if ctx.out.is_json() || ctx.out.is_ndjson() {
+            let run = process::run_captured("brew", &["upgrade", "sweetpad"], None)?;
+            if !run.success {
+                return Err(crate::cli::CliError::new(format!(
+                    "brew upgrade sweetpad exited with a non-zero status:\n{}",
+                    run.tail
+                ))
+                .context("running `brew upgrade sweetpad`"));
+            }
+        } else {
+            process::stream("brew", &["upgrade", "sweetpad"], None)
+                .context("running `brew upgrade sweetpad`")?;
+        }
         return Ok(Rendered::data(UpdateReport {
             method: "homebrew",
             note: "brew upgrade sweetpad completed".to_string(),

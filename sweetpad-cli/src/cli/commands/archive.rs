@@ -46,7 +46,7 @@ pub struct ArchiveArgs {
     /// Output directory for the .xcarchive and exported .ipa
     /// (default: ./build).
     #[arg(long, value_name = "DIR")]
-    pub output: Option<PathBuf>,
+    pub out: Option<PathBuf>,
 
     /// How to export the archive.
     #[arg(long, value_enum, default_value_t = ExportMethod::Debugging)]
@@ -99,7 +99,7 @@ impl Render for ArchiveReport {
 
 pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     ctx.targeting = args.target.clone().into();
-    let resolved = resolve::resolve(ctx)?;
+    let mut resolved = resolve::resolve(ctx)?;
     if matches!(resolved.container, Container::SwiftPackage(_)) {
         return Err(CliError::new(
             "a Swift package has no app to archive; archive works on Xcode projects/workspaces",
@@ -107,20 +107,14 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     }
 
     let schemes = resolve::schemes(&resolved.container)?;
-    if let Some(s) = &resolved.scheme {
-        resolve::validate_choice("scheme", s, &schemes)?;
-    }
-    let scheme = resolve::choose(ctx, "scheme", resolved.scheme.clone(), &schemes)?;
+    let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, !args.show_command)?;
     let configuration = archive_configuration(ctx, &resolved)?;
     let destination = archive_destination(ctx)?;
 
-    // Both xcodebuild steps run with the *container's* parent as cwd, while
-    // sweetpad itself creates the output dir and writes the plist from the
-    // CLI's cwd — absolutize so the two sides agree on where `build/` is.
-    let out_dir = args
-        .output
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("build"));
+    // A relative output dir must mean the same directory for the CLI's own
+    // writes (create_dir_all, the generated plist) and for xcodebuild, which
+    // runs from the container's parent — absolutize once against the CLI cwd.
+    let out_dir = args.out.clone().unwrap_or_else(|| PathBuf::from("build"));
     let out_dir = std::path::absolute(&out_dir).unwrap_or(out_dir);
     let archive_path = out_dir.join(format!("{scheme}.xcarchive"));
 
@@ -243,6 +237,7 @@ fn archive_configuration(
 /// default iOS. Archives target device platforms, so a simulator reference
 /// is rejected rather than resolved.
 fn archive_destination(ctx: &Context) -> Result<String, CliError> {
+    resolve::reject_on_destination_conflict(ctx)?;
     if let Some(dest) = &ctx.targeting.destination {
         return Ok(dest.clone());
     }

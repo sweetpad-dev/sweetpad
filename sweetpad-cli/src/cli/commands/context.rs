@@ -433,7 +433,7 @@ fn prompt_value(
             let candidates = resolve::configurations(container)?;
             resolve::choose(ctx, "configuration", None, &candidates)
         }
-        Variable::Destination => resolve::pick_destination(ctx, key, &simctl::list()?),
+        Variable::Destination => resolve::pick_destination(ctx, key, &simctl::list()?, true),
         Variable::Sdk | Variable::Target => {
             if !ctx.out.is_interactive() {
                 return Err(resolve::missing(v.name()));

@@ -92,7 +92,7 @@ fn new(ctx: &mut Context, args: &NewArgs) -> CommandResult {
     ensure_writable(&root, args.force, interactive, color)?;
 
     let files = scaffold::scaffold(&spec);
-    let written = write_files(&root, &files)?;
+    let written = write_files(&root, &files, &ctx.out)?;
     let git_initialized = answers.git && init_git(ctx, &root);
 
     Ok(Rendered::data(created(
@@ -298,7 +298,14 @@ fn ensure_writable(root: &Path, force: bool, interactive: bool, color: bool) -> 
 }
 
 /// Write each generated file under `root`, creating parent directories.
-fn write_files(root: &Path, files: &[ScaffoldFile]) -> Result<Vec<PathBuf>, CliError> {
+/// `--force` waives the not-empty gate, not file ownership: a scaffold file
+/// that already exists is merged (`.gitignore`, line-appended) or skipped —
+/// never silently replaced with the template.
+fn write_files(
+    root: &Path,
+    files: &[ScaffoldFile],
+    out: &Output,
+) -> Result<Vec<PathBuf>, CliError> {
     let mut written = Vec::with_capacity(files.len());
     for file in files {
         let full = root.join(&file.path);
@@ -307,11 +314,44 @@ fn write_files(root: &Path, files: &[ScaffoldFile]) -> Result<Vec<PathBuf>, CliE
                 CliError::new(format!("failed to create {}: {e}", parent.display()))
             })?;
         }
+        if let Ok(existing) = std::fs::read_to_string(&full) {
+            if file.path.ends_with(".gitignore") {
+                append_missing_lines(&full, &existing, &file.contents)?;
+                out.note(&format!(
+                    "merged the scaffold's entries into the existing {}",
+                    full.display()
+                ));
+                written.push(full);
+            } else {
+                out.note(&format!("kept the existing {} (not overwritten)", full.display()));
+            }
+            continue;
+        }
         std::fs::write(&full, &file.contents)
             .map_err(|e| CliError::new(format!("failed to write {}: {e}", full.display())))?;
         written.push(full);
     }
     Ok(written)
+}
+
+/// Append the lines of `wanted` that `existing` doesn't already contain.
+fn append_missing_lines(path: &Path, existing: &str, wanted: &str) -> Result<(), CliError> {
+    let have: std::collections::HashSet<&str> = existing.lines().map(str::trim).collect();
+    let missing: Vec<&str> = wanted
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !have.contains(l.trim()))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let mut merged = existing.to_string();
+    if !merged.ends_with('\n') {
+        merged.push('\n');
+    }
+    merged.push_str(&missing.join("\n"));
+    merged.push('\n');
+    std::fs::write(path, merged)
+        .map_err(|e| CliError::new(format!("failed to write {}: {e}", path.display())))
 }
 
 /// Best-effort `git init`. A missing git or a non-zero exit is a soft note —

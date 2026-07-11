@@ -379,7 +379,7 @@ impl crate::cli::Render for CommandPreview {
 
 /// Single-quote an argument for display when it needs it (spaces, quotes,
 /// shell metacharacters) — the standard `'…'` with `'\''` escapes.
-fn shell_quote(arg: &str) -> String {
+pub(crate) fn shell_quote(arg: &str) -> String {
     let plain = |c: char| c.is_ascii_alphanumeric() || "-_./=:,+@%".contains(c);
     if !arg.is_empty() && arg.chars().all(plain) {
         arg.to_string()
@@ -532,7 +532,7 @@ pub struct TargetBuildSettings {
 
 /// The launchable app produced by a build: the `.app` path, its bundle id, and
 /// the executable inside it (used to launch macOS apps directly).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AppBundle {
     pub path: PathBuf,
     pub bundle_id: String,
@@ -546,13 +546,17 @@ pub struct AppBundle {
 /// iOS + watchOS scheme the watch companion builds *first* (dependency
 /// order), and blind first-pick would install the watch app onto the iPhone
 /// simulator. Targets that don't state their platforms (or an unmappable/
-/// absent destination) fall back to first-candidate order.
+/// absent destination) fall back to first-candidate order — and when the
+/// filter rejects *every* candidate (Mac Catalyst declaring `iphoneos` under
+/// a `platform=macOS` destination), the first `.app` still wins over a
+/// nothing-to-launch error.
 pub fn app_bundle(
     settings: &[TargetBuildSettings],
     destination: Option<&str>,
 ) -> Result<AppBundle, CliError> {
     let wanted = destination.and_then(destination_sdk_token);
     let mut fallback: Option<AppBundle> = None;
+    let mut first_app: Option<AppBundle> = None;
     for t in settings {
         let wrapper = t
             .settings
@@ -581,6 +585,9 @@ pub fn app_bundle(
             bundle_id: bundle_id.clone(),
             executable,
         };
+        if first_app.is_none() {
+            first_app = Some(bundle.clone());
+        }
         let supported = t.settings.get("SUPPORTED_PLATFORMS");
         match (wanted, supported) {
             // The target states its platforms and covers the destination —
@@ -600,7 +607,7 @@ pub fn app_bundle(
             }
         }
     }
-    fallback.ok_or_else(|| {
+    fallback.or(first_app).ok_or_else(|| {
         CliError::new("could not find a launchable .app in the resolved build settings")
     })
 }

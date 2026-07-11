@@ -231,40 +231,54 @@ pub fn manifest_at(package_path: &Path) -> Result<Manifest, CliError> {
 
 /// `swift package add-dependency <url> <requirement…>` (Swift 6+). `requirement`
 /// is the already-assembled SwiftPM flag list (e.g. `["--from", "1.2.3"]`).
-/// Streams output to the terminal.
+/// Streams output to the terminal; `quiet` discards stdout (machine modes own
+/// stdout — Swift 6 prints progress lines).
 pub fn add_dependency(
     container: &Container,
     url: &str,
     requirement: &[String],
+    quiet: bool,
 ) -> Result<(), CliError> {
     let cwd = package_dir(container);
     let mut args: Vec<&str> = vec!["package", "add-dependency", url];
     args.extend(requirement.iter().map(String::as_str));
-    process::stream("swift", &args, cwd.as_deref()).context("adding the package dependency")
+    if process::run("swift", &args, cwd.as_deref(), quiet)? {
+        Ok(())
+    } else {
+        Err(
+            CliError::new("swift package add-dependency exited with a non-zero status")
+                .context("adding the package dependency"),
+        )
+    }
 }
 
 /// `swift package add-target-dependency <product> <target> --package <name>`
-/// (Swift 6+) — link a product of an added package into a target.
+/// (Swift 6+) — link a product of an added package into a target. `quiet`
+/// discards stdout (machine modes).
 pub fn add_target_dependency(
     container: &Container,
     product: &str,
     target: &str,
     package: &str,
+    quiet: bool,
 ) -> Result<(), CliError> {
     let cwd = package_dir(container);
-    process::stream(
-        "swift",
-        &[
-            "package",
-            "add-target-dependency",
-            product,
-            target,
-            "--package",
-            package,
-        ],
-        cwd.as_deref(),
-    )
-    .context("linking the product to the target")
+    let args = [
+        "package",
+        "add-target-dependency",
+        product,
+        target,
+        "--package",
+        package,
+    ];
+    if process::run("swift", &args, cwd.as_deref(), quiet)? {
+        Ok(())
+    } else {
+        Err(
+            CliError::new("swift package add-target-dependency exited with a non-zero status")
+                .context("linking the product to the target"),
+        )
+    }
 }
 
 /// `swift package resolve` — fetch and pin dependencies into `Package.resolved`.

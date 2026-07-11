@@ -46,7 +46,18 @@ pub enum Action {
 pub fn run(ctx: &mut Context, args: &StartArgs, action: Option<&Action>) -> CommandResult {
     ctx.targeting = args.target.clone().into();
     match action {
-        Some(Action::Diagnostics) => diagnostics(ctx),
+        Some(Action::Diagnostics) => {
+            // The resource-global build flags parse here too; accepting and
+            // ignoring them would silently not do what was asked.
+            if args.clean || args.watch || args.show_command || !args.passthrough.is_empty() {
+                return Err(crate::cli::CliError::new(
+                    "build diagnostics re-reads the last build's record; \
+                     --clean/--watch/--show-command and `--` passthrough don't apply \
+                     (run `sweetpad build` to build)",
+                ));
+            }
+            diagnostics(ctx)
+        }
         Some(Action::Start) | None if args.watch => watch(ctx, args),
         Some(Action::Start) | None => start(ctx, args.clean, args.show_command, &args.passthrough),
     }
@@ -151,13 +162,32 @@ impl Render for BuildReport {
     }
 }
 
+/// The SPM `--clean --show-command` payload: the clean step plus the build,
+/// matching what the real run executes.
+struct SpmBuildPreview {
+    commands: Vec<xcodebuild::CommandPreview>,
+}
+
+impl Render for SpmBuildPreview {
+    fn human(&self, out: &Output) {
+        for c in &self.commands {
+            c.human(out);
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let commands: Vec<serde_json::Value> = self.commands.iter().map(Render::json).collect();
+        serde_json::json!({ "commands": commands })
+    }
+}
+
 fn start(
     ctx: &mut Context,
     clean: bool,
     show_command: bool,
     passthrough: &[String],
 ) -> CommandResult {
-    let resolved = resolve::resolve(ctx)?;
+    let mut resolved = resolve::resolve(ctx)?;
 
     // Swift packages have no simulator destination; build them with the `swift`
     // toolchain rather than routing through xcodebuild (which would force a
@@ -168,11 +198,26 @@ fn start(
             .clone()
             .unwrap_or_else(|| "Debug".to_string());
         if show_command {
-            return Ok(Rendered::data(xcodebuild::CommandPreview {
+            let build_preview = xcodebuild::CommandPreview {
                 program: "swift",
                 args: swiftpm::build_args(&configuration, passthrough),
                 cwd: swiftpm::package_dir(&resolved.container),
-            }));
+            };
+            // `--clean` runs `swift package clean` first — the preview shows
+            // both steps, like archive's dual preview.
+            if clean {
+                return Ok(Rendered::data(SpmBuildPreview {
+                    commands: vec![
+                        xcodebuild::CommandPreview {
+                            program: "swift",
+                            args: vec!["package".into(), "clean".into()],
+                            cwd: swiftpm::package_dir(&resolved.container),
+                        },
+                        build_preview,
+                    ],
+                }));
+            }
+            return Ok(Rendered::data(build_preview));
         }
         ctx.out.note(&format!(
             "building Swift package ({configuration}) with swift build"
@@ -193,7 +238,7 @@ fn start(
         }));
     }
 
-    let target = resolve::build_target(ctx, &resolved, !show_command)?;
+    let target = resolve::build_target(ctx, &mut resolved, !show_command)?;
 
     let plan = xcodebuild::BuildPlan {
         container: &resolved.container,

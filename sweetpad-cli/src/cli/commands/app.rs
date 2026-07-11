@@ -2,7 +2,6 @@
 //! running session, on a simulator or a physical device. The app is the noun;
 //! these are its actions.
 
-use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::Child;
 use std::sync::Arc;
@@ -33,16 +32,18 @@ pub struct RunArgs {
     pub target: crate::cli::BuildTargetArgs,
 
     /// Target a connected physical device instead of a simulator
-    /// (`--on device` is the same thing).
-    #[arg(long, conflicts_with = "on")]
+    /// (`--on device` is the same thing). Conflicts with a *typed* `--on`
+    /// post-parse — a clap-level conflict would also fire on an env-sourced
+    /// SWEETPAD_ON, breaking flag-beats-env.
+    #[arg(long)]
     pub device: bool,
 
     /// Specific device UDID/name to target (implies --device).
-    #[arg(long = "device-id", conflicts_with = "on")]
+    #[arg(long = "device-id")]
     pub device_id: Option<String>,
 
     /// Build and run as a native macOS app (`--on mac` is the same thing).
-    #[arg(long, conflicts_with_all = ["device", "device_id", "on"])]
+    #[arg(long, conflicts_with_all = ["device", "device_id"])]
     pub mac: bool,
 
     /// Don't stream the app's logs after launching (logs follow by default
@@ -221,11 +222,30 @@ pub enum Action {
 }
 
 impl Action {
-    /// The default action for a bare `sweetpad app`: `app run` with no flags
-    /// (everything resolves from config/state/pickers).
+    /// The default action for a bare `sweetpad app`: `app run` with no flags.
+    /// clap never parses `RunArgs` on this path, so its `env = …` attrs never
+    /// run — the `SWEETPAD_*` layer is folded in by hand, or a bare
+    /// `sweetpad app` would silently ignore an env context that
+    /// `sweetpad app run` honors.
     #[must_use]
     pub fn default_run() -> Self {
-        Action::Run(RunArgs::default())
+        let env = crate::cli::Targeting::from_env();
+        Action::Run(RunArgs {
+            target: crate::cli::BuildTargetArgs {
+                scheme: crate::cli::SchemeArgs {
+                    container: crate::cli::ContainerArgs {
+                        workspace: env.workspace,
+                        project: env.project,
+                    },
+                    scheme: env.scheme,
+                },
+                configuration: env.configuration,
+                destination: env.destination,
+                on: env.on,
+                sdk: env.sdk,
+            },
+            ..RunArgs::default()
+        })
     }
 }
 
@@ -282,6 +302,10 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Run(args) => {
             ctx.targeting = args.target.clone().into();
+            crate::cli::settle_on_vs_mode(
+                &mut ctx.targeting,
+                args.mac || args.device || args.device_id.is_some(),
+            )?;
             let (hot, hot_mode) = hot_settings(ctx, args);
             // The live build-and-run session streams its own output until you quit.
             run_app(
@@ -303,6 +327,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         }
         Action::Install { target, stage } => {
             ctx.targeting = target.clone().into();
+            settle_stage_mode(ctx, stage)?;
             simple(ctx, Stage::Install, &LaunchArgs::default(), stage)
         }
         Action::Launch {
@@ -311,6 +336,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             launch,
         } => {
             ctx.targeting = target.clone().into();
+            settle_stage_mode(ctx, stage)?;
             simple(ctx, Stage::Launch, launch, stage)
         }
         Action::Debug { target, launch } => {
@@ -319,6 +345,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         }
         Action::Uninstall { target, stage } => {
             ctx.targeting = target.clone().into();
+            settle_stage_mode(ctx, stage)?;
             simple(ctx, Stage::Uninstall, &LaunchArgs::default(), stage)
         }
         Action::Logs { target, filters } => {
@@ -327,10 +354,22 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         }
         Action::Stop { target, stage } => {
             ctx.targeting = target.clone().into();
+            settle_stage_mode(ctx, stage)?;
             simple(ctx, Stage::Stop, &LaunchArgs::default(), stage)
         }
         Action::OpenUrl { url, simulator } => open_url(ctx, url, simulator.as_deref()),
     }
+}
+
+/// One mode-vs-`--on` policy for the lifecycle stages, matching `app run`:
+/// a typed `--device`/`--device-id` beats an env-sourced `SWEETPAD_ON`
+/// (instead of silently losing to it), and a typed `--on` alongside them is
+/// rejected.
+fn settle_stage_mode(ctx: &mut Context, stage: &StageTargetArgs) -> Result<(), CliError> {
+    crate::cli::settle_on_vs_mode(
+        &mut ctx.targeting,
+        stage.device || stage.device_id.is_some(),
+    )
 }
 
 /// Open a URL on a simulator. Unlike the install/launch lifecycle, this needs
@@ -442,10 +481,35 @@ impl RunPlan {
         }
     }
 
+    /// The `-derivedDataPath` the passthrough hands xcodebuild, if any — the
+    /// app locator must look where the build actually put the product.
+    /// Product-relocating build settings the locator can't model (`SYMROOT=`,
+    /// `OBJROOT=`, `CONFIGURATION_BUILD_DIR=`) are refused loudly: silently
+    /// looking in the default DerivedData would install whatever stale `.app`
+    /// a previous plain build left there.
+    fn passthrough_derived_data(&self) -> Result<Option<std::path::PathBuf>, CliError> {
+        let mut derived_data = None;
+        let mut iter = self.passthrough.iter().peekable();
+        while let Some(arg) = iter.next() {
+            if arg == "-derivedDataPath" {
+                derived_data = iter.peek().map(std::path::PathBuf::from);
+            } else if let Some((key, _)) = arg.split_once('=')
+                && matches!(key, "SYMROOT" | "OBJROOT" | "CONFIGURATION_BUILD_DIR")
+            {
+                return Err(CliError::new(format!(
+                    "`-- {key}=…` relocates the built product where the app locator can't \
+                     follow; use `-- -derivedDataPath <dir>` instead"
+                )));
+            }
+        }
+        Ok(derived_data)
+    }
+
     /// Locate the built `.app` via the in-process build-settings resolver (the
     /// engine behind `settings show`), with no xcodebuild spawn. It computes the
-    /// same TARGET_BUILD_DIR/product the build produced. Swift packages never
-    /// reach here — they run via `swift run`, not a build/install/launch.
+    /// same TARGET_BUILD_DIR/product the build produced — including a
+    /// passthrough `-derivedDataPath`. Swift packages never reach here — they
+    /// run via `swift run`, not a build/install/launch.
     fn app_bundle(&self) -> Result<AppBundle, CliError> {
         let (project, workspace) = match &self.resolved.container {
             resolve::Container::Project(p) => (Some(p.clone()), None),
@@ -470,7 +534,7 @@ impl RunPlan {
             xcspec_root: None,
             sdksettings_root: None,
             catalog_cache: None,
-            derived_data_path: None,
+            derived_data_path: self.passthrough_derived_data()?,
             keys: None,
         };
         let resolved =
@@ -590,13 +654,10 @@ fn warn_if_passthrough_moves_output(ctx: &Context, passthrough: &[String]) {
 /// Resolve a full run plan, choosing a simulator (default), a device, or macOS.
 #[allow(clippy::too_many_lines)]
 fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
-    let resolved = resolve::resolve(ctx)?;
+    let mut resolved = resolve::resolve(ctx)?;
     let schemes = resolve::schemes(&resolved.container)?;
-    if let Some(s) = &resolved.scheme {
-        resolve::validate_choice("scheme", s, &schemes)?;
-    }
-    let scheme = resolve::choose(ctx, "scheme", resolved.scheme.clone(), &schemes)?;
-    let configuration = resolve::settle_configuration(ctx, &resolved)?;
+    let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, true)?;
+    let configuration = resolve::settle_configuration(ctx, &mut resolved, true)?;
 
     let (destination, target) = if matches!(resolved.container, resolve::Container::SwiftPackage(_))
     {
@@ -609,15 +670,20 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         (String::new(), Target::SpmRun(scheme.clone()))
     } else if let Some(reference) = ctx.targeting.on.clone() {
         // `--on` picks the concrete target — simulator, device, or Mac — from
-        // one human reference; it replaces the --mac/--device mode flags.
+        // one human reference; it replaces the --mac/--device mode flags. The
+        // Mac fast path skips the simctl spawn it never needs.
         let key = resolved.container.key();
-        let sims = simctl::list()?;
-        match resolve::resolve_on(ctx, &key, &reference, &sims)? {
-            resolve::OnTarget::Mac => ("platform=macOS".to_string(), Target::Mac),
-            resolve::OnTarget::Simulator { udid, specifier } => {
-                (specifier, Target::Simulator(udid))
+        if resolve::on_is_mac(ctx, &key, &reference) {
+            ("platform=macOS".to_string(), Target::Mac)
+        } else {
+            let sims = simctl::list()?;
+            match resolve::resolve_on(ctx, &key, &reference, &sims)? {
+                resolve::OnTarget::Mac => ("platform=macOS".to_string(), Target::Mac),
+                resolve::OnTarget::Simulator { udid, specifier } => {
+                    (specifier, Target::Simulator(udid))
+                }
+                resolve::OnTarget::Device { udid, specifier } => (specifier, Target::Device(udid)),
             }
-            resolve::OnTarget::Device { udid, specifier } => (specifier, Target::Device(udid)),
         }
     } else if opts.mac {
         ("platform=macOS".to_string(), Target::Mac)
@@ -649,10 +715,14 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         )
     } else {
         // Scheme and configuration are already settled above; resolve only the
-        // destination here so the scheme picker doesn't run a second time.
+        // destination here so the scheme picker doesn't run a second time. A
+        // remembered simulator deleted under its pin (an Xcode update)
+        // recovers to the picker instead of failing the install.
+        let key = resolved.container.key();
         let destination = match resolved.destination.clone() {
-            Some(d) => d,
-            None => resolve::pick_destination(ctx, &resolved.container.key(), &simctl::list()?)?,
+            Some(d) => resolve::refresh_stale_destination(ctx, &mut resolved, &key, &d, true)?
+                .unwrap_or(d),
+            None => resolve::pick_destination(ctx, &key, &simctl::list()?, true)?,
         };
         let platform = destination_platform(&destination).unwrap_or_default();
         if platform.eq_ignore_ascii_case("macOS") {
@@ -697,6 +767,9 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         launch: opts.launch.clone(),
         passthrough: opts.passthrough.to_vec(),
     };
+    // A product-relocating passthrough the app locator can't follow fails
+    // here, before a build is spent on it.
+    plan.passthrough_derived_data()?;
     let bt = resolve::BuildTarget {
         scheme: plan.scheme.clone(),
         configuration: plan.configuration.clone(),
@@ -961,8 +1034,11 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
             None
         }
         // Ctrl-C during the initial build cancels the whole run before anything
-        // launched — exit as a user cancel (6), not success.
+        // launched — exit as a user cancel (6), not success. The background
+        // `simctl boot` is joined first, or its child outlives the CLI and
+        // boots the simulator the user just cancelled.
         BuildOutcome::Aborted => {
+            let _ = boot.wait();
             return Err(CliError::new("cancelled").kind(ErrorKind::UserCancel));
         }
     };
@@ -1145,8 +1221,10 @@ fn run_hot_session(
         BuildOutcome::Ok => {}
         BuildOutcome::Failed(e) => return Err(e),
         // Ctrl-C during the build cancels the hot session before it starts —
-        // a user cancel (exit 6), not a success.
+        // a user cancel (exit 6), not a success. Join the background boot
+        // first so its `simctl boot` child doesn't outlive the cancel.
         BuildOutcome::Aborted => {
+            let _ = boot.wait();
             return Err(CliError::new("cancelled").kind(ErrorKind::UserCancel));
         }
     }
@@ -1271,10 +1349,20 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path, udid: &
     // death is restored on entry (the next run self-heals the fixture).
     let backup = selfcheck_backup_path(file);
     if backup.exists() {
-        let _ = std::fs::copy(&backup, file);
-        let _ = std::fs::remove_file(&backup);
-        ctx.out
-            .note("hot reload self-check: restored the fixture from a previous run's backup");
+        // The backup is the only pristine copy — it must outlive a failed
+        // restore (EACCES, full disk), or the fixture stays nonce-corrupted
+        // with nothing left to heal from.
+        if std::fs::copy(&backup, file).is_ok() {
+            let _ = std::fs::remove_file(&backup);
+            ctx.out
+                .note("hot reload self-check: restored the fixture from a previous run's backup");
+        } else {
+            ctx.out.warn(&format!(
+                "hot reload self-check: could not restore {} from {} — keeping the backup",
+                file.display(),
+                backup.display()
+            ));
+        }
     }
 
     // Rewrite the marker to a unique nonce: a real behavioral change (the
@@ -1790,11 +1878,13 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
 
     // The output stream has ended, so the build is exiting: clear the forward
     // target *before* the reap, or a signal in the gap could target a recycled
-    // process group.
+    // process group. The watcher stops before the reap for the same reason —
+    // it signals the group by raw pid, and a keystroke landing after `wait()`
+    // freed the pgid would SIGINT a recycled group (costs one poll tick).
     crate::cli::signals::clear_build_pgid();
-    let status = child.wait();
     done.store(true, Ordering::Relaxed);
     let _ = watcher.join();
+    let status = child.wait();
 
     if aborted.load(Ordering::Relaxed) {
         out.note("Build cancelled");
@@ -2177,18 +2267,20 @@ fn check_exit(ctx: &Context, running: &mut Running) {
     if running.reported_exit {
         return;
     }
-    let exited = running
-        .stream
-        .as_mut()
-        .and_then(|c| c.try_wait().ok().flatten())
-        .is_some();
-    if exited {
-        // try_wait() reaped the child, so its pid can now be recycled —
-        // drop it from the signal handler's registry immediately rather than
-        // at session end, or a later SIGTERM could signal a stranger.
-        crate::cli::signals::unregister_child(running.reap_slot.take());
+    let Some(child) = running.stream.as_mut() else {
+        return;
+    };
+    // Deregister around the probe: `try_wait` returning `Some` *is* the reap,
+    // after which the pid can be recycled and the handler must never signal
+    // it — a session stays open for hours after an app crash, plenty of time
+    // for the pid space to wrap. Not-exited re-registers (a microsecond
+    // window, same class as the accepted spawn→register gap).
+    crate::cli::signals::unregister_child(running.reap_slot.take());
+    if matches!(child.try_wait(), Ok(Some(_))) {
         ctx.out.alert(&format!("✗ {} exited", running.name));
         running.reported_exit = true;
+    } else {
+        running.reap_slot = crate::cli::signals::register_child(child.id());
     }
 }
 
@@ -2302,13 +2394,14 @@ fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
         return;
     };
     std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines() {
-            let Ok(line) = line else { break };
-            let rendered = oslog::render_ndjson_line(&line, color);
+        // Lossy line reads: one invalid-UTF-8 byte must not end the thread —
+        // dropping the pipe's read end SIGPIPEs the still-writing child.
+        process::read_lines_lossy(stdout, &mut |line| {
+            let rendered = oslog::render_ndjson_line(line, color);
             if rendered.level.as_u8() >= filter.load(Ordering::Relaxed) {
                 println!("{}", rendered.text);
             }
-        }
+        });
     });
 }
 
@@ -2333,19 +2426,21 @@ fn render_console(child: &mut Child, color: bool, filter: &Arc<AtomicU8>) {
     for pipe in pipes.into_iter().flatten() {
         let filter = Arc::clone(filter);
         std::thread::spawn(move || {
-            for line in BufReader::new(pipe).lines() {
-                let Ok(line) = line else { break };
-                if is_boot_noise(&line) {
-                    continue;
+            // Lossy line reads: a binary dump on the app's own stdout must
+            // not end this thread — on the Mac target the streamed child *is*
+            // the app, and a dropped read end SIGPIPE-kills it mid-session.
+            process::read_lines_lossy(pipe, &mut |line| {
+                if is_boot_noise(line) {
+                    return;
                 }
                 // Console output has no timestamp of its own; stamp it with the local
                 // time the line arrived, so it lines up with the os_log stream.
                 let now = oslog::now_clock();
-                let rendered = oslog::render_console_line(Some(&now), &line, color);
+                let rendered = oslog::render_console_line(Some(&now), line, color);
                 if rendered.level.as_u8() >= filter.load(Ordering::Relaxed) {
                     println!("{}", rendered.text);
                 }
-            }
+            });
         });
     }
 }
@@ -2361,16 +2456,15 @@ fn render_log_stderr(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
         return;
     };
     std::thread::spawn(move || {
-        for line in BufReader::new(stderr).lines() {
-            let Ok(line) = line else { break };
-            if line.trim().is_empty() || is_boot_noise(&line) {
-                continue;
+        process::read_lines_lossy(stderr, &mut |line| {
+            if line.trim().is_empty() || is_boot_noise(line) {
+                return;
             }
-            let rendered = oslog::render_fields(None, "Error", "system", &line, color);
+            let rendered = oslog::render_fields(None, "Error", "system", line, color);
             if rendered.level.as_u8() >= filter.load(Ordering::Relaxed) {
                 println!("{}", rendered.text);
             }
-        }
+        });
     });
 }
 
@@ -2401,17 +2495,16 @@ fn render_device_logs(child: &mut Child, color: bool, exe: String, filter: Arc<A
         // verbatim while they continue an entry that was just shown, instead
         // of silently dropping lines 2..n of the app's own message.
         let mut continuing = false;
-        for line in BufReader::new(stdout).lines() {
-            let Ok(line) = line else { break };
-            let Some(entry) = pymobiledevice3::parse_line(&line) else {
+        process::read_lines_lossy(stdout, &mut |line| {
+            let Some(entry) = pymobiledevice3::parse_line(line) else {
                 if continuing {
                     println!("{line}");
                 }
-                continue;
+                return;
             };
             if entry.image != exe && entry.image != debug_dylib {
                 continuing = false;
-                continue;
+                return;
             }
             let rendered = oslog::render_fields(
                 Some(entry.timestamp),
@@ -2424,7 +2517,7 @@ fn render_device_logs(child: &mut Child, color: bool, exe: String, filter: Arc<A
             if continuing {
                 println!("{}", rendered.text);
             }
-        }
+        });
     });
 }
 

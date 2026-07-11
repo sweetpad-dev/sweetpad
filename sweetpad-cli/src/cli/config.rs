@@ -185,10 +185,12 @@ fn lint_defaults(value: &toml::Value, at: &str, warnings: &mut Vec<String>) {
 fn lint_project_key(key: &str) -> Option<String> {
     let path = std::path::Path::new(key);
     if is_container_path(path) {
-        // Right shape — flag it only if the canonical spelling differs (a
-        // symlinked or non-canonical path never matches the resolver's key).
+        // Right shape — flag it only if the canonical spelling differs. The
+        // lookup is by raw *string*, so the comparison must be too: `Path`
+        // equality would forgive a trailing slash or a `//`, exactly the
+        // silently-dead keys this lint exists to catch.
         let canonical = std::fs::canonicalize(path).ok()?;
-        (canonical.as_path() != path).then(|| {
+        (canonical.to_string_lossy() != key).then(|| {
             format!(
                 "config: [projects.\"{key}\"] won't match — keys are canonicalized paths; use \"{}\"",
                 canonical.display()

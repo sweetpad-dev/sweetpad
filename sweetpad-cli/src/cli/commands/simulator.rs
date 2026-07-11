@@ -301,7 +301,7 @@ fn record(
     }
     ctx.out
         .note(&format!("recording {} — Ctrl-C to stop", sim.label()));
-    let stopped = simctl::record(&sim.udid, &path.display().to_string())?;
+    let stopped = simctl::record(&sim.udid, &path.display().to_string(), ctx.out.is_json() || ctx.out.is_ndjson())?;
     if !path.exists() {
         return Err(crate::cli::CliError::new(
             "recordVideo ended without producing a file",

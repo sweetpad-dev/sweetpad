@@ -79,9 +79,12 @@ pub fn install() {
     // handlers before any work spawns children or flips terminal modes.
     unsafe {
         STDERR_TTY.store(libc::isatty(libc::STDERR_FILENO) == 1, Ordering::Relaxed);
-        for sig in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP, libc::SIGPIPE] {
+        for sig in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
             install_unless_ignored(sig, handler as libc::sighandler_t);
         }
+        // SIGPIPE is always SIG_DFL here (main reset it out of the Rust
+        // runtime's ignore), so an inherited-ignore check would never fire.
+        libc::signal(libc::SIGPIPE, handler as libc::sighandler_t);
         install_unless_ignored(libc::SIGTSTP, tstp as libc::sighandler_t);
         libc::signal(libc::SIGCONT, cont as libc::sighandler_t);
     }
@@ -214,8 +217,13 @@ const CLEAR_LINE: &[u8] = b"\r\x1b[K";
 /// the registered child and return instead. Async-signal-safe calls only.
 extern "C" fn handle(sig: libc::c_int) {
     let forward = FORWARD_PID.load(Ordering::Acquire);
-    if forward != 0 && matches!(sig, libc::SIGINT | libc::SIGTERM | libc::SIGHUP) {
-        FORWARDED.store(true, Ordering::Release);
+    if forward != 0
+        && matches!(sig, libc::SIGINT | libc::SIGTERM | libc::SIGHUP)
+        // Forward exactly once: a repeat signal means the child is wedged and
+        // ignoring its finalizer, so fall through to the exit path below
+        // rather than leaving the CLI unkillable by anything short of KILL.
+        && !FORWARDED.swap(true, Ordering::AcqRel)
+    {
         // Safety: kill(2) on a recorded child pid; SIGINT is the finalizer
         // (recordVideo writes the moov atom on it, log streams just exit).
         unsafe {

@@ -212,6 +212,11 @@ impl State {
     /// last-writer-wins with each writer's *complete* file). What lands on disk
     /// is the [`pruned_view`](State::pruned_view), so the file can't grow
     /// forever.
+    ///
+    /// In [`read_only`](State::read_only) mode this is an error: best-effort
+    /// callers (`remember`) swallow it with `let _ =`, while commands whose
+    /// whole purpose is the write (`context set`) must not report success for
+    /// a save that never happened.
     pub fn save(&self) -> Result<(), String> {
         // PID alone distinguishes processes; the counter distinguishes saves
         // within this process, so two same-process saves can never interleave
@@ -220,7 +225,11 @@ impl State {
         // An unreadable-on-load file must never be replaced by this run's
         // near-empty view (see `read_only`).
         if self.read_only {
-            return Ok(());
+            return Err(
+                "the state file was unreadable at startup, so nothing is saved this run \
+                 (fix its permissions and retry)"
+                    .to_string(),
+            );
         }
         let Some(path) = Self::path() else {
             return Ok(());
@@ -240,11 +249,15 @@ impl State {
     /// remembered destinations. "Deleted" means the container vanished while
     /// its parent directory remains — a missing parent (an unmounted volume, a
     /// temporarily absent checkout) keeps the entry, so ejecting a disk never
-    /// loses a project's context.
+    /// loses a project's context. A *relative* key (minted when both
+    /// canonicalize and the cwd lookup failed under a deleted directory) never
+    /// persists: it can't match a canonicalized lookup, and later pruning
+    /// would stat it against whatever cwd that process happens to have.
     fn pruned_view(&self) -> State {
         let projects = self
             .projects
             .iter()
+            .filter(|(key, _)| std::path::Path::new(key).is_absolute())
             .filter(|(key, _)| !project_deleted(std::path::Path::new(key)))
             .map(|(key, entry)| {
                 let mut entry = entry.clone();
@@ -432,14 +445,16 @@ mod tests {
     }
 
     #[test]
-    fn read_only_state_never_saves() {
+    fn read_only_state_never_saves_and_says_so() {
         let mut state = State {
             read_only: true,
             ..State::default()
         };
         state.project_mut("/x").scheme = Some("App".into());
-        // No path is touched: read_only short-circuits before Self::path().
-        assert!(state.save().is_ok());
+        // No path is touched: read_only short-circuits before Self::path() —
+        // and reports the skip so explicit mutations (`context set`) fail
+        // instead of claiming success.
+        assert!(state.save().is_err());
     }
 
     #[test]

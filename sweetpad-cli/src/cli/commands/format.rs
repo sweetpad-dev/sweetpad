@@ -92,8 +92,15 @@ impl Render for FormatReport {
 }
 
 fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> CommandResult {
-    // Default to the current directory when no paths are given.
-    let default_dir = PathBuf::from(".");
+    // No paths means the whole project — the directory holding the resolved
+    // container (help says "the project directory", and container discovery
+    // walks up, so a run from Sources/Feature/ must not silently lint just
+    // that subtree). Outside any project, the current directory.
+    let default_dir = crate::cli::resolve::container(ctx)
+        .ok()
+        .and_then(|c| c.path().parent().map(std::path::Path::to_path_buf))
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| PathBuf::from("."));
     let targets: Vec<String> = if paths.is_empty() {
         vec![default_dir.display().to_string()]
     } else {

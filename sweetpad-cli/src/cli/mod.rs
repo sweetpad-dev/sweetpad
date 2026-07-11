@@ -257,6 +257,30 @@ impl From<ContainerArgs> for Targeting {
     }
 }
 
+/// Drop present-but-empty targeting env vars before clap reads them: a
+/// placeholder `export SWEETPAD_SCHEME=` in CI must mean "unset", not an
+/// always-wrong `Some("")` (or, for the `PathBuf` flags, a clap "a value is
+/// required" usage error) — and the bare status view's [`Targeting::from_env`]
+/// (which filters empties) must agree with what commands parse.
+fn scrub_empty_env() {
+    for key in [
+        "SWEETPAD_WORKSPACE",
+        "SWEETPAD_PROJECT",
+        "SWEETPAD_SCHEME",
+        "SWEETPAD_CONFIGURATION",
+        "SWEETPAD_DESTINATION",
+        "SWEETPAD_ON",
+        "SWEETPAD_SDK",
+        "DEVELOPER_DIR",
+    ] {
+        if std::env::var_os(key).is_some_and(|v| v.is_empty()) {
+            // Safety: single-threaded startup, before clap or any tool spawn
+            // reads the environment.
+            unsafe { std::env::remove_var(key) };
+        }
+    }
+}
+
 /// Whether the literal flag token was typed on the command line, as opposed to
 /// the value arriving through the flag's `env = …` fallback (clap reports both
 /// identically). A value-carrying flag can't itself be consumed as a value, so
@@ -285,6 +309,28 @@ fn disambiguate_container(
         (true, true) if workspace_typed && !project_typed => (workspace, None),
         _ => (workspace, project),
     }
+}
+
+/// Whether `-V`/`--version` is the first token besides output-mode flags —
+/// the only shape the pre-clap fast path may answer. Anywhere later the token
+/// belongs to a subcommand parse (`sweetpad build --json -V` is a usage error
+/// in human mode and must stay one under `--json`).
+fn version_flag_leads(head: &[&str]) -> bool {
+    let mut i = 0;
+    while i < head.len() {
+        let a = head[i];
+        if a == "--json"
+            || a.starts_with("--output=")
+            || (a.starts_with("-o") && !a.starts_with("--") && a.len() > 2)
+        {
+            i += 1;
+        } else if a == "-o" || a == "--output" {
+            i += 2;
+        } else {
+            return a == "--version" || a == "-V";
+        }
+    }
+    false
 }
 
 /// The machine output mode the pre-clap fast path should honor: the last
@@ -324,10 +370,11 @@ fn machine_output_mode(head: &[&str]) -> Option<OutputMode> {
 }
 
 impl Targeting {
-    /// The env-var layer alone. The bare `sweetpad` status view parses no
-    /// resource, so clap never folds `SWEETPAD_*` into flags there — without
-    /// this the bare view would show a context the very next `build` ignores.
-    fn from_env() -> Self {
+    /// The env-var layer alone. The bare `sweetpad` status view and the bare
+    /// `sweetpad app` default action parse no flag-carrying subcommand, so
+    /// clap never folds `SWEETPAD_*` into flags there — without this they
+    /// would ignore an env context the very next explicit command honors.
+    pub(crate) fn from_env() -> Self {
         let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         let (on, destination) = disambiguate_on_destination(
             var("SWEETPAD_ON"),
@@ -380,8 +427,11 @@ impl From<BuildTargetArgs> for Targeting {
 }
 
 /// Apply flag > env between `--on` and `--destination`: when both are set and
-/// exactly one was typed, the env-sourced one yields. Both-typed (and
-/// both-env) keep both, and the resolver errors when it has to choose.
+/// exactly one was typed, the env-sourced one yields. Both-from-env resolves
+/// per the documented contract — `SWEETPAD_ON` overrides
+/// `SWEETPAD_DESTINATION` (`help environment`) — so an `.envrc` exporting both
+/// works instead of failing every build. Only both-*typed* keeps both, and
+/// the resolver rejects that.
 fn disambiguate_on_destination(
     on: Option<String>,
     destination: Option<String>,
@@ -391,8 +441,30 @@ fn disambiguate_on_destination(
     match (on.is_some(), destination.is_some()) {
         (true, true) if on_typed && !destination_typed => (on, None),
         (true, true) if destination_typed && !on_typed => (None, destination),
+        (true, true) if !on_typed && !destination_typed => (on, None),
         _ => (on, destination),
     }
+}
+
+/// Apply flag > env between `--on` and the mode flags (`--mac`, `--device`,
+/// `--device-id`): an env-sourced `SWEETPAD_ON` yields to a typed mode flag
+/// instead of turning it into an error about a flag the user never typed;
+/// `--on` *typed* alongside a mode flag is a real conflict.
+pub(crate) fn settle_on_vs_mode(
+    targeting: &mut Targeting,
+    mode_typed: bool,
+) -> Result<(), CliError> {
+    if targeting.on.is_none() || !mode_typed {
+        return Ok(());
+    }
+    if flag_typed("--on") {
+        return Err(CliError::new(
+            "--on and --mac/--device/--device-id are mutually exclusive; pass one",
+        )
+        .kind(ErrorKind::TargetResolution));
+    }
+    targeting.on = None;
+    Ok(())
 }
 
 /// Top-level resources. Each is a noun; actions are its subcommands.
@@ -608,6 +680,7 @@ pub fn run(argv: &[String]) -> ExitCode {
     // SIGINT/SIGTERM cleanup (terminal restore, build-group forwarding, child
     // reaping) — installed before anything spawns or flips terminal modes.
     signals::install();
+    scrub_empty_env();
 
     // `--version` under a machine output mode: clap's own --version is plain
     // text; agents get the envelope (or, under ndjson, the terminal result
@@ -618,7 +691,7 @@ pub fn run(argv: &[String]) -> ExitCode {
         .take_while(|a| *a != "--")
         .map(String::as_str)
         .collect();
-    if head.iter().any(|a| *a == "--version" || *a == "-V")
+    if version_flag_leads(&head)
         && let Some(mode) = machine_output_mode(&head)
     {
         #[allow(clippy::print_stdout)] // pre-clap fast path; Output isn't built yet
@@ -846,22 +919,25 @@ fn render_result(ctx: &Context, result: CommandResult) -> ExitCode {
         }
         // The command streamed its own output (or self-emitted); nothing to render.
         Ok(Rendered::Streamed) => ExitCode::SUCCESS,
-        Err(e) => {
-            // Under ndjson the stream must still end with exactly one result
-            // line on stdout; the compact envelope on stderr stays the
-            // machine-parsed error surface.
-            ctx.out.ndjson_event(&serde_json::json!({
-                "event": "result",
-                "ok": false,
-                "error": {
-                    "code": e.error_kind().code_str(),
-                    "message": e.to_string(),
-                },
-            }));
-            ctx.out.error(&e);
-            ExitCode::from(e.error_kind().exit_code())
-        }
+        Err(e) => early_error(&ctx.out, &e),
     }
+}
+
+/// Render an error with the full output contract — usable before a `Context`
+/// exists (the pre-dispatch gates). Under ndjson the stream must still end
+/// with exactly one terminal result line on stdout; the compact envelope on
+/// stderr stays the machine-parsed error surface.
+fn early_error(out: &output::Output, e: &CliError) -> ExitCode {
+    out.ndjson_event(&serde_json::json!({
+        "event": "result",
+        "ok": false,
+        "error": {
+            "code": e.error_kind().code_str(),
+            "message": e.to_string(),
+        },
+    }));
+    out.error(e);
+    ExitCode::from(e.error_kind().exit_code())
 }
 
 /// A one-time tip after the very first invocation, pointing at the setup
@@ -1056,6 +1132,18 @@ pub type CliResult = Result<(), CliError>;
 pub type CommandResult = Result<Rendered, CliError>;
 
 #[cfg(test)]
+mod cli_definition_tests {
+    /// clap's debug assertions catch arg-id collisions (a per-command arg
+    /// shadowing a global one panics at *access* time in production — this
+    /// catches it at test time instead).
+    #[test]
+    fn clap_definition_is_internally_consistent() {
+        use clap::CommandFactory;
+        super::Cli::command().debug_assert();
+    }
+}
+
+#[cfg(test)]
 mod targeting_tests {
     use super::disambiguate_container;
     use std::path::PathBuf;
@@ -1161,14 +1249,19 @@ mod on_destination_tests {
     }
 
     #[test]
-    fn both_typed_and_both_env_are_kept_for_the_resolver_to_reject() {
+    fn both_typed_is_kept_for_the_resolver_to_reject() {
         assert_eq!(
             disambiguate_on_destination(s("mac"), s("platform=iOS"), true, true),
             (s("mac"), s("platform=iOS"))
         );
+    }
+
+    #[test]
+    fn both_env_resolves_on_wins_per_the_documented_contract() {
+        // `help environment`: SWEETPAD_ON overrides SWEETPAD_DESTINATION.
         assert_eq!(
             disambiguate_on_destination(s("mac"), s("platform=iOS"), false, false),
-            (s("mac"), s("platform=iOS"))
+            (s("mac"), None)
         );
     }
 }

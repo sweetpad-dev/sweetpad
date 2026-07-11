@@ -25,7 +25,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         Some("bsp") => sweetpad_core::bsp::run(&args[1..]),
-        Some("config") => sweetpad_core::bsp::write_config(&args[1..]),
+        Some("config") => sweetpad_core::bsp::write_config(&args[1..], &["bsp"]),
         Some("-h" | "--help" | "help") => {
             print!("{USAGE}");
             return ExitCode::SUCCESS;

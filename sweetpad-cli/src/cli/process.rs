@@ -169,14 +169,22 @@ pub fn stream_lines(
     // ends — drop it now or the read below never sees EOF after the child
     // exits, hanging the whole command.
     drop(cmd);
+    // Registered so a directly-addressed SIGTERM/SIGHUP (timeout(1), CI
+    // cancellation) stops the tool instead of orphaning it; the terminal's
+    // Ctrl-C already reaches it through the foreground group.
+    let reap_slot = crate::cli::signals::register_child(child.id());
     read_lines_lossy(reader, &mut on_line);
+    crate::cli::signals::unregister_child(reap_slot);
     let status = child.wait().map_err(|e| spawn_error(program, &e))?;
     Ok(status.success())
 }
 
 /// One pipe whose write end is duplicated for a child's stdout and stderr, so
 /// the parent reads both streams merged in arrival order. The read end comes
-/// back as a `File`.
+/// back as a `File`. All three fds are CLOEXEC so a concurrently-spawned child
+/// can't inherit a stray write end and hold the pipe open past its owner's
+/// exit (spawn dup2s the intended ends into the child, which clears the flag
+/// on the child's copies).
 fn merged_output_pipe(program: &str) -> Result<(std::fs::File, Stdio, Stdio), CliError> {
     use std::os::fd::FromRawFd;
     let mut fds = [0 as libc::c_int; 2];
@@ -215,23 +223,45 @@ fn merged_output_pipe(program: &str) -> Result<(std::fs::File, Stdio, Stdio), Cl
 /// Feed `reader` to `on_line` line by line, decoding lossily — one non-UTF-8
 /// byte from a build script degrades to U+FFFD instead of ending the stream
 /// (which would close the pipe and SIGPIPE a still-writing child, turning a
-/// successful build into a reported failure). Interrupted reads retry inside
-/// `read_until`; any other read error ends the stream.
-pub(crate) fn read_lines_lossy(reader: impl std::io::Read, on_line: &mut impl FnMut(&str)) {
+/// successful build into a reported failure). A line longer than [`MAX_LINE`]
+/// is flushed in chunks so a newline-less firehose can't balloon memory.
+/// Interrupted reads retry; any other read error ends the stream.
+pub(crate) fn read_lines_lossy(reader: impl std::io::Read, mut on_line: &mut impl FnMut(&str)) {
     use std::io::{BufRead, BufReader};
-    let mut reader = BufReader::new(reader);
-    let mut buf = Vec::new();
-    loop {
-        buf.clear();
-        match reader.read_until(b'\n', &mut buf) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {
-                while matches!(buf.last(), Some(b'\n' | b'\r')) {
-                    buf.pop();
-                }
-                on_line(&String::from_utf8_lossy(&buf));
-            }
+    /// Single-line memory cap: past this the accumulated bytes are emitted as
+    /// their own line rather than buffered further.
+    const MAX_LINE: usize = 1 << 20;
+    fn emit(buf: &mut Vec<u8>, on_line: &mut impl FnMut(&str)) {
+        while matches!(buf.last(), Some(b'\n' | b'\r')) {
+            buf.pop();
         }
+        on_line(&String::from_utf8_lossy(buf));
+        buf.clear();
+    }
+    let mut reader = BufReader::new(reader);
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        let chunk = match reader.fill_buf() {
+            Ok([]) => break,
+            Ok(chunk) => chunk,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        };
+        let consumed = if let Some(pos) = chunk.iter().position(|&b| b == b'\n') {
+            buf.extend_from_slice(&chunk[..=pos]);
+            emit(&mut buf, &mut on_line);
+            pos + 1
+        } else {
+            buf.extend_from_slice(chunk);
+            chunk.len()
+        };
+        reader.consume(consumed);
+        if buf.len() >= MAX_LINE {
+            emit(&mut buf, &mut on_line);
+        }
+    }
+    if !buf.is_empty() {
+        emit(&mut buf, &mut on_line);
     }
 }
 
@@ -301,16 +331,21 @@ pub fn spawn_piped_group(
 /// terminal's Ctrl-C no longer reaches it directly, so the signal handler's
 /// forward-only mode ([`crate::cli::signals::set_forward_child`]) delivers
 /// exactly one, well-chosen signal instead — `simctl io recordVideo` needs a
-/// single SIGINT to finalize its file.
+/// single SIGINT to finalize its file. `quiet_stdout` sends the child's
+/// stdout to /dev/null instead (machine modes own stdout).
 pub fn spawn_group_inherit(
     program: &str,
     args: &[&str],
     cwd: Option<&Path>,
+    quiet_stdout: bool,
 ) -> Result<Child, CliError> {
     use std::os::unix::process::CommandExt;
 
     let mut cmd = Command::new(program);
     cmd.args(args).stdin(Stdio::null()).process_group(0);
+    if quiet_stdout {
+        cmd.stdout(Stdio::null());
+    }
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }

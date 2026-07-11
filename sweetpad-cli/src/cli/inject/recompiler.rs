@@ -767,6 +767,20 @@ mod tests {
     }
 
     #[test]
+    fn shell_tokens_keep_escaped_spaces_and_quotes_together() {
+        let toks = shell_tokens(
+            r"/x/swift-frontend -primary-file /Users/me/My\ Project/Foo.swift -o /d/x.o",
+        );
+        assert_eq!(toks[2], "/Users/me/My Project/Foo.swift");
+        assert_eq!(toks.len(), 5);
+        assert_eq!(
+            shell_tokens(r#"cc "-DNAME=a b" '/q path/x'"#),
+            vec!["cc", "-DNAME=a b", "/q path/x"]
+        );
+        assert_eq!(shell_tokens(r"a\=b plain"), vec!["a=b", "plain"]);
+    }
+
+    #[test]
     fn single_file_keeps_our_primary_and_demotes_others() {
         let line = "/x/swift-frontend -frontend -c -primary-file /p/ContentView.swift \
                     -primary-file /p/App.swift -o /d/x.o -target arm64-apple-ios16.0-simulator";

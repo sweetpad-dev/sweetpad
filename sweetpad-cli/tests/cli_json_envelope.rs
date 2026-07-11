@@ -74,13 +74,17 @@ fn parse_stderr_error(out: &Output, args: &[&str]) -> Value {
     v
 }
 
-/// Commands that produce a success payload with no real project or Xcode — a
-/// `--project` flag pointing anywhere is enough (these don't read the project).
+/// Commands that produce a success payload with no Xcode — these don't read
+/// the project's contents, but an explicit `--project` must name a path that
+/// exists (a nonexistent one is a target-resolution error by design), so a
+/// bare `.xcodeproj` directory is scaffolded.
 #[test]
 fn success_payloads_are_enveloped() {
     let home = tmp("ok-home");
     let cwd = tmp("ok-cwd");
-    let proj = "/tmp/sweetpad-does-not-exist.xcodeproj";
+    let proj_dir = cwd.join("Fixture.xcodeproj");
+    std::fs::create_dir_all(&proj_dir).unwrap();
+    let proj = proj_dir.to_str().unwrap();
     let commands: &[&[&str]] = &[
         &[
             "context",

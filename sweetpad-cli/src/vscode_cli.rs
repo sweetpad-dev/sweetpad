@@ -156,7 +156,8 @@ fn parse_argv(args: &[String]) -> Result<ParsedArgv, String> {
             i += 1;
         } else {
             return Err(format!(
-                "Unexpected positional argument '{arg}'; the vscode client takes named --flags only.",
+                "Unexpected positional argument '{arg}'; the vscode client takes named --flags \
+                 only (a value starting with '-' needs the --flag=value form).",
             ));
         }
     }

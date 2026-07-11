@@ -466,8 +466,15 @@ pub fn install(global: bool) -> CommandResult {
     for kind in Kind::ALL {
         let name = kind.driver_name();
         // `%P` (pathname) needs git ≥ 2.x; older git just omits it and we fall
-        // back to a default project name.
-        let driver = format!("\"{exe}\" merge driver {} %O %A %B %P", kind.token());
+        // back to a default project name. git evaluates the driver command
+        // through `sh -c`, so the path is single-quoted — inside double
+        // quotes a `$`, backtick, or `"` in the executable path would expand
+        // or break the command.
+        let driver = format!(
+            "{} merge driver {} %O %A %B %P",
+            crate::cli::xcodebuild::shell_quote(&exe),
+            kind.token()
+        );
         git(
             Some(&repo),
             &[

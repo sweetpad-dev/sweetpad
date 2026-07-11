@@ -13,6 +13,8 @@ struct Row {
     name: &'static str,
     value: Option<String>,
     source: &'static str,
+    /// Human-only annotation; never part of the machine value.
+    note: &'static str,
 }
 
 /// The status payload: container + rows + last launch.
@@ -32,8 +34,13 @@ impl Render for StatusReport {
             } else {
                 format!("  ({})", row.source)
             };
+            let note = if row.note.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", row.note)
+            };
             out.line(&format!(
-                "  {:<13} {}{source}",
+                "  {:<13} {}{note}{source}",
                 row.name,
                 row.value.as_deref().unwrap_or("(will prompt)")
             ));
@@ -107,6 +114,7 @@ pub fn run(ctx: &mut Context) -> CommandResult {
         name: "scheme",
         value,
         source,
+        note: "",
     });
 
     let (value, source) = provenance(
@@ -133,6 +141,7 @@ pub fn run(ctx: &mut Context) -> CommandResult {
         name: "configuration",
         value,
         source,
+        note: "",
     });
 
     let (value, source) = provenance(
@@ -145,15 +154,18 @@ pub fn run(ctx: &mut Context) -> CommandResult {
         name: "destination",
         value,
         source,
+        note: "",
     });
 
     // `--on`/`SWEETPAD_ON` outranks every destination layer at build time;
     // surface it so the shown context is the one a build will actually use.
+    // The machine `value` stays the bare reference; the annotation is prose.
     if let Some(on) = &ctx.targeting.on {
         rows.push(Row {
             name: "on",
-            value: Some(format!("{on} (overrides destination)")),
+            value: Some(on.clone()),
             source: "flag/env",
+            note: "overrides destination",
         });
     }
 
@@ -163,6 +175,7 @@ pub fn run(ctx: &mut Context) -> CommandResult {
             name: "sdk",
             value,
             source,
+            note: "",
         });
     }
 

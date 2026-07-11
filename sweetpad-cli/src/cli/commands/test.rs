@@ -186,7 +186,7 @@ impl Render for SpmTestReport {
 #[allow(clippy::too_many_lines)] // one linear run: resolve, guard, run, promote, report
 fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // Tests resolve their own context (testing overrides, falling back to build).
-    let resolved = resolve::resolve_testing(ctx)?;
+    let mut resolved = resolve::resolve_testing(ctx)?;
 
     // Swift packages run tests with the `swift` toolchain — no simulator
     // destination, no `.xcresult` bundle to retain, rerun from, or report on;
@@ -207,7 +207,7 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         return spm_test(ctx, &resolved, args);
     }
 
-    let target = resolve::build_target(ctx, &resolved, !args.show_command)?;
+    let target = resolve::build_target(ctx, &mut resolved, !args.show_command)?;
 
     // xcodebuild resolves `-resultBundlePath` against the *container's* parent
     // (its cwd), while the CLI's own exists/summary/rename steps resolve
@@ -284,10 +284,29 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // Human mode beautifies output; JSON stays quiet so stdout holds only the
     // enveloped summary the dispatcher renders from the returned payload.
     let outcome = plan.run(&ctx.out)?;
-    let summary = run_bundle
-        .exists()
-        .then(|| xcodebuild::test_summary(&run_bundle).ok())
-        .flatten();
+    let summary = if run_bundle.exists() {
+        match xcodebuild::test_summary(&run_bundle) {
+            Ok(s) => Some(s),
+            // The bundle exists but can't be read (xcresulttool format drift,
+            // a transient xcrun failure). For a green run that is *not* "no
+            // tests ran" — keep the results and surface the real error.
+            Err(e) if outcome.passed => {
+                let _ = std::fs::remove_dir_all(&final_bundle);
+                let bundle = if std::fs::rename(&run_bundle, &final_bundle).is_ok() {
+                    &final_bundle
+                } else {
+                    &run_bundle
+                };
+                return Err(e.context(format!(
+                    "the tests passed but the result bundle at {} could not be read",
+                    bundle.display()
+                )));
+            }
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
 
     // No tests ran: xcodebuild died before/inside its build step (it usually
     // still writes a bundle, so "bundle exists" proves nothing). Surface the
@@ -298,7 +317,12 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // "failed before any test ran" would delete a perfectly good bundle.
     let ran_tests = outcome.passed || summary.as_ref().is_some_and(|s| s.total_test_count > 0);
     if !ran_tests {
-        let _ = std::fs::remove_dir_all(&run_bundle);
+        if args.result_bundle.is_some() {
+            let _ = std::fs::remove_dir_all(&final_bundle);
+            let _ = std::fs::rename(&run_bundle, &final_bundle);
+        } else {
+            let _ = std::fs::remove_dir_all(&run_bundle);
+        }
         let detail = outcome
             .tail
             .map_or_else(String::new, |tail| format!(":\n{tail}"));

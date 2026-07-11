@@ -388,14 +388,17 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
     // The reference must be written *before* product discovery (resolution
     // needs it on disk), but everything after can still fail or be cancelled
     // at a picker — snapshot the pristine pbxproj so no path leaves a
-    // dangling, unlinked package reference behind.
+    // dangling, unlinked package reference behind. The sibling backup covers
+    // the paths a snapshot can't: a signal `_exit`ing mid-resolve.
     let pbxproj_path = xcodeproj.join("project.pbxproj");
+    heal_interrupted_mutation(&pbxproj_path, &ctx.out);
     let pristine = std::fs::read_to_string(&pbxproj_path)
         .map_err(|e| CliError::new(format!("failed to read {}: {e}", pbxproj_path.display())))?;
     // The discovery resolve rewrites Package.resolved with the new package's
     // pins — snapshot it too, so a cancel doesn't leave ghost pins that make
     // `dep list`/`dep remove` misreport the abandoned package.
     let pristine_lockfile = read_lockfile(container);
+    let backup = MutationBackup::create(&pbxproj_path, &pristine)?;
 
     // 1. Add the package reference (only) and write it, so resolution can fetch.
     let mut root = parse_owned(&xcodeproj)?;
@@ -432,7 +435,7 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
         Ok((products, targets))
     })();
 
-    match linked {
+    let result = match linked {
         Ok((products, targets)) => {
             report_added(ctx, &args.url, &products, &targets);
             Ok(())
@@ -442,7 +445,7 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
             // Report the rollback honestly — claiming success while the
             // dangling reference remains would hide exactly the state this
             // rollback exists to prevent.
-            if std::fs::write(&pbxproj_path, &pristine).is_ok() {
+            if write_atomic(&pbxproj_path, &pristine).is_ok() {
                 ctx.out
                     .note("rolled the package reference back out of the project (nothing linked)");
             } else {
@@ -454,7 +457,9 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
             }
             Err(e)
         }
-    }
+    };
+    backup.commit();
+    result
 }
 
 fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> CliResult {
@@ -480,14 +485,17 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
 
     // Package.swift is edited in step 1 but the pickers below can still be
     // cancelled — snapshot the pristine manifest so no path leaves a
-    // dependency declared and linked nowhere.
+    // dependency declared and linked nowhere. The sibling backup covers a
+    // signal `_exit`ing mid-resolve, past the in-memory rollback.
     let manifest_path = container.path().to_path_buf();
+    heal_interrupted_mutation(&manifest_path, &ctx.out);
     let pristine = std::fs::read_to_string(&manifest_path)
         .map_err(|e| CliError::new(format!("failed to read {}: {e}", manifest_path.display())))?;
     // The resolve in step 2 writes the new package's pins into
     // Package.resolved — snapshot it too, so a cancel doesn't leave ghost
     // pins that make `dep list`/`dep remove` misreport the abandoned package.
     let pristine_lockfile = read_lockfile(container);
+    let backup = MutationBackup::create(&manifest_path, &pristine)?;
 
     // 1. Add the dependency to the manifest.
     let requirement = if remote {
@@ -495,7 +503,7 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
     } else {
         Vec::new()
     };
-    swiftpm::add_dependency(container, &args.url, &requirement)?;
+    swiftpm::add_dependency(container, &args.url, &requirement, ctx.out.is_json() || ctx.out.is_ndjson())?;
     ctx.out.note(&format!("added package {}", args.url));
 
     let linked = (|| -> Result<(Vec<String>, Vec<String>), CliError> {
@@ -528,25 +536,27 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
 
         for product in &products {
             for target in &targets {
-                swiftpm::add_target_dependency(container, product, target, &package_name)?;
+                swiftpm::add_target_dependency(container, product, target, &package_name, ctx.out.is_json() || ctx.out.is_ndjson())?;
             }
         }
         Ok((products, targets))
     })();
 
-    match linked {
+    let result = match linked {
         Ok((products, targets)) => {
             report_added(ctx, &args.url, &products, &targets);
             Ok(())
         }
         Err(e) => {
-            let _ = std::fs::write(&manifest_path, &pristine);
+            let _ = write_atomic(&manifest_path, &pristine);
             restore_or_remove_lockfile(container, pristine_lockfile);
             ctx.out
                 .note("rolled the dependency back out of Package.swift (nothing linked)");
             Err(e)
         }
-    }
+    };
+    backup.commit();
+    result
 }
 
 /// Roll `Package.resolved` back to a [`read_lockfile`] snapshot after a
@@ -665,6 +675,7 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CliResult {
 
 fn remove_from_xcode(ctx: &mut Context, container: &Container, args: &RemoveArgs) -> CliResult {
     let xcodeproj = pick_xcodeproj(ctx, container, Some(&args.package))?;
+    heal_interrupted_mutation(&xcodeproj.join("project.pbxproj"), &ctx.out);
     let mut root = parse_owned(&xcodeproj)?;
     let ref_guid = find_package_or_hint(&root, container, &args.package, &xcodeproj)?;
 
@@ -720,7 +731,7 @@ fn remove_pin(container: &Container, query: &str) {
     if let Some(pins) = pins {
         pins.retain(|p| pin_identity(p).map(|i| i.to_ascii_lowercase()) != Some(id.clone()));
     }
-    let _ = std::fs::write(&path, sweetpad_lib::spm_resolved::serialize(&json));
+    let _ = write_atomic(&path, &sweetpad_lib::spm_resolved::serialize(&json));
 }
 
 /// A pin's identity: the `identity` key (v2/v3), or derived from
@@ -817,6 +828,10 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
     }
 
     let xcodeproj = pick_xcodeproj(ctx, &container, Some(package))?;
+    let pbxproj_path = xcodeproj.join("project.pbxproj");
+    heal_interrupted_mutation(&pbxproj_path, &ctx.out);
+    let pristine = std::fs::read_to_string(&pbxproj_path)
+        .map_err(|e| CliError::new(format!("failed to read {}: {e}", pbxproj_path.display())))?;
     let mut root = parse_owned(&xcodeproj)?;
     let ref_guid = find_package_or_hint(&root, &container, package, &xcodeproj)?;
     spm_pbxproj::set_requirement(&mut root, &ref_guid, &spec).map_err(CliError::new)?;
@@ -824,12 +839,16 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
 
     if !args.no_resolve {
         // Drop the stale pin so resolution re-pins to the new requirement
-        // (needed when downgrading), then resolve — restoring the lockfile
-        // if the resolve fails (e.g. offline) so the pin isn't lost.
+        // (needed when downgrading), then resolve. A failed resolve rolls the
+        // whole update back — requirement edit and pin both — so an offline
+        // resolve or a bad requirement leaves the project as it was.
         let snapshot = read_lockfile(&container);
         remove_pin(&container, package);
         if let Err(e) = resolve_packages(&container, None, &ctx.out, false) {
             restore_lockfile(ctx, &container, snapshot);
+            let _ = write_atomic(&pbxproj_path, &pristine);
+            ctx.out
+                .note("rolled the requirement change back (the resolve failed)");
             return Err(e);
         }
     }
@@ -1190,15 +1209,83 @@ fn parse_owned(xcodeproj: &Path) -> Result<Value, CliError> {
         .map_err(|e| CliError::new(format!("failed to parse {}: {e}", path.display())))
 }
 
+/// Write `text` to `path` atomically (same-directory temp + rename), so a
+/// crash, signal, or full disk mid-write can't leave a truncated project
+/// file behind.
+fn write_atomic(path: &Path, text: &str) -> CliResult {
+    let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
+    tmp_name.push(format!(".tmp.{}", std::process::id()));
+    let tmp = path.with_file_name(tmp_name);
+    if let Err(e) = std::fs::write(&tmp, text) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(CliError::new(format!(
+            "failed to write {}: {e}",
+            path.display()
+        )));
+    }
+    std::fs::rename(&tmp, path)
+        .map_err(|e| CliError::new(format!("failed to write {}: {e}", path.display())))
+}
+
 fn write_pbxproj(xcodeproj: &Path, root: &Value) -> CliResult {
     let name = xcodeproj
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("Project");
     let text = sweetpad_lib::pbxproj_writer::serialize(root, name);
-    let path = xcodeproj.join("project.pbxproj");
-    std::fs::write(&path, text)
-        .map_err(|e| CliError::new(format!("failed to write {}: {e}", path.display())))
+    write_atomic(&xcodeproj.join("project.pbxproj"), &text)
+}
+
+/// A crash-safe pristine copy of a file about to be mutated in multiple steps.
+/// The in-memory rollback covers every *returned* error, but a signal between
+/// the first write and the rollback `_exit`s past it — the sibling backup
+/// survives, and [`heal_interrupted_mutation`] restores it at the start of the
+/// next dependency command. Success (or a completed rollback) removes it.
+struct MutationBackup {
+    backup: PathBuf,
+}
+
+impl MutationBackup {
+    fn create(target: &Path, pristine: &str) -> Result<Self, CliError> {
+        let backup = mutation_backup_path(target);
+        std::fs::write(&backup, pristine)
+            .map_err(|e| CliError::new(format!("failed to write {}: {e}", backup.display())))?;
+        Ok(Self { backup })
+    }
+
+    /// The mutation landed (or was rolled back in memory): drop the backup.
+    fn commit(self) {
+        let _ = std::fs::remove_file(&self.backup);
+    }
+}
+
+fn mutation_backup_path(target: &Path) -> PathBuf {
+    let mut name = target.file_name().unwrap_or_default().to_os_string();
+    name.push(".sweetpad-rollback");
+    target.with_file_name(name)
+}
+
+/// Restore a backup a signal-interrupted earlier run left behind (see
+/// [`MutationBackup`]), so a half-applied dependency edit heals instead of
+/// festering as a dangling package reference.
+fn heal_interrupted_mutation(target: &Path, out: &Output) {
+    let backup = mutation_backup_path(target);
+    if !backup.exists() {
+        return;
+    }
+    match std::fs::read_to_string(&backup) {
+        Ok(text) if write_atomic(target, &text).is_ok() => {
+            let _ = std::fs::remove_file(&backup);
+            out.warn(&format!(
+                "restored {} (an earlier dependency edit was interrupted mid-run)",
+                target.display()
+            ));
+        }
+        _ => out.warn(&format!(
+            "{} exists but could not be restored — inspect it manually",
+            backup.display()
+        )),
+    }
 }
 
 /// Path to the local package directory, relative to the project directory, for

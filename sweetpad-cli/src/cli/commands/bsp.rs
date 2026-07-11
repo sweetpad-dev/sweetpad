@@ -22,14 +22,43 @@ pub enum Action {
         output_file: Option<PathBuf>,
     },
     /// Check the buildServer.json wiring: does it exist, is it complete, and
-    /// does it point at a binary that's still there?
+    /// does its argv actually start a BSP server?
     Doctor,
+    /// Run the BSP server loop over stdio — what buildServer.json's argv
+    /// execs. sourcekit-lsp is the caller; humans never need this.
+    #[command(hide = true)]
+    Serve {
+        /// Raw server flags (--project/--workspace, --xcode,
+        /// --derived-data-path), parsed by the server itself.
+        #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
+        args: Vec<String>,
+    },
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Init { output_file } => init(ctx, output_file.as_deref()),
         Action::Doctor => doctor(ctx),
+        Action::Serve { args } => {
+            // The bsp resource's ContainerArgs are global, so clap parses
+            // --project/--workspace out of the argv before the trailing args
+            // see them — reassemble the server's flag list from the parsed
+            // targeting, then append whatever else the config carried
+            // (--xcode, --derived-data-path, --config).
+            let mut server_args: Vec<String> = Vec::new();
+            if let Some(ws) = &ctx.targeting.workspace {
+                server_args.push("--workspace".into());
+                server_args.push(ws.display().to_string());
+            }
+            if let Some(p) = &ctx.targeting.project {
+                server_args.push("--project".into());
+                server_args.push(p.display().to_string());
+            }
+            server_args.extend(args.iter().cloned());
+            // The server owns stdio (JSON-RPC frames on stdout); no envelope.
+            sweetpad_core::bsp::run(&server_args).map_err(CliError::new)?;
+            Ok(Rendered::Streamed)
+        }
     }
 }
 
@@ -69,7 +98,7 @@ const REQUIRED_FIELDS: [&str; 5] = ["name", "version", "bspVersion", "languages"
 fn doctor(ctx: &mut Context) -> CommandResult {
     let container = resolve::container(ctx)?;
     if matches!(container, Container::SwiftPackage(_)) {
-        return Ok(Rendered::data(init_swift_package(container.path(), None)));
+        return doctor_swift_package(container.path());
     }
     let path = buildserver_path(container.path(), None);
     let mut checks = Vec::new();
@@ -112,13 +141,18 @@ fn doctor(ctx: &mut Context) -> CommandResult {
                     ),
                 });
             }
-            let server = json
+            let argv: Vec<String> = json
                 .get("argv")
-                .and_then(|a| a.get(0))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_string);
-            if let Some(server) = server {
-                let exists = std::path::Path::new(&server).exists();
+                .and_then(serde_json::Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            if let Some(server) = argv.first() {
+                let exists = std::path::Path::new(server).exists();
                 checks.push(BspCheck {
                     ok: exists,
                     what: format!(
@@ -130,6 +164,9 @@ fn doctor(ctx: &mut Context) -> CommandResult {
                         }
                     ),
                 });
+                if exists {
+                    checks.push(probe_launch(&argv));
+                }
             }
         }
     }
@@ -146,24 +183,84 @@ fn doctor(ctx: &mut Context) -> CommandResult {
     }
 }
 
-fn init(ctx: &mut Context, output: Option<&std::path::Path>) -> CommandResult {
+/// The definitive doctor check: exec the config's argv with stdin closed. A
+/// real BSP server reads EOF and exits cleanly; a wrong argv (a usage error,
+/// a binary that isn't a server) exits non-zero immediately.
+fn probe_launch(argv: &[String]) -> BspCheck {
+    use std::process::{Command, Stdio};
+    let result = Command::new(&argv[0])
+        .args(&argv[1..])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    match result {
+        Ok(status) if status.success() => BspCheck {
+            ok: true,
+            what: "argv starts a BSP server".to_string(),
+        },
+        Ok(status) => BspCheck {
+            ok: false,
+            what: format!(
+                "argv starts a BSP server (exec exited with {status} — rerun `sweetpad bsp init`)"
+            ),
+        },
+        Err(e) => BspCheck {
+            ok: false,
+            what: format!("argv starts a BSP server (exec failed: {e})"),
+        },
+    }
+}
+
+/// `bsp doctor` for a Swift package: healthy means *no* `buildServer.json`
+/// (sourcekit-lsp handles SwiftPM natively; a leftover config overrides that
+/// and breaks SPM semantics).
+#[allow(clippy::unnecessary_wraps)] // uniform CommandResult across the doctor arms
+fn doctor_swift_package(manifest_path: &Path) -> CommandResult {
+    let config_path = buildserver_path(manifest_path, None);
+    let stale = config_path.exists();
+    let checks = vec![BspCheck {
+        ok: !stale,
+        what: format!(
+            "no buildServer.json overriding sourcekit-lsp's native SwiftPM support{}",
+            if stale {
+                " — remove it (the BSP server only handles Xcode projects)"
+            } else {
+                ""
+            }
+        ),
+    }];
+    let report = BspDoctor {
+        path: config_path.display().to_string(),
+        checks,
+    };
+    if stale {
+        Ok(Rendered::data_with_exit(report, 1))
+    } else {
+        Ok(Rendered::data(report))
+    }
+}
+
+fn init(ctx: &mut Context, out: Option<&std::path::Path>) -> CommandResult {
     let container = resolve::container(ctx)?;
 
     let mut args: Vec<String> = match &container {
         Container::Workspace(p) => vec!["--workspace".into(), p.display().to_string()],
         Container::Project(p) => vec!["--project".into(), p.display().to_string()],
         Container::SwiftPackage(p) => {
-            return Ok(Rendered::data(init_swift_package(p, output)));
+            return Ok(Rendered::data(init_swift_package(p, out)));
         }
     };
-    if let Some(out) = output {
+    if let Some(out) = out {
         args.push("--output".into());
         args.push(out.display().to_string());
     }
 
-    sweetpad_core::bsp::write_config(&args).map_err(CliError::new)?;
+    // The written argv must exec *this* binary's server loop: `sweetpad bsp
+    // serve …` (the standalone bsp-server binary spells it `bsp …`).
+    sweetpad_core::bsp::write_config(&args, &["bsp", "serve"]).map_err(CliError::new)?;
 
-    let path = buildserver_path(container.path(), output);
+    let path = buildserver_path(container.path(), out);
     Ok(Rendered::data(BspInit {
         build_server_json: path.display().to_string(),
     }))

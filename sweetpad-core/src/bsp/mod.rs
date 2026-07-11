@@ -30,9 +30,12 @@ use control::{LogLevel, TelemetryServer};
 use sweetpad_lib::project;
 
 /// Write a `buildServer.json` so `sourcekit-lsp` discovers and launches this
-/// server. Its `argv` points at the current executable + the same `bsp` flags,
-/// dropped into the workspace root (the `.xcodeproj`'s parent, or `--output`).
-pub fn write_config(args: &[String]) -> Result<(), String> {
+/// server. Its `argv` is the current executable followed by
+/// `serve_subcommand` — the caller's spelling of "run the server loop"
+/// (`["bsp"]` for the standalone bsp-server binary, `["bsp", "serve"]` for the
+/// sweetpad CLI) — plus the server flags, dropped into the workspace root (the
+/// `.xcodeproj`'s parent, or `--output`).
+pub fn write_config(args: &[String], serve_subcommand: &[&str]) -> Result<(), String> {
     let flags = parse_flags(args);
     // Accept either a `.xcodeproj` (`--project`) or a `.xcworkspace` (`--workspace`);
     // the BSP server resolves files against a workspace's member projects.
@@ -46,12 +49,10 @@ pub fn write_config(args: &[String]) -> Result<(), String> {
     let root_abs = std::fs::canonicalize(root).map_err(|e| format!("{root_flag}: {e}"))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
 
-    let mut server_argv = vec![
-        exe.to_string_lossy().into_owned(),
-        "bsp".into(),
-        root_flag.into(),
-        root_abs.to_string_lossy().into_owned(),
-    ];
+    let mut server_argv = vec![exe.to_string_lossy().into_owned()];
+    server_argv.extend(serve_subcommand.iter().map(|s| (*s).to_string()));
+    server_argv.push(root_flag.into());
+    server_argv.push(root_abs.to_string_lossy().into_owned());
     for (flag, key) in [
         ("--xcode", "xcode"),
         ("--derived-data-path", "derived-data-path"),

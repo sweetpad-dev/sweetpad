@@ -21,6 +21,9 @@ pub struct Output {
     ndjson: bool,
     non_interactive: bool,
     color: bool,
+    /// Color for the stderr emitters, keyed to *stderr's* terminality — a
+    /// `2>err.log` redirect must not capture raw escapes just because stdout
+    /// is a TTY (and vice versa).
     color_stderr: bool,
     verbose: bool,
     quiet: bool,

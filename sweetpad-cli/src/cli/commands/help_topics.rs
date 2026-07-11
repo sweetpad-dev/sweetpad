@@ -59,7 +59,8 @@ with `sweetpad context`, not by hand).",
         body: "\
 ENVIRONMENT VARIABLES
 
-Value-carrying (folded into the flag layer; a typed flag still wins):
+Value-carrying (folded into the flag layer; a typed flag still wins, and a
+variable set to the empty string means unset):
 
   SWEETPAD_WORKSPACE        path to the .xcworkspace
   SWEETPAD_PROJECT          path to the .xcodeproj
@@ -69,6 +70,9 @@ Value-carrying (folded into the flag layer; a typed flag still wins):
   SWEETPAD_ON               human destination reference (see `help
                             destinations`); overrides SWEETPAD_DESTINATION
   SWEETPAD_SDK              -sdk override
+  DEVELOPER_DIR             the Xcode every spawned tool uses (the
+                            --developer-dir flag; a sweetpad.toml
+                            developer_dir pins it per project)
 
 Boolean (truthy parsing: 0 / false / no / off / empty mean OFF):
 

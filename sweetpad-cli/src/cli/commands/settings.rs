@@ -78,7 +78,7 @@ impl Render for SettingsResult {
 }
 
 fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandResult {
-    let resolved = resolve::resolve(ctx)?;
+    let mut resolved = resolve::resolve(ctx)?;
 
     let (project, workspace) = match &resolved.container {
         Container::Project(p) => (Some(p.clone()), None),
@@ -111,22 +111,20 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandRe
         )?)
     };
 
-    let configuration = resolve::settle_configuration(ctx, &resolved)?;
+    let configuration = resolve::settle_configuration(ctx, &mut resolved, false)?;
     // `--on` resolves to a concrete specifier here like it does for builds;
-    // an explicit --destination (the resolved layer) otherwise applies.
+    // an explicit --destination (the resolved layer) otherwise applies. Both
+    // typed is the same conflict it is for build/archive.
+    resolve::reject_on_destination_conflict(ctx)?;
     let on_specifier = match ctx.targeting.on.clone() {
         Some(reference) => {
-            // Same rule as the build path: silently letting `--on` win would
-            // show settings for a destination a build with identical flags
-            // refuses to accept.
-            if ctx.targeting.destination.is_some() {
-                return Err(CliError::new(
-                    "--on and --destination are mutually exclusive; pass one",
-                ));
-            }
-            let sims = crate::cli::simctl::list()?;
             let key = resolved.container.key();
-            Some(resolve::resolve_on(ctx, &key, &reference, &sims)?.specifier())
+            if resolve::on_is_mac(ctx, &key, &reference) {
+                Some("platform=macOS".to_string())
+            } else {
+                let sims = crate::cli::simctl::list()?;
+                Some(resolve::resolve_on(ctx, &key, &reference, &sims)?.specifier())
+            }
         }
         None => None,
     };

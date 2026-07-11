@@ -42,6 +42,23 @@ impl Watcher {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_thread = Arc::clone(&stop);
 
+        // The callback runs a whole recompile (seconds — minutes for a big
+        // module), so it gets its own detached worker: the poll thread stays
+        // joinable and quitting the session never stalls behind an in-flight
+        // compile. The worker drains sequentially (saves stay ordered) and
+        // exits when the poll thread drops the sender; queued work is skipped
+        // once the watcher is stopping.
+        let (tx, rx) = std::sync::mpsc::channel::<PathBuf>();
+        let worker_stop = Arc::clone(&stop);
+        std::thread::spawn(move || {
+            while let Ok(path) = rx.recv() {
+                if worker_stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                on_change(&path);
+            }
+        });
+
         let handle = std::thread::spawn(move || {
             // Initial snapshot — don't fire for files that already exist.
             let mut mtimes: HashMap<PathBuf, SystemTime> = HashMap::new();
@@ -63,7 +80,7 @@ impl Watcher {
                     }
                 });
                 for path in changed {
-                    on_change(&path);
+                    let _ = tx.send(path);
                 }
             }
         });
@@ -78,6 +95,8 @@ impl Watcher {
 impl Drop for Watcher {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        // Joins only the poll thread (bounded by one poll tick); the compile
+        // worker is detached and winds down on its own.
         if let Some(h) = self.handle.take() {
             let _ = h.join();
         }

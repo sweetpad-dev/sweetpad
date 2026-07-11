@@ -51,7 +51,7 @@ impl Render for CleanReport {
 }
 
 pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
-    let resolved = resolve::resolve(ctx)?;
+    let mut resolved = resolve::resolve(ctx)?;
 
     let cleaned = match &resolved.container {
         Container::SwiftPackage(_) => {
@@ -76,11 +76,8 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
         }
         Container::Project(_) | Container::Workspace(_) => {
             let schemes = resolve::schemes(&resolved.container)?;
-            if let Some(s) = &resolved.scheme {
-                resolve::validate_choice("scheme", s, &schemes)?;
-            }
-            let scheme = resolve::choose(ctx, "scheme", resolved.scheme.clone(), &schemes)?;
-            let configuration = resolve::settle_configuration(ctx, &resolved)?;
+            let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, true)?;
+            let configuration = resolve::settle_configuration(ctx, &mut resolved, true)?;
 
             let mut args: Vec<String> = vec![
                 "clean".into(),

@@ -211,7 +211,9 @@ pub fn find<'a>(sims: &'a [Simulator], query: &str) -> Option<&'a Simulator> {
 }
 
 /// Boot a simulator. Already-booted is treated as success so the run/install
-/// pipeline is idempotent.
+/// pipeline is idempotent; already-*booting* (Simulator.app just opened it, a
+/// concurrent run racing this one) waits for the boot to finish instead of
+/// failing a run that would be fine seconds later.
 pub fn boot(udid: &str) -> Result<(), CliError> {
     let output = std::process::Command::new("xcrun")
         .args(["simctl", "boot", udid])
@@ -223,6 +225,9 @@ pub fn boot(udid: &str) -> Result<(), CliError> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     if stderr.contains("current state: Booted") {
         return Ok(());
+    }
+    if stderr.contains("current state: Booting") {
+        return boot_wait(udid);
     }
     Err(CliError::new(format!(
         "simctl boot failed: {}",
@@ -358,10 +363,10 @@ pub fn terminate(udid: &str, bundle_id: &str) -> Result<(), CliError> {
         return Ok(());
     }
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if stderr.contains("found nothing to terminate")
-        || stderr.contains("Unable to terminate")
-        || stderr.contains("No such process")
-    {
+    // Only the already-stopped shapes count as success — "Unable to
+    // terminate" is the prefix of *every* terminate failure and must not
+    // swallow real ones.
+    if stderr.contains("found nothing to terminate") || stderr.contains("No such process") {
         return Ok(());
     }
     Err(CliError::new(format!(
@@ -541,8 +546,9 @@ pub fn media_add(udid: &str, paths: &[String]) -> Result<(), CliError> {
 /// and the signal handler's forward-only mode delivers exactly one SIGINT and
 /// returns — the wait below then outlasts the finalization, and the caller
 /// renders a real result instead of dying at 130 mid-write. Returns whether
-/// the user stopped it (vs. the recorder failing on its own).
-pub fn record(udid: &str, path: &str) -> Result<bool, CliError> {
+/// the user stopped it (vs. the recorder failing on its own). `quiet_stdout`
+/// nulls the child's stdout for the machine modes.
+pub fn record(udid: &str, path: &str, quiet_stdout: bool) -> Result<bool, CliError> {
     let child = process::spawn_group_inherit(
         "xcrun",
         &[
@@ -556,28 +562,29 @@ pub fn record(udid: &str, path: &str) -> Result<bool, CliError> {
             path,
         ],
         None,
+        quiet_stdout,
     )
     .context("recording the simulator screen")?;
     let mut child = child;
     crate::cli::signals::set_forward_child(child.id());
-    // Poll-reap instead of a blocking wait: recordVideo takes seconds to
-    // finalize after the forwarded SIGINT, and users double-tap Ctrl-C. With
-    // a blocking wait the forward pid stayed armed for that whole window
-    // after the reap, so a second Ctrl-C could signal a freed (recyclable)
-    // pid. Polling shrinks the armed-after-reap window to one loop tick.
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                crate::cli::signals::clear_forward_child();
-                break child.wait();
-            }
-            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
-            Err(e) => {
-                crate::cli::signals::clear_forward_child();
-                break Err(e);
-            }
-        }
-    };
+    // Observe the exit *without* reaping (WNOWAIT keeps the zombie), so
+    // forward mode clears while the pid is still unrecyclable — a Ctrl-C in
+    // a wait-then-clear gap would make the handler SIGINT a stranger. The
+    // real `wait()` below then reaps the zombie immediately.
+    // Safety: waitid(2) on our own child's pid with stack-local siginfo.
+    unsafe {
+        let mut info: libc::siginfo_t = std::mem::zeroed();
+        while libc::waitid(
+            libc::P_PID,
+            child.id() as libc::id_t,
+            &raw mut info,
+            libc::WEXITED | libc::WNOWAIT,
+        ) == -1
+            && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted
+        {}
+    }
+    crate::cli::signals::clear_forward_child();
+    let status = child.wait();
     let stopped = crate::cli::signals::take_forwarded();
     match status {
         Ok(s) if s.success() || stopped => Ok(stopped),
