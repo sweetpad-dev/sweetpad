@@ -433,7 +433,11 @@ fn prompt_value(
             let candidates = resolve::configurations(container)?;
             resolve::choose(ctx, "configuration", None, &candidates)
         }
-        Variable::Destination => resolve::pick_destination(ctx, key, &simctl::list()?, true),
+        // Unfiltered on purpose: `context select` is the browse-everything
+        // escape hatch when the build paths' platform filter guessed wrong
+        // (`context set destination <spec>` takes any raw value for the same
+        // reason).
+        Variable::Destination => resolve::pick_destination(ctx, key, &simctl::list()?, true, None),
         Variable::Sdk | Variable::Target => {
             if !ctx.out.is_interactive() {
                 return Err(resolve::missing(v.name()));

@@ -798,12 +798,12 @@ pub fn build_target(
         // A remembered simulator can be deleted under its pin (Xcode/runtime
         // updates do this routinely) — recover like a stale scheme instead of
         // failing every plain build on xcodebuild's cryptic no-match error.
-        match refresh_stale_destination(ctx, resolved, &key, &d, track)? {
+        match refresh_stale_destination(ctx, resolved, &key, &d, &configuration, track)? {
             Some(fresh) => fresh,
             None => d,
         }
     } else {
-        pick_destination(ctx, &key, &crate::cli::simctl::list()?, track)?
+        pick_destination_for(ctx, resolved, &configuration, track)?
     };
 
     Ok(BuildTarget {
@@ -994,6 +994,7 @@ pub(crate) fn refresh_stale_destination(
     resolved: &mut Resolved,
     key: &str,
     spec: &str,
+    configuration: &str,
     track: bool,
 ) -> Result<Option<String>, CliError> {
     let Some(udid) = spec
@@ -1034,9 +1035,17 @@ pub(crate) fn refresh_stale_destination(
              ignoring it for this preview (a real run clears it)"
         ));
     }
-    // The fresh pick is picker-sourced: `remember` should persist it.
+    // The fresh pick is picker-sourced: `remember` should persist it — and
+    // platform-filtered like any other pick.
     resolved.destination = None;
-    Ok(Some(pick_destination(ctx, key, &sims, track)?))
+    let platforms = SupportedPlatforms::resolve(resolved, configuration);
+    Ok(Some(pick_destination(
+        ctx,
+        key,
+        &sims,
+        track,
+        platforms.as_ref(),
+    )?))
 }
 
 /// The one rule for `--on` plus `--destination` arriving together, shared by
@@ -1154,26 +1163,186 @@ pub fn remember_testing(
     }
 }
 
+/// The platform tokens the container's targets can build for — the union of
+/// their *authored* `SUPPORTED_PLATFORMS`, falling back to the authored
+/// `SDKROOT` (a device SDK implies its simulator sibling), read straight from
+/// the pbxproj layers in-process. Drives the destination picker's filtering,
+/// so a macOS-only app isn't offered a wall of iPhone simulators. Guessing
+/// wrong can only ever *widen* the list: resolution failure means no filter,
+/// and an explicit `--destination` / `context set destination` bypasses the
+/// picker entirely.
+pub struct SupportedPlatforms(std::collections::BTreeSet<String>);
+
+impl SupportedPlatforms {
+    /// Resolve the container's platform tokens for `configuration`; `None`
+    /// (no filtering) for Swift packages, unreadable projects, or when no
+    /// target authors either setting. Reads the raw setting layers rather
+    /// than the full settings resolver — with no destination settled yet the
+    /// resolver would bind an arbitrary default platform, overriding the very
+    /// value being discovered.
+    #[must_use]
+    pub fn resolve(resolved: &Resolved, configuration: &str) -> Option<Self> {
+        let projects: Vec<PathBuf> = match &resolved.container {
+            Container::Project(p) => vec![p.clone()],
+            Container::Workspace(p) => sweetpad_lib::workspace::open(p).ok()?.project_refs,
+            Container::SwiftPackage(_) => return None,
+        };
+        let mut tokens = std::collections::BTreeSet::new();
+        for proj in &projects {
+            let Ok(project) = sweetpad_lib::project::open(proj) else {
+                continue;
+            };
+            for target in &project.targets {
+                let Ok(layers) = sweetpad_lib::project::build_settings_layers(
+                    proj,
+                    &target.name,
+                    configuration,
+                ) else {
+                    continue;
+                };
+                let supported = sweetpad_lib::project::last_unconditional_setting(
+                    &layers,
+                    "SUPPORTED_PLATFORMS",
+                );
+                match supported {
+                    Some(platforms) => tokens.extend(
+                        platforms
+                            .split_whitespace()
+                            .filter(|t| !t.contains('$'))
+                            .map(str::to_string),
+                    ),
+                    None => {
+                        if let Some(sdk) = sweetpad_lib::project::natural_sdkroot(&layers) {
+                            tokens.extend(sdk_platform_tokens(&sdk));
+                        }
+                    }
+                }
+            }
+        }
+        (!tokens.is_empty()).then_some(Self(tokens))
+    }
+
+    #[cfg(test)]
+    fn from_tokens(tokens: &[&str]) -> Self {
+        Self(tokens.iter().map(ToString::to_string).collect())
+    }
+
+    fn allows_mac(&self) -> bool {
+        self.0.contains("macosx")
+    }
+
+    /// Whether a simulator of this OS family (`simctl`'s `iOS` / `watchOS` /
+    /// `tvOS` / `xrOS`) can run the scheme. Unknown families stay visible —
+    /// filtering must never hide something it doesn't understand.
+    fn allows_simulator(&self, os: &str) -> bool {
+        let token = match os {
+            "iOS" => "iphonesimulator",
+            "watchOS" => "watchsimulator",
+            "tvOS" => "appletvsimulator",
+            "xrOS" | "visionOS" => "xrsimulator",
+            _ => return true,
+        };
+        self.0.contains(token)
+    }
+
+    /// Whether the Mac is the only destination the scheme supports — the case
+    /// that can skip the `simctl list` spawn entirely.
+    fn mac_only(&self) -> bool {
+        self.allows_mac() && !self.0.iter().any(|t| t.ends_with("simulator"))
+    }
+}
+
+/// The platform tokens an `SDKROOT` value implies (a device SDK brings its
+/// simulator sibling, mirroring Xcode's default `SUPPORTED_PLATFORMS`).
+/// Accepts the short name (`macosx`), a versioned one (`iphoneos17.5`), or a
+/// full SDK path (`…/MacOSX15.2.sdk`).
+fn sdk_platform_tokens(sdk: &str) -> Vec<String> {
+    let name = std::path::Path::new(sdk)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(sdk)
+        .trim_end_matches(|c: char| c.is_ascii_digit() || c == '.')
+        .to_ascii_lowercase();
+    match name.as_str() {
+        "macosx" => vec!["macosx".to_string()],
+        "iphoneos" => vec!["iphoneos".to_string(), "iphonesimulator".to_string()],
+        "watchos" => vec!["watchos".to_string(), "watchsimulator".to_string()],
+        "appletvos" => vec!["appletvos".to_string(), "appletvsimulator".to_string()],
+        "xros" => vec!["xros".to_string(), "xrsimulator".to_string()],
+        _ => Vec::new(),
+    }
+}
+
+/// The platform-aware picker entry used by the build/run paths: resolve the
+/// container's supported platforms, short-circuit a Mac-only project straight
+/// to the Mac (no `simctl` spawn — it also works on CLT-only hosts), and
+/// otherwise run the picker filtered to what the targets can run on.
+pub fn pick_destination_for(
+    ctx: &mut Context,
+    resolved: &Resolved,
+    configuration: &str,
+    track: bool,
+) -> Result<String, CliError> {
+    let key = resolved.container.key();
+    let platforms = SupportedPlatforms::resolve(resolved, configuration);
+    if platforms.as_ref().is_some_and(SupportedPlatforms::mac_only) {
+        ctx.out.note(
+            "targeting My Mac (macOS) — the only destination this scheme supports \
+             (`context set destination` overrides)",
+        );
+        return Ok("platform=macOS".to_string());
+    }
+    pick_destination(
+        ctx,
+        &key,
+        &crate::cli::simctl::list()?,
+        track,
+        platforms.as_ref(),
+    )
+}
+
 /// Prompt for a destination from the simulator list and return the chosen
 /// simulator's `-destination` specifier. The list is ordered most-used first
 /// (from the project's usage stats), then booted, then the resolver's order, so
 /// your habitual target sits at the top; under `track` the chosen simulator is
 /// recorded into the project's recents and usage stats (dry runs pass `false`
-/// so a preview's pick leaves no trace). Shared by `build_target` and
-/// `context select`.
+/// so a preview's pick leaves no trace). `platforms` filters the choices to
+/// what the scheme can run on (`None` = everything — `context select` passes
+/// that deliberately, as the browse-it-all escape hatch); a filter that would
+/// leave nothing falls back to the full list rather than blocking. Shared by
+/// `build_target` and `context select`.
 pub fn pick_destination(
     ctx: &mut Context,
     key: &str,
     sims: &[crate::cli::simctl::Simulator],
     track: bool,
+    platforms: Option<&SupportedPlatforms>,
 ) -> Result<String, CliError> {
+    let filtered: Vec<&crate::cli::simctl::Simulator> = sims
+        .iter()
+        .filter(|s| platforms.is_none_or(|p| p.allows_simulator(&s.os)))
+        .collect();
+    let include_mac = platforms.is_none_or(SupportedPlatforms::allows_mac);
+    let (view, include_mac) = if filtered.is_empty() && !include_mac {
+        (sims.iter().collect(), true)
+    } else {
+        (filtered, include_mac)
+    };
     let usage = ctx.state.projects.get(key).map(|s| &s.destination_usage);
-    let (ordered, mut labels) = destination_choices(sims, usage);
-    // The local Mac is always addressable (`platform=macOS`); listed last so
-    // the simulator daily loop stays on top, but present so a macOS-app
-    // project can settle its destination without knowing `--on mac`.
+    let (ordered, mut labels) = destination_choices(&view, usage);
+    // The local Mac is addressable (`platform=macOS`) whenever the scheme
+    // supports it; listed last so the simulator daily loop stays on top.
     let mac_label = "My Mac (macOS)".to_string();
-    labels.push(mac_label.clone());
+    if include_mac {
+        labels.push(mac_label.clone());
+    }
+    if labels.len() == 1 {
+        ctx.out.note(&format!(
+            "targeting {} — the only destination this scheme supports \
+             (`context set destination` overrides)",
+            labels[0].trim()
+        ));
+    }
     let chosen = choose(ctx, "destination", None, &labels)?;
     if chosen == mac_label {
         return Ok("platform=macOS".to_string());
@@ -1219,13 +1388,13 @@ fn track_destination(state: &mut State, key: &str, sim: &crate::cli::simctl::Sim
 /// gutter on the others — added only when some simulator is booted, so the
 /// common all-shutdown list stays plain. Pure, so it's unit-testable.
 fn destination_choices<'a>(
-    sims: &'a [crate::cli::simctl::Simulator],
+    sims: &[&'a crate::cli::simctl::Simulator],
     usage: Option<&std::collections::BTreeMap<String, u32>>,
 ) -> (Vec<&'a crate::cli::simctl::Simulator>, Vec<String>) {
     let count = |s: &crate::cli::simctl::Simulator| {
         usage.and_then(|u| u.get(&s.udid)).copied().unwrap_or(0)
     };
-    let mut ordered: Vec<&crate::cli::simctl::Simulator> = sims.iter().collect();
+    let mut ordered: Vec<&crate::cli::simctl::Simulator> = sims.to_vec();
     // Stable: the input is already in the resolver's order, so equal keys keep
     // it. Float most-used, then booted, above that baseline.
     ordered.sort_by(|a, b| {
@@ -1233,7 +1402,7 @@ fn destination_choices<'a>(
             .cmp(&count(a))
             .then_with(|| b.is_booted().cmp(&a.is_booted()))
     });
-    let any_booted = sims.iter().any(crate::cli::simctl::Simulator::is_booted);
+    let any_booted = sims.iter().any(|s| s.is_booted());
     let mut labels: Vec<String> = ordered
         .iter()
         .map(|s| match (any_booted, s.is_booted()) {
@@ -1497,7 +1666,7 @@ mod tests {
             sim("B", "iPhone 14", true),
             sim("C", "iPad Air", false),
         ];
-        let (ordered, labels) = destination_choices(&sims, None);
+        let (ordered, labels) = destination_choices(&sims.iter().collect::<Vec<_>>(), None);
         // Booted "B" floats to the top and is marked; the rest keep order,
         // aligned under the marker's gutter.
         assert_eq!(
@@ -1511,7 +1680,7 @@ mod tests {
     #[test]
     fn destination_choices_unmarked_when_none_booted() {
         let sims = vec![sim("A", "iPhone 15", false), sim("B", "iPhone 14", false)];
-        let (_, labels) = destination_choices(&sims, None);
+        let (_, labels) = destination_choices(&sims.iter().collect::<Vec<_>>(), None);
         // No booted simulator → no marker, no gutter.
         assert_eq!(labels, vec!["iPhone 15 (17.0)", "iPhone 14 (17.0)"]);
     }
@@ -1525,7 +1694,7 @@ mod tests {
             sim("CCCC2222DDDD", "iPhone 15", false),
             sim("EEEE", "iPad Air", false),
         ];
-        let (_, labels) = destination_choices(&sims, None);
+        let (_, labels) = destination_choices(&sims.iter().collect::<Vec<_>>(), None);
         assert_eq!(labels[0], "iPhone 15 (17.0) [AAAA1111]");
         assert_eq!(labels[1], "iPhone 15 (17.0) [CCCC2222]");
         // A unique label is left untouched.
@@ -1543,10 +1712,43 @@ mod tests {
         ];
         // C used most, B once, A never → C, B, A regardless of the base order.
         let usage = std::collections::BTreeMap::from([("C".to_string(), 5), ("B".to_string(), 1)]);
-        let (ordered, _) = destination_choices(&sims, Some(&usage));
+        let (ordered, _) = destination_choices(&sims.iter().collect::<Vec<_>>(), Some(&usage));
         assert_eq!(
             ordered.iter().map(|s| s.udid.as_str()).collect::<Vec<_>>(),
             vec!["C", "B", "A"]
         );
+    }
+
+    #[test]
+    fn supported_platforms_map_simulator_families_and_mac() {
+        let mac_only = SupportedPlatforms::from_tokens(&["macosx"]);
+        assert!(mac_only.allows_mac());
+        assert!(!mac_only.allows_simulator("iOS"));
+        assert!(mac_only.mac_only());
+
+        let ios = SupportedPlatforms::from_tokens(&["iphoneos", "iphonesimulator"]);
+        assert!(!ios.allows_mac());
+        assert!(ios.allows_simulator("iOS"));
+        assert!(!ios.allows_simulator("watchOS"));
+        assert!(!ios.mac_only());
+
+        let multi = SupportedPlatforms::from_tokens(&["macosx", "iphonesimulator", "iphoneos"]);
+        assert!(multi.allows_mac());
+        assert!(multi.allows_simulator("iOS"));
+        assert!(!multi.mac_only());
+
+        // An OS family the filter doesn't understand stays visible.
+        assert!(mac_only.allows_simulator("futureOS"));
+    }
+
+    #[test]
+    fn sdk_platform_tokens_bring_the_simulator_sibling() {
+        assert_eq!(sdk_platform_tokens("macosx"), vec!["macosx"]);
+        assert_eq!(
+            sdk_platform_tokens("iphoneos17.5"),
+            vec!["iphoneos", "iphonesimulator"]
+        );
+        assert_eq!(sdk_platform_tokens("xros"), vec!["xros", "xrsimulator"]);
+        assert!(sdk_platform_tokens("somethingelse").is_empty());
     }
 }

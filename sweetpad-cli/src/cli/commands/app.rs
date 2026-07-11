@@ -652,7 +652,7 @@ fn warn_if_passthrough_moves_output(ctx: &Context, passthrough: &[String]) {
 }
 
 /// Resolve a full run plan, choosing a simulator (default), a device, or macOS.
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // one linear ladder per target mode
 fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     let mut resolved = resolve::resolve(ctx)?;
     let schemes = resolve::schemes(&resolved.container)?;
@@ -717,12 +717,20 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         // Scheme and configuration are already settled above; resolve only the
         // destination here so the scheme picker doesn't run a second time. A
         // remembered simulator deleted under its pin (an Xcode update)
-        // recovers to the picker instead of failing the install.
+        // recovers to the picker instead of failing the install. Picks are
+        // platform-filtered — a macOS-only scheme goes straight to the Mac.
         let key = resolved.container.key();
         let destination = match resolved.destination.clone() {
-            Some(d) => resolve::refresh_stale_destination(ctx, &mut resolved, &key, &d, true)?
-                .unwrap_or(d),
-            None => resolve::pick_destination(ctx, &key, &simctl::list()?, true)?,
+            Some(d) => resolve::refresh_stale_destination(
+                ctx,
+                &mut resolved,
+                &key,
+                &d,
+                &configuration,
+                true,
+            )?
+            .unwrap_or(d),
+            None => resolve::pick_destination_for(ctx, &resolved, &configuration, true)?,
         };
         let platform = destination_platform(&destination).unwrap_or_default();
         if platform.eq_ignore_ascii_case("macOS") {
