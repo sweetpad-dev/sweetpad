@@ -103,8 +103,8 @@ sweetpad app <run|install|launch|debug|uninstall|logs|stop|open-url>
 sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
                                   are hidden aliases)
 sweetpad context <show|select|set|alias|remove>
-sweetpad settings <show [--raw]|set|unset>   resolved & stored build settings (§9f)
-sweetpad source <list|add|remove|exclude|include>   synchronized folders (§9f)
+sweetpad settings show            resolved build settings (porcelain; §9f/§9g)
+sweetpad pbxproj <resolve|settings|folder|membership>   project-graph plumbing (§9g)
 ```
 
 Destination selection is `--on <ref>` (fuzzy name / `booted` / `mac` /
@@ -157,7 +157,8 @@ sweetpad project new <Name> [flags]
 - **Sources are a synchronized root group** (`objectVersion = 77`, the fresh
   Xcode 16 template shape, §9f): the pbxproj carries no per-file objects, so
   adding a source file is creating it on disk — the project file never changes
-  as the app grows. `sweetpad source` manages folders and exceptions.
+  as the app grows. `sweetpad pbxproj folder`/`membership` (§9g) manage
+  folders and exceptions.
 - **Names** must be plain identifiers (letters/digits/underscore) so they're safe
   as a Swift type, target, and product name in one.
 
@@ -1041,6 +1042,103 @@ sweetpad settings show --raw [--target T]             the stored pbxproj layer
     via `ProcessProductPackaging` — so the auto-exception applies to
     `INFOPLIST_FILE` only, matching the corpus (no entitlements entries in any
     exception set).
+
+> Superseded spellings: §9g moves this surface under the `pbxproj` plumbing
+> namespace — `settings set/unset` → `pbxproj settings set/unset`,
+> `show --raw` → `pbxproj settings show`, `source` → `pbxproj folder` (with
+> `exclude`/`include` relocated to `pbxproj membership`). Everything else in
+> this section — semantics, scoping, the auto-exception — is unchanged.
+
+## 9g. v7 — the `pbxproj` plumbing namespace & explicit membership
+
+Two decisions in one section: project-graph mutation is **plumbing**, visibly
+separated from the everyday porcelain (git's plumbing/porcelain split); and
+classic-project conversion ships as **explicit primitives, not a converter**.
+These commands are for scripts and agents — it is better to run 200 explicit,
+reviewable commands than one that decides everything silently. A monolithic
+`project convert` is *declined*: its only real intelligence is a set
+subtraction (folder contents − project membership), and the caller can do
+that subtraction itself once the primitives expose the data. Every hard
+conversion case (stray files, cross-target borrowing, per-file flags) becomes
+a visible line in a script instead of a converter heuristic.
+
+**The namespace.** `sweetpad pbxproj <resource> <verb>` — the CLI's first
+three-level command path, justified by the boundary it draws: inside the
+namespace you are thinking about `project.pbxproj` *objects*; outside it,
+about tasks. The namespace already existed (hidden) for `pbxproj resolve`;
+it becomes visible. `dependency` stays porcelain despite editing the pbxproj —
+it's a GUI-equivalent daily task, not graph surgery. All namespace mutations
+follow §9f law: never guess, hard-error on ambiguity, idempotent no-ops,
+one atomic write per invocation.
+
+```
+sweetpad pbxproj resolve                            merge plumbing (§9c, unchanged)
+
+sweetpad pbxproj settings show [--target T] [--key K]     the STORED layer
+sweetpad pbxproj settings set KEY=VALUE … [--target T]… [--configuration C]…
+sweetpad pbxproj settings unset KEY … [--target T]… [--configuration C]…
+
+sweetpad pbxproj folder list [--target T]           synchronized folders + exceptions
+sweetpad pbxproj folder add <dir> --target T
+sweetpad pbxproj folder remove <dir> --target T
+
+sweetpad pbxproj membership list [--target T]       everything a target builds
+sweetpad pbxproj membership remove <path>… --target T     classic build-file entries
+sweetpad pbxproj membership exclude <path> --target T     sync-folder exception
+sweetpad pbxproj membership include <path> --target T     drop the exception
+```
+
+- **`settings` splits by layer, not by flag.** Top-level `sweetpad settings
+  show` stays the porcelain question ("what will the build use" — resolved).
+  `pbxproj settings show` answers "what does the file say" — the raw stored
+  layer, per configuration; §9f's `--raw` flag dissolves into the namespace.
+  `set`/`unset` live only here (semantics exactly as §9f).
+- **`folder`** is §9f's `source` renamed to Xcode's own term (Xcode 16 UI:
+  "New Folder", "Convert to Folder"). Same list/add/remove semantics.
+- **`membership`** is the new resource, named for Xcode's File Inspector
+  panel ("Target Membership" — the checkbox UI these verbs script). It spans
+  both representations:
+  - **`list`** reports everything a target builds with *provenance*: the
+    classic build-file entries (resolved path, build phase — sources/
+    resources/headers/frameworks/copy-with-name — plus per-file
+    `COMPILER_FLAGS`, `ATTRIBUTES`, platform filters), and the synchronized
+    folders with their exceptions. It does **not** enumerate the disk under
+    sync folders — the folder + exceptions *is* the membership statement,
+    and `ls` is the primitive for expanding it.
+  - **`remove`** (batched paths, one write) deletes a target's classic
+    build-file entries for the named files. When the last build file
+    referencing a file reference goes, the reference is deleted and emptied
+    ancestor groups are pruned — the same orphan-cleanup contract
+    `folder remove` set. A file that isn't a member is a recorded no-op.
+  - **`exclude`/`include`** are §9f's exception verbs, relocated: excluding
+    a file *is* a membership edit (unchecking the box in Xcode writes
+    exactly these exception sets).
+  - **Verbs are mechanism-specific and cross-hint.** `remove` on a file
+    that's built via a sync folder errors with "use membership exclude";
+    `exclude` on a file with a classic build-file entry errors with "use
+    membership remove". The wrong verb never silently does the other thing.
+
+**Conversion as a recipe.** With these primitives, classic → sync-folder
+conversion is a script the caller owns, one decision per line:
+
+```
+sweetpad pbxproj membership list --target App -o json   # the explicit truth
+sweetpad pbxproj membership remove App/… --target App   # dismantle the list (batched)
+sweetpad pbxproj folder add App --target App            # attach the folder
+sweetpad pbxproj membership exclude App/Old.swift --target App  # strays stay out
+sweetpad pbxproj settings show --target App             # verify the stored layer
+```
+
+Intermediate states are inconsistent (after `remove`, before `folder add`,
+the file builds nowhere) — fine for scripts, nothing builds mid-sequence.
+Constructs that don't map to sync folders (localization variant groups,
+Core Data version groups) are simply visible in `list` and left classic —
+a converter would have had to refuse; a script just doesn't touch them.
+
+*Deliberately not built:* `project convert` (the recipe above, owned by the
+caller), disk expansion in `membership list` (`ls` exists), and a classic
+`membership add` (creating file refs/build files by hand is the one flow
+Xcode still does better; `folder add` is the forward-looking answer).
 
 ## 10. Testing
 

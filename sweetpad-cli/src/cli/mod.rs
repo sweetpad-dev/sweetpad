@@ -509,15 +509,10 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::dependency::Action,
     },
-    /// Show, set, and unset build settings.
+    /// Show resolved build settings.
     Settings {
         #[command(subcommand)]
         action: commands::settings::Action,
-    },
-    /// Manage a target's synchronized source folders and exceptions.
-    Source {
-        #[command(subcommand)]
-        action: commands::source::Action,
     },
     /// Manage iOS simulators.
     #[command(visible_alias = "sim")]
@@ -566,8 +561,8 @@ pub enum Resource {
         #[command(subcommand)]
         action: Option<commands::format::Action>,
     },
-    /// Work with `project.pbxproj` files (hidden alias — see `merge run`).
-    #[command(hide = true)]
+    /// Low-level `project.pbxproj` editing: stored settings, synchronized
+    /// folders, per-file membership, merge resolution (plumbing; §9g).
     Pbxproj {
         #[command(subcommand)]
         action: commands::pbxproj::Action,
@@ -830,7 +825,6 @@ pub fn run(argv: &[String]) -> ExitCode {
             commands::dependency::run(&mut ctx, &action)
         }
         Resource::Settings { action } => commands::settings::run(&mut ctx, &action),
-        Resource::Source { action } => commands::source::run(&mut ctx, &action),
         Resource::Simulator { action } => commands::simulator::run(&mut ctx, &action),
         // `build`/`test` carry their flags as resource-level globals; the bare
         // `start`/`run` tokens are optional markers, so both spellings land here.

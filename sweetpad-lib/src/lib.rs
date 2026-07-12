@@ -16,6 +16,7 @@ pub mod compiler_args;
 pub mod condition;
 pub mod destination;
 mod file_cache;
+pub mod membership_pbxproj;
 pub mod pbxproj;
 pub mod pbxproj_merge;
 pub mod pbxproj_writer;

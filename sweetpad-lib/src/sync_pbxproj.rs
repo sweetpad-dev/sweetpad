@@ -281,6 +281,20 @@ pub fn include(root: &mut Value, target: &str, path: &str) -> Result<IncludeOutc
     })
 }
 
+/// The synchronized folder of `target` containing `path`
+/// (project-dir-relative), as its folder dir — `None` when the path lies
+/// under none of the target's folders. Callers use this to route between
+/// exception edits (in-folder) and classic build-file edits (outside).
+///
+/// # Errors
+/// Returns a message when the tree is malformed or the target is missing.
+pub fn containing_folder(root: &Value, target: &str, path: &str) -> Result<Option<String>, String> {
+    let objects = objects(root).ok_or("pbxproj has no objects dict")?;
+    let target_guid = find_target_guid(objects, target)?;
+    Ok(containing_root(objects, &target_guid, &normalize(path))
+        .map(|(guid, _)| root_dir(objects, &guid)))
+}
+
 /// The `settings set INFOPLIST_FILE=…` hook: except `path` when it lies
 /// inside one of `target`'s synchronized roots, and do nothing (`Ok(None)`)
 /// when it doesn't — a plist outside every root needs no exception. Verified

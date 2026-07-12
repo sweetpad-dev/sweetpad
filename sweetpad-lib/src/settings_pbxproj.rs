@@ -320,7 +320,7 @@ fn selected_configurations(
     let mut selected = Vec::new();
     for wanted in configurations {
         if let Some(hit) = all.iter().find(|(name, _)| name == wanted) {
-            selected.push(hit.clone())
+            selected.push(hit.clone());
         } else {
             let known: Vec<&str> = all.iter().map(|(n, _)| n.as_str()).collect();
             return Err(format!(

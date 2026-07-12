@@ -3791,7 +3791,7 @@ pub(crate) fn group_dir(
 
 /// The id of the group (`PBXGroup` / variant / version) listing `child_id` in its
 /// `children`.
-fn parent_group_of(objects: &Dict, child_id: &str) -> Option<String> {
+pub(crate) fn parent_group_of(objects: &Dict, child_id: &str) -> Option<String> {
     objects.iter().find_map(|(id, v)| {
         let isa = v.get("isa").and_then(Value::as_str)?;
         if !matches!(isa, "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup") {

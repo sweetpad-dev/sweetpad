@@ -12,7 +12,8 @@
 //! `<Name>/` belongs to the target implicitly, so adding a file to the app is
 //! creating it on disk — the pbxproj never changes as the project grows
 //! (CLI_DESIGN §9f). There are no per-file `PBXFileReference`/`PBXBuildFile`
-//! objects to maintain, and `sweetpad source` manages the folders/exceptions.
+//! objects to maintain; `sweetpad pbxproj folder`/`membership` (§9g) manage
+//! the folders and exceptions.
 //!
 //! No I/O happens here — the command layer ([`crate::cli::commands::project`])
 //! writes the returned files. Keeping generation pure makes it unit-testable
