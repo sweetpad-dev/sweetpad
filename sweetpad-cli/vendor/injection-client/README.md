@@ -1,8 +1,9 @@
-# Bundled hot-reload injection client
+# Bundled hot-reload injection clients
 
-`sweetpad app run --hot` injects an InjectionNext client into the simulator app,
-then drives it as a server over `:8887` (CLI_DESIGN §9d). This directory builds
-that client **once** and vendors it so the `sweetpad` binary can embed it — no
+`sweetpad app run --hot` injects an InjectionNext client into the launched app
+(iOS Simulator, or a native mac app under `--mac`), then drives it as a server
+over `:8887` (CLI_DESIGN §9d). This directory builds those clients **once** —
+one per platform — and vendors them so the `sweetpad` binary can embed them: no
 git clone, no per-Xcode `xcodebuild`, works offline.
 
 ## How it stays simple (no fork, no strip)
@@ -25,11 +26,13 @@ patched.
 ./build.sh        # macOS + Xcode + network; verifies the result is XCTest-free
 ```
 
-This produces `prebuilt/SweetpadInjectionClient.dylib` (fat arm64 + x86_64), which
-`build.rs` embeds into the `sweetpad` binary via `include_bytes!`. The dylib is
-**not committed** (it's gitignored): CI and the release CLI scripts run `build.sh`
-before `cargo build`, and any build without it falls back to `InjectionNext.app`
+This produces `prebuilt/SweetpadInjectionClient.dylib` (iOS simulator) and
+`prebuilt/SweetpadInjectionClientMac.dylib` (native macOS), each fat
+arm64 + x86_64, which `build.rs` embeds into the `sweetpad` binary via
+`include_bytes!` (selected by SDK at runtime). The dylibs are **not committed**
+(gitignored): CI and the release CLI scripts run `build.sh` before
+`cargo build`, and any build without them falls back to `InjectionNext.app`
 at runtime. After bumping the `revision` pin, just re-run `build.sh`.
 
-CI validates the embedded client end-to-end (real injection on a simulator,
-Xcode 16 + 26) via `ci/hot-reload-e2e.sh`.
+CI validates the embedded clients end-to-end (real injection on a simulator and
+on a native mac app, Xcode 16 + 26) via `ci/hot-reload-e2e.sh`.

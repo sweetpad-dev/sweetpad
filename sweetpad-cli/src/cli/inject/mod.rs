@@ -6,8 +6,9 @@
 //! [`recompiler`], resolver-default / build-log-switchable) and `.load` it into
 //! the running app. [`client`] resolves the client dylib + launch env.
 //!
-//! The socket protocol and recompile→load→inject chain were validated end-to-end
-//! on a real simulator (Milestone 1; see `ci/hot-reload-spike`).
+//! The socket protocol and recompile→load→inject chain are validated end-to-end
+//! on a real simulator and a native mac app by `ci/hot-reload-e2e.sh` (the
+//! `--hot-selfcheck` nonce round-trip, both recompilers).
 
 use std::path::Path;
 use std::sync::Arc;
@@ -60,9 +61,10 @@ impl Drop for HotSession {
     }
 }
 
-/// Map an `xcodebuild` `-destination` specifier to the simulator SDK short name
-/// (the value SDK conditionals and the client dylib lookup key on). Returns
-/// `None` for non-simulator destinations (devices, generic).
+/// Map an `xcodebuild` `-destination` specifier to the SDK short name (the
+/// value SDK conditionals and the client dylib lookup key on) for the
+/// injectable destinations: simulators and native macOS. Returns `None` for
+/// the rest (devices, generic).
 #[must_use]
 pub fn sdk_for_destination(destination: &str) -> Option<&'static str> {
     let platform = destination
@@ -139,6 +141,93 @@ fn pins_contain_inject(json: &serde_json::Value) -> bool {
         })
 }
 
+/// Preflight a built macOS app for injectability. The hot build disables the
+/// hardened runtime and App Sandbox via build settings, but an explicit
+/// entitlements file or a re-signing build phase can put them back — and either
+/// one kills the session silently (dyld strips `DYLD_INSERT_LIBRARIES` under the
+/// hardened runtime; the sandbox blocks the client's socket and dlopen from
+/// outside the container). Checked here, before launch, so the failure is a
+/// named cause with the fix instead of a dead session.
+pub fn mac_preflight(app: &Path) -> Result<(), String> {
+    let app_str = app.to_string_lossy();
+    // `codesign -d -vv` prints the CodeDirectory info (incl. the `runtime` flag)
+    // to stderr; an unsigned bundle fails, which means nothing is enforced.
+    let info = match std::process::Command::new("codesign")
+        .args(["-d", "-vv", &app_str])
+        .output()
+    {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stderr).into_owned(),
+        _ => return Ok(()),
+    };
+    let entitlements = std::process::Command::new("codesign")
+        .args(["-d", "--entitlements", "-", "--xml", &app_str])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    preflight_verdict(&info, &entitlements)
+}
+
+/// The pure verdict behind [`mac_preflight`], split out for tests: `info` is
+/// `codesign -d -vv` output, `entitlements` the signed entitlements plist.
+fn preflight_verdict(info: &str, entitlements: &str) -> Result<(), String> {
+    if entitlement_true(entitlements, "com.apple.security.app-sandbox") {
+        return Err(
+            "the built app is sandboxed (com.apple.security.app-sandbox): the injection \
+             client can't reach the CLI's socket or load recompiled dylibs from outside \
+             its container. The hot build passes ENABLE_APP_SANDBOX=NO, so the entitlement \
+             comes from an explicit .entitlements file — turn App Sandbox off for the \
+             Debug configuration (Signing & Capabilities) and rerun"
+                .into(),
+        );
+    }
+    let hardened = hardened_runtime_flagged(info);
+    let opted_out = entitlement_true(
+        entitlements,
+        "com.apple.security.cs.allow-dyld-environment-variables",
+    ) && entitlement_true(
+        entitlements,
+        "com.apple.security.cs.disable-library-validation",
+    );
+    if hardened && !opted_out {
+        return Err(
+            "the built app has the hardened runtime, so dyld strips DYLD_INSERT_LIBRARIES \
+             and library validation rejects the recompiled dylibs. The hot build passes \
+             ENABLE_HARDENED_RUNTIME=NO, so something re-signs the product (a run-script \
+             phase or OTHER_CODE_SIGN_FLAGS) — remove that for Debug, or add both the \
+             com.apple.security.cs.allow-dyld-environment-variables and \
+             com.apple.security.cs.disable-library-validation entitlements"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+/// Whether the CodeDirectory flags carry `runtime` (hardened runtime), e.g.
+/// `flags=0x10000(runtime)` or `flags=0x10002(adhoc,runtime)`.
+fn hardened_runtime_flagged(codesign_info: &str) -> bool {
+    codesign_info.lines().any(|l| {
+        l.trim_start().starts_with("CodeDirectory")
+            && l.split("flags=").nth(1).is_some_and(|flags| {
+                flags
+                    .split_once(')')
+                    .is_some_and(|(inside, _)| inside.contains("runtime"))
+            })
+    })
+}
+
+/// Whether an entitlements plist sets `key` to `<true/>`. Matches the XML form
+/// codesign prints; a key that is absent or `<false/>` is not set.
+fn entitlement_true(plist: &str, key: &str) -> bool {
+    let needle = format!("<key>{key}</key>");
+    plist.match_indices(&needle).any(|(i, _)| {
+        plist[i + needle.len()..]
+            .trim_start()
+            .starts_with("<true/>")
+    })
+}
+
 /// The host arch in Apple's spelling — the arch a simulator runs (the sim uses
 /// the host slice) and that we resolve/link injection dylibs for.
 #[must_use]
@@ -155,7 +244,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sdk_for_destination_maps_simulators_only() {
+    fn sdk_for_destination_maps_injectable_destinations() {
         assert_eq!(
             sdk_for_destination("platform=iOS Simulator,id=ABC"),
             Some("iphonesimulator")
@@ -164,9 +253,61 @@ mod tests {
             sdk_for_destination("platform=visionOS Simulator,name=X"),
             Some("xrsimulator")
         );
+        assert_eq!(sdk_for_destination("platform=macOS"), Some("macosx"));
         // Physical device / unknown → unsupported.
         assert_eq!(sdk_for_destination("platform=iOS,id=ABC"), None);
         assert_eq!(sdk_for_destination("generic/platform=iOS"), None);
+    }
+
+    #[test]
+    fn hardened_runtime_flag_detection() {
+        let hardened = "Executable=/x/App\nIdentifier=dev.x.app\n\
+                        CodeDirectory v=20400 size=768 flags=0x10000(runtime) hashes=13+7 location=embedded\n";
+        let adhoc_hardened =
+            "CodeDirectory v=20400 size=768 flags=0x10002(adhoc,runtime) hashes=13+7\n";
+        let plain = "CodeDirectory v=20400 size=768 flags=0x2(adhoc) hashes=13+7\n";
+        let linker = "CodeDirectory v=20400 size=768 flags=0x20002(adhoc,linker-signed) hashes=13+7\n";
+        assert!(hardened_runtime_flagged(hardened));
+        assert!(hardened_runtime_flagged(adhoc_hardened));
+        assert!(!hardened_runtime_flagged(plain));
+        assert!(!hardened_runtime_flagged(linker));
+    }
+
+    #[test]
+    fn entitlement_true_matches_only_true_keys() {
+        let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <false/>
+</dict></plist>"#;
+        assert!(entitlement_true(plist, "com.apple.security.app-sandbox"));
+        assert!(!entitlement_true(plist, "com.apple.security.network.client"));
+        assert!(!entitlement_true(plist, "com.apple.security.get-task-allow"));
+        assert!(!entitlement_true("", "com.apple.security.app-sandbox"));
+    }
+
+    #[test]
+    fn preflight_verdicts() {
+        let sandboxed = "<dict><key>com.apple.security.app-sandbox</key><true/></dict>";
+        let hardened_info = "CodeDirectory v=20400 flags=0x10000(runtime) hashes=1+1\n";
+        let plain_info = "CodeDirectory v=20400 flags=0x2(adhoc) hashes=1+1\n";
+        let opted_out = "<dict>\
+            <key>com.apple.security.cs.allow-dyld-environment-variables</key><true/>\
+            <key>com.apple.security.cs.disable-library-validation</key><true/>\
+            </dict>";
+
+        // Sandbox → refused with the entitlements-file fix.
+        let err = preflight_verdict(plain_info, sandboxed).unwrap_err();
+        assert!(err.contains("app-sandbox"), "{err}");
+        // Hardened without the opt-out entitlements → refused.
+        let err = preflight_verdict(hardened_info, "").unwrap_err();
+        assert!(err.contains("hardened runtime"), "{err}");
+        // Hardened but opted out via entitlements → injectable.
+        assert!(preflight_verdict(hardened_info, opted_out).is_ok());
+        // Plain Debug product (or unsigned) → injectable.
+        assert!(preflight_verdict(plain_info, "").is_ok());
     }
 
     #[test]

@@ -24,7 +24,9 @@ pub struct BuildPlan<'a> {
     pub clean: bool,
     /// Hot-reload build: add `-Xlinker -interposable` (so dyld can swap symbols)
     /// and `EMIT_FRONTEND_COMMAND_LINES=YES` (so the build-log recompiler can
-    /// recover per-file commands). Only set for simulator builds under `--hot`.
+    /// recover per-file commands). A macOS destination additionally disables the
+    /// hardened runtime and App Sandbox so the product is injectable. Set for
+    /// simulator and macOS builds under `--hot`.
     pub hot: bool,
     /// Extra arguments passed through to xcodebuild verbatim (everything after
     /// `--` on the command line) — the escape hatch for flags/settings the CLI
@@ -60,6 +62,18 @@ impl BuildPlan<'_> {
             // validated spike fixture.
             args.push("OTHER_LDFLAGS=$(inherited) -Xlinker -interposable".into());
             args.push("EMIT_FRONTEND_COMMAND_LINES=YES".into());
+            // A native macOS app must be injectable: the hardened runtime makes
+            // dyld strip `DYLD_INSERT_LIBRARIES` and library validation reject
+            // the ad-hoc recompiled dylibs, and the App Sandbox blocks both the
+            // client's socket and dlopen from outside the container. Command-line
+            // settings outrank project ones, so the hot Debug product is built
+            // without either protection. (A sandbox declared in an explicit
+            // entitlements file is beyond build settings — the mac preflight
+            // catches that case with instructions.)
+            if self.destination.is_some_and(is_macos_destination) {
+                args.push("ENABLE_HARDENED_RUNTIME=NO".into());
+                args.push("ENABLE_APP_SANDBOX=NO".into());
+            }
         }
         args.extend(self.passthrough.iter().cloned());
         args
@@ -128,6 +142,14 @@ impl BuildPlan<'_> {
             .context("building the project"))
         }
     }
+}
+
+/// Whether a `-destination` specifier targets native macOS (the platform whose
+/// hot builds need the injectability settings).
+fn is_macos_destination(spec: &str) -> bool {
+    spec.split(',')
+        .find_map(|kv| kv.trim().strip_prefix("platform="))
+        .is_some_and(|p| p.trim() == "macOS")
 }
 
 /// `-workspace <path>` / `-project <path>`; nothing for a Swift package (it's
@@ -695,6 +717,42 @@ mod tests {
         let args = plan.args();
         assert!(args.contains(&"OTHER_LDFLAGS=$(inherited) -Xlinker -interposable".to_string()));
         assert!(args.contains(&"EMIT_FRONTEND_COMMAND_LINES=YES".to_string()));
+        // The injectability settings are macOS-only: a simulator app needs
+        // neither (the sim enforces no hardened runtime / sandbox on dlopen).
+        assert!(!args.iter().any(|a| a.starts_with("ENABLE_HARDENED_RUNTIME")));
+        assert!(!args.iter().any(|a| a.starts_with("ENABLE_APP_SANDBOX")));
+    }
+
+    #[test]
+    fn hot_mac_build_disables_hardened_runtime_and_sandbox() {
+        let c = project();
+        let plan = BuildPlan {
+            container: &c,
+            scheme: "App",
+            configuration: "Debug",
+            destination: Some("platform=macOS"),
+            passthrough: &[],
+            sdk: None,
+            clean: false,
+            hot: true,
+        };
+        let args = plan.args();
+        assert!(args.contains(&"ENABLE_HARDENED_RUNTIME=NO".to_string()));
+        assert!(args.contains(&"ENABLE_APP_SANDBOX=NO".to_string()));
+        // A non-hot mac build keeps the project's own protections.
+        let cold = BuildPlan {
+            container: &c,
+            scheme: "App",
+            configuration: "Debug",
+            destination: Some("platform=macOS"),
+            passthrough: &[],
+            sdk: None,
+            clean: false,
+            hot: false,
+        };
+        assert!(!cold.args().iter().any(|a| {
+            a.starts_with("ENABLE_HARDENED_RUNTIME") || a.starts_with("ENABLE_APP_SANDBOX")
+        }));
     }
 
     #[test]

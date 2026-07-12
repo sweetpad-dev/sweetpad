@@ -51,10 +51,11 @@ pub struct RunArgs {
     #[arg(long = "no-logs")]
     pub no_logs: bool,
 
-    /// Enable hot reload (iOS Simulator only): on each Swift save the file is
-    /// recompiled and injected into the running app — no relaunch, state
-    /// preserved. Requires the injection client (see CLI_DESIGN §9d). A
-    /// project can default this on via `[run] hot = true` in sweetpad.toml.
+    /// Enable hot reload (iOS Simulator and native macOS apps): on each Swift
+    /// save the file is recompiled and injected into the running app — no
+    /// relaunch, state preserved. Requires the injection client (see
+    /// CLI_DESIGN §9d). A project can default this on via `[run] hot = true`
+    /// in sweetpad.toml.
     #[arg(long)]
     pub hot: bool,
 
@@ -251,17 +252,17 @@ impl Action {
 
 /// Settle hot reload for a run: the `--hot` flag, else the project's
 /// `[run] hot` default (opted out per run with `--no-hot`); the recompiler
-/// from `--hot-recompiler`, else `[run] hot_recompiler`. Simulator-only
-/// enforcement stays in [`run_hot_session`]; here a `[run] hot = true`
-/// project default is simply ignored for `--mac`/`--device` runs rather than
-/// erroring on a committed file.
+/// from `--hot-recompiler`, else `[run] hot_recompiler`. Target enforcement
+/// (simulator or mac) stays in [`run_hot_session`]; here a `[run] hot = true`
+/// project default is simply ignored for `--device` runs rather than erroring
+/// on a committed file.
 fn hot_settings(ctx: &Context, args: &RunArgs) -> (bool, Mode) {
     let run_defaults = resolve::container(ctx)
         .ok()
         .map(|c| ctx.project_file(&c).run.clone())
         .unwrap_or_default();
     let default_hot =
-        run_defaults.hot.unwrap_or(false) && !args.mac && !args.device && args.device_id.is_none();
+        run_defaults.hot.unwrap_or(false) && !args.device && args.device_id.is_none();
     let hot = !args.no_hot && (args.hot || default_hot);
     let config_mode = run_defaults.hot_recompiler.as_deref().and_then(|s| {
         let mode = Mode::parse(s);
@@ -603,8 +604,8 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         let _ = simctl::open_app();
     }
 
-    let result = if hot {
-        // Hot reload owns its own build + launch + watch session (simulator only).
+    let result = if opts.hot {
+        // Hot reload owns its own build + launch + watch session (simulator or mac).
         run_hot_session(ctx, &plan, opts.hot_mode, opts.hot_selfcheck)
     } else if matches!(plan.target, Target::SpmRun(_)) {
         // A Swift package executable builds, runs, and streams in one `swift run`;
@@ -1137,7 +1138,8 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     }
 }
 
-/// `app run --hot` — the built-in hot-reload session (iOS Simulator only).
+/// `app run --hot` — the built-in hot-reload session (iOS Simulator and native
+/// macOS apps).
 ///
 /// Builds with the interposable / frontend-command flags, starts the injection
 /// server on `:8887`, launches the app with the client dylib injected, then
@@ -1178,14 +1180,26 @@ fn run_hot_session(
     mode: Mode,
     selfcheck: Option<&Path>,
 ) -> CliResult {
-    let Target::Simulator(udid) = &plan.target else {
-        return Err(CliError::new(
-            "--hot is only supported for the iOS Simulator (not devices, macOS, or SPM)",
-        ));
-    };
+    // The injectable targets: a simulator (simctl forwards the insert env into
+    // the simulated process) and a native mac app (spawned by us with the env
+    // set directly). Devices strip DYLD_INSERT_LIBRARIES; a Swift package
+    // executable has no .app bundle to inject into.
+    match &plan.target {
+        Target::Simulator(_) | Target::Mac => {}
+        Target::Device(_) => {
+            return Err(CliError::new(
+                "--hot is not supported on physical devices (iOS strips DYLD_INSERT_LIBRARIES)",
+            ));
+        }
+        Target::SpmRun(_) => {
+            return Err(CliError::new(
+                "--hot needs an .app bundle; a Swift package executable has none",
+            ));
+        }
+    }
     let sdk = inject::sdk_for_destination(&plan.destination).ok_or_else(|| {
         CliError::new(format!(
-            "--hot needs a simulator destination; got {:?}",
+            "--hot needs a simulator or macOS destination; got {:?}",
             plan.destination
         ))
     })?;
@@ -1238,7 +1252,16 @@ fn run_hot_session(
     }
     let app = plan.app_bundle()?;
 
-    // Resolve the injection client dylib + the SIMCTL_CHILD_* launch env.
+    // A mac product must actually be injectable — an explicit entitlements
+    // file or a re-signing build phase can undo the hot build's settings; fail
+    // here with the cause instead of launching a dead session.
+    if matches!(plan.target, Target::Mac) {
+        inject::mac_preflight(&app.path).map_err(|e| CliError::new(format!("hot reload: {e}")))?;
+    }
+
+    // Resolve the injection client dylib + the launch env: SIMCTL_CHILD_-
+    // prefixed for a simctl launch (stripped as it's forwarded into the
+    // simulated process), raw for the direct mac spawn.
     // `SWEETPAD_HOTRELOAD_DYLIB` overrides the lookup (used by CI to point at a
     // downloaded client matching the active Xcode).
     let client_opts = inject::client::ClientOptions {
@@ -1249,9 +1272,13 @@ fn run_hot_session(
     };
     let dylib = inject::client::resolve_dylib(&client_opts, &|msg| ctx.out.note(msg))
         .map_err(CliError::new)?;
-    let mut launch_env = inject::client::launch_env(&dylib, &client_opts);
+    let env_prefix = match &plan.target {
+        Target::Simulator(_) => "SIMCTL_CHILD_",
+        _ => "",
+    };
+    let mut launch_env = inject::client::launch_env(&dylib, &client_opts, env_prefix);
     // User --env pairs ride alongside the injection client's.
-    launch_env.extend(plan.launch.env_pairs("SIMCTL_CHILD_")?);
+    launch_env.extend(plan.launch.env_pairs(env_prefix)?);
     ctx.out
         .note(&format!("hot reload: injecting {}", dylib.display()));
 
@@ -1283,11 +1310,35 @@ fn run_hot_session(
 
     // Install + launch with the client injected, then start the session log
     // stream (kept across `r` relaunches; its predicate follows the app by name).
-    // Finish the background boot first; launch_hot's own boot then confirms it.
+    // Finish the background boot first; the sim launch's own boot then confirms it.
     let _ = boot.wait();
-    launch_hot(ctx, udid, &app, &launch_env, &plan.launch.args)?;
     // Hot reload has no live filter UI; use the default threshold, never cycled.
     let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
+    let mut hot_app = HotApp::new(&plan.target, Arc::clone(&filter));
+    hot_app.launch(ctx, &app, &launch_env, &plan.launch.args)?;
+
+    // A mac app that never dials back is running uninjected (something undid
+    // the insert env); surface that instead of leaving a silently dead session.
+    // The self-check does its own (fatal) connect wait, and the flag keeps a
+    // watchdog that outlives a short session quiet after teardown.
+    let session_done = Arc::new(AtomicBool::new(false));
+    if matches!(plan.target, Target::Mac) && selfcheck.is_none() {
+        let server = Arc::clone(&server);
+        let log = Arc::clone(&log);
+        let done = Arc::clone(&session_done);
+        std::thread::spawn(move || {
+            if !server.wait_connected(std::time::Duration::from_secs(15))
+                && !done.load(Ordering::Relaxed)
+            {
+                log(
+                    "hot reload: the app hasn't connected to :8887 — it's likely running \
+                     uninjected. A run-script phase may be re-signing the product; \
+                     `codesign -d -vv --entitlements - <app>` shows what it carries.",
+                );
+            }
+        });
+    }
+
     let mut logs = start_logs(ctx, plan, &filter);
     // Watch the workspace; each save drives `server.inject`.
     let session = HotSession::start(Arc::clone(&server), &project_root);
@@ -1296,9 +1347,17 @@ fn run_hot_session(
     // interactive key loop (`r`/`q`), or — non-TTY — follow logs until Ctrl-C.
     let mut terminate_on_exit = true;
     let outcome = if let Some(file) = selfcheck {
-        hot_selfcheck(ctx, &server, file, udid)
+        hot_selfcheck(ctx, &server, file, &plan.target)
     } else if ctx.out.is_interactive() {
-        terminate_on_exit = hot_key_loop(ctx, plan, udid, &launch_env, &mut logs, &build_log);
+        terminate_on_exit = hot_key_loop(
+            ctx,
+            plan,
+            &mut hot_app,
+            &app,
+            &launch_env,
+            &mut logs,
+            &build_log,
+        );
         Ok(())
     } else {
         ctx.out
@@ -1311,10 +1370,13 @@ fn run_hot_session(
 
     // Teardown: stop watcher + server, terminate the app (unless detached),
     // kill the log stream.
+    session_done.store(true, Ordering::Relaxed);
     session.shutdown();
     server.shutdown();
     if terminate_on_exit {
-        let _ = simctl::terminate(udid, &app.bundle_id);
+        hot_app.terminate(&app);
+    } else {
+        hot_app.detach();
     }
     drop(logs);
     outcome
@@ -1339,7 +1401,12 @@ const SELFCHECK_MARKER: &str = "SWEETPAD_MARKER_ORIGINAL";
 /// then confirm the running app logged the **new** nonce — proving the injected
 /// code actually ran, not merely that the patch was accepted. A hard pass/fail
 /// end-to-end test for `app run --hot --hot-selfcheck FILE`.
-fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path, udid: &str) -> CliResult {
+fn hot_selfcheck(
+    ctx: &Context,
+    server: &Arc<InjectServer>,
+    file: &Path,
+    target: &Target,
+) -> CliResult {
     use std::time::Duration;
 
     ctx.out
@@ -1425,7 +1492,7 @@ fn hot_selfcheck(ctx: &Context, server: &Arc<InjectServer>, file: &Path, udid: &
     // injected code executed (not just that the client accepted the patch).
     ctx.out
         .note("hot reload self-check: confirming the new code ran…");
-    if app_logged_marker(udid, &nonce, Duration::from_secs(20)) {
+    if app_logged_marker(target, &nonce, Duration::from_secs(20)) {
         ctx.out
             .note("hot reload self-check: ✅ new code ran (marker observed in the app log)");
         Ok(())
@@ -1447,31 +1514,48 @@ fn selfcheck_backup_path(file: &Path) -> std::path::PathBuf {
     file.with_file_name(format!("{name}.sweetpad-selfcheck-backup"))
 }
 
-/// Poll the simulator's unified log for `nonce` (emitted by the fixture's
-/// injection observer via `os_log`), returning true once it appears or false
+/// Poll the target's unified log for `nonce` (emitted by the fixture's
+/// injection observer via `os_log`) — the simulator's via `simctl spawn`, a
+/// mac app's via the host `log` — returning true once it appears or false
 /// after `timeout`.
-fn app_logged_marker(udid: &str, nonce: &str, timeout: std::time::Duration) -> bool {
+fn app_logged_marker(target: &Target, nonce: &str, timeout: std::time::Duration) -> bool {
     use std::time::{Duration, Instant};
     let predicate = format!("eventMessage CONTAINS \"{nonce}\"");
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        let shown = process::capture(
-            "xcrun",
-            &[
-                "simctl",
-                "spawn",
-                udid,
+        let shown = match target {
+            Target::Simulator(udid) => process::capture(
+                "xcrun",
+                &[
+                    "simctl",
+                    "spawn",
+                    udid,
+                    "log",
+                    "show",
+                    "--last",
+                    "1m",
+                    "--style",
+                    "compact",
+                    "--predicate",
+                    &predicate,
+                ],
+                None,
+            ),
+            Target::Mac => process::capture(
                 "log",
-                "show",
-                "--last",
-                "1m",
-                "--style",
-                "compact",
-                "--predicate",
-                &predicate,
-            ],
-            None,
-        );
+                &[
+                    "show",
+                    "--last",
+                    "1m",
+                    "--style",
+                    "compact",
+                    "--predicate",
+                    &predicate,
+                ],
+                None,
+            ),
+            Target::Device(_) | Target::SpmRun(_) => return false,
+        };
         if shown.is_ok_and(|out| out.contains(nonce)) {
             return true;
         }
@@ -1507,6 +1591,151 @@ fn launch_hot(
     Ok(())
 }
 
+/// The launched hot-session app, with the target-specific launch / terminate /
+/// relaunch strategy: the simulator app is simctl's (installed and terminated
+/// by bundle id), the mac app is our own spawned child (killed directly, its
+/// piped stdout/stderr rendered as console output).
+enum HotApp<'a> {
+    Sim {
+        udid: &'a str,
+    },
+    Mac {
+        child: Option<Child>,
+        reap_slot: Option<usize>,
+        filter: Arc<AtomicU8>,
+    },
+}
+
+impl HotApp<'_> {
+    fn new(target: &Target, filter: Arc<AtomicU8>) -> HotApp<'_> {
+        match target {
+            Target::Simulator(udid) => HotApp::Sim { udid },
+            Target::Mac => HotApp::Mac {
+                child: None,
+                reap_slot: None,
+                filter,
+            },
+            Target::Device(_) | Target::SpmRun(_) => {
+                unreachable!("hot sessions run on a simulator or the mac")
+            }
+        }
+    }
+
+    /// Launch (or relaunch) the app with the injection env. The mac arm kills
+    /// any previous instance first — one app, one window across `r` relaunches.
+    fn launch(
+        &mut self,
+        ctx: &Context,
+        app: &AppBundle,
+        env: &[(String, String)],
+        args: &[String],
+    ) -> CliResult {
+        match self {
+            HotApp::Sim { udid } => launch_hot(ctx, udid, app, env, args),
+            HotApp::Mac {
+                child,
+                reap_slot,
+                filter,
+            } => {
+                terminate_mac_child(child, reap_slot);
+                let mut cmd = std::process::Command::new(app.executable.as_os_str());
+                cmd.args(args)
+                    .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped());
+                let mut c = ctx.out.step("Launching app", || {
+                    cmd.spawn().map_err(|e| {
+                        CliError::new(format!(
+                            "failed to run `{}`: {e}",
+                            app.executable.display()
+                        ))
+                    })
+                })?;
+                render_console(&mut c, ctx.out.use_color(), filter);
+                *reap_slot = crate::cli::signals::register_child(c.id());
+                *child = Some(c);
+                ctx.out.note(&format!("Launched {}", app.bundle_id));
+                Ok(())
+            }
+        }
+    }
+
+    /// Terminate the running app (before each relaunch and on quit).
+    fn terminate(&mut self, app: &AppBundle) {
+        match self {
+            HotApp::Sim { udid } => {
+                let _ = simctl::terminate(udid, &app.bundle_id);
+            }
+            HotApp::Mac {
+                child, reap_slot, ..
+            } => terminate_mac_child(child, reap_slot),
+        }
+    }
+
+    /// Leave the app running at session end (the `d` detach). The mac child's
+    /// handle is dropped without killing; it leaves the signal registry so a
+    /// SIGTERM to the CLI no longer reaps it.
+    fn detach(&mut self) {
+        if let HotApp::Mac {
+            child, reap_slot, ..
+        } = self
+        {
+            crate::cli::signals::unregister_child(reap_slot.take());
+            drop(child.take());
+        }
+    }
+
+    /// The `d` confirmation. The mac app's console runs through our pipes, so
+    /// its next print after the CLI exits raises SIGPIPE and may stop it —
+    /// same caveat as the plain session's detach.
+    fn detach_note(&self) -> &'static str {
+        match self {
+            HotApp::Sim { .. } => "detached — the app keeps running",
+            HotApp::Mac { .. } => {
+                "detached — the app keeps running (its console pipes close with the CLI; \
+                 a later print may stop it)"
+            }
+        }
+    }
+
+    /// Bring the app's UI forward (the `o` key): the Simulator window, or the
+    /// mac app itself (`open` on the bundle activates the running instance).
+    fn foreground(&self, app: &AppBundle) {
+        match self {
+            HotApp::Sim { .. } => {
+                let _ = simctl::open_app();
+            }
+            HotApp::Mac { .. } => {
+                let _ = process::run("open", &[&app.path.display().to_string()], None, true);
+            }
+        }
+    }
+
+    /// The `h` key list, with the target's own foreground wording.
+    fn help_note(&self) -> &'static str {
+        match self {
+            HotApp::Sim { .. } => {
+                "r rebuild+relaunch · s screenshot · o focus simulator · c clear · \
+                 d detach · q quit"
+            }
+            HotApp::Mac { .. } => {
+                "r rebuild+relaunch · o focus app · c clear · d detach · q quit"
+            }
+        }
+    }
+}
+
+/// Kill and reap a mac hot-session child, deregistering it first so the signal
+/// handler never signals a recycled pid.
+fn terminate_mac_child(child: &mut Option<Child>, reap_slot: &mut Option<usize>) {
+    crate::cli::signals::unregister_child(reap_slot.take());
+    if let Some(mut c) = child.take() {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+}
+
 /// The `--hot` keypress loop: `r` full rebuild+relaunch (the client
 /// reconnects), `s`/`o`/`c`/`h` as in the plain session, `d` detaches (the app
 /// keeps running), `q`/Ctrl-C/Ctrl-D quit. Injection happens out-of-band via
@@ -1515,7 +1744,8 @@ fn launch_hot(
 fn hot_key_loop(
     ctx: &Context,
     plan: &RunPlan,
-    udid: &str,
+    hot_app: &mut HotApp,
+    app: &AppBundle,
     env: &[(String, String)],
     logs: &mut Option<LogStream>,
     build_log: &Path,
@@ -1545,10 +1775,10 @@ fn hot_key_loop(
                     // left running — just terminate, rebuild, and relaunch.
                     // Re-tee the transcript so the build-log recompiler keeps
                     // seeing current frontend commands after the rebuild.
-                    let _ = simctl::terminate(udid, &app.bundle_id);
+                    hot_app.terminate(&app);
                     match build(plan, &ctx.out, Some(build_log)) {
                         BuildOutcome::Ok => {
-                            if let Err(e) = launch_hot(ctx, udid, &app, env, &plan.launch.args) {
+                            if let Err(e) = hot_app.launch(ctx, &app, env, &plan.launch.args) {
                                 ctx.out.error(&e);
                             }
                         }
@@ -1559,18 +1789,13 @@ fn hot_key_loop(
                 }
                 SessionKey::Quit => break,
                 SessionKey::Detach => {
-                    ctx.out.note("detached — the app keeps running");
+                    ctx.out.note(hot_app.detach_note());
                     return false;
                 }
                 SessionKey::Screenshot => session_screenshot(ctx, plan),
-                SessionKey::Foreground => {
-                    let _ = simctl::open_app();
-                }
+                SessionKey::Foreground => hot_app.foreground(app),
                 SessionKey::Clear => ctx.out.line("\x1b[2J\x1b[H"),
-                SessionKey::Help => ctx.out.note(
-                    "r rebuild+relaunch · s screenshot · o focus simulator · c clear · \
-                     d detach · q quit",
-                ),
+                SessionKey::Help => ctx.out.note(hot_app.help_note()),
                 SessionKey::Suspend => {
                     crate::cli::signals::suspend_self();
                     ctx.out.note("resumed");

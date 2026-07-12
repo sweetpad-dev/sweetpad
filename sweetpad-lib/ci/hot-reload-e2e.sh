@@ -6,11 +6,14 @@
 # interposable / frontend-command flags, starts the :8887 injection server,
 # launches the fixture app with the InjectionNext client dylib injected, edits a
 # Swift file once, and asserts a `.injected` response — for *both* recompilers
-# (resolver default + build-log). Run by .github/workflows/xcode-tests.yaml.
+# (resolver default + build-log), on *both* targets (iOS Simulator + native
+# macOS). Run by .github/workflows/xcode-tests.yaml.
 #
 # Requires: SWEETPAD_BIN (the built binary); the fixture generated with xcodegen.
 # Client resolution is the CLI's job: SWEETPAD_HOTRELOAD_DYLIB (override) if set,
-# else the client bundled into the binary (vendor/injection-client), else falls back.
+# else the per-SDK client bundled into the binary (vendor/injection-client), else
+# falls back. The override only fits one SDK, so the macOS runs always resolve
+# from the binary/fallback (SWEETPAD_HOTRELOAD_DYLIB is unset for them).
 set -euo pipefail
 
 BIN="${SWEETPAD_BIN:?set SWEETPAD_BIN to the sweetpad binary}"
@@ -34,20 +37,35 @@ UDID="${DEST##*id=}"
 xcrun simctl boot "$UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$UDID" -b || true
 
-# `app run --hot --hot-selfcheck` exits 0 only on a confirmed `.injected`.
+# `app run --hot --hot-selfcheck` exits 0 only on a confirmed `.injected` whose
+# new code demonstrably ran (nonce observed in the unified log).
 run_selfcheck() {
   local mode="$1"
-  section "hot reload self-check — $mode recompiler"
+  section "hot reload self-check — iOS Simulator, $mode recompiler"
   "$BIN" app run --project "$APP" --scheme SweetpadCIApp --destination "$DEST" \
     --hot --hot-recompiler "$mode" --hot-selfcheck "$SRC" \
-    || fail "$mode recompiler: injection self-check failed"
-  echo "  ✓ $mode recompiler injected"
+    || fail "simulator/$mode: injection self-check failed"
+  echo "  ✓ simulator/$mode injected"
+}
+
+# Same round-trip against the fixture's macOS target: direct spawn with the raw
+# insert env, the mac client dylib, host `log show` for the marker.
+run_selfcheck_mac() {
+  local mode="$1"
+  section "hot reload self-check — macOS, $mode recompiler"
+  env -u SWEETPAD_HOTRELOAD_DYLIB \
+    "$BIN" app run --project "$APP" --scheme SweetpadCIMac --mac \
+    --hot --hot-recompiler "$mode" --hot-selfcheck "$SRC" \
+    || fail "macos/$mode: injection self-check failed"
+  echo "  ✓ macos/$mode injected"
 }
 
 run_selfcheck resolver
 run_selfcheck buildlog
+run_selfcheck_mac resolver
+run_selfcheck_mac buildlog
 
 section "teardown"
 xcrun simctl shutdown "$UDID" 2>/dev/null || true
 echo
-echo "==== hot reload e2e passed (resolver + buildlog) ===="
+echo "==== hot reload e2e passed (simulator + macOS, resolver + buildlog) ===="

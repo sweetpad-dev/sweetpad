@@ -145,11 +145,19 @@ values and `app run --mac`/`--device` targets are never remembered.",
 HOT RELOAD (`sweetpad app run --hot`)
 
 Each Swift save is recompiled and injected into the running app — no relaunch,
-state preserved. iOS Simulator only.
+state preserved. Targets: the iOS Simulator, and native macOS apps
+(`--mac --hot`). Physical devices strip DYLD_INSERT_LIBRARIES and can't inject.
 
 How it works: the app is built with -Xlinker -interposable, launched with the
 injection client dylib, and a watcher recompiles saved files and streams the
 result into the process. `r` still does a full rebuild+relaunch; `q` quits.
+
+macOS: the hot build also passes ENABLE_HARDENED_RUNTIME=NO and
+ENABLE_APP_SANDBOX=NO so the Debug product is injectable (dyld honors the
+insert; ad-hoc recompiled dylibs load). An App Sandbox set in an explicit
+.entitlements file can't be overridden — turn it off for Debug; the preflight
+tells you when that's the case. Prefs/files of an unsandboxed hot run live in
+~/Library instead of the container.
 
 Recompilers (--hot-recompiler):
 
@@ -159,7 +167,7 @@ Recompilers (--hot-recompiler):
 
 SwiftUI: views need the Inject package to redraw on injection — add
 https://github.com/krzysztofzablocki/Inject and annotate views with
-@ObserveInjection + .enableInjection(). UIKit apps need nothing.
+@ObserveInjection + .enableInjection(). UIKit/AppKit apps need nothing.
 
 CI: SWEETPAD_HOTRELOAD_DYLIB overrides the client dylib; the hidden
 --hot-selfcheck FILE flag drives the end-to-end injection test.",

@@ -594,9 +594,11 @@ Notes / heuristics:
 
 `app run --hot` adds **live code injection** to the interactive session: save a
 Swift file and the running app picks up the change in-place, with state
-preserved — no relaunch, no `r`. **iOS Simulator only** for v5 (codesigning
-strips `DYLD_INSERT_LIBRARIES` on devices; watchOS ships no injection dylib).
-The full-rebuild `r` path (§9c) stays as the always-available fallback.
+preserved — no relaunch, no `r`. Targets: the **iOS Simulator** and **native
+macOS apps** (`--mac --hot`; see the macOS subsection below). Physical devices
+are out (codesigning strips `DYLD_INSERT_LIBRARIES`); watchOS ships no
+injection dylib. The full-rebuild `r` path (§9c) stays as the always-available
+fallback.
 
 > Status: committed design; implementation tracked in the milestones below.
 
@@ -640,8 +642,8 @@ to the menu-bar app or to the in-app standalone watcher.
 
 Two hooks, mirroring the extension's proven `hot-reload.ts` path:
 
-- **Build flags** — `[`crate::cli::xcodebuild::BuildPlan`]` gains, under `--hot`
-  and gated to simulator SDKs: `OTHER_LDFLAGS=$(inherited) -Xlinker -interposable`
+- **Build flags** — `[`crate::cli::xcodebuild::BuildPlan`]` gains, under `--hot`:
+  `OTHER_LDFLAGS=$(inherited) -Xlinker -interposable`
   (lets dyld swap symbols at runtime) and `EMIT_FRONTEND_COMMAND_LINES=YES`
   (needed to recover compile commands on Xcode 16.3+; see the recompiler below).
   Both are gated to `--hot` so ordinary `build`/`run` never pay for them.
@@ -650,6 +652,43 @@ Two hooks, mirroring the extension's proven `hot-reload.ts` path:
   `SIMCTL_CHILD_INJECTION_PROJECT_ROOT=<workspace root>`, and the XCTest
   `DYLD_FRAMEWORK_PATH`/`DYLD_LIBRARY_PATH` the client dylib's deps need
   (`simctl` forwards any `SIMCTL_CHILD_*` var into the launched process).
+
+### macOS (`--mac --hot`)
+
+The same server/recompiler/watcher drive a native mac app; only the launch and
+the signing posture differ:
+
+- **Injectability is settled at build time.** A macOS `--hot` build adds
+  `ENABLE_HARDENED_RUNTIME=NO` and `ENABLE_APP_SANDBOX=NO` — command-line
+  settings outrank project ones, so the hot Debug product is built without the
+  two protections that break injection (the hardened runtime makes dyld strip
+  `DYLD_INSERT_LIBRARIES` and library validation reject the ad-hoc recompiled
+  dylibs; the sandbox blocks the client's socket and dlopen from outside the
+  container). No post-build re-signing, no project mutation. Xcode 14+ mac
+  templates declare both protections via exactly these settings, so a template
+  app is injectable with zero setup.
+- **Preflight.** A sandbox declared in an explicit `.entitlements` file (App
+  Store projects) is beyond build settings — `[`crate::cli::inject::mac_preflight`]`
+  inspects the built product (`codesign -d`) and refuses with the exact fix
+  (turn App Sandbox off for Debug) instead of launching a dead session. A
+  hardened product (re-signed by a run-script phase) is refused the same way,
+  unless it carries the `allow-dyld-environment-variables` +
+  `disable-library-validation` entitlements pair that makes it injectable anyway.
+- **Direct spawn, raw env.** The mac app is our own child process — the same
+  injection env as the simulator's but unprefixed (no `SIMCTL_CHILD_`, no
+  install step), stdout/stderr piped through the session console. `r` kills and
+  respawns the child; `d` detaches leaving it running.
+- **Bundled mac client.** `vendor/injection-client/build.sh` produces a second
+  prebuilt (`SweetpadInjectionClientMac.dylib`, the upstream SPM product built
+  for `generic/platform=macOS`), embedded alongside the simulator client and
+  selected by SDK. `InjectionNext.app` stays the fallback.
+- **Connect watchdog.** A mac app that hasn't dialed back within 15s is running
+  uninjected (something undid the insert env); the session says so, with the
+  `codesign` command that shows what the product carries.
+- **Validated end-to-end** by `ci/hot-reload-e2e.sh`: the `--hot-selfcheck`
+  nonce round-trip (edit → `.injected` → the new code's marker observed in the
+  host unified log) passes for both recompilers against the fixture's
+  `SweetpadCIMac` scheme.
 
 **Beautifier interaction (`EMIT_FRONTEND_COMMAND_LINES` × §11).** The setting
 prints the `swift-frontend` invocations into xcodebuild's *raw* transcript, but
@@ -885,6 +924,114 @@ push/PR). Two jobs:
 
 This supersedes the original throwaway spike (`hot-reload-spike.yaml`), whose
 run #5 first proved the socket + recompile→load→inject chain end-to-end.
+
+## 9f. v6 — project mutation: build settings & sync-group sources
+
+Make the pbxproj itself directly drivable — the settings half of an XcodeGen
+`project.yml` becomes `settings set` calls, and the `sources:` half becomes
+Xcode 16 **synchronized root groups**, so per-file membership stops being a
+problem anyone has to manage. Both ride the proven mutation pipeline
+(parse → mutate → `pbxproj_writer::serialize`, byte-for-byte, GUIDs via
+`fresh_guid` — the same path `dependency add` ships on). *Declined:* a
+declarative spec file / `project sync` (that's re-implementing XcodeGen and
+creates a second source of truth), XcodeGen interop, and an xcconfig write
+mode. Idempotent imperative commands in a committed script *are* the spec.
+
+**Mutations never guess.** Unlike the run/build resolution flow (TTY pickers),
+`settings set`/`unset` and the `source` verbs hard-error on any ambiguity —
+interactive or not — with the flag that disambiguates named in the message.
+A mutation either applies exactly what was asked or changes nothing.
+
+### `settings set` / `unset` / `show --raw`
+
+```
+sweetpad settings set KEY=VALUE [KEY=VALUE …] [--target T]… [--configuration C]…
+sweetpad settings set KEY+=VALUE …                    append to a list setting
+sweetpad settings unset KEY [KEY …] [--target T]… [--configuration C]…
+sweetpad settings show --raw [--target T]             the stored pbxproj layer
+```
+
+- **Scope.** Project-level `XCBuildConfiguration`s by default; `--target`
+  (repeatable) switches to those targets' configurations. No `--all-targets` —
+  project-level *is* "all targets"; that's what inheritance is for. All
+  configurations by default (XcodeGen `settings.base` semantics);
+  `--configuration` (repeatable) narrows. Unknown target/configuration names
+  are errors.
+- **Multiple assignments, one write.** All pairs apply in a single
+  parse → mutate → serialize pass (temp + rename): one diff, atomic.
+- **Arrays.** Repeating a key builds an array in argument order
+  (`set LD_RUNPATH_SEARCH_PATHS='$(inherited)' LD_RUNPATH_SEARCH_PATHS=…`).
+  `KEY+=VALUE` appends: the prior value normalizes to its element list (arrays
+  as-is; strings whitespace-split, matching how xcodebuild resolves list
+  settings) and the new element lands at the end. Canonical on-disk form:
+  pbxproj array for >1 element, plain string for 1.
+- **Conditional keys** (`CODE_SIGN_IDENTITY[sdk=iphoneos*]`) pass through
+  verbatim as part of the key. `set`/`unset` match the exact key only —
+  conditional variants are separate keys, never implicitly swept.
+- **`unset`** removes the key (true inheritance), not `$(inherited)`. Absent
+  key → no-op with a note: re-runnable scripts stay green.
+- **Validation, xcspec-backed.** A known key set to a value outside its xcspec
+  domain (enum/boolean) gets a *warning*, never an error; unknown keys are
+  accepted silently (user-defined settings are legal, xcspec coverage isn't
+  total).
+- **xcconfig interplay.** When a touched configuration has a
+  `baseConfigurationReference` whose xcconfig also assigns the key, warn that
+  the pbxproj value now shadows it. Writing xcconfig files is out of scope.
+- **Workspaces.** `--target` maps the target to its owning member project and
+  edits that pbxproj; the same target name in two members is an error naming
+  `--project`. A project-level set resolves to the sole member, else requires
+  `--project`. Swift packages: clean error (no pbxproj).
+- **`show --raw`** prints what the pbxproj layer actually stores per
+  target/configuration — the verification companion, and the answer to "why
+  does `show` still have a value after `unset`" (inheritance).
+- **Report** (JSON envelope): per (target, configuration): key, old raw value,
+  new raw value, plus the re-resolved value (the *effect*, via the in-process
+  resolver) and the file written.
+
+### Sync-group sources
+
+- **`project new` scaffolds a `PBXFileSystemSynchronizedRootGroup`** for
+  `<Name>/` — no per-file `PBXFileReference`/`PBXBuildFile` objects,
+  `objectVersion = 77` (Xcode 16+ floor). Adding a file to the app is `touch`;
+  the pbxproj never changes as the project grows. The classic per-file scaffold
+  shape is deleted, not flagged — one graph shape, one test suite. (Corpus
+  already round-trips objectVersion-77 sync-group projects, e.g. ice-cubes.)
+- **`source`** — the sync-group-era replacement for XcodeGen's `sources:` list:
+
+  ```
+  sweetpad source list [--target T]           roots + membership exceptions
+  sweetpad source add <dir> --target T        attach a synchronized root
+  sweetpad source remove <dir> --target T     detach a root
+  sweetpad source exclude <path> --target T   membership exception (opt a file out)
+  sweetpad source include <path> --target T   drop the exception
+  ```
+
+  `exclude`/`include` edit the root's
+  `PBXFileSystemSynchronizedBuildFileExceptionSet`; `add` inserts one group
+  object and lists it in the target's `fileSystemSynchronizedGroups`.
+- **`settings set` auto-exception.** Setting `INFOPLIST_FILE` to a path inside
+  a target's sync root also adds the membership exception. Investigated live
+  (Xcode 26.5 / 17F42, scratch sync-root app, macOS + iphonesimulator) and
+  against the corpus:
+  - *Without* the exception, an in-root Info.plist is treated as an ordinary
+    resource **and** processed as the Info.plist: on iOS the two outputs
+    collide at the flat bundle root — `error: Multiple commands produce
+    '….app/Info.plist'`, **build failure**; on macOS they don't (resources go
+    to `Contents/Resources/`), so it's the "Copy Bundle Resources … contains
+    this target's Info.plist" warning plus a stray duplicate plist shipped in
+    the bundle. The auto-exception is correctness on iOS, hygiene on macOS.
+  - *With* `membershipExceptions = (<path>)` both platforms build clean, the
+    custom plist is the one processed, and no resource copy happens — exactly
+    the objects Xcode itself persists (ice-cubes and NetNewsWire both carry
+    `membershipExceptions = (Info.plist)` sets for every target whose
+    `INFOPLIST_FILE` points into a sync root; Xcode does *not* special-case
+    the filename at build time — any un-excepted `.plist` in a root is copied
+    to Resources).
+  - `CODE_SIGN_ENTITLEMENTS` needs **no** exception: a `.entitlements` file in
+    a sync root joins no build phase (not copied, no warning) and is consumed
+    via `ProcessProductPackaging` — so the auto-exception applies to
+    `INFOPLIST_FILE` only, matching the corpus (no entitlements entries in any
+    exception set).
 
 ## 10. Testing
 

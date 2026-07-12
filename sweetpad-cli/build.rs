@@ -5,16 +5,27 @@ fn main() {
     emit_lib_dir();
 }
 
-/// Stage the bundled hot-reload injection client (CLI_DESIGN §9d) for the
-/// `include_bytes!` in `cli::inject::client`. The dylib is produced by
-/// `vendor/injection-client/build.sh` (macOS + Xcode) and is intentionally not
-/// committed, so copy it into `OUT_DIR` when present and otherwise stage an empty
-/// placeholder — every build then compiles, and the CLI falls back at runtime
-/// when the client wasn't bundled. CI and release builds run `build.sh` first.
+/// Stage the bundled hot-reload injection clients (CLI_DESIGN §9d) for the
+/// `include_bytes!` in `cli::inject::client` — one per supported SDK (iOS
+/// simulator + macOS). The dylibs are produced by
+/// `vendor/injection-client/build.sh` (macOS + Xcode) and are intentionally not
+/// committed, so copy each into `OUT_DIR` when present and otherwise stage an
+/// empty placeholder — every build then compiles, and the CLI falls back at
+/// runtime when a client wasn't bundled. CI and release builds run `build.sh`
+/// first.
 fn embed_injection_client() {
+    stage_client("SweetpadInjectionClient.dylib", "injection-client.dylib");
+    stage_client(
+        "SweetpadInjectionClientMac.dylib",
+        "injection-client-mac.dylib",
+    );
+}
+
+fn stage_client(prebuilt: &str, staged: &str) {
     let src = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
-        .join("vendor/injection-client/prebuilt/SweetpadInjectionClient.dylib");
-    let dest = Path::new(&env::var("OUT_DIR").unwrap()).join("injection-client.dylib");
+        .join("vendor/injection-client/prebuilt")
+        .join(prebuilt);
+    let dest = Path::new(&env::var("OUT_DIR").unwrap()).join(staged);
     println!("cargo:rerun-if-changed={}", src.display());
     if src.exists() {
         fs::copy(&src, &dest).expect("stage bundled injection client into OUT_DIR");

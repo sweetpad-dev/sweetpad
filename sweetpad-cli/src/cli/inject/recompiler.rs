@@ -135,7 +135,7 @@ impl Recompiler {
         // the build log in `BuildLog` mode), compiled and linked into the dylib.
         let primary = self
             .frontend_tokens(source)
-            .and_then(|tokens| compile_and_link(&tokens, &source_str, &object, &dylib));
+            .and_then(|tokens| compile_and_link(&tokens, &source_str, &object, &dylib, &self.sdk));
         match primary {
             Ok(()) => Ok(dylib),
             // Only resolver mode degrades; build-log mode surfaces its own failure.
@@ -148,7 +148,7 @@ impl Recompiler {
                 // single-file — and cache it so later saves of this file skip the
                 // broken `-###` path. Whole-module `-emit-library` is the last resort.
                 if let Ok(tokens) = self.buildlog_tokens(source)
-                    && compile_and_link(&tokens, &source_str, &object, &dylib).is_ok()
+                    && compile_and_link(&tokens, &source_str, &object, &dylib, &self.sdk).is_ok()
                 {
                     let canon =
                         std::fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
@@ -527,15 +527,17 @@ fn run(prog: &str, argv: &[String], what: &str) -> Result<(), String> {
 
 /// Compile `source` into one object via the recovered single-file frontend
 /// command, then link it into a loadable `dylib`. Shared by the primary attempt
-/// and the build-log fallback.
+/// and the build-log fallback. `fallback_sdk` resolves the sysroot when the
+/// frontend command carries no `-sdk`.
 fn compile_and_link(
     tokens: &[String],
     source: &str,
     object: &Path,
     dylib: &Path,
+    fallback_sdk: &str,
 ) -> Result<(), String> {
     run("", &single_file_command(tokens, source, object)?, "compile")?;
-    run("", &link_command(tokens, object, dylib)?, "link")?;
+    run("", &link_command(tokens, object, dylib, fallback_sdk)?, "link")?;
     Ok(())
 }
 
@@ -692,15 +694,21 @@ fn token_after<'a>(tokens: &'a [String], flag: &str) -> Option<&'a str> {
         .map(String::as_str)
 }
 
-/// Build the `clang` link line for a loadable simulator dylib, reusing the
-/// build's own `-target`/`-sdk` so the ABI matches.
-fn link_command(tokens: &[String], object: &Path, dylib: &Path) -> Result<Vec<String>, String> {
+/// Build the `clang` link line for a loadable dylib, reusing the build's own
+/// `-target`/`-sdk` so the ABI matches. `fallback_sdk` (the session's SDK short
+/// name) resolves the sysroot when the frontend command carries no `-sdk`.
+fn link_command(
+    tokens: &[String],
+    object: &Path,
+    dylib: &Path,
+    fallback_sdk: &str,
+) -> Result<Vec<String>, String> {
     let triple = token_after(tokens, "-target").ok_or("no -target in frontend command")?;
     let sdk = token_after(tokens, "-sdk")
         .map(str::to_string)
         .or_else(|| {
             Command::new("xcrun")
-                .args(["--sdk", "iphonesimulator", "--show-sdk-path"])
+                .args(["--sdk", fallback_sdk, "--show-sdk-path"])
                 .output()
                 .ok()
                 .filter(|o| o.status.success())
@@ -894,7 +902,13 @@ mod tests {
     fn link_command_uses_build_target_and_sdk() {
         let toks: Vec<String> =
             shell_tokens("swift-frontend -target arm64-apple-ios16.0-simulator -sdk /SDKs/Sim.sdk");
-        let cmd = link_command(&toks, Path::new("/t/e.o"), Path::new("/t/e.dylib")).unwrap();
+        let cmd = link_command(
+            &toks,
+            Path::new("/t/e.o"),
+            Path::new("/t/e.dylib"),
+            "iphonesimulator",
+        )
+        .unwrap();
         assert!(cmd.contains(&"arm64-apple-ios16.0-simulator".to_string()));
         assert!(cmd.contains(&"/SDKs/Sim.sdk".to_string()));
         assert!(cmd.contains(&"-dynamiclib".to_string()));
@@ -902,5 +916,20 @@ mod tests {
             cmd.windows(2)
                 .any(|w| w[0] == "-Xlinker" && w[1] == "-interposable")
         );
+    }
+
+    #[test]
+    fn link_command_keeps_macos_target_and_sdk() {
+        let toks: Vec<String> =
+            shell_tokens("swift-frontend -target arm64-apple-macos13.0 -sdk /SDKs/MacOSX.sdk");
+        let cmd = link_command(
+            &toks,
+            Path::new("/t/e.o"),
+            Path::new("/t/e.dylib"),
+            "macosx",
+        )
+        .unwrap();
+        assert!(cmd.contains(&"arm64-apple-macos13.0".to_string()));
+        assert!(cmd.contains(&"/SDKs/MacOSX.sdk".to_string()));
     }
 }

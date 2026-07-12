@@ -7,7 +7,8 @@
 //! `data` is an `int32` length followed by raw bytes; the EOF sentinel is `-1`.
 //! A command is an `int32` code optionally followed by a string payload.
 //!
-//! Validated end-to-end against a real simulator (see `ci/hot-reload-spike`).
+//! Validated end-to-end against a real simulator and a native mac app (see
+//! `ci/hot-reload-e2e.sh`).
 
 use std::io::{Read, Write};
 use std::net::TcpStream;

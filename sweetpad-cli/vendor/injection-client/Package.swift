@@ -18,7 +18,7 @@ import PackageDescription
 
 let package = Package(
     name: "SweetpadInjectionClient",
-    platforms: [.iOS(.v13)],
+    platforms: [.iOS(.v13), .macOS(.v13)],
     products: [
         .library(name: "SweetpadInjectionClient", type: .dynamic, targets: ["SweetpadInjectionClient"]),
     ],

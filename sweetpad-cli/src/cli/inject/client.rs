@@ -1,19 +1,20 @@
 //! The in-app injection *client* dylib: resolving the InjectionNext client and
-//! assembling the `SIMCTL_CHILD_*` environment that injects it into the launched
-//! simulator app.
+//! assembling the environment that injects it into the launched app —
+//! `SIMCTL_CHILD_*`-prefixed for a simulator launch, unprefixed for a directly
+//! spawned macOS app.
 //!
 //! Resolution order: an explicit override ([`ClientOptions::override_path`] /
-//! `SWEETPAD_HOTRELOAD_DYLIB`), then the client **bundled into this binary**
-//! (built from the pinned InjectionNext SPM product at release time — see
-//! `vendor/injection-client`; XCTest-free, so one prebuilt is portable across
-//! Xcode versions, with no clone, no per-Xcode build, and no network), then a
-//! fall back to an installed `InjectionNext.app`.
+//! `SWEETPAD_HOTRELOAD_DYLIB`), then the per-SDK client **bundled into this
+//! binary** (built from the pinned InjectionNext SPM product at release time —
+//! see `vendor/injection-client`; XCTest-free, so one prebuilt per SDK is
+//! portable across Xcode versions, with no clone, no per-Xcode build, and no
+//! network), then a fall back to an installed `InjectionNext.app`.
 
 use std::path::{Path, PathBuf};
 
 const INJECTIONNEXT_APP: &str = "/Applications/InjectionNext.app";
 
-/// Map a simulator SDK to the InjectionNext dylib that injects into it. Returns
+/// Map an SDK to the InjectionNext dylib that injects into it. Returns
 /// `None` for SDKs InjectionNext can't inject (devices strip
 /// `DYLD_INSERT_LIBRARIES`; watchOS ships no dylib).
 #[must_use]
@@ -43,7 +44,7 @@ pub fn platform_dir_for(sdk: &str) -> Option<&'static str> {
 pub struct ClientOptions {
     /// Active Xcode `Contents/Developer`.
     pub developer_dir: String,
-    /// Simulator SDK short name (e.g. `iphonesimulator`).
+    /// SDK short name (e.g. `iphonesimulator`, `macosx`).
     pub sdk: String,
     /// Workspace root, exported as `INJECTION_PROJECT_ROOT`.
     pub project_root: PathBuf,
@@ -68,11 +69,11 @@ pub fn resolve_dylib(opts: &ClientOptions, notify: &dyn Fn(&str)) -> Result<Path
     let name = dylib_name_for(&opts.sdk)
         .ok_or_else(|| format!("hot reload is not supported for the {} SDK", opts.sdk))?;
 
-    // The client bundled into this binary. It's built for the iOS simulator (what
-    // `--hot` supports) and is XCTest-free, so it needs no clone, no per-Xcode
-    // build, and works offline.
-    if opts.sdk == "iphonesimulator" {
-        match materialize_bundled_client() {
+    // The client bundled into this binary for this SDK. XCTest-free, so it
+    // needs no clone, no per-Xcode build, and works offline.
+    let bundled = bundled_client_for(&opts.sdk);
+    if !bundled.is_empty() {
+        match materialize_bundled_client(bundled) {
             Ok(p) => return Ok(p),
             Err(e) => notify(&format!(
                 "hot reload: bundled client unavailable ({e}); falling back to InjectionNext.app"
@@ -80,8 +81,8 @@ pub fn resolve_dylib(opts: &ClientOptions, notify: &dyn Fn(&str)) -> Result<Path
         }
     }
 
-    // Fallback: an installed InjectionNext.app (covers the other simulator SDKs,
-    // and the rare case where the bundled client can't be written to the cache).
+    // Fallback: an installed InjectionNext.app (covers the SDKs without a
+    // bundled client, and the rare case where it can't be written to the cache).
     let app_dylib = Path::new(INJECTIONNEXT_APP)
         .join("Contents/Resources")
         .join(name);
@@ -96,22 +97,23 @@ pub fn resolve_dylib(opts: &ClientOptions, notify: &dyn Fn(&str)) -> Result<Path
     ))
 }
 
-/// The `SIMCTL_CHILD_*` env that injects `dylib` into the launched app and
-/// points its client at our server. `simctl` forwards these (prefix stripped)
-/// into the child process.
+/// The env that injects `dylib` into the launched app and points its client at
+/// our server. `prefix` matches the launch path: `SIMCTL_CHILD_` for a simctl
+/// launch (which strips it while forwarding into the simulated process), empty
+/// for a directly spawned macOS app.
 #[must_use]
-pub fn launch_env(dylib: &Path, opts: &ClientOptions) -> Vec<(String, String)> {
+pub fn launch_env(dylib: &Path, opts: &ClientOptions, prefix: &str) -> Vec<(String, String)> {
     let mut env = vec![
         (
-            "SIMCTL_CHILD_DYLD_INSERT_LIBRARIES".into(),
+            format!("{prefix}DYLD_INSERT_LIBRARIES"),
             dylib.display().to_string(),
         ),
-        ("SIMCTL_CHILD_INJECTION_HOST".into(), "127.0.0.1".into()),
+        (format!("{prefix}INJECTION_HOST"), "127.0.0.1".into()),
         // Only ever talk to our server — never fall back to the in-app standalone
         // watcher (which would inject without us and mask failures).
-        ("SIMCTL_CHILD_INJECTION_NOSTANDALONE".into(), "1".into()),
+        (format!("{prefix}INJECTION_NOSTANDALONE"), "1".into()),
         (
-            "SIMCTL_CHILD_INJECTION_PROJECT_ROOT".into(),
+            format!("{prefix}INJECTION_PROJECT_ROOT"),
             opts.project_root.display().to_string(),
         ),
     ];
@@ -119,8 +121,8 @@ pub fn launch_env(dylib: &Path, opts: &ClientOptions) -> Vec<(String, String)> {
     // platform's search paths so its deps resolve. The bundled client is
     // XCTest-free and ignores these, so passing them unconditionally is harmless.
     if let Some((fw, lib)) = xctest_search_paths(&opts.developer_dir, &opts.sdk) {
-        env.push(("SIMCTL_CHILD_DYLD_FRAMEWORK_PATH".into(), fw));
-        env.push(("SIMCTL_CHILD_DYLD_LIBRARY_PATH".into(), lib));
+        env.push((format!("{prefix}DYLD_FRAMEWORK_PATH"), fw));
+        env.push((format!("{prefix}DYLD_LIBRARY_PATH"), lib));
     }
     env
 }
@@ -141,20 +143,33 @@ fn xctest_search_paths(developer_dir: &str, sdk: &str) -> Option<(String, String
     Some((framework, library))
 }
 
-/// The injection client compiled into this binary. `build.rs` stages it into
-/// `OUT_DIR` from `vendor/injection-client/prebuilt/` (produced by its
-/// `build.sh`); it is empty when that prebuilt was absent at build time, in which
-/// case hot reload falls back to `InjectionNext.app`. The client is XCTest-free,
-/// so the single prebuilt is portable across Xcode versions.
-static BUNDLED_CLIENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/injection-client.dylib"));
+/// The injection clients compiled into this binary, per SDK. `build.rs` stages
+/// them into `OUT_DIR` from `vendor/injection-client/prebuilt/` (produced by its
+/// `build.sh`); each is empty when that prebuilt was absent at build time, in
+/// which case hot reload falls back to `InjectionNext.app`. The clients are
+/// XCTest-free, so one prebuilt per SDK is portable across Xcode versions.
+static BUNDLED_CLIENT_SIM: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/injection-client.dylib"));
+static BUNDLED_CLIENT_MAC: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/injection-client-mac.dylib"));
 
-/// Materialize [`BUNDLED_CLIENT`] to a content-addressed path under the cache and
+/// The bundled client for an SDK — empty when none is bundled (either no
+/// prebuilt at build time, or an SDK we don't bundle for).
+fn bundled_client_for(sdk: &str) -> &'static [u8] {
+    match sdk {
+        "iphonesimulator" => BUNDLED_CLIENT_SIM,
+        "macosx" => BUNDLED_CLIENT_MAC,
+        _ => &[],
+    }
+}
+
+/// Materialize a bundled client to a content-addressed path under the cache and
 /// return it. A new sweetpad release (new bytes) lands in a fresh directory;
 /// stale ones are simply ignored. Idempotent: an existing file of the right size
 /// is reused without rewriting.
-fn materialize_bundled_client() -> Result<PathBuf, String> {
+fn materialize_bundled_client(bytes: &'static [u8]) -> Result<PathBuf, String> {
     let root = cache_root().ok_or("could not resolve the cache directory")?;
-    materialize_client(BUNDLED_CLIENT, &root)
+    materialize_client(bytes, &root)
 }
 
 /// Write `bytes` (the embedded client) to a content-addressed path under
@@ -230,7 +245,7 @@ mod tests {
             project_root: PathBuf::from("/work/App"),
             override_path: None,
         };
-        let env = launch_env(Path::new("/cache/lib.dylib"), &opts);
+        let env = launch_env(Path::new("/cache/lib.dylib"), &opts, "SIMCTL_CHILD_");
         let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
         assert_eq!(
             get("SIMCTL_CHILD_DYLD_INSERT_LIBRARIES").as_deref(),
@@ -250,6 +265,42 @@ mod tests {
                 .unwrap()
                 .contains("iPhoneSimulator.platform/Developer/Library/Frameworks")
         );
+    }
+
+    #[test]
+    fn launch_env_unprefixed_for_direct_mac_spawn() {
+        let opts = ClientOptions {
+            developer_dir: "/Applications/Xcode.app/Contents/Developer".into(),
+            sdk: "macosx".into(),
+            project_root: PathBuf::from("/work/App"),
+            override_path: None,
+        };
+        let env = launch_env(Path::new("/cache/mac.dylib"), &opts, "");
+        let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+        assert_eq!(
+            get("DYLD_INSERT_LIBRARIES").as_deref(),
+            Some("/cache/mac.dylib")
+        );
+        assert_eq!(get("INJECTION_HOST").as_deref(), Some("127.0.0.1"));
+        assert_eq!(get("INJECTION_PROJECT_ROOT").as_deref(), Some("/work/App"));
+        // XCTest paths come from the MacOSX platform for the macosx SDK.
+        assert!(
+            get("DYLD_FRAMEWORK_PATH")
+                .unwrap()
+                .contains("MacOSX.platform/Developer/Library/Frameworks")
+        );
+        // Nothing carries the simctl prefix on a direct spawn.
+        assert!(env.iter().all(|(k, _)| !k.starts_with("SIMCTL_CHILD_")));
+    }
+
+    #[test]
+    fn bundled_client_selection_is_per_sdk() {
+        // Device SDKs never have a bundled client; the sim/mac slots hold
+        // whatever build.rs staged (possibly the empty placeholder), so only
+        // the always-empty routing is asserted here.
+        assert!(bundled_client_for("iphoneos").is_empty());
+        assert!(bundled_client_for("watchsimulator").is_empty());
+        assert!(bundled_client_for("appletvsimulator").is_empty());
     }
 
     #[test]
