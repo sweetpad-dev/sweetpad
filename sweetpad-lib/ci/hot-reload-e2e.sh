@@ -84,8 +84,16 @@ cat > "$ENT" <<'PLIST'
     <key>com.apple.security.network.client</key><true/>
 </dict></plist>
 PLIST
+# The fixture is XcodeGen-generated (project.yml), so the deliberate wiring
+# needs --force past the generated-project guard — which is also the guard's
+# own e2e: without the flag this must refuse.
+if "$BIN" pbxproj settings set CODE_SIGN_ENTITLEMENTS=SweetpadCIMac.entitlements \
+  --target SweetpadCIMac --project "$APP" >/dev/null 2>&1; then
+  fail "pbxproj settings set on a generated project succeeded without --force"
+fi
+echo "  ✓ generated-project guard refuses without --force"
 "$BIN" pbxproj settings set CODE_SIGN_ENTITLEMENTS=SweetpadCIMac.entitlements \
-  --target SweetpadCIMac --project "$APP"
+  --target SweetpadCIMac --project "$APP" --force
 PBX_BEFORE=$(shasum "$APP/project.pbxproj")
 ENT_BEFORE=$(shasum "$ENT")
 
@@ -110,7 +118,7 @@ grep -q "app-sandbox" /tmp/keep-sandbox.log \
   || fail "--keep-sandbox failed without the sandbox preflight message"
 echo "  ✓ --keep-sandbox reproduces the preflight refusal"
 
-"$BIN" pbxproj settings unset CODE_SIGN_ENTITLEMENTS --target SweetpadCIMac --project "$APP"
+"$BIN" pbxproj settings unset CODE_SIGN_ENTITLEMENTS --target SweetpadCIMac --project "$APP" --force
 rm "$ENT"
 
 section "teardown"

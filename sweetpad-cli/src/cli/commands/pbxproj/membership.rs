@@ -61,6 +61,11 @@ pub struct RemoveArgs {
     /// project has exactly one target.
     #[arg(long)]
     pub target: Option<String>,
+
+    /// Edit a generated project (XcodeGen/Tuist) anyway — the change is
+    /// deliberate and will be lost on the next regenerate.
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// Flags for `pbxproj membership exclude`/`include`.
@@ -77,6 +82,11 @@ pub struct PathArgs {
     /// when the project has exactly one target.
     #[arg(long)]
     pub target: Option<String>,
+
+    /// Edit a generated project (XcodeGen/Tuist) anyway — the change is
+    /// deliberate and will be lost on the next regenerate.
+    #[arg(long)]
+    pub force: bool,
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
@@ -268,7 +278,8 @@ impl Render for RemoveResult {
 }
 
 fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {
-    let (xcodeproj, mut root) = super::open_project(ctx, &args.container, args.target.as_ref())?;
+    let (xcodeproj, mut root) =
+        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
     let target = super::settle_target(&root, args.target.as_ref())?;
 
     // Cross-hint: a file built via a synchronized folder has no classic entry
@@ -316,7 +327,8 @@ impl Render for ExceptionMutation {
 }
 
 fn exclude(ctx: &mut Context, args: &PathArgs) -> CommandResult {
-    let (xcodeproj, mut root) = super::open_project(ctx, &args.container, args.target.as_ref())?;
+    let (xcodeproj, mut root) =
+        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
     let target = super::settle_target(&root, args.target.as_ref())?;
 
     // Cross-hint: a classic build-file entry isn't silenced by an exception —
@@ -369,7 +381,8 @@ fn exclude(ctx: &mut Context, args: &PathArgs) -> CommandResult {
 }
 
 fn include(ctx: &mut Context, args: &PathArgs) -> CommandResult {
-    let (xcodeproj, mut root) = super::open_project(ctx, &args.container, args.target.as_ref())?;
+    let (xcodeproj, mut root) =
+        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
     let target = super::settle_target(&root, args.target.as_ref())?;
     let outcome = sync_pbxproj::include(&mut root, &target, &args.path).map_err(CliError::new)?;
 

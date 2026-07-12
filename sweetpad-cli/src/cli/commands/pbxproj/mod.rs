@@ -78,6 +78,24 @@ pub(super) fn open_project(
     Ok((xcodeproj, root))
 }
 
+/// [`open_project`] for the *mutation* verbs: additionally refuses to edit a
+/// generated project without `--force` ([`pbxedit::guard_generated`]), before
+/// any work or disk side effect happens.
+pub(super) fn open_project_mut(
+    ctx: &mut Context,
+    container_args: &ContainerArgs,
+    target: Option<&String>,
+    force: bool,
+) -> Result<(PathBuf, Value), CliError> {
+    ctx.targeting = container_args.clone().into();
+    let container = resolve::container(ctx)?;
+    let targets: Vec<String> = target.cloned().into_iter().collect();
+    let xcodeproj = pbxedit::mutation_xcodeproj(ctx, &container, &targets)?;
+    pbxedit::guard_generated(ctx.project_file(&container), &xcodeproj, force)?;
+    let root = pbxedit::parse_owned(&xcodeproj)?;
+    Ok((xcodeproj, root))
+}
+
 /// The target to act on: the `--target` flag, or the project's only target.
 /// Multiple targets without a flag is ambiguity — a hard error naming them.
 pub(super) fn settle_target(root: &Value, flag: Option<&String>) -> Result<String, CliError> {

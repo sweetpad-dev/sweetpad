@@ -58,6 +58,11 @@ pub struct UpdateArgs {
     /// When changing a requirement, edit it only; don't re-resolve.
     #[arg(long)]
     pub no_resolve: bool,
+
+    /// Edit a generated project (XcodeGen/Tuist) anyway — the change is
+    /// deliberate and will be lost on the next regenerate.
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// Flags for `dependency add`.
@@ -82,6 +87,11 @@ pub struct AddArgs {
     /// Skip the resolve that updates 'Package.resolved' after mutating.
     #[arg(long)]
     pub no_resolve: bool,
+
+    /// Edit a generated project (XcodeGen/Tuist) anyway — the change is
+    /// deliberate and will be lost on the next regenerate.
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// The version requirement for `add`, mirroring `swift package add-dependency`.
@@ -143,6 +153,11 @@ pub struct RemoveArgs {
     /// Narrow to this one target only.
     #[arg(long = "target")]
     pub target: Option<String>,
+
+    /// Edit a generated project (XcodeGen/Tuist) anyway — the change is
+    /// deliberate and will be lost on the next regenerate.
+    #[arg(long)]
+    pub force: bool,
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
@@ -368,6 +383,7 @@ fn add(ctx: &mut Context, args: &AddArgs) -> CliResult {
 
 fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> CliResult {
     let xcodeproj = pick_xcodeproj(ctx, container, None)?;
+    pbxedit::guard_generated(ctx.project_file(container), &xcodeproj, args.force)?;
     let remote = looks_remote(&args.url);
 
     // Validate the requirement (remote only) before anything else, so a bad
@@ -687,6 +703,7 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CliResult {
 
 fn remove_from_xcode(ctx: &mut Context, container: &Container, args: &RemoveArgs) -> CliResult {
     let xcodeproj = pick_xcodeproj(ctx, container, Some(&args.package))?;
+    pbxedit::guard_generated(ctx.project_file(container), &xcodeproj, args.force)?;
     heal_interrupted_mutation(&xcodeproj.join("project.pbxproj"), &ctx.out);
     let mut root = pbxedit::parse_owned(&xcodeproj)?;
     let ref_guid = find_package_or_hint(&root, container, &args.package, &xcodeproj)?;
@@ -840,6 +857,7 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
     }
 
     let xcodeproj = pick_xcodeproj(ctx, &container, Some(package))?;
+    pbxedit::guard_generated(ctx.project_file(&container), &xcodeproj, args.force)?;
     let pbxproj_path = xcodeproj.join("project.pbxproj");
     heal_interrupted_mutation(&pbxproj_path, &ctx.out);
     let pristine = std::fs::read_to_string(&pbxproj_path)

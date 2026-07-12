@@ -243,6 +243,21 @@ out=$("$BIN" pbxproj membership list --project "$APP" --target SweetpadCIApp --j
 assert_json "$out" "len(d['targets'][0]['explicit'])>=1" "True"
 ok "pbxproj membership list (classic entries on the fixture)"
 
+# Generated-project guard: a spec file next to the .xcodeproj makes every
+# pbxproj mutation refuse without --force (regeneration would silently
+# clobber the edit); reads stay unguarded.
+touch "$GEN_DIR/MacGen/project.yml"
+expect_code 1 "$BIN" pbxproj settings set SWEETPAD_GUARD_PROBE=1 --project "$MAC_PROJ"
+"$BIN" pbxproj settings show --project "$MAC_PROJ" >/dev/null
+"$BIN" pbxproj settings set SWEETPAD_GUARD_PROBE=1 --project "$MAC_PROJ" --force >/dev/null
+"$BIN" pbxproj settings unset SWEETPAD_GUARD_PROBE --project "$MAC_PROJ" --force >/dev/null
+rm "$GEN_DIR/MacGen/project.yml"
+# The sweetpad.toml `generator` declaration guards the same way, spec file or not.
+printf 'generator = "xcodegen"\n' > "$GEN_DIR/MacGen/sweetpad.toml"
+expect_code 1 "$BIN" pbxproj folder add Extras --project "$MAC_PROJ"
+rm "$GEN_DIR/MacGen/sweetpad.toml"
+ok "generated-project guard (spec file + config key; --force overrides)"
+
 # ---------------------------------------------------------------------------
 section "test (iOS)"
 out=$("$BIN" test run --project "$APP" --scheme SweetpadCIApp --destination "$DEST" --json)

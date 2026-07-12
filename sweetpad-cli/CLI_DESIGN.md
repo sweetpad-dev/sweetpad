@@ -1186,6 +1186,22 @@ Constructs that don't map to sync folders (localization variant groups,
 Core Data version groups) are simply visible in `list` and left classic —
 a converter would have had to refuse; a script just doesn't touch them.
 
+**Generated-project guard.** A `.xcodeproj` produced by XcodeGen or Tuist is
+an *output*: any pbxproj edit is silently clobbered by the next
+`xcodegen`/`tuist generate` (verified live — a probe setting vanished on
+regenerate). So every pbxproj-mutating verb — `pbxproj settings set/unset`,
+`folder add/remove`, `membership remove/exclude/include`, and `dependency
+add/remove/update` when they edit a project — hard-errors when a generator
+is detected, naming the spec to edit instead and the regenerate command that
+would eat the change. `--force` says the ephemeral edit is deliberate
+(what CI harnesses do); reads (`list`/`show`) are never guarded. Detection:
+a `generator = "xcodegen" | "tuist" | <tool>` declaration in `sweetpad.toml`
+wins, else a spec file next to the `.xcodeproj`
+(`project.yml`/`project.yaml`/`project.json` → XcodeGen, `Project.swift` →
+Tuist). Erroring (not warning) is deliberate: these commands are run by
+scripts and agents that read exit codes, not stderr prose — a warning above
+a success is exactly how the footgun fired in the first place.
+
 *Deliberately not built:* `project convert` (the recipe above, owned by the
 caller), disk expansion in `membership list` (`ls` exists), and a classic
 `membership add` (creating file refs/build files by hand is the one flow

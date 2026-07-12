@@ -70,6 +70,11 @@ pub struct SetArgs {
     /// Configuration to touch (repeatable; default: all of them).
     #[arg(long = "configuration", value_name = "NAME")]
     pub configurations: Vec<String>,
+
+    /// Edit a generated project (XcodeGen/Tuist) anyway — the change is
+    /// deliberate and will be lost on the next regenerate.
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// Flags for `pbxproj settings unset`.
@@ -91,6 +96,11 @@ pub struct UnsetArgs {
     /// Configuration to touch (repeatable; default: all of them).
     #[arg(long = "configuration", value_name = "NAME")]
     pub configurations: Vec<String>,
+
+    /// Edit a generated project (XcodeGen/Tuist) anyway — the change is
+    /// deliberate and will be lost on the next regenerate.
+    #[arg(long)]
+    pub force: bool,
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
@@ -247,6 +257,7 @@ fn set(ctx: &mut Context, args: &SetArgs) -> CommandResult {
     ctx.targeting = args.container.clone().into();
     let container = crate::cli::resolve::container(ctx)?;
     let xcodeproj = pbxedit::mutation_xcodeproj(ctx, &container, &args.targets)?;
+    pbxedit::guard_generated(ctx.project_file(&container), &xcodeproj, args.force)?;
     let mut root = pbxedit::parse_owned(&xcodeproj)?;
 
     let assignments = parse_assignments(&args.assignments)?;
@@ -330,6 +341,7 @@ fn unset(ctx: &mut Context, args: &UnsetArgs) -> CommandResult {
     ctx.targeting = args.container.clone().into();
     let container = crate::cli::resolve::container(ctx)?;
     let xcodeproj = pbxedit::mutation_xcodeproj(ctx, &container, &args.targets)?;
+    pbxedit::guard_generated(ctx.project_file(&container), &xcodeproj, args.force)?;
     let mut root = pbxedit::parse_owned(&xcodeproj)?;
 
     let keys = parse_keys(&args.keys)?;

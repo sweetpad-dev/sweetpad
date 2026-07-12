@@ -263,6 +263,10 @@ pub struct ProjectFile {
     pub sdk: Option<String>,
     /// Pin the Xcode used for this project (sets DEVELOPER_DIR).
     pub developer_dir: Option<String>,
+    /// Declares the `.xcodeproj` as generated (`"xcodegen"` / `"tuist"` /
+    /// a free-form tool name) — pbxproj mutations then require `--force`
+    /// even when no spec file sits next to the project (CLI_DESIGN §9g).
+    pub generator: Option<String>,
     pub testing: TestingDefaults,
     pub run: RunDefaults,
     pub format: FormatDefaults,
@@ -333,12 +337,13 @@ impl ProjectFile {
 }
 
 /// The keys a `sweetpad.toml` accepts at the top level.
-const PROJECT_FILE_KEYS: [&str; 8] = [
+const PROJECT_FILE_KEYS: [&str; 9] = [
     "scheme",
     "configuration",
     "destination",
     "sdk",
     "developer_dir",
+    "generator",
     "testing",
     "run",
     "format",
@@ -506,6 +511,16 @@ mod tests {
         assert_eq!(edit_distance("schme", "scheme"), 1);
         assert_eq!(edit_distance("scheme", "scheme"), 0);
         assert!(edit_distance("destination", "scheme") > 2);
+    }
+
+    #[test]
+    fn generator_key_parses_and_lints_clean() {
+        let pf: ProjectFile = toml::from_str("generator = \"xcodegen\"\n").unwrap();
+        assert_eq!(pf.generator.as_deref(), Some("xcodegen"));
+        let raw: toml::Value = toml::from_str("generator = \"tuist\"\n").unwrap();
+        let mut warnings = Vec::new();
+        lint_project_file(&raw, &mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
     }
 
     #[test]

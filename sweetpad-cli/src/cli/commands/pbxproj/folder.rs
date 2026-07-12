@@ -50,6 +50,11 @@ pub struct FolderArgs {
     /// exactly one target.
     #[arg(long)]
     pub target: Option<String>,
+
+    /// Edit a generated project (XcodeGen/Tuist) anyway — the change is
+    /// deliberate and will be lost on the next regenerate.
+    #[arg(long)]
+    pub force: bool,
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
@@ -82,7 +87,8 @@ impl Render for FolderMutation {
 }
 
 fn add(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
-    let (xcodeproj, mut root) = super::open_project(ctx, &args.container, args.target.as_ref())?;
+    let (xcodeproj, mut root) =
+        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
     let target = super::settle_target(&root, args.target.as_ref())?;
     let outcome = sync_pbxproj::add_root(&mut root, &target, &args.dir).map_err(CliError::new)?;
 
@@ -144,7 +150,8 @@ fn add(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
 }
 
 fn remove(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
-    let (xcodeproj, mut root) = super::open_project(ctx, &args.container, args.target.as_ref())?;
+    let (xcodeproj, mut root) =
+        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
     let target = super::settle_target(&root, args.target.as_ref())?;
     let outcome =
         sync_pbxproj::remove_root(&mut root, &target, &args.dir).map_err(CliError::new)?;
