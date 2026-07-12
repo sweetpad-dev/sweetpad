@@ -274,6 +274,24 @@ ok "app run (logs follow, streamed briefly)"
 ok "app stop"
 
 # ---------------------------------------------------------------------------
+section "app screenshot (§9h)"
+# Simulator delegation: the app verb reaches the same simctl capture
+# `simulator screenshot` uses (the booted sim from the lifecycle section).
+"$BIN" app screenshot --project "$APP" --scheme SweetpadCIApp --destination "$DEST" \
+  --out "$GEN_DIR/app-shot.png"
+test -s "$GEN_DIR/app-shot.png"
+ok "app screenshot (simulator delegation)"
+# The macOS resolution ladder's hard errors are TCC-independent — the
+# capture itself needs the runner's Screen Recording permission, so only the
+# error paths run here (the capture is e2e-verified on a real session).
+expect_code 1 "$BIN" app screenshot --pid 999999
+ok "app screenshot --pid on a dead pid exits 1"
+expect_code 1 "$BIN" app screenshot --project "$MAC_PROJ" --scheme MacGen
+ok "app screenshot (macOS, app not running) exits 1"
+expect_code 1 "$BIN" app stop --project "$MAC_PROJ" --scheme MacGen
+ok "app stop (macOS, app not running) exits 1"
+
+# ---------------------------------------------------------------------------
 section "macOS app run (best-effort, GUI headless)"
 # `open` returns even when the window can't draw on a headless runner.
 "$BIN" app run --project "$APP" --scheme SweetpadCIMac --mac --no-logs || echo "  (macOS GUI launch skipped on headless runner)"

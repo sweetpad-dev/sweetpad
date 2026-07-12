@@ -6,9 +6,11 @@ use std::path::Path;
 use std::process::Child;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use clap::Subcommand;
+
+mod macwin;
 
 use crate::cli::inject::recompiler::{Mode, Recompiler};
 use crate::cli::inject::server::{InjectServer, Logger};
@@ -32,7 +34,7 @@ pub struct RunArgs {
     pub target: crate::cli::BuildTargetArgs,
 
     /// Target a connected physical device instead of a simulator
-    /// (`--on device` is the same thing). Conflicts with a *typed* `--on`
+    /// ('--on device' is the same thing). Conflicts with a *typed* '--on'
     /// post-parse — a clap-level conflict would also fire on an env-sourced
     /// SWEETPAD_ON, breaking flag-beats-env.
     #[arg(long)]
@@ -42,7 +44,7 @@ pub struct RunArgs {
     #[arg(long = "device-id")]
     pub device_id: Option<String>,
 
-    /// Build and run as a native macOS app (`--on mac` is the same thing).
+    /// Build and run as a native macOS app ('--on mac' is the same thing).
     #[arg(long, conflicts_with_all = ["device", "device_id"])]
     pub mac: bool,
 
@@ -54,12 +56,12 @@ pub struct RunArgs {
     /// Enable hot reload (iOS Simulator and native macOS apps): on each Swift
     /// save the file is recompiled and injected into the running app — no
     /// relaunch, state preserved. Requires the injection client (see
-    /// CLI_DESIGN §9d). A project can default this on via `[run] hot = true`
+    /// CLI_DESIGN §9d). A project can default this on via '[run] hot = true'
     /// in sweetpad.toml.
     #[arg(long)]
     pub hot: bool,
 
-    /// Disable hot reload for this run (overrides a `[run] hot = true`
+    /// Disable hot reload for this run (overrides a '[run] hot = true'
     /// project default).
     #[arg(long = "no-hot", conflicts_with = "hot")]
     pub no_hot: bool,
@@ -68,8 +70,8 @@ pub struct RunArgs {
     #[arg(long = "hot-recompiler", value_name = "MODE", value_enum)]
     pub hot_recompiler: Option<HotRecompiler>,
 
-    /// CI self-check (hidden): with `--hot`, after launch edit FILE once, wait
-    /// for `.injected`, and exit 0/1 instead of entering the session. Drives
+    /// CI self-check (hidden): with '--hot', after launch edit FILE once, wait
+    /// for '.injected', and exit 0/1 instead of entering the session. Drives
     /// the end-to-end hot-reload/injection test.
     #[arg(
         long = "hot-selfcheck",
@@ -82,7 +84,7 @@ pub struct RunArgs {
     #[command(flatten)]
     pub launch: LaunchArgs,
 
-    /// Extra arguments passed to xcodebuild verbatim (after `--`).
+    /// Extra arguments passed to xcodebuild verbatim (after '--').
     #[arg(last = true, value_name = "XCODEBUILD_ARGS")]
     pub passthrough: Vec<String>,
 }
@@ -100,7 +102,7 @@ pub struct LaunchArgs {
     #[arg(long = "env", value_name = "KEY=VALUE")]
     pub env: Vec<String>,
 
-    /// Launch suspended, waiting for a debugger to attach (`lldb -p <pid>`).
+    /// Launch suspended, waiting for a debugger to attach ('lldb -p <pid>').
     #[arg(long = "wait-for-debugger")]
     pub wait_for_debugger: bool,
 }
@@ -137,7 +139,7 @@ pub struct LogFilterArgs {
     #[arg(long)]
     pub category: Option<String>,
 
-    /// A raw `log stream` predicate, replacing the default process match
+    /// A raw 'log stream' predicate, replacing the default process match
     /// entirely (the escape hatch).
     #[arg(long, conflicts_with_all = ["subsystem", "category"])]
     pub predicate: Option<String>,
@@ -163,7 +165,7 @@ pub struct StageTargetArgs {
 #[derive(Debug, Subcommand)]
 pub enum Action {
     /// Build, install, launch, and follow logs; at an interactive terminal,
-    /// press `r` to rebuild on demand.
+    /// press 'r' to rebuild on demand.
     Run(RunArgs),
     /// Build and install, without launching.
     Install {
@@ -197,7 +199,7 @@ pub enum Action {
     },
     /// Stream the running app's logs (simulator). Uses the last-launched app
     /// when one is recorded; otherwise resolves the build target. With --json,
-    /// emits the raw `log stream` NDJSON events — one JSON object per line —
+    /// emits the raw 'log stream' NDJSON events — one JSON object per line —
     /// instead of the rendered text.
     Logs {
         #[command(flatten)]
@@ -214,12 +216,41 @@ pub enum Action {
     },
     /// Open a URL on a simulator (deep links / universal links).
     OpenUrl {
-        /// The URL to open (e.g. `myapp://path` or `https://example.com/x`).
+        /// The URL to open (e.g. 'myapp://path' or 'https://example.com/x').
         url: String,
         /// Simulator name or UDID to open it on (defaults to the booted one).
         #[arg(long)]
         simulator: Option<String>,
     },
+    /// Save a PNG screenshot of the running app: a macOS app's window, or
+    /// the simulator it launched on.
+    Screenshot(ScreenshotArgs),
+}
+
+/// Flags for `app screenshot` (CLI_DESIGN §9h).
+#[derive(Debug, clap::Args)]
+pub struct ScreenshotArgs {
+    #[command(flatten)]
+    pub target: crate::cli::BuildTargetArgs,
+
+    /// File to write the screenshot to (default:
+    /// ./sweetpad-shots/<app>-<time>.png).
+    #[arg(long)]
+    pub out: Option<std::path::PathBuf>,
+
+    /// Which window to capture when the app has several: 1-based,
+    /// front-to-back (default: the frontmost).
+    #[arg(long, value_name = "N")]
+    pub window: Option<usize>,
+
+    /// Capture this process's window directly, skipping app resolution
+    /// (for macOS processes sweetpad didn't launch).
+    #[arg(long, value_name = "PID")]
+    pub pid: Option<i32>,
+
+    /// Also copy the screenshot to the clipboard.
+    #[arg(long)]
+    pub clipboard: bool,
 }
 
 impl Action {
@@ -358,6 +389,10 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             simple(ctx, Stage::Stop, &LaunchArgs::default(), stage)
         }
         Action::OpenUrl { url, simulator } => open_url(ctx, url, simulator.as_deref()),
+        Action::Screenshot(args) => {
+            ctx.targeting = args.target.clone().into();
+            screenshot(ctx, args)
+        }
     }
 }
 
@@ -2333,19 +2368,33 @@ fn session_keys_help(ctx: &Context, filterable: bool) {
     }
 }
 
-/// The `s` key: screenshot a simulator target into ./sweetpad-shots/.
+/// The `s` key: screenshot a simulator or macOS target into ./sweetpad-shots/.
 fn session_screenshot(ctx: &Context, plan: &RunPlan) {
-    let Target::Simulator(udid) = &plan.target else {
-        ctx.out.note("screenshots need a simulator target");
-        return;
+    let result = match &plan.target {
+        Target::Simulator(udid) => {
+            let name = sim_name(udid).unwrap_or_else(|| "simulator".to_string());
+            let path = super::simulator::default_screenshot_path(&name);
+            if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            simctl::screenshot(udid, &path.display().to_string()).map(|()| path)
+        }
+        Target::Mac => plan.app_bundle().and_then(|app| {
+            let shot = mac_shot_for(&app.executable, &app.bundle_id)?;
+            let path = super::simulator::default_screenshot_path(&shot.name);
+            if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let (window, _) = wait_for_window(ctx, &shot, None)?;
+            macwin::capture_window(window.number, &path).map(|()| path)
+        }),
+        Target::Device(_) | Target::SpmRun(_) => {
+            ctx.out.note("screenshots need a simulator or macOS target");
+            return;
+        }
     };
-    let name = sim_name(udid).unwrap_or_else(|| "simulator".to_string());
-    let path = super::simulator::default_screenshot_path(&name);
-    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    match simctl::screenshot(udid, &path.display().to_string()) {
-        Ok(()) => ctx.out.note(&format!("📸 {}", path.display())),
+    match result {
+        Ok(path) => ctx.out.note(&format!("📸 {}", path.display())),
         Err(e) => ctx.out.error(&e),
     }
 }
@@ -2868,13 +2917,43 @@ fn simple(
     let report = match &plan.target {
         Target::Simulator(udid) => simple_on_simulator(ctx, stage, &plan, &app, udid)?,
         Target::Device(id) => simple_on_device(ctx, stage, &plan, &app, id)?,
+        // A macOS app is built in place and launched by `run`; only `stop`
+        // has work to do (terminate the process, §9h).
+        Target::Mac if matches!(stage, Stage::Stop) => {
+            stop_mac(ctx, &app.executable, &app.bundle_id)?
+        }
         Target::Mac | Target::SpmRun(_) => {
             return Err(CliError::new(
-                "app install/launch/uninstall/stop act on a simulator or device",
+                "app install/launch/uninstall act on a simulator or device — a macOS app \
+                 is built in place and launched by `app run --mac`",
             ));
         }
     };
     Ok(Rendered::data(report))
+}
+
+/// Terminate a running macOS app by its executable path: SIGTERM to every
+/// matching pid (the graceful quit — the app can save state and exit).
+fn stop_mac(ctx: &Context, executable: &Path, bundle_id: &str) -> Result<AppStageReport, CliError> {
+    let pids = macwin::pids_for_executable(executable)?;
+    if pids.is_empty() {
+        return Err(CliError::new(format!("{bundle_id} isn't running")));
+    }
+    ctx.out.step("Terminating app", || {
+        for pid in &pids {
+            unsafe {
+                libc::kill(*pid, libc::SIGTERM);
+            }
+        }
+    });
+    Ok(AppStageReport {
+        action: "terminated",
+        note: format!("Terminated {bundle_id}"),
+        bundle_id: bundle_id.to_string(),
+        udid: None,
+        pid: pids.first().copied(),
+        detail: None,
+    })
 }
 
 /// `app debug`: build + install, launch with `--wait-for-debugger`
@@ -3081,36 +3160,70 @@ fn stage_report(
         action,
         note: note.to_string(),
         bundle_id: app.bundle_id.clone(),
-        udid: udid.to_string(),
+        udid: Some(udid.to_string()),
+        pid: None,
         detail,
     }
 }
 
-/// Serve `app logs`/`app stop` from the recorded last launch when it targeted a
-/// simulator — no scheme resolution, no build-settings query, no prompting.
-/// `None` (fall back to the full plan) when nothing was recorded or the record
-/// is for a device/macOS run.
+/// Serve `app stop` from the recorded last launch when it targeted a
+/// simulator or macOS — no scheme resolution, no build-settings query, no
+/// prompting. `None` (fall back to the full plan) when nothing was recorded
+/// or the record is for a device run.
 fn simple_from_last_launched(ctx: &mut Context, stage: Stage) -> Option<CommandResult> {
-    let (udid, app) = last_launched_sim(ctx)?;
-    Some(match stage {
-        Stage::Stop => ctx
-            .out
-            .step("Terminating app", || {
-                simctl::terminate(&udid, &app.bundle_id)
-            })
-            .map(|()| {
-                Rendered::data(AppStageReport {
-                    action: "terminated",
-                    note: format!("Terminated {}", app.bundle_id),
-                    bundle_id: app.bundle_id.clone(),
-                    udid: udid.clone(),
-                    detail: None,
-                })
-            }),
+    match stage {
+        Stage::Stop => {}
         Stage::Install | Stage::Launch | Stage::Uninstall => {
             unreachable!("gated to Stop by the caller")
         }
-    })
+    }
+    let last = last_launched(ctx)?;
+    match last.kind.as_str() {
+        "simulator" => {
+            let udid = last.simulator_udid.clone()?;
+            Some(
+                ctx.out
+                    .step("Terminating app", || {
+                        simctl::terminate(&udid, &last.bundle_identifier)
+                    })
+                    .map(|()| {
+                        Rendered::data(AppStageReport {
+                            action: "terminated",
+                            note: format!("Terminated {}", last.bundle_identifier),
+                            bundle_id: last.bundle_identifier.clone(),
+                            udid: Some(udid.clone()),
+                            pid: None,
+                            detail: None,
+                        })
+                    }),
+            )
+        }
+        "macos" => {
+            let exe = mac_executable(&last)?;
+            Some(stop_mac(ctx, &exe, &last.bundle_identifier).map(Rendered::data))
+        }
+        _ => None,
+    }
+}
+
+/// The recorded last launch for this project, whatever it targeted.
+fn last_launched(ctx: &Context) -> Option<LastLaunchedApp> {
+    let container = resolve::container(ctx).ok()?;
+    ctx.state
+        .projects
+        .get(&container.key())?
+        .last_launched_app
+        .clone()
+}
+
+/// The executable path inside a recorded macOS launch's `.app` bundle.
+fn mac_executable(last: &LastLaunchedApp) -> Option<std::path::PathBuf> {
+    let name = last.executable_name.as_deref()?;
+    Some(
+        std::path::PathBuf::from(&last.app_path)
+            .join("Contents/MacOS")
+            .join(name),
+    )
 }
 
 /// `app logs` — its own entry point so the stream filters reach
@@ -3163,13 +3276,7 @@ fn explicit_targeting(ctx: &Context) -> bool {
 
 /// The recorded last launch, when it targeted a simulator: `(udid, bundle)`.
 fn last_launched_sim(ctx: &Context) -> Option<(String, AppBundle)> {
-    let container = resolve::container(ctx).ok()?;
-    let last = ctx
-        .state
-        .projects
-        .get(&container.key())?
-        .last_launched_app
-        .clone()?;
+    let last = last_launched(ctx)?;
     if last.kind != "simulator" {
         return None;
     }
@@ -3183,12 +3290,15 @@ fn last_launched_sim(ctx: &Context) -> Option<(String, AppBundle)> {
 }
 
 /// The result of an `app install`/`launch`/`stop` stage: a status note in human
-/// mode, or `{ action, bundleId, udid, detail }` in the JSON envelope.
+/// mode, or `{ action, bundleId, udid, pid, detail }` in the JSON envelope.
+/// `udid` carries the simulator/device id; a macOS stage has none and reports
+/// the process `pid` instead.
 struct AppStageReport {
     action: &'static str,
     note: String,
     bundle_id: String,
-    udid: String,
+    udid: Option<String>,
+    pid: Option<i32>,
     detail: Option<String>,
 }
 
@@ -3202,9 +3312,262 @@ impl Render for AppStageReport {
             "action": self.action,
             "bundleId": self.bundle_id,
             "udid": self.udid,
+            "pid": self.pid,
             "detail": self.detail,
         })
     }
+}
+
+/// The `app screenshot` payload: where the PNG landed and what was captured
+/// (`udid` for a simulator capture; `pid`/`windowId`/`windows` for a macOS
+/// window).
+struct ShotReport {
+    path: String,
+    /// What was captured, for the human note; not serialized.
+    label: String,
+    udid: Option<String>,
+    pid: Option<i32>,
+    window_id: Option<u32>,
+    bundle_id: Option<String>,
+    windows: Option<usize>,
+}
+
+impl Render for ShotReport {
+    fn human(&self, out: &Output) {
+        out.note(&format!(
+            "saved screenshot of {} to {}",
+            self.label, self.path
+        ));
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "path": self.path,
+            "udid": self.udid,
+            "pid": self.pid,
+            "windowId": self.window_id,
+            "bundleId": self.bundle_id,
+            "windows": self.windows,
+        })
+    }
+}
+
+/// A macOS app to capture: its live pids plus naming for the default file
+/// and the report.
+struct MacShot {
+    pids: Vec<i32>,
+    /// Display name — the executable name, or `pid N` — used for the note
+    /// and (slugged) the default filename.
+    name: String,
+    bundle_id: Option<String>,
+}
+
+/// `app screenshot` — capture the running app to a PNG (CLI_DESIGN §9h): a
+/// macOS app's window via the window server + `screencapture`, or the
+/// simulator it launched on via `simctl io screenshot`. Resolution mirrors
+/// `stop`: an explicit `--pid` wins, then the recorded last launch, then the
+/// resolved build target — no build, ever.
+fn screenshot(ctx: &mut Context, args: &ScreenshotArgs) -> CommandResult {
+    if let Some(pid) = args.pid {
+        if explicit_targeting(ctx) {
+            return Err(CliError::new(
+                "--pid captures a process directly; scheme/destination flags don't apply",
+            ));
+        }
+        // Positive pids only — 0/negative would address a process *group* in
+        // the liveness probe below.
+        if pid <= 0 {
+            return Err(CliError::new("--pid takes a positive process id"));
+        }
+        // ESRCH now beats "no on-screen window" after a 5s wait.
+        if unsafe { libc::kill(pid, 0) } != 0
+            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+        {
+            return Err(CliError::new(format!("no process with pid {pid}")));
+        }
+        return mac_screenshot(
+            ctx,
+            &MacShot {
+                pids: vec![pid],
+                name: format!("pid {pid}"),
+                bundle_id: None,
+            },
+            args,
+        );
+    }
+
+    // The recorded last launch serves the no-flags case with no scheme
+    // resolution and no prompting, exactly like `stop`.
+    if !explicit_targeting(ctx)
+        && let Some(last) = last_launched(ctx)
+    {
+        match last.kind.as_str() {
+            "macos" => {
+                if let Some(exe) = mac_executable(&last) {
+                    let shot = mac_shot_for(&exe, &last.bundle_identifier)?;
+                    return mac_screenshot(ctx, &shot, args);
+                }
+                // No executable recorded (an older state file) — fall through
+                // to the resolver, which knows it.
+            }
+            "simulator" => {
+                if let Some(udid) = last.simulator_udid.clone() {
+                    return simulator_screenshot(ctx, &udid, args);
+                }
+            }
+            "device" => {
+                return Err(CliError::new(
+                    "physical devices don't support screenshots (devicectl exposes no capture)",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    // Full resolution: the destination decides which capture path runs.
+    let opts = RunOpts {
+        device: false,
+        device_id: None,
+        mac: false,
+        no_logs: true,
+        hot: false,
+        hot_mode: Mode::Resolver,
+        hot_selfcheck: None,
+        launch: &LaunchArgs::default(),
+        passthrough: &[],
+    };
+    let plan = plan(ctx, &opts)?;
+    match &plan.target {
+        Target::Mac => {
+            let app = plan.app_bundle()?;
+            let shot = mac_shot_for(&app.executable, &app.bundle_id)?;
+            mac_screenshot(ctx, &shot, args)
+        }
+        Target::Simulator(udid) => simulator_screenshot(ctx, udid, args),
+        Target::Device(_) => Err(CliError::new(
+            "physical devices don't support screenshots (devicectl exposes no capture)",
+        )),
+        Target::SpmRun(_) => Err(CliError::new(
+            "a Swift package executable has no app bundle to capture; use --pid for a \
+             window it opened",
+        )),
+    }
+}
+
+/// Build the [`MacShot`] for an executable path, erroring when nothing runs.
+fn mac_shot_for(executable: &Path, bundle_id: &str) -> Result<MacShot, CliError> {
+    let pids = macwin::pids_for_executable(executable)?;
+    if pids.is_empty() {
+        return Err(CliError::new(format!(
+            "{bundle_id} isn't running — launch it with `sweetpad app run --mac --no-logs`"
+        )));
+    }
+    Ok(MacShot {
+        pids,
+        name: process_name_of(executable),
+        bundle_id: Some(bundle_id.to_string()),
+    })
+}
+
+/// The executable's file name, for notes and the default screenshot name.
+fn process_name_of(executable: &Path) -> String {
+    executable
+        .file_name()
+        .map_or_else(|| "app".to_string(), |n| n.to_string_lossy().into_owned())
+}
+
+/// Capture a macOS app's window: TCC preflight, a short grace poll for the
+/// first window (a just-`open`ed app may not have mapped one yet), pick,
+/// `screencapture`.
+fn mac_screenshot(ctx: &Context, shot: &MacShot, args: &ScreenshotArgs) -> CommandResult {
+    let (window, count) = wait_for_window(ctx, shot, args.window)?;
+    let path = args
+        .out
+        .clone()
+        .unwrap_or_else(|| super::simulator::default_screenshot_path(&shot.name));
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    macwin::capture_window(window.number, &path)?;
+    if args.clipboard {
+        super::simulator::copy_png_to_clipboard(&path)?;
+        ctx.out.note("copied to the clipboard");
+    }
+    Ok(Rendered::data(ShotReport {
+        path: path.display().to_string(),
+        // In `--pid` mode the name *is* "pid N" — don't repeat it.
+        label: if shot.bundle_id.is_some() {
+            format!("{} (pid {})", shot.name, window.pid)
+        } else {
+            shot.name.clone()
+        },
+        udid: None,
+        pid: Some(window.pid),
+        window_id: Some(window.number),
+        bundle_id: shot.bundle_id.clone(),
+        windows: Some(count),
+    }))
+}
+
+/// The window-poll + permission half of [`mac_screenshot`], shared with the
+/// session's `s` key. Fails fast on a missing Screen Recording permission —
+/// without it `screencapture` silently produces the wallpaper — requesting
+/// the one-time OS prompt only on an interactive terminal.
+fn wait_for_window(
+    ctx: &Context,
+    shot: &MacShot,
+    index: Option<usize>,
+) -> Result<(macwin::WindowInfo, usize), CliError> {
+    if index == Some(0) {
+        return Err(CliError::new("--window is 1-based (1 is the frontmost)"));
+    }
+    if !macwin::has_screen_capture_access() {
+        if ctx.out.is_interactive() {
+            macwin::request_screen_capture_access();
+        }
+        return Err(macwin::permission_error());
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let windows = macwin::list_windows()?;
+        match macwin::pick_window(&windows, &shot.pids, index) {
+            Ok(picked) => return Ok(picked),
+            Err(reason) => {
+                if Instant::now() >= deadline {
+                    return Err(CliError::new(format!("{}: {reason}", shot.name)));
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+        }
+    }
+}
+
+/// The simulator side of `app screenshot`: the same `simctl io screenshot`
+/// capture `simulator screenshot` does, reached from the app's own verb so
+/// one command serves the loop on either destination.
+fn simulator_screenshot(ctx: &Context, udid: &str, args: &ScreenshotArgs) -> CommandResult {
+    let name = sim_name(udid).unwrap_or_else(|| "simulator".to_string());
+    let path = args
+        .out
+        .clone()
+        .unwrap_or_else(|| super::simulator::default_screenshot_path(&name));
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    simctl::screenshot(udid, &path.display().to_string())?;
+    if args.clipboard {
+        super::simulator::copy_png_to_clipboard(&path)?;
+        ctx.out.note("copied to the clipboard");
+    }
+    Ok(Rendered::data(ShotReport {
+        path: path.display().to_string(),
+        label: name,
+        udid: Some(udid.to_string()),
+        pid: None,
+        window_id: None,
+        bundle_id: None,
+        windows: None,
+    }))
 }
 
 /// Follow a simulator's log for the app inline until Ctrl-C — the non-interactive

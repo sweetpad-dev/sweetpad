@@ -99,7 +99,8 @@ sweetpad devices                  everything runnable, specifier-ready
 sweetpad status / open / doctor / self-update / help <topic>
 sweetpad simulator <boot|create|delete|clone|push|privacy|status-bar|
                     location|media-add|record|screenshot|…>   (alias: sim)
-sweetpad app <run|install|launch|debug|uninstall|logs|stop|open-url>
+sweetpad app <run|install|launch|debug|uninstall|logs|stop|open-url|
+              screenshot>              (screenshot: simulator or macOS window, §9h)
 sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
                                   are hidden aliases)
 sweetpad context <show|select|set|alias|remove>
@@ -1139,6 +1140,79 @@ a converter would have had to refuse; a script just doesn't touch them.
 caller), disk expansion in `membership list` (`ls` exists), and a classic
 `membership add` (creating file refs/build files by hand is the one flow
 Xcode still does better; `folder add` is the forward-looking answer).
+
+## 9h. v8 — `app screenshot` for native macOS apps
+
+`simulator screenshot` covers simulators; nothing covered a **running macOS
+app**, so an agent driving the headless loop (`app run --mac --no-logs`) had
+no way to visually verify the UI without leaving the CLI. `app screenshot`
+closes that loop, and `app stop` learns macOS so the whole cycle —
+launch → capture → stop — stays inside sweetpad:
+
+```
+sweetpad app screenshot [--out PATH] [--window N] [--pid N] [--clipboard]
+sweetpad app stop                      # now also terminates a macOS app
+```
+
+**Target resolution** follows the `logs`/`stop` ladder:
+
+1. `--pid N` captures that process's window directly — no project context,
+   no bundle resolution (for windows sweetpad didn't launch).
+2. Otherwise the **last-launched app** recorded for this project (unless
+   explicit targeting flags opt out): a `macos` record captures the app
+   window; a `simulator` record delegates to the `simctl io screenshot`
+   path (same capture `simulator screenshot` does — so one verb serves
+   the agent loop on either destination); a `device` record errors
+   (devicectl has no capture).
+3. Otherwise the resolved build target: `platform=macOS` destinations
+   resolve the built `.app` via the in-process build-settings resolver (no
+   build, no xcodebuild spawn), simulators delegate, devices error.
+
+**Window discovery** is the CGWindowList path: the app's pids come from
+matching `ps` command paths against the bundle's executable
+(`…/Contents/MacOS/<name>` — full-path matching, so same-named binaries
+elsewhere never collide), and `CGWindowListCopyWindowInfo` (on-screen,
+front-to-back) filtered to those pids at layer 0 with nonzero alpha yields
+the capturable windows. The default is the frontmost; `--window N` picks
+the Nth (1-based, front-to-back), and an out-of-range index errors listing
+what's there. A freshly-`open`ed app gets a short grace poll (~5s) for its
+first window instead of a racy instant failure; a pid with no on-screen
+window after that errors (minimized windows are off-screen by definition).
+
+**Capture** is `screencapture -o -x -l<windowid>` — the window is captured
+wherever it is on screen (no focus steal, no shadow, no sound). Preflight is
+`CGPreflightScreenCaptureAccess()`: without the Screen Recording permission
+`screencapture` silently produces wallpaper instead of failing, so the
+missing permission is a hard, actionable error naming System Settings →
+Privacy & Security → Screen Recording (and, on an interactive terminal
+only, `CGRequestScreenCaptureAccess()` triggers the one-time OS prompt; a
+headless run never pops UI). Window *enumeration* needs no permission —
+only capture does.
+
+`--out PATH` overrides the destination (default
+`./sweetpad-shots/<app>-<epoch>.png`, the `simulator screenshot`
+convention); `--clipboard` additionally copies the PNG to the pasteboard.
+`--json` emits `{path, pid, windowId, bundleId, windows}`. The interactive
+session's `s` key captures macOS targets through the same path (it was
+simulator-only).
+
+`app stop` on a macOS target terminates by pid — the recorded last launch's
+executable path (fast path, no resolution), else the resolved bundle's —
+with SIGTERM, and reports `{action: "terminated", pid}` (the `udid` field
+is null for mac). `install`/`launch`/`uninstall` stay simulator/device
+verbs: a macOS app is built in place and launched by `run`; there is
+nothing to install.
+
+The CoreGraphics/CoreFoundation FFI is a small hand-rolled block private to
+the `app` command (DOCS §3: no binding-crate dependency for four calls);
+everything above it — `ps` parsing, window filtering/pick — is pure and
+unit-tested.
+
+*Deliberately not built:* a `--screenshot PATH` auto-capture flag on
+`app run` (the agent loop composes explicit commands — `app run --mac
+--no-logs`, then `app screenshot`, then `app stop` — and owns its own
+timing, per §9g's explicit-primitives philosophy), and device screenshots
+(devicectl exposes no capture; the error says so).
 
 ## 10. Testing
 
