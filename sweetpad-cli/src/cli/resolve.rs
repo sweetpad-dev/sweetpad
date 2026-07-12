@@ -1058,10 +1058,10 @@ pub(crate) fn refresh_stale_destination(
 /// Returns a `TargetResolution` error when both are set.
 pub fn reject_on_destination_conflict(ctx: &Context) -> Result<(), CliError> {
     if ctx.targeting.on.is_some() && ctx.targeting.destination.is_some() {
-        return Err(CliError::new(
-            "--on and --destination are mutually exclusive; pass one",
-        )
-        .kind(ErrorKind::TargetResolution));
+        return Err(
+            CliError::new("--on and --destination are mutually exclusive; pass one")
+                .kind(ErrorKind::TargetResolution),
+        );
     }
     Ok(())
 }
@@ -1193,11 +1193,9 @@ impl SupportedPlatforms {
                 continue;
             };
             for target in &project.targets {
-                let Ok(layers) = sweetpad_lib::project::build_settings_layers(
-                    proj,
-                    &target.name,
-                    configuration,
-                ) else {
+                let Ok(layers) =
+                    sweetpad_lib::project::build_settings_layers(proj, &target.name, configuration)
+                else {
                     continue;
                 };
                 let supported = sweetpad_lib::project::last_unconditional_setting(
@@ -1661,7 +1659,7 @@ mod tests {
 
     #[test]
     fn destination_choices_float_and_mark_booted() {
-        let sims = vec![
+        let sims = [
             sim("A", "iPhone 15", false),
             sim("B", "iPhone 14", true),
             sim("C", "iPad Air", false),
@@ -1679,7 +1677,7 @@ mod tests {
 
     #[test]
     fn destination_choices_unmarked_when_none_booted() {
-        let sims = vec![sim("A", "iPhone 15", false), sim("B", "iPhone 14", false)];
+        let sims = [sim("A", "iPhone 15", false), sim("B", "iPhone 14", false)];
         let (_, labels) = destination_choices(&sims.iter().collect::<Vec<_>>(), None);
         // No booted simulator → no marker, no gutter.
         assert_eq!(labels, vec!["iPhone 15 (17.0)", "iPhone 14 (17.0)"]);
@@ -1689,7 +1687,7 @@ mod tests {
     fn destination_choices_disambiguate_identical_labels() {
         // Two simulators with the same name + OS version would collide; each row
         // must stay distinct so a pick maps back to exactly one simulator.
-        let sims = vec![
+        let sims = [
             sim("AAAA1111BBBB", "iPhone 15", false),
             sim("CCCC2222DDDD", "iPhone 15", false),
             sim("EEEE", "iPad Air", false),
@@ -1705,7 +1703,7 @@ mod tests {
 
     #[test]
     fn destination_choices_float_most_used_first() {
-        let sims = vec![
+        let sims = [
             sim("A", "iPhone 15", false),
             sim("B", "iPhone 14", false),
             sim("C", "iPad Air", false),

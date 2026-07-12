@@ -7,6 +7,13 @@
 //! the shared `.xcscheme` (built as a [`sweetpad_lib::xcscheme::Element`]), the inner
 //! `.xcworkspace`, a `.gitignore`, and the two Swift sources.
 //!
+//! Sources are wired through an Xcode 16 **synchronized root group**
+//! (`objectVersion = 77`, the fresh-template shape): everything under
+//! `<Name>/` belongs to the target implicitly, so adding a file to the app is
+//! creating it on disk — the pbxproj never changes as the project grows
+//! (CLI_DESIGN §9f). There are no per-file `PBXFileReference`/`PBXBuildFile`
+//! objects to maintain, and `sweetpad source` manages the folders/exceptions.
+//!
 //! No I/O happens here — the command layer ([`crate::cli::commands::project`])
 //! writes the returned files. Keeping generation pure makes it unit-testable
 //! without a Mac (CLI_DESIGN.md §10): the tests round-trip the generated
@@ -239,14 +246,10 @@ pub fn scaffold(spec: &ProjectSpec) -> Vec<ScaffoldFile> {
 
 const PBXPROJECT: &str = "000000000000000000000001";
 const MAIN_GROUP: &str = "000000000000000000000002";
-const APP_GROUP: &str = "000000000000000000000003";
+const APP_SYNC_ROOT: &str = "000000000000000000000003";
 const PRODUCTS_GROUP: &str = "000000000000000000000004";
 const APP_TARGET: &str = "000000000000000000000005";
 const APP_PRODUCT: &str = "000000000000000000000006";
-const APP_SWIFT_REF: &str = "000000000000000000000007";
-const CONTENT_VIEW_REF: &str = "000000000000000000000008";
-const APP_SWIFT_BUILD: &str = "000000000000000000000009";
-const CONTENT_VIEW_BUILD: &str = "00000000000000000000000A";
 const SOURCES_PHASE: &str = "00000000000000000000000B";
 const FRAMEWORKS_PHASE: &str = "00000000000000000000000C";
 const RESOURCES_PHASE: &str = "00000000000000000000000D";
@@ -279,23 +282,8 @@ fn project_graph(spec: &ProjectSpec) -> Value {
     let name = spec.name.clone();
     let mut objects = Dict::new();
 
-    // PBXBuildFile — one per compiled source.
-    objects.insert(
-        APP_SWIFT_BUILD.to_string(),
-        vdict([
-            ("isa", vstr("PBXBuildFile")),
-            ("fileRef", gid(APP_SWIFT_REF)),
-        ]),
-    );
-    objects.insert(
-        CONTENT_VIEW_BUILD.to_string(),
-        vdict([
-            ("isa", vstr("PBXBuildFile")),
-            ("fileRef", gid(CONTENT_VIEW_REF)),
-        ]),
-    );
-
-    // PBXFileReference — the product and the two sources.
+    // PBXFileReference — the product. Sources have no per-file objects: the
+    // synchronized root group below owns everything under `<Name>/`.
     objects.insert(
         APP_PRODUCT.to_string(),
         vdict([
@@ -306,21 +294,14 @@ fn project_graph(spec: &ProjectSpec) -> Value {
             ("sourceTree", vstr("BUILT_PRODUCTS_DIR")),
         ]),
     );
+
+    // PBXFileSystemSynchronizedRootGroup — the app folder; membership is
+    // implicit for every file under it (the fresh Xcode 16 template shape).
     objects.insert(
-        APP_SWIFT_REF.to_string(),
+        APP_SYNC_ROOT.to_string(),
         vdict([
-            ("isa", vstr("PBXFileReference")),
-            ("lastKnownFileType", vstr("sourcecode.swift")),
-            ("path", vstr(format!("{name}App.swift"))),
-            ("sourceTree", vstr("<group>")),
-        ]),
-    );
-    objects.insert(
-        CONTENT_VIEW_REF.to_string(),
-        vdict([
-            ("isa", vstr("PBXFileReference")),
-            ("lastKnownFileType", vstr("sourcecode.swift")),
-            ("path", vstr("ContentView.swift")),
+            ("isa", vstr("PBXFileSystemSynchronizedRootGroup")),
+            ("path", vstr(name.clone())),
             ("sourceTree", vstr("<group>")),
         ]),
     );
@@ -336,24 +317,12 @@ fn project_graph(spec: &ProjectSpec) -> Value {
         ]),
     );
 
-    // PBXGroup — main → (sources group, products group).
+    // PBXGroup — main → (synchronized app folder, products group).
     objects.insert(
         MAIN_GROUP.to_string(),
         vdict([
             ("isa", vstr("PBXGroup")),
-            ("children", varr([gid(APP_GROUP), gid(PRODUCTS_GROUP)])),
-            ("sourceTree", vstr("<group>")),
-        ]),
-    );
-    objects.insert(
-        APP_GROUP.to_string(),
-        vdict([
-            ("isa", vstr("PBXGroup")),
-            (
-                "children",
-                varr([gid(APP_SWIFT_REF), gid(CONTENT_VIEW_REF)]),
-            ),
-            ("path", vstr(name.clone())),
+            ("children", varr([gid(APP_SYNC_ROOT), gid(PRODUCTS_GROUP)])),
             ("sourceTree", vstr("<group>")),
         ]),
     );
@@ -367,7 +336,7 @@ fn project_graph(spec: &ProjectSpec) -> Value {
         ]),
     );
 
-    // PBXNativeTarget — the app.
+    // PBXNativeTarget — the app, its sources synchronized from the folder.
     objects.insert(
         APP_TARGET.to_string(),
         vdict([
@@ -383,6 +352,7 @@ fn project_graph(spec: &ProjectSpec) -> Value {
             ),
             ("buildRules", varr([])),
             ("dependencies", varr([])),
+            ("fileSystemSynchronizedGroups", varr([gid(APP_SYNC_ROOT)])),
             ("name", vstr(name.clone())),
             ("productName", vstr(name.clone())),
             ("productReference", gid(APP_PRODUCT)),
@@ -390,7 +360,8 @@ fn project_graph(spec: &ProjectSpec) -> Value {
         ]),
     );
 
-    // PBXProject — the root object.
+    // PBXProject — the root object (the objectVersion-77 template shape:
+    // no compatibilityVersion, preferredProjectObjectVersion instead).
     objects.insert(
         PBXPROJECT.to_string(),
         vdict([
@@ -399,19 +370,20 @@ fn project_graph(spec: &ProjectSpec) -> Value {
                 "attributes",
                 vdict([
                     ("BuildIndependentTargetsInParallel", vstr("YES")),
-                    ("LastUpgradeCheck", vstr("1500")),
+                    ("LastUpgradeCheck", vstr("1600")),
                     (
                         "TargetAttributes",
-                        vdict([(APP_TARGET, vdict([("CreatedOnToolsVersion", vstr("15.0"))]))]),
+                        vdict([(APP_TARGET, vdict([("CreatedOnToolsVersion", vstr("16.0"))]))]),
                     ),
                 ]),
             ),
             ("buildConfigurationList", gid(PROJ_CONFIG_LIST)),
-            ("compatibilityVersion", vstr("Xcode 14.0")),
             ("developmentRegion", vstr("en")),
             ("hasScannedForEncodings", vstr("0")),
             ("knownRegions", varr([vstr("en"), vstr("Base")])),
             ("mainGroup", gid(MAIN_GROUP)),
+            ("minimizedProjectReferenceProxies", vstr("1")),
+            ("preferredProjectObjectVersion", vstr("77")),
             ("productRefGroup", gid(PRODUCTS_GROUP)),
             ("projectDirPath", vstr("")),
             ("projectRoot", vstr("")),
@@ -430,16 +402,14 @@ fn project_graph(spec: &ProjectSpec) -> Value {
         ]),
     );
 
-    // PBXSourcesBuildPhase — the two Swift files.
+    // PBXSourcesBuildPhase — empty: membership comes from the synchronized
+    // folder, not per-file build entries.
     objects.insert(
         SOURCES_PHASE.to_string(),
         vdict([
             ("isa", vstr("PBXSourcesBuildPhase")),
             ("buildActionMask", vstr("2147483647")),
-            (
-                "files",
-                varr([gid(APP_SWIFT_BUILD), gid(CONTENT_VIEW_BUILD)]),
-            ),
+            ("files", varr([])),
             ("runOnlyForDeploymentPostprocessing", vstr("0")),
         ]),
     );
@@ -508,7 +478,7 @@ fn project_graph(spec: &ProjectSpec) -> Value {
         [
             ("archiveVersion".to_string(), vstr("1")),
             ("classes".to_string(), Value::Dict(Dict::new())),
-            ("objectVersion".to_string(), vstr("56")),
+            ("objectVersion".to_string(), vstr("77")),
             ("objects".to_string(), Value::Dict(objects)),
             ("rootObject".to_string(), gid(PBXPROJECT)),
         ]
@@ -734,7 +704,7 @@ fn scheme_element(spec: &ProjectSpec) -> Element {
 
     elem(
         "Scheme",
-        [("LastUpgradeVersion", "1500"), ("version", "1.7")],
+        [("LastUpgradeVersion", "1600"), ("version", "1.7")],
         [
             build_action,
             test_action,
@@ -909,6 +879,25 @@ mod tests {
         let refs = root.descendants_named("BuildableReference");
         assert!(!refs.is_empty());
         assert_eq!(refs[0].attr("BuildableName"), Some("MyApp.app"));
+    }
+
+    #[test]
+    fn sources_ride_a_synchronized_root_group() {
+        let files = scaffold(&spec());
+        let raw = pbxproj(&files);
+
+        // objectVersion-77 template shape: one synchronized root owns the app
+        // folder, and the target references it.
+        assert!(raw.contains("objectVersion = 77;"));
+        assert!(raw.contains("preferredProjectObjectVersion = 77;"));
+        assert!(raw.contains("PBXFileSystemSynchronizedRootGroup"));
+        assert!(raw.contains("fileSystemSynchronizedGroups"));
+
+        // No per-file bookkeeping: membership is implicit, so adding a source
+        // file to the app never touches the pbxproj.
+        assert!(!raw.contains("PBXBuildFile"));
+        assert!(!raw.contains("sourcecode.swift"));
+        assert!(!raw.contains("compatibilityVersion"));
     }
 
     #[test]

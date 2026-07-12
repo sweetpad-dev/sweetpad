@@ -537,7 +537,11 @@ fn compile_and_link(
     fallback_sdk: &str,
 ) -> Result<(), String> {
     run("", &single_file_command(tokens, source, object)?, "compile")?;
-    run("", &link_command(tokens, object, dylib, fallback_sdk)?, "link")?;
+    run(
+        "",
+        &link_command(tokens, object, dylib, fallback_sdk)?,
+        "link",
+    )?;
     Ok(())
 }
 

@@ -261,8 +261,7 @@ fn hot_settings(ctx: &Context, args: &RunArgs) -> (bool, Mode) {
         .ok()
         .map(|c| ctx.project_file(&c).run.clone())
         .unwrap_or_default();
-    let default_hot =
-        run_defaults.hot.unwrap_or(false) && !args.device && args.device_id.is_none();
+    let default_hot = run_defaults.hot.unwrap_or(false) && !args.device && args.device_id.is_none();
     let hot = !args.no_hot && (args.hot || default_hot);
     let config_mode = run_defaults.hot_recompiler.as_deref().and_then(|s| {
         let mode = Mode::parse(s);
@@ -1646,10 +1645,7 @@ impl HotApp<'_> {
                     .stderr(std::process::Stdio::piped());
                 let mut c = ctx.out.step("Launching app", || {
                     cmd.spawn().map_err(|e| {
-                        CliError::new(format!(
-                            "failed to run `{}`: {e}",
-                            app.executable.display()
-                        ))
+                        CliError::new(format!("failed to run `{}`: {e}", app.executable.display()))
                     })
                 })?;
                 render_console(&mut c, ctx.out.use_color(), filter);
@@ -1719,9 +1715,7 @@ impl HotApp<'_> {
                 "r rebuild+relaunch · s screenshot · o focus simulator · c clear · \
                  d detach · q quit"
             }
-            HotApp::Mac { .. } => {
-                "r rebuild+relaunch · o focus app · c clear · d detach · q quit"
-            }
+            HotApp::Mac { .. } => "r rebuild+relaunch · o focus app · c clear · d detach · q quit",
         }
     }
 }

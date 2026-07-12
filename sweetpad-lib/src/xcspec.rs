@@ -120,6 +120,12 @@ pub struct CompilerOption {
     /// `Type = StringList` / `PathList`: the value is whitespace-split and the
     /// encoding applied per element.
     pub is_list: bool,
+    /// `Values` — the enumeration domain an `Enumeration`-typed option
+    /// declares (e.g. `-Onone`/`-O`/`-Osize`). Empty for non-enumerations.
+    /// `settings set` warns when a value falls outside this domain (unioned
+    /// with the `CommandLineArgs` map keys, which admit legacy spellings like
+    /// `-Owholemodule`).
+    pub values: Vec<String>,
     /// `CommandLineFlag` — a single flag (Boolean: emitted when `YES`; scalar:
     /// followed by the value).
     pub flag: Option<String>,
@@ -649,6 +655,7 @@ fn parse_compiler_option(opt: &Value) -> Option<CompilerOption> {
     Some(CompilerOption {
         name: name.to_string(),
         is_list,
+        values: dict.get("Values").map(value_to_strings).unwrap_or_default(),
         flag: dict
             .get("CommandLineFlag")
             .and_then(Value::as_str)

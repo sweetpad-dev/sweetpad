@@ -534,7 +534,7 @@ pub fn requirement_dict(spec: &RequirementSpec) -> Value {
 /// any existing object. Seeded deterministically so re-running the same mutation
 /// produces the same id (and the remove-after-add round-trip is byte-exact);
 /// `salt` breaks a collision on the rare hash clash.
-fn fresh_guid(objects: &Dict, seed: &str, salt: u64) -> String {
+pub(crate) fn fresh_guid(objects: &Dict, seed: &str, salt: u64) -> String {
     use std::hash::{Hash, Hasher};
     let mut h1 = std::collections::hash_map::DefaultHasher::new();
     seed.hash(&mut h1);

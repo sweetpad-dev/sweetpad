@@ -103,6 +103,8 @@ sweetpad app <run|install|launch|debug|uninstall|logs|stop|open-url>
 sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
                                   are hidden aliases)
 sweetpad context <show|select|set|alias|remove>
+sweetpad settings <show [--raw]|set|unset>   resolved & stored build settings (§9f)
+sweetpad source <list|add|remove|exclude|include>   synchronized folders (§9f)
 ```
 
 Destination selection is `--on <ref>` (fuzzy name / `booted` / `mac` /
@@ -152,6 +154,10 @@ sweetpad project new <Name> [flags]
   `--force` (allow a non-empty target), `--json` (emits the created paths).
 - **Generated tree:** `<Name>.xcodeproj` (pbxproj + inner `.xcworkspace` + shared
   scheme), `<Name>/<Name>App.swift`, `<Name>/ContentView.swift`, `.gitignore`.
+- **Sources are a synchronized root group** (`objectVersion = 77`, the fresh
+  Xcode 16 template shape, §9f): the pbxproj carries no per-file objects, so
+  adding a source file is creating it on disk — the project file never changes
+  as the app grows. `sweetpad source` manages folders and exceptions.
 - **Names** must be plain identifiers (letters/digits/underscore) so they're safe
   as a Swift type, target, and product name in one.
 
@@ -992,10 +998,13 @@ sweetpad settings show --raw [--target T]             the stored pbxproj layer
 
 - **`project new` scaffolds a `PBXFileSystemSynchronizedRootGroup`** for
   `<Name>/` — no per-file `PBXFileReference`/`PBXBuildFile` objects,
-  `objectVersion = 77` (Xcode 16+ floor). Adding a file to the app is `touch`;
-  the pbxproj never changes as the project grows. The classic per-file scaffold
-  shape is deleted, not flagged — one graph shape, one test suite. (Corpus
-  already round-trips objectVersion-77 sync-group projects, e.g. ice-cubes.)
+  `objectVersion = 77` (Xcode 16+ floor, the fresh-template shape:
+  `preferredProjectObjectVersion`, no `compatibilityVersion`). Adding a file to
+  the app is `touch`; the pbxproj never changes as the project grows. The
+  classic per-file scaffold shape is deleted, not flagged — one graph shape,
+  one test suite. (Corpus already round-trips both sync-group generations:
+  converted objectVersion-70 projects like ice-cubes and fresh
+  objectVersion-77 templates.)
 - **`source`** — the sync-group-era replacement for XcodeGen's `sources:` list:
 
   ```

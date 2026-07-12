@@ -1500,6 +1500,7 @@ mod tests {
         let opt_level = CompilerOption {
             name: "SWIFT_OPTIMIZATION_LEVEL".into(),
             is_list: false,
+            values: Vec::new(),
             flag: None,
             prefix_flag: None,
             args: Some(CliArgs::ByValue {
@@ -1516,6 +1517,7 @@ mod tests {
         let conds = CompilerOption {
             name: "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
             is_list: true,
+            values: Vec::new(),
             flag: None,
             prefix_flag: None,
             args: Some(CliArgs::List(vec!["-D$(value)".into()])),
@@ -1584,6 +1586,7 @@ mod tests {
         let ubsan_integer = CompilerOption {
             name: "CLANG_UNDEFINED_BEHAVIOR_SANITIZER_INTEGER".into(),
             is_list: false,
+            values: Vec::new(),
             flag: None,
             prefix_flag: None,
             args: Some(CliArgs::ByValue {

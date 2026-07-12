@@ -31,6 +31,7 @@ pub mod inject;
 pub mod merge;
 pub mod oslog;
 pub mod output;
+pub mod pbxedit;
 pub mod process;
 pub mod progress;
 pub mod pymobiledevice3;
@@ -508,12 +509,15 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::dependency::Action,
     },
-    /// Show resolved build settings.
+    /// Show, set, and unset build settings.
     Settings {
-        #[command(flatten)]
-        target: BuildTargetArgs,
         #[command(subcommand)]
         action: commands::settings::Action,
+    },
+    /// Manage a target's synchronized source folders and exceptions.
+    Source {
+        #[command(subcommand)]
+        action: commands::source::Action,
     },
     /// Manage iOS simulators.
     #[command(visible_alias = "sim")]
@@ -825,10 +829,8 @@ pub fn run(argv: &[String]) -> ExitCode {
             ctx.targeting = target.into();
             commands::dependency::run(&mut ctx, &action)
         }
-        Resource::Settings { target, action } => {
-            ctx.targeting = target.into();
-            commands::settings::run(&mut ctx, &action)
-        }
+        Resource::Settings { action } => commands::settings::run(&mut ctx, &action),
+        Resource::Source { action } => commands::source::run(&mut ctx, &action),
         Resource::Simulator { action } => commands::simulator::run(&mut ctx, &action),
         // `build`/`test` carry their flags as resource-level globals; the bare
         // `start`/`run` tokens are optional markers, so both spellings land here.

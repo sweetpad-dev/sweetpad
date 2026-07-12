@@ -323,7 +323,10 @@ fn write_files(
                 ));
                 written.push(full);
             } else {
-                out.note(&format!("kept the existing {} (not overwritten)", full.display()));
+                out.note(&format!(
+                    "kept the existing {} (not overwritten)",
+                    full.display()
+                ));
             }
             continue;
         }

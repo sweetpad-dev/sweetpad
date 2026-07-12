@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 
 use crate::cli::output::Output;
+use crate::cli::pbxedit;
 use crate::cli::resolve::{self, Container};
 use crate::cli::{
     CliError, CliResult, CommandResult, Context, ErrorKind, Render, Rendered, buildlog, process,
@@ -401,14 +402,14 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
     let backup = MutationBackup::create(&pbxproj_path, &pristine)?;
 
     // 1. Add the package reference (only) and write it, so resolution can fetch.
-    let mut root = parse_owned(&xcodeproj)?;
+    let mut root = pbxedit::parse_owned(&xcodeproj)?;
     let ref_guid = if let Some(spec) = &spec {
         spm_pbxproj::add_remote_dependency(&mut root, &args.url, spec).map_err(CliError::new)?
     } else {
         let rel = local_relative_path(&xcodeproj, &args.url)?;
         spm_pbxproj::add_local_dependency(&mut root, &rel).map_err(CliError::new)?
     };
-    write_pbxproj(&xcodeproj, &root)?;
+    pbxedit::write_pbxproj(&xcodeproj, &root)?;
     ctx.out.note(&format!("added package {}", args.url));
 
     let linked = (|| -> Result<(Vec<String>, Vec<String>), CliError> {
@@ -423,7 +424,7 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
                     .map_err(CliError::new)?;
             }
         }
-        write_pbxproj(&xcodeproj, &root)?;
+        pbxedit::write_pbxproj(&xcodeproj, &root)?;
 
         // 4. Ensure Package.resolved is current. Discovering a remote package's
         //    products already resolved (and wrote the lockfile), so only resolve
@@ -445,7 +446,7 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
             // Report the rollback honestly — claiming success while the
             // dangling reference remains would hide exactly the state this
             // rollback exists to prevent.
-            if write_atomic(&pbxproj_path, &pristine).is_ok() {
+            if pbxedit::write_atomic(&pbxproj_path, &pristine).is_ok() {
                 ctx.out
                     .note("rolled the package reference back out of the project (nothing linked)");
             } else {
@@ -503,7 +504,12 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
     } else {
         Vec::new()
     };
-    swiftpm::add_dependency(container, &args.url, &requirement, ctx.out.is_json() || ctx.out.is_ndjson())?;
+    swiftpm::add_dependency(
+        container,
+        &args.url,
+        &requirement,
+        ctx.out.is_json() || ctx.out.is_ndjson(),
+    )?;
     ctx.out.note(&format!("added package {}", args.url));
 
     let linked = (|| -> Result<(Vec<String>, Vec<String>), CliError> {
@@ -536,7 +542,13 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
 
         for product in &products {
             for target in &targets {
-                swiftpm::add_target_dependency(container, product, target, &package_name, ctx.out.is_json() || ctx.out.is_ndjson())?;
+                swiftpm::add_target_dependency(
+                    container,
+                    product,
+                    target,
+                    &package_name,
+                    ctx.out.is_json() || ctx.out.is_ndjson(),
+                )?;
             }
         }
         Ok((products, targets))
@@ -548,7 +560,7 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
             Ok(())
         }
         Err(e) => {
-            let _ = write_atomic(&manifest_path, &pristine);
+            let _ = pbxedit::write_atomic(&manifest_path, &pristine);
             restore_or_remove_lockfile(container, pristine_lockfile);
             ctx.out
                 .note("rolled the dependency back out of Package.swift (nothing linked)");
@@ -676,7 +688,7 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CliResult {
 fn remove_from_xcode(ctx: &mut Context, container: &Container, args: &RemoveArgs) -> CliResult {
     let xcodeproj = pick_xcodeproj(ctx, container, Some(&args.package))?;
     heal_interrupted_mutation(&xcodeproj.join("project.pbxproj"), &ctx.out);
-    let mut root = parse_owned(&xcodeproj)?;
+    let mut root = pbxedit::parse_owned(&xcodeproj)?;
     let ref_guid = find_package_or_hint(&root, container, &args.package, &xcodeproj)?;
 
     if args.product.is_none() && args.target.is_none() {
@@ -684,7 +696,7 @@ fn remove_from_xcode(ctx: &mut Context, container: &Container, args: &RemoveArgs
         // pass the local package's declared product names to clean those up too.
         let orphans = local_product_names(&root, &ref_guid, &xcodeproj);
         spm_pbxproj::remove_package(&mut root, &ref_guid, &orphans).map_err(CliError::new)?;
-        write_pbxproj(&xcodeproj, &root)?;
+        pbxedit::write_pbxproj(&xcodeproj, &root)?;
         remove_pin(container, &args.package);
         report_removed(ctx, &args.package, None);
     } else {
@@ -700,7 +712,7 @@ fn remove_from_xcode(ctx: &mut Context, container: &Container, args: &RemoveArgs
                 "no matching product/target link found to unlink",
             ));
         }
-        write_pbxproj(&xcodeproj, &root)?;
+        pbxedit::write_pbxproj(&xcodeproj, &root)?;
         report_removed(ctx, &args.package, Some(&unlinked));
     }
     Ok(())
@@ -731,7 +743,7 @@ fn remove_pin(container: &Container, query: &str) {
     if let Some(pins) = pins {
         pins.retain(|p| pin_identity(p).map(|i| i.to_ascii_lowercase()) != Some(id.clone()));
     }
-    let _ = write_atomic(&path, &sweetpad_lib::spm_resolved::serialize(&json));
+    let _ = pbxedit::write_atomic(&path, &sweetpad_lib::spm_resolved::serialize(&json));
 }
 
 /// A pin's identity: the `identity` key (v2/v3), or derived from
@@ -832,10 +844,10 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
     heal_interrupted_mutation(&pbxproj_path, &ctx.out);
     let pristine = std::fs::read_to_string(&pbxproj_path)
         .map_err(|e| CliError::new(format!("failed to read {}: {e}", pbxproj_path.display())))?;
-    let mut root = parse_owned(&xcodeproj)?;
+    let mut root = pbxedit::parse_owned(&xcodeproj)?;
     let ref_guid = find_package_or_hint(&root, &container, package, &xcodeproj)?;
     spm_pbxproj::set_requirement(&mut root, &ref_guid, &spec).map_err(CliError::new)?;
-    write_pbxproj(&xcodeproj, &root)?;
+    pbxedit::write_pbxproj(&xcodeproj, &root)?;
 
     if !args.no_resolve {
         // Drop the stale pin so resolution re-pins to the new requirement
@@ -846,7 +858,7 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
         remove_pin(&container, package);
         if let Err(e) = resolve_packages(&container, None, &ctx.out, false) {
             restore_lockfile(ctx, &container, snapshot);
-            let _ = write_atomic(&pbxproj_path, &pristine);
+            let _ = pbxedit::write_atomic(&pbxproj_path, &pristine);
             ctx.out
                 .note("rolled the requirement change back (the resolve failed)");
             return Err(e);
@@ -885,7 +897,7 @@ fn update_resolve(ctx: &mut Context, container: &Container, package: Option<&str
         // "updated <typo>" after a no-op resolve.
         if let Some(p) = package {
             let xcodeproj = pick_xcodeproj(ctx, container, Some(p))?;
-            let root = parse_owned(&xcodeproj)?;
+            let root = pbxedit::parse_owned(&xcodeproj)?;
             find_package_or_hint(&root, container, p, &xcodeproj)?;
         }
         // xcodebuild has no "update"; drop the pin(s) so the resolve re-pins to
@@ -1203,39 +1215,6 @@ fn member_declares(xcodeproj: &Path, query: &str) -> bool {
         .is_some_and(|root| spm_pbxproj::find_package(&root, query).is_some())
 }
 
-fn parse_owned(xcodeproj: &Path) -> Result<Value, CliError> {
-    let path = xcodeproj.join("project.pbxproj");
-    sweetpad_lib::pbxproj::parse_file(&path)
-        .map_err(|e| CliError::new(format!("failed to parse {}: {e}", path.display())))
-}
-
-/// Write `text` to `path` atomically (same-directory temp + rename), so a
-/// crash, signal, or full disk mid-write can't leave a truncated project
-/// file behind.
-fn write_atomic(path: &Path, text: &str) -> CliResult {
-    let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
-    tmp_name.push(format!(".tmp.{}", std::process::id()));
-    let tmp = path.with_file_name(tmp_name);
-    if let Err(e) = std::fs::write(&tmp, text) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(CliError::new(format!(
-            "failed to write {}: {e}",
-            path.display()
-        )));
-    }
-    std::fs::rename(&tmp, path)
-        .map_err(|e| CliError::new(format!("failed to write {}: {e}", path.display())))
-}
-
-fn write_pbxproj(xcodeproj: &Path, root: &Value) -> CliResult {
-    let name = xcodeproj
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("Project");
-    let text = sweetpad_lib::pbxproj_writer::serialize(root, name);
-    write_atomic(&xcodeproj.join("project.pbxproj"), &text)
-}
-
 /// A crash-safe pristine copy of a file about to be mutated in multiple steps.
 /// The in-memory rollback covers every *returned* error, but a signal between
 /// the first write and the rollback `_exit`s past it — the sibling backup
@@ -1274,7 +1253,7 @@ fn heal_interrupted_mutation(target: &Path, out: &Output) {
         return;
     }
     match std::fs::read_to_string(&backup) {
-        Ok(text) if write_atomic(target, &text).is_ok() => {
+        Ok(text) if pbxedit::write_atomic(target, &text).is_ok() => {
             let _ = std::fs::remove_file(&backup);
             out.warn(&format!(
                 "restored {} (an earlier dependency edit was interrupted mid-run)",

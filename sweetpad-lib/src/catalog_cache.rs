@@ -43,7 +43,7 @@ const MAGIC: &[u8; 4] = b"SPC1";
 /// Bump whenever the serialized layout (or the [`Catalog`] shape) changes, so a
 /// sweetpad upgrade transparently rebuilds disk caches and the embedded blob is
 /// rejected if stale.
-const FORMAT_VERSION: u8 = 7;
+const FORMAT_VERSION: u8 = 8;
 
 #[derive(Debug)]
 pub enum Error {
@@ -328,6 +328,7 @@ fn write_compiler_options(out: &mut Vec<u8>, opts: &[CompilerOption]) {
     for o in opts {
         write_str(out, &o.name);
         out.push(u8::from(o.is_list));
+        write_str_list(out, &o.values);
         write_opt_str(out, o.flag.as_deref());
         write_opt_str(out, o.prefix_flag.as_deref());
         match &o.args {
@@ -360,6 +361,7 @@ fn read_compiler_options(r: &mut Reader) -> Result<Vec<CompilerOption>, Error> {
     for _ in 0..n {
         let name = r.str()?;
         let is_list = r.u8()? != 0;
+        let values = read_str_list(r)?;
         let flag = r.opt_str()?;
         let prefix_flag = r.opt_str()?;
         let args = match r.u8()? {
@@ -382,6 +384,7 @@ fn read_compiler_options(r: &mut Reader) -> Result<Vec<CompilerOption>, Error> {
         v.push(CompilerOption {
             name,
             is_list,
+            values,
             flag,
             prefix_flag,
             args,
@@ -631,6 +634,7 @@ mod tests {
                 CompilerOption {
                     name: "SWIFT_OPTIMIZATION_LEVEL".into(),
                     is_list: false,
+                    values: Vec::new(),
                     flag: None,
                     prefix_flag: None,
                     args: Some(CliArgs::ByValue {
@@ -647,6 +651,7 @@ mod tests {
                 CompilerOption {
                     name: "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
                     is_list: true,
+                    values: Vec::new(),
                     flag: None,
                     prefix_flag: None,
                     args: Some(CliArgs::List(vec!["-D$(value)".into()])),
@@ -657,6 +662,7 @@ mod tests {
                 CompilerOption {
                     name: "SWIFT_OBJC_BRIDGING_HEADER".into(),
                     is_list: false,
+                    values: Vec::new(),
                     flag: Some("-import-objc-header".into()),
                     prefix_flag: None,
                     args: None,

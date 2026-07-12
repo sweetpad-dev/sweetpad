@@ -3765,7 +3765,12 @@ fn parent_group_dir(objects: &Dict, child_id: &str, project_dir: &Path, depth: u
 
 /// The on-disk directory of a `PBXGroup`, resolving its `path` up the parent
 /// chain (each `<group>` ancestor contributes its `path`).
-fn group_dir(objects: &Dict, group_id: &str, project_dir: &Path, depth: usize) -> PathBuf {
+pub(crate) fn group_dir(
+    objects: &Dict,
+    group_id: &str,
+    project_dir: &Path,
+    depth: usize,
+) -> PathBuf {
     if depth > 64 {
         return project_dir.to_path_buf();
     }

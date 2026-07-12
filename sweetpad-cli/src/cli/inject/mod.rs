@@ -266,7 +266,8 @@ mod tests {
         let adhoc_hardened =
             "CodeDirectory v=20400 size=768 flags=0x10002(adhoc,runtime) hashes=13+7\n";
         let plain = "CodeDirectory v=20400 size=768 flags=0x2(adhoc) hashes=13+7\n";
-        let linker = "CodeDirectory v=20400 size=768 flags=0x20002(adhoc,linker-signed) hashes=13+7\n";
+        let linker =
+            "CodeDirectory v=20400 size=768 flags=0x20002(adhoc,linker-signed) hashes=13+7\n";
         assert!(hardened_runtime_flagged(hardened));
         assert!(hardened_runtime_flagged(adhoc_hardened));
         assert!(!hardened_runtime_flagged(plain));
@@ -283,8 +284,14 @@ mod tests {
     <false/>
 </dict></plist>"#;
         assert!(entitlement_true(plist, "com.apple.security.app-sandbox"));
-        assert!(!entitlement_true(plist, "com.apple.security.network.client"));
-        assert!(!entitlement_true(plist, "com.apple.security.get-task-allow"));
+        assert!(!entitlement_true(
+            plist,
+            "com.apple.security.network.client"
+        ));
+        assert!(!entitlement_true(
+            plist,
+            "com.apple.security.get-task-allow"
+        ));
         assert!(!entitlement_true("", "com.apple.security.app-sandbox"));
     }
 

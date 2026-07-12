@@ -68,6 +68,7 @@ pub mod scheme;
 pub mod self_update;
 pub mod settings;
 pub mod simulator;
+pub mod source;
 pub mod spm;
 pub mod status;
 pub mod test;

@@ -719,7 +719,11 @@ mod tests {
         assert!(args.contains(&"EMIT_FRONTEND_COMMAND_LINES=YES".to_string()));
         // The injectability settings are macOS-only: a simulator app needs
         // neither (the sim enforces no hardened runtime / sandbox on dlopen).
-        assert!(!args.iter().any(|a| a.starts_with("ENABLE_HARDENED_RUNTIME")));
+        assert!(
+            !args
+                .iter()
+                .any(|a| a.starts_with("ENABLE_HARDENED_RUNTIME"))
+        );
         assert!(!args.iter().any(|a| a.starts_with("ENABLE_APP_SANDBOX")));
     }
 
