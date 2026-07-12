@@ -184,6 +184,66 @@ test -d "$GEN_HERE/HereApp.xcodeproj" || fail "--current-dir did not scaffold in
 ok "project new --current-dir (in-place, name from directory)"
 
 # ---------------------------------------------------------------------------
+section "pbxproj plumbing (stored settings, folders, membership; §9f/§9g)"
+# Runtime truth for the mutation surface, on the generated macOS app: the
+# synchronized folder really is the membership (a file appears by existing),
+# the stored-settings edits land, the Info.plist auto-exception keeps a
+# custom plist out of Copy Bundle Resources, and an excluded file really
+# leaves the build — all proven by real xcodebuild builds.
+
+# Implicit membership: a new file on disk builds with zero pbxproj edits.
+cat > "$GEN_DIR/MacGen/MacGen/Extra.swift" <<'SWIFT'
+func extraGreeting() -> String { "from a file the pbxproj never saw" }
+SWIFT
+"$BIN" build start --project "$MAC_PROJ" --scheme MacGen --destination "platform=macOS"
+ok "synchronized folder picks up a new file (no pbxproj change)"
+
+# Stored settings: set at target scope, read back the stored layer, rebuild.
+"$BIN" pbxproj settings set ENABLE_HARDENED_RUNTIME=YES --target MacGen --project "$MAC_PROJ"
+out=$("$BIN" pbxproj settings show --target MacGen --key ENABLE_HARDENED_RUNTIME --project "$MAC_PROJ")
+contains "$out" "YES"
+ok "pbxproj settings set + show (stored layer)"
+
+# Custom Info.plist inside the folder: the auto-exception must keep it out of
+# resources, or the build breaks (verified failure mode, CLI_DESIGN §9f).
+mkdir -p "$GEN_DIR/MacGen/MacGen/Resources"
+cat > "$GEN_DIR/MacGen/MacGen/Resources/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+	<key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key><string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+</dict>
+</plist>
+PLIST
+"$BIN" pbxproj settings set GENERATE_INFOPLIST_FILE=NO INFOPLIST_FILE=MacGen/Resources/Info.plist \
+  --target MacGen --project "$MAC_PROJ"
+out=$("$BIN" pbxproj folder list --project "$MAC_PROJ" --json)
+assert_json "$out" "d['targets'][0]['folders'][0]['exceptions']" "['Resources/Info.plist']"
+"$BIN" build start --project "$MAC_PROJ" --scheme MacGen --destination "platform=macOS"
+ok "INFOPLIST_FILE auto-exception (custom plist builds clean)"
+
+# Membership exclusion: a broken file in the folder builds only while excluded.
+echo "this is not swift {{{" > "$GEN_DIR/MacGen/MacGen/Broken.swift"
+"$BIN" pbxproj membership exclude MacGen/Broken.swift --project "$MAC_PROJ"
+"$BIN" build start --project "$MAC_PROJ" --scheme MacGen --destination "platform=macOS"
+ok "pbxproj membership exclude (broken file stays out of the build)"
+rm "$GEN_DIR/MacGen/MacGen/Broken.swift"
+"$BIN" pbxproj membership include MacGen/Broken.swift --project "$MAC_PROJ" >/dev/null
+ok "pbxproj membership include (exception dropped)"
+
+# Classic membership is visible read-only on the committed fixture app.
+out=$("$BIN" pbxproj membership list --project "$APP" --target SweetpadCIApp --json)
+assert_json "$out" "len(d['targets'][0]['explicit'])>=1" "True"
+ok "pbxproj membership list (classic entries on the fixture)"
+
+# ---------------------------------------------------------------------------
 section "test (iOS)"
 out=$("$BIN" test run --project "$APP" --scheme SweetpadCIApp --destination "$DEST" --json)
 assert_json "$out" "d['passed']" "True"
