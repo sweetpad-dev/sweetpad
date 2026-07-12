@@ -1202,10 +1202,24 @@ Tuist). Erroring (not warning) is deliberate: these commands are run by
 scripts and agents that read exit codes, not stderr prose — a warning above
 a success is exactly how the footgun fired in the first place.
 
+**Decision: the guard is the whole generator story (for now).** The CLI
+neither *regenerates* a project from an XcodeGen/Tuist spec (no
+`project generate` passthrough — run `xcodegen`/`tuist generate` yourself)
+nor *edits* those spec files on the user's behalf (no writing a
+`settings set` through into `project.yml`). Detecting the spec and refusing
+to fight it is the full extent of generator awareness. Rationale: the CLI's
+own primitives (§3a scaffolding, §9f/§9g plumbing) make the `.xcodeproj`
+itself a perfectly good source of truth, so the forward-looking answer to
+"my project is generated" is migrating off the generator (the §9g recipe),
+not deepening the CLI's entanglement with third-party spec formats and
+their release cycles. Can be revisited if real demand shows up.
+
 *Deliberately not built:* `project convert` (the recipe above, owned by the
-caller), disk expansion in `membership list` (`ls` exists), and a classic
+caller), disk expansion in `membership list` (`ls` exists), a classic
 `membership add` (creating file refs/build files by hand is the one flow
-Xcode still does better; `folder add` is the forward-looking answer).
+Xcode still does better; `folder add` is the forward-looking answer), and —
+per the decision above — `project generate` / spec-file editing for
+XcodeGen/Tuist projects.
 
 ## 9h. v8 — `app screenshot` for native macOS apps
 
