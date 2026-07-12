@@ -29,15 +29,15 @@ pub struct StartArgs {
     #[arg(long, global = true)]
     pub show_command: bool,
 
-    /// Extra arguments passed to xcodebuild verbatim (after `--`), e.g.
-    /// `sweetpad build -- -allowProvisioningUpdates KEY=VALUE`.
+    /// Extra arguments passed to xcodebuild verbatim (after '--'), e.g.
+    /// 'sweetpad build -- -allowProvisioningUpdates KEY=VALUE'.
     #[arg(last = true, value_name = "XCODEBUILD_ARGS", global = true)]
     pub passthrough: Vec<String>,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Compile the resolved scheme (the default action: `sweetpad build`).
+    /// Compile the resolved scheme (the default action: 'sweetpad build').
     Start,
     /// Show the errors/warnings from the last build, without rebuilding.
     Diagnostics,

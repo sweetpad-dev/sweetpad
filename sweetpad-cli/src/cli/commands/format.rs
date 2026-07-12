@@ -23,7 +23,7 @@ pub struct FormatArgs {
     /// Files or directories to format; defaults to the project directory.
     pub paths: Vec<PathBuf>,
 
-    /// Which formatter to use (default: `[format] tool` in sweetpad.toml,
+    /// Which formatter to use (default: '[format] tool' in sweetpad.toml,
     /// else swift-format).
     #[arg(long, value_enum, global = true)]
     pub tool: Option<Tool>,
@@ -36,7 +36,7 @@ pub struct FormatArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Format the given files (the default action: `sweetpad format`).
+    /// Format the given files (the default action: 'sweetpad format').
     Run {
         /// Files or directories to format; defaults to the project directory.
         paths: Vec<PathBuf>,

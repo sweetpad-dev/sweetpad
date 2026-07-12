@@ -26,9 +26,9 @@ pub mod settings;
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Semantically merge conflicted `.pbxproj` files using git's merge state.
+    /// Semantically merge conflicted '.pbxproj' files using git's merge state.
     Resolve {
-        /// Files to resolve. Defaults to every conflicted `.pbxproj` in the
+        /// Files to resolve. Defaults to every conflicted '.pbxproj' in the
         /// repository.
         paths: Vec<PathBuf>,
         /// Re-merge from HEAD/MERGE_HEAD even when git already auto-merged the
@@ -37,7 +37,7 @@ pub enum Action {
         force: bool,
     },
     /// The stored settings layer: show, set, and unset raw
-    /// `buildSettings` entries.
+    /// 'buildSettings' entries.
     Settings {
         #[command(subcommand)]
         action: settings::Action,

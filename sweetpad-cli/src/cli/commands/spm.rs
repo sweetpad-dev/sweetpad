@@ -16,9 +16,9 @@ use crate::cli::{CommandResult, Context};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Semantically merge conflicted `Package.resolved` files.
+    /// Semantically merge conflicted 'Package.resolved' files.
     Resolve {
-        /// Files to resolve. Defaults to every conflicted `Package.resolved`
+        /// Files to resolve. Defaults to every conflicted 'Package.resolved'
         /// in the repository.
         paths: Vec<PathBuf>,
         /// Re-merge from HEAD/MERGE_HEAD even when git already auto-merged the

@@ -41,7 +41,7 @@ pub enum Action {
     /// with one, rewrites the package's requirement (bump, pin, or downgrade)
     /// and then re-resolves.
     Update(UpdateArgs),
-    /// Resolve dependencies into `Package.resolved`.
+    /// Resolve dependencies into 'Package.resolved'.
     Resolve,
 }
 
@@ -63,7 +63,7 @@ pub struct UpdateArgs {
 /// Flags for `dependency add`.
 #[derive(Debug, Args)]
 pub struct AddArgs {
-    /// Remote git URL, or a local directory path containing `Package.swift`.
+    /// Remote git URL, or a local directory path containing 'Package.swift'.
     pub url: String,
 
     #[command(flatten)]
@@ -79,7 +79,7 @@ pub struct AddArgs {
     #[arg(long = "target")]
     pub targets: Vec<String>,
 
-    /// Skip the resolve that updates `Package.resolved` after mutating.
+    /// Skip the resolve that updates 'Package.resolved' after mutating.
     #[arg(long)]
     pub no_resolve: bool,
 }
@@ -91,27 +91,27 @@ pub struct AddArgs {
 /// group that would also force one on a local add.
 #[derive(Debug, Args)]
 pub struct RequirementArgs {
-    /// This version up to the next major (SwiftPM `from: "x.y.z"`).
+    /// This version up to the next major (SwiftPM 'from: "x.y.z"').
     #[arg(long, value_name = "VERSION")]
     pub from: Option<String>,
 
-    /// Exactly this version (SwiftPM `exact: "x.y.z"`).
+    /// Exactly this version (SwiftPM 'exact: "x.y.z"').
     #[arg(long, value_name = "VERSION")]
     pub exact: Option<String>,
 
-    /// This version up to the next minor (SwiftPM `.upToNextMinor(from:)`).
+    /// This version up to the next minor (SwiftPM '.upToNextMinor(from:)').
     #[arg(long = "up-to-next-minor-from", value_name = "VERSION")]
     pub up_to_next_minor_from: Option<String>,
 
-    /// Follow a branch (SwiftPM `branch: "name"`).
+    /// Follow a branch (SwiftPM 'branch: "name"').
     #[arg(long, value_name = "BRANCH")]
     pub branch: Option<String>,
 
-    /// Pin to a commit (SwiftPM `revision: "sha"`).
+    /// Pin to a commit (SwiftPM 'revision: "sha"').
     #[arg(long, value_name = "SHA")]
     pub revision: Option<String>,
 
-    /// Upper bound of a half-open `from ..< to` range; requires `--from`.
+    /// Upper bound of a half-open 'from ..< to' range; requires '--from'.
     #[arg(long, value_name = "VERSION", requires = "from")]
     pub to: Option<String>,
 }

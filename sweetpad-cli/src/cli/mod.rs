@@ -58,8 +58,7 @@ pub use render::{Render, Rendered};
     version,
     about = "Build, run, and explore Xcode projects from the terminal",
     long_about = "sweetpad — xcodebuild for humans.\n\nA standalone, headless \
-        CLI for Xcode projects. Use `sweetpad vscode` to control the VS Code \
-        extension instead.",
+        CLI for Xcode projects.",
     disable_help_subcommand = true
 )]
 pub struct Cli {
@@ -80,37 +79,37 @@ pub struct Cli {
 #[command(next_help_heading = "Global")]
 #[allow(clippy::struct_excessive_bools)] // independent CLI toggles, not a state machine
 pub struct GlobalArgs {
-    /// Run as if started in DIR (chdir before anything else), like `git -C`.
+    /// Run as if started in DIR (chdir before anything else), like 'git -C'.
     #[arg(short = 'C', value_name = "DIR", global = true)]
     pub chdir: Option<std::path::PathBuf>,
 
     /// Xcode to use: sets DEVELOPER_DIR for every spawned tool (e.g.
     /// /Applications/Xcode-16.4.app/Contents/Developer). A project can pin one
-    /// via `developer_dir` in sweetpad.toml.
+    /// via 'developer_dir' in sweetpad.toml.
     #[arg(long, value_name = "DIR", global = true, env = "DEVELOPER_DIR")]
     pub developer_dir: Option<std::path::PathBuf>,
 
-    /// Output format. `json` is the one-shot envelope; `ndjson` streams one
+    /// Output format. 'json' is the one-shot envelope; 'ndjson' streams one
     /// JSON event per line from the long-running verbs (build, test, logs) and
-    /// ends with a `{"event":"result", …}` line. Wins over `--json`.
+    /// ends with a '{"event":"result", …}' line. Wins over '--json'.
     #[arg(short = 'o', long = "output", global = true, value_enum)]
     pub output: Option<OutputMode>,
 
     /// Emit machine-readable JSON instead of human output (alias for
-    /// `-o json`).
+    /// '-o json').
     #[arg(long, global = true)]
     pub json: bool,
 
     /// Assume no interactive terminal: never prompt or animate a spinner, turn a
     /// missing scheme/destination into an error instead of a picker, and run
-    /// `app run` as a plain follow rather than the rebuild session. Also honored
-    /// via the `SWEETPAD_NONINTERACTIVE` env var.
+    /// 'app run' as a plain follow rather than the rebuild session. Also honored
+    /// via the 'SWEETPAD_NONINTERACTIVE' env var.
     #[arg(long, global = true)]
     pub non_interactive: bool,
 
-    /// Disable colored output (also honored via the `NO_COLOR` env var and when
-    /// stdout is not a TTY). `CLICOLOR_FORCE`/`FORCE_COLOR` force color back on
-    /// when piped; an explicit `--no-color`/`NO_COLOR` still wins.
+    /// Disable colored output (also honored via the 'NO_COLOR' env var and when
+    /// stdout is not a TTY). 'CLICOLOR_FORCE'/'FORCE_COLOR' force color back on
+    /// when piped; an explicit '--no-color'/'NO_COLOR' still wins.
     #[arg(long, global = true)]
     pub no_color: bool,
 
@@ -119,11 +118,11 @@ pub struct GlobalArgs {
     pub verbose: bool,
 
     /// Suppress progress chatter (notes, spinners, step labels). Errors and
-    /// primary data/JSON are still emitted; wins over `--verbose`.
+    /// primary data/JSON are still emitted; wins over '--verbose'.
     #[arg(short, long, global = true)]
     pub quiet: bool,
 
-    /// Emit GitHub Actions annotations (`::error file=…::…`) for build/test
+    /// Emit GitHub Actions annotations ('::error file=…::…') for build/test
     /// diagnostics, so failures surface inline on the PR.
     #[arg(long, global = true)]
     pub gh_annotations: bool,
@@ -134,13 +133,13 @@ pub struct GlobalArgs {
 pub enum OutputMode {
     /// Colored human output (the default).
     Human,
-    /// The `{schema, ok, data}` envelope, one JSON document per command.
+    /// The '{schema, ok, data}' envelope, one JSON document per command.
     Json,
     /// Streaming events, one compact JSON object per line; the final line is
-    /// `{"event":"result","ok":…,"data":…}`. Non-streaming commands emit just
+    /// '{"event":"result","ok":…,"data":…}'. Non-streaming commands emit just
     /// that final line.
     Ndjson,
-    /// Human output with progress chatter muted (same as `--quiet`).
+    /// Human output with progress chatter muted (same as '--quiet').
     Quiet,
 }
 
@@ -152,11 +151,11 @@ pub enum OutputMode {
 #[derive(Debug, Clone, Default, clap::Args)]
 #[command(next_help_heading = "Target selection")]
 pub struct ContainerArgs {
-    /// Path to the `.xcworkspace` to operate on (overrides auto-discovery).
+    /// Path to the '.xcworkspace' to operate on (overrides auto-discovery).
     #[arg(long, env = "SWEETPAD_WORKSPACE", global = true)]
     pub workspace: Option<std::path::PathBuf>,
 
-    /// Path to the `.xcodeproj` to operate on (overrides auto-discovery).
+    /// Path to the '.xcodeproj' to operate on (overrides auto-discovery).
     #[arg(long, env = "SWEETPAD_PROJECT", global = true)]
     pub project: Option<std::path::PathBuf>,
 }
@@ -192,8 +191,8 @@ pub struct BuildTargetArgs {
     pub destination: Option<String>,
 
     /// Where to build/run, as a human reference: a fuzzy simulator/device name
-    /// ("iPhone 16 Pro"), `booted`, `mac`, `device`, a platform word (`ios`,
-    /// `watchos`, …), or a UDID. Resolved against the live device list;
+    /// ("iPhone 16 Pro"), 'booted', 'mac', 'device', a platform word ('ios',
+    /// 'watchos', …), or a UDID. Resolved against the live device list;
     /// --destination stays the raw escape hatch.
     #[arg(long, env = "SWEETPAD_ON", global = true)]
     pub on: Option<String>,
@@ -476,14 +475,14 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::scheme::Action,
     },
-    /// Inspect build destinations (hidden alias — see `devices`).
+    /// Inspect build destinations (hidden alias — see 'devices').
     #[command(hide = true)]
     Destination {
         #[command(subcommand)]
         action: commands::destination::Action,
     },
     /// Everything runnable — macOS, simulators, connected devices — each with
-    /// its ready `-destination` specifier, most-used first, the remembered
+    /// its ready '-destination' specifier, most-used first, the remembered
     /// one marked.
     Devices {
         #[command(flatten)]
@@ -521,16 +520,16 @@ pub enum Resource {
         action: commands::simulator::Action,
     },
     /// Build, install, launch, and follow logs (the flagship loop; same as
-    /// `app run`).
+    /// 'app run').
     Run(commands::app::RunArgs),
-    /// Compile the project (`build` alone runs `build start`).
+    /// Compile the project ('build' alone runs 'build start').
     Build {
         #[command(flatten)]
         args: commands::build::StartArgs,
         #[command(subcommand)]
         action: Option<commands::build::Action>,
     },
-    /// Run the project's tests (`test` alone runs `test run`).
+    /// Run the project's tests ('test' alone runs 'test run').
     Test {
         #[command(flatten)]
         args: commands::test::TestArgs,
@@ -541,19 +540,19 @@ pub enum Resource {
     Archive(commands::archive::ArchiveArgs),
     /// Clean build artifacts (xcodebuild clean; --purge adds DerivedData).
     Clean(commands::clean::CleanArgs),
-    /// Run, install, and manage the built app's lifecycle (`app` alone runs
-    /// `app run`).
+    /// Run, install, and manage the built app's lifecycle ('app' alone runs
+    /// 'app run').
     App {
         #[command(subcommand)]
         action: Option<commands::app::Action>,
     },
-    /// Inspect connected physical devices (hidden alias — see `devices`).
+    /// Inspect connected physical devices (hidden alias — see 'devices').
     #[command(hide = true)]
     Device {
         #[command(subcommand)]
         action: commands::device::Action,
     },
-    /// Format or lint Swift sources (`format` alone runs `format run`).
+    /// Format or lint Swift sources ('format' alone runs 'format run').
     #[command(visible_alias = "fmt")]
     Format {
         #[command(flatten)]
@@ -561,14 +560,14 @@ pub enum Resource {
         #[command(subcommand)]
         action: Option<commands::format::Action>,
     },
-    /// Low-level `project.pbxproj` editing: stored settings, synchronized
+    /// Low-level 'project.pbxproj' editing: stored settings, synchronized
     /// folders, per-file membership, merge resolution (plumbing; §9g).
     Pbxproj {
         #[command(subcommand)]
         action: commands::pbxproj::Action,
     },
-    /// Work with SwiftPM `Package.resolved` files (hidden alias — see
-    /// `merge run`).
+    /// Work with SwiftPM 'Package.resolved' files (hidden alias — see
+    /// 'merge run').
     #[command(hide = true)]
     Spm {
         #[command(subcommand)]
@@ -611,7 +610,7 @@ pub enum Resource {
         #[command(flatten)]
         target: BuildTargetArgs,
     },
-    /// Update sweetpad (Homebrew installs run `brew upgrade sweetpad`).
+    /// Update sweetpad (Homebrew installs run 'brew upgrade sweetpad').
     SelfUpdate,
     /// Explain a topic: config, environment, exit-codes, destinations, hot-reload.
     Help {
@@ -711,7 +710,15 @@ pub fn run(argv: &[String]) -> ExitCode {
     ) {
         Ok(cli) => cli,
         Err(err) => {
-            // clap renders help/usage/errors and picks the right stream.
+            // Top-level `--help`/`-h` gets our three-group command listing;
+            // subcommand help and usage/errors stay clap's (it renders them and
+            // picks the right stream).
+            if err.kind() == clap::error::ErrorKind::DisplayHelp
+                && let Some(long) = top_level_help(argv)
+            {
+                render_root_help(stdout_wants_color(argv), long);
+                return ExitCode::SUCCESS;
+            }
             let _ = err.print();
             return ExitCode::from(if err.use_stderr() { 2 } else { 0 });
         }
@@ -798,7 +805,7 @@ pub fn run(argv: &[String]) -> ExitCode {
             .kind(ErrorKind::TargetResolution);
             return render_result(&ctx, Err(err));
         }
-        let _ = Cli::command().print_help();
+        render_root_help(ctx.out.use_color(), false);
         return ExitCode::SUCCESS;
     };
 
@@ -875,6 +882,294 @@ pub fn run(argv: &[String]) -> ExitCode {
     let code = render_result(&ctx, result);
     first_run_hint(&ctx.out);
     code
+}
+
+/// The top-level command listing, split into three tiers so the surface reads
+/// at a glance: the daily-loop shortcuts, the full namespaced commands, and the
+/// low-level plumbing for scripts and agents. Each entry names a top-level
+/// command; unlisted (or hidden) ones fall through to [`GROUP_MORE`].
+struct HelpGroup {
+    /// The section heading, rendered where clap would print `Commands:`.
+    heading: &'static str,
+    /// Mark every entry with the everyday glyph and lead the listing.
+    everyday: bool,
+    /// Command names in the order they should appear under the heading.
+    names: &'static [&'static str],
+}
+
+/// The daily loop — mostly action shortcuts for the longer namespaced verbs
+/// (`run` = `app run`, `build` = `build start`, …), plus the aggregated views.
+const GROUP_EVERYDAY: HelpGroup = HelpGroup {
+    heading: "Everyday commands",
+    everyday: true,
+    names: &["run", "build", "test", "devices", "clean", "format"],
+};
+
+/// The plumbing tier: low-level, scriptable, aimed at scripts and AI agents.
+/// `vscode` is [synthetic](SYNTHETIC) — peeled off before clap, so it has no
+/// subcommand entry to reuse.
+const GROUP_PLUMBING: HelpGroup = HelpGroup {
+    heading: "Plumbing (scripting & agents)",
+    everyday: false,
+    names: &["pbxproj", "spm", "merge", "bsp", "vscode"],
+};
+
+/// Commands `main` peels off before the clap resource tree parses, so they have
+/// no subcommand to introspect — listed here with the description to render.
+const SYNTHETIC: &[(&str, &str)] = &[(
+    "vscode",
+    "Control the running VS Code extension over JSON-RPC",
+)];
+
+/// Everything else — the full, feature-complete namespaced commands. The
+/// catch-all: any visible command not claimed above lands here, in clap's
+/// declaration order.
+const GROUP_MORE: HelpGroup = HelpGroup {
+    heading: "Commands",
+    everyday: false,
+    names: &[],
+};
+
+/// The everyday-command marker: a bright glyph in place of one indent space, so
+/// the daily-loop commands catch the eye without disturbing clap's column.
+fn everyday_marker(color: bool) -> String {
+    if color {
+        "\x1b[36m▸\x1b[0m ".to_string()
+    } else {
+        "▸ ".to_string()
+    }
+}
+
+/// A command listing line for a [`SYNTHETIC`] command, padded to line its
+/// description up with clap's `desc_col` and bolding the name the way clap does.
+fn synthetic_entry(name: &str, desc: &str, desc_col: usize, color: bool) -> String {
+    let pad = " ".repeat(desc_col.saturating_sub(2 + name.len()).max(1));
+    let name = if color {
+        format!("\x1b[1m{name}\x1b[0m")
+    } else {
+        name.to_string()
+    };
+    format!("  {name}{pad}{desc}")
+}
+
+/// Render `heading:` the way clap styles its section headers (bold + underline).
+fn help_heading(heading: &str, color: bool) -> String {
+    if color {
+        format!("\x1b[1m\x1b[4m{heading}:\x1b[0m")
+    } else {
+        format!("{heading}:")
+    }
+}
+
+/// Strip ANSI SGR escapes (`\x1b[…m`) so a styled command line can be read for
+/// its leading command name.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // Drop through the terminating `m` of the escape sequence.
+            for e in chars.by_ref() {
+                if e == 'm' {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Print the top-level help with the command listing split into
+/// [`GROUP_EVERYDAY`]/[`GROUP_MORE`]/[`GROUP_PLUMBING`]. The `about`, `usage`,
+/// and `Options` sections are clap's own output, verbatim; only the command
+/// listing is regrouped, and the trailing `Global:` flag section is replaced
+/// with a pointer (those flags apply to every command and are shown on each
+/// command's own `--help`).
+#[allow(clippy::print_stdout)] // help text is the command's primary output
+fn render_root_help(color: bool, long: bool) {
+    let mut cmd = Cli::command();
+    // Match clap's own `--help` (long) vs `-h` (short) verbosity for the
+    // options/flags; only the command listing is regrouped.
+    let help = if long {
+        cmd.render_long_help()
+    } else {
+        cmd.render_help()
+    };
+    let text = if color {
+        help.ansi().to_string()
+    } else {
+        help.to_string()
+    };
+    let lines: Vec<&str> = text.lines().collect();
+
+    // Locate the `Commands:` block: its heading line, and the blank line that
+    // closes it (clap separates sections with a blank line).
+    let Some(start) = lines
+        .iter()
+        .position(|l| strip_ansi(l).trim_end() == "Commands:")
+    else {
+        // No command block to regroup (shouldn't happen) — emit clap's help.
+        print!("{text}");
+        return;
+    };
+    let end = lines[start + 1..]
+        .iter()
+        .position(|l| strip_ansi(l).trim().is_empty())
+        .map_or(lines.len(), |off| start + 1 + off);
+
+    // Split each command entry into its (name, [lines]); an entry starts at the
+    // two-space indent, wrapped-description continuations are indented deeper.
+    let mut entries: Vec<(String, Vec<&str>)> = Vec::new();
+    for &line in &lines[start + 1..end] {
+        let plain = strip_ansi(line);
+        let is_new = plain.starts_with("  ") && plain.as_bytes().get(2).is_some_and(|b| *b != b' ');
+        if is_new {
+            let name = plain.split_whitespace().next().unwrap_or("");
+            entries.push((name.to_string(), vec![line]));
+        } else if let Some(last) = entries.last_mut() {
+            last.1.push(line);
+        }
+    }
+
+    let claimed: std::collections::HashSet<&str> = GROUP_EVERYDAY
+        .names
+        .iter()
+        .chain(GROUP_PLUMBING.names)
+        .copied()
+        .collect();
+
+    // The column clap aligns descriptions to (2-space indent + longest name +
+    // gap), read off a real entry so synthetic lines line up with it.
+    let desc_col = entries.first().map_or(16, |(name, entry_lines)| {
+        let plain = strip_ansi(entry_lines[0]);
+        let after = 2 + name.len();
+        after + plain[after..].chars().take_while(|c| *c == ' ').count()
+    });
+
+    let mut block: Vec<String> = Vec::new();
+    for group in [&GROUP_EVERYDAY, &GROUP_MORE, &GROUP_PLUMBING] {
+        // The names to list: explicit order for the tiered groups, or — for the
+        // catch-all — every clap entry no other group claimed, in clap's order.
+        let names: Vec<&str> = if group.names.is_empty() {
+            entries
+                .iter()
+                .map(|(n, _)| n.as_str())
+                .filter(|n| !claimed.contains(n))
+                .collect()
+        } else {
+            group.names.to_vec()
+        };
+
+        let mut group_lines: Vec<String> = Vec::new();
+        for name in names {
+            if let Some((_, entry_lines)) = entries.iter().find(|(n, _)| n == name) {
+                for (li, &line) in entry_lines.iter().enumerate() {
+                    if group.everyday && li == 0 && line.starts_with("  ") {
+                        // Swap the first two-space indent for the everyday glyph.
+                        group_lines.push(format!("{}{}", everyday_marker(color), &line[2..]));
+                    } else {
+                        group_lines.push(line.to_string());
+                    }
+                }
+            } else if let Some((_, desc)) = SYNTHETIC.iter().find(|(n, _)| *n == name) {
+                group_lines.push(synthetic_entry(name, desc, desc_col, color));
+            }
+            // Otherwise the command is hidden (e.g. `spm`) — nothing to list.
+        }
+
+        if group_lines.is_empty() {
+            continue;
+        }
+        if !block.is_empty() {
+            block.push(String::new()); // one blank line between groups
+        }
+        block.push(help_heading(group.heading, color));
+        block.extend(group_lines);
+    }
+
+    // Splice the regrouped block back in place of clap's flat `Commands:` list,
+    // then drop the trailing `Global:` flag section for a pointer — those flags
+    // work on every command and belong on each command's own `--help`, not
+    // cluttering the top-level discovery view. The blank lines bracketing the
+    // command block come from clap's own section separators (already in
+    // `lines[..start]` and the tail).
+    let mut result: Vec<String> = lines[..start].iter().map(|s| (*s).to_string()).collect();
+    result.extend(block);
+
+    let tail = &lines[end..];
+    if let Some(g) = tail
+        .iter()
+        .position(|l| strip_ansi(l).trim_end() == "Global:")
+    {
+        // Keep the `Options` section up to the blank line that precedes
+        // `Global:`, then swap `Global:` for a one-line pointer.
+        result.extend(tail[..g.saturating_sub(1)].iter().map(|s| (*s).to_string()));
+        result.push(String::new());
+        result.push(help_heading("Global options", color));
+        result.push(
+            "  Apply to every command — see any command's --help \
+             (e.g. 'sweetpad build --help')."
+                .to_string(),
+        );
+    } else {
+        result.extend(tail.iter().map(|s| (*s).to_string()));
+    }
+    println!("{}", result.join("\n"));
+}
+
+/// Whether top-level help was requested (vs. a subcommand's), and if so whether
+/// it was the long `--help` (`Some(true)`) or short `-h` (`Some(false)`).
+/// `None` once a bare subcommand token precedes the help flag — that help is
+/// clap's to render. Value-carrying global options (`-C`, `-o`,
+/// `--developer-dir`) consume their following token so it is not mistaken for a
+/// subcommand.
+fn top_level_help(argv: &[String]) -> Option<bool> {
+    let mut i = 0;
+    while i < argv.len() {
+        let a = argv[i].as_str();
+        if a == "--" {
+            return None;
+        }
+        if a == "--help" {
+            return Some(true);
+        }
+        if a == "-h" {
+            return Some(false);
+        }
+        // Options that take a separate value: skip the value too.
+        if matches!(a, "-C" | "-o" | "--output" | "--developer-dir") {
+            i += 2;
+            continue;
+        }
+        if a.starts_with('-') {
+            i += 1;
+            continue;
+        }
+        // A bare word — a subcommand name. Its help is clap's to render.
+        return None;
+    }
+    None
+}
+
+/// Whether stdout should carry color on the pre-`Context` help path, mirroring
+/// [`output::Output`]'s decision: `--no-color`/`NO_COLOR` win, then
+/// `CLICOLOR_FORCE`/`FORCE_COLOR`, else stdout being a TTY.
+fn stdout_wants_color(argv: &[String]) -> bool {
+    use std::io::IsTerminal;
+    let flagged_off = argv
+        .iter()
+        .take_while(|a| *a != "--")
+        .any(|a| a == "--no-color");
+    let env_off = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
+    if flagged_off || env_off {
+        return false;
+    }
+    let forced = ["CLICOLOR_FORCE", "FORCE_COLOR"]
+        .iter()
+        .any(|k| std::env::var(k).is_ok_and(|v| output::Output::truthy(&v)));
+    forced || std::io::stdout().is_terminal()
 }
 
 /// The single success/error render site: human view, the JSON envelope
@@ -1136,6 +1431,29 @@ mod cli_definition_tests {
     fn clap_definition_is_internally_consistent() {
         use clap::CommandFactory;
         super::Cli::command().debug_assert();
+    }
+
+    /// Every name the grouped `--help` lists under Everyday/Plumbing must be a
+    /// real top-level subcommand (or a declared [`SYNTHETIC`](super::SYNTHETIC)
+    /// one) — otherwise a rename would silently drop the command from its group
+    /// into the catch-all instead of failing loudly.
+    #[test]
+    fn help_group_names_are_real_subcommands() {
+        use clap::CommandFactory;
+        let cmd = super::Cli::command();
+        let mut known: std::collections::HashSet<&str> =
+            cmd.get_subcommands().map(clap::Command::get_name).collect();
+        known.extend(super::SYNTHETIC.iter().map(|(n, _)| *n));
+        for &name in super::GROUP_EVERYDAY
+            .names
+            .iter()
+            .chain(super::GROUP_PLUMBING.names)
+        {
+            assert!(
+                known.contains(name),
+                "help group lists `{name}`, which is not a top-level subcommand"
+            );
+        }
     }
 }
 

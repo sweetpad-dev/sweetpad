@@ -46,12 +46,12 @@ Resolution precedence, highest first:
   explicit flag > env var > config file > sweetpad.toml > remembered state
   > auto-discovery
 
-A committed `sweetpad.toml` next to the project is the team-shared defaults
-layer (scheme/configuration/destination/sdk, `developer_dir`, `[run]`,
-`[format]`, `[testing]`) — personal config beats it, remembered picks yield
+A committed 'sweetpad.toml' next to the project is the team-shared defaults
+layer (scheme/configuration/destination/sdk, 'developer_dir', '[run]',
+'[format]', '[testing]') — personal config beats it, remembered picks yield
 to it. Remembered state lives separately in
 ~/.local/state/sweetpad/state.toml (machine-managed — inspect and edit it
-with `sweetpad context`, not by hand).",
+with 'sweetpad context', not by hand).",
     },
     Topic {
         name: "environment",
@@ -67,8 +67,8 @@ variable set to the empty string means unset):
   SWEETPAD_SCHEME           scheme name
   SWEETPAD_CONFIGURATION    build configuration
   SWEETPAD_DESTINATION      raw -destination specifier
-  SWEETPAD_ON               human destination reference (see `help
-                            destinations`); overrides SWEETPAD_DESTINATION
+  SWEETPAD_ON               human destination reference (see 'help
+                            destinations'); overrides SWEETPAD_DESTINATION
   SWEETPAD_SDK              -sdk override
   DEVELOPER_DIR             the Xcode every spawned tool uses (the
                             --developer-dir flag; a sweetpad.toml
@@ -107,12 +107,12 @@ EXIT CODES
 
 A SIGINT/SIGTERM that kills the process exits 128+signo (130/143) after the
 handler restores the terminal and reaps children. Under --json, errors are
-`{\"schema\":1,\"ok\":false,\"error\":{code,message}}` on stderr, where `code`
+'{\"schema\":1,\"ok\":false,\"error\":{code,message}}' on stderr, where 'code'
 is the same taxonomy: generic, build_failure, target_resolution, tool_missing,
 user_cancel.
 
-`ok: true` means \"the command executed\", not \"the outcome was good\": a red
-test suite exits 3 with `data.passed: false`; read the payload's own status
+'ok: true' means \"the command executed\", not \"the outcome was good\": a red
+test suite exits 3 with 'data.passed: false'; read the payload's own status
 field.",
     },
     Topic {
@@ -129,28 +129,28 @@ forms (usable with --destination or SWEETPAD_DESTINATION):
   platform=iOS,id=<device UDID>
   platform=macOS
 
-`sweetpad destination list` prints every runnable target with a ready
-specifier; `simulator list` and `device list` show each pool.
+'sweetpad destination list' prints every runnable target with a ready
+specifier; 'simulator list' and 'device list' show each pool.
 
 When no destination is given, an interactive terminal gets the picker:
 ordered most-used-first (per project), then booted (marked ●), then the
 resolver's platform/OS ordering — your habitual target sits on top. The pick
-is remembered per project (see `sweetpad context show`); one-off --destination
-values and `app run --mac`/`--device` targets are never remembered.",
+is remembered per project (see 'sweetpad context show'); one-off --destination
+values and 'app run --mac'/'--device' targets are never remembered.",
     },
     Topic {
         name: "hot-reload",
         summary: "app run --hot: requirements, recompilers, SwiftUI notes",
         body: "\
-HOT RELOAD (`sweetpad app run --hot`)
+HOT RELOAD ('sweetpad app run --hot')
 
 Each Swift save is recompiled and injected into the running app — no relaunch,
 state preserved. Targets: the iOS Simulator, and native macOS apps
-(`--mac --hot`). Physical devices strip DYLD_INSERT_LIBRARIES and can't inject.
+('--mac --hot'). Physical devices strip DYLD_INSERT_LIBRARIES and can't inject.
 
 How it works: the app is built with -Xlinker -interposable, launched with the
 injection client dylib, and a watcher recompiles saved files and streams the
-result into the process. `r` still does a full rebuild+relaunch; `q` quits.
+result into the process. 'r' still does a full rebuild+relaunch; 'q' quits.
 
 macOS: the hot build also passes ENABLE_HARDENED_RUNTIME=NO and
 ENABLE_APP_SANDBOX=NO so the Debug product is injectable (dyld honors the
@@ -199,7 +199,7 @@ pub fn run(_ctx: &mut Context, topic: Option<&str>) -> CommandResult {
                 let names: Vec<&str> = TOPICS.iter().map(|t| t.name).collect();
                 return Err(CliError::new(format!(
                     "unknown help topic {name:?} (topics: {}) — for command help, run \
-                     `sweetpad {name} --help`",
+                     'sweetpad {name} --help'",
                     names.join(", ")
                 ))
                 .kind(ErrorKind::Generic));
@@ -215,11 +215,11 @@ pub fn run(_ctx: &mut Context, topic: Option<&str>) -> CommandResult {
 /// `sweetpad help` — the topic index.
 fn listing() -> HelpText {
     use std::fmt::Write as _;
-    let mut body = String::from("Help topics (run `sweetpad help <topic>`):\n\n");
+    let mut body = String::from("Help topics (run 'sweetpad help <topic>'):\n\n");
     for t in &TOPICS {
         let _ = writeln!(body, "  {:<13} {}", t.name, t.summary);
     }
-    body.push_str("\nFor command help, run `sweetpad <command> --help`.");
+    body.push_str("\nFor command help, run 'sweetpad <command> --help'.");
     let topics: Vec<serde_json::Value> = TOPICS
         .iter()
         .map(|t| serde_json::json!({ "topic": t.name, "summary": t.summary }))

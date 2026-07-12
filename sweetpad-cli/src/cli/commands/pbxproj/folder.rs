@@ -40,7 +40,7 @@ pub struct ListArgs {
 /// Flags for `pbxproj folder add`/`remove`.
 #[derive(Debug, Args)]
 pub struct FolderArgs {
-    /// Folder path, relative to the project directory (e.g. `Sources/App`).
+    /// Folder path, relative to the project directory (e.g. 'Sources/App').
     pub dir: String,
 
     #[command(flatten)]

@@ -63,14 +63,14 @@ pub struct TestArgs {
     #[arg(long, global = true)]
     pub show_command: bool,
 
-    /// Extra arguments passed to xcodebuild verbatim (after `--`).
+    /// Extra arguments passed to xcodebuild verbatim (after '--').
     #[arg(last = true, value_name = "XCODEBUILD_ARGS", global = true)]
     pub passthrough: Vec<String>,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Run the resolved scheme's tests (the default action: `sweetpad test`).
+    /// Run the resolved scheme's tests (the default action: 'sweetpad test').
     Run,
 }
 

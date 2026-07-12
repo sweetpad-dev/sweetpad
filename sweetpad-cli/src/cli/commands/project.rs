@@ -19,7 +19,7 @@ pub enum Action {
     /// Create a new minimal SwiftUI app project (iOS or macOS).
     ///
     /// Run with no flags on a terminal to be walked through a short wizard;
-    /// pass flags (or `--json`) to skip the prompts and use defaults.
+    /// pass flags (or '--json') to skip the prompts and use defaults.
     New(NewArgs),
 }
 
@@ -27,27 +27,27 @@ pub enum Action {
 /// wizard on a TTY, or by its default otherwise.
 #[derive(Debug, clap::Args)]
 pub struct NewArgs {
-    /// Project name — used for the `.xcodeproj`, target, and product. Optional
-    /// with `--current-dir`, where it defaults to the directory's name.
+    /// Project name — used for the '.xcodeproj', target, and product. Optional
+    /// with '--current-dir', where it defaults to the directory's name.
     pub name: Option<String>,
 
-    /// Scaffold into the current directory instead of creating `./<Name>/`.
+    /// Scaffold into the current directory instead of creating './<Name>/'.
     #[arg(long)]
     pub current_dir: bool,
 
-    /// Bundle identifier (default: `com.example.<Name>`).
+    /// Bundle identifier (default: 'com.example.<Name>').
     #[arg(long)]
     pub bundle_id: Option<String>,
 
-    /// Deployment target (defaults: iOS `17.0`, macOS `14.0`).
+    /// Deployment target (defaults: iOS '17.0', macOS '14.0').
     #[arg(long)]
     pub deployment_target: Option<String>,
 
-    /// Target platform (default: `ios`).
+    /// Target platform (default: 'ios').
     #[arg(long, value_enum)]
     pub platform: Option<scaffold::Platform>,
 
-    /// Skip `git init` in the new project.
+    /// Skip 'git init' in the new project.
     #[arg(long)]
     pub no_git: bool,
 

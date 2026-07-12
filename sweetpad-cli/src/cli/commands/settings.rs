@@ -28,7 +28,7 @@ pub enum Action {
         target: Option<String>,
 
         /// Show only this one setting key — printed as the bare value, ready
-        /// for `$(…)` capture.
+        /// for '$(…)' capture.
         #[arg(long)]
         key: Option<String>,
     },

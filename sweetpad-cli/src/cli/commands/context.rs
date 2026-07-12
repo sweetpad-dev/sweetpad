@@ -25,7 +25,7 @@ pub enum Variable {
     Sdk,
     /// The -destination specifier (picked from the simulator list).
     Destination,
-    /// The default test target `-only-testing:` narrows to (testing only).
+    /// The default test target '-only-testing:' narrows to (testing only).
     Target,
 }
 
@@ -89,7 +89,7 @@ pub enum Action {
     /// Set a context variable interactively.
     ///
     /// With no variable, sets the core three: scheme, configuration, and
-    /// destination. Use `context set` to assign a value without a prompt.
+    /// destination. Use 'context set' to assign a value without a prompt.
     Select {
         /// Which variable to set; omit to set the core variables.
         variable: Option<Variable>,
@@ -107,12 +107,12 @@ pub enum Action {
         #[arg(long)]
         testing: bool,
     },
-    /// Name a destination: `context alias work-phone <UDID>`, then
-    /// `--on work-phone` anywhere.
+    /// Name a destination: 'context alias work-phone <UDID>', then
+    /// '--on work-phone' anywhere.
     Alias {
         /// The alias name.
         name: String,
-        /// Any `--on` reference (UDID, fuzzy name, booted, mac, …); omit with
+        /// Any '--on' reference (UDID, fuzzy name, booted, mac, …); omit with
         /// --remove.
         #[arg(required_unless_present = "remove")]
         reference: Option<String>,
@@ -120,13 +120,13 @@ pub enum Action {
         #[arg(long, conflicts_with = "reference")]
         remove: bool,
     },
-    /// Clear a saved context variable; `--all` clears the whole context.
+    /// Clear a saved context variable; '--all' clears the whole context.
     Remove {
         /// Which variable to clear.
         #[arg(required_unless_present = "all", conflicts_with = "all")]
         variable: Option<Variable>,
         /// Clear the entire context (the project entry, or just the testing
-        /// sub-context with `--testing`).
+        /// sub-context with '--testing').
         #[arg(long)]
         all: bool,
         /// Act on the testing context instead of the build context.

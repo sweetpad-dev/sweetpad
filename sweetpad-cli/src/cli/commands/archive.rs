@@ -69,8 +69,8 @@ pub struct ArchiveArgs {
     #[arg(long)]
     pub show_command: bool,
 
-    /// Extra arguments passed to `xcodebuild archive` verbatim (after `--`),
-    /// e.g. `-allowProvisioningUpdates`.
+    /// Extra arguments passed to 'xcodebuild archive' verbatim (after '--'),
+    /// e.g. '-allowProvisioningUpdates'.
     #[arg(last = true, value_name = "XCODEBUILD_ARGS")]
     pub passthrough: Vec<String>,
 }

@@ -23,7 +23,7 @@ pub struct CleanArgs {
 
     /// Also delete this project's DerivedData folder(s). The flag itself is
     /// the consent — it only ever touches this project's folders, unlike the
-    /// store-wide `derived-data purge` (which prompts).
+    /// store-wide 'derived-data purge' (which prompts).
     #[arg(long)]
     pub purge: bool,
 }

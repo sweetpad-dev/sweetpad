@@ -38,7 +38,7 @@ pub enum Action {
         #[arg(long)]
         global: bool,
     },
-    /// Semantically merge conflicted `.pbxproj` / `Package.resolved` files
+    /// Semantically merge conflicted '.pbxproj' / 'Package.resolved' files
     /// (auto-detected per file; both kinds when no paths are given).
     Run {
         /// Files to resolve; defaults to every conflicted file of either kind.

@@ -479,8 +479,9 @@ fn screenshot(
 }
 
 /// Put a PNG file on the macOS clipboard via osascript (`«class PNGf»`) — the
-/// only pasteboard route that needs no extra dependency.
-fn copy_png_to_clipboard(path: &std::path::Path) -> Result<(), CliError> {
+/// only pasteboard route that needs no extra dependency. Shared with
+/// `app screenshot`.
+pub(crate) fn copy_png_to_clipboard(path: &std::path::Path) -> Result<(), CliError> {
     // The path rides in as an argv item (`on run argv`) instead of being
     // spliced into the script source, where a `"` or `\` in the path would
     // break compilation — or execute the path's content as AppleScript.
