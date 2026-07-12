@@ -276,6 +276,11 @@ pub struct RunDefaults {
     pub hot: Option<bool>,
     /// Default hot-reload recompiler: `resolver` or `buildlog`.
     pub hot_recompiler: Option<String>,
+    /// Whether a `--hot` macOS build may strip the App Sandbox from an
+    /// explicit entitlements file, ephemerally, to make injection possible
+    /// (CLI_DESIGN §9d). Default true; `false` opts the project out
+    /// (`--keep-sandbox` does it per run).
+    pub auto_unsandbox: Option<bool>,
 }
 
 /// `[format]` — `format` defaults for this project.
@@ -357,7 +362,7 @@ fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
             "run" => {
                 if let Some(t) = value.as_table() {
                     for rkey in t.keys() {
-                        if !["hot", "hot_recompiler"].contains(&rkey.as_str()) {
+                        if !["hot", "hot_recompiler", "auto_unsandbox"].contains(&rkey.as_str()) {
                             warnings.push(format!("sweetpad.toml: unknown key `{rkey}` in [run]"));
                         }
                     }
@@ -501,6 +506,20 @@ mod tests {
         assert_eq!(edit_distance("schme", "scheme"), 1);
         assert_eq!(edit_distance("scheme", "scheme"), 0);
         assert!(edit_distance("destination", "scheme") > 2);
+    }
+
+    #[test]
+    fn run_auto_unsandbox_parses_and_lints_clean() {
+        let pf: ProjectFile =
+            toml::from_str("[run]\nhot = true\nauto_unsandbox = false\n").unwrap();
+        assert_eq!(pf.run.auto_unsandbox, Some(false));
+        // The linter knows the key — no unknown-key warning.
+        let raw: toml::Value =
+            toml::from_str("[run]\nauto_unsandbox = false\nbogus = 1\n").unwrap();
+        let mut warnings = Vec::new();
+        lint_project_file(&raw, &mut warnings);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(warnings[0].contains("bogus"), "{warnings:?}");
     }
 
     #[test]

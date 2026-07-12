@@ -199,9 +199,10 @@ fn materialize_client(bytes: &[u8], cache_root: &Path) -> Result<PathBuf, String
     Ok(dylib)
 }
 
-/// Root of the client cache: `~/.cache/sweetpad/hot-reload/`. The caller appends
-/// a content key for the bundled client.
-fn cache_root() -> Option<PathBuf> {
+/// Root of the hot-reload cache: `~/.cache/sweetpad/hot-reload/`. The caller
+/// appends a content key (the bundled client) or a project key (the stripped
+/// entitlements, [`super::sandbox`]).
+pub(super) fn cache_root() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
@@ -212,7 +213,7 @@ fn cache_root() -> Option<PathBuf> {
 /// FNV-1a (64-bit) of `bytes` as lowercase hex — a tiny, dependency-free,
 /// deterministic content key for the cache directory.
 #[must_use]
-fn fnv1a_hex(bytes: &[u8]) -> String {
+pub(super) fn fnv1a_hex(bytes: &[u8]) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for &b in bytes {
         hash ^= u64::from(b);

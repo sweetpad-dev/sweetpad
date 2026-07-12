@@ -248,6 +248,7 @@ fn start(
         sdk: resolved.sdk.as_deref(),
         clean,
         hot: false,
+        hot_entitlements: None,
         passthrough,
     };
 

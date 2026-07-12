@@ -70,6 +70,21 @@ pub struct RunArgs {
     #[arg(long = "hot-recompiler", value_name = "MODE", value_enum)]
     pub hot_recompiler: Option<HotRecompiler>,
 
+    /// Keep the App Sandbox for a '--hot' macOS run instead of the automatic
+    /// ephemeral un-sandboxing; a sandboxed product then fails the injection
+    /// preflight with the manual fix.
+    #[arg(long = "keep-sandbox")]
+    pub keep_sandbox: bool,
+
+    /// Sign the '--hot' macOS build with this entitlements file instead of
+    /// auto-deriving a sandbox-stripped one.
+    #[arg(
+        long = "hot-entitlements",
+        value_name = "FILE",
+        conflicts_with = "keep_sandbox"
+    )]
+    pub hot_entitlements: Option<std::path::PathBuf>,
+
     /// CI self-check (hidden): with '--hot', after launch edit FILE once, wait
     /// for '.injected', and exit 0/1 instead of entering the session. Drives
     /// the end-to-end hot-reload/injection test.
@@ -350,6 +365,8 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
                     hot_explicit: args.hot,
                     hot_mode,
                     hot_selfcheck: args.hot_selfcheck.as_deref(),
+                    keep_sandbox: args.keep_sandbox,
+                    hot_entitlements: args.hot_entitlements.as_deref(),
                     launch: &args.launch,
                     passthrough: &args.passthrough,
                 },
@@ -457,6 +474,10 @@ struct RunOpts<'a> {
     hot_explicit: bool,
     hot_mode: Mode,
     hot_selfcheck: Option<&'a Path>,
+    /// `--keep-sandbox`: don't auto-strip a hot macOS build's App Sandbox.
+    keep_sandbox: bool,
+    /// `--hot-entitlements`: sign the hot macOS build with this file.
+    hot_entitlements: Option<&'a Path>,
     /// Launch args/env/wait-for-debugger for the app process.
     launch: &'a LaunchArgs,
     /// Extra xcodebuild arguments (after `--`), passed through verbatim.
@@ -482,6 +503,11 @@ struct RunPlan {
     target: Target,
     /// Build with the hot-reload flags (`-interposable` + frontend command lines).
     hot: bool,
+    /// The entitlements file a hot macOS build signs with — the ephemeral
+    /// sandbox-stripped copy or a `--hot-entitlements` file (§9d zero-config
+    /// sandbox stripping). Settled once in [`plan`], so session rebuilds
+    /// (`r`) keep the same signing posture.
+    hot_entitlements: Option<std::path::PathBuf>,
     /// Launch args/env/wait-for-debugger for the app process.
     launch: LaunchArgs,
     /// Extra xcodebuild arguments (after `--`), passed through verbatim.
@@ -512,6 +538,7 @@ impl RunPlan {
             sdk: self.resolved.sdk.as_deref(),
             clean: false,
             hot: self.hot,
+            hot_entitlements: self.hot_entitlements.as_deref(),
             passthrough: &self.passthrough,
         }
     }
@@ -540,12 +567,11 @@ impl RunPlan {
         Ok(derived_data)
     }
 
-    /// Locate the built `.app` via the in-process build-settings resolver (the
-    /// engine behind `settings show`), with no xcodebuild spawn. It computes the
-    /// same TARGET_BUILD_DIR/product the build produced — including a
+    /// Resolve every target's build settings via the in-process resolver (the
+    /// engine behind `settings show`), with no xcodebuild spawn — including a
     /// passthrough `-derivedDataPath`. Swift packages never reach here — they
     /// run via `swift run`, not a build/install/launch.
-    fn app_bundle(&self) -> Result<AppBundle, CliError> {
+    fn resolved_settings(&self) -> Result<Vec<xcodebuild::TargetBuildSettings>, CliError> {
         let (project, workspace) = match &self.resolved.container {
             resolve::Container::Project(p) => (Some(p.clone()), None),
             resolve::Container::Workspace(p) => (None, Some(p.clone())),
@@ -574,15 +600,21 @@ impl RunPlan {
         };
         let resolved =
             sweetpad_core::build_settings::resolve_build_settings(&opts).map_err(CliError::new)?;
-        let settings: Vec<xcodebuild::TargetBuildSettings> = resolved
+        Ok(resolved
             .into_iter()
             .map(|t| xcodebuild::TargetBuildSettings {
                 target: t.target,
                 settings: t.settings,
             })
-            .collect();
-        // The destination narrows multi-app schemes (iOS + watch companion)
-        // to the app that actually runs there.
+            .collect())
+    }
+
+    /// Locate the built `.app`: [`resolved_settings`](Self::resolved_settings)
+    /// computes the same TARGET_BUILD_DIR/product the build produced. The
+    /// destination narrows multi-app schemes (iOS + watch companion) to the
+    /// app that actually runs there.
+    fn app_bundle(&self) -> Result<AppBundle, CliError> {
+        let settings = self.resolved_settings()?;
         xcodebuild::app_bundle(&settings, Some(&self.destination))
     }
 }
@@ -800,19 +832,26 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
 
     warn_if_passthrough_moves_output(ctx, opts.passthrough);
 
-    let plan = RunPlan {
+    let mut plan = RunPlan {
         resolved,
         scheme,
         configuration,
         destination,
         target,
         hot: opts.hot,
+        hot_entitlements: None,
         launch: opts.launch.clone(),
         passthrough: opts.passthrough.to_vec(),
     };
     // A product-relocating passthrough the app locator can't follow fails
     // here, before a build is spent on it.
     plan.passthrough_derived_data()?;
+    // A hot macOS build may need to sign with an ephemeral sandbox-stripped
+    // entitlements file (§9d zero-config sandbox stripping) — settled here so
+    // every session build (including `r` rebuilds) carries the override.
+    if plan.hot && matches!(plan.target, Target::Mac) {
+        plan.hot_entitlements = hot_sandbox_override(ctx, &plan, opts)?;
+    }
     let bt = resolve::BuildTarget {
         scheme: plan.scheme.clone(),
         configuration: plan.configuration.clone(),
@@ -829,6 +868,107 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         && !matches!(plan.target, Target::SpmRun(_));
     resolve::remember(ctx, &plan.resolved, &bt, picker_sourced);
     Ok(plan)
+}
+
+/// Settle the entitlements story for a hot macOS build (§9d zero-config
+/// sandbox stripping): resolve the app target's effective
+/// `CODE_SIGN_ENTITLEMENTS`, and when it asserts the App Sandbox, derive the
+/// ephemeral stripped copy the build will sign with. `--keep-sandbox` /
+/// `[run] auto_unsandbox = false` opt out; `--hot-entitlements FILE`
+/// substitutes a caller-supplied plist (a missing FILE is a hard error — an
+/// explicit flag must not degrade silently). Every *other* failure
+/// (resolver, unreadable plist, strip) warns and falls back to no override,
+/// leaving the built-product preflight to explain a still-sandboxed app.
+fn hot_sandbox_override(
+    ctx: &Context,
+    plan: &RunPlan,
+    opts: &RunOpts,
+) -> Result<Option<std::path::PathBuf>, CliError> {
+    use crate::cli::inject::sandbox::{self, SandboxPlan};
+
+    let auto = ctx
+        .project_file(&plan.resolved.container)
+        .run
+        .auto_unsandbox
+        .unwrap_or(true);
+    let keep = opts.keep_sandbox || !auto;
+
+    // The effective entitlements file: resolved per app target and
+    // configuration by the in-process engine, so `$(SRCROOT)` interpolation
+    // and conditional `CODE_SIGN_ENTITLEMENTS[sdk=macosx*]` spellings are
+    // already applied. A relative value is SRCROOT-relative (how the signer
+    // reads it).
+    let effective = || -> Result<Option<std::path::PathBuf>, CliError> {
+        let settings = plan.resolved_settings()?;
+        let target = xcodebuild::app_target(&settings, Some(&plan.destination))?;
+        let Some(value) = target
+            .settings
+            .get("CODE_SIGN_ENTITLEMENTS")
+            .filter(|v| !v.is_empty())
+        else {
+            return Ok(None);
+        };
+        let path = std::path::PathBuf::from(value);
+        if path.is_absolute() {
+            return Ok(Some(path));
+        }
+        let srcroot = target
+            .settings
+            .get("SRCROOT")
+            .map(std::path::PathBuf::from)
+            .ok_or_else(|| CliError::new("resolved settings carry no SRCROOT"))?;
+        Ok(Some(srcroot.join(path)))
+    };
+    // Only resolve when the answer can matter: a user-supplied file skips
+    // resolution entirely, and an opted-out run never strips.
+    let entitlements = if opts.hot_entitlements.is_some() || keep {
+        None
+    } else {
+        match effective() {
+            Ok(e) => e,
+            Err(e) => {
+                ctx.out.warn(&format!(
+                    "hot reload: could not resolve the effective entitlements ({e}); \
+                     building without the sandbox strip"
+                ));
+                return Ok(None);
+            }
+        }
+    };
+
+    match sandbox::plan(
+        entitlements.as_deref(),
+        opts.hot_entitlements,
+        keep,
+        &plan.resolved.container.path().display().to_string(),
+        &plan.configuration,
+    ) {
+        Ok(SandboxPlan::Override(file)) => {
+            if opts.hot_entitlements.is_some() {
+                ctx.out.note(&format!(
+                    "hot reload: signing with {} (--hot-entitlements)",
+                    file.display()
+                ));
+            } else {
+                ctx.out.note(&format!(
+                    "hot reload: running un-sandboxed for injection ({} only, ephemeral) — \
+                     app data lives in ~/Library, not the sandbox container",
+                    plan.configuration
+                ));
+            }
+            Ok(Some(file))
+        }
+        Ok(SandboxPlan::Unneeded | SandboxPlan::KeptSandbox) => Ok(None),
+        // An explicit --hot-entitlements that can't be used is the user's to
+        // fix, not something to quietly build past.
+        Err(e) if opts.hot_entitlements.is_some() => Err(CliError::new(e)),
+        Err(e) => {
+            ctx.out.warn(&format!(
+                "hot reload: {e}; building without the sandbox strip"
+            ));
+            Ok(None)
+        }
+    }
 }
 
 /// A simulator boot kicked off on a background thread so it comes up *while* the
@@ -2908,6 +3048,8 @@ fn simple(
         hot_explicit: false,
         hot_mode: Mode::Resolver,
         hot_selfcheck: None,
+        keep_sandbox: false,
+        hot_entitlements: None,
         launch,
         passthrough: &[],
     };
@@ -2969,6 +3111,8 @@ fn debug(ctx: &mut Context, launch: &LaunchArgs) -> CommandResult {
         hot_explicit: false,
         hot_mode: Mode::Resolver,
         hot_selfcheck: None,
+        keep_sandbox: false,
+        hot_entitlements: None,
         launch,
         passthrough: &[],
     };
@@ -3246,6 +3390,8 @@ fn simple_logs(ctx: &mut Context, filters: &LogFilterArgs) -> CommandResult {
         hot_explicit: false,
         hot_mode: Mode::Resolver,
         hot_selfcheck: None,
+        keep_sandbox: false,
+        hot_entitlements: None,
         launch: &LaunchArgs::default(),
         passthrough: &[],
     };
@@ -3431,8 +3577,11 @@ fn screenshot(ctx: &mut Context, args: &ScreenshotArgs) -> CommandResult {
         mac: false,
         no_logs: true,
         hot: false,
+        hot_explicit: false,
         hot_mode: Mode::Resolver,
         hot_selfcheck: None,
+        keep_sandbox: false,
+        hot_entitlements: None,
         launch: &LaunchArgs::default(),
         passthrough: &[],
     };

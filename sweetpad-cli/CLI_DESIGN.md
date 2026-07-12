@@ -676,11 +676,13 @@ the signing posture differ:
   templates declare both protections via exactly these settings, so a template
   app is injectable with zero setup.
 - **Preflight.** A sandbox declared in an explicit `.entitlements` file (App
-  Store projects) is beyond build settings — `[`crate::cli::inject::mac_preflight`]`
-  inspects the built product (`codesign -d`) and refuses with the exact fix
-  (turn App Sandbox off for Debug) instead of launching a dead session. A
-  hardened product (re-signed by a run-script phase) is refused the same way,
-  unless it carries the `allow-dyld-environment-variables` +
+  Store projects) is beyond build settings — it is auto-stripped for the hot
+  build (see *Zero-config sandbox stripping* below), and
+  `[`crate::cli::inject::mac_preflight`]` stays as the safety net: it inspects
+  the built product (`codesign -d`) and refuses with the exact fix when the
+  sandbox survived (stripping disabled or failed) instead of launching a dead
+  session. A hardened product (re-signed by a run-script phase) is refused the
+  same way, unless it carries the `allow-dyld-environment-variables` +
   `disable-library-validation` entitlements pair that makes it injectable anyway.
 - **Direct spawn, raw env.** The mac app is our own child process — the same
   injection env as the simulator's but unprefixed (no `SIMCTL_CHILD_`, no
@@ -713,6 +715,54 @@ there is no double-printing and no leakage into the pretty output.
 
 The server must be listening on `:8887` before the app launches so the client's
 `+load` connect succeeds.
+
+### Zero-config sandbox stripping (`--hot` on macOS)
+
+You cannot inject into a sandboxed app — dyld sanitizes the environment, the
+container blocks the CLI's socket and dylib paths — so "hot reload on a
+sandboxed project" can only ever mean *automating the un-sandboxing*; there
+is no keep-the-sandbox variant to chase. The build-setting overrides above
+already handle the common case, but when the sandbox comes from an explicit
+`CODE_SIGN_ENTITLEMENTS` plist (the normal shape for App Store projects),
+the plist wins at signing. Until v8 the only fixes were user-side and
+permanent (edit the project, or hand-pass an override every run); now `--hot`
+is zero-config:
+
+1. **Resolve the effective entitlements** for the (scheme → app target,
+   configuration, macOS) being hot-built, via the in-process build-settings
+   resolver — the engine behind `settings show`, so `$(SRCROOT)` interpolation
+   and conditional `CODE_SIGN_ENTITLEMENTS[sdk=macosx*]` spellings come for
+   free. No explicit file ⇒ nothing to do (the `ENABLE_APP_SANDBOX=NO`
+   override suffices).
+2. **Strip ephemerally.** If the plist asserts `com.apple.security.app-sandbox`,
+   copy it to the hot-reload cache
+   (`~/.cache/sweetpad/hot-reload/entitlements/<projhash>/<config>-nosandbox.entitlements`),
+   delete the sandbox key (everything else stays — network entitlements etc.
+   become no-ops, keeping behavior close to sandboxed-minus-container), and
+   ensure `com.apple.security.get-task-allow` for attach/injection. The edit
+   runs through `plutil`/`PlistBuddy`, so binary plists work; any failure
+   falls back to the preflight's guidance rather than guessing. The file is
+   regenerated from the real plist on every hot run, so edits propagate.
+3. **Override for the hot build only**: `CODE_SIGN_ENTITLEMENTS=<cache path>`
+   rides next to the sandbox/hardened-runtime overrides. Nothing in the
+   user's project is written — crash-safe by construction (`kill -9` leaves
+   the repo pristine, and generated projects show no spec/`.xcodeproj` diff).
+4. **Announce, don't ask.** One honest line
+   (`hot reload: running un-sandboxed for injection …`) instead of a blocking
+   prompt — zero-config by default, CI/headless friendly, and the Keychain/
+   container behavior change is named. Un-sandboxed Debug means data lands in
+   `~/Library` rather than the app container and sandbox-only bugs hide until
+   a sandboxed build — which is why it's hot-Debug-only and announced.
+
+Knobs: `--keep-sandbox` skips the strip (reproducing the preflight refusal —
+the honest opt-out), `--hot-entitlements FILE` signs the hot build with a
+caller-supplied plist instead of auto-deriving (apps needing specific
+non-sandbox entitlements while injected), and a committed
+`[run] auto_unsandbox = false` opts a whole project out. Mechanism
+alternatives considered and rejected: a temp `-xcconfig` (equivalent, plus a
+file), post-build re-signing (redundant second step when we already own the
+build), and editing the real `.entitlements` with restore-on-exit (the
+crash-footgun the ephemeral design exists to avoid).
 
 ### The recompiler — resolver-first (F), live-capture fallback (A)
 

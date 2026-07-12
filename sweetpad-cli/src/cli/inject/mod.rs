@@ -16,6 +16,7 @@ use std::sync::Arc;
 pub mod client;
 pub mod protocol;
 pub mod recompiler;
+pub mod sandbox;
 pub mod server;
 pub mod watcher;
 

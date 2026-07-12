@@ -28,6 +28,11 @@ pub struct BuildPlan<'a> {
     /// hardened runtime and App Sandbox so the product is injectable. Set for
     /// simulator and macOS builds under `--hot`.
     pub hot: bool,
+    /// Entitlements override for a hot macOS build (CLI_DESIGN §9d zero-config
+    /// sandbox stripping): the ephemeral sandbox-stripped plist (or a
+    /// `--hot-entitlements` file) that `CODE_SIGN_ENTITLEMENTS=…` points the
+    /// signing at. Only emitted for a hot macOS build.
+    pub hot_entitlements: Option<&'a Path>,
     /// Extra arguments passed through to xcodebuild verbatim (everything after
     /// `--` on the command line) — the escape hatch for flags/settings the CLI
     /// doesn't model.
@@ -73,6 +78,11 @@ impl BuildPlan<'_> {
             if self.destination.is_some_and(is_macos_destination) {
                 args.push("ENABLE_HARDENED_RUNTIME=NO".into());
                 args.push("ENABLE_APP_SANDBOX=NO".into());
+                // An explicit entitlements plist outranks those settings at
+                // signing time; the ephemeral stripped copy wins it back.
+                if let Some(entitlements) = self.hot_entitlements {
+                    args.push(format!("CODE_SIGN_ENTITLEMENTS={}", entitlements.display()));
+                }
             }
         }
         args.extend(self.passthrough.iter().cloned());
@@ -562,60 +572,36 @@ pub struct AppBundle {
     pub executable: PathBuf,
 }
 
-/// Pick the launchable app from resolved settings. Candidates are targets
-/// that build a `.app` wrapper and declare a bundle id; among them, one whose
-/// `SUPPORTED_PLATFORMS` covers the destination's platform wins — in an
-/// iOS + watchOS scheme the watch companion builds *first* (dependency
+/// Pick the launchable app's *target* from resolved settings. Candidates are
+/// targets that build a `.app` wrapper and declare a bundle id; among them,
+/// one whose `SUPPORTED_PLATFORMS` covers the destination's platform wins —
+/// in an iOS + watchOS scheme the watch companion builds *first* (dependency
 /// order), and blind first-pick would install the watch app onto the iPhone
 /// simulator. Targets that don't state their platforms (or an unmappable/
 /// absent destination) fall back to first-candidate order — and when the
 /// filter rejects *every* candidate (Mac Catalyst declaring `iphoneos` under
 /// a `platform=macOS` destination), the first `.app` still wins over a
 /// nothing-to-launch error.
-pub fn app_bundle(
-    settings: &[TargetBuildSettings],
+pub fn app_target<'a>(
+    settings: &'a [TargetBuildSettings],
     destination: Option<&str>,
-) -> Result<AppBundle, CliError> {
+) -> Result<&'a TargetBuildSettings, CliError> {
     let wanted = destination.and_then(destination_sdk_token);
-    let mut fallback: Option<AppBundle> = None;
-    let mut first_app: Option<AppBundle> = None;
+    let mut fallback: Option<&TargetBuildSettings> = None;
+    let mut first_app: Option<&TargetBuildSettings> = None;
     for t in settings {
-        let wrapper = t
-            .settings
-            .get("WRAPPER_NAME")
-            .or_else(|| t.settings.get("FULL_PRODUCT_NAME"));
-        let (Some(build_dir), Some(wrapper), Some(bundle_id)) = (
-            t.settings.get("TARGET_BUILD_DIR"),
-            wrapper,
-            t.settings.get("PRODUCT_BUNDLE_IDENTIFIER"),
-        ) else {
-            continue;
-        };
-        if !Path::new(wrapper)
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("app"))
-        {
+        if bundle_of(t).is_none() {
             continue;
         }
-        let build_dir = Path::new(build_dir);
-        let executable = t
-            .settings
-            .get("EXECUTABLE_PATH")
-            .map_or_else(|| build_dir.join(wrapper), |rel| build_dir.join(rel));
-        let bundle = AppBundle {
-            path: build_dir.join(wrapper),
-            bundle_id: bundle_id.clone(),
-            executable,
-        };
         if first_app.is_none() {
-            first_app = Some(bundle.clone());
+            first_app = Some(t);
         }
         let supported = t.settings.get("SUPPORTED_PLATFORMS");
         match (wanted, supported) {
             // The target states its platforms and covers the destination —
             // a definitive pick.
             (Some(tok), Some(platforms)) if platforms.split_whitespace().any(|p| p == tok) => {
-                return Ok(bundle);
+                return Ok(t);
             }
             // States its platforms and the destination is not among them —
             // not this app (the watch-companion case).
@@ -624,12 +610,51 @@ pub fn app_bundle(
             // declaration order.
             _ => {
                 if fallback.is_none() {
-                    fallback = Some(bundle);
+                    fallback = Some(t);
                 }
             }
         }
     }
     fallback.or(first_app).ok_or_else(|| {
+        CliError::new("could not find a launchable .app in the resolved build settings")
+    })
+}
+
+/// The launchable bundle a target's resolved settings describe, if it builds
+/// a `.app` wrapper with a bundle id — the candidacy test behind
+/// [`app_target`].
+fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
+    let wrapper = t
+        .settings
+        .get("WRAPPER_NAME")
+        .or_else(|| t.settings.get("FULL_PRODUCT_NAME"))?;
+    let build_dir = t.settings.get("TARGET_BUILD_DIR")?;
+    let bundle_id = t.settings.get("PRODUCT_BUNDLE_IDENTIFIER")?;
+    if !Path::new(wrapper)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("app"))
+    {
+        return None;
+    }
+    let build_dir = Path::new(build_dir);
+    let executable = t
+        .settings
+        .get("EXECUTABLE_PATH")
+        .map_or_else(|| build_dir.join(wrapper), |rel| build_dir.join(rel));
+    Some(AppBundle {
+        path: build_dir.join(wrapper),
+        bundle_id: bundle_id.clone(),
+        executable,
+    })
+}
+
+/// Pick the launchable app from resolved settings — [`app_target`]'s bundle.
+pub fn app_bundle(
+    settings: &[TargetBuildSettings],
+    destination: Option<&str>,
+) -> Result<AppBundle, CliError> {
+    let target = app_target(settings, destination)?;
+    bundle_of(target).ok_or_else(|| {
         CliError::new("could not find a launchable .app in the resolved build settings")
     })
 }
@@ -683,6 +708,7 @@ mod tests {
             sdk: None,
             clean: true,
             hot: false,
+            hot_entitlements: None,
         };
         assert_eq!(
             plan.args(),
@@ -713,6 +739,7 @@ mod tests {
             sdk: None,
             clean: false,
             hot: true,
+            hot_entitlements: None,
         };
         let args = plan.args();
         assert!(args.contains(&"OTHER_LDFLAGS=$(inherited) -Xlinker -interposable".to_string()));
@@ -739,6 +766,7 @@ mod tests {
             sdk: None,
             clean: false,
             hot: true,
+            hot_entitlements: None,
         };
         let args = plan.args();
         assert!(args.contains(&"ENABLE_HARDENED_RUNTIME=NO".to_string()));
@@ -753,10 +781,53 @@ mod tests {
             sdk: None,
             clean: false,
             hot: false,
+            hot_entitlements: None,
         };
         assert!(!cold.args().iter().any(|a| {
             a.starts_with("ENABLE_HARDENED_RUNTIME") || a.starts_with("ENABLE_APP_SANDBOX")
         }));
+    }
+
+    #[test]
+    fn hot_mac_build_signs_with_the_stripped_entitlements() {
+        let c = project();
+        let stripped = Path::new("/cache/hot/Debug-nosandbox.entitlements");
+        let plan = BuildPlan {
+            container: &c,
+            scheme: "App",
+            configuration: "Debug",
+            destination: Some("platform=macOS"),
+            passthrough: &[],
+            sdk: None,
+            clean: false,
+            hot: true,
+            hot_entitlements: Some(stripped),
+        };
+        let args = plan.args();
+        let expected = "CODE_SIGN_ENTITLEMENTS=/cache/hot/Debug-nosandbox.entitlements";
+        // The override rides right after the sandbox settings it completes.
+        let sandbox_at = args.iter().position(|a| a == "ENABLE_APP_SANDBOX=NO");
+        let override_at = args.iter().position(|a| a == expected);
+        assert!(sandbox_at.is_some() && override_at > sandbox_at, "{args:?}");
+
+        // Simulator hot builds never sign with it — the strip is a macOS
+        // concern (and the caller never sets it for simulators anyway).
+        let sim = BuildPlan {
+            container: &c,
+            scheme: "App",
+            configuration: "Debug",
+            destination: Some("platform=iOS Simulator,id=UDID"),
+            passthrough: &[],
+            sdk: None,
+            clean: false,
+            hot: true,
+            hot_entitlements: Some(stripped),
+        };
+        assert!(
+            !sim.args()
+                .iter()
+                .any(|a| a.starts_with("CODE_SIGN_ENTITLEMENTS"))
+        );
     }
 
     #[test]
@@ -771,6 +842,7 @@ mod tests {
             sdk: None,
             clean: false,
             hot: false,
+            hot_entitlements: None,
         };
         assert_eq!(
             plan.args(),

@@ -65,6 +65,54 @@ run_selfcheck buildlog
 run_selfcheck_mac resolver
 run_selfcheck_mac buildlog
 
+# --- Zero-config sandbox stripping (§9d): a project whose Debug entitlements
+# assert the App Sandbox must hot-reload with NO project change, --keep-sandbox
+# must reproduce the manual-fix refusal, and the .xcodeproj must be untouched
+# afterwards. The sandboxed entitlements are wired in with the CLI's own
+# pbxproj plumbing and removed again at the end. The fixture builds with
+# CODE_SIGNING_ALLOWED=NO (unsigned products carry no entitlements at all),
+# so these runs re-enable ad-hoc signing via the passthrough — without it the
+# sandbox could neither apply nor be refused.
+section "hot reload self-check — macOS, sandboxed project (auto-unsandbox)"
+SIGN=(CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-)
+ENT="$APP_DIR/SweetpadCIMac.entitlements"
+cat > "$ENT" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>com.apple.security.app-sandbox</key><true/>
+    <key>com.apple.security.network.client</key><true/>
+</dict></plist>
+PLIST
+"$BIN" pbxproj settings set CODE_SIGN_ENTITLEMENTS=SweetpadCIMac.entitlements \
+  --target SweetpadCIMac --project "$APP"
+PBX_BEFORE=$(shasum "$APP/project.pbxproj")
+ENT_BEFORE=$(shasum "$ENT")
+
+env -u SWEETPAD_HOTRELOAD_DYLIB \
+  "$BIN" app run --project "$APP" --scheme SweetpadCIMac --mac \
+  --hot --hot-selfcheck "$SRC" -- "${SIGN[@]}" \
+  || fail "macos/sandboxed: auto-unsandbox self-check failed"
+echo "  ✓ macos/sandboxed injected (auto-unsandbox)"
+
+[ "$PBX_BEFORE" = "$(shasum "$APP/project.pbxproj")" ] \
+  || fail "the hot session modified project.pbxproj"
+[ "$ENT_BEFORE" = "$(shasum "$ENT")" ] \
+  || fail "the hot session modified the entitlements file"
+echo "  ✓ project and entitlements untouched"
+
+if env -u SWEETPAD_HOTRELOAD_DYLIB \
+  "$BIN" app run --project "$APP" --scheme SweetpadCIMac --mac \
+  --hot --keep-sandbox --hot-selfcheck "$SRC" -- "${SIGN[@]}" >/tmp/keep-sandbox.log 2>&1; then
+  fail "--keep-sandbox unexpectedly succeeded on a sandboxed project"
+fi
+grep -q "app-sandbox" /tmp/keep-sandbox.log \
+  || fail "--keep-sandbox failed without the sandbox preflight message"
+echo "  ✓ --keep-sandbox reproduces the preflight refusal"
+
+"$BIN" pbxproj settings unset CODE_SIGN_ENTITLEMENTS --target SweetpadCIMac --project "$APP"
+rm "$ENT"
+
 section "teardown"
 xcrun simctl shutdown "$UDID" 2>/dev/null || true
 echo
