@@ -45,8 +45,10 @@ pub struct ArchiveArgs {
 
     /// Output directory for the .xcarchive and exported .ipa
     /// (default: ./build).
-    #[arg(long, value_name = "DIR")]
-    pub out: Option<PathBuf>,
+    // `--output-file`, not `--output`: the global `-o/--output` selects the
+    // output *mode* (json/ndjson) on every command, so it owns that flag.
+    #[arg(long = "output-file", value_name = "DIR")]
+    pub output_file: Option<PathBuf>,
 
     /// How to export the archive.
     #[arg(long, value_enum, default_value_t = ExportMethod::Debugging)]
@@ -114,7 +116,10 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     // A relative output dir must mean the same directory for the CLI's own
     // writes (create_dir_all, the generated plist) and for xcodebuild, which
     // runs from the container's parent — absolutize once against the CLI cwd.
-    let out_dir = args.out.clone().unwrap_or_else(|| PathBuf::from("build"));
+    let out_dir = args
+        .output_file
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("build"));
     let out_dir = std::path::absolute(&out_dir).unwrap_or(out_dir);
     let archive_path = out_dir.join(format!("{scheme}.xcarchive"));
 

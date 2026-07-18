@@ -250,8 +250,10 @@ pub struct ScreenshotArgs {
 
     /// File to write the screenshot to (default:
     /// ./sweetpad-shots/<app>-<time>.png).
-    #[arg(long)]
-    pub out: Option<std::path::PathBuf>,
+    // `--output-file`, not `--output`: the global `-o/--output` selects the
+    // output *mode* (json/ndjson) on every command, so it owns that flag.
+    #[arg(long = "output-file")]
+    pub output_file: Option<std::path::PathBuf>,
 
     /// Which window to capture when the app has several: 1-based,
     /// front-to-back (default: the frontmost).
@@ -3635,7 +3637,7 @@ fn process_name_of(executable: &Path) -> String {
 fn mac_screenshot(ctx: &Context, shot: &MacShot, args: &ScreenshotArgs) -> CommandResult {
     let (window, count) = wait_for_window(ctx, shot, args.window)?;
     let path = args
-        .out
+        .output_file
         .clone()
         .unwrap_or_else(|| super::simulator::default_screenshot_path(&shot.name));
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -3701,7 +3703,7 @@ fn wait_for_window(
 fn simulator_screenshot(ctx: &Context, udid: &str, args: &ScreenshotArgs) -> CommandResult {
     let name = sim_name(udid).unwrap_or_else(|| "simulator".to_string());
     let path = args
-        .out
+        .output_file
         .clone()
         .unwrap_or_else(|| super::simulator::default_screenshot_path(&name));
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {

@@ -293,7 +293,7 @@ section "app screenshot (§9h)"
 # Simulator delegation: the app verb reaches the same simctl capture
 # `simulator screenshot` uses (the booted sim from the lifecycle section).
 "$BIN" app screenshot --project "$APP" --scheme SweetpadCIApp --destination "$DEST" \
-  --out "$GEN_DIR/app-shot.png"
+  --output-file "$GEN_DIR/app-shot.png"
 test -s "$GEN_DIR/app-shot.png"
 ok "app screenshot (simulator delegation)"
 # The macOS resolution ladder's hard errors are TCC-independent — the

@@ -101,7 +101,7 @@ marked as such.
 
 > **Status (July 2026): every item below is implemented and marked [DONE].**
 > Six shipped with a different mechanism than the sketch proposed: **1.2**
-> renames the four per-command flags to `--out` (clap can't shadow a global
+> renames the four per-command flags to `--output-file` (clap can't shadow a global
 > long under a different id); **3.1** additionally reassembles the serve
 > flags from the parsed targeting (the resource-global ContainerArgs swallow
 > `--project` before the trailing args see it — caught by the new doctor

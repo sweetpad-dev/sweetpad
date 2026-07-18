@@ -1230,7 +1230,7 @@ closes that loop, and `app stop` learns macOS so the whole cycle —
 launch → capture → stop — stays inside sweetpad:
 
 ```
-sweetpad app screenshot [--out PATH] [--window N] [--pid N] [--clipboard]
+sweetpad app screenshot [--output-file PATH] [--window N] [--pid N] [--clipboard]
 sweetpad app stop                      # now also terminates a macOS app
 ```
 
@@ -1269,7 +1269,7 @@ only, `CGRequestScreenCaptureAccess()` triggers the one-time OS prompt; a
 headless run never pops UI). Window *enumeration* needs no permission —
 only capture does.
 
-`--out PATH` overrides the destination (default
+`--output-file PATH` overrides the destination (default
 `./sweetpad-shots/<app>-<epoch>.png`, the `simulator screenshot`
 convention); `--clipboard` additionally copies the PNG to the pasteboard.
 `--json` emits `{path, pid, windowId, bundleId, windows}`. The interactive
