@@ -312,6 +312,35 @@ section "macOS app run (best-effort, GUI headless)"
 "$BIN" app run --project "$APP" --scheme SweetpadCIMac --mac --no-logs || echo "  (macOS GUI launch skipped on headless runner)"
 ok "app run --mac attempted"
 
+# launch/stop are symmetric on macOS: the app runs in place, so `launch` starts
+# it detached (own session, file-backed stdio) and `stop` terminates it.
+"$BIN" app stop --project "$APP" --scheme SweetpadCIMac --mac >/dev/null 2>&1 || true
+if "$BIN" app launch --project "$APP" --scheme SweetpadCIMac --mac >/dev/null 2>&1; then
+  sleep 1
+  # The CLI has exited; the app must still be running for `stop` to find.
+  "$BIN" app stop --project "$APP" --scheme SweetpadCIMac --mac >/dev/null
+  ok "app launch --mac then stop (detached, outlives the CLI)"
+else
+  echo "  (macOS detached launch skipped on headless runner)"
+fi
+
+# `--detach` builds, launches, and returns; the app survives the CLI exiting.
+if "$BIN" app run --project "$APP" --scheme SweetpadCIMac --mac --detach >/dev/null 2>&1; then
+  sleep 1
+  "$BIN" app stop --project "$APP" --scheme SweetpadCIMac --mac >/dev/null
+  ok "app run --mac --detach (returns, app keeps running)"
+else
+  echo "  (macOS --detach skipped on headless runner)"
+fi
+
+# install/uninstall stay simulator/device-only — a macOS app is built in place.
+expect_code 1 "$BIN" app install --project "$APP" --scheme SweetpadCIMac --mac
+ok "app install --mac still refused (built in place)"
+
+# --detach and --hot are contradictory: hot reload must stay attached.
+expect_code 1 "$BIN" app run --project "$APP" --scheme SweetpadCIMac --mac --detach --hot
+ok "--detach with --hot rejected"
+
 # ---------------------------------------------------------------------------
 section "devices"
 "$BIN" device list >/dev/null         # no devices on CI — must still succeed

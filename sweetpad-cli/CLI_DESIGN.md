@@ -70,7 +70,7 @@ sweetpad build start                 compile only
 
 sweetpad app run                     build + install + launch
 sweetpad app install                 build + install, no launch
-sweetpad app launch                  launch an already-installed app
+sweetpad app launch                  launch an already-installed app (--mac: detached)
 sweetpad app logs                    stream app logs
 sweetpad app stop                    kill the running app
 
@@ -1279,9 +1279,26 @@ simulator-only).
 `app stop` on a macOS target terminates by pid — the recorded last launch's
 executable path (fast path, no resolution), else the resolved bundle's —
 with SIGTERM, and reports `{action: "terminated", pid}` (the `udid` field
-is null for mac). `install`/`launch`/`uninstall` stay simulator/device
-verbs: a macOS app is built in place and launched by `run`; there is
-nothing to install.
+is null for mac).
+
+`app launch --mac` is its symmetric counterpart: it starts an already-built
+macOS app and returns, leaving it running. The process is deliberately not
+ours — `setsid` gives it its own session so a Ctrl-C in the launching
+terminal can't reach it, and stdout/stderr are redirected to
+`<state>/logs/<bundle-id>.log` rather than a pipe. The pipe is the reason
+the interactive session's `d` (detach) key carries a caveat: a detached
+child whose console pipes died with the CLI is killed by its next `print`.
+A launch that never had pipes has no such failure mode. Spawning the
+executable directly (rather than `open`) is also what lets `--env` reach the
+process.
+
+`app run --mac --detach` is the build-first form of the same thing: build,
+launch detached, return. On a simulator or device the app already outlives
+the CLI, so `--detach` there is `--no-logs`. It is rejected with `--hot`,
+which has to stay attached to recompile and inject.
+
+`install`/`uninstall` stay simulator/device verbs: a macOS app is built in
+place, so there is nothing to install.
 
 The CoreGraphics/CoreFoundation FFI is a small hand-rolled block private to
 the `app` command (DOCS §3: no binding-crate dependency for four calls);

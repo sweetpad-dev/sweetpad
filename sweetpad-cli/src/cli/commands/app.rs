@@ -53,6 +53,14 @@ pub struct RunArgs {
     #[arg(long = "no-logs")]
     pub no_logs: bool,
 
+    /// Build, launch, and return, leaving the app running after the CLI
+    /// exits. On macOS the app is spawned in its own session with its output
+    /// redirected to a log file, so '--env' is honored and a later print
+    /// can't kill it; on a simulator or device the app already outlives the
+    /// CLI, so this behaves like '--no-logs'.
+    #[arg(long)]
+    pub detach: bool,
+
     /// Enable hot reload (iOS Simulator and native macOS apps): on each Swift
     /// save the file is recompiled and injected into the running app — no
     /// relaunch, state preserved. Requires the injection client (see
@@ -175,6 +183,10 @@ pub struct StageTargetArgs {
     /// Specific device UDID/name (implies --device).
     #[arg(long = "device-id")]
     pub device_id: Option<String>,
+
+    /// Act on the native macOS app ('--on mac' is the same thing).
+    #[arg(long, conflicts_with_all = ["device", "device_id"])]
+    pub mac: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -363,6 +375,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
                     device_id: args.device_id.as_deref(),
                     mac: args.mac,
                     no_logs: args.no_logs,
+                    detach: args.detach,
                     hot,
                     hot_explicit: args.hot,
                     hot_mode,
@@ -469,6 +482,8 @@ struct RunOpts<'a> {
     device_id: Option<&'a str>,
     mac: bool,
     no_logs: bool,
+    /// `--detach`: launch and return, leaving the app running.
+    detach: bool,
     hot: bool,
     /// Whether `--hot` was typed (vs. the `[run] hot` config default) — a
     /// config default is silently ignored for non-simulator targets instead
@@ -666,6 +681,12 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
              as part of its UI",
         ));
     }
+    if hot && opts.detach {
+        return Err(CliError::new(
+            "--detach isn't supported with --hot; hot reload has to stay attached to \
+             recompile and inject (press `d` in the session to detach and leave it running)",
+        ));
+    }
 
     print_summary(ctx, &plan);
 
@@ -683,6 +704,9 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         // A Swift package executable builds, runs, and streams in one `swift run`;
         // there's no separate log stream to background, so it stays a one-shot.
         deploy(ctx, &plan)
+    } else if opts.detach {
+        // --detach: deploy and return, leaving the app running.
+        deploy_detached(ctx, &plan)
     } else if opts.no_logs {
         // --no-logs: deploy and return, no session.
         deploy(ctx, &plan)
@@ -1122,6 +1146,28 @@ fn spm_run(ctx: &Context, plan: &RunPlan, product: &str) -> CliResult {
 }
 
 /// Build, install, and launch (no log following) — used by `--no-logs` and SPM.
+/// `--detach`: build, launch, and return with the app still running.
+///
+/// Only macOS needs its own path — a simulator or device app already runs
+/// outside this process, so [`deploy`] leaves it alive on its own.
+fn deploy_detached(ctx: &Context, plan: &RunPlan) -> CliResult {
+    if !matches!(plan.target, Target::Mac) {
+        return deploy(ctx, plan);
+    }
+    let app = build_and_install(plan, &ctx.out)?;
+    let (pid, log) = spawn_detached_mac(ctx, plan, &app)?;
+    ctx.out.note(&format!(
+        "Launched {} (pid {pid}) — detached",
+        app.bundle_id
+    ));
+    if let Some(log) = log {
+        ctx.out.note(&format!("output → {}", log.display()));
+    }
+    ctx.out
+        .note(&format!("`sweetpad app stop` terminates {}", app.bundle_id));
+    Ok(())
+}
+
 fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
     // SPM executables build+run in one `swift run` step, not build+install+launch.
     if let Target::SpmRun(product) = &plan.target {
@@ -3048,8 +3094,9 @@ fn simple(
     let opts = RunOpts {
         device: on_device,
         device_id: stage_target.device_id.as_deref(),
-        mac: false,
+        mac: stage_target.mac,
         no_logs: true,
+        detach: false,
         hot: false,
         hot_explicit: false,
         hot_mode: Mode::Resolver,
@@ -3065,19 +3112,111 @@ fn simple(
     let report = match &plan.target {
         Target::Simulator(udid) => simple_on_simulator(ctx, stage, &plan, &app, udid)?,
         Target::Device(id) => simple_on_device(ctx, stage, &plan, &app, id)?,
-        // A macOS app is built in place and launched by `run`; only `stop`
-        // has work to do (terminate the process, §9h).
+        // A macOS app needs no install step — it runs in place out of
+        // DerivedData — but `launch` and `stop` are real operations on it.
         Target::Mac if matches!(stage, Stage::Stop) => {
             stop_mac(ctx, &app.executable, &app.bundle_id)?
         }
+        Target::Mac if matches!(stage, Stage::Launch) => launch_mac(ctx, &plan, &app)?,
         Target::Mac | Target::SpmRun(_) => {
             return Err(CliError::new(
-                "app install/launch/uninstall act on a simulator or device — a macOS app \
-                 is built in place and launched by `app run --mac`",
+                "app install/uninstall act on a simulator or device — a macOS app is built \
+                 in place; use `app launch --mac` to start it or `app run --mac` to follow it",
             ));
         }
     };
+    if matches!(stage, Stage::Launch) {
+        record_last_launched(ctx, &plan);
+    }
     Ok(Rendered::data(report))
+}
+
+/// Where a detached macOS app's console output goes. Its stdio cannot be a
+/// pipe to us — we exit immediately and the app would die on its next `print`
+/// (see [`HotApp::detach_note`]) — so it is redirected to a file the user can
+/// tail afterwards.
+fn detached_log_path(bundle_id: &str) -> Option<std::path::PathBuf> {
+    let dir = sweetpad_core::paths::sweetpad_state_dir()?.join("logs");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join(format!("{bundle_id}.log")))
+}
+
+/// Start a macOS app and return, leaving it running — the counterpart to
+/// [`stop_mac`]. Unlike `app run --mac`, the process does not belong to this
+/// CLI: it gets its own session (so a Ctrl-C in this terminal can't reach it)
+/// and file-backed stdio (so it survives our exit).
+fn launch_mac(
+    ctx: &mut Context,
+    plan: &RunPlan,
+    app: &AppBundle,
+) -> Result<AppStageReport, CliError> {
+    let (pid, log) = spawn_detached_mac(ctx, plan, app)?;
+    Ok(AppStageReport {
+        action: "launched",
+        note: format!("Launched {}", app.bundle_id),
+        bundle_id: app.bundle_id.clone(),
+        udid: None,
+        pid: pid.try_into().ok(),
+        detail: log.map(|p| format!("output → {}", p.display())),
+    })
+}
+
+/// Spawn a macOS app so it outlives this process, returning its pid and the
+/// file its console output goes to. Shared by `app launch --mac` and
+/// `app run --mac --detach`.
+///
+/// Spawning the executable directly (rather than via `open`) is what lets
+/// `--env` reach the process; `open` forwards arguments but not environment.
+fn spawn_detached_mac(
+    ctx: &Context,
+    plan: &RunPlan,
+    app: &AppBundle,
+) -> Result<(u32, Option<std::path::PathBuf>), CliError> {
+    let env = plan.launch.env_pairs("")?;
+    let log = detached_log_path(&app.bundle_id);
+    let mut cmd = std::process::Command::new(app.executable.as_os_str());
+    cmd.args(&plan.launch.args)
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .stdin(std::process::Stdio::null());
+    match log.as_ref().and_then(|p| {
+        let f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(p)
+            .ok()?;
+        let f2 = f.try_clone().ok()?;
+        Some((f, f2))
+    }) {
+        Some((out, err)) => {
+            cmd.stdout(out).stderr(err);
+        }
+        // No writable state dir: discard rather than inherit our stdio, which
+        // would tie the app's lifetime to this terminal.
+        None => {
+            cmd.stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+        }
+    }
+    // Own session: the app must not receive this terminal's job-control
+    // signals once we're gone.
+    {
+        use std::os::unix::process::CommandExt;
+        // Safety: `setsid` is async-signal-safe and touches no shared state.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
+    let child = ctx.out.step("Launching app", || {
+        cmd.spawn().map_err(|e| {
+            CliError::new(format!("failed to run `{}`: {e}", app.executable.display()))
+        })
+    })?;
+    // Deliberately not registered with the signal registry and never waited
+    // on: it outlives this process. Dropping `Child` on Unix does not kill it.
+    Ok((child.id(), log))
 }
 
 /// Terminate a running macOS app by its executable path: SIGTERM to every
@@ -3113,6 +3252,7 @@ fn debug(ctx: &mut Context, launch: &LaunchArgs) -> CommandResult {
         device_id: None,
         mac: false,
         no_logs: true,
+        detach: false,
         hot: false,
         hot_explicit: false,
         hot_mode: Mode::Resolver,
@@ -3392,6 +3532,7 @@ fn simple_logs(ctx: &mut Context, filters: &LogFilterArgs) -> CommandResult {
         device_id: None,
         mac: false,
         no_logs: true,
+        detach: false,
         hot: false,
         hot_explicit: false,
         hot_mode: Mode::Resolver,
@@ -3582,6 +3723,7 @@ fn screenshot(ctx: &mut Context, args: &ScreenshotArgs) -> CommandResult {
         device_id: None,
         mac: false,
         no_logs: true,
+        detach: false,
         hot: false,
         hot_explicit: false,
         hot_mode: Mode::Resolver,
