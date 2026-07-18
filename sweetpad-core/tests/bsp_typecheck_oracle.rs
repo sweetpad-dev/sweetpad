@@ -125,6 +125,9 @@ fn resolve_target(project: &Path, target: &str, dd: &Path) -> TargetCompilerArgu
         sdksettings_root: None,
         catalog_cache: None,
         derived_data_path: Some(dd.to_path_buf()),
+        // The fixture pins its own DerivedData; reading the runner's Xcode
+        // configuration would make the expectations machine-dependent.
+        read_xcode_locations: false,
         keys: None,
     };
     let mut all = build_settings::resolve_compiler_arguments(&opts)

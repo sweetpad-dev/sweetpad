@@ -55,6 +55,15 @@ pub struct BuildContext {
     /// `Modules/A/A.xcodeproj` under a root `App.xcworkspace`). `None`
     /// keeps the heuristic (project opened directly).
     pub derived_data_container: Option<PathBuf>,
+    /// Place build output the way this machine's Xcode is configured to,
+    /// honouring the app-wide Derived Data preference and the container's
+    /// per-user workspace settings (see [`sweetpad_lib::derived_data`]).
+    ///
+    /// Off by default: it makes resolution depend on host state, which the
+    /// capture-backed suites must not do. Interfaces driving a real build —
+    /// the CLI, the VS Code addon — turn it on so the product they install is
+    /// the one `xcodebuild` just wrote.
+    pub read_xcode_locations: bool,
 }
 
 /// One resolution query against a [`BuildContext`].
@@ -287,7 +296,17 @@ impl BuildContext {
             xcspec: None,
             extra_xcconfig: Vec::new(),
             derived_data_container: None,
+            read_xcode_locations: false,
         })
+    }
+
+    /// Place build output where this machine's Xcode is configured to put it,
+    /// rather than assuming the stock DerivedData layout. Set this in an
+    /// interface that goes on to launch, install, or index the built product.
+    #[must_use]
+    pub fn with_xcode_locations(mut self) -> Self {
+        self.read_xcode_locations = true;
+        self
     }
 
     /// Declare the container this build was opened with (the
@@ -645,6 +664,7 @@ impl BuildContext {
             &probe.sans_overrides,
             query.derived_data_path.as_deref(),
             self.derived_data_container.as_deref(),
+            self.read_xcode_locations,
             self.xcspec
                 .as_ref()
                 .and_then(|c| c.xcode_version.as_deref()),

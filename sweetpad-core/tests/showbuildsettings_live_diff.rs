@@ -189,7 +189,13 @@ fn resolver_matches_live_showbuildsettings() {
         if only.as_deref().is_some_and(|o| o != slug) {
             continue;
         }
-        let Ok(ctx) = BuildContext::open(&xcodeproj).map(|c| c.with_xcspec(catalog.clone())) else {
+        // The comparison is against this machine's xcodebuild, so follow the
+        // Xcode location settings it obeys. `canonicalize_value` only rewrites
+        // the hash inside a literal `DerivedData/` segment, so a custom
+        // location would otherwise diff on every path-valued key.
+        let Ok(ctx) = BuildContext::open(&xcodeproj)
+            .map(|c| c.with_xcspec(catalog.clone()).with_xcode_locations())
+        else {
             continue;
         };
         let configs = if ctx.project.configurations.is_empty() {

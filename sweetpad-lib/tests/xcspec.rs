@@ -178,6 +178,9 @@ fn scratch_resolves_against_captured_oracle_with_decent_coverage() {
         &std::collections::BTreeMap::new(),
         None,
         None,
+        // Stock DerivedData layout: the expectations below are capture-backed
+        // and must not follow the runner's Xcode configuration.
+        false,
         catalog.xcode_version.as_deref(),
         catalog.product_build_version.as_deref(),
         catalog.developer_dir.as_deref(),

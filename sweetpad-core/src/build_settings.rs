@@ -47,6 +47,13 @@ pub struct BuildSettingsOptions {
     pub catalog_cache: Option<PathBuf>,
     /// `xcodebuild -derivedDataPath` override.
     pub derived_data_path: Option<PathBuf>,
+    /// Place build output the way this machine's Xcode is configured to,
+    /// instead of assuming the stock DerivedData layout (see
+    /// [`sweetpad_lib::derived_data`]). Interfaces that go on to install,
+    /// launch, or index the product set this so they look where `xcodebuild`
+    /// actually wrote; the capture-backed suites leave it off so resolution
+    /// stays independent of the host.
+    pub read_xcode_locations: bool,
     /// When set, restrict each target's returned settings to these keys.
     /// Resolution is unchanged — the whole map is still computed, since settings
     /// reference each other via `$(…)` — but the *output* is trimmed, so a
@@ -170,6 +177,7 @@ pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetS
             catalog.as_ref(),
             opts.xcconfig.as_deref(),
             opts.workspace.as_deref(),
+            opts.read_xcode_locations,
         )?;
         let queries = build_queries(&ctx, opts, &selection);
         let mut out = Vec::new();
@@ -203,6 +211,7 @@ pub fn resolve_build_settings(opts: &BuildSettingsOptions) -> Result<Vec<TargetS
                 catalog.as_ref(),
                 opts.xcconfig.as_deref(),
                 opts.workspace.as_deref(),
+                opts.read_xcode_locations,
             )?;
             let queries = build_queries(&ctx, opts, &selection);
             for query in queries {
@@ -270,6 +279,7 @@ pub fn resolve_compiler_arguments(
             catalog.as_ref(),
             opts.xcconfig.as_deref(),
             opts.workspace.as_deref(),
+            opts.read_xcode_locations,
         )?;
         for query in build_queries(&ctx, opts, &selection) {
             // Compiler argv is per concrete arch, so `[arch=…]` conditionals
@@ -373,6 +383,7 @@ pub fn resolve_file_arguments(
             catalog.as_ref(),
             opts.xcconfig.as_deref(),
             opts.workspace.as_deref(),
+            opts.read_xcode_locations,
         )?;
         let Some(query) = build_queries(&ctx, opts, &selection).into_iter().next() else {
             continue;
@@ -596,8 +607,12 @@ fn build_one_context(
     extra_xcconfig: Option<&Path>,
     // The `.xcworkspace` the caller drove this resolution through, if any.
     workspace: Option<&Path>,
+    read_xcode_locations: bool,
 ) -> Result<BuildContext, String> {
     let mut ctx = BuildContext::open(project_path).map_err(|e| e.to_string())?;
+    if read_xcode_locations {
+        ctx = ctx.with_xcode_locations();
+    }
     if let Some(c) = catalog {
         ctx = ctx.with_xcspec(c.clone());
     }

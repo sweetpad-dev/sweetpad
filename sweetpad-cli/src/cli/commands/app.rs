@@ -596,6 +596,10 @@ impl RunPlan {
             sdksettings_root: None,
             catalog_cache: None,
             derived_data_path: self.passthrough_derived_data()?,
+            // We go on to install and launch what this resolves, so it has to
+            // name the bundle `xcodebuild` actually wrote — including when the
+            // user has moved Derived Data in Xcode (issue #306).
+            read_xcode_locations: true,
             keys: None,
         };
         let resolved =

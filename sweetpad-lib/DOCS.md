@@ -672,7 +672,7 @@ Methods: `build/initialize`, `workspace/buildTargets`, `buildTarget/sources`,
 
 Tracks which Xcode build-system features have a real example in the corpus.
 Hand-maintained; re-verify against the generated `fixtures/FIXTURES.md`
-after each capture run. Current tally: **115 ✅ / 18 ❌**
+after each capture run. Current tally: **121 ✅ / 18 ❌**
 (reconciled 2026-05-30 against the captured corpus with concrete evidence per
 row; scheme-discovery rows updated 2026-06-10).
 
@@ -695,6 +695,24 @@ below point at the current `xcode-26.5.0` capture (repointed from the dropped
 | Nested sub-`.xcodeproj` referenced from a parent project | ✅ | fixtures/alamofire/xcode-26.5.0/raw/Example/iOS Example.xcodeproj/project.pbxproj |
 | Swift package as root project (Package.swift only) | ✅ | fixtures/_synthetic-spm-cli/xcode-{15.4,16.4,26.5}/captures (tests/spm_oracle.rs); schemes/build/test/run via the Swift toolchain, LSP via sourcekit-lsp's native SwiftPM support (no buildServer.json) — see roadmap D15 |
 | Buildable Folders (Xcode 16+ groupless folders) | ✅ | fixtures/tuist-fixtures/xcode-26.5.0/raw/examples_xcode_generated_app_with_buildable_folders/App.xcodeproj |
+
+### Build output locations
+
+Where `BUILD_DIR` / `OBJROOT` / `DERIVED_DATA_DIR` land once the user has moved
+build output in Xcode. Modelled by `src/derived_data.rs`, which reads host
+state only when the caller opts in (`BuildContext::with_xcode_locations`) so
+the oracle suites stay machine-independent. Every row below was pinned against
+live `xcodebuild -showBuildSettings` 26.5 (17F42) and is covered by hermetic
+unit tests rather than a corpus capture.
+
+| Test case | Status | Where |
+|---|---|---|
+| App-wide `IDECustomDerivedDataLocation` (Settings → Locations) — keeps `<Name>-<hash>` | ✅ | src/derived_data.rs (`stock_layout_when_nothing_is_configured`, `absolute_style_keeps_the_hash`) |
+| Per-container `DerivedDataLocationStyle = AbsolutePath` — keeps `<Name>-<hash>` | ✅ | src/derived_data.rs (`absolute_style_keeps_the_hash`) |
+| Per-container `= WorkspaceRelativePath` — bare `<Name>`, no hash | ✅ | src/derived_data.rs (`workspace_relative_style_drops_the_hash`) |
+| `BuildLocationStyle = CustomLocation` × {Absolute, RelativeToDerivedData, RelativeToWorkspace} | ✅ | src/derived_data.rs (`custom_location_*`) |
+| Precedence: `CustomLocation` outranks `-derivedDataPath`, which outranks the container's DerivedData style | ✅ | src/derived_data.rs (`custom_location_outranks_the_derived_data_path_flag`) |
+| Ignored by xcodebuild: the `xcshareddata` copy, `DeterminedByTargets`, app-wide `IDEBuildLocationStyle` | ✅ | src/derived_data.rs (`ignores_the_shared_settings_copy`, `determined_by_targets_is_a_no_op`) |
 
 ### Target / product types
 

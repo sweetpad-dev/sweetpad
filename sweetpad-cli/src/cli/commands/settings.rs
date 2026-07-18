@@ -162,6 +162,9 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandRe
         sdksettings_root: None,
         catalog_cache: None,
         derived_data_path: None,
+        // Report the paths this machine would really build into, so the output
+        // can be compared against `xcodebuild -showBuildSettings`.
+        read_xcode_locations: true,
         keys: key.map(|k| vec![k.to_string()]),
     };
 

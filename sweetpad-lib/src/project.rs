@@ -1233,7 +1233,13 @@ fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
 }
 
 #[must_use]
-#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_lines,
+    clippy::too_many_arguments,
+    // Each flag mirrors a distinct xcodebuild input; bundling them into a
+    // struct would only move the argument list.
+    clippy::fn_params_excessive_bools
+)]
 pub fn built_in_settings(
     xcodeproj_path: &Path,
     target_name: &str,
@@ -1258,6 +1264,12 @@ pub fn built_in_settings(
     // this path for every member project; `None` infers the container from
     // the project's own location (see [`find_derived_data_container`]).
     derived_data_container: Option<&Path>,
+    // Consult the host's Xcode configuration — the app-wide Derived Data
+    // preference and the container's per-user workspace settings — when
+    // placing build output (see [`crate::derived_data`]). `false` yields
+    // Xcode's stock layout without touching the machine, which is what the
+    // capture-backed suites need.
+    read_xcode_locations: bool,
     xcode_version: Option<&str>,
     // The catalog Xcode's `ProductBuildVersion` (e.g. `17F42`), from the
     // xcspec capture's `meta.json`. Feeds `XCODE_PRODUCT_BUILD_VERSION` and
@@ -1312,26 +1324,22 @@ pub fn built_in_settings(
         .unwrap_or("")
         .to_string();
     let derived_hash = derived_data_hash(&derived_container.display().to_string());
-    // We model the default "Unique" build location (`<Name>-<hash>`) plus the
-    // explicit `-derivedDataPath` override below. NOT modeled: the non-default
-    // styles a user can set in Xcode's Locations pref, persisted to
-    // `WorkspaceSettings.xcsettings` (`BuildLocationStyle` = `Shared` /
-    // `CustomLocation` {Absolute, RelativeToDerivedData, RelativeToWorkspace} /
-    // legacy `DeterminedByTargets`→`$(SRCROOT)/build`). When any of those is
-    // set the `<Name>-<hash>` segment doesn't apply and BUILD_DIR diverges, so
-    // the launcher would look in the wrong tree. We already locate + parse that
-    // plist (see `scheme.rs`), so wiring the build-location keys in here is
-    // plumbing — left demand-driven since it's rare and each style needs a real
-    // xcodebuild capture to pin.
-    let derived_root = if let Some(override_path) = derived_data_path {
-        override_path.display().to_string()
-    } else if home.is_empty() {
-        format!("/tmp/DerivedData/{derived_name}-{derived_hash}")
-    } else {
-        format!("{home}/Library/Developer/Xcode/DerivedData/{derived_name}-{derived_hash}")
-    };
-    let build_dir = format!("{derived_root}/Build/Products");
-    let obj_root = format!("{derived_root}/Build/Intermediates.noindex");
+    // The stock "Unique" build location (`<Name>-<hash>`) is only one of the
+    // layouts a user can end up with: Xcode's Locations pref and a container's
+    // per-user workspace settings both move build output, and `xcodebuild`
+    // honours them. [`crate::derived_data`] models the lot — it reads host
+    // state only when `read_xcode_locations` is set, so with the flag off this
+    // stays the pure function the oracle suites resolve against.
+    let locations = crate::derived_data::resolve(
+        &derived_container,
+        &derived_name,
+        &derived_hash,
+        &home,
+        derived_data_path,
+        read_xcode_locations,
+    );
+    let build_dir = locations.products.display().to_string();
+    let obj_root = locations.intermediates.display().to_string();
     // Prefer the catalog's recorded DEVELOPER_DIR (the Xcode the capture was
     // taken with) over the host's `xcode-select`ed one, so a 26.0.1 capture
     // resolved on a machine where 16.4 is selected still emits 26.0.1's
@@ -1476,14 +1484,10 @@ pub fn built_in_settings(
     // xcspec defaults like `MODULE_CACHE_DIR = $(DERIVED_DATA_DIR)/ModuleCache.noindex`.
     // When `-derivedDataPath` is overridden, the override IS the
     // DerivedData root — there's no parent/container split.
-    let derived_data_dir = if let Some(override_path) = derived_data_path {
-        override_path.display().to_string()
-    } else if home.is_empty() {
-        "/tmp/DerivedData".to_string()
-    } else {
-        format!("{home}/Library/Developer/Xcode/DerivedData")
-    };
-    push("DERIVED_DATA_DIR", derived_data_dir);
+    push(
+        "DERIVED_DATA_DIR",
+        locations.derived_data_root.display().to_string(),
+    );
     // Per-arch intermediates. xcspec defines these as nested indirect
     // lookups (`$(OBJECT_FILE_DIR_$(CURRENT_VARIANT))/$(CURRENT_ARCH)`),
     // and our resolver handles the nested expansion correctly — we just
@@ -4536,6 +4540,7 @@ mod tests {
             &authored_map(&[("SDKROOT", "auto")]),
             None,
             None,
+            false,
             None,
             None,
             None,
@@ -4568,6 +4573,7 @@ mod tests {
             &authored_map(&[("SDKROOT", "macosx")]),
             None,
             None,
+            false,
             None,
             None,
             None,
@@ -4600,6 +4606,7 @@ mod tests {
             &BTreeMap::new(),
             None,
             None,
+            false,
             None,
             None,
             None,
@@ -4643,6 +4650,7 @@ mod tests {
             &debug_template,
             None,
             None,
+            false,
             None,
             None,
             None,
@@ -4669,6 +4677,7 @@ mod tests {
             &debug_template,
             None,
             None,
+            false,
             None,
             None,
             None,
@@ -4696,6 +4705,7 @@ mod tests {
             &BTreeMap::new(),
             None,
             None,
+            false,
             None,
             None,
             None,
@@ -5018,6 +5028,7 @@ mod tests {
                 &BTreeMap::new(),
                 None,
                 None,
+                false,
                 None,
                 None,
                 None,
@@ -5062,6 +5073,7 @@ mod tests {
                 &BTreeMap::new(),
                 None,
                 None,
+                false,
                 Some(version),
                 None,
                 None,

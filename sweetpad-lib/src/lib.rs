@@ -14,6 +14,7 @@ pub mod bplist;
 pub mod catalog_cache;
 pub mod compiler_args;
 pub mod condition;
+pub mod derived_data;
 pub mod destination;
 mod file_cache;
 pub mod membership_pbxproj;
