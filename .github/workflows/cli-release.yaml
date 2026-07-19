@@ -17,6 +17,10 @@ jobs:
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v7
+        with:
+          # Release notes diff against the previous cli-v* tag, which a shallow
+          # checkout has no history for.
+          fetch-depth: 0
       - name: Install NodeJS
         uses: actions/setup-node@v6
         with:
@@ -107,12 +111,39 @@ jobs:
           path: "*.tar.gz"
           if-no-files-found: error
 
+      - name: Build release notes
+        # Commit subjects over the tag range, scoped to the paths the CLI ships
+        # from so unrelated monorepo work (docs site, extension) stays out.
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          PREV="$(git tag -l 'cli-v*' --sort=-v:refname | grep -vFx "$GITHUB_REF_NAME" | head -1)"
+          NOTES="$RUNNER_TEMP/notes.md"
+          {
+            echo '## Install'
+            echo
+            echo '    brew install sweetpad-dev/tap/sweetpad'
+            echo
+            echo '## Changes'
+            echo
+          } > "$NOTES"
+          if [ -n "$PREV" ]; then
+            CHANGES="$(git log --no-merges --pretty='- %s' "$PREV..$GITHUB_REF_NAME" \
+              -- sweetpad-cli sweetpad-lib sweetpad-core Cargo.toml | grep -v '^- Release CLI ' || true)"
+            printf '%s\n\n' "${CHANGES:-- Packaging and maintenance only.}" >> "$NOTES"
+            echo "**Full diff:** https://github.com/$GITHUB_REPOSITORY/compare/$PREV...$GITHUB_REF_NAME" >> "$NOTES"
+          else
+            echo '- Initial release.' >> "$NOTES"
+          fi
+          cat "$NOTES"
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+          body_path: ${{ runner.temp }}/notes.md
           files: "*.tar.gz"
 
       - name: Update Homebrew tap formula
