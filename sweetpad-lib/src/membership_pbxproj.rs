@@ -24,6 +24,10 @@ use std::path::Path;
 
 use crate::pbxproj::{Dict, Value};
 
+/// The objects a `PBXBuildFile` can point at. Variant and version groups stand
+/// in for a file the way a plain reference does.
+const REF_ISAS: [&str; 3] = ["PBXFileReference", "PBXVariantGroup", "XCVersionGroup"];
+
 /// The build phase a classic entry belongs to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Phase {
@@ -221,17 +225,7 @@ pub fn remove_membership(
     let mut removals = Vec::new();
     for raw_path in paths {
         let path = normalize(raw_path);
-        let ref_guids: Vec<String> = objects
-            .iter()
-            .filter(|(_, o)| {
-                matches!(
-                    isa(o),
-                    "PBXFileReference" | "PBXVariantGroup" | "XCVersionGroup"
-                )
-            })
-            .filter(|(guid, _)| node_path(objects, guid) == path)
-            .map(|(guid, _)| guid.clone())
-            .collect();
+        let ref_guids = refs_at_path(objects, &path);
 
         let mut removed_phases = Vec::new();
         for (phase, build_file_guids) in phases_of(objects, &target_guid) {
@@ -310,7 +304,8 @@ pub struct Addition {
 ///
 /// Paths resolve exactly as [`remove_membership`]'s do. The whole batch is
 /// resolved before anything is written, so a bad path refuses the batch rather
-/// than half-applying it.
+/// than half-applying it. When a path names two references, say which with
+/// [`add_membership_by_ids`] instead.
 ///
 /// # Errors
 /// Returns a message when the tree is malformed, the target or phase is
@@ -322,6 +317,115 @@ pub fn add_membership(
     phase: &Phase,
 ) -> Result<Vec<Addition>, String> {
     let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
+    let mut resolved = Vec::new();
+    for raw_path in paths {
+        let path = normalize(raw_path);
+        let hits = refs_at_path(objects_ref, &path);
+        match hits.len() {
+            0 => {
+                return Err(format!(
+                    "no file reference for {path}: create one with {} first",
+                    fileref_add_hint(&path)
+                ));
+            }
+            1 => resolved.push((path, hits.into_iter().next().unwrap_or_default())),
+            n => {
+                return Err(format!(
+                    "{path} matches {n} file references ({}); pass the one you mean as \
+                     `--fileref <ID>`",
+                    hits.join(", ")
+                ));
+            }
+        }
+    }
+    add_resolved(root, target, phase, resolved)
+}
+
+/// Give `target` a classic build-file entry for each file *reference id*, in
+/// `phase` — [`add_membership`] addressed by id rather than by path.
+///
+/// This is the spelling that composes: [`crate::tree_pbxproj::add_fileref`]
+/// returns the id it created, and passing that back names exactly one object,
+/// so a path shared by two references (or a reference no group lists, which has
+/// no navigator path to name) is still addressable.
+///
+/// # Errors
+/// Returns a message when the tree is malformed, the target or phase is
+/// missing, or an id is absent or not a file reference.
+pub fn add_membership_by_ids(
+    root: &mut Value,
+    target: &str,
+    ids: &[String],
+    phase: &Phase,
+) -> Result<Vec<Addition>, String> {
+    let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
+    let mut resolved = Vec::new();
+    for id in ids {
+        resolved.push((ref_path_in(objects_ref, id)?, id.clone()));
+    }
+    add_resolved(root, target, phase, resolved)
+}
+
+/// The resolved path of a file reference, by id — what the id-addressed verbs
+/// report, and what a path-shaped check needs before the edit.
+///
+/// # Errors
+/// Returns a message when the tree is malformed, or the id is absent or names
+/// something that is not a file reference.
+pub fn ref_path(root: &Value, id: &str) -> Result<String, String> {
+    ref_path_in(objects(root).ok_or("pbxproj has no objects dict")?, id)
+}
+
+fn ref_path_in(objects: &Dict, id: &str) -> Result<String, String> {
+    let node = objects
+        .get(id)
+        .ok_or_else(|| format!("no object with id {id}; `pbxproj fileref list` shows them"))?;
+    if !REF_ISAS.contains(&isa(node)) {
+        return Err(format!("{id} is a {}, not a file reference", isa(node)));
+    }
+    Ok(node_path(objects, id))
+}
+
+/// The `fileref add` invocation that would create the missing reference.
+///
+/// A `<group>`-anchored reference stores its path *relative to its group*, so
+/// the hint has to split a project-relative path into the basename to store and
+/// the directory naming the group — handing back the whole path would create a
+/// reference resolving to `App/App/Main.swift`.
+fn fileref_add_hint(path: &str) -> String {
+    let node = Path::new(path);
+    let base = node.file_name().and_then(|n| n.to_str()).unwrap_or(path);
+    match node
+        .parent()
+        .and_then(Path::to_str)
+        .filter(|dir| !dir.is_empty())
+    {
+        Some(dir) => format!("`pbxproj fileref add {base} --group {dir}`"),
+        // No directory to name a group with: anchor it at the project instead.
+        None => format!("`pbxproj fileref add {base} --source-tree SOURCE_ROOT`"),
+    }
+}
+
+/// Every reference-like object whose resolved path is `path`.
+fn refs_at_path(objects: &Dict, path: &str) -> Vec<String> {
+    objects
+        .iter()
+        .filter(|(_, o)| REF_ISAS.contains(&isa(o)))
+        .filter(|(guid, _)| node_path(objects, guid) == path)
+        .map(|(guid, _)| guid.clone())
+        .collect()
+}
+
+/// The shared write half: one `PBXBuildFile` per resolved reference, listed in
+/// `target`'s `phase`. Callers resolve `(path, ref id)` pairs however they name
+/// files; from here the two spellings are the same edit.
+fn add_resolved(
+    root: &mut Value,
+    target: &str,
+    phase: &Phase,
+    resolved: Vec<(String, String)>,
+) -> Result<Vec<Addition>, String> {
+    let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
     let target_guid = find_target_guid(objects_ref, target)?;
     let phase_guid = phase_guid_of(objects_ref, &target_guid, phase).ok_or_else(|| {
         format!(
@@ -329,38 +433,6 @@ pub fn add_membership(
             phase.display()
         )
     })?;
-
-    let mut resolved = Vec::new();
-    for raw_path in paths {
-        let path = normalize(raw_path);
-        let hits: Vec<String> = objects_ref
-            .iter()
-            .filter(|(_, o)| {
-                matches!(
-                    isa(o),
-                    "PBXFileReference" | "PBXVariantGroup" | "XCVersionGroup"
-                )
-            })
-            .filter(|(guid, _)| node_path(objects_ref, guid) == path)
-            .map(|(guid, _)| guid.clone())
-            .collect();
-        match hits.len() {
-            0 => {
-                return Err(format!(
-                    "no file reference for {path}: create one with \
-                     `pbxproj fileref add {path} --group <ID>` first"
-                ));
-            }
-            1 => resolved.push((path, hits[0].clone())),
-            n => {
-                return Err(format!(
-                    "{path} matches {n} file references ({}); pass the one you mean to \
-                     `pbxproj membership remove` first",
-                    hits.join(", ")
-                ));
-            }
-        }
-    }
 
     let mut additions = Vec::new();
     for (path, ref_guid) in resolved {
@@ -1017,5 +1089,135 @@ mod tests {
         let removals = remove_membership(&mut root, "App", &["./App/Logo.png".into()]).unwrap();
         assert_eq!(removals[0].removed_phases, vec!["resources"]);
         assert_eq!(removals[0].path, "App/Logo.png");
+    }
+
+    #[test]
+    fn an_id_and_its_path_are_the_same_edit() {
+        // What `fileref add` hands back must reach the same build file the
+        // path form would have produced.
+        let mut by_id = parsed();
+        let mut by_path = parsed();
+        let a = add_membership_by_ids(&mut by_id, "App", &["FR3".into()], &Phase::Sources).unwrap();
+        let b = add_membership(
+            &mut by_path,
+            "App",
+            &["App/Logo.png".into()],
+            &Phase::Sources,
+        )
+        .unwrap();
+
+        assert_eq!(a[0].path, "App/Logo.png", "the id reports its path");
+        assert_eq!(a[0].build_file, b[0].build_file);
+        assert!(!a[0].already_member);
+        assert_eq!(
+            crate::pbxproj_writer::serialize(&by_id, "Fix"),
+            crate::pbxproj_writer::serialize(&by_path, "Fix"),
+            "both spellings write the same bytes"
+        );
+    }
+
+    #[test]
+    fn an_id_reaches_a_reference_no_group_lists() {
+        // A reference with no parent group has no navigator path to name, so
+        // the id is the only way to give it membership.
+        let mut root = parsed();
+        let loose = crate::tree_pbxproj::add_fileref(
+            &mut root,
+            "Loose.swift",
+            Some("sourcecode.swift"),
+            "SOURCE_ROOT",
+            None,
+        )
+        .unwrap();
+        let crate::tree_pbxproj::AddRefOutcome::Created { guid, .. } = loose else {
+            panic!("expected a fresh reference");
+        };
+        let additions = add_membership_by_ids(
+            &mut root,
+            "App",
+            std::slice::from_ref(&guid),
+            &Phase::Sources,
+        )
+        .unwrap();
+        assert_eq!(additions.len(), 1);
+        assert!(!additions[0].already_member);
+
+        let entries = classic_members(&root, "App").unwrap();
+        assert!(
+            entries.iter().any(|e| e.path == "Loose.swift"),
+            "{entries:?}"
+        );
+        round_trips(&root);
+    }
+
+    #[test]
+    fn re_adding_by_id_is_a_recorded_no_op() {
+        let mut root = parsed();
+        let before = crate::pbxproj_writer::serialize(&root, "Fix");
+        let additions =
+            add_membership_by_ids(&mut root, "App", &["FR1".into()], &Phase::Sources).unwrap();
+        assert!(additions[0].already_member);
+        assert_eq!(additions[0].build_file, "BF1");
+        assert_eq!(
+            before,
+            crate::pbxproj_writer::serialize(&root, "Fix"),
+            "no-ops must not touch the file"
+        );
+    }
+
+    #[test]
+    fn an_id_that_is_not_a_reference_errors_instead_of_guessing() {
+        let mut root = parsed();
+        let err =
+            add_membership_by_ids(&mut root, "App", &["SP1".into()], &Phase::Sources).unwrap_err();
+        assert!(err.contains("not a file reference"), "{err}");
+
+        let err =
+            add_membership_by_ids(&mut root, "App", &["NOPE".into()], &Phase::Sources).unwrap_err();
+        assert!(err.contains("no object with id NOPE"), "{err}");
+    }
+
+    #[test]
+    fn the_missing_reference_hint_is_copy_pasteable() {
+        let mut root = parsed();
+        let err = add_membership(
+            &mut root,
+            "App",
+            &["App/Nope.swift".into()],
+            &Phase::Sources,
+        )
+        .unwrap_err();
+        // Not the whole path: a `<group>`-anchored reference stores the
+        // basename, so echoing the input back would resolve to App/App/Nope.swift.
+        assert!(
+            err.contains("`pbxproj fileref add Nope.swift --group App`"),
+            "{err}"
+        );
+
+        // Running the hint really does produce the reference `add` wanted.
+        crate::tree_pbxproj::add_fileref(&mut root, "Nope.swift", None, "<group>", Some("App"))
+            .unwrap();
+        let additions = add_membership(
+            &mut root,
+            "App",
+            &["App/Nope.swift".into()],
+            &Phase::Sources,
+        )
+        .unwrap();
+        assert!(!additions[0].already_member);
+
+        // A file at the project root has no directory to name a group with.
+        let err =
+            add_membership(&mut root, "App", &["Loose.swift".into()], &Phase::Sources).unwrap_err();
+        assert!(err.contains("--source-tree SOURCE_ROOT"), "{err}");
+    }
+
+    #[test]
+    fn an_ambiguous_path_points_at_the_id_form() {
+        let root = parsed();
+        assert_eq!(ref_path(&root, "FR2").unwrap(), "App/Legacy/Legacy.swift");
+        // The error a shared path produces has to name the escape hatch.
+        let err = ref_path(&root, "G1").unwrap_err();
+        assert!(err.contains("not a file reference"), "{err}");
     }
 }

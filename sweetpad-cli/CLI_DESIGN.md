@@ -1134,20 +1134,20 @@ sweetpad pbxproj folder add <dir> --target T
 sweetpad pbxproj folder remove <dir> --target T
 
 sweetpad pbxproj membership list [--target T]       everything a target builds
-sweetpad pbxproj membership add <path>… --target T --phase P   classic build-file entries
+sweetpad pbxproj membership add <path>… [--fileref ID]… --target T --phase P
 sweetpad pbxproj membership remove <path>… --target T     classic build-file entries
 sweetpad pbxproj membership exclude <path> --target T     sync-folder exception
 sweetpad pbxproj membership include <path> --target T     drop the exception
 
 sweetpad pbxproj fileref list [--under PREFIX]      the reference objects
-sweetpad pbxproj fileref add <path> [--type T] [--source-tree ST] [--group ID]
+sweetpad pbxproj fileref add <path>… [--type T] [--source-tree ST] [--group ID|DIR]
 sweetpad pbxproj fileref remove <id> [--dangling]
 
 sweetpad pbxproj group list                         the navigator tree
-sweetpad pbxproj group add <name> --parent ID [--path P] [--source-tree ST]
+sweetpad pbxproj group add <name> --parent ID|DIR [--path P] [--source-tree ST]
 sweetpad pbxproj group remove <id> [--orphan-children]
-sweetpad pbxproj group attach <id> --group ID       list a child
-sweetpad pbxproj group detach <id> --group ID       unlist a child
+sweetpad pbxproj group attach <id> --group ID|DIR   list a child
+sweetpad pbxproj group detach <id> --group ID|DIR   unlist a child
 ```
 
 - **`settings` splits by layer, not by flag.** Top-level `sweetpad settings
@@ -1175,12 +1175,14 @@ sweetpad pbxproj group detach <id> --group ID       unlist a child
   - **`exclude`/`include`** are §9f's exception verbs, relocated: excluding
     a file *is* a membership edit (unchecking the box in Xcode writes
     exactly these exception sets).
-  - **`add`** (batched paths, one write) gives a target a classic build-file
-    entry for each file, in the phase `--phase` names. The phase is never
-    derived from the extension, and the file reference has to exist already
+  - **`add`** (batched, one write) gives a target a classic build-file entry
+    for each file, in the phase `--phase` names. The phase is never derived
+    from the extension, and the file reference has to exist already
     (`fileref add` makes one). The two things a smart `add` would have had to
-    guess are the two things the caller states instead. A path a sync folder
+    guess are the two things the caller states instead. A file a sync folder
     already builds is refused with the same cross-hint discipline as `remove`.
+    Files are named by path or by `--fileref <ID>`, and the two mix in one
+    invocation — see "Two ways to name a thing" below.
   - **Verbs are mechanism-specific and cross-hint.** `remove` on a file
     that's built via a sync folder errors with "use membership exclude";
     `exclude` on a file with a classic build-file entry errors with "use
@@ -1204,6 +1206,38 @@ sweetpad pbxproj group detach <id> --group ID       unlist a child
     its `sourceTree` (`<group>`, `SOURCE_ROOT`, `<absolute>`), and each
     outcome returns the resolved on-disk path, so a wrong path/anchor pairing
     surfaces at the command rather than at the next build.
+
+**Two ways to name a thing.** Separate axes mean two commands, and the cost of
+two commands is naming the same file twice. Three rules keep that from being
+friction, without collapsing the axes:
+
+- **A group is named by id *or* by its resolved directory** (`--group
+  Sources/App`), everywhere a group is selected: `fileref add --group`,
+  `group add --parent`, `group attach/detach --group`. Ids are unambiguous by
+  construction, so an id that exists wins outright; otherwise the directory
+  must match exactly one group. Naming none, or two, is an error that lists
+  the candidates — organizational groups (a `name` with no `path`) resolve to
+  their parent's directory, so collisions are normal and only the caller knows
+  which it meant. This removes the `group list` lookup that otherwise preceded
+  every add; it is a rule that errors, not a guess that picks.
+- **`fileref add` is batched**, like every other mutating verb here.
+  `--type`/`--source-tree`/`--group` apply to the whole batch, which is the
+  case that actually recurs (a directory of new sources); files that disagree
+  are separate calls. A bad path refuses the batch rather than half-applying
+  it.
+- **Membership is addressable by file-reference id** (`--fileref <ID>`), which
+  is what `fileref add` returns. This is the spelling that *composes* — the id
+  flows from one command to the next and nothing is spelled twice, the way
+  `git hash-object` feeds `git update-index`. It is also the only way to name
+  a reference no group lists (no navigator path exists) or to disambiguate a
+  path two references share, which is why the ambiguity error points at it.
+  Paths remain the spelling for files that already exist.
+
+The pair stays two commands, because a reference without membership is a real
+state (`Info.plist` and `*.entitlements` are referenced by build settings and
+compiled by nothing) and one verb cannot express "yes it exists, no it isn't
+built". What these rules remove is the *bookkeeping* between the two, not the
+distinction.
 
 **Conversion as a recipe.** With these primitives, classic → sync-folder
 conversion is a script the caller owns, one decision per line:

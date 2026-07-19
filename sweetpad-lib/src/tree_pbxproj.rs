@@ -168,9 +168,10 @@ pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
 ///
 /// `file_type` writes `lastKnownFileType`; omitting it leaves the key out, so
 /// Xcode derives the type from the extension — an absent answer, not a guessed
-/// one. `group` attaches the new reference to that group's `children`; without
-/// it the reference exists but no group lists it (legal, and invisible in
-/// Xcode's navigator until something attaches it).
+/// one. `group` names either an object id or the group's resolved directory,
+/// and attaches the new reference to that group's `children`; without it the
+/// reference exists but no group lists it (legal, and invisible in Xcode's
+/// navigator until something attaches it).
 ///
 /// Nothing here touches a build phase: a reference is not membership. Pair it
 /// with [`crate::membership_pbxproj::add_membership`] to make a target build it.
@@ -190,9 +191,10 @@ pub fn add_fileref(
         return Err("the file path must not be empty".to_string());
     }
     let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
-    if let Some(group) = group {
-        check_group(objects_ref, group)?;
-    }
+    let group = group
+        .map(|spec| resolve_group(objects_ref, spec))
+        .transpose()?;
+    let group = group.as_deref();
     if let Some(existing) = objects_ref.iter().find_map(|(guid, o)| {
         (isa(o) == REF_ISA
             && str_field(o, "path") == Some(path.as_str())
@@ -235,11 +237,12 @@ pub fn add_fileref(
 ///
 /// `name` titles the group; `path` is the directory it contributes to its
 /// children's resolution (omit it for a purely organizational group that adds
-/// no directory component).
+/// no directory component). `parent` names either an object id or the group's
+/// resolved directory.
 ///
 /// # Errors
-/// Returns a message when the tree is malformed or `parent` is not an existing
-/// group node.
+/// Returns a message when the tree is malformed or `parent` names no group, or
+/// more than one.
 pub fn add_group(
     root: &mut Value,
     name: &str,
@@ -251,7 +254,7 @@ pub fn add_group(
         return Err("the group name must not be empty".to_string());
     }
     let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
-    check_group(objects_ref, parent)?;
+    let parent = &resolve_group(objects_ref, parent)?;
     if let Some(existing) = children_of(objects_ref, parent).into_iter().find(|child| {
         objects_ref.get(child).is_some_and(|o| {
             GROUP_ISAS.contains(&isa(o))
@@ -369,49 +372,52 @@ pub fn remove_group(root: &mut Value, guid: &str, force: bool) -> Result<RemoveO
     })
 }
 
-/// List `child` in `group`'s `children`.
+/// List `child` in `group`'s `children`. `group` names either an object id or
+/// the group's resolved directory.
 ///
 /// # Errors
-/// Returns a message when the tree is malformed, `group` is not a group node,
-/// or `child` does not exist.
+/// Returns a message when the tree is malformed, `group` names no group (or
+/// more than one), or `child` does not exist.
 pub fn attach(root: &mut Value, child: &str, group: &str) -> Result<LinkOutcome, String> {
     let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
-    check_group(objects_ref, group)?;
+    let group = &resolve_group(objects_ref, group)?;
     if !objects_ref.contains_key(child) {
         return Err(format!("no object with id {child}"));
     }
     if children_of(objects_ref, group).iter().any(|c| c == child) {
         return Ok(LinkOutcome::AlreadyLinked {
             child: child.to_string(),
-            group: group.to_string(),
+            group: group.clone(),
         });
     }
     let objects = objects_mut(root)?;
     push_child(objects, group, child);
     Ok(LinkOutcome::Linked {
         child: child.to_string(),
-        group: group.to_string(),
+        group: group.clone(),
     })
 }
 
 /// Drop `child` from `group`'s `children`, leaving the object itself in place.
+/// `group` names either an object id or the group's resolved directory.
 ///
 /// # Errors
-/// Returns a message when the tree is malformed or `group` is not a group node.
+/// Returns a message when the tree is malformed or `group` names no group, or
+/// more than one.
 pub fn detach(root: &mut Value, child: &str, group: &str) -> Result<LinkOutcome, String> {
     let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
-    check_group(objects_ref, group)?;
+    let group = &resolve_group(objects_ref, group)?;
     if !children_of(objects_ref, group).iter().any(|c| c == child) {
         return Ok(LinkOutcome::NotLinked {
             child: child.to_string(),
-            group: group.to_string(),
+            group: group.clone(),
         });
     }
     let objects = objects_mut(root)?;
     remove_child(objects, group, child);
     Ok(LinkOutcome::Unlinked {
         child: child.to_string(),
-        group: group.to_string(),
+        group: group.clone(),
     })
 }
 
@@ -441,14 +447,40 @@ pub fn fileref_for_path(root: &Value, path: &str) -> Result<Option<String>, Stri
     }
 }
 
-fn check_group(objects: &Dict, guid: &str) -> Result<(), String> {
-    let node = objects
-        .get(guid)
-        .ok_or_else(|| format!("no object with id {guid}"))?;
-    if GROUP_ISAS.contains(&isa(node)) {
-        Ok(())
-    } else {
-        Err(format!("{guid} is a {}, not a group", isa(node)))
+/// Settle a group argument that is either an object id or the group's resolved
+/// directory (`Sources/App`).
+///
+/// An id is unambiguous by construction, so it wins outright; a path is matched
+/// against every group's resolved directory and must hit exactly one. Naming no
+/// group, or two, is an error rather than a pick — organizational groups (a
+/// `name` with no `path`) resolve to their parent's directory, so collisions are
+/// normal and the caller is the one who knows which it meant.
+fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
+    if let Some(node) = objects.get(spec) {
+        return if GROUP_ISAS.contains(&isa(node)) {
+            Ok(spec.to_string())
+        } else {
+            Err(format!("{spec} is a {}, not a group", isa(node)))
+        };
+    }
+    let wanted = normalize(spec);
+    let hits: Vec<String> = objects
+        .iter()
+        .filter(|(_, o)| GROUP_ISAS.contains(&isa(o)))
+        .filter(|(guid, _)| {
+            display(&crate::project::group_dir(objects, guid, Path::new(""), 0)) == wanted
+        })
+        .map(|(guid, _)| guid.clone())
+        .collect();
+    match hits.len() {
+        1 => Ok(hits.into_iter().next().unwrap_or_default()),
+        0 => Err(format!(
+            "no group with id or directory {spec}; `pbxproj group list` shows both"
+        )),
+        n => Err(format!(
+            "{wanted} is the directory of {n} groups ({}); pass the id you mean",
+            hits.join(", ")
+        )),
     }
 }
 
@@ -830,5 +862,78 @@ mod tests {
             Some("FR1")
         );
         assert!(fileref_for_path(&root, "App/Nope.swift").unwrap().is_none());
+    }
+
+    #[test]
+    fn a_group_can_be_named_by_its_directory_instead_of_its_id() {
+        let mut root = parsed();
+        let outcome = add_fileref(&mut root, "Extra.swift", None, "<group>", Some("App")).unwrap();
+        let AddRefOutcome::Created {
+            resolved,
+            attached_to,
+            ..
+        } = outcome
+        else {
+            panic!("expected a fresh reference");
+        };
+        assert_eq!(resolved, "App/Extra.swift");
+        assert_eq!(
+            attached_to.as_deref(),
+            Some("G1"),
+            "the directory settles to the id, and the outcome reports the id"
+        );
+    }
+
+    #[test]
+    fn a_nested_group_directory_resolves_and_an_unknown_one_is_refused() {
+        let mut root = parsed();
+        let outcome =
+            add_fileref(&mut root, "Old.swift", None, "<group>", Some("App/Legacy")).unwrap();
+        let AddRefOutcome::Created { attached_to, .. } = outcome else {
+            panic!("expected a fresh reference");
+        };
+        assert_eq!(attached_to.as_deref(), Some("G2"));
+
+        let err = add_fileref(&mut root, "X.swift", None, "<group>", Some("App/Nope")).unwrap_err();
+        assert!(
+            err.contains("no group with id or directory App/Nope"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_directory_naming_two_groups_is_refused_rather_than_picked() {
+        let mut root = parsed();
+        // A second group whose directory is also `App` — legal, and exactly the
+        // case where only the caller knows which one it meant.
+        add_group(&mut root, "Other", "MG", Some("App"), "<group>").unwrap();
+
+        let err = add_fileref(&mut root, "X.swift", None, "<group>", Some("App")).unwrap_err();
+        assert!(err.contains("is the directory of 2 groups"), "{err}");
+        assert!(err.contains("pass the id you mean"), "{err}");
+
+        // The id still names one of them outright.
+        assert!(add_fileref(&mut root, "X.swift", None, "<group>", Some("G1")).is_ok());
+    }
+
+    #[test]
+    fn attach_and_detach_take_a_directory_too() {
+        let mut root = parsed();
+        let outcome = attach(&mut root, "FR1", "App/Legacy").unwrap();
+        assert_eq!(
+            outcome,
+            LinkOutcome::Linked {
+                child: "FR1".to_string(),
+                group: "G2".to_string(),
+            }
+        );
+        let outcome = detach(&mut root, "FR1", "App/Legacy").unwrap();
+        assert_eq!(
+            outcome,
+            LinkOutcome::Unlinked {
+                child: "FR1".to_string(),
+                group: "G2".to_string(),
+            }
+        );
     }
 }

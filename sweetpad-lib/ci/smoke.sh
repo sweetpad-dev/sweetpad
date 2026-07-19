@@ -293,8 +293,23 @@ GROUP=$("$BIN" pbxproj group list --project "$TREE_PROJ" --json \
 cat > "$TREE_DIR/app/Sources/App/Added.swift" <<'SWIFT'
 func addedGreeting() -> String { "wired in by the CLI" }
 SWIFT
-REF=$("$BIN" pbxproj fileref add Added.swift --type sourcecode.swift --group "$GROUP" \
-  --project "$TREE_PROJ" --json | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['id'])")
+cat > "$TREE_DIR/app/Sources/App/Batched.swift" <<'SWIFT'
+func batchedGreeting() -> String { "added in the same write" }
+SWIFT
+# Two paths, one write; `--group` takes the resolved directory, so wiring a file
+# up needs no `group list` lookup first.
+out=$("$BIN" pbxproj fileref add Added.swift Batched.swift --type sourcecode.swift \
+  --group Sources/App --project "$TREE_PROJ" --json)
+assert_json "$out" "[r['resolved'] for r in d['refs']]" \
+  "['Sources/App/Added.swift', 'Sources/App/Batched.swift']"
+assert_json "$out" "sorted({r['group'] for r in d['refs']})" "['$GROUP']"
+REF=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['refs'][0]['id'])")
+BATCHED=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['refs'][1]['id'])")
+ok "pbxproj fileref add (batched, and a directory names the group)"
+
+# A directory that names no group, or two, is an error rather than a pick.
+expect_code 1 "$BIN" pbxproj fileref add Nope.swift --group Sources/Nope --project "$TREE_PROJ"
+ok "an unknown group directory is refused"
 
 # A reference on its own builds nothing — membership is a separate statement.
 out=$("$BIN" pbxproj membership list --target SweetpadCIApp --project "$TREE_PROJ" --json)
@@ -305,17 +320,26 @@ ok "pbxproj fileref add (a reference is not membership)"
 expect_code 1 "$BIN" pbxproj group remove "$GROUP" --project "$TREE_PROJ"
 ok "pbxproj group remove refuses a group that still has children"
 
-"$BIN" pbxproj membership add Sources/App/Added.swift --target SweetpadCIApp --phase sources \
-  --project "$TREE_PROJ"
+# Two spellings of the same edit: a path, and the id `fileref add` handed back.
+# The id form is what composes — nothing names the file twice.
+"$BIN" pbxproj membership add Sources/App/Added.swift --fileref "$BATCHED" \
+  --target SweetpadCIApp --phase sources --project "$TREE_PROJ"
 out=$("$BIN" pbxproj membership list --target SweetpadCIApp --project "$TREE_PROJ" --json)
 assert_json "$out" "[e['phase'] for e in d['targets'][0]['explicit'] if 'Added' in e['path']]" "['sources']"
-# The build both proves the file compiles and that the pbxproj we wrote is one
+assert_json "$out" "[e['phase'] for e in d['targets'][0]['explicit'] if 'Batched' in e['path']]" "['sources']"
+expect_code 1 "$BIN" pbxproj membership add --target SweetpadCIApp --phase sources \
+  --project "$TREE_PROJ"
+expect_code 1 "$BIN" pbxproj membership add --fileref "$GROUP" --target SweetpadCIApp \
+  --phase sources --project "$TREE_PROJ"
+# The build both proves the files compile and that the pbxproj we wrote is one
 # xcodebuild can still read.
 "$BIN" build start --project "$TREE_PROJ" --scheme SweetpadCIApp \
   --destination "generic/platform=iOS Simulator" 2>&1 | tee "$TREE_DIR/build.log" >/dev/null
-grep -q "Compiling Added.swift" "$TREE_DIR/build.log" \
-  || fail "the added file was not compiled: $(tail -3 "$TREE_DIR/build.log")"
-ok "pbxproj membership add (the added file really compiles)"
+for f in Added Batched; do
+  grep -q "Compiling $f.swift" "$TREE_DIR/build.log" \
+    || fail "$f.swift was not compiled: $(tail -3 "$TREE_DIR/build.log")"
+done
+ok "pbxproj membership add (by path and by --fileref; both really compile)"
 
 expect_code 1 "$BIN" pbxproj fileref remove "$REF" --project "$TREE_PROJ"
 ok "pbxproj fileref remove refuses a reference a target still builds"

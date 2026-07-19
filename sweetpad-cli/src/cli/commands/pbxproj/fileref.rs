@@ -35,9 +35,11 @@ pub struct ListArgs {
 /// Flags for `pbxproj fileref add`.
 #[derive(Debug, Args)]
 pub struct AddArgs {
-    /// File path, interpreted against '--source-tree': group-relative for
-    /// '<group>', project-relative for 'SOURCE_ROOT'.
-    pub path: String,
+    /// File paths, interpreted against '--source-tree': group-relative for
+    /// '<group>', project-relative for 'SOURCE_ROOT' (batched — one write, and
+    /// '--type'/'--source-tree'/'--group' apply to every path).
+    #[arg(required = true, value_name = "PATH")]
+    pub paths: Vec<String>,
 
     #[command(flatten)]
     pub container: ContainerArgs,
@@ -53,9 +55,9 @@ pub struct AddArgs {
     #[arg(long, default_value = "<group>")]
     pub source_tree: String,
 
-    /// Group id to list the new reference under. Without it the reference
-    /// exists but no group shows it — attach it later with 'pbxproj group
-    /// attach'.
+    /// Group to list the new references under, by id or by resolved directory
+    /// ('Sources/App'). Without it they exist but no group shows them — attach
+    /// them later with 'pbxproj group attach'.
     #[arg(long)]
     pub group: Option<String>,
 
@@ -167,55 +169,76 @@ fn list(ctx: &mut Context, args: &ListArgs) -> CommandResult {
     Ok(Rendered::data(ListResult { refs }))
 }
 
+/// The `fileref add` report: one row per path, in argument order.
+struct AddResult {
+    rows: Vec<serde_json::Value>,
+    lines: Vec<String>,
+}
+
+impl Render for AddResult {
+    fn human(&self, out: &Output) {
+        for line in &self.lines {
+            out.line(line);
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({ "action": "add", "refs": self.rows })
+    }
+}
+
 fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
     let (xcodeproj, mut root) =
         super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
-    let outcome = tree_pbxproj::add_fileref(
-        &mut root,
-        &args.path,
-        args.file_type.as_deref(),
-        &args.source_tree,
-        args.group.as_deref(),
-    )
-    .map_err(CliError::new)?;
 
-    let (line, changed, json) = match &outcome {
-        AddRefOutcome::Created {
-            guid,
-            resolved,
-            attached_to,
-        } => {
-            let where_ = match attached_to {
-                Some(group) => format!(" under group {group}"),
-                None => " (unattached — no group lists it)".to_string(),
-            };
-            (
-                format!("{guid}  {resolved}{where_}"),
-                true,
-                serde_json::json!({
-                    "action": "add",
+    // Resolve and apply the whole batch before writing: a bad path refuses the
+    // batch rather than half-applying it, the same contract `membership add`
+    // keeps.
+    let mut rows = Vec::new();
+    let mut lines = Vec::new();
+    let mut changed = false;
+    for path in &args.paths {
+        let outcome = tree_pbxproj::add_fileref(
+            &mut root,
+            path,
+            args.file_type.as_deref(),
+            &args.source_tree,
+            args.group.as_deref(),
+        )
+        .map_err(CliError::new)?;
+        match &outcome {
+            AddRefOutcome::Created {
+                guid,
+                resolved,
+                attached_to,
+            } => {
+                let where_ = match attached_to {
+                    Some(group) => format!(" under group {group}"),
+                    None => " (unattached — no group lists it)".to_string(),
+                };
+                lines.push(format!("{guid}  {resolved}{where_}"));
+                rows.push(serde_json::json!({
                     "id": guid,
                     "resolved": resolved,
                     "group": attached_to,
                     "changed": true,
-                }),
-            )
+                }));
+                changed = true;
+            }
+            AddRefOutcome::AlreadyExists { guid, resolved } => {
+                lines.push(format!("{guid}  {resolved} (already a reference)"));
+                rows.push(serde_json::json!({
+                    "id": guid,
+                    "resolved": resolved,
+                    "changed": false,
+                }));
+            }
         }
-        AddRefOutcome::AlreadyExists { guid, resolved } => (
-            format!("{guid}  {resolved} (already a reference)"),
-            false,
-            serde_json::json!({
-                "action": "add",
-                "id": guid,
-                "resolved": resolved,
-                "changed": false,
-            }),
-        ),
-    };
+    }
     if changed {
         pbxedit::write_pbxproj(&xcodeproj, &root)?;
     }
-    Ok(Rendered::data(RefMutation { line, json }))
+    Ok(Rendered::data(AddResult { rows, lines }))
 }
 
 fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {

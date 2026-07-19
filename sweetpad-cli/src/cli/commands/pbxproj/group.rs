@@ -40,7 +40,8 @@ pub struct AddArgs {
     #[command(flatten)]
     pub container: ContainerArgs,
 
-    /// Parent group id to create it under (from 'pbxproj group list').
+    /// Parent group to create it under, by id or by resolved directory
+    /// ('Sources/App'); 'pbxproj group list' shows both.
     #[arg(long)]
     pub parent: String,
 
@@ -97,7 +98,8 @@ pub struct LinkArgs {
     #[command(flatten)]
     pub container: ContainerArgs,
 
-    /// The group whose children list changes.
+    /// The group whose children list changes, by id or by resolved directory
+    /// ('Sources/App'); 'pbxproj group list' shows both.
     #[arg(long)]
     pub group: String,
 

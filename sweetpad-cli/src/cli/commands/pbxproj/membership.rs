@@ -77,11 +77,18 @@ pub struct AddArgs {
     /// File paths, relative to the project directory (batched — one write).
     /// Each must already have a file reference; create one with 'pbxproj
     /// fileref add'.
-    #[arg(required = true, value_name = "PATH")]
+    #[arg(value_name = "PATH")]
     pub paths: Vec<String>,
 
     #[command(flatten)]
     pub container: ContainerArgs,
+
+    /// File reference id to add, instead of naming it by path (repeatable, and
+    /// combines with paths). This is what 'pbxproj fileref add' returns, so the
+    /// two verbs compose without spelling the file twice — and it stays exact
+    /// where a path is shared by two references.
+    #[arg(long = "fileref", value_name = "ID")]
+    pub filerefs: Vec<String>,
 
     /// Build target the files join. Optional only when the project has exactly
     /// one target.
@@ -305,6 +312,11 @@ impl Render for AddResult {
 }
 
 fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
+    if args.paths.is_empty() && args.filerefs.is_empty() {
+        return Err(CliError::new(
+            "name at least one file, by path or by `--fileref <ID>`",
+        ));
+    }
     let (xcodeproj, mut root) =
         super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
     let target = super::settle_target(&root, args.target.as_ref())?;
@@ -312,8 +324,14 @@ fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
         .ok_or_else(|| CliError::new(format!("unknown build phase `{}`", args.phase)))?;
 
     // Cross-hint, mirroring `remove`: a file a synchronized folder already
-    // builds needs no classic entry, and adding one builds it twice.
-    for path in &args.paths {
+    // builds needs no classic entry, and adding one builds it twice. Ids are
+    // resolved to their paths first, so naming a file either way gets the same
+    // check.
+    let mut named = args.paths.clone();
+    for id in &args.filerefs {
+        named.push(membership_pbxproj::ref_path(&root, id).map_err(CliError::new)?);
+    }
+    for path in &named {
         if let Some(folder) =
             sync_pbxproj::containing_folder(&root, &target, path).map_err(CliError::new)?
         {
@@ -325,8 +343,12 @@ fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
         }
     }
 
-    let additions = membership_pbxproj::add_membership(&mut root, &target, &args.paths, &phase)
+    let mut additions = membership_pbxproj::add_membership(&mut root, &target, &args.paths, &phase)
         .map_err(CliError::new)?;
+    additions.extend(
+        membership_pbxproj::add_membership_by_ids(&mut root, &target, &args.filerefs, &phase)
+            .map_err(CliError::new)?,
+    );
     if additions.iter().any(|a| !a.already_member) {
         pbxedit::write_pbxproj(&xcodeproj, &root)?;
     }
