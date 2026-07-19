@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use clap::Subcommand;
 
+mod ax;
 mod macwin;
 
 use crate::cli::inject::recompiler::{Mode, Recompiler};
@@ -253,6 +254,88 @@ pub enum Action {
     /// Save a PNG screenshot of the running app: a macOS app's window, or
     /// the simulator it launched on.
     Screenshot(ScreenshotArgs),
+    /// Inspect or drive a running macOS app's UI through accessibility
+    /// ('ui' alone runs 'ui tree').
+    Ui {
+        #[command(subcommand)]
+        action: Option<UiAction>,
+    },
+}
+
+/// The `app ui` verbs (CLI_DESIGN §9i).
+#[derive(Debug, Subcommand)]
+pub enum UiAction {
+    /// Print the app's accessibility tree — every element it exposes, with
+    /// the labels and roles the other verbs match on.
+    Tree(UiTreeArgs),
+    /// Press a control (the 'AXPress' action a button or menu item offers).
+    Click(UiSelectArgs),
+    /// Replace a text field's contents (sets 'AXValue'; this is not
+    /// keystroke synthesis, so an app watching for individual key events may
+    /// not react).
+    Type(UiTypeArgs),
+}
+
+/// How every `app ui` verb finds the running macOS app.
+#[derive(Debug, clap::Args)]
+pub struct UiAppArgs {
+    #[command(flatten)]
+    pub target: crate::cli::BuildTargetArgs,
+
+    /// Drive this process directly, skipping app resolution (for macOS
+    /// processes sweetpad didn't launch).
+    #[arg(long, value_name = "PID")]
+    pub pid: Option<i32>,
+}
+
+/// Flags for `app ui tree`.
+#[derive(Debug, clap::Args)]
+pub struct UiTreeArgs {
+    #[command(flatten)]
+    pub app: UiAppArgs,
+
+    /// How many levels below the application element to descend.
+    #[arg(long, value_name = "N", default_value_t = 20)]
+    pub depth: usize,
+}
+
+/// Which element a verb acts on. Matching nothing, or several without
+/// '--nth', is an error rather than a guess.
+#[derive(Debug, clap::Args)]
+pub struct UiQueryArgs {
+    /// The element's identifier or visible label. Exact matches win over
+    /// substring ones, and case is ignored.
+    #[arg(long, value_name = "TEXT")]
+    pub label: Option<String>,
+
+    /// Restrict to one role, e.g. 'button', 'textfield', 'menuitem' (the
+    /// 'AX' prefix is optional).
+    #[arg(long, value_name = "ROLE")]
+    pub role: Option<String>,
+
+    /// Which match to take when several tie: 1-based, front-to-back.
+    #[arg(long, value_name = "N")]
+    pub nth: Option<usize>,
+}
+
+/// Flags for `app ui click`.
+#[derive(Debug, clap::Args)]
+pub struct UiSelectArgs {
+    #[command(flatten)]
+    pub app: UiAppArgs,
+    #[command(flatten)]
+    pub query: UiQueryArgs,
+}
+
+/// Flags for `app ui type`.
+#[derive(Debug, clap::Args)]
+pub struct UiTypeArgs {
+    /// The text to put in the field.
+    pub text: String,
+    #[command(flatten)]
+    pub app: UiAppArgs,
+    #[command(flatten)]
+    pub query: UiQueryArgs,
 }
 
 /// Flags for `app screenshot` (CLI_DESIGN §9h).
@@ -436,6 +519,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             ctx.targeting = args.target.clone().into();
             screenshot(ctx, args)
         }
+        Action::Ui { action } => ui(ctx, action.as_ref()),
     }
 }
 
@@ -4075,6 +4159,252 @@ fn simulator_screenshot(ctx: &Context, udid: &str, args: &ScreenshotArgs) -> Com
         bundle_id: None,
         windows: None,
     }))
+}
+
+/// The `app ui tree` payload: the app that was inspected and its element
+/// tree.
+struct UiTreeReport {
+    app: String,
+    pid: i32,
+    root: ax::Node,
+}
+
+impl Render for UiTreeReport {
+    fn human(&self, out: &Output) {
+        for line in ax::outline(&self.root) {
+            out.line(&line);
+        }
+        // A `--pid` run names the app "pid N" already; don't say it twice.
+        let where_ = if self.app == format!("pid {}", self.pid) {
+            self.app.clone()
+        } else {
+            format!("{} (pid {})", self.app, self.pid)
+        };
+        out.note(&format!("{} elements in {where_}", self.root.count()));
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "app": self.app,
+            "pid": self.pid,
+            "elements": self.root.count(),
+            "tree": ax::to_json(&self.root),
+        })
+    }
+}
+
+/// The `app ui click` / `app ui type` payload: what was acted on, and how.
+struct UiActReport {
+    app: String,
+    pid: i32,
+    /// `click` or `type` — the verb, for the note and the JSON.
+    verb: &'static str,
+    element: String,
+    path: Vec<usize>,
+    /// The text written, for `type` only.
+    text: Option<String>,
+}
+
+impl Render for UiActReport {
+    fn human(&self, out: &Output) {
+        match &self.text {
+            Some(text) => out.note(&format!("set {} to {text:?} in {}", self.element, self.app)),
+            None => out.note(&format!("clicked {} in {}", self.element, self.app)),
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "app": self.app,
+            "pid": self.pid,
+            "action": self.verb,
+            "element": self.element,
+            "path": self.path,
+            "text": self.text,
+        })
+    }
+}
+
+/// `app ui` — inspect or drive a running macOS app (CLI_DESIGN §9i). A bare
+/// `app ui` reads as `app ui tree`, the one verb that only observes.
+fn ui(ctx: &mut Context, action: Option<&UiAction>) -> CommandResult {
+    let Some(action) = action else {
+        ctx.targeting = crate::cli::Targeting::from_env();
+        return ui_tree(ctx, None, 20);
+    };
+    match action {
+        UiAction::Tree(args) => {
+            ctx.targeting = args.app.target.clone().into();
+            ui_tree(ctx, args.app.pid, args.depth)
+        }
+        UiAction::Click(args) => {
+            ctx.targeting = args.app.target.clone().into();
+            ui_act(ctx, &args.app, &args.query, None)
+        }
+        UiAction::Type(args) => {
+            ctx.targeting = args.app.target.clone().into();
+            ui_act(ctx, &args.app, &args.query, Some(&args.text))
+        }
+    }
+}
+
+/// `app ui tree` — snapshot and print the whole exposed hierarchy.
+fn ui_tree(ctx: &mut Context, pid: Option<i32>, depth: usize) -> CommandResult {
+    let shot = resolve_ui_app(ctx, pid)?;
+    let pid = ui_preflight(ctx, &shot)?;
+    let root = ax::snapshot(pid, depth)?;
+    Ok(Rendered::data(UiTreeReport {
+        app: shot.name,
+        pid,
+        root,
+    }))
+}
+
+/// The shared body of `app ui click` and `app ui type`: resolve the app,
+/// snapshot it, match one element, act. `text` decides which.
+fn ui_act(
+    ctx: &mut Context,
+    app: &UiAppArgs,
+    query: &UiQueryArgs,
+    text: Option<&str>,
+) -> CommandResult {
+    let query = ax::Query {
+        label: query.label.clone(),
+        role: query.role.clone(),
+        nth: query.nth,
+    };
+    // An empty query would match the application element itself and press
+    // something arbitrary; make the caller say what they meant.
+    if query.is_empty() {
+        return Err(CliError::new(
+            "name the element with --label, or --role for a lone control; \
+             `sweetpad app ui tree` shows what the app exposes",
+        ));
+    }
+    let shot = resolve_ui_app(ctx, app.pid)?;
+    let pid = ui_preflight(ctx, &shot)?;
+    let root = ax::snapshot(pid, usize::MAX)?;
+    let target = ax::find(&root, &query).map_err(CliError::new)?;
+
+    match text {
+        Some(text) => ax::act(pid, target, &ax::Act::SetValue(text))?,
+        None => ax::act(pid, target, &ax::Act::Perform("AXPress"))?,
+    }
+    Ok(Rendered::data(UiActReport {
+        app: shot.name,
+        pid,
+        verb: if text.is_some() { "type" } else { "click" },
+        element: target.describe(),
+        path: target.path.clone(),
+        text: text.map(str::to_string),
+    }))
+}
+
+/// Check the Accessibility grant and settle on one pid to drive.
+///
+/// An app with several live processes is ambiguous in a way a screenshot's
+/// frontmost-window rule isn't — there is no "frontmost" element tree — so
+/// this refuses rather than picking.
+fn ui_preflight(ctx: &Context, shot: &MacShot) -> Result<i32, CliError> {
+    if !ax::has_accessibility_access() {
+        if ctx.out.is_interactive() {
+            ax::request_accessibility_access();
+        }
+        return Err(ax::permission_error());
+    }
+    match shot.pids.as_slice() {
+        [pid] => Ok(*pid),
+        [] => Err(CliError::new(format!("{} isn't running", shot.name))),
+        many => Err(CliError::new(format!(
+            "{} has {} running processes ({}); pass --pid to say which",
+            shot.name,
+            many.len(),
+            many.iter()
+                .map(i32::to_string)
+                .collect::<Vec<_>>()
+                .join(", "),
+        ))),
+    }
+}
+
+/// Resolve which macOS app `app ui` drives, mirroring `screenshot`'s order:
+/// an explicit `--pid` wins, then the recorded last launch, then the resolved
+/// build target. Never builds.
+fn resolve_ui_app(ctx: &mut Context, pid: Option<i32>) -> Result<MacShot, CliError> {
+    if let Some(pid) = pid {
+        if explicit_targeting(ctx) {
+            return Err(CliError::new(
+                "--pid drives a process directly; scheme/destination flags don't apply",
+            ));
+        }
+        if pid <= 0 {
+            return Err(CliError::new("--pid takes a positive process id"));
+        }
+        if unsafe { libc::kill(pid, 0) } != 0
+            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+        {
+            return Err(CliError::new(format!("no process with pid {pid}")));
+        }
+        return Ok(MacShot {
+            pids: vec![pid],
+            name: format!("pid {pid}"),
+            bundle_id: None,
+        });
+    }
+
+    if !explicit_targeting(ctx)
+        && let Some(last) = last_launched(ctx)
+    {
+        match last.kind.as_str() {
+            "macos" => {
+                if let Some(exe) = mac_executable(&last) {
+                    return mac_shot_for(&exe, &last.bundle_identifier);
+                }
+            }
+            "simulator" | "device" => return Err(ui_not_mac(&last.kind)),
+            _ => {}
+        }
+    }
+
+    let opts = RunOpts {
+        device: false,
+        device_id: None,
+        mac: false,
+        no_logs: true,
+        detach: false,
+        hot: false,
+        hot_explicit: false,
+        hot_mode: Mode::Resolver,
+        hot_selfcheck: None,
+        keep_sandbox: false,
+        hot_entitlements: None,
+        launch: &LaunchArgs::default(),
+        passthrough: &[],
+    };
+    let plan = plan(ctx, &opts)?;
+    match &plan.target {
+        Target::Mac => {
+            let app = plan.app_bundle()?;
+            mac_shot_for(&app.executable, &app.bundle_id)
+        }
+        Target::Simulator(_) => Err(ui_not_mac("simulator")),
+        Target::Device(_) => Err(ui_not_mac("device")),
+        Target::SpmRun(_) => Err(CliError::new(
+            "a Swift package executable has no app bundle to drive; use --pid for a \
+             process it started",
+        )),
+    }
+}
+
+/// The one error every non-macOS destination gets, naming what does work
+/// there instead.
+fn ui_not_mac(kind: &str) -> CliError {
+    CliError::new(format!(
+        "`app ui` drives macOS apps through the Accessibility API, which doesn't reach a \
+         {kind}. For a simulator, `app screenshot` captures the screen and `app open-url` \
+         drives it by deep link; scripted taps need a UI test target run through \
+         `sweetpad test`"
+    ))
 }
 
 /// Follow a simulator's log for the app inline until Ctrl-C — the non-interactive

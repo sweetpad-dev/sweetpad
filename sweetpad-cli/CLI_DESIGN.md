@@ -100,7 +100,8 @@ sweetpad status / open / doctor / self-update / help <topic>
 sweetpad simulator <boot|create|delete|clone|push|privacy|status-bar|
                     location|media-add|record|screenshot|…>   (alias: sim)
 sweetpad app <run|install|launch|debug|uninstall|logs|stop|open-url|
-              screenshot>              (screenshot: simulator or macOS window, §9h)
+              screenshot|ui>           (screenshot: simulator or macOS window, §9h;
+                                        ui: drive a macOS app's UI, §9i)
 sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
                                   are hidden aliases)
 sweetpad context <show|select|set|alias|remove>
@@ -1389,6 +1390,104 @@ unit-tested.
 --no-logs`, then `app screenshot`, then `app stop` — and owns its own
 timing, per §9g's explicit-primitives philosophy), and device screenshots
 (devicectl exposes no capture; the error says so).
+
+## 9i. v8 — `app ui` — reading and driving a macOS app's UI
+
+§9h closed the *observe* half of the agent loop and `app open-url` covers
+*stimulate* at arm's length, but "click this, assert that" had no spelling: a
+PNG is not something a script can assert on, and a deep link only reaches
+states the app chose to expose as URLs. `app ui` adds the missing half
+through the Accessibility API, where one interface serves both — the element
+tree is the assertion surface and the same elements take the actions:
+
+```
+sweetpad app ui tree  [--depth N] [--pid N]           # what the app exposes
+sweetpad app ui click <--label TEXT|--role ROLE> [--nth N] [--pid N]
+sweetpad app ui type  <TEXT> --label TEXT [--role ROLE] [--nth N] [--pid N]
+```
+
+A bare `app ui` runs `ui tree`, the one verb that only observes.
+
+**Target resolution** is §9h's ladder exactly — `--pid`, then the recorded
+last launch, then the resolved build target, never a build. It is
+**macOS-only**, and the non-mac error says what does work there instead
+(`app screenshot` + `app open-url`, or a UI test target through
+`sweetpad test`): `simctl` has no tap or type verb at all, so the honest
+answer for a simulator is XCUITest, which is a different model — write a
+Swift test, build it, run it — not a command an agent issues between edits.
+Where §9h picks the frontmost window when an app has several, `ui` *refuses*
+a multi-process app: there is no "frontmost" element tree, so it names the
+pids and asks for `--pid`.
+
+That scope is a property of the API, not a gap left to fill. Accessibility
+is host-side and addresses processes on the Mac by pid; a simulated app runs
+inside the simulator's own OS and is not in that namespace. The tempting
+workaround does not exist either, and it fails in the way most likely to be
+mistaken for progress: `Simulator.app` is itself a macOS app, so
+`app ui --pid <Simulator pid>` *succeeds* and prints a 368-element tree —
+which is **entirely its own menu bar** (`File`, `Device`, `I/O`). There is
+no `AXWindow` in it at all; the device window is not bridged, so nothing
+about the simulated app's UI is reachable. Anyone reaching for `--pid` as
+an escape hatch gets real-looking output and no way to act on the app, which
+is why the destination-level refusal is a hard error rather than a
+best-effort attempt.
+
+**The tree** is `AXUIElementCreateApplication(pid)` walked through
+`AXChildren`, each node carrying its role, label, identifier, enabled state
+and the actions it advertises. The label is `AXTitle`, else
+`AXDescription`, else a string-valued `AXValue`. An `AXIdentifier` is
+preferred over the label when a developer assigned one — it survives copy
+changes, so it is the thing to write in a script — but AppKit hands *every*
+view an auto-generated identifier of the form `_NS:945`, an internal serial
+number that changes between runs and would otherwise mask every real title
+(`AXWindow "_NS:34"` for a window plainly called `uitest.txt`). Those are
+dropped at read time and never reach the model.
+
+**Matching** follows §9g's resolver rule — naming nothing, or two things, is
+an error rather than a pick. `--label` matches identifier or label,
+case-insensitively, with **exact matches tried before substring ones** so
+`--label Save` prefers a "Save" button over "Save As…" instead of calling
+the pair ambiguous. `--role` accepts `button` or `AXButton`. A genuine tie
+lists its candidates and asks for `--nth` (1-based, front-to-back), and the
+suggestion to narrow names the axis the caller hasn't already used. An empty
+query is refused outright: it would match the application element and press
+something arbitrary.
+
+**Acting** is `AXUIElementPerformAction(…, "AXPress")` for `click` and
+setting `AXValue` for `type`. Because a snapshot is pure data holding no
+live element refs, `act` re-descends by index path and **re-checks the role
+on arrival** — if the UI restructured between snapshot and act, that is a
+clear "the UI changed under us" error rather than a press landing on
+whatever now occupies the slot. `type` is a value assignment, not keystroke
+synthesis; the help says so, because an app watching for individual key
+events won't see any.
+
+**Permission** is `AXIsProcessTrustedWithOptions`, mirroring §9h's
+Screen Recording preflight: a missing Accessibility grant is a hard error
+naming System Settings → Privacy & Security → Accessibility, and only an
+interactive terminal triggers the one-time OS prompt. The grant attaches to
+the *hosting* app (Terminal, iTerm, the editor), not to the sweetpad binary.
+
+**Occlusion does not gate reads**, which is what makes this usable
+unattended. §9h's capture path and the AppKit notes behind it fail when a
+window is occluded or the display is asleep — the display pipeline is gated,
+`cacheDisplay` reads empty backing stores, and lazy `NSTableView` row views
+never materialize. The accessibility hierarchy is derived from the view
+tree instead, and a tree walked while the app sat fully behind other windows
+was byte-identical to the same walk with it frontmost. What an app
+*exposes* is still its own choice: an unlabeled SwiftUI view is a bare
+`AXGroup` with nothing to match on, and no amount of CLI can invent a label
+the app never set.
+
+The `ApplicationServices`/CoreFoundation FFI is the same shape as §9h's — a
+small hand-rolled block, no binding crate, no Objective-C runtime, since
+`AXUIElement` is plain C — with the tree model, matching and rendering above
+it pure and unit-tested.
+
+*Deliberately not built:* coordinate-based clicking via `CGEvent` (brittle,
+and it can assert nothing — the tree is the point), keystroke synthesis,
+element waiting/polling (`ui tree` is cheap; a caller that needs to wait owns
+its own timing, per §9g), and any simulator path short of XCUITest.
 
 ## 10. Testing
 
