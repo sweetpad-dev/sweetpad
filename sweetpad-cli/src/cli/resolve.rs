@@ -1275,6 +1275,13 @@ impl SupportedPlatforms {
     fn mac_only(&self) -> bool {
         self.allows_mac() && !self.0.iter().any(|t| t.ends_with("simulator"))
     }
+
+    /// Whether the target builds only for macOS — the signal `archive` uses to
+    /// pick a generic macOS destination instead of defaulting to iOS.
+    #[must_use]
+    pub fn is_mac_only(&self) -> bool {
+        self.mac_only()
+    }
 }
 
 /// The platform tokens an `SDKROOT` value implies (a device SDK brings its
@@ -1486,6 +1493,26 @@ fn prompt_choice(what: &str, candidates: &[String], color: bool) -> Result<Strin
 
 #[cfg(test)]
 mod tests {
+    use super::SupportedPlatforms;
+
+    fn platforms(tokens: &[&str]) -> SupportedPlatforms {
+        SupportedPlatforms(tokens.iter().map(|t| (*t).to_string()).collect())
+    }
+
+    #[test]
+    fn mac_only_targets_are_recognised_for_archive() {
+        // `archive` picks a generic macOS destination from this; getting it
+        // wrong sends a mac-only project to `generic/platform=iOS`, which
+        // fails inside xcodebuild.
+        assert!(platforms(&["macosx"]).is_mac_only());
+        // Catalyst/multiplatform targets also build for a simulator, so the
+        // iOS default stays correct for them.
+        assert!(!platforms(&["macosx", "iphonesimulator"]).is_mac_only());
+        assert!(!platforms(&["iphoneos", "iphonesimulator"]).is_mac_only());
+        // No tokens resolved: no opinion, keep the existing default.
+        assert!(!platforms(&[]).is_mac_only());
+    }
+
     use super::is_device_destination;
 
     #[test]

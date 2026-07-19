@@ -55,6 +55,21 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
 
     let cleaned = match &resolved.container {
         Container::SwiftPackage(_) => {
+            // `swift package clean` takes neither, and accepting them here
+            // would silently not do what was asked (the rule `build` states
+            // for its own inapplicable flags).
+            if ctx.targeting.scheme.is_some() {
+                return Err(CliError::new(
+                    "--scheme doesn't apply to a Swift package; `swift package clean` cleans \
+                     the whole package",
+                ));
+            }
+            if ctx.targeting.configuration.is_some() {
+                return Err(CliError::new(
+                    "--configuration doesn't apply to a Swift package; `swift package clean` \
+                     removes every configuration's products",
+                ));
+            }
             let cwd = xcodebuild::working_dir(&resolved.container);
             // Under --json/-o ndjson, capture the toolchain's output so
             // nothing interleaves with the envelope on stdout — the same
@@ -122,6 +137,20 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
     // project's DerivedData folder(s), never the whole store.
     let mut purged = Vec::new();
     if purge {
+        // A Swift package builds into `.build/` beside `Package.swift`, not
+        // DerivedData — purging only the DerivedData store would report
+        // success having deleted nothing that `swift build` wrote.
+        if let Container::SwiftPackage(manifest) = &resolved.container
+            && let Some(dir) = manifest.parent()
+        {
+            let build_dir = dir.join(".build");
+            if build_dir.is_dir() {
+                std::fs::remove_dir_all(&build_dir).map_err(|e| {
+                    CliError::new(format!("failed to remove {}: {e}", build_dir.display()))
+                })?;
+                purged.push(build_dir.display().to_string());
+            }
+        }
         for path in super::derived_data::project_paths(ctx)? {
             std::fs::remove_dir_all(&path)
                 .map_err(|e| CliError::new(format!("failed to remove {}: {e}", path.display())))?;

@@ -191,64 +191,74 @@ pub fn install(device_id: &str, app_path: &str) -> Result<(), CliError> {
 }
 
 /// Launch an installed app on a device, terminating any existing instance.
-pub fn launch(device_id: &str, bundle_id: &str) -> Result<String, CliError> {
-    process::capture(
-        "xcrun",
-        &[
-            "devicectl",
-            "device",
-            "process",
-            "launch",
-            "--terminate-existing",
-            "--device",
-            device_id,
-            bundle_id,
-        ],
-        None,
-    )
-    .context("launching the app on the device")
+pub fn launch(
+    device_id: &str,
+    bundle_id: &str,
+    args: &[String],
+    env: &[(String, String)],
+    wait_for_debugger: bool,
+) -> Result<String, CliError> {
+    let mut cmd_args: Vec<&str> = vec![
+        "devicectl",
+        "device",
+        "process",
+        "launch",
+        "--terminate-existing",
+    ];
+    if wait_for_debugger {
+        cmd_args.push("--start-stopped");
+    }
+    cmd_args.extend_from_slice(&["--device", device_id, bundle_id]);
+    // Trailing arguments go to the app, exactly as `devicectl … <bundle-id>
+    // [<command-line-arguments> ...]` documents.
+    cmd_args.extend(args.iter().map(String::as_str));
+    // devicectl forwards `DEVICECTL_CHILD_*` from its own environment to the
+    // app, the same shape simctl uses for `SIMCTL_CHILD_*`.
+    process::capture_env("xcrun", &cmd_args, None, env).context("launching the app on the device")
 }
 
 /// Launch with the console attached, streaming the app's stdout/stderr and
 /// os_log output to the terminal until it exits (Xcode 16+). This is how device
 /// log following works — `devicectl` has no attach-to-running-process console.
-pub fn launch_console(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
-    process::stream(
-        "xcrun",
-        &[
-            "devicectl",
-            "device",
-            "process",
-            "launch",
-            "--console",
-            "--terminate-existing",
-            "--device",
-            device_id,
-            bundle_id,
-        ],
-        None,
-    )
+pub fn launch_console(
+    device_id: &str,
+    bundle_id: &str,
+    args: &[String],
+    env: &[(String, String)],
+) -> Result<(), CliError> {
+    let mut cmd_args = console_args(device_id, bundle_id);
+    cmd_args.extend(args.iter().map(String::as_str));
+    process::stream_env("xcrun", &cmd_args, None, env)
+}
+
+/// The shared `devicectl … launch --console` prefix; the app's own arguments
+/// are appended by the caller.
+fn console_args<'a>(device_id: &'a str, bundle_id: &'a str) -> Vec<&'a str> {
+    vec![
+        "devicectl",
+        "device",
+        "process",
+        "launch",
+        "--console",
+        "--terminate-existing",
+        "--device",
+        device_id,
+        bundle_id,
+    ]
 }
 
 /// Like [`launch_console`] but spawned in the background with stdout/stderr piped,
 /// handing back the child so the interactive `app run` session can render the device
 /// console (the app's own output) while watching for the rebuild key.
-pub fn spawn_console(device_id: &str, bundle_id: &str) -> Result<std::process::Child, CliError> {
-    process::spawn_piped_both(
-        "xcrun",
-        &[
-            "devicectl",
-            "device",
-            "process",
-            "launch",
-            "--console",
-            "--terminate-existing",
-            "--device",
-            device_id,
-            bundle_id,
-        ],
-        None,
-    )
+pub fn spawn_console(
+    device_id: &str,
+    bundle_id: &str,
+    args: &[String],
+    env: &[(String, String)],
+) -> Result<std::process::Child, CliError> {
+    let mut cmd_args = console_args(device_id, bundle_id);
+    cmd_args.extend(args.iter().map(String::as_str));
+    process::spawn_piped_both_env("xcrun", &cmd_args, None, env)
 }
 
 /// Uninstall an app from a device. Stdout is captured for the same reason as

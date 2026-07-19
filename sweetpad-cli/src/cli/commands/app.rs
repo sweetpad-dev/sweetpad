@@ -143,10 +143,6 @@ impl LaunchArgs {
             })
             .collect()
     }
-
-    fn is_empty(&self) -> bool {
-        self.args.is_empty() && self.env.is_empty() && !self.wait_for_debugger
-    }
 }
 
 /// `app logs` stream shaping: narrow the predicate or change the level.
@@ -866,14 +862,6 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         }
     };
 
-    // Launch inputs reach simulator and macOS processes; devicectl has no
-    // equivalent plumbing here yet — say so instead of silently dropping them.
-    if matches!(target, Target::Device(_)) && !opts.launch.is_empty() {
-        return Err(CliError::new(
-            "--arg/--env/--wait-for-debugger aren't supported for physical devices yet",
-        ));
-    }
-
     warn_if_passthrough_moves_output(ctx, opts.passthrough);
 
     let mut plan = RunPlan {
@@ -1201,7 +1189,13 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
         }
         Target::Device(id) => {
             let out = ctx.out.step("Launching app on device", || {
-                devicectl::launch(id, &app.bundle_id)
+                devicectl::launch(
+                    id,
+                    &app.bundle_id,
+                    &plan.launch.args,
+                    &plan.launch.env_pairs("DEVICECTL_CHILD_")?,
+                    plan.launch.wait_for_debugger,
+                )
             })?;
             ctx.out.note(&format!(
                 "Launched {} on device → {}",
@@ -2153,7 +2147,12 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             ctx.out.step("Installing app on device", || {
                 devicectl::install(id, &app_path)
             })?;
-            let mut child = devicectl::spawn_console(id, &app.bundle_id)?;
+            let mut child = devicectl::spawn_console(
+                id,
+                &app.bundle_id,
+                &plan.launch.args,
+                &plan.launch.env_pairs("DEVICECTL_CHILD_")?,
+            )?;
             render_console(&mut child, ctx.out.use_color(), filter);
             let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
@@ -2415,7 +2414,12 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
             // console; no live filter on the non-interactive path, so use the default.
             let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
             let _logs = start_logs(ctx, plan, &filter);
-            devicectl::launch_console(id, &app.bundle_id)
+            devicectl::launch_console(
+                id,
+                &app.bundle_id,
+                &plan.launch.args,
+                &plan.launch.env_pairs("DEVICECTL_CHILD_")?,
+            )
         }
         Target::Mac => {
             ctx.out
@@ -3478,7 +3482,13 @@ fn simple_on_device(
         }
         Stage::Launch => {
             let out = ctx.out.step("Launching app on device", || {
-                devicectl::launch(id, &app.bundle_id)
+                devicectl::launch(
+                    id,
+                    &app.bundle_id,
+                    &plan.launch.args,
+                    &plan.launch.env_pairs("DEVICECTL_CHILD_")?,
+                    plan.launch.wait_for_debugger,
+                )
             })?;
             let detail = out.trim().to_string();
             stage_report(

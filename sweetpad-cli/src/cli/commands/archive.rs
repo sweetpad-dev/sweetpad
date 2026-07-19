@@ -25,6 +25,10 @@ pub enum ExportMethod {
     ReleaseTesting,
     /// Enterprise (in-house) distribution.
     Enterprise,
+    /// macOS Developer ID distribution (notarizable, outside the App Store).
+    DeveloperId,
+    /// macOS application distribution (a signed `.app`, no installer).
+    MacApplication,
 }
 
 impl ExportMethod {
@@ -34,6 +38,8 @@ impl ExportMethod {
             ExportMethod::AppStoreConnect => "app-store-connect",
             ExportMethod::ReleaseTesting => "release-testing",
             ExportMethod::Enterprise => "enterprise",
+            ExportMethod::DeveloperId => "developer-id",
+            ExportMethod::MacApplication => "mac-application",
         }
     }
 }
@@ -111,7 +117,7 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     let schemes = resolve::schemes(&resolved.container)?;
     let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, !args.show_command)?;
     let configuration = archive_configuration(ctx, &resolved)?;
-    let destination = archive_destination(ctx)?;
+    let destination = archive_destination(ctx, &resolved, &configuration)?;
 
     // A relative output dir must mean the same directory for the CLI's own
     // writes (create_dir_all, the generated plist) and for xcodebuild, which
@@ -241,13 +247,26 @@ fn archive_configuration(
 /// `visionos`) or `device` and maps it to the matching `generic/platform=…`;
 /// default iOS. Archives target device platforms, so a simulator reference
 /// is rejected rather than resolved.
-fn archive_destination(ctx: &Context) -> Result<String, CliError> {
+fn archive_destination(
+    ctx: &Context,
+    resolved: &resolve::Resolved,
+    configuration: &str,
+) -> Result<String, CliError> {
     resolve::reject_on_destination_conflict(ctx)?;
     if let Some(dest) = &ctx.targeting.destination {
         return Ok(dest.clone());
     }
     let Some(on) = &ctx.targeting.on else {
-        return Ok("generic/platform=iOS".to_string());
+        // Without an explicit target, follow what the scheme actually builds
+        // for — a mac-only project archived as `generic/platform=iOS` just
+        // fails inside xcodebuild. Mirrors the build path's auto-targeting.
+        let mac_only = resolve::SupportedPlatforms::resolve(resolved, configuration)
+            .is_some_and(|p| p.is_mac_only());
+        return Ok(if mac_only {
+            "generic/platform=macOS".to_string()
+        } else {
+            "generic/platform=iOS".to_string()
+        });
     };
     let platform = match on.to_ascii_lowercase().as_str() {
         "mac" | "macos" => "macOS",

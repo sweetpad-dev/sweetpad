@@ -12,8 +12,19 @@ use crate::cli::{CliError, ErrorKind};
 /// user still sees diagnostics. Errors if the process can't be spawned or exits
 /// non-zero.
 pub fn capture(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String, CliError> {
+    capture_env(program, args, cwd, &[])
+}
+
+/// [`capture`] with extra environment variables set for the child.
+pub fn capture_env(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, String)],
+) -> Result<String, CliError> {
     let mut cmd = Command::new(program);
     cmd.args(args)
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
     if let Some(dir) = cwd {
@@ -290,8 +301,19 @@ pub fn spawn_piped_both(
     args: &[&str],
     cwd: Option<&Path>,
 ) -> Result<Child, CliError> {
+    spawn_piped_both_env(program, args, cwd, &[])
+}
+
+/// [`spawn_piped_both`] with extra environment variables set for the child.
+pub fn spawn_piped_both_env(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, String)],
+) -> Result<Child, CliError> {
     let mut cmd = Command::new(program);
     cmd.args(args)
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
