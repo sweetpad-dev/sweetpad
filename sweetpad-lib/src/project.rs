@@ -1038,11 +1038,12 @@ fn node_base(node: &Value, parent_base: &Path, project_dir: &Path) -> PathBuf {
 
 /// Make `path` absolute WITHOUT resolving symlinks: a relative path anchors
 /// at the current directory and `.` / `..` segments collapse lexically.
-/// Xcode keys DerivedData by the container path *as opened* — a project under
-/// a symlinked root (`/tmp` → `/private/tmp`) hashes the symlink spelling —
-/// so the hash input must not go through [`fs::canonicalize`] (which is still
-/// used for `PROJECT_DIR`/`SRCROOT`, where xcodebuild emits resolved absolute
-/// paths and the VS Code extension realpaths its side).
+///
+/// This is the spelling-preserving form, for comparing paths and for the
+/// cases where [`fs::canonicalize`] can't answer because the path doesn't
+/// exist yet. The DerivedData hash input goes through [`standardize`], which
+/// does resolve symlinks — xcodebuild hashes the standardized path, so the two
+/// must not be confused.
 #[must_use]
 pub fn absolutize(path: &Path) -> PathBuf {
     let joined = if path.is_absolute() {
@@ -1061,6 +1062,39 @@ pub fn absolutize(path: &Path) -> PathBuf {
         }
     }
     out
+}
+
+/// Xcode's standardized spelling of `path`, which is what the DerivedData
+/// hash is taken over: symlinks resolved, then a leading `/private` dropped
+/// when the shorter spelling still names the same thing (`/private/tmp` →
+/// `/tmp`, `/private/var` → `/var`). This mirrors Foundation's
+/// `stringByStandardizingPath`, which xcodebuild applies to the container path
+/// before hashing it.
+///
+/// Grounded in `xcodebuild -showBuildSettings`, not inference: a project
+/// reached through a symlinked root and through its real path report one
+/// shared DerivedData folder, and `/tmp/…` and `/private/tmp/…` spellings of
+/// the same project report a second shared one — the `/tmp` spelling's.
+///
+/// A path that doesn't exist falls back to [`absolutize`]: `canonicalize` has
+/// no answer for it, and a container that isn't there has no folder to match.
+#[must_use]
+pub fn standardize(path: &Path) -> PathBuf {
+    let Ok(resolved) = fs::canonicalize(path) else {
+        return absolutize(path);
+    };
+    let Ok(stripped) = resolved.strip_prefix("/private") else {
+        return resolved;
+    };
+    let shorter = Path::new("/").join(stripped);
+    // Only drop `/private` when the short spelling really is the same file;
+    // a literal `/private/…` directory that isn't one of the symlinked roots
+    // must keep its prefix.
+    if fs::canonicalize(&shorter).is_ok_and(|c| c == resolved) {
+        shorter
+    } else {
+        resolved
+    }
 }
 
 /// Join `rel` onto `base`, collapsing `.` / `..` lexically (without touching the
@@ -1305,11 +1339,12 @@ pub fn built_in_settings(
     // We mirror that here so `BUILD_DIR` and friends match the layout the
     // oracle captures use.
     //
-    // The hash input is the container path *as opened* — absolute, but with
-    // symlinks intact (Xcode under a symlinked root, `/tmp` → `/private/tmp`,
-    // hashes the `/tmp` spelling), so it must NOT use the canonicalized
-    // `abs_path` that PROJECT_DIR/SRCROOT report. Callers that realpath their
-    // side (the VS Code extension does) see no difference.
+    // The hash input is the container path *standardized* the way Foundation
+    // does it — symlinks resolved, a leading `/private` dropped for the
+    // symlinked roots — because that is the spelling xcodebuild hashes. See
+    // [`standardize`] for the `-showBuildSettings` evidence. The container
+    // *search* still runs on the spelling it was given, so a workspace found
+    // beside the project is found the same way either way.
     //
     // `xcodebuild -derivedDataPath PATH` flattens this — it replaces the
     // whole `<home>/.../DerivedData/<container-hash>` segment with `PATH`,
@@ -1323,7 +1358,7 @@ pub fn built_in_settings(
         .and_then(OsStr::to_str)
         .unwrap_or("")
         .to_string();
-    let derived_hash = derived_data_hash(&derived_container.display().to_string());
+    let derived_hash = derived_data_hash(&standardize(&derived_container).display().to_string());
     // The stock "Unique" build location (`<Name>-<hash>`) is only one of the
     // layouts a user can end up with: Xcode's Locations pref and a container's
     // per-user workspace settings both move build output, and `xcodebuild`
@@ -5091,9 +5126,9 @@ mod tests {
         assert!(!has_key(&resolve_with_version("15.4")));
     }
 
-    /// [`absolutize`] anchors relative paths and collapses dot segments but
-    /// must NOT resolve symlinks — Xcode hashes the DerivedData container
-    /// path as opened.
+    /// [`absolutize`] anchors relative paths and collapses dot segments while
+    /// preserving the spelling it was given — symlinks included. Resolving
+    /// them is [`standardize`]'s job, and only the hash input wants that.
     #[test]
     fn absolutize_keeps_symlinks_and_collapses_lexically() {
         assert_eq!(
@@ -5119,6 +5154,44 @@ mod tests {
             target_dir.join("Proj.xcodeproj"),
             "must not resolve the symlink"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// [`standardize`] is the DerivedData hash input, so its whole job is to
+    /// collapse the spellings of one location down to the single one
+    /// xcodebuild hashes.
+    #[test]
+    fn standardize_resolves_symlinks_and_drops_private() {
+        let root = std::env::temp_dir().join(format!("sweetpad-std-{}", std::process::id()));
+        let target_dir = root.join("target");
+        let link = root.join("link");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&target_dir).unwrap();
+        std::os::unix::fs::symlink(&target_dir, &link).unwrap();
+
+        // The property that makes the hash agree with xcodebuild: reaching a
+        // directory through a symlink and directly gives one spelling.
+        assert_eq!(
+            standardize(&link),
+            standardize(&target_dir),
+            "both spellings must standardize to one path"
+        );
+
+        // `/tmp` is a symlink to `/private/tmp`; the short spelling is the one
+        // Foundation reports, and so the one xcodebuild hashes.
+        if Path::new("/private/tmp").exists() {
+            assert_eq!(
+                standardize(Path::new("/private/tmp")),
+                PathBuf::from("/tmp")
+            );
+            assert_eq!(standardize(Path::new("/tmp")), PathBuf::from("/tmp"));
+        }
+
+        // A container that isn't there has no folder to match, so this falls
+        // back to the lexical form rather than failing.
+        let missing = root.join("nope").join("Proj.xcodeproj");
+        assert_eq!(standardize(&missing), absolutize(&missing));
+
         let _ = fs::remove_dir_all(&root);
     }
 

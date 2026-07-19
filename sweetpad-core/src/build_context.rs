@@ -1093,11 +1093,18 @@ mod tests {
         );
     }
 
-    /// The DerivedData container hash uses the project path *as opened*:
-    /// resolving through a symlinked root must hash the symlink spelling
-    /// (what Xcode itself would hash), not the canonicalized target.
+    /// The DerivedData container hash uses the *standardized* project path —
+    /// symlinks resolved, a leading `/private` dropped for the symlinked roots
+    /// — because that is the spelling xcodebuild hashes.
+    ///
+    /// Grounded in `xcodebuild -showBuildSettings`, not inference: one project
+    /// reached through a symlinked root and through its real path reports a
+    /// single shared `BUILD_DIR`, and the `/tmp` and `/private/tmp` spellings
+    /// of another report the `/tmp` one. Hashing the path as opened sends
+    /// every consumer of `BUILD_DIR` (product lookup, `app install`,
+    /// `build --json`'s `productPath`) to a folder no build ever wrote.
     #[test]
-    fn derived_data_hash_uses_the_path_as_opened() {
+    fn derived_data_hash_uses_the_standardized_path() {
         let root = std::env::temp_dir().join(format!("sweetpad-bc-link-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let real = root.join("real");
@@ -1118,16 +1125,22 @@ mod tests {
         let build_dir = get(&resolved, "BUILD_DIR");
         let link_hash =
             sweetpad_lib::xcode_hash::derived_data_hash(&through_link.display().to_string());
-        let real_hash = sweetpad_lib::xcode_hash::derived_data_hash(
-            &real.join("Scratch.xcodeproj").display().to_string(),
+        let standard_hash = sweetpad_lib::xcode_hash::derived_data_hash(
+            &sweetpad_lib::project::standardize(&through_link)
+                .display()
+                .to_string(),
+        );
+        assert_ne!(
+            link_hash, standard_hash,
+            "the symlink and standardized spellings must differ, or this proves nothing"
         );
         assert!(
-            build_dir.contains(&format!("Scratch-{link_hash}")),
-            "BUILD_DIR must hash the symlink spelling: {build_dir}"
+            build_dir.contains(&format!("Scratch-{standard_hash}")),
+            "BUILD_DIR must hash the standardized path: {build_dir}"
         );
         assert!(
-            !build_dir.contains(&format!("Scratch-{real_hash}")),
-            "BUILD_DIR must not hash the canonicalized path: {build_dir}"
+            !build_dir.contains(&format!("Scratch-{link_hash}")),
+            "BUILD_DIR must not hash the symlink spelling: {build_dir}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
