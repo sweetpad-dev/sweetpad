@@ -333,6 +333,20 @@ else
   echo "  (macOS --detach skipped on headless runner)"
 fi
 
+# `app debug --mac` hands the executable to lldb, which owns the launch — so a
+# breakpoint can be set before the process exists. Driven non-interactively.
+if command -v lldb >/dev/null 2>&1; then
+  printf 'breakpoint set --name main\nrun\nprocess kill\nquit\n' > "$GEN_DIR/lldb.in"
+  if "$BIN" app debug --project "$APP" --scheme SweetpadCIMac --mac \
+      < "$GEN_DIR/lldb.in" > "$GEN_DIR/lldb.out" 2>&1; then
+    contains "$(cat "$GEN_DIR/lldb.out")" "launched"
+    ok "app debug --mac (lldb owns the launch)"
+  else
+    echo "  (macOS lldb debug skipped: $(tail -1 "$GEN_DIR/lldb.out"))"
+  fi
+  "$BIN" app stop --project "$APP" --scheme SweetpadCIMac --mac >/dev/null 2>&1 || true
+fi
+
 # install/uninstall stay simulator/device-only — a macOS app is built in place.
 expect_code 1 "$BIN" app install --project "$APP" --scheme SweetpadCIMac --mac
 ok "app install --mac still refused (built in place)"

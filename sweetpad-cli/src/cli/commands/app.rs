@@ -206,10 +206,13 @@ pub enum Action {
         #[command(flatten)]
         launch: LaunchArgs,
     },
-    /// Build, install, and launch suspended, then attach lldb (simulator).
+    /// Debug under lldb: on a simulator, launch suspended and attach; on
+    /// macOS, hand the executable to lldb and `run` it.
     Debug {
         #[command(flatten)]
         target: crate::cli::BuildTargetArgs,
+        #[command(flatten)]
+        stage: StageTargetArgs,
         #[command(flatten)]
         launch: LaunchArgs,
     },
@@ -400,9 +403,14 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             settle_stage_mode(ctx, stage)?;
             simple(ctx, Stage::Launch, launch, stage)
         }
-        Action::Debug { target, launch } => {
+        Action::Debug {
+            target,
+            stage,
+            launch,
+        } => {
             ctx.targeting = target.clone().into();
-            debug(ctx, launch)
+            settle_stage_mode(ctx, stage)?;
+            debug(ctx, stage, launch)
         }
         Action::Uninstall { target, stage } => {
             ctx.targeting = target.clone().into();
@@ -3327,11 +3335,11 @@ fn stop_mac(ctx: &Context, executable: &Path, bundle_id: &str) -> Result<AppStag
 /// `app debug`: build + install, launch with `--wait-for-debugger`
 /// (the process starts suspended), then attach `lldb -p <pid>` interactively —
 /// type `continue` in lldb to resume the app. Simulator-only for now.
-fn debug(ctx: &mut Context, launch: &LaunchArgs) -> CommandResult {
+fn debug(ctx: &mut Context, stage_target: &StageTargetArgs, launch: &LaunchArgs) -> CommandResult {
     let opts = RunOpts {
-        device: false,
-        device_id: None,
-        mac: false,
+        device: stage_target.device || stage_target.device_id.is_some(),
+        device_id: stage_target.device_id.as_deref(),
+        mac: stage_target.mac,
         no_logs: true,
         detach: false,
         hot: false,
@@ -3344,10 +3352,23 @@ fn debug(ctx: &mut Context, launch: &LaunchArgs) -> CommandResult {
         passthrough: &[],
     };
     let plan = plan(ctx, &opts)?;
-    let Target::Simulator(udid) = &plan.target else {
-        return Err(CliError::new(
-            "app debug currently supports simulator targets only",
-        ));
+    let udid = match &plan.target {
+        Target::Simulator(udid) => udid,
+        // A macOS app runs on this machine, so lldb can own the launch
+        // outright — no suspended-launch-then-attach dance, and breakpoints
+        // can be set before the process exists.
+        Target::Mac => return debug_mac(ctx, &plan),
+        Target::Device(_) => {
+            return Err(CliError::new(
+                "app debug can't drive a physical device yet; debug on a simulator, or \
+                 attach Xcode to the device",
+            ));
+        }
+        Target::SpmRun(_) => {
+            return Err(CliError::new(
+                "app debug works on an app target; for a Swift package run `lldb -- swift run`",
+            ));
+        }
     };
     let app = build_and_install(&plan, &ctx.out)?;
 
@@ -3687,6 +3708,32 @@ fn simple_logs(
         }
     }
     Ok(Rendered::Streamed)
+}
+
+/// `app debug` for a native macOS app: build, then hand the executable to
+/// lldb and let *it* launch the process.
+///
+/// The simulator path has to launch first and attach, because `simctl` owns
+/// the launch. Locally there is no such constraint, and lldb-launches is
+/// strictly better: breakpoints can be set before `run`, and there is no
+/// window where a suspended process is waiting for an attach that might fail.
+fn debug_mac(ctx: &mut Context, plan: &RunPlan) -> CommandResult {
+    let app = build_and_install(plan, &ctx.out)?;
+    // lldb passes its own environment to the target (`target.inherit-env`
+    // defaults on), so `--env` reaches the app without a settings dance.
+    let env = plan.launch.env_pairs("")?;
+    let exe = app.executable.display().to_string();
+    let mut args: Vec<&str> = vec!["--", &exe];
+    args.extend(plan.launch.args.iter().map(String::as_str));
+    ctx.out.note(&format!(
+        "starting lldb for {} — type `run` to launch it, `quit` to leave",
+        app.bundle_id
+    ));
+    // Ctrl-C is lldb's break-into-the-debuggee gesture; the terminal delivers
+    // it to the whole foreground group, and the CLI dying underneath would
+    // orphan lldb against the shell prompt.
+    crate::cli::signals::with_sigint_ignored(|| process::stream_env("lldb", &args, None, &env))
+        .map(|()| Rendered::Streamed)
 }
 
 /// Whether the invocation named its target explicitly (scheme, configuration,
