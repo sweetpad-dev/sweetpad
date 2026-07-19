@@ -719,6 +719,7 @@ pub fn run(argv: &[String]) -> ExitCode {
                 render_root_help(stdout_wants_color(argv), long);
                 return ExitCode::SUCCESS;
             }
+            let err = hint_output_file(err, argv);
             let _ = err.print();
             return ExitCode::from(if err.use_stderr() { 2 } else { 0 });
         }
@@ -1153,6 +1154,77 @@ fn top_level_help(argv: &[String]) -> Option<bool> {
     None
 }
 
+/// Whether a value clap rejected for `-o/--output` reads as a filesystem path
+/// rather than a mistyped format name: it names a directory (`/`), starts at
+/// the home directory (`~`), or carries a file extension (`shot.png`,
+/// `build.log`).
+fn looks_like_path(value: &str) -> bool {
+    value.contains('/')
+        || value.starts_with('~')
+        || std::path::Path::new(value)
+            .extension()
+            .is_some_and(|e| !e.is_empty())
+}
+
+/// Whether the subcommand this command line names declares an `--output-file`
+/// argument. The scan descends the clap tree through the bare words in `argv`;
+/// a word that names no subcommand at the current level (an option's value, a
+/// positional) is skipped, and `--` ends the scan since passthrough tokens
+/// belong to the spawned tool.
+fn takes_output_file(argv: &[String]) -> bool {
+    let mut root = Cli::command();
+    root.build();
+    let mut cmd = &root;
+    for token in argv.iter().take_while(|a| *a != "--") {
+        if token.starts_with('-') {
+            continue;
+        }
+        if let Some(sub) = cmd.find_subcommand(token) {
+            cmd = sub;
+        }
+    }
+    cmd.get_arguments()
+        .any(|a| a.get_long() == Some("output-file"))
+}
+
+/// Point `-o shot.png` at `--output-file`. The global `-o/--output` selects the
+/// output *format*, so a path lands as an invalid enum value and clap's
+/// nearest-value tip reads "a similar value exists: 'json'" — which points away
+/// from the flag that actually takes a path. When the rejected value looks like
+/// a path and the invoked subcommand has an `--output-file`, that tip is
+/// replaced with the real fix; every other usage error renders as clap wrote it.
+fn hint_output_file(mut err: clap::Error, argv: &[String]) -> clap::Error {
+    use clap::error::{ContextKind, ContextValue};
+
+    if err.kind() != clap::error::ErrorKind::InvalidValue {
+        return err;
+    }
+    // clap renders the arg as `--output <OUTPUT>`; the leading token is the flag.
+    let is_output = matches!(
+        err.get(ContextKind::InvalidArg),
+        Some(ContextValue::String(arg)) if arg.split_whitespace().next() == Some("--output")
+    );
+    let Some(ContextValue::String(value)) = err.get(ContextKind::InvalidValue) else {
+        return err;
+    };
+    let value = value.clone();
+    if !is_output || !looks_like_path(&value) || !takes_output_file(argv) {
+        return err;
+    }
+    err.remove(ContextKind::SuggestedValue);
+    err.insert(
+        ContextKind::Suggested,
+        ContextValue::StyledStrs(vec![
+            format!(
+                "`-o/--output` picks the output format; to write the file, pass \
+                 `--output-file {value}`"
+            )
+            .into(),
+        ]),
+    );
+    err
+}
+
 /// Whether stdout should carry color on the pre-`Context` help path, mirroring
 /// [`output::Output`]'s decision: `--no-color`/`NO_COLOR` win, then
 /// `CLICOLOR_FORCE`/`FORCE_COLOR`, else stdout being a TTY.
@@ -1577,6 +1649,112 @@ mod on_destination_tests {
             disambiguate_on_destination(s("mac"), s("platform=iOS"), false, false),
             (s("mac"), None)
         );
+    }
+}
+
+#[cfg(test)]
+mod output_file_hint_tests {
+    use super::{Cli, hint_output_file, looks_like_path, takes_output_file};
+    use clap::Parser;
+
+    fn argv(args: &[&str]) -> Vec<String> {
+        args.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    /// The rendered error for a command line clap rejects, after the hint pass.
+    fn rendered(args: &[&str]) -> String {
+        let tokens = argv(args);
+        let err = Cli::try_parse_from(
+            std::iter::once("sweetpad".to_string()).chain(tokens.iter().cloned()),
+        )
+        .expect_err("expected a usage error");
+        hint_output_file(err, &tokens).render().to_string()
+    }
+
+    #[test]
+    fn a_value_with_a_separator_extension_or_home_reference_reads_as_a_path() {
+        assert!(looks_like_path("shot.png"));
+        assert!(looks_like_path("out/shot.png"));
+        assert!(looks_like_path("/tmp/build.log"));
+        assert!(looks_like_path("~/shot.png"));
+        assert!(looks_like_path("./out"));
+    }
+
+    #[test]
+    fn a_mistyped_format_name_does_not_read_as_a_path() {
+        assert!(!looks_like_path("json"));
+        assert!(!looks_like_path("ndjson"));
+        assert!(!looks_like_path("jsonn"));
+        assert!(!looks_like_path("quiet"));
+        // A trailing dot leaves an empty extension, which is not a filename.
+        assert!(!looks_like_path("json."));
+    }
+
+    #[test]
+    fn only_the_commands_that_write_a_file_advertise_output_file() {
+        assert!(takes_output_file(&argv(&["app", "screenshot"])));
+        assert!(takes_output_file(&argv(&["simulator", "screenshot"])));
+        assert!(takes_output_file(&argv(&["bsp", "init"])));
+        assert!(takes_output_file(&argv(&["archive"])));
+        assert!(!takes_output_file(&argv(&["build"])));
+        assert!(!takes_output_file(&argv(&["devices"])));
+        assert!(!takes_output_file(&argv(&[])));
+    }
+
+    #[test]
+    fn the_scan_skips_option_values_and_stops_at_the_passthrough() {
+        // `shot.png` is `-o`'s value, not a subcommand name.
+        assert!(takes_output_file(&argv(&[
+            "app",
+            "screenshot",
+            "-o",
+            "shot.png"
+        ])));
+        // A passthrough token that happens to name a command must not retarget
+        // the scan away from the real subcommand.
+        assert!(takes_output_file(&argv(&[
+            "app",
+            "screenshot",
+            "--",
+            "build"
+        ])));
+    }
+
+    #[test]
+    fn a_path_given_to_output_is_pointed_at_output_file() {
+        let text = rendered(&["app", "screenshot", "-o", "shot.png"]);
+        assert!(
+            text.contains("--output-file shot.png"),
+            "expected the --output-file tip, got:\n{text}"
+        );
+        // clap's nearest-enum-value tip points away from the fix, so it goes.
+        assert!(
+            !text.contains("similar value exists"),
+            "the misleading value tip survived:\n{text}"
+        );
+    }
+
+    #[test]
+    fn a_mistyped_format_keeps_claps_own_value_suggestion() {
+        let text = rendered(&["app", "screenshot", "-o", "jsonn"]);
+        assert!(
+            text.contains("similar value exists"),
+            "expected clap's value tip, got:\n{text}"
+        );
+        assert!(!text.contains("--output-file"));
+    }
+
+    #[test]
+    fn a_path_given_to_a_command_without_output_file_keeps_claps_error() {
+        // `build` writes no file, so there is nothing better to point at.
+        let text = rendered(&["build", "-o", "shot.png"]);
+        assert!(!text.contains("--output-file"), "unexpected tip:\n{text}");
+    }
+
+    #[test]
+    fn unrelated_usage_errors_are_left_alone() {
+        let text = rendered(&["nosuchcommand"]);
+        assert!(!text.contains("--output-file"), "unexpected tip:\n{text}");
     }
 }
 

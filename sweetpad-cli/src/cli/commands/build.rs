@@ -141,6 +141,11 @@ struct BuildReport {
     configuration: String,
     destination: Option<String>,
     stats: Option<crate::cli::buildlog::StreamStats>,
+    /// The `.app` this build produced, so a caller doesn't hand-assemble a
+    /// DerivedData path. Only the machine-readable modes resolve it (see
+    /// [`product_path`]); `null` when the scheme builds no launchable product
+    /// (a Swift package, a library-only scheme) or the lookup failed.
+    product_path: Option<std::path::PathBuf>,
 }
 
 impl Render for BuildReport {
@@ -152,6 +157,7 @@ impl Render for BuildReport {
             "scheme": self.scheme,
             "configuration": self.configuration,
             "destination": self.destination,
+            "productPath": self.product_path.as_ref().map(|p| p.display().to_string()),
         });
         if let (Some(stats), Some(map)) = (&self.stats, data.as_object_mut()) {
             map.insert("errors".into(), stats.errors.into());
@@ -235,6 +241,9 @@ fn start(
             configuration,
             destination: None,
             stats: None,
+            // A Swift package builds an executable or a library, never a
+            // `.app` bundle.
+            product_path: None,
         }));
     }
 
@@ -273,11 +282,81 @@ fn start(
     let stats = plan
         .run(&ctx.out)
         .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
+    let product = product_path(&ctx.out, &plan);
 
     Ok(Rendered::data(BuildReport {
         scheme: Some(target.scheme),
         configuration: target.configuration,
         destination: Some(target.destination),
         stats,
+        product_path: product,
     }))
+}
+
+/// The `.app` a completed build wrote, for [`BuildReport`]'s `productPath`.
+///
+/// Two guards keep this off the build's critical path. Locating the product
+/// costs a full build-settings resolution (seconds), and `BuildReport::human`
+/// renders nothing — so only the machine-readable modes pay for it. And a
+/// scheme can legitimately produce nothing launchable, so every failure maps to
+/// `None`: a build that succeeded must not fail over the path lookup.
+fn product_path(out: &Output, plan: &xcodebuild::BuildPlan<'_>) -> Option<std::path::PathBuf> {
+    if !(out.is_json() || out.is_ndjson()) {
+        return None;
+    }
+    xcodebuild::resolved_settings(plan)
+        .and_then(|settings| xcodebuild::app_bundle(&settings, plan.destination))
+        .ok()
+        .map(|app| app.path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn report(product_path: Option<&str>) -> BuildReport {
+        BuildReport {
+            scheme: Some("App".to_string()),
+            configuration: "Debug".to_string(),
+            destination: Some("platform=iOS Simulator,id=UDID".to_string()),
+            stats: None,
+            product_path: product_path.map(std::path::PathBuf::from),
+        }
+    }
+
+    #[test]
+    fn the_json_report_carries_the_located_product_as_a_string() {
+        let json = report(Some("/dd/Build/Products/Debug-iphonesimulator/App.app")).json();
+        assert_eq!(
+            json["productPath"],
+            serde_json::json!("/dd/Build/Products/Debug-iphonesimulator/App.app")
+        );
+        assert_eq!(json["built"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn the_json_report_emits_a_null_product_path_when_nothing_was_located() {
+        let json = report(None).json();
+        // Present but null — a consumer reads the key unconditionally rather
+        // than distinguishing "no product" from "old sweetpad".
+        assert!(json.get("productPath").is_some());
+        assert!(json["productPath"].is_null());
+        assert_eq!(json["built"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn the_json_report_folds_in_the_stream_stats_when_the_runner_collected_them() {
+        let mut r = report(Some("/dd/App.app"));
+        r.stats = Some(crate::cli::buildlog::StreamStats {
+            errors: 2,
+            warnings: 7,
+            duration_ms: 1234,
+            diagnostics: Vec::new(),
+        });
+        let json = r.json();
+        assert_eq!(json["errors"], serde_json::json!(2));
+        assert_eq!(json["warnings"], serde_json::json!(7));
+        assert_eq!(json["durationMs"], serde_json::json!(1234));
+        assert_eq!(json["productPath"], serde_json::json!("/dd/App.app"));
+    }
 }

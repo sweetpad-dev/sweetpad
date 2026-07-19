@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_build_settings};
 
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
@@ -646,6 +647,82 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
         bundle_id: bundle_id.clone(),
         executable,
     })
+}
+
+/// The `-derivedDataPath` a passthrough hands `xcodebuild`, if any — the
+/// product locator has to look where the build actually put the bundle.
+/// Product-relocating build settings the locator can't model (`SYMROOT=`,
+/// `OBJROOT=`, `CONFIGURATION_BUILD_DIR=`) are refused loudly: looking in the
+/// default DerivedData would name whatever stale `.app` an earlier plain build
+/// left there.
+fn passthrough_derived_data(passthrough: &[String]) -> Result<Option<PathBuf>, CliError> {
+    let mut derived_data = None;
+    let mut iter = passthrough.iter().peekable();
+    while let Some(arg) = iter.next() {
+        if arg == "-derivedDataPath" {
+            derived_data = iter.peek().map(PathBuf::from);
+        } else if let Some((key, _)) = arg.split_once('=')
+            && matches!(key, "SYMROOT" | "OBJROOT" | "CONFIGURATION_BUILD_DIR")
+        {
+            return Err(CliError::new(format!(
+                "`-- {key}=…` relocates the built product where the app locator can't \
+                 follow; use `-- -derivedDataPath <dir>` instead"
+            )));
+        }
+    }
+    Ok(derived_data)
+}
+
+/// Resolve every target's build settings for a plan through the in-process
+/// resolver (the engine behind `settings show`), with no `xcodebuild` spawn —
+/// including a passthrough `-derivedDataPath`. Feed the result to
+/// [`app_bundle`] to name the product a build of this plan writes. Swift
+/// packages build no `.app`, so they have nothing to resolve here.
+///
+/// `app`'s `RunPlan` resolves the same way for its install/launch path; both
+/// locators must agree on the products dir or the CLI reports one bundle and
+/// installs another.
+pub fn resolved_settings(plan: &BuildPlan<'_>) -> Result<Vec<TargetBuildSettings>, CliError> {
+    let (project, workspace) = match plan.container {
+        Container::Project(p) => (Some(p.clone()), None),
+        Container::Workspace(p) => (None, Some(p.clone())),
+        Container::SwiftPackage(_) => {
+            return Err(CliError::new("Swift packages have no .app bundle"));
+        }
+    };
+    let opts = BuildSettingsOptions {
+        project,
+        workspace,
+        scheme: Some(plan.scheme.to_string()),
+        target: None,
+        configuration: plan.configuration.to_string(),
+        // Must match the build's own -sdk (if any), or TARGET_BUILD_DIR points
+        // at a different products dir than the one just built.
+        sdk: plan.sdk.unwrap_or_default().to_string(),
+        arch: String::new(),
+        destination: plan
+            .destination
+            .and_then(sweetpad_lib::destination::parse_destination_arg),
+        xcconfig: None,
+        xcode: None,
+        xcspec_root: None,
+        sdksettings_root: None,
+        catalog_cache: None,
+        derived_data_path: passthrough_derived_data(plan.passthrough)?,
+        // Callers install, launch, and report what this resolves, so it has to
+        // name the bundle `xcodebuild` actually wrote — including when the user
+        // has moved Derived Data in Xcode (issue #306).
+        read_xcode_locations: true,
+        keys: None,
+    };
+    let resolved = resolve_build_settings(&opts).map_err(CliError::new)?;
+    Ok(resolved
+        .into_iter()
+        .map(|t| TargetBuildSettings {
+            target: t.target,
+            settings: t.settings,
+        })
+        .collect())
 }
 
 /// Pick the launchable app from resolved settings — [`app_target`]'s bundle.
