@@ -232,6 +232,8 @@ pub enum Action {
         #[command(flatten)]
         target: crate::cli::BuildTargetArgs,
         #[command(flatten)]
+        stage: StageTargetArgs,
+        #[command(flatten)]
         filters: LogFilterArgs,
     },
     /// Terminate the running app (the last-launched one when recorded).
@@ -411,9 +413,14 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             settle_stage_mode(ctx, stage)?;
             simple(ctx, Stage::Uninstall, &LaunchArgs::default(), stage)
         }
-        Action::Logs { target, filters } => {
+        Action::Logs {
+            target,
+            stage,
+            filters,
+        } => {
             ctx.targeting = target.clone().into();
-            simple_logs(ctx, filters)
+            settle_stage_mode(ctx, stage)?;
+            simple_logs(ctx, stage, filters)
         }
         Action::Stop { target, stage } => {
             ctx.targeting = target.clone().into();
@@ -679,6 +686,13 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         return Err(CliError::new(
             "--no-logs isn't supported with --hot; the hot session streams logs \
              as part of its UI",
+        ));
+    }
+    if (opts.keep_sandbox || opts.hot_entitlements.is_some()) && !matches!(plan.target, Target::Mac)
+    {
+        return Err(CliError::new(
+            "--keep-sandbox and --hot-entitlements apply to a hot macOS build (only a macOS \
+             product carries the App Sandbox entitlement this strips)",
         ));
     }
     if hot && opts.detach {
@@ -1938,7 +1952,9 @@ impl HotApp<'_> {
                 "r rebuild+relaunch · s screenshot · o focus simulator · c clear · \
                  d detach · q quit"
             }
-            HotApp::Mac { .. } => "r rebuild+relaunch · o focus app · c clear · d detach · q quit",
+            HotApp::Mac { .. } => {
+                "r rebuild+relaunch · s screenshot · o focus app · c clear · d detach · q quit"
+            }
         }
     }
 }
@@ -2383,7 +2399,12 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
             let launched = simctl::launch_opts(udid, &app.bundle_id, &plan.simctl_launch(&env))?;
             ctx.out
                 .note(&format!("Launched {} → {}", app.bundle_id, launched.trim()));
-            stream_logs(ctx, udid, &app, &LogFilterArgs::default())
+            stream_logs(
+                ctx,
+                &LogSource::Simulator(udid),
+                &app,
+                &LogFilterArgs::default(),
+            )
         }
         Target::Device(id) => {
             ctx.out.note(&format!(
@@ -3548,6 +3569,29 @@ fn simple_from_last_launched(ctx: &mut Context, stage: Stage) -> Option<CommandR
             let exe = mac_executable(&last)?;
             Some(stop_mac(ctx, &exe, &last.bundle_identifier).map(Rendered::data))
         }
+        "device" => {
+            // The record already holds everything `devicectl` needs, so a bare
+            // `app stop` shouldn't demand an explicit --device.
+            let id = last.destination_id.clone()?;
+            let app_dir = last
+                .app_name
+                .clone()
+                .or_else(|| last.executable_name.clone())?;
+            Some(
+                ctx.out
+                    .step("Terminating app", || devicectl::terminate(&id, &app_dir))
+                    .map(|()| {
+                        Rendered::data(AppStageReport {
+                            action: "terminated",
+                            note: format!("Terminated {}", last.bundle_identifier),
+                            bundle_id: last.bundle_identifier.clone(),
+                            udid: None,
+                            pid: None,
+                            detail: None,
+                        })
+                    }),
+            )
+        }
         _ => None,
     }
 }
@@ -3575,18 +3619,27 @@ fn mac_executable(last: &LastLaunchedApp) -> Option<std::path::PathBuf> {
 /// `app logs` — its own entry point so the stream filters reach
 /// [`stream_logs`]. Uses the recorded last launch when available, else the
 /// resolved build target.
-fn simple_logs(ctx: &mut Context, filters: &LogFilterArgs) -> CommandResult {
+fn simple_logs(
+    ctx: &mut Context,
+    stage_target: &StageTargetArgs,
+    filters: &LogFilterArgs,
+) -> CommandResult {
+    // An explicit --mac/--device names the target, so the simulator fast path
+    // must yield to it just as explicit targeting does.
     if !explicit_targeting(ctx)
+        && !stage_target.mac
+        && !stage_target.device
+        && stage_target.device_id.is_none()
         && let Some((udid, app)) = last_launched_sim(ctx)
     {
         ctx.out.step("Booting simulator", || simctl::boot(&udid))?;
-        stream_logs(ctx, &udid, &app, filters)?;
+        stream_logs(ctx, &LogSource::Simulator(&udid), &app, filters)?;
         return Ok(Rendered::Streamed);
     }
     let opts = RunOpts {
-        device: false,
-        device_id: None,
-        mac: false,
+        device: stage_target.device || stage_target.device_id.is_some(),
+        device_id: stage_target.device_id.as_deref(),
+        mac: stage_target.mac,
         no_logs: true,
         detach: false,
         hot: false,
@@ -3599,16 +3652,30 @@ fn simple_logs(ctx: &mut Context, filters: &LogFilterArgs) -> CommandResult {
         passthrough: &[],
     };
     let plan = plan(ctx, &opts)?;
-    let Target::Simulator(udid) = &plan.target else {
-        return Err(CliError::new(
-            "app logs is only supported for simulator targets",
-        ));
-    };
     let app = plan.app_bundle()?;
-    // Boot first so the stream attaches instead of failing with "device is
-    // not booted" when the simulator is shut down.
-    ctx.out.step("Booting simulator", || simctl::boot(udid))?;
-    stream_logs(ctx, udid, &app, filters)?;
+    match &plan.target {
+        Target::Simulator(udid) => {
+            // Boot first so the stream attaches instead of failing with
+            // "device is not booted" when the simulator is shut down.
+            ctx.out.step("Booting simulator", || simctl::boot(udid))?;
+            stream_logs(ctx, &LogSource::Simulator(udid), &app, filters)?;
+        }
+        // The host's own `log stream`, the same source `app run --mac` uses.
+        Target::Mac => stream_logs(ctx, &LogSource::Mac, &app, filters)?,
+        Target::Device(_) => {
+            return Err(CliError::new(
+                "app logs can't follow a physical device yet — a device's os_log needs \
+                 pymobiledevice3 (as `app run --device` uses); use `app run --device` to \
+                 follow it during a run",
+            ));
+        }
+        Target::SpmRun(_) => {
+            return Err(CliError::new(
+                "a Swift package executable has no os_log stream; its output goes to the \
+                 terminal during `app run`",
+            ));
+        }
+    }
     Ok(Rendered::Streamed)
 }
 
@@ -3899,6 +3966,14 @@ fn wait_for_window(
 /// capture `simulator screenshot` does, reached from the app's own verb so
 /// one command serves the loop on either destination.
 fn simulator_screenshot(ctx: &Context, udid: &str, args: &ScreenshotArgs) -> CommandResult {
+    // simctl captures the whole device screen; there is no window to pick.
+    // Accepting the flag and ignoring it would silently not do what was asked.
+    if args.window.is_some() {
+        return Err(CliError::new(
+            "--window applies to a macOS app's windows; a simulator capture is the whole \
+             device screen",
+        ));
+    }
     let name = sim_name(udid).unwrap_or_else(|| "simulator".to_string());
     let path = args
         .output_file
@@ -3937,7 +4012,12 @@ fn simulator_screenshot(ctx: &Context, udid: &str, args: &ScreenshotArgs) -> Com
 /// without this reap every stopped `app logs` left one streaming forever) —
 /// and a user-stopped follow exits 0.
 #[allow(clippy::print_stdout)] // non-interactive inline log follow
-fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle, filters: &LogFilterArgs) -> CliResult {
+fn stream_logs(
+    ctx: &Context,
+    source: &LogSource,
+    app: &AppBundle,
+    filters: &LogFilterArgs,
+) -> CliResult {
     ctx.out.note(&format!(
         "Streaming logs for {} (Ctrl-C to stop)",
         app.bundle_id
@@ -3946,13 +4026,7 @@ fn stream_logs(ctx: &Context, udid: &str, app: &AppBundle, filters: &LogFilterAr
     let json = ctx.out.is_json() || ctx.out.is_ndjson();
     let level = filters.level.as_deref().unwrap_or(log_level(&ctx.out));
     let marker = log_stream_marker();
-    let (program, args) = log_command(
-        &LogSource::Simulator(udid),
-        app,
-        level,
-        Some(&marker),
-        filters,
-    );
+    let (program, args) = log_command(source, app, level, Some(&marker), filters);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let mut child = process::spawn_piped(program, &refs, None)?;
     let reap_slot = crate::cli::signals::register_child(child.id());

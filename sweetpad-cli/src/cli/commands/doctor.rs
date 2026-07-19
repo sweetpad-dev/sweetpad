@@ -179,6 +179,15 @@ fn gather() -> Vec<Check> {
         Some("ships with Xcode 15+; only required to run on a real device"),
     ));
 
+    // pymobiledevice3 — the only way to follow a physical device's os_log,
+    // since the host `log stream` can't target a device.
+    checks.push(tool_check(
+        "pymobiledevice3 (device logs)",
+        first_line(probe("pymobiledevice3", &["version"])),
+        Status::Warn,
+        Some("only required to stream logs from a physical device: brew install pymobiledevice3"),
+    ));
+
     // swift-format — the default `sweetpad format` backend.
     checks.push(tool_check(
         "swift-format",
