@@ -989,6 +989,22 @@ fn recover_stale(
 /// sibling of [`recover_stale`]. Returns `None` when the spec should be used
 /// verbatim: not id-pinned, not state-sourced (flags/config are the user's to
 /// fix), or the device is still present.
+/// Whether a `-destination` specifier names physical hardware rather than a
+/// simulator. Simulator specifiers carry a ` Simulator` platform (`platform=iOS
+/// Simulator,id=…`); a bare platform (`platform=iOS,id=…`) is a device.
+///
+/// Used to decide staleness conservatively: when `devicectl` can't answer (not
+/// installed, no Developer Mode, device asleep), a device pin must survive
+/// rather than be cleared as if it were a deleted simulator.
+fn is_device_destination(spec: &str) -> bool {
+    spec.split(',')
+        .filter_map(|part| part.trim().strip_prefix("platform="))
+        .any(|platform| {
+            let p = platform.trim().to_ascii_lowercase();
+            !p.contains("simulator") && p != "macos" && p != "my mac"
+        })
+}
+
 pub(crate) fn refresh_stale_destination(
     ctx: &mut Context,
     resolved: &mut Resolved,
@@ -1014,6 +1030,17 @@ pub(crate) fn refresh_stale_destination(
     }
     let sims = crate::cli::simctl::list()?;
     if sims.iter().any(|s| s.udid == udid) {
+        return Ok(None);
+    }
+    // A remembered destination may name a physical device, which no simulator
+    // UDID can ever match — checking only `simctl` would clear every device
+    // pin on sight. `context set destination` deliberately accepts hardware
+    // that isn't attached, so an unreachable device is "not here right now",
+    // never "gone": leave the pin alone and let xcodebuild report it.
+    if crate::cli::devicectl::list().is_ok_and(|ds| ds.iter().any(|d| d.udid == udid)) {
+        return Ok(None);
+    }
+    if is_device_destination(spec) {
         return Ok(None);
     }
     if track {
@@ -1459,6 +1486,22 @@ fn prompt_choice(what: &str, candidates: &[String], color: bool) -> Result<Strin
 
 #[cfg(test)]
 mod tests {
+    use super::is_device_destination;
+
+    #[test]
+    fn device_specs_are_distinguished_from_simulator_specs() {
+        // A pinned device must never be mistaken for a deleted simulator.
+        assert!(is_device_destination(
+            "platform=iOS,id=00008030-001C2D3E1234567A"
+        ));
+        assert!(is_device_destination("platform=watchOS,id=ABC"));
+        assert!(!is_device_destination("platform=iOS Simulator,id=ABC"));
+        assert!(!is_device_destination("platform=watchOS Simulator,id=ABC"));
+        assert!(!is_device_destination("platform=macOS"));
+        // No platform key at all: not provably hardware, so not a device.
+        assert!(!is_device_destination("id=ABC"));
+    }
+
     use super::*;
     use crate::cli::{
         Context, GlobalArgs, Targeting, config::Config, output::Output, state::State,

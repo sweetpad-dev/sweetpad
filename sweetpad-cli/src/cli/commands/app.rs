@@ -1196,21 +1196,17 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
             ));
         }
         Target::Mac => {
-            // Non-blocking launch (the logs/foreground path runs the executable).
-            // `open` can forward arguments but not per-process env.
-            let mut args: Vec<String> = vec![app.path.to_string_lossy().into_owned()];
-            if !plan.launch.args.is_empty() {
-                args.push("--args".to_string());
-                args.extend(plan.launch.args.iter().cloned());
+            // One macOS launch mechanism for every non-session path: spawning
+            // the executable directly is what lets `--env` and
+            // `--wait-for-debugger` work at all (`open` forwards arguments but
+            // neither of those), and it keeps `--no-logs`, `--detach` and
+            // `app launch` behaving identically.
+            let (pid, log) = spawn_detached_mac(ctx, plan, &app)?;
+            ctx.out
+                .note(&format!("Launched {} (pid {pid})", app.bundle_id));
+            if let Some(log) = log {
+                ctx.out.note(&format!("output → {}", log.display()));
             }
-            if !plan.launch.env.is_empty() {
-                ctx.out
-                    .warn("--env is not forwarded through `open`; run without --no-logs to launch the executable directly");
-            }
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            crate::cli::process::stream("open", &arg_refs, None)
-                .context("launching the macOS app")?;
-            ctx.out.note(&format!("Launched {}", app.bundle_id));
         }
         // Handled by the early return above.
         Target::SpmRun(_) => {}
@@ -2168,6 +2164,9 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             let mut child = cmd.spawn().map_err(|e| {
                 CliError::new(format!("failed to run `{}`: {e}", app.executable.display()))
             })?;
+            if plan.launch.wait_for_debugger {
+                stop_for_debugger(ctx, child.id());
+            }
             render_console(&mut child, ctx.out.use_color(), filter);
             let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
@@ -2404,6 +2403,16 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
             // non-interactive path has no live filter, so use the default threshold.
             let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
             let _logs = start_logs(ctx, plan, &filter);
+            // This path runs the app in the foreground and waits for it, so a
+            // stopped-before-main process would just hang with no pid to
+            // attach to. Refuse rather than accept and ignore.
+            if plan.launch.wait_for_debugger {
+                return Err(CliError::new(
+                    "--wait-for-debugger needs a launch that returns: use `app launch --mac \
+                     --wait-for-debugger` (it reports the stopped pid), or run at an \
+                     interactive terminal",
+                ));
+            }
             // Direct spawn (inherited stdio) so --arg/--env reach the process.
             let env = plan.launch.env_pairs("")?;
             let status = std::process::Command::new(app.executable.as_os_str())
@@ -3161,6 +3170,40 @@ fn launch_mac(
     })
 }
 
+/// Give a directly-spawned macOS app its own session, detaching it from this
+/// terminal's job control. Wanted when the app outlives us; not wanted for a
+/// session child that Ctrl-C should still reach.
+fn own_session_on_spawn(cmd: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    // Safety: `setsid` is async-signal-safe and touches no shared state; this
+    // closure runs in the forked child before `exec`.
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+}
+
+/// Stop a just-spawned app so a debugger can attach, and report its pid.
+///
+/// Deliberately signalled from the parent *after* `spawn`, not from
+/// `pre_exec`: that hook runs before `exec`, and stopping there deadlocks —
+/// `spawn` blocks reading the child's exec-status pipe, which never closes.
+/// The cost is that the stop lands just after `exec` (during dyld load)
+/// rather than being a hard pre-`main` guarantee.
+fn stop_for_debugger(ctx: &Context, pid: u32) {
+    if let Ok(pid) = i32::try_from(pid) {
+        // Safety: signalling a child we just spawned and have not reaped.
+        unsafe {
+            libc::kill(pid, libc::SIGSTOP);
+        }
+    }
+    ctx.out.note(&format!(
+        "stopped for the debugger — attach to pid {pid}, then `kill -CONT {pid}` to continue"
+    ));
+}
+
 /// Spawn a macOS app so it outlives this process, returning its pid and the
 /// file its console output goes to. Shared by `app launch --mac` and
 /// `app run --mac --detach`.
@@ -3172,6 +3215,22 @@ fn spawn_detached_mac(
     plan: &RunPlan,
     app: &AppBundle,
 ) -> Result<(u32, Option<std::path::PathBuf>), CliError> {
+    // Replace any instance already running, matching `simctl launch
+    // --terminate-running-process` and `devicectl … --terminate-existing`.
+    // Without this the same verb means "replace" on two targets and "start a
+    // duplicate" on the third — and the duplicate would silently ignore the
+    // `--arg`/`--env` the caller just passed.
+    if let Ok(pids) = macwin::pids_for_executable(&app.executable)
+        && !pids.is_empty()
+    {
+        for pid in &pids {
+            // Safety: SIGTERM to a pid we resolved from the app's own
+            // executable path; the app gets its normal termination path.
+            unsafe {
+                libc::kill(*pid, libc::SIGTERM);
+            }
+        }
+    }
     let env = plan.launch.env_pairs("")?;
     let log = detached_log_path(&app.bundle_id);
     let mut cmd = std::process::Command::new(app.executable.as_os_str());
@@ -3198,17 +3257,11 @@ fn spawn_detached_mac(
         }
     }
     // Own session: the app must not receive this terminal's job-control
-    // signals once we're gone.
-    {
-        use std::os::unix::process::CommandExt;
-        // Safety: `setsid` is async-signal-safe and touches no shared state.
-        unsafe {
-            cmd.pre_exec(|| {
-                libc::setsid();
-                Ok(())
-            });
-        }
-    }
+    // signals once we're gone. `--wait-for-debugger` additionally stops the
+    // process before it runs `main`, so a debugger can attach to the pid we
+    // report — the macOS equivalent of simctl's `--wait-for-debugger`, which
+    // this path used to accept and silently drop.
+    own_session_on_spawn(&mut cmd);
     let child = ctx.out.step("Launching app", || {
         cmd.spawn().map_err(|e| {
             CliError::new(format!("failed to run `{}`: {e}", app.executable.display()))
@@ -3216,6 +3269,9 @@ fn spawn_detached_mac(
     })?;
     // Deliberately not registered with the signal registry and never waited
     // on: it outlives this process. Dropping `Child` on Unix does not kill it.
+    if plan.launch.wait_for_debugger {
+        stop_for_debugger(ctx, child.id());
+    }
     Ok((child.id(), log))
 }
 
