@@ -1,0 +1,40 @@
+# Minimal SwiftUI iOS app used by ci/xtool-linux-verify.sh to exercise the
+# `sweetpad build generate --backend xtool` → `xtool dev build` path on Linux.
+# Generated with XcodeGen (`xcodegen generate`); the .xcodeproj is not committed.
+#
+# Deliberately uses only portable SwiftUI: no `#Preview` (the previews macro
+# plugin, PreviewsMacros, is a macOS-only host plugin that cannot expand in a
+# Linux cross-build) and no Xcode-only build-time codegen (asset/string-catalog
+# symbols), so the package the xtool backend emits compiles with the open-source
+# Swift toolchain against the Darwin SDK.
+name: SweetpadXtool
+options:
+  bundleIdPrefix: dev.sweetpad.xtool
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    # Unsigned cross-build; keep the fixture free of provisioning.
+    CODE_SIGNING_ALLOWED: "NO"
+
+targets:
+  SweetpadXtool:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.xtool.app
+        GENERATE_INFOPLIST_FILE: "YES"
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+schemes:
+  SweetpadXtool:
+    build:
+      targets:
+        SweetpadXtool: all
+    run:
+      config: Debug

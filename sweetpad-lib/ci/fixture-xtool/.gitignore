@@ -1,0 +1,6 @@
+# Everything ci/xtool-linux-verify.sh regenerates from the sources beside it:
+# the .xcodeproj comes from `xcodegen generate` (step 2), .build from SwiftPM,
+# and xtool/ from `xtool dev build`.
+.build/
+xtool/
+SweetpadXtool.xcodeproj/
