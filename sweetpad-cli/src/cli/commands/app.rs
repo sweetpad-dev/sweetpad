@@ -841,11 +841,12 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
                 &mut resolved,
                 &key,
                 &d,
+                &scheme,
                 &configuration,
                 true,
             )?
             .unwrap_or(d),
-            None => resolve::pick_destination_for(ctx, &resolved, &configuration, true)?,
+            None => resolve::pick_destination_for(ctx, &resolved, &scheme, &configuration, true)?,
         };
         let platform = destination_platform(&destination).unwrap_or_default();
         if platform.eq_ignore_ascii_case("macOS") {

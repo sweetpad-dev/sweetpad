@@ -430,6 +430,16 @@ ok "archive --no-export previews one step"
 out=$("$BIN" archive --project "$APP" --scheme SweetpadCIMac --on mac --show-command --json)
 assert_json "$out" "'generic/platform=macOS' in d['commands'][0]['command']" "True"
 ok "archive --on mac targets generic/platform=macOS"
+
+# With no --on, the platform comes from what the *scheme* builds. This fixture
+# is the case that matters: one project holding both iOS and macOS targets, so
+# a container-wide answer sends the macOS scheme to generic/platform=iOS and
+# xcodebuild fails with "Unable to find a destination matching".
+out=$("$BIN" archive --project "$APP" --scheme SweetpadCIMac --show-command --json)
+assert_json "$out" "'generic/platform=macOS' in d['commands'][0]['command']" "True"
+out=$("$BIN" archive --project "$APP" --scheme SweetpadCIApp --show-command --json)
+assert_json "$out" "'generic/platform=iOS' in d['commands'][0]['command']" "True"
+ok "archive auto-targets each scheme's own platform"
 expect_code 1 "$BIN" archive --project "$APP" --scheme SweetpadCIApp --on toaster --show-command
 ok "archive --on with a non-platform exits 1"
 

@@ -798,12 +798,12 @@ pub fn build_target(
         // A remembered simulator can be deleted under its pin (Xcode/runtime
         // updates do this routinely) — recover like a stale scheme instead of
         // failing every plain build on xcodebuild's cryptic no-match error.
-        match refresh_stale_destination(ctx, resolved, &key, &d, &configuration, track)? {
+        match refresh_stale_destination(ctx, resolved, &key, &d, &scheme, &configuration, track)? {
             Some(fresh) => fresh,
             None => d,
         }
     } else {
-        pick_destination_for(ctx, resolved, &configuration, track)?
+        pick_destination_for(ctx, resolved, &scheme, &configuration, track)?
     };
 
     Ok(BuildTarget {
@@ -1010,6 +1010,7 @@ pub(crate) fn refresh_stale_destination(
     resolved: &mut Resolved,
     key: &str,
     spec: &str,
+    scheme: &str,
     configuration: &str,
     track: bool,
 ) -> Result<Option<String>, CliError> {
@@ -1065,7 +1066,7 @@ pub(crate) fn refresh_stale_destination(
     // The fresh pick is picker-sourced: `remember` should persist it — and
     // platform-filtered like any other pick.
     resolved.destination = None;
-    let platforms = SupportedPlatforms::resolve(resolved, configuration);
+    let platforms = SupportedPlatforms::resolve(resolved, scheme, configuration);
     Ok(Some(pick_destination(
         ctx,
         key,
@@ -1190,36 +1191,82 @@ pub fn remember_testing(
     }
 }
 
-/// The platform tokens the container's targets can build for — the union of
-/// their *authored* `SUPPORTED_PLATFORMS`, falling back to the authored
-/// `SDKROOT` (a device SDK implies its simulator sibling), read straight from
-/// the pbxproj layers in-process. Drives the destination picker's filtering,
-/// so a macOS-only app isn't offered a wall of iPhone simulators. Guessing
-/// wrong can only ever *widen* the list: resolution failure means no filter,
-/// and an explicit `--destination` / `context set destination` bypasses the
-/// picker entirely.
+/// The platform tokens a scheme's targets can build for — the union of their
+/// *authored* `SUPPORTED_PLATFORMS`, falling back to the authored `SDKROOT`
+/// (a device SDK implies its simulator sibling), read straight from the
+/// pbxproj layers in-process. Drives the destination picker's filtering, so a
+/// macOS-only app isn't offered a wall of iPhone simulators. Guessing wrong
+/// can only ever *widen* the list: resolution failure means no filter, and an
+/// explicit `--destination` / `context set destination` bypasses the picker
+/// entirely.
 pub struct SupportedPlatforms(std::collections::BTreeSet<String>);
 
+/// The target names `scheme` builds, or `None` when there is no scheme file to
+/// read — an autocreated scheme Xcode never materialized, or a name that
+/// doesn't resolve. `None` means "don't filter", so a missing file falls back
+/// to every target in the container rather than to an empty set.
+///
+/// Entries count regardless of which action they build for. A per-action set
+/// (Run vs Test vs Archive) could only ever narrow this further, and a
+/// narrower set makes a scheme look *more* platform-specific than it is —
+/// the wrong direction to guess in, since over-narrowing would send a build
+/// to a platform the scheme can't produce.
+fn scheme_build_targets(
+    container: &Container,
+    scheme: &str,
+) -> Option<std::collections::BTreeSet<String>> {
+    // A workspace scheme lives either in the workspace itself or in one of its
+    // member projects, so both are candidates.
+    let mut candidates = vec![container.path().to_path_buf()];
+    if let Container::Workspace(p) = container
+        && let Ok(ws) = sweetpad_lib::workspace::open(p)
+    {
+        candidates.extend(ws.project_refs);
+    }
+    let file = candidates
+        .iter()
+        .find_map(|c| sweetpad_lib::scheme::find_scheme_file(c, scheme))?;
+    let parsed = sweetpad_lib::scheme::parse_file(&file).ok()?;
+    let names: std::collections::BTreeSet<String> = parsed
+        .build_entries
+        .iter()
+        .map(|e| e.buildable.blueprint_name.clone())
+        .collect();
+    (!names.is_empty()).then_some(names)
+}
+
 impl SupportedPlatforms {
-    /// Resolve the container's platform tokens for `configuration`; `None`
-    /// (no filtering) for Swift packages, unreadable projects, or when no
-    /// target authors either setting. Reads the raw setting layers rather
+    /// Resolve the platform tokens `scheme` builds for under `configuration`;
+    /// `None` (no filtering) for Swift packages, unreadable projects, or when
+    /// no target authors either setting. Reads the raw setting layers rather
     /// than the full settings resolver — with no destination settled yet the
     /// resolver would bind an arbitrary default platform, overriding the very
     /// value being discovered.
+    ///
+    /// Only the scheme's own targets count. Every target in the container
+    /// would union an iOS sibling's tokens into a mac-only scheme, and the
+    /// mac-only answer is the one that decides whether a build goes to the
+    /// Mac or to a device platform.
     #[must_use]
-    pub fn resolve(resolved: &Resolved, configuration: &str) -> Option<Self> {
+    pub fn resolve(resolved: &Resolved, scheme: &str, configuration: &str) -> Option<Self> {
         let projects: Vec<PathBuf> = match &resolved.container {
             Container::Project(p) => vec![p.clone()],
             Container::Workspace(p) => sweetpad_lib::workspace::open(p).ok()?.project_refs,
             Container::SwiftPackage(_) => return None,
         };
+        let scheme_targets = scheme_build_targets(&resolved.container, scheme);
         let mut tokens = std::collections::BTreeSet::new();
         for proj in &projects {
             let Ok(project) = sweetpad_lib::project::open(proj) else {
                 continue;
             };
             for target in &project.targets {
+                if scheme_targets
+                    .as_ref()
+                    .is_some_and(|names| !names.contains(&target.name))
+                {
+                    continue;
+                }
                 let Ok(layers) =
                     sweetpad_lib::project::build_settings_layers(proj, &target.name, configuration)
                 else {
@@ -1312,11 +1359,12 @@ fn sdk_platform_tokens(sdk: &str) -> Vec<String> {
 pub fn pick_destination_for(
     ctx: &mut Context,
     resolved: &Resolved,
+    scheme: &str,
     configuration: &str,
     track: bool,
 ) -> Result<String, CliError> {
     let key = resolved.container.key();
-    let platforms = SupportedPlatforms::resolve(resolved, configuration);
+    let platforms = SupportedPlatforms::resolve(resolved, scheme, configuration);
     if platforms.as_ref().is_some_and(SupportedPlatforms::mac_only) {
         ctx.out.note(
             "targeting My Mac (macOS) — the only destination this scheme supports \
@@ -1818,5 +1866,64 @@ mod tests {
         );
         assert_eq!(sdk_platform_tokens("xros"), vec!["xros", "xrsimulator"]);
         assert!(sdk_platform_tokens("somethingelse").is_empty());
+    }
+
+    /// Write `<name>.xcscheme` with one `BuildActionEntry` per target.
+    fn write_scheme(container: &std::path::Path, name: &str, targets: &[&str]) {
+        use std::fmt::Write as _;
+        let dir = container.join("xcshareddata/xcschemes");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut entries = String::new();
+        for t in targets {
+            let _ = write!(
+                entries,
+                r#"<BuildActionEntry buildForRunning="YES" buildForTesting="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">
+<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="ID{t}" BuildableName="{t}.app" BlueprintName="{t}" ReferencedContainer="container:App.xcodeproj"/>
+</BuildActionEntry>"#
+            );
+        }
+        std::fs::write(
+            dir.join(format!("{name}.xcscheme")),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion="1600" version="1.7">
+<BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES">
+<BuildActionEntries>{entries}</BuildActionEntries>
+</BuildAction>
+</Scheme>"#
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn scheme_build_targets_reads_only_that_scheme() {
+        let dir = temp_dir("scheme-targets");
+        let proj = dir.join("App.xcodeproj");
+        std::fs::create_dir_all(&proj).unwrap();
+        write_scheme(&proj, "MacApp", &["MacApp"]);
+        write_scheme(&proj, "iOSApp", &["iOSApp", "iOSAppTests"]);
+        let container = Container::Project(proj);
+
+        // Each scheme sees its own targets, not the container's union — the
+        // whole point, since the union is what sent a mac-only scheme to
+        // `generic/platform=iOS`.
+        let mac = scheme_build_targets(&container, "MacApp").unwrap();
+        assert_eq!(
+            mac.iter().map(String::as_str).collect::<Vec<_>>(),
+            ["MacApp"]
+        );
+        let ios = scheme_build_targets(&container, "iOSApp").unwrap();
+        assert_eq!(
+            ios.iter().map(String::as_str).collect::<Vec<_>>(),
+            ["iOSApp", "iOSAppTests"]
+        );
+
+        // A scheme with no file on disk (autocreated, or simply absent) must
+        // read as "don't filter" rather than as an empty target set, which
+        // would resolve no platforms at all.
+        assert!(scheme_build_targets(&container, "Ghost").is_none());
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

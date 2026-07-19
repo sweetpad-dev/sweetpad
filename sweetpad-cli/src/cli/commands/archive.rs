@@ -117,7 +117,7 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     let schemes = resolve::schemes(&resolved.container)?;
     let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, !args.show_command)?;
     let configuration = archive_configuration(ctx, &resolved)?;
-    let destination = archive_destination(ctx, &resolved, &configuration)?;
+    let destination = archive_destination(ctx, &resolved, &scheme, &configuration)?;
 
     // A relative output dir must mean the same directory for the CLI's own
     // writes (create_dir_all, the generated plist) and for xcodebuild, which
@@ -250,6 +250,7 @@ fn archive_configuration(
 fn archive_destination(
     ctx: &Context,
     resolved: &resolve::Resolved,
+    scheme: &str,
     configuration: &str,
 ) -> Result<String, CliError> {
     resolve::reject_on_destination_conflict(ctx)?;
@@ -260,7 +261,7 @@ fn archive_destination(
         // Without an explicit target, follow what the scheme actually builds
         // for — a mac-only project archived as `generic/platform=iOS` just
         // fails inside xcodebuild. Mirrors the build path's auto-targeting.
-        let mac_only = resolve::SupportedPlatforms::resolve(resolved, configuration)
+        let mac_only = resolve::SupportedPlatforms::resolve(resolved, scheme, configuration)
             .is_some_and(|p| p.is_mac_only());
         return Ok(if mac_only {
             "generic/platform=macOS".to_string()
