@@ -435,6 +435,25 @@ ok "app install --mac still refused (built in place)"
 expect_code 1 "$BIN" app run --project "$APP" --scheme SweetpadCIMac --mac --detach --hot
 ok "--detach with --hot rejected"
 
+# A committed `[run] hot = true` must not send a macOS run down the hot path —
+# the config default applies to simulators, and on macOS you type `--hot`. The
+# assertion is the absence of hot-session evidence rather than the exit code,
+# so a headless launch failure can't mask the regression it guards (§9d).
+printf '[run]\nhot = true\n' > "$GEN_DIR/MacGen/sweetpad.toml"
+if hot_out=$("$BIN" app run --project "$MAC_PROJ" --scheme MacGen --mac --detach 2>&1); then
+  contains "$hot_out" "detached"
+else
+  echo "  (macOS launch failed on this runner; checking only which path was taken)"
+fi
+case "$hot_out" in
+  *"hot reload"* | *8887* | *inject*)
+    fail "a config-default hot sent a macOS --detach run down the hot path: $hot_out"
+    ;;
+esac
+"$BIN" app stop --project "$MAC_PROJ" --scheme MacGen --mac >/dev/null 2>&1 || true
+rm -f "$GEN_DIR/MacGen/sweetpad.toml"
+ok "a config-default hot yields on macOS (--detach takes the plain path)"
+
 # ---------------------------------------------------------------------------
 section "devices"
 "$BIN" device list >/dev/null         # no devices on CI — must still succeed

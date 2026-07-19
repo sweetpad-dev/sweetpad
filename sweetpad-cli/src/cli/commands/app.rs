@@ -651,6 +651,17 @@ impl RunPlan {
     }
 }
 
+/// Whether this run drives a hot-reload session. A typed `--hot` holds for any
+/// target — [`run_hot_session`] is what refuses devices and SPM executables —
+/// while the `[run] hot = true` config default auto-applies to simulators
+/// only: on macOS you type `--hot`, so a committed file can't break `--on mac`,
+/// device, or SPM runs. The flag-gated variants are pre-filtered in
+/// `hot_settings`, but only the resolved plan knows about `--on` and remembered
+/// macOS destinations, so the decision lands here.
+fn session_hot(hot: bool, explicit: bool, target: &Target) -> bool {
+    hot && (explicit || matches!(target, Target::Simulator(_)))
+}
+
 fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
     // `app run` is a live build-and-run session that streams logs until you quit —
     // there's no coherent one-shot JSON for it (a `--json` run would emit a silent
@@ -666,14 +677,24 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
 
     let mut plan = plan(ctx, opts)?;
 
-    // Hot reload is simulator-only. A typed `--hot` on another target errors
-    // inside `run_hot_session`; the `[run] hot = true` *config default* is
-    // simply ignored for `--on mac`/device/SPM runs — a committed file must
-    // not break them (the flag-gated variants are pre-filtered in
-    // `hot_settings`, but only the resolved plan knows about `--on` and
-    // remembered macOS destinations). Clearing `plan.hot` also drops the
-    // hot-only build flags and the summary's "hot reload on" tag.
-    let hot = opts.hot && (opts.hot_explicit || matches!(plan.target, Target::Simulator(_)));
+    // This narrowed value drives the session dispatch below; clearing
+    // `plan.hot` also drops the hot-only build flags and the summary's "hot
+    // reload on" tag.
+    let mut hot = session_hot(opts.hot, opts.hot_explicit, &plan.target);
+
+    // The same rule applied to a busy injection port: one `--hot` session owns
+    // `:8887`, and a committed default must not turn "another session is
+    // already running" into a failed run. A typed `--hot` still fails loudly
+    // inside `run_hot_session`.
+    if hot && !opts.hot_explicit && !inject::server::port_available() {
+        let who = inject::server::port_holder()
+            .map_or_else(|| "another session".to_string(), |pid| format!("pid {pid}"));
+        ctx.out.warn(&format!(
+            "hot reload off for this run: {who} holds 127.0.0.1:8887. The \
+             `[run] hot = true` default yields; type `--hot` to fail instead"
+        ));
+        hot = false;
+    }
     plan.hot = hot;
     let plan = plan;
 
@@ -715,7 +736,7 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         let _ = simctl::open_app();
     }
 
-    let result = if opts.hot {
+    let result = if hot {
         // Hot reload owns its own build + launch + watch session (simulator or mac).
         run_hot_session(ctx, &plan, opts.hot_mode, opts.hot_selfcheck)
     } else if matches!(plan.target, Target::SpmRun(_)) {
@@ -4168,6 +4189,29 @@ mod tests {
         assert_eq!(udid("platform=iOS Simulator,id=ABCD").unwrap(), "ABCD");
         assert_eq!(udid("id=XYZ,platform=iOS Simulator").unwrap(), "XYZ");
         assert!(udid("platform=iOS Simulator,name=iPhone 15").is_err());
+    }
+
+    #[test]
+    fn a_config_default_turns_hot_on_for_simulators_only() {
+        let sim = Target::Simulator("UDID".into());
+        // A typed `--hot` holds for every target; refusing devices and SPM
+        // executables is `run_hot_session`'s job, with a reason.
+        assert!(session_hot(true, true, &sim));
+        assert!(session_hot(true, true, &Target::Mac));
+        assert!(session_hot(true, true, &Target::Device("UDID".into())));
+
+        // The `[run] hot = true` default yields on everything but a simulator,
+        // so a committed file can't break those runs.
+        assert!(session_hot(true, false, &sim));
+        assert!(
+            !session_hot(true, false, &Target::Mac),
+            "a committed default must not send a mac run down the hot path"
+        );
+        assert!(!session_hot(true, false, &Target::Device("UDID".into())));
+        assert!(!session_hot(true, false, &Target::SpmRun("cli".into())));
+
+        // No hot at all (or `--no-hot`, already folded in by the caller) wins.
+        assert!(!session_hot(false, true, &sim));
     }
 
     #[test]

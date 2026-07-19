@@ -32,6 +32,32 @@ impl Recompile for Recompiler {
     }
 }
 
+/// Whether the injection port is free to bind. One `--hot` session owns
+/// `:8887` exclusively, so a run that wants hot reload from a committed
+/// `[run] hot = true` asks first and stays a plain run when it is busy.
+#[must_use]
+pub fn port_available() -> bool {
+    TcpListener::bind((Ipv4Addr::LOCALHOST, protocol::PORT)).is_ok()
+}
+
+/// The pid holding the injection port. `lsof` ships with macOS; when it is
+/// absent or silent the caller loses only the pid, not the diagnosis.
+#[must_use]
+pub fn port_holder() -> Option<u32> {
+    let out = std::process::Command::new("lsof")
+        .arg("-nP")
+        .arg(format!("-iTCP:{}", protocol::PORT))
+        .arg("-sTCP:LISTEN")
+        .arg("-t")
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
 /// A running injection server bound to `:8887` for one `--hot` session.
 pub struct InjectServer {
     recompiler: Arc<dyn Recompile>,
@@ -51,9 +77,16 @@ impl InjectServer {
     /// succeeds. Fails if the port is taken (another injection server running).
     pub fn start(recompiler: Arc<Recompiler>, log: Logger) -> Result<InjectServer, String> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, protocol::PORT)).map_err(|e| {
+            // Name who actually holds it — an unqualified "is InjectionNext.app
+            // running?" sends you looking in the wrong place when the culprit
+            // is usually your own hot session in another tab.
+            let culprit = match port_holder() {
+                Some(pid) => format!("pid {pid} holds it"),
+                None => "another hot-reload session or InjectionNext.app holds it".to_string(),
+            };
             format!(
-                "cannot bind 127.0.0.1:{} for hot reload ({e}). Is InjectionNext.app \
-                 or another hot-reload session already running?",
+                "cannot bind 127.0.0.1:{} for hot reload ({e}): {culprit}. Quit that \
+                 session, or run without `--hot`",
                 protocol::PORT
             )
         })?;
