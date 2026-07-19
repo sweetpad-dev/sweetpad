@@ -1489,6 +1489,59 @@ and it can assert nothing — the tree is the point), keystroke synthesis,
 element waiting/polling (`ui tree` is cheap; a caller that needs to wait owns
 its own timing, per §9g), and any simulator path short of XCUITest.
 
+## 9j. Direction — the run session as a server
+
+`app run`'s only door is a tty. The session owns everything an iterating loop
+needs — the settled `RunPlan`, the live process, the hot-reload channel (§9d),
+the log stream — and the sole way to ask it for anything is a keystroke it
+reads in raw mode ([`rawmode`]). A second window, whether a human's or an
+agent's, cannot reach it.
+
+> Status: direction, not a committed version. Nothing below is scheduled.
+
+That gap forces every other client to re-derive the world, and the copies
+disagree. A detached `app run` from another window calls `plan` again,
+independently: remembered scheme/configuration/destination live in the same
+state file that window's own commands write, `refresh_stale_destination` can
+recover a vanished simulator pin to a *different* destination mid-session, and
+resolution takes structurally different paths interactively (a picker) versus
+not (an error, per `--non-interactive`). Worse, the run-shaping options never
+persist at all — `hot`, `hot_entitlements`, `launch` args/env and `passthrough`
+come from the command line of the session that started it, and
+`LastLaunchedApp` records none of them. A session started as `run --hot --env
+API=staging` is answered by a detached run that builds a non-hot binary without
+the variable. That isn't drift; it's a different build, arrived at silently.
+
+The answer is to stop treating the tty as the interface. The session becomes
+the owner and exposes a control channel; the terminal attaches as a client, an
+agent attaches as a client, and the extension (§7) could attach as a third. `r`
+and an `app session rebuild` from another window resolve to the same command on
+the same channel — one produced locally by a keystroke, the other arriving over
+a socket. The divergence above then has nothing left to diverge: one
+resolution and one app, because there is one owner — structurally, rather than
+by keeping copies in sync. This is the shape dev loops with more than one
+observer converge on (Flutter's daemon mode, Metro, Vite's HMR clients).
+
+The dispatch half already exists: the session loops match on a `SessionKey`
+command enum rather than on raw bytes, so the keystroke reader is one
+*producer* of commands, not the control flow itself. What's missing is a second
+producer (a socket listener feeding the same channel), a response path (build
+results reach the client that asked, not only stdout), and the surface —
+`app session <rebuild|relaunch|status|stop>`, under a `session` noun rather
+than a bare `app rebuild` that would read as a sibling of `build` and blur that
+it addresses a *running* thing. Per §9g's rule that a caller owns its own
+timing, the request is non-blocking: `rebuild` returns a job id and `status`
+polls, so a long build never freezes an agent's loop.
+
+*Considered and rejected as an interim:* persisting the settled `RunPlan` into
+state for a detached run to adopt. It removes the silent-wrong-build hazard
+with no IPC at all, but it cannot carry `--hot` (which needs the live process),
+it makes one process depend on another's pid-namespaced temp directory for
+`hot_entitlements`, and it is discarded wholesale once the channel exists.
+Signals and watched control files are cheaper still and strictly worse: they
+trigger a rebuild but return nothing, leaving the caller blind to the result
+that was the reason it asked.
+
 ## 10. Testing
 
 The CLI modules carry inline `#[cfg(test)]` units that need no Xcode, so the
