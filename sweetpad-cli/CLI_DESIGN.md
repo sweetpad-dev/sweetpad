@@ -105,7 +105,7 @@ sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
                                   are hidden aliases)
 sweetpad context <show|select|set|alias|remove>
 sweetpad settings show            resolved build settings (porcelain; §9f/§9g)
-sweetpad pbxproj <resolve|settings|folder|membership>   project-graph plumbing (§9g)
+sweetpad pbxproj <resolve|settings|folder|membership|fileref|group>  plumbing (§9g)
 ```
 
 Destination selection is `--on <ref>` (fuzzy name / `booted` / `mac` /
@@ -1134,9 +1134,20 @@ sweetpad pbxproj folder add <dir> --target T
 sweetpad pbxproj folder remove <dir> --target T
 
 sweetpad pbxproj membership list [--target T]       everything a target builds
+sweetpad pbxproj membership add <path>… --target T --phase P   classic build-file entries
 sweetpad pbxproj membership remove <path>… --target T     classic build-file entries
 sweetpad pbxproj membership exclude <path> --target T     sync-folder exception
 sweetpad pbxproj membership include <path> --target T     drop the exception
+
+sweetpad pbxproj fileref list [--under PREFIX]      the reference objects
+sweetpad pbxproj fileref add <path> [--type T] [--source-tree ST] [--group ID]
+sweetpad pbxproj fileref remove <id> [--dangling]
+
+sweetpad pbxproj group list                         the navigator tree
+sweetpad pbxproj group add <name> --parent ID [--path P] [--source-tree ST]
+sweetpad pbxproj group remove <id> [--orphan-children]
+sweetpad pbxproj group attach <id> --group ID       list a child
+sweetpad pbxproj group detach <id> --group ID       unlist a child
 ```
 
 - **`settings` splits by layer, not by flag.** Top-level `sweetpad settings
@@ -1164,10 +1175,35 @@ sweetpad pbxproj membership include <path> --target T     drop the exception
   - **`exclude`/`include`** are §9f's exception verbs, relocated: excluding
     a file *is* a membership edit (unchecking the box in Xcode writes
     exactly these exception sets).
+  - **`add`** (batched paths, one write) gives a target a classic build-file
+    entry for each file, in the phase `--phase` names. The phase is never
+    derived from the extension, and the file reference has to exist already
+    (`fileref add` makes one). The two things a smart `add` would have had to
+    guess are the two things the caller states instead. A path a sync folder
+    already builds is refused with the same cross-hint discipline as `remove`.
   - **Verbs are mechanism-specific and cross-hint.** `remove` on a file
     that's built via a sync folder errors with "use membership exclude";
     `exclude` on a file with a classic build-file entry errors with "use
     membership remove". The wrong verb never silently does the other thing.
+- **`fileref` and `group` are the classic representation's other two axes**,
+  kept apart because they answer different questions: a `PBXFileReference`
+  says a file *exists* in the project, a `PBXGroup` entry says where it
+  *appears* in the navigator, and membership says what *builds* it. Wiring a
+  new file into a target is three explicit commands — `fileref add`, then
+  `group attach` if the reference wasn't created under a group, then
+  `membership add` — the way `git hash-object` and `git update-index` are two.
+  - **No verb cascades into a neighbouring axis.** `fileref remove` refuses
+    while a build file still points at the reference (`--dangling` overrides);
+    `group remove` refuses while the group still lists children
+    (`--orphan-children` overrides); `group detach` unlists a child without
+    deleting the object. The single exception is referential integrity —
+    deleting an object also drops it from its parent's `children`, since a
+    group naming a missing object is a corrupt file rather than a valid
+    intermediate state — and every outcome reports what it took with it.
+  - **Paths are anchored, not guessed.** A reference's `path` resolves through
+    its `sourceTree` (`<group>`, `SOURCE_ROOT`, `<absolute>`), and each
+    outcome returns the resolved on-disk path, so a wrong path/anchor pairing
+    surfaces at the command rather than at the next build.
 
 **Conversion as a recipe.** With these primitives, classic → sync-folder
 conversion is a script the caller owns, one decision per line:
@@ -1215,11 +1251,20 @@ not deepening the CLI's entanglement with third-party spec formats and
 their release cycles. Can be revisited if real demand shows up.
 
 *Deliberately not built:* `project convert` (the recipe above, owned by the
-caller), disk expansion in `membership list` (`ls` exists), a classic
-`membership add` (creating file refs/build files by hand is the one flow
-Xcode still does better; `folder add` is the forward-looking answer), and —
-per the decision above — `project generate` / spec-file editing for
-XcodeGen/Tuist projects.
+caller), disk expansion in `membership list` (`ls` exists), and — per the
+decision above — `project generate` / spec-file editing for XcodeGen/Tuist
+projects.
+
+**Amendment: a classic `membership add` ships, because the objection was to a
+*smart* one.** The case against it was that creating file references and build
+files by hand means guessing a file type, an anchor, a group, and a build
+phase — inference Xcode does better. The plumbing verbs guess none of those:
+`--type`, `--source-tree`, `--group`, and `--phase` are all stated by the
+caller, and a path with no reference is an error naming `fileref add` rather
+than an invented reference. What was declined was the inference, not the
+capability, and refusing to infer removes the objection entirely. `folder add`
+remains the forward-looking answer for a project that can adopt synchronized
+folders; `fileref`/`group`/`membership add` are for the ones that cannot.
 
 ## 9h. v8 — `app screenshot` for native macOS apps
 

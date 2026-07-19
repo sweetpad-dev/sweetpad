@@ -20,7 +20,9 @@ use crate::cli::resolve;
 use crate::cli::{CliError, CommandResult, ContainerArgs, Context};
 use sweetpad_lib::pbxproj::Value;
 
+pub mod fileref;
 pub mod folder;
+pub mod group;
 pub mod membership;
 pub mod settings;
 
@@ -52,6 +54,18 @@ pub enum Action {
         #[command(subcommand)]
         action: membership::Action,
     },
+    /// File references: the objects that say a file exists in the project,
+    /// independent of any group or target.
+    Fileref {
+        #[command(subcommand)]
+        action: fileref::Action,
+    },
+    /// The navigator group tree: where a file appears in Xcode, which is a
+    /// separate question from what builds it.
+    Group {
+        #[command(subcommand)]
+        action: group::Action,
+    },
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
@@ -60,6 +74,8 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         Action::Settings { action } => settings::run(ctx, action),
         Action::Folder { action } => folder::run(ctx, action),
         Action::Membership { action } => membership::run(ctx, action),
+        Action::Fileref { action } => fileref::run(ctx, action),
+        Action::Group { action } => group::run(ctx, action),
     }
 }
 

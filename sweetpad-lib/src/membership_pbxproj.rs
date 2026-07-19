@@ -1,13 +1,18 @@
-//! Reading and removing classic per-file target membership — the
+//! Reading, adding, and removing classic per-file target membership — the
 //! `PBXBuildFile` entries in a target's build phases — in a parsed
 //! [`crate::pbxproj::Value`] tree.
 //!
 //! This is the pre-synchronized-folders representation: every file a target
 //! builds has an explicit build-file entry (carrying per-file compiler flags,
 //! header attributes, and platform filters) in one of its phases.
-//! `sweetpad pbxproj membership list/remove` drive this module (CLI_DESIGN
-//! §9g); together with [`crate::sync_pbxproj`] they make classic → folder
-//! conversion an explicit, caller-owned recipe rather than a converter.
+//! `sweetpad pbxproj membership list/add/remove` drive this module
+//! (CLI_DESIGN §9g); together with [`crate::sync_pbxproj`] they make classic →
+//! folder conversion an explicit, caller-owned recipe rather than a converter.
+//!
+//! Membership is only the build-phase axis. The `PBXFileReference` a build
+//! file points at, and the group that shows it, belong to
+//! [`crate::tree_pbxproj`] — so [`add_membership`] requires the reference to
+//! exist already instead of inventing one with a guessed type and location.
 //!
 //! Everything here is pure (no I/O): callers parse the file, mutate the tree,
 //! and serialize/write it — the same contract as the sibling `*_pbxproj`
@@ -42,6 +47,20 @@ impl Phase {
             Phase::Headers => "headers",
             Phase::Frameworks => "frameworks",
             Phase::Copy(_) => "copy",
+        }
+    }
+
+    /// The phase a `--phase` flag names. Copy phases are absent on purpose: a
+    /// target can carry several and they are told apart by name, so a kind
+    /// alone does not address one.
+    #[must_use]
+    pub fn parse(kind: &str) -> Option<Phase> {
+        match kind {
+            "sources" => Some(Phase::Sources),
+            "resources" => Some(Phase::Resources),
+            "headers" => Some(Phase::Headers),
+            "frameworks" => Some(Phase::Frameworks),
+            _ => None,
         }
     }
 
@@ -266,6 +285,159 @@ pub fn remove_membership(
         });
     }
     Ok(removals)
+}
+
+/// The outcome of adding one path to one target's phase. `already_member`
+/// records the no-op, so re-run scripts stay green.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Addition {
+    pub path: String,
+    /// Display name of the phase the entry joined.
+    pub phase: String,
+    /// The `PBXBuildFile` created, or the existing one on a no-op.
+    pub build_file: String,
+    pub already_member: bool,
+}
+
+/// Give `target` a classic build-file entry for each path, in `phase`.
+///
+/// Every path must already have a `PBXFileReference`: creating one is
+/// [`crate::tree_pbxproj::add_fileref`]'s job, kept separate so the file's
+/// type, anchor, and group stay the caller's answers instead of this
+/// function's guesses. `phase` is named outright and never derived from the
+/// extension — putting a `.ttf` in Sources is a decision the caller gets to
+/// make wrongly rather than one this code makes silently.
+///
+/// Paths resolve exactly as [`remove_membership`]'s do. The whole batch is
+/// resolved before anything is written, so a bad path refuses the batch rather
+/// than half-applying it.
+///
+/// # Errors
+/// Returns a message when the tree is malformed, the target or phase is
+/// missing, or a path has no reference (or more than one).
+pub fn add_membership(
+    root: &mut Value,
+    target: &str,
+    paths: &[String],
+    phase: &Phase,
+) -> Result<Vec<Addition>, String> {
+    let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
+    let target_guid = find_target_guid(objects_ref, target)?;
+    let phase_guid = phase_guid_of(objects_ref, &target_guid, phase).ok_or_else(|| {
+        format!(
+            "target {target} has no {} build phase to add to",
+            phase.display()
+        )
+    })?;
+
+    let mut resolved = Vec::new();
+    for raw_path in paths {
+        let path = normalize(raw_path);
+        let hits: Vec<String> = objects_ref
+            .iter()
+            .filter(|(_, o)| {
+                matches!(
+                    isa(o),
+                    "PBXFileReference" | "PBXVariantGroup" | "XCVersionGroup"
+                )
+            })
+            .filter(|(guid, _)| node_path(objects_ref, guid) == path)
+            .map(|(guid, _)| guid.clone())
+            .collect();
+        match hits.len() {
+            0 => {
+                return Err(format!(
+                    "no file reference for {path}: create one with \
+                     `pbxproj fileref add {path} --group <ID>` first"
+                ));
+            }
+            1 => resolved.push((path, hits[0].clone())),
+            n => {
+                return Err(format!(
+                    "{path} matches {n} file references ({}); pass the one you mean to \
+                     `pbxproj membership remove` first",
+                    hits.join(", ")
+                ));
+            }
+        }
+    }
+
+    let mut additions = Vec::new();
+    for (path, ref_guid) in resolved {
+        let objects = objects_mut(root)?;
+        if let Some(existing) = build_file_in_phase(objects, &phase_guid, &ref_guid) {
+            additions.push(Addition {
+                path,
+                phase: phase.display(),
+                build_file: existing,
+                already_member: true,
+            });
+            continue;
+        }
+        let bf_guid = crate::spm_pbxproj::fresh_guid(
+            objects,
+            &format!("buildfile#{ref_guid}#{phase_guid}"),
+            0,
+        );
+        let mut build_file = Dict::new();
+        build_file.insert("isa".into(), Value::String("PBXBuildFile".into()));
+        build_file.insert("fileRef".into(), Value::String(ref_guid.clone()));
+        build_file.set_single_line(true);
+        objects.insert(bf_guid.clone(), Value::Dict(build_file));
+
+        if let Some(files) = objects
+            .get_mut(&phase_guid)
+            .and_then(|p| p.get_mut("files"))
+            .and_then(Value::as_array_mut)
+        {
+            files.push(Value::String(bf_guid.clone()));
+        } else if let Some(node) = objects.get_mut(&phase_guid).and_then(Value::as_dict_mut) {
+            node.insert(
+                "files".into(),
+                Value::Array(vec![Value::String(bf_guid.clone())]),
+            );
+        }
+        additions.push(Addition {
+            path,
+            phase: phase.display(),
+            build_file: bf_guid,
+            already_member: false,
+        });
+    }
+    Ok(additions)
+}
+
+/// The GUID of `target`'s phase of this kind, when it has one. A copy phase
+/// matches on its name too, since a target can carry several.
+fn phase_guid_of(objects: &Dict, target_guid: &str, want: &Phase) -> Option<String> {
+    let phase_guids: Vec<String> = objects
+        .get(target_guid)
+        .and_then(|t| t.get("buildPhases"))
+        .and_then(Value::as_array)
+        .map(str_items)
+        .unwrap_or_default();
+    phase_guids.into_iter().find(|guid| {
+        objects
+            .get(guid)
+            .and_then(|obj| Phase::of(isa(obj), obj))
+            .is_some_and(|found| &found == want)
+    })
+}
+
+/// The build file in `phase` that already points at `ref_guid`.
+fn build_file_in_phase(objects: &Dict, phase_guid: &str, ref_guid: &str) -> Option<String> {
+    let files = objects
+        .get(phase_guid)
+        .and_then(|p| p.get("files"))
+        .and_then(Value::as_array)
+        .map(str_items)
+        .unwrap_or_default();
+    files.into_iter().find(|bf| {
+        objects
+            .get(bf)
+            .and_then(|obj| str_field(obj, "fileRef"))
+            .is_some_and(|fr| fr == ref_guid)
+    })
 }
 
 /// `(phase, build-file GUIDs)` for each membership-bearing phase of a target,
@@ -660,6 +832,104 @@ mod tests {
         let tests = classic_members(&root, "Tests").unwrap();
         assert_eq!(tests.len(), 1);
         assert_eq!(tests[0].path, "App/Main.swift");
+    }
+
+    #[test]
+    fn add_puts_the_file_in_the_phase_the_caller_named() {
+        let mut root = parsed();
+        // A .png into Sources: wrong, and allowed. The extension does not get
+        // a vote — that is the whole point of naming the phase.
+        let added =
+            add_membership(&mut root, "App", &["App/Logo.png".into()], &Phase::Sources).unwrap();
+        assert_eq!(added.len(), 1);
+        assert_eq!(added[0].phase, "sources");
+        assert!(!added[0].already_member);
+
+        let text = round_trips(&root);
+        let bf = &added[0].build_file;
+        assert!(text.contains(bf), "the build file exists");
+        // It joined the sources phase, and the resources entry it already had
+        // is untouched.
+        let members = classic_members(&root, "App").unwrap();
+        let in_sources = members
+            .iter()
+            .filter(|e| e.path == "App/Logo.png" && e.phase == Phase::Sources)
+            .count();
+        let in_resources = members
+            .iter()
+            .filter(|e| e.path == "App/Logo.png" && e.phase == Phase::Resources)
+            .count();
+        assert_eq!((in_sources, in_resources), (1, 1));
+    }
+
+    #[test]
+    fn adding_an_existing_member_is_a_no_op() {
+        let mut root = parsed();
+        let before = crate::pbxproj_writer::serialize(&root, "Fix");
+        let added = add_membership(
+            &mut root,
+            "App",
+            &["App/Main.swift".into()],
+            &Phase::Sources,
+        )
+        .unwrap();
+        assert!(added[0].already_member);
+        assert_eq!(
+            added[0].build_file, "BF1",
+            "it reports the entry that exists"
+        );
+        let after = crate::pbxproj_writer::serialize(&root, "Fix");
+        assert_eq!(before, after, "no-ops must not touch the file");
+    }
+
+    #[test]
+    fn adding_a_path_with_no_reference_points_at_fileref_add() {
+        let mut root = parsed();
+        let before = crate::pbxproj_writer::serialize(&root, "Fix");
+        let err = add_membership(
+            &mut root,
+            "App",
+            &["App/Main.swift".into(), "App/Nope.swift".into()],
+            &Phase::Sources,
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("no file reference for App/Nope.swift"),
+            "{err}"
+        );
+        assert!(err.contains("fileref add"), "{err}");
+        let after = crate::pbxproj_writer::serialize(&root, "Fix");
+        assert_eq!(
+            before, after,
+            "a bad path refuses the whole batch, half-applying nothing"
+        );
+    }
+
+    #[test]
+    fn adding_to_a_phase_the_target_lacks_errors() {
+        let mut root = parsed();
+        let err = add_membership(
+            &mut root,
+            "App",
+            &["App/Main.swift".into()],
+            &Phase::Headers,
+        )
+        .unwrap_err();
+        assert!(err.contains("no headers build phase"), "{err}");
+    }
+
+    #[test]
+    fn the_generated_build_file_id_is_deterministic() {
+        let mut a = parsed();
+        let mut b = parsed();
+        let ra = add_membership(&mut a, "App", &["App/Logo.png".into()], &Phase::Sources).unwrap();
+        let rb = add_membership(&mut b, "App", &["App/Logo.png".into()], &Phase::Sources).unwrap();
+        assert_eq!(ra[0].build_file, rb[0].build_file);
+        assert_eq!(
+            crate::pbxproj_writer::serialize(&a, "Fix"),
+            crate::pbxproj_writer::serialize(&b, "Fix"),
+            "the same mutation twice produces the same bytes"
+        );
     }
 
     #[test]

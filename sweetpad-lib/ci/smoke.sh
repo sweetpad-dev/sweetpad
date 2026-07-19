@@ -270,6 +270,75 @@ rm "$GEN_DIR/MacGen/sweetpad.toml"
 ok "generated-project guard (spec file + config key; --force overrides)"
 
 # ---------------------------------------------------------------------------
+section "pbxproj classic tree (fileref, group, membership add; §9g)"
+# The classic representation's three axes, proven to be separate: a reference
+# is not a group entry, a group entry is not membership, and only membership
+# makes something compile. Runs on a copy of the committed classic fixture —
+# the synchronized-folder project has no explicit list to edit, and the copy
+# keeps the mutations out of the repo.
+TREE_DIR="$(mktemp -d)"
+cp -R "$APP_DIR" "$TREE_DIR/app"
+rm -f "$TREE_DIR/app/project.yml"
+TREE_PROJ="$TREE_DIR/app/SweetpadCIApp.xcodeproj"
+
+out=$("$BIN" pbxproj fileref list --project "$TREE_PROJ" --json)
+assert_json "$out" "len([r for r in d['refs'] if r['resolved']=='Sources/App/ContentView.swift'])" "1"
+ok "pbxproj fileref list (references resolve to real paths)"
+
+GROUP=$("$BIN" pbxproj group list --project "$TREE_PROJ" --json \
+  | python3 -c "import json,sys; print(next(g['id'] for g in json.load(sys.stdin)['data']['groups'] if g['resolved']=='Sources/App'))")
+
+# The gap this closes: a new file on disk becomes a compiled file in explicit
+# steps, with no generator in the loop.
+cat > "$TREE_DIR/app/Sources/App/Added.swift" <<'SWIFT'
+func addedGreeting() -> String { "wired in by the CLI" }
+SWIFT
+REF=$("$BIN" pbxproj fileref add Added.swift --type sourcecode.swift --group "$GROUP" \
+  --project "$TREE_PROJ" --json | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['id'])")
+
+# A reference on its own builds nothing — membership is a separate statement.
+out=$("$BIN" pbxproj membership list --target SweetpadCIApp --project "$TREE_PROJ" --json)
+assert_json "$out" "len([e for e in d['targets'][0]['explicit'] if 'Added' in e['path']])" "0"
+ok "pbxproj fileref add (a reference is not membership)"
+
+# Each verb refuses the neighbouring axis's job instead of cascading into it.
+expect_code 1 "$BIN" pbxproj group remove "$GROUP" --project "$TREE_PROJ"
+ok "pbxproj group remove refuses a group that still has children"
+
+"$BIN" pbxproj membership add Sources/App/Added.swift --target SweetpadCIApp --phase sources \
+  --project "$TREE_PROJ"
+out=$("$BIN" pbxproj membership list --target SweetpadCIApp --project "$TREE_PROJ" --json)
+assert_json "$out" "[e['phase'] for e in d['targets'][0]['explicit'] if 'Added' in e['path']]" "['sources']"
+# The build both proves the file compiles and that the pbxproj we wrote is one
+# xcodebuild can still read.
+"$BIN" build start --project "$TREE_PROJ" --scheme SweetpadCIApp \
+  --destination "generic/platform=iOS Simulator" 2>&1 | tee "$TREE_DIR/build.log" >/dev/null
+grep -q "Compiling Added.swift" "$TREE_DIR/build.log" \
+  || fail "the added file was not compiled: $(tail -3 "$TREE_DIR/build.log")"
+ok "pbxproj membership add (the added file really compiles)"
+
+expect_code 1 "$BIN" pbxproj fileref remove "$REF" --project "$TREE_PROJ"
+ok "pbxproj fileref remove refuses a reference a target still builds"
+
+# Removal reports what it took with it, rather than leaving it to a git diff.
+out=$("$BIN" pbxproj membership remove Sources/App/Added.swift --target SweetpadCIApp \
+  --project "$TREE_PROJ" --json)
+assert_json "$out" "d['removals'][0]['deletedReference']" "True"
+ok "membership remove reports the reference its cascade deleted"
+
+# detach/attach move only the child entry; the object itself survives both.
+CV=$("$BIN" pbxproj fileref list --project "$TREE_PROJ" --json \
+  | python3 -c "import json,sys; print(next(r['id'] for r in json.load(sys.stdin)['data']['refs'] if r['resolved']=='Sources/App/ContentView.swift'))")
+out=$("$BIN" pbxproj group detach "$CV" --group "$GROUP" --project "$TREE_PROJ" --json)
+assert_json "$out" "d['changed']" "True"
+out=$("$BIN" pbxproj fileref list --project "$TREE_PROJ" --json)
+assert_json "$out" "[r['group'] for r in d['refs'] if r['id']=='$CV']" "[None]"
+out=$("$BIN" pbxproj group attach "$CV" --group "$GROUP" --project "$TREE_PROJ" --json)
+assert_json "$out" "d['changed']" "True"
+ok "pbxproj group attach/detach (child entry only, the object survives)"
+rm -rf "$TREE_DIR"
+
+# ---------------------------------------------------------------------------
 section "test (iOS)"
 out=$("$BIN" test run --project "$APP" --scheme SweetpadCIApp --destination "$DEST" --json)
 assert_json "$out" "d['passed']" "True"

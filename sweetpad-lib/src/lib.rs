@@ -28,6 +28,7 @@ pub mod settings_pbxproj;
 pub mod spm_pbxproj;
 pub mod spm_resolved;
 pub mod sync_pbxproj;
+pub mod tree_pbxproj;
 pub mod workspace;
 pub mod xcconfig;
 pub mod xcode;
