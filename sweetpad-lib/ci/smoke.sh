@@ -35,6 +35,17 @@ expect_code() {
   [ "$rc" -eq "$want" ] || fail "expected exit $want, got $rc: $*"
 }
 
+# expect_code for a command that has to run from a directory — a package is
+# resolved from the cwd, so its refusals can't be checked any other way.
+expect_code_in() {
+  local dir="$1"
+  local want="$2"
+  shift 2
+  local rc=0
+  ( cd "$dir" && "$@" ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq "$want" ] || fail "expected exit $want in $dir, got $rc: $*"
+}
+
 # Run a streaming command for N seconds, then stop it (SIGTERM is success).
 run_briefly() {
   local secs="$1"
@@ -388,6 +399,44 @@ assert_json "$out" "len(d['paths'])" "0"
 ok "derived-data purge --project (roundtrip)"
 
 # ---------------------------------------------------------------------------
+section "archive"
+ARCH_DIR="$(mktemp -d)"
+# A real macOS archive — unsigned, and the only tier here that runs
+# `xcodebuild archive` instead of previewing it. It also re-creates the
+# project's DerivedData, which the `clean` section below purges again.
+out=$("$BIN" archive --project "$APP" --scheme SweetpadCIMac --on mac --no-export \
+  --output-file "$ARCH_DIR" --json)
+assert_json "$out" "d['exportedTo'] is None" "True"
+test -f "$ARCH_DIR/SweetpadCIMac.xcarchive/Info.plist" || fail "archive has no Info.plist"
+test -d "$ARCH_DIR/SweetpadCIMac.xcarchive/Products/Applications/SweetpadCIMac.app" \
+  || fail "archive has no .app under Products"
+ok "archive --on mac --no-export (real xcarchive)"
+
+# The dry run previews both steps and names the plist it would generate.
+out=$("$BIN" archive --project "$APP" --scheme SweetpadCIApp --show-command --json)
+assert_json "$out" "len(d['commands'])" "2"
+assert_json "$out" "'generic/platform=iOS' in d['commands'][0]['command']" "True"
+assert_json "$out" "d['generatedExportOptions'].endswith('ExportOptions.plist')" "True"
+ok "archive --show-command previews archive + export"
+
+# --no-export drops the export step, and the generated plist with it.
+out=$("$BIN" archive --project "$APP" --scheme SweetpadCIApp --no-export --show-command --json)
+assert_json "$out" "len(d['commands'])" "1"
+assert_json "$out" "d['generatedExportOptions'] is None" "True"
+ok "archive --no-export previews one step"
+
+# --on names a generic device platform; anything else is refused here rather
+# than reaching xcodebuild as an unusable -destination.
+out=$("$BIN" archive --project "$APP" --scheme SweetpadCIMac --on mac --show-command --json)
+assert_json "$out" "'generic/platform=macOS' in d['commands'][0]['command']" "True"
+ok "archive --on mac targets generic/platform=macOS"
+expect_code 1 "$BIN" archive --project "$APP" --scheme SweetpadCIApp --on toaster --show-command
+ok "archive --on with a non-platform exits 1"
+
+expect_code_in "$SPM_DIR" 1 "$BIN" archive
+ok "archive refused for a Swift package"
+
+# ---------------------------------------------------------------------------
 section "Swift package (SPM)"
 out=$(cd "$SPM_DIR" && "$BIN" scheme list)
 contains "$out" "SweetpadCITool"
@@ -400,6 +449,39 @@ ok "spm test run --json"
 out=$(cd "$SPM_DIR" && "$BIN" app run --scheme SweetpadCITool)
 contains "$out" "hello from sweetpad ci tool"
 ok "spm app run (swift run)"
+
+# ---------------------------------------------------------------------------
+section "clean"
+# The project tier. --purge additionally removes the DerivedData folder the
+# archive section re-created, so the roundtrip below has something to delete.
+out=$("$BIN" clean --project "$APP" --scheme SweetpadCIApp --json)
+assert_json "$out" "d['cleaned']" "xcodebuild clean"
+assert_json "$out" "d['purged']" "[]"
+ok "clean (xcodebuild clean, nothing purged)"
+out=$("$BIN" clean --project "$APP" --scheme SweetpadCIApp --purge --json)
+assert_json "$out" "len(d['purged'])>=1" "True"
+out=$("$BIN" derived-data path --project "$APP" --json)
+assert_json "$out" "len(d['paths'])" "0"
+ok "clean --purge removes the project's DerivedData"
+
+# The package tier. `swift package clean` leaves .build standing (checkouts,
+# artifacts and repositories survive it), so --purge deleting the whole
+# directory is a real difference rather than a louder spelling of the same
+# thing. The SPM section above already populated .build.
+out=$(cd "$SPM_DIR" && "$BIN" clean --json)
+assert_json "$out" "d['cleaned']" "swift package clean"
+test -d "$SPM_DIR/.build" || fail "swift package clean should leave .build in place"
+ok "clean leaves a package's .build"
+out=$(cd "$SPM_DIR" && "$BIN" clean --purge --json)
+assert_json "$out" "[p for p in d['purged'] if p.endswith('.build')] != []" "True"
+! test -d "$SPM_DIR/.build" || fail "clean --purge should have removed .build"
+ok "clean --purge removes a package's .build"
+
+# Neither flag reaches `swift package clean`, so both are refused rather than
+# accepted and quietly ignored.
+expect_code_in "$SPM_DIR" 1 "$BIN" clean --scheme SweetpadCITool
+expect_code_in "$SPM_DIR" 1 "$BIN" clean --configuration Debug
+ok "clean refuses --scheme/--configuration for a package"
 
 # ---------------------------------------------------------------------------
 section "simulator teardown"
