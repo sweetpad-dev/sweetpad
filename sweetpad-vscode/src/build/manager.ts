@@ -134,10 +134,16 @@ export class BuildManager {
   }
 
   async start(): Promise<void> {
-    this.on("defaultSchemeForBuildUpdated", (scheme: string | undefined) => {
+    this.on("defaultSchemeForBuildUpdated", () => {
       void this.generateXBSSettingsOnSchemeChange({
-        scheme: scheme,
+        scheme: this.getDefaultSchemeForBuild(),
       });
+    });
+
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("sweetpad.build.scheme")) {
+        this.emitter.emit("defaultSchemeForBuildUpdated", this.getDefaultSchemeForBuild());
+      }
     });
   }
 
@@ -199,6 +205,10 @@ export class BuildManager {
   }
 
   getDefaultSchemeForBuild(): string | undefined {
+    const fromConfig = getWorkspaceConfig("build.scheme");
+    if (fromConfig) {
+      return fromConfig;
+    }
     return this.workspaceState.get("build.xcodeScheme");
   }
 
@@ -284,8 +294,9 @@ export class BuildManager {
     }
 
     const schemeNames = new Set(this.cache.map((scheme) => scheme.name));
-    const currentBuildScheme = this.getDefaultSchemeForBuild();
-    if (currentBuildScheme && !schemeNames.has(currentBuildScheme)) {
+    // Only clear workspace-state caches — settings are intentional and win over cache.
+    const cachedBuildScheme = this.workspaceState.get("build.xcodeScheme");
+    if (cachedBuildScheme && !schemeNames.has(cachedBuildScheme)) {
       this.setDefaultSchemeForBuild(undefined);
     }
 

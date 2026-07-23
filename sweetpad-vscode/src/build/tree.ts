@@ -73,8 +73,8 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
       this.updateView();
     });
 
-    this.buildManager.on("defaultSchemeForBuildUpdated", (scheme) => {
-      this.defaultSchemeForBuild = scheme;
+    this.buildManager.on("defaultSchemeForBuildUpdated", () => {
+      this.defaultSchemeForBuild = this.buildManager.getDefaultSchemeForBuild();
       this.updateView();
     });
     this.buildManager.on("defaultSchemeForTestingUpdated", (scheme) => {
@@ -93,6 +93,10 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
         event.affectsConfiguration("sweetpad.build.schemes.exclude")
       ) {
         this.recomputeSchemeFilterPatterns();
+        this.updateView();
+      }
+      if (event.affectsConfiguration("sweetpad.build.scheme")) {
+        this.defaultSchemeForBuild = this.buildManager.getDefaultSchemeForBuild();
         this.updateView();
       }
     });

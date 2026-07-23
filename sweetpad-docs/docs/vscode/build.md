@@ -157,6 +157,37 @@ If your project contains only one workspace, SweetPad finds it automatically —
 
 :::
 
+## Set the scheme and destination
+
+Pin the scheme and run destination the same way you pin the workspace path — useful for agents, CI-like local
+workflows, or skipping the QuickPick every time:
+
+```json title=".vscode/settings.json"
+{
+  "sweetpad.build.scheme": "MyApp",
+  "sweetpad.build.destination": {
+    "type": "iOSSimulator",
+    "id": "iossimulator-AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+    "name": "iPhone 16"
+  }
+}
+```
+
+- `scheme` — exact scheme name from the Xcode project.
+- `destination` — `{ id, type, name }`. Ids look like `iossimulator-<udid>` or `iosdevice-<udid>`; `type` is one of
+  `iOSSimulator`, `iOSDevice`, `macOS`, and the other platform variants. Use
+  `> SweetPad: Select destination` (or click a destination in the sidebar) and choose to save it to settings to fill
+  this in without copying ids by hand.
+
+Unset = SweetPad asks the first time and remembers the choice in its cache. Settings always win over that cache.
+
+:::note
+
+Simulator UDIDs change if you delete and recreate the simulator. Device UDIDs and `macOS` are stable. If a pinned
+destination disappears, SweetPad asks again and can refresh the setting with your new pick.
+
+:::
+
 ## Set DerivedData path
 
 `xcodebuild` writes its intermediate files into `~/Library/Developer/Xcode/DerivedData/` by default. If you'd rather

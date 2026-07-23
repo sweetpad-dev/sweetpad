@@ -1,5 +1,8 @@
 import events from "node:events";
 
+import * as vscode from "vscode";
+
+import { getWorkspaceConfig } from "../common/config";
 import { checkUnreachable } from "../common/types";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DevicesManager } from "../devices/manager";
@@ -68,6 +71,12 @@ export class DestinationsManager {
     });
     this.devicesManager.on("updated", () => {
       this.emitter.emit("devicesUpdated");
+    });
+
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("sweetpad.build.destination")) {
+        this.emitter.emit("xcodeDestinationForBuildUpdated", this.getSelectedXcodeDestinationForBuild());
+      }
     });
   }
 
@@ -405,9 +414,17 @@ export class DestinationsManager {
   }
 
   /**
-   * Get selected destination from the workspace state
+   * Get selected destination from settings, falling back to workspace state.
    */
   getSelectedXcodeDestinationForBuild(): SelectedDestination | undefined {
+    const fromConfig = getWorkspaceConfig("build.destination");
+    if (fromConfig?.id && fromConfig?.type) {
+      return {
+        id: fromConfig.id,
+        type: fromConfig.type,
+        name: fromConfig.name ?? fromConfig.id,
+      };
+    }
     return this.workspaceState.get("build.xcodeDestination");
   }
 

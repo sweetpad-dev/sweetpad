@@ -18,7 +18,7 @@ import {
   isXcodeBuildCommandCustomized,
   readXBSConfig,
 } from "../common/cli/scripts";
-import { getWorkspaceConfig } from "../common/config";
+import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, readJsonFile, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
@@ -100,10 +100,12 @@ export async function askDestinationToRunOn(
     mostUsedSort: true,
   });
 
-  // If we have cached desination, use it
-  const cachedDestination = destinationsManager.getSelectedXcodeDestinationForBuild();
-  if (cachedDestination) {
-    const destination = destinations.find((d) => d.id === cachedDestination.id && d.type === cachedDestination.type);
+  // Prefer settings / workspace-state cache when the destination is still available
+  const preferredDestination = destinationsManager.getSelectedXcodeDestinationForBuild();
+  if (preferredDestination) {
+    const destination = destinations.find(
+      (d) => d.id === preferredDestination.id && d.type === preferredDestination.type,
+    );
     if (destination) {
       return destination;
     }
@@ -119,10 +121,23 @@ export async function askDestinationToRunOn(
   });
   const supportedPlatforms = buildSettings?.supportedPlatforms;
 
-  return await selectDestinationForBuild(destinationsManager, {
+  const destination = await selectDestinationForBuild(destinationsManager, {
     destinations: destinations,
     supportedPlatforms: supportedPlatforms,
   });
+
+  // If a setting pinned a destination that no longer exists, refresh it with the new pick
+  // so we don't re-prompt on every build.
+  if (getWorkspaceConfig("build.destination")) {
+    await updateWorkspaceConfig("build.destination", {
+      id: destination.id,
+      type: destination.type,
+      name: destination.name,
+    });
+    destinationsManager.setWorkspaceDestinationForBuild(undefined);
+  }
+
+  return destination;
 }
 
 export async function selectDestinationForBuild(

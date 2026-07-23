@@ -21,6 +21,8 @@ Covered in depth in [Build & Run](./build.md).
 | ---------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
 | `sweetpad.build.xcodeWorkspacePath`      | —       | Path to the workspace or project to build, absolute or relative to the VSCode folder. Unset = auto-detect (asks if several are found). |
 | `sweetpad.build.configuration`           | —       | Build configuration to use (e.g. `Debug`, `Release`). Unset = asks and remembers.                                  |
+| `sweetpad.build.scheme`                  | —       | Scheme to build. Unset = asks and remembers.                                                                       |
+| `sweetpad.build.destination`             | —       | Destination to build and run on (`id`, `type`, `name`). Unset = asks and remembers.                              |
 | `sweetpad.build.args`                    | `[]`    | Extra arguments appended to every `xcodebuild` invocation.                                                          |
 | `sweetpad.build.env`                     | `{}`    | Environment variables for the `xcodebuild` process itself. `${env:VAR}` expands; `null` unsets an inherited value. |
 | `sweetpad.build.launchArgs`              | `[]`    | Arguments passed to your app when it launches.                                                                      |

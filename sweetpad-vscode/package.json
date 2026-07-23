@@ -1014,6 +1014,42 @@
           "default": null,
           "description": "Configuration to build."
         },
+        "sweetpad.build.scheme": {
+          "type": "string",
+          "default": null,
+          "description": "Scheme to build. Unset = asks and remembers."
+        },
+        "sweetpad.build.destination": {
+          "type": "object",
+          "default": null,
+          "required": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Destination id (e.g. iossimulator-<udid> or iosdevice-<udid>)."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "iOSSimulator",
+                "watchOSSimulator",
+                "tvOSSimulator",
+                "visionOSSimulator",
+                "macOS",
+                "iOSDevice",
+                "watchOSDevice",
+                "tvOSDevice",
+                "visionOSDevice"
+              ],
+              "description": "Destination type."
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name for the destination."
+            }
+          },
+          "description": "Destination to build and run on. Unset = asks and remembers."
+        },
         "sweetpad.build.schemes.include": {
           "type": "array",
           "items": {
