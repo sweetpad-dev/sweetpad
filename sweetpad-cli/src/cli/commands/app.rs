@@ -146,6 +146,35 @@ impl LaunchArgs {
     }
 }
 
+/// `app debug --batch` — non-interactive lldb for scripts and agents. Without
+/// '--batch', `app debug` still drops you at an interactive lldb prompt.
+#[derive(Debug, Clone, Default, clap::Args)]
+pub struct DebugBatchArgs {
+    /// Run lldb non-interactively: execute the '--cmd' commands, then let the
+    /// session end, instead of handing over an interactive prompt. The exit
+    /// code reflects whether the session launched, not what lldb found — parse
+    /// the streamed output for the result, or use 'app diagnose' for a report.
+    #[arg(long)]
+    pub batch: bool,
+
+    /// An lldb command to run in '--batch' mode (repeatable, in order) —
+    /// lldb's own '-o/--one-line' (sweetpad's '-o' already selects the output
+    /// format). Commands are forwarded verbatim, so include your own
+    /// 'run'/'continue' and 'quit'.
+    #[arg(long = "cmd", value_name = "LLDB_CMD", requires = "batch")]
+    pub cmd: Vec<String>,
+
+    /// An lldb command to run only if the target crashes in '--batch' mode
+    /// (repeatable) — lldb's '-k/--one-line-on-crash'.
+    #[arg(long = "on-crash", value_name = "LLDB_CMD", requires = "batch")]
+    pub on_crash: Vec<String>,
+
+    /// Kill the '--batch' session after this many seconds (0 disables) so an
+    /// unattended run can't block forever on an app that stays up. Default 300.
+    #[arg(long, value_name = "SECS", default_value_t = 300)]
+    pub timeout: u64,
+}
+
 /// Which output channels `app logs` follows on macOS. A Mac app can log through
 /// the unified log (`os_log`/`Logger`) or plain stdout/stderr (`print`), and the
 /// two never overlap — following only one would silently miss the other.
@@ -237,7 +266,8 @@ pub enum Action {
         launch: LaunchArgs,
     },
     /// Debug under lldb: on a simulator, launch suspended and attach; on
-    /// macOS, hand the executable to lldb and `run` it.
+    /// macOS, hand the executable to lldb and `run` it. '--batch' drives lldb
+    /// non-interactively from '--cmd' commands, for scripts and agents.
     Debug {
         #[command(flatten)]
         target: crate::cli::BuildTargetArgs,
@@ -245,6 +275,24 @@ pub enum Action {
         stage: StageTargetArgs,
         #[command(flatten)]
         launch: LaunchArgs,
+        #[command(flatten)]
+        batch: DebugBatchArgs,
+    },
+    /// Run the app under lldb, catch the first Objective-C exception or crash,
+    /// print a structured report, and quit. Built for unattended/agent use:
+    /// bounded by '--timeout', and the result is the report ('-o json' for the
+    /// machine-readable form), not the exit code. Simulator and macOS only.
+    Diagnose {
+        #[command(flatten)]
+        target: crate::cli::BuildTargetArgs,
+        #[command(flatten)]
+        stage: StageTargetArgs,
+        #[command(flatten)]
+        launch: LaunchArgs,
+        /// Give up after this many seconds if the app neither crashes nor
+        /// exits, killing it and reporting a timeout (0 disables). Default 30.
+        #[arg(long, value_name = "SECS", default_value_t = 30)]
+        timeout: u64,
     },
     /// Remove the app from a simulator or device.
     Uninstall {
@@ -521,10 +569,21 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             target,
             stage,
             launch,
+            batch,
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            debug(ctx, stage, launch)
+            debug(ctx, stage, launch, batch)
+        }
+        Action::Diagnose {
+            target,
+            stage,
+            launch,
+            timeout,
+        } => {
+            ctx.targeting = target.clone().into();
+            settle_stage_mode(ctx, stage)?;
+            diagnose(ctx, stage, launch, *timeout)
         }
         Action::Uninstall { target, stage } => {
             ctx.targeting = target.clone().into();
@@ -3552,11 +3611,10 @@ fn stop_mac(ctx: &Context, executable: &Path, bundle_id: &str) -> Result<AppStag
     })
 }
 
-/// `app debug`: build + install, launch with `--wait-for-debugger`
-/// (the process starts suspended), then attach `lldb -p <pid>` interactively —
-/// type `continue` in lldb to resume the app. Simulator-only for now.
-fn debug(ctx: &mut Context, stage_target: &StageTargetArgs, launch: &LaunchArgs) -> CommandResult {
-    let opts = RunOpts {
+/// The `RunOpts` shared by `app debug`/`app diagnose`: build + install and
+/// hand off to lldb, never a hot session, no log streaming.
+fn lldb_run_opts<'a>(stage_target: &'a StageTargetArgs, launch: &'a LaunchArgs) -> RunOpts<'a> {
+    RunOpts {
         device: stage_target.device || stage_target.device_id.is_some(),
         device_id: stage_target.device_id.as_deref(),
         mac: stage_target.mac,
@@ -3570,35 +3628,24 @@ fn debug(ctx: &mut Context, stage_target: &StageTargetArgs, launch: &LaunchArgs)
         hot_entitlements: None,
         launch,
         passthrough: &[],
-    };
-    let plan = plan(ctx, &opts)?;
-    let udid = match &plan.target {
-        Target::Simulator(udid) => udid,
-        // A macOS app runs on this machine, so lldb can own the launch
-        // outright — no suspended-launch-then-attach dance, and breakpoints
-        // can be set before the process exists.
-        Target::Mac => return debug_mac(ctx, &plan),
-        Target::Device(_) => {
-            return Err(CliError::new(
-                "app debug can't drive a physical device yet; debug on a simulator, or \
-                 attach Xcode to the device",
-            ));
-        }
-        Target::SpmRun(_) => {
-            return Err(CliError::new(
-                "app debug works on an app target; for a Swift package run `lldb -- swift run`",
-            ));
-        }
-    };
-    let app = build_and_install(&plan, &ctx.out)?;
+    }
+}
 
+/// Build, install, and launch the app **suspended** on `udid`, returning the
+/// bundle and the stopped pid for lldb to attach to. Shared by interactive
+/// `app debug`, `app debug --batch`, and `app diagnose` on a simulator.
+fn launch_suspended_on_sim(
+    ctx: &Context,
+    plan: &RunPlan,
+    udid: &str,
+) -> Result<(AppBundle, u32), CliError> {
+    let app = build_and_install(plan, &ctx.out)?;
     let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
     let mut launch_opts = plan.simctl_launch(&env);
     launch_opts.wait_for_debugger = true;
     let launched = ctx.out.step("Launching app (suspended)", || {
         simctl::launch_opts(udid, &app.bundle_id, &launch_opts)
     })?;
-
     // `simctl launch` prints `<bundle>: <pid>`.
     let pid = launched
         .trim()
@@ -3611,7 +3658,57 @@ fn debug(ctx: &mut Context, stage_target: &StageTargetArgs, launch: &LaunchArgs)
                 "could not read the launched pid from simctl output {launched:?}"
             ))
         })?;
+    Ok((app, pid))
+}
 
+/// `app debug`: attach lldb to the built app. Interactive by default; with
+/// `--batch` it drives lldb from `--cmd` commands and streams the output
+/// (for scripts and agents). On a simulator the app is launched suspended and
+/// lldb attaches; on macOS lldb owns the launch outright.
+fn debug(
+    ctx: &mut Context,
+    stage_target: &StageTargetArgs,
+    launch: &LaunchArgs,
+    batch: &DebugBatchArgs,
+) -> CommandResult {
+    // `--batch` streams lldb's output live; like `app run` there's no coherent
+    // one-shot JSON for it. Point at `app diagnose` for a structured report.
+    if batch.batch && (ctx.out.is_json() || ctx.out.is_ndjson()) {
+        return Err(CliError::new(
+            "`app debug --batch` streams lldb output and has no machine-readable form; use \
+             `app diagnose -o json` for a structured exception/crash report",
+        ));
+    }
+    let opts = lldb_run_opts(stage_target, launch);
+    let plan = plan(ctx, &opts)?;
+    match &plan.target {
+        // A macOS app runs on this machine, so lldb can own the launch
+        // outright — no suspended-launch-then-attach dance, and breakpoints
+        // can be set before the process exists.
+        Target::Mac if batch.batch => debug_batch_mac(ctx, &plan, batch),
+        Target::Mac => debug_mac(ctx, &plan),
+        Target::Simulator(udid) => {
+            let udid = udid.clone();
+            if batch.batch {
+                debug_batch_sim(ctx, &plan, &udid, batch)
+            } else {
+                debug_sim_interactive(ctx, &plan, &udid)
+            }
+        }
+        Target::Device(_) => Err(CliError::new(
+            "app debug can't drive a physical device yet; debug on a simulator, or \
+             attach Xcode to the device",
+        )),
+        Target::SpmRun(_) => Err(CliError::new(
+            "app debug works on an app target; for a Swift package run `lldb -- swift run`",
+        )),
+    }
+}
+
+/// Interactive `app debug` on a simulator: launch suspended, then attach
+/// `lldb -p <pid>` and hand over the terminal — type `continue` to resume.
+fn debug_sim_interactive(ctx: &mut Context, plan: &RunPlan, udid: &str) -> CommandResult {
+    let (app, pid) = launch_suspended_on_sim(ctx, plan, udid)?;
     ctx.out.note(&format!(
         "attaching lldb to {} (pid {pid}) — type `continue` to resume the app",
         app.bundle_id
@@ -3624,6 +3721,47 @@ fn debug(ctx: &mut Context, stage_target: &StageTargetArgs, launch: &LaunchArgs)
     })
     .map(|()| Rendered::Streamed)
     .map_err(|e| e.context("attaching lldb"))
+}
+
+/// `app debug --batch` on a simulator: launch suspended, then run lldb
+/// non-interactively against the attached pid from the user's `--cmd` chain.
+fn debug_batch_sim(
+    ctx: &mut Context,
+    plan: &RunPlan,
+    udid: &str,
+    batch: &DebugBatchArgs,
+) -> CommandResult {
+    let (app, pid) = launch_suspended_on_sim(ctx, plan, udid)?;
+    let args = batch_lldb_args(&LldbTarget::AttachPid(pid), &batch.cmd, &batch.on_crash);
+    ctx.out.note(&format!(
+        "running lldb --batch against {} (pid {pid})",
+        app.bundle_id
+    ));
+    let pid_i32 = i32::try_from(pid).unwrap_or(0);
+    run_lldb_streamed(&args, &[], batch_timeout(batch.timeout), || vec![pid_i32])
+        .map(|()| Rendered::Streamed)
+}
+
+/// `app debug --batch` on macOS: lldb owns the launch, driven from `--cmd`.
+fn debug_batch_mac(ctx: &mut Context, plan: &RunPlan, batch: &DebugBatchArgs) -> CommandResult {
+    let app = build_and_install(plan, &ctx.out)?;
+    let env = plan.launch.env_pairs("")?;
+    let exe = app.executable.display().to_string();
+    let args = batch_lldb_args(
+        &LldbTarget::Mac {
+            exe: &exe,
+            args: &plan.launch.args,
+        },
+        &batch.cmd,
+        &batch.on_crash,
+    );
+    ctx.out
+        .note(&format!("running lldb --batch on {}", app.bundle_id));
+    let executable = app.executable.clone();
+    run_lldb_streamed(&args, &env, batch_timeout(batch.timeout), || {
+        macwin::pids_for_executable(&executable).unwrap_or_default()
+    })
+    .map(|()| Rendered::Streamed)
 }
 
 /// The simulator side of a lifecycle stage.
@@ -3954,6 +4092,467 @@ fn debug_mac(ctx: &mut Context, plan: &RunPlan) -> CommandResult {
     // orphan lldb against the shell prompt.
     crate::cli::signals::with_sigint_ignored(|| process::stream_env("lldb", &args, None, &env))
         .map(|()| Rendered::Streamed)
+}
+
+/// How lldb should reach the app: macOS lldb owns the launch (the executable
+/// and its args go after `--`, started with `run`); the simulator path
+/// attaches to an already-launched, suspended pid and `continue`s it.
+enum LldbTarget<'a> {
+    Mac { exe: &'a str, args: &'a [String] },
+    AttachPid(u32),
+}
+
+impl LldbTarget<'_> {
+    /// The lldb verb that starts/resumes the target: `run` when lldb owns the
+    /// launch, `continue` when it attached to a suspended process.
+    fn start_verb(&self) -> &'static str {
+        match self {
+            LldbTarget::Mac { .. } => "run",
+            LldbTarget::AttachPid(_) => "continue",
+        }
+    }
+
+    /// The leading `-p <pid>` for an attach, empty when lldb owns the launch.
+    fn attach_flag(&self) -> Vec<String> {
+        match self {
+            LldbTarget::AttachPid(pid) => vec!["-p".to_string(), pid.to_string()],
+            LldbTarget::Mac { .. } => Vec::new(),
+        }
+    }
+
+    /// The trailing `-- <exe> <args…>` for a macOS launch, empty for an attach.
+    fn launch_suffix(&self) -> Vec<String> {
+        match self {
+            LldbTarget::Mac { exe, args } => {
+                let mut v = vec!["--".to_string(), (*exe).to_string()];
+                v.extend(args.iter().cloned());
+                v
+            }
+            LldbTarget::AttachPid(_) => Vec::new(),
+        }
+    }
+}
+
+/// Push an lldb one-line command (`-o <cmd>`) onto an argv.
+fn push_one_line(args: &mut Vec<String>, cmd: &str) {
+    args.push("-o".to_string());
+    args.push(cmd.to_string());
+}
+
+/// Sentinels `app diagnose` prints (via `script print`) between the sections
+/// of its lldb chain, so a captured transcript splits into clean pieces even
+/// though lldb interleaves prompts and diagnostics. `-Q` suppresses lldb's
+/// command echo so nothing but these markers and command output appears.
+const SENTINEL_EXC: &str = "@@SWEETPAD_EXC@@";
+const SENTINEL_REASON: &str = "@@SWEETPAD_REASON@@";
+const SENTINEL_BT: &str = "@@SWEETPAD_BT@@";
+const SENTINEL_END: &str = "@@SWEETPAD_END@@";
+
+/// The `lldb -b` argv for `app diagnose`: break on `objc_exception_throw` (lldb
+/// then stops with `stop reason = hit Objective-C exception`), start the app,
+/// and dump the exception name/reason and a backtrace between the sentinels
+/// before killing it. `$arg1` is `objc_exception_throw`'s first argument — the
+/// `NSException` — valid only at that breakpoint, so the caller ignores those
+/// fields for a plain signal crash or a clean exit.
+fn diagnose_lldb_args(target: &LldbTarget) -> Vec<String> {
+    let mut a = vec!["-b".to_string(), "-Q".to_string()];
+    a.extend(target.attach_flag());
+    push_one_line(&mut a, "breakpoint set -n objc_exception_throw");
+    push_one_line(&mut a, target.start_verb());
+    push_one_line(&mut a, &format!("script print('{SENTINEL_EXC}')"));
+    push_one_line(&mut a, "po (id)[(id)$arg1 name]");
+    push_one_line(&mut a, &format!("script print('{SENTINEL_REASON}')"));
+    push_one_line(&mut a, "po (id)[(id)$arg1 reason]");
+    push_one_line(&mut a, &format!("script print('{SENTINEL_BT}')"));
+    push_one_line(&mut a, "bt");
+    push_one_line(&mut a, &format!("script print('{SENTINEL_END}')"));
+    push_one_line(&mut a, "process kill");
+    push_one_line(&mut a, "quit");
+    a.extend(target.launch_suffix());
+    a
+}
+
+/// The `lldb -b` argv for `app debug --batch`: forward the user's `--cmd`
+/// commands as `-o` (in order) and `--on-crash` commands as `-k`, verbatim.
+fn batch_lldb_args(target: &LldbTarget, cmds: &[String], on_crash: &[String]) -> Vec<String> {
+    let mut a = vec!["-b".to_string()];
+    a.extend(target.attach_flag());
+    for c in cmds {
+        push_one_line(&mut a, c);
+    }
+    for c in on_crash {
+        a.push("-k".to_string());
+        a.push(c.clone());
+    }
+    a.extend(target.launch_suffix());
+    a
+}
+
+/// What `app diagnose` extracts from an lldb transcript. `stop_reason` present
+/// means the app stopped on an exception or a signal (not a clean exit); the
+/// exception name/reason are set only for an Objective-C exception.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct DiagnoseOutcome {
+    stop_reason: Option<String>,
+    signal: Option<String>,
+    exit_status: Option<i32>,
+    exception_name: Option<String>,
+    exception_reason: Option<String>,
+    backtrace: Vec<String>,
+}
+
+impl DiagnoseOutcome {
+    fn stopped(&self) -> bool {
+        self.stop_reason.is_some()
+    }
+}
+
+/// Parse an `app diagnose` lldb transcript into an outcome. The first
+/// `stop reason = …` is the real stop — the trailing `exited with status = 9
+/// killed` from our own `process kill` carries none, so it never masquerades
+/// as the result. Section extraction is best-effort; the raw transcript is
+/// always carried alongside for the cases parsing can't cover.
+fn parse_diagnose(transcript: &str) -> DiagnoseOutcome {
+    let stop_reason = transcript.lines().find_map(|l| {
+        l.split_once("stop reason = ")
+            .map(|(_, r)| r.trim().to_string())
+    });
+    let is_objc = stop_reason
+        .as_deref()
+        .is_some_and(|r| r.contains("Objective-C exception"));
+    let signal = stop_reason.as_deref().and_then(|r| {
+        r.strip_prefix("signal ")
+            .map(|s| s.split_whitespace().next().unwrap_or(s).to_string())
+    });
+    // A clean exit only counts when nothing stopped us first.
+    let exit_status = if stop_reason.is_none() {
+        transcript
+            .split("exited with status = ")
+            .nth(1)
+            .and_then(|rest| rest.split_whitespace().next())
+            .and_then(|n| n.parse::<i32>().ok())
+    } else {
+        None
+    };
+
+    let section = |start: &str, end: &str| -> Option<String> {
+        let s = transcript.find(start)? + start.len();
+        let e = transcript[s..]
+            .find(end)
+            .map_or(transcript.len(), |i| s + i);
+        Some(transcript[s..e].trim().to_string())
+    };
+    // A `po` on a non-exception stop (or after exit) prints an `error:` line;
+    // drop those rather than surface them as a name/reason.
+    let clean = |v: Option<String>| -> Option<String> {
+        v.filter(|s| !s.is_empty() && !s.contains("error:"))
+            .map(|s| s.trim_matches('"').to_string())
+    };
+    let (exception_name, exception_reason) = if is_objc {
+        (
+            clean(section(SENTINEL_EXC, SENTINEL_REASON)),
+            clean(section(SENTINEL_REASON, SENTINEL_BT)),
+        )
+    } else {
+        (None, None)
+    };
+    let backtrace = section(SENTINEL_BT, SENTINEL_END)
+        .map(|bt| {
+            bt.lines()
+                .map(str::trim)
+                .filter(|l| l.contains("frame #"))
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    DiagnoseOutcome {
+        stop_reason,
+        signal,
+        exit_status,
+        exception_name,
+        exception_reason,
+        backtrace,
+    }
+}
+
+/// A `--timeout <secs>` value as a `Duration`; `0` means unbounded.
+fn batch_timeout(secs: u64) -> Duration {
+    Duration::from_secs(secs)
+}
+
+/// Wait for `child`, giving up after `timeout` (zero = wait indefinitely).
+/// Returns whether the wait timed out; the caller kills on `true`.
+fn wait_with_timeout(child: &mut std::process::Child, timeout: Duration) -> bool {
+    if timeout.is_zero() {
+        let _ = child.wait();
+        return false;
+    }
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            // Exited, or a wait error we can't recover here — either way, done.
+            Ok(Some(_)) | Err(_) => return false,
+            Ok(None) => {}
+        }
+        if start.elapsed() >= timeout {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// Kill the debuggee (its pids from `cleanup_pids`) and then lldb — the order
+/// that lets lldb notice the inferior died and unwind its own batch cleanly.
+fn kill_lldb_and_inferior(child: &mut std::process::Child, cleanup_pids: impl Fn() -> Vec<i32>) {
+    for pid in cleanup_pids() {
+        // Safety: SIGKILL to a pid we resolved from the app we launched.
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Spawn `lldb <args>` with its output **captured** to a temp file, wait up to
+/// `timeout`, and on expiry kill the inferior and lldb. Returns the transcript
+/// and whether it timed out. Capturing to a file (not a pipe) avoids a
+/// full-pipe deadlock when a chatty app blocks lldb inside `run`.
+fn run_lldb_captured(
+    args: &[String],
+    env: &[(String, String)],
+    timeout: Duration,
+    cleanup_pids: impl Fn() -> Vec<i32>,
+) -> Result<(String, bool), CliError> {
+    let path = std::env::temp_dir().join(format!("sweetpad-diagnose-{}.log", std::process::id()));
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .read(true)
+        .truncate(true)
+        .open(&path)
+        .map_err(|e| {
+            CliError::new(format!(
+                "failed to open diagnose log {}: {e}",
+                path.display()
+            ))
+        })?;
+    let err = file
+        .try_clone()
+        .map_err(|e| CliError::new(format!("failed to set up diagnose capture: {e}")))?;
+    let mut child = std::process::Command::new("lldb")
+        .args(args)
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .stdin(std::process::Stdio::null())
+        .stdout(file)
+        .stderr(err)
+        .spawn()
+        .map_err(|e| CliError::new(format!("failed to run `lldb`: {e}")))?;
+    let slot = crate::cli::signals::register_child(child.id());
+    let timed_out = wait_with_timeout(&mut child, timeout);
+    if timed_out {
+        kill_lldb_and_inferior(&mut child, cleanup_pids);
+    }
+    crate::cli::signals::unregister_child(slot);
+    let transcript = std::fs::read_to_string(&path).unwrap_or_default();
+    let _ = std::fs::remove_file(&path);
+    Ok((transcript, timed_out))
+}
+
+/// Spawn `lldb <args>` with stdio inherited (output **streams** to the
+/// terminal), enforcing `timeout`. Errors if the session had to be killed.
+fn run_lldb_streamed(
+    args: &[String],
+    env: &[(String, String)],
+    timeout: Duration,
+    cleanup_pids: impl Fn() -> Vec<i32>,
+) -> Result<(), CliError> {
+    let mut child = std::process::Command::new("lldb")
+        .args(args)
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .spawn()
+        .map_err(|e| CliError::new(format!("failed to run `lldb`: {e}")))?;
+    let slot = crate::cli::signals::register_child(child.id());
+    let timed_out = wait_with_timeout(&mut child, timeout);
+    if timed_out {
+        kill_lldb_and_inferior(&mut child, cleanup_pids);
+    }
+    crate::cli::signals::unregister_child(slot);
+    if timed_out {
+        return Err(CliError::new(format!(
+            "lldb --batch hit the {}s timeout and was killed; raise --timeout, or add `quit` to \
+             your --cmd chain",
+            timeout.as_secs()
+        )));
+    }
+    Ok(())
+}
+
+/// `app diagnose`: run the app under lldb, catch the first Objective-C
+/// exception or crash, and report it structurally. Simulator and macOS only.
+fn diagnose(
+    ctx: &mut Context,
+    stage_target: &StageTargetArgs,
+    launch: &LaunchArgs,
+    timeout_secs: u64,
+) -> CommandResult {
+    let opts = lldb_run_opts(stage_target, launch);
+    let plan = plan(ctx, &opts)?;
+    match &plan.target {
+        Target::Mac => diagnose_mac(ctx, &plan, timeout_secs),
+        Target::Simulator(udid) => {
+            let udid = udid.clone();
+            diagnose_sim(ctx, &plan, &udid, timeout_secs)
+        }
+        Target::Device(_) => Err(CliError::new(
+            "app diagnose can't drive a physical device yet; diagnose on a simulator or macOS",
+        )),
+        Target::SpmRun(_) => Err(CliError::new(
+            "app diagnose works on an app target; for a Swift package run \
+             `lldb -b -o run -o bt -- <binary>`",
+        )),
+    }
+}
+
+/// `app diagnose` on macOS: lldb owns the launch, so breakpoints are armed
+/// before the process exists.
+fn diagnose_mac(ctx: &mut Context, plan: &RunPlan, timeout_secs: u64) -> CommandResult {
+    let app = build_and_install(plan, &ctx.out)?;
+    // lldb passes its own environment to the target, so `--env` reaches it.
+    let env = plan.launch.env_pairs("")?;
+    let exe = app.executable.display().to_string();
+    let args = diagnose_lldb_args(&LldbTarget::Mac {
+        exe: &exe,
+        args: &plan.launch.args,
+    });
+    ctx.out.note(&format!(
+        "running {} under lldb (timeout {timeout_secs}s) — catching the first exception or crash",
+        app.bundle_id
+    ));
+    let executable = app.executable.clone();
+    let (transcript, timed_out) =
+        run_lldb_captured(&args, &env, batch_timeout(timeout_secs), || {
+            macwin::pids_for_executable(&executable).unwrap_or_default()
+        })?;
+    Ok(Rendered::data(DiagnoseReport {
+        target: "macOS",
+        bundle_id: app.bundle_id,
+        pid: None,
+        timed_out,
+        timeout_secs,
+        outcome: parse_diagnose(&transcript),
+        transcript,
+    }))
+}
+
+/// `app diagnose` on a simulator: launch suspended, then attach lldb.
+fn diagnose_sim(ctx: &mut Context, plan: &RunPlan, udid: &str, timeout_secs: u64) -> CommandResult {
+    let (app, pid) = launch_suspended_on_sim(ctx, plan, udid)?;
+    let args = diagnose_lldb_args(&LldbTarget::AttachPid(pid));
+    ctx.out.note(&format!(
+        "attaching lldb to {} (pid {pid}, timeout {timeout_secs}s) — catching the first \
+         exception or crash",
+        app.bundle_id
+    ));
+    let pid_i32 = i32::try_from(pid).unwrap_or(0);
+    let (transcript, timed_out) =
+        run_lldb_captured(&args, &[], batch_timeout(timeout_secs), || vec![pid_i32])?;
+    Ok(Rendered::data(DiagnoseReport {
+        target: "simulator",
+        bundle_id: app.bundle_id,
+        pid: Some(pid),
+        timed_out,
+        timeout_secs,
+        outcome: parse_diagnose(&transcript),
+        transcript,
+    }))
+}
+
+/// The `app diagnose` payload: the parsed outcome plus the full lldb
+/// transcript. Human mode prints a one-line verdict and the backtrace; `--json`
+/// carries every field, including the transcript, for an agent to act on.
+struct DiagnoseReport {
+    target: &'static str,
+    bundle_id: String,
+    pid: Option<u32>,
+    timed_out: bool,
+    timeout_secs: u64,
+    outcome: DiagnoseOutcome,
+    transcript: String,
+}
+
+impl Render for DiagnoseReport {
+    fn human(&self, out: &Output) {
+        if self.timed_out {
+            out.note(&format!(
+                "{}: no exception or crash within {}s — the app was still running and has been \
+                 killed",
+                self.bundle_id, self.timeout_secs
+            ));
+            return;
+        }
+        match (
+            &self.outcome.exception_name,
+            &self.outcome.signal,
+            self.outcome.exit_status,
+        ) {
+            (Some(name), _, _) => {
+                let reason = self
+                    .outcome
+                    .exception_reason
+                    .as_deref()
+                    .unwrap_or("<no reason>");
+                out.note(&format!(
+                    "{}: caught Objective-C exception {name}: {reason}",
+                    self.bundle_id
+                ));
+            }
+            (None, Some(sig), _) => {
+                out.note(&format!("{}: crashed with {sig}", self.bundle_id));
+            }
+            (None, None, Some(status)) => {
+                out.note(&format!(
+                    "{}: exited cleanly (status {status}) — no exception or crash observed",
+                    self.bundle_id
+                ));
+            }
+            _ => out.note(&format!(
+                "{}: {}",
+                self.bundle_id,
+                self.outcome
+                    .stop_reason
+                    .as_deref()
+                    .unwrap_or("no stop observed")
+            )),
+        }
+        if !self.outcome.backtrace.is_empty() {
+            out.line("");
+            for frame in &self.outcome.backtrace {
+                out.line(frame);
+            }
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "bundleId": self.bundle_id,
+            "target": self.target,
+            "pid": self.pid,
+            "timedOut": self.timed_out,
+            "timeoutSecs": self.timeout_secs,
+            "stopped": self.outcome.stopped(),
+            "stopReason": self.outcome.stop_reason,
+            "signal": self.outcome.signal,
+            "exitStatus": self.outcome.exit_status,
+            "exception": self.outcome.exception_name.as_ref().map(|name| serde_json::json!({
+                "name": name,
+                "reason": self.outcome.exception_reason,
+            })),
+            "backtrace": self.outcome.backtrace,
+            "transcript": self.transcript,
+        })
+    }
 }
 
 /// Whether the invocation named its target explicitly (scheme, configuration,
@@ -5009,5 +5608,102 @@ mod tests {
     #[test]
     fn log_channel_defaults_to_both() {
         assert_eq!(LogFilterArgs::default().source, LogChannel::Both);
+    }
+
+    #[test]
+    fn diagnose_args_mac_owns_launch_sim_attaches() {
+        let args = plan_args("mac");
+        // macOS: lldb owns the launch — `run`, and the executable after `--`.
+        assert!(args.windows(2).any(|w| w == ["-o", "run"]));
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["--", "/tmp/MyApp.app/Contents/MacOS/MyApp"])
+        );
+        assert!(!args.iter().any(|a| a == "-p"));
+
+        let args = plan_args("sim");
+        // Simulator: attach to the suspended pid — `-p 4242`, and `continue`.
+        assert!(args.windows(2).any(|w| w == ["-p", "4242"]));
+        assert!(args.windows(2).any(|w| w == ["-o", "continue"]));
+        assert!(!args.iter().any(|a| a == "run"));
+        assert!(!args.iter().any(|a| a == "--"));
+    }
+
+    fn plan_args(kind: &str) -> Vec<String> {
+        let target = if kind == "mac" {
+            LldbTarget::Mac {
+                exe: "/tmp/MyApp.app/Contents/MacOS/MyApp",
+                args: &[],
+            }
+        } else {
+            LldbTarget::AttachPid(4242)
+        };
+        diagnose_lldb_args(&target)
+    }
+
+    #[test]
+    fn batch_args_forward_cmds_and_on_crash_verbatim() {
+        let args = batch_lldb_args(
+            &LldbTarget::AttachPid(7),
+            &["b main".to_string(), "run".to_string()],
+            &["bt".to_string()],
+        );
+        assert_eq!(&args[..3], &["-b", "-p", "7"]);
+        assert!(args.windows(2).any(|w| w == ["-o", "b main"]));
+        assert!(args.windows(2).any(|w| w == ["-o", "run"]));
+        assert!(args.windows(2).any(|w| w == ["-k", "bt"]));
+    }
+
+    #[test]
+    fn parse_objc_exception_transcript() {
+        // Captured verbatim from `lldb -b -Q` against a raising binary.
+        let t = "Process 67090 stopped\n\
+* thread #1, queue = 'com.apple.main-thread', stop reason = hit Objective-C exception\n\
+@@SWEETPAD_EXC@@\nMyExc\n\n@@SWEETPAD_REASON@@\nboom 42\n\n@@SWEETPAD_BT@@\n\
+* thread #1, stop reason = hit Objective-C exception\n  \
+* frame #0: 0x0001 libobjc.A.dylib`objc_exception_throw\n    \
+frame #1: 0x0002 CoreFoundation`+[NSException raise:format:] + 128\n\
+@@SWEETPAD_END@@\nProcess 67090 exited with status = 9 (0x00000009) killed\n";
+        let o = parse_diagnose(t);
+        assert!(o.stopped());
+        assert_eq!(o.stop_reason.as_deref(), Some("hit Objective-C exception"));
+        assert_eq!(o.exception_name.as_deref(), Some("MyExc"));
+        assert_eq!(o.exception_reason.as_deref(), Some("boom 42"));
+        assert_eq!(o.signal, None);
+        assert_eq!(o.exit_status, None); // killed by us, not a real exit
+        assert_eq!(o.backtrace.len(), 2);
+        assert!(o.backtrace[0].contains("objc_exception_throw"));
+    }
+
+    #[test]
+    fn parse_clean_exit_transcript() {
+        // No stop reason; the `po` sections carry lldb errors we must drop.
+        let t = "Process 67104 launched: '/tmp/okbin' (arm64)\n\
+Process 67104 exited with status = 0 (0x00000000)\n\
+@@SWEETPAD_EXC@@\n\
+error: unable to evaluate expression while the process is exited\n\
+@@SWEETPAD_REASON@@\n@@SWEETPAD_BT@@\n@@SWEETPAD_END@@\n";
+        let o = parse_diagnose(t);
+        assert!(!o.stopped());
+        assert_eq!(o.exit_status, Some(0));
+        assert_eq!(o.exception_name, None);
+        assert_eq!(o.exception_reason, None);
+        assert!(o.backtrace.is_empty());
+    }
+
+    #[test]
+    fn parse_signal_crash_transcript() {
+        // A plain signal crash (not an ObjC throw): signal set, no exception.
+        let t = "Process 30835 stopped\n\
+* thread #1, queue = 'com.apple.main-thread', stop reason = signal SIGABRT\n\
+@@SWEETPAD_EXC@@\nerror: no Objective-C exception\n\
+@@SWEETPAD_REASON@@\n@@SWEETPAD_BT@@\n  \
+* frame #0: 0x00 libsystem_kernel.dylib`__pthread_kill + 8\n\
+@@SWEETPAD_END@@\n";
+        let o = parse_diagnose(t);
+        assert!(o.stopped());
+        assert_eq!(o.signal.as_deref(), Some("SIGABRT"));
+        assert_eq!(o.exception_name, None); // not an ObjC exception → no $arg1
+        assert_eq!(o.backtrace.len(), 1);
     }
 }

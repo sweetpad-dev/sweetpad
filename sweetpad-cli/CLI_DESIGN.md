@@ -99,9 +99,10 @@ sweetpad devices                  everything runnable, specifier-ready
 sweetpad status / open / doctor / self-update / help <topic>
 sweetpad simulator <boot|create|delete|clone|push|privacy|status-bar|
                     location|media-add|record|screenshot|…>   (alias: sim)
-sweetpad app <run|install|launch|debug|uninstall|logs|stop|open-url|
+sweetpad app <run|install|launch|debug|diagnose|uninstall|logs|stop|open-url|
               screenshot|ui>           (screenshot: simulator or macOS window, §9h;
                                         ui: drive a macOS app's UI, §9i;
+                                        debug --batch / diagnose: scriptable lldb, §9j;
                                         logs: os_log + captured stdout on macOS, --source/--last, §9h)
 sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
                                   are hidden aliases)
@@ -1512,7 +1513,76 @@ and it can assert nothing — the tree is the point), keystroke synthesis,
 element waiting/polling (`ui tree` is cheap; a caller that needs to wait owns
 its own timing, per §9g), and any simulator path short of XCUITest.
 
-## 9j. Direction — the run session as a server
+## 9j. v8 — `app diagnose` and scriptable `app debug --batch`
+
+`app debug` handed the terminal to lldb and waited at its prompt — no way to
+pass commands, no batch mode, so it was unusable from an agent or CI. Chasing a
+swallowed Objective-C exception (which imitates a hang, App Nap, and an executor
+bug at once — see the wedge-hunt notes below) meant dropping to raw lldb by hand
+and resolving the binary out of DerivedData yourself. The consumer of a debugger
+on this platform is almost always an *agent* hunting a defect, rarely a human at
+a prompt, so the surface leads with a structured preset and keeps the raw
+passthrough as the escape hatch.
+
+```
+sweetpad app diagnose [--mac|--device] [--arg A] [--env K=V] [--timeout SECS]
+sweetpad app debug --batch [--cmd LLDB_CMD]… [--on-crash LLDB_CMD]… [--timeout SECS]
+```
+
+**`app diagnose`** is the agent-facing verb: build, launch under `lldb -b` with a
+breakpoint on `objc_exception_throw`, run bounded by `--timeout`, and on the
+first stop print a structured report — `stopReason`, `signal`, `exitStatus`,
+`exception { name, reason }`, `backtrace`, and the full lldb `transcript` — then
+kill the app and quit. `-o json` is the point of the verb: the freeform lldb text
+becomes fields an agent acts on, with the raw transcript alongside for whatever
+parsing can't reach. Human mode prints a one-line verdict and the backtrace. lldb
+recognizes an ObjC throw natively (`stop reason = hit Objective-C exception`);
+`$arg1` at that breakpoint is the `NSException`, read ABI-neutrally so it works on
+arm64 and x86_64 sims. The chain prints `script print('@@…@@')` sentinels between
+sections and runs under `-Q` (no command echo), so a captured transcript splits
+cleanly even though lldb interleaves prompts, app `os_log` lines, and its own
+diagnostics.
+
+**`app debug --batch`** is the raw escape hatch: `--cmd` forwards to lldb's
+`-o/--one-line` verbatim (sweetpad's own `-o` already selects the output format,
+so the flag is `--cmd`, not `-o`), `--on-crash` to `-k`. You write your own
+`run`/`continue` and `quit`; the output streams. It rejects `--json` like `app
+run` does — a live lldb session has no coherent one-shot envelope; that is
+exactly what `diagnose` is for.
+
+**The exit code reflects the launch, not the finding.** `lldb -b` returns `0`
+whether the debuggee crashed, an attach was denied, or nothing happened, so
+neither verb derives success from it. `diagnose`'s answer is the report (an agent
+reads `stopped`/`stopReason`/`exception`); `--batch`'s answer is the streamed
+transcript. The help says so on both.
+
+**Timeout is mandatory, not optional.** `lldb -b`'s `run` blocks until the
+process stops or exits, so an app that launches and stays up (the common GUI
+case) would hang the session forever — the precise anti-pattern for an
+unattended agent. `--timeout` (30s for `diagnose`, 300s for `--batch`, `0`
+disables) spawns lldb, waits, and on expiry kills the *inferior first* (resolved
+by executable path on macOS, by the launched pid on a simulator) then lldb, so a
+timed-out `diagnose` reports `timedOut: true` and leaves nothing running. The
+kill targets only what this run launched: a diagnose against a DerivedData build
+never touches a copy the user opened from `/Applications`.
+
+**Target coverage** mirrors interactive `app debug`. On macOS lldb owns the
+launch (`run`, breakpoints armed before the process exists); on a simulator the
+app is launched suspended via `simctl --wait-for-debugger` and lldb attaches to
+the pid and `continue`s — the one asymmetry, hidden inside `diagnose` and left
+verbatim in `--batch`. Physical devices and Swift packages are refused with a
+pointer (`lldb -b … -- <binary>` for SPM), matching where the interactive verb
+already draws the line.
+
+*Deliberately not built:* parsed backtrace *frames* (SB/Python API — the
+transcript plus a best-effort frame-line list is enough for v1), a device path
+(needs `debugserver` plumbing, like the interactive verb), and any preset beyond
+exception-catching (a `--sample`/stack-snapshot sibling for "wedged or merely
+idle?" is a natural follow-on, noted in the jiraffe field log, but it inspects a
+*running* pid rather than owning a launch, so it belongs with `screenshot`/`ui`
+under the observe verbs, not here).
+
+## 9k. Direction — the run session as a server
 
 `app run`'s only door is a tty. The session owns everything an iterating loop
 needs — the settled `RunPlan`, the live process, the hot-reload channel (§9d),
@@ -1574,7 +1644,9 @@ tool-spawning code is pinned without a Mac:
   argument vectors (the main guard against silent flag drift).
 - **Parser fixtures** — `simctl list`, `devicectl list`, `xcresulttool`
   summary, and `-showBuildSettings` JSON parsed from captured-shape payloads
-  (this caught a missing `rename_all` on the devicectl device struct).
+  (this caught a missing `rename_all` on the devicectl device struct), and the
+  `app diagnose` lldb transcript → outcome parse (§9j) against real `lldb -b -Q`
+  output for an ObjC throw, a signal crash, and a clean exit.
 - **Pure logic** — resolution precedence, config/state TOML round-trips,
   `choose` fallback branches, destination/`udid` parsing, and the session
   key → action mapping (`r` rebuild / `q`·Ctrl-C·EOF quit / else ignore).
