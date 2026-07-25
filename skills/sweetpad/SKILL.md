@@ -39,7 +39,8 @@ non-interactively:
 
 - `sweetpad run` **without** `--no-logs` follows the app's logs until it exits.
 - `build --watch`, `test --watch`, `run --hot` — long-lived watch/session modes.
-- `app logs` **without** `--last` — a live stream that follows until killed.
+- `app logs` **without** `--last`, `--until`, or `--timeout` — an unbounded
+  stream that follows until killed.
 
 Prefer the finite forms below. If you genuinely need a live stream, run it in the
 background with your own timeout.
@@ -108,14 +109,26 @@ Pass arguments and environment to the app with `--arg` and `--env KEY=VALUE`
 (both repeatable) — both work on `app run`, `app debug`, and `app diagnose`
 alike. `--detach` (`app run` only) leaves the app running after the CLI exits.
 
+If a run fails with `cannot bind 127.0.0.1:8887 for hot reload`, a dead session
+left the listener behind: `sweetpad hot status` names the holder and
+`sweetpad hot reset` clears it. Prefer that over `--no-hot`, which works by
+giving up hot reload entirely.
+
 ## Read the app's logs
 
-`app logs` follows the running app. `--last <dur>` prints recent history and
-exits instead — the form to use non-interactively.
+`app logs` follows the running app forever, which will hang you. Three flags
+bound it — use one of them:
 
 ```bash
-sweetpad app logs --last 2m -o ndjson
+sweetpad app logs --last 2m -o ndjson                   # recent history, then exit
+sweetpad app logs --until "Ready to serve" --timeout 30s # wait for one line
+sweetpad app logs --timeout 10s                          # bounded tail
 ```
+
+`--until` is the one to reach for when you need to start something, poke it, and
+read what it said: it exits 0 on the first line containing that text and non-zero
+if the deadline passes, so you branch on the exit code instead of backgrounding a
+stream and guessing a `sleep`. It's a plain substring, not a regex.
 
 Logs are a stream, so use `-o ndjson` — one JSON object per line, not the
 `{schema, ok, data}` envelope `-o json` gives other commands.
