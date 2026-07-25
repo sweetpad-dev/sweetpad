@@ -209,7 +209,11 @@ pub struct LogFilterArgs {
     #[arg(long, conflicts_with_all = ["subsystem", "category"])]
     pub predicate: Option<String>,
 
-    /// Minimum level to stream: default, info, or debug.
+    /// Minimum level to stream: default, info, or debug. Streams at 'info'
+    /// unless '-v', so an app's own debug entries stay hidden until you pass
+    /// '--level debug'. The system does not persist debug entries (nor, usually,
+    /// info), so those exist only while following live — '--last' cannot show
+    /// them however low this is set.
     #[arg(long, value_parser = ["default", "info", "debug"])]
     pub level: Option<String>,
 
@@ -222,7 +226,9 @@ pub struct LogFilterArgs {
     /// Print the last DUR of history and exit instead of following — e.g.
     /// '2m', '90s', '1h'. Post-mortem for an app that has gone quiet or exited:
     /// os_log via 'log show' (which retains history 'log stream' can't), plus
-    /// the captured stdout/stderr on macOS. Not available for physical devices.
+    /// the captured stdout/stderr on macOS. Reaches only what the system
+    /// persisted, so an app's debug entries are never here — follow with
+    /// '--level debug' to see those. Not available for physical devices.
     #[arg(long, value_name = "DUR")]
     pub last: Option<String>,
 }
