@@ -39,9 +39,9 @@ non-interactively:
 
 - `sweetpad run` **without** `--no-logs` follows the app's logs until it exits.
 - `build --watch`, `test --watch`, `run --hot` — long-lived watch/session modes.
-- `app logs` — a live log stream.
+- `app logs` **without** `--last` — a live stream that follows until killed.
 
-Prefer the finite forms below. If you genuinely need a log stream, run it in the
+Prefer the finite forms below. If you genuinely need a live stream, run it in the
 background with your own timeout.
 
 ## Pick a destination
@@ -72,6 +72,17 @@ Common flags: `--clean` (clean first), `--scheme <name>`,
 `--configuration <Debug|Release>`, `--show-command` (print the exact xcodebuild
 invocation and exit without building).
 
+In a build-fix loop, add `-q`: it drops progress chatter and keeps only what you
+can't ignore — errors, warnings, and the failure banner. A clean build prints
+nothing.
+
+```bash
+sweetpad build -q                                       # silent unless it matters
+```
+
+Never pipe a build through `tail -N` to save context — truncation drops the
+diagnostics precisely when you need them.
+
 ## Read build errors without rebuilding
 
 After a build, pull the diagnostics from the last run — no recompile:
@@ -80,8 +91,10 @@ After a build, pull the diagnostics from the last run — no recompile:
 sweetpad build diagnostics -o json
 ```
 
-This is the fast path for "why did it fail": build once, then read structured
-errors and warnings (file, line, message) and fix from there.
+This is the fast path for "why did it fail". The whole agent loop is
+`sweetpad build -q`, and on a non-zero exit `sweetpad build diagnostics -o json`
+for structured errors and warnings (file, line, message) without a second
+compile.
 
 ## Run the app without blocking
 
@@ -92,7 +105,35 @@ sweetpad run --on booted --no-logs --non-interactive
 ```
 
 Pass arguments and environment to the app with `--arg` and `--env KEY=VALUE`
-(both repeatable). `--detach` leaves the app running after the CLI exits.
+(both repeatable) — both work on `app run`, `app debug`, and `app diagnose`
+alike. `--detach` (`app run` only) leaves the app running after the CLI exits.
+
+## Read the app's logs
+
+`app logs` follows the running app. `--last <dur>` prints recent history and
+exits instead — the form to use non-interactively.
+
+```bash
+sweetpad app logs --last 2m -o ndjson
+```
+
+Logs are a stream, so use `-o ndjson` — one JSON object per line, not the
+`{schema, ok, data}` envelope `-o json` gives other commands.
+
+Two things reliably mislead agents here:
+
+- The stream starts at `info`, so the app's `.debug` entries stay hidden until
+  you pass `--level debug`. An app logging correctly through `os.Logger` looks
+  completely silent otherwise.
+- The system never persists `.debug` entries, so `--last` cannot show them at
+  any level. They exist only while you follow live.
+
+On macOS this merges the app's `os_log` with the stdout/stderr a `--detach`ed
+launch captured; `--source oslog|stdout` narrows it to one of the two.
+
+To catch a crash or Objective-C exception without a terminal, `sweetpad app
+diagnose` runs the app under lldb, prints a structured report, and quits —
+bounded by `--timeout` (default 30s).
 
 ## Test
 
