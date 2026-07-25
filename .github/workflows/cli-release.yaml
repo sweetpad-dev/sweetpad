@@ -36,10 +36,10 @@ jobs:
           set -euo pipefail
           if [[ "${GITHUB_REF:-}" == refs/tags/cli-v* ]]; then
             VERSION="${GITHUB_REF_NAME#cli-v}"
-            # The tag names the release, but `sweetpad --version` reports
-            # CARGO_PKG_VERSION. Disagreement would ship a signed, notarized
-            # binary that contradicts its own formula, so fail before the
-            # expensive signing and notarization legs.
+            # The tag names the release; the binary stamps its version from
+            # Cargo.toml. Disagreement would ship a signed, notarized binary
+            # that contradicts its own formula, so fail before the expensive
+            # signing and notarization legs.
             CRATE="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
             if [ "$VERSION" != "$CRATE" ]; then
               echo "::error::tag cli-v$VERSION does not match workspace version $CRATE; bump Cargo.toml before tagging"

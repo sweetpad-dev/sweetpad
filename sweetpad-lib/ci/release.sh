@@ -10,8 +10,10 @@
 # everyone on 'brew upgrade' and cannot be cleanly retracted, so the push is
 # confirmed interactively unless --yes is passed.
 #
-# The release version comes from the tag, but 'sweetpad --version' reports
-# CARGO_PKG_VERSION, so the two must agree; the workflow enforces this as well.
+# The release version comes from the tag and the binary stamps its own from
+# Cargo.toml, so the two must agree; the workflow enforces this as well. Only a
+# build made at the tag reports a bare version — everywhere else 'sweetpad
+# --version' carries a '-dev+<sha>' suffix (sweetpad-cli/build.rs).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

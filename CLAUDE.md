@@ -31,11 +31,11 @@ notarization legs, so a mismatch costs seconds instead of publishing a binary
 that contradicts its own formula.
 
 **Only a build made at the `cli-v<version>` tag reports the bare version.**
-Anywhere else `sweetpad --version` stamps `<version>-dev+<sha>` (`build.rs`),
-because the crate version alone cannot distinguish a build off `main` from the
-release sharing its number — which is how a local build once got recorded as
-proof that a fix had shipped. `release.sh` therefore compares only the part
-before the `-`, since it checks the binary before tagging.
+Anywhere else `sweetpad --version` stamps `<version>-dev+<sha>` (`build.rs`):
+the crate version alone cannot distinguish a build off `main` from the release
+sharing its number, so a bare version read off a local build is not evidence
+that a fix has shipped. `release.sh` compares only the part before the `-`,
+since it checks the binary before tagging.
 
 Release notes are generated from commit subjects over the tag range, scoped to
 the paths the CLI ships from so unrelated monorepo work stays out. There is no
