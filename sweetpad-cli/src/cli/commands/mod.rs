@@ -60,6 +60,7 @@ pub mod device;
 pub mod doctor;
 pub mod format;
 pub mod help_topics;
+pub mod hot;
 pub mod merge;
 pub mod open;
 pub mod pbxproj;

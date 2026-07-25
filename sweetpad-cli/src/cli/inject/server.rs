@@ -44,18 +44,42 @@ pub fn port_available() -> bool {
 /// absent or silent the caller loses only the pid, not the diagnosis.
 #[must_use]
 pub fn port_holder() -> Option<u32> {
-    let out = std::process::Command::new("lsof")
+    port_holders().into_iter().next()
+}
+
+/// Every pid listening on the injection port. Normally one, but a caller that
+/// means to *clear* the port has to account for all of them.
+#[must_use]
+pub fn port_holders() -> Vec<u32> {
+    let Ok(out) = std::process::Command::new("lsof")
         .arg("-nP")
         .arg(format!("-iTCP:{}", protocol::PORT))
         .arg("-sTCP:LISTEN")
         .arg("-t")
         .output()
-        .ok()?;
+    else {
+        return Vec::new();
+    };
     String::from_utf8_lossy(&out.stdout)
         .split_whitespace()
-        .next()?
-        .parse()
-        .ok()
+        .filter_map(|t| t.parse().ok())
+        .collect()
+}
+
+/// The executable behind `pid`, via `ps -o comm=`. Used to tell one of our own
+/// orphaned sessions — safe to end — from InjectionNext.app or an unrelated
+/// listener that merely happens to sit on the port.
+#[must_use]
+pub fn process_name(pid: u32) -> Option<String> {
+    let out = std::process::Command::new("ps")
+        .arg("-o")
+        .arg("comm=")
+        .arg("-p")
+        .arg(pid.to_string())
+        .output()
+        .ok()?;
+    let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!name.is_empty()).then_some(name)
 }
 
 /// A running injection server bound to `:8887` for one `--hot` session.

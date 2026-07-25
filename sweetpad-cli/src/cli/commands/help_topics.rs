@@ -169,6 +169,11 @@ SwiftUI: views need the Inject package to redraw on injection — add
 https://github.com/krzysztofzablocki/Inject and annotate views with
 @ObserveInjection + .enableInjection(). UIKit/AppKit apps need nothing.
 
+One session owns port 8887, so a session that died without unwinding leaves the
+listener bound and later runs fail with 'Address already in use'. 'sweetpad hot
+status' names the holder; 'sweetpad hot reset' ends it when it is a sweetpad
+process, and takes --force for anything else (e.g. InjectionNext.app).
+
 CI: SWEETPAD_HOTRELOAD_DYLIB overrides the client dylib; the hidden
 --hot-selfcheck FILE flag drives the end-to-end injection test.",
     },

@@ -602,6 +602,12 @@ pub enum Resource {
         #[arg(value_enum)]
         what: commands::open::What,
     },
+    /// Inspect or clear the hot-reload listener a dead '--hot' session left
+    /// bound.
+    Hot {
+        #[command(subcommand)]
+        action: commands::hot::Action,
+    },
     /// Diagnose the local Xcode/Swift toolchain.
     Doctor,
     /// Show the effective build context — what would build, and where each
@@ -870,6 +876,7 @@ pub fn run(argv: &[String]) -> ExitCode {
             ctx.targeting = target.into();
             commands::open::run(&mut ctx, what)
         }
+        Resource::Hot { action } => commands::hot::run(&mut ctx, &action),
         Resource::Doctor => commands::doctor::run(&mut ctx),
         Resource::Status { target } => {
             ctx.targeting = target.into();
