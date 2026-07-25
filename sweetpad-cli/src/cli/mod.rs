@@ -55,7 +55,7 @@ pub use render::{Render, Rendered};
 #[derive(Debug, Parser)]
 #[command(
     name = "sweetpad",
-    version,
+    version = env!("SWEETPAD_VERSION"),
     about = "Build, run, and explore Xcode projects from the terminal",
     long_about = "sweetpad — xcodebuild for humans.\n\nA standalone, headless \
         CLI for Xcode projects.",
@@ -700,7 +700,7 @@ pub fn run(argv: &[String]) -> ExitCode {
     {
         #[allow(clippy::print_stdout)] // pre-clap fast path; Output isn't built yet
         {
-            let version = env!("CARGO_PKG_VERSION");
+            let version = env!("SWEETPAD_VERSION");
             match mode {
                 OutputMode::Ndjson => {
                     println!(r#"{{"event":"result","ok":true,"data":{{"version":"{version}"}}}}"#);

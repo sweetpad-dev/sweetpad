@@ -71,8 +71,10 @@ echo "==> Bumping workspace version"
 perl -0pi -e "s/(\[workspace\.package\]\nversion = \")[^\"]+/\${1}$VERSION/" Cargo.toml
 cargo build --quiet --bin sweetpad
 
+# A build made away from the release tag stamps '<version>-dev+<sha>', and this
+# one is: the bump is not even committed yet. Compare the release core only.
 REPORTED="$(./target/debug/sweetpad --version | awk '{print $2}')"
-[ "$REPORTED" = "$VERSION" ] || {
+[ "${REPORTED%%-*}" = "$VERSION" ] || {
   echo "binary reports $REPORTED after the bump, expected $VERSION" >&2; exit 1; }
 
 git add Cargo.toml Cargo.lock
