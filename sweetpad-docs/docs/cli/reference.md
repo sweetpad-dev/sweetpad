@@ -6,13 +6,15 @@ sidebar_label: Reference
 
 # CLI reference
 
-The complete surface of the `sweetpad` command-line tool: every command, the global flags, the
+A map of the `sweetpad` command-line tool: the commands you'll reach for, the global flags, the
 configuration files, destination specifiers, and exit codes. For a guided tour, start with
 [Get started with the CLI](./getting-started-cli.md) or the [overview](./cli.md).
 
 Commands follow a resource-then-action grammar — `sweetpad scheme list`, `sweetpad simulator boot` —
 and the everyday actions have top-level shortcuts (`sweetpad build`, `sweetpad test`, `sweetpad run`).
-`--help` works on every command and shows the options this page doesn't repeat.
+The CLI describes itself, and that is the authority: `sweetpad --help` lists the full command tree,
+`sweetpad <command> --help` covers the flags and subcommands this page doesn't repeat, and
+`sweetpad help <topic>` explains config, environment, exit codes, destinations, and hot reload.
 
 ## Commands
 
@@ -52,11 +54,14 @@ and the everyday actions have top-level shortcuts (`sweetpad build`, `sweetpad t
 | ------------------------- | ----------------------------------------------------------- |
 | `sweetpad app install`    | Build and install without launching.                       |
 | `sweetpad app launch`     | Launch an already-installed app.                           |
-| `sweetpad app debug`      | Build, install, launch suspended, and attach lldb (simulator). |
-| `sweetpad app logs`       | Stream the running app's logs.                             |
+| `sweetpad app debug`      | Run under lldb — attached to a suspended simulator launch, or owning the launch on macOS. `--batch` with `--cmd` drives lldb from a script. |
+| `sweetpad app diagnose`   | Run under lldb, catch the first crash or Objective-C exception, print a structured report, and quit. Bounded by `--timeout`; `-o json` for the machine-readable form. |
+| `sweetpad app logs`       | Follow the running app's logs — simulator, device, or macOS, where os_log and a detached launch's captured stdout arrive on one stream. `--last <dur>` prints history instead; `--until <text>` stops at a match. |
 | `sweetpad app stop`       | Terminate the running app.                                 |
 | `sweetpad app uninstall`  | Remove the app from a simulator or device.                 |
 | `sweetpad app open-url`   | Open a URL on a simulator — deep links and universal links. |
+| `sweetpad app screenshot` | Save a PNG of the running app — a macOS app's window, or the simulator it launched on. |
+| `sweetpad app ui`         | Read or drive a macOS app's UI through accessibility: `ui tree`, `ui click`, `ui type`. |
 
 ### Simulators
 
@@ -103,6 +108,8 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | `sweetpad merge run`            | Resolve conflicted project files in the current merge by hand.        |
 | `sweetpad bsp init`             | Write `buildServer.json` so SourceKit-LSP autocomplete works in any editor. |
 | `sweetpad bsp doctor`           | Check the autocomplete wiring.                                        |
+| `sweetpad hot status`           | Report whether the hot-reload port is free, and which process holds it. |
+| `sweetpad hot reset`            | End a hot-reload listener a dead `--hot` session left behind (`--force` for a non-sweetpad holder). |
 | `sweetpad completions <shell>`  | Generate completions for bash, zsh, fish, elvish, or PowerShell.      |
 | `sweetpad self-update`          | Update sweetpad (Homebrew installs run brew upgrade instead).         |
 | `sweetpad help [topic]`         | Built-in guides: `config`, `environment`, `exit-codes`, `destinations`, `hot-reload`. |
