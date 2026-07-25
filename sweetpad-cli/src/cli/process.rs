@@ -231,6 +231,17 @@ fn merged_output_pipe(program: &str) -> Result<(std::fs::File, Stdio, Stdio), Cl
     }
 }
 
+/// SIGTERM a process by pid. Used to end something this tool is responsible for
+/// but does not hold a handle to: a `log stream` that a `--until` match or a
+/// deadline has finished with, or an orphaned hot-reload listener.
+pub(crate) fn terminate(pid: u32) {
+    // Safety: a plain kill(2); the worst case of a raced exit is ESRCH, which
+    // carries no consequence and is ignored.
+    unsafe {
+        libc::kill(pid.cast_signed(), libc::SIGTERM);
+    }
+}
+
 /// Feed `reader` to `on_line` line by line, decoding lossily — one non-UTF-8
 /// byte from a build script degrades to U+FFFD instead of ending the stream
 /// (which would close the pipe and SIGPIPE a still-writing child, turning a

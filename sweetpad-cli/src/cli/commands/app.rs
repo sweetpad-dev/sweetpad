@@ -231,6 +231,72 @@ pub struct LogFilterArgs {
     /// '--level debug' to see those. Not available for physical devices.
     #[arg(long, value_name = "DUR")]
     pub last: Option<String>,
+
+    /// Stop following as soon as a line contains TEXT, and exit 0 — 'run this,
+    /// wait for that' as one call, instead of a background stream and a guessed
+    /// sleep. Plain substring (not a pattern), matched against the rendered
+    /// line, so it reads the same as what prints.
+    #[arg(long, value_name = "TEXT", conflicts_with = "last")]
+    pub until: Option<String>,
+
+    /// Give up following after DUR — e.g. '30s', '2m', '1h'. On its own it
+    /// bounds the follow and exits 0; with '--until' it is the deadline for the
+    /// match, and missing it exits non-zero.
+    #[arg(long, value_name = "DUR", conflicts_with = "last", value_parser = parse_duration)]
+    pub timeout: Option<Duration>,
+}
+
+/// Parse a `30s` / `2m` / `1h` duration; a bare number is seconds.
+fn parse_duration(spec: &str) -> Result<Duration, CliError> {
+    let bad = || {
+        CliError::new(format!(
+            "invalid duration {spec:?} — use a count with a unit, e.g. '30s', '2m', '1h'"
+        ))
+    };
+    let spec = spec.trim();
+    let (digits, scale) = match spec.strip_suffix(['s', 'm', 'h']) {
+        Some(head) => (
+            head,
+            match spec.as_bytes().last() {
+                Some(b'm') => 60,
+                Some(b'h') => 3600,
+                _ => 1,
+            },
+        ),
+        None => (spec, 1),
+    };
+    let count: u64 = digits.parse().map_err(|_| bad())?;
+    if count == 0 {
+        return Err(bad());
+    }
+    Ok(Duration::from_secs(count * scale))
+}
+
+/// The `--until` stop condition, shared by the os_log stream and (on macOS) the
+/// captured stdout tail so a match on either ends the follow. Sighting is
+/// recorded in `hit`; ending the follow means SIGTERM-ing the `log stream`
+/// child, whose EOF unblocks the reader.
+struct UntilWatch {
+    text: String,
+    hit: Arc<AtomicBool>,
+    /// The `log stream` child to end on a match. `None` under '--source stdout',
+    /// where the tail owns the thread and returns on its own.
+    stream_pid: Option<u32>,
+}
+
+impl UntilWatch {
+    /// Record a sighting when `rendered` contains the watched text, and end the
+    /// follow. Returns whether this line matched.
+    fn sees(&self, rendered: &str) -> bool {
+        if self.hit.load(Ordering::Relaxed) || !rendered.contains(&self.text) {
+            return false;
+        }
+        self.hit.store(true, Ordering::Relaxed);
+        if let Some(pid) = self.stream_pid {
+            process::terminate(pid);
+        }
+        true
+    }
 }
 
 /// Where a lifecycle stage acts: the default simulator flow, or a
@@ -5163,6 +5229,8 @@ fn stream_logs(
 
     let color = ctx.out.use_color();
     let json = ctx.out.is_json() || ctx.out.is_ndjson();
+    let limit = filters.timeout;
+    let hit = Arc::new(AtomicBool::new(false));
 
     // On macOS, follow the captured stdout/stderr file whenever the channel
     // includes it: a Mac app that logs through `print` writes nothing to os_log,
@@ -5172,10 +5240,11 @@ fn stream_logs(
         .flatten()
         .filter(|p| p.exists());
 
-    ctx.out.note(&format!(
-        "Streaming logs for {} (Ctrl-C to stop)",
-        app.bundle_id
-    ));
+    ctx.out.note(&match (filters.until.as_deref(), limit) {
+        (Some(text), _) => format!("Following {} until {text:?}", app.bundle_id),
+        (None, Some(d)) => format!("Streaming logs for {} for {}s", app.bundle_id, d.as_secs()),
+        (None, None) => format!("Streaming logs for {} (Ctrl-C to stop)", app.bundle_id),
+    });
 
     // stdout-only: there's no os_log stream to run, so the file tail is the
     // whole job and owns this thread. A childless follow ends on Ctrl-C via the
@@ -5189,27 +5258,58 @@ fn stream_logs(
                 app.bundle_id
             )));
         };
-        follow_console_file(&path, color, json, &AtomicBool::new(false));
-        return Ok(());
+        follow_captured_only(&path, color, json, filters, &hit, limit);
+        return until_result(ctx, filters, &hit, limit);
     }
 
     // os_log stream (the reap-on-exit machinery below), plus the file tail on a
     // background thread for `both`. `stop` ends that thread once the stream does.
     let stop = Arc::new(AtomicBool::new(false));
-    if let Some(path) = console_file {
-        let stop = Arc::clone(&stop);
-        std::thread::spawn(move || follow_console_file(&path, color, json, &stop));
-    }
-
     let level = filters.level.as_deref().unwrap_or(log_level(&ctx.out));
     let marker = log_stream_marker();
     let (program, args) = log_command(source, app, level, Some(&marker), filters);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let mut child = process::spawn_piped(program, &refs, None)?;
-    let reap_slot = crate::cli::signals::register_child(child.id());
-    crate::cli::signals::set_forward_child(child.id());
+    let stream_pid = child.id();
+
+    // Both sources can satisfy `--until`, and either one matching ends the
+    // stream child — which is also what unblocks the reader below.
+    let watch = filters.until.as_deref().map(|text| UntilWatch {
+        text: text.to_string(),
+        hit: Arc::clone(&hit),
+        stream_pid: Some(stream_pid),
+    });
+    if let Some(path) = console_file {
+        let stop = Arc::clone(&stop);
+        let watch = filters.until.as_deref().map(|text| UntilWatch {
+            text: text.to_string(),
+            hit: Arc::clone(&hit),
+            stream_pid: Some(stream_pid),
+        });
+        std::thread::spawn(move || {
+            follow_console_file(&path, color, json, &stop, watch.as_ref());
+        });
+    }
+    // The deadline ends the same child a match would, so both exits leave the
+    // reader through one path. It stands down early when the stream ends first.
+    if let Some(d) = limit {
+        let stop = Arc::clone(&stop);
+        std::thread::spawn(move || {
+            if expire(d, &stop) {
+                process::terminate(stream_pid);
+            }
+        });
+    }
+
+    let reap_slot = crate::cli::signals::register_child(stream_pid);
+    crate::cli::signals::set_forward_child(stream_pid);
     if let Some(stdout) = child.stdout.take() {
-        process::read_lines_lossy(stdout, &mut |line: &str| emit_log_line(line, color, json));
+        process::read_lines_lossy(stdout, &mut |line: &str| {
+            emit_log_line(line, color, json);
+            if let Some(w) = watch.as_ref() {
+                w.sees(&oslog::render_ndjson_line(line, false).text);
+            }
+        });
     }
     // The stream has ended (child exiting): disarm before the reap so the
     // handler can never signal a recycled pid, and stop the file tail.
@@ -5222,10 +5322,83 @@ fn stream_logs(
         ctx.out.note("log stream stopped");
         return Ok(());
     }
+    // A `--until` match or a deadline ends the child by signal, so its status is
+    // this command's outcome only when neither of those did it.
+    if filters.until.is_some() || limit.is_some() {
+        return until_result(ctx, filters, &hit, limit);
+    }
     match status {
         Ok(s) if s.success() => Ok(()),
         _ => Err(CliError::new("log stream exited with a non-zero status")),
     }
+}
+
+/// `--source stdout`: the captured file is the only source, so the tail owns
+/// this thread and a `--until` match simply returns from it. A deadline raises
+/// the same `stop` the tail already watches.
+fn follow_captured_only(
+    path: &Path,
+    color: bool,
+    json: bool,
+    filters: &LogFilterArgs,
+    hit: &Arc<AtomicBool>,
+    limit: Option<Duration>,
+) {
+    let stop = Arc::new(AtomicBool::new(false));
+    let watch = filters.until.as_deref().map(|text| UntilWatch {
+        text: text.to_string(),
+        hit: Arc::clone(hit),
+        stream_pid: None,
+    });
+    if let Some(d) = limit {
+        let stop = Arc::clone(&stop);
+        std::thread::spawn(move || {
+            expire(d, &stop);
+            stop.store(true, Ordering::Relaxed);
+        });
+    }
+    follow_console_file(path, color, json, &stop, watch.as_ref());
+}
+
+/// Sleep out `limit` in short slices, returning whether it ran to the end —
+/// `false` means `stop` was raised first (the stream ended on its own) and the
+/// deadline should stand down rather than signal an unrelated pid.
+fn expire(limit: Duration, stop: &AtomicBool) -> bool {
+    const SLICE: Duration = Duration::from_millis(100);
+    let deadline = Instant::now() + limit;
+    while Instant::now() < deadline {
+        if stop.load(Ordering::Relaxed) {
+            return false;
+        }
+        std::thread::sleep(SLICE);
+    }
+    !stop.load(Ordering::Relaxed)
+}
+
+/// The outcome of a bounded follow. `--until` is a question — exit 0 only when
+/// the text showed up, and report the deadline plainly when it didn't, since an
+/// agent's next move differs entirely between "saw it" and "gave up". A bare
+/// `--timeout` asks nothing, so reaching the deadline is success.
+fn until_result(
+    ctx: &Context,
+    filters: &LogFilterArgs,
+    hit: &AtomicBool,
+    limit: Option<Duration>,
+) -> CliResult {
+    let Some(text) = filters.until.as_deref() else {
+        return Ok(());
+    };
+    if hit.load(Ordering::Relaxed) {
+        ctx.out.note(&format!("Matched {text:?}"));
+        return Ok(());
+    }
+    Err(CliError::new(match limit {
+        Some(d) => format!(
+            "timed out after {}s without a log line containing {text:?}",
+            d.as_secs()
+        ),
+        None => format!("log stream ended without a line containing {text:?}"),
+    }))
 }
 
 /// Emit one `log stream` ndjson line: verbatim in json/ndjson mode (it is
@@ -5280,13 +5453,24 @@ fn emit_console_line(buf: &[u8], color: bool, json: bool) {
 /// [`open_detached_log`] truncates per launch, so the file holds only the
 /// current run. Returns when `stop` is set (the os_log stream ended) or the file
 /// becomes unreadable; a childless caller instead ends on Ctrl-C.
-fn follow_console_file(path: &Path, color: bool, json: bool, stop: &AtomicBool) {
+fn follow_console_file(
+    path: &Path,
+    color: bool,
+    json: bool,
+    stop: &AtomicBool,
+    watch: Option<&UntilWatch>,
+) {
     use std::io::{BufRead, BufReader};
     /// Cap an unterminated line so a newline-less binary dump can't grow the
     /// buffer without bound (mirrors [`process::read_lines_lossy`]).
     const MAX_LINE: usize = 1 << 20;
     let Ok(file) = std::fs::File::open(path) else {
         return;
+    };
+    // A captured line is its own message, so `--until` matches it directly
+    // rather than through the os_log renderer.
+    let matched = |buf: &[u8]| {
+        watch.is_some_and(|w| w.sees(&String::from_utf8_lossy(buf)))
     };
     let mut reader = BufReader::new(file);
     let mut buf: Vec<u8> = Vec::new();
@@ -5312,6 +5496,9 @@ fn follow_console_file(path: &Path, color: bool, json: bool, stop: &AtomicBool) 
         let consumed = if let Some(pos) = available.iter().position(|&b| b == b'\n') {
             buf.extend_from_slice(&available[..=pos]);
             emit_console_line(&buf, color, json);
+            if matched(&buf) {
+                return;
+            }
             buf.clear();
             pos + 1
         } else {
@@ -5321,6 +5508,9 @@ fn follow_console_file(path: &Path, color: bool, json: bool, stop: &AtomicBool) 
         reader.consume(consumed);
         if buf.len() >= MAX_LINE {
             emit_console_line(&buf, color, json);
+            if matched(&buf) {
+                return;
+            }
             buf.clear();
         }
     }
@@ -5645,6 +5835,74 @@ mod tests {
             LldbTarget::AttachPid(4242)
         };
         diagnose_lldb_args(&target)
+    }
+
+    #[test]
+    fn durations_take_a_unit_or_default_to_seconds() {
+        assert_eq!(parse_duration("30s").unwrap(), Duration::from_secs(30));
+        assert_eq!(parse_duration("2m").unwrap(), Duration::from_secs(120));
+        assert_eq!(parse_duration("1h").unwrap(), Duration::from_secs(3600));
+        assert_eq!(parse_duration(" 45 ").unwrap(), Duration::from_secs(45));
+        for bad in ["", "0s", "s", "-5s", "2d", "1.5m", "abc"] {
+            assert!(parse_duration(bad).is_err(), "{bad:?} should not parse");
+        }
+    }
+
+    #[test]
+    fn until_matches_once_and_records_the_sighting() {
+        let hit = Arc::new(AtomicBool::new(false));
+        let watch = UntilWatch {
+            text: "ready to serve".to_string(),
+            hit: Arc::clone(&hit),
+            stream_pid: None,
+        };
+        assert!(!watch.sees("12:00:00.000 I [net] starting up"));
+        assert!(!hit.load(Ordering::Relaxed));
+        assert!(watch.sees("12:00:01.000 I [net] ready to serve on :8080"));
+        assert!(hit.load(Ordering::Relaxed));
+        // Already satisfied: a later line must not re-fire the stop.
+        assert!(!watch.sees("12:00:02.000 I [net] ready to serve again"));
+    }
+
+    #[test]
+    fn captured_tail_ends_on_an_until_match_without_waiting_for_stop() {
+        let dir = std::env::temp_dir().join(format!("sweetpad-until-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("captured.log");
+        std::fs::write(&path, b"booting\nlistening on 8080\nstill going\n").unwrap();
+
+        let hit = Arc::new(AtomicBool::new(false));
+        let watch = UntilWatch {
+            text: "listening on 8080".to_string(),
+            hit: Arc::clone(&hit),
+            stream_pid: None,
+        };
+        // `stop` stays false throughout: only the match may end this, and the
+        // test would hang rather than pass if the tail ignored it.
+        follow_console_file(
+            &path,
+            false,
+            false,
+            &AtomicBool::new(false),
+            Some(&watch),
+        );
+        assert!(hit.load(Ordering::Relaxed));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_deadline_stands_down_when_the_stream_ends_first() {
+        let stop = Arc::new(AtomicBool::new(false));
+        {
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(50));
+                stop.store(true, Ordering::Relaxed);
+            });
+        }
+        // An hour-long deadline must still return promptly, and report that it
+        // did not expire — otherwise it would signal a pid it no longer owns.
+        assert!(!expire(Duration::from_secs(3600), &stop));
     }
 
     #[test]
