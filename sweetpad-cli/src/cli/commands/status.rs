@@ -23,6 +23,10 @@ struct StatusReport {
     kind: &'static str,
     rows: Vec<Row>,
     last_launched: Option<LastLaunchedApp>,
+    /// The file a detached macOS launch captured stdout/stderr to, when the last
+    /// launch was macOS and the file is present — so `app logs` reading it back
+    /// is discoverable without catching the one launch line that named it.
+    detached_log: Option<String>,
 }
 
 impl Render for StatusReport {
@@ -51,6 +55,9 @@ impl Render for StatusReport {
                 "last launched", app.bundle_identifier, app.kind
             ));
         }
+        if let Some(log) = &self.detached_log {
+            out.line(&format!("  {:<13} {log}", "detached log"));
+        }
         out.note("run `sweetpad app run` to build and launch");
     }
 
@@ -70,10 +77,12 @@ impl Render for StatusReport {
             "kind": self.kind,
             "context": context,
             "lastLaunchedApp": serde_json::to_value(&self.last_launched).unwrap_or_default(),
+            "detachedLog": self.detached_log,
         })
     }
 }
 
+#[allow(clippy::too_many_lines)] // a row per context variable, plus the launch summary
 pub fn run(ctx: &mut Context) -> CommandResult {
     let resolved = resolve::resolve(ctx)?;
     let key = resolved.container.key();
@@ -179,6 +188,7 @@ pub fn run(ctx: &mut Context) -> CommandResult {
         });
     }
 
+    let detached_log = detached_log_for(st.last_launched_app.as_ref());
     Ok(Rendered::data(StatusReport {
         container: resolved.container.path().display().to_string(),
         kind: match &resolved.container {
@@ -188,5 +198,17 @@ pub fn run(ctx: &mut Context) -> CommandResult {
         },
         rows,
         last_launched: st.last_launched_app,
+        detached_log,
     }))
+}
+
+/// The captured stdout/stderr file of the last launch, when it was a macOS app
+/// and the file is present — see [`StatusReport::detached_log`].
+fn detached_log_for(app: Option<&LastLaunchedApp>) -> Option<String> {
+    let app = app?;
+    (app.kind == "macos")
+        .then(|| super::app::detached_log_path(&app.bundle_identifier))
+        .flatten()
+        .filter(|p| p.exists())
+        .map(|p| p.display().to_string())
 }

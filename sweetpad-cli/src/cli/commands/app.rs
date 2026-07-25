@@ -146,9 +146,25 @@ impl LaunchArgs {
     }
 }
 
-/// `app logs` stream shaping: narrow the predicate or change the level.
-/// Simulator/macOS streams honor all of these (`log stream` natively);
-/// physical-device logs (pymobiledevice3) keep their fixed process filter.
+/// Which output channels `app logs` follows on macOS. A Mac app can log through
+/// the unified log (`os_log`/`Logger`) or plain stdout/stderr (`print`), and the
+/// two never overlap — following only one would silently miss the other.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum LogChannel {
+    /// The app's unified log (`os_log`/`Logger`), via `log stream`/`log show`.
+    Oslog,
+    /// The stdout/stderr a detached launch captured to a file (see
+    /// [`detached_log_path`]); `print`, `NSLog`'s stderr leg, C `printf`.
+    Stdout,
+    /// Both, interleaved by arrival (the default).
+    #[default]
+    Both,
+}
+
+/// `app logs` stream shaping: narrow the predicate, change the level, pick the
+/// macOS channel, or ask for recent history. Subsystem/category/predicate/level
+/// shape the os_log stream (`log stream` natively); physical-device logs
+/// (pymobiledevice3) keep their fixed process filter.
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct LogFilterArgs {
     /// Only entries from this subsystem (e.g. com.example.app.networking).
@@ -167,6 +183,19 @@ pub struct LogFilterArgs {
     /// Minimum level to stream: default, info, or debug.
     #[arg(long, value_parser = ["default", "info", "debug"])]
     pub level: Option<String>,
+
+    /// On macOS, which output to follow: the app's os_log ('oslog'), the
+    /// stdout/stderr a detached launch captured ('stdout'), or 'both' (the
+    /// default). Simulator and device logs are os_log only.
+    #[arg(long, value_enum, default_value_t = LogChannel::Both)]
+    pub source: LogChannel,
+
+    /// Print the last DUR of history and exit instead of following — e.g.
+    /// '2m', '90s', '1h'. Post-mortem for an app that has gone quiet or exited:
+    /// os_log via 'log show' (which retains history 'log stream' can't), plus
+    /// the captured stdout/stderr on macOS. Not available for physical devices.
+    #[arg(long, value_name = "DUR")]
+    pub last: Option<String>,
 }
 
 /// Where a lifecycle stage acts: the default simulator flow, or a
@@ -224,10 +253,12 @@ pub enum Action {
         #[command(flatten)]
         stage: StageTargetArgs,
     },
-    /// Stream the running app's logs (simulator). Uses the last-launched app
-    /// when one is recorded; otherwise resolves the build target. With --json,
-    /// emits the raw 'log stream' NDJSON events — one JSON object per line —
-    /// instead of the rendered text.
+    /// Stream the running app's logs — simulator, device, or macOS. Uses the
+    /// last-launched app when one is recorded; otherwise resolves the build
+    /// target. On macOS it follows both the app's os_log and the stdout/stderr a
+    /// detached launch captured ('--source' narrows this); '--last <dur>' prints
+    /// recent history and exits instead of following. With --json, emits one
+    /// JSON object per line instead of the rendered text.
     Logs {
         #[command(flatten)]
         target: crate::cli::BuildTargetArgs,
@@ -2949,10 +2980,40 @@ fn log_command(
     marker: Option<&str>,
     filters: &LogFilterArgs,
 ) -> (&'static str, Vec<String>) {
+    let predicate = log_predicate(app, filters, marker);
+    let mut stream = vec![
+        "stream".to_string(),
+        "--level".to_string(),
+        level.to_string(),
+        "--style".to_string(),
+        "ndjson".to_string(),
+        "--predicate".to_string(),
+        predicate,
+    ];
+    match source {
+        LogSource::Mac => ("log", stream),
+        LogSource::Simulator(udid) => {
+            let mut args = vec![
+                "simctl".to_string(),
+                "spawn".to_string(),
+                (*udid).to_string(),
+                "log".to_string(),
+            ];
+            args.append(&mut stream);
+            ("xcrun", args)
+        }
+    }
+}
+
+/// The NSPredicate shared by [`log_command`] (stream) and [`log_show_command`]
+/// (history): match the app's process image — and the Xcode 15+ `.debug.dylib`
+/// sender that carries app code in Debug builds — so logs show even without a
+/// `Logger(subsystem:)`, while Apple framework chatter stays out. A raw
+/// `--predicate` replaces this wholesale; `--subsystem`/`--category` narrow it.
+/// See [`log_command`] for what a `marker` clause is for.
+fn log_predicate(app: &AppBundle, filters: &LogFilterArgs, marker: Option<&str>) -> String {
     use std::fmt::Write as _;
     let exe = predicate_escape(process_name(app));
-    // A raw --predicate replaces the default process match wholesale;
-    // --subsystem/--category narrow it.
     let mut predicate = filters.predicate.clone().unwrap_or_else(|| {
         format!("process == \"{exe}\" AND (sender == \"{exe}\" OR sender == \"{exe}.debug.dylib\")")
     });
@@ -2976,17 +3037,43 @@ fn log_command(
             " AND (process CONTAINS \"{marker}\" OR process != \"{marker}\")"
         );
     }
-    let mut stream = vec![
-        "stream".to_string(),
-        "--level".to_string(),
-        level.to_string(),
+    predicate
+}
+
+/// Build the one-shot `log show --style ndjson --last <dur>` command for the
+/// backfill (`app logs --last`) — the host `log` for a macOS app, or `xcrun
+/// simctl spawn <udid> log` for a simulator. Unlike `log stream`, `log show`
+/// selects verbosity with the `--info`/`--debug` flags rather than `--level`, so
+/// `level` maps to those; and it needs no reaping marker, since it exits on its
+/// own instead of streaming until killed.
+fn log_show_command(
+    source: &LogSource,
+    app: &AppBundle,
+    filters: &LogFilterArgs,
+    last: &str,
+    level: &str,
+) -> (&'static str, Vec<String>) {
+    let predicate = log_predicate(app, filters, None);
+    let mut show = vec![
+        "show".to_string(),
         "--style".to_string(),
         "ndjson".to_string(),
+        "--last".to_string(),
+        last.to_string(),
         "--predicate".to_string(),
         predicate,
     ];
+    // `log show` omits Info/Debug entries unless asked; `--debug` implies both.
+    match level {
+        "debug" => {
+            show.push("--info".to_string());
+            show.push("--debug".to_string());
+        }
+        "info" => show.push("--info".to_string()),
+        _ => {}
+    }
     match source {
-        LogSource::Mac => ("log", stream),
+        LogSource::Mac => ("log", show),
         LogSource::Simulator(udid) => {
             let mut args = vec![
                 "simctl".to_string(),
@@ -2994,7 +3081,7 @@ fn log_command(
                 (*udid).to_string(),
                 "log".to_string(),
             ];
-            args.append(&mut stream);
+            args.append(&mut show);
             ("xcrun", args)
         }
     }
@@ -3282,11 +3369,46 @@ fn simple(
 /// Where a detached macOS app's console output goes. Its stdio cannot be a
 /// pipe to us — we exit immediately and the app would die on its next `print`
 /// (see [`HotApp::detach_note`]) — so it is redirected to a file the user can
-/// tail afterwards.
-fn detached_log_path(bundle_id: &str) -> Option<std::path::PathBuf> {
+/// tail afterwards (`app logs --mac`, or [`follow_console_file`]).
+pub(crate) fn detached_log_path(bundle_id: &str) -> Option<std::path::PathBuf> {
     let dir = sweetpad_core::paths::sweetpad_state_dir()?.join("logs");
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir.join(format!("{bundle_id}.log")))
+}
+
+/// Open (truncating) the file a detached macOS app's stdout/stderr are captured
+/// to, stamped with a one-line run header. The file is reused per bundle id, so
+/// truncating is what keeps a later `app logs` read from replaying `print`
+/// output left by a previous run — the exact staleness that made the captured
+/// file untrustworthy. The two returned handles share one open file
+/// description, so stdout and stderr append in order after the header. `None`
+/// (no writable state dir) leaves the caller to discard the app's stdio.
+fn open_detached_log(
+    path: &Path,
+    app: &AppBundle,
+    plan: &RunPlan,
+) -> Option<(std::fs::File, std::fs::File)> {
+    use std::io::Write as _;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(path)
+        .ok()?;
+    let args = plan.launch.args.join(" ");
+    let suffix = if args.is_empty() {
+        String::new()
+    } else {
+        format!(" — args: {args}")
+    };
+    let _ = writeln!(
+        &file,
+        "=== sweetpad launched {} at {}{suffix} ===",
+        process_name(app),
+        oslog::now_clock(),
+    );
+    let err = file.try_clone().ok()?;
+    Some((file, err))
 }
 
 /// Start a macOS app and return, leaving it running — the counterpart to
@@ -3376,15 +3498,7 @@ fn spawn_detached_mac(
     cmd.args(&plan.launch.args)
         .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .stdin(std::process::Stdio::null());
-    match log.as_ref().and_then(|p| {
-        let f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(p)
-            .ok()?;
-        let f2 = f.try_clone().ok()?;
-        Some((f, f2))
-    }) {
+    match log.as_ref().and_then(|p| open_detached_log(p, app, plan)) {
         Some((out, err)) => {
             cmd.stdout(out).stderr(err);
         }
@@ -4427,12 +4541,61 @@ fn stream_logs(
     app: &AppBundle,
     filters: &LogFilterArgs,
 ) -> CliResult {
+    let is_mac = matches!(source, LogSource::Mac);
+    // The captured stdout/stderr file only exists for macOS launches.
+    if filters.source == LogChannel::Stdout && !is_mac {
+        return Err(CliError::new(
+            "--source stdout applies to macOS apps (the stdout/stderr a detached launch \
+             captures); simulator and device logs are os_log only",
+        ));
+    }
+
+    // --last: dump recent history and return, rather than following — for an
+    // app that has gone quiet or already exited.
+    if let Some(last) = filters.last.as_deref() {
+        return backfill_logs(ctx, source, app, filters, last);
+    }
+
+    let color = ctx.out.use_color();
+    let json = ctx.out.is_json() || ctx.out.is_ndjson();
+
+    // On macOS, follow the captured stdout/stderr file whenever the channel
+    // includes it: a Mac app that logs through `print` writes nothing to os_log,
+    // so an os_log-only follow would sit empty while the app is talking.
+    let console_file = (is_mac && filters.source != LogChannel::Oslog)
+        .then(|| detached_log_path(&app.bundle_id))
+        .flatten()
+        .filter(|p| p.exists());
+
     ctx.out.note(&format!(
         "Streaming logs for {} (Ctrl-C to stop)",
         app.bundle_id
     ));
-    let color = ctx.out.use_color();
-    let json = ctx.out.is_json() || ctx.out.is_ndjson();
+
+    // stdout-only: there's no os_log stream to run, so the file tail is the
+    // whole job and owns this thread. A childless follow ends on Ctrl-C via the
+    // signal handler's default (kill children, exit) — like `tail -f`.
+    if filters.source == LogChannel::Stdout {
+        let Some(path) = console_file else {
+            return Err(CliError::new(format!(
+                "no captured output for {} — a detached launch (`app run --detach`, \
+                 `app launch --mac`, or `app run --mac --no-logs`) writes it; a foreground \
+                 `app run --mac` streams stdout inline instead",
+                app.bundle_id
+            )));
+        };
+        follow_console_file(&path, color, json, &AtomicBool::new(false));
+        return Ok(());
+    }
+
+    // os_log stream (the reap-on-exit machinery below), plus the file tail on a
+    // background thread for `both`. `stop` ends that thread once the stream does.
+    let stop = Arc::new(AtomicBool::new(false));
+    if let Some(path) = console_file {
+        let stop = Arc::clone(&stop);
+        std::thread::spawn(move || follow_console_file(&path, color, json, &stop));
+    }
+
     let level = filters.level.as_deref().unwrap_or(log_level(&ctx.out));
     let marker = log_stream_marker();
     let (program, args) = log_command(source, app, level, Some(&marker), filters);
@@ -4441,21 +4604,13 @@ fn stream_logs(
     let reap_slot = crate::cli::signals::register_child(child.id());
     crate::cli::signals::set_forward_child(child.id());
     if let Some(stdout) = child.stdout.take() {
-        process::read_lines_lossy(stdout, &mut |line: &str| {
-            if json {
-                // Already one JSON object per line; emit the event verbatim.
-                if line.trim_start().starts_with('{') {
-                    println!("{line}");
-                }
-            } else {
-                println!("{}", oslog::render_ndjson_line(line, color).text);
-            }
-        });
+        process::read_lines_lossy(stdout, &mut |line: &str| emit_log_line(line, color, json));
     }
     // The stream has ended (child exiting): disarm before the reap so the
-    // handler can never signal a recycled pid.
+    // handler can never signal a recycled pid, and stop the file tail.
     crate::cli::signals::clear_forward_child();
     crate::cli::signals::unregister_child(reap_slot);
+    stop.store(true, Ordering::Relaxed);
     let status = child.wait();
     let _ = process::run("pkill", &["-f", &marker], None, true);
     if crate::cli::signals::take_forwarded() {
@@ -4466,6 +4621,152 @@ fn stream_logs(
         Ok(s) if s.success() => Ok(()),
         _ => Err(CliError::new("log stream exited with a non-zero status")),
     }
+}
+
+/// Emit one `log stream` ndjson line: verbatim in json/ndjson mode (it is
+/// already one object per line), or rendered as a colored `HH:MM:SS.sss L [cat]`
+/// line otherwise. Shared by the live follow ([`stream_logs`]) and the backfill
+/// ([`backfill_logs`]).
+#[allow(clippy::print_stdout)] // the point of `app logs` is stdout
+fn emit_log_line(line: &str, color: bool, json: bool) {
+    if json {
+        // Already one JSON object per line; emit the event verbatim.
+        if line.trim_start().starts_with('{') {
+            println!("{line}");
+        }
+    } else {
+        println!("{}", oslog::render_ndjson_line(line, color).text);
+    }
+}
+
+/// Emit one line of a macOS app's captured stdout/stderr. In json mode it
+/// becomes a `{"source":"stdout",…}` object — the `eventMessage`/`timestamp`
+/// keys match the os_log ndjson schema, and `source` marks it apart from the
+/// os_log events on the same stream. Otherwise it renders as a blue `[print]`
+/// note ([`oslog::render_console_line`]), stamped with the local arrival time so
+/// it lines up with the os_log lines. Input is bytes (the app owns its stdout,
+/// which need not be UTF-8); a trailing newline is trimmed.
+#[allow(clippy::print_stdout)] // the point of `app logs` is stdout
+fn emit_console_line(buf: &[u8], color: bool, json: bool) {
+    let mut line = buf;
+    while matches!(line.last(), Some(b'\n' | b'\r')) {
+        line = &line[..line.len() - 1];
+    }
+    let text = String::from_utf8_lossy(line);
+    let now = oslog::now_clock();
+    if json {
+        let obj = serde_json::json!({
+            "source": "stdout",
+            "timestamp": now,
+            "eventMessage": text,
+        });
+        println!("{obj}");
+    } else {
+        println!(
+            "{}",
+            oslog::render_console_line(Some(&now), &text, color).text
+        );
+    }
+}
+
+/// Follow a detached macOS app's captured stdout/stderr file
+/// ([`detached_log_path`]) from the top, then keep reading as it grows — the
+/// `tail -f` half of `app logs` on macOS. Reading from the top is safe because
+/// [`open_detached_log`] truncates per launch, so the file holds only the
+/// current run. Returns when `stop` is set (the os_log stream ended) or the file
+/// becomes unreadable; a childless caller instead ends on Ctrl-C.
+fn follow_console_file(path: &Path, color: bool, json: bool, stop: &AtomicBool) {
+    use std::io::{BufRead, BufReader};
+    /// Cap an unterminated line so a newline-less binary dump can't grow the
+    /// buffer without bound (mirrors [`process::read_lines_lossy`]).
+    const MAX_LINE: usize = 1 << 20;
+    let Ok(file) = std::fs::File::open(path) else {
+        return;
+    };
+    let mut reader = BufReader::new(file);
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        let available = match reader.fill_buf() {
+            // At EOF: flush any pending partial line, then stop or wait for the
+            // app to write more. A regular file keeps yielding new bytes past a
+            // previous EOF, so re-polling is all `tail -f` needs.
+            Ok([]) => {
+                if stop.load(Ordering::Relaxed) {
+                    if !buf.is_empty() {
+                        emit_console_line(&buf, color, json);
+                    }
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+                continue;
+            }
+            Ok(chunk) => chunk,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return,
+        };
+        let consumed = if let Some(pos) = available.iter().position(|&b| b == b'\n') {
+            buf.extend_from_slice(&available[..=pos]);
+            emit_console_line(&buf, color, json);
+            buf.clear();
+            pos + 1
+        } else {
+            buf.extend_from_slice(available);
+            available.len()
+        };
+        reader.consume(consumed);
+        if buf.len() >= MAX_LINE {
+            emit_console_line(&buf, color, json);
+            buf.clear();
+        }
+    }
+}
+
+/// `app logs --last <dur>`: dump recent history and return, instead of
+/// following. os_log history comes from `log show --last` (`log stream` keeps no
+/// history); on macOS the captured stdout/stderr file is dumped too. The channel
+/// selects which. Physical devices never reach here — [`simple_logs`] refuses
+/// them before this, and their syslog has no history query anyway.
+fn backfill_logs(
+    ctx: &Context,
+    source: &LogSource,
+    app: &AppBundle,
+    filters: &LogFilterArgs,
+    last: &str,
+) -> CliResult {
+    let color = ctx.out.use_color();
+    let json = ctx.out.is_json() || ctx.out.is_ndjson();
+
+    if filters.source != LogChannel::Stdout {
+        let level = filters.level.as_deref().unwrap_or(log_level(&ctx.out));
+        let (program, args) = log_show_command(source, app, filters, last, level);
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let run = process::run_captured(program, &refs, None)?;
+        if !run.success {
+            return Err(CliError::new(format!(
+                "log show failed — {}",
+                run.tail.trim()
+            )));
+        }
+        for line in run.combined.lines() {
+            emit_log_line(line, color, json);
+        }
+    }
+
+    // The captured file is the whole current run (truncated per launch), so it's
+    // dumped in full rather than sliced by `last` — its lines carry no os_log
+    // timestamp to slice on.
+    if matches!(source, LogSource::Mac)
+        && filters.source != LogChannel::Oslog
+        && let Some(path) = detached_log_path(&app.bundle_id).filter(|p| p.exists())
+        && let Ok(bytes) = std::fs::read(&path)
+    {
+        for line in bytes.split(|&b| b == b'\n') {
+            if !line.is_empty() {
+                emit_console_line(line, color, json);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Extract the simulator UDID from a `platform=…,id=<udid>` destination.
@@ -4676,5 +4977,37 @@ mod tests {
         assert!(predicate.contains(r#"process == "MyApp""#));
         // A direct child needs no reaping tag, so no marker clause is appended.
         assert!(!predicate.contains("CONTAINS"));
+    }
+
+    #[test]
+    fn log_show_command_wraps_simctl_and_maps_level_to_flags() {
+        let app = test_app();
+        // macOS at debug: the host `log show`, `--last`, and both verbosity flags.
+        let (program, args) = log_show_command(
+            &LogSource::Mac,
+            &app,
+            &LogFilterArgs::default(),
+            "2m",
+            "debug",
+        );
+        assert_eq!(program, "log");
+        assert_eq!(&args[..5], &["show", "--style", "ndjson", "--last", "2m"]);
+        assert!(args.contains(&"--info".to_string()) && args.contains(&"--debug".to_string()));
+        // Simulator at info: wrapped in `simctl spawn`, only `--info` (no `--debug`).
+        let (program, args) = log_show_command(
+            &LogSource::Simulator("UDID-1"),
+            &app,
+            &LogFilterArgs::default(),
+            "90s",
+            "info",
+        );
+        assert_eq!(program, "xcrun");
+        assert_eq!(&args[..5], &["simctl", "spawn", "UDID-1", "log", "show"]);
+        assert!(args.contains(&"--info".to_string()) && !args.contains(&"--debug".to_string()));
+    }
+
+    #[test]
+    fn log_channel_defaults_to_both() {
+        assert_eq!(LogFilterArgs::default().source, LogChannel::Both);
     }
 }

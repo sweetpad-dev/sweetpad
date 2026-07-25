@@ -71,7 +71,7 @@ sweetpad build start                 compile only
 sweetpad app run                     build + install + launch
 sweetpad app install                 build + install, no launch
 sweetpad app launch                  launch an already-installed app (--mac: detached)
-sweetpad app logs                    stream app logs
+sweetpad app logs                    stream app logs (macOS: os_log + captured stdout; §9h)
 sweetpad app stop                    kill the running app
 
 sweetpad vscode <method> [--flag …]  control the VS Code extension (JSON-RPC)
@@ -101,7 +101,8 @@ sweetpad simulator <boot|create|delete|clone|push|privacy|status-bar|
                     location|media-add|record|screenshot|…>   (alias: sim)
 sweetpad app <run|install|launch|debug|uninstall|logs|stop|open-url|
               screenshot|ui>           (screenshot: simulator or macOS window, §9h;
-                                        ui: drive a macOS app's UI, §9i)
+                                        ui: drive a macOS app's UI, §9i;
+                                        logs: os_log + captured stdout on macOS, --source/--last, §9h)
 sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
                                   are hidden aliases)
 sweetpad context <show|select|set|alias|remove>
@@ -196,7 +197,8 @@ builds it with real `xcodebuild`.
   re-typed field bumps it. Consumers should tolerate unknown fields.
 - **Exceptions:** the live session `app run` rejects `--json` (build and
   launch as separate steps instead); `app logs --json` emits a *stream* of raw
-  `log stream` NDJSON events (one JSON object per line, no envelope);
+  `log stream` NDJSON events (one JSON object per line, no envelope; on macOS,
+  captured stdout/stderr lines are `{"source":"stdout",…}`);
   `completions` ignores it. Clap usage errors (exit 2) print clap's human
   text on stderr regardless of `--json`.
 
@@ -213,7 +215,8 @@ builds it with real `xcodebuild`.
   raw stdout never interleaves with the events.
 - **Exceptions:** `app run` rejects ndjson like it rejects `--json`;
   `--watch` is refused under both machine modes (a rerun-forever loop has no
-  terminal result); `app logs` passes through the raw `log stream` events.
+  terminal result); `app logs` passes through the raw `log stream` events
+  (plus `{"source":"stdout",…}` lines for a macOS app's captured console).
 - `--gh-annotations` conflicts with both machine modes (workflow commands and
   the envelope/event stream both claim stdout) and is rejected up front.
 
@@ -1376,6 +1379,26 @@ process.
 launch detached, return. On a simulator or device the app already outlives
 the CLI, so `--detach` there is `--no-logs`. It is rejected with `--hot`,
 which has to stay attached to recompile and inject.
+
+A macOS app logs to two disjoint places — plain stdout/stderr (`print`,
+`NSLog`'s stderr leg, C `printf`) and the unified log (`os_log`/`Logger`) —
+so `app logs` on macOS follows *both*: the captured
+`<state>/logs/<bundle-id>.log` and `log stream`, interleaved by arrival.
+`--source oslog|stdout|both` narrows it (default `both`); `stdout` is
+macOS-only, since only a detached launch captures a file. The captured file
+is truncated per launch and stamped with a one-line run header, so reading it
+from the top shows only the current run — never `print` output a previous run
+left behind (the append-mode file used to carry stale lines that read as the
+live run). Simulator and device logs stay `os_log`-only. In `--json`/`-o
+ndjson`, `os_log` entries pass through as the raw `log stream` objects and
+captured lines are tagged `{"source":"stdout",…}`, so the two are
+distinguishable on one stream. `--last <dur>` (e.g. `2m`, `90s`, `1h`) swaps
+follow for a one-shot backfill — `log show --last` for the `os_log` history
+`log stream` can't replay, plus the captured file — for an app that has gone
+quiet or already exited; it is refused for a physical device, whose syslog has
+no history query. `app status` prints the `detached log` path when the last
+launch was macOS, so the file is discoverable without catching the one launch
+line that first named it.
 
 `install`/`uninstall` stay simulator/device verbs: a macOS app is built in
 place, so there is nothing to install.
