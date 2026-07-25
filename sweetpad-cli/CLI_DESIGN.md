@@ -1582,7 +1582,86 @@ idle?" is a natural follow-on, noted in the jiraffe field log, but it inspects a
 *running* pid rather than owning a launch, so it belongs with `screenshot`/`ui`
 under the observe verbs, not here).
 
-## 9k. Direction — the run session as a server
+## 9k. v8 — bounded follows, listener recovery, honest compile counts
+
+Three papercuts from one family: the CLI already held the answer and had no way
+to say it or act on it. Each showed up in an agent session as lost time rather
+than as an error, which is why none of them had been filed as a bug.
+
+### `app logs --until` / `--timeout`
+
+`app logs` followed until killed — the human half of the verb. The agent-shaped
+operation is "start it, poke it, tell me what it said", and expressing that
+against a follow-forever stream costs a background job, two guessed `sleep`s and
+a `kill` per cycle, where the guess either wastes time or truncates the answer.
+
+```
+sweetpad app logs --until TEXT [--timeout DUR]
+sweetpad app logs --timeout DUR
+```
+
+`--until` ends the follow on the first line containing TEXT and exits 0; missing
+it exits non-zero, so the caller branches on the exit code instead of parsing.
+`--timeout` alone bounds a follow and exits 0 — a tail with a deadline asks no
+question, so reaching the end is not a failure. Together, the deadline is the
+answer's deadline.
+
+**Substring, not a regex.** The stop condition is nearly always a literal marker
+line, and `regex` would add four crates to a nine-entry dependency list to serve
+it. The help says "plain substring" outright rather than leaving the caller to
+discover which metacharacters quietly do nothing.
+
+**The match runs against the rendered line**, not the raw ndjson, so what you
+match is what you see. On macOS both sources feed it, since a `--detach`ed app's
+marker may arrive on captured stdout rather than through `os_log`; either source
+matching ends the follow, by SIGTERM-ing the `log stream` child whose EOF
+unblocks the reader, so every exit leaves through one path. A deadline ends the
+same child, and stands down when the stream finishes first so it can never signal
+a pid it no longer owns. `--last` conflicts with both flags at parse time —
+history is already finite.
+
+### `hot status` / `hot reset`
+
+A `--hot` session that dies without unwinding leaves `:8887` bound, and every
+later run fails to bind. The error already named the holding pid — `port_holder()`
+shelled out to `lsof` for exactly that — but nothing could act on it, so recovery
+lived outside the CLI (`lsof`, then `kill`) and the standing workaround became
+"always pass `--no-hot`": silently giving up the feature to avoid the papercut.
+
+```
+sweetpad hot status
+sweetpad hot reset [--force]
+```
+
+**`reset` is guarded by ownership rather than by prompting.** The port can
+legitimately belong to InjectionNext.app or an unrelated listener, so the holder's
+executable is resolved through `ps -o comm=` and only a `sweetpad` process is
+ended by default; anything else is named in the refusal and needs `--force`.
+**The result reports the port, not the signal** — it polls for the release and
+says so when a holder outlives its SIGTERM, because "a signal was sent" is not
+the question being asked.
+
+### One `Compiling` line per file
+
+Xcode emits two shapes for the same Swift work: a batch header (`SwiftCompile …
+Compiling\ A.swift,\ B.swift <paths>`) and then a line per file. Rendering both
+announced most files twice, which reads as duplicated work — and a header took
+whichever member `source_name` happened to match first, so a group of twelve was
+labelled with one arbitrary file.
+
+A one-file header now defers to the per-file line behind it, and a wider header
+renders its count (`Compiling 12 files`). Entries are counted by their separators,
+so an escaped space inside a filename stays one entry. A suppressed header becomes
+`Other`, which keeps it visible under `-v` and out of ndjson, where it was never a
+distinct unit of work.
+
+*Deliberately not built:* `--until` as a regex; a `--signal` sibling on `app run`
+for apps that expose Darwin-notification debug hooks (a narrower need than the
+stop condition); and dedupe of a wider batch header against the per-file lines
+behind it, which would need lookahead over a stream to save a line that is honest
+as it stands.
+
+## 9l. Direction — the run session as a server
 
 `app run`'s only door is a tty. The session owns everything an iterating loop
 needs — the settled `RunPlan`, the live process, the hot-reload channel (§9d),
