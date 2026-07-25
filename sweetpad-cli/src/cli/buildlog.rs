@@ -177,8 +177,19 @@ fn parse_task(line: &str, t: &str) -> Event {
     let stripped = strip_target_annotation(t);
     match t.split_whitespace().next().unwrap_or("") {
         "CompileSwift" | "SwiftCompile" | "CompileC" | "CompileXIB" | "CompileStoryboard" => {
-            Event::Compile {
-                name: source_name(t).unwrap_or_else(|| "source".to_string()),
+            match swift_batch_len(t) {
+                // A one-file batch header names the same file as the per-file
+                // line right behind it; let that one carry the name so the file
+                // is announced once.
+                Some(1) => Event::Other(line.to_string()),
+                // A wider batch is a group, and naming one arbitrary member of
+                // it reads as a lone file. Count it instead.
+                Some(n) => Event::Compile {
+                    name: format!("{n} files"),
+                },
+                None => Event::Compile {
+                    name: source_name(t).unwrap_or_else(|| "source".to_string()),
+                },
             }
         }
         "CompileSwiftSources" => Event::Compile {
@@ -211,6 +222,26 @@ fn parse_task(line: &str, t: &str) -> Event {
 /// otherwise be mistaken for the task's file arguments.
 fn strip_target_annotation(t: &str) -> &str {
     t.rfind(" (in target '").map_or(t, |i| t[..i].trim_end())
+}
+
+/// How many sources a `SwiftCompile normal <arch> Compiling\ a.swift,\ b.swift
+/// <paths…>` batch header covers, or `None` for the per-file form that carries a
+/// path in that slot. xcodebuild emits both shapes for the same work — one
+/// header per batch, then one line per file it compiled — which is why an
+/// unfiltered log announces most files twice.
+///
+/// Entries are counted by their separators rather than by token, so a filename
+/// containing an escaped space stays one entry.
+fn swift_batch_len(t: &str) -> Option<usize> {
+    let mut toks = t.split_whitespace().skip(3);
+    if !toks.next()?.starts_with("Compiling\\") {
+        return None;
+    }
+    let separators = toks
+        .take_while(|tok| !tok.starts_with('/'))
+        .filter(|tok| tok.ends_with(",\\"))
+        .count();
+    Some(separators + 1)
 }
 
 /// The linked binary's path from an annotation-stripped `Ld` line: everything
@@ -791,6 +822,41 @@ mod tests {
                 name: "foo.c".to_string()
             }
         );
+    }
+
+    #[test]
+    fn one_file_batch_headers_defer_to_the_per_file_line() {
+        // xcodebuild emits the header and then the per-file line below; only the
+        // latter should announce the file.
+        let header = "SwiftCompile normal arm64 Compiling\\ ContentView.swift \
+                      /a/ContentView.swift (in target 'App' from project 'App')";
+        assert!(matches!(parse_line(header), Event::Other(_)));
+        assert_eq!(
+            parse_line("SwiftCompile normal arm64 /a/ContentView.swift (in target 'App')"),
+            Event::Compile {
+                name: "ContentView.swift".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn wider_batch_headers_report_their_count() {
+        let header = "SwiftCompile normal arm64 Compiling\\ A.swift,\\ B.swift,\\ C.swift \
+                      /a/A.swift /a/B.swift /a/C.swift (in target 'App' from project 'App')";
+        assert_eq!(
+            parse_line(header),
+            Event::Compile {
+                name: "3 files".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn batch_entries_survive_escaped_spaces_in_a_filename() {
+        // `My File.swift` arrives as two tokens; the separator count keeps it one entry.
+        let header = "SwiftCompile normal arm64 Compiling\\ My\\ File.swift \
+                      /a/My\\ File.swift (in target 'App')";
+        assert!(matches!(parse_line(header), Event::Other(_)));
     }
 
     #[test]
