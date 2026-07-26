@@ -1022,11 +1022,11 @@
         "sweetpad.build.destination": {
           "type": "object",
           "default": null,
-          "required": false,
+          "required": ["id", "type"],
           "properties": {
             "id": {
               "type": "string",
-              "description": "Destination id (e.g. iossimulator-<udid> or iosdevice-<udid>)."
+              "description": "Which simulator, device, or Mac to use. Paste the plain UDID from 'xcrun simctl list' or Xcode — the type above says what it is. A full id like 'iossimulator-<udid>' also works, and is what the picker writes. For macOS, use your computer's name."
             },
             "type": {
               "type": "string",
@@ -1041,14 +1041,10 @@
                 "tvOSDevice",
                 "visionOSDevice"
               ],
-              "description": "Destination type."
-            },
-            "name": {
-              "type": "string",
-              "description": "Display name for the destination."
+              "description": "What kind of thing the id names. Also how SweetPad expands a plain UDID into a full id."
             }
           },
-          "description": "Destination to build and run on. Unset = asks and remembers."
+          "description": "Simulator, device, or Mac to build and run on. Unset = SweetPad asks the first time and remembers your answer."
         },
         "sweetpad.build.schemes.include": {
           "type": "array",

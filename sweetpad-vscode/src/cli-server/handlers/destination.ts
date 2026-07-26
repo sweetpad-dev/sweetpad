@@ -68,6 +68,6 @@ export const destinationSet: HandlerFn<{ id?: string }, { destination: Destinati
       hint: "sweetpad vscode destination.list",
     });
   }
-  ctx.destinationsManager.setWorkspaceDestinationForBuild(match);
+  await ctx.destinationsManager.persistDestinationForBuild(match);
   return { destination: toEntity(match, match.id) };
 };

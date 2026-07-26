@@ -39,6 +39,42 @@ export const ALL_DESTINATION_TYPES: DestinationType[] = [
 ];
 
 /**
+ * The prefix each destination class puts in front of its udid (or, for macOS, the
+ * computer name) to form an id. Note "visionOSSimulator" drops the "os" and "macOS"
+ * carries no udid, so the prefix cannot be derived from the type name — id-prefixes.spec.ts
+ * pins this table to what the classes actually produce.
+ *
+ * Used to accept a bare udid in "sweetpad.build.destination", where the type is already
+ * given and repeating it in the id is noise.
+ */
+export const DESTINATION_ID_PREFIX: Record<DestinationType, string> = {
+  iOSSimulator: "iossimulator-",
+  watchOSSimulator: "watchossimulator-",
+  tvOSSimulator: "tvossimulator-",
+  visionOSSimulator: "visionsimulator-",
+  macOS: "macos-",
+  iOSDevice: "iosdevice-",
+  watchOSDevice: "watchosdevice-",
+  tvOSDevice: "tvosdevice-",
+  visionOSDevice: "visionosdevice-",
+};
+
+/**
+ * Expand a "sweetpad.build.destination" id into the canonical form the destination
+ * classes produce, so a hand-written setting can name just the udid.
+ */
+export function normalizeDestinationId(id: string, type: DestinationType): string {
+  // A hand-edited setting can name a type that doesn't exist, and there is no prefix to
+  // apply for one. Leave the id alone so a fully qualified one still matches; the picker
+  // rewrites the setting either way.
+  const prefix = DESTINATION_ID_PREFIX[type];
+  if (!prefix) {
+    return id;
+  }
+  return id.startsWith(prefix) ? id : `${prefix}${id}`;
+}
+
+/**
  * Generic interface for a destination (iOS simulator, iOS device, etc.)
  */
 export interface IDestination {

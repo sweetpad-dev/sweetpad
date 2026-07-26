@@ -513,10 +513,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   async start(): Promise<void> {
-    this.manager.on("simulatorsUpdated", () => {
-      this.#onDidChangeTreeData.fire(null);
-    });
-    this.manager.on("devicesUpdated", () => {
+    this.manager.on("destinationsUpdated", () => {
       this.#onDidChangeTreeData.fire(null);
     });
     this.manager.on("xcodeDestinationForBuildUpdated", () => {
@@ -532,13 +529,6 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
     });
     this.selectedDestinationForBuild = this.manager.getSelectedXcodeDestinationForBuild();
     this.selectedDestinationForTesting = this.manager.getSelectedXcodeDestinationForTesting();
-
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("sweetpad.build.destination")) {
-        this.selectedDestinationForBuild = this.manager.getSelectedXcodeDestinationForBuild();
-        this.#onDidChangeTreeData.fire(null);
-      }
-    });
   }
 
   async getChildren(element?: DestinationGroupTreeItem | DestinationTreeItem): Promise<vscode.TreeItem[]> {

@@ -95,10 +95,6 @@ export class BuildTreeProvider implements vscode.TreeDataProvider<BuildTreeItem>
         this.recomputeSchemeFilterPatterns();
         this.updateView();
       }
-      if (event.affectsConfiguration("sweetpad.build.scheme")) {
-        this.defaultSchemeForBuild = this.buildManager.getDefaultSchemeForBuild();
-        this.updateView();
-      }
     });
   }
 

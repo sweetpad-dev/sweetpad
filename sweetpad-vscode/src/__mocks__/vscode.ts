@@ -16,4 +16,7 @@ export const workspace = {
   getConfiguration: vi.fn(() => ({
     get: vi.fn(),
   })),
+  onDidChangeConfiguration: vi.fn(() => ({
+    dispose: vi.fn(),
+  })),
 };

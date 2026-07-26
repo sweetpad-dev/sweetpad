@@ -13,7 +13,7 @@ import {
   getXcodeBuildCommand,
   getXcodeVersionInstalled,
 } from "../common/cli/scripts";
-import { getWorkspaceConfig } from "../common/config";
+import { getWorkspaceConfig, onDidChangeConfiguration, updateWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { BaseExecutionScope, type ExecutionScopeService } from "../common/execution-scope";
 import { isFileExists, readJsonFile, tempFilePath } from "../common/files";
@@ -140,7 +140,9 @@ export class BuildManager {
       });
     });
 
-    vscode.workspace.onDidChangeConfiguration((event) => {
+    // A pinned scheme outranks the cache, so editing the setting is a scheme change
+    // like any other. Views listen for this event rather than the setting itself.
+    onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("sweetpad.build.scheme")) {
         this.emitter.emit("defaultSchemeForBuildUpdated", this.getDefaultSchemeForBuild());
       }
@@ -219,6 +221,24 @@ export class BuildManager {
   setDefaultSchemeForBuild(scheme: string | undefined): void {
     this.workspaceState.update("build.xcodeScheme", scheme);
     this.emitter.emit("defaultSchemeForBuildUpdated", scheme);
+  }
+
+  /**
+   * Record a scheme pick where it will actually be read. 'sweetpad.build.scheme'
+   * outranks the workspace-state cache, so caching a pick while that setting is
+   * pinned would report success and change nothing. Pass 'pin' to move a cached
+   * pick into settings.
+   */
+  async persistSchemeForBuild(scheme: string, options?: { pin?: boolean }): Promise<void> {
+    if (!options?.pin && !getWorkspaceConfig("build.scheme")) {
+      this.setDefaultSchemeForBuild(scheme);
+      return;
+    }
+
+    await updateWorkspaceConfig("build.scheme", scheme);
+    // The setting answers for the scheme now, so drop the cached copy quietly —
+    // the configuration change already announced the new value.
+    this.workspaceState.update("build.xcodeScheme", undefined);
   }
 
   setDefaultSchemeForTesting(scheme: string | undefined): void {

@@ -18,7 +18,7 @@ import {
   isXcodeBuildCommandCustomized,
   readXBSConfig,
 } from "../common/cli/scripts";
-import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
+import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
 import { createDirectory, findFilesRecursive, isFileExists, readJsonFile, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
@@ -121,23 +121,12 @@ export async function askDestinationToRunOn(
   });
   const supportedPlatforms = buildSettings?.supportedPlatforms;
 
-  const destination = await selectDestinationForBuild(destinationsManager, {
+  // The picker records the choice, so a setting pinning a destination that no longer
+  // exists is rewritten with this pick instead of re-prompting on every build.
+  return await selectDestinationForBuild(destinationsManager, {
     destinations: destinations,
     supportedPlatforms: supportedPlatforms,
   });
-
-  // If a setting pinned a destination that no longer exists, refresh it with the new pick
-  // so we don't re-prompt on every build.
-  if (getWorkspaceConfig("build.destination")) {
-    await updateWorkspaceConfig("build.destination", {
-      id: destination.id,
-      type: destination.type,
-      name: destination.name,
-    });
-    destinationsManager.setWorkspaceDestinationForBuild(undefined);
-  }
-
-  return destination;
 }
 
 export async function selectDestinationForBuild(
@@ -197,7 +186,7 @@ export async function selectDestinationForBuild(
 
   const destination = selected.context;
 
-  destinationsManager.setWorkspaceDestinationForBuild(destination);
+  await destinationsManager.persistDestinationForBuild(destination);
   return destination;
 }
 

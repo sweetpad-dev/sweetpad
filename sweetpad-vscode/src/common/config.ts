@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import type { SelectedDestination } from "../destination/types";
+import type { DestinationType } from "../destination/types";
 
 type Config = {
   "format.path": string;
@@ -13,7 +13,7 @@ type Config = {
   "build.derivedDataPath": string;
   "build.configuration": string;
   "build.scheme": string;
-  "build.destination": SelectedDestination;
+  "build.destination": { id: string; type: DestinationType };
   "build.schemes.include": string[];
   "build.schemes.exclude": string[];
   "build.arch": "x86_64" | "arm64";
