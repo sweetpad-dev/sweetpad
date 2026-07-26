@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.8] - 2026-07-26
+
+- Add `sweetpad.build.scheme` and `sweetpad.build.destination` settings so a project can pin its scheme and run destination in `.vscode/settings.json` instead of picking them again in every new checkout or worktree; the destination takes its `type` plus a plain UDID, and the pickers offer to write both settings for you ([#307](https://github.com/sweetpad-dev/sweetpad/pull/307), thanks [@czuria1](https://github.com/czuria1))
+- Fix the built app not being found when Xcode is set to use a custom Derived Data location, either app-wide (Locations → Derived Data) or per-workspace (`WorkspaceSettings.xcsettings`): the bundled resolver now follows the same locations `xcodebuild` does instead of assuming the default DerivedData layout ([#306](https://github.com/sweetpad-dev/sweetpad/issues/306))
+
 ## [0.2.7] - 2026-07-05
 
 - Fix launching on a physical device (iOS 17+) failing when the scheme has "Arguments Passed On Launch" values that start with `-` (common `NSUserDefaults`-style flags): SweetPad now inserts a `--` separator before the forwarded arguments so `devicectl` treats them as app arguments instead of parsing them as its own options ([#296](https://github.com/sweetpad-dev/sweetpad/issues/296), thanks [@rodrigosoldi](https://github.com/rodrigosoldi))
