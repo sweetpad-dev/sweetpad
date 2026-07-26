@@ -147,17 +147,35 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v7
       - name: Download VSIX
         uses: actions/download-artifact@v8
         with:
           name: vsix
+      - name: Build release notes
+        # The extension and the CLI ship from one repo on separate cadences, so
+        # auto-generated notes list every CLI and docs PR merged in between. The
+        # CHANGELOG entry for this version is what the release should say.
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES="$RUNNER_TEMP/notes.md"
+          awk -v version="$VERSION" '
+            $0 ~ "^## \\[" version "\\]" { capture = 1; next }
+            capture && /^## \[/ { exit }
+            capture { print }
+          ' sweetpad-vscode/CHANGELOG.md > "$NOTES"
+          if ! grep -q '[^[:space:]]' "$NOTES"; then
+            echo "::error::sweetpad-vscode/CHANGELOG.md has no '## [$VERSION]' entry"
+            exit 1
+          fi
+          echo "[Full changelog](https://github.com/$GITHUB_REPOSITORY/blob/main/sweetpad-vscode/CHANGELOG.md)" >> "$NOTES"
+          cat "$NOTES"
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
-          append_body: |
-
-            [Full changelog](https://github.com/sweetpad-dev/sweetpad/blob/main/sweetpad-vscode/CHANGELOG.md)
+          body_path: ${{ runner.temp }}/notes.md
           files: "*.vsix"
