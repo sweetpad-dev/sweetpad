@@ -513,14 +513,11 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   async start(): Promise<void> {
-    this.manager.on("simulatorsUpdated", () => {
+    this.manager.on("destinationsUpdated", () => {
       this.#onDidChangeTreeData.fire(null);
     });
-    this.manager.on("devicesUpdated", () => {
-      this.#onDidChangeTreeData.fire(null);
-    });
-    this.manager.on("xcodeDestinationForBuildUpdated", (destination) => {
-      this.selectedDestinationForBuild = destination;
+    this.manager.on("xcodeDestinationForBuildUpdated", () => {
+      this.selectedDestinationForBuild = this.manager.getSelectedXcodeDestinationForBuild();
       this.#onDidChangeTreeData.fire(null); // todo: update only the selected destination
     });
     this.manager.on("xcodeDestinationForTestingUpdated", (destination) => {

@@ -42,6 +42,7 @@ export type WorkspaceTypes = {
   "build.xcodeSdk": string;
   "build.lastLaunchedApp": LastLaunchedAppContext;
   "build.xbsAutogenreateInfoShown": boolean;
+  "build.missingPinnedSchemeWarned": string;
   "build.xbsMissingNotified": boolean;
   "build.customXcodebuildNoticeShown": boolean;
   "build.lspDiagnosticsEnabled": boolean;

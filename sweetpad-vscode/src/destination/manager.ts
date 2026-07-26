@@ -1,5 +1,6 @@
 import events from "node:events";
 
+import { getWorkspaceConfig, onDidChangeConfiguration, updateWorkspaceConfig } from "../common/config";
 import { checkUnreachable } from "../common/types";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DevicesManager } from "../devices/manager";
@@ -30,12 +31,12 @@ import {
   type DestinationType,
   type SelectedDestination,
   macOSDestination,
+  normalizeDestinationId,
 } from "./types";
 import { getMacOSArchitecture } from "./utils";
 
 type IEventMap = {
-  simulatorsUpdated: [];
-  devicesUpdated: [];
+  destinationsUpdated: [];
   xcodeDestinationForBuildUpdated: [destination: SelectedDestination | undefined];
   xcodeDestinationForTestingUpdated: [destination: SelectedDestination | undefined];
   recentDestinationsUpdated: [];
@@ -51,6 +52,11 @@ export class DestinationsManager {
   // Event emitter to signal changes in the destinations
   private emitter = new events.EventEmitter<IEventMap>();
 
+  // id -> display name for everything scanned so far. Built on demand and dropped when a
+  // scan lands, so resolving the label of a pinned destination is a map hit rather than a
+  // walk over every simulator on the machine.
+  private destinationNames: Map<string, string> | undefined = undefined;
+
   constructor(options: {
     simulatorsManager: SimulatorsManager;
     devicesManager: DevicesManager;
@@ -62,12 +68,24 @@ export class DestinationsManager {
   }
 
   async start(): Promise<void> {
-    // Forward events from simulators and devices managers
+    // Forward events from simulators and devices managers. The name lookup describes the
+    // previous scan, so drop it before announcing — views react by reading back through
+    // this manager, and they subscribe in their constructors, before start() runs.
     this.simulatorsManager.on("updated", () => {
-      this.emitter.emit("simulatorsUpdated");
+      this.destinationNames = undefined;
+      this.emitter.emit("destinationsUpdated");
     });
     this.devicesManager.on("updated", () => {
-      this.emitter.emit("devicesUpdated");
+      this.destinationNames = undefined;
+      this.emitter.emit("destinationsUpdated");
+    });
+
+    // A pinned destination outranks the cache, so editing the setting is a selection
+    // change like any other. Views listen for this event rather than the setting itself.
+    onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("sweetpad.build.destination")) {
+        this.emitter.emit("xcodeDestinationForBuildUpdated", this.getSelectedXcodeDestinationForBuild());
+      }
     });
   }
 
@@ -191,6 +209,11 @@ export class DestinationsManager {
   }
 
   async getmacOSDevices(): Promise<macOSDestination[]> {
+    return this.macOSDestinations();
+  }
+
+  /** Describing the local Mac needs no I/O, so this stays available synchronously. */
+  private macOSDestinations(): macOSDestination[] {
     const currentArch = getMacOSArchitecture() ?? "arm64";
     return [
       new macOSDestination({
@@ -293,6 +316,23 @@ export class DestinationsManager {
   }
 
   /**
+   * Display name for a destination that has already been scanned. The async lookups go to
+   * simctl and devicectl, which callers that must answer synchronously cannot wait for;
+   * macOS is always present, since describing it needs no I/O.
+   */
+  private findCachedDestinationName(destinationId: string): string | undefined {
+    if (!this.destinationNames) {
+      const scanned: Destination[] = [
+        ...this.simulatorsManager.getCachedSimulators(),
+        ...this.devicesManager.getCachedDevices(),
+        ...this.macOSDestinations(),
+      ];
+      this.destinationNames = new Map(scanned.map((destination) => [destination.id, destination.name]));
+    }
+    return this.destinationNames.get(destinationId);
+  }
+
+  /**
    * Find a destination by its udid and type
    */
   async findDestination(options: { destinationId: string; type?: DestinationType }): Promise<Destination | undefined> {
@@ -387,6 +427,29 @@ export class DestinationsManager {
     this.emitter.emit("xcodeDestinationForBuildUpdated", selectedDestination);
   }
 
+  /**
+   * Record a destination pick where it will actually be read. 'sweetpad.build.destination'
+   * outranks the workspace-state cache, so caching a pick while that setting is pinned
+   * would report success and change nothing. Pass 'pin' to move a cached pick into settings.
+   */
+  async persistDestinationForBuild(destination: Destination, options?: { pin?: boolean }): Promise<void> {
+    // Persist destination for build in the vscode workspace-state cache
+    if (!options?.pin && !getWorkspaceConfig("build.destination")) {
+      this.setWorkspaceDestinationForBuild(destination);
+      return;
+    }
+
+    // Persist destination for build in vscode .settings.json
+    this.trackSelectedDestination(destination);
+    await updateWorkspaceConfig("build.destination", {
+      id: destination.id,
+      type: destination.type,
+    });
+    // The setting answers for the destination now, so drop the cached copy quietly —
+    // the configuration change already announced the new value.
+    this.workspaceState.update("build.xcodeDestination", undefined);
+  }
+
   setWorkspaceDestinationForTesting(destination: Destination | undefined) {
     if (!destination) {
       this.workspaceState.update("testing.xcodeDestination", undefined);
@@ -405,9 +468,21 @@ export class DestinationsManager {
   }
 
   /**
-   * Get selected destination from the workspace state
+   * Get selected destination from settings, falling back to workspace state.
    */
   getSelectedXcodeDestinationForBuild(): SelectedDestination | undefined {
+    const fromConfig = getWorkspaceConfig("build.destination");
+    if (fromConfig?.id && fromConfig?.type) {
+      const id = normalizeDestinationId(fromConfig.id, fromConfig.type);
+      return {
+        id: id,
+        type: fromConfig.type,
+        // The setting has no label, so take it from the destination itself. Before the
+        // first scan lands there is nothing to take it from, so show what was written —
+        // a bare udid reads better than the expanded id.
+        name: this.findCachedDestinationName(id) ?? fromConfig.id,
+      };
+    }
     return this.workspaceState.get("build.xcodeDestination");
   }
 

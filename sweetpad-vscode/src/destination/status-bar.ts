@@ -21,6 +21,11 @@ export class DestinationStatusBar {
     this.destinationsManager.on("xcodeDestinationForBuildUpdated", () => {
       void this.update();
     });
+    // A destination pinned in settings carries no label, so the name only becomes
+    // available once a scan has run. Redraw when one lands.
+    this.destinationsManager.on("destinationsUpdated", () => {
+      void this.update();
+    });
   }
 
   update() {

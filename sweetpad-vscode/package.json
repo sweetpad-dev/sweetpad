@@ -1014,6 +1014,38 @@
           "default": null,
           "description": "Configuration to build."
         },
+        "sweetpad.build.scheme": {
+          "type": "string",
+          "default": null,
+          "description": "Scheme to build. Unset = asks and remembers."
+        },
+        "sweetpad.build.destination": {
+          "type": "object",
+          "default": null,
+          "required": ["id", "type"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Which simulator, device, or Mac to use. Paste the plain UDID from 'xcrun simctl list' or Xcode — the type above says what it is. A full id like 'iossimulator-<udid>' also works, and is what the picker writes. For macOS, use your computer's name."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "iOSSimulator",
+                "watchOSSimulator",
+                "tvOSSimulator",
+                "visionOSSimulator",
+                "macOS",
+                "iOSDevice",
+                "watchOSDevice",
+                "tvOSDevice",
+                "visionOSDevice"
+              ],
+              "description": "What kind of thing the id names. Also how SweetPad expands a plain UDID into a full id."
+            }
+          },
+          "description": "Simulator, device, or Mac to build and run on. Unset = SweetPad asks the first time and remembers your answer."
+        },
         "sweetpad.build.schemes.include": {
           "type": "array",
           "items": {

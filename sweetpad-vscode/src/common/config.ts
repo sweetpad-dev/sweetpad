@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+import type { DestinationType } from "../destination/types";
+
 type Config = {
   "format.path": string;
   "format.args": string[] | null;
@@ -10,6 +12,8 @@ type Config = {
   "build.swiftCommand": string;
   "build.derivedDataPath": string;
   "build.configuration": string;
+  "build.scheme": string;
+  "build.destination": { id: string; type: DestinationType };
   "build.schemes.include": string[];
   "build.schemes.exclude": string[];
   "build.arch": "x86_64" | "arm64";

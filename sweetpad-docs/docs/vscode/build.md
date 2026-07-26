@@ -157,6 +157,72 @@ If your project contains only one workspace, SweetPad finds it automatically —
 
 :::
 
+## Set the scheme and destination
+
+Pin the scheme and run destination the same way you pin the workspace path — useful for agents, CI-like local
+workflows, or skipping the QuickPick every time:
+
+```json title=".vscode/settings.json"
+{
+  "sweetpad.build.scheme": "MyApp",
+  "sweetpad.build.destination": {
+    "type": "iOSSimulator",
+    "id": "iossimulator-AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+  }
+}
+```
+
+- `scheme` — exact scheme name from the Xcode project. A name the project doesn't have gets a warning, and builds
+  fail until you fix or remove the setting.
+- `destination` — `id` and `type` are required. Easiest is `> SweetPad: Select destination` (or click a destination in
+  the sidebar) and choose to save it to settings. To write it by hand, paste the plain UDID from `xcrun simctl list`
+  or Xcode's device list — `type` already says what kind of thing it is:
+
+```json title=".vscode/settings.json"
+{
+  "sweetpad.build.destination": {
+    "type": "iOSSimulator",
+    "id": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+  }
+}
+```
+
+The setting holds identity only — no display name. SweetPad resolves the label from the destination itself, so once
+it has listed destinations the status bar reads "iPhone 16" rather than a UDID, and follows along if you rename the
+simulator. Until then it shows the id you wrote.
+
+The picker writes a fully qualified id instead, which is also accepted. Those ids carry a prefix per platform, and it
+doesn't always match the `type` spelling:
+
+| `type`              | `id`                       |
+| ------------------- | -------------------------- |
+| `iOSSimulator`      | `iossimulator-<udid>`      |
+| `watchOSSimulator`  | `watchossimulator-<udid>`  |
+| `tvOSSimulator`     | `tvossimulator-<udid>`     |
+| `visionOSSimulator` | `visionsimulator-<udid>`   |
+| `iOSDevice`         | `iosdevice-<udid>`         |
+| `watchOSDevice`     | `watchosdevice-<udid>`     |
+| `tvOSDevice`        | `tvosdevice-<udid>`        |
+| `visionOSDevice`    | `visionosdevice-<udid>`    |
+| `macOS`             | `macos-<computer name>`    |
+
+Note the two that break the pattern: `visionOSSimulator` drops the `os`, and `macOS` uses your computer's name
+instead of a UDID — which is why pasting the bare value and letting `type` supply the prefix is the safer habit. An
+id SweetPad doesn't recognise isn't reported as an error; it just falls through to the picker on every build.
+
+Unset = SweetPad asks the first time and remembers the choice in its cache. Settings always win over that cache — so
+`> SweetPad: Reset Extension Cache` clears the cache but leaves a pinned setting deciding the answer.
+
+:::note
+
+`sweetpad.build.destination` is machine-specific. Simulator UDIDs differ on every Mac and change when you delete and
+recreate a simulator, and the `macOS` id contains your computer's name. When the pinned destination isn't there,
+SweetPad asks you to pick again and rewrites the setting with your choice rather than re-prompting on every build —
+which means a committed `.vscode/settings.json` shows up as a local edit on each machine. For a shared project, pin
+the scheme and leave the destination to each developer.
+
+:::
+
 ## Set DerivedData path
 
 `xcodebuild` writes its intermediate files into `~/Library/Developer/Xcode/DerivedData/` by default. If you'd rather

@@ -39,6 +39,6 @@ export const schemeSet: HandlerFn<{ name?: string }, { scheme: SchemeEntity }> =
       data: { available: names },
     });
   }
-  ctx.buildManager.setDefaultSchemeForBuild(params.name);
+  await ctx.buildManager.persistSchemeForBuild(params.name);
   return { scheme: { name: params.name, isSelected: true } satisfies SchemeEntity };
 };

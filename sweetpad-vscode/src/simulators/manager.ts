@@ -128,4 +128,12 @@ export class SimulatorsManager {
     }
     return this.cache;
   }
+
+  /**
+   * What is already known, without going to simctl. For callers that have to answer
+   * synchronously and can live with an empty list until the first fetch lands.
+   */
+  getCachedSimulators(): SimulatorDestination[] {
+    return this.cache ?? [];
+  }
 }

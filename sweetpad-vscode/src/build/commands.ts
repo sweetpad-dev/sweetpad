@@ -4,9 +4,15 @@ import * as vscode from "vscode";
 
 import { getBuildServerProvider } from "../bsp/commands";
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
-import { type XcodeScheme, getBuildConfigurations, getIsNodeInstalled, getIsXBSInstalled } from "../common/cli/scripts";
+import {
+  type XcodeScheme,
+  getBuildConfigurations,
+  getIsNodeInstalled,
+  getIsXBSInstalled,
+  getSchemes,
+} from "../common/cli/scripts";
 import { type AppDeps, warnNodeRuntimeMissing } from "../common/commands";
-import { updateWorkspaceConfig } from "../common/config";
+import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, removeDirectory } from "../common/files";
@@ -293,7 +299,7 @@ export async function selectXcodeWorkspaceCommand(deps: AppDeps) {
 
 export async function selectXcodeSchemeForBuildCommand(deps: AppDeps, item?: BuildTreeItem) {
   if (item) {
-    deps.buildManager.setDefaultSchemeForBuild(item.scheme);
+    await deps.buildManager.persistSchemeForBuild(item.scheme);
     return;
   }
 
@@ -304,11 +310,27 @@ export async function selectXcodeSchemeForBuildCommand(deps: AppDeps, item?: Bui
   });
 
   deps.progressStatusBar.updateText("Searching for scheme");
-  await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
+  const schemes = await getSchemes({ xcworkspace });
+  const selected = await showQuickPick({
     title: "Select scheme to set as default",
-    xcworkspace: xcworkspace,
-    ignoreCache: true,
+    items: schemes.map((s) => ({
+      label: s.name,
+      context: s.name,
+    })),
   });
+
+  // Apply the pick before asking, so dismissing the prompt still selects the scheme.
+  await deps.buildManager.persistSchemeForBuild(selected.context);
+  if (getWorkspaceConfig("build.scheme")) {
+    return;
+  }
+
+  const pin = await showYesNoQuestion({
+    title: "Do you want to update the scheme in the workspace settings (.vscode/settings.json)?",
+  });
+  if (pin) {
+    await deps.buildManager.persistSchemeForBuild(selected.context, { pin: true });
+  }
 }
 
 /**

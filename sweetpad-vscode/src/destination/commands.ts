@@ -1,7 +1,9 @@
 import * as vscode from "vscode";
 
 import { selectDestinationForBuild } from "../build/utils";
+import { showYesNoQuestion } from "../common/askers";
 import type { AppDeps } from "../common/commands";
+import { getWorkspaceConfig } from "../common/config";
 import { selectDestinationForTesting } from "../testing/utils";
 import type { DestinationTreeItem } from "./tree";
 
@@ -16,7 +18,7 @@ export async function searchDestinationsViewCommand(_deps: AppDeps) {
 
 export async function selectDestinationForBuildCommand(deps: AppDeps, item?: DestinationTreeItem) {
   if (item) {
-    deps.destinationsManager.setWorkspaceDestinationForBuild(item.destination);
+    await deps.destinationsManager.persistDestinationForBuild(item.destination);
     return;
   }
 
@@ -25,10 +27,21 @@ export async function selectDestinationForBuildCommand(deps: AppDeps, item?: Des
     mostUsedSort: true,
   });
 
-  await selectDestinationForBuild(deps.destinationsManager, {
+  // The picker applies the pick, so dismissing the prompt below still selects it.
+  const destination = await selectDestinationForBuild(deps.destinationsManager, {
     destinations: destinations,
     supportedPlatforms: undefined, // All platforms
   });
+  if (getWorkspaceConfig("build.destination")) {
+    return;
+  }
+
+  const pin = await showYesNoQuestion({
+    title: "Do you want to update the destination in the workspace settings (.vscode/settings.json)?",
+  });
+  if (pin) {
+    await deps.destinationsManager.persistDestinationForBuild(destination, { pin: true });
+  }
 }
 
 export async function selectDestinationForTestingCommand(deps: AppDeps, item?: DestinationTreeItem) {

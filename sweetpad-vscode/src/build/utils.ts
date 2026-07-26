@@ -100,10 +100,12 @@ export async function askDestinationToRunOn(
     mostUsedSort: true,
   });
 
-  // If we have cached desination, use it
-  const cachedDestination = destinationsManager.getSelectedXcodeDestinationForBuild();
-  if (cachedDestination) {
-    const destination = destinations.find((d) => d.id === cachedDestination.id && d.type === cachedDestination.type);
+  // Prefer settings / workspace-state cache when the destination is still available
+  const preferredDestination = destinationsManager.getSelectedXcodeDestinationForBuild();
+  if (preferredDestination) {
+    const destination = destinations.find(
+      (d) => d.id === preferredDestination.id && d.type === preferredDestination.type,
+    );
     if (destination) {
       return destination;
     }
@@ -119,6 +121,8 @@ export async function askDestinationToRunOn(
   });
   const supportedPlatforms = buildSettings?.supportedPlatforms;
 
+  // The picker records the choice, so a setting pinning a destination that no longer
+  // exists is rewritten with this pick instead of re-prompting on every build.
   return await selectDestinationForBuild(destinationsManager, {
     destinations: destinations,
     supportedPlatforms: supportedPlatforms,
@@ -182,7 +186,7 @@ export async function selectDestinationForBuild(
 
   const destination = selected.context;
 
-  destinationsManager.setWorkspaceDestinationForBuild(destination);
+  await destinationsManager.persistDestinationForBuild(destination);
   return destination;
 }
 
