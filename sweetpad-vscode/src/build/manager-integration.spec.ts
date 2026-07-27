@@ -64,6 +64,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
   let mockTerminal: ReturnType<typeof createMockTerminal>;
   let mockVscodeContext: vscode.ExtensionContext;
   let mockWorkspace: WorkspaceStateService;
+  let mockTunnel: TunnelManager;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -74,7 +75,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
     } as unknown as WorkspaceStateService;
     const mockProgress = { updateText: vi.fn() } as unknown as ProgressStatusBar;
     const execution = new ExecutionScopeService();
-    const mockTunnel = { autoConnect: vi.fn().mockResolvedValue(undefined) } as unknown as TunnelManager;
+    mockTunnel = { autoConnect: vi.fn().mockResolvedValue(undefined) } as unknown as TunnelManager;
     mockVscodeContext = {
       storageUri: { fsPath: "/tmp/sweetpad-test" },
       extensionPath: "/tmp/sweetpad-ext",
@@ -370,6 +371,27 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
           });
 
           expect(writes.join("")).toContain("watch marker");
+        });
+
+        it("streams device logs to the terminal alongside the Debug Console", async () => {
+          await buildManager.runOniOSDevice(mockTerminal, {
+            ...debugOptions,
+            destination: legacyDevice,
+          });
+
+          // The app's own stdout/stderr go to CodeLLDB over debugserver; os_log output only
+          // reaches the terminal if the sidecar runs.
+          const syslogSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("syslog"));
+          expect(syslogSpec?.args).toEqual(expect.arrayContaining(["syslog", "live", "--process-name", "TestApp"]));
+        });
+
+        it("does not open a tunnel, which only iOS 17+ RemoteXPC needs", async () => {
+          await buildManager.runOniOSDevice(mockTerminal, {
+            ...debugOptions,
+            destination: legacyDevice,
+          });
+
+          expect(mockTunnel.autoConnect).not.toHaveBeenCalled();
         });
 
         it("still writes the marker up front on the devicectl route", async () => {

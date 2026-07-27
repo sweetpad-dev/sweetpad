@@ -936,6 +936,7 @@ export class BuildManager {
         appPath: targetPath,
         appName: buildSettings.appName,
         executableName: buildSettings.executableName,
+        enableDebugDylib: buildSettings.enableDebugDylib,
         bundleId: bundlerId,
         destinationType: destinationType,
         watchMarker: option.watchMarker,
@@ -1003,6 +1004,7 @@ export class BuildManager {
       appPath: string;
       appName: string;
       executableName?: string;
+      enableDebugDylib: boolean;
       bundleId: string;
       destinationType: DestinationType;
       watchMarker: boolean;
@@ -1020,6 +1022,15 @@ export class BuildManager {
         deviceId: options.deviceId,
         appPath: options.appPath,
       });
+
+      // Started before LLDB launches the app, so startup logging is not missed. No tunnel
+      // is set up first, unlike the devicectl path: pymobiledevice3 reaches syslog over
+      // usbmux, and RemoteXPC — the thing that needs a tunnel — is iOS 17 and up.
+      const logSidecar = new Pymd3Sidecar(group, {
+        executableName: options.executableName,
+        enableDebugDylib: options.enableDebugDylib,
+      });
+      await logSidecar.spawn();
 
       this.workspaceState.update("build.lastLaunchedApp", {
         type: "device",
@@ -1045,8 +1056,9 @@ export class BuildManager {
         writeWatchMarkers(terminal);
       }
 
-      // App output arrives over the debugserver connection, so it surfaces in the Debug
-      // Console rather than here. Holding this open is what keeps the debug session alive.
+      // The app's stdout/stderr travel over the debugserver connection to the Debug Console;
+      // os_log/Logger output reaches this terminal through the sidecar above. Holding this
+      // open is what keeps the debug session alive.
       await session.wait();
     });
   }
