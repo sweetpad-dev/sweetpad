@@ -2,7 +2,7 @@
  * Unit tests for supportsDevicectl utility function
  */
 
-import { supportsDevicectl } from "./utils";
+import { resolveDeviceRunMethod, supportsDevicectl } from "./utils";
 
 describe("supportsDevicectl", () => {
   describe("iOS 17+ support (default minimum version)", () => {
@@ -126,5 +126,23 @@ describe("supportsDevicectl", () => {
       // But trailing spaces after the number are fine
       expect(supportsDevicectl("17.0 ", 17)).toBe(true);
     });
+  });
+});
+
+describe("resolveDeviceRunMethod", () => {
+  it("uses devicectl when the device has CoreDevice", () => {
+    expect(resolveDeviceRunMethod({ supportsDevicectl: true, debug: false })).toBe("devicectl");
+  });
+
+  it("keeps using devicectl when debugging a CoreDevice device", () => {
+    expect(resolveDeviceRunMethod({ supportsDevicectl: true, debug: true })).toBe("devicectl");
+  });
+
+  it("uses ios-deploy to run on a device without CoreDevice", () => {
+    expect(resolveDeviceRunMethod({ supportsDevicectl: false, debug: false })).toBe("ios-deploy");
+  });
+
+  it("uses the debugserver to debug a device without CoreDevice", () => {
+    expect(resolveDeviceRunMethod({ supportsDevicectl: false, debug: true })).toBe("ios-deploy-debugserver");
   });
 });

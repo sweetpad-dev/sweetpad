@@ -20,3 +20,16 @@ export const workspace = {
     dispose: vi.fn(),
   })),
 };
+
+export const debug = {
+  registerDebugConfigurationProvider: vi.fn(() => ({ dispose: vi.fn() })),
+};
+
+export const DebugConfigurationProviderTriggerKind = {
+  Initial: 1,
+  Dynamic: 2,
+};
+
+// Modules under test reach for vscode both as `import * as vscode` and as a default import;
+// the real extension host module satisfies both.
+export default { window, commands, workspace, debug, DebugConfigurationProviderTriggerKind };

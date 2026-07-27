@@ -24,8 +24,10 @@ import { assertUnreachable } from "../common/types";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import * as iosDeploy from "../common/xcode/ios-deploy";
 import type { DestinationsManager } from "../destination/manager";
+import type { DestinationType } from "../destination/types";
 import type { TunnelManager } from "../devices/tunnel";
 import type { DeviceDestination } from "../devices/types";
+import { resolveDeviceRunMethod } from "../devices/utils";
 import { MainExecutable } from "../run/main";
 import { MacOSLogSidecar, Pymd3Sidecar, SimulatorLogSidecar } from "../run/sidecars";
 import type { SimulatorDestination } from "../simulators/types";
@@ -487,6 +489,7 @@ export class BuildManager {
             watchMarker: false,
             launchArgs: launchArgs,
             launchEnv: launchEnv,
+            debug: options.debug,
           });
         } else {
           assertUnreachable(destination);
@@ -593,6 +596,7 @@ export class BuildManager {
             watchMarker: false,
             launchArgs: launchArgs,
             launchEnv: launchEnv,
+            debug: options.debug,
           });
         } else {
           assertUnreachable(destination);
@@ -779,6 +783,7 @@ export class BuildManager {
       watchMarker: boolean;
       launchArgs: string[];
       launchEnv: Record<string, string>;
+      debug: boolean;
     },
   ) {
     const { scheme, configuration, destination } = option;
@@ -797,13 +802,15 @@ export class BuildManager {
     const targetPath = await ensureAppPathExists(buildSettings.appPath);
     const bundlerId = buildSettings.bundleIdentifier;
 
-    // Determine which deployment method to use based on device capabilities
-    const useDevicectl = destination.supportsDevicectl;
+    const runMethod = resolveDeviceRunMethod({
+      supportsDevicectl: destination.supportsDevicectl,
+      debug: option.debug,
+    });
 
     // Use appropriate device ID format for the deployment method
     // - devicectl uses the devicectl identifier format
     // - ios-deploy uses the legacy UDID format
-    const deviceId = useDevicectl ? destination.devicectlId : destination.udid;
+    const deviceId = runMethod === "devicectl" ? destination.devicectlId : destination.udid;
 
     // Validate that we have a device ID
     if (!deviceId) {
@@ -813,14 +820,16 @@ export class BuildManager {
     // Install and launch app on device
     this.progress.updateText(`Installing "${scheme}" on "${destinationName}"`);
 
-    if (option.watchMarker) {
+    // The debugserver method emits its own marker once the port is live, so that the debug
+    // session does not start connecting before there is anything to connect to.
+    if (option.watchMarker && runMethod !== "ios-deploy-debugserver") {
       writeWatchMarkers(terminal);
     }
 
     // Launch app on device
     this.progress.updateText(`Running "${option.scheme}" on "${option.destination.name}"`);
 
-    if (useDevicectl) {
+    if (runMethod === "devicectl") {
       // Use devicectl for iOS 17+ devices - separate install and launch
       await terminal.execute({
         command: "xcrun",
@@ -912,20 +921,38 @@ export class BuildManager {
       terminal.write(`App launched on device with PID: ${jsonOutput.result.process.processIdentifier}`, {
         newLine: true,
       });
-    } else {
+    } else if (runMethod === "ios-deploy-debugserver") {
       // Use ios-deploy for older devices (iOS < 17)
-      // ios-deploy handles both install and launch in one command with --debug
       commonLogger.debug("Using ios-deploy for older device", {
         deviceId: deviceId,
         osVersion: destination.osVersion,
+        runMethod: runMethod,
       });
 
-      // Check if ios-deploy is installed before attempting to use it
-      const isInstalled = await iosDeploy.isIosDeployInstalled();
-      if (!isInstalled) {
-        throw new ExtensionError("ios-deploy is required for iOS < 17. Install it with: brew install ios-deploy");
-      }
+      await this.checkIosDeployInstalled();
 
+      await this.launchWithDebugserver(terminal, {
+        deviceId: deviceId,
+        appPath: targetPath,
+        appName: buildSettings.appName,
+        executableName: buildSettings.executableName,
+        bundleId: bundlerId,
+        destinationType: destinationType,
+        watchMarker: option.watchMarker,
+        launchArgs: option.launchArgs,
+        launchEnv: option.launchEnv,
+      });
+    } else if (runMethod === "ios-deploy") {
+      // Use ios-deploy for older devices (iOS < 17)
+      commonLogger.debug("Using ios-deploy for older device", {
+        deviceId: deviceId,
+        osVersion: destination.osVersion,
+        runMethod: runMethod,
+      });
+
+      await this.checkIosDeployInstalled();
+
+      // ios-deploy handles both install and launch in one command with --debug
       this.workspaceState.update("build.lastLaunchedApp", {
         type: "device",
         appPath: targetPath,
@@ -947,7 +974,81 @@ export class BuildManager {
       terminal.write("App launched on device", {
         newLine: true,
       });
+    } else {
+      assertUnreachable(runMethod);
     }
+  }
+
+  private async checkIosDeployInstalled() {
+    // Check if ios-deploy is installed before attempting to use it
+    const isInstalled = await iosDeploy.isIosDeployInstalled();
+    if (!isInstalled) {
+      throw new ExtensionError("ios-deploy is required for iOS < 17. Install it with: brew install ios-deploy");
+    }
+  }
+
+  /**
+   * Install the app on a device without CoreDevice (iOS 16 and below) and hand LLDB a
+   * debugserver to connect to.
+   *
+   * The ordering here is load-bearing. ios-deploy has to reach its debug phase before the
+   * watch marker releases the "sweetpad: debugging-launch" pre-launch task, because that
+   * marker is what lets the debug session start resolving its configuration — and by then
+   * the port it connects to must already be in the workspace state.
+   */
+  private async launchWithDebugserver(
+    terminal: TaskTerminal,
+    options: {
+      deviceId: string;
+      appPath: string;
+      appName: string;
+      executableName?: string;
+      bundleId: string;
+      destinationType: DestinationType;
+      watchMarker: boolean;
+      launchArgs: string[];
+      launchEnv: Record<string, string>;
+    },
+  ) {
+    commonLogger.debug("Starting ios-deploy debugserver", {
+      deviceId: options.deviceId,
+      appPath: options.appPath,
+    });
+
+    await terminal.runGroup(async (group) => {
+      const session = await iosDeploy.launchDebugserver(group, {
+        deviceId: options.deviceId,
+        appPath: options.appPath,
+      });
+
+      this.workspaceState.update("build.lastLaunchedApp", {
+        type: "device",
+        appPath: options.appPath,
+        appName: options.appName,
+        executableName: options.executableName,
+        bundleIdentifier: options.bundleId,
+        destinationId: options.deviceId,
+        destinationType: options.destinationType,
+        debugserver: {
+          port: session.debugserver.port,
+          deviceAppPath: session.debugserver.deviceAppPath,
+          symbolsPath: session.debugserver.symbolsPath,
+          launchArgs: options.launchArgs,
+          launchEnv: options.launchEnv,
+        },
+      });
+
+      terminal.write(`Debugserver listening on 127.0.0.1:${session.debugserver.port}`, {
+        newLine: true,
+      });
+      if (options.watchMarker) {
+        writeWatchMarkers(terminal);
+      }
+
+      // App output arrives over the debugserver connection, so it surfaces in the Debug
+      // Console rather than here. Holding this open is what keeps the debug session alive.
+      await session.wait();
+    });
   }
 
   async buildApp(

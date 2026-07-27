@@ -3,6 +3,23 @@ import type * as vscode from "vscode";
 import { type DeviceCtlProcess, getRunningProcesses } from "../common/xcode/devicectl";
 
 /**
+ * Wrap a value as a double-quoted LLDB command argument. LLDB's command interpreter splits
+ * on whitespace unless quoted, so any path that contains a space — "iOS DeviceSupport" in
+ * every symbols path, for one — is otherwise read as several arguments.
+ */
+export function quoteLldbArgument(value: string): string {
+  return `"${value.replace(/(["\\])/g, "\\$1")}"`;
+}
+
+/**
+ * Wrap a value as a single-quoted Python string literal, for the "script ..." commands that
+ * reach LLDB's embedded interpreter.
+ */
+export function quotePythonString(value: string): string {
+  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+}
+
+/**
  * Wait while the process is launched on the device and return the process information.
  */
 export async function waitForProcessToLaunch(

@@ -7,8 +7,8 @@ import type {
 } from "../common/commands";
 import { commonLogger } from "../common/logger";
 import { checkUnreachable } from "../common/types";
-import type { WorkspaceStateService } from "../common/workspace-state";
-import { waitForProcessToLaunch } from "./utils";
+import type { IosDeployDebugserverContext, WorkspaceStateService } from "../common/workspace-state";
+import { quoteLldbArgument, quotePythonString, waitForProcessToLaunch } from "./utils";
 
 const ATTACH_CONFIG: vscode.DebugConfiguration = {
   type: "sweetpad-lldb",
@@ -88,10 +88,72 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     return config;
   }
 
+  /**
+   * Devices without CoreDevice (iOS 16 and below), where ios-deploy has installed the app and
+   * left a debugserver listening on localhost.
+   *
+   * LLDB launches the process itself here rather than attaching to a running one, so
+   * breakpoints in startup code are already installed when the app begins executing — the
+   * devicectl route below can only attach after launch.
+   */
+  private async resolveDebugserverDeviceConfiguration(
+    config: vscode.DebugConfiguration,
+    launchContext: LastLaunchedAppDeviceContext,
+    debugserver: IosDeployDebugserverContext,
+  ): Promise<vscode.DebugConfiguration> {
+    const hostAppPath = launchContext.appPath;
+
+    // Without the sysroot LLDB resolves system frames against the host, so anything outside
+    // the app's own binary symbolicates wrong. ios-deploy reports the path Xcode extracted
+    // when the device was first paired.
+    const platformSelect = debugserver.symbolsPath
+      ? `platform select remote-ios --sysroot ${quoteLldbArgument(debugserver.symbolsPath)}`
+      : "platform select remote-ios";
+
+    // LLDB owns the launch on this route, so args and env are delivered through it rather
+    // than through the tool that installed the app.
+    const envCommands = Object.entries(debugserver.launchEnv ?? {}).map(
+      ([key, value]) => `settings set target.env-vars ${key}=${value}`,
+    );
+    const launchArgs = debugserver.launchArgs ?? [];
+    const launchCommand = launchArgs.length
+      ? `process launch -- ${launchArgs.map(quoteLldbArgument).join(" ")}`
+      : "process launch";
+
+    config.initCommands = [...(config.initCommands || []), platformSelect, ...envCommands];
+
+    config.targetCreateCommands = [
+      ...(config.targetCreateCommands || []),
+      `target create ${quoteLldbArgument(hostAppPath)}`,
+      // Points the loaded module at where the bundle actually lives on the device, so
+      // breakpoints resolve against the remote binary.
+      `script lldb.target.module[0].SetPlatformFileSpec(lldb.SBFileSpec(${quotePythonString(debugserver.deviceAppPath)}))`,
+    ];
+
+    config.processCreateCommands = [
+      ...(config.processCreateCommands || []),
+      `gdb-remote 127.0.0.1:${debugserver.port}`,
+      launchCommand,
+    ];
+
+    config.postRunCommands = [...(config.postRunCommands || []), `script print("SweetPad: Happy debugging!")`];
+
+    config.type = "lldb";
+    config.request = "attach";
+    config.program = hostAppPath;
+
+    commonLogger.log("Resolved debug configuration", { config: config });
+    return config;
+  }
+
   private async resolveDeviceDebugConfiguration(
     config: vscode.DebugConfiguration,
     launchContext: LastLaunchedAppDeviceContext,
   ): Promise<vscode.DebugConfiguration> {
+    if (launchContext.debugserver) {
+      return await this.resolveDebugserverDeviceConfiguration(config, launchContext, launchContext.debugserver);
+    }
+
     const deviceUDID = launchContext.destinationId;
     const hostAppPath = launchContext.appPath;
     const appName = launchContext.appName; // Example: "MyApp.app"
@@ -134,7 +196,7 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
       ...(config.preRunCommands || []),
       // Adjusts the loaded module’s file specification to point to the actual location of the binary on the remote device.
       // This ensures symbol resolution and breakpoints align correctly with the actual remote binary.
-      `script lldb.target.module[0].SetPlatformFileSpec(lldb.SBFileSpec('${deviceAppPath}'))`,
+      `script lldb.target.module[0].SetPlatformFileSpec(lldb.SBFileSpec(${quotePythonString(deviceAppPath ?? "")}))`,
     ];
 
     // LLDB commands executed to create/attach the debuggee process.
