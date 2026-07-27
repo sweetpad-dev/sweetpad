@@ -964,12 +964,25 @@ export class BuildManager {
         destinationType: destinationType,
       });
 
-      await iosDeploy.installAndLaunchApp(this.vscodeContext, terminal, {
-        deviceId: deviceId,
-        appPath: targetPath,
-        bundleId: bundlerId,
-        launchArgs: option.launchArgs,
-        launchEnv: option.launchEnv,
+      await terminal.runGroup(async (group) => {
+        // ios-deploy relays the app's stdout/stderr into the terminal itself, but os_log and
+        // Logger never reach stdout — reading those needs a connection to the device's
+        // syslog, same as on the devicectl path.
+        const logSidecar = new Pymd3Sidecar(group, {
+          executableName: buildSettings.executableName,
+          enableDebugDylib: buildSettings.enableDebugDylib,
+        });
+        await logSidecar.spawn();
+
+        // Runs through terminal.execute rather than the group: ios-deploy stays the
+        // foreground process, so Ctrl+C reaches it and not the sidecar.
+        await iosDeploy.installAndLaunchApp(this.vscodeContext, terminal, {
+          deviceId: deviceId,
+          appPath: targetPath,
+          bundleId: bundlerId,
+          launchArgs: option.launchArgs,
+          launchEnv: option.launchEnv,
+        });
       });
 
       terminal.write("App launched on device", {

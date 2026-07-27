@@ -286,6 +286,18 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         });
       });
 
+      it("streams os_log output the ios-deploy relay does not carry", async () => {
+        await buildManager.runOniOSDevice(mockTerminal, {
+          ...baseOptions,
+          destination: legacyDevice,
+        });
+
+        const syslogSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("syslog"));
+        expect(syslogSpec?.args).toEqual(expect.arrayContaining(["syslog", "live", "--process-name", "TestApp"]));
+        // ios-deploy still owns the foreground so Ctrl+C reaches it.
+        expect(iosDeploy.installAndLaunchApp).toHaveBeenCalled();
+      });
+
       it("throws error when ios-deploy is not installed", async () => {
         (iosDeploy.isIosDeployInstalled as Mock).mockResolvedValue(false);
 
