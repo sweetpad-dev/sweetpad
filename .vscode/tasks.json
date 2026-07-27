@@ -6,6 +6,8 @@
     {
       "type": "npm",
       "script": "watch",
+      // The scripts live in the extension package, not the workspace root.
+      "path": "sweetpad-vscode",
       "isBackground": true,
       "problemMatcher": {
         "owner": "rolldown",
@@ -32,6 +34,9 @@
       "command": "vsce publish patch",
       "type": "shell",
       "label": "Publish Patch",
+      "options": {
+        "cwd": "${workspaceFolder}/sweetpad-vscode"
+      },
       "problemMatcher": []
     }
   ]

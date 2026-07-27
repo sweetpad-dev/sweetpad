@@ -9,15 +9,17 @@
       "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
-      "outFiles": ["${workspaceFolder}/out/**/*.js"],
-      "preLaunchTask": "npm: watch"
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/sweetpad-vscode"],
+      "outFiles": ["${workspaceFolder}/sweetpad-vscode/out/**/*.js"],
+      "preLaunchTask": "npm: watch - sweetpad-vscode"
     },
     {
       "name": "Debug Vitest Tests",
       "type": "node",
       "request": "launch",
-      "runtimeArgs": ["--inspect-brk", "${workspaceRoot}/node_modules/.bin/vitest", "run"],
+      // vitest is hoisted to the workspace root, but its config lives in the extension package.
+      "cwd": "${workspaceFolder}/sweetpad-vscode",
+      "runtimeArgs": ["--inspect-brk", "${workspaceFolder}/node_modules/.bin/vitest", "run"],
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen"
     }
