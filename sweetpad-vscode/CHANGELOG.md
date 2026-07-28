@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.9] - 2026-07-28
+
+- Add debugging on physical devices running iOS 16 and below, which have no CoreDevice and so were never reachable through the `devicectl` path: SweetPad installs the app with `ios-deploy` and leaves a debugserver listening, and the debug session connects to it and launches the process itself, so breakpoints, stepping and the Debug Console work the same way they do on iOS 17+ ([#309](https://github.com/sweetpad-dev/sweetpad/issues/309), thanks [@zHElEARN](https://github.com/zHElEARN))
+- Stream the device's `os_log`/`Logger` output into the terminal when running or debugging on iOS 16 and below: `ios-deploy` relays only the app's stdout/stderr, so anything logged through `Logger` was previously invisible
+
 ## [0.2.8] - 2026-07-26
 
 - Add `sweetpad.build.scheme` and `sweetpad.build.destination` settings so a project can pin its scheme and run destination in `.vscode/settings.json` instead of picking them again in every new checkout or worktree; the destination takes its `type` plus a plain UDID, and the pickers offer to write both settings for you ([#307](https://github.com/sweetpad-dev/sweetpad/pull/307), thanks [@czuria1](https://github.com/czuria1))
