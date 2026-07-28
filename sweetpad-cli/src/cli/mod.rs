@@ -643,14 +643,49 @@ pub struct Context {
     /// The committed `sweetpad.toml`, loaded once on first use (see
     /// [`Context::project_file`]).
     project_toml: std::cell::OnceCell<config::ProjectFile>,
+    /// The nearest `sweetpad.toml` at or above the cwd, resolved *before* the
+    /// container so its `workspace`/`project` key can name one (see
+    /// [`Context::root_file`]).
+    root_toml: std::cell::OnceCell<Option<config::RootFile>>,
 }
 
 impl Context {
-    /// The committed `sweetpad.toml` next to `container` — the team-shared
+    /// The nearest committed `sweetpad.toml` at or above the working
+    /// directory, or `None` when this checkout has none. Consulted during
+    /// container resolution, so it loads before a container exists — which is
+    /// the point: its `workspace`/`project` key is what names one when the
+    /// container sits in a subdirectory the upward walk never reaches.
+    pub fn root_file(&self) -> Option<&config::RootFile> {
+        self.root_toml
+            .get_or_init(|| {
+                let cwd = std::env::current_dir().ok()?;
+                let (root, warnings) = config::RootFile::find_upward(&cwd)?;
+                for w in &warnings {
+                    self.out.warn(w);
+                }
+                pin_developer_dir(&root.file);
+                Some(root)
+            })
+            .as_ref()
+    }
+
+    /// The committed `sweetpad.toml` for `container` — the team-shared
     /// defaults layer between the user config and remembered state. Loaded
     /// once per process; lint warnings surface on that first load, and a
     /// pinned `developer_dir` takes effect (unless a flag/env already set it).
+    ///
+    /// The root file serves as the project file whenever it covers this
+    /// container, so the file that named a nested container also supplies its
+    /// defaults, and the beside-the-container case isn't read and linted twice.
+    /// A file that names some *other* container supplies nothing here — its
+    /// defaults belong to the project it named, even for a container sitting
+    /// beside it.
     pub fn project_file(&self, container: &resolve::Container) -> &config::ProjectFile {
+        if let Some(root) = self.root_file()
+            && root.covers(container)
+        {
+            return &root.file;
+        }
         self.project_toml.get_or_init(|| {
             let dir = container
                 .path()
@@ -661,18 +696,28 @@ impl Context {
                     std::path::Path::to_path_buf,
                 );
             let (pf, warnings) = config::ProjectFile::load_for(&dir);
+            let beside = config::RootFile { dir, file: pf };
+            if !beside.covers(container) {
+                return config::ProjectFile::default();
+            }
             for w in &warnings {
                 self.out.warn(w);
             }
-            if let Some(dev_dir) = &pf.developer_dir
-                && std::env::var_os("DEVELOPER_DIR").is_none()
-            {
-                // Safety: first project-file access happens on the main thread
-                // before tool children spawn.
-                unsafe { std::env::set_var("DEVELOPER_DIR", dev_dir) };
-            }
-            pf
+            pin_developer_dir(&beside.file);
+            beside.file
         })
+    }
+}
+
+/// Apply a project file's `developer_dir`, unless a flag or the ambient
+/// environment already chose an Xcode.
+fn pin_developer_dir(pf: &config::ProjectFile) {
+    if let Some(dev_dir) = &pf.developer_dir
+        && std::env::var_os("DEVELOPER_DIR").is_none()
+    {
+        // Safety: first project-file access happens on the main thread before
+        // tool children spawn.
+        unsafe { std::env::set_var("DEVELOPER_DIR", dev_dir) };
     }
 }
 
@@ -792,6 +837,7 @@ pub fn run(argv: &[String]) -> ExitCode {
         state,
         out,
         project_toml: std::cell::OnceCell::new(),
+        root_toml: std::cell::OnceCell::new(),
     };
 
     // Bare `sweetpad`: the status view inside a project (the daily "where am

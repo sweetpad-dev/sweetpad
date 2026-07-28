@@ -246,7 +246,35 @@ explicit flag  >  env var  >  config file  >  remembered state  >  auto-discover
 - **Auto-discovery:** find the `.xcworkspace` / `.xcodeproj` / `Package.swift`
   in the working directory (deterministic: same-kind siblings resolve to the
   alphabetically first, with a warning; pass `--workspace`/`--project` to
-  disambiguate).
+  disambiguate). The search walks *up* toward the git root, so a command works
+  from a nested source directory.
+- **Container resolution** runs on its own shorter ladder — `--workspace` /
+  `--project` > a `sweetpad.toml` `workspace`/`project` key > auto-discovery —
+  because every layer below it (per-project config, remembered state) is
+  *keyed by* the container and so can't take part in finding it.
+- **Downward scan**, once the upward walk finds nothing: look below the working
+  directory, then below the repository root, at most two levels down. This is
+  what makes the common nested layouts work with no configuration at all —
+  `ios/App.xcodeproj`, `Sources/App.xcodeproj`, `apps/ios/App.xcodeproj` — none
+  of which the upward walk can reach from the repository root. Build output and
+  vendored trees (`Pods`, `node_modules`, `Carthage`, `vendor`, `DerivedData`,
+  `build`, dotfiles) are never entered, so `Pods/Pods.xcodeproj` is never a
+  candidate, and symlinks are never followed.
+  - The **shallowest** level holding anything wins outright, and within a
+    single directory the usual workspace > project > package ordering applies
+    — so a `ios/` holding both a workspace and a project resolves silently to
+    the workspace, as CocoaPods and React Native layouts want.
+  - Directories **tied at that depth** (Flutter's `ios/` and `macos/`, a
+    monorepo's `apps/*`) are a real choice, not a tiebreak: the command errors
+    with every candidate listed and names both ways to settle it. This is a
+    deliberate split from same-kind siblings *in* the working directory, which
+    warn and take the alphabetically first — standing in a directory is a
+    signal of intent, a hit two levels down is not.
+  - A scan-resolved container is **announced** (`using Sources/App.xcodeproj
+    (found below the current directory)`), since the user never named it.
+  - Bare `sweetpad` treats a tie as "no container" and prints the help wall:
+    the status-or-help probe has nowhere to put a question, and `sweetpad
+    status` reports the ambiguity properly a keystroke later.
 - **Env vars:** `SWEETPAD_SCHEME`, `SWEETPAD_DESTINATION`,
   `SWEETPAD_CONFIGURATION`, `SWEETPAD_SDK`, `SWEETPAD_PROJECT` /
   `SWEETPAD_WORKSPACE` (value-carrying, folded into the flag layer — but an
@@ -310,17 +338,32 @@ configuration = "Test"
   selector is given.
 
 ### Project file — committed, team-shared
-- An *optional, hand-authored* `sweetpad.toml` at the project root (next to
-  the container). This is how a team standardizes: it travels with the clone,
-  needs no absolute paths, and sweetpad still **never writes** to the project
-  root — the file is read-only to the tool, like the user config.
+- An *optional, hand-authored* `sweetpad.toml` at the project root. This is how
+  a team standardizes: it travels with the clone, needs no absolute paths, and
+  sweetpad still **never writes** to the project root — the file is read-only
+  to the tool, like the user config.
 - Precedence slot: **user config > sweetpad.toml > remembered state**.
-- Keys: `scheme`, `configuration`, `destination`, `sdk`, a `[testing]`
-  sub-table (`scheme`/`configuration`/`destination`/`target`), plus the tool
-  defaults that previously had flags but no home:
+- **Located by walking up** from the working directory to the git root, so one
+  file serves the whole checkout. It may sit beside the container (the common
+  case) or above it, where `workspace`/`project` names a container nested
+  below — the layout `xcodebuild` can't be pointed at without `-C`:
+
+```
+App/
+  sweetpad.toml          project = "Sources/App.xcodeproj"
+  Scripts/               `sweetpad build` works from here too
+  Sources/App.xcodeproj
+```
+
+- Keys: `workspace`/`project` (which container this file belongs to, relative
+  to the file — `workspace` wins if both are set), `scheme`, `configuration`,
+  `destination`, `sdk`, a `[testing]` sub-table
+  (`scheme`/`configuration`/`destination`/`target`), plus the tool defaults
+  that previously had flags but no home:
 
 ```toml
 # sweetpad.toml (committed)
+project = "Sources/MyApp.xcodeproj"   # only when it isn't a sibling
 scheme = "MyApp"
 configuration = "Debug"
 
@@ -336,7 +379,14 @@ tool = "swiftlint"
 ```
 
 - Unknown keys are warned about; a malformed file is warned about and ignored
-  (a broken committed file must not brick every teammate's CLI).
+  (a broken committed file must not brick every teammate's CLI). An absolute
+  `workspace`/`project` warns too — it resolves to nothing on every other
+  machine, the one mistake that makes a committed file worse than none.
+- A declared container that doesn't exist is an **error**, never a fallback to
+  discovery: the file said which project this is, and quietly building a
+  different one is worse than stopping. When `generator` is set, the error
+  names the tool to run — the usual cause is a project that hasn't been
+  generated yet.
 
 ### State — machine-managed
 - `~/.local/state/sweetpad/state.toml` (honoring `XDG_STATE_HOME`).
