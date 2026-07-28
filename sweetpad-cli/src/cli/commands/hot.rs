@@ -239,7 +239,10 @@ mod tests {
         for (name, expected) in [
             ("/opt/homebrew/bin/sweetpad", true),
             ("sweetpad", true),
-            ("/Applications/InjectionNext.app/Contents/MacOS/InjectionNext", false),
+            (
+                "/Applications/InjectionNext.app/Contents/MacOS/InjectionNext",
+                false,
+            ),
             ("/usr/bin/sweetpad-helper", false),
         ] {
             let is_ours = std::path::Path::new(name)

@@ -5469,9 +5469,7 @@ fn follow_console_file(
     };
     // A captured line is its own message, so `--until` matches it directly
     // rather than through the os_log renderer.
-    let matched = |buf: &[u8]| {
-        watch.is_some_and(|w| w.sees(&String::from_utf8_lossy(buf)))
-    };
+    let matched = |buf: &[u8]| watch.is_some_and(|w| w.sees(&String::from_utf8_lossy(buf)));
     let mut reader = BufReader::new(file);
     let mut buf: Vec<u8> = Vec::new();
     loop {
@@ -5879,13 +5877,7 @@ mod tests {
         };
         // `stop` stays false throughout: only the match may end this, and the
         // test would hang rather than pass if the tail ignored it.
-        follow_console_file(
-            &path,
-            false,
-            false,
-            &AtomicBool::new(false),
-            Some(&watch),
-        );
+        follow_console_file(&path, false, false, &AtomicBool::new(false), Some(&watch));
         assert!(hit.load(Ordering::Relaxed));
         std::fs::remove_dir_all(&dir).ok();
     }

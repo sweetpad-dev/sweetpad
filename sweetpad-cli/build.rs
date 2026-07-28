@@ -28,7 +28,10 @@ fn emit_version() {
     // has to be declared or the stamp is computed once and never refreshed.
     if let Some(git_dir) = git(&["rev-parse", "--absolute-git-dir"]) {
         for path in ["HEAD", "refs", "packed-refs", "index"] {
-            println!("cargo:rerun-if-changed={}", Path::new(&git_dir).join(path).display());
+            println!(
+                "cargo:rerun-if-changed={}",
+                Path::new(&git_dir).join(path).display()
+            );
         }
     }
     println!("cargo:rustc-env=SWEETPAD_VERSION={}", stamp(&version));
@@ -49,7 +52,16 @@ fn stamp(version: &str) -> String {
         return version.to_string();
     };
     let tag = format!("cli-v{version}");
-    if git(&["describe", "--tags", "--exact-match", "--match", &tag, "HEAD"]).is_some() {
+    if git(&[
+        "describe",
+        "--tags",
+        "--exact-match",
+        "--match",
+        &tag,
+        "HEAD",
+    ])
+    .is_some()
+    {
         return version.to_string();
     }
     format!("{version}-dev+{sha}")
