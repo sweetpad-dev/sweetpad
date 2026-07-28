@@ -11,6 +11,13 @@
 //! stdout is a TTY, commands may drop to an interactive picker; in non-TTY/CI
 //! contexts that's a hard error instead. The picker itself lands with the
 //! first command that needs it — this module wires the precedence.
+//!
+//! The *container* resolves on its own ladder, since the layers below it are
+//! keyed by the container and so can't help find it:
+//!
+//! ```text
+//! --workspace/--project  >  sweetpad.toml workspace/project  >  auto-discovery
+//! ```
 
 use std::path::{Path, PathBuf};
 
@@ -70,11 +77,12 @@ fn absolutize(path: &Path) -> PathBuf {
     out
 }
 
-/// Resolve the project container from explicit flags, else by auto-discovery in
-/// the current directory (warning when same-kind siblings make the pick
-/// ambiguous). An explicitly flagged path must exist: passing it through would
-/// mint state entries for typos (silently pruned or kept as garbage) and die
-/// later inside xcodebuild with a worse message.
+/// Resolve the project container from explicit flags, else from a committed
+/// `sweetpad.toml` that names one, else by auto-discovery in the current
+/// directory (warning when same-kind siblings make the pick ambiguous). An
+/// explicitly flagged path must exist: passing it through would mint state
+/// entries for typos (silently pruned or kept as garbage) and die later inside
+/// xcodebuild with a worse message.
 pub fn container(ctx: &Context) -> Result<Container, CliError> {
     let must_exist = |path: &Path, flag: &str| -> Result<(), CliError> {
         if path.exists() {
@@ -94,24 +102,55 @@ pub fn container(ctx: &Context) -> Result<Container, CliError> {
         must_exist(proj, "--project")?;
         return Ok(Container::Project(proj.clone()));
     }
+    if let Some(declared) = declared_container(ctx) {
+        if !declared.path().exists() {
+            return Err(declared_missing(ctx, &declared));
+        }
+        return Ok(declared);
+    }
     let cwd =
         std::env::current_dir().map_err(|e| CliError::new(format!("cannot read cwd: {e}")))?;
-    let found = discover_walk_up(&cwd);
+    let (found, repo_root) = discover_walk_up(&cwd);
     if let Some(ambiguous) = found.ambiguity() {
         ctx.out.warn(&ambiguous);
     }
-    found.best().ok_or_else(|| {
-        CliError::new(
-            "no .xcworkspace, .xcodeproj, or Package.swift found in the current \
-             directory or its ancestors (pass --workspace/--project)",
-        )
-        .kind(ErrorKind::TargetResolution)
-    })
+    if let Some(container) = found.best() {
+        return Ok(container);
+    }
+    let (hits, base) = scan_below(&cwd, repo_root.as_deref());
+    let [hit] = hits.as_slice() else {
+        return Err(if hits.is_empty() {
+            nothing_found()
+        } else {
+            ambiguous_below(&hits, &base, &cwd)
+        });
+    };
+    if let Some(ambiguous) = hit.ambiguity() {
+        ctx.out.warn(&ambiguous);
+    }
+    let container = hit.best().ok_or_else(nothing_found)?;
+    // The user didn't point at this project, so say which one answered —
+    // building something unnamed without a word is how the wrong app ships.
+    let where_ = if base == cwd {
+        "below the current directory".to_string()
+    } else {
+        format!("in {}", relative_to(&base, &cwd))
+    };
+    ctx.out.note(&format!(
+        "using {} (found {where_})",
+        relative_to(container.path(), &base)
+    ));
+    Ok(container)
 }
 
 /// The container the bare-`sweetpad` gate probes — the same resolution as
 /// [`container`], minus the ambiguity warning: the status view resolves again
 /// immediately after and warns exactly once.
+///
+/// Several projects below the working directory read as "no container" here,
+/// so a bare `sweetpad` shows the help wall rather than choosing one. The
+/// probe has nowhere to put a question, and `sweetpad status` reports the
+/// ambiguity properly a keystroke later.
 #[must_use]
 pub fn container_silently(ctx: &Context) -> Option<Container> {
     if let Some(ws) = &ctx.targeting.workspace {
@@ -120,8 +159,53 @@ pub fn container_silently(ctx: &Context) -> Option<Container> {
     if let Some(proj) = &ctx.targeting.project {
         return Some(Container::Project(proj.clone()));
     }
+    // A declared container rides through even when the path is missing, so the
+    // status view reports what the file promised instead of the help wall.
+    if let Some(declared) = declared_container(ctx) {
+        return Some(declared);
+    }
     let cwd = std::env::current_dir().ok()?;
-    discover_walk_up(&cwd).best()
+    let (found, repo_root) = discover_walk_up(&cwd);
+    if let Some(container) = found.best() {
+        return Some(container);
+    }
+    match scan_below(&cwd, repo_root.as_deref()).0.as_slice() {
+        [hit] => hit.best(),
+        _ => None,
+    }
+}
+
+/// The container named by the nearest committed `sweetpad.toml`, if it names
+/// one. Sits between the flag layer and auto-discovery: a typed
+/// `--workspace`/`--project` still redirects the whole command elsewhere.
+fn declared_container(ctx: &Context) -> Option<Container> {
+    ctx.root_file()
+        .and_then(crate::cli::config::RootFile::declared)
+}
+
+/// The error for a `sweetpad.toml` naming a container that isn't there. A
+/// generated project is the common cause, and the file's own `generator` key
+/// says which tool to run — a far better answer than "nothing found here".
+fn declared_missing(ctx: &Context, declared: &Container) -> CliError {
+    let key = match declared {
+        Container::Workspace(_) => "workspace",
+        _ => "project",
+    };
+    let hint = match ctx
+        .root_file()
+        .and_then(|r| r.file.generator.as_deref())
+        .map(str::trim)
+    {
+        Some("xcodegen") => " — run 'xcodegen generate' to generate it".to_string(),
+        Some("tuist") => " — run 'tuist generate' to generate it".to_string(),
+        Some(tool) if !tool.is_empty() => format!(" — generated by {tool}; run it first"),
+        _ => String::new(),
+    };
+    CliError::new(format!(
+        "sweetpad.toml declares {key} {}, which does not exist{hint}",
+        declared.path().display()
+    ))
+    .kind(ErrorKind::TargetResolution)
 }
 
 /// Walk from `start` up toward the root, returning the first directory whose
@@ -129,16 +213,25 @@ pub fn container_silently(ctx: &Context) -> Option<Container> {
 /// `Sources/Feature/` like git/cargo/npm would. The walk stops at the git root
 /// (a repository above this one must not donate its project) and at the
 /// filesystem root.
-fn discover_walk_up(start: &Path) -> Discovery {
+///
+/// The second value is the repository root the walk stopped at, which the
+/// downward scan needs as its widest search boundary. It is `None` when the
+/// walk ended without meeting a `.git` — scanning down from the filesystem
+/// root is never something to do — and when a container turned up first, since
+/// then the walk stopped before learning where the repository begins.
+fn discover_walk_up(start: &Path) -> (Discovery, Option<PathBuf>) {
     let mut dir = start.to_path_buf();
     loop {
         let found = discover_all(&dir);
-        if found.best().is_some() || dir.join(".git").exists() {
-            return found;
+        if found.best().is_some() {
+            return (found, None);
+        }
+        if dir.join(".git").exists() {
+            return (found, Some(dir));
         }
         match dir.parent() {
             Some(parent) => dir = parent.to_path_buf(),
-            None => return found,
+            None => return (found, None),
         }
     }
 }
@@ -217,6 +310,146 @@ fn discover_all(dir: &Path) -> Discovery {
     found.workspaces.sort();
     found.projects.sort();
     found
+}
+
+/// How far below a directory the downward scan looks. One level reaches the
+/// layouts that motivate it at all (`ios/App.xcodeproj`,
+/// `Sources/App.xcodeproj`), two reaches `apps/ios/App.xcodeproj`; past that
+/// the cost and the odds of picking the wrong project both climb, and naming
+/// the container in `sweetpad.toml` is the better answer.
+const MAX_SCAN_DEPTH: usize = 2;
+
+/// Build output and vendored dependency trees, which hold projects that are
+/// never the one meant — `Pods/Pods.xcodeproj` above all.
+const VENDORED_DIRS: [&str; 6] = [
+    "node_modules",
+    "Pods",
+    "Carthage",
+    "vendor",
+    "DerivedData",
+    "build",
+];
+
+/// Directories the scan never enters: [vendored trees](VENDORED_DIRS), dotted
+/// directories, and bundles — which are directories on macOS and so would
+/// otherwise be walked like ordinary ones.
+fn skip_dir(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return true;
+    };
+    if name.starts_with('.') {
+        return true;
+    }
+    VENDORED_DIRS.contains(&name)
+        || matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("xcodeproj" | "xcworkspace" | "app" | "framework" | "bundle" | "playground")
+        )
+}
+
+/// Search below `root`, breadth-first, returning one [`Discovery`] per
+/// directory at the shallowest level that holds anything — a project one level
+/// down beats three of them two levels down, the same "nearest wins" the
+/// upward walk applies. More than one entry means directories tied at that
+/// depth, which is the ambiguity no policy should silently resolve.
+///
+/// Symlinks are skipped for free: [`std::fs::DirEntry::file_type`] doesn't
+/// follow them, so a link to a directory never reports `is_dir`, and the scan
+/// can't cycle or escape the tree it was pointed at.
+fn scan_down(root: &Path) -> Vec<Discovery> {
+    let mut frontier = vec![root.to_path_buf()];
+    for _ in 0..MAX_SCAN_DEPTH {
+        let mut hits = Vec::new();
+        let mut next = Vec::new();
+        for parent in &frontier {
+            let Ok(entries) = std::fs::read_dir(parent) else {
+                continue;
+            };
+            let mut dirs: Vec<PathBuf> = entries
+                .flatten()
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                .map(|e| e.path())
+                .filter(|p| !skip_dir(p))
+                .collect();
+            // Sorted so a same-depth tie resolves the same way on every
+            // machine, `read_dir` order being arbitrary.
+            dirs.sort();
+            for dir in dirs {
+                let found = discover_all(&dir);
+                if found.best().is_some() {
+                    hits.push(found);
+                } else {
+                    next.push(dir);
+                }
+            }
+        }
+        if !hits.is_empty() {
+            return hits;
+        }
+        frontier = next;
+    }
+    Vec::new()
+}
+
+/// Look below the working directory, then below the repository root — nearest
+/// first, so standing next to one project doesn't surface every project in the
+/// repository. The second sweep is what makes a command work from a sibling
+/// directory (`App/Scripts/`) rather than only from the root above the
+/// container.
+/// Returns the hits alongside the directory they were found under, which the
+/// caller needs to describe them: paths read relative to that base, and the
+/// wording differs between "below where you are" and "elsewhere in the repo".
+fn scan_below(cwd: &Path, repo_root: Option<&Path>) -> (Vec<Discovery>, PathBuf) {
+    let hits = scan_down(cwd);
+    if !hits.is_empty() {
+        return (hits, cwd.to_path_buf());
+    }
+    match repo_root {
+        Some(root) if root != cwd => (scan_down(root), root.to_path_buf()),
+        _ => (Vec::new(), cwd.to_path_buf()),
+    }
+}
+
+/// The error when nothing was found anywhere — the plain "no project here".
+fn nothing_found() -> CliError {
+    CliError::new(
+        "no .xcworkspace, .xcodeproj, or Package.swift found in the current \
+         directory, its ancestors, or below it (pass --workspace/--project)",
+    )
+    .kind(ErrorKind::TargetResolution)
+}
+
+/// The error when the scan found projects in several directories at the same
+/// depth. Unlike same-kind siblings in the working directory, there's no
+/// standing-here signal to justify a policy pick, so this lists what it found
+/// and names both ways to settle it.
+fn ambiguous_below(hits: &[Discovery], base: &Path, cwd: &Path) -> CliError {
+    let mut candidates: Vec<String> = hits
+        .iter()
+        .filter_map(Discovery::best)
+        .map(|c| relative_to(c.path(), base))
+        .collect();
+    candidates.sort();
+    let where_ = if base == cwd {
+        "below the current directory".to_string()
+    } else {
+        format!("in {}", relative_to(base, cwd))
+    };
+    CliError::new(format!(
+        "several projects {where_} ({}) — pass --workspace/--project, or name \
+         one in sweetpad.toml with 'project = \"…\"'",
+        candidates.join(", ")
+    ))
+    .kind(ErrorKind::TargetResolution)
+}
+
+/// A path written relative to `base` when it sits under it, else in full — the
+/// short form for the common case without ever printing something misleading.
+fn relative_to(path: &Path, base: &Path) -> String {
+    path.strip_prefix(base)
+        .unwrap_or(path)
+        .display()
+        .to_string()
 }
 
 /// The fully resolved targeting for a command, after layering.
@@ -1613,6 +1846,7 @@ mod tests {
             state: State::default(),
             out,
             project_toml: std::cell::OnceCell::new(),
+            root_toml: std::cell::OnceCell::new(),
         }
     }
 
@@ -1670,6 +1904,158 @@ mod tests {
         let dir = temp_dir("empty");
         assert!(discover(&dir).is_none());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The single container a scan settled on, or `None` when it found nothing
+    /// or couldn't choose.
+    fn scanned(root: &std::path::Path) -> Option<Container> {
+        match scan_down(root).as_slice() {
+            [hit] => hit.best(),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn scan_down_finds_a_project_below_the_search_root() {
+        let root = temp_dir("below");
+        std::fs::create_dir_all(root.join("Scripts")).unwrap();
+        std::fs::create_dir_all(root.join("Sources/App.xcodeproj")).unwrap();
+
+        assert_eq!(
+            scanned(&root).map(|c| c.path().to_path_buf()),
+            Some(root.join("Sources/App.xcodeproj"))
+        );
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn scan_down_stops_at_the_shallowest_level_that_has_anything() {
+        let root = temp_dir("shallow");
+        std::fs::create_dir_all(root.join("ios/App.xcodeproj")).unwrap();
+        // Two candidates a level deeper would be ambiguous on their own; the
+        // nearer one settles it before they are ever considered.
+        std::fs::create_dir_all(root.join("nested/one/One.xcodeproj")).unwrap();
+        std::fs::create_dir_all(root.join("nested/two/Two.xcodeproj")).unwrap();
+
+        assert_eq!(
+            scanned(&root).map(|c| c.path().to_path_buf()),
+            Some(root.join("ios/App.xcodeproj"))
+        );
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn scan_down_prefers_a_workspace_within_one_directory() {
+        let root = temp_dir("wsdir");
+        std::fs::create_dir_all(root.join("ios/App.xcodeproj")).unwrap();
+        std::fs::create_dir_all(root.join("ios/App.xcworkspace")).unwrap();
+
+        // The CocoaPods/React Native layout: one directory, both kinds, and no
+        // ambiguity to report — the workspace wins as it does anywhere else.
+        assert!(matches!(scanned(&root), Some(Container::Workspace(_))));
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn scan_down_refuses_to_choose_between_directories_at_one_depth() {
+        let root = temp_dir("tied");
+        std::fs::create_dir_all(root.join("ios/Runner.xcodeproj")).unwrap();
+        std::fs::create_dir_all(root.join("macos/Runner.xcodeproj")).unwrap();
+
+        assert_eq!(scan_down(&root).len(), 2);
+        assert!(scanned(&root).is_none());
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn scan_down_skips_vendored_and_hidden_directories() {
+        let root = temp_dir("vendored");
+        for junk in [
+            "Pods/Pods.xcodeproj",
+            "node_modules/pkg/Pkg.xcodeproj",
+            "build/Stale.xcodeproj",
+            ".hidden/Hidden.xcodeproj",
+            "Carthage/Checkouts/Dep.xcodeproj",
+        ] {
+            std::fs::create_dir_all(root.join(junk)).unwrap();
+        }
+        assert!(scanned(&root).is_none());
+
+        // The real project is found through the same noise.
+        std::fs::create_dir_all(root.join("Sources/App.xcodeproj")).unwrap();
+        assert_eq!(
+            scanned(&root).map(|c| c.path().to_path_buf()),
+            Some(root.join("Sources/App.xcodeproj"))
+        );
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn scan_down_does_not_reach_past_its_depth_limit() {
+        let root = temp_dir("deep");
+        std::fs::create_dir_all(root.join("a/b/c/Deep.xcodeproj")).unwrap();
+        assert!(scanned(&root).is_none());
+
+        // One level shallower is within reach.
+        std::fs::create_dir_all(root.join("x/y/Reachable.xcodeproj")).unwrap();
+        assert_eq!(
+            scanned(&root).map(|c| c.path().to_path_buf()),
+            Some(root.join("x/y/Reachable.xcodeproj"))
+        );
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn scan_below_widens_to_the_repository_root() {
+        let root = temp_dir("widen");
+        std::fs::create_dir_all(root.join("Scripts")).unwrap();
+        std::fs::create_dir_all(root.join("Sources/App.xcodeproj")).unwrap();
+
+        // Nothing below the sibling directory the command ran from, so the
+        // sweep widens to the repository root and finds the project there.
+        let from = root.join("Scripts");
+        assert!(scan_down(&from).is_empty());
+        let (hits, base) = scan_below(&from, Some(&root));
+        assert_eq!(
+            hits.first()
+                .and_then(Discovery::best)
+                .map(|c| c.path().to_path_buf()),
+            Some(root.join("Sources/App.xcodeproj"))
+        );
+        // The base rides back so the caller can say where it looked.
+        assert_eq!(base, root);
+
+        // Without a repository root there is nothing to widen to — scanning
+        // down from the filesystem root is never the answer.
+        assert!(scan_below(&from, None).0.is_empty());
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn walk_up_reports_the_repository_root_it_stopped_at() {
+        let root = temp_dir("repo");
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::create_dir_all(root.join("Scripts")).unwrap();
+
+        let (found, repo_root) = discover_walk_up(&root.join("Scripts"));
+        assert!(found.best().is_none());
+        assert_eq!(repo_root.as_deref(), Some(root.as_path()));
+
+        // A container found on the way up ends the walk before the repository
+        // root is known, and none is reported.
+        std::fs::create_dir_all(root.join("Scripts/App.xcodeproj")).unwrap();
+        let (found, repo_root) = discover_walk_up(&root.join("Scripts"));
+        assert!(found.best().is_some());
+        assert!(repo_root.is_none());
+
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

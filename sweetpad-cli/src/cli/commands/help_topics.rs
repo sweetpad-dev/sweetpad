@@ -46,10 +46,29 @@ Resolution precedence, highest first:
   explicit flag > env var > config file > sweetpad.toml > remembered state
   > auto-discovery
 
-A committed 'sweetpad.toml' next to the project is the team-shared defaults
-layer (scheme/configuration/destination/sdk, 'developer_dir', '[run]',
-'[format]', '[testing]') — personal config beats it, remembered picks yield
-to it. Remembered state lives separately in
+A committed 'sweetpad.toml' is the team-shared defaults layer
+(scheme/configuration/destination/sdk, 'developer_dir', '[run]', '[format]',
+'[testing]') — personal config beats it, remembered picks yield to it. It is
+found by walking up from the working directory to the git root, so one file
+serves the whole checkout.
+
+When the project is not a sibling of that file, name it with 'workspace' or
+'project', relative to the file itself:
+
+  # App/sweetpad.toml
+  project = \"Sources/App.xcodeproj\"
+
+Every command then works from anywhere in the checkout, with no '-C'. The
+container resolves as: --workspace/--project > this key > auto-discovery.
+
+Auto-discovery searches upward to the git root, then up to two levels down
+(skipping Pods, node_modules, Carthage, vendor, DerivedData, build and
+dotfiles), so nested layouts like 'ios/App.xcodeproj' need no setup at all.
+Projects tied at the same depth — say 'ios/' and 'macos/' — are reported as an
+error listing each one, rather than picked for you; name the one you want with
+--project or the 'project' key above.
+
+Remembered state lives separately in
 ~/.local/state/sweetpad/state.toml (machine-managed — inspect and edit it
 with 'sweetpad context', not by hand).",
     },

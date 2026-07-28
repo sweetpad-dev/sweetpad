@@ -8,7 +8,7 @@
 //! Honors `XDG_CONFIG_HOME`, falling back to `~/.config`.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -257,6 +257,14 @@ pub(crate) fn edit_distance(a: &str, b: &str) -> usize {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct ProjectFile {
+    /// Names the `.xcworkspace` this file belongs to, relative to the file's
+    /// own directory — so a `sweetpad.toml` at the repo root can point at a
+    /// container nested below it and every command works from anywhere in the
+    /// tree. Wins over `project` when both are set.
+    pub workspace: Option<String>,
+    /// Names the `.xcodeproj`, relative to the file's own directory. See
+    /// [`workspace`](Self::workspace).
+    pub project: Option<String>,
     pub scheme: Option<String>,
     pub configuration: Option<String>,
     pub destination: Option<String>,
@@ -336,8 +344,90 @@ impl ProjectFile {
     }
 }
 
+/// A `sweetpad.toml` located by walking up from the working directory, paired
+/// with the directory holding it.
+///
+/// The walk is what lets one file serve a whole checkout: the file may sit
+/// beside the container (the common case) or above it at the repo root, where
+/// its [`workspace`](ProjectFile::workspace)/[`project`](ProjectFile::project)
+/// key names a container nested below. Paths in the file resolve against
+/// [`dir`](Self::dir) rather than the cwd, so the same file works from every
+/// directory in the tree and needs no absolute paths.
+#[derive(Debug)]
+pub struct RootFile {
+    /// The directory holding the file — the base for its relative paths.
+    pub dir: PathBuf,
+    pub file: ProjectFile,
+}
+
+impl RootFile {
+    /// The nearest `sweetpad.toml` at or above `start`. The walk stops at the
+    /// git root, the same boundary container discovery honors, so a checkout
+    /// above this one never donates its defaults; it also stops at the
+    /// filesystem root. Returns the file's lint warnings for the caller to
+    /// surface once.
+    #[must_use]
+    pub fn find_upward(start: &Path) -> Option<(Self, Vec<String>)> {
+        let mut dir = start.to_path_buf();
+        loop {
+            if dir.join("sweetpad.toml").exists() {
+                let (file, warnings) = ProjectFile::load_for(&dir);
+                return Some((Self { dir, file }, warnings));
+            }
+            if dir.join(".git").exists() {
+                return None;
+            }
+            dir = dir.parent()?.to_path_buf();
+        }
+    }
+
+    /// The container this file names, resolved against [`dir`](Self::dir).
+    /// `workspace` wins when both keys are set (matching `--workspace` beating
+    /// `--project`, and auto-discovery preferring a workspace). The path is
+    /// returned unchecked — a declared container that doesn't exist is an
+    /// error the resolver reports, not a reason to fall back to discovery and
+    /// build something else.
+    #[must_use]
+    pub fn declared(&self) -> Option<crate::cli::resolve::Container> {
+        use crate::cli::resolve::Container;
+        if let Some(ws) = &self.file.workspace {
+            return Some(Container::Workspace(self.dir.join(ws)));
+        }
+        self.file
+            .project
+            .as_ref()
+            .map(|p| Container::Project(self.dir.join(p)))
+    }
+
+    /// Whether this file is `container`'s project file.
+    ///
+    /// Naming a container is a statement of identity: a file with a
+    /// `workspace`/`project` key covers that container and no other, so a
+    /// `--project` pointing somewhere else doesn't inherit a scheme meant for
+    /// the declared one — even when the two sit side by side. Without a
+    /// declaration the file covers the container beside it, which is both the
+    /// long-standing layout and what keeps that file from being read and
+    /// linted a second time.
+    #[must_use]
+    pub fn covers(&self, container: &crate::cli::resolve::Container) -> bool {
+        let same = |a: &Path, b: &Path| match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        };
+        if let Some(declared) = self.declared() {
+            return same(declared.path(), container.path());
+        }
+        container
+            .path()
+            .parent()
+            .is_some_and(|parent| same(parent, &self.dir))
+    }
+}
+
 /// The keys a `sweetpad.toml` accepts at the top level.
-const PROJECT_FILE_KEYS: [&str; 9] = [
+const PROJECT_FILE_KEYS: [&str; 11] = [
+    "workspace",
+    "project",
     "scheme",
     "configuration",
     "destination",
@@ -352,8 +442,27 @@ const PROJECT_FILE_KEYS: [&str; 9] = [
 /// Report every `sweetpad.toml` key serde would silently drop.
 fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
     let Some(top) = raw.as_table() else { return };
+    if top.contains_key("workspace") && top.contains_key("project") {
+        warnings.push(
+            "sweetpad.toml: `workspace` and `project` are both set; using `workspace`".to_string(),
+        );
+    }
     for (key, value) in top {
         match key.as_str() {
+            // A committed file that names its container with an absolute path
+            // resolves to nothing on every other machine — the one mistake
+            // that makes the file worse than no file at all.
+            "workspace" | "project" => {
+                if value
+                    .as_str()
+                    .is_some_and(|s| std::path::Path::new(s).is_absolute())
+                {
+                    warnings.push(format!(
+                        "sweetpad.toml: `{key}` is an absolute path, which won't resolve for \
+                         anyone else with this repo — make it relative to sweetpad.toml"
+                    ));
+                }
+            }
             "testing" => {
                 if let Some(t) = value.as_table() {
                     for tkey in t.keys() {
@@ -557,5 +666,133 @@ mod tests {
         assert_eq!(d.testing.scheme.as_deref(), Some("AppTests"));
         // A testing field left unset stays None (test resolution falls back to build).
         assert_eq!(d.testing.destination, None);
+    }
+
+    /// A scratch directory laid out like the reported case: a git root holding
+    /// the file, a sibling directory to run from, and the project one level
+    /// down.
+    fn nested_repo(tag: &str) -> PathBuf {
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("sweetpad-rootfile-{tag}-{n}"));
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::create_dir_all(root.join("Scripts")).unwrap();
+        std::fs::create_dir_all(root.join("Sources/App.xcodeproj")).unwrap();
+        root
+    }
+
+    #[test]
+    fn find_upward_reaches_the_file_from_a_nested_directory() {
+        let root = nested_repo("nested");
+        std::fs::write(
+            root.join("sweetpad.toml"),
+            "project = \"Sources/App.xcodeproj\"",
+        )
+        .unwrap();
+
+        // Found from the root itself and from a sibling directory below it.
+        for start in [root.clone(), root.join("Scripts")] {
+            let (found, warnings) = RootFile::find_upward(&start).expect("file found");
+            assert!(warnings.is_empty(), "{warnings:?}");
+            assert_eq!(found.dir, root);
+            // Relative to the file, not to the directory the walk started in.
+            let declared = found.declared().expect("declares a project");
+            assert_eq!(declared.path(), root.join("Sources/App.xcodeproj"));
+        }
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn find_upward_stops_at_the_git_root() {
+        let outer = nested_repo("outer");
+        // A file above the repository must not donate its defaults.
+        let above = outer.parent().unwrap().join(format!(
+            "{}-above",
+            outer.file_name().unwrap().to_string_lossy()
+        ));
+        std::fs::create_dir_all(&above).unwrap();
+        std::fs::write(above.join("sweetpad.toml"), "scheme = \"Stray\"").unwrap();
+
+        assert!(RootFile::find_upward(&outer.join("Scripts")).is_none());
+
+        std::fs::remove_dir_all(&outer).unwrap();
+        std::fs::remove_dir_all(&above).unwrap();
+    }
+
+    #[test]
+    fn declared_prefers_workspace_and_absolute_paths_pass_through() {
+        let root = nested_repo("both");
+        std::fs::write(
+            root.join("sweetpad.toml"),
+            "workspace = \"Sources/App.xcworkspace\"\nproject = \"Sources/App.xcodeproj\"\n",
+        )
+        .unwrap();
+
+        let (found, warnings) = RootFile::find_upward(&root).unwrap();
+        assert!(
+            warnings.iter().any(|w| w.contains("both set")),
+            "{warnings:?}"
+        );
+        assert!(matches!(
+            found.declared(),
+            Some(crate::cli::resolve::Container::Workspace(_))
+        ));
+
+        // An absolute value warns but still resolves, `join` yielding the value.
+        std::fs::write(
+            root.join("sweetpad.toml"),
+            "project = \"/abs/Other.xcodeproj\"",
+        )
+        .unwrap();
+        let (found, warnings) = RootFile::find_upward(&root).unwrap();
+        assert!(
+            warnings.iter().any(|w| w.contains("absolute path")),
+            "{warnings:?}"
+        );
+        assert_eq!(
+            found.declared().unwrap().path(),
+            Path::new("/abs/Other.xcodeproj")
+        );
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn covers_the_container_it_names_and_its_own_siblings() {
+        let root = nested_repo("covers");
+        std::fs::write(
+            root.join("sweetpad.toml"),
+            "project = \"Sources/App.xcodeproj\"",
+        )
+        .unwrap();
+        let (found, _) = RootFile::find_upward(&root).unwrap();
+
+        // The named container, reached by a different spelling of the path.
+        let spelled = root.join("Scripts/../Sources/App.xcodeproj");
+        assert!(found.covers(&crate::cli::resolve::Container::Project(spelled)));
+
+        // An unrelated container in the same checkout is not this file's —
+        // including one sitting right beside the file, since naming a
+        // container rules out every other.
+        std::fs::create_dir_all(root.join("Other/Other.xcodeproj")).unwrap();
+        std::fs::create_dir_all(root.join("Beside.xcodeproj")).unwrap();
+        assert!(!found.covers(&crate::cli::resolve::Container::Project(
+            root.join("Other/Other.xcodeproj")
+        )));
+        assert!(!found.covers(&crate::cli::resolve::Container::Project(
+            root.join("Beside.xcodeproj")
+        )));
+
+        // A sibling of the file is covered once nothing is declared.
+        std::fs::write(root.join("sweetpad.toml"), "scheme = \"App\"").unwrap();
+        let (plain, _) = RootFile::find_upward(&root).unwrap();
+        assert!(plain.covers(&crate::cli::resolve::Container::Project(
+            root.join("Beside.xcodeproj")
+        )));
+
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }
