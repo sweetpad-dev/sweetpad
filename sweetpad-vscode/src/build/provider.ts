@@ -256,6 +256,7 @@ class ActionDispatcher {
         watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+        debug: options.debug,
       });
     } else {
       assertUnreachable(destination);
@@ -406,6 +407,7 @@ class ActionDispatcher {
         watchMarker: true,
         launchArgs: launchArgs,
         launchEnv: launchEnv,
+        debug: options.debug,
       });
     } else {
       assertUnreachable(destination);

@@ -2,6 +2,22 @@ import type * as vscode from "vscode";
 
 import type { DestinationType, SelectedDestination } from "../destination/types";
 
+/**
+ * Coordinates of a debugserver that ios-deploy left listening on localhost, written by the
+ * launch path for devices without CoreDevice (iOS 16 and below). Its presence is what tells
+ * the debug configuration provider to connect over gdb-remote instead of looking the process
+ * up through devicectl.
+ */
+export type IosDeployDebugserverContext = {
+  port: number; // Example: 12345 — localhost port ios-deploy relays to the device
+  deviceAppPath: string; // Example: "/private/var/containers/Bundle/Application/<uuid>/MyApp.app"
+  symbolsPath?: string; // Example: "~/Library/Developer/Xcode/iOS DeviceSupport/iPad5,1 15.6.1 (19G82)/Symbols"
+  // LLDB launches the process on this route, so args and env reach the app through
+  // "process launch" and "target.env-vars" rather than through the launch tool.
+  launchArgs?: string[];
+  launchEnv?: Record<string, string>;
+};
+
 export type LastLaunchedAppDeviceContext = {
   type: "device";
   appPath: string; // Example: "/Users/username/Library/Developer/Xcode/DerivedData/MyApp-..."
@@ -10,6 +26,7 @@ export type LastLaunchedAppDeviceContext = {
   bundleIdentifier: string; // Example: "com.example.MyApp"
   destinationId: string; // Example: "00008030-001A0A3E0A68002E"
   destinationType: DestinationType; // Example: "iOS"
+  debugserver?: IosDeployDebugserverContext;
 };
 
 export type LastLaunchedAppSimulatorContext = {

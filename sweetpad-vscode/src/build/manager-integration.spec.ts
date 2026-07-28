@@ -50,6 +50,7 @@ vi.mock("../common/files", () => ({
 vi.mock("../common/xcode/ios-deploy", () => ({
   installAndLaunchApp: vi.fn(),
   isIosDeployInstalled: vi.fn(),
+  launchDebugserver: vi.fn(),
 }));
 
 vi.mock("../devices/manager", () => ({
@@ -62,17 +63,19 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
   let buildManager: BuildManager;
   let mockTerminal: ReturnType<typeof createMockTerminal>;
   let mockVscodeContext: vscode.ExtensionContext;
+  let mockWorkspace: WorkspaceStateService;
+  let mockTunnel: TunnelManager;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    const mockWorkspace = {
+    mockWorkspace = {
       get: vi.fn().mockReturnValue(undefined),
       update: vi.fn(),
       reset: vi.fn(),
     } as unknown as WorkspaceStateService;
     const mockProgress = { updateText: vi.fn() } as unknown as ProgressStatusBar;
     const execution = new ExecutionScopeService();
-    const mockTunnel = { autoConnect: vi.fn().mockResolvedValue(undefined) } as unknown as TunnelManager;
+    mockTunnel = { autoConnect: vi.fn().mockResolvedValue(undefined) } as unknown as TunnelManager;
     mockVscodeContext = {
       storageUri: { fsPath: "/tmp/sweetpad-test" },
       extensionPath: "/tmp/sweetpad-ext",
@@ -128,6 +131,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       watchMarker: false,
       launchArgs: [],
       launchEnv: {},
+      debug: false,
     };
 
     beforeEach(() => {
@@ -282,6 +286,18 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         });
       });
 
+      it("streams os_log output the ios-deploy relay does not carry", async () => {
+        await buildManager.runOniOSDevice(mockTerminal, {
+          ...baseOptions,
+          destination: legacyDevice,
+        });
+
+        const syslogSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("syslog"));
+        expect(syslogSpec?.args).toEqual(expect.arrayContaining(["syslog", "live", "--process-name", "TestApp"]));
+        // ios-deploy still owns the foreground so Ctrl+C reaches it.
+        expect(iosDeploy.installAndLaunchApp).toHaveBeenCalled();
+      });
+
       it("throws error when ios-deploy is not installed", async () => {
         (iosDeploy.isIosDeployInstalled as Mock).mockResolvedValue(false);
 
@@ -291,6 +307,118 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
             destination: legacyDevice,
           }),
         ).rejects.toThrow("ios-deploy is required");
+      });
+
+      describe("when debugging", () => {
+        const debugOptions = { ...baseOptions, debug: true };
+
+        beforeEach(() => {
+          (iosDeploy.launchDebugserver as Mock).mockResolvedValue({
+            debugserver: {
+              port: 12345,
+              deviceAppPath: "/private/var/containers/Bundle/Application/ABC/TestApp.app",
+              symbolsPath: "/Users/me/Library/Developer/Xcode/iOS DeviceSupport/iPad5,1 15.6.1 (19G82)/Symbols",
+            },
+            wait: vi.fn().mockResolvedValue(undefined),
+          });
+        });
+
+        it("starts a debugserver instead of launching the app under ios-deploy's own LLDB", async () => {
+          await buildManager.runOniOSDevice(mockTerminal, {
+            ...debugOptions,
+            destination: legacyDevice,
+          });
+
+          expect(iosDeploy.launchDebugserver).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+              deviceId: legacyDevice.udid,
+              appPath: "/path/to/TestApp.app",
+            }),
+          );
+          expect(iosDeploy.installAndLaunchApp).not.toHaveBeenCalled();
+        });
+
+        it("records the debugserver coordinates for the debug configuration provider", async () => {
+          await buildManager.runOniOSDevice(mockTerminal, {
+            ...debugOptions,
+            destination: legacyDevice,
+            launchArgs: ["--arg1"],
+            launchEnv: { TEST_VAR: "test_value" },
+          });
+
+          const [key, value] = (mockWorkspace.update as Mock).mock.calls.at(-1)!;
+          expect(key).toBe("build.lastLaunchedApp");
+          expect(value).toMatchObject({
+            type: "device",
+            appPath: "/path/to/TestApp.app",
+            destinationId: legacyDevice.udid,
+            debugserver: {
+              port: 12345,
+              deviceAppPath: "/private/var/containers/Bundle/Application/ABC/TestApp.app",
+              symbolsPath: "/Users/me/Library/Developer/Xcode/iOS DeviceSupport/iPad5,1 15.6.1 (19G82)/Symbols",
+              launchArgs: ["--arg1"],
+              launchEnv: { TEST_VAR: "test_value" },
+            },
+          });
+        });
+
+        it("holds the watch marker until the debugserver is listening", async () => {
+          const writes: string[] = [];
+          (mockTerminal.write as Mock).mockImplementation((data: string) => writes.push(data));
+          (iosDeploy.launchDebugserver as Mock).mockImplementation(async () => {
+            // Nothing may signal readiness while ios-deploy is still working: the marker is
+            // what releases the pre-launch task and starts the debug session.
+            expect(writes.join("")).not.toContain("watch marker");
+            return {
+              debugserver: { port: 12345, deviceAppPath: "/private/var/.../TestApp.app" },
+              wait: vi.fn().mockResolvedValue(undefined),
+            };
+          });
+
+          await buildManager.runOniOSDevice(mockTerminal, {
+            ...debugOptions,
+            destination: legacyDevice,
+            watchMarker: true,
+          });
+
+          expect(writes.join("")).toContain("watch marker");
+        });
+
+        it("streams device logs to the terminal alongside the Debug Console", async () => {
+          await buildManager.runOniOSDevice(mockTerminal, {
+            ...debugOptions,
+            destination: legacyDevice,
+          });
+
+          // The app's own stdout/stderr go to CodeLLDB over debugserver; os_log output only
+          // reaches the terminal if the sidecar runs.
+          const syslogSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("syslog"));
+          expect(syslogSpec?.args).toEqual(expect.arrayContaining(["syslog", "live", "--process-name", "TestApp"]));
+        });
+
+        it("does not open a tunnel, which only iOS 17+ RemoteXPC needs", async () => {
+          await buildManager.runOniOSDevice(mockTerminal, {
+            ...debugOptions,
+            destination: legacyDevice,
+          });
+
+          expect(mockTunnel.autoConnect).not.toHaveBeenCalled();
+        });
+
+        it("still writes the marker up front on the devicectl route", async () => {
+          const writes: string[] = [];
+          (mockTerminal.write as Mock).mockImplementation((data: string) => writes.push(data));
+
+          await buildManager.runOniOSDevice(mockTerminal, {
+            ...debugOptions,
+            destination: new iOSDeviceDestination({ devicectl: createMockDeviceWithOS("17.0") }),
+            watchMarker: true,
+          });
+
+          expect(writes.join("")).toContain("watch marker");
+          expect(iosDeploy.launchDebugserver).not.toHaveBeenCalled();
+        });
       });
     });
 
@@ -408,6 +536,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         watchMarker: false,
         launchArgs: [],
         launchEnv: {},
+        debug: false,
       });
 
       const launchSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("launch"));
@@ -429,6 +558,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         watchMarker: false,
         launchArgs: [],
         launchEnv: {},
+        debug: false,
       });
 
       const launchSpec = mockTerminal.spawnedSpecs.find((s) => s.args?.includes("launch"));

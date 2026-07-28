@@ -3,7 +3,7 @@ import type * as vscode from "vscode";
 import { exec } from "../exec";
 import { tempFilePath } from "../files";
 import { commonLogger } from "../logger";
-import type { TaskTerminal } from "../tasks/types";
+import type { ProcessGroup, TaskTerminal } from "../tasks/types";
 
 /**
  * Install and launch app on device using ios-deploy
@@ -152,6 +152,169 @@ export async function installAndLaunchApp(
     // Always stop the tail process when ios-deploy exits (success, error, or Ctrl+C)
     stopStreaming();
   }
+}
+
+/**
+ * Coordinates ios-deploy reports once its debug phase is up, parsed out of the lines it
+ * prints on the way there.
+ */
+export type IosDeployDebugserver = {
+  port: number;
+  deviceAppPath: string;
+  symbolsPath?: string;
+};
+
+// Matched against the merged pty stream, where every line ends in "\r\n". "." excludes
+// carriage returns, so the trailing "\r" has to be consumed explicitly.
+//   "debugserver port: 12345"
+//   "App path: /private/var/containers/Bundle/Application/C82BF61B-.../MyApp.app"
+//   "Symbol Path: /Users/me/Library/Developer/Xcode/iOS DeviceSupport/iPad5,1 15.6.1 (19G82)/Symbols"
+const DEBUGSERVER_PORT_RE = /^debugserver port:[ \t]*(\d+)[ \t]*\r?$/m;
+const DEVICE_APP_PATH_RE = /^App path:[ \t]*(.+?)[ \t]*\r?$/m;
+const SYMBOLS_PATH_RE = /^Symbol Path:[ \t]*(.+?)[ \t]*\r?$/m;
+
+/**
+ * Pull the debug-phase coordinates out of whatever ios-deploy has printed so far. Fields are
+ * absent until their line shows up, so this is safe to call on a partial stream.
+ */
+export function parseDebugserverOutput(output: string): Partial<IosDeployDebugserver> {
+  const port = DEBUGSERVER_PORT_RE.exec(output)?.[1];
+  return {
+    port: port === undefined ? undefined : Number.parseInt(port, 10),
+    deviceAppPath: DEVICE_APP_PATH_RE.exec(output)?.[1],
+    symbolsPath: SYMBOLS_PATH_RE.exec(output)?.[1],
+  };
+}
+
+/**
+ * A running ios-deploy holding a debugserver open. "wait" resolves when it exits, which is
+ * what keeps the launch task alive for the length of the debug session.
+ */
+export type DebugserverSession = {
+  debugserver: IosDeployDebugserver;
+  wait(): Promise<void>;
+};
+
+/** Tail of ios-deploy's output, for error messages when it dies before the debug phase. */
+function outputTail(output: string, lines: number): string {
+  const trimmed = output.replace(/\s+$/, "").split("\n");
+  return trimmed.slice(-lines).join("\n").trim();
+}
+
+function startDebugserver(
+  group: ProcessGroup,
+  options: {
+    deviceId: string;
+    appPath: string;
+    timeoutMs: number;
+  },
+): Promise<DebugserverSession> {
+  // --nolldb puts ios-deploy in its debug phase but leaves LLDB to us: it installs the app,
+  // mounts the developer disk image, starts debugserver and prints the port. The app is not
+  // started — LLDB launches it through debugserver, so breakpoints in startup code are live
+  // before any app code runs.
+  const handle = group.spawn({
+    command: "ios-deploy",
+    args: ["--id", options.deviceId, "--bundle", options.appPath, "--nolldb", "--unbuffered"],
+    pty: true,
+    main: true,
+  });
+
+  return new Promise<DebugserverSession>((resolve, reject) => {
+    let output = "";
+    let settled = false;
+
+    const timeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      handle.kill();
+      const error = new Error(
+        `Timed out waiting for ios-deploy to start a debugserver. Last output:\n${outputTail(output, 10)}`,
+      );
+      // Reject only once the kill has landed. The process group refuses a second "main"
+      // child while the first is alive, so rejecting straight away would make the retry
+      // fail on spawn — and replace this message with that failure.
+      handle.exit.then(
+        () => reject(error),
+        () => reject(error),
+      );
+    }, options.timeoutMs);
+
+    handle.onData((chunk) => {
+      group.terminal.write(chunk);
+      if (settled) {
+        return;
+      }
+
+      output += chunk;
+      const parsed = parseDebugserverOutput(output);
+      if (parsed.port === undefined || !parsed.deviceAppPath) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      commonLogger.debug("ios-deploy debugserver ready", { ...parsed });
+      resolve({
+        debugserver: { port: parsed.port, deviceAppPath: parsed.deviceAppPath, symbolsPath: parsed.symbolsPath },
+        wait: async () => {
+          await handle.exit;
+        },
+      });
+    });
+
+    handle.exit.then((exit) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      reject(
+        new Error(
+          `ios-deploy exited with code ${exit.code} before starting a debugserver. Last output:\n${outputTail(output, 10)}`,
+        ),
+      );
+    });
+  });
+}
+
+/**
+ * Install the app and leave a debugserver listening for LLDB, for devices without CoreDevice
+ * (iOS 16 and below, where "devicectl" is unavailable).
+ *
+ * The first connection to such a device fails intermittently inside ios-deploy's own retry
+ * logic, so a failure to reach the debug phase is retried once before giving up.
+ */
+export async function launchDebugserver(
+  group: ProcessGroup,
+  options: {
+    deviceId: string;
+    appPath: string;
+    timeoutMs?: number;
+    attempts?: number;
+  },
+): Promise<DebugserverSession> {
+  const attempts = options.attempts ?? 2;
+  const timeoutMs = options.timeoutMs ?? 120_000;
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await startDebugserver(group, { deviceId: options.deviceId, appPath: options.appPath, timeoutMs });
+    } catch (error) {
+      lastError = error;
+      commonLogger.debug("ios-deploy failed to start a debugserver", { attempt, error });
+      if (attempt < attempts) {
+        group.terminal.write(`[sweetpad] ios-deploy did not reach its debug phase, retrying`, {
+          newLine: true,
+          color: "yellow",
+        });
+      }
+    }
+  }
+  throw lastError;
 }
 
 /**
