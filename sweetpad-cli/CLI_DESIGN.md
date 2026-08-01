@@ -196,8 +196,13 @@ builds it with real `xcodebuild`.
   status field — read that, not `ok`.
 - **`schema` bump policy:** additive fields never bump it; a removed or
   re-typed field bumps it. Consumers should tolerate unknown fields.
-- **Exceptions:** the live session `app run` rejects `--json` (build and
-  launch as separate steps instead); `app logs --json` emits a *stream* of raw
+- **Exceptions:** `app run` rejects `--json` only in the forms that stream —
+  the log-following session, `--hot`, and an SPM executable (whose output is
+  the program's own). `--no-logs` and `--detach` build, install, launch and
+  exit, so they carry a payload (`{built, bundleId, destination, pid,
+  detached}`); the refusal is keyed on what the invocation does, not on the
+  verb, because `--no-logs` is exactly the agent-facing form. `app logs --json`
+  emits a *stream* of raw
   `log stream` NDJSON events (one JSON object per line, no envelope; on macOS,
   captured stdout/stderr lines are `{"source":"stdout",…}`);
   `completions` ignores it. Clap usage errors (exit 2) print clap's human
@@ -214,7 +219,9 @@ builds it with real `xcodebuild`.
   surface). Non-streaming commands degenerate to just the result line.
 - Human chatter stays on stderr; child tools are run captured/quiet so their
   raw stdout never interleaves with the events.
-- **Exceptions:** `app run` rejects ndjson like it rejects `--json`;
+- **Exceptions:** `app run` rejects ndjson exactly where it rejects `--json`
+  (the streaming forms), and emits the same terminal result line for
+  `--no-logs`/`--detach`;
   `--watch` is refused under both machine modes (a rerun-forever loop has no
   terminal result); `app logs` passes through the raw `log stream` events
   (plus `{"source":"stdout",…}` lines for a macOS app's captured console).

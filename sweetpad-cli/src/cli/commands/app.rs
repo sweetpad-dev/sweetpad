@@ -621,7 +621,6 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
                     passthrough: &args.passthrough,
                 },
             )
-            .map(|()| Rendered::Streamed)
         }
         Action::Install { target, stage } => {
             ctx.targeting = target.clone().into();
@@ -908,17 +907,28 @@ fn session_hot(hot: bool, explicit: bool, target: &Target) -> bool {
     hot && (explicit || matches!(target, Target::Simulator(_)))
 }
 
-fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
-    // `app run` is a live build-and-run session that streams logs until you quit —
-    // there's no coherent one-shot JSON for it (a `--json` run would emit a silent
-    // build and then human-formatted logs). Fail fast; build and launch as separate
-    // steps if you need machine-readable output.
-    if ctx.out.is_json() || ctx.out.is_ndjson() {
-        return Err(CliError::new(
-            "`app run` streams a live session and has no machine-readable form; use \
+/// Whether machine-readable output was asked for, and this invocation streams —
+/// so there is no coherent one-shot payload to emit. `--no-logs` and `--detach`
+/// deploy and return, so they *do* have one; the session forms print logs until
+/// you quit, and a `--json` run of those would emit a silent build followed by
+/// human-formatted logs.
+fn streaming_under_machine_output(out: &Output, streams: bool) -> Option<CliError> {
+    (streams && (out.is_json() || out.is_ndjson())).then(|| {
+        CliError::new(
+            "this `app run` streams a live session and has no machine-readable form; add \
+             `--no-logs` (build, install, launch, and exit) or `--detach`, or use \
              `build start -o ndjson`, `app install`/`app launch --json`, and \
              `app logs -o ndjson` as separate steps",
-        ));
+        )
+    })
+}
+
+fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
+    // Refuse before resolving anything when the flags alone settle it: without
+    // `--no-logs`/`--detach` every path streams, whatever the target turns out
+    // to be.
+    if let Some(e) = streaming_under_machine_output(&ctx.out, !(opts.no_logs || opts.detach)) {
+        return Err(e);
     }
 
     let mut plan = plan(ctx, opts)?;
@@ -973,6 +983,15 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
         ));
     }
 
+    // The rest is settled by the resolved plan: a hot session streams by
+    // definition, and an SPM executable builds *and* runs in one `swift run`,
+    // so its output is the program's own.
+    if let Some(e) =
+        streaming_under_machine_output(&ctx.out, hot || matches!(plan.target, Target::SpmRun(_)))
+    {
+        return Err(e);
+    }
+
     print_summary(ctx, &plan);
 
     // Bring the Simulator window up so the running app is visible. Best-effort and
@@ -984,24 +1003,24 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CliResult {
 
     let result = if hot {
         // Hot reload owns its own build + launch + watch session (simulator or mac).
-        run_hot_session(ctx, &plan, opts.hot_mode, opts.hot_selfcheck)
+        run_hot_session(ctx, &plan, opts.hot_mode, opts.hot_selfcheck).map(|()| Rendered::Streamed)
     } else if matches!(plan.target, Target::SpmRun(_)) {
         // A Swift package executable builds, runs, and streams in one `swift run`;
         // there's no separate log stream to background, so it stays a one-shot.
-        deploy(ctx, &plan)
+        deploy(ctx, &plan).map(|_| Rendered::Streamed)
     } else if opts.detach {
         // --detach: deploy and return, leaving the app running.
-        deploy_detached(ctx, &plan)
+        deploy_detached(ctx, &plan).map(Rendered::data)
     } else if opts.no_logs {
         // --no-logs: deploy and return, no session.
-        deploy(ctx, &plan)
+        deploy(ctx, &plan).map(Rendered::data)
     } else if ctx.out.is_interactive() {
         // The interactive rebuild session: output streams in the background and
         // `r` rebuilds+relaunches on demand.
-        run_session(ctx, &plan)
+        run_session(ctx, &plan).map(|()| Rendered::Streamed)
     } else {
         // Non-interactive (CI/piped): one-shot launch + inline follow until Ctrl-C.
-        follow_once(ctx, &plan)
+        follow_once(ctx, &plan).map(|()| Rendered::Streamed)
     };
 
     // Record the launch only once it actually happened: an `Ok` result means the
@@ -1423,45 +1442,106 @@ fn spm_run(ctx: &Context, plan: &RunPlan, product: &str) -> CliResult {
         .context("running the package executable")
 }
 
+/// What a finite `app run` produced. `--no-logs` and `--detach` build, install,
+/// launch and exit, so unlike the session forms they have a result worth
+/// reporting: the launched bundle and — where the launcher tells us — its pid,
+/// so a caller doesn't have to scrape them out of the human notes.
+struct RunReport {
+    bundle_id: String,
+    /// The `-destination` specifier this ran on.
+    destination: String,
+    /// Present when the launcher reports one: simctl prints `<bundle>: <pid>`
+    /// and a directly spawned macOS app is our own child. `devicectl` reports
+    /// no pid we can rely on, so a device launch leaves this `null`.
+    pid: Option<u32>,
+    /// Whether the app was left running (`--detach`).
+    detached: bool,
+    /// The human line, mirroring what each launcher reported.
+    note: String,
+    /// A second human line (a macOS run's captured output path).
+    detail: Option<String>,
+}
+
+impl Render for RunReport {
+    fn human(&self, out: &Output) {
+        out.note(&self.note);
+        if let Some(detail) = &self.detail {
+            out.note(detail);
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "built": true,
+            "bundleId": self.bundle_id,
+            "destination": self.destination,
+            "pid": self.pid,
+            "detached": self.detached,
+        })
+    }
+}
+
+/// The pid `simctl launch` reports, from its `<bundle>: <pid>` line. `None`
+/// when the output doesn't parse — a missing pid is worth reporting as `null`,
+/// never worth failing a launch that already succeeded.
+fn launched_pid(output: &str) -> Option<u32> {
+    output.trim().rsplit(':').next()?.trim().parse().ok()
+}
+
 /// Build, install, and launch (no log following) — used by `--no-logs` and SPM.
 /// `--detach`: build, launch, and return with the app still running.
 ///
 /// Only macOS needs its own path — a simulator or device app already runs
 /// outside this process, so [`deploy`] leaves it alive on its own.
-fn deploy_detached(ctx: &Context, plan: &RunPlan) -> CliResult {
+fn deploy_detached(ctx: &Context, plan: &RunPlan) -> Result<RunReport, CliError> {
     if !matches!(plan.target, Target::Mac) {
-        return deploy(ctx, plan);
+        return deploy(ctx, plan).map(|r| RunReport {
+            detached: true,
+            ..r
+        });
     }
     let app = build_and_install(plan, &ctx.out)?;
     let (pid, log) = spawn_detached_mac(ctx, plan, &app)?;
-    ctx.out.note(&format!(
-        "Launched {} (pid {pid}) — detached",
-        app.bundle_id
-    ));
-    if let Some(log) = log {
-        ctx.out.note(&format!("output → {}", log.display()));
-    }
+    let detail = log.map(|log| format!("output → {}", log.display()));
     ctx.out
         .note(&format!("`sweetpad app stop` terminates {}", app.bundle_id));
-    Ok(())
+    Ok(RunReport {
+        note: format!("Launched {} (pid {pid}) — detached", app.bundle_id),
+        detail,
+        destination: plan.destination.clone(),
+        bundle_id: app.bundle_id,
+        pid: Some(pid),
+        detached: true,
+    })
 }
 
-fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
+fn deploy(ctx: &Context, plan: &RunPlan) -> Result<RunReport, CliError> {
     // SPM executables build+run in one `swift run` step, not build+install+launch.
     if let Target::SpmRun(product) = &plan.target {
-        return spm_run(ctx, plan, product);
+        spm_run(ctx, plan, product)?;
+        return Ok(RunReport {
+            note: String::new(),
+            detail: None,
+            destination: plan.destination.clone(),
+            bundle_id: product.clone(),
+            pid: None,
+            detached: false,
+        });
     }
 
     let app = build_and_install(plan, &ctx.out)?;
-    match &plan.target {
+    let (note, detail, pid) = match &plan.target {
         Target::Simulator(udid) => {
             let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
             let opts = plan.simctl_launch(&env);
             let out = ctx.out.step("Launching app", || {
                 simctl::launch_opts(udid, &app.bundle_id, &opts)
             })?;
-            ctx.out
-                .note(&format!("Launched {} → {}", app.bundle_id, out.trim()));
+            (
+                format!("Launched {} → {}", app.bundle_id, out.trim()),
+                None,
+                launched_pid(&out),
+            )
         }
         Target::Device(id) => {
             let out = ctx.out.step("Launching app on device", || {
@@ -1473,11 +1553,11 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
                     plan.launch.wait_for_debugger,
                 )
             })?;
-            ctx.out.note(&format!(
-                "Launched {} on device → {}",
-                app.bundle_id,
-                out.trim()
-            ));
+            (
+                format!("Launched {} on device → {}", app.bundle_id, out.trim()),
+                None,
+                None,
+            )
         }
         Target::Mac => {
             // One macOS launch mechanism for every non-session path: spawning
@@ -1486,16 +1566,23 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> CliResult {
             // neither of those), and it keeps `--no-logs`, `--detach` and
             // `app launch` behaving identically.
             let (pid, log) = spawn_detached_mac(ctx, plan, &app)?;
-            ctx.out
-                .note(&format!("Launched {} (pid {pid})", app.bundle_id));
-            if let Some(log) = log {
-                ctx.out.note(&format!("output → {}", log.display()));
-            }
+            (
+                format!("Launched {} (pid {pid})", app.bundle_id),
+                log.map(|log| format!("output → {}", log.display())),
+                Some(pid),
+            )
         }
         // Handled by the early return above.
-        Target::SpmRun(_) => {}
-    }
-    Ok(())
+        Target::SpmRun(_) => unreachable!("handled by the early return"),
+    };
+    Ok(RunReport {
+        note,
+        detail,
+        destination: plan.destination.clone(),
+        bundle_id: app.bundle_id,
+        pid,
+        detached: false,
+    })
 }
 
 /// Interactive rebuild session: build + launch + stream the app's output, then
@@ -5607,6 +5694,44 @@ fn destination_udid(destination: &str) -> Result<String, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pid_is_read_from_simctls_bundle_colon_pid_line() {
+        assert_eq!(launched_pid("com.example.App: 84637\n"), Some(84637));
+        // A bundle id contains dots, not colons, so the last field is the pid.
+        assert_eq!(launched_pid("com.a.b.c: 1"), Some(1));
+        // Never worth failing a launch that already succeeded.
+        assert_eq!(launched_pid(""), None);
+        assert_eq!(launched_pid("com.example.App: not-a-pid"), None);
+    }
+
+    #[test]
+    fn only_the_streaming_forms_of_app_run_refuse_machine_output() {
+        // The refusal is about what *this* invocation does, not about the verb:
+        // `--no-logs`/`--detach` build, launch and exit, so they have a payload.
+        let out = |mode| {
+            Output::new(&crate::cli::GlobalArgs {
+                chdir: None,
+                developer_dir: None,
+                output: mode,
+                json: false,
+                non_interactive: true,
+                no_color: true,
+                verbose: false,
+                quiet: false,
+                gh_annotations: false,
+            })
+        };
+        let json = out(Some(crate::cli::OutputMode::Json));
+        let ndjson = out(Some(crate::cli::OutputMode::Ndjson));
+        let human = out(None);
+
+        assert!(streaming_under_machine_output(&json, true).is_some());
+        assert!(streaming_under_machine_output(&ndjson, true).is_some());
+        assert!(streaming_under_machine_output(&json, false).is_none());
+        // Human mode streams happily — the guard is only about machine output.
+        assert!(streaming_under_machine_output(&human, true).is_none());
+    }
 
     #[test]
     fn udid_extracted_from_destination() {
