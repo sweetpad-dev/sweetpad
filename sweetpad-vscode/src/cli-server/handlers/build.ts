@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { getWorkspaceConfig } from "../../common/config";
+import { methodHint } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES, type BuildCommand, type BuildEntity, type DiagnosticEntity } from "../types";
 import type { HandlerFn, RpcContext } from "./context";
@@ -19,20 +20,34 @@ const DEBUG_VS_CODE_COMMAND: Partial<Record<BuildCommand, string>> = {
   launch: "sweetpad.debugger.debuggingLaunch",
 };
 
+/** A build prerequisite `build.start` refuses to guess at. */
+type Prerequisite = "scheme" | "destination" | "configuration";
+
+/**
+ * Where to go to supply each prerequisite. Spelled out per key because a
+ * prerequisite's name is not its method namespace — `configuration` is served
+ * by `buildConfig.*`.
+ */
+const PREREQUISITE_HINT: Record<Prerequisite, string> = {
+  scheme: methodHint("scheme.set", "--name <name>"),
+  destination: methodHint("destination.list"),
+  configuration: methodHint("buildConfig.list"),
+};
+
 function resolveBuildId(ctx: RpcContext, buildId: string | undefined): BuildEntity {
   let entity: BuildEntity | undefined;
   if (buildId) {
     entity = ctx.buildRegistry.getBuild(buildId);
     if (!entity) {
       throw new SweetpadRpcError(ERROR_CODES.BUILD_NOT_FOUND, `No build with id ${buildId}`, {
-        hint: "sweetpad vscode build.list",
+        hint: methodHint("build.list"),
       });
     }
   } else {
     entity = ctx.buildRegistry.getLatest();
     if (!entity) {
       throw new SweetpadRpcError(ERROR_CODES.NO_LAST_BUILD, "No builds have been recorded yet for this workspace.", {
-        hint: "sweetpad vscode build.start --command build",
+        hint: methodHint("build.start", "--command build"),
       });
     }
   }
@@ -59,7 +74,7 @@ export const buildStart: HandlerFn<
   // Fail fast before VS Code pops a QuickPick the agent can't answer.
   // `clean` is the only command that doesn't need a destination.
   const needsDestination = command !== "clean";
-  const missing: string[] = [];
+  const missing: Prerequisite[] = [];
   if (!ctx.buildManager.getDefaultSchemeForBuild()) missing.push("scheme");
   if (needsDestination && !ctx.destinationsManager.getSelectedXcodeDestinationForBuild()) missing.push("destination");
   const cfgFromSetting = getWorkspaceConfig("build.configuration");
@@ -69,8 +84,7 @@ export const buildStart: HandlerFn<
       ERROR_CODES.MISSING_PREREQUISITES,
       `Cannot start ${command}: missing ${missing.join(", ")}.`,
       {
-        hint:
-          missing[0] === "scheme" ? "sweetpad vscode scheme.set --name <name>" : `sweetpad vscode ${missing[0]}.list`,
+        hint: PREREQUISITE_HINT[missing[0]],
         data: { missing },
       },
     );
@@ -110,7 +124,7 @@ export const buildWait: HandlerFn<{ buildId?: string; timeoutMs?: number }, Buil
   }
   if (!ctx.buildRegistry.getBuild(targetId)) {
     throw new SweetpadRpcError(ERROR_CODES.BUILD_NOT_FOUND, `No build with id ${targetId}`, {
-      hint: "sweetpad vscode build.list",
+      hint: methodHint("build.list"),
     });
   }
   const timeoutMs = typeof params?.timeoutMs === "number" ? params.timeoutMs : undefined;

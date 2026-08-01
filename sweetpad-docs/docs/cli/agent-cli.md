@@ -129,7 +129,7 @@ Broad strokes of what's available:
 - `build.start / .stop / .wait / .status / .logs / .diagnostics / .list` — drive builds and inspect output.
 - `simulator.*` — list, boot, install, launch, screenshot Simulators.
 - `device.install / .launch / .terminate` — the same on physical devices.
-- `buildSettings.get`, `appPath.find`, `bundleId.get`, `xcodebuild.list` — resolved build info.
+- `buildSettings.get`, `appPath.find`, `bundleId.get`, `target.list` — resolved build info.
 - `workspace.*` and `workspaceState.*` — workspace detection and persistent per-workspace KV storage.
 - `vscode.executeCommand`, `vscodeSettings.*` — fall through to the VS Code command / settings API.
 - `logs.tail` — stream the extension's logs.

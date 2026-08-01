@@ -1,4 +1,5 @@
 import type { Destination } from "../../destination/types";
+import { methodHint } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES, type DestinationEntity } from "../types";
 import type { HandlerFn } from "./context";
@@ -65,7 +66,7 @@ export const destinationSet: HandlerFn<{ id?: string }, { destination: Destinati
   const match = all.find((d) => d.id === params.id);
   if (!match) {
     throw new SweetpadRpcError(ERROR_CODES.DESTINATION_NOT_FOUND, `Destination not found: ${params.id}`, {
-      hint: "sweetpad vscode destination.list",
+      hint: methodHint("destination.list"),
     });
   }
   await ctx.destinationsManager.persistDestinationForBuild(match);

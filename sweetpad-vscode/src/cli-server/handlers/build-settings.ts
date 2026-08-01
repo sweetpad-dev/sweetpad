@@ -2,6 +2,7 @@ import * as path from "node:path";
 
 import { getCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import { getBuildSettingsList, type XcodeBuildSettings } from "../../common/cli/scripts";
+import { methodHint } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES } from "../types";
 import type { HandlerFn, RpcContext } from "./context";
@@ -12,7 +13,7 @@ async function loadSettings(params: GetParams, ctx: RpcContext): Promise<XcodeBu
   const scheme = params?.scheme ?? ctx.buildManager.getDefaultSchemeForBuild();
   if (!scheme) {
     throw new SweetpadRpcError(ERROR_CODES.SCHEME_NOT_SET, "scheme is required (none persisted in workspace state)", {
-      hint: "sweetpad vscode scheme.set --name <name>",
+      hint: methodHint("scheme.set", "--name <name>"),
     });
   }
   const configuration = params?.configuration ?? ctx.buildManager.getDefaultConfigurationForBuild() ?? "Debug";

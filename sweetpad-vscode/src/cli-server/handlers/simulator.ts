@@ -1,5 +1,6 @@
 import { execa } from "execa";
 
+import { methodHint } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES } from "../types";
 import { requireString } from "./_common";
@@ -37,12 +38,12 @@ export async function findSimulator(
   const match = all.find((s) => s.udid === idOrUdid || s.id === idOrUdid);
   if (!match) {
     throw new SweetpadRpcError(ERROR_CODES.SIMULATOR_NOT_FOUND, `Simulator not found: ${idOrUdid}`, {
-      hint: "sweetpad simulator.list",
+      hint: methodHint("simulator.list"),
     });
   }
   if (options?.requireBooted && match.state !== "Booted") {
     throw new SweetpadRpcError(ERROR_CODES.SIMCTL_FAILED, `Simulator "${match.name}" is not booted.`, {
-      hint: `sweetpad simulator.start ${match.udid}`,
+      hint: methodHint("simulator.start", `--id ${match.udid}`),
     });
   }
   return match;

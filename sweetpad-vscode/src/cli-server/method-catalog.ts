@@ -5,7 +5,7 @@ export type MethodSchema = {
   returns?: string;
 };
 
-export const METHOD_CATALOG: Record<string, MethodSchema> = {
+export const METHOD_CATALOG = {
   // meta
   "meta.usage": {
     description: "List every RPC method with a one-line description.",
@@ -261,10 +261,9 @@ export const METHOD_CATALOG: Record<string, MethodSchema> = {
     },
     returns: "{ targets: { target: string; settings: Record<string, string> }[] }",
   },
-  "xcodebuild.list": {
-    description: "Raw xcodebuild -list -json output (schemes / targets / configurations).",
-    params: { xcworkspace: { type: "string" } },
-    returns: "{ output: unknown }",
+  "target.list": {
+    description: "List the Xcode targets defined in the workspace.",
+    returns: "{ targets: string[] }",
   },
   "appPath.find": {
     description: "Locate the .app bundle for a scheme/configuration/sdk on disk.",
@@ -375,6 +374,23 @@ export const METHOD_CATALOG: Record<string, MethodSchema> = {
     },
     returns: "{ count: number; entries: { time: string; level: string; message: string }[] }",
   },
-};
+} satisfies Record<string, MethodSchema>;
 
 export type MethodName = keyof typeof METHOD_CATALOG;
+
+/**
+ * Render the CLI invocation for a method, for an error's `hint`. Typing the
+ * name as {@link MethodName} keeps a hint from naming something the server
+ * can't dispatch: the name a prerequisite goes by is not always its method
+ * namespace, so an interpolated hint can send the caller to `Unhandled method`
+ * and cost them a round-trip. Flags carry the `--param value` form the generic
+ * client parses; it takes named flags only, never a positional.
+ */
+export function methodHint(method: MethodName, flags?: string): string {
+  return flags ? `sweetpad vscode ${method} ${flags}` : `sweetpad vscode ${method}`;
+}
+
+/** Look one method up by a name that arrives as a runtime string. */
+export function methodSchema(method: string): MethodSchema | undefined {
+  return (METHOD_CATALOG as Record<string, MethodSchema>)[method];
+}

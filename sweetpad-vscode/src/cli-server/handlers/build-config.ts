@@ -1,5 +1,6 @@
 import { getCurrentXcodeWorkspacePath } from "../../build/utils";
 import { getBuildConfigurations } from "../../common/cli/scripts";
+import { methodHint } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES, type ConfigurationEntity } from "../types";
 import type { HandlerFn, RpcContext } from "./context";
@@ -36,7 +37,7 @@ export const buildConfigSet: HandlerFn<{ name?: string }, { configuration: Confi
   const available = await loadConfigurations(ctx);
   if (!available.includes(params.name)) {
     throw new SweetpadRpcError(ERROR_CODES.CONFIG_NOT_FOUND, `Configuration not found: ${params.name}`, {
-      hint: "sweetpad vscode buildConfig.list",
+      hint: methodHint("buildConfig.list"),
       data: { available },
     });
   }

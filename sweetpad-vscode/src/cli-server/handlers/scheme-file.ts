@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 
 import { findFilesRecursive } from "../../common/files";
+import { methodHint } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES } from "../types";
 import { requireString } from "./_common";
@@ -32,7 +33,7 @@ export const schemeReveal: HandlerFn<
   const all = await locateSchemeFiles(ctx.workspacePath, name);
   if (all.length === 0) {
     throw new SweetpadRpcError(ERROR_CODES.SCHEME_FILE_NOT_FOUND, `No .xcscheme file found for "${name}".`, {
-      hint: "sweetpad vscode scheme.list",
+      hint: methodHint("scheme.list"),
     });
   }
   const primary = all[0];

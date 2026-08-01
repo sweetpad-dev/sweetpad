@@ -1,5 +1,6 @@
 import { getCurrentXcodeWorkspacePath } from "../../build/utils";
 import { getSchemes } from "../../common/cli/scripts";
+import { methodHint } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES, type SchemeEntity } from "../types";
 import type { HandlerFn, RpcContext } from "./context";
@@ -35,7 +36,7 @@ export const schemeSet: HandlerFn<{ name?: string }, { scheme: SchemeEntity }> =
   const names = await loadSchemeNames(ctx);
   if (!names.includes(params.name)) {
     throw new SweetpadRpcError(ERROR_CODES.SCHEME_NOT_FOUND, `Scheme not found: ${params.name}`, {
-      hint: "sweetpad vscode scheme.list",
+      hint: methodHint("scheme.list"),
       data: { available: names },
     });
   }

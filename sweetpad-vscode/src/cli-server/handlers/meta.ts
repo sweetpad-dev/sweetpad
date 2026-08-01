@@ -1,4 +1,4 @@
-import { METHOD_CATALOG, type MethodSchema } from "../method-catalog";
+import { METHOD_CATALOG, methodHint, methodSchema, type MethodSchema } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES, PROTOCOL_VERSION } from "../types";
 import type { HandlerFn } from "./context";
@@ -15,10 +15,10 @@ export const metaSchema: HandlerFn<{ method?: string }, MethodSchema | Record<st
   if (!params?.method) {
     return METHOD_CATALOG;
   }
-  const schema = METHOD_CATALOG[params.method];
+  const schema = methodSchema(params.method);
   if (!schema) {
     throw new SweetpadRpcError(ERROR_CODES.INVALID_PARAMS, `Unknown method: ${params.method}`, {
-      hint: "sweetpad vscode meta.usage",
+      hint: methodHint("meta.usage"),
     });
   }
   return schema;
