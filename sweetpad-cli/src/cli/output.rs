@@ -258,7 +258,7 @@ impl Output {
             let payload = serde_json::json!({
                 "schema": 1,
                 "ok": false,
-                "error": { "code": err.error_kind().code_str(), "message": err.to_string() },
+                "error": err.json(),
             });
             if let Ok(s) = serde_json::to_string(&payload) {
                 let _ = writeln!(std::io::stderr(), "{s}");

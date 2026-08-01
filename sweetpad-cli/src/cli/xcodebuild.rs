@@ -124,7 +124,17 @@ impl BuildPlan<'_> {
             let run = process::run_captured("xcodebuild", &args, cwd.as_deref())?;
             diagnostics = buildlog::diagnostics_from_transcript(&run.combined);
             if !run.success {
-                failure_detail = format!(":\n{}", run.tail);
+                failure_detail = match diagnostics_summary(&diagnostics) {
+                    Some(summary) => {
+                        let log =
+                            record_failure_transcript(self.container, "-build.log", &run.combined)
+                                .map_or_else(String::new, |p| {
+                                    format!("; full log: {}", p.display())
+                                });
+                        format!(": {summary}{log}")
+                    }
+                    None => format!(":\n{}", run.tail),
+                };
             }
             run.success
         } else if out.is_verbose() {
@@ -150,6 +160,7 @@ impl BuildPlan<'_> {
                 "xcodebuild exited with a non-zero status{failure_detail}"
             ))
             .kind(ErrorKind::BuildFailure)
+            .diagnostics(diagnostics)
             .context("building the project"))
         }
     }
@@ -216,6 +227,14 @@ pub struct TestPlan<'a> {
 pub struct TestRunOutcome {
     pub passed: bool,
     pub tail: Option<String>,
+    /// Diagnostics parsed from the run's output, so a run that died in its
+    /// build step reports the compile errors as data rather than as a log.
+    /// Empty in the modes that already showed them to the user (`-v`, the
+    /// beautified human stream).
+    pub diagnostics: Vec<serde_json::Value>,
+    /// The whole captured transcript (`--json` only, where nothing reached the
+    /// terminal), for [`record_failure_transcript`].
+    pub transcript: Option<String>,
 }
 
 impl TestPlan<'_> {
@@ -274,16 +293,25 @@ impl TestPlan<'_> {
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
         let cwd = working_dir(self.container);
         let outcome = if out.is_ndjson() {
-            let (ok, _stats) = buildlog::run_ndjson("xcodebuild", &args, cwd.as_deref(), out)?;
+            let (ok, stats) = buildlog::run_ndjson("xcodebuild", &args, cwd.as_deref(), out)?;
             TestRunOutcome {
                 passed: ok,
                 tail: None,
+                diagnostics: stats.diagnostics,
+                transcript: None,
             }
         } else if out.is_json() {
             let run = process::run_captured("xcodebuild", &args, cwd.as_deref())?;
+            let diagnostics = if run.success {
+                Vec::new()
+            } else {
+                buildlog::diagnostics_from_transcript(&run.combined)
+            };
             TestRunOutcome {
                 passed: run.success,
                 tail: (!run.success).then_some(run.tail),
+                diagnostics,
+                transcript: (!run.success).then_some(run.combined),
             }
         } else if out.is_verbose() {
             let ok = process::run("xcodebuild", &args, cwd.as_deref(), false)
@@ -291,6 +319,8 @@ impl TestPlan<'_> {
             TestRunOutcome {
                 passed: ok,
                 tail: None,
+                diagnostics: Vec::new(),
+                transcript: None,
             }
         } else {
             let ok = buildlog::run("xcodebuild", &args, cwd.as_deref(), out, "Testing")
@@ -298,6 +328,8 @@ impl TestPlan<'_> {
             TestRunOutcome {
                 passed: ok,
                 tail: None,
+                diagnostics: Vec::new(),
+                transcript: None,
             }
         };
         Ok(outcome)
@@ -369,6 +401,49 @@ pub(crate) fn record_build_diagnostics(
     if let Ok(text) = serde_json::to_string_pretty(&record) {
         let _ = std::fs::write(&path, text);
     }
+}
+
+/// Park a failed run's raw transcript in the project's artifact slot and return
+/// the path, so an error can name the log instead of quoting it. The captured
+/// (`--json`) modes send nothing to the terminal, so without this the transcript
+/// only survives inside the error message — the thing that makes the message
+/// unreadable. Best-effort: `None` when the write fails, and the caller falls
+/// back to the tail.
+pub(crate) fn record_failure_transcript(
+    container: &Container,
+    suffix: &str,
+    text: &str,
+) -> Option<std::path::PathBuf> {
+    let path = project_artifact(container, suffix);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(&path, text).ok().map(|()| path)
+}
+
+/// Summarize diagnostics for a one-line error message: the first error (falling
+/// back to the first diagnostic of any severity) plus a count of the rest, so
+/// the headline names the actual cause and the full set rides in the error
+/// object's `diagnostics`.
+pub(crate) fn diagnostics_summary(diagnostics: &[serde_json::Value]) -> Option<String> {
+    let errors: Vec<&serde_json::Value> = diagnostics
+        .iter()
+        .filter(|d| d["severity"] == "error")
+        .collect();
+    let (first, total) = match errors.first() {
+        Some(first) => (*first, errors.len()),
+        None => (diagnostics.first()?, diagnostics.len()),
+    };
+    let location = first["location"]
+        .as_str()
+        .map(|l| format!("{l}: "))
+        .unwrap_or_default();
+    let message = first["message"].as_str().unwrap_or("(no message)");
+    let more = match total {
+        0 | 1 => String::new(),
+        n => format!(" (and {} more)", n - 1),
+    };
+    Some(format!("{location}{message}{more}"))
 }
 
 /// Read the project's last-build diagnostics artifact, if a build recorded one.
@@ -764,6 +839,52 @@ mod tests {
 
     fn project() -> Container {
         Container::Project(PathBuf::from("/work/App.xcodeproj"))
+    }
+
+    fn diag(severity: &str, location: Option<&str>, message: &str) -> serde_json::Value {
+        serde_json::json!({
+            "event": "diagnostic",
+            "severity": severity,
+            "location": location,
+            "message": message,
+        })
+    }
+
+    #[test]
+    fn the_summary_leads_with_the_first_error_not_the_first_diagnostic() {
+        // A failed build usually emits warnings before the error that stopped
+        // it; leading with the warning would name the wrong cause.
+        let diagnostics = vec![
+            diag("warning", Some("A.swift:1:1"), "unused variable 'x'"),
+            diag("error", Some("B.swift:9:3"), "cannot find 'foo' in scope"),
+            diag("error", None, "Build input file cannot be found"),
+        ];
+        assert_eq!(
+            diagnostics_summary(&diagnostics).as_deref(),
+            Some("B.swift:9:3: cannot find 'foo' in scope (and 1 more)")
+        );
+    }
+
+    #[test]
+    fn a_lone_error_gets_no_count_and_a_locationless_one_no_prefix() {
+        let one = vec![diag("error", None, "Build input file cannot be found")];
+        assert_eq!(
+            diagnostics_summary(&one).as_deref(),
+            Some("Build input file cannot be found")
+        );
+    }
+
+    #[test]
+    fn warnings_alone_still_summarize_and_nothing_parsed_is_none() {
+        // xcodebuild can fail with no error diagnostic at all (a bad
+        // destination, a signing refusal) — then there is nothing to lead with
+        // and the caller keeps the transcript tail instead.
+        let warn = vec![diag("warning", Some("A.swift:1:1"), "unused variable 'x'")];
+        assert_eq!(
+            diagnostics_summary(&warn).as_deref(),
+            Some("A.swift:1:1: unused variable 'x'")
+        );
+        assert_eq!(diagnostics_summary(&[]), None);
     }
 
     /// Build `TargetBuildSettings` from a `-showBuildSettings -json` payload,

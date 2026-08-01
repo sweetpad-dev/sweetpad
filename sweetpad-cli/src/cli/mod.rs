@@ -1309,10 +1309,7 @@ fn render_early_error(out: &output::Output, err: &CliError) {
     out.ndjson_event(&serde_json::json!({
         "event": "result",
         "ok": false,
-        "error": {
-            "code": err.error_kind().code_str(),
-            "message": err.to_string(),
-        },
+        "error": err.json(),
     }));
     out.error(err);
 }
@@ -1347,10 +1344,7 @@ fn early_error(out: &output::Output, e: &CliError) -> ExitCode {
     out.ndjson_event(&serde_json::json!({
         "event": "result",
         "ok": false,
-        "error": {
-            "code": e.error_kind().code_str(),
-            "message": e.to_string(),
-        },
+        "error": e.json(),
     }));
     out.error(e);
     ExitCode::from(e.error_kind().exit_code())
@@ -1430,6 +1424,11 @@ pub struct CliError {
     context: Option<String>,
     message: String,
     kind: ErrorKind,
+    /// Compiler diagnostics behind this failure, parsed at the chokepoint that
+    /// captured the transcript. They ride into the machine-readable error
+    /// object so a caller reads `error.diagnostics` instead of scraping a log
+    /// out of `error.message`.
+    diagnostics: Vec<serde_json::Value>,
 }
 
 impl std::fmt::Display for CliError {
@@ -1449,6 +1448,7 @@ impl CliError {
             context: None,
             message: msg.into(),
             kind: ErrorKind::Generic,
+            diagnostics: Vec::new(),
         }
     }
 
@@ -1492,7 +1492,34 @@ impl CliError {
             message: self.to_string(),
             context: Some(context.to_string()),
             kind: self.kind,
+            diagnostics: self.diagnostics,
         }
+    }
+
+    /// Attach the parsed diagnostics behind this failure. Set at the layer that
+    /// captured the transcript, so the error object can carry the compile
+    /// errors as data and the message can stay one line.
+    #[must_use]
+    pub fn diagnostics(mut self, diagnostics: Vec<serde_json::Value>) -> Self {
+        self.diagnostics = diagnostics;
+        self
+    }
+
+    /// The machine-readable error object: the taxonomy code, the flattened
+    /// message, and — when the failure carried any — the parsed diagnostics.
+    /// The single shape every `--json`/`-o ndjson` error surface renders.
+    #[must_use]
+    pub fn json(&self) -> serde_json::Value {
+        let mut value = serde_json::json!({
+            "code": self.kind.code_str(),
+            "message": self.to_string(),
+        });
+        if !self.diagnostics.is_empty()
+            && let Some(map) = value.as_object_mut()
+        {
+            map.insert("diagnostics".into(), self.diagnostics.clone().into());
+        }
+        value
     }
 
     /// The operation context — rendered as the bold headline. `None` for a bare
@@ -1832,6 +1859,33 @@ mod error_tests {
         assert_eq!(e.error_kind(), ErrorKind::ToolMissing);
         assert_eq!(e.error_kind().exit_code(), 5);
         assert_eq!(e.error_kind().code_str(), "tool_missing");
+    }
+
+    #[test]
+    fn diagnostics_ride_into_the_error_object_and_survive_context() {
+        let diag = serde_json::json!({
+            "event": "diagnostic",
+            "severity": "error",
+            "location": "App/Model.swift:12:5",
+            "message": "cannot find 'foo' in scope",
+        });
+        let e = CliError::new("xcodebuild test failed before any test ran")
+            .kind(ErrorKind::BuildFailure)
+            .diagnostics(vec![diag.clone()])
+            // The wrap every command applies on the way out must not drop them.
+            .context("running the tests");
+        let json = e.json();
+        assert_eq!(json["code"], "build_failure");
+        assert_eq!(json["diagnostics"], serde_json::json!([diag]));
+    }
+
+    #[test]
+    fn an_error_without_diagnostics_has_no_diagnostics_key() {
+        // The key is absent rather than an empty array, so a consumer testing
+        // for it isn't told "we parsed the log and found nothing".
+        let json = CliError::new("boom").json();
+        assert!(json.get("diagnostics").is_none());
+        assert_eq!(json["message"], "boom");
     }
 
     #[test]

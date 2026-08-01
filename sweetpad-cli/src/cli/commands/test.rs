@@ -323,14 +323,7 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         } else {
             let _ = std::fs::remove_dir_all(&run_bundle);
         }
-        let detail = outcome
-            .tail
-            .map_or_else(String::new, |tail| format!(":\n{tail}"));
-        return Err(CliError::new(format!(
-            "xcodebuild test failed before any test ran{detail}"
-        ))
-        .kind(crate::cli::ErrorKind::BuildFailure)
-        .context("running the tests"));
+        return Err(build_step_failure(&resolved.container, outcome));
     }
     // The scratch run is the project's latest real result: promote it to the
     // retained slot.
@@ -369,6 +362,34 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         // A red suite still renders its summary, but exits 3 (build/test failure).
         Ok(Rendered::data_with_exit(report, 3))
     }
+}
+
+/// The error for a run that died before any test executed — nearly always a
+/// failed compile. The parsed diagnostics are the diagnosis, so they ride in
+/// the error object and their first error becomes the message; the transcript
+/// is parked in the project's artifact slot and named, rather than quoted in
+/// full. A run with nothing parseable (a bad destination, a signing refusal)
+/// keeps the tail, which is then the only account of what happened.
+fn build_step_failure(container: &Container, outcome: xcodebuild::TestRunOutcome) -> CliError {
+    let log = outcome
+        .transcript
+        .as_deref()
+        .and_then(|text| xcodebuild::record_failure_transcript(container, "-test.log", text));
+    let detail = match xcodebuild::diagnostics_summary(&outcome.diagnostics) {
+        Some(summary) => {
+            let log = log.map_or_else(String::new, |p| format!("; full log: {}", p.display()));
+            format!(": {summary}{log}")
+        }
+        None => outcome
+            .tail
+            .map_or_else(String::new, |tail| format!(":\n{tail}")),
+    };
+    CliError::new(format!(
+        "xcodebuild test failed before any test ran{detail}"
+    ))
+    .kind(crate::cli::ErrorKind::BuildFailure)
+    .diagnostics(outcome.diagnostics)
+    .context("running the tests")
 }
 
 /// Where a project's latest `.xcresult` is retained: one slot per project in
@@ -490,6 +511,65 @@ mod tests {
                 .to_string_lossy()
                 .starts_with("App-")
         );
+    }
+
+    #[test]
+    fn a_failed_build_reports_diagnostics_instead_of_the_transcript() {
+        // The whole point: an agent reading `-o json` gets the one line that
+        // matters plus structured diagnostics, not several KB of swiftc flags.
+        let transcript = format!(
+            "{}\n/work/App/Picker.swift:4:11: error: cannot find 'Missing' in scope\n{}",
+            "CompileSwift normal arm64 -Xcc -I/a/very/long/include/path".repeat(40),
+            "** TEST FAILED **"
+        );
+        let container = Container::Project(PathBuf::from("/work/App.xcodeproj"));
+        let outcome = xcodebuild::TestRunOutcome {
+            passed: false,
+            tail: Some(transcript.clone()),
+            diagnostics: crate::cli::buildlog::diagnostics_from_transcript(&transcript),
+            transcript: Some(transcript.clone()),
+        };
+        let err = build_step_failure(&container, outcome);
+
+        let json = err.json();
+        assert_eq!(json["code"], "build_failure");
+        let diagnostics = json["diagnostics"].as_array().expect("no diagnostics");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0]["message"], "cannot find 'Missing' in scope");
+
+        // The message names the cause and the parked log, and stays far shorter
+        // than the transcript it replaced.
+        let message = err.to_string();
+        assert!(
+            message.contains("cannot find 'Missing' in scope"),
+            "{message}"
+        );
+        assert!(message.contains("full log: "), "{message}");
+        assert!(message.len() < transcript.len() / 4, "{message}");
+
+        // The transcript is moved, not dropped.
+        let log = message
+            .rsplit_once("full log: ")
+            .map(|(_, p)| PathBuf::from(p))
+            .expect("no log path");
+        assert_eq!(std::fs::read_to_string(&log).unwrap(), transcript);
+        let _ = std::fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_failure_with_nothing_parseable_keeps_the_tail() {
+        // No diagnostic means no better account exists — dropping the tail here
+        // would leave the caller with a bare "failed before any test ran".
+        let container = Container::Project(PathBuf::from("/work/App.xcodeproj"));
+        let outcome = xcodebuild::TestRunOutcome {
+            passed: false,
+            tail: Some("xcodebuild: error: Unable to find a destination".to_string()),
+            diagnostics: Vec::new(),
+            transcript: None,
+        };
+        let err = build_step_failure(&container, outcome);
+        assert!(err.to_string().contains("Unable to find a destination"));
+        assert!(err.json().get("diagnostics").is_none());
     }
 
     #[test]
