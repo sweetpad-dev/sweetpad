@@ -647,9 +647,29 @@ pub struct Context {
     /// container so its `workspace`/`project` key can name one (see
     /// [`Context::root_file`]).
     root_toml: std::cell::OnceCell<Option<config::RootFile>>,
+    /// Latches once the generated-project staleness check has run, so a
+    /// command that resolves more than once (`build --watch` re-resolves per
+    /// rebuild) warns a single time.
+    stale_checked: std::cell::OnceCell<()>,
 }
 
 impl Context {
+    /// Warn when this project is generated from a spec that has been edited
+    /// since — see [`pbxedit::stale_generated`] for why that is worth saying
+    /// out loud. Fires at most once per process; a `.xcworkspace` or Swift
+    /// package has no single generated `.xcodeproj` to compare against.
+    pub fn warn_if_project_stale(&self, container: &resolve::Container) {
+        let resolve::Container::Project(xcodeproj) = container else {
+            return;
+        };
+        if self.stale_checked.set(()).is_err() {
+            return;
+        }
+        if let Some(warning) = pbxedit::stale_generated(self.project_file(container), xcodeproj) {
+            self.out.warn(&warning);
+        }
+    }
+
     /// The nearest committed `sweetpad.toml` at or above the working
     /// directory, or `None` when this checkout has none. Consulted during
     /// container resolution, so it loads before a container exists — which is
@@ -838,6 +858,7 @@ pub fn run(argv: &[String]) -> ExitCode {
         out,
         project_toml: std::cell::OnceCell::new(),
         root_toml: std::cell::OnceCell::new(),
+        stale_checked: std::cell::OnceCell::new(),
     };
 
     // Bare `sweetpad`: the status view inside a project (the daily "where am

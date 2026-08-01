@@ -1327,9 +1327,26 @@ Tuist). Erroring (not warning) is deliberate: these commands are run by
 scripts and agents that read exit codes, not stderr prose — a warning above
 a success is exactly how the footgun fired in the first place.
 
-**Decision: the guard is the whole generator story (for now).** The CLI
-neither *regenerates* a project from an XcodeGen/Tuist spec (no
-`project generate` passthrough — run `xcodegen`/`tuist generate` yourself)
+The same detection drives a **staleness warning** on the resolution path: when
+the spec is newer than the project's `project.pbxproj`, every command that
+resolves a container says so once, naming the regenerate command. A file added
+to the spec is invisible to the build until the project is regenerated, and the
+build then fails with an ordinary `cannot find 'X' in scope` — a compile error
+naming a symbol when the real cause is a stale project, which is the most
+expensive kind of wrong answer to hand an agent. `project.pbxproj` is the
+comparison target rather than the `.xcodeproj` directory because Xcode writes
+`xcuserdata` and workspace state inside the bundle constantly, and any of that
+would otherwise read as "freshly generated". This one warns rather than errors —
+the opposite of the mutation guard above, and for the reason that distinguishes
+them: the guard sits over a command that *succeeds* while doing the wrong thing,
+where stderr prose gets missed, while staleness rides alongside a build that is
+already failing and a caller already reading. Erroring would also be wrong on
+its face, since a spec edited in a way that changes no file (a comment, a
+setting) still builds correctly.
+
+**Decision: the guard and the staleness warning are the whole generator story
+(for now).** The CLI neither *regenerates* a project from an XcodeGen/Tuist spec
+(no `project generate` passthrough — run `xcodegen`/`tuist generate` yourself)
 nor *edits* those spec files on the user's behalf (no writing a
 `settings set` through into `project.yml`). Detecting the spec and refusing
 to fight it is the full extent of generator awareness. Rationale: the CLI's

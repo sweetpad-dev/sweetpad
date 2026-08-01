@@ -470,6 +470,7 @@ pub struct Resolved {
 /// lists); this folds the persisted layers into a starting point.
 pub fn resolve(ctx: &Context) -> Result<Resolved, CliError> {
     let container = container(ctx)?;
+    ctx.warn_if_project_stale(&container);
     let key = container.key();
     let cfg: Defaults = ctx.config.for_project(&key);
     let pf = ctx.project_file(&container);
@@ -525,6 +526,7 @@ pub fn resolve(ctx: &Context) -> Result<Resolved, CliError> {
 /// only once you pin something test-specific.
 pub fn resolve_testing(ctx: &Context) -> Result<Resolved, CliError> {
     let container = container(ctx)?;
+    ctx.warn_if_project_stale(&container);
     let key = container.key();
     let cfg: Defaults = ctx.config.for_project(&key);
     let pf = ctx.project_file(&container);
@@ -1847,6 +1849,7 @@ mod tests {
             out,
             project_toml: std::cell::OnceCell::new(),
             root_toml: std::cell::OnceCell::new(),
+            stale_checked: std::cell::OnceCell::new(),
         }
     }
 

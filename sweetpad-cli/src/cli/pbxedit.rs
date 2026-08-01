@@ -26,6 +26,15 @@ pub struct Generator {
     pub regenerate: String,
 }
 
+/// The generator specs recognized beside a `.xcodeproj`, in detection order:
+/// the file name, the tool that owns it, and the command that regenerates.
+const SPECS: [(&str, &str, &str); 4] = [
+    ("project.yml", "XcodeGen", "xcodegen generate"),
+    ("project.yaml", "XcodeGen", "xcodegen generate"),
+    ("project.json", "XcodeGen", "xcodegen generate"),
+    ("Project.swift", "Tuist", "tuist generate"),
+];
+
 /// Detect a generator for `xcodeproj`: an explicit `generator = "…"` in the
 /// project's `sweetpad.toml` wins, else a generator spec file sitting next to
 /// the `.xcodeproj` (`project.yml`/`project.yaml`/`project.json` → XcodeGen,
@@ -56,12 +65,7 @@ pub fn generator_for(project_file: &ProjectFile, xcodeproj: &Path) -> Option<Gen
         });
     }
     let dir = xcodeproj.parent()?;
-    for (spec, tool, regenerate) in [
-        ("project.yml", "XcodeGen", "xcodegen generate"),
-        ("project.yaml", "XcodeGen", "xcodegen generate"),
-        ("project.json", "XcodeGen", "xcodegen generate"),
-        ("Project.swift", "Tuist", "tuist generate"),
-    ] {
+    for (spec, tool, regenerate) in SPECS {
         if dir.join(spec).is_file() {
             return Some(Generator {
                 tool: tool.into(),
@@ -71,6 +75,55 @@ pub fn generator_for(project_file: &ProjectFile, xcodeproj: &Path) -> Option<Gen
         }
     }
     None
+}
+
+/// The generator spec beside `xcodeproj`, whichever recognized name is on
+/// disk. The [`Generator::spec`] of an explicitly declared generator is the
+/// canonical name (`project.yml`), which need not be the one this project
+/// actually uses, so staleness resolves the file itself.
+fn spec_path(xcodeproj: &Path) -> Option<PathBuf> {
+    let dir = xcodeproj.parent()?;
+    SPECS
+        .iter()
+        .map(|(spec, _, _)| dir.join(spec))
+        .find(|p| p.is_file())
+}
+
+/// Warn text for a generated project whose spec has been edited since it was
+/// last generated, or `None` when it is current (or not generated at all).
+///
+/// A file added to or removed from the spec is invisible to the build until
+/// the project is regenerated, and the build then fails with an ordinary
+/// `cannot find 'X' in scope` — a compile error that names a symbol when the
+/// real cause is a stale project. Comparing `project.pbxproj` rather than the
+/// `.xcodeproj` directory is what makes this trustworthy: Xcode writes
+/// `xcuserdata` and workspace state inside the bundle constantly, and any of
+/// that would otherwise read as "freshly generated".
+#[must_use]
+pub fn stale_generated(project_file: &ProjectFile, xcodeproj: &Path) -> Option<String> {
+    let generator = generator_for(project_file, xcodeproj)?;
+    let spec = spec_path(xcodeproj)?;
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let (spec_at, project_at) = (
+        modified(&spec)?,
+        modified(&xcodeproj.join("project.pbxproj"))?,
+    );
+    if spec_at <= project_at {
+        return None;
+    }
+    let spec_name = spec.file_name().map_or_else(
+        || spec.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    );
+    let project_name = xcodeproj.file_name().map_or_else(
+        || xcodeproj.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    );
+    Some(format!(
+        "{spec_name} is newer than {project_name} — run '{}' so the build sees your latest \
+         file changes",
+        generator.regenerate
+    ))
 }
 
 /// Refuse to mutate a generated project without `--force` (CLI_DESIGN §9g):
@@ -252,6 +305,68 @@ mod tests {
             std::fs::write(dir.join(name), "# spec").unwrap();
         }
         xcodeproj
+    }
+
+    /// Write `project.pbxproj`, then the spec, in that order — so the spec is
+    /// unambiguously the newer of the two even on a coarse-grained filesystem
+    /// (mtimes only a syscall apart can otherwise compare equal).
+    fn generated_project(marker: &str, spec: &str, spec_is_newer: bool) -> PathBuf {
+        let xcodeproj = temp_project(marker, None);
+        let dir = xcodeproj.parent().unwrap().to_path_buf();
+        let (first, second) = (dir.join(spec), xcodeproj.join("project.pbxproj"));
+        let (first, second) = if spec_is_newer {
+            (second, first)
+        } else {
+            (first, second)
+        };
+        std::fs::write(&first, "one").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(&second, "two").unwrap();
+        xcodeproj
+    }
+
+    #[test]
+    fn a_spec_edited_since_the_last_generate_is_reported_stale() {
+        let pf = ProjectFile::default();
+        let stale = generated_project("stale", "project.yml", true);
+        let warning = stale_generated(&pf, &stale).expect("expected a staleness warning");
+        assert!(
+            warning.contains("project.yml is newer than App.xcodeproj"),
+            "{warning}"
+        );
+        // Names the command that fixes it, in the quoting style a terminal shows.
+        assert!(warning.contains("'xcodegen generate'"), "{warning}");
+    }
+
+    #[test]
+    fn a_freshly_generated_project_is_quiet() {
+        let pf = ProjectFile::default();
+        let fresh = generated_project("fresh", "project.yml", false);
+        assert_eq!(stale_generated(&pf, &fresh), None);
+    }
+
+    #[test]
+    fn a_hand_written_project_is_never_stale() {
+        // No spec beside it and none declared: nothing regenerates it, so an
+        // mtime comparison would be meaningless.
+        let pf = ProjectFile::default();
+        let plain = temp_project("stale-plain", None);
+        std::fs::write(plain.join("project.pbxproj"), "hand-written").unwrap();
+        assert_eq!(stale_generated(&pf, &plain), None);
+    }
+
+    #[test]
+    fn a_declared_generator_still_resolves_the_spec_actually_on_disk() {
+        // `generator = "xcodegen"` reports the canonical `project.yml`, but this
+        // project uses `project.yaml` — comparing the declared name would find
+        // no file and silently skip the check.
+        let pf = ProjectFile {
+            generator: Some("xcodegen".into()),
+            ..ProjectFile::default()
+        };
+        let stale = generated_project("declared", "project.yaml", true);
+        let warning = stale_generated(&pf, &stale).expect("expected a staleness warning");
+        assert!(warning.contains("project.yaml is newer"), "{warning}");
     }
 
     #[test]
