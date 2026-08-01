@@ -66,6 +66,57 @@ pub fn port_holders() -> Vec<u32> {
         .collect()
 }
 
+/// One process holding the injection port, resolved for a message. Shared by
+/// the bind failure and `hot status`/`hot reset` so both answer "is this ours,
+/// and what ends it?" the same way.
+pub struct Holder {
+    pub pid: u32,
+    /// The executable name, when `ps` could report it.
+    pub name: Option<String>,
+    /// Whether this is a sweetpad process — i.e. ours to end.
+    pub ours: bool,
+}
+
+impl Holder {
+    #[must_use]
+    pub fn look_up(pid: u32) -> Holder {
+        let name = process_name(pid);
+        // `ps -o comm=` reports an absolute path for a binary launched by path,
+        // so match the trailing component rather than the whole string.
+        let ours = name.as_deref().is_some_and(|n| {
+            std::path::Path::new(n)
+                .file_name()
+                .is_some_and(|f| f == "sweetpad")
+        });
+        Holder { pid, name, ours }
+    }
+
+    /// How the holder reads in a message: `sweetpad (pid 91399)`.
+    #[must_use]
+    pub fn label(&self) -> String {
+        match &self.name {
+            Some(n) => {
+                let short = std::path::Path::new(n)
+                    .file_name()
+                    .map_or(n.as_str(), |f| f.to_str().unwrap_or(n.as_str()));
+                format!("{short} (pid {})", self.pid)
+            }
+            None => format!("pid {}", self.pid),
+        }
+    }
+
+    /// The command that frees the port from this holder. Ending an unrelated
+    /// listener needs `--force`, so the two cases name different commands.
+    #[must_use]
+    pub fn how_to_end(&self) -> &'static str {
+        if self.ours {
+            "run 'sweetpad hot reset' to end it"
+        } else {
+            "it isn't a sweetpad process, so ending it takes 'sweetpad hot reset --force'"
+        }
+    }
+}
+
 /// The executable behind `pid`, via `ps -o comm=`. Used to tell one of our own
 /// orphaned sessions — safe to end — from InjectionNext.app or an unrelated
 /// listener that merely happens to sit on the port.
@@ -80,6 +131,26 @@ pub fn process_name(pid: u32) -> Option<String> {
         .ok()?;
     let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
     (!name.is_empty()).then_some(name)
+}
+
+/// Why the port could not be bound, and what to run about it. Naming the pid
+/// is not enough on its own — the fix is a command, and which command depends
+/// on whether the holder is one of our own orphaned sessions or something
+/// unrelated like InjectionNext.app. "Quit that session" is the one instruction
+/// that can't be followed when the session belongs to a terminal that is
+/// already gone, which is the case that produces this error most often.
+fn bind_failure(e: &std::io::Error) -> String {
+    let (culprit, fix) = match port_holder().map(Holder::look_up) {
+        Some(holder) => (format!("{} holds it", holder.label()), holder.how_to_end()),
+        None => (
+            "another hot-reload session or InjectionNext.app holds it".to_string(),
+            "run 'sweetpad hot status' to identify it, then 'sweetpad hot reset'",
+        ),
+    };
+    format!(
+        "cannot bind 127.0.0.1:{} for hot reload ({e}): {culprit}; {fix}, or retry without '--hot'",
+        protocol::PORT
+    )
 }
 
 /// A running injection server bound to `:8887` for one `--hot` session.
@@ -100,20 +171,8 @@ impl InjectServer {
     /// Must be called *before* the app launches so the client's `+load` connect
     /// succeeds. Fails if the port is taken (another injection server running).
     pub fn start(recompiler: Arc<Recompiler>, log: Logger) -> Result<InjectServer, String> {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, protocol::PORT)).map_err(|e| {
-            // Name who actually holds it — an unqualified "is InjectionNext.app
-            // running?" sends you looking in the wrong place when the culprit
-            // is usually your own hot session in another tab.
-            let culprit = match port_holder() {
-                Some(pid) => format!("pid {pid} holds it"),
-                None => "another hot-reload session or InjectionNext.app holds it".to_string(),
-            };
-            format!(
-                "cannot bind 127.0.0.1:{} for hot reload ({e}): {culprit}. Quit that \
-                 session, or run without `--hot`",
-                protocol::PORT
-            )
-        })?;
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, protocol::PORT))
+            .map_err(|e| bind_failure(&e))?;
         Self::serve(listener, recompiler, log)
     }
 

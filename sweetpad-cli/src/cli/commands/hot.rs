@@ -34,41 +34,7 @@ pub fn run(_ctx: &mut Context, action: &Action) -> CommandResult {
     }
 }
 
-/// One process holding the injection port.
-struct Holder {
-    pid: u32,
-    /// The executable name, when `ps` could report it.
-    name: Option<String>,
-    /// Whether this is a sweetpad process — i.e. ours to end.
-    ours: bool,
-}
-
-impl Holder {
-    fn look_up(pid: u32) -> Holder {
-        let name = server::process_name(pid);
-        // `ps -o comm=` reports an absolute path for a binary launched by path,
-        // so match the trailing component rather than the whole string.
-        let ours = name.as_deref().is_some_and(|n| {
-            std::path::Path::new(n)
-                .file_name()
-                .is_some_and(|f| f == "sweetpad")
-        });
-        Holder { pid, name, ours }
-    }
-
-    /// How the holder reads in a message: `sweetpad (pid 91399)`.
-    fn label(&self) -> String {
-        match &self.name {
-            Some(n) => {
-                let short = std::path::Path::new(n)
-                    .file_name()
-                    .map_or(n.as_str(), |f| f.to_str().unwrap_or(n.as_str()));
-                format!("{short} (pid {})", self.pid)
-            }
-            None => format!("pid {}", self.pid),
-        }
-    }
-}
+use server::Holder;
 
 fn holders() -> Vec<Holder> {
     server::port_holders()
@@ -117,10 +83,18 @@ impl Render for StatusResult {
             "hot-reload port {} is held by {who}",
             protocol::PORT
         ));
-        if self.holders.iter().any(|h| h.ours) {
-            out.note("`sweetpad hot reset` ends it");
+        // `reset` refuses unless *every* holder is ours, so the note keys on
+        // the same condition — telling someone plain `reset` will do it when
+        // it is about to refuse just costs them a round-trip.
+        if let [only] = self.holders.as_slice() {
+            out.note(only.how_to_end());
         } else if !self.holders.is_empty() {
-            out.note("not a sweetpad process — `sweetpad hot reset --force` ends it anyway");
+            out.note(if self.holders.iter().all(|h| h.ours) {
+                "run 'sweetpad hot reset' to end them"
+            } else {
+                "not all of them are sweetpad processes — run 'sweetpad hot reset --force' to \
+                 end them anyway"
+            });
         }
     }
 
@@ -195,7 +169,7 @@ fn reset(force: bool) -> CommandResult {
     // command can do, so it takes a deliberate --force rather than a guess.
     if !force && let Some(other) = holders.iter().find(|h| !h.ours) {
         return Err(CliError::new(format!(
-            "{} holds port {}, and it isn't a sweetpad process — pass `--force` to end it anyway",
+            "{} holds port {}, and it isn't a sweetpad process — pass '--force' to end it anyway",
             other.label(),
             protocol::PORT
         )));
@@ -260,5 +234,28 @@ mod tests {
             ours: false,
         };
         assert_eq!(h.label(), "pid 4242");
+    }
+
+    #[test]
+    fn each_holder_names_the_command_that_actually_frees_the_port() {
+        // The whole value of this string is that following it works: plain
+        // `reset` refuses on a non-sweetpad holder, so only one of these two
+        // spellings is right for a given holder.
+        let ours = Holder {
+            pid: 1,
+            name: Some("sweetpad".into()),
+            ours: true,
+        };
+        assert_eq!(ours.how_to_end(), "run 'sweetpad hot reset' to end it");
+
+        let theirs = Holder {
+            pid: 2,
+            name: Some("InjectionNext".into()),
+            ours: false,
+        };
+        assert!(theirs.how_to_end().contains("'sweetpad hot reset --force'"));
+        // Backticks render literally in a terminal; the fix must be copyable.
+        assert!(!ours.how_to_end().contains('`'));
+        assert!(!theirs.how_to_end().contains('`'));
     }
 }
