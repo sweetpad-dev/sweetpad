@@ -1456,17 +1456,17 @@ struct RunReport {
     pid: Option<u32>,
     /// Whether the app was left running (`--detach`).
     detached: bool,
-    /// The human line, mirroring what each launcher reported.
-    note: String,
-    /// A second human line (a macOS run's captured output path).
-    detail: Option<String>,
+    /// The human lines, mirroring what each launcher reported, in the order
+    /// they read. They travel with the report rather than being printed as
+    /// they are produced, so a follow-up hint cannot land above the launch it
+    /// refers to.
+    notes: Vec<String>,
 }
 
 impl Render for RunReport {
     fn human(&self, out: &Output) {
-        out.note(&self.note);
-        if let Some(detail) = &self.detail {
-            out.note(detail);
+        for note in &self.notes {
+            out.note(note);
         }
     }
 
@@ -1502,12 +1502,8 @@ fn deploy_detached(ctx: &Context, plan: &RunPlan) -> Result<RunReport, CliError>
     }
     let app = build_and_install(plan, &ctx.out)?;
     let (pid, log) = spawn_detached_mac(ctx, plan, &app)?;
-    let detail = log.map(|log| format!("output → {}", log.display()));
-    ctx.out
-        .note(&format!("`sweetpad app stop` terminates {}", app.bundle_id));
     Ok(RunReport {
-        note: format!("Launched {} (pid {pid}) — detached", app.bundle_id),
-        detail,
+        notes: detached_mac_notes(&app.bundle_id, pid, log.as_deref()),
         destination: plan.destination.clone(),
         bundle_id: app.bundle_id,
         pid: Some(pid),
@@ -1515,13 +1511,25 @@ fn deploy_detached(ctx: &Context, plan: &RunPlan) -> Result<RunReport, CliError>
     })
 }
 
+/// What a detached macOS launch reports, in reading order: what was launched,
+/// where its output went, and what ends it. Built as one list rather than
+/// printed as each fact arrives, so the hint cannot precede the launch it
+/// refers to.
+fn detached_mac_notes(bundle_id: &str, pid: u32, log: Option<&Path>) -> Vec<String> {
+    let mut notes = vec![format!("Launched {bundle_id} (pid {pid}) — detached")];
+    notes.extend(log.map(|log| format!("output → {}", log.display())));
+    notes.push(format!("'sweetpad app stop' terminates {bundle_id}"));
+    notes
+}
+
 fn deploy(ctx: &Context, plan: &RunPlan) -> Result<RunReport, CliError> {
     // SPM executables build+run in one `swift run` step, not build+install+launch.
     if let Target::SpmRun(product) = &plan.target {
         spm_run(ctx, plan, product)?;
+        // `swift run` already streamed the program's own output and the program
+        // has since exited; there is no launch left to narrate.
         return Ok(RunReport {
-            note: String::new(),
-            detail: None,
+            notes: Vec::new(),
             destination: plan.destination.clone(),
             bundle_id: product.clone(),
             pid: None,
@@ -1530,7 +1538,7 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> Result<RunReport, CliError> {
     }
 
     let app = build_and_install(plan, &ctx.out)?;
-    let (note, detail, pid) = match &plan.target {
+    let (notes, pid) = match &plan.target {
         Target::Simulator(udid) => {
             let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
             let opts = plan.simctl_launch(&env);
@@ -1538,8 +1546,7 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> Result<RunReport, CliError> {
                 simctl::launch_opts(udid, &app.bundle_id, &opts)
             })?;
             (
-                format!("Launched {} → {}", app.bundle_id, out.trim()),
-                None,
+                vec![format!("Launched {} → {}", app.bundle_id, out.trim())],
                 launched_pid(&out),
             )
         }
@@ -1554,8 +1561,11 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> Result<RunReport, CliError> {
                 )
             })?;
             (
-                format!("Launched {} on device → {}", app.bundle_id, out.trim()),
-                None,
+                vec![format!(
+                    "Launched {} on device → {}",
+                    app.bundle_id,
+                    out.trim()
+                )],
                 None,
             )
         }
@@ -1566,18 +1576,15 @@ fn deploy(ctx: &Context, plan: &RunPlan) -> Result<RunReport, CliError> {
             // neither of those), and it keeps `--no-logs`, `--detach` and
             // `app launch` behaving identically.
             let (pid, log) = spawn_detached_mac(ctx, plan, &app)?;
-            (
-                format!("Launched {} (pid {pid})", app.bundle_id),
-                log.map(|log| format!("output → {}", log.display())),
-                Some(pid),
-            )
+            let mut notes = vec![format!("Launched {} (pid {pid})", app.bundle_id)];
+            notes.extend(log.map(|log| format!("output → {}", log.display())));
+            (notes, Some(pid))
         }
         // Handled by the early return above.
         Target::SpmRun(_) => unreachable!("handled by the early return"),
     };
     Ok(RunReport {
-        note,
-        detail,
+        notes,
         destination: plan.destination.clone(),
         bundle_id: app.bundle_id,
         pid,
@@ -5703,6 +5710,31 @@ mod tests {
         // Never worth failing a launch that already succeeded.
         assert_eq!(launched_pid(""), None);
         assert_eq!(launched_pid("com.example.App: not-a-pid"), None);
+    }
+
+    #[test]
+    fn a_detached_launch_narrates_itself_in_the_order_it_happened() {
+        // The hint names the app the line above launched, so it has to come
+        // after it. It read the other way around while it was printed as the
+        // report was built and the report rendered afterwards.
+        let notes = detached_mac_notes("com.example.App", 4242, Some(Path::new("/tmp/App.log")));
+        let at = |needle: &str| {
+            notes
+                .iter()
+                .position(|n| n.contains(needle))
+                .unwrap_or_else(|| panic!("no {needle} line in {notes:?}"))
+        };
+        assert!(at("Launched") < at("output →"), "{notes:?}");
+        assert!(at("output →") < at("app stop"), "{notes:?}");
+        assert!(notes[0].contains("pid 4242"), "{notes:?}");
+        // Backticks render literally in a terminal.
+        assert!(!notes.iter().any(|n| n.contains('`')), "{notes:?}");
+
+        // No captured output: that line drops out, the order of the rest holds.
+        let notes = detached_mac_notes("com.example.App", 7, None);
+        assert_eq!(notes.len(), 2);
+        assert!(notes[0].starts_with("Launched"), "{notes:?}");
+        assert!(notes[1].contains("app stop"), "{notes:?}");
     }
 
     #[test]
