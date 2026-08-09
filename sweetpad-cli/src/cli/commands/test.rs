@@ -778,30 +778,7 @@ fn output(ctx: &mut Context, args: &TestArgs, opts: &OutputArgs) -> CommandResul
     let run = run?;
 
     let found_any = !run.tests.is_empty();
-    let mut tests: Vec<TestOutputEntry> = run
-        .tests
-        .into_iter()
-        .filter(|t| {
-            args.only_testing.is_empty()
-                || args
-                    .only_testing
-                    .iter()
-                    .any(|sel| selector_matches(sel, &t.test))
-        })
-        .map(|t| {
-            let (output, truncated) = if opts.full {
-                (t.output, false)
-            } else {
-                cut_to_tail(&t.output, OUTPUT_CAP)
-            };
-            TestOutputEntry {
-                test: t.test,
-                output: output.trim_end().to_string(),
-                truncated,
-            }
-        })
-        .collect();
-    tests.retain(|t| !t.output.is_empty());
+    let tests = select_output(run.tests, &args.only_testing, opts.full);
 
     if tests.is_empty() && found_any && !args.only_testing.is_empty() {
         return Err(CliError::new(format!(
@@ -834,6 +811,44 @@ fn output(ctx: &mut Context, args: &TestArgs, opts: &OutputArgs) -> CommandResul
     }))
 }
 
+/// The tests the report shows: those `only_testing` selects that wrote
+/// anything, each cut back to its tail unless `full`.
+///
+/// Whether a test wrote anything is decided on its whole output, before the cap
+/// is applied, so cutting can only shorten an entry and never drop the test.
+fn select_output(
+    tests: Vec<xcodebuild::TestOutput>,
+    only_testing: &[String],
+    full: bool,
+) -> Vec<TestOutputEntry> {
+    tests
+        .into_iter()
+        .filter(|t| {
+            only_testing.is_empty()
+                || only_testing
+                    .iter()
+                    .any(|sel| selector_matches(sel, &t.test))
+        })
+        .filter(|t| !t.output.trim().is_empty())
+        .map(|t| {
+            // Trimmed before the cut so the kept tail ends on a real line: a
+            // tail made of the run's trailing blank lines would render as an
+            // entry with nothing under it.
+            let source = t.output.trim_end();
+            let (output, truncated) = if full {
+                (source.to_string(), false)
+            } else {
+                cut_to_tail(source, OUTPUT_CAP)
+            };
+            TestOutputEntry {
+                test: t.test,
+                output,
+                truncated,
+            }
+        })
+        .collect()
+}
+
 /// Cut `text` back to its last `cap` bytes on a line boundary. The tail is
 /// kept because output that ran long is nearly always a log, and a log's end
 /// is where the thing being diagnosed happened.
@@ -842,15 +857,20 @@ fn cut_to_tail(text: &str, cap: usize) -> (String, bool) {
         return (text.to_string(), false);
     }
     // The cap counts bytes, so it can land inside a character; walk forward to
-    // a boundary before slicing, then forward again to the next line break so
-    // the cut never leaves half a line either.
+    // a boundary before slicing.
     let mut start = text.len() - cap;
     while start < text.len() && !text.is_char_boundary(start) {
         start += 1;
     }
-    let start = text[start..]
-        .find('\n')
-        .map_or(text.len(), |i| start + i + 1);
+    // Then forward again to the next line break, so the cut never leaves half
+    // a line — but only while that leaves something. A test that printed one
+    // long line (a JSON blob, a serialized payload) has no break left in its
+    // tail, and advancing past the end there would report the test as silent.
+    if let Some(i) = text[start..].find('\n')
+        && start + i + 1 < text.len()
+    {
+        start += i + 1;
+    }
     (text[start..].to_string(), true)
 }
 
@@ -1344,6 +1364,99 @@ mod tests {
         let (whole, truncated) = cut_to_tail("short\n", 100);
         assert_eq!(whole, "short\n");
         assert!(!truncated);
+    }
+
+    /// [`select_output`] over `(test, output)` pairs, which is how a stream
+    /// reads once it has been sliced per test.
+    fn output_entries(
+        tests: Vec<(&str, &str)>,
+        only_testing: &[String],
+        full: bool,
+    ) -> Vec<TestOutputEntry> {
+        let tests = tests
+            .into_iter()
+            .map(|(test, output)| xcodebuild::TestOutput {
+                test: test.to_string(),
+                output: output.to_string(),
+            })
+            .collect();
+        select_output(tests, only_testing, full)
+    }
+
+    #[test]
+    fn one_long_line_is_cut_rather_than_erased() {
+        // A test printing a single long line — a JSON blob, a serialized
+        // payload — has no line break in its tail. Advancing to one past the
+        // end would return nothing, and a test that wrote 10 KB would be
+        // reported as having written nothing at all.
+        let blob = format!("{}\n", "A".repeat(10_000));
+        let (cut, truncated) = cut_to_tail(&blob, 4096);
+        assert!(truncated);
+        assert!(!cut.is_empty(), "a long line was erased instead of cut");
+        assert!(cut.len() <= 4096, "{}", cut.len());
+        assert!(blob.ends_with(&cut), "{cut}");
+
+        // Same when whole lines precede it: the break is before the cap, so
+        // there is still none left to advance to.
+        let mixed = format!("hello\nworld\n{}\n", "B".repeat(10_000));
+        let (cut, truncated) = cut_to_tail(&mixed, 4096);
+        assert!(truncated);
+        assert_eq!(cut.len(), 4096);
+        assert!(cut.chars().all(|c| c == 'B' || c == '\n'), "{cut}");
+
+        // And with no trailing newline anywhere.
+        let (cut, truncated) = cut_to_tail(&"C".repeat(10_000), 4096);
+        assert!(truncated);
+        assert_eq!(cut, "C".repeat(4096));
+    }
+
+    #[test]
+    fn a_test_that_printed_one_long_line_still_appears_in_the_report() {
+        // The report-level half of the same bug: an entry cut to nothing was
+        // dropped by the empty filter, so the run said "0 tests wrote output"
+        // for a test that wrote plenty, and never offered `--full`.
+        let printed = format!("{}\n", "A".repeat(10_000));
+        let entries = output_entries(
+            vec![("BlobTests/testDump", printed.as_str())],
+            &[],
+            /* full */ false,
+        );
+        assert_eq!(entries.len(), 1, "the test was dropped from the report");
+        assert_eq!(entries[0].test, "BlobTests/testDump");
+        assert!(entries[0].truncated);
+        assert!(!entries[0].output.is_empty());
+
+        // `--full` keeps all of it and marks nothing truncated.
+        let entries = output_entries(
+            vec![("BlobTests/testDump", printed.as_str())],
+            &[],
+            /* full */ true,
+        );
+        assert_eq!(entries[0].output.len(), printed.trim_end().len());
+        assert!(!entries[0].truncated);
+    }
+
+    #[test]
+    fn a_test_that_printed_only_whitespace_is_left_out() {
+        // The flip side: "wrote nothing" is decided on the whole output, so
+        // blank output is still dropped — and dropping it is not something
+        // truncation can do by accident.
+        let entries = output_entries(vec![("QuietTests/testNothing", "\n  \n\t\n")], &[], false);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn only_testing_selects_among_the_tests_that_wrote_output() {
+        let entries = output_entries(
+            vec![
+                ("ATests/testOne", "from a\n"),
+                ("BTests/testTwo", "from b\n"),
+            ],
+            &["BTests".to_string()],
+            false,
+        );
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].output, "from b");
     }
 
     #[test]
