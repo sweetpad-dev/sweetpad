@@ -735,6 +735,197 @@ pub fn export_attachments(
         .collect())
 }
 
+/// What the tests themselves wrote, recovered from a `.xcresult`'s diagnostics.
+pub struct RunOutput {
+    /// Per test, in the order the run executed them. Only tests that wrote
+    /// something appear.
+    pub tests: Vec<TestOutput>,
+    /// Output written outside any test case — setup, teardown, and any
+    /// framework whose markers this parser does not recognise. Kept rather
+    /// than dropped, so nothing the run wrote goes missing without a word.
+    pub unattributed: String,
+    /// The files it was read from, for the part that doesn't fit in a payload.
+    pub sources: Vec<PathBuf>,
+    /// Whether every target reported running its tests serially. Attribution
+    /// keys on `started`/`passed` markers bracketing a test's output, which
+    /// interleaved parallel workers would scramble.
+    pub serial: bool,
+}
+
+pub struct TestOutput {
+    /// `Class/method`, the shape `--only-testing` and the attachment manifest
+    /// both use (the marker's own `Module.Class` spelling is normalized here).
+    pub test: String,
+    pub output: String,
+}
+
+/// XCTest brackets each test's console output with these, on the test
+/// process's own stdout: `Test Case '-[Module.Class method]' started.` … then
+/// `passed`/`failed`. Everything between is what that test wrote.
+fn parse_case_marker(line: &str) -> Option<(String, bool)> {
+    let rest = line.strip_prefix("Test Case '-[")?;
+    let (inner, tail) = rest.split_once("]' ")?;
+    let (class, method) = inner.split_once(' ')?;
+    let started = tail.starts_with("started");
+    if !started && !tail.starts_with("passed") && !tail.starts_with("failed") {
+        return None;
+    }
+    // The marker spells the class module-qualified; every other identifier in
+    // the CLI (and in the result bundle) does not.
+    let class = class.rsplit('.').next().unwrap_or(class);
+    Some((format!("{class}/{method}"), started))
+}
+
+/// Split one test process's stdout into per-test slices.
+fn split_output(text: &str, into: &mut Vec<TestOutput>, unattributed: &mut String) {
+    let mut current: Option<(String, String)> = None;
+    for line in text.lines() {
+        if let Some((test, started)) = parse_case_marker(line) {
+            if let Some((name, body)) = current.take()
+                && !body.trim().is_empty()
+            {
+                into.push(TestOutput {
+                    test: name,
+                    output: body,
+                });
+            }
+            if started {
+                current = Some((test, String::new()));
+            }
+            continue;
+        }
+        // Suite banners are structure, not output; keeping them would bury
+        // the handful of real lines in the unattributed bucket.
+        if line.starts_with("Test Suite '") {
+            continue;
+        }
+        let sink = match current.as_mut() {
+            Some((_, body)) => body,
+            None => &mut *unattributed,
+        };
+        sink.push_str(line);
+        sink.push('\n');
+    }
+    if let Some((name, body)) = current
+        && !body.trim().is_empty()
+    {
+        into.push(TestOutput {
+            test: name,
+            output: body,
+        });
+    }
+}
+
+/// Export a `.xcresult`'s diagnostics into `staging` and read back what the
+/// tests printed. The bundle keeps this per test *process*, not per test, so
+/// it is sliced here on XCTest's own case markers.
+///
+/// Only the test processes' streams are read: the same export also holds the
+/// app-under-test's `os_log` firehose (`StandardOutputAndStandardError-<bundle
+/// id>.txt`), which is a different thing and can run to tens of megabytes.
+/// Those streams are copied into `keep` — a report that truncates has to name
+/// something that outlives the scratch directory the export landed in.
+pub fn export_run_output(
+    bundle: &Path,
+    staging: &Path,
+    keep: &Path,
+) -> Result<RunOutput, CliError> {
+    process::capture(
+        "xcrun",
+        &[
+            "xcresulttool",
+            "export",
+            "diagnostics",
+            "--path",
+            &bundle.to_string_lossy(),
+            "--output-path",
+            &staging.to_string_lossy(),
+        ],
+        None,
+    )
+    .context("exporting the test diagnostics")?;
+
+    let mut streams = Vec::new();
+    let mut schedules = Vec::new();
+    collect_diagnostic_files(staging, &mut streams, &mut schedules);
+    streams.sort();
+
+    let _ = std::fs::remove_dir_all(keep);
+    let _ = std::fs::create_dir_all(keep);
+    let mut tests = Vec::new();
+    let mut unattributed = String::new();
+    let mut sources = Vec::new();
+    for path in &streams {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        split_output(&text, &mut tests, &mut unattributed);
+        let label = stream_label(path, sources.len());
+        let mut kept = keep.join(format!("{label}.txt"));
+        // Two targets resolving to one label would silently cost a stream.
+        if sources.contains(&kept) {
+            kept = keep.join(format!("{label}-{}.txt", sources.len()));
+        }
+        if std::fs::write(&kept, &text).is_ok() {
+            sources.push(kept);
+        }
+    }
+    // Asserted only from the line that says so: an absent or differently
+    // worded log leaves this unclaimed rather than guessed at.
+    let serial = !schedules.is_empty()
+        && schedules.iter().all(|p| {
+            std::fs::read_to_string(p).is_ok_and(|s| s.contains("Parallelization disabled"))
+        });
+
+    Ok(RunOutput {
+        tests,
+        unattributed,
+        sources,
+        serial,
+    })
+}
+
+/// A name for one test process's kept stream. Every stream is called
+/// `StandardOutputAndStandardError.txt`; what tells two apart is the directory
+/// above, which leads with the test target (`ReflowTests-<UUID>-…`). The file's
+/// own name is skipped for exactly that reason — matching it would give every
+/// target the same label, and one stream would overwrite the other.
+fn stream_label(path: &Path, index: usize) -> String {
+    path.parent()
+        .into_iter()
+        .flat_map(Path::ancestors)
+        .filter_map(|a| a.file_name().and_then(|n| n.to_str()))
+        .find_map(|name| {
+            let (target, _) = name.split_once('-')?;
+            (!target.is_empty()).then(|| target.to_string())
+        })
+        .unwrap_or_else(|| format!("target-{index}"))
+}
+
+/// Walk the diagnostics export for the two files worth reading: each test
+/// process's own stdout, and the scheduling log that says whether the run was
+/// serial. Directory names in the export carry spaces and UUIDs, so it is
+/// walked rather than globbed.
+fn collect_diagnostic_files(dir: &Path, streams: &mut Vec<PathBuf>, schedules: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_diagnostic_files(&path, streams, schedules);
+        } else {
+            match path.file_name().and_then(|n| n.to_str()) {
+                // Exactly this name is the test process; a `-<bundle id>`
+                // suffix is some other process the run happened to capture.
+                Some("StandardOutputAndStandardError.txt") => streams.push(path),
+                Some("scheduling.log") => schedules.push(path),
+                _ => {}
+            }
+        }
+    }
+}
+
 /// One target's resolved build settings, the shape [`app_bundle`] reads to
 /// locate the built product. Field names mirror `xcodebuild -showBuildSettings
 /// -json` so the values can be deserialized straight from that format in tests.
@@ -946,6 +1137,82 @@ mod tests {
 
     fn project() -> Container {
         Container::Project(PathBuf::from("/work/App.xcodeproj"))
+    }
+
+    /// A real excerpt: the markers, an `os_log` line the app emitted onto the
+    /// same stream, and one test's own `print` between its own markers.
+    const STREAM: &str = "\
+2026-08-09 16:22:38.996503+0200 Reflow[48456:7376915] [General] Failed to send CA Event
+Test Suite 'All tests' started at 2026-08-09 16:22:39.033.
+Test Case '-[ReflowTests.ReflowEngineTests testFast]' started.
+Test Case '-[ReflowTests.ReflowEngineTests testFast]' passed (0.004 seconds).
+Test Case '-[ReflowTests.ReflowEngineTests testBook]' started.
+BOOK REFLOW: 300 source pages -> 486 pages in 26.9s
+Test Case '-[ReflowTests.ReflowEngineTests testBook]' passed (26.988 seconds).
+Test Case '-[ReflowTests.ReflowEngineTests testBroken]' started.
+about to fail
+Test Case '-[ReflowTests.ReflowEngineTests testBroken]' failed (0.1 seconds).
+Test Suite 'All tests' passed at 2026-08-09 16:24:00.
+";
+
+    #[test]
+    fn a_tests_own_output_is_recovered_from_the_stream() {
+        let (mut tests, mut rest) = (Vec::new(), String::new());
+        split_output(STREAM, &mut tests, &mut rest);
+
+        // Only tests that wrote something appear, under the identifier shape
+        // the rest of the CLI uses — not the marker's `Module.Class`.
+        let names: Vec<&str> = tests.iter().map(|t| t.test.as_str()).collect();
+        assert_eq!(
+            names,
+            ["ReflowEngineTests/testBook", "ReflowEngineTests/testBroken"]
+        );
+        assert_eq!(
+            tests[0].output.trim(),
+            "BOOK REFLOW: 300 source pages -> 486 pages in 26.9s"
+        );
+        // A failing test's output is bracketed by `failed`, not `passed`.
+        assert_eq!(tests[1].output.trim(), "about to fail");
+
+        // Output written outside any case is kept, and suite banners are not
+        // mistaken for it.
+        assert!(rest.contains("Failed to send CA Event"), "{rest}");
+        assert!(!rest.contains("Test Suite"), "{rest}");
+        assert!(!rest.contains("BOOK REFLOW"), "{rest}");
+    }
+
+    #[test]
+    fn an_unrecognized_framework_loses_nothing() {
+        // Swift Testing's markers are not XCTest's. Nothing is attributed,
+        // and the run's output survives whole rather than vanishing.
+        let text = "◇ Test example() started.\nmeasured 42ms\n✔ Test example() passed.\n";
+        let (mut tests, mut rest) = (Vec::new(), String::new());
+        split_output(text, &mut tests, &mut rest);
+        assert!(tests.is_empty());
+        assert!(rest.contains("measured 42ms"), "{rest}");
+    }
+
+    #[test]
+    fn each_test_targets_stream_keeps_its_own_name() {
+        // Every stream is named StandardOutputAndStandardError.txt; only the
+        // directory above distinguishes them, so a label taken from the file
+        // would collide and one target's output would overwrite another's.
+        let a = Path::new(
+            "/x/0_Test_iPhone 17_Diagnostics/ReflowTests-9C70-Configuration-Test Scheme \
+             Action-Iteration-1/ReflowTests-859C/StandardOutputAndStandardError.txt",
+        );
+        let b = Path::new(
+            "/x/0_Test_iPhone 17_Diagnostics/ReflowUITests-82D4-Configuration-Test Scheme \
+             Action-Iteration-1/ReflowUITests-1E01/StandardOutputAndStandardError.txt",
+        );
+        assert_eq!(stream_label(a, 0), "ReflowTests");
+        assert_eq!(stream_label(b, 1), "ReflowUITests");
+        assert_ne!(stream_label(a, 0), stream_label(b, 1));
+        // A path with nothing to read a target from still names something.
+        assert_eq!(
+            stream_label(Path::new("/StandardOutputAndStandardError.txt"), 3),
+            "target-3"
+        );
     }
 
     fn diag(severity: &str, location: Option<&str>, message: &str) -> serde_json::Value {

@@ -2,10 +2,11 @@
 //! `build`. Streams output in human mode; emits a parsed pass/fail summary
 //! under `--json` (and per-test events under `-o ndjson`), read back from the
 //! `.xcresult` bundle. The bundle is **retained** (state dir, or
-//! `--result-bundle PATH`) so `test run --failed` can rerun just the last run's
-//! failures and `test attachments` can export what those tests attached —
-//! screenshots and UI dumps, which for a UI test are the diagnosis the failure
-//! message only points at.
+//! `--result-bundle PATH`) so the run's own record stays readable afterwards:
+//! `test run --failed` reruns just the last run's failures, `test attachments`
+//! exports what those tests attached, and `test output` shows what they
+//! printed. A verdict is what the summary carries; the evidence behind it lives
+//! in the bundle.
 
 use std::path::{Path, PathBuf};
 
@@ -76,6 +77,17 @@ pub enum Action {
     Run,
     /// Export the last run's attachments (screenshots, UI dumps) as files.
     Attachments(AttachmentsArgs),
+    /// Show what the last run's tests printed, per test.
+    Output(OutputArgs),
+}
+
+/// The flags of `test output`. Which tests to show comes from the global
+/// '--only-testing', so it reads the same as it does on a run.
+#[derive(Debug, clap::Args)]
+pub struct OutputArgs {
+    /// Show each test's output in full instead of its last few KB.
+    #[arg(long)]
+    pub full: bool,
 }
 
 /// The flags of `test attachments`. Which tests to export comes from the
@@ -107,8 +119,10 @@ struct RunArgs<'a> {
 
 pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> CommandResult {
     ctx.targeting = args.target.clone().into();
-    if let Some(Action::Attachments(opts)) = action {
-        return attachments(ctx, args, opts);
+    match action {
+        Some(Action::Attachments(opts)) => return attachments(ctx, args, opts),
+        Some(Action::Output(opts)) => return output(ctx, args, opts),
+        Some(Action::Run) | None => {}
     }
     let run_args = RunArgs {
         only_testing: &args.only_testing,
@@ -524,18 +538,7 @@ impl Render for AttachmentsReport {
 /// the export is joined against the manifest and renamed back to what each
 /// test called the file.
 fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> CommandResult {
-    let container = resolve::container(ctx)?;
-    let bundle = args.result_bundle.as_deref().map_or_else(
-        || retained_bundle_path(&container),
-        |p| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()),
-    );
-    if !bundle.exists() {
-        return Err(CliError::new(format!(
-            "no result bundle at {} — run 'sweetpad test' first, or name one with \
-             '--result-bundle PATH'",
-            bundle.display()
-        )));
-    }
+    let (container, bundle) = last_run_bundle(ctx, args)?;
 
     let output_dir = opts.output_dir.clone().unwrap_or_else(|| {
         let ours = export_dir_path(&container);
@@ -628,6 +631,216 @@ fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> Co
         recorded_at: recorded_at(&bundle),
         note,
     }))
+}
+
+/// The `.xcresult` the read-back verbs work from: whichever bundle the last
+/// run left behind, or the one `--result-bundle` names.
+fn last_run_bundle(ctx: &Context, args: &TestArgs) -> Result<(Container, PathBuf), CliError> {
+    let container = resolve::container(ctx)?;
+    let bundle = args.result_bundle.as_deref().map_or_else(
+        || retained_bundle_path(&container),
+        |p| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()),
+    );
+    if !bundle.exists() {
+        return Err(CliError::new(format!(
+            "no result bundle at {} — run 'sweetpad test' first, or name one with \
+             '--result-bundle PATH'",
+            bundle.display()
+        )));
+    }
+    Ok((container, bundle))
+}
+
+/// How much of one test's output rides in the report before it is cut back to
+/// its tail. Sized from what tests actually write: a unit test's `print`
+/// output runs to hundreds of bytes, while a UI test's automation trace runs
+/// to tens of KB and would swamp both a terminal and a JSON payload.
+const OUTPUT_CAP: usize = 4096;
+
+/// What `test output` recovered: the console output of each test that wrote
+/// any, plus anything written outside a test.
+struct OutputReport {
+    tests: Vec<TestOutputEntry>,
+    unattributed: Option<String>,
+    sources: Vec<PathBuf>,
+    recorded_at: Option<f64>,
+    /// Attribution brackets a test's output between its own markers, which
+    /// only holds while one test runs at a time.
+    serial: bool,
+    note: Option<String>,
+}
+
+struct TestOutputEntry {
+    test: String,
+    output: String,
+    truncated: bool,
+}
+
+impl Render for OutputReport {
+    fn human(&self, out: &Output) {
+        for entry in &self.tests {
+            out.line(&entry.test);
+            if entry.truncated {
+                out.line("    …");
+            }
+            for line in entry.output.lines() {
+                out.line(&format!("    {line}"));
+            }
+        }
+        if let Some(text) = &self.unattributed {
+            out.line("outside any test");
+            for line in text.lines() {
+                out.line(&format!("    {line}"));
+            }
+        }
+        let age = self
+            .recorded_at
+            .and_then(age_phrase)
+            .map_or_else(String::new, |age| format!(" (recorded {age} ago)"));
+        out.line(&format!(
+            "{} test{} wrote output{age}",
+            self.tests.len(),
+            if self.tests.len() == 1 { "" } else { "s" }
+        ));
+        if self.tests.iter().any(|t| t.truncated) {
+            let where_ = self
+                .sources
+                .first()
+                .and_then(|p| p.parent())
+                .map_or_else(String::new, |d| format!(", or read {}", d.display()));
+            out.note(&format!(
+                "output was cut to its last {OUTPUT_CAP} bytes; pass '--full' for all of it{where_}"
+            ));
+        }
+        if !self.serial {
+            out.warn(
+                "the run did not report itself as serial — output is attributed by the \
+                 markers around each test, which parallel workers interleave",
+            );
+        }
+        if let Some(note) = &self.note {
+            out.note(note);
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let tests: Vec<serde_json::Value> = self
+            .tests
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "test": t.test,
+                    "output": t.output,
+                    "truncated": t.truncated,
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "tests": tests,
+            "unattributed": self.unattributed,
+            "sources": self.sources.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+            "recordedAt": self.recorded_at,
+            "serial": self.serial,
+            "note": self.note,
+        })
+    }
+}
+
+/// `test output`: what the last run's tests printed. A passing test's own
+/// output — a benchmark's timing, a generated fixture's size — is the product
+/// of the test rather than an aside, and the pass/fail summary says nothing
+/// about it. The bundle keeps it per test *process*, so it is sliced back to
+/// per test here.
+fn output(ctx: &mut Context, args: &TestArgs, opts: &OutputArgs) -> CommandResult {
+    let (container, bundle) = last_run_bundle(ctx, args)?;
+
+    // The diagnostics export is all-or-nothing and writes the app-under-test's
+    // log alongside the streams worth reading, so it lands in a scratch
+    // directory that is removed once the few KB that matter are parsed.
+    let staging = xcodebuild::project_artifact(&container, "-output.staging");
+    let kept = xcodebuild::project_artifact(&container, "-output");
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging)
+        .map_err(|e| CliError::new(format!("failed to create {}: {e}", staging.display())))?;
+    let run = xcodebuild::export_run_output(&bundle, &staging, &kept);
+    let _ = std::fs::remove_dir_all(&staging);
+    let run = run?;
+
+    let found_any = !run.tests.is_empty();
+    let mut tests: Vec<TestOutputEntry> = run
+        .tests
+        .into_iter()
+        .filter(|t| {
+            args.only_testing.is_empty()
+                || args
+                    .only_testing
+                    .iter()
+                    .any(|sel| selector_matches(sel, &t.test))
+        })
+        .map(|t| {
+            let (output, truncated) = if opts.full {
+                (t.output, false)
+            } else {
+                cut_to_tail(&t.output, OUTPUT_CAP)
+            };
+            TestOutputEntry {
+                test: t.test,
+                output: output.trim_end().to_string(),
+                truncated,
+            }
+        })
+        .collect();
+    tests.retain(|t| !t.output.is_empty());
+
+    if tests.is_empty() && found_any && !args.only_testing.is_empty() {
+        return Err(CliError::new(format!(
+            "no output from {} — a test here is identified by class, not target",
+            args.only_testing.join(", ")
+        )));
+    }
+
+    let note = (!found_any).then(|| {
+        "no test wrote to stdout or stderr; a test's own 'print' lands here, while \
+         XCTest's assertions and a UI test's screenshots do not"
+            .to_string()
+    });
+    // Output written outside a test case is XCTest's own bookkeeping and the
+    // app's `os_log` chatter — noise, next to the lines a test meant to write.
+    // It earns a place only when nothing was attributed at all, which is what
+    // a framework this parser does not recognise looks like: then it is the
+    // only account of what ran, and dropping it would lose the run entirely.
+    let unattributed = tests
+        .is_empty()
+        .then(|| run.unattributed.trim().to_string())
+        .filter(|s| !s.is_empty());
+    Ok(Rendered::data(OutputReport {
+        tests,
+        unattributed,
+        sources: run.sources,
+        recorded_at: recorded_at(&bundle),
+        serial: run.serial,
+        note,
+    }))
+}
+
+/// Cut `text` back to its last `cap` bytes on a line boundary. The tail is
+/// kept because output that ran long is nearly always a log, and a log's end
+/// is where the thing being diagnosed happened.
+fn cut_to_tail(text: &str, cap: usize) -> (String, bool) {
+    if text.len() <= cap {
+        return (text.to_string(), false);
+    }
+    // The cap counts bytes, so it can land inside a character; walk forward to
+    // a boundary before slicing, then forward again to the next line break so
+    // the cut never leaves half a line either.
+    let mut start = text.len() - cap;
+    while start < text.len() && !text.is_char_boundary(start) {
+        start += 1;
+    }
+    let start = text[start..]
+        .find('\n')
+        .map_or(text.len(), |i| start + i + 1);
+    (text[start..].to_string(), true)
 }
 
 /// Why an export came back empty. A run that attached nothing looks identical
@@ -906,6 +1119,7 @@ fn spm_test(ctx: &mut Context, resolved: &resolve::Resolved, args: &RunArgs) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
     use std::path::PathBuf;
 
     #[test]
@@ -1093,6 +1307,43 @@ mod tests {
         // Backticks render literally in a terminal.
         assert!(!failures.contains('`'), "{failures}");
         assert!(!all.contains('`'), "{all}");
+    }
+
+    #[test]
+    fn long_output_is_cut_to_whole_lines_from_the_end() {
+        // A log's end is where the thing being diagnosed happened, so the tail
+        // is what survives — and it survives as whole lines.
+        let text: String = (0..500).fold(String::new(), |mut s, i| {
+            let _ = writeln!(s, "line {i}");
+            s
+        });
+        let (cut, truncated) = cut_to_tail(&text, 100);
+        assert!(truncated);
+        assert!(cut.len() <= 100, "{}", cut.len());
+        assert!(cut.ends_with("line 499\n"), "{cut}");
+        assert!(cut.starts_with("line "), "{cut}");
+        assert!(!cut.contains("line 0\n"));
+
+        // Output that fits is returned whole and unmarked.
+        let (whole, truncated) = cut_to_tail("short\n", 100);
+        assert_eq!(whole, "short\n");
+        assert!(!truncated);
+    }
+
+    #[test]
+    fn cutting_never_splits_a_multibyte_character() {
+        // The cap counts bytes and the text does not, so the cut lands inside
+        // a character for some caps and not others. Every cap has to be safe,
+        // and picking one by hand only ever proves the lucky case.
+        let text: String = (0..40).fold(String::new(), |mut s, i| {
+            let _ = writeln!(s, "é—→ line {i}");
+            s
+        });
+        for cap in 1..=text.len() {
+            let (cut, truncated) = cut_to_tail(&text, cap);
+            assert_eq!(truncated, cap < text.len());
+            assert!(text.ends_with(&cut), "cap {cap} produced a foreign tail");
+        }
     }
 
     #[test]

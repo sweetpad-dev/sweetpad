@@ -94,6 +94,7 @@ sweetpad build [--clean|--watch|--show-command] [-- XCODEBUILD_ARGS]
 sweetpad build diagnostics        last build's errors/warnings, no rebuild
 sweetpad test [--failed|--retry-flaky N|--coverage|--junit P|--watch]
 sweetpad test attachments         export the last run's screenshots/dumps, §9l
+sweetpad test output              what the last run's tests printed, §9l
 sweetpad clean [--purge]          xcodebuild clean; --purge adds DerivedData
 sweetpad archive [--export-method M] [--no-export]
 sweetpad devices                  everything runnable, specifier-ready
@@ -1736,17 +1737,23 @@ stop condition); and dedupe of a wider batch header against the per-file lines
 behind it, which would need lookahead over a stream to save a line that is honest
 as it stands.
 
-## 9l. v8 — `test attachments`, reaching the evidence in the result bundle
+## 9l. v8 — reaching the evidence inside the result bundle
 
 `test` reports a verdict and retains the `.xcresult` that explains it, then only
 ever reads two things back out of that bundle: the summary and, for `--failed`,
-the failing selectors. What a test *attached* — screenshots, UI-hierarchy dumps,
-generated fixtures — stays sealed inside it.
+the failing selectors. Everything else a run recorded — what a test attached, and
+what it printed — stays sealed inside a format nothing else can open.
+
+The shape repeats per artifact: the failure message says *what* failed, the
+bundle says *why*, and only the first was reachable. Both verbs below read the
+retained bundle, so they answer after the fact without re-running anything.
+
+### `test attachments`
 
 For a UI test the two halves of a diagnosis live in different places: the failure
 message says the query failed, and the screenshot says the sheet was under the
-keyboard. Only the first was reachable. The same reach reads as verification on a
-green run, where the screenshot is the only evidence the UI actually looks right.
+keyboard. The same reach reads as verification on a green run, where the
+screenshot is the only evidence the UI actually looks right.
 
 ```
 sweetpad test attachments [--output-dir DIR] [--only-failures]
@@ -1792,6 +1799,52 @@ when the run was recorded.
 remove the round-trip an agent pays to discover the verb, and `--only-failures`
 makes it nearly free, but it writes files nobody asked for and changes `test`'s
 payload; the verb is the honest surface for an explicit request.
+
+### `test output`
+
+The same seam, one artifact over. A test that *measures* rather than asserts —
+a benchmark printing `BOOK REFLOW: 300 source pages -> 486 pages in 26.9s`, a
+fixture reporting its size — makes its point in a `print`, and pass/fail says
+nothing about it. That output reaches the terminal only under `-v`, which also
+prints the entire xcodebuild transcript, so it has to be grepped out of the
+noise; nothing in `test --help` suggests `-v` is where stdout went.
+
+```
+sweetpad test output [--only-testing ID]… [--full]
+```
+
+**It is not in the test tree.** `get test-results activities` returns an empty
+tree for a test whose only output is a `print` — activities record `XCTContext`
+steps, not the process's stdout. The stream lives in the *diagnostics* export,
+one file per test process, bracketed by XCTest's own `Test Case '-[Module.Class
+method]' started.` / `passed|failed (Ns)` markers. Slicing on those markers is
+what turns per-process output back into per-test output.
+
+**Read only the test processes' streams.** The same export also holds the
+app-under-test's `os_log` firehose, named `StandardOutputAndStandardError-<bundle
+id>.txt` — 27 MB against the test streams' 113 KB in the run this was built
+against. The unsuffixed name is the discriminator.
+
+**Sized from what tests actually write.** Measured over one real suite: 36 unit
+tests wrote 362 bytes between them and only 3 wrote anything at all, while 9 UI
+tests wrote 66 KB — all of it XCUITest's automation trace, the largest single
+test 20.6 KB. So each test's output is cut to its last 4 KB, which passes every
+unit test through whole and holds a UI trace to its end, where a failure is.
+`--full` lifts the cap, and the streams themselves are kept beside the bundle so
+the untruncated text stays readable either way.
+
+**Attribution is only as good as the run being serial**, since it brackets
+output between one test's markers. `scheduling.log` states this outright
+(`Parallelization disabled; …`), so the report claims serial only from that line
+and warns when it cannot.
+
+**Output written outside a test case is reported only when nothing was
+attributed.** Between tests the stream carries XCTest's own bookkeeping and the
+app's `os_log` chatter, which buries the handful of lines a test meant to write.
+But a framework whose markers this parser does not recognise — Swift Testing —
+attributes *nothing*, and there the same bucket is the only account of what ran.
+Dropping it unconditionally would lose the run; showing it unconditionally
+would bury the answer.
 
 ## 9m. Direction — the run session as a server
 
