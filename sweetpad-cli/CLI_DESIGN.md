@@ -1846,7 +1846,37 @@ attributes *nothing*, and there the same bucket is the only account of what ran.
 Dropping it unconditionally would lose the run; showing it unconditionally
 would bury the answer.
 
-## 9m. Direction — the run session as a server
+## 9m. v8 — failures that name their own fix
+
+Three more from §9k's family, all found by agents losing time rather than by
+anyone filing a bug: the CLI knew what had gone wrong and said something that
+did not help, or said nothing at all.
+
+### A blocked build is not a broken one
+
+An SPM build-tool plugin (SwiftLint, SwiftGen, SwiftFormat) has to be approved
+before it runs. Xcode asks with a trust prompt; from the CLI the build just
+fails, and no output names `-skipPackagePluginValidation`. Nothing about it is
+inferable from the code being built, and it hits every such project on its
+first CLI build.
+
+It is reported as a **blocker**, distinct from a compile failure: no diagnostic
+describes it and no edit fixes it, so the flag *is* the answer. Human mode said
+only `xcodebuild exited with a non-zero status`; `-o json` printed the whole
+transcript, which for this failure is several KB of package resolution (2.1 KB
+down to 288 bytes on the project it was built against).
+
+**The signal is version-dependent, and the obvious match is a false positive.**
+Older Xcode says `must be enabled before it can be used` outright. Xcode 26
+instead names the step — `Validate plug-in “SwiftLintPlugin” in package
+“swiftlint”`, in curly quotes — and prints that same line on *successful* builds
+once the plugin is trusted. So it counts only where it appears under `The
+following build commands failed:`, which makes the watcher stateful; matching
+the line anywhere would tell every healthy build to pass a flag it does not
+need. Detection sits on the line stream rather than the transcript, so it works
+in the human and ndjson paths that never assemble one.
+
+## 9n. Direction — the run session as a server
 
 `app run`'s only door is a tty. The session owns everything an iterating loop
 needs — the settled `RunPlan`, the live process, the hot-reload channel (§9d),

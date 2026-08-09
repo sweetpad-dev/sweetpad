@@ -348,6 +348,7 @@ mod tests {
     fn the_json_report_folds_in_the_stream_stats_when_the_runner_collected_them() {
         let mut r = report(Some("/dd/App.app"));
         r.stats = Some(crate::cli::buildlog::StreamStats {
+            blocker: None,
             errors: 2,
             warnings: 7,
             duration_ms: 1234,

@@ -112,18 +112,21 @@ impl BuildPlan<'_> {
         let mut failure_detail = String::new();
         let mut stats = None;
         let mut diagnostics = Vec::new();
+        let mut blocker = None;
         // Only the raw `-v` human passthrough leaves output unparsed; every
         // parsing mode (including ndjson under `-v`) records the artifact.
         let mut parsed = true;
         let ok = if out.is_ndjson() {
             let (ok, s) = buildlog::run_ndjson("xcodebuild", &args, cwd.as_deref(), out)?;
             diagnostics.clone_from(&s.diagnostics);
+            blocker.clone_from(&s.blocker);
             stats = Some(s);
             ok
         } else if out.is_json() {
             let run = process::run_captured("xcodebuild", &args, cwd.as_deref())?;
             diagnostics = buildlog::diagnostics_from_transcript(&run.combined);
             if !run.success {
+                blocker = buildlog::blocker_from_transcript(&run.combined);
                 failure_detail = match diagnostics_summary(&diagnostics) {
                     Some(summary) => {
                         let log =
@@ -133,6 +136,9 @@ impl BuildPlan<'_> {
                                 });
                         format!(": {summary}{log}")
                     }
+                    // A blocked build has a better account than its transcript,
+                    // and the transcript is several KB of package resolution.
+                    None if blocker.is_some() => String::new(),
                     None => format!(":\n{}", run.tail),
                 };
             }
@@ -142,9 +148,10 @@ impl BuildPlan<'_> {
             parsed = false;
             process::run("xcodebuild", &args, cwd.as_deref(), false)?
         } else {
-            let (ok, d) =
+            let (ok, d, b) =
                 buildlog::run_collecting("xcodebuild", &args, cwd.as_deref(), out, "Building")?;
             diagnostics = d;
+            blocker = b;
             ok
         };
         if parsed {
@@ -156,12 +163,14 @@ impl BuildPlan<'_> {
             // Classified here, the one chokepoint every build goes through, so
             // `build start` and `app run`'s build step both exit 3 on a failed
             // compile instead of the generic 1.
-            Err(CliError::new(format!(
-                "xcodebuild exited with a non-zero status{failure_detail}"
-            ))
-            .kind(ErrorKind::BuildFailure)
-            .diagnostics(diagnostics)
-            .context("building the project"))
+            let headline = blocker.map_or_else(
+                || format!("xcodebuild exited with a non-zero status{failure_detail}"),
+                |hint| format!("the build is blocked, not broken: {hint}"),
+            );
+            Err(CliError::new(headline)
+                .kind(ErrorKind::BuildFailure)
+                .diagnostics(diagnostics)
+                .context("building the project"))
         }
     }
 }
@@ -235,6 +244,9 @@ pub struct TestRunOutcome {
     /// The whole captured transcript (`--json` only, where nothing reached the
     /// terminal), for [`record_failure_transcript`].
     pub transcript: Option<String>,
+    /// Set when the run was blocked rather than broken — a policy gate no
+    /// compile error describes (see [`buildlog::BlockerWatch`]).
+    pub blocker: Option<String>,
 }
 
 impl TestPlan<'_> {
@@ -299,6 +311,7 @@ impl TestPlan<'_> {
                 tail: None,
                 diagnostics: stats.diagnostics,
                 transcript: None,
+                blocker: stats.blocker,
             }
         } else if out.is_json() {
             let run = process::run_captured("xcodebuild", &args, cwd.as_deref())?;
@@ -310,6 +323,9 @@ impl TestPlan<'_> {
             TestRunOutcome {
                 passed: run.success,
                 tail: (!run.success).then_some(run.tail),
+                blocker: (!run.success)
+                    .then(|| buildlog::blocker_from_transcript(&run.combined))
+                    .flatten(),
                 diagnostics,
                 transcript: (!run.success).then_some(run.combined),
             }
@@ -321,15 +337,18 @@ impl TestPlan<'_> {
                 tail: None,
                 diagnostics: Vec::new(),
                 transcript: None,
+                blocker: None,
             }
         } else {
-            let ok = buildlog::run("xcodebuild", &args, cwd.as_deref(), out, "Testing")
-                .context("running the tests")?;
+            let (ok, diagnostics, blocker) =
+                buildlog::run_collecting("xcodebuild", &args, cwd.as_deref(), out, "Testing")
+                    .context("running the tests")?;
             TestRunOutcome {
                 passed: ok,
                 tail: None,
-                diagnostics: Vec::new(),
+                diagnostics,
                 transcript: None,
+                blocker,
             }
         };
         Ok(outcome)

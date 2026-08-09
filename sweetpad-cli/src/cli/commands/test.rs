@@ -406,6 +406,13 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
 /// full. A run with nothing parseable (a bad destination, a signing refusal)
 /// keeps the tail, which is then the only account of what happened.
 fn build_step_failure(container: &Container, outcome: xcodebuild::TestRunOutcome) -> CliError {
+    // A blocked build is not a compile failure: no diagnostic describes it and
+    // no edit fixes it, so the flag that unblocks it is the whole answer.
+    if let Some(hint) = outcome.blocker {
+        return CliError::new(format!("the build is blocked, not broken: {hint}"))
+            .kind(crate::cli::ErrorKind::BuildFailure)
+            .context("running the tests");
+    }
     let log = outcome
         .transcript
         .as_deref()
@@ -1154,6 +1161,7 @@ mod tests {
             tail: Some(transcript.clone()),
             diagnostics: crate::cli::buildlog::diagnostics_from_transcript(&transcript),
             transcript: Some(transcript.clone()),
+            blocker: None,
         };
         let err = build_step_failure(&container, outcome);
 
@@ -1192,6 +1200,7 @@ mod tests {
             tail: Some("xcodebuild: error: Unable to find a destination".to_string()),
             diagnostics: Vec::new(),
             transcript: None,
+            blocker: None,
         };
         let err = build_step_failure(&container, outcome);
         assert!(err.to_string().contains("Unable to find a destination"));

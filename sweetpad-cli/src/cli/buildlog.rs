@@ -511,10 +511,12 @@ pub fn run_collecting(
     cwd: Option<&Path>,
     out: &Output,
     label: &str,
-) -> Result<(bool, Vec<serde_json::Value>), CliError> {
+) -> Result<(bool, Vec<serde_json::Value>, Option<String>), CliError> {
     let mut progress = BuildProgress::start(out, label);
     let mut diagnostics = Vec::new();
+    let mut watch = BlockerWatch::default();
     let ok = process::stream_lines(program, args, cwd, |line| {
+        watch.line(line);
         if let Event::Diagnostic { .. } = parse_line(line)
             && let Some(json) = event_json(&parse_line(line))
         {
@@ -524,7 +526,72 @@ pub fn run_collecting(
             out.line(&rendered);
         }
     })?;
-    Ok((ok, diagnostics))
+    Ok((ok, diagnostics, watch.hint()))
+}
+
+/// Watches a build's output for a failure that no diagnostic describes and no
+/// code change fixes — the build is blocked on a policy decision instead.
+///
+/// An SPM build-tool plugin (SwiftLint, SwiftGen, SwiftFormat) has to be
+/// approved before it runs. Xcode asks with a trust prompt; from the CLI the
+/// build simply fails, and nothing in the output says which flag unblocks it.
+#[derive(Debug, Default)]
+pub struct BlockerWatch {
+    in_failed_list: bool,
+    plugin: Option<String>,
+}
+
+impl BlockerWatch {
+    pub fn line(&mut self, line: &str) {
+        // Older Xcode says it outright, anywhere in the output.
+        if line.contains("must be enabled before it can be used") {
+            self.plugin = Some(quoted_name(line).unwrap_or_else(|| "a".to_string()));
+            return;
+        }
+        if line.starts_with("The following build commands failed:") {
+            self.in_failed_list = true;
+            return;
+        }
+        // Newer Xcode only reports the validation step by name, and reports it
+        // on success too — so it counts as the cause only where the failed
+        // commands are listed.
+        if self.in_failed_list && line.contains("Validate plug-in") {
+            self.plugin = Some(quoted_name(line).unwrap_or_else(|| "a".to_string()));
+        }
+    }
+
+    /// How to get past it, naming the flag — which is the whole point, since
+    /// the flag is not discoverable from the failure.
+    #[must_use]
+    pub fn hint(&self) -> Option<String> {
+        self.plugin.as_ref().map(|plugin| {
+            format!(
+                "{plugin} build-tool plugin must be approved before it can run, and Xcode's \
+                 trust prompt has no CLI equivalent; retry with \
+                 '-- -skipPackagePluginValidation'"
+            )
+        })
+    }
+}
+
+/// The first quoted run in `line`, accepting the curly quotes Xcode prints as
+/// well as plain ones.
+fn quoted_name(line: &str) -> Option<String> {
+    let is_quote = |c: char| c == '"' || c == '\u{201c}' || c == '\u{201d}';
+    let rest = line.split_once(is_quote)?.1;
+    let name = rest.split(is_quote).next()?.trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// Scan a full captured transcript for a blocked build (the `--json` path,
+/// and `test`'s failure report).
+#[must_use]
+pub fn blocker_from_transcript(text: &str) -> Option<String> {
+    let mut watch = BlockerWatch::default();
+    for line in text.lines() {
+        watch.line(line);
+    }
+    watch.hint()
 }
 
 /// Diagnostics parsed out of a full captured transcript (the `--json` path).
@@ -586,6 +653,8 @@ pub struct StreamStats {
     pub warnings: u32,
     pub duration_ms: u64,
     pub diagnostics: Vec<serde_json::Value>,
+    /// Set when the build was blocked rather than broken — see [`BlockerWatch`].
+    pub blocker: Option<String>,
 }
 
 /// Run a command emitting each parsed event as an NDJSON line on stdout — the
@@ -600,7 +669,9 @@ pub fn run_ndjson(
 ) -> Result<(bool, StreamStats), CliError> {
     let start = Instant::now();
     let mut stats = StreamStats::default();
+    let mut watch = BlockerWatch::default();
     let ok = process::stream_lines(program, args, cwd, |line| {
+        watch.line(line);
         let event = parse_line(line);
         if let Some(json) = event_json(&event) {
             if let Event::Diagnostic { kind, .. } = &event {
@@ -615,6 +686,7 @@ pub fn run_ndjson(
         }
     })?;
     stats.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    stats.blocker = watch.hint();
     Ok((ok, stats))
 }
 
@@ -703,6 +775,57 @@ impl Colors {
 
 #[cfg(test)]
 mod tests {
+
+    /// The Xcode 26 shape: the validation step is named only in the list of
+    /// failed build commands, with curly quotes.
+    const BLOCKED_26: &str = "\
+Prepare packages
+Validate plug-in \u{201c}SwiftLintPlugin\u{201d} in package \u{201c}swiftlint\u{201d}
+** BUILD FAILED **
+The following build commands failed:
+\tValidate plug-in \u{201c}SwiftLintPlugin\u{201d} in package \u{201c}swiftlint\u{201d}
+\tBuilding workspace Ampol with scheme Ampol and configuration Debug
+(3 failures)
+";
+
+    #[test]
+    fn a_plugin_that_needs_approval_names_the_flag_that_unblocks_it() {
+        let hint = blocker_from_transcript(BLOCKED_26).expect("no blocker found");
+        assert!(hint.contains("SwiftLintPlugin"), "{hint}");
+        assert!(hint.contains("-skipPackagePluginValidation"), "{hint}");
+        // Terminals print backticks literally.
+        assert!(!hint.contains('`'), "{hint}");
+
+        // Older Xcode says it outright, without a failed-command list.
+        let older = "error: Plugin \"SwiftLintPlugin\" from package \"SwiftLint\" must be \
+                     enabled before it can be used\n";
+        let hint = blocker_from_transcript(older).expect("no blocker found");
+        assert!(hint.contains("SwiftLintPlugin"), "{hint}");
+        assert!(hint.contains("-skipPackagePluginValidation"), "{hint}");
+    }
+
+    #[test]
+    fn a_validation_step_that_succeeded_is_not_a_blocker() {
+        // The same line appears on a healthy build once the plugin is trusted.
+        // Firing there would tell every passing build to pass a flag it does
+        // not need, so only the failed-command list counts.
+        let succeeded = "\
+Prepare packages
+Validate plug-in \u{201c}SwiftLintPlugin\u{201d} in package \u{201c}swiftlint\u{201d}
+CompileSwiftSources normal arm64
+** BUILD SUCCEEDED **
+";
+        assert!(blocker_from_transcript(succeeded).is_none());
+
+        // A failure with some other cause is left to the diagnostics.
+        let other = "\
+** BUILD FAILED **
+The following build commands failed:
+\tCompileSwift normal arm64 /work/App/Main.swift
+(1 failure)
+";
+        assert!(blocker_from_transcript(other).is_none());
+    }
     use super::*;
 
     #[test]
