@@ -93,6 +93,7 @@ sweetpad run [--on X] [--hot]     the flagship loop (= app run)
 sweetpad build [--clean|--watch|--show-command] [-- XCODEBUILD_ARGS]
 sweetpad build diagnostics        last build's errors/warnings, no rebuild
 sweetpad test [--failed|--retry-flaky N|--coverage|--junit P|--watch]
+sweetpad test attachments         export the last run's screenshots/dumps, §9l
 sweetpad clean [--purge]          xcodebuild clean; --purge adds DerivedData
 sweetpad archive [--export-method M] [--no-export]
 sweetpad devices                  everything runnable, specifier-ready
@@ -1735,7 +1736,64 @@ stop condition); and dedupe of a wider batch header against the per-file lines
 behind it, which would need lookahead over a stream to save a line that is honest
 as it stands.
 
-## 9l. Direction — the run session as a server
+## 9l. v8 — `test attachments`, reaching the evidence in the result bundle
+
+`test` reports a verdict and retains the `.xcresult` that explains it, then only
+ever reads two things back out of that bundle: the summary and, for `--failed`,
+the failing selectors. What a test *attached* — screenshots, UI-hierarchy dumps,
+generated fixtures — stays sealed inside it.
+
+For a UI test the two halves of a diagnosis live in different places: the failure
+message says the query failed, and the screenshot says the sheet was under the
+keyboard. Only the first was reachable. The same reach reads as verification on a
+green run, where the screenshot is the only evidence the UI actually looks right.
+
+```
+sweetpad test attachments [--output-dir DIR] [--only-failures]
+                          [--only-testing ID]…
+```
+
+**The manifest join is the feature.** `xcresulttool export attachments` writes
+files named by UUID, so the export alone is unusable; the names live in a sibling
+`manifest.json`, keyed per test. The export is staged, joined, and renamed back
+to what each test called the file — `01-document-loaded.png`, not
+`26174667-246E-4154-859F-1F7A0CE79766.png`. XCTest's `_<run>_<UUID>` uniquifier
+is stripped, and a name it collides with takes a counter rather than overwriting
+the earlier file, because attachment names are not unique — that suffix exists
+for exactly that reason.
+
+**Staging is not an implementation detail.** A second export into a populated
+directory writes `name (1).png` duplicates instead of replacing, so the export
+always gets an empty directory of its own and the files are moved out of it. The
+default destination is a per-project slot beside the retained bundle, emptied
+first so a stale file can never be read as part of this run; a directory the
+caller names with `--output-dir` is theirs, and is added to rather than emptied.
+
+**Grouped by test, ordered as the test recorded them.** Attachments land under
+one directory per test with the run's own timestamps deciding order within it —
+the manifest's order is neither. Note that execution order is XCTest's
+alphabetical-by-method, which a suite numbering its screenshots as a narrative
+will not match; grouping is what keeps that legible, and a flat chronological
+dump is what makes it noise.
+
+**An empty export says which emptiness it is.** A run that attached nothing and a
+run whose attachments were discarded look identical on disk, and the discard is
+the *default* — `XCTAttachment.lifetime` is `.deleteOnSuccess` unless a test says
+`.keepAlways`. That is not guessable from an empty directory, so it is stated,
+in the payload as well as on stderr, since a `note` is muted under `-o json`.
+
+**The age of the evidence travels with it.** The export reads the *last* run, so
+running it after an edit but before a re-run hands back screenshots of the old
+build — the failure mode §9g's stale-project guard exists for, and worse here,
+because a screenshot looks authoritative whatever its age. The report carries
+when the run was recorded.
+
+*Deliberately not built:* automatic export on a failing `test` run. It would
+remove the round-trip an agent pays to discover the verb, and `--only-failures`
+makes it nearly free, but it writes files nobody asked for and changes `test`'s
+payload; the verb is the honest surface for an explicit request.
+
+## 9m. Direction — the run session as a server
 
 `app run`'s only door is a tty. The session owns everything an iterating loop
 needs — the settled `RunPlan`, the live process, the hot-reload channel (§9d),

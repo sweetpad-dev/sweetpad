@@ -628,6 +628,113 @@ fn parse_summary(out: &str) -> Result<TestSummary, CliError> {
     serde_json::from_str(json).map_err(|e| CliError::new(format!("parsing test summary: {e}")))
 }
 
+/// One file a test attached during its run, as exported from a `.xcresult`.
+/// `file` is the staged export (named by UUID); `suggested_name` is what the
+/// test called it, which is the only name a reader can use.
+pub struct ExportedAttachment {
+    /// The owning test, as `xcresulttool` identifies it (`Class/method()`).
+    pub test: String,
+    pub file: PathBuf,
+    pub suggested_name: String,
+    /// Recorded against a test failure rather than a passing step.
+    pub failure: bool,
+    /// Seconds since the epoch — the run order the test recorded them in,
+    /// which the manifest's own order does not preserve.
+    pub timestamp: f64,
+}
+
+/// The `manifest.json` `xcresulttool export attachments` writes beside the
+/// exported files: one entry per test, mapping UUID filenames back to the
+/// names the test gave them. Without this join the export is unusable.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AttachmentManifestEntry {
+    test_identifier: String,
+    #[serde(default)]
+    attachments: Vec<ManifestAttachment>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct ManifestAttachment {
+    exported_file_name: String,
+    suggested_human_readable_name: String,
+    is_associated_with_failure: bool,
+    timestamp: f64,
+}
+
+impl Default for ManifestAttachment {
+    fn default() -> Self {
+        Self {
+            exported_file_name: String::new(),
+            suggested_human_readable_name: String::new(),
+            is_associated_with_failure: false,
+            timestamp: 0.0,
+        }
+    }
+}
+
+/// Export a `.xcresult`'s attachments into `staging` and read the manifest
+/// back, flattened to one entry per file. `staging` must be empty: a second
+/// export into a populated directory writes `name (1).png` duplicates rather
+/// than replacing what is there.
+pub fn export_attachments(
+    bundle: &Path,
+    staging: &Path,
+    only_failures: bool,
+) -> Result<Vec<ExportedAttachment>, CliError> {
+    let mut owned = vec![
+        "xcresulttool",
+        "export",
+        "attachments",
+        "--path",
+        &bundle.to_string_lossy(),
+        "--output-path",
+        &staging.to_string_lossy(),
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect::<Vec<_>>();
+    if only_failures {
+        owned.push("--only-failures".to_string());
+    }
+    let argv: Vec<&str> = owned.iter().map(String::as_str).collect();
+    // The command's own stdout just narrates each file; the manifest is the
+    // part worth reading.
+    process::capture("xcrun", &argv, None).context("exporting the test attachments")?;
+
+    let manifest = staging.join("manifest.json");
+    let manifest_json = std::fs::read_to_string(&manifest).map_err(|e| {
+        CliError::new(format!(
+            "xcresulttool wrote no attachment manifest at {}: {e}",
+            manifest.display()
+        ))
+    })?;
+    let entries: Vec<AttachmentManifestEntry> = serde_json::from_str(&manifest_json)
+        .map_err(|e| CliError::new(format!("parsing the attachment manifest: {e}")))?;
+
+    Ok(entries
+        .into_iter()
+        .flat_map(|entry| {
+            let test = entry.test_identifier;
+            entry
+                .attachments
+                .into_iter()
+                .map(move |a| ExportedAttachment {
+                    test: test.clone(),
+                    file: staging.join(&a.exported_file_name),
+                    suggested_name: if a.suggested_human_readable_name.is_empty() {
+                        a.exported_file_name
+                    } else {
+                        a.suggested_human_readable_name
+                    },
+                    failure: a.is_associated_with_failure,
+                    timestamp: a.timestamp,
+                })
+        })
+        .collect())
+}
+
 /// One target's resolved build settings, the shape [`app_bundle`] reads to
 /// locate the built product. Field names mirror `xcodebuild -showBuildSettings
 /// -json` so the values can be deserialized straight from that format in tests.

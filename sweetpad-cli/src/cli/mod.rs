@@ -910,7 +910,7 @@ pub fn run(argv: &[String]) -> ExitCode {
         // `build`/`test` carry their flags as resource-level globals; the bare
         // `start`/`run` tokens are optional markers, so both spellings land here.
         Resource::Build { args, action } => commands::build::run(&mut ctx, &args, action.as_ref()),
-        Resource::Test { args, action: _ } => commands::test::run(&mut ctx, &args),
+        Resource::Test { args, action } => commands::test::run(&mut ctx, &args, action.as_ref()),
         Resource::Archive(archive_args) => commands::archive::run(&mut ctx, &archive_args),
         Resource::Clean(clean_args) => {
             let mut targeting: Targeting = clean_args.scheme.clone().into();

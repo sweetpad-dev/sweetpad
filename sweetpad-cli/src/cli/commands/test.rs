@@ -2,8 +2,10 @@
 //! `build`. Streams output in human mode; emits a parsed pass/fail summary
 //! under `--json` (and per-test events under `-o ndjson`), read back from the
 //! `.xcresult` bundle. The bundle is **retained** (state dir, or
-//! `--result-bundle PATH`) so failure attachments stay inspectable and
-//! `test run --failed` can rerun just the last run's failures.
+//! `--result-bundle PATH`) so `test run --failed` can rerun just the last run's
+//! failures and `test attachments` can export what those tests attached —
+//! screenshots and UI dumps, which for a UI test are the diagnosis the failure
+//! message only points at.
 
 use std::path::{Path, PathBuf};
 
@@ -72,6 +74,22 @@ pub struct TestArgs {
 pub enum Action {
     /// Run the resolved scheme's tests (the default action: 'sweetpad test').
     Run,
+    /// Export the last run's attachments (screenshots, UI dumps) as files.
+    Attachments(AttachmentsArgs),
+}
+
+/// The flags of `test attachments`. Which tests to export comes from the
+/// global '--only-testing', so it reads the same as it does on a run.
+#[derive(Debug, clap::Args)]
+pub struct AttachmentsArgs {
+    /// Where to write the files (default: a directory beside the retained
+    /// result bundle, replacing the previous export).
+    #[arg(long, value_name = "DIR")]
+    pub output_dir: Option<PathBuf>,
+
+    /// Export only the attachments recorded against a failing test.
+    #[arg(long)]
+    pub only_failures: bool,
 }
 
 /// The flags of one `test run`, bundled so helpers don't take eight params.
@@ -87,8 +105,11 @@ struct RunArgs<'a> {
     passthrough: &'a [String],
 }
 
-pub fn run(ctx: &mut Context, args: &TestArgs) -> CommandResult {
+pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> CommandResult {
     ctx.targeting = args.target.clone().into();
+    if let Some(Action::Attachments(opts)) = action {
+        return attachments(ctx, args, opts);
+    }
     let run_args = RunArgs {
         only_testing: &args.only_testing,
         skip_testing: &args.skip_testing,
@@ -398,6 +419,397 @@ fn retained_bundle_path(container: &Container) -> PathBuf {
     xcodebuild::project_artifact(container, ".xcresult")
 }
 
+/// Where an export lands by default: a directory beside the retained bundle,
+/// so `test attachments` works with no arguments and writes nothing into the
+/// working directory.
+fn export_dir_path(container: &Container) -> PathBuf {
+    xcodebuild::project_artifact(container, "-attachments")
+}
+
+/// What `test attachments` wrote: the files, grouped by the test that recorded
+/// them and ordered as that test recorded them.
+struct AttachmentsReport {
+    output_dir: PathBuf,
+    tests: Vec<TestAttachments>,
+    /// When the source run was recorded, as seconds since the epoch. A
+    /// screenshot looks authoritative whatever its age, so the age of the
+    /// evidence travels with it.
+    recorded_at: Option<f64>,
+    /// Why an empty export is empty — the answer is never obvious.
+    note: Option<String>,
+}
+
+struct TestAttachments {
+    test: String,
+    files: Vec<ExportedFile>,
+}
+
+struct ExportedFile {
+    name: String,
+    path: PathBuf,
+    failure: bool,
+    timestamp: f64,
+}
+
+impl AttachmentsReport {
+    fn count(&self) -> usize {
+        self.tests.iter().map(|t| t.files.len()).sum()
+    }
+}
+
+impl Render for AttachmentsReport {
+    fn human(&self, out: &Output) {
+        let count = self.count();
+        let age = self
+            .recorded_at
+            .and_then(age_phrase)
+            .map_or_else(String::new, |age| format!(" (recorded {age} ago)"));
+        out.line(&format!(
+            "{count} attachment{} from {} test{}{age}",
+            if count == 1 { "" } else { "s" },
+            self.tests.len(),
+            if self.tests.len() == 1 { "" } else { "s" }
+        ));
+        for test in &self.tests {
+            out.line(&format!("  {}", test.test));
+            for file in &test.files {
+                out.line(&format!(
+                    "    {}{}",
+                    file.name,
+                    if file.failure { "  (failure)" } else { "" }
+                ));
+            }
+        }
+        if count > 0 {
+            out.note(&format!("written to {}", self.output_dir.display()));
+        }
+        if let Some(note) = &self.note {
+            out.note(note);
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let tests: Vec<serde_json::Value> = self
+            .tests
+            .iter()
+            .map(|t| {
+                let files: Vec<serde_json::Value> = t
+                    .files
+                    .iter()
+                    .map(|f| {
+                        serde_json::json!({
+                            "name": f.name,
+                            "path": f.path.display().to_string(),
+                            "failure": f.failure,
+                            "timestamp": f.timestamp,
+                        })
+                    })
+                    .collect();
+                serde_json::json!({ "test": t.test, "attachments": files })
+            })
+            .collect();
+        serde_json::json!({
+            "outputDir": self.output_dir.display().to_string(),
+            "count": self.count(),
+            "recordedAt": self.recorded_at,
+            "tests": tests,
+            "note": self.note,
+        })
+    }
+}
+
+/// `test attachments`: export what the last run's tests attached — screenshots,
+/// UI-hierarchy dumps, generated fixtures — out of the `.xcresult` and into
+/// files a reader can open. The bundle stores them under UUID filenames, so
+/// the export is joined against the manifest and renamed back to what each
+/// test called the file.
+fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> CommandResult {
+    let container = resolve::container(ctx)?;
+    let bundle = args.result_bundle.as_deref().map_or_else(
+        || retained_bundle_path(&container),
+        |p| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()),
+    );
+    if !bundle.exists() {
+        return Err(CliError::new(format!(
+            "no result bundle at {} — run 'sweetpad test' first, or name one with \
+             '--result-bundle PATH'",
+            bundle.display()
+        )));
+    }
+
+    let output_dir = opts.output_dir.clone().unwrap_or_else(|| {
+        let ours = export_dir_path(&container);
+        // Our own slot holds one export at a time, so a stale file from a
+        // previous run can never be mistaken for this one. A directory the
+        // caller named is theirs, and is added to rather than emptied.
+        let _ = std::fs::remove_dir_all(&ours);
+        ours
+    });
+
+    // xcresulttool exports under UUID names and *duplicates* into a populated
+    // directory (`name (1).png`), so it always gets a fresh directory of its
+    // own; the files are renamed out of it afterwards.
+    let staging = output_dir.join(".sweetpad-export");
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging)
+        .map_err(|e| CliError::new(format!("failed to create {}: {e}", staging.display())))?;
+
+    let exported = xcodebuild::export_attachments(&bundle, &staging, opts.only_failures);
+    let mut exported = match exported {
+        Ok(list) => list,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(e);
+        }
+    };
+    let found_any = !exported.is_empty();
+    if !args.only_testing.is_empty() {
+        exported.retain(|a| {
+            args.only_testing
+                .iter()
+                .any(|sel| selector_matches(sel, &a.test))
+        });
+        if exported.is_empty() && found_any {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(no_selector_match(&bundle, &staging, &args.only_testing));
+        }
+    }
+
+    // The run order is the timestamp order: the manifest lists a test's
+    // attachments in neither the order they were taken nor a stable one.
+    exported.sort_by(|a, b| {
+        a.test
+            .cmp(&b.test)
+            .then(a.timestamp.total_cmp(&b.timestamp))
+    });
+
+    let mut tests: Vec<TestAttachments> = Vec::new();
+    for item in exported {
+        let dir = output_dir.join(test_dir_name(&item.test));
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| CliError::new(format!("failed to create {}: {e}", dir.display())))?;
+        let path = unique_path(&dir, &clean_name(&item.suggested_name));
+        std::fs::rename(&item.file, &path).map_err(|e| {
+            CliError::new(format!(
+                "failed to move the exported attachment to {}: {e}",
+                path.display()
+            ))
+        })?;
+        let file = ExportedFile {
+            name: path
+                .file_name()
+                .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+            path,
+            failure: item.failure,
+            timestamp: item.timestamp,
+        };
+        match tests.last_mut() {
+            Some(last) if last.test == item.test => last.files.push(file),
+            _ => tests.push(TestAttachments {
+                test: item.test,
+                files: vec![file],
+            }),
+        }
+    }
+    let _ = std::fs::remove_dir_all(&staging);
+
+    // Tests read in the order the run executed them, which their first
+    // attachment dates — a suite that numbers its screenshots across tests
+    // reads as one sequence again.
+    tests.sort_by(|a, b| {
+        let stamp = |t: &TestAttachments| t.files.first().map_or(f64::MAX, |f| f.timestamp);
+        stamp(a).total_cmp(&stamp(b))
+    });
+
+    let note = (!found_any).then(|| empty_note(opts.only_failures));
+    Ok(Rendered::data(AttachmentsReport {
+        output_dir,
+        tests,
+        recorded_at: recorded_at(&bundle),
+        note,
+    }))
+}
+
+/// Why an export came back empty. A run that attached nothing looks identical
+/// to one whose attachments were discarded, and the discard is the default:
+/// `XCTAttachment.lifetime` is `.deleteOnSuccess` unless a test says otherwise.
+fn empty_note(only_failures: bool) -> String {
+    if only_failures {
+        "no attachments were recorded against a failure (the run may have passed); drop \
+         '--only-failures' to export everything the run attached"
+            .to_string()
+    } else {
+        "the run attached nothing that survived: XCTAttachment.lifetime defaults to \
+         .deleteOnSuccess, so a passing test's attachments are discarded — set \
+         'attachment.lifetime = .keepAlways' to keep them"
+            .to_string()
+    }
+}
+
+/// `--only-testing` matched nothing. A selector naming a *target* is the usual
+/// cause — the manifest knows tests by class — so the classes that do have
+/// attachments are the correction, and they are far shorter than the full
+/// identifier list.
+fn no_selector_match(bundle: &Path, staging: &Path, selectors: &[String]) -> CliError {
+    let mut classes: Vec<String> = xcodebuild::export_attachments(bundle, staging, false)
+        .map(|list| {
+            list.into_iter()
+                .map(|a| {
+                    a.test
+                        .split_once('/')
+                        .map_or(a.test.clone(), |(class, _)| class.to_string())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    classes.sort();
+    classes.dedup();
+    let known = match classes.len() {
+        0 => String::new(),
+        n if n > 5 => format!(
+            "; classes with attachments: {}, and {} more",
+            classes[..5].join(", "),
+            n - 5
+        ),
+        _ => format!("; classes with attachments: {}", classes.join(", ")),
+    };
+    CliError::new(format!(
+        "no attachments matched {} — a test here is identified by class, not target{known}",
+        selectors.join(", ")
+    ))
+}
+
+/// Match an `--only-testing` selector against the manifest's test identifier.
+/// The manifest identifies a test as `Class/method`, while a selector may
+/// carry the leading target (`Target/Class/method`) that `-only-testing` takes,
+/// so a selector also matches with its first component dropped.
+fn selector_matches(selector: &str, identifier: &str) -> bool {
+    let id = identifier.trim_end_matches("()");
+    let sel = selector.trim_end_matches("()");
+    let hit = |s: &str| !s.is_empty() && (id == s || id.starts_with(&format!("{s}/")));
+    hit(sel) || sel.split_once('/').is_some_and(|(_, rest)| hit(rest))
+}
+
+/// The directory one test's attachments land in: its identifier as a single
+/// path component, with the `()` that XCTest identifiers carry trimmed.
+fn test_dir_name(identifier: &str) -> String {
+    let name: String = identifier
+        .trim_end_matches("()")
+        .chars()
+        .map(|c| if c == '/' || c == '\\' { '.' } else { c })
+        .collect();
+    let name = name.trim_start_matches('.').trim();
+    if name.is_empty() {
+        "unknown-test".to_string()
+    } else {
+        name.to_string()
+    }
+}
+
+/// Strip the `_<run>_<UUID>` uniquifier XCTest appends to an attachment's own
+/// name, recovering what the test called the file. A name without that shape
+/// is kept as it is.
+fn clean_name(suggested: &str) -> String {
+    let path = Path::new(suggested);
+    let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        return suggested.to_string();
+    };
+    let mut parts: Vec<&str> = stem.split('_').collect();
+    if parts.len() >= 2 && parts.last().is_some_and(|p| is_uuid(p)) {
+        parts.pop();
+        // The index between the name and the UUID is XCTest's, not the test's.
+        if parts.len() >= 2
+            && parts
+                .last()
+                .is_some_and(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+        {
+            parts.pop();
+        }
+    }
+    let stem = if parts.is_empty() {
+        stem.to_string()
+    } else {
+        parts.join("_")
+    };
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) => format!("{stem}.{ext}"),
+        None => stem,
+    }
+}
+
+fn is_uuid(s: &str) -> bool {
+    s.len() == 36
+        && s.bytes().enumerate().all(|(i, b)| {
+            if matches!(i, 8 | 13 | 18 | 23) {
+                b == b'-'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        })
+}
+
+/// A free path in `dir` for `name`. Attachment names are not unique — the
+/// uniquifier just stripped from them exists for that reason — so a taken
+/// name gets a counter rather than silently overwriting the earlier file.
+fn unique_path(dir: &Path, name: &str) -> PathBuf {
+    let candidate = dir.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let path = Path::new(name);
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(name)
+        .to_string();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map_or_else(String::new, |e| format!(".{e}"));
+    // Bounded: a name colliding this many times is a runaway, and looping
+    // forever over a full directory would be a worse answer than overwriting.
+    (2..10_000)
+        .map(|n| dir.join(format!("{stem}-{n}{ext}")))
+        .find(|p| !p.exists())
+        .unwrap_or(candidate)
+}
+
+/// When the run behind `bundle` was recorded, in seconds since the epoch.
+fn recorded_at(bundle: &Path) -> Option<f64> {
+    std::fs::metadata(bundle)
+        .and_then(|m| m.modified())
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs_f64())
+}
+
+/// How long ago `stamp` was, coarsely — enough to notice that the evidence
+/// predates the change being checked. `None` when it isn't in the past.
+fn age_phrase(stamp: f64) -> Option<String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs_f64();
+    let secs = now - stamp;
+    if secs < 60.0 {
+        return (secs >= 0.0).then(|| "less than a minute".to_string());
+    }
+    let (value, unit) = if secs < 3600.0 {
+        (secs / 60.0, "minute")
+    } else if secs < 86_400.0 {
+        (secs / 3600.0, "hour")
+    } else {
+        (secs / 86_400.0, "day")
+    };
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // coarse by design
+    let value = value as u64;
+    Some(format!(
+        "{value} {unit}{}",
+        if value == 1 { "" } else { "s" }
+    ))
+}
+
 /// Write a minimal JUnit XML report from the parsed summary: totals on the
 /// suite, one `<testcase>` per recorded failure (the summary carries failures
 /// individually and the rest as counts).
@@ -570,6 +982,117 @@ mod tests {
         let err = build_step_failure(&container, outcome);
         assert!(err.to_string().contains("Unable to find a destination"));
         assert!(err.json().get("diagnostics").is_none());
+    }
+
+    #[test]
+    fn an_attachment_keeps_the_name_its_test_gave_it() {
+        // The whole point of the manifest join: the exported file is a UUID,
+        // and only this name tells a reader which screenshot they are looking
+        // at. XCTest's `_<run>_<UUID>` uniquifier is not part of that name.
+        assert_eq!(
+            clean_name("10-scrolled-back_0_AD33EE58-9A7C-47EC-A75E-F9EA6E2D8AFE.png"),
+            "10-scrolled-back.png"
+        );
+        // A name of its own may contain underscores; only the suffix goes.
+        assert_eq!(
+            clean_name("my_shot_2_7B4971C1-82C2-439E-915F-48E2D15A43BD.png"),
+            "my_shot.png"
+        );
+        // Nothing that isn't the suffix is stripped: a bare name, a name whose
+        // trailing part merely looks numeric, and a UUID-shaped name that is
+        // all the name there is.
+        assert_eq!(clean_name("screenshot.png"), "screenshot.png");
+        assert_eq!(clean_name("step_2.png"), "step_2.png");
+        assert_eq!(
+            clean_name("AD33EE58-9A7C-47EC-A75E-F9EA6E2D8AFE.png"),
+            "AD33EE58-9A7C-47EC-A75E-F9EA6E2D8AFE.png"
+        );
+        // An attachment need not be an image, or have an extension at all.
+        assert_eq!(
+            clean_name("hierarchy_0_7B4971C1-82C2-439E-915F-48E2D15A43BD.txt"),
+            "hierarchy.txt"
+        );
+        assert_eq!(
+            clean_name("dump_0_7B4971C1-82C2-439E-915F-48E2D15A43BD"),
+            "dump"
+        );
+    }
+
+    #[test]
+    fn only_a_real_uuid_counts_as_the_uniquifier() {
+        assert!(is_uuid("AD33EE58-9A7C-47EC-A75E-F9EA6E2D8AFE"));
+        assert!(!is_uuid("AD33EE58-9A7C-47EC-A75E-F9EA6E2D8AF"));
+        assert!(!is_uuid("AD33EE58_9A7C_47EC_A75E_F9EA6E2D8AFE"));
+        assert!(!is_uuid("ZD33EE58-9A7C-47EC-A75E-F9EA6E2D8AFE"));
+    }
+
+    #[test]
+    fn a_selector_matches_a_test_the_manifest_names_by_class() {
+        // xcresulttool identifies a test as Class/method, while -only-testing
+        // takes Target/Class/method — a selector in either shape has to land.
+        let id = "ReflowEngineTests/testResolvePages()";
+        assert!(selector_matches("ReflowEngineTests", id));
+        assert!(selector_matches("ReflowEngineTests/testResolvePages", id));
+        assert!(selector_matches(
+            "ReflowTests/ReflowEngineTests/testResolvePages",
+            id
+        ));
+        // A different test in the same class, and a bare target name (which
+        // the identifier does not carry), must not match — the second is why
+        // an empty match reports the classes instead of returning nothing.
+        assert!(!selector_matches(
+            "ReflowEngineTests/testResolvePagesTwice",
+            id
+        ));
+        assert!(!selector_matches("ReflowTests", id));
+        assert!(!selector_matches("", id));
+    }
+
+    #[test]
+    fn a_test_identifier_becomes_one_directory_component() {
+        assert_eq!(
+            test_dir_name("ReflowUITests/testOpensAPDF()"),
+            "ReflowUITests.testOpensAPDF"
+        );
+        // A separator inside the name must never escape into a nested path,
+        // and a name that sanitizes away still needs somewhere to land.
+        assert!(!test_dir_name("A/B/c()").contains('/'));
+        assert!(!test_dir_name("A\\B").contains('\\'));
+        assert_eq!(test_dir_name("()"), "unknown-test");
+    }
+
+    #[test]
+    fn a_taken_name_never_overwrites_the_earlier_file() {
+        // Attachment names are not unique — that is why XCTest appends a
+        // uniquifier at all — so two files sharing one name must both survive.
+        let dir = std::env::temp_dir().join(format!("sweetpad-att-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = unique_path(&dir, "shot.png");
+        assert_eq!(first.file_name().unwrap(), "shot.png");
+        std::fs::write(&first, b"a").unwrap();
+        let second = unique_path(&dir, "shot.png");
+        assert_eq!(second.file_name().unwrap(), "shot-2.png");
+        std::fs::write(&second, b"b").unwrap();
+        assert_eq!(
+            unique_path(&dir, "shot.png").file_name().unwrap(),
+            "shot-3.png"
+        );
+        assert_eq!(std::fs::read(&first).unwrap(), b"a");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_empty_export_says_which_emptiness_it_is() {
+        // Both cases look identical on disk, and neither is guessable: one is
+        // "the run was green", the other is a default that discards evidence.
+        let failures = empty_note(true);
+        assert!(failures.contains("--only-failures"), "{failures}");
+        let all = empty_note(false);
+        assert!(all.contains(".keepAlways"), "{all}");
+        assert!(all.contains("deleteOnSuccess"), "{all}");
+        // Backticks render literally in a terminal.
+        assert!(!failures.contains('`'), "{failures}");
+        assert!(!all.contains('`'), "{all}");
     }
 
     #[test]
