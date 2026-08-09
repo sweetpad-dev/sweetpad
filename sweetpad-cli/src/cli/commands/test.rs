@@ -597,6 +597,38 @@ fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> Co
             .then(a.timestamp.total_cmp(&b.timestamp))
     });
 
+    let renamed = rename_into_place(exported, &output_dir);
+    // Every path out of the rename drops the staging directory. A failure
+    // partway through would otherwise strand it — half-emptied, and inside a
+    // directory the caller named and expects to hold only their files.
+    let _ = std::fs::remove_dir_all(&staging);
+    let mut tests = renamed?;
+
+    // Tests read in the order the run executed them, which their first
+    // attachment dates — a suite that numbers its screenshots across tests
+    // reads as one sequence again.
+    tests.sort_by(|a, b| {
+        let stamp = |t: &TestAttachments| t.files.first().map_or(f64::MAX, |f| f.timestamp);
+        stamp(a).total_cmp(&stamp(b))
+    });
+
+    let note = (!found_any).then(|| empty_note(opts.only_failures));
+    Ok(Rendered::data(AttachmentsReport {
+        output_dir,
+        tests,
+        recorded_at: recorded_at(&bundle),
+        note,
+    }))
+}
+
+/// Move each exported file out of the staging directory into its own test's
+/// directory under `output_dir`, renamed from the UUID the export gave it back
+/// to what the test called it. Grouping relies on the caller having sorted by
+/// test, so one test's files land in one entry.
+fn rename_into_place(
+    exported: Vec<xcodebuild::ExportedAttachment>,
+    output_dir: &Path,
+) -> Result<Vec<TestAttachments>, CliError> {
     let mut tests: Vec<TestAttachments> = Vec::new();
     for item in exported {
         let dir = output_dir.join(test_dir_name(&item.test));
@@ -625,23 +657,7 @@ fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> Co
             }),
         }
     }
-    let _ = std::fs::remove_dir_all(&staging);
-
-    // Tests read in the order the run executed them, which their first
-    // attachment dates — a suite that numbers its screenshots across tests
-    // reads as one sequence again.
-    tests.sort_by(|a, b| {
-        let stamp = |t: &TestAttachments| t.files.first().map_or(f64::MAX, |f| f.timestamp);
-        stamp(a).total_cmp(&stamp(b))
-    });
-
-    let note = (!found_any).then(|| empty_note(opts.only_failures));
-    Ok(Rendered::data(AttachmentsReport {
-        output_dir,
-        tests,
-        recorded_at: recorded_at(&bundle),
-        note,
-    }))
+    Ok(tests)
 }
 
 /// The `.xcresult` the read-back verbs work from: whichever bundle the last
@@ -1364,6 +1380,50 @@ mod tests {
         let (whole, truncated) = cut_to_tail("short\n", 100);
         assert_eq!(whole, "short\n");
         assert!(!truncated);
+    }
+
+    #[test]
+    fn a_rename_that_fails_partway_leaves_the_staging_directory_to_the_caller() {
+        // The staging directory lives *inside* the caller's --output-dir, so a
+        // failure that strands it leaves our scratch dir sitting in a directory
+        // they expect to hold only their files. The cleanup has to sit on the
+        // error path too, which is why the rename is its own function.
+        let root = std::env::temp_dir().join(format!("sweetpad-rename-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let staging = root.join(".sweetpad-export");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("aaaa"), "shot").unwrap();
+
+        // The second attachment names a file that was never exported, so its
+        // rename fails and the loop gives up with one file already moved.
+        let exported = vec![
+            xcodebuild::ExportedAttachment {
+                test: "AppTests/testOne()".into(),
+                file: staging.join("aaaa"),
+                suggested_name: "shot.png".into(),
+                failure: false,
+                timestamp: 1.0,
+            },
+            xcodebuild::ExportedAttachment {
+                test: "AppTests/testTwo()".into(),
+                file: staging.join("missing"),
+                suggested_name: "gone.png".into(),
+                failure: false,
+                timestamp: 2.0,
+            },
+        ];
+        let Err(err) = rename_into_place(exported, &root) else {
+            panic!("renaming a file that was never exported should have failed")
+        };
+        assert!(err.to_string().contains("gone.png"), "{err}");
+        // The contract the caller relies on: the failure comes back as a value,
+        // so control reaches the one `remove_dir_all` that runs on every path.
+        // Returning it out of the middle of `attachments` was what stranded the
+        // directory — the cleanup sat below the `?`.
+        assert!(staging.exists(), "the caller was given nothing to clean up");
+        // The file that did move is where it was put, under its test's name.
+        assert!(root.join("AppTests.testOne").join("shot.png").exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// [`select_output`] over `(test, output)` pairs, which is how a stream
