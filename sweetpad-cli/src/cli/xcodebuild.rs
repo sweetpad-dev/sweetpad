@@ -127,20 +127,13 @@ impl BuildPlan<'_> {
             diagnostics = buildlog::diagnostics_from_transcript(&run.combined);
             if !run.success {
                 blocker = buildlog::blocker_from_transcript(&run.combined);
-                failure_detail = match diagnostics_summary(&diagnostics) {
-                    Some(summary) => {
-                        let log =
-                            record_failure_transcript(self.container, "-build.log", &run.combined)
-                                .map_or_else(String::new, |p| {
-                                    format!("; full log: {}", p.display())
-                                });
-                        format!(": {summary}{log}")
-                    }
-                    // A blocked build has a better account than its transcript,
-                    // and the transcript is several KB of package resolution.
-                    None if blocker.is_some() => String::new(),
-                    None => format!(":\n{}", run.tail),
-                };
+                failure_detail = captured_failure_detail(
+                    self.container,
+                    &run.combined,
+                    &run.tail,
+                    &diagnostics,
+                    blocker.is_some(),
+                );
             }
             run.success
         } else if out.is_verbose() {
@@ -438,6 +431,34 @@ pub(crate) fn record_failure_transcript(
         let _ = std::fs::create_dir_all(parent);
     }
     std::fs::write(&path, text).ok().map(|()| path)
+}
+
+/// What a captured (`--json`) build failure appends to its headline: the
+/// summarized diagnostics plus the path the transcript was parked at, or the
+/// raw tail when nothing parsed.
+///
+/// Empty for a `blocked` run, which parks nothing. The blocker headline
+/// replaces this detail wholesale, so a transcript written here would be a file
+/// no message goes on to name — unfindable on disk, and several KB of package
+/// resolution that the blocker already accounts for better.
+fn captured_failure_detail(
+    container: &Container,
+    combined: &str,
+    tail: &str,
+    diagnostics: &[serde_json::Value],
+    blocked: bool,
+) -> String {
+    if blocked {
+        return String::new();
+    }
+    match diagnostics_summary(diagnostics) {
+        Some(summary) => {
+            let log = record_failure_transcript(container, "-build.log", combined)
+                .map_or_else(String::new, |p| format!("; full log: {}", p.display()));
+            format!(": {summary}{log}")
+        }
+        None => format!(":\n{tail}"),
+    }
 }
 
 /// Summarize diagnostics for a one-line error message: the first error (falling
@@ -1241,6 +1262,50 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             "location": location,
             "message": message,
         })
+    }
+
+    #[test]
+    fn a_blocked_build_parks_no_transcript() {
+        // A blocked build's headline is the blocker, and it drops this detail
+        // wholesale — so parking a log here leaves a file on disk that nothing
+        // ever names. A blocker with warnings alongside it is the case that
+        // exercises it: `diagnostics_summary` answers on any severity, so the
+        // parking arm is the one a blocked build otherwise lands in.
+        let container = Container::Project(PathBuf::from("/work/Blocked.xcodeproj"));
+        let log = project_artifact(&container, "-build.log");
+        let _ = std::fs::remove_file(&log);
+        let diagnostics = vec![diag("warning", Some("A.swift:1:1"), "unused variable 'x'")];
+
+        let detail = captured_failure_detail(
+            &container,
+            "the whole transcript",
+            "the tail",
+            &diagnostics,
+            /* blocked */ true,
+        );
+        assert!(detail.is_empty(), "{detail}");
+        assert!(!log.exists(), "a blocked build parked {}", log.display());
+
+        // The same failure, not blocked: the transcript is parked and named.
+        let detail = captured_failure_detail(
+            &container,
+            "the whole transcript",
+            "the tail",
+            &diagnostics,
+            /* blocked */ false,
+        );
+        assert!(detail.contains("unused variable 'x'"), "{detail}");
+        assert!(detail.contains("full log: "), "{detail}");
+        assert_eq!(
+            std::fs::read_to_string(&log).unwrap(),
+            "the whole transcript"
+        );
+        let _ = std::fs::remove_file(&log);
+
+        // Nothing parsed and not blocked: the tail is the only account there is.
+        let detail = captured_failure_detail(&container, "transcript", "the tail", &[], false);
+        assert_eq!(detail, ":\nthe tail");
+        assert!(!log.exists(), "nothing to summarize parked a log anyway");
     }
 
     #[test]
