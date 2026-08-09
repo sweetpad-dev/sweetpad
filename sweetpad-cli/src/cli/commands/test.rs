@@ -574,6 +574,10 @@ fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> Co
     };
     let found_any = !exported.is_empty();
     if !args.only_testing.is_empty() {
+        // Read off the full set before filtering: what a failed match needs to
+        // report is already here, and re-exporting to recover it would both
+        // cost a second xcresulttool run and strand its files on the way out.
+        let classes = classes_with_attachments(&exported);
         exported.retain(|a| {
             args.only_testing
                 .iter()
@@ -581,7 +585,7 @@ fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> Co
         });
         if exported.is_empty() && found_any {
             let _ = std::fs::remove_dir_all(&staging);
-            return Err(no_selector_match(&bundle, &staging, &args.only_testing));
+            return Err(no_selector_match(&classes, &args.only_testing));
         }
     }
 
@@ -866,24 +870,27 @@ fn empty_note(only_failures: bool) -> String {
     }
 }
 
+/// The distinct classes an export covers, which is what a failed `--only-testing`
+/// match needs to name.
+fn classes_with_attachments(exported: &[xcodebuild::ExportedAttachment]) -> Vec<String> {
+    let mut classes: Vec<String> = exported
+        .iter()
+        .map(|a| {
+            a.test
+                .split_once('/')
+                .map_or_else(|| a.test.clone(), |(class, _)| class.to_string())
+        })
+        .collect();
+    classes.sort();
+    classes.dedup();
+    classes
+}
+
 /// `--only-testing` matched nothing. A selector naming a *target* is the usual
 /// cause — the manifest knows tests by class — so the classes that do have
 /// attachments are the correction, and they are far shorter than the full
 /// identifier list.
-fn no_selector_match(bundle: &Path, staging: &Path, selectors: &[String]) -> CliError {
-    let mut classes: Vec<String> = xcodebuild::export_attachments(bundle, staging, false)
-        .map(|list| {
-            list.into_iter()
-                .map(|a| {
-                    a.test
-                        .split_once('/')
-                        .map_or(a.test.clone(), |(class, _)| class.to_string())
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    classes.sort();
-    classes.dedup();
+fn no_selector_match(classes: &[String], selectors: &[String]) -> CliError {
     let known = match classes.len() {
         0 => String::new(),
         n if n > 5 => format!(
