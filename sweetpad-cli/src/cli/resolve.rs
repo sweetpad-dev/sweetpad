@@ -695,10 +695,16 @@ pub fn choose(
 /// and fall back to the full list (auto-pick/​prompt/​strict-error via
 /// [`choose`]) when none are booted. Shared so simulator subcommands and
 /// `app open-url` resolve a sim the same way.
+///
+/// `how` spells the way *this* command names a simulator — a positional for the
+/// `simulator` verbs, `--simulator` for `app open-url` — because a failure that
+/// can't be resolved interactively has to name an argument the caller actually
+/// has.
 pub fn select_simulator<'a>(
     ctx: &Context,
     sims: &'a [crate::cli::simctl::Simulator],
     target: Option<&str>,
+    how: &str,
 ) -> Result<&'a crate::cli::simctl::Simulator, CliError> {
     use crate::cli::simctl::Simulator;
 
@@ -714,7 +720,8 @@ pub fn select_simulator<'a>(
     }
 
     // Prompt among the booted set when several are running, else the full list.
-    let pool: Vec<&Simulator> = if booted.len() > 1 {
+    let from_booted = booted.len() > 1;
+    let pool: Vec<&Simulator> = if from_booted {
         booted
     } else {
         sims.iter().collect()
@@ -724,12 +731,44 @@ pub fn select_simulator<'a>(
     // on the *first* twin no matter which row the user picked.
     let mut labels: Vec<String> = pool.iter().map(|s| s.label()).collect();
     disambiguate_labels(&mut labels, &pool);
+    if labels.len() > 1 && !ctx.out.is_interactive() {
+        return Err(ambiguous_simulator(&labels, from_booted, how));
+    }
     let chosen = choose(ctx, "simulator", None, &labels)?;
     labels
         .iter()
         .position(|l| *l == chosen)
         .map(|i| pool[i])
         .ok_or_else(|| CliError::new("simulator not found").kind(ErrorKind::TargetResolution))
+}
+
+/// The error for "several simulators fit and nobody can be asked". Naming the
+/// candidates is the point: "defaults to the booted one" holds right up until
+/// two are booted, and without the count that reads as the command being
+/// broken rather than as the choice being genuinely ambiguous.
+fn ambiguous_simulator(labels: &[String], booted: bool, how: &str) -> CliError {
+    const SHOWN: usize = 4;
+    let listed = labels
+        .iter()
+        .take(SHOWN)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let more = labels.len().saturating_sub(SHOWN);
+    let more = if more > 0 {
+        format!(", and {more} more")
+    } else {
+        String::new()
+    };
+    let what = if booted {
+        format!("{} simulators are booted ({listed}{more})", labels.len())
+    } else {
+        format!(
+            "no simulator is booted, and {} are available ({listed}{more})",
+            labels.len()
+        )
+    };
+    CliError::new(format!("{what}; name one with {how}")).kind(ErrorKind::TargetResolution)
 }
 
 /// A resolved `--on` reference: the concrete run target plus its ready
@@ -2118,14 +2157,18 @@ mod tests {
             sim("BBBB", "iPhone 14", true),
         ];
         assert_eq!(
-            select_simulator(&c, &sims, Some("AAAA")).unwrap().udid,
+            select_simulator(&c, &sims, Some("AAAA"), "the TARGET argument")
+                .unwrap()
+                .udid,
             "AAAA"
         );
         assert_eq!(
-            select_simulator(&c, &sims, Some("iPhone 14")).unwrap().udid,
+            select_simulator(&c, &sims, Some("iPhone 14"), "the TARGET argument")
+                .unwrap()
+                .udid,
             "BBBB"
         );
-        assert!(select_simulator(&c, &sims, Some("nope")).is_err());
+        assert!(select_simulator(&c, &sims, Some("nope"), "the TARGET argument").is_err());
     }
 
     #[test]
@@ -2136,7 +2179,12 @@ mod tests {
             sim("BBBB", "iPhone 14", true),
         ];
         // No target, exactly one booted → that one, no prompt needed.
-        assert_eq!(select_simulator(&c, &sims, None).unwrap().udid, "BBBB");
+        assert_eq!(
+            select_simulator(&c, &sims, None, "the TARGET argument")
+                .unwrap()
+                .udid,
+            "BBBB"
+        );
     }
 
     #[test]
@@ -2144,7 +2192,12 @@ mod tests {
         let c = ctx();
         let sims = vec![sim("AAAA", "iPhone 15", false)];
         // None booted, only one candidate → auto-picked (no TTY needed).
-        assert_eq!(select_simulator(&c, &sims, None).unwrap().udid, "AAAA");
+        assert_eq!(
+            select_simulator(&c, &sims, None, "the TARGET argument")
+                .unwrap()
+                .udid,
+            "AAAA"
+        );
     }
 
     #[test]
@@ -2155,13 +2208,56 @@ mod tests {
             sim("AAAA", "iPhone 15", false),
             sim("BBBB", "iPhone 14", false),
         ];
-        assert!(select_simulator(&c, &sims, None).is_err());
+        assert!(select_simulator(&c, &sims, None, "the TARGET argument").is_err());
         // Several booted, no TTY → also strict.
         let booted = vec![
             sim("AAAA", "iPhone 15", true),
             sim("BBBB", "iPhone 14", true),
         ];
-        assert!(select_simulator(&c, &booted, None).is_err());
+        assert!(select_simulator(&c, &booted, None, "the TARGET argument").is_err());
+    }
+
+    #[test]
+    fn an_ambiguous_simulator_names_the_candidates_and_a_real_argument() {
+        let c = ctx();
+        let booted = vec![
+            sim("AAAA", "iPhone 17", true),
+            sim("BBBB", "iPhone SE (3rd generation)", true),
+        ];
+        // "defaults to the booted one" holds until two are booted, so the
+        // count and the names are what turn "broken" into "ambiguous".
+        let err = select_simulator(&c, &booted, None, "--simulator <name|udid>")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("2 simulators are booted"), "{err}");
+        assert!(err.contains("iPhone 17"), "{err}");
+        assert!(err.contains("iPhone SE (3rd generation)"), "{err}");
+        // Each command names a simulator its own way; `app open-url` has no
+        // positional to point at, and pointing at one sent a reader hunting
+        // for an argument that does not exist.
+        assert!(err.contains("--simulator <name|udid>"), "{err}");
+        assert!(!err.contains("TARGET"), "{err}");
+
+        let shutdown = vec![
+            sim("AAAA", "iPhone 17", false),
+            sim("BBBB", "iPhone 16", false),
+        ];
+        let err = select_simulator(&c, &shutdown, None, "the TARGET argument")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no simulator is booted"), "{err}");
+        assert!(err.contains("the TARGET argument"), "{err}");
+    }
+
+    #[test]
+    fn a_long_candidate_list_is_summarized_rather_than_dumped() {
+        // The unbooted pool is every installed simulator, which can run to
+        // dozens — a full dump would bury the fix in the noise.
+        let labels: Vec<String> = (0..12).map(|i| format!("iPhone {i}")).collect();
+        let err = ambiguous_simulator(&labels, false, "the TARGET argument").to_string();
+        assert!(err.contains("12 are available"), "{err}");
+        assert!(err.contains("and 8 more"), "{err}");
+        assert!(!err.contains("iPhone 11"), "{err}");
     }
 
     #[test]

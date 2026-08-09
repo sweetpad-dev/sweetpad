@@ -181,7 +181,8 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             target,
         } => {
             let sims = simctl::list()?;
-            let sim = resolve::select_simulator(ctx, &sims, target.as_deref())?;
+            let sim =
+                resolve::select_simulator(ctx, &sims, target.as_deref(), "the TARGET argument")?;
             simctl::push(&sim.udid, bundle_id, &payload.display().to_string())?;
             Ok(Rendered::data(report("pushed payload to", sim)))
         }
@@ -192,13 +193,15 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             target,
         } => {
             let sims = simctl::list()?;
-            let sim = resolve::select_simulator(ctx, &sims, target.as_deref())?;
+            let sim =
+                resolve::select_simulator(ctx, &sims, target.as_deref(), "the TARGET argument")?;
             simctl::privacy(&sim.udid, action, service, bundle_id)?;
             Ok(Rendered::data(report("changed privacy on", sim)))
         }
         Action::StatusBar { clear, target } => {
             let sims = simctl::list()?;
-            let sim = resolve::select_simulator(ctx, &sims, target.as_deref())?;
+            let sim =
+                resolve::select_simulator(ctx, &sims, target.as_deref(), "the TARGET argument")?;
             simctl::status_bar(&sim.udid, *clear)?;
             Ok(Rendered::data(report(
                 if *clear {
@@ -215,13 +218,15 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             target,
         } => {
             let sims = simctl::list()?;
-            let sim = resolve::select_simulator(ctx, &sims, target.as_deref())?;
+            let sim =
+                resolve::select_simulator(ctx, &sims, target.as_deref(), "the TARGET argument")?;
             simctl::location(&sim.udid, *latitude, *longitude)?;
             Ok(Rendered::data(report("set the location on", sim)))
         }
         Action::MediaAdd { paths, target } => {
             let sims = simctl::list()?;
-            let sim = resolve::select_simulator(ctx, &sims, target.as_deref())?;
+            let sim =
+                resolve::select_simulator(ctx, &sims, target.as_deref(), "the TARGET argument")?;
             let paths: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
             simctl::media_add(&sim.udid, &paths)?;
             Ok(Rendered::data(report("added media to", sim)))
@@ -245,7 +250,7 @@ fn create(name: &str, device_type: &str, runtime: Option<&str>) -> CommandResult
 
 fn delete(ctx: &mut Context, target: &str, yes: bool) -> CommandResult {
     let sims = simctl::list()?;
-    let sim = resolve::select_simulator(ctx, &sims, Some(target))?;
+    let sim = resolve::select_simulator(ctx, &sims, Some(target), "the TARGET argument")?;
     // Deleting is unrecoverable: confirm interactively, or require --yes.
     if !yes {
         if !ctx.out.is_interactive() {
@@ -271,7 +276,7 @@ fn delete(ctx: &mut Context, target: &str, yes: bool) -> CommandResult {
 
 fn clone(ctx: &mut Context, target: &str, new_name: &str) -> CommandResult {
     let sims = simctl::list()?;
-    let sim = resolve::select_simulator(ctx, &sims, Some(target))?;
+    let sim = resolve::select_simulator(ctx, &sims, Some(target), "the TARGET argument")?;
     let udid = simctl::clone(&sim.udid, new_name)?;
     Ok(Rendered::data(SimAction {
         udid,
@@ -287,7 +292,7 @@ fn record(
     output: Option<&std::path::Path>,
 ) -> CommandResult {
     let sims = simctl::list()?;
-    let sim = resolve::select_simulator(ctx, &sims, target)?;
+    let sim = resolve::select_simulator(ctx, &sims, target, "the TARGET argument")?;
     let path = output.map_or_else(
         || {
             let mut p = default_screenshot_path(&sim.name);
@@ -417,7 +422,7 @@ fn boot(ctx: &mut Context, target: Option<&str>, wait: bool) -> CommandResult {
 
 fn shutdown(ctx: &mut Context, target: Option<&str>) -> CommandResult {
     let sims = simctl::list()?;
-    let sim = resolve::select_simulator(ctx, &sims, target)?;
+    let sim = resolve::select_simulator(ctx, &sims, target, "the TARGET argument")?;
     if !sim.is_booted() {
         return Ok(Rendered::data(SimAction::already(
             sim,
@@ -431,7 +436,7 @@ fn shutdown(ctx: &mut Context, target: Option<&str>) -> CommandResult {
 
 fn erase(ctx: &mut Context, target: Option<&str>) -> CommandResult {
     let sims = simctl::list()?;
-    let sim = resolve::select_simulator(ctx, &sims, target)?;
+    let sim = resolve::select_simulator(ctx, &sims, target, "the TARGET argument")?;
     if sim.is_booted() {
         return Err(CliError::new(format!(
             "{} is booted; shut it down first (`sweetpad simulator shutdown`)",
@@ -454,7 +459,7 @@ fn screenshot(
     clipboard: bool,
 ) -> CommandResult {
     let sims = simctl::list()?;
-    let sim = resolve::select_simulator(ctx, &sims, target)?;
+    let sim = resolve::select_simulator(ctx, &sims, target, "the TARGET argument")?;
 
     let path = output.map_or_else(
         || default_screenshot_path(&sim.name),
@@ -496,7 +501,7 @@ pub(crate) fn copy_png_to_clipboard(path: &std::path::Path) -> Result<(), CliErr
 
 fn appearance(ctx: &mut Context, mode: Appearance, target: Option<&str>) -> CommandResult {
     let sims = simctl::list()?;
-    let sim = resolve::select_simulator(ctx, &sims, target)?;
+    let sim = resolve::select_simulator(ctx, &sims, target, "the TARGET argument")?;
     simctl::set_appearance(&sim.udid, mode.as_str())?;
     Ok(Rendered::data(SimAppearance {
         udid: sim.udid.clone(),

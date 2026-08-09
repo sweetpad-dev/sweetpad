@@ -1890,6 +1890,23 @@ device, so accepting one on the sibling would make `shot.png` mean a file in
 one command and a simulator in the other. Both tips use single quotes, matching
 clap's own text — a terminal prints backticks literally.
 
+### An ambiguity reported as a missing argument
+
+`--simulator`'s help says it defaults to the booted one, which holds right up
+until two are booted. Past that the command failed with `no simulator
+specified and the terminal is not interactive`, which reads as the command
+being broken rather than as the choice being genuinely ambiguous — and it
+pointed at "the TARGET argument", which `app open-url` does not have. Its only
+positional is the URL, so a reader went hunting for an argument that does not
+exist.
+
+The count and the candidates are what turn "broken" into "ambiguous", so the
+error names them (capped, since the unbooted pool is every installed
+simulator). And the way to name a simulator now travels from the caller: a
+positional for the `simulator` verbs, `--simulator <name|udid>` for `app
+open-url`. One shared resolver cannot know which, and guessing wrong sends the
+reader after nothing.
+
 ## 9n. Direction — the run session as a server
 
 `app run`'s only door is a tty. The session owns everything an iterating loop

@@ -700,7 +700,7 @@ fn settle_stage_mode(ctx: &mut Context, stage: &StageTargetArgs) -> Result<(), C
 /// rather than going through the build plan.
 fn open_url(ctx: &mut Context, url: &str, simulator: Option<&str>) -> CommandResult {
     let sims = simctl::list()?;
-    let sim = resolve::select_simulator(ctx, &sims, simulator)?;
+    let sim = resolve::select_simulator(ctx, &sims, simulator, "--simulator <name|udid>")?;
     if !sim.is_booted() {
         ctx.out
             .step("Booting simulator", || simctl::boot(&sim.udid))?;
