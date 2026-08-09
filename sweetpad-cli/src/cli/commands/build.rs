@@ -258,6 +258,7 @@ fn start(
         clean,
         hot: false,
         hot_entitlements: None,
+        result_bundle: Some(xcodebuild::build_result_bundle(&resolved.container)),
         passthrough,
     };
 

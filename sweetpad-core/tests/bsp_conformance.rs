@@ -275,6 +275,79 @@ fn bsp_per_file_clang_dialect() {
     assert!(args.contains(&"-I"), "no header search path: {args:?}");
 }
 
+/// A header belongs to no build phase, so no target's source list names it.
+/// It still has to answer with the sysroot, search paths and dialect of the
+/// translation unit that includes it — otherwise the editor reports every
+/// `#import <Foundation/Foundation.h>` as a missing file.
+#[test]
+fn bsp_header_borrows_its_companions_arguments() {
+    let root = env!("SWEETPAD_LIB_DIR");
+    let dir = format!("{root}/fixtures/_synthetic-objc-headers/project");
+    let proj = format!("{dir}/ObjCHeaders.xcodeproj");
+    let h_uri = format!("file://{dir}/include/widget.h");
+    let messages = vec![
+        json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
+        json!({"jsonrpc":"2.0","method":"build/initialized"}),
+        json!({"jsonrpc":"2.0","id":5,"method":"textDocument/sourceKitOptions","params":{"textDocument":{"uri":h_uri}}}),
+        json!({"jsonrpc":"2.0","method":"build/exit"}),
+    ];
+    let frames = run_session(&messages, &proj);
+    let args: Vec<&str> = result_for(&frames, 5)
+        .and_then(|r| r.get("compilerArguments"))
+        .and_then(Value::as_array)
+        .expect("a header gets compilerArguments")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    // The dialect must be a *header* dialect, and it must be the last `-x` so
+    // it outranks the one the companion's own arguments carry.
+    let last_x = args
+        .iter()
+        .rposition(|a| *a == "-x")
+        .expect("a dialect is named");
+    assert_eq!(args[last_x + 1], "objective-c-header", "{args:?}");
+    assert!(args.contains(&"-isysroot"), "no sysroot: {args:?}");
+    assert!(args.contains(&"-I"), "no header search path: {args:?}");
+    // The header itself is the input, not the companion it borrowed from.
+    assert!(
+        args.last().is_some_and(|a| a.ends_with("include/widget.h")),
+        "header is not the input: {args:?}"
+    );
+}
+
+/// The editor spells a path however the user opened the file. A `..` segment
+/// names exactly the same source as the target's own canonical spelling, so it
+/// must resolve to the same arguments rather than falling off the source list.
+#[test]
+fn bsp_source_resolves_through_an_unnormalized_spelling() {
+    let root = env!("SWEETPAD_LIB_DIR");
+    let dir = format!("{root}/fixtures/_synthetic-objc-headers/project");
+    let proj = format!("{dir}/ObjCHeaders.xcodeproj");
+    let dotted = format!("file://{dir}/include/../widget.m");
+    let messages = vec![
+        json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
+        json!({"jsonrpc":"2.0","method":"build/initialized"}),
+        json!({"jsonrpc":"2.0","id":5,"method":"textDocument/sourceKitOptions","params":{"textDocument":{"uri":dotted}}}),
+        json!({"jsonrpc":"2.0","id":6,"method":"buildTarget/inverseSources","params":{"textDocument":{"uri":dotted}}}),
+        json!({"jsonrpc":"2.0","method":"build/exit"}),
+    ];
+    let frames = run_session(&messages, &proj);
+    let args: Vec<&str> = result_for(&frames, 5)
+        .and_then(|r| r.get("compilerArguments"))
+        .and_then(Value::as_array)
+        .expect("a '..' spelling still gets compilerArguments")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(args.contains(&"-isysroot"), "no sysroot: {args:?}");
+    // The same spelling must also name its owning target.
+    let targets = result_for(&frames, 6)
+        .and_then(|r| r.get("targets").cloned())
+        .and_then(|t| t.as_array().cloned())
+        .expect("inverseSources answered");
+    assert_eq!(targets.len(), 1, "no owning target: {targets:?}");
+}
+
 /// A target consuming a Swift Package product gets the package-products
 /// framework search path (`-F …/PackageFrameworks`), and its source maps to the
 /// target — both through the server, hermetically (no build required).

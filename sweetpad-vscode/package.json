@@ -1230,7 +1230,7 @@
           "default": "xcode-build-server",
           "markdownEnumDescriptions": [
             "The standard, battle-tested `xcode-build-server` (parses build logs).",
-            "SweetPad's own BSP server, which derives compiler arguments from the project (no build required to parse). Experimental — currently applies only to plain `.xcodeproj` projects; `.xcworkspace`/SPM fall back to `xcode-build-server`."
+            "SweetPad's own BSP server, which derives compiler arguments from the project (no build required to parse). Experimental. Handles `.xcodeproj` and `.xcworkspace`; a Swift package instead uses SourceKit-LSP's native SwiftPM support, for which no build server is written."
           ],
           "description": "Which build server backs sourcekit-lsp (writes buildServer.json)."
         },
