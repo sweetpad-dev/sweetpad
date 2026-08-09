@@ -1876,6 +1876,20 @@ the line anywhere would tell every healthy build to pass a flag it does not
 need. Detection sits on the line stream rather than the transcript, so it works
 in the human and ndjson paths that never assemble one.
 
+### A path guessed at positionally
+
+`sweetpad app screenshot shot.png` — a command whose whole job is writing one
+file reads as taking the destination positionally. clap rejected the bare path
+with `unexpected argument 'shot.png' found`, naming no flag, so the guess cost
+a `--help` round-trip.
+
+The `-o shot.png` hint already existed for the neighbouring mistake; it now
+covers the unknown-argument branch too. **A positional is deliberately not the
+fix:** `simulator screenshot` already spends its positional on the target
+device, so accepting one on the sibling would make `shot.png` mean a file in
+one command and a simulator in the other. Both tips use single quotes, matching
+clap's own text — a terminal prints backticks literally.
+
 ## 9n. Direction — the run session as a server
 
 `app run`'s only door is a tty. The session owns everything an iterating loop

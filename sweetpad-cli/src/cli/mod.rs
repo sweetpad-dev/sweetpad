@@ -1261,40 +1261,67 @@ fn takes_output_file(argv: &[String]) -> bool {
         .any(|a| a.get_long() == Some("output-file"))
 }
 
-/// Point `-o shot.png` at `--output-file`. The global `-o/--output` selects the
-/// output *format*, so a path lands as an invalid enum value and clap's
-/// nearest-value tip reads "a similar value exists: 'json'" — which points away
-/// from the flag that actually takes a path. When the rejected value looks like
-/// a path and the invoked subcommand has an `--output-file`, that tip is
-/// replaced with the real fix; every other usage error renders as clap wrote it.
+/// Point a path at `--output-file`, from either way of guessing at it.
+///
+/// `-o shot.png`: the global `-o/--output` selects the output *format*, so a
+/// path lands as an invalid enum value and clap's nearest-value tip reads "a
+/// similar value exists: 'json'" — which points away from the flag that
+/// actually takes a path.
+///
+/// `sweetpad app screenshot shot.png`: a command whose whole job is to write
+/// one file reads as taking a destination positionally, and clap rejects the
+/// bare path with an unadorned "unexpected argument" that names no flag at all.
+/// A positional is *not* the fix here — `simulator screenshot` already spends
+/// its positional on the target device, so accepting one on the sibling would
+/// make the same word mean a file in one command and a simulator in the other.
+///
+/// Either way the rejected value is a path and the invoked subcommand has an
+/// `--output-file`; every other usage error renders as clap wrote it.
 fn hint_output_file(mut err: clap::Error, argv: &[String]) -> clap::Error {
     use clap::error::{ContextKind, ContextValue};
 
-    if err.kind() != clap::error::ErrorKind::InvalidValue {
-        return err;
-    }
-    // clap renders the arg as `--output <OUTPUT>`; the leading token is the flag.
-    let is_output = matches!(
-        err.get(ContextKind::InvalidArg),
-        Some(ContextValue::String(arg)) if arg.split_whitespace().next() == Some("--output")
-    );
-    let Some(ContextValue::String(value)) = err.get(ContextKind::InvalidValue) else {
-        return err;
+    let kind = err.kind();
+    let value = match kind {
+        clap::error::ErrorKind::InvalidValue => {
+            // clap renders the arg as `--output <OUTPUT>`; the leading token
+            // is the flag.
+            let is_output = matches!(
+                err.get(ContextKind::InvalidArg),
+                Some(ContextValue::String(arg)) if arg.split_whitespace().next() == Some("--output")
+            );
+            let Some(ContextValue::String(value)) = err.get(ContextKind::InvalidValue) else {
+                return err;
+            };
+            if !is_output {
+                return err;
+            }
+            value.clone()
+        }
+        clap::error::ErrorKind::UnknownArgument => {
+            let Some(ContextValue::String(value)) = err.get(ContextKind::InvalidArg) else {
+                return err;
+            };
+            value.clone()
+        }
+        _ => return err,
     };
-    let value = value.clone();
-    if !is_output || !looks_like_path(&value) || !takes_output_file(argv) {
+    if !looks_like_path(&value) || !takes_output_file(argv) {
         return err;
     }
     err.remove(ContextKind::SuggestedValue);
+    // Single quotes, matching clap's own messages — a terminal prints
+    // backticks literally.
+    let fix = if kind == clap::error::ErrorKind::InvalidValue {
+        format!(
+            "'-o/--output' picks the output format; to write the file, pass \
+             '--output-file {value}'"
+        )
+    } else {
+        format!("to write the file, pass '--output-file {value}'")
+    };
     err.insert(
         ContextKind::Suggested,
-        ContextValue::StyledStrs(vec![
-            format!(
-                "`-o/--output` picks the output format; to write the file, pass \
-                 `--output-file {value}`"
-            )
-            .into(),
-        ]),
+        ContextValue::StyledStrs(vec![fix.into()]),
     );
     err
 }
@@ -1856,6 +1883,53 @@ mod output_file_hint_tests {
     fn unrelated_usage_errors_are_left_alone() {
         let text = rendered(&["nosuchcommand"]);
         assert!(!text.contains("--output-file"), "unexpected tip:\n{text}");
+    }
+
+    #[test]
+    fn a_bare_path_is_pointed_at_output_file() {
+        // A command whose whole job is writing one file reads as taking the
+        // destination positionally; clap's bare "unexpected argument" names
+        // no flag, so the guess costs a --help round-trip.
+        for spelling in ["/tmp/launch.png", "shot.png", "~/out/shot.png"] {
+            let text = rendered(&["app", "screenshot", spelling]);
+            assert!(
+                text.contains(&format!("--output-file {spelling}")),
+                "expected the tip for {spelling}, got:\n{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unexpected_argument_that_is_not_a_path_is_left_alone() {
+        // A misspelled flag and a stray word are ordinary usage errors; only a
+        // value that reads as a path has a better answer.
+        for spelling in ["--bogus", "notapath"] {
+            let text = rendered(&["app", "screenshot", spelling]);
+            assert!(
+                !text.contains("--output-file"),
+                "unexpected tip for {spelling}:\n{text}"
+            );
+        }
+        // And a command that writes no file has nothing to point at.
+        let text = rendered(&["build", "shot.png"]);
+        assert!(!text.contains("--output-file"), "unexpected tip:\n{text}");
+    }
+
+    #[test]
+    fn the_tips_quote_the_way_a_terminal_reads() {
+        // Backticks render literally in a terminal; clap's own messages use
+        // single quotes, and these sit right beside them.
+        for args in [
+            vec!["app", "screenshot", "/tmp/launch.png"],
+            vec!["app", "screenshot", "-o", "/tmp/launch.png"],
+        ] {
+            let text = rendered(&args);
+            let tip = text
+                .lines()
+                .find(|l| l.contains("--output-file"))
+                .unwrap_or_default();
+            assert!(!tip.contains('`'), "backtick in a rendered tip: {tip}");
+        }
     }
 }
 
