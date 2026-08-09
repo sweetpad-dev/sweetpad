@@ -812,6 +812,7 @@ impl RunPlan {
             clean: false,
             hot: self.hot,
             hot_entitlements: self.hot_entitlements.as_deref(),
+            result_bundle: Some(xcodebuild::build_result_bundle(&self.resolved.container)),
             passthrough: &self.passthrough,
         }
     }
@@ -2647,7 +2648,11 @@ enum BuildOutcome {
 /// which keeps the session open to fix and rebuild.
 fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> BuildOutcome {
     use std::io::Write as _;
-    let (parts, cwd) = plan.build_plan().command();
+    let build_plan = plan.build_plan();
+    // This path spawns xcodebuild itself rather than going through
+    // `BuildPlan::run`, so it owns the slot cleanup too.
+    build_plan.prepare_result_bundle();
+    let (parts, cwd) = build_plan.command();
     let args: Vec<&str> = parts.iter().map(String::as_str).collect();
     let (mut child, reader) = match process::spawn_piped_group("xcodebuild", &args, cwd.as_deref())
     {

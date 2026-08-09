@@ -27,7 +27,7 @@ use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
 use crate::framing::{read_message, write_message};
 use control::{LogLevel, TelemetryServer};
-use sweetpad_lib::project;
+use sweetpad_lib::{compiler_args, project};
 
 /// Write a `buildServer.json` so `sourcekit-lsp` discovers and launches this
 /// server. Its `argv` is the current executable followed by
@@ -1084,12 +1084,13 @@ impl Server {
             .and_then(Value::as_str)
             .map(path_from_uri)
             .unwrap_or_default();
+        let standardized = project::standardize(&path);
         // Re-read the target list (not the startup snapshot) so files in a
         // target added after `buildTarget/didChange` resolve to an owner.
         let owning: Vec<Value> = self
             .current_targets()
             .iter()
-            .filter(|t| self.source_files(t).contains(&path))
+            .filter(|t| sources_contain(&self.source_files(t), &path, &standardized))
             .map(|t| target_id(t))
             .collect();
         json!({ "targets": owning })
@@ -1107,8 +1108,17 @@ impl Server {
             .unwrap_or("");
         let path = path_from_uri(uri);
 
+        // A header is not a build input — it belongs to no `PBXSourcesBuildPhase`,
+        // so no target's source list names it — and its extension tells clang
+        // nothing about the dialect inside. Answer it from a translation unit
+        // that would include it instead.
+        if is_header(&path) {
+            return self.header_options(&path);
+        }
+
         // The owning target: the request's `target`, else the first whose source
         // list contains the file.
+        let standardized = project::standardize(&path);
         let target = params
             .get("target")
             .and_then(|t| t.get("uri"))
@@ -1117,7 +1127,7 @@ impl Server {
             .or_else(|| {
                 self.current_targets()
                     .into_iter()
-                    .find(|t| self.source_files(t).contains(&path))
+                    .find(|t| sources_contain(&self.source_files(t), &path, &standardized))
             });
 
         let Some(target) = target else {
@@ -1134,6 +1144,90 @@ impl Server {
             "compilerArguments": args,
             "workingDirectory": self.project_dir().to_string_lossy(),
         })
+    }
+
+    /// The editor arguments for a header: its companion translation unit's
+    /// invocation, retargeted at the header. Everything a header needs to parse
+    /// — the sysroot, the include and framework search paths, the language
+    /// dialect — is a property of the sources that include it, never of the
+    /// header itself, so the companion's arguments are the answer. Returns null
+    /// when the project has no clang source to borrow from.
+    fn header_options(&self, header: &Path) -> Value {
+        let Some((target, companion)) = self.header_companion(header) else {
+            self.log(&format!(
+                "sourceKitOptions: no clang source to borrow arguments from for {}",
+                header.display()
+            ));
+            return Value::Null;
+        };
+        let (sdk, arch) = self.editor_platform(&target);
+        let opts = self.options_for(&target, &sdk, &arch);
+        let inv = match build_settings::resolve_file_arguments(&opts, &companion) {
+            Ok(inv) => inv,
+            Err(e) => {
+                self.log(&format!(
+                    "resolve failed: target={target} header={} companion={} err={e}",
+                    header.display(),
+                    companion.display()
+                ));
+                return Value::Null;
+            }
+        };
+        let mut args = editor_arguments(&inv.arguments);
+        // Left to itself clang reads a `.h` as a plain C header and rejects the
+        // ObjC or C++ it finds, so name the dialect the companion compiles as.
+        // A later `-x` wins over any the companion's own arguments carry.
+        args.push("-x".into());
+        args.push(header_dialect(&companion).into());
+        args.push(header.to_string_lossy().into_owned());
+        self.log(&format!(
+            "sourceKitOptions: target={target} header={} companion={} args={}",
+            header.display(),
+            companion.display(),
+            args.len(),
+        ));
+        json!({
+            "compilerArguments": args,
+            "workingDirectory": self.project_dir().to_string_lossy(),
+        })
+    }
+
+    /// The translation unit whose arguments stand in for `header`: the sibling
+    /// with the same stem (`Foo.h` → `Foo.m`), else any clang source in the same
+    /// directory, else the project's first clang source. Nearest first — the
+    /// closer the companion, the likelier it shares the header's search paths
+    /// and dialect. A `.swift` file is never a companion: it compiles through
+    /// swiftc, whose arguments say nothing about how to parse a header.
+    fn header_companion(&self, header: &Path) -> Option<(String, PathBuf)> {
+        // Source paths are built on a canonicalized project dir while the editor
+        // spells the header however the user opened it, so accept a source that
+        // sits beside either spelling.
+        let standardized = project::standardize(header);
+        let dirs: Vec<&Path> = [header.parent(), standardized.parent()]
+            .into_iter()
+            .flatten()
+            .collect();
+        let stem = header.file_stem();
+
+        let mut in_dir: Option<(String, PathBuf)> = None;
+        let mut anywhere: Option<(String, PathBuf)> = None;
+        for target in self.current_targets() {
+            for source in self.source_files(&target) {
+                if !is_clang_source(&source) {
+                    continue;
+                }
+                let beside = source.parent().is_some_and(|p| dirs.contains(&p));
+                if beside && source.file_stem() == stem {
+                    return Some((target, source));
+                }
+                if beside && in_dir.is_none() {
+                    in_dir = Some((target.clone(), source.clone()));
+                } else if anywhere.is_none() {
+                    anywhere = Some((target.clone(), source));
+                }
+            }
+        }
+        in_dir.or(anywhere)
     }
 
     /// The targets named in a `{ targets: [{uri}] }` param, or all targets.
@@ -1335,6 +1429,56 @@ fn file_uri(path: &Path) -> String {
 
 fn path_from_uri(uri: &str) -> PathBuf {
     PathBuf::from(percent_decode(uri.strip_prefix("file://").unwrap_or(uri)))
+}
+
+/// Header extensions an editor opens. None of them name a build input, so a
+/// file with one of these never appears in a target's source list.
+const HEADER_EXTS: &[&str] = &["h", "hh", "hpp", "hxx", "pch", "inl"];
+
+fn is_header(path: &Path) -> bool {
+    extension_of(path).is_some_and(|e| HEADER_EXTS.contains(&e.as_str()))
+}
+
+/// Whether `path` is a C-family source, judged by the same extension table that
+/// decides how the build compiles it.
+fn is_clang_source(path: &Path) -> bool {
+    !compiler_args::clang_languages(std::slice::from_ref(&path.to_string_lossy().into_owned()))
+        .is_empty()
+}
+
+/// The clang `-x` dialect a header should parse as, taken from the companion
+/// translation unit's language. Objective-C is the fallback because it accepts
+/// plain C too, so a header of unknown provenance still parses.
+fn header_dialect(companion: &Path) -> &'static str {
+    let langs = compiler_args::clang_languages(std::slice::from_ref(
+        &companion.to_string_lossy().into_owned(),
+    ));
+    match langs.iter().next().map(String::as_str) {
+        Some("sourcecode.cpp.objcpp") => "objective-c++-header",
+        Some("sourcecode.cpp.cpp") => "c++-header",
+        Some("sourcecode.c.c") => "c-header",
+        _ => "objective-c-header",
+    }
+}
+
+/// A path's extension, lowercased — extensions are matched case-insensitively
+/// because a case-insensitive filesystem lets a project spell `.h` as `.H`.
+fn extension_of(path: &Path) -> Option<String> {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+}
+
+/// Whether `sources` names `path`. The editor spells a path however the user
+/// opened the file — through a symlinked checkout, or with `..` segments —
+/// while a target's source list is built on a canonicalized project dir, so an
+/// exact comparison misses files that are plainly there. Compare exactly first
+/// (the common case, no syscalls), then by standardized spelling.
+fn sources_contain(sources: &[PathBuf], path: &Path, standardized: &Path) -> bool {
+    sources.iter().any(|s| s == path)
+        || sources
+            .iter()
+            .any(|s| project::standardize(s) == standardized)
 }
 
 /// Append `s` to `out` percent-encoded: RFC 3986 unreserved bytes and `/` pass

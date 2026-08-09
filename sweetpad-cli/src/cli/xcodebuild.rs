@@ -34,6 +34,13 @@ pub struct BuildPlan<'a> {
     /// `--hot-entitlements` file) that `CODE_SIGN_ENTITLEMENTS=…` points the
     /// signing at. Only emitted for a hot macOS build.
     pub hot_entitlements: Option<&'a Path>,
+    /// Where the run's `.xcresult` goes. Nothing here reads it: it is passed
+    /// because `xcodebuild` writes the build's `.xcactivitylog` only when
+    /// `-resultBundlePath` is given, and that log is the sole input
+    /// `xcode-build-server` has for a file's compiler arguments. A build without
+    /// it leaves the editor's index stale, so autocomplete degrades to "cannot
+    /// find <Foundation/Foundation.h>" while the build itself succeeds.
+    pub result_bundle: Option<PathBuf>,
     /// Extra arguments passed through to xcodebuild verbatim (everything after
     /// `--` on the command line) — the escape hatch for flags/settings the CLI
     /// doesn't model.
@@ -60,6 +67,10 @@ impl BuildPlan<'_> {
         if let Some(sdk) = self.sdk {
             args.push("-sdk".into());
             args.push(sdk.into());
+        }
+        if let Some(bundle) = &self.result_bundle {
+            args.push("-resultBundlePath".into());
+            args.push(bundle.display().to_string());
         }
         args.extend(container_args(self.container));
         if self.hot {
@@ -98,6 +109,20 @@ impl BuildPlan<'_> {
         (self.args(), working_dir(self.container))
     }
 
+    /// Clear the result-bundle slot: `xcodebuild` refuses to write into a path
+    /// that already exists, and the slot is reused across builds. Call this
+    /// immediately before spawning — never on the `--show-command` path, which
+    /// must not touch state.
+    pub fn prepare_result_bundle(&self) {
+        let Some(bundle) = &self.result_bundle else {
+            return;
+        };
+        let _ = std::fs::remove_dir_all(bundle);
+        if let Some(parent) = bundle.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+
     /// Run the build. Human mode beautifies xcodebuild's output via
     /// [`buildlog`]; `-v` passes it through raw; `--json` captures both child
     /// streams (nothing interleaves with the envelope) and folds the tail of
@@ -106,6 +131,7 @@ impl BuildPlan<'_> {
     /// Every mode but `-v` records the parsed diagnostics as the project's
     /// last-build artifact for `build diagnostics`.
     pub fn run(&self, out: &Output) -> Result<Option<buildlog::StreamStats>, CliError> {
+        self.prepare_result_bundle();
         let parts = self.args();
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
         let cwd = working_dir(self.container);
@@ -354,6 +380,13 @@ impl TestPlan<'_> {
 /// than `DefaultHasher`, whose algorithm is unspecified across Rust releases —
 /// a toolchain bump must not orphan every retained bundle and diagnostics
 /// artifact.
+/// The result-bundle slot a build writes into: one per project, in the state
+/// dir. See [`BuildPlan::result_bundle`] for why a build asks for one at all.
+#[must_use]
+pub fn build_result_bundle(container: &Container) -> PathBuf {
+    project_artifact(container, "-build.xcresult")
+}
+
 pub(crate) fn project_artifact(container: &Container, suffix: &str) -> std::path::PathBuf {
     let stem = container.path().file_stem().map_or_else(
         || "project".to_string(),
@@ -1365,6 +1398,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             clean: true,
             hot: false,
             hot_entitlements: None,
+            result_bundle: None,
         };
         assert_eq!(
             plan.args(),
@@ -1396,6 +1430,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             clean: false,
             hot: true,
             hot_entitlements: None,
+            result_bundle: None,
         };
         let args = plan.args();
         assert!(args.contains(&"OTHER_LDFLAGS=$(inherited) -Xlinker -interposable".to_string()));
@@ -1423,6 +1458,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             clean: false,
             hot: true,
             hot_entitlements: None,
+            result_bundle: None,
         };
         let args = plan.args();
         assert!(args.contains(&"ENABLE_HARDENED_RUNTIME=NO".to_string()));
@@ -1438,6 +1474,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             clean: false,
             hot: false,
             hot_entitlements: None,
+            result_bundle: None,
         };
         assert!(!cold.args().iter().any(|a| {
             a.starts_with("ENABLE_HARDENED_RUNTIME") || a.starts_with("ENABLE_APP_SANDBOX")
@@ -1458,6 +1495,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             clean: false,
             hot: true,
             hot_entitlements: Some(stripped),
+            result_bundle: None,
         };
         let args = plan.args();
         let expected = "CODE_SIGN_ENTITLEMENTS=/cache/hot/Debug-nosandbox.entitlements";
@@ -1478,6 +1516,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             clean: false,
             hot: true,
             hot_entitlements: Some(stripped),
+            result_bundle: None,
         };
         assert!(
             !sim.args()
@@ -1499,6 +1538,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             clean: false,
             hot: false,
             hot_entitlements: None,
+            result_bundle: None,
         };
         assert_eq!(
             plan.args(),
@@ -1512,6 +1552,34 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
                 "/work/App.xcworkspace"
             ]
         );
+    }
+
+    #[test]
+    fn build_args_carry_the_result_bundle() {
+        // Not cosmetic: `xcodebuild` writes the build's `.xcactivitylog` only
+        // when asked for a result bundle, and that log is the only thing
+        // `xcode-build-server` can read compiler arguments out of. Drop the flag
+        // and every CLI build silently stops feeding the editor's index.
+        let c = Container::Project(PathBuf::from("/work/App.xcodeproj"));
+        let bundle = PathBuf::from("/state/App-build.xcresult");
+        let plan = BuildPlan {
+            container: &c,
+            scheme: "App",
+            configuration: "Debug",
+            destination: Some("platform=macOS"),
+            passthrough: &[],
+            sdk: None,
+            clean: false,
+            hot: false,
+            hot_entitlements: None,
+            result_bundle: Some(bundle.clone()),
+        };
+        let args = plan.args();
+        let at = args
+            .iter()
+            .position(|a| a == "-resultBundlePath")
+            .expect("build asks for a result bundle");
+        assert_eq!(args[at + 1], bundle.display().to_string());
     }
 
     #[test]
