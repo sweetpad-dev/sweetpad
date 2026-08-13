@@ -20,6 +20,17 @@ export const workspace = {
   onDidChangeConfiguration: vi.fn(() => ({
     dispose: vi.fn(),
   })),
+  // Mirrors the real API: returns the workspace folder containing the given URI.
+  getWorkspaceFolder: vi.fn((uri: { fsPath: string }) => {
+    const folders = (workspace as { workspaceFolders?: { uri: { fsPath: string } }[] }).workspaceFolders;
+    return folders?.find(
+      (folder) => uri.fsPath === folder.uri.fsPath || uri.fsPath.startsWith(`${folder.uri.fsPath}/`),
+    );
+  }),
+};
+
+export const Uri = {
+  file: vi.fn((fsPath: string) => ({ fsPath })),
 };
 
 export const debug = {
@@ -33,4 +44,4 @@ export const DebugConfigurationProviderTriggerKind = {
 
 // Modules under test reach for vscode both as `import * as vscode` and as a default import;
 // the real extension host module satisfies both.
-export default { window, commands, workspace, debug, DebugConfigurationProviderTriggerKind };
+export default { window, commands, workspace, debug, DebugConfigurationProviderTriggerKind, Uri };

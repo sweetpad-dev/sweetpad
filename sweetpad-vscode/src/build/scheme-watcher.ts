@@ -3,10 +3,9 @@ import path from "node:path";
 import * as vscode from "vscode";
 
 import { getWorkspaceConfig } from "../common/config";
-import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
 import type { BuildManager } from "./manager";
-import { getWorkspacePath, prepareDerivedDataPath } from "./utils";
+import { getWorkspacePath, isFileExistsInAnyWorkspaceFolder, prepareDerivedDataPath } from "./utils";
 
 export class SchemeWatcher implements vscode.Disposable {
   private watchers: vscode.FileSystemWatcher[] = [];
@@ -85,8 +84,7 @@ export class SchemeWatcher implements vscode.Disposable {
     this.watchers.push(schemeWatcher);
 
     // Watch for project.yml files (XcodeGen)
-    const workspacePath = getWorkspacePath();
-    const isProjectYmlExists = await isFileExists(path.join(workspacePath, "project.yml"));
+    const isProjectYmlExists = await isFileExistsInAnyWorkspaceFolder("project.yml");
     if (isProjectYmlExists) {
       const projectYmlWatcher = vscode.workspace.createFileSystemWatcher(
         "**/project.yml",
@@ -101,8 +99,8 @@ export class SchemeWatcher implements vscode.Disposable {
     }
 
     // Watch for Tuist files (Project.swift, Workspace.swift)
-    const isTuistProjectExists = await isFileExists(path.join(workspacePath, "Project.swift"));
-    const isTuistWorkspaceExists = await isFileExists(path.join(workspacePath, "Workspace.swift"));
+    const isTuistProjectExists = await isFileExistsInAnyWorkspaceFolder("Project.swift");
+    const isTuistWorkspaceExists = await isFileExistsInAnyWorkspaceFolder("Workspace.swift");
 
     if (isTuistProjectExists || isTuistWorkspaceExists) {
       const tuistWatcher = vscode.workspace.createFileSystemWatcher(

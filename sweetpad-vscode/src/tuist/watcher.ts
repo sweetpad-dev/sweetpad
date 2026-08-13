@@ -1,10 +1,7 @@
-import path from "node:path";
-
 import * as vscode from "vscode";
 
-import { getWorkspacePath, prepareDerivedDataPath } from "../build/utils";
+import { getWorkspacePath, isFileExistsInAnyWorkspaceFolder, prepareDerivedDataPath } from "../build/utils";
 import { getWorkspaceConfig } from "../common/config";
-import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
 
 export class TuistGenWatcher implements vscode.Disposable {
@@ -23,11 +20,10 @@ export class TuistGenWatcher implements vscode.Disposable {
       return;
     }
 
-    // We don't even need to start the watcher if there is no tuist files in the workspace
-    const workspacePath = getWorkspacePath();
+    // We don't even need to start the watcher if there is no tuist files in any workspace folder
     const isTuistFileExists =
-      (await isFileExists(path.join(workspacePath, "Project.swift"))) ||
-      (await isFileExists(path.join(workspacePath, "Workspace.swift")));
+      (await isFileExistsInAnyWorkspaceFolder("Project.swift")) ||
+      (await isFileExistsInAnyWorkspaceFolder("Workspace.swift"));
     if (!isTuistFileExists) {
       commonLogger.log("Project.swift or Workspace.swift not found, skipping tuist watcher", {
         workspacePath: getWorkspacePath(),

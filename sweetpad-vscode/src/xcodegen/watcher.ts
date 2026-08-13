@@ -1,10 +1,7 @@
-import path from "node:path";
-
 import * as vscode from "vscode";
 
-import { getWorkspacePath } from "../build/utils";
+import { getWorkspacePath, isFileExistsInAnyWorkspaceFolder } from "../build/utils";
 import { getWorkspaceConfig } from "../common/config";
-import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
 
 export class XcodeGenWatcher implements vscode.Disposable {
@@ -22,9 +19,8 @@ export class XcodeGenWatcher implements vscode.Disposable {
       return;
     }
 
-    // Is project.yml exists?
-    const workspacePath = getWorkspacePath();
-    const isProjectExists = await isFileExists(path.join(workspacePath, "project.yml"));
+    // Is project.yml exists in any workspace folder?
+    const isProjectExists = await isFileExistsInAnyWorkspaceFolder("project.yml");
     if (!isProjectExists) {
       commonLogger.log("project.yml not found, skipping xcodegen watcher", {
         workspacePath: getWorkspacePath(),
