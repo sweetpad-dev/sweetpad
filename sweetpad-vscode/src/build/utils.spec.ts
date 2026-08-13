@@ -1,10 +1,18 @@
+import { existsSync } from "node:fs";
+
 import type { Mock } from "vitest";
 import * as vscode from "vscode";
 
 import { generateBuildServerConfig, getSweetpadBspServerPath } from "../common/cli/scripts";
 import { isFileExists, readJsonFile } from "../common/files";
 import type { WorkspaceStateService } from "../common/workspace-state";
-import { generateBuildServerConfigOnBuild, launchActionToSettings } from "./utils";
+import {
+  generateBuildServerConfigOnBuild,
+  getCurrentXcodeWorkspacePath,
+  getWorkspacePath,
+  launchActionToSettings,
+  setActiveWorkspaceFolder,
+} from "./utils";
 
 // `./utils` imports the native `@sweetpad/native` addon at module level; stub it so
 // this spec runs without the compiled addon (none of the tested paths touch it).
@@ -19,6 +27,12 @@ vi.mock("../common/files", () => ({
   isFileExists: vi.fn(),
   readJsonFile: vi.fn(),
 }));
+
+// `./utils` reads `existsSync` to resolve relative configured paths across workspace folders.
+vi.mock("node:fs", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs")>();
+  return { ...original, existsSync: vi.fn(original.existsSync) };
+});
 
 type ArgInput = { argument: string; isEnabled?: boolean };
 type EnvInput = { key: string; value?: string; isEnabled?: boolean };
@@ -180,5 +194,84 @@ describe("generateBuildServerConfigOnBuild (sweetpad provider)", () => {
     mockReadJsonFile.mockRejectedValue(new Error("ENOENT"));
     await run();
     expect(mockGenerate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("multi-root workspace path resolution", () => {
+  const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
+  const mockExistsSync = existsSync as Mock;
+
+  function setFolders(paths: string[]) {
+    (vscode.workspace as { workspaceFolders?: unknown }).workspaceFolders = paths.map((p) => ({
+      uri: { fsPath: p },
+    }));
+  }
+
+  function mockConfig(values: Record<string, unknown>) {
+    mockGetConfiguration.mockReturnValue({
+      get: vi.fn((key: string) => values[key]),
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockConfig({});
+    mockExistsSync.mockReturnValue(false);
+  });
+
+  it("defaults to the first workspace folder before any project is selected", () => {
+    setFolders(["/root-a", "/root-b"]);
+    expect(getWorkspacePath()).toBe("/root-a");
+  });
+
+  it("follows the folder containing the selected xcworkspace", () => {
+    setFolders(["/root-c", "/root-d"]);
+    setActiveWorkspaceFolder("/root-d/App/App.xcworkspace");
+    expect(getWorkspacePath()).toBe("/root-d");
+  });
+
+  it("keeps the current folder when the xcworkspace is outside every workspace folder", () => {
+    setFolders(["/root-e", "/root-f"]);
+    setActiveWorkspaceFolder("/root-f/App.xcworkspace");
+    // e.g. a git worktree next to the repo
+    setActiveWorkspaceFolder("/elsewhere/App.xcworkspace");
+    expect(getWorkspacePath()).toBe("/root-f");
+  });
+
+  it("falls back to the first folder when the active folder leaves the workspace", () => {
+    setFolders(["/root-g", "/root-h"]);
+    setActiveWorkspaceFolder("/root-h/App.xcworkspace");
+    setFolders(["/root-i"]);
+    expect(getWorkspacePath()).toBe("/root-i");
+  });
+
+  it("activates the folder of a cached xcworkspace from workspace state", () => {
+    setFolders(["/root-j", "/root-k"]);
+    const state = {
+      get: vi.fn(() => "/root-k/App.xcworkspace"),
+      update: vi.fn(),
+    } as unknown as WorkspaceStateService;
+
+    expect(getCurrentXcodeWorkspacePath(state)).toBe("/root-k/App.xcworkspace");
+    expect(getWorkspacePath()).toBe("/root-k");
+  });
+
+  it("resolves a relative configured path against the folder where it exists", () => {
+    setFolders(["/root-l", "/root-m"]);
+    mockConfig({ "build.xcodeWorkspacePath": "App.xcworkspace" });
+    mockExistsSync.mockImplementation((p: string) => p === "/root-m/App.xcworkspace");
+    const state = { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService;
+
+    expect(getCurrentXcodeWorkspacePath(state)).toBe("/root-m/App.xcworkspace");
+    expect(getWorkspacePath()).toBe("/root-m");
+  });
+
+  it("activates the folder of an absolute configured path", () => {
+    setFolders(["/root-n", "/root-o"]);
+    mockConfig({ "build.xcodeWorkspacePath": "/root-o/App.xcworkspace" });
+    const state = { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService;
+
+    expect(getCurrentXcodeWorkspacePath(state)).toBe("/root-o/App.xcworkspace");
+    expect(getWorkspacePath()).toBe("/root-o");
   });
 });

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 import * as sweetpadLib from "@sweetpad/native";
@@ -231,14 +232,64 @@ export async function askSchemeForBuild(
 }
 
 /**
- * It's absolute path to current opened workspace
+ * Absolute paths of all VS Code workspace folders (a multi-root workspace has several).
+ */
+export function getWorkspaceFolderPaths(): string[] {
+  return vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
+}
+
+/**
+ * The VS Code workspace folder that contains the given path, if any.
+ */
+export function getWorkspaceFolderForPath(fsPath: string): string | undefined {
+  return vscode.workspace.getWorkspaceFolder(vscode.Uri.file(fsPath))?.uri.fsPath;
+}
+
+// SweetPad operates on one Xcode project at a time. In a multi-root VS Code workspace the
+// project may live in any folder, so remember which folder contains the currently selected
+// xcworkspace and resolve every "workspace root" lookup against it instead of always
+// defaulting to the first folder.
+let activeWorkspaceFolder: string | undefined;
+
+/**
+ * Remember the VS Code workspace folder that contains the given xcworkspace so
+ * `getWorkspacePath()` resolves against it. No-op when the path is outside every folder
+ * (e.g. a git worktree next to the repo).
+ */
+export function setActiveWorkspaceFolder(xcworkspacePath: string): void {
+  const folder = getWorkspaceFolderForPath(xcworkspacePath);
+  if (folder && folder !== activeWorkspaceFolder) {
+    activeWorkspaceFolder = folder;
+    commonLogger.log("Active workspace folder changed", {
+      folder: folder,
+      xcworkspace: xcworkspacePath,
+    });
+  }
+}
+
+/**
+ * It's absolute path to the workspace folder SweetPad currently operates on: the folder
+ * containing the selected xcworkspace, or the first workspace folder before any selection.
  */
 export function getWorkspacePath(): string {
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
-  if (!workspaceFolder) {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
     throw new ExtensionError("No workspace folder found");
   }
-  return workspaceFolder;
+  if (activeWorkspaceFolder && folders.some((folder) => folder.uri.fsPath === activeWorkspaceFolder)) {
+    return activeWorkspaceFolder;
+  }
+  return folders[0].uri.fsPath;
+}
+
+/**
+ * Check if a file exists in the root of any VS Code workspace folder.
+ */
+export async function isFileExistsInAnyWorkspaceFolder(fileName: string): Promise<boolean> {
+  const results = await Promise.all(
+    getWorkspaceFolderPaths().map((folder) => isFileExists(path.join(folder, fileName))),
+  );
+  return results.some(Boolean);
 }
 
 /**
@@ -294,14 +345,22 @@ export function getCurrentXcodeWorkspacePath(workspaceState: WorkspaceStateServi
   const configPath = getWorkspaceConfig("build.xcodeWorkspacePath");
   if (configPath) {
     workspaceState.update("build.xcodeWorkspacePath", undefined);
+    let resolvedPath: string;
     if (path.isAbsolute(configPath)) {
-      return configPath;
+      resolvedPath = configPath;
+    } else {
+      // In a multi-root workspace a relative path may belong to any folder — pick the
+      // first one where it actually exists, falling back to the current root.
+      const candidates = getWorkspaceFolderPaths().map((folder) => path.join(folder, configPath));
+      resolvedPath = candidates.find((candidate) => existsSync(candidate)) ?? path.join(getWorkspacePath(), configPath);
     }
-    return path.join(getWorkspacePath(), configPath);
+    setActiveWorkspaceFolder(resolvedPath);
+    return resolvedPath;
   }
 
   const cachedPath = workspaceState.get("build.xcodeWorkspacePath");
   if (cachedPath) {
+    setActiveWorkspaceFolder(cachedPath);
     return cachedPath;
   }
 
@@ -534,27 +593,35 @@ export async function generateBuildServerConfigOnBuild(options: {
 }
 
 /**
- * Detect xcode workspace in the given directory
+ * Detect xcode workspaces in all VS Code workspace folders
  */
 export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
-  const workspace = getWorkspacePath();
+  const folders = getWorkspaceFolderPaths();
+  if (folders.length === 0) {
+    throw new ExtensionError("No workspace folder found");
+  }
 
-  // Get all files that end with .xcworkspace or Package.swift (4 depth)
-  const paths = await findFilesRecursive({
-    directory: workspace,
-    depth: 4,
-    matcher: (file) => {
-      return file.name.endsWith(".xcworkspace") || file.name === "Package.swift";
-    },
-  });
-  return paths;
+  // Get all files that end with .xcworkspace or Package.swift (4 depth) in every folder
+  const results = await Promise.all(
+    folders.map((folder) =>
+      findFilesRecursive({
+        directory: folder,
+        depth: 4,
+        matcher: (file) => {
+          return file.name.endsWith(".xcworkspace") || file.name === "Package.swift";
+        },
+      }),
+    ),
+  );
+  return results.flat();
 }
 
 /**
- * Find xcode workspace in the given directory and ask user to select it
+ * Find xcode workspaces across all VS Code workspace folders and ask user to select one
  */
 export async function selectXcodeWorkspace(options: { autoselect: boolean }): Promise<string> {
-  const workspacePath = getWorkspacePath();
+  const folders = getWorkspaceFolderPaths();
+  const isMultiRoot = folders.length > 1;
 
   // Get all files that end with .xcworkspace (4 depth) and Package.swift files
   const paths = await detectXcodeWorkspacesPaths();
@@ -563,7 +630,7 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
   if (paths.length === 0) {
     throw new ExtensionError("No xcode workspaces or SPM packages found", {
       context: {
-        cwd: workspacePath,
+        cwd: folders.join(", "),
       },
     });
   }
@@ -573,15 +640,21 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
     const selectedPath = paths[0];
     const projectType = detectWorkspaceType(selectedPath);
     commonLogger.log("Project was detected", {
-      workspace: workspacePath,
+      workspace: getWorkspaceFolderForPath(selectedPath) ?? folders[0],
       path: selectedPath,
       projectType: projectType,
     });
+    setActiveWorkspaceFolder(selectedPath);
     return selectedPath;
   }
 
-  const podfilePath = path.join(workspacePath, "Podfile");
-  const isCocoaProject = await isFileExists(podfilePath);
+  // Which folders are CocoaPods projects (Podfile in their root)?
+  const cocoaPodsRoots = new Set<string>();
+  for (const folder of folders) {
+    if (await isFileExists(path.join(folder, "Podfile"))) {
+      cocoaPodsRoots.add(folder);
+    }
+  }
 
   // More then one, ask user to select
   const selected = await showQuickPick({
@@ -594,12 +667,13 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
         return aDepth - bDepth;
       })
       .map((xwPath) => {
-        // show only relative path, to make it more readable
-        const relativePath = path.relative(workspacePath, xwPath);
+        // show only path relative to its own workspace folder, to make it more readable
+        const rootDir = getWorkspaceFolderForPath(xwPath) ?? folders[0];
+        const relativePath = path.relative(rootDir, xwPath);
         const parentDir = path.dirname(relativePath);
 
         const isInRootDir = parentDir === ".";
-        const isCocoaPods = isInRootDir && isCocoaProject;
+        const isCocoaPods = isInRootDir && cocoaPodsRoots.has(rootDir);
         const isSPMPackage = detectWorkspaceType(xwPath) === "spm";
 
         let detail: string | undefined;
@@ -614,6 +688,8 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
 
         return {
           label: relativePath,
+          // In multi-root workspaces show which folder the project belongs to
+          description: isMultiRoot ? path.basename(rootDir) : undefined,
           detail: detail,
           context: {
             path: xwPath,
@@ -621,6 +697,7 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
         };
       }),
   });
+  setActiveWorkspaceFolder(selected.context.path);
   return selected.context.path;
 }
 

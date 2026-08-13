@@ -35,7 +35,7 @@ import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { SchemeWatcher } from "./build/scheme-watcher.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
-import { getWorkspacePath, notifyCustomXcodebuildReadOnlyScope } from "./build/utils.js";
+import { getCurrentXcodeWorkspacePath, getWorkspacePath, notifyCustomXcodebuildReadOnlyScope } from "./build/utils.js";
 import { CliServerService } from "./cli-server/service.js";
 import { type AppDeps, registerCommand, registerTreeDataProvider } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
@@ -133,13 +133,17 @@ export async function activate(context: vscode.ExtensionContext) {
   const devFeaturesEnabled = context.extensionMode === vscode.ExtensionMode.Development;
   await vscode.commands.executeCommand("setContext", "sweetpad.devFeatures", devFeaturesEnabled);
 
-  const workspacePath = getWorkspacePath();
-
   warmShellEnv();
 
   // Services 🔧
   // Leaf services with no manager dependencies. Constructed first so managers can take them as deps.
   const workspaceState = new WorkspaceStateService(context);
+
+  // Prime the active workspace folder from the previously selected xcworkspace, so that in
+  // multi-root workspaces everything below resolves against the right folder from the start.
+  getCurrentXcodeWorkspacePath(workspaceState);
+  const workspacePath = getWorkspacePath();
+
   const execution = new ExecutionScopeService();
 
   // Managers 💼

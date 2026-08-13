@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import type * as vscode from "vscode";
 
-import { getWorkspacePath, prepareStoragePath } from "../build/utils";
+import { getWorkspaceFolderForPath, getWorkspacePath, prepareStoragePath } from "../build/utils";
 
 /**
  * Find files or directories in a given directory
@@ -105,7 +105,9 @@ export async function readJsonFile<T = unknown>(filePath: string): Promise<T> {
 }
 
 export function getWorkspaceRelativePath(filePath: string): string {
-  const workspacePath = getWorkspacePath();
+  // In multi-root workspaces the file may live in any folder — compute the path
+  // relative to the folder that actually contains it.
+  const workspacePath = getWorkspaceFolderForPath(filePath) ?? getWorkspacePath();
   return path.relative(workspacePath, filePath);
 }
 
