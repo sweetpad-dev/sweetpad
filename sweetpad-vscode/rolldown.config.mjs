@@ -43,17 +43,6 @@ const sweetpadNativePlugin = {
   },
 };
 
-// The BSP server entry only needs the `@sweetpad/native` import rewritten to the
-// copied addon — the extension entry's `writeBundle` already populates `out/lib`.
-const sweetpadNativeResolvePlugin = {
-  name: "sweetpad-native-resolve",
-  resolveId(source) {
-    if (source === "@sweetpad/native") {
-      return { id: "./lib/index.js", external: true };
-    }
-  },
-};
-
 const extensionPlugins = [sweetpadNativePlugin];
 
 if (isProduction) {
@@ -90,31 +79,5 @@ export default defineConfig([
       },
     },
     plugins: extensionPlugins,
-  },
-  {
-    // The BSP server sourcekit-lsp execs (via `argv` in buildServer.json).
-    // Bundled with a `#!/usr/bin/env node` shebang so it runs under the user's
-    // system Node, which loads the copied addon (`out/lib`) and runs the
-    // sweetpad-core BSP loop over stdio. No running extension required. Unlike
-    // the native `sweetpad` CLI, the BSP server stays a JS wrapper around the
-    // addon: the addon ships unsigned, and macOS only loads it inside an
-    // already-signed host process like `node`.
-    input: "./src/cli/bsp-server.ts",
-    output: {
-      file: "out/bsp-server.js",
-      format: "cjs",
-      sourcemap: isProduction ? "hidden" : true,
-      minify: isProduction,
-      banner: "#!/usr/bin/env node",
-    },
-    platform: "node",
-    transform: {
-      target: "es2022",
-      define: {
-        GLOBAL_SENTRY_DSN: JSON.stringify(null),
-        GLOBAL_RELEASE_VERSION: JSON.stringify(pkg.version),
-      },
-    },
-    plugins: [sweetpadNativeResolvePlugin],
   },
 ]);

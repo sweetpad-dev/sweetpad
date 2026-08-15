@@ -1239,7 +1239,7 @@
           ],
           "default": "sweetpad",
           "markdownEnumDescriptions": [
-            "SweetPad's own BSP server, bundled with the extension. Reads compiler arguments straight from the project. Handles `.xcodeproj` and `.xcworkspace`; a Swift package instead uses SourceKit-LSP's native SwiftPM support, for which no build server is written. Needs `node` on your `PATH`.",
+            "SweetPad's own BSP server, bundled with the extension. Reads compiler arguments straight from the project. Handles `.xcodeproj` and `.xcworkspace`; a Swift package instead uses SourceKit-LSP's native SwiftPM support, for which no build server is written. Runs through the `sweetpad` CLI (`brew install sweetpad-dev/tap/sweetpad`).",
             "The external `xcode-build-server`, which parses Xcode's build logs. Install it separately, and build the project once before autocomplete comes alive."
           ],
           "markdownDescription": "Which build server backs sourcekit-lsp (writes `buildServer.json`). Left unset, SweetPad's own server is used — except in a workspace whose `buildServer.json` another tool wrote, which keeps that server until you set this explicitly or run `SweetPad: Set up Swift code intelligence (BSP)`."

@@ -4,8 +4,13 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { getWorkspacePath } from "../build/utils";
-import { getDeveloperDir, getIsNodeInstalled, getIsXBSInstalled } from "../common/cli/scripts";
-import { type AppDeps, NODE_DOWNLOAD_URL } from "../common/commands";
+import {
+  SWEETPAD_CLI_MISSING_MESSAGE,
+  getDeveloperDir,
+  getIsXBSInstalled,
+  getSweetpadCliPath,
+} from "../common/cli/scripts";
+import type { AppDeps } from "../common/commands";
 import { getWorkspaceConfig, isWorkspaceConfigSetByUser, updateWorkspaceConfig } from "../common/config";
 import { isFileExists, readJsonFile } from "../common/files";
 import { assertUnreachable } from "../common/types";
@@ -25,9 +30,9 @@ export const EXTENSION_BUILD_SERVER_NAME = "sweetpad";
 /** The `name` in a buildServer.json `sweetpad bsp init` writes. */
 export const CLI_BUILD_SERVER_NAME = "sweetpad-lib";
 
-// Both launch the same server — the CLI through `sweetpad bsp serve`, the
-// extension through the bundled `bsp-server.js` — so neither is a foreign setup
-// to be preserved.
+// Both name the same server, reached through `sweetpad bsp serve`: this
+// extension writes the first when it manages the config itself, `sweetpad bsp
+// init` writes the second. Neither is a foreign setup to be preserved.
 const SWEETPAD_BUILD_SERVER_NAMES = new Set<string>([EXTENSION_BUILD_SERVER_NAME, CLI_BUILD_SERVER_NAME]);
 
 /**
@@ -273,12 +278,12 @@ async function collectSweetpadChecks(deps: AppDeps): Promise<DoctorCheck[]> {
 
   checks.push(await buildServerJsonCheck());
 
-  const nodeOk = await getIsNodeInstalled();
+  const cli = await getSweetpadCliPath();
   checks.push({
-    ok: nodeOk,
-    label: "Node.js runtime on PATH",
-    detail: nodeOk ? undefined : "node not found",
-    hint: `The BSP server launches via "#!/usr/bin/env node"; install Node.js (${NODE_DOWNLOAD_URL}) so it's on your PATH.`,
+    ok: cli !== undefined,
+    label: "sweetpad CLI on PATH",
+    detail: cli ?? "not found",
+    hint: SWEETPAD_CLI_MISSING_MESSAGE,
   });
 
   checks.push({

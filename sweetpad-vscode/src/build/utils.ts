@@ -14,7 +14,8 @@ import {
   getBuildSettingsToAskDestination,
   getIsXBSInstalled,
   getSchemes,
-  getSweetpadBspServerPath,
+  SWEETPAD_CLI_MISSING_MESSAGE,
+  getSweetpadCliPath,
   getXcodeBuildCommand,
   isXcodeBuildCommandCustomized,
   readXBSConfig,
@@ -367,6 +368,24 @@ export function isAutoGenerateBuildServerConfigEnabled(): boolean {
 const XCODE_BUILD_SERVER_TOOL_ID = "xcode-build-server";
 const XBS_INSTALL_ACTION = "Install";
 const XBS_DOCS_ACTION = "Open docs";
+const SWEETPAD_CLI_TOOL_ID = "sweetpad-cli";
+
+/**
+ * Say once, per workspace, that the build server has no launcher to run.
+ * Warned rather than thrown: a build shouldn't fail over code intelligence, and
+ * everything else about it still works.
+ */
+export async function notifySweetpadCliMissing(workspaceState: WorkspaceStateService): Promise<void> {
+  if (workspaceState.get("build.sweetpadCliMissingNotified")) {
+    return;
+  }
+  workspaceState.update("build.sweetpadCliMissingNotified", true);
+
+  const choice = await vscode.window.showWarningMessage(SWEETPAD_CLI_MISSING_MESSAGE, XBS_INSTALL_ACTION);
+  if (choice === XBS_INSTALL_ACTION) {
+    await vscode.commands.executeCommand("sweetpad.tools.install", SWEETPAD_CLI_TOOL_ID);
+  }
+}
 
 function openXBSDocs(): void {
   void vscode.env.openExternal(vscode.Uri.parse(getToolById(XCODE_BUILD_SERVER_TOOL_ID).documentation));
@@ -488,6 +507,12 @@ export async function repairStaleBuildServerConfig(): Promise<void> {
     return;
   }
 
+  // Nothing to rewrite it to. Silent here rather than warning: the build path
+  // says this once already, and activation is not where somebody is asking.
+  if ((await getSweetpadCliPath()) === undefined) {
+    return;
+  }
+
   await generateSweetpadBuildServerConfig();
   await restartSwiftLSP();
 }
@@ -537,11 +562,15 @@ export async function generateBuildServerConfigOnBuild(options: {
       return;
     }
 
-    const isConfigValid =
-      config?.name === EXTENSION_BUILD_SERVER_NAME &&
-      launcher !== undefined &&
-      launcher === getSweetpadBspServerPath() &&
-      (await isFileExists(launcher));
+    const cli = await getSweetpadCliPath();
+    if (cli === undefined) {
+      // Nothing to point a config at. Say so once rather than rewriting
+      // buildServer.json to a launcher that isn't there.
+      await notifySweetpadCliMissing(options.workspaceState);
+      return;
+    }
+
+    const isConfigValid = config?.name === EXTENSION_BUILD_SERVER_NAME && launcher !== undefined && launcher === cli;
     if (!isConfigValid) {
       await refreshBuildServer({ xcworkspace: options.xcworkspace, scheme: options.scheme });
     }

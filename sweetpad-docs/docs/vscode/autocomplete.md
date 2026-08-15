@@ -12,8 +12,8 @@ real autocomplete, jump-to-definition, hover docs, and Swift compiler diagnostic
 
 SourceKit-LSP needs a **build server** to tell it how each file is compiled. SweetPad supports two:
 
-- **SweetPad's built-in build server** (the default) — ships inside the extension and reads compiler arguments
-  straight from the project, so autocomplete works **without building first**. Handles `.xcodeproj` and
+- **SweetPad's own build server** (the default) — reads compiler arguments straight from the project, so
+  autocomplete works **without building first**. Runs through the `sweetpad` CLI. Handles `.xcodeproj` and
   `.xcworkspace`.
 - **xcode-build-server** — a battle-tested external tool that parses Xcode build logs. Install it separately, and
   build the project once before autocomplete comes alive.
@@ -28,12 +28,15 @@ is installed.
 
 ## Setup with the built-in build server (default)
 
-Nothing to install beyond the Swift extension:
-
 1. Install the [Swift](https://marketplace.visualstudio.com/items?itemName=swiftlang.swift-vscode) extension from the
-   Marketplace.
+   Marketplace, and the `sweetpad` CLI that runs the build server:
+
+   ```bash
+   brew install sweetpad-dev/tap/sweetpad
+   ```
+
 2. From the command palette, run `> SweetPad: Generate Build Server Config`. This writes a `buildServer.json` at the
-   workspace root that launches the bundled server. SweetPad writes it for you on the first build too.
+   workspace root that runs `sweetpad bsp serve`. SweetPad writes it for you on the first build too.
 3. Open a Swift file — SourceKit-LSP starts the server, which resolves build settings directly from the project.
 
 After that, autocomplete should work. ✅
@@ -50,7 +53,9 @@ another tool keeps that tool, so an existing setup is never swapped out undernea
 
 A few things to know:
 
-- The server runs on Node.js, so `node` must be on your `PATH`.
+- The server runs through the [`sweetpad` CLI](../cli/getting-started-cli.md), so it needs to be installed:
+  `brew install sweetpad-dev/tap/sweetpad`, or the Tools panel. SweetPad tells you once per workspace if it's
+  missing, and `> SweetPad: Diagnose BSP (Doctor)` reports it too.
 - An `.xcworkspace` resolves each file against whichever member project declares its target, so a CocoaPods or
   multi-project workspace works the same as a single `.xcodeproj`.
 - A Swift package takes a different route: SourceKit-LSP reads `Package.swift` and indexes it natively, so SweetPad
@@ -58,9 +63,9 @@ A few things to know:
   overrides that native support.
 - Headers borrow the sysroot, search paths and language dialect of a neighbouring source file — the `.m` beside
   `Foo.h`, or the nearest one in the same folder — so a `.h` resolves even though no target compiles it directly.
-- The `buildServer.json` it writes points at a file inside the installed extension, so an extension update leaves
-  that path behind. SweetPad rewrites it the next time the window loads, and `> SweetPad: Generate Build Server
-  Config` does the same on demand.
+- The `buildServer.json` it writes names the installed CLI, so it keeps resolving across extension updates. If the
+  CLI itself moves or is uninstalled, SweetPad rewrites the file the next time the window loads, and
+  `> SweetPad: Generate Build Server Config` does the same on demand.
 
 ## Setup with xcode-build-server
 
@@ -91,7 +96,7 @@ and regenerates `buildServer.json` in one step.
 ## When autocomplete doesn't work
 
 Run `> SweetPad: Diagnose BSP (Doctor)` from the command palette. It checks the whole chain for your active
-provider — `buildServer.json` is present and valid, the build-server tool (or Node.js) is available, a scheme is
+provider — `buildServer.json` is present and valid, the build-server tool is available, a scheme is
 selected, the Xcode developer directory resolves — and prints a ✓/✗ report with a fix hint for each failure in the
 **SweetPad: BSP** output channel.
 
