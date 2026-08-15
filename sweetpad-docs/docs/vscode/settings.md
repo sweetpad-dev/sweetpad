@@ -61,7 +61,7 @@ Covered in depth in [Autocomplete](./autocomplete.md).
 
 | Setting                                        | Default              | What it does                                                                              |
 | ----------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------ |
-| `sweetpad.buildServer.provider`                 | `xcode-build-server` | Which build server backs SourceKit-LSP: `xcode-build-server` (parses build logs) or `sweetpad` (built-in, experimental, no build needed). |
+| `sweetpad.buildServer.provider`                 | `sweetpad`           | Which build server backs SourceKit-LSP: `sweetpad` (built-in) or `xcode-build-server` (external, parses build logs). A workspace that already has a `buildServer.json` from another tool keeps it until you set this explicitly. |
 | `sweetpad.buildServer.logLevel`                 | `info`               | Verbosity of the built-in server's live log stream (`off`, `error`, `info`, `debug`). The log file always captures everything. |
 | `sweetpad.buildServer.logPath`                  | —                    | Custom location for the built-in server's log file. Relative paths and `${workspaceFolder}` resolve against the workspace. |
 | `sweetpad.build.autoGenerateBuildServerConfig`  | `true`               | Regenerate `buildServer.json` on build and scheme change. Turn off if you maintain your own file. |

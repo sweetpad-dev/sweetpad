@@ -13,7 +13,7 @@ import {
 } from "../common/cli/scripts";
 import { type AppDeps, warnNodeRuntimeMissing } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
-import { ExecBaseError } from "../common/errors";
+import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, removeDirectory } from "../common/files";
 import { showInputBox, showQuickPick } from "../common/quick-pick";
@@ -182,6 +182,27 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
 }
 
 /**
+ * Both LSP-logging commands drive xcode-build-server's own `XBS_LOGPATH`, which
+ * SweetPad's build server has no use for — it streams through the "SweetPad:
+ * BSP" channel at `sweetpad.buildServer.logLevel` instead. Offering its users an
+ * install prompt for a tool that would not help them is worse than naming the
+ * command that shows the logs they actually want.
+ */
+function assertXBSLoggingApplies(): void {
+  if (getBuildServerProvider() !== "sweetpad") {
+    return;
+  }
+  throw new ExtensionError("These commands configure xcode-build-server, and SweetPad's own build server is active", {
+    actions: [
+      {
+        label: "Show BSP logs",
+        callback: () => void vscode.commands.executeCommand("sweetpad.bsp.showLogs"),
+      },
+    ],
+  });
+}
+
+/**
  * Enable verbose LSP / build-server logging: set env vars on xcode-build-server
  * (XBS_LOGPATH) and sourcekit-lsp (SOURCEKIT_LOGGING=3), regenerate
  * buildServer.json with the env injection so the long-running build server
@@ -189,6 +210,8 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
  * "SweetPad: xcode-build-server logs" output channel.
  */
 export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTreeItem) {
+  assertXBSLoggingApplies();
+
   const isServerInstalled = await getIsXBSInstalled();
   if (!isServerInstalled) {
     throw XBSMissingError();
@@ -224,6 +247,8 @@ export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTre
  * XBS_LOGPATH, restart the Swift LSP, and stop the log stream.
  */
 export async function disableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTreeItem) {
+  assertXBSLoggingApplies();
+
   const isServerInstalled = await getIsXBSInstalled();
   if (!isServerInstalled) {
     throw XBSMissingError();

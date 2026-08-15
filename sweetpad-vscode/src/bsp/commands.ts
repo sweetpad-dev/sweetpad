@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import * as path from "node:path";
 
 import * as vscode from "vscode";
@@ -6,8 +6,8 @@ import * as vscode from "vscode";
 import { getWorkspacePath } from "../build/utils";
 import { getDeveloperDir, getIsNodeInstalled, getIsXBSInstalled } from "../common/cli/scripts";
 import { type AppDeps, NODE_DOWNLOAD_URL } from "../common/commands";
-import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
-import { isFileExists } from "../common/files";
+import { getWorkspaceConfig, isWorkspaceConfigSetByUser, updateWorkspaceConfig } from "../common/config";
+import { isFileExists, readJsonFile } from "../common/files";
 import { assertUnreachable } from "../common/types";
 
 type DoctorCheck = {
@@ -19,13 +19,86 @@ type DoctorCheck = {
 
 const SWIFT_RESTART_COMMAND = "swift.restartLSPServer";
 
+/** The `name` in a buildServer.json this extension writes. */
+export const EXTENSION_BUILD_SERVER_NAME = "sweetpad";
+
+/** The `name` in a buildServer.json `sweetpad bsp init` writes. */
+export const CLI_BUILD_SERVER_NAME = "sweetpad-lib";
+
+// Both launch the same server — the CLI through `sweetpad bsp serve`, the
+// extension through the bundled `bsp-server.js` — so neither is a foreign setup
+// to be preserved.
+const SWEETPAD_BUILD_SERVER_NAMES = new Set<string>([EXTENSION_BUILD_SERVER_NAME, CLI_BUILD_SERVER_NAME]);
+
+/**
+ * Which build server backs sourcekit-lsp.
+ *
+ * An explicit setting always wins. Without one, a workspace whose
+ * `buildServer.json` SweetPad didn't write keeps whatever owns that file: the
+ * built-in server is the default for projects that have yet to choose one, but
+ * applying it to a working `xcode-build-server` or hand-maintained setup would
+ * replace that setup on the next build without anyone asking. Deleting the
+ * file, or running `SweetPad: Set up Swift code intelligence (BSP)`, is what
+ * moves such a workspace across.
+ */
 export function getBuildServerProvider(): "sweetpad" | "xcode-build-server" {
-  return getWorkspaceConfig("buildServer.provider") ?? "xcode-build-server";
+  // Asked via `isWorkspaceConfigSetByUser` rather than by testing the value for
+  // undefined: package.json contributes a default, so `getWorkspaceConfig`
+  // returns one whether or not anybody chose it, and the evidence below would
+  // never be reached.
+  if (isWorkspaceConfigSetByUser("buildServer.provider")) {
+    const configured = getWorkspaceConfig("buildServer.provider");
+    if (configured !== undefined) return configured;
+  }
+  return hasForeignBuildServerConfig() ? "xcode-build-server" : "sweetpad";
+}
+
+/**
+ * Whether `buildServer.json` exists and names a server other than ours.
+ *
+ * Read synchronously and uncached. Every caller arrives here through a user
+ * action — a build, a scheme change, a command — rather than a per-file path,
+ * and the file is a few hundred bytes; a cache would save nothing measurable
+ * and would need invalidating from every place the file can change, including
+ * edits made outside VS Code.
+ */
+function hasForeignBuildServerConfig(): boolean {
+  try {
+    const raw = readFileSync(path.join(getWorkspacePath(), "buildServer.json"), "utf8");
+    const name = (JSON.parse(raw) as { name?: unknown }).name;
+    return typeof name !== "string" || !SWEETPAD_BUILD_SERVER_NAMES.has(name);
+  } catch {
+    // No workspace, no file, unreadable, or not JSON — no evidence of a setup
+    // worth keeping. A config too broken to read is one the default repairs
+    // rather than one it should defer to.
+    return false;
+  }
+}
+
+/**
+ * Whether this workspace runs `xcode-build-server` only because a
+ * `buildServer.json` for it is already sitting here, rather than because anyone
+ * asked for it.
+ */
+export function isPreservingForeignBuildServer(): boolean {
+  return !isWorkspaceConfigSetByUser("buildServer.provider") && hasForeignBuildServerConfig();
 }
 
 export async function isSweetpadBuildServerActive(workspacePath: string): Promise<boolean> {
   if (getBuildServerProvider() !== "sweetpad") return false;
-  return isFileExists(path.join(workspacePath, "buildServer.json"));
+  // sourcekit-lsp launches whatever `buildServer.json` names, so the setting
+  // alone doesn't put our server in the loop — the file has to be ours too.
+  // Treating any file as proof would have us write `bsp.json` for, and report
+  // ourselves active against, a server we aren't running.
+  //
+  // Stricter than `SWEETPAD_BUILD_SERVER_NAMES` on purpose: this gates the
+  // `bsp.json` the extension writes and the socket it dials, and the CLI's
+  // server is told its project on the command line instead of reading either.
+  // It is our server, but it isn't the one this extension is driving.
+  const config = await readJsonFile<{ name?: unknown }>(path.join(workspacePath, "buildServer.json")).catch(
+    () => undefined,
+  );
+  return config?.name === EXTENSION_BUILD_SERVER_NAME;
 }
 
 export async function bspSetupCommand(): Promise<void> {
@@ -118,7 +191,16 @@ async function collectBspChecks(deps: AppDeps): Promise<DoctorCheck[]> {
 async function collectXBSChecks(): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
 
-  checks.push({ ok: true, label: "Build server provider", detail: "xcode-build-server" });
+  // Said here rather than in a notification: a workspace kept on
+  // xcode-build-server has working code intelligence and no reason to be
+  // interrupted, while one that doesn't is being read from this very report.
+  checks.push({
+    ok: true,
+    label: "Build server provider",
+    detail: isPreservingForeignBuildServer()
+      ? "xcode-build-server — kept because a buildServer.json for it is already here. SweetPad's own server is bundled with the extension; 'SweetPad: Set up Swift code intelligence (BSP)' switches over."
+      : "xcode-build-server",
+  });
 
   const installed = await getIsXBSInstalled();
   checks.push({
@@ -147,7 +229,43 @@ async function collectXBSChecks(): Promise<DoctorCheck[]> {
   return checks;
 }
 
+/**
+ * A workspace whose `buildServer.json` came from `sweetpad bsp init`. The server
+ * is ours, but the CLI binary starts it and is handed the project on the command
+ * line, so the extension's socket, its `bsp.json` and its selected scheme never
+ * come into it — reporting on those would call a healthy setup broken.
+ */
+async function collectCliDrivenChecks(config: Record<string, unknown>): Promise<DoctorCheck[]> {
+  const argv = config.argv;
+  const launcher = Array.isArray(argv) && typeof argv[0] === "string" ? argv[0] : undefined;
+
+  return [
+    {
+      ok: true,
+      label: "Build server provider",
+      detail: "sweetpad, launched by the sweetpad CLI — this buildServer.json came from 'sweetpad bsp init'",
+    },
+    await buildServerJsonCheck(),
+    {
+      ok: launcher !== undefined && (await isFileExists(launcher)),
+      label: "sweetpad CLI present",
+      detail: launcher,
+      hint: "Reinstall it with 'brew install sweetpad-dev/tap/sweetpad', or run 'SweetPad: Set up Swift code intelligence (BSP)' to use the server bundled with this extension instead.",
+    },
+    {
+      ok: (await vscode.commands.getCommands(true)).includes(SWIFT_RESTART_COMMAND),
+      label: "Swift extension (sourcekit-lsp) available",
+      hint: "Install the Swift extension so sourcekit-lsp picks up buildServer.json.",
+    },
+  ];
+}
+
 async function collectSweetpadChecks(deps: AppDeps): Promise<DoctorCheck[]> {
+  const cliConfig = await readBuildServerJson();
+  if (cliConfig?.name === CLI_BUILD_SERVER_NAME) {
+    return collectCliDrivenChecks(cliConfig);
+  }
+
   const checks: DoctorCheck[] = [];
   const snap = deps.bspService.snapshot();
 

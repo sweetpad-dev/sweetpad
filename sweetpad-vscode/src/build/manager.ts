@@ -3,6 +3,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
+import { getBuildServerProvider } from "../bsp/commands";
 import {
   type XcodeScheme,
   getBuildSettingsToLaunch,
@@ -275,6 +276,15 @@ export class BuildManager {
     }
 
     if (!isAutoGenerateBuildServerConfigEnabled()) {
+      return;
+    }
+
+    // xcode-build-server bakes the scheme into buildServer.json, so a scheme
+    // change invalidates it. SweetPad's own config names no scheme — the scheme
+    // lives in `bsp.json`, which `BspService` rewrites from the same event — so
+    // there is nothing to regenerate here, and asking for a tool that provider
+    // never uses would be a prompt to install xcode-build-server for nothing.
+    if (getBuildServerProvider() === "sweetpad") {
       return;
     }
 

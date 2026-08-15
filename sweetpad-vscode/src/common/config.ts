@@ -74,6 +74,25 @@ export function isWorkspaceConfigIsDefined<K extends ConfigKey>(key: K): boolean
   return getWorkspaceConfig(key) !== undefined;
 }
 
+/**
+ * Whether a value for `key` comes from the user rather than from the `default`
+ * this extension contributes in package.json.
+ *
+ * `getWorkspaceConfig` can't answer that: `config.get` folds the contributed
+ * default in with the user's own settings and hands back a value either way, so
+ * a caller that has to tell "asked for this" apart from "never asked" is left
+ * inspecting the scopes a choice could have been written to. Language-scoped
+ * overrides are ignored — none of these settings are per-language.
+ */
+export function isWorkspaceConfigSetByUser<K extends ConfigKey>(key: K): boolean {
+  const inspected = vscode.workspace.getConfiguration("sweetpad").inspect<Config[K]>(key);
+  return (
+    inspected?.workspaceFolderValue !== undefined ||
+    inspected?.workspaceValue !== undefined ||
+    inspected?.globalValue !== undefined
+  );
+}
+
 export async function updateWorkspaceConfig<K extends ConfigKey>(key: K, value: Config[K]): Promise<void> {
   const config = vscode.workspace.getConfiguration("sweetpad");
   return await config.update(key, value, vscode.ConfigurationTarget.Workspace);

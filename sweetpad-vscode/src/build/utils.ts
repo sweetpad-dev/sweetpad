@@ -4,12 +4,13 @@ import * as sweetpadLib from "@sweetpad/native";
 import { execa } from "execa";
 import * as vscode from "vscode";
 
-import { getBuildServerProvider } from "../bsp/commands";
+import { CLI_BUILD_SERVER_NAME, EXTENSION_BUILD_SERVER_NAME, getBuildServerProvider } from "../bsp/commands";
 import { askConfigurationBase } from "../common/askers";
 import {
   type XBSConfig,
   findSchemeFile,
   generateBuildServerConfig,
+  generateSweetpadBuildServerConfig,
   getBuildSettingsToAskDestination,
   getIsXBSInstalled,
   getSchemes,
@@ -451,6 +452,47 @@ export async function refreshBuildServer(options: {
 }
 
 /**
+ * Repair a `buildServer.json` of ours whose launcher has gone missing.
+ *
+ * `argv[0]` names a file inside the *versioned* extension directory, so every
+ * extension update leaves that path dangling: sourcekit-lsp can't start the
+ * server, and autocomplete stops with nothing said about why. Building repairs
+ * it, but nothing makes a user build before they expect to type — so this runs
+ * at activation, the first moment after an update that any of our code looks at
+ * the file.
+ *
+ * Narrower on purpose than the check on the build path, which requires the
+ * launcher to be the current one: here only a launcher missing from disk is
+ * rewritten. One that resolves is somebody aiming us at a server deliberately,
+ * and it keeps working.
+ */
+export async function repairStaleBuildServerConfig(): Promise<void> {
+  if (getBuildServerProvider() !== "sweetpad") {
+    return;
+  }
+
+  let config: { name?: string; argv?: string[] } | undefined;
+  try {
+    config = await readJsonFile<{ name?: string; argv?: string[] }>(path.join(getWorkspacePath(), "buildServer.json"));
+  } catch {
+    // No workspace, or no readable config. Writing one from nothing is the
+    // build's job; a repair only fixes what is already here.
+    return;
+  }
+
+  const launcher = config?.argv?.[0];
+  if (config?.name !== EXTENSION_BUILD_SERVER_NAME || launcher === undefined) {
+    return;
+  }
+  if (await isFileExists(launcher)) {
+    return;
+  }
+
+  await generateSweetpadBuildServerConfig();
+  await restartSwiftLSP();
+}
+
+/**
  * Check if buildServer.json needs to be regenerated and regenerate it if needed
  */
 export async function generateBuildServerConfigOnBuild(options: {
@@ -485,8 +527,18 @@ export async function generateBuildServerConfigOnBuild(options: {
       // missing / invalid → (re)generate below
     }
     const launcher = config?.argv?.[0];
+
+    // A config from `sweetpad bsp init` names the CLI binary and reaches the
+    // same server through it. Leave it while it resolves: that launcher is the
+    // one the workspace set up, and swapping ours in is not this function's
+    // call. A launcher that has gone missing is broken rather than chosen, so
+    // that one falls through and is replaced.
+    if (config?.name === CLI_BUILD_SERVER_NAME && launcher !== undefined && (await isFileExists(launcher))) {
+      return;
+    }
+
     const isConfigValid =
-      config?.name === "sweetpad" &&
+      config?.name === EXTENSION_BUILD_SERVER_NAME &&
       launcher !== undefined &&
       launcher === getSweetpadBspServerPath() &&
       (await isFileExists(launcher));

@@ -731,7 +731,7 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
  * Project, Xcode, scheme, configuration, the log path and the telemetry socket
  * are all read from that `bsp.json`, which the extension writes.
  */
-async function generateSweetpadBuildServerConfig(): Promise<void> {
+export async function generateSweetpadBuildServerConfig(): Promise<void> {
   const cwd = getWorkspacePath();
   const bspServer = getSweetpadBspServerPath();
   await ensureExecutable(bspServer);
