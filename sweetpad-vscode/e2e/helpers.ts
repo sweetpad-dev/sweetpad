@@ -89,6 +89,11 @@ export async function seedBuildSelection(): Promise<void> {
   // build assertion failing for a reason that has nothing to do with building.
   await config.update("build.autoGenerateBuildServerConfig", false, vscode.ConfigurationTarget.Workspace);
   await config.update("build.autoRestartSwiftLSP", false, vscode.ConfigurationTarget.Workspace);
+  // Pin the log format. `xcbeautify` is an optional external tool, so whether it
+  // is installed decides which shape the build output takes and therefore which
+  // parser reads it — leaving that to the machine means the suite tests one
+  // pipeline on a developer's laptop and a different one on CI.
+  await config.update("build.xcbeautifyEnabled", false, vscode.ConfigurationTarget.Workspace);
 }
 
 /**
@@ -142,7 +147,10 @@ export function findFile(root: string, name: string): string | undefined {
 /** Poll until `predicate` holds, so a test can wait on asynchronous extension work. */
 export async function waitFor(
   predicate: () => boolean | Promise<boolean>,
-  options: { timeout?: number; interval?: number; message?: string } = {},
+  // `message` may be a function so a caller can describe the state at the moment
+  // it gave up — which is the only moment worth describing — rather than the
+  // state before the wait began.
+  options: { timeout?: number; interval?: number; message?: string | (() => string) } = {},
 ): Promise<void> {
   const timeout = options.timeout ?? 60_000;
   const interval = options.interval ?? 250;
@@ -152,7 +160,8 @@ export async function waitFor(
       return;
     }
     if (Date.now() > deadline) {
-      throw new Error(options.message ?? `condition not met within ${timeout}ms`);
+      const message = typeof options.message === "function" ? options.message() : options.message;
+      throw new Error(message ?? `condition not met within ${timeout}ms`);
     }
     await new Promise((resolve) => setTimeout(resolve, interval));
   }

@@ -38,7 +38,21 @@ suite("diagnostics", () => {
     await vscode.commands.executeCommand("sweetpad.build.build");
     await waitFor(() => errorsInSource().length > 0, {
       timeout: 180_000,
-      message: "a failing build reported no error diagnostic for the broken file",
+      // "None for this file" and "none at all" are different failures — the
+      // first says the diagnostic landed under a URI we did not expect (a
+      // resolved-vs-symlinked path, say), the second says the build output was
+      // never turned into one. Naming every file that did get a diagnostic
+      // separates them without another run.
+      message: () => {
+        const everything = vscode.languages
+          .getDiagnostics()
+          .filter(([, diags]) => diags.length > 0)
+          .map(([u, diags]) => `${u.fsPath} (${diags.length})`);
+        return [
+          `no error diagnostic for ${source()}`,
+          `files with diagnostics: ${everything.length ? everything.join(", ") : "(none)"}`,
+        ].join("\n");
+      },
     });
   });
 
