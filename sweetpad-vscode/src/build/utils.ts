@@ -477,12 +477,13 @@ export async function refreshBuildServer(options: {
 /**
  * Repair a `buildServer.json` of ours whose launcher has gone missing.
  *
- * `argv[0]` names a file inside the *versioned* extension directory, so every
- * extension update leaves that path dangling: sourcekit-lsp can't start the
- * server, and autocomplete stops with nothing said about why. Building repairs
- * it, but nothing makes a user build before they expect to type — so this runs
- * at activation, the first moment after an update that any of our code looks at
- * the file.
+ * `argv[0]` is an absolute path to the `sweetpad` CLI, so it dangles wherever
+ * that path stops resolving: the CLI uninstalled, a Homebrew prefix that moved,
+ * or a `buildServer.json` committed to the repo and opened on a machine that
+ * keeps its CLI somewhere else. sourcekit-lsp can't start the server, and
+ * autocomplete stops with nothing said about why. Building repairs it, but
+ * nothing makes a user build before they expect to type — so this runs at
+ * activation, the first moment any of our code looks at the file.
  *
  * Narrower on purpose than the check on the build path, which requires the
  * launcher to be the current one: here only a launcher missing from disk is
@@ -543,10 +544,10 @@ export async function generateBuildServerConfigOnBuild(options: {
     }
     // Our config is project-based (no scheme/build_root), so it's valid as long
     // as it's ours and its launcher is still the current one — regenerate only
-    // when switching in from another provider or when `argv[0]` went stale
-    // (the launcher lives inside the *versioned* extension install dir, so every
-    // extension update deletes the old path). Otherwise skip, or we'd rewrite +
-    // restart the LSP on every build.
+    // when switching in from another provider or when `argv[0]` no longer names
+    // the CLI we resolve now (uninstalled, a moved Homebrew prefix, or a config
+    // written on another machine). Otherwise skip, or we'd rewrite + restart the
+    // LSP on every build.
     let config: { name?: string; argv?: string[] } | undefined;
     try {
       config = await readJsonFile<{ name?: string; argv?: string[] }>(

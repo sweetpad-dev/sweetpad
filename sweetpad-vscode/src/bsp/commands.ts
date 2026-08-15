@@ -216,9 +216,10 @@ async function buildServerJsonCheck(): Promise<DoctorCheck> {
     } else if (typeof launcher !== "string") {
       detail = "argv is empty";
     } else if (path.isAbsolute(launcher) && !(await isFileExists(launcher))) {
-      // Typical after an extension update: argv[0] points into the old
-      // (deleted) versioned extension dir, and sourcekit-lsp silently fails
-      // to spawn the server.
+      // argv[0] is an absolute path to the CLI, so it dangles once that path
+      // stops resolving — uninstalled, a moved Homebrew prefix, or a config
+      // written on another machine — and sourcekit-lsp silently fails to spawn
+      // the server.
       detail = `argv[0] does not exist on disk: ${launcher}`;
     } else {
       ok = true;
@@ -247,7 +248,7 @@ async function collectXBSChecks(): Promise<DoctorCheck[]> {
     ok: true,
     label: "Build server provider",
     detail: isPreservingForeignBuildServer()
-      ? "xcode-build-server — kept because a buildServer.json for it is already here. SweetPad's own server is bundled with the extension; 'SweetPad: Set up Swift code intelligence (BSP)' switches over."
+      ? "xcode-build-server — kept because a buildServer.json for it is already here. SweetPad's own server runs through the sweetpad CLI; 'SweetPad: Set up Swift code intelligence (BSP)' switches over."
       : "xcode-build-server",
   });
 
