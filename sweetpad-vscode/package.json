@@ -42,7 +42,10 @@
     "build:native:release": "npm run build:addon:universal -w @sweetpad/native",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check:format": "oxfmt src scripts rolldown.config.mjs vitest.config.ts",
+    "compile:e2e": "tsc -p tsconfig.e2e.json",
+    "pretest:e2e": "npm run build && npm run compile:e2e",
+    "test:e2e": "vscode-test",
+    "check:format": "oxfmt src e2e scripts rolldown.config.mjs vitest.config.ts .vscode-test.mjs",
     "check:lint": "oxlint --fix",
     "check:types": "tsc --noEmit",
     "check:all": "npm run check:format && npm run check:lint && npm run check:types",
@@ -61,11 +64,15 @@
   },
   "devDependencies": {
     "@sentry/rollup-plugin": "^5.2.1",
+    "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/shell-quote": "^1.7.5",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
     "cross-env": "^7.0.3",
     "dotenv": "^16.4.5",
+    "mocha": "^11.8.0",
     "node-pty": "^1.1.0",
     "oxfmt": "^0.48.0",
     "oxlint": "^1.63.0",
@@ -1022,7 +1029,10 @@
         "sweetpad.build.destination": {
           "type": "object",
           "default": null,
-          "required": ["id", "type"],
+          "required": [
+            "id",
+            "type"
+          ],
           "properties": {
             "id": {
               "type": "string",
