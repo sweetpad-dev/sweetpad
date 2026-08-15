@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import {
   generateBuildServerConfig,
   generateSweetpadBuildServerConfig,
-  getSweetpadBspServerPath,
+  getSweetpadCliPath,
 } from "../common/cli/scripts";
 import { isFileExists, readJsonFile } from "../common/files";
 import type { WorkspaceStateService } from "../common/workspace-state";
@@ -17,7 +17,8 @@ vi.mock("@sweetpad/native", () => ({}));
 vi.mock("../common/cli/scripts", () => ({
   generateBuildServerConfig: vi.fn(),
   generateSweetpadBuildServerConfig: vi.fn(),
-  getSweetpadBspServerPath: vi.fn(),
+  getSweetpadCliPath: vi.fn(),
+  SWEETPAD_CLI_MISSING_MESSAGE: "cli missing",
 }));
 
 vi.mock("../common/files", () => ({
@@ -121,7 +122,7 @@ describe("launchActionToSettings", () => {
 describe("generateBuildServerConfigOnBuild (sweetpad provider)", () => {
   const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
   const mockGenerate = generateBuildServerConfig as Mock;
-  const mockBspServerPath = getSweetpadBspServerPath as Mock;
+  const mockCliPath = getSweetpadCliPath as Mock;
   const mockReadJsonFile = readJsonFile as Mock;
   const mockIsFileExists = isFileExists as Mock;
 
@@ -146,36 +147,48 @@ describe("generateBuildServerConfigOnBuild (sweetpad provider)", () => {
         key === "buildServer.provider" ? { defaultValue: "sweetpad", workspaceValue: "sweetpad" } : undefined,
       ),
     });
-    mockBspServerPath.mockReturnValue("/ext/out/bsp-server.js");
+    mockCliPath.mockResolvedValue("/opt/homebrew/bin/sweetpad");
   });
 
   function run() {
     return generateBuildServerConfigOnBuild({
       scheme: "App",
       xcworkspace: "/workspace/App.xcworkspace",
-      workspaceState: {} as unknown as WorkspaceStateService,
+      workspaceState: { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService,
     });
   }
 
-  it("skips regeneration when the config is ours and the launcher path is current", async () => {
-    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/ext/out/bsp-server.js"] });
-    mockIsFileExists.mockResolvedValue(true);
+  it("skips regeneration when the config already names the installed CLI", async () => {
+    mockReadJsonFile.mockResolvedValue({
+      name: "sweetpad",
+      argv: ["/opt/homebrew/bin/sweetpad", "bsp", "serve", "--config", "/state/bsp.json"],
+    });
     await run();
     expect(mockGenerate).not.toHaveBeenCalled();
   });
 
-  it("regenerates when argv[0] points into a stale (old extension version) dir", async () => {
-    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/old-ext/out/bsp-server.js"] });
-    mockIsFileExists.mockResolvedValue(true);
+  it("migrates a config an older extension wrote to run its own launcher", async () => {
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/old-ext/out/bsp-server.js", "--config", "/x"] });
     await run();
     expect(mockGenerate).toHaveBeenCalledTimes(1);
   });
 
-  it("regenerates when argv[0] no longer exists on disk", async () => {
-    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/ext/out/bsp-server.js"] });
-    mockIsFileExists.mockResolvedValue(false);
+  it("regenerates when the CLI has moved since the config was written", async () => {
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/usr/local/bin/sweetpad", "bsp", "serve"] });
     await run();
     expect(mockGenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes nothing and says so once when the CLI is not installed", async () => {
+    mockCliPath.mockResolvedValue(undefined);
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/old-ext/out/bsp-server.js"] });
+
+    await run();
+
+    // Pointing buildServer.json at a launcher that isn't there would leave
+    // sourcekit-lsp failing to spawn it with nothing said about why.
+    expect(mockGenerate).not.toHaveBeenCalled();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
   });
 
   it("leaves a config the sweetpad CLI wrote alone", async () => {
@@ -244,7 +257,7 @@ describe("repairStaleBuildServerConfig", () => {
   });
 
   it("leaves a launcher that still resolves alone", async () => {
-    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/somewhere/custom/bsp-server.js"] });
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/usr/local/bin/sweetpad", "bsp", "serve"] });
     mockIsFileExists.mockResolvedValue(true);
 
     // A path that exists is one somebody meant to point at, even where it isn't

@@ -4,14 +4,8 @@ import * as vscode from "vscode";
 
 import { getBuildServerProvider } from "../bsp/commands";
 import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
-import {
-  type XcodeScheme,
-  getBuildConfigurations,
-  getIsNodeInstalled,
-  getIsXBSInstalled,
-  getSchemes,
-} from "../common/cli/scripts";
-import { type AppDeps, warnNodeRuntimeMissing } from "../common/commands";
+import { type XcodeScheme, getBuildConfigurations, getIsXBSInstalled, getSchemes } from "../common/cli/scripts";
+import type { AppDeps } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
@@ -136,18 +130,11 @@ export async function removeBundleDirCommand(deps: AppDeps) {
 export async function generateBuildServerConfigCommand(deps: AppDeps, item?: BuildTreeItem) {
   deps.progressStatusBar.updateText("Starting buildServer.json generation");
 
-  // SweetPad's own provider ships with the extension; only xcode-build-server
-  // needs the external tool installed.
+  // The sweetpad provider's own launcher is checked where the config is
+  // written; only xcode-build-server is gated here.
   const usingXBS = getBuildServerProvider() === "xcode-build-server";
   if (usingXBS && !(await getIsXBSInstalled())) {
     throw XBSMissingError();
-  }
-
-  // SweetPad's own BSP server launches via `#!/usr/bin/env node`. Warn (without
-  // blocking) when Node is missing: the config still writes, so it's ready once
-  // Node is on PATH, but the server can't start until then.
-  if (!usingXBS && !(await getIsNodeInstalled())) {
-    void warnNodeRuntimeMissing("The SweetPad BSP server");
   }
 
   deps.progressStatusBar.updateText("Searching for workspace");

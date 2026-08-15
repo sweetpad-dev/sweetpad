@@ -565,22 +565,6 @@ export async function getIsXBSInstalled() {
   }
 }
 
-/**
- * Is a Node.js runtime on the user's PATH? The bundled BSP server
- * (`bsp-server.js`) launches via a `#!/usr/bin/env node` shebang, so it needs
- * a real `node` on PATH — VS Code's own bundled Node isn't exposed there.
- * Resolved against the login-shell PATH (via `exec`), the same one the
- * shebang sees.
- */
-export async function getIsNodeInstalled(): Promise<boolean> {
-  try {
-    await exec({ command: "which", args: ["node"] });
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
 export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
   commonLogger.log("Getting schemes", { xcworkspace: options?.xcworkspace ?? "undefined" });
 
@@ -722,19 +706,46 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
 }
 
 /**
- * Generate a minimal `buildServer.json` for SweetPad's own BSP server. `argv` is
- * the bundled `bsp-server.js` (which carries a `#!/usr/bin/env node` shebang,
- * like the CLI, so sourcekit-lsp execs it directly through the user's Node)
- * followed by `--config <bsp.json>` naming the per-project config in the host
- * state dir. Editor-agnostic — works the same in VS Code, Cursor, nvim, Zed.
+ * Shown wherever the build server can't be set up because the CLI is absent.
+ * One string so the wording is the same in an error, a warning and the doctor.
+ */
+export const SWEETPAD_CLI_MISSING_MESSAGE =
+  "SweetPad's build server runs through the sweetpad CLI, which isn't on your PATH. Install it with 'brew install sweetpad-dev/tap/sweetpad', or run 'SweetPad: Install tool'.";
+
+/**
+ * Absolute path to the `sweetpad` CLI, or undefined when it isn't installed.
+ *
+ * Resolved to a full path rather than left as a bare name: sourcekit-lsp spawns
+ * `argv[0]` itself and doesn't necessarily carry the login shell's `PATH`.
+ */
+export async function getSweetpadCliPath(): Promise<string | undefined> {
+  try {
+    const resolved = (await exec({ command: "which", args: ["sweetpad"] })).trim();
+    return resolved.length > 0 ? resolved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Generate a minimal `buildServer.json` for SweetPad's own BSP server. `argv`
+ * runs `sweetpad bsp serve` with `--config <bsp.json>`, naming the per-project
+ * config in the host state dir. Editor-agnostic — works the same in VS Code,
+ * Cursor, nvim, Zed.
  *
  * Project, Xcode, scheme, configuration, the log path and the telemetry socket
  * are all read from that `bsp.json`, which the extension writes.
+ *
+ * The launcher is the installed CLI rather than anything inside this
+ * extension's own directory, so it keeps resolving after an extension update
+ * instead of pointing into a version that has been deleted.
  */
 export async function generateSweetpadBuildServerConfig(): Promise<void> {
   const cwd = getWorkspacePath();
-  const bspServer = getSweetpadBspServerPath();
-  await ensureExecutable(bspServer);
+  const cli = await getSweetpadCliPath();
+  if (cli === undefined) {
+    throw new ExtensionError(SWEETPAD_CLI_MISSING_MESSAGE);
+  }
 
   // sourcekit-lsp requires all five fields (`name`, `version`, `bspVersion`,
   // `languages`, `argv`) or the decode throws and the server is silently skipped.
@@ -743,7 +754,7 @@ export async function generateSweetpadBuildServerConfig(): Promise<void> {
     version: GLOBAL_RELEASE_VERSION ?? "0.1.0",
     bspVersion: "2.2.0",
     languages: ["swift", "objective-c", "objective-cpp", "c", "cpp"],
-    argv: [bspServer, "--config", getBspConfigFile(cwd)],
+    argv: [cli, "bsp", "serve", "--config", getBspConfigFile(cwd)],
   };
   await fs.writeFile(path.join(cwd, "buildServer.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
@@ -771,17 +782,6 @@ async function handleSwiftPackageNativeLsp(packageManifest: string): Promise<voi
   }
 }
 
-/**
- * Absolute path to the bundled BSP launcher — it ships next to the extension
- * bundle (this module's dir). Note this lives inside the *versioned* extension
- * install dir (`…/extensions/sweetpad.sweetpad-<ver>/out`), so the path changes
- * on every extension update and any `buildServer.json` written before the
- * update points at a deleted file.
- */
-export function getSweetpadBspServerPath(): string {
-  return path.join(__dirname, "bsp-server.js");
-}
-
 async function generateXBSBuildServerConfig(options: { xcworkspace: string; scheme: string }): Promise<void> {
   const workspaceType = detectWorkspaceType(options.xcworkspace);
   const command = getXBSCommand();
@@ -805,20 +805,6 @@ async function generateXBSBuildServerConfig(options: { xcworkspace: string; sche
 
   const env = getWorkspaceConfig("xcodebuildserver.serverEnv") ?? {};
   await injectEnvIntoBuildServerConfig(path.join(cwd, "buildServer.json"), env);
-}
-
-/**
- * Make the bundled BSP launcher executable. Its `#!/usr/bin/env node` shebang
- * lets sourcekit-lsp exec the `.js` directly, but only if the file keeps its
- * executable bit — a VSIX zip can drop it. Best-effort chmod; a Node script needs
- * no de-quarantine or code-signing (only a bare Mach-O hits amfi on launch).
- */
-async function ensureExecutable(bspServer: string): Promise<void> {
-  try {
-    await fs.chmod(bspServer, 0o755);
-  } catch (e) {
-    commonLogger.debug("Failed to chmod the BSP launcher", { error: e, bspServer });
-  }
 }
 
 /**

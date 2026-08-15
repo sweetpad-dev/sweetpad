@@ -61,6 +61,7 @@ export type WorkspaceTypes = {
   "build.xbsAutogenreateInfoShown": boolean;
   "build.missingPinnedSchemeWarned": string;
   "build.xbsMissingNotified": boolean;
+  "build.sweetpadCliMissingNotified": boolean;
   "build.customXcodebuildNoticeShown": boolean;
   "build.lspDiagnosticsEnabled": boolean;
   "build.lspDiagnosticsPostReloadAction": "enabled" | "disabled";
