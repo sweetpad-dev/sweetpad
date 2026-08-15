@@ -21,7 +21,8 @@ The tools listed in the panel:
 - [**SwiftLint**](https://github.com/realm/SwiftLint) — Swift linter.
 - [**xcbeautify**](https://github.com/cpisciotta/xcbeautify) — formats `xcodebuild` output into something readable.
 - [**xcode-build-server**](https://github.com/SolaWing/xcode-build-server) — exposes Xcode's build outputs to
-  SourceKit-LSP, which powers [autocomplete](./autocomplete.md), jump-to-definition, and hover docs.
+  SourceKit-LSP. An alternative to SweetPad's built-in build server, which backs
+  [autocomplete](./autocomplete.md) out of the box.
 - [**ios-deploy**](https://github.com/ios-control/ios-deploy) — installs and launches apps on physical iOS devices.
 - [**tuist**](https://docs.tuist.io/) — declarative Xcode project generation. SweetPad has deeper integration here; see
   [Tuist](./tuist.md).

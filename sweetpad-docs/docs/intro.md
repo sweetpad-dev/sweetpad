@@ -42,8 +42,8 @@ The VSCode extension gives you:
   Swift Testing.
 - ✍️ **[Format on save](./vscode/format.md)** with `swift-format` (Xcode's bundled copy by default) or any other Swift
   formatter you prefer.
-- 💡 **[Autocomplete](./vscode/autocomplete.md)** via SourceKit-LSP — backed by `xcode-build-server` or SweetPad's
-  built-in build server — including inline compiler diagnostics in the Problems panel.
+- 💡 **[Autocomplete](./vscode/autocomplete.md)** via SourceKit-LSP — backed by SweetPad's built-in build server —
+  including inline compiler diagnostics in the Problems panel.
 - 🌳 **[Git worktrees](./vscode/worktree.md)** — switch the active workspace between parallel checkouts of the same project
   in one command.
 

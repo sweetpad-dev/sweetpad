@@ -12,11 +12,11 @@ real autocomplete, jump-to-definition, hover docs, and Swift compiler diagnostic
 
 SourceKit-LSP needs a **build server** to tell it how each file is compiled. SweetPad supports two:
 
-- **xcode-build-server** (the default) — a battle-tested external tool that parses Xcode build logs. Works with
-  workspaces, projects, and SPM, but needs a successful build before autocomplete comes alive.
-- **SweetPad's built-in build server** (experimental) — ships inside the extension and reads compiler arguments
-  straight from the project, so autocomplete works **without building first**. Currently limited to plain
-  `.xcodeproj` projects.
+- **SweetPad's built-in build server** (the default) — ships inside the extension and reads compiler arguments
+  straight from the project, so autocomplete works **without building first**. Handles `.xcodeproj` and
+  `.xcworkspace`.
+- **xcode-build-server** — a battle-tested external tool that parses Xcode build logs. Install it separately, and
+  build the project once before autocomplete comes alive.
 
 :::info
 
@@ -26,7 +26,51 @@ is installed.
 
 :::
 
-## Setup with xcode-build-server (default)
+## Setup with the built-in build server (default)
+
+Nothing to install beyond the Swift extension:
+
+1. Install the [Swift](https://marketplace.visualstudio.com/items?itemName=swiftlang.swift-vscode) extension from the
+   Marketplace.
+2. From the command palette, run `> SweetPad: Generate Build Server Config`. This writes a `buildServer.json` at the
+   workspace root that launches the bundled server. SweetPad writes it for you on the first build too.
+3. Open a Swift file — SourceKit-LSP starts the server, which resolves build settings directly from the project.
+
+After that, autocomplete should work. ✅
+
+:::note
+
+Already using `xcode-build-server`? Nothing changes for you. A workspace that has a `buildServer.json` written by
+another tool keeps that tool, so an existing setup is never swapped out underneath you — that includes a
+`buildServer.json` you maintain by hand. To move such a workspace to the built-in server, run
+`> SweetPad: Set up Swift code intelligence (BSP)`, or delete the file and build once.
+`> SweetPad: Diagnose BSP (Doctor)` reports which server is in use and why.
+
+:::
+
+A few things to know:
+
+- The server runs on Node.js, so `node` must be on your `PATH`.
+- An `.xcworkspace` resolves each file against whichever member project declares its target, so a CocoaPods or
+  multi-project workspace works the same as a single `.xcodeproj`.
+- A Swift package takes a different route: SourceKit-LSP reads `Package.swift` and indexes it natively, so SweetPad
+  writes no `buildServer.json` at all. If one is already sitting in the package directory, delete it — its presence
+  overrides that native support.
+- Headers borrow the sysroot, search paths and language dialect of a neighbouring source file — the `.m` beside
+  `Foo.h`, or the nearest one in the same folder — so a `.h` resolves even though no target compiles it directly.
+- The `buildServer.json` it writes points at a file inside the installed extension, so an extension update leaves
+  that path behind. SweetPad rewrites it the next time the window loads, and `> SweetPad: Generate Build Server
+  Config` does the same on demand.
+
+## Setup with xcode-build-server
+
+To use the external tool instead, point the provider at it:
+
+```json title=".vscode/settings.json"
+{
+  "sweetpad.buildServer.provider": "xcode-build-server"
+}
+```
 
 1. Install the [Swift](https://marketplace.visualstudio.com/items?itemName=swiftlang.swift-vscode) extension from the
    Marketplace and [xcode-build-server](https://github.com/SolaWing/xcode-build-server) from Homebrew:
@@ -41,37 +85,8 @@ is installed.
 3. Build the project once (▶️ in the Build view). Without a successful build there are no build logs for
    `xcode-build-server` to parse, so autocomplete looks "stuck".
 
-After that, autocomplete should work. ✅
-
-## Setup with the built-in build server (experimental)
-
-If your project is an `.xcodeproj` or an `.xcworkspace`, you can skip installing `xcode-build-server` entirely:
-
-1. Run `> SweetPad: Set up Swift code intelligence (BSP)` from the command palette. This switches
-   `sweetpad.buildServer.provider` to `sweetpad` and writes a `buildServer.json` that launches the bundled server.
-2. Open a Swift file — SourceKit-LSP starts the server, which resolves build settings directly from the project.
-   No prior build needed.
-
-A few things to know:
-
-- The server runs on Node.js, so `node` must be on your `PATH`.
-- An `.xcworkspace` resolves each file against whichever member project declares its target, so a CocoaPods or
-  multi-project workspace works the same as a single `.xcodeproj`.
-- A Swift package takes a different route: SourceKit-LSP reads `Package.swift` and indexes it natively, so SweetPad
-  writes no `buildServer.json` at all. If one is already sitting in the package directory, delete it — its presence
-  overrides that native support.
-- Headers borrow the sysroot, search paths and language dialect of a neighbouring source file — the `.m` beside
-  `Foo.h`, or the nearest one in the same folder — so a `.h` resolves even though no target compiles it directly.
-- The `buildServer.json` it writes points at a file inside the installed extension. After an extension update that
-  path can go stale — if autocomplete stops working, re-run `> SweetPad: Generate Build Server Config`.
-
-To switch back, set the provider in your settings:
-
-```json title=".vscode/settings.json"
-{
-  "sweetpad.buildServer.provider": "xcode-build-server"
-}
-```
+To go back to the built-in server, run `> SweetPad: Set up Swift code intelligence (BSP)` — it resets the provider
+and regenerates `buildServer.json` in one step.
 
 ## When autocomplete doesn't work
 
@@ -115,6 +130,9 @@ may want to silence SweetPad's pass to avoid duplicate squiggles:
 
 - `> SweetPad: Disable LSP Diagnostics` — turns the live diagnostic stream off for this workspace.
 - `> SweetPad: Enable LSP Diagnostics` — turns it back on.
+
+Both drive `xcode-build-server`'s logging, so they apply only to that provider. With the built-in server, turn up
+`sweetpad.buildServer.logLevel` and run `> SweetPad: Show BSP logs` instead.
 
 ## Use a custom xcode-build-server
 

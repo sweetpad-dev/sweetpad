@@ -1,10 +1,14 @@
 import type { Mock } from "vitest";
 import * as vscode from "vscode";
 
-import { generateBuildServerConfig, getSweetpadBspServerPath } from "../common/cli/scripts";
+import {
+  generateBuildServerConfig,
+  generateSweetpadBuildServerConfig,
+  getSweetpadBspServerPath,
+} from "../common/cli/scripts";
 import { isFileExists, readJsonFile } from "../common/files";
 import type { WorkspaceStateService } from "../common/workspace-state";
-import { generateBuildServerConfigOnBuild, launchActionToSettings } from "./utils";
+import { generateBuildServerConfigOnBuild, launchActionToSettings, repairStaleBuildServerConfig } from "./utils";
 
 // `./utils` imports the native `@sweetpad/native` addon at module level; stub it so
 // this spec runs without the compiled addon (none of the tested paths touch it).
@@ -12,6 +16,7 @@ vi.mock("@sweetpad/native", () => ({}));
 
 vi.mock("../common/cli/scripts", () => ({
   generateBuildServerConfig: vi.fn(),
+  generateSweetpadBuildServerConfig: vi.fn(),
   getSweetpadBspServerPath: vi.fn(),
 }));
 
@@ -133,6 +138,13 @@ describe("generateBuildServerConfigOnBuild (sweetpad provider)", () => {
             "build.autoRestartSwiftLSP": false,
           })[key as never],
       ),
+      // These cases are about a workspace that asked for our server, so the
+      // provider reads as chosen rather than inherited from the manifest —
+      // otherwise the resolver would go looking for a config on disk to defer
+      // to, which is a different test.
+      inspect: vi.fn((key: string) =>
+        key === "buildServer.provider" ? { defaultValue: "sweetpad", workspaceValue: "sweetpad" } : undefined,
+      ),
     });
     mockBspServerPath.mockReturnValue("/ext/out/bsp-server.js");
   });
@@ -166,6 +178,28 @@ describe("generateBuildServerConfigOnBuild (sweetpad provider)", () => {
     expect(mockGenerate).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves a config the sweetpad CLI wrote alone", async () => {
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad-lib", argv: ["/opt/homebrew/bin/sweetpad", "bsp", "serve"] });
+    mockIsFileExists.mockResolvedValue(true);
+
+    await run();
+
+    // `sweetpad bsp init` reaches the same server through the CLI binary. That
+    // launcher is the one the workspace set up, so swapping ours in would move
+    // the project onto something it never asked for.
+    expect(mockGenerate).not.toHaveBeenCalled();
+  });
+
+  it("replaces a CLI config whose binary has gone", async () => {
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad-lib", argv: ["/opt/homebrew/bin/sweetpad", "bsp", "serve"] });
+    mockIsFileExists.mockResolvedValue(false);
+
+    await run();
+
+    // Nothing can start from here, so this is a repair rather than a takeover.
+    expect(mockGenerate).toHaveBeenCalledTimes(1);
+  });
+
   it("regenerates when switching in from another provider's config", async () => {
     mockReadJsonFile.mockResolvedValue({
       name: "xcode build server",
@@ -180,5 +214,61 @@ describe("generateBuildServerConfigOnBuild (sweetpad provider)", () => {
     mockReadJsonFile.mockRejectedValue(new Error("ENOENT"));
     await run();
     expect(mockGenerate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("repairStaleBuildServerConfig", () => {
+  const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
+  const mockRepair = generateSweetpadBuildServerConfig as Mock;
+  const mockReadJsonFile = readJsonFile as Mock;
+  const mockIsFileExists = isFileExists as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (vscode.workspace as { workspaceFolders?: unknown }).workspaceFolders = [{ uri: { fsPath: "/workspace" } }];
+    mockGetConfiguration.mockReturnValue({
+      get: vi.fn((key: string) => ({ "buildServer.provider": "sweetpad" })[key as never]),
+      inspect: vi.fn((key: string) =>
+        key === "buildServer.provider" ? { defaultValue: "sweetpad", workspaceValue: "sweetpad" } : undefined,
+      ),
+    });
+  });
+
+  it("rewrites a config of ours whose launcher an update deleted", async () => {
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/old-ext/out/bsp-server.js"] });
+    mockIsFileExists.mockResolvedValue(false);
+
+    await repairStaleBuildServerConfig();
+
+    expect(mockRepair).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a launcher that still resolves alone", async () => {
+    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/somewhere/custom/bsp-server.js"] });
+    mockIsFileExists.mockResolvedValue(true);
+
+    // A path that exists is one somebody meant to point at, even where it isn't
+    // the launcher this version ships. Only dangling ones are repaired.
+    await repairStaleBuildServerConfig();
+
+    expect(mockRepair).not.toHaveBeenCalled();
+  });
+
+  it("does not touch another server's config", async () => {
+    mockReadJsonFile.mockResolvedValue({ name: "xcode build server", argv: ["/gone/xcode-build-server"] });
+    mockIsFileExists.mockResolvedValue(false);
+
+    await repairStaleBuildServerConfig();
+
+    expect(mockRepair).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing when there is no config to repair", async () => {
+    mockReadJsonFile.mockRejectedValue(new Error("ENOENT"));
+
+    // Creating one from nothing belongs to the build, which knows the project.
+    await repairStaleBuildServerConfig();
+
+    expect(mockRepair).not.toHaveBeenCalled();
   });
 });

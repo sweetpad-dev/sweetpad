@@ -25,8 +25,8 @@ tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcod
 
 ## Feature
 
-- ✅ **[Autocomplete](https://sweetpad.hyzyla.dev/docs/autocomplete)** — setup autocomplete using
-  [xcode-build-server](https://github.com/SolaWing/xcode-build-server)
+- ✅ **[Autocomplete](https://sweetpad.hyzyla.dev/docs/autocomplete)** — autocomplete, jump-to-definition and hover
+  docs via SourceKit-LSP, backed by SweetPad's built-in build server
   
 - 🛠️ **[Build & Run](https://sweetpad.hyzyla.dev/docs/build)** — build and run application using
   [xcodebuild](https://developer.apple.com/library/archive/technotes/tn2339/_index.html)

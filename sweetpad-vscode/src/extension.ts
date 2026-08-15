@@ -35,7 +35,7 @@ import { XcodeBuildTaskProvider } from "./build/provider.js";
 import { SchemeWatcher } from "./build/scheme-watcher.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
-import { getWorkspacePath, notifyCustomXcodebuildReadOnlyScope } from "./build/utils.js";
+import { getWorkspacePath, notifyCustomXcodebuildReadOnlyScope, repairStaleBuildServerConfig } from "./build/utils.js";
 import { CliServerService } from "./cli-server/service.js";
 import { type AppDeps, registerCommand, registerTreeDataProvider } from "./common/commands.js";
 import { errorReporting } from "./common/error-reporting.js";
@@ -257,6 +257,9 @@ export async function activate(context: vscode.ExtensionContext) {
   void xcodegenWatcher.start();
   void serverService.start();
   void bspService.start();
+  // An extension update leaves buildServer.json pointing into the directory the
+  // previous version lived in. Nothing else notices until the next build.
+  void repairStaleBuildServerConfig();
 
   // Main dependency bag for commands 🌍
   const deps: AppDeps = {
