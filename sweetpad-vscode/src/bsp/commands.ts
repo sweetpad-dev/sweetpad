@@ -5,15 +5,18 @@ import * as vscode from "vscode";
 
 import { getWorkspacePath } from "../build/utils";
 import {
+  MINIMUM_SWEETPAD_CLI_VERSION,
   SWEETPAD_CLI_MISSING_MESSAGE,
   getDeveloperDir,
   getIsXBSInstalled,
   getSweetpadCliPath,
+  getSweetpadCliVersion,
 } from "../common/cli/scripts";
 import type { AppDeps } from "../common/commands";
 import { getWorkspaceConfig, isWorkspaceConfigSetByUser, updateWorkspaceConfig } from "../common/config";
 import { isFileExists, readJsonFile } from "../common/files";
 import { assertUnreachable } from "../common/types";
+import { isVersionAtLeast } from "../common/version";
 import { getBspConfigFile } from "./paths";
 
 type DoctorCheck = {
@@ -175,6 +178,23 @@ export async function bspDoctorCommand(deps: AppDeps): Promise<void> {
   deps.bspService.writeReport(lines);
 }
 
+/**
+ * Report the CLI's version against the floor the extension needs.
+ *
+ * Reported even when it passes: the pair in play is the first thing worth
+ * knowing when code intelligence misbehaves, and the two versions come from
+ * different release channels so neither implies the other.
+ */
+async function cliVersionCheck(): Promise<DoctorCheck> {
+  const version = await getSweetpadCliVersion();
+  return {
+    ok: version !== undefined && isVersionAtLeast(version, MINIMUM_SWEETPAD_CLI_VERSION),
+    label: "sweetpad CLI version",
+    detail: version ?? "could not be read",
+    hint: `The extension needs ${MINIMUM_SWEETPAD_CLI_VERSION} or newer — upgrade with 'brew upgrade sweetpad-dev/tap/sweetpad'.`,
+  };
+}
+
 async function readBuildServerJson(): Promise<Record<string, unknown> | undefined> {
   try {
     const raw = await fs.readFile(path.join(getWorkspacePath(), "buildServer.json"), "utf8");
@@ -279,8 +299,9 @@ async function collectCliDrivenChecks(config: Record<string, unknown>): Promise<
       ok: launcher !== undefined && (await isFileExists(launcher)),
       label: "sweetpad CLI present",
       detail: launcher,
-      hint: "Reinstall it with 'brew install sweetpad-dev/tap/sweetpad', or run 'SweetPad: Set up Swift code intelligence (BSP)' to use the server bundled with this extension instead.",
+      hint: "Reinstall it with 'brew install sweetpad-dev/tap/sweetpad', or run 'SweetPad: Set up Swift code intelligence (BSP)' to have the extension manage this instead.",
     },
+    await cliVersionCheck(),
     {
       ok: (await vscode.commands.getCommands(true)).includes(SWIFT_RESTART_COMMAND),
       label: "Swift extension (sourcekit-lsp) available",
@@ -309,6 +330,9 @@ async function collectSweetpadChecks(deps: AppDeps): Promise<DoctorCheck[]> {
     detail: cli ?? "not found",
     hint: SWEETPAD_CLI_MISSING_MESSAGE,
   });
+  if (cli !== undefined) {
+    checks.push(await cliVersionCheck());
+  }
 
   checks.push({
     ok: snap.bspConnected,
