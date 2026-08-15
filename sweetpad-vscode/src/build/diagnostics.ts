@@ -1,7 +1,13 @@
 import * as vscode from "vscode";
 
 import { commonLogger } from "../common/logger";
-import { type ParseMode, parseDiagnosticLine, type ParsedDiagnostic } from "./diagnostics-parser";
+import {
+  continuationMessage,
+  isHeaderOnly,
+  type ParseMode,
+  parseDiagnosticLine,
+  type ParsedDiagnostic,
+} from "./diagnostics-parser";
 export type { ParsedDiagnostic } from "./diagnostics-parser";
 
 /**
@@ -78,6 +84,8 @@ export class DiagnosticsManager implements vscode.Disposable {
 export class DiagnosticAccumulator {
   private readonly perFile = new Map<string, ParsedDiagnostic[]>();
   private flushed = false;
+  /** A diagnostic whose message clang wrapped onto the following line. */
+  private pendingHeader: ParsedDiagnostic | undefined;
 
   constructor(
     private readonly collection: vscode.DiagnosticCollection,
@@ -102,9 +110,40 @@ export class DiagnosticAccumulator {
    * otherwise. Callers that just want side-effects can ignore the return.
    */
   recordLine(rawLine: string): ParsedDiagnostic | null {
+    const pending = this.pendingHeader;
+    this.pendingHeader = undefined;
+
     const diag = parseDiagnosticLine(rawLine, this.mode);
+
+    // A header held from the previous line is completed by this one, so long as
+    // this one is the wrapped remainder rather than the start of something new.
+    if (pending && !diag) {
+      const message = continuationMessage(rawLine);
+      if (message !== null) {
+        return this.add({ ...pending, message: message });
+      }
+    }
+
     if (!diag) return null;
 
+    // Position but no message: clang wrapped it, and the message is on the next
+    // line. Hold it rather than publish a squiggle with no text.
+    //
+    // A header that kept some of its message is published as it stands, even
+    // though clang may have wrapped the rest away. Joining that case too would
+    // mean treating any indented line as a continuation, and swiftc — which
+    // doesn't wrap — echoes the offending source line directly beneath the
+    // diagnostic with no `N |` gutter to tell it apart, so the echo would land
+    // in the message of every Swift error. A clipped tail costs less.
+    if (isHeaderOnly(diag)) {
+      this.pendingHeader = diag;
+      return null;
+    }
+
+    return this.add(diag);
+  }
+
+  private add(diag: ParsedDiagnostic): ParsedDiagnostic | null {
     const bucket = this.perFile.get(diag.file);
     if (!bucket) {
       this.perFile.set(diag.file, [diag]);
