@@ -1,6 +1,7 @@
 import type { Mock } from "vitest";
 import * as vscode from "vscode";
 
+import { getBspConfigFile } from "../bsp/paths";
 import {
   generateBuildServerConfig,
   generateSweetpadBuildServerConfig,
@@ -161,27 +162,53 @@ describe("generateBuildServerConfigOnBuild (sweetpad provider)", () => {
   it("skips regeneration when the config already names the installed CLI", async () => {
     mockReadJsonFile.mockResolvedValue({
       name: "sweetpad",
-      argv: ["/opt/homebrew/bin/sweetpad", "bsp", "serve", "--config", "/state/bsp.json"],
+      argv: ["/opt/homebrew/bin/sweetpad", "bsp", "serve", "--config", getBspConfigFile("/workspace")],
     });
     await run();
     expect(mockGenerate).not.toHaveBeenCalled();
   });
 
+  it("leaves a standalone config alone even though it shares our name", async () => {
+    mockReadJsonFile.mockResolvedValue({
+      name: "sweetpad",
+      argv: ["/opt/homebrew/bin/sweetpad", "bsp", "serve", "--project", "/workspace/App.xcodeproj"],
+    });
+    mockIsFileExists.mockResolvedValue(true);
+
+    await run();
+
+    // `sweetpad bsp init` writes our name too, so only the absence of
+    // `--config` marks this as a setup the workspace made rather than one we
+    // maintain. Reading it as ours would overwrite it on the next build.
+    expect(mockGenerate).not.toHaveBeenCalled();
+  });
+
   it("migrates a config an older extension wrote to run its own launcher", async () => {
-    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/old-ext/out/bsp-server.js", "--config", "/x"] });
+    mockReadJsonFile.mockResolvedValue({
+      name: "sweetpad",
+      argv: ["/old-ext/out/bsp-server.js", "--config", getBspConfigFile("/workspace")],
+    });
     await run();
     expect(mockGenerate).toHaveBeenCalledTimes(1);
   });
 
   it("regenerates when the CLI has moved since the config was written", async () => {
-    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/usr/local/bin/sweetpad", "bsp", "serve"] });
+    mockReadJsonFile.mockResolvedValue({
+      name: "sweetpad",
+      argv: ["/usr/local/bin/sweetpad", "bsp", "serve", "--config", getBspConfigFile("/workspace")],
+    });
+    mockIsFileExists.mockResolvedValue(true);
     await run();
     expect(mockGenerate).toHaveBeenCalledTimes(1);
   });
 
   it("writes nothing and says so once when the CLI is not installed", async () => {
     mockCliPath.mockResolvedValue(undefined);
-    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/old-ext/out/bsp-server.js"] });
+    mockReadJsonFile.mockResolvedValue({
+      name: "sweetpad",
+      argv: ["/old-ext/out/bsp-server.js", "--config", getBspConfigFile("/workspace")],
+    });
+    mockIsFileExists.mockResolvedValue(false);
 
     await run();
 
@@ -248,7 +275,10 @@ describe("repairStaleBuildServerConfig", () => {
   });
 
   it("rewrites a config of ours whose launcher an update deleted", async () => {
-    mockReadJsonFile.mockResolvedValue({ name: "sweetpad", argv: ["/old-ext/out/bsp-server.js"] });
+    mockReadJsonFile.mockResolvedValue({
+      name: "sweetpad",
+      argv: ["/old-ext/out/bsp-server.js", "--config", getBspConfigFile("/workspace")],
+    });
     mockIsFileExists.mockResolvedValue(false);
 
     await repairStaleBuildServerConfig();
