@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "e2e",
+    "outDir": "out-e2e",
+    "types": ["node", "mocha"]
+  },
+  "include": ["e2e/**/*.ts"]
+}

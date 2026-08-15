@@ -1,0 +1,71 @@
+name: vscode-extension
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sweetpad-vscode/**"
+      - "sweetpad-lib/fixtures/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/vscode.yaml"
+  pull_request:
+    paths:
+      - "sweetpad-vscode/**"
+      - "sweetpad-lib/fixtures/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/vscode.yaml"
+
+# Two tiers. The unit suite mocks `vscode` and runs in seconds. The end-to-end
+# suite launches a real VS Code with the extension loaded and drives it against a
+# committed fixture project — so it needs macOS (Xcode for the build case) and a
+# network (VS Code + the CodeLLDB dependency are downloaded on first run).
+jobs:
+  test:
+    name: unit · e2e
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install NodeJS
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install Rust toolchain
+        # The extension bundles an N-API addon built from the Rust workspace;
+        # `npm run build` compiles it before rolldown copies it into out/.
+        run: rustup show
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Types
+        working-directory: sweetpad-vscode
+        run: npm run check:types
+
+      - name: Unit tests
+        working-directory: sweetpad-vscode
+        run: npm test
+
+      - name: End-to-end tests
+        working-directory: sweetpad-vscode
+        # Builds the extension (native addon + bundle), compiles the suite, then
+        # runs it inside a real VS Code instance.
+        run: npm run test:e2e
+
+      - name: Upload e2e logs
+        # The extension host writes its own logs; on a failure they say far more
+        # than the assertion did.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: |
+            sweetpad-vscode/.vscode-test/user-data/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
