@@ -4,7 +4,11 @@ import * as sweetpadLib from "@sweetpad/native";
 import { execa } from "execa";
 import * as vscode from "vscode";
 
-import { CLI_BUILD_SERVER_NAME, EXTENSION_BUILD_SERVER_NAME, getBuildServerProvider } from "../bsp/commands";
+import {
+  getBuildServerProvider,
+  isExtensionManagedBuildServerConfig,
+  isSweetpadBuildServerConfig,
+} from "../bsp/commands";
 import { askConfigurationBase } from "../common/askers";
 import {
   type XBSConfig,
@@ -500,7 +504,7 @@ export async function repairStaleBuildServerConfig(): Promise<void> {
   }
 
   const launcher = config?.argv?.[0];
-  if (config?.name !== EXTENSION_BUILD_SERVER_NAME || launcher === undefined) {
+  if (!isExtensionManagedBuildServerConfig(config, getWorkspacePath()) || launcher === undefined) {
     return;
   }
   if (await isFileExists(launcher)) {
@@ -553,12 +557,14 @@ export async function generateBuildServerConfigOnBuild(options: {
     }
     const launcher = config?.argv?.[0];
 
-    // A config from `sweetpad bsp init` names the CLI binary and reaches the
-    // same server through it. Leave it while it resolves: that launcher is the
-    // one the workspace set up, and swapping ours in is not this function's
-    // call. A launcher that has gone missing is broken rather than chosen, so
-    // that one falls through and is replaced.
-    if (config?.name === CLI_BUILD_SERVER_NAME && launcher !== undefined && (await isFileExists(launcher))) {
+    // A standalone `sweetpad bsp init` config reaches the same server, with the
+    // project fixed on the command line instead of read from our `bsp.json`.
+    // Leave it while its launcher resolves: that setup is the one the workspace
+    // made, and swapping ours in is not this function's call. A launcher that
+    // has gone missing is broken rather than chosen, so it falls through.
+    const isOurs = isSweetpadBuildServerConfig(config);
+    const isManagedHere = isExtensionManagedBuildServerConfig(config, getWorkspacePath());
+    if (isOurs && !isManagedHere && launcher !== undefined && (await isFileExists(launcher))) {
       return;
     }
 
@@ -570,7 +576,7 @@ export async function generateBuildServerConfigOnBuild(options: {
       return;
     }
 
-    const isConfigValid = config?.name === EXTENSION_BUILD_SERVER_NAME && launcher !== undefined && launcher === cli;
+    const isConfigValid = isManagedHere && launcher === cli;
     if (!isConfigValid) {
       await refreshBuildServer({ xcworkspace: options.xcworkspace, scheme: options.scheme });
     }

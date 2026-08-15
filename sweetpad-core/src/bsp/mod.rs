@@ -63,7 +63,7 @@ pub fn write_config(args: &[String], serve_subcommand: &[&str]) -> Result<(), St
         }
     }
     let config = json!({
-        "name": "sweetpad-lib",
+        "name": "sweetpad",
         "version": env!("CARGO_PKG_VERSION"),
         "bspVersion": "2.2.0",
         "languages": LANGUAGE_IDS,
@@ -692,7 +692,7 @@ impl Server {
                 json!(dd.join("Index.noindex/IndexDatabase").to_string_lossy());
         }
         json!({
-            "displayName": "sweetpad-lib",
+            "displayName": "sweetpad",
             "version": env!("CARGO_PKG_VERSION"),
             "bspVersion": "2.2.0",
             "capabilities": { "languageIds": LANGUAGE_IDS },

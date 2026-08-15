@@ -7,6 +7,13 @@ import type { Mock } from "vitest";
 import { getWorkspacePath } from "../build/utils";
 import { getWorkspaceConfig, isWorkspaceConfigSetByUser } from "../common/config";
 import { getBuildServerProvider, isPreservingForeignBuildServer, isSweetpadBuildServerActive } from "./commands";
+import { getBspConfigFile } from "./paths";
+
+/** argv for the config the extension maintains: project comes from bsp.json. */
+const managedArgv = () => ["/opt/homebrew/bin/sweetpad", "bsp", "serve", "--config", getBspConfigFile(workspace)];
+
+/** argv `sweetpad bsp init` writes: project fixed on the command line. */
+const standaloneArgv = () => ["/opt/homebrew/bin/sweetpad", "bsp", "serve", "--project", "/w/App.xcodeproj"];
 
 vi.mock("../common/config", () => ({
   getWorkspaceConfig: vi.fn(),
@@ -84,11 +91,9 @@ describe("getBuildServerProvider", () => {
       expect(getBuildServerProvider()).toBe("sweetpad");
     });
 
-    it("claims a workspace the CLI set up, which runs the same server", () => {
+    it("claims a workspace an older CLI set up under the previous name", () => {
       noChoiceMade();
-      writeBuildServerConfig(
-        JSON.stringify({ name: "sweetpad-lib", argv: ["/opt/homebrew/bin/sweetpad", "bsp", "serve"] }),
-      );
+      writeBuildServerConfig(JSON.stringify({ name: "sweetpad-lib", argv: standaloneArgv() }));
 
       // `sweetpad bsp init` writes this. Reading it as somebody else's setup
       // would route the workspace to xcode-build-server and start asking it to
@@ -159,7 +164,7 @@ describe("isPreservingForeignBuildServer", () => {
 describe("isSweetpadBuildServerActive", () => {
   it("is active when the provider is ours and so is the config", async () => {
     chose("sweetpad");
-    writeBuildServerConfig(JSON.stringify({ name: "sweetpad", argv: ["/path/to/server"] }));
+    writeBuildServerConfig(JSON.stringify({ name: "sweetpad", argv: managedArgv() }));
 
     await expect(isSweetpadBuildServerActive(workspace)).resolves.toBe(true);
   });
@@ -181,8 +186,18 @@ describe("isSweetpadBuildServerActive", () => {
 
   it("is inactive when the provider is not ours", async () => {
     chose("xcode-build-server");
-    writeBuildServerConfig(JSON.stringify({ name: "sweetpad" }));
+    writeBuildServerConfig(JSON.stringify({ name: "sweetpad", argv: managedArgv() }));
 
+    await expect(isSweetpadBuildServerActive(workspace)).resolves.toBe(false);
+  });
+
+  it("is inactive for a standalone config that shares our name", async () => {
+    chose("sweetpad");
+    writeBuildServerConfig(JSON.stringify({ name: "sweetpad", argv: standaloneArgv() }));
+
+    // `sweetpad bsp init` writes the same name now, so only argv separates the
+    // two. That server reads neither our bsp.json nor our socket, and calling
+    // it active would have us write and report against something we don't run.
     await expect(isSweetpadBuildServerActive(workspace)).resolves.toBe(false);
   });
 });

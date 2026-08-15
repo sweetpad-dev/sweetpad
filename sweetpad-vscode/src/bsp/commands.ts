@@ -14,6 +14,7 @@ import type { AppDeps } from "../common/commands";
 import { getWorkspaceConfig, isWorkspaceConfigSetByUser, updateWorkspaceConfig } from "../common/config";
 import { isFileExists, readJsonFile } from "../common/files";
 import { assertUnreachable } from "../common/types";
+import { getBspConfigFile } from "./paths";
 
 type DoctorCheck = {
   ok: boolean;
@@ -24,16 +25,41 @@ type DoctorCheck = {
 
 const SWIFT_RESTART_COMMAND = "swift.restartLSPServer";
 
-/** The `name` in a buildServer.json this extension writes. */
-export const EXTENSION_BUILD_SERVER_NAME = "sweetpad";
+/** The `name` SweetPad writes into a buildServer.json, from either side. */
+export const BUILD_SERVER_NAME = "sweetpad";
 
-/** The `name` in a buildServer.json `sweetpad bsp init` writes. */
-export const CLI_BUILD_SERVER_NAME = "sweetpad-lib";
+// Older `sweetpad bsp init` runs wrote the crate the BSP server was first built
+// in. Nothing rewrites a config in place, so those files are still out there and
+// still ours.
+const LEGACY_BUILD_SERVER_NAME = "sweetpad-lib";
 
-// Both name the same server, reached through `sweetpad bsp serve`: this
-// extension writes the first when it manages the config itself, `sweetpad bsp
-// init` writes the second. Neither is a foreign setup to be preserved.
-const SWEETPAD_BUILD_SERVER_NAMES = new Set<string>([EXTENSION_BUILD_SERVER_NAME, CLI_BUILD_SERVER_NAME]);
+const SWEETPAD_BUILD_SERVER_NAMES = new Set<string>([BUILD_SERVER_NAME, LEGACY_BUILD_SERVER_NAME]);
+
+type BuildServerConfig = { name?: unknown; argv?: unknown };
+
+/** Whether SweetPad wrote this config at all, from either side. */
+export function isSweetpadBuildServerConfig(config: BuildServerConfig | undefined): boolean {
+  return typeof config?.name === "string" && SWEETPAD_BUILD_SERVER_NAMES.has(config.name);
+}
+
+/**
+ * Whether this config is the one the extension maintains, as opposed to one
+ * `sweetpad bsp init` wrote.
+ *
+ * Told apart by `argv`, not by `name`: both name the same server and both launch
+ * the same CLI, and what actually separates them is where the project comes
+ * from — ours from the `bsp.json` the extension rewrites as the scheme changes,
+ * the CLI's from a `--project`/`--workspace` fixed when it was initialised.
+ */
+export function isExtensionManagedBuildServerConfig(
+  config: BuildServerConfig | undefined,
+  workspacePath: string,
+): boolean {
+  if (!isSweetpadBuildServerConfig(config)) return false;
+  if (!Array.isArray(config?.argv)) return false;
+  const flag = config.argv.indexOf("--config");
+  return flag !== -1 && config.argv[flag + 1] === getBspConfigFile(workspacePath);
+}
 
 /**
  * Which build server backs sourcekit-lsp.
@@ -70,8 +96,7 @@ export function getBuildServerProvider(): "sweetpad" | "xcode-build-server" {
 function hasForeignBuildServerConfig(): boolean {
   try {
     const raw = readFileSync(path.join(getWorkspacePath(), "buildServer.json"), "utf8");
-    const name = (JSON.parse(raw) as { name?: unknown }).name;
-    return typeof name !== "string" || !SWEETPAD_BUILD_SERVER_NAMES.has(name);
+    return !isSweetpadBuildServerConfig(JSON.parse(raw) as BuildServerConfig);
   } catch {
     // No workspace, no file, unreadable, or not JSON — no evidence of a setup
     // worth keeping. A config too broken to read is one the default repairs
@@ -96,14 +121,13 @@ export async function isSweetpadBuildServerActive(workspacePath: string): Promis
   // Treating any file as proof would have us write `bsp.json` for, and report
   // ourselves active against, a server we aren't running.
   //
-  // Stricter than `SWEETPAD_BUILD_SERVER_NAMES` on purpose: this gates the
-  // `bsp.json` the extension writes and the socket it dials, and the CLI's
-  // server is told its project on the command line instead of reading either.
-  // It is our server, but it isn't the one this extension is driving.
-  const config = await readJsonFile<{ name?: unknown }>(path.join(workspacePath, "buildServer.json")).catch(
+  // Narrower than "SweetPad wrote it" on purpose: this gates the `bsp.json` the
+  // extension writes and the socket it dials, and a standalone `bsp init` config
+  // reads neither. That is our server, but it isn't the one we are driving.
+  const config = await readJsonFile<BuildServerConfig>(path.join(workspacePath, "buildServer.json")).catch(
     () => undefined,
   );
-  return config?.name === EXTENSION_BUILD_SERVER_NAME;
+  return isExtensionManagedBuildServerConfig(config, workspacePath);
 }
 
 export async function bspSetupCommand(): Promise<void> {
@@ -266,9 +290,9 @@ async function collectCliDrivenChecks(config: Record<string, unknown>): Promise<
 }
 
 async function collectSweetpadChecks(deps: AppDeps): Promise<DoctorCheck[]> {
-  const cliConfig = await readBuildServerJson();
-  if (cliConfig?.name === CLI_BUILD_SERVER_NAME) {
-    return collectCliDrivenChecks(cliConfig);
+  const config = await readBuildServerJson();
+  if (isSweetpadBuildServerConfig(config) && !isExtensionManagedBuildServerConfig(config, getWorkspacePath())) {
+    return collectCliDrivenChecks(config as Record<string, unknown>);
   }
 
   const checks: DoctorCheck[] = [];
