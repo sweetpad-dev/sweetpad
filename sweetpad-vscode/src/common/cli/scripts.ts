@@ -713,6 +713,28 @@ export const SWEETPAD_CLI_MISSING_MESSAGE =
   "SweetPad's build server runs through the sweetpad CLI, which isn't on your PATH. Install it with 'brew install sweetpad-dev/tap/sweetpad', or run 'SweetPad: Install tool'.";
 
 /**
+ * Oldest CLI the extension will drive without complaint.
+ *
+ * The two ship on separate cadences — the extension through the Marketplace,
+ * the CLI through Homebrew — so any pair can meet. This is the floor for the
+ * `bsp.json` the extension writes and the CLI reads; raise it in the same
+ * change that starts writing something an older CLI can't act on.
+ */
+export const MINIMUM_SWEETPAD_CLI_VERSION = "0.1.2";
+
+/**
+ * What `sweetpad --version` prints, or undefined when it can't be asked.
+ */
+export async function getSweetpadCliVersion(): Promise<string | undefined> {
+  try {
+    const output = (await exec({ command: "sweetpad", args: ["--version"] })).trim();
+    return output.length > 0 ? output : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Absolute path to the `sweetpad` CLI, or undefined when it isn't installed.
  *
  * Resolved to a full path rather than left as a bare name: sourcekit-lsp spawns
