@@ -1,4 +1,4 @@
-import { parseDiagnosticLine } from "./diagnostics-parser";
+import { continuationMessage, isHeaderOnly, parseDiagnosticLine, type ParsedDiagnostic } from "./diagnostics-parser";
 
 describe("parseDiagnosticLine", () => {
   describe("xcbeautify error format", () => {
@@ -233,5 +233,52 @@ describe("parseDiagnosticLine", () => {
         expect(parseDiagnosticLine(xcodebuildLine)?.source).toBe("xcodebuild");
       });
     });
+  });
+});
+
+// clang writes to a TTY whenever no xcbeautify sits in the pipe, and wraps its
+// own diagnostics to the terminal width when it does. Past that width the
+// message lands on the following line, leaving a header that ends at "error:"
+// — the shape every build produced while this went unhandled.
+describe("clang diagnostics wrapped at the terminal width", () => {
+  const header = "/path/to/Foo.m:5:28: error: ";
+  const continuation = "      use of undeclared identifier 'undeclared_symbol_here'";
+
+  it("parses a header whose message wrapped away, and marks it incomplete", () => {
+    const result = parseDiagnosticLine(header, "xcodebuild");
+
+    expect(result).toMatchObject({ file: "/path/to/Foo.m", line: 5, column: 28, severity: "error", message: "" });
+    expect(isHeaderOnly(result as ParsedDiagnostic)).toBe(true);
+  });
+
+  it("still marks a diagnostic that kept its message as complete", () => {
+    const result = parseDiagnosticLine(`${header}use of undeclared identifier 'x'`, "xcodebuild");
+
+    expect(isHeaderOnly(result as ParsedDiagnostic)).toBe(false);
+  });
+
+  it("reads the wrapped remainder off the next line", () => {
+    expect(continuationMessage(continuation)).toBe("use of undeclared identifier 'undeclared_symbol_here'");
+  });
+
+  it("strips colour and a trailing carriage return from the remainder", () => {
+    expect(continuationMessage("   \u001b[1muse of undeclared identifier\u001b[0m\r")).toBe(
+      "use of undeclared identifier",
+    );
+  });
+
+  it("does not read the source snippet or caret rows as the message", () => {
+    // clang prints these directly beneath the diagnostic; taking either as the
+    // message would put source code in the Problems panel.
+    expect(continuationMessage("    1 | void broken(void) { return x; }")).toBeNull();
+    expect(continuationMessage("      |                            ^~~~")).toBeNull();
+  });
+
+  it("does not treat an unindented line as a continuation", () => {
+    expect(continuationMessage("1 error generated.")).toBeNull();
+  });
+
+  it("does not swallow the next diagnostic as a continuation", () => {
+    expect(continuationMessage("  /path/to/Bar.m:9:1: error: something else")).toBeNull();
   });
 });

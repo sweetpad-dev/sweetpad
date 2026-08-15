@@ -50,6 +50,34 @@ export type ParsedDiagnostic = {
   source: DiagnosticSource;
 };
 
+/**
+ * True when a parsed diagnostic carries a position but no message, which is
+ * what a clang diagnostic wrapped at the terminal width looks like on its
+ * first line. The message is on the line after it, so a caller reading a
+ * stream can complete this one; a caller holding a single line cannot, and
+ * should treat it as unusable rather than publish an empty squiggle.
+ */
+export function isHeaderOnly(diagnostic: ParsedDiagnostic): boolean {
+  return diagnostic.message.length === 0;
+}
+
+/**
+ * The message text `rawLine` supplies to a header-only diagnostic, or null if
+ * it supplies none. clang indents the continuation, and follows it with the
+ * source snippet (`    1 | void broken(...)`) and caret rows, so anything that
+ * looks like snippet furniture — or like a fresh diagnostic — ends the message.
+ */
+export function continuationMessage(rawLine: string): string | null {
+  const line = stripAnsi(rawLine).replace(/\r$/, "");
+  if (!/^\s+\S/.test(line)) return null;
+  const trimmed = line.trim();
+  if (trimmed.length === 0) return null;
+  // `    1 | source text` and `      |      ^~~~` are the snippet and caret rows.
+  if (/^\d*\s*\|/.test(trimmed)) return null;
+  if (parseDiagnosticLine(line, "auto") !== null) return null;
+  return trimmed;
+}
+
 // Matches `\x1b[...m` SGR escape sequences (the "set graphics rendition"
 // family — colors, bold, reset, etc.). xcbeautify color-codes its prefixes
 // and messages; we strip them so the diagnostic regexes see plain text.
@@ -101,8 +129,19 @@ const XCBEAUTIFY_WARNING_REGEX = /^(?:⚠️|\[!\])\s*(\/[^:]+):(\d+):(\d+):\s*(
 //                            "Foo.swift:10:5: note: see declaration of 'bar'") are
 //                            deliberately skipped. They could be attached as
 //                            relatedInformation on the preceding diagnostic later.
-//   :\s+(.*)$                separator, then group 5 — the rest of the message
-const XCODEBUILD_REGEX = /^(\/[^:]+):(\d+):(\d+):\s+(error|warning):\s+(.*)$/;
+//   :\s*(.*)$                separator, then group 5 — the rest of the message.
+//                            `\s*` and a possibly-empty group 5 because clang
+//                            wraps its own output to the terminal width when
+//                            stdout is a TTY, which is exactly what it is when
+//                            no xcbeautify sits in the pipe. Past the width the
+//                            message moves to the next line and the header ends
+//                            at `error:` with nothing after it. `isHeaderOnly`
+//                            marks that case for the caller to complete.
+const XCODEBUILD_REGEX = /^(\/[^:]+):(\d+):(\d+):\s+(error|warning):\s*(.*)$/;
+
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_STRIP_REGEX, "");
+}
 
 export function parseDiagnosticLine(rawLine: string, mode: ParseMode = "auto"): ParsedDiagnostic | null {
   // `\r` would block the `$` anchor; strip CR + any stray ANSI (the v3 task
