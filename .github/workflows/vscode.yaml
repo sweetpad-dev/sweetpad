@@ -52,6 +52,15 @@ jobs:
         # it — the typecheck first.
         run: npm run build:native:debug
 
+      - name: Build the sweetpad CLI
+        # The build server runs through the CLI, so the e2e suite needs one on
+        # PATH to write a buildServer.json at all. Built from this checkout
+        # rather than installed from the tap: the pair under test should be the
+        # pair in this commit, not whichever version happens to be released.
+        run: |
+          cargo build -p sweetpad-cli --bin sweetpad
+          echo "$GITHUB_WORKSPACE/target/debug" >> "$GITHUB_PATH"
+
       - name: Types
         working-directory: sweetpad-vscode
         run: npm run check:types
