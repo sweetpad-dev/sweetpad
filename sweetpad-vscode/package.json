@@ -1154,6 +1154,20 @@
           "default": null,
           "description": "Configuration to build for testing."
         },
+        "sweetpad.testing.baseClasses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "examples": [
+            [
+              "BaseTestCase",
+              "QuickSpec"
+            ]
+          ],
+          "description": "Extra class names to recognize as XCTest base classes, so test classes that inherit from a shared base show up in the Testing panel. XCTestCase is always recognized. Names are matched textually, so list every level of a longer chain."
+        },
         "sweetpad.system.taskExecutor": {
           "type": "string",
           "default": "v3",
