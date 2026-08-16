@@ -2,6 +2,16 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.10] - 2026-08-16
+
+- Add multi-root workspace support: SweetPad tracks which workspace folder you are working in instead of assuming the first one, so a window holding several projects builds, runs and tests the one you selected — the scheme and destination pickers, the XcodeGen and Tuist watchers, the BSP bridge and the CLI server all follow the active folder as it changes ([#314](https://github.com/sweetpad-dev/sweetpad/pull/314), thanks [@dvkellerman](https://github.com/dvkellerman))
+- Swift autocomplete now works out of the box: SweetPad's built-in build server is the default provider, so there is no need to install `xcode-build-server` or run a build first. A workspace whose `buildServer.json` another tool wrote keeps that tool ([#317](https://github.com/sweetpad-dev/sweetpad/pull/317))
+- Run the build server through the `sweetpad` CLI instead of a Node shim inside the extension directory: `buildServer.json` now points at `sweetpad bsp serve`, which removes the node-on-PATH requirement and stops the launcher going stale on every extension update. The CLI joins the Tools panel so it installs in one click, and a workspace whose config an older extension wrote is migrated on the next build ([#319](https://github.com/sweetpad-dev/sweetpad/pull/319))
+- Add `sweetpad.testing.baseClasses` so test classes that inherit from a shared base class rather than `XCTestCase` directly appear in the Testing panel; the scanner also tolerates protocol conformances, generics and inheritance clauses wrapped across lines ([#324](https://github.com/sweetpad-dev/sweetpad/pull/324))
+- Fix build errors never reaching the Problems panel when clang word-wraps its message: a long enough workspace path pushed the message onto the next line, leaving a header the parser did not match ([#316](https://github.com/sweetpad-dev/sweetpad/pull/316))
+- Fix autocomplete returning nothing for `.h` headers and for files reached through a symlink or a `..` path segment ([#312](https://github.com/sweetpad-dev/sweetpad/pull/312))
+- "SweetPad: Diagnose BSP" now reports the `sweetpad` CLI's version and flags it when it is older than the extension needs; this release needs 0.1.6 or newer, so run `brew upgrade sweetpad-dev/tap/sweetpad` if autocomplete comes up empty ([#322](https://github.com/sweetpad-dev/sweetpad/pull/322))
+
 ## [0.2.9] - 2026-07-28
 
 - Add debugging on physical devices running iOS 16 and below, which have no CoreDevice and so were never reachable through the `devicectl` path: SweetPad installs the app with `ios-deploy` and leaves a debugserver listening, and the debug session connects to it and launches the process itself, so breakpoints, stepping and the Debug Console work the same way they do on iOS 17+ ([#309](https://github.com/sweetpad-dev/sweetpad/issues/309), thanks [@zHElEARN](https://github.com/zHElEARN))
