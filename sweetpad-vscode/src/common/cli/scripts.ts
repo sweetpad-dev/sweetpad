@@ -5,7 +5,7 @@ import * as sweetpadLib from "@sweetpad/native";
 
 import { getBuildServerProvider } from "../../bsp/commands";
 import { getBspConfigFile } from "../../bsp/paths";
-import { detectWorkspaceType, getSwiftPMDirectory, getWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
+import { detectWorkspaceType, getSwiftPMDirectory, prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { getWorkspaceConfig } from "../config";
 import { ExtensionError } from "../errors";
@@ -109,6 +109,7 @@ export async function getSimulators(): Promise<SimulatorsOutput> {
   const simulatorsRaw = await exec({
     command: "xcrun",
     args: ["simctl", "list", "--json", "devices"],
+    cwd: null,
   });
   return parseCliJsonOutput<SimulatorsOutput>(simulatorsRaw);
 }
@@ -278,6 +279,7 @@ async function findUserSchemeFile(container: string, scheme: string): Promise<st
  * keys; pass it when you read only a handful (see `XCODE_BUILD_SETTINGS_KEYS`).
  */
 export async function getBuildSettingsList(options: {
+  workspaceRoot: string;
   scheme: string;
   configuration: string;
   sdk: string | undefined;
@@ -285,7 +287,7 @@ export async function getBuildSettingsList(options: {
   destination?: string;
   keys?: string[];
 }): Promise<XcodeBuildSettings[]> {
-  const derivedDataPath = prepareDerivedDataPath();
+  const derivedDataPath = prepareDerivedDataPath({ workspaceRoot: options.workspaceRoot });
   const workspaceType = detectWorkspaceType(options.xcworkspace);
 
   if (workspaceType === "xcode") {
@@ -307,7 +309,7 @@ export async function getBuildSettingsList(options: {
         // dotfiles is invisible to the extension host's own env, which is all
         // the in-process resolver sees). Undefined lets the resolver detect
         // the active Xcode itself.
-        xcode: await getShellDeveloperDir(),
+        xcode: await getShellDeveloperDir(options.workspaceRoot),
         ...(options.xcworkspace.endsWith(".xcworkspace")
           ? { workspace: options.xcworkspace }
           : { project: options.xcworkspace }),
@@ -352,6 +354,8 @@ async function getBuildSettingsViaXcodebuild(options: {
   xcworkspace: string;
   derivedDataPath: string | null;
   workspaceType: "xcode" | "spm";
+  /** Where to run xcodebuild. Only consulted for Xcode projects — an SPM package names its own. */
+  workspaceRoot: string;
 }): Promise<XcodeBuildSettings[]> {
   const command = getXcodeBuildCommand();
   const args = [
@@ -382,7 +386,7 @@ async function getBuildSettingsViaXcodebuild(options: {
   const stdout = await exec({
     command,
     args,
-    cwd,
+    cwd: cwd ?? options.workspaceRoot,
   });
 
   // Parse the output - first few lines can be invalid json, so we need to skip them
@@ -430,6 +434,7 @@ export function isXcodeBuildCommandCustomized(): boolean {
  * for the user to select
  */
 export async function getBuildSettingsToAskDestination(options: {
+  workspaceRoot: string;
   scheme: string;
   configuration: string;
   sdk: string | undefined;
@@ -465,6 +470,7 @@ export async function getBuildSettingsToAskDestination(options: {
  * for the scheme and I need to find which target is set to launch in .xcscheme XML file.
  */
 export async function getBuildSettingsToLaunch(options: {
+  workspaceRoot: string;
   scheme: string;
   configuration: string;
   sdk: string | undefined;
@@ -520,6 +526,7 @@ export async function getIsXcbeautifyInstalled() {
     await exec({
       command: "which",
       args: ["xcbeautify"],
+      cwd: null,
     });
     return true;
   } catch (e) {
@@ -558,6 +565,7 @@ export async function getIsXBSInstalled() {
     await exec({
       command: "which",
       args: [command],
+      cwd: null,
     });
     return true;
   } catch (e) {
@@ -678,7 +686,11 @@ export async function getBuildConfigurations(options: { xcworkspace: string }): 
 /**
  * Generate buildServer.json for the current scheme and workspace, based on the configured provider.
  */
-export async function generateBuildServerConfig(options: { xcworkspace: string; scheme: string }) {
+export async function generateBuildServerConfig(options: {
+  xcworkspace: string;
+  scheme: string;
+  workspaceRoot: string;
+}) {
   const provider = getBuildServerProvider();
   if (provider === "sweetpad") {
     // Swift packages: sourcekit-lsp supports SwiftPM natively, and the sweetpad
@@ -689,7 +701,7 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
       await handleSwiftPackageNativeLsp(options.xcworkspace);
       return;
     }
-    await generateSweetpadBuildServerConfig();
+    await generateSweetpadBuildServerConfig({ workspaceRoot: options.workspaceRoot });
     return;
   }
 
@@ -697,6 +709,7 @@ export async function generateBuildServerConfig(options: { xcworkspace: string; 
     await generateXBSBuildServerConfig({
       xcworkspace: options.xcworkspace,
       scheme: options.scheme,
+      workspaceRoot: options.workspaceRoot,
     });
 
     return;
@@ -727,7 +740,7 @@ export const MINIMUM_SWEETPAD_CLI_VERSION = "0.1.2";
  */
 export async function getSweetpadCliVersion(): Promise<string | undefined> {
   try {
-    const output = (await exec({ command: "sweetpad", args: ["--version"] })).trim();
+    const output = (await exec({ command: "sweetpad", args: ["--version"], cwd: null })).trim();
     return output.length > 0 ? output : undefined;
   } catch {
     return undefined;
@@ -742,7 +755,7 @@ export async function getSweetpadCliVersion(): Promise<string | undefined> {
  */
 export async function getSweetpadCliPath(): Promise<string | undefined> {
   try {
-    const resolved = (await exec({ command: "which", args: ["sweetpad"] })).trim();
+    const resolved = (await exec({ command: "which", args: ["sweetpad"], cwd: null })).trim();
     return resolved.length > 0 ? resolved : undefined;
   } catch {
     return undefined;
@@ -762,8 +775,8 @@ export async function getSweetpadCliPath(): Promise<string | undefined> {
  * extension's own directory, so it keeps resolving after an extension update
  * instead of pointing into a version that has been deleted.
  */
-export async function generateSweetpadBuildServerConfig(): Promise<void> {
-  const cwd = getWorkspacePath();
+export async function generateSweetpadBuildServerConfig(options: { workspaceRoot: string }): Promise<void> {
+  const cwd = options.workspaceRoot;
   const cli = await getSweetpadCliPath();
   if (cli === undefined) {
     throw new ExtensionError(SWEETPAD_CLI_MISSING_MESSAGE);
@@ -804,7 +817,11 @@ async function handleSwiftPackageNativeLsp(packageManifest: string): Promise<voi
   }
 }
 
-async function generateXBSBuildServerConfig(options: { xcworkspace: string; scheme: string }): Promise<void> {
+async function generateXBSBuildServerConfig(options: {
+  xcworkspace: string;
+  scheme: string;
+  workspaceRoot: string;
+}): Promise<void> {
   const workspaceType = detectWorkspaceType(options.xcworkspace);
   const command = getXBSCommand();
   let cwd: string;
@@ -814,7 +831,7 @@ async function generateXBSBuildServerConfig(options: { xcworkspace: string; sche
     cwd = getSwiftPMDirectory(options.xcworkspace);
     args = ["config", "-scheme", options.scheme];
   } else if (workspaceType === "xcode") {
-    cwd = getWorkspacePath();
+    cwd = options.workspaceRoot;
     args = ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme];
   } else {
     assertUnreachable(workspaceType);
@@ -834,13 +851,13 @@ async function generateXBSBuildServerConfig(options: { xcworkspace: string; sche
  * subsumes the extension host's own env — the probe shell inherits it), else
  * `xcode-select -p`.
  */
-export async function getDeveloperDir(): Promise<string | undefined> {
-  const fromShell = await getShellDeveloperDir();
+export async function getDeveloperDir(options: { workspaceRoot: string }): Promise<string | undefined> {
+  const fromShell = await getShellDeveloperDir(options.workspaceRoot);
   if (fromShell) {
     return fromShell;
   }
   try {
-    return (await exec({ command: "xcode-select", args: ["-p"] })).trim();
+    return (await exec({ command: "xcode-select", args: ["-p"], cwd: null })).trim();
   } catch {
     return undefined;
   }
@@ -902,8 +919,8 @@ export type XBSConfig = {
 /**
  * Read xcode-build-server config with proper types
  */
-export async function readXBSConfig(): Promise<XBSConfig> {
-  const buildServerJsonPath = path.join(getWorkspacePath(), "buildServer.json");
+export async function readXBSConfig(options: { workspaceRoot: string }): Promise<XBSConfig> {
+  const buildServerJsonPath = path.join(options.workspaceRoot, "buildServer.json");
   return await readJsonFile<XBSConfig>(buildServerJsonPath);
 }
 
@@ -915,6 +932,7 @@ export async function getIsXcodeGenInstalled() {
     await exec({
       command: "which",
       args: ["xcodegen"],
+      cwd: null,
     });
     return true;
   } catch (e) {
@@ -922,10 +940,15 @@ export async function getIsXcodeGenInstalled() {
   }
 }
 
-export async function generateXcodeGen() {
+/**
+ * `xcodegen generate` reads project.yml from its working directory, so `cwd` names the folder
+ * holding the spec. Without it the command runs in the active workspace folder.
+ */
+export async function generateXcodeGen(options: { cwd: string }) {
   await exec({
     command: "xcodegen",
     args: ["generate"],
+    cwd: options.cwd,
   });
 }
 
@@ -934,6 +957,7 @@ export async function getIsTuistInstalled() {
     await exec({
       command: "which",
       args: ["tuist"],
+      cwd: null,
     });
     return true;
   } catch (e) {
@@ -941,40 +965,49 @@ export async function getIsTuistInstalled() {
   }
 }
 
-export async function tuistGenerate() {
+/**
+ * `tuist generate` reads Project.swift/Workspace.swift from its working directory, so `cwd` names
+ * the folder holding them. Without it the command runs in the active workspace folder.
+ */
+export async function tuistGenerate(options: { cwd: string }) {
   const env = getWorkspaceConfig("tuist.generate.env");
   return await exec({
     command: "tuist",
     args: ["generate", "--no-open"],
     env: env,
+    cwd: options.cwd,
   });
 }
 
-export async function tuistClean() {
+export async function tuistClean(options: { cwd: string }) {
   await exec({
     command: "tuist",
     args: ["clean"],
+    cwd: options.cwd,
   });
 }
 
-export async function tuistInstall() {
+export async function tuistInstall(options: { cwd: string }) {
   await exec({
     command: "tuist",
     args: ["install"],
+    cwd: options.cwd,
   });
 }
 
-export async function tuistEdit() {
+export async function tuistEdit(options: { cwd: string }) {
   await exec({
     command: "tuist",
     args: ["edit"],
+    cwd: options.cwd,
   });
 }
 
-export async function tuistTest() {
+export async function tuistTest(options: { cwd: string }) {
   await exec({
     command: "tuist",
     args: ["test"],
+    cwd: options.cwd,
   });
 }
 
@@ -983,10 +1016,10 @@ export async function tuistTest() {
  *
  * This version works properly with Xcodes.app, so it's the recommended one
  */
-export async function getXcodeVersionInstalled(): Promise<{
+export async function getXcodeVersionInstalled(options: { workspaceRoot: string }): Promise<{
   major: number;
 }> {
-  return { major: sweetpadLib.xcodeVersion(await getShellDeveloperDir()).majorVersion };
+  return { major: sweetpadLib.xcodeVersion(await getShellDeveloperDir(options.workspaceRoot)).majorVersion };
 }
 
 /**
@@ -1000,6 +1033,7 @@ export async function getXcodeVersionInstalled_pkgutils(): Promise<{
   const stdout = await exec({
     command: "pkgutil",
     args: ["--pkg-info=com.apple.pkg.CLTools_Executables"],
+    cwd: null,
   });
 
   /*

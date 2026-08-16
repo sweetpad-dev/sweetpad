@@ -50,7 +50,7 @@ export class TaskError extends ExtensionError {
 export class ExecBaseError extends ExtensionError {
   constructor(
     message: string,
-    context: { errorMessage: string; stderr?: string; command: string; args: string[]; cwd?: string },
+    context: { errorMessage: string; stderr?: string; command: string; args: string[]; cwd?: string | null },
   ) {
     super(message, { context });
   }

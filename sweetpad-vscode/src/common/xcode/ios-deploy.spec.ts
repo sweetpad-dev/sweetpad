@@ -414,6 +414,7 @@ describe("ios-deploy", () => {
       expect(exec).toHaveBeenCalledWith({
         command: "ios-deploy",
         args: ["--version"],
+        cwd: null,
       });
     });
 

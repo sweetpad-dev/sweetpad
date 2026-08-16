@@ -77,6 +77,7 @@ Covered in depth in [Tests](./tests.md).
 | Setting                          | Default | What it does                                              |
 | --------------------------------- | ------- | ----------------------------------------------------------- |
 | `sweetpad.testing.configuration`  | —       | Build configuration used when running tests (e.g. `Testing`). Unset = same flow as building. |
+| `sweetpad.testing.baseClasses`    | `[]`    | Extra class names to recognize as XCTest base classes, so test classes inheriting from a shared base are discovered. `XCTestCase` is always recognized. |
 
 ## Formatting
 

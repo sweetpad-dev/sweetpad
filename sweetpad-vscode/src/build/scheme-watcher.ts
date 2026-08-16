@@ -3,10 +3,10 @@ import path from "node:path";
 import * as vscode from "vscode";
 
 import { getWorkspaceConfig } from "../common/config";
-import { isFileExists } from "../common/files";
 import { commonLogger } from "../common/logger";
+import type { WorkspaceContextService } from "../common/workspace-context";
 import type { BuildManager } from "./manager";
-import { getWorkspacePath, prepareDerivedDataPath } from "./utils";
+import { prepareDerivedDataPath, workspaceFoldersContaining } from "./utils";
 
 export class SchemeWatcher implements vscode.Disposable {
   private watchers: vscode.FileSystemWatcher[] = [];
@@ -15,11 +15,17 @@ export class SchemeWatcher implements vscode.Disposable {
   private derivedDataPath: string | null = null;
   private workspacePath = "";
 
-  constructor(private buildManager: BuildManager) {}
+  private readonly workspaceContext: WorkspaceContextService;
+  private readonly buildManager: BuildManager;
+
+  constructor(options: { workspaceContext: WorkspaceContextService; buildManager: BuildManager }) {
+    this.workspaceContext = options.workspaceContext;
+    this.buildManager = options.buildManager;
+  }
 
   async start(): Promise<void> {
-    this.derivedDataPath = prepareDerivedDataPath();
-    this.workspacePath = getWorkspacePath();
+    this.derivedDataPath = prepareDerivedDataPath({ workspaceRoot: this.workspaceContext.root });
+    this.workspacePath = this.workspaceContext.root;
 
     // Check if auto-refresh is enabled (default: true)
     const isEnabled = getWorkspaceConfig("build.autoRefreshSchemes") ?? true;
@@ -84,9 +90,9 @@ export class SchemeWatcher implements vscode.Disposable {
     schemeWatcher.onDidDelete((e) => this.handleChange(e, ".xcscheme deleted"));
     this.watchers.push(schemeWatcher);
 
-    // Watch for project.yml files (XcodeGen)
-    const workspacePath = getWorkspacePath();
-    const isProjectYmlExists = await isFileExists(path.join(workspacePath, "project.yml"));
+    // Watch for project.yml files (XcodeGen). These watchers refresh the scheme list for whichever
+    // project is active, so they only need to know that some folder has one.
+    const isProjectYmlExists = (await workspaceFoldersContaining("project.yml")).length > 0;
     if (isProjectYmlExists) {
       const projectYmlWatcher = vscode.workspace.createFileSystemWatcher(
         "**/project.yml",
@@ -101,10 +107,9 @@ export class SchemeWatcher implements vscode.Disposable {
     }
 
     // Watch for Tuist files (Project.swift, Workspace.swift)
-    const isTuistProjectExists = await isFileExists(path.join(workspacePath, "Project.swift"));
-    const isTuistWorkspaceExists = await isFileExists(path.join(workspacePath, "Workspace.swift"));
+    const isTuistFileExists = (await workspaceFoldersContaining("Project.swift", "Workspace.swift")).length > 0;
 
-    if (isTuistProjectExists || isTuistWorkspaceExists) {
+    if (isTuistFileExists) {
       const tuistWatcher = vscode.workspace.createFileSystemWatcher(
         "**/{Project,Workspace}.swift",
         false, // ignoreCreateEvents

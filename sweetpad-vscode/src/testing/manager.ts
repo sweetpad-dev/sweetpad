@@ -7,10 +7,11 @@ import {
   askXcodeWorkspacePath,
   detectWorkspaceType,
   getSwiftPMDirectory,
-  getWorkspacePath,
+  getWorkspaceRoot,
   getXcodeBuildDestinationString,
 } from "../build/utils.js";
 import { getBuildSettingsToAskDestination, getXcodeBuildCommand } from "../common/cli/scripts.js";
+import { getWorkspaceConfig } from "../common/config.js";
 import { errorReporting } from "../common/error-reporting.js";
 import { exec } from "../common/exec.js";
 import type { ExecutionScopeService } from "../common/execution-scope.js";
@@ -18,6 +19,7 @@ import { isFileExists } from "../common/files.js";
 import { commonLogger } from "../common/logger.js";
 import { runTask } from "../common/tasks/run.js";
 import { assertUnreachable } from "../common/types.js";
+import type { WorkspaceContextService } from "../common/workspace-context.js";
 import type { WorkspaceStateService } from "../common/workspace-state.js";
 import type { DestinationsManager } from "../destination/manager.js";
 import type { Destination } from "../destination/types.js";
@@ -116,6 +118,66 @@ function extractCodeBlock(text: string, startIndex: number): string | null {
 }
 
 /**
+ * Class names whose subclasses hold XCTest test methods. `XCTestCase` is always
+ * recognized; `sweetpad.testing.baseClasses` adds project-specific ones, which
+ * is the only way to reach a base class that isn't Swift source in the open
+ * workspace — one from a test-support package, a pod, an Objective-C harness or
+ * a binary framework. Matching is textual, so each level of a longer chain
+ * (`FooTests: UITestCase: BaseTestCase: XCTestCase`) needs its own entry.
+ */
+function getTestBaseClasses(): Set<string> {
+  return new Set(["XCTestCase", ...(getWorkspaceConfig("testing.baseClasses") ?? [])]);
+}
+
+export type TestClassMatch = {
+  className: string;
+  /** Offset of the `class` keyword, used to place the class item's range. */
+  declarationIndex: number;
+  /** Offset of the `{` that opens the class body. */
+  bodyIndex: number;
+};
+
+/**
+ * Find every class in `text` that inherits from one of `baseClasses`.
+ *
+ * TODO: use a proper Swift parser to find test classes
+ */
+export function findTestClasses(text: string, baseClasses: Set<string>): TestClassMatch[] {
+  // A class declaration followed by the first type in its inheritance clause.
+  // Swift requires the superclass to come first, so that entry is the only one
+  // that can name a test base class — anything after it is a protocol.
+  const declarationRegexp = /\bclass\s+(\w+)\s*(?:<[^<>{]*>)?\s*:\s*([\w.]+)/g;
+  const matches: TestClassMatch[] = [];
+
+  while (true) {
+    const match = declarationRegexp.exec(text);
+    if (match === null) {
+      break;
+    }
+
+    // `XCTest.XCTestCase` names the same class as `XCTestCase`.
+    const superclass = match[2].split(".").at(-1) ?? "";
+    if (!baseClasses.has(superclass)) {
+      continue;
+    }
+
+    // Protocols and a `where` clause can sit between the superclass and the body.
+    const bodyIndex = text.indexOf("{", match.index + match[0].length);
+    if (bodyIndex === -1) {
+      continue;
+    }
+
+    matches.push({
+      className: match[1],
+      declarationIndex: match.index,
+      bodyIndex: bodyIndex,
+    });
+  }
+
+  return matches;
+}
+
+/**
  * Get all ancestor paths of a childPath that are within the parentPath (including the parentPath).
  */
 function* getAncestorsPaths(options: { parentPath: string; childPath: string }): Generator<string> {
@@ -143,6 +205,7 @@ type TestItemContext = {
 
 export class TestingManager {
   controller: vscode.TestController;
+  private workspaceContext: WorkspaceContextService;
   private workspaceState: WorkspaceStateService;
   private progress: ProgressStatusBar;
   private execution: ExecutionScopeService;
@@ -172,22 +235,20 @@ export class TestingManager {
   // don't keep the items in memory if they are not used anymore
   readonly testItems = new WeakMap<vscode.TestItem, TestItemContext>();
 
-  // Root folder of the workspace (VSCode, not Xcode)
-  readonly workspacePath: string;
-
   constructor(options: {
+    workspaceContext: WorkspaceContextService;
     workspaceState: WorkspaceStateService;
     progress: ProgressStatusBar;
     execution: ExecutionScopeService;
     buildManager: BuildManager;
     destinations: DestinationsManager;
   }) {
+    this.workspaceContext = options.workspaceContext;
     this.workspaceState = options.workspaceState;
     this.progress = options.progress;
     this.execution = options.execution;
     this.buildManager = options.buildManager;
     this.destinations = options.destinations;
-    this.workspacePath = getWorkspacePath();
     this.controller = vscode.tests.createTestController("sweetpad", "SweetPad");
   }
 
@@ -294,18 +355,10 @@ export class TestingManager {
     }
 
     const text = document.getText();
+    const baseClasses = getTestBaseClasses();
 
-    // Regex to find classes inheriting from XCTestCase
-    const classRegex = /class\s+(\w+)\s*:\s*XCTestCase\s*\{/g;
-    // let classMatch;
-    while (true) {
-      const classMatch = classRegex.exec(text);
-      if (classMatch === null) {
-        break;
-      }
-      const className = classMatch[1];
-      const classStartIndex = classMatch.index + classMatch[0].length;
-      const classPosition = document.positionAt(classMatch.index);
+    for (const { className, declarationIndex, bodyIndex } of findTestClasses(text, baseClasses)) {
+      const classPosition = document.positionAt(declarationIndex);
 
       const classTestItem = this.createTestItem({
         id: className,
@@ -316,7 +369,7 @@ export class TestingManager {
       classTestItem.range = new vscode.Range(classPosition, classPosition);
       this.controller.items.add(classTestItem);
 
-      const classCode = extractCodeBlock(text, classStartIndex - 1); // Start from '{'
+      const classCode = extractCodeBlock(text, bodyIndex);
 
       if (classCode === null) {
         continue; // Could not find class code block
@@ -331,8 +384,7 @@ export class TestingManager {
           break;
         }
         const testName = funcMatch[1];
-        const testStartIndex = classStartIndex + funcMatch.index;
-        const position = document.positionAt(testStartIndex);
+        const position = document.positionAt(bodyIndex + funcMatch.index);
 
         const testItem = this.createTestItem({
           id: `${className}.${testName}`,
@@ -352,6 +404,7 @@ export class TestingManager {
    */
   async askTestingConfigurations(): Promise<{
     xcworkspace: string;
+    workspaceRoot: string;
     scheme: string;
     configuration: string;
     destination: Destination;
@@ -361,7 +414,12 @@ export class TestingManager {
 
     const xcworkspace = await askXcodeWorkspacePath({
       workspaceState: this.workspaceState,
+      workspaceContext: this.workspaceContext,
       buildManager: this.buildManager,
+    });
+    const workspaceRoot = getWorkspaceRoot({
+      xcworkspace: xcworkspace,
+      workspaceContext: this.workspaceContext,
     });
     const scheme = await askSchemeForTesting(this.progress, this.buildManager, {
       xcworkspace: xcworkspace,
@@ -371,6 +429,7 @@ export class TestingManager {
       xcworkspace: xcworkspace,
     });
     const buildSettings = await getBuildSettingsToAskDestination({
+      workspaceRoot: workspaceRoot,
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -379,6 +438,7 @@ export class TestingManager {
     const destination = await askDestinationToTestOn(this.destinations, buildSettings);
     return {
       xcworkspace: xcworkspace,
+      workspaceRoot: workspaceRoot,
       scheme: scheme,
       configuration: configuration,
       destination: destination,
@@ -389,11 +449,12 @@ export class TestingManager {
    * Execute separate command to build the project before running tests
    */
   async buildForTestingCommand() {
-    const { scheme, configuration, destination, xcworkspace } = await this.askTestingConfigurations();
+    const { scheme, configuration, destination, xcworkspace, workspaceRoot } = await this.askTestingConfigurations();
 
     // before testing we need to build the project to avoid runnning tests on old code or
     // building every time we run selected tests
     await this.buildForTesting({
+      workspaceRoot: workspaceRoot,
       destination: destination,
       scheme: scheme,
       configuration: configuration,
@@ -409,6 +470,7 @@ export class TestingManager {
     configuration: string;
     destination: Destination;
     xcworkspace: string;
+    workspaceRoot: string;
   }) {
     this.progress.updateText("Building for testing");
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
@@ -416,6 +478,7 @@ export class TestingManager {
     // todo: add xcodebeautify command to format output
 
     await runTask(this.execution, {
+      workspaceRoot: options.workspaceRoot,
       name: "sweetpad.build.build",
       lock: "sweetpad.build",
       terminateLocked: true,
@@ -436,7 +499,7 @@ export class TestingManager {
         if (workspaceType === "spm") {
           cwd = getSwiftPMDirectory(options.xcworkspace);
         } else if (workspaceType === "xcode") {
-          cwd = getWorkspacePath();
+          cwd = options.workspaceRoot;
           args.push("-workspace", options.xcworkspace);
         } else {
           assertUnreachable(workspaceType);
@@ -584,9 +647,9 @@ export class TestingManager {
    * from the Package.swift file. For some reason it doesn't use the target name
    * from xcode project
    */
-  async resolveSPMTestingTarget(options: { queue: vscode.TestItem[]; xcworkspace: string }) {
+  async resolveSPMTestingTarget(options: { queue: vscode.TestItem[]; xcworkspace: string; workspaceRoot: string }) {
     const { queue, xcworkspace: _xcworkspace } = options;
-    const workscePath = getWorkspacePath();
+    const workscePath = options.workspaceRoot;
 
     // Cache for resolved target names. Example:
     // - /folder1/folder2/Tests/MyAppTests -> ""
@@ -689,16 +752,18 @@ export class TestingManager {
     request: vscode.TestRunRequest;
     run: vscode.TestRun;
     xcworkspace: string;
+    workspaceRoot: string;
     destination: Destination;
     scheme: string;
     configuration: string;
     token: vscode.CancellationToken;
   }) {
-    const { xcworkspace, scheme, configuration, token, run, request } = options;
+    const { xcworkspace, workspaceRoot, scheme, configuration, token, run, request } = options;
 
     const queue = this.prepareQueueForRun(request);
 
     await this.resolveSPMTestingTarget({
+      workspaceRoot: workspaceRoot,
       queue: queue,
       xcworkspace: xcworkspace,
     });
@@ -727,6 +792,7 @@ export class TestingManager {
 
       if (test.id.includes(".")) {
         await this.runMethodTest({
+          workspaceRoot: workspaceRoot,
           run: run,
           methodTest: test,
           xcworkspace: xcworkspace,
@@ -737,6 +803,7 @@ export class TestingManager {
         });
       } else {
         await this.runClassTest({
+          workspaceRoot: workspaceRoot,
           run: run,
           classTest: test,
           scheme: scheme,
@@ -756,7 +823,7 @@ export class TestingManager {
   async runTestsWithoutBuilding(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
     const run = this.controller.createTestRun(request);
     try {
-      const { scheme, configuration, destination, xcworkspace } = await this.askTestingConfigurations();
+      const { scheme, configuration, destination, xcworkspace, workspaceRoot } = await this.askTestingConfigurations();
 
       // todo: add check if project is already built
 
@@ -765,6 +832,7 @@ export class TestingManager {
         run: run,
         request: request,
         xcworkspace: xcworkspace,
+        workspaceRoot: workspaceRoot,
         destination: destination,
         scheme: scheme,
         configuration: configuration,
@@ -781,11 +849,12 @@ export class TestingManager {
   async buildAndRunTests(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
     const run = this.controller.createTestRun(request);
     try {
-      const { scheme, configuration, destination, xcworkspace } = await this.askTestingConfigurations();
+      const { scheme, configuration, destination, xcworkspace, workspaceRoot } = await this.askTestingConfigurations();
 
       // before testing we need to build the project to avoid runnning tests on old code or
       // building every time we run selected tests
       await this.buildForTesting({
+        workspaceRoot: workspaceRoot,
         scheme: scheme,
         configuration: configuration,
         destination: destination,
@@ -796,6 +865,7 @@ export class TestingManager {
         run: run,
         request: request,
         xcworkspace: xcworkspace,
+        workspaceRoot: workspaceRoot,
         destination: destination,
         scheme: scheme,
         configuration: configuration,
@@ -812,6 +882,7 @@ export class TestingManager {
     scheme: string;
     configuration: string;
     xcworkspace: string;
+    workspaceRoot: string;
     destination: Destination;
     defaultTarget: string | null;
   }): Promise<void> {
@@ -835,6 +906,7 @@ export class TestingManager {
 
     try {
       await runTask(this.execution, {
+        workspaceRoot: options.workspaceRoot,
         name: "sweetpad.build.test",
         lock: "sweetpad.build",
         terminateLocked: true,
@@ -855,7 +927,7 @@ export class TestingManager {
           if (workspaceType === "spm") {
             cwd = getSwiftPMDirectory(options.xcworkspace);
           } else if (workspaceType === "xcode") {
-            cwd = getWorkspacePath();
+            cwd = options.workspaceRoot;
             args.push("-workspace", options.xcworkspace);
           } else {
             assertUnreachable(workspaceType);
@@ -909,6 +981,7 @@ export class TestingManager {
     run: vscode.TestRun;
     methodTest: vscode.TestItem;
     xcworkspace: string;
+    workspaceRoot: string;
     scheme: string;
     configuration: string;
     destination: Destination;
@@ -933,6 +1006,7 @@ export class TestingManager {
 
     // Run "xcodebuild" command as a task to see the test output
     await runTask(this.execution, {
+      workspaceRoot: options.workspaceRoot,
       name: "sweetpad.build.test",
       lock: "sweetpad.build",
       terminateLocked: true,
@@ -954,7 +1028,7 @@ export class TestingManager {
           if (workspaceType === "spm") {
             cwd = getSwiftPMDirectory(options.xcworkspace);
           } else if (workspaceType === "xcode") {
-            cwd = getWorkspacePath();
+            cwd = options.workspaceRoot;
             args.push("-workspace", options.xcworkspace);
           } else {
             assertUnreachable(workspaceType);

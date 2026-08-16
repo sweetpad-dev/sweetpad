@@ -49,12 +49,12 @@ export async function openTerminalPanel() {
   vscode.window.terminals.at(-1)?.show();
 }
 
-export async function refreshShellEnvCommand(_deps: AppDeps) {
+export async function refreshShellEnvCommand(deps: AppDeps) {
   // Re-detect the active Xcode too: the in-process resolver memoizes the
   // `xcode-select -p` result for the session, so without this an
   // `xcode-select -s` switch isn't observed until VS Code restarts.
   sweetpadLib.flushXcodeCache();
-  await refreshShellEnv();
+  await refreshShellEnv(deps.workspaceContext.root);
 }
 
 export async function copyServerNameCommand(deps: AppDeps): Promise<void> {

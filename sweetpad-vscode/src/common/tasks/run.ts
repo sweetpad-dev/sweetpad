@@ -23,6 +23,8 @@ export async function runTask<TMetadata>(
     metadata?: TMetadata;
     terminateLocked: boolean;
     callback: (terminal: TaskTerminal) => Promise<void>;
+    /** Where a command runs when its spec does not name a directory of its own. */
+    workspaceRoot: string;
   },
 ): Promise<void> {
   const name = getTaskExecutorName();

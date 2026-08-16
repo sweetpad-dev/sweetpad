@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 import * as sweetpadLib from "@sweetpad/native";
@@ -31,6 +32,7 @@ import { commonLogger } from "../common/logger";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { TaskTerminal } from "../common/tasks/types";
 import { assertUnreachable } from "../common/types";
+import type { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationPlatform } from "../destination/constants";
 import type { DestinationsManager } from "../destination/manager";
@@ -95,6 +97,7 @@ export async function askDestinationToRunOn(
   progress: ProgressStatusBar,
   destinationsManager: DestinationsManager,
   options: {
+    workspaceRoot: string;
     scheme: string;
     configuration: string;
     sdk: string | undefined;
@@ -120,6 +123,7 @@ export async function askDestinationToRunOn(
   // We can remove platforms that are not supported by the build settings
   // WARNING: if want to avoid refetching build settings, move this logic to build manager or build context (not exist yet)
   const buildSettings = await getBuildSettingsToAskDestination({
+    workspaceRoot: options.workspaceRoot,
     scheme: options.scheme,
     configuration: options.configuration,
     sdk: options.sdk,
@@ -237,14 +241,34 @@ export async function askSchemeForBuild(
 }
 
 /**
- * It's absolute path to current opened workspace
+ * Absolute paths of all VS Code workspace folders (a multi-root workspace has several).
  */
-export function getWorkspacePath(): string {
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
-  if (!workspaceFolder) {
-    throw new ExtensionError("No workspace folder found");
-  }
-  return workspaceFolder;
+export function getWorkspaceFolderPaths(): string[] {
+  return vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
+}
+
+/**
+ * The VS Code workspace folder that contains the given path, if any.
+ */
+export function getWorkspaceFolderForPath(fsPath: string): string | undefined {
+  return vscode.workspace.getWorkspaceFolder(vscode.Uri.file(fsPath))?.uri.fsPath;
+}
+
+/**
+ * VS Code workspace folders whose root holds at least one of the given files, in workspace folder
+ * order. Callers that act on a marker file need the folder holding it, not just whether one exists:
+ * a generator has to run where its spec is, and a `RelativePattern` built from a workspace folder
+ * reuses the watcher VS Code already runs for it.
+ */
+export async function workspaceFoldersContaining(...fileNames: string[]): Promise<vscode.WorkspaceFolder[]> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const matches = await Promise.all(
+    folders.map(async (folder) => {
+      const found = await Promise.all(fileNames.map((name) => isFileExists(path.join(folder.uri.fsPath, name))));
+      return found.some(Boolean) ? folder : undefined;
+    }),
+  );
+  return matches.filter((folder) => folder !== undefined);
 }
 
 /**
@@ -278,7 +302,7 @@ export async function prepareBundleDir(vscodeContext: vscode.ExtensionContext, s
   return bundleDir;
 }
 
-export function prepareDerivedDataPath(): string | null {
+export function prepareDerivedDataPath(options: { workspaceRoot: string }): string | null {
   const configPath = getWorkspaceConfig("build.derivedDataPath");
 
   // No config -> path will be provided by xcodebuild
@@ -290,46 +314,99 @@ export function prepareDerivedDataPath(): string | null {
   let derivedDataPath: string = configPath;
   if (!path.isAbsolute(configPath)) {
     // Example: .biuld/ -> /Users/username/Projects/project/.build
-    derivedDataPath = path.join(getWorkspacePath(), configPath);
+    derivedDataPath = path.join(options.workspaceRoot, configPath);
   }
 
   return derivedDataPath;
 }
 
+/**
+ * The xcworkspace SweetPad currently targets: the configured path if `build.xcodeWorkspacePath` is
+ * set, otherwise the selection cached in workspace state.
+ *
+ * Pure — neither the active folder nor the persisted selection moves. Use it to report what is
+ * selected; use `activateCurrentXcodeWorkspacePath` when about to act on the project.
+ */
 export function getCurrentXcodeWorkspacePath(workspaceState: WorkspaceStateService): string | undefined {
   const configPath = getWorkspaceConfig("build.xcodeWorkspacePath");
   if (configPath) {
-    workspaceState.update("build.xcodeWorkspacePath", undefined);
     if (path.isAbsolute(configPath)) {
       return configPath;
     }
-    return path.join(getWorkspacePath(), configPath);
+    // The first folder is the anchor `getWorkspaceRelativePath` writes against, so joining there
+    // names the project that was selected. The other folders are tried only for a hand-written
+    // setting, which carries no anchor.
+    const anchor = getWorkspaceFolderPaths()[0];
+    if (!anchor) {
+      throw new ExtensionError("No workspace folder found");
+    }
+    const anchoredCandidate = path.join(anchor, configPath);
+    const candidates = [anchoredCandidate, ...getWorkspaceFolderPaths().map((folder) => path.join(folder, configPath))];
+    return candidates.find((candidate) => existsSync(candidate)) ?? anchoredCandidate;
   }
 
-  const cachedPath = workspaceState.get("build.xcodeWorkspacePath");
-  if (cachedPath) {
-    return cachedPath;
+  return workspaceState.get("build.xcodeWorkspacePath");
+}
+
+/**
+ * The same lookup, and make its result current: the folder holding it becomes the one every
+ * "workspace root" lookup resolves against, and subscribers to `WorkspaceContextService.onDidChange`
+ * rebuild against it. Call this from paths that are about to act on the project.
+ */
+export function activateCurrentXcodeWorkspacePath(options: {
+  workspaceState: WorkspaceStateService;
+  workspaceContext: WorkspaceContextService;
+}): string | undefined {
+  const workspaceState = options.workspaceState;
+  // A configured path outranks the cached selection, so drop the cache it supersedes.
+  if (getWorkspaceConfig("build.xcodeWorkspacePath")) {
+    workspaceState.update("build.xcodeWorkspacePath", undefined);
   }
 
-  return undefined;
+  const current = getCurrentXcodeWorkspacePath(workspaceState);
+  if (current) {
+    options.workspaceContext.setActiveFolder(current);
+  }
+  return current;
+}
+
+/**
+ * The folder to run the given project in.
+ *
+ * Resolve this once, at the top of an operation, and thread the value: it is fixed by the project,
+ * while the active folder moves whenever another project is selected — another window's `sweetpad`
+ * invocation, a scheme refresh, a folder added to the window. Reading it twice across a build can
+ * otherwise send the build server config to one folder while xcodebuild runs in another.
+ */
+export function getWorkspaceRoot(options: { xcworkspace: string; workspaceContext: WorkspaceContextService }): string {
+  const folder = getWorkspaceFolderForPath(options.xcworkspace);
+  if (folder) {
+    return folder;
+  }
+  // A project outside every workspace folder — a git worktree beside the repo — has no folder of
+  // its own to run in, so it falls back to the one SweetPad is on.
+  return options.workspaceContext.root;
 }
 
 export async function askXcodeWorkspacePath(options: {
   workspaceState: WorkspaceStateService;
+  workspaceContext: WorkspaceContextService;
   buildManager: BuildManager;
 }): Promise<string> {
-  const current = getCurrentXcodeWorkspacePath(options.workspaceState);
-  if (current) {
-    return current;
-  }
-
-  const selectedPath = await selectXcodeWorkspace({
-    autoselect: true,
+  let xcworkspace = activateCurrentXcodeWorkspacePath({
+    workspaceState: options.workspaceState,
+    workspaceContext: options.workspaceContext,
   });
 
-  options.workspaceState.update("build.xcodeWorkspacePath", selectedPath);
-  options.buildManager.refreshSchemes();
-  return selectedPath;
+  if (!xcworkspace) {
+    xcworkspace = await selectXcodeWorkspace({
+      autoselect: true,
+      workspaceContext: options.workspaceContext,
+    });
+    options.workspaceState.update("build.xcodeWorkspacePath", xcworkspace);
+    options.buildManager.refreshSchemes();
+  }
+  return xcworkspace;
 }
 
 export async function askConfiguration(
@@ -465,11 +542,13 @@ export function notifyCustomXcodebuildReadOnlyScope(workspaceState: WorkspaceSta
 export async function refreshBuildServer(options: {
   xcworkspace: string;
   scheme: string;
+  workspaceRoot: string;
   forceRestartLSP?: boolean;
 }): Promise<void> {
   await generateBuildServerConfig({
     xcworkspace: options.xcworkspace,
     scheme: options.scheme,
+    workspaceRoot: options.workspaceRoot,
   });
   await restartSwiftLSP({ force: options.forceRestartLSP });
 }
@@ -490,14 +569,16 @@ export async function refreshBuildServer(options: {
  * rewritten. One that resolves is somebody aiming us at a server deliberately,
  * and it keeps working.
  */
-export async function repairStaleBuildServerConfig(): Promise<void> {
+export async function repairStaleBuildServerConfig(options: { workspaceRoot: string }): Promise<void> {
   if (getBuildServerProvider() !== "sweetpad") {
     return;
   }
 
   let config: { name?: string; argv?: string[] } | undefined;
   try {
-    config = await readJsonFile<{ name?: string; argv?: string[] }>(path.join(getWorkspacePath(), "buildServer.json"));
+    config = await readJsonFile<{ name?: string; argv?: string[] }>(
+      path.join(options.workspaceRoot, "buildServer.json"),
+    );
   } catch {
     // No workspace, or no readable config. Writing one from nothing is the
     // build's job; a repair only fixes what is already here.
@@ -505,7 +586,7 @@ export async function repairStaleBuildServerConfig(): Promise<void> {
   }
 
   const launcher = config?.argv?.[0];
-  if (!isExtensionManagedBuildServerConfig(config, getWorkspacePath()) || launcher === undefined) {
+  if (!isExtensionManagedBuildServerConfig(config, options.workspaceRoot) || launcher === undefined) {
     return;
   }
   if (await isFileExists(launcher)) {
@@ -518,7 +599,7 @@ export async function repairStaleBuildServerConfig(): Promise<void> {
     return;
   }
 
-  await generateSweetpadBuildServerConfig();
+  await generateSweetpadBuildServerConfig({ workspaceRoot: options.workspaceRoot });
   await restartSwiftLSP();
 }
 
@@ -528,6 +609,7 @@ export async function repairStaleBuildServerConfig(): Promise<void> {
 export async function generateBuildServerConfigOnBuild(options: {
   scheme: string;
   xcworkspace: string;
+  workspaceRoot: string;
   workspaceState: WorkspaceStateService;
 }): Promise<void> {
   if (!isAutoGenerateBuildServerConfigEnabled()) {
@@ -551,7 +633,7 @@ export async function generateBuildServerConfigOnBuild(options: {
     let config: { name?: string; argv?: string[] } | undefined;
     try {
       config = await readJsonFile<{ name?: string; argv?: string[] }>(
-        path.join(getWorkspacePath(), "buildServer.json"),
+        path.join(options.workspaceRoot, "buildServer.json"),
       );
     } catch {
       // missing / invalid → (re)generate below
@@ -564,7 +646,7 @@ export async function generateBuildServerConfigOnBuild(options: {
     // made, and swapping ours in is not this function's call. A launcher that
     // has gone missing is broken rather than chosen, so it falls through.
     const isOurs = isSweetpadBuildServerConfig(config);
-    const isManagedHere = isExtensionManagedBuildServerConfig(config, getWorkspacePath());
+    const isManagedHere = isExtensionManagedBuildServerConfig(config, options.workspaceRoot);
     if (isOurs && !isManagedHere && launcher !== undefined && (await isFileExists(launcher))) {
       return;
     }
@@ -579,7 +661,11 @@ export async function generateBuildServerConfigOnBuild(options: {
 
     const isConfigValid = isManagedHere && launcher === cli;
     if (!isConfigValid) {
-      await refreshBuildServer({ xcworkspace: options.xcworkspace, scheme: options.scheme });
+      await refreshBuildServer({
+        xcworkspace: options.xcworkspace,
+        scheme: options.scheme,
+        workspaceRoot: options.workspaceRoot,
+      });
     }
     return;
   }
@@ -593,7 +679,7 @@ export async function generateBuildServerConfigOnBuild(options: {
 
     let config: XBSConfig | undefined = undefined;
     try {
-      config = await readXBSConfig();
+      config = await readXBSConfig({ workspaceRoot: options.workspaceRoot });
     } catch (e) {
       // regenerate config in case of errors like JSON invalid or file does not exist
     }
@@ -614,6 +700,7 @@ export async function generateBuildServerConfigOnBuild(options: {
       await refreshBuildServer({
         xcworkspace: options.xcworkspace,
         scheme: options.scheme,
+        workspaceRoot: options.workspaceRoot,
       });
     }
     return;
@@ -622,27 +709,40 @@ export async function generateBuildServerConfigOnBuild(options: {
 }
 
 /**
- * Detect xcode workspace in the given directory
+ * Detect xcode workspaces in all VS Code workspace folders
  */
 export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
-  const workspace = getWorkspacePath();
+  const folders = getWorkspaceFolderPaths();
+  if (folders.length === 0) {
+    throw new ExtensionError("No workspace folder found");
+  }
 
-  // Get all files that end with .xcworkspace or Package.swift (4 depth)
-  const paths = await findFilesRecursive({
-    directory: workspace,
-    depth: 4,
-    matcher: (file) => {
-      return file.name.endsWith(".xcworkspace") || file.name === "Package.swift";
-    },
-  });
-  return paths;
+  // Get all files that end with .xcworkspace or Package.swift (4 depth) in every folder
+  const results = await Promise.all(
+    folders.map((folder) =>
+      findFilesRecursive({
+        directory: folder,
+        depth: 4,
+        matcher: (file) => {
+          return file.name.endsWith(".xcworkspace") || file.name === "Package.swift";
+        },
+      }),
+    ),
+  );
+  // Workspace folders may nest (both "/repo" and "/repo/ios" can be added), in which case the same
+  // project is found by more than one scan. Collapse those so each project is offered once.
+  return [...new Set(results.flat())];
 }
 
 /**
- * Find xcode workspace in the given directory and ask user to select it
+ * Find xcode workspaces across all VS Code workspace folders and ask user to select one
  */
-export async function selectXcodeWorkspace(options: { autoselect: boolean }): Promise<string> {
-  const workspacePath = getWorkspacePath();
+export async function selectXcodeWorkspace(options: {
+  autoselect: boolean;
+  workspaceContext: WorkspaceContextService;
+}): Promise<string> {
+  const folders = getWorkspaceFolderPaths();
+  const isMultiRoot = folders.length > 1;
 
   // Get all files that end with .xcworkspace (4 depth) and Package.swift files
   const paths = await detectXcodeWorkspacesPaths();
@@ -651,7 +751,7 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
   if (paths.length === 0) {
     throw new ExtensionError("No xcode workspaces or SPM packages found", {
       context: {
-        cwd: workspacePath,
+        cwd: folders.join(", "),
       },
     });
   }
@@ -661,47 +761,65 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
     const selectedPath = paths[0];
     const projectType = detectWorkspaceType(selectedPath);
     commonLogger.log("Project was detected", {
-      workspace: workspacePath,
+      workspace: getWorkspaceFolderForPath(selectedPath) ?? folders[0],
       path: selectedPath,
       projectType: projectType,
     });
+    options.workspaceContext.setActiveFolder(selectedPath);
     return selectedPath;
   }
 
-  const podfilePath = path.join(workspacePath, "Podfile");
-  const isCocoaProject = await isFileExists(podfilePath);
+  // Which folders are CocoaPods projects (Podfile in their root)?
+  const cocoaPodsRoots = new Set<string>();
+  for (const folder of folders) {
+    if (await isFileExists(path.join(folder, "Podfile"))) {
+      cocoaPodsRoots.add(folder);
+    }
+  }
+
+  // Each project is shown relative to its own workspace folder, so pair it with that folder before
+  // sorting: the depth that decides the order is the depth the label displays.
+  const candidates = paths.map((xwPath) => {
+    const rootDir = getWorkspaceFolderForPath(xwPath) ?? folders[0];
+    return { xwPath: xwPath, rootDir: rootDir, relativePath: path.relative(rootDir, xwPath) };
+  });
 
   // More then one, ask user to select
   const selected = await showQuickPick({
     title: "Select Xcode workspace or SPM package",
-    items: paths
+    items: candidates
       .toSorted((a, b) => {
         // Sort by depth to show less nested paths first
-        const aDepth = a.split(path.sep).length;
-        const bDepth = b.split(path.sep).length;
+        const aDepth = a.relativePath.split(path.sep).length;
+        const bDepth = b.relativePath.split(path.sep).length;
         return aDepth - bDepth;
       })
-      .map((xwPath) => {
-        // show only relative path, to make it more readable
-        const relativePath = path.relative(workspacePath, xwPath);
+      .map(({ xwPath, rootDir, relativePath }) => {
         const parentDir = path.dirname(relativePath);
 
         const isInRootDir = parentDir === ".";
-        const isCocoaPods = isInRootDir && isCocoaProject;
+        const isCocoaPods = isInRootDir && cocoaPodsRoots.has(rootDir);
         const isSPMPackage = detectWorkspaceType(xwPath) === "spm";
 
-        let detail: string | undefined;
+        let projectType: string | undefined;
         if (isSPMPackage) {
-          detail = "Swift Package Manager";
+          projectType = "Swift Package Manager";
         } else if (isCocoaPods && isInRootDir) {
-          detail = "CocoaPods (recommended)";
+          projectType = "CocoaPods (recommended)";
         } else if (!isInRootDir && parentDir.endsWith(".xcodeproj")) {
-          detail = "Xcode";
+          projectType = "Xcode";
         }
         // todo: add workspace with multiple projects
 
+        // Folder names repeat across roots (two checkouts of one repo are both "MyApp"), so the
+        // label and the folder badge alone can name two different projects identically. The full
+        // path is the only value guaranteed to tell them apart.
+        const detail = isMultiRoot ? [projectType, xwPath].filter(Boolean).join(" · ") : projectType;
+
         return {
           label: relativePath,
+          // In multi-root workspaces show which folder the project belongs to
+          description: isMultiRoot ? path.basename(rootDir) : undefined,
           detail: detail,
           context: {
             path: xwPath,
@@ -709,6 +827,7 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
         };
       }),
   });
+  options.workspaceContext.setActiveFolder(selected.context.path);
   return selected.context.path;
 }
 
@@ -1023,12 +1142,12 @@ export type GitWorktree = {
  *   HEAD 9876543
  *   detached
  */
-export async function detectGitWorktrees(): Promise<GitWorktree[]> {
+export async function detectGitWorktrees(options: { workspaceRoot: string }): Promise<GitWorktree[]> {
   let output: string;
   try {
     // Use execa directly to avoid circular dependency with common/exec.ts
     const result = await execa("git", ["worktree", "list", "--porcelain"], {
-      cwd: getWorkspacePath(),
+      cwd: options.workspaceRoot,
     });
     output = result.stdout;
   } catch {

@@ -50,6 +50,15 @@ pub fn projects_index_file() -> Option<PathBuf> {
 /// the extension's realpath'd keys), returning the first ancestor present in
 /// `projects.json`. This is the shared discovery primitive: the `vscode` client
 /// reads the entry's control socket, the BSP server its `bspConfig` path.
+///
+/// One field of the entry is outside that contract: `control.workspacePath` is
+/// diagnostic only. It records the folder the server started for, which is not
+/// the project the window is on — in a multi-root workspace the two diverge the
+/// moment the user selects a project in another folder. It also does not
+/// identify the key it was found under, because a window publishes one identical
+/// entry under every one of its workspace folders so the walk-up above succeeds
+/// from any of them. Ask the running server (`meta.workspacePath`) when the live
+/// answer is what's wanted.
 #[must_use]
 pub fn lookup_index_entry(start: &Path) -> Option<Value> {
     let text = std::fs::read_to_string(projects_index_file()?).ok()?;

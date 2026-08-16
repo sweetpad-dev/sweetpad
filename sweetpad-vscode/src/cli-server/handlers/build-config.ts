@@ -1,4 +1,4 @@
-import { getCurrentXcodeWorkspacePath } from "../../build/utils";
+import { activateCurrentXcodeWorkspacePath } from "../../build/utils";
 import { getBuildConfigurations } from "../../common/cli/scripts";
 import { methodHint } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
@@ -6,7 +6,10 @@ import { ERROR_CODES, type ConfigurationEntity } from "../types";
 import type { HandlerFn, RpcContext } from "./context";
 
 async function loadConfigurations(ctx: RpcContext): Promise<string[]> {
-  const xcworkspace = getCurrentXcodeWorkspacePath(ctx.workspaceState);
+  const xcworkspace = activateCurrentXcodeWorkspacePath({
+    workspaceState: ctx.workspaceState,
+    workspaceContext: ctx.workspaceContext,
+  });
   if (!xcworkspace) {
     throw new SweetpadRpcError(ERROR_CODES.NO_WORKSPACE, "No Xcode workspace detected for this folder.");
   }

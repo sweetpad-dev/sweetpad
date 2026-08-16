@@ -4,7 +4,8 @@ import * as path from "node:path";
 
 import type * as vscode from "vscode";
 
-import { getWorkspacePath, prepareStoragePath } from "../build/utils";
+import { getWorkspaceFolderPaths, prepareStoragePath } from "../build/utils";
+import { ExtensionError } from "./errors";
 
 /**
  * Find files or directories in a given directory
@@ -41,7 +42,15 @@ export async function findFilesRecursive(options: {
   const ignore = options.ignore ?? [];
   const depth = options.depth ?? 0;
 
-  const files = await fs.readdir(options.directory, { withFileTypes: true });
+  // A directory that can't be read contributes no results rather than failing the whole scan. This
+  // covers both a workspace folder that no longer exists (a stale entry in a .code-workspace, an
+  // unmounted volume) and an unreadable subdirectory deeper in the tree.
+  let files: Dirent[];
+  try {
+    files = await fs.readdir(options.directory, { withFileTypes: true });
+  } catch {
+    return [];
+  }
   const matchedFiles: string[] = [];
 
   for (const file of files) {
@@ -105,8 +114,17 @@ export async function readJsonFile<T = unknown>(filePath: string): Promise<T> {
 }
 
 export function getWorkspaceRelativePath(filePath: string): string {
-  const workspacePath = getWorkspacePath();
-  return path.relative(workspacePath, filePath);
+  // Anchored to the first workspace folder, which is the one fixed point every reader agrees on:
+  // `getCurrentXcodeWorkspacePath` resolves a relative setting by joining it onto each folder in
+  // turn and taking the first hit, so a project in another folder has to keep its
+  // "../other-folder/" prefix to name exactly one file. Anchoring to the active folder, or to the
+  // file's own folder, drops that prefix, and then two folders holding the same layout — two
+  // checkouts of one repo — produce the same string and resolve back to whichever comes first.
+  const anchor = getWorkspaceFolderPaths()[0];
+  if (!anchor) {
+    throw new ExtensionError("No workspace folder found");
+  }
+  return path.relative(anchor, filePath);
 }
 
 export async function tempFilePath(

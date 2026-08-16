@@ -5,10 +5,10 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { resolveInjectionDylib } from "../build/hot-reload.js";
-import { getWorkspacePath } from "../build/utils.js";
 import { ExtensionError } from "../common/errors.js";
 import { exec } from "../common/exec.js";
 import { commonLogger } from "../common/logger.js";
+import type { WorkspaceContextService } from "../common/workspace-context.js";
 import type { WorkspaceStateService } from "../common/workspace-state.js";
 import type { DestinationsManager } from "../destination/manager.js";
 import type { ServeSimManager } from "../simulators/serve-sim.js";
@@ -38,15 +38,18 @@ type Appearance = (typeof VARIANT_APPEARANCES)[number];
  * `scaffold` integration; it can only be exercised on a Mac.
  */
 export class PreviewHostManager {
+  private readonly workspaceContext: WorkspaceContextService;
   private readonly destinationsManager: DestinationsManager;
   private readonly serveSimManager: ServeSimManager;
   private readonly workspaceState: WorkspaceStateService;
 
   constructor(options: {
+    workspaceContext: WorkspaceContextService;
     destinationsManager: DestinationsManager;
     serveSimManager: ServeSimManager;
     workspaceState: WorkspaceStateService;
   }) {
+    this.workspaceContext = options.workspaceContext;
     this.destinationsManager = options.destinationsManager;
     this.serveSimManager = options.serveSimManager;
     this.workspaceState = options.workspaceState;
@@ -86,6 +89,7 @@ export class PreviewHostManager {
       await exec({
         command: "xcrun",
         args: ["simctl", "io", simulator.udid, "screenshot", file],
+        cwd: null,
       });
       shots.push(file);
     }
@@ -97,7 +101,7 @@ export class PreviewHostManager {
    * instructions. Returns the path to the generated file.
    */
   async scaffold(): Promise<vscode.Uri> {
-    const root = getWorkspacePath();
+    const root = this.workspaceContext.root;
     const target = path.join(root, "SweetPadPreviewHost.swift");
     if (!(await pathExists(target))) {
       await fs.writeFile(target, PREVIEW_HOST_BOOTSTRAP, "utf-8");
@@ -168,7 +172,7 @@ export class PreviewHostManager {
     const dylib = resolveInjectionDylib("iOSSimulator");
     if (dylib) {
       env.SIMCTL_CHILD_DYLD_INSERT_LIBRARIES = dylib;
-      env.SIMCTL_CHILD_INJECTION_PROJECT_ROOT = getWorkspacePath();
+      env.SIMCTL_CHILD_INJECTION_PROJECT_ROOT = this.workspaceContext.root;
     }
 
     try {
@@ -176,6 +180,7 @@ export class PreviewHostManager {
         command: "xcrun",
         args: ["simctl", "launch", "--terminate-running-process", udid, bundleId],
         env: env,
+        cwd: null,
       });
     } catch (error) {
       commonLogger.error("Failed to launch preview host", { bundleId: bundleId, error: error });

@@ -86,6 +86,7 @@ export async function listDevices(vscodeContext: vscode.ExtensionContext): Promi
   const devicesStdout = await exec({
     command: "xcrun",
     args: ["devicectl", "list", "devices", "--json-output", tmpPath.path, "--timeout", "10"],
+    cwd: null,
   });
   commonLogger.debug("Stdout devicectl list devices", { stdout: devicesStdout });
 
@@ -116,6 +117,7 @@ export async function getRunningProcesses(
   await exec({
     command: "xcrun",
     args: ["devicectl", "device", "info", "processes", "-d", options.deviceId, "--json-output", tmpPath.path],
+    cwd: null,
   });
 
   return await readJsonFile<DeviceCtlProcessResult>(tmpPath.path);
@@ -126,5 +128,6 @@ export async function pairDevice(options: { deviceId: string }): Promise<void> {
   await exec({
     command: "xcrun",
     args: ["devicectl", "manage", "pair", "--device", options.deviceId],
+    cwd: null,
   });
 }

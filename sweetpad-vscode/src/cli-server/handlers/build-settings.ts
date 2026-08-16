@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-import { getCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
+import { activateCurrentXcodeWorkspacePath, getWorkspaceRoot, prepareDerivedDataPath } from "../../build/utils";
 import { getBuildSettingsList, type XcodeBuildSettings } from "../../common/cli/scripts";
 import { methodHint } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
@@ -17,12 +17,23 @@ async function loadSettings(params: GetParams, ctx: RpcContext): Promise<XcodeBu
     });
   }
   const configuration = params?.configuration ?? ctx.buildManager.getDefaultConfigurationForBuild() ?? "Debug";
-  const xcworkspace = params?.xcworkspace ?? getCurrentXcodeWorkspacePath(ctx.workspaceState);
+  const xcworkspace =
+    params?.xcworkspace ??
+    activateCurrentXcodeWorkspacePath({ workspaceState: ctx.workspaceState, workspaceContext: ctx.workspaceContext });
   if (!xcworkspace) {
     throw new SweetpadRpcError(ERROR_CODES.NO_WORKSPACE, "No Xcode workspace detected for this folder.");
   }
+  // A caller-supplied `xcworkspace` skips the activation above, so the active folder can name a
+  // different project than this one — resolve the root from the project instead.
+  const workspaceRoot = getWorkspaceRoot({ xcworkspace, workspaceContext: ctx.workspaceContext });
   try {
-    return await getBuildSettingsList({ scheme, configuration, sdk: params?.sdk, xcworkspace });
+    return await getBuildSettingsList({
+      workspaceRoot,
+      scheme,
+      configuration,
+      sdk: params?.sdk,
+      xcworkspace,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new SweetpadRpcError(ERROR_CODES.BUILD_SETTINGS_FAILED, message);
@@ -57,8 +68,8 @@ export const appPathFind: HandlerFn<GetParams, { appPath: string; target: string
   );
 };
 
-export const derivedDataPath: HandlerFn<unknown, { derivedDataPath: string | null }> = () => {
-  return { derivedDataPath: prepareDerivedDataPath() };
+export const derivedDataPath: HandlerFn<unknown, { derivedDataPath: string | null }> = (_params, ctx) => {
+  return { derivedDataPath: prepareDerivedDataPath({ workspaceRoot: ctx.workspacePath }) };
 };
 
 export const bundleIdGet: HandlerFn<GetParams, { bundleIdentifier: string; target: string }> = async (params, ctx) => {

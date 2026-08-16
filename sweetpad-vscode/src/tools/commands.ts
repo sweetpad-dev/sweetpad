@@ -32,6 +32,7 @@ export async function installToolCommand(deps: AppDeps, item?: ToolTreeItem | st
 
   deps.progressStatusBar.updateText("Installing tool");
   await runTask(deps.execution, {
+    workspaceRoot: deps.workspaceContext.root,
     name: "Install Tool",
     error: "Error installing tool",
     terminateLocked: false,

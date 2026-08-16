@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import type { Mock } from "vitest";
 
-import { getWorkspacePath } from "../build/utils";
+import { getWorkspaceFolderPaths } from "../build/utils";
 import { getWorkspaceConfig, isWorkspaceConfigSetByUser } from "../common/config";
 import { getBuildServerProvider, isPreservingForeignBuildServer, isSweetpadBuildServerActive } from "./commands";
 import { getBspConfigFile } from "./paths";
@@ -20,11 +20,11 @@ vi.mock("../common/config", () => ({
   isWorkspaceConfigSetByUser: vi.fn(),
   updateWorkspaceConfig: vi.fn(),
 }));
-vi.mock("../build/utils", () => ({ getWorkspacePath: vi.fn() }));
+vi.mock("../build/utils", () => ({ getWorkspaceFolderPaths: vi.fn() }));
 
 const mockConfig = getWorkspaceConfig as Mock;
 const mockSetByUser = isWorkspaceConfigSetByUser as Mock;
-const mockWorkspacePath = getWorkspacePath as Mock;
+const mockWorkspaceFolders = getWorkspaceFolderPaths as Mock;
 
 /**
  * Nobody has chosen a provider. VS Code still hands back the default this
@@ -51,7 +51,7 @@ function writeBuildServerConfig(contents: string): void {
 beforeEach(() => {
   vi.resetAllMocks();
   workspace = mkdtempSync(path.join(os.tmpdir(), "sweetpad-bsp-"));
-  mockWorkspacePath.mockReturnValue(workspace);
+  mockWorkspaceFolders.mockReturnValue([workspace]);
 });
 
 afterEach(() => {
@@ -111,11 +111,24 @@ describe("getBuildServerProvider", () => {
 
     it("survives having no workspace at all", () => {
       noChoiceMade();
-      mockWorkspacePath.mockImplementation(() => {
-        throw new Error("no workspace open");
-      });
+      mockWorkspaceFolders.mockReturnValue([]);
 
       expect(getBuildServerProvider()).toBe("sweetpad");
+    });
+
+    it("defers to another server's config in any folder of the window", () => {
+      noChoiceMade();
+      const second = mkdtempSync(path.join(os.tmpdir(), "sweetpad-bsp-"));
+      mockWorkspaceFolders.mockReturnValue([workspace, second]);
+      writeFileSync(path.join(second, "buildServer.json"), JSON.stringify({ name: "xcode build server" }), "utf8");
+
+      try {
+        // One setting covers every folder, so a setup in the folder nobody is on is still a setup
+        // the next build would otherwise replace.
+        expect(getBuildServerProvider()).toBe("xcode-build-server");
+      } finally {
+        rmSync(second, { recursive: true, force: true });
+      }
     });
   });
 

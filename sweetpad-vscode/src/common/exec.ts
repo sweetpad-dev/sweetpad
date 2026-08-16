@@ -1,6 +1,5 @@
 import { execa } from "execa";
 
-import { getWorkspacePath } from "../build/utils";
 import { ExecBaseError, ExecError } from "./errors";
 import { prepareEnvVars } from "./helpers";
 import { commonLogger } from "./logger";
@@ -9,10 +8,15 @@ import { getShellEnv } from "./tasks/shell-env";
 export async function exec(options: {
   command: string;
   args: string[];
-  cwd?: string;
+  /**
+   * Required, so the caller that knows which project it means has to say. `null` for commands
+   * whose result cannot depend on where they run — `which`, `xcode-select -p`, `xcrun simctl
+   * list` — which then inherit the extension host's directory instead of being handed one.
+   */
+  cwd: string | null;
   env?: { [key: string]: string | null };
 }): Promise<string> {
-  const cwd = options.cwd ?? getWorkspacePath();
+  const cwd = options.cwd;
 
   commonLogger.debug("Executing command", {
     command: options.command,
@@ -25,13 +29,13 @@ export async function exec(options: {
   // xcodegen, tuist, mise/asdf shims, …) are found on PATH the same way they are
   // in Terminal. getShellEnv() is cached and warmed at activation; this awaits
   // the warm-up promise if the first exec() lands before it resolves.
-  const shellEnv = await getShellEnv();
+  const shellEnv = await getShellEnv(cwd);
   const env = { ...shellEnv, ...prepareEnvVars(options.env) };
 
   let result: any;
   try {
     result = await execa(options.command, options.args, {
-      cwd: cwd,
+      ...(cwd !== null && { cwd: cwd }),
       env: env,
       extendEnv: false,
     });

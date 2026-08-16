@@ -4,6 +4,7 @@ import { getXcodeVersionInstalled } from "../common/cli/scripts.js";
 import { getWorkspaceConfig } from "../common/config.js";
 import { exec } from "../common/exec.js";
 import { Timer } from "../common/timer.js";
+import type { WorkspaceContextService } from "../common/workspace-context.js";
 import { formatLogger } from "./logger.js";
 
 /**
@@ -27,6 +28,11 @@ export class SwiftFormattingProvider
   implements vscode.DocumentFormattingEditProvider, vscode.DocumentRangeFormattingEditProvider
 {
   private isBundledSwiftFormat: boolean | undefined = undefined;
+  private readonly workspaceContext: WorkspaceContextService;
+
+  constructor(options: { workspaceContext: WorkspaceContextService }) {
+    this.workspaceContext = options.workspaceContext;
+  }
 
   provideDocumentFormattingEdits(document: vscode.TextDocument): vscode.TextEdit[] {
     // if I await this function, vscode won't update the document. i have no idea why :/
@@ -64,9 +70,9 @@ export class SwiftFormattingProvider
     }
 
     try {
-      const xcodeVersion = await getXcodeVersionInstalled();
+      const xcodeVersion = await getXcodeVersionInstalled({ workspaceRoot: this.workspaceContext.root });
       if (xcodeVersion.major >= 16) {
-        await exec({ command: "xcrun", args: ["--find", "swift-format"] });
+        await exec({ command: "xcrun", args: ["--find", "swift-format"], cwd: null });
         this.isBundledSwiftFormat = true;
         return true;
       }
@@ -171,6 +177,7 @@ export class SwiftFormattingProvider
       await exec({
         command: command,
         args: args,
+        cwd: this.workspaceContext.root,
       });
     } catch (error) {
       formatLogger.error("Failed to format code", {

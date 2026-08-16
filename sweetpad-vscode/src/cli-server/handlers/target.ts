@@ -1,11 +1,14 @@
-import { getCurrentXcodeWorkspacePath } from "../../build/utils";
+import { activateCurrentXcodeWorkspacePath } from "../../build/utils";
 import { getTargets } from "../../common/cli/scripts";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES } from "../types";
 import type { HandlerFn } from "./context";
 
 export const targetList: HandlerFn<unknown, { targets: string[] }> = async (_params, ctx) => {
-  const xcworkspace = getCurrentXcodeWorkspacePath(ctx.workspaceState);
+  const xcworkspace = activateCurrentXcodeWorkspacePath({
+    workspaceState: ctx.workspaceState,
+    workspaceContext: ctx.workspaceContext,
+  });
   if (!xcworkspace) {
     throw new SweetpadRpcError(ERROR_CODES.NO_WORKSPACE, "No Xcode workspace detected for this folder.");
   }

@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 
-import { getCurrentXcodeWorkspacePath } from "../../build/utils";
+import { getCurrentXcodeWorkspacePath, getWorkspaceFolderPaths } from "../../build/utils";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES } from "../types";
 import { requireString } from "./_common";
@@ -17,7 +17,13 @@ export const workspaceDetect: HandlerFn<
   { workspacePath: string; current: string | undefined; candidates: Candidate[] }
 > = async (params, ctx) => {
   const depth = typeof params?.depth === "number" && params.depth > 0 ? Math.min(params.depth, 6) : 3;
-  const candidates = await scan(ctx.workspacePath, depth);
+  // The server is advertised under every folder of the window, so a detect run from any of
+  // them has to list the whole window's projects, not just the active folder's. `scan`
+  // reports an unreadable directory as empty, so one bad folder can't sink the others.
+  const roots = getWorkspaceFolderPaths();
+  const scanned = await Promise.all((roots.length > 0 ? roots : [ctx.workspacePath]).map((root) => scan(root, depth)));
+  // Nested folders (both `/repo` and `/repo/ios` in the window) reach the same project twice.
+  const candidates = [...new Map(scanned.flat().map((candidate) => [candidate.path, candidate])).values()];
   candidates.sort((a, b) => order(a.kind) - order(b.kind) || a.path.localeCompare(b.path));
   return {
     workspacePath: ctx.workspacePath,
@@ -37,6 +43,9 @@ export const workspaceUse: HandlerFn<{ path?: string }, { workspacePath: string;
     throw new SweetpadRpcError(ERROR_CODES.WORKSPACE_NOT_FOUND, `No file or directory at ${target}`);
   }
   ctx.workspaceState.update("build.xcodeWorkspacePath", target);
+  // This is one of the points a project becomes current, so the folder every "workspace root"
+  // lookup resolves against moves with it.
+  ctx.workspaceContext.setActiveFolder(target);
 
   const recent = ctx.workspaceState.get("build.xcodeWorkspacePathRecent") ?? [];
   const next = [target, ...recent.filter((p) => p !== target)].slice(0, RECENT_MAX);
