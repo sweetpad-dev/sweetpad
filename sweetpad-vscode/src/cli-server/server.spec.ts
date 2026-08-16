@@ -4,8 +4,12 @@ import * as path from "node:path";
 
 import { rpc, RpcError } from "../cli/client";
 import { getProjectsIndexFile } from "./paths";
-import { projectKey } from "./registry";
+import { projectKey, registerControlServer } from "./registry";
 import { CliServer } from "./server";
+import { PROTOCOL_VERSION } from "./types";
+
+// Above any real pid on macOS and Linux, so `process.kill(pid, 0)` always reports it gone.
+const DEAD_PID = 0x7fffffff;
 
 describe("CliServer", () => {
   // A real temp dir as the workspace; an isolated XDG_STATE_HOME so the discovery
@@ -88,6 +92,157 @@ describe("CliServer", () => {
 
     await expect(fs.access(socketPath)).rejects.toThrow(/ENOENT/);
     expect(await controlEntry()).toBeUndefined();
+  });
+
+  // The CLI resolves a socket by walking up from its cwd, so in a multi-root workspace a folder
+  // with no entry reports "no running server" even though the window is open and serving.
+  describe("multi-root registration", () => {
+    let secondPath: string;
+
+    beforeEach(async () => {
+      secondPath = await fs.mkdtemp(path.join(os.tmpdir(), "sweetpad-server-spec-2nd-"));
+    });
+
+    afterEach(async () => {
+      await fs.rm(secondPath, { recursive: true, force: true });
+    });
+
+    async function controlEntryFor(folder: string): Promise<Record<string, unknown> | undefined> {
+      const index = JSON.parse(await fs.readFile(getProjectsIndexFile(), "utf8"));
+      return index.projects[await projectKey(folder)]?.control;
+    }
+
+    /** Stand in for another VS Code window that already advertises `folder`. */
+    async function seedForeignOwner(folder: string, pid: number, socket: string): Promise<void> {
+      await registerControlServer(folder, {
+        name: "other-window",
+        socket,
+        workspacePath: folder,
+        pid,
+        startedAt: new Date().toISOString(),
+        extensionVersion: "test",
+        protocolVersion: PROTOCOL_VERSION,
+      });
+    }
+
+    it("advertises the same socket under every registered folder", async () => {
+      server = new CliServer({
+        workspacePath,
+        registrationPaths: () => [workspacePath, secondPath],
+        extensionVersion: "test",
+        handlers: {},
+      });
+      await server.start();
+
+      expect((await controlEntryFor(workspacePath))?.socket).toBe(server.socket);
+      expect((await controlEntryFor(secondPath))?.socket).toBe(server.socket);
+    });
+
+    it("retracts every folder on dispose", async () => {
+      server = new CliServer({
+        workspacePath,
+        registrationPaths: () => [workspacePath, secondPath],
+        extensionVersion: "test",
+        handlers: {},
+      });
+      await server.start();
+
+      await server.dispose();
+      server = undefined;
+
+      expect(await controlEntryFor(workspacePath)).toBeUndefined();
+      expect(await controlEntryFor(secondPath)).toBeUndefined();
+    });
+
+    it("drops a folder that leaves the workspace and picks up one that joins", async () => {
+      let folders = [workspacePath, secondPath];
+      server = new CliServer({
+        workspacePath,
+        registrationPaths: () => folders,
+        extensionVersion: "test",
+        handlers: {},
+      });
+      await server.start();
+      expect(await controlEntryFor(secondPath)).toBeDefined();
+
+      folders = [workspacePath];
+      await server.syncRegistrations();
+
+      expect(await controlEntryFor(secondPath)).toBeUndefined();
+      expect(await controlEntryFor(workspacePath)).toBeDefined();
+    });
+
+    it("defers on a folder a live window already owns, and leaves it standing on dispose", async () => {
+      // The parent process is a foreign pid that is certainly still running.
+      await seedForeignOwner(secondPath, process.ppid, "/tmp/other-window.sock");
+
+      server = new CliServer({
+        workspacePath,
+        registrationPaths: () => [workspacePath, secondPath],
+        extensionVersion: "test",
+        handlers: {},
+      });
+      await server.start();
+
+      expect((await controlEntryFor(secondPath))?.socket).toBe("/tmp/other-window.sock");
+      expect((await controlEntryFor(workspacePath))?.socket).toBe(server.socket);
+
+      await server.dispose();
+      server = undefined;
+
+      expect((await controlEntryFor(secondPath))?.socket).toBe("/tmp/other-window.sock");
+    });
+
+    it("reclaims a folder whose owning window is gone", async () => {
+      await seedForeignOwner(secondPath, DEAD_PID, "/tmp/stale-window.sock");
+
+      server = new CliServer({
+        workspacePath,
+        registrationPaths: () => [workspacePath, secondPath],
+        extensionVersion: "test",
+        handlers: {},
+      });
+      await server.start();
+
+      expect((await controlEntryFor(secondPath))?.socket).toBe(server.socket);
+    });
+
+    it("leaves nothing behind when dispose races an in-flight sync", async () => {
+      server = new CliServer({
+        workspacePath,
+        registrationPaths: () => [workspacePath, secondPath],
+        extensionVersion: "test",
+        handlers: {},
+      });
+      await server.start();
+
+      const inFlight = server.syncRegistrations();
+      const teardown = server.dispose();
+      await Promise.all([inFlight, teardown]);
+      server = undefined;
+
+      expect(await controlEntryFor(workspacePath)).toBeUndefined();
+      expect(await controlEntryFor(secondPath)).toBeUndefined();
+    });
+
+    it("converges on the latest folder set when two syncs overlap", async () => {
+      let folders = [workspacePath, secondPath];
+      server = new CliServer({
+        workspacePath,
+        registrationPaths: () => folders,
+        extensionVersion: "test",
+        handlers: {},
+      });
+      await server.start();
+
+      const first = server.syncRegistrations();
+      folders = [workspacePath];
+      const second = server.syncRegistrations();
+      await Promise.all([first, second]);
+
+      expect(await controlEntryFor(secondPath)).toBeUndefined();
+      expect(await controlEntryFor(workspacePath)).toBeDefined();
+    });
   });
 
   it("surfaces RPC errors with the application code in error.data", async () => {

@@ -1,18 +1,17 @@
 import * as vscode from "vscode";
 
-import { getWorkspacePath, isFileExistsInAnyWorkspaceFolder, prepareDerivedDataPath } from "../build/utils";
+import { prepareDerivedDataPath, workspaceFoldersContaining } from "../build/utils";
 import { getWorkspaceConfig } from "../common/config";
 import { commonLogger } from "../common/logger";
 
 export class TuistGenWatcher implements vscode.Disposable {
   private watchers: vscode.FileSystemWatcher[] = [];
-  private throttle: NodeJS.Timeout | null = null;
+  // One pending generate per folder: a change in one project must not cancel another's.
+  private throttles = new Map<string, NodeJS.Timeout>();
   private derivedDataPath: string | null = null;
-  private workspacePath = "";
 
   async start(): Promise<void> {
     this.derivedDataPath = prepareDerivedDataPath();
-    this.workspacePath = getWorkspacePath();
     // Is config enabled?
     // TODO: add config to enable/disable watcher
     const isEnabled = getWorkspaceConfig("tuist.autogenerate");
@@ -20,64 +19,74 @@ export class TuistGenWatcher implements vscode.Disposable {
       return;
     }
 
-    // We don't even need to start the watcher if there is no tuist files in any workspace folder
-    const isTuistFileExists =
-      (await isFileExistsInAnyWorkspaceFolder("Project.swift")) ||
-      (await isFileExistsInAnyWorkspaceFolder("Workspace.swift"));
-    if (!isTuistFileExists) {
-      commonLogger.log("Project.swift or Workspace.swift not found, skipping tuist watcher", {
-        workspacePath: getWorkspacePath(),
-      });
+    // Every folder holding Tuist manifests gets its own watcher, scoped to that folder, so the
+    // generate runs in the directory whose manifests triggered it.
+    const folders = await workspaceFoldersContaining("Project.swift", "Workspace.swift");
+    if (folders.length === 0) {
+      commonLogger.log("Project.swift or Workspace.swift not found, skipping tuist watcher");
       return;
     }
 
-    const swiftWatcher = vscode.workspace.createFileSystemWatcher(
-      "**/*.swift",
-      false, // ignoreCreateEvents
-      true, // ignoreChangeEvents
-      false, // ignoreDeleteEvents
-    );
-    swiftWatcher.onDidCreate((e) => this.handleChange(e));
-    swiftWatcher.onDidDelete((e) => this.handleChange(e));
-    this.watchers.push(swiftWatcher);
+    for (const folder of folders) {
+      const root = folder.uri.fsPath;
+      const swiftWatcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(folder, "**/*.swift"),
+        false, // ignoreCreateEvents
+        true, // ignoreChangeEvents
+        false, // ignoreDeleteEvents
+      );
+      swiftWatcher.onDidCreate((e) => this.handleChange(root, e));
+      swiftWatcher.onDidDelete((e) => this.handleChange(root, e));
+      this.watchers.push(swiftWatcher);
+    }
 
     commonLogger.log("tuist watcher started", {
-      workspacePath: getWorkspacePath(),
+      roots: folders.map((folder) => folder.uri.fsPath),
     });
   }
 
-  handleChange(e: vscode.Uri) {
+  handleChange(root: string, e: vscode.Uri) {
     commonLogger.log("tuist watcher detected changes", {
-      workspacePath: this.workspacePath,
+      root: root,
       file: e.fsPath,
     });
-    if (this.throttle) {
-      clearTimeout(this.throttle);
-    }
 
     // Skip files created in derived data path
     if (this.derivedDataPath && e.fsPath.startsWith(this.derivedDataPath)) {
       return;
     }
 
-    this.throttle = setTimeout(() => {
-      this.throttle = null;
-      Promise.resolve(vscode.commands.executeCommand("sweetpad.tuist.generate"))
-        .then(() => {
-          commonLogger.log("tuist project was successfully generated", {
-            workspacePath: this.workspacePath,
+    const pending = this.throttles.get(root);
+    if (pending) {
+      clearTimeout(pending);
+    }
+
+    this.throttles.set(
+      root,
+      setTimeout(() => {
+        this.throttles.delete(root);
+        // The command reports its own failures to the user, so this only records that it ran.
+        Promise.resolve(vscode.commands.executeCommand("sweetpad.tuist.generate", root))
+          .then(() => {
+            commonLogger.log("tuist generate finished", {
+              root: root,
+            });
+          })
+          .catch((error) => {
+            commonLogger.error("Failed to generate tuist project", {
+              root: root,
+              error: error,
+            });
           });
-        })
-        .catch((error) => {
-          commonLogger.error("Failed to generate tuist project", {
-            workspacePath: this.workspacePath,
-            error: error,
-          });
-        });
-    }, 1000 /* 1s */);
+      }, 1000 /* 1s */),
+    );
   }
 
   dispose(): void {
+    for (const timeout of this.throttles.values()) {
+      clearTimeout(timeout);
+    }
+    this.throttles.clear();
     for (const watcher of this.watchers) {
       watcher.dispose();
     }

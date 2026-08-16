@@ -20,12 +20,26 @@ export const workspace = {
   onDidChangeConfiguration: vi.fn(() => ({
     dispose: vi.fn(),
   })),
-  // Mirrors the real API: returns the workspace folder containing the given URI.
+  onDidChangeWorkspaceFolders: vi.fn(() => ({
+    dispose: vi.fn(),
+  })),
+  // Mirrors the real API, which looks the URI up in a prefix tree over the folder URIs: when
+  // folders nest ("/repo" and "/repo/ios"), the innermost containing folder wins regardless of the
+  // order they were added, and path comparison ignores case as the macOS file system provider does.
   getWorkspaceFolder: vi.fn((uri: { fsPath: string }) => {
     const folders = (workspace as { workspaceFolders?: { uri: { fsPath: string } }[] }).workspaceFolders;
-    return folders?.find(
-      (folder) => uri.fsPath === folder.uri.fsPath || uri.fsPath.startsWith(`${folder.uri.fsPath}/`),
-    );
+    const target = uri.fsPath.toLowerCase();
+    let match: { uri: { fsPath: string } } | undefined;
+    for (const folder of folders ?? []) {
+      const root = folder.uri.fsPath.toLowerCase();
+      if (target !== root && !target.startsWith(`${root}/`)) {
+        continue;
+      }
+      if (match === undefined || folder.uri.fsPath.length > match.uri.fsPath.length) {
+        match = folder;
+      }
+    }
+    return match;
   }),
 };
 

@@ -36,10 +36,11 @@ import { SchemeWatcher } from "./build/scheme-watcher.js";
 import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
 import {
-  getCurrentXcodeWorkspacePath,
+  activateCurrentXcodeWorkspacePath,
   getWorkspacePath,
   notifyCustomXcodebuildReadOnlyScope,
   repairStaleBuildServerConfig,
+  watchActiveWorkspaceFolder,
 } from "./build/utils.js";
 import { CliServerService } from "./cli-server/service.js";
 import { type AppDeps, registerCommand, registerTreeDataProvider } from "./common/commands.js";
@@ -138,16 +139,19 @@ export async function activate(context: vscode.ExtensionContext) {
   const devFeaturesEnabled = context.extensionMode === vscode.ExtensionMode.Development;
   await vscode.commands.executeCommand("setContext", "sweetpad.devFeatures", devFeaturesEnabled);
 
-  warmShellEnv();
-
   // Services 🔧
   // Leaf services with no manager dependencies. Constructed first so managers can take them as deps.
   const workspaceState = new WorkspaceStateService(context);
 
   // Prime the active workspace folder from the previously selected xcworkspace, so that in
   // multi-root workspaces everything below resolves against the right folder from the start.
-  getCurrentXcodeWorkspacePath(workspaceState);
+  activateCurrentXcodeWorkspacePath(workspaceState);
   const workspacePath = getWorkspacePath();
+  context.subscriptions.push(watchActiveWorkspaceFolder());
+
+  // The resolved shell environment is memoized for the session and probes the login shell in the
+  // active workspace folder, so it has to be warmed once that folder is known.
+  warmShellEnv();
 
   const execution = new ExecutionScopeService();
 

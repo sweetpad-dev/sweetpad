@@ -88,9 +88,45 @@ async function mutateEntry(
   await writeIndex(index);
 }
 
-/** Advertise (or refresh) the control server for `workspacePath`. */
-export async function registerControlServer(workspacePath: string, meta: CliServerMetadata): Promise<void> {
-  await mutateEntry(workspacePath, (entry) => ({ ...entry, control: meta }));
+/**
+ * Whether `pid` is still running. Signal 0 runs the existence and permission checks without
+ * delivering anything; `EPERM` means the process is there but owned by another user.
+ */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Advertise (or refresh) the control server for `workspacePath`. Returns whether the entry
+ * now points at us. By default it claims the key outright, the index's last-writer-wins
+ * contract.
+ *
+ * `secondary` marks a folder that is merely open in the window rather than the one this
+ * window's project lives in. Such a folder is only somewhere the CLI might be run from, so
+ * it steps aside for a live window that holds the folder as its own project: otherwise
+ * having a folder open here would redirect that folder's `sweetpad` invocations to this
+ * window, and closing this window would take the other one's pointer down with it.
+ */
+export async function registerControlServer(
+  workspacePath: string,
+  meta: CliServerMetadata,
+  options?: { secondary?: boolean },
+): Promise<boolean> {
+  let claimed = false;
+  await mutateEntry(workspacePath, (entry) => {
+    const owner = entry.control;
+    if (options?.secondary && owner && owner.pid !== meta.pid && isProcessAlive(owner.pid)) {
+      return entry;
+    }
+    claimed = true;
+    return { ...entry, control: meta };
+  });
+  return claimed;
 }
 
 /**

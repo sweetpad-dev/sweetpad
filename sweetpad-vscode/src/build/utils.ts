@@ -1,3 +1,4 @@
+import events from "node:events";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -257,30 +258,21 @@ export function getWorkspaceFolderForPath(fsPath: string): string | undefined {
 // defaulting to the first folder.
 let activeWorkspaceFolder: string | undefined;
 
-/**
- * Remember the VS Code workspace folder that contains the given xcworkspace so
- * `getWorkspacePath()` resolves against it. No-op when the path is outside every folder
- * (e.g. a git worktree next to the repo).
- */
-export function setActiveWorkspaceFolder(xcworkspacePath: string): void {
-  const folder = getWorkspaceFolderForPath(xcworkspacePath);
-  if (folder && folder !== activeWorkspaceFolder) {
-    activeWorkspaceFolder = folder;
-    commonLogger.log("Active workspace folder changed", {
-      folder: folder,
-      xcworkspace: xcworkspacePath,
-    });
-  }
-}
+// The folder last reported to subscribers. The resolved root moves for two independent reasons —
+// a project is selected in another folder, or the window's folder list changes under it — so both
+// report through one place and this dedupes them against each other.
+let notifiedWorkspaceFolder: string | undefined;
+
+const activeWorkspaceFolderEmitter = new events.EventEmitter<{ changed: [folder: string] }>();
 
 /**
- * It's absolute path to the workspace folder SweetPad currently operates on: the folder
- * containing the selected xcworkspace, or the first workspace folder before any selection.
+ * The folder `getWorkspacePath()` resolves to, or undefined when the window has no folder open.
+ * The remembered folder only wins while it is still one of the window's folders.
  */
-export function getWorkspacePath(): string {
+function resolveWorkspaceFolder(): string | undefined {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
-    throw new ExtensionError("No workspace folder found");
+    return undefined;
   }
   if (activeWorkspaceFolder && folders.some((folder) => folder.uri.fsPath === activeWorkspaceFolder)) {
     return activeWorkspaceFolder;
@@ -288,14 +280,96 @@ export function getWorkspacePath(): string {
   return folders[0].uri.fsPath;
 }
 
+function notifyWorkspaceFolderChanged(): void {
+  const folder = resolveWorkspaceFolder();
+  if (folder && folder !== notifiedWorkspaceFolder) {
+    notifiedWorkspaceFolder = folder;
+    activeWorkspaceFolderEmitter.emit("changed", folder);
+  }
+}
+
 /**
- * Check if a file exists in the root of any VS Code workspace folder.
+ * Subscribe to the workspace folder SweetPad operates on moving to another folder.
+ *
+ * Anything that derives long-lived state from `getWorkspacePath()` — a socket path, a key in the
+ * discovery index, a file watcher — holds a value that only stays right for one folder, and has to
+ * rebuild it when the folder moves.
  */
-export async function isFileExistsInAnyWorkspaceFolder(fileName: string): Promise<boolean> {
-  const results = await Promise.all(
-    getWorkspaceFolderPaths().map((folder) => isFileExists(path.join(folder, fileName))),
+export function onDidChangeActiveWorkspaceFolder(listener: (folder: string) => void): vscode.Disposable {
+  activeWorkspaceFolderEmitter.on("changed", listener);
+  return {
+    dispose: () => {
+      activeWorkspaceFolderEmitter.off("changed", listener);
+    },
+  };
+}
+
+/**
+ * Report the resolved folder moving because the window's folder list changed. Removing the folder
+ * that holds the current project drops `getWorkspacePath()` back to the first folder, which is a
+ * move no call to `setActiveWorkspaceFolder` announces.
+ */
+export function watchActiveWorkspaceFolder(): vscode.Disposable {
+  notifiedWorkspaceFolder = resolveWorkspaceFolder();
+  return vscode.workspace.onDidChangeWorkspaceFolders(() => notifyWorkspaceFolderChanged());
+}
+
+/**
+ * Remember the VS Code workspace folder that contains the given xcworkspace so
+ * `getWorkspacePath()` resolves against it. No-op when the path is outside every folder
+ * (e.g. a git worktree next to the repo).
+ */
+export function setActiveWorkspaceFolder(xcworkspacePath: string): void {
+  const folder = getWorkspaceFolderForPath(xcworkspacePath);
+  if (!folder || folder === activeWorkspaceFolder) {
+    return;
+  }
+  activeWorkspaceFolder = folder;
+  commonLogger.log("Active workspace folder changed", {
+    folder: folder,
+    xcworkspace: xcworkspacePath,
+  });
+  notifyWorkspaceFolderChanged();
+}
+
+/**
+ * Drop the remembered folder and its subscribers, returning `getWorkspacePath()` to the first
+ * workspace folder. Exposed so tests start from a known state, since both live for the module's
+ * lifetime.
+ */
+export function resetActiveWorkspaceFolder(): void {
+  activeWorkspaceFolder = undefined;
+  notifiedWorkspaceFolder = undefined;
+  activeWorkspaceFolderEmitter.removeAllListeners("changed");
+}
+
+/**
+ * It's absolute path to the workspace folder SweetPad currently operates on: the folder
+ * containing the selected xcworkspace, or the first workspace folder before any selection.
+ */
+export function getWorkspacePath(): string {
+  const folder = resolveWorkspaceFolder();
+  if (!folder) {
+    throw new ExtensionError("No workspace folder found");
+  }
+  return folder;
+}
+
+/**
+ * VS Code workspace folders whose root holds at least one of the given files, in workspace folder
+ * order. Callers that act on a marker file need the folder holding it, not just whether one exists:
+ * a generator has to run where its spec is, and a `RelativePattern` built from a workspace folder
+ * reuses the watcher VS Code already runs for it.
+ */
+export async function workspaceFoldersContaining(...fileNames: string[]): Promise<vscode.WorkspaceFolder[]> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const matches = await Promise.all(
+    folders.map(async (folder) => {
+      const found = await Promise.all(fileNames.map((name) => isFileExists(path.join(folder.uri.fsPath, name))));
+      return found.some(Boolean) ? folder : undefined;
+    }),
   );
-  return results.some(Boolean);
+  return matches.filter((folder) => folder !== undefined);
 }
 
 /**
@@ -347,37 +421,53 @@ export function prepareDerivedDataPath(): string | null {
   return derivedDataPath;
 }
 
+/**
+ * The xcworkspace SweetPad currently targets: the configured path if `build.xcodeWorkspacePath` is
+ * set, otherwise the selection cached in workspace state.
+ *
+ * Pure — neither the active folder nor the persisted selection moves. Use it to report what is
+ * selected; use `activateCurrentXcodeWorkspacePath` when about to act on the project.
+ */
 export function getCurrentXcodeWorkspacePath(workspaceState: WorkspaceStateService): string | undefined {
   const configPath = getWorkspaceConfig("build.xcodeWorkspacePath");
   if (configPath) {
-    workspaceState.update("build.xcodeWorkspacePath", undefined);
-    let resolvedPath: string;
     if (path.isAbsolute(configPath)) {
-      resolvedPath = configPath;
-    } else {
-      // In a multi-root workspace a relative path may belong to any folder — pick the
-      // first one where it actually exists, falling back to the current root.
-      const candidates = getWorkspaceFolderPaths().map((folder) => path.join(folder, configPath));
-      resolvedPath = candidates.find((candidate) => existsSync(candidate)) ?? path.join(getWorkspacePath(), configPath);
+      return configPath;
     }
-    setActiveWorkspaceFolder(resolvedPath);
-    return resolvedPath;
+    // A relative path may name a file in more than one folder of a multi-root workspace. Trying the
+    // active folder first keeps the answer stable: once a project is selected, resolving again
+    // returns the same file instead of jumping to whichever folder happens to come first.
+    const activeCandidate = path.join(getWorkspacePath(), configPath);
+    const candidates = [activeCandidate, ...getWorkspaceFolderPaths().map((folder) => path.join(folder, configPath))];
+    return candidates.find((candidate) => existsSync(candidate)) ?? activeCandidate;
   }
 
-  const cachedPath = workspaceState.get("build.xcodeWorkspacePath");
-  if (cachedPath) {
-    setActiveWorkspaceFolder(cachedPath);
-    return cachedPath;
+  return workspaceState.get("build.xcodeWorkspacePath");
+}
+
+/**
+ * The same lookup, and make its result current: the folder holding it becomes the one every
+ * "workspace root" lookup resolves against, and subscribers to `onDidChangeActiveWorkspaceFolder`
+ * rebuild against it. Call this from paths that are about to act on the project.
+ */
+export function activateCurrentXcodeWorkspacePath(workspaceState: WorkspaceStateService): string | undefined {
+  // A configured path outranks the cached selection, so drop the cache it supersedes.
+  if (getWorkspaceConfig("build.xcodeWorkspacePath")) {
+    workspaceState.update("build.xcodeWorkspacePath", undefined);
   }
 
-  return undefined;
+  const current = getCurrentXcodeWorkspacePath(workspaceState);
+  if (current) {
+    setActiveWorkspaceFolder(current);
+  }
+  return current;
 }
 
 export async function askXcodeWorkspacePath(options: {
   workspaceState: WorkspaceStateService;
   buildManager: BuildManager;
 }): Promise<string> {
-  const current = getCurrentXcodeWorkspacePath(options.workspaceState);
+  const current = activateCurrentXcodeWorkspacePath(options.workspaceState);
   if (current) {
     return current;
   }
@@ -701,7 +791,9 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
       }),
     ),
   );
-  return results.flat();
+  // Workspace folders may nest (both "/repo" and "/repo/ios" can be added), in which case the same
+  // project is found by more than one scan. Collapse those so each project is offered once.
+  return [...new Set(results.flat())];
 }
 
 /**
@@ -744,35 +836,44 @@ export async function selectXcodeWorkspace(options: { autoselect: boolean }): Pr
     }
   }
 
+  // Each project is shown relative to its own workspace folder, so pair it with that folder before
+  // sorting: the depth that decides the order is the depth the label displays.
+  const candidates = paths.map((xwPath) => {
+    const rootDir = getWorkspaceFolderForPath(xwPath) ?? folders[0];
+    return { xwPath: xwPath, rootDir: rootDir, relativePath: path.relative(rootDir, xwPath) };
+  });
+
   // More then one, ask user to select
   const selected = await showQuickPick({
     title: "Select Xcode workspace or SPM package",
-    items: paths
+    items: candidates
       .toSorted((a, b) => {
         // Sort by depth to show less nested paths first
-        const aDepth = a.split(path.sep).length;
-        const bDepth = b.split(path.sep).length;
+        const aDepth = a.relativePath.split(path.sep).length;
+        const bDepth = b.relativePath.split(path.sep).length;
         return aDepth - bDepth;
       })
-      .map((xwPath) => {
-        // show only path relative to its own workspace folder, to make it more readable
-        const rootDir = getWorkspaceFolderForPath(xwPath) ?? folders[0];
-        const relativePath = path.relative(rootDir, xwPath);
+      .map(({ xwPath, rootDir, relativePath }) => {
         const parentDir = path.dirname(relativePath);
 
         const isInRootDir = parentDir === ".";
         const isCocoaPods = isInRootDir && cocoaPodsRoots.has(rootDir);
         const isSPMPackage = detectWorkspaceType(xwPath) === "spm";
 
-        let detail: string | undefined;
+        let projectType: string | undefined;
         if (isSPMPackage) {
-          detail = "Swift Package Manager";
+          projectType = "Swift Package Manager";
         } else if (isCocoaPods && isInRootDir) {
-          detail = "CocoaPods (recommended)";
+          projectType = "CocoaPods (recommended)";
         } else if (!isInRootDir && parentDir.endsWith(".xcodeproj")) {
-          detail = "Xcode";
+          projectType = "Xcode";
         }
         // todo: add workspace with multiple projects
+
+        // Folder names repeat across roots (two checkouts of one repo are both "MyApp"), so the
+        // label and the folder badge alone can name two different projects identically. The full
+        // path is the only value guaranteed to tell them apart.
+        const detail = isMultiRoot ? [projectType, xwPath].filter(Boolean).join(" · ") : projectType;
 
         return {
           label: relativePath,

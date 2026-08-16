@@ -54,7 +54,7 @@ import {
   detectWorkspaceType,
   ensureAppPathExists,
   generateBuildServerConfigOnBuild,
-  getCurrentXcodeWorkspacePath,
+  activateCurrentXcodeWorkspacePath,
   notifyXBSMissing,
   getSchemeLaunchSettings,
   getSwiftPMDirectory,
@@ -185,7 +185,7 @@ export class BuildManager {
 
       this.emitter.emit("refreshSchemesStarted");
       try {
-        const xcworkspace = getCurrentXcodeWorkspacePath(this.workspaceState);
+        const xcworkspace = activateCurrentXcodeWorkspacePath(this.workspaceState);
 
         const schemes = await getSchemes({ xcworkspace: xcworkspace });
 

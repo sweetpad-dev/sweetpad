@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-import { getCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
+import { activateCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../../build/utils";
 import { getBuildSettingsList, type XcodeBuildSettings } from "../../common/cli/scripts";
 import { methodHint } from "../method-catalog";
 import { SweetpadRpcError } from "../rpc";
@@ -17,7 +17,7 @@ async function loadSettings(params: GetParams, ctx: RpcContext): Promise<XcodeBu
     });
   }
   const configuration = params?.configuration ?? ctx.buildManager.getDefaultConfigurationForBuild() ?? "Debug";
-  const xcworkspace = params?.xcworkspace ?? getCurrentXcodeWorkspacePath(ctx.workspaceState);
+  const xcworkspace = params?.xcworkspace ?? activateCurrentXcodeWorkspacePath(ctx.workspaceState);
   if (!xcworkspace) {
     throw new SweetpadRpcError(ERROR_CODES.NO_WORKSPACE, "No Xcode workspace detected for this folder.");
   }

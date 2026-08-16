@@ -172,12 +172,6 @@ export class TestingManager {
   // don't keep the items in memory if they are not used anymore
   readonly testItems = new WeakMap<vscode.TestItem, TestItemContext>();
 
-  // Root folder of the workspace (VSCode, not Xcode). Resolved lazily so it follows
-  // the active project in multi-root workspaces.
-  get workspacePath(): string {
-    return getWorkspacePath();
-  }
-
   constructor(options: {
     workspaceState: WorkspaceStateService;
     progress: ProgressStatusBar;

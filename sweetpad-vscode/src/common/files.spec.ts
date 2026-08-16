@@ -2,7 +2,14 @@ import { type Dirent, promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { findFiles, findFilesRecursive } from "./files";
+import * as vscode from "vscode";
+
+import { resetActiveWorkspaceFolder, setActiveWorkspaceFolder } from "../build/utils";
+import { findFiles, findFilesRecursive, getWorkspaceRelativePath } from "./files";
+
+// `../build/utils` imports the native `@sweetpad/native` addon at module level; stub it so this
+// spec runs without the compiled addon (none of the tested paths touch it).
+vi.mock("@sweetpad/native", () => ({}));
 
 /**
  * Build a Dirent-like object that intentionally omits `path`/`parentPath`.
@@ -93,5 +100,66 @@ describe("findFiles / findFilesRecursive path building", () => {
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  // A multi-root scan runs this once per workspace folder and merges the results, so a folder that
+  // cannot be read has to yield nothing rather than fail the whole scan.
+  it("returns nothing for a directory that does not exist", async () => {
+    const result = await findFilesRecursive({
+      directory: path.join(os.tmpdir(), "sweetpad-does-not-exist-a8f3c1"),
+      depth: 4,
+      matcher: (file) => file.name.endsWith(".xcworkspace"),
+    });
+    expect(result).toEqual([]);
+  });
+
+  // A readdir failure deeper in the tree takes the same path: the subtree contributes nothing and
+  // its siblings still come back.
+  it("keeps siblings when a subdirectory cannot be read", async () => {
+    const root = "/Users/test/project";
+    const spy = vi.spyOn(fs, "readdir").mockImplementation((async (dir: string) => {
+      if (dir === root) {
+        return [direntWithoutPath("App.xcworkspace", true), direntWithoutPath("denied", true)];
+      }
+      throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    }) as unknown as typeof fs.readdir);
+
+    try {
+      const result = await findFilesRecursive({
+        directory: root,
+        depth: 4,
+        matcher: (file) => file.name.endsWith(".xcworkspace"),
+      });
+      expect(result).toEqual([path.join(root, "App.xcworkspace")]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("getWorkspaceRelativePath", () => {
+  function setFolders(paths: string[]) {
+    (vscode.workspace as { workspaceFolders?: unknown }).workspaceFolders = paths.map((p) => ({
+      uri: { fsPath: p },
+    }));
+  }
+
+  beforeEach(() => {
+    resetActiveWorkspaceFolder();
+  });
+
+  it("keeps the folder prefix for a project outside the first workspace folder", () => {
+    setFolders(["/root-1", "/root-2"]);
+    // Selecting a project moves the active folder to the one holding it.
+    setActiveWorkspaceFolder("/root-2/App.xcworkspace");
+
+    // Anchoring to the active folder would yield the bare "App.xcworkspace", which /root-1 also
+    // satisfies; the prefix is what makes the stored value name exactly one file.
+    expect(getWorkspaceRelativePath("/root-2/App.xcworkspace")).toBe("../root-2/App.xcworkspace");
+  });
+
+  it("stays a plain relative path inside the first workspace folder", () => {
+    setFolders(["/root-1", "/root-2"]);
+    expect(getWorkspaceRelativePath("/root-1/App/App.xcworkspace")).toBe("App/App.xcworkspace");
   });
 });

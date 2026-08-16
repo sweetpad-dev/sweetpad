@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
+import { getWorkspaceFolderPaths, getWorkspacePath } from "../build/utils";
 import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceStateService } from "../common/workspace-state";
@@ -44,6 +45,7 @@ export class CliServerService implements vscode.Disposable {
 
   private current: { server: CliServer; registry: BuildSessionRegistry } | undefined;
   private configSubscription: vscode.Disposable | undefined;
+  private foldersSubscription: vscode.Disposable | undefined;
   private starting = false;
 
   constructor(options: {
@@ -69,12 +71,21 @@ export class CliServerService implements vscode.Disposable {
         void this.reconcile();
       }
     });
+    // A folder added to the window is another directory the CLI can be run from, and one removed
+    // must stop advertising a server it can no longer be reached for.
+    this.foldersSubscription = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      void this.current?.server.syncRegistrations().catch((err) => {
+        commonLogger.error("Failed to refresh SweetPad RPC server registrations", { error: err });
+      });
+    });
     await this.reconcile();
   }
 
   async dispose(): Promise<void> {
     this.configSubscription?.dispose();
     this.configSubscription = undefined;
+    this.foldersSubscription?.dispose();
+    this.foldersSubscription = undefined;
     await this.stop();
   }
 
@@ -121,7 +132,12 @@ export class CliServerService implements vscode.Disposable {
       await registry.start();
 
       const dispatch = buildDispatch({
-        workspacePath: workspacePath,
+        // Handlers ask this "which project am I on" — the cwd for simctl, the root `workspace.detect`
+        // scans, the answer `meta.workspacePath` returns — so it has to follow the active project
+        // rather than report whichever folder happened to be active at activation.
+        get workspacePath() {
+          return getWorkspacePath();
+        },
         extensionVersion: this.extensionVersion,
         workspaceState: this.workspaceState,
         buildManager: this.buildManager,
@@ -133,6 +149,7 @@ export class CliServerService implements vscode.Disposable {
 
       const server = new CliServer({
         workspacePath: workspacePath,
+        registrationPaths: () => getWorkspaceFolderPaths(),
         extensionVersion: this.extensionVersion,
         handlers: dispatch,
       });

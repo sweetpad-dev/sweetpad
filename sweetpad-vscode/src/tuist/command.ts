@@ -19,11 +19,15 @@ async function tuistCheckInstalled() {
   }
 }
 
-export async function tuistGenerateCommand(deps: AppDeps) {
+/**
+ * `cwd` is the workspace folder holding the Tuist manifests to generate. The watcher passes the
+ * folder it detected; invoked from the command palette it is absent and the active folder is used.
+ */
+export async function tuistGenerateCommand(deps: AppDeps, cwd?: string) {
   deps.progressStatusBar.updateText("Running 'tuist generate'");
   await tuistCheckInstalled();
 
-  const raw = await tuistGenerate();
+  const raw = await tuistGenerate({ cwd: cwd });
   if (raw.includes("tuist install")) {
     vscode.window.showErrorMessage(`Please run "tuist install" first`);
     return;

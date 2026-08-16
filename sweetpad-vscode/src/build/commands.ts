@@ -19,6 +19,7 @@ import {
   detectGitWorktrees,
   detectXcodeWorkspacesPaths,
   findXcodeWorkspaceInDirectory,
+  activateCurrentXcodeWorkspacePath,
   getCurrentXcodeWorkspacePath,
   getWorkspacePath,
   prepareStoragePath,
@@ -510,7 +511,7 @@ export async function applySchemeFilterCommand(deps: AppDeps): Promise<void> {
 }
 
 export async function refreshSchemesCommand(deps: AppDeps): Promise<void> {
-  const xcworkspace = getCurrentXcodeWorkspacePath(deps.workspaceState);
+  const xcworkspace = activateCurrentXcodeWorkspacePath(deps.workspaceState);
 
   if (!xcworkspace) {
     // If there is no workspace, we should ask user to select it first.

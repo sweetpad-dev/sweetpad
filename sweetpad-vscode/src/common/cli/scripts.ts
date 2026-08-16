@@ -922,10 +922,15 @@ export async function getIsXcodeGenInstalled() {
   }
 }
 
-export async function generateXcodeGen() {
+/**
+ * `xcodegen generate` reads project.yml from its working directory, so `cwd` names the folder
+ * holding the spec. Without it the command runs in the active workspace folder.
+ */
+export async function generateXcodeGen(options?: { cwd?: string }) {
   await exec({
     command: "xcodegen",
     args: ["generate"],
+    cwd: options?.cwd,
   });
 }
 
@@ -941,12 +946,17 @@ export async function getIsTuistInstalled() {
   }
 }
 
-export async function tuistGenerate() {
+/**
+ * `tuist generate` reads Project.swift/Workspace.swift from its working directory, so `cwd` names
+ * the folder holding them. Without it the command runs in the active workspace folder.
+ */
+export async function tuistGenerate(options?: { cwd?: string }) {
   const env = getWorkspaceConfig("tuist.generate.env");
   return await exec({
     command: "tuist",
     args: ["generate", "--no-open"],
     env: env,
+    cwd: options?.cwd,
   });
 }
 

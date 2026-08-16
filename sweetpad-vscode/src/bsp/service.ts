@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
-import { getWorkspacePath } from "../build/utils";
+import { getWorkspacePath, onDidChangeActiveWorkspaceFolder } from "../build/utils";
 import { ensureDir, getProjectStateDir } from "../cli-server/paths";
 import { registerBspConfig, unregisterBspConfig } from "../cli-server/registry";
 import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
@@ -34,6 +34,9 @@ export class BspService implements vscode.Disposable {
   private readonly buildManager: BuildManager;
   private readonly workspaceState: WorkspaceStateService;
   private subscriptions: vscode.Disposable[] = [];
+  // Folders this session advertised a bsp.json for. Registration happens against whichever folder
+  // was active at the time, so teardown has to retract each one rather than only the last.
+  private readonly registeredPaths = new Set<string>();
 
   constructor(options: { buildManager: BuildManager; workspaceState: WorkspaceStateService }) {
     this.buildManager = options.buildManager;
@@ -49,6 +52,9 @@ export class BspService implements vscode.Disposable {
         if (event.affectsConfiguration("sweetpad.buildServer.provider")) void this.activate();
         if (event.affectsConfiguration("sweetpad.buildServer.logLevel")) this.applyLogLevel();
       }),
+      // Both the socket and the config file are named by a hash of the workspace folder, so a
+      // project in another folder means a different socket to dial and a different file to write.
+      onDidChangeActiveWorkspaceFolder(() => void this.activate()),
     );
     this.applyLogLevel();
     void this.activate();
@@ -96,6 +102,7 @@ export class BspService implements vscode.Disposable {
       // buildServer.json carries no explicit `--config` (an older or hand-written
       // stub). Independent of the control server's index entry.
       await registerBspConfig(workspacePath, configFile);
+      this.registeredPaths.add(workspacePath);
     } catch (err) {
       commonLogger.debug("Failed to write bsp.json", { error: err });
     }
@@ -132,13 +139,12 @@ export class BspService implements vscode.Disposable {
     this.buildManager.removeAllListeners("defaultSchemeForBuildUpdated");
     this.buildManager.removeAllListeners("defaultConfigurationForBuildUpdated");
 
-    // Best-effort: drop our BSP pointer from the discovery index. Fire-and-forget
-    // — a missing workspace or write failure must not block teardown.
-    try {
-      void unregisterBspConfig(getWorkspacePath()).catch(() => {});
-    } catch {
-      // no workspace to unregister
+    // Best-effort: drop our BSP pointers from the discovery index. Fire-and-forget
+    // — a write failure must not block teardown.
+    for (const workspacePath of this.registeredPaths) {
+      void unregisterBspConfig(workspacePath).catch(() => {});
     }
+    this.registeredPaths.clear();
 
     for (const s of this.subscriptions) s.dispose();
     this.subscriptions = [];

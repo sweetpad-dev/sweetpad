@@ -1,7 +1,7 @@
 import * as path from "node:path";
 
 import type { BuildManager } from "../build/manager";
-import { getCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../build/utils";
+import { activateCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../build/utils";
 import { getDeveloperDir } from "../common/cli/scripts";
 import { getWorkspaceConfig } from "../common/config";
 import type { WorkspaceStateService } from "../common/workspace-state";
@@ -39,7 +39,7 @@ export async function buildBspResolvedConfig(deps: {
   workspacePath: string;
   buildManager: BuildManager;
 }): Promise<BspResolvedConfig | null> {
-  const xcworkspace = getCurrentXcodeWorkspacePath(deps.workspaceState);
+  const xcworkspace = activateCurrentXcodeWorkspacePath(deps.workspaceState);
   if (!xcworkspace) {
     return null;
   }
