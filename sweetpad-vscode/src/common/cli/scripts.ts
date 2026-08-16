@@ -729,11 +729,14 @@ export const SWEETPAD_CLI_MISSING_MESSAGE =
  * Oldest CLI the extension will drive without complaint.
  *
  * The two ship on separate cadences — the extension through the Marketplace,
- * the CLI through Homebrew — so any pair can meet. This is the floor for the
- * `bsp.json` the extension writes and the CLI reads; raise it in the same
- * change that starts writing something an older CLI can't act on.
+ * the CLI through Homebrew — so any pair can meet. The floor covers what an
+ * older CLI cannot read (the `bsp.json` the extension writes) and equally what
+ * it cannot do: 0.1.6 is the first to pass `-resultBundlePath`, and without
+ * that Xcode 26 writes no `.xcactivitylog`, leaving the build server with no
+ * compiler arguments for any file. Raise it alongside any release that depends
+ * on CLI behavior whose absence is silent rather than loud.
  */
-export const MINIMUM_SWEETPAD_CLI_VERSION = "0.1.2";
+export const MINIMUM_SWEETPAD_CLI_VERSION = "0.1.6";
 
 /**
  * What `sweetpad --version` prints, or undefined when it can't be asked.
