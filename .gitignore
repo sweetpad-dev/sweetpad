@@ -21,6 +21,7 @@ sweetpad-vscode/native/index.d.ts
 !sweetpad-vscode/.vscode/
 sweetpad-vscode/.vscode/extensions.json
 sweetpad-vscode/.vscode/settings.json
+/.vscode/settings.json
 
 .env
 
