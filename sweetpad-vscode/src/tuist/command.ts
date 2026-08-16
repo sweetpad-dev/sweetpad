@@ -27,7 +27,7 @@ export async function tuistGenerateCommand(deps: AppDeps, cwd?: string) {
   deps.progressStatusBar.updateText("Running 'tuist generate'");
   await tuistCheckInstalled();
 
-  const raw = await tuistGenerate({ cwd: cwd });
+  const raw = await tuistGenerate({ cwd: cwd ?? deps.workspaceContext.root });
   if (raw.includes("tuist install")) {
     vscode.window.showErrorMessage(`Please run "tuist install" first`);
     return;
@@ -42,7 +42,7 @@ export async function tuistInstallCommand(deps: AppDeps) {
   deps.progressStatusBar.updateText("Running 'tuist install'");
   await tuistCheckInstalled();
 
-  await tuistInstall();
+  await tuistInstall({ cwd: deps.workspaceContext.root });
 
   await restartSwiftLSP();
 
@@ -53,7 +53,7 @@ export async function tuistCleanCommand(deps: AppDeps) {
   deps.progressStatusBar.updateText("Running 'tuist clean'");
   await tuistCheckInstalled();
 
-  await tuistClean();
+  await tuistClean({ cwd: deps.workspaceContext.root });
 
   vscode.window.showInformationMessage("Tuist cleaned.");
 }
@@ -62,12 +62,12 @@ export async function tuistEditComnmand(deps: AppDeps) {
   deps.progressStatusBar.updateText("Running 'tuist edit'");
   await tuistCheckInstalled();
 
-  await tuistEdit();
+  await tuistEdit({ cwd: deps.workspaceContext.root });
 }
 
 export async function tuistTestComnmand(deps: AppDeps) {
   deps.progressStatusBar.updateText("Running 'tuist test'");
   await tuistCheckInstalled();
 
-  await tuistTest();
+  await tuistTest({ cwd: deps.workspaceContext.root });
 }

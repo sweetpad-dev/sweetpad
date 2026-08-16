@@ -15,15 +15,15 @@ describe("getShellDeveloperDir", () => {
     process.env.DEVELOPER_DIR = "/Applications/Xcode-beta.app/Contents/Developer";
     // Re-resolve so the probe shell (or its process.env fallback) sees the
     // value set above instead of a cached earlier resolution.
-    await refreshShellEnv();
+    await refreshShellEnv("/workspace");
 
-    await expect(getShellDeveloperDir()).resolves.toBe("/Applications/Xcode-beta.app/Contents/Developer");
+    await expect(getShellDeveloperDir("/workspace")).resolves.toBe("/Applications/Xcode-beta.app/Contents/Developer");
   });
 
   it("returns undefined when no shell exports one", async () => {
     delete process.env.DEVELOPER_DIR;
-    await refreshShellEnv();
+    await refreshShellEnv("/workspace");
 
-    await expect(getShellDeveloperDir()).resolves.toBeUndefined();
+    await expect(getShellDeveloperDir("/workspace")).resolves.toBeUndefined();
   });
 });

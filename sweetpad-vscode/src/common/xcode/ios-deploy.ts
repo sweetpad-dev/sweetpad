@@ -325,6 +325,7 @@ export async function isIosDeployInstalled(): Promise<boolean> {
     await exec({
       command: "ios-deploy",
       args: ["--version"],
+      cwd: null,
     });
     return true;
   } catch {

@@ -3,7 +3,6 @@ import { type ChildProcess, spawn, StdioOptions } from "node:child_process";
 import { quote } from "shell-quote";
 import * as vscode from "vscode";
 
-import { getWorkspacePath } from "../../build/utils";
 import { TaskError } from "../errors";
 import type { ExecutionScopeService } from "../execution-scope";
 import { prepareEnvVars } from "../helpers";
@@ -55,6 +54,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
   constructor(
     private options: {
       callback: (terminal: TaskTerminalV2) => Promise<void>;
+      workspaceRoot: string;
     },
   ) {}
 
@@ -182,7 +182,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
 
   private spawnInGroup(spec: ProcessSpec, children: V2GroupChild[]): ProcessHandle {
     const env = { ...process.env, ...prepareEnvVars(spec.env ?? {}) };
-    const cwd = spec.cwd ?? getWorkspacePath();
+    const cwd = spec.cwd ?? this.options.workspaceRoot;
     const args = spec.args ?? [];
     const proc = spawn(spec.command, args, {
       cwd,
@@ -294,7 +294,7 @@ export class TaskTerminalV2 implements vscode.Pseudoterminal, TaskTerminal {
     let hasOutput = false;
 
     return new Promise<void>((resolve, reject) => {
-      const workspacePath = options.cwd ?? getWorkspacePath();
+      const workspacePath = options.cwd ?? this.options.workspaceRoot;
 
       // Collect lines and send them to the callback
       // This is usefull when you need to listen to task output and make some actions based on it
@@ -448,6 +448,7 @@ export async function runTaskV2<TMetadata>(
     source?: string;
     error?: string;
     callback: (terminal: TaskTerminal) => Promise<void>;
+    workspaceRoot: string;
     problemMatchers?: string[];
     lock: string;
     metadata?: TMetadata;
@@ -474,6 +475,7 @@ export async function runTaskV2<TMetadata>(
     options.source ?? "sweetpad",
     new vscode.CustomExecution(async () => {
       return new TaskTerminalV2({
+        workspaceRoot: options.workspaceRoot,
         callback: (terminal) => {
           // we propagate current command to the callback because vscode.CustomExecution
           // breaks the context that we use to show progress

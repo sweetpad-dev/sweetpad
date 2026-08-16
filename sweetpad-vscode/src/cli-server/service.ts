@@ -1,9 +1,10 @@
 import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
-import { getWorkspaceFolderPaths, getWorkspacePath } from "../build/utils";
+import { getWorkspaceFolderPaths } from "../build/utils";
 import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
 import { commonLogger } from "../common/logger";
+import type { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationsManager } from "../destination/manager";
 import { BuildSessionRegistry } from "./builds";
@@ -35,6 +36,7 @@ function extractSweetpadConfigKeys(context: vscode.ExtensionContext): string[] {
  * (see `src/bsp`); this layer knows nothing about it.
  */
 export class CliServerService implements vscode.Disposable {
+  private readonly workspaceContext: WorkspaceContextService;
   private readonly buildManager: BuildManager;
   private readonly destinationsManager: DestinationsManager;
   private readonly workspaceState: WorkspaceStateService;
@@ -49,6 +51,7 @@ export class CliServerService implements vscode.Disposable {
   private starting = false;
 
   constructor(options: {
+    workspaceContext: WorkspaceContextService;
     buildManager: BuildManager;
     destinationsManager: DestinationsManager;
     workspaceState: WorkspaceStateService;
@@ -56,6 +59,7 @@ export class CliServerService implements vscode.Disposable {
     extensionVersion: string;
     vscodeContext: vscode.ExtensionContext;
   }) {
+    this.workspaceContext = options.workspaceContext;
     this.buildManager = options.buildManager;
     this.destinationsManager = options.destinationsManager;
     this.workspaceState = options.workspaceState;
@@ -132,11 +136,12 @@ export class CliServerService implements vscode.Disposable {
       await registry.start();
 
       const dispatch = buildDispatch({
+        workspaceContext: this.workspaceContext,
         // Handlers ask this "which project am I on" — the cwd for simctl, the root `workspace.detect`
         // scans, the answer `meta.workspacePath` returns — so it has to follow the active project
         // rather than report whichever folder happened to be active at activation.
         get workspacePath() {
-          return getWorkspacePath();
+          return this.workspaceContext.root;
         },
         extensionVersion: this.extensionVersion,
         workspaceState: this.workspaceState,

@@ -64,6 +64,7 @@ export async function listDevicesWithXcdevice(): Promise<XcdeviceDevice[]> {
     const stdout = await exec({
       command: "xcrun",
       args: ["xcdevice", "list"],
+      cwd: null,
     });
 
     commonLogger.debug("xcdevice list output", { stdout });

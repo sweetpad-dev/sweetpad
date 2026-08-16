@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 
-import { getCurrentXcodeWorkspacePath, getWorkspaceFolderPaths, setActiveWorkspaceFolder } from "../../build/utils";
+import { getCurrentXcodeWorkspacePath, getWorkspaceFolderPaths } from "../../build/utils";
 import { SweetpadRpcError } from "../rpc";
 import { ERROR_CODES } from "../types";
 import { requireString } from "./_common";
@@ -45,7 +45,7 @@ export const workspaceUse: HandlerFn<{ path?: string }, { workspacePath: string;
   ctx.workspaceState.update("build.xcodeWorkspacePath", target);
   // This is one of the points a project becomes current, so the folder every "workspace root"
   // lookup resolves against moves with it.
-  setActiveWorkspaceFolder(target);
+  ctx.workspaceContext.setActiveFolder(target);
 
   const recent = ctx.workspaceState.get("build.xcodeWorkspacePathRecent") ?? [];
   const next = [target, ...recent.filter((p) => p !== target)].slice(0, RECENT_MAX);

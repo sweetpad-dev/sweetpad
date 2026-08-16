@@ -4,7 +4,6 @@ import type { IPty } from "node-pty";
 import { quote } from "shell-quote";
 import * as vscode from "vscode";
 
-import { getWorkspacePath } from "../../build/utils";
 import { TaskError } from "../errors";
 import type { ExecutionScopeService } from "../execution-scope";
 import { prepareEnvVars } from "../helpers";
@@ -80,6 +79,7 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
   constructor(
     private options: {
       callback: (terminal: TaskTerminalV3) => Promise<void>;
+      workspaceRoot: string;
     },
   ) {}
 
@@ -176,7 +176,7 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
     this.writeLine(commandPrint, { color: "green" });
     this.writeLine();
 
-    const cwd = options.cwd ?? getWorkspacePath();
+    const cwd = options.cwd ?? this.options.workspaceRoot;
     const env = await this.buildExecuteEnv(options);
 
     // Three ways to launch, selected by (pipes?, closeStdin?):
@@ -291,7 +291,7 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
       throw new ExecuteTaskError("node-pty is not available", { command: "<group>", errorCode: null });
     }
 
-    const shellEnv = await getShellEnv();
+    const shellEnv = await getShellEnv(this.options.workspaceRoot);
     const children: GroupChild[] = [];
     const group: ProcessGroup = {
       terminal: this,
@@ -347,7 +347,7 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
       });
     }
     const env = this.mergeEnv(shellEnv, spec.env);
-    const cwd = spec.cwd ?? getWorkspacePath();
+    const cwd = spec.cwd ?? this.options.workspaceRoot;
     const args = spec.args ?? [];
     const child = spec.pty
       ? this.spawnPtyChild(spec, args, env, cwd, nodePty)
@@ -559,7 +559,7 @@ export class TaskTerminalV3 implements vscode.Pseudoterminal, TaskTerminal {
   }
 
   private async buildExecuteEnv(options: CommandOptions): Promise<NodeJS.ProcessEnv> {
-    const shellEnv = await getShellEnv();
+    const shellEnv = await getShellEnv(this.options.workspaceRoot);
     return this.mergeEnv(shellEnv, options.env);
   }
 
@@ -661,6 +661,7 @@ export async function runTaskV3<TMetadata>(
     source?: string;
     error?: string;
     callback: (terminal: TaskTerminal) => Promise<void>;
+    workspaceRoot: string;
     problemMatchers?: string[];
     lock: string;
     metadata?: TMetadata;
@@ -690,6 +691,7 @@ export async function runTaskV3<TMetadata>(
     options.source ?? "sweetpad",
     new vscode.CustomExecution(async () => {
       return new TaskTerminalV3({
+        workspaceRoot: options.workspaceRoot,
         callback: (terminal) => {
           return executionScope.setScope(currentScope, () => {
             return options.callback(terminal);

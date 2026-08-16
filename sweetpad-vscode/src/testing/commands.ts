@@ -13,6 +13,7 @@ export async function selectTestingTargetCommand(deps: AppDeps): Promise<void> {
   deps.progressStatusBar.updateText("Searching for workspace");
   const xcworkspace = await askXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
 
@@ -46,6 +47,7 @@ export async function selectXcodeSchemeForTestingCommand(deps: AppDeps, item?: B
 
   const xcworkspace = await askXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
   await askSchemeForTesting(deps.progressStatusBar, deps.buildManager, {
@@ -62,6 +64,7 @@ export async function selectConfigurationForTestingCommand(deps: AppDeps): Promi
   deps.progressStatusBar.updateText("Searching for workspace");
   const xcworkspace = await askXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
 

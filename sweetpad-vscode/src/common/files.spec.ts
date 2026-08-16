@@ -4,8 +4,8 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { resetActiveWorkspaceFolder, setActiveWorkspaceFolder } from "../build/utils";
 import { findFiles, findFilesRecursive, getWorkspaceRelativePath } from "./files";
+import { WorkspaceContextService } from "./workspace-context";
 
 // `../build/utils` imports the native `@sweetpad/native` addon at module level; stub it so this
 // spec runs without the compiled addon (none of the tested paths touch it).
@@ -138,6 +138,8 @@ describe("findFiles / findFilesRecursive path building", () => {
 });
 
 describe("getWorkspaceRelativePath", () => {
+  let workspaceContext: WorkspaceContextService;
+
   function setFolders(paths: string[]) {
     (vscode.workspace as { workspaceFolders?: unknown }).workspaceFolders = paths.map((p) => ({
       uri: { fsPath: p },
@@ -145,13 +147,13 @@ describe("getWorkspaceRelativePath", () => {
   }
 
   beforeEach(() => {
-    resetActiveWorkspaceFolder();
+    workspaceContext = new WorkspaceContextService();
   });
 
   it("keeps the folder prefix for a project outside the first workspace folder", () => {
     setFolders(["/root-1", "/root-2"]);
     // Selecting a project moves the active folder to the one holding it.
-    setActiveWorkspaceFolder("/root-2/App.xcworkspace");
+    workspaceContext.setActiveFolder("/root-2/App.xcworkspace");
 
     // Anchoring to the active folder would yield the bare "App.xcworkspace", which /root-1 also
     // satisfies; the prefix is what makes the stored value name exactly one file.

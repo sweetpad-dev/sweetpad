@@ -20,6 +20,7 @@ vi.mock("execa", () => ({
 function makeCtx(): RpcContext {
   return {
     workspacePath: "/tmp/ws",
+    workspaceContext: { root: "/workspace", setActiveFolder: () => {} } as unknown as RpcContext["workspaceContext"],
     extensionVersion: "test",
     workspaceState: {} as RpcContext["workspaceState"],
     buildManager: {} as RpcContext["buildManager"],

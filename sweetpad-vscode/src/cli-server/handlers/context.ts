@@ -1,12 +1,14 @@
 import type * as vscode from "vscode";
 
 import type { BuildManager } from "../../build/manager";
+import type { WorkspaceContextService } from "../../common/workspace-context";
 import type { WorkspaceStateService } from "../../common/workspace-state";
 import type { DestinationsManager } from "../../destination/manager";
 import type { BuildSessionRegistry } from "../builds";
 
 export type RpcContext = {
   workspacePath: string;
+  workspaceContext: WorkspaceContextService;
   extensionVersion: string;
   workspaceState: WorkspaceStateService;
   buildManager: BuildManager;

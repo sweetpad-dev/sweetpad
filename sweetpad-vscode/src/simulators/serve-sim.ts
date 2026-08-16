@@ -2,10 +2,10 @@ import { type ChildProcess, spawn } from "node:child_process";
 
 import * as vscode from "vscode";
 
-import { getWorkspacePath } from "../build/utils.js";
 import { ExtensionError } from "../common/errors.js";
 import { commonLogger } from "../common/logger.js";
 import { getShellEnv } from "../common/tasks/shell-env.js";
+import type { WorkspaceContextService } from "../common/workspace-context";
 import type { SimulatorDestination } from "./types.js";
 
 /**
@@ -41,6 +41,11 @@ type ServeSimStream = {
  */
 export class ServeSimManager implements vscode.Disposable {
   private streams = new Map<string, ServeSimStream>();
+  private readonly workspaceContext: WorkspaceContextService;
+
+  constructor(options: { workspaceContext: WorkspaceContextService }) {
+    this.workspaceContext = options.workspaceContext;
+  }
 
   /**
    * `serve-sim` only runs on Apple Silicon Macs. SweetPad is macOS-only
@@ -97,14 +102,14 @@ export class ServeSimManager implements vscode.Disposable {
 
   private async spawn(simulator: SimulatorDestination): Promise<ServeSimStream> {
     const port = this.pickPort();
-    const env = await getShellEnv();
+    const env = await getShellEnv(this.workspaceContext.root);
 
     // `npx serve-sim "<device name>" --port <port>` boots/attaches to the
     // simulator and serves the preview. We keep the child running and watch its
     // output to know when the preview is reachable. The resolved shell env gives
     // the child the same PATH as the user's terminal, so `npx`/`node` are found.
     const child = spawn("npx", ["serve-sim", simulator.name, "--port", String(port)], {
-      cwd: getWorkspacePath(),
+      cwd: this.workspaceContext.root,
       env: env,
     });
 

@@ -3,27 +3,64 @@ import * as vscode from "vscode";
 import { prepareDerivedDataPath, workspaceFoldersContaining } from "../build/utils";
 import { getWorkspaceConfig } from "../common/config";
 import { commonLogger } from "../common/logger";
+import type { WorkspaceContextService } from "../common/workspace-context";
 
 export class XcodeGenWatcher implements vscode.Disposable {
   private watchers: vscode.FileSystemWatcher[] = [];
   // One pending generate per folder: a change in one project must not cancel another's.
   private throttles = new Map<string, NodeJS.Timeout>();
   private derivedDataPath: string | null = null;
+  private foldersSubscription: vscode.Disposable | undefined;
+  private disposed = false;
+  private queue: Promise<void> = Promise.resolve();
+  private readonly workspaceContext: WorkspaceContextService;
+
+  constructor(options: { workspaceContext: WorkspaceContextService }) {
+    this.workspaceContext = options.workspaceContext;
+  }
 
   async start(): Promise<void> {
-    this.derivedDataPath = prepareDerivedDataPath();
+    // Each watcher below is scoped to one folder, so the set only covers the folders open when it
+    // was built. Rebuild it whenever the window's folders change: otherwise a project.yml added
+    // after activation is never watched, and a folder that leaves keeps a watcher that can still
+    // fire a generate in a directory no longer in the window.
+    this.foldersSubscription = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      void this.rebuild().catch((error) => {
+        commonLogger.error("Failed to rebuild XcodeGen watchers", { error: error });
+      });
+    });
+    await this.rebuild();
+  }
+
+  /**
+   * Queued rather than run concurrently: two folder changes in quick succession would otherwise
+   * both build a set of watchers, and only the last set assigned would ever be disposed.
+   */
+  private rebuild(): Promise<void> {
+    const run = this.queue.then(
+      () => this.applyWatchers(),
+      () => this.applyWatchers(),
+    );
+    // The queue itself must never stay rejected, or one failed rebuild wedges every later one.
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  private async applyWatchers(): Promise<void> {
+    if (this.disposed) return;
+    this.derivedDataPath = prepareDerivedDataPath({ workspaceRoot: this.workspaceContext.root });
+
     // Is config enabled?
     // TODO: add config to enable/disable watcher
     const isEnabled = getWorkspaceConfig("xcodegen.autogenerate");
-    if (!isEnabled) {
-      return;
-    }
-
     // Every folder holding a project.yml gets its own watcher, scoped to that folder, so the
     // generate runs in the directory whose spec triggered it.
-    const folders = await workspaceFoldersContaining("project.yml");
+    const folders = isEnabled ? await workspaceFoldersContaining("project.yml") : [];
+    if (this.disposed) return;
+
+    this.disposeWatchers();
     if (folders.length === 0) {
-      commonLogger.log("project.yml not found, skipping xcodegen watcher");
+      commonLogger.log("No project.yml in any workspace folder, xcodegen watcher idle");
       return;
     }
 
@@ -82,7 +119,8 @@ export class XcodeGenWatcher implements vscode.Disposable {
     );
   }
 
-  dispose(): void {
+  /** Drops the current watchers and any generate they had pending. */
+  private disposeWatchers(): void {
     for (const timeout of this.throttles.values()) {
       clearTimeout(timeout);
     }
@@ -90,5 +128,13 @@ export class XcodeGenWatcher implements vscode.Disposable {
     for (const watcher of this.watchers) {
       watcher.dispose();
     }
+    this.watchers = [];
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.foldersSubscription?.dispose();
+    this.foldersSubscription = undefined;
+    this.disposeWatchers();
   }
 }

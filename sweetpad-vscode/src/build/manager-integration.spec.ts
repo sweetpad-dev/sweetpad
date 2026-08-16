@@ -91,6 +91,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       }),
     } as any;
     buildManager = new BuildManager({
+      workspaceContext: { root: "/test/workspace" } as any,
       workspaceState: mockWorkspace,
       progress: mockProgress,
       execution,
@@ -128,6 +129,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       configuration: "Debug",
       sdk: "iphoneos",
       xcworkspace: "/path/to/workspace.xcworkspace",
+      workspaceRoot: "/test/workspace",
       watchMarker: false,
       launchArgs: [],
       launchEnv: {},
@@ -533,6 +535,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         destination,
         sdk: "iphoneos",
         xcworkspace: "/path/to/workspace.xcworkspace",
+        workspaceRoot: "/test/workspace",
         watchMarker: false,
         launchArgs: [],
         launchEnv: {},
@@ -555,6 +558,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         destination,
         sdk: "iphoneos",
         xcworkspace: "/path/to/workspace.xcworkspace",
+        workspaceRoot: "/test/workspace",
         watchMarker: false,
         launchArgs: [],
         launchEnv: {},

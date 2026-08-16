@@ -6,7 +6,10 @@ import { ERROR_CODES, type SchemeEntity } from "../types";
 import type { HandlerFn, RpcContext } from "./context";
 
 async function loadSchemeNames(ctx: RpcContext): Promise<string[]> {
-  const xcworkspace = activateCurrentXcodeWorkspacePath(ctx.workspaceState);
+  const xcworkspace = activateCurrentXcodeWorkspacePath({
+    workspaceState: ctx.workspaceState,
+    workspaceContext: ctx.workspaceContext,
+  });
   if (!xcworkspace) {
     throw new SweetpadRpcError(ERROR_CODES.NO_WORKSPACE, "No Xcode workspace detected for this folder.", {
       hint: "open the project in VS Code so SweetPad can detect the workspace",

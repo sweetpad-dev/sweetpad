@@ -16,7 +16,7 @@ export async function xcodgenGenerateCommand(deps: AppDeps, cwd?: string): Promi
   }
 
   deps.progressStatusBar.updateText("Running XcodeGen");
-  await generateXcodeGen({ cwd: cwd });
+  await generateXcodeGen({ cwd: cwd ?? deps.workspaceContext.root });
 
   // Restart LSP to catch changes
   await restartSwiftLSP();

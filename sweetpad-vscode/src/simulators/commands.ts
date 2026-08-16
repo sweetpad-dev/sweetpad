@@ -48,6 +48,7 @@ export async function startSimulatorCommand(deps: AppDeps, item?: iOSSimulatorDe
 
   deps.progressStatusBar.updateText("Starting simulator");
   await runTask(deps.execution, {
+    workspaceRoot: deps.workspaceContext.root,
     name: "Start Simulator",
     lock: "sweetpad.simulators",
     terminateLocked: true,
@@ -81,6 +82,7 @@ export async function stopSimulatorCommand(deps: AppDeps, item?: iOSSimulatorDes
 
   deps.progressStatusBar.updateText("Stopping simulator");
   await runTask(deps.execution, {
+    workspaceRoot: deps.workspaceContext.root,
     name: "Stop Simulator",
     lock: "sweetpad.simulators",
     terminateLocked: true,
@@ -101,6 +103,7 @@ export async function stopSimulatorCommand(deps: AppDeps, item?: iOSSimulatorDes
 export async function openSimulatorCommand(deps: AppDeps) {
   deps.progressStatusBar.updateText("Opening Simulator.app");
   await runTask(deps.execution, {
+    workspaceRoot: deps.workspaceContext.root,
     name: "Open Simulator",
     error: "Could not open simulator app",
     lock: "sweetpad.simulators",
@@ -124,6 +127,7 @@ export async function openSimulatorCommand(deps: AppDeps) {
 export async function removeSimulatorCacheCommand(deps: AppDeps) {
   deps.progressStatusBar.updateText("Removing Simulator cache");
   await runTask(deps.execution, {
+    workspaceRoot: deps.workspaceContext.root,
     name: "Remove Simulator Cache",
     error: "Error removing simulator cache",
     lock: "sweetpad.build",

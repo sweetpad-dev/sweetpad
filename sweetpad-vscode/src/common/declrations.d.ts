@@ -18,7 +18,7 @@ declare module "execa" {
     command: string,
     args: string[],
     options: {
-      cwd: string;
+      cwd?: string;
       buffer?: boolean;
       env?: { [key: string]: string | undefined };
       extendEnv?: boolean;

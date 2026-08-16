@@ -24,6 +24,7 @@ function makeContext(opts: { workspacePath: string; state?: Map<string, unknown>
   };
   return {
     workspacePath: opts.workspacePath,
+    workspaceContext: { root: "/workspace", setActiveFolder: () => {} } as unknown as RpcContext["workspaceContext"],
     extensionVersion: "test",
     workspaceState: ws as WorkspaceStateService,
     buildManager: {} as RpcContext["buildManager"],

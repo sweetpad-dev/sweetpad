@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { getWorkspacePath } from "../build/utils";
+import { getWorkspaceFolderPaths } from "../build/utils";
 import {
   MINIMUM_SWEETPAD_CLI_VERSION,
   SWEETPAD_CLI_MISSING_MESSAGE,
@@ -97,15 +97,19 @@ export function getBuildServerProvider(): "sweetpad" | "xcode-build-server" {
  * edits made outside VS Code.
  */
 function hasForeignBuildServerConfig(): boolean {
-  try {
-    const raw = readFileSync(path.join(getWorkspacePath(), "buildServer.json"), "utf8");
-    return !isSweetpadBuildServerConfig(JSON.parse(raw) as BuildServerConfig);
-  } catch {
-    // No workspace, no file, unreadable, or not JSON — no evidence of a setup
-    // worth keeping. A config too broken to read is one the default repairs
-    // rather than one it should defer to.
-    return false;
-  }
+  // One setting covers the whole window, so any folder holding a config we did not write is enough
+  // to defer: answering from the active folder alone would replace a working setup in a folder
+  // nobody happened to be on.
+  return getWorkspaceFolderPaths().some((folder) => {
+    try {
+      const raw = readFileSync(path.join(folder, "buildServer.json"), "utf8");
+      return !isSweetpadBuildServerConfig(JSON.parse(raw) as BuildServerConfig);
+    } catch {
+      // No file, unreadable, or not JSON — no evidence of a setup worth keeping. A config too
+      // broken to read is one the default repairs rather than one it should defer to.
+      return false;
+    }
+  });
 }
 
 /**
@@ -195,17 +199,17 @@ async function cliVersionCheck(): Promise<DoctorCheck> {
   };
 }
 
-async function readBuildServerJson(): Promise<Record<string, unknown> | undefined> {
+async function readBuildServerJson(workspaceRoot: string): Promise<Record<string, unknown> | undefined> {
   try {
-    const raw = await fs.readFile(path.join(getWorkspacePath(), "buildServer.json"), "utf8");
+    const raw = await fs.readFile(path.join(workspaceRoot, "buildServer.json"), "utf8");
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return undefined;
   }
 }
 
-async function buildServerJsonCheck(): Promise<DoctorCheck> {
-  const config = await readBuildServerJson();
+async function buildServerJsonCheck(workspaceRoot: string): Promise<DoctorCheck> {
+  const config = await readBuildServerJson(workspaceRoot);
   let ok = false;
   let detail = "not found";
   if (config) {
@@ -235,10 +239,12 @@ async function buildServerJsonCheck(): Promise<DoctorCheck> {
 }
 
 async function collectBspChecks(deps: AppDeps): Promise<DoctorCheck[]> {
-  return getBuildServerProvider() === "sweetpad" ? collectSweetpadChecks(deps) : collectXBSChecks();
+  return getBuildServerProvider() === "sweetpad"
+    ? collectSweetpadChecks(deps)
+    : collectXBSChecks(deps.workspaceContext.root);
 }
 
-async function collectXBSChecks(): Promise<DoctorCheck[]> {
+async function collectXBSChecks(workspaceRoot: string): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
 
   // Said here rather than in a notification: a workspace kept on
@@ -259,7 +265,7 @@ async function collectXBSChecks(): Promise<DoctorCheck[]> {
     hint: "Install it with 'brew install xcode-build-server' (or run 'SweetPad: Install tool').",
   });
 
-  checks.push(await buildServerJsonCheck());
+  checks.push(await buildServerJsonCheck(workspaceRoot));
 
   const swiftLspAvailable = (await vscode.commands.getCommands(true)).includes(SWIFT_RESTART_COMMAND);
   checks.push({
@@ -268,7 +274,7 @@ async function collectXBSChecks(): Promise<DoctorCheck[]> {
     hint: "Install the Swift extension so sourcekit-lsp picks up buildServer.json.",
   });
 
-  const developerDir = await getDeveloperDir();
+  const developerDir = await getDeveloperDir({ workspaceRoot: workspaceRoot });
   checks.push({
     ok: developerDir !== undefined,
     label: "Xcode developer dir resolved",
@@ -285,7 +291,7 @@ async function collectXBSChecks(): Promise<DoctorCheck[]> {
  * line, so the extension's socket, its `bsp.json` and its selected scheme never
  * come into it — reporting on those would call a healthy setup broken.
  */
-async function collectCliDrivenChecks(config: Record<string, unknown>): Promise<DoctorCheck[]> {
+async function collectCliDrivenChecks(config: Record<string, unknown>, workspaceRoot: string): Promise<DoctorCheck[]> {
   const argv = config.argv;
   const launcher = Array.isArray(argv) && typeof argv[0] === "string" ? argv[0] : undefined;
 
@@ -295,7 +301,7 @@ async function collectCliDrivenChecks(config: Record<string, unknown>): Promise<
       label: "Build server provider",
       detail: "sweetpad, launched by the sweetpad CLI — this buildServer.json came from 'sweetpad bsp init'",
     },
-    await buildServerJsonCheck(),
+    await buildServerJsonCheck(workspaceRoot),
     {
       ok: launcher !== undefined && (await isFileExists(launcher)),
       label: "sweetpad CLI present",
@@ -312,9 +318,10 @@ async function collectCliDrivenChecks(config: Record<string, unknown>): Promise<
 }
 
 async function collectSweetpadChecks(deps: AppDeps): Promise<DoctorCheck[]> {
-  const config = await readBuildServerJson();
-  if (isSweetpadBuildServerConfig(config) && !isExtensionManagedBuildServerConfig(config, getWorkspacePath())) {
-    return collectCliDrivenChecks(config as Record<string, unknown>);
+  const workspaceRoot = deps.workspaceContext.root;
+  const config = await readBuildServerJson(workspaceRoot);
+  if (isSweetpadBuildServerConfig(config) && !isExtensionManagedBuildServerConfig(config, workspaceRoot)) {
+    return collectCliDrivenChecks(config as Record<string, unknown>, workspaceRoot);
   }
 
   const checks: DoctorCheck[] = [];
@@ -322,7 +329,7 @@ async function collectSweetpadChecks(deps: AppDeps): Promise<DoctorCheck[]> {
 
   checks.push({ ok: true, label: "Build server provider", detail: "sweetpad" });
 
-  checks.push(await buildServerJsonCheck());
+  checks.push(await buildServerJsonCheck(deps.workspaceContext.root));
 
   const cli = await getSweetpadCliPath();
   checks.push({
@@ -348,7 +355,7 @@ async function collectSweetpadChecks(deps: AppDeps): Promise<DoctorCheck[]> {
     hint: "Pick a scheme with 'SweetPad: Select scheme for build'.",
   });
 
-  const developerDir = await getDeveloperDir();
+  const developerDir = await getDeveloperDir({ workspaceRoot: deps.workspaceContext.root });
   checks.push({
     ok: developerDir !== undefined,
     label: "Xcode developer dir resolved",

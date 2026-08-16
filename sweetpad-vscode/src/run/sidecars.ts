@@ -454,7 +454,7 @@ export class Pymd3Sidecar extends LogSidecar {
 
   async isPymobiledevice3Available(binaryPath: string): Promise<boolean> {
     try {
-      await exec({ command: binaryPath, args: ["version"] });
+      await exec({ command: binaryPath, args: ["version"], cwd: null });
       return true;
     } catch {
       return false;

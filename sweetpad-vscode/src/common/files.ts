@@ -4,7 +4,8 @@ import * as path from "node:path";
 
 import type * as vscode from "vscode";
 
-import { getWorkspaceFolderPaths, getWorkspacePath, prepareStoragePath } from "../build/utils";
+import { getWorkspaceFolderPaths, prepareStoragePath } from "../build/utils";
+import { ExtensionError } from "./errors";
 
 /**
  * Find files or directories in a given directory
@@ -119,7 +120,10 @@ export function getWorkspaceRelativePath(filePath: string): string {
   // "../other-folder/" prefix to name exactly one file. Anchoring to the active folder, or to the
   // file's own folder, drops that prefix, and then two folders holding the same layout — two
   // checkouts of one repo — produce the same string and resolve back to whichever comes first.
-  const anchor = getWorkspaceFolderPaths()[0] ?? getWorkspacePath();
+  const anchor = getWorkspaceFolderPaths()[0];
+  if (!anchor) {
+    throw new ExtensionError("No workspace folder found");
+  }
   return path.relative(anchor, filePath);
 }
 

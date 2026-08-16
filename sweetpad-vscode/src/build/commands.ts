@@ -21,7 +21,7 @@ import {
   findXcodeWorkspaceInDirectory,
   activateCurrentXcodeWorkspacePath,
   getCurrentXcodeWorkspacePath,
-  getWorkspacePath,
+  getWorkspaceRoot,
   prepareStoragePath,
   refreshBuildServer,
   selectXcodeWorkspace,
@@ -93,6 +93,7 @@ export async function resolveDependenciesCommand(deps: AppDeps, item?: BuildTree
   deps.progressStatusBar.updateText("Searching for workspace");
   const xcworkspace = await askXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
 
@@ -141,7 +142,12 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
   deps.progressStatusBar.updateText("Searching for workspace");
   const xcworkspace = await askXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
+  });
+  const workspaceRoot = getWorkspaceRoot({
+    xcworkspace: xcworkspace,
+    workspaceContext: deps.workspaceContext,
   });
 
   deps.progressStatusBar.updateText("Searching for scheme");
@@ -153,8 +159,11 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
     }));
 
   deps.progressStatusBar.updateText("Generating buildServer.json");
+  // Pinned: the notification below outlives this call, and "Open" has to point at the file this
+  // command actually wrote rather than wherever the active folder has moved to by then.
   // User explicitly invoked this command — always restart, regardless of build.autoRestartSwiftLSP.
   await refreshBuildServer({
+    workspaceRoot: workspaceRoot,
     xcworkspace: xcworkspace,
     scheme: scheme,
     forceRestartLSP: true,
@@ -162,8 +171,7 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
 
   vscode.window.showInformationMessage("buildServer.json generated in workspace root", "Open").then((selected) => {
     if (selected === "Open") {
-      const workspacePath = getWorkspacePath();
-      const buildServerPath = vscode.Uri.file(path.join(workspacePath, "buildServer.json"));
+      const buildServerPath = vscode.Uri.file(path.join(workspaceRoot, "buildServer.json"));
       vscode.commands.executeCommand("vscode.open", buildServerPath);
     }
   });
@@ -207,8 +215,11 @@ export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTre
 
   const xcworkspace = await askXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
+  const workspaceRoot = getWorkspaceRoot({ xcworkspace: xcworkspace, workspaceContext: deps.workspaceContext });
+
   const scheme =
     item?.scheme ??
     (await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
@@ -218,6 +229,7 @@ export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTre
 
   await deps.lspDiagnostics.enable();
   await refreshBuildServer({
+    workspaceRoot: workspaceRoot,
     xcworkspace: xcworkspace,
     scheme: scheme,
     forceRestartLSP: true,
@@ -244,8 +256,11 @@ export async function disableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTr
 
   const xcworkspace = await askXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
+  const workspaceRoot = getWorkspaceRoot({ xcworkspace: xcworkspace, workspaceContext: deps.workspaceContext });
+
   const scheme =
     item?.scheme ??
     (await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
@@ -255,6 +270,7 @@ export async function disableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTr
 
   await deps.lspDiagnostics.disable();
   await refreshBuildServer({
+    workspaceRoot: workspaceRoot,
     xcworkspace: xcworkspace,
     scheme: scheme,
     forceRestartLSP: true,
@@ -279,12 +295,14 @@ export async function openXcodeCommand(deps: AppDeps) {
   deps.progressStatusBar.updateText("Opening project in Xcode");
   const xcworkspace = await askXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
 
   await exec({
     command: "open",
     args: [xcworkspace],
+    cwd: null,
   });
 }
 
@@ -295,6 +313,7 @@ export async function selectXcodeWorkspaceCommand(deps: AppDeps) {
   deps.progressStatusBar.updateText("Searching for workspace");
   const workspace = await selectXcodeWorkspace({
     autoselect: false,
+    workspaceContext: deps.workspaceContext,
   });
   const updateAnswer = await showYesNoQuestion({
     title: "Do you want to update path to xcode workspace in the workspace settings (.vscode/settings.json)?",
@@ -319,6 +338,7 @@ export async function selectXcodeSchemeForBuildCommand(deps: AppDeps, item?: Bui
   deps.progressStatusBar.updateText("Searching for workspace");
   const xcworkspace = await askXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
 
@@ -353,6 +373,7 @@ export async function selectConfigurationForBuildCommand(deps: AppDeps): Promise
   deps.progressStatusBar.updateText("Searching for workspace");
   const xcworkspace = await askXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
 
@@ -389,7 +410,10 @@ export async function selectConfigurationForBuildCommand(deps: AppDeps): Promise
 export async function diagnoseBuildSetupCommand(deps: AppDeps): Promise<void> {
   deps.progressStatusBar.updateText("Diagnosing build setup");
 
+  // Read once, so the report describes the folder the task actually ran in.
+  const workspacePath = deps.workspaceContext.root;
   await runTask(deps.execution, {
+    workspaceRoot: workspacePath,
     name: "Diagnose Build Setup",
     lock: "sweetpad.build",
     terminateLocked: true,
@@ -420,7 +444,6 @@ export async function diagnoseBuildSetupCommand(deps: AppDeps): Promise<void> {
       diagWrite(`✅ Host platform: ${hostPlatform}\n`);
       diagWrite("================================");
 
-      const workspacePath = getWorkspacePath();
       diagWrite("🔎 Checking VS Code workspace path");
       diagWrite(`✅ VSCode workspace path: ${workspacePath}\n`);
       diagWrite("================================");
@@ -511,7 +534,10 @@ export async function applySchemeFilterCommand(deps: AppDeps): Promise<void> {
 }
 
 export async function refreshSchemesCommand(deps: AppDeps): Promise<void> {
-  const xcworkspace = activateCurrentXcodeWorkspacePath(deps.workspaceState);
+  const xcworkspace = activateCurrentXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
+  });
 
   if (!xcworkspace) {
     // If there is no workspace, we should ask user to select it first.
@@ -519,6 +545,7 @@ export async function refreshSchemesCommand(deps: AppDeps): Promise<void> {
     // without calling to refresh schemes manually.
     await askXcodeWorkspacePath({
       workspaceState: deps.workspaceState,
+      workspaceContext: deps.workspaceContext,
       buildManager: deps.buildManager,
     });
     return;
@@ -539,7 +566,7 @@ export async function stopSchemeCommand(deps: AppDeps, item?: BuildTreeItem) {
 export async function switchWorktreeCommand(deps: AppDeps) {
   deps.progressStatusBar.updateText("Detecting git worktrees");
 
-  const worktrees = await detectGitWorktrees();
+  const worktrees = await detectGitWorktrees({ workspaceRoot: deps.workspaceContext.root });
   if (worktrees.length <= 1) {
     vscode.window.showInformationMessage("No additional git worktrees found. Create one with `git worktree add`.");
     return;

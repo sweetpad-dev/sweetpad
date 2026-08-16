@@ -19,6 +19,7 @@ import { type ErrorMessageAction, ExtensionError, TaskError } from "./errors";
 import { CommandExecutionScope, type ExecutionScopeService } from "./execution-scope";
 import { commonLogger } from "./logger";
 import { QuickPickCancelledError } from "./quick-pick";
+import type { WorkspaceContextService } from "./workspace-context";
 import type { WorkspaceStateService } from "./workspace-state";
 
 export { BaseExecutionScope, CommandExecutionScope, TaskExecutionScope, type ExecutionScope } from "./execution-scope";
@@ -36,6 +37,7 @@ export type {
  * in `activate()`; everything else just reads fields off it.
  */
 export type AppDeps = {
+  workspaceContext: WorkspaceContextService;
   buildManager: BuildManager;
   testingManager: TestingManager;
   destinationsManager: DestinationsManager;

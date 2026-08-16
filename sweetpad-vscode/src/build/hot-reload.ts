@@ -8,7 +8,6 @@ import { commonLogger } from "../common/logger";
 import type { TaskTerminal } from "../common/tasks/types";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationType } from "../destination/types";
-import { getWorkspacePath } from "./utils";
 
 const INJECT_PACKAGE_URL = "https://github.com/krzysztofzablocki/Inject";
 const INJECT_WARNING_MAX = 3;
@@ -68,9 +67,9 @@ let cachedDeveloperDir: string | null | undefined = undefined;
  * preferring the login shell's DEVELOPER_DIR (which subsumes the host env), otherwise
  * falling back to `xcode-select -p`. Cached for the process lifetime.
  */
-async function getXcodeDeveloperDir(): Promise<string | null> {
+async function getXcodeDeveloperDir(workspaceRoot: string): Promise<string | null> {
   if (cachedDeveloperDir !== undefined) return cachedDeveloperDir;
-  cachedDeveloperDir = (await getDeveloperDir()) ?? null;
+  cachedDeveloperDir = (await getDeveloperDir({ workspaceRoot: workspaceRoot })) ?? null;
   if (cachedDeveloperDir === null) {
     commonLogger.warn("Hot reload: failed to resolve Xcode developer dir");
   }
@@ -140,11 +139,12 @@ export function resolveInjectionDylib(destinationType: DestinationType): string 
  * paths that won't exist on machines with a versioned or relocated Xcode install.
  */
 async function getXctestSearchPaths(
+  workspaceRoot: string,
   destinationType: DestinationType,
 ): Promise<{ frameworkPath: string; libraryPath: string } | null> {
   const platform = platformDirNameFor(destinationType);
   if (!platform) return null;
-  const developerDir = await getXcodeDeveloperDir();
+  const developerDir = await getXcodeDeveloperDir(workspaceRoot);
   if (!developerDir) return null;
   const platformDev = path.join(developerDir, "Platforms", `${platform}.platform`, "Developer");
   // XCTest lives in Library/Frameworks but XCTestCore + XCTAutomationSupport are in
@@ -214,16 +214,13 @@ export function pinsContainInject(json: unknown): boolean {
  * Capped at INJECT_WARNING_MAX shows per workspace so it doesn't nag forever for
  * UIKit-only projects that legitimately don't need Inject.
  */
-async function warnIfInjectMissing(terminal: TaskTerminal, state: WorkspaceStateService): Promise<void> {
+async function warnIfInjectMissing(
+  terminal: TaskTerminal,
+  state: WorkspaceStateService,
+  workspace: string,
+): Promise<void> {
   const shown = state.get("hotReload.injectWarningShownCount") ?? 0;
   if (shown >= INJECT_WARNING_MAX) return;
-
-  let workspace: string;
-  try {
-    workspace = getWorkspacePath();
-  } catch {
-    return;
-  }
 
   const files = await findPackageResolvedFiles(workspace);
   if (files.length === 0) return;
@@ -266,24 +263,26 @@ async function warnIfInjectMissing(terminal: TaskTerminal, state: WorkspaceState
  * the DYLD_FRAMEWORK_PATH / DYLD_LIBRARY_PATH needed for the injection dylib's XCTest
  * dependencies to resolve. Pass-through when hot reload is off or unsupported.
  */
-export async function withHotReloadLaunchEnv(
-  terminal: TaskTerminal,
-  state: WorkspaceStateService,
-  launchEnv: Record<string, string>,
-  destinationType: DestinationType,
-): Promise<Record<string, string>> {
+export async function withHotReloadLaunchEnv(options: {
+  terminal: TaskTerminal;
+  state: WorkspaceStateService;
+  launchEnv: Record<string, string>;
+  destinationType: DestinationType;
+  workspaceRoot: string;
+}): Promise<Record<string, string>> {
+  const { launchEnv, destinationType, workspaceRoot } = options;
   const dylib = resolveInjectionDylib(destinationType);
   if (!dylib) return launchEnv;
 
-  await warnIfInjectMissing(terminal, state);
+  await warnIfInjectMissing(options.terminal, options.state, workspaceRoot);
 
   const env: Record<string, string> = {
     ...launchEnv,
     DYLD_INSERT_LIBRARIES: dylib,
-    INJECTION_PROJECT_ROOT: getWorkspacePath(),
+    INJECTION_PROJECT_ROOT: workspaceRoot,
   };
 
-  const xctest = await getXctestSearchPaths(destinationType);
+  const xctest = await getXctestSearchPaths(workspaceRoot, destinationType);
   if (xctest) {
     env.DYLD_FRAMEWORK_PATH = prependPath(launchEnv.DYLD_FRAMEWORK_PATH, xctest.frameworkPath);
     env.DYLD_LIBRARY_PATH = prependPath(launchEnv.DYLD_LIBRARY_PATH, xctest.libraryPath);
@@ -299,13 +298,13 @@ export async function ensureInjectionAppRunning(): Promise<void> {
   if (!isHotReloadEnabled()) return;
   if (!existsSync(INJECTIONNEXT_APP)) return;
   try {
-    await exec({ command: "pgrep", args: ["-x", "InjectionNext"] });
+    await exec({ command: "pgrep", args: ["-x", "InjectionNext"], cwd: null });
     return;
   } catch {
     // pgrep exits non-zero when no match; fall through to launch.
   }
   try {
-    await exec({ command: "open", args: ["-g", "-a", INJECTIONNEXT_APP] });
+    await exec({ command: "open", args: ["-g", "-a", INJECTIONNEXT_APP], cwd: null });
   } catch (error) {
     commonLogger.warn("Hot reload: failed to auto-start InjectionNext", { error: error });
   }

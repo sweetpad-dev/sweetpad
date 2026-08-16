@@ -4,8 +4,9 @@ import * as vscode from "vscode";
 
 import { getWorkspaceConfig } from "../common/config";
 import { commonLogger } from "../common/logger";
+import type { WorkspaceContextService } from "../common/workspace-context";
 import type { BuildManager } from "./manager";
-import { getWorkspacePath, prepareDerivedDataPath, workspaceFoldersContaining } from "./utils";
+import { prepareDerivedDataPath, workspaceFoldersContaining } from "./utils";
 
 export class SchemeWatcher implements vscode.Disposable {
   private watchers: vscode.FileSystemWatcher[] = [];
@@ -14,11 +15,17 @@ export class SchemeWatcher implements vscode.Disposable {
   private derivedDataPath: string | null = null;
   private workspacePath = "";
 
-  constructor(private buildManager: BuildManager) {}
+  private readonly workspaceContext: WorkspaceContextService;
+  private readonly buildManager: BuildManager;
+
+  constructor(options: { workspaceContext: WorkspaceContextService; buildManager: BuildManager }) {
+    this.workspaceContext = options.workspaceContext;
+    this.buildManager = options.buildManager;
+  }
 
   async start(): Promise<void> {
-    this.derivedDataPath = prepareDerivedDataPath();
-    this.workspacePath = getWorkspacePath();
+    this.derivedDataPath = prepareDerivedDataPath({ workspaceRoot: this.workspaceContext.root });
+    this.workspacePath = this.workspaceContext.root;
 
     // Check if auto-refresh is enabled (default: true)
     const isEnabled = getWorkspaceConfig("build.autoRefreshSchemes") ?? true;

@@ -3,7 +3,6 @@ import * as crypto from "node:crypto";
 
 import * as vscode from "vscode";
 
-import { getWorkspacePath } from "../../build/utils";
 import { getWorkspaceConfig } from "../config";
 import { commonLogger } from "../logger";
 
@@ -30,9 +29,13 @@ const ELECTRON_ONLY_VARS = new Set(["ELECTRON_RUN_AS_NODE", "ELECTRON_NO_ATTACH_
 let cachedPromise: Promise<NodeJS.ProcessEnv> | null = null;
 let notifiedFailureThisSession = false;
 
-export function getShellEnv(): Promise<NodeJS.ProcessEnv> {
+/**
+ * The login-shell environment, resolved once per session. `cwd` only matters on the call that
+ * primes the cache — later callers get the same answer whatever they pass.
+ */
+export function getShellEnv(cwd: string | null): Promise<NodeJS.ProcessEnv> {
   if (!cachedPromise) {
-    cachedPromise = resolveShellEnv().catch((error) => {
+    cachedPromise = resolveShellEnv(cwd).catch((error) => {
       commonLogger.warn("Shell environment resolution failed; falling back to process.env", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -43,14 +46,14 @@ export function getShellEnv(): Promise<NodeJS.ProcessEnv> {
   return cachedPromise;
 }
 
-export async function refreshShellEnv(): Promise<NodeJS.ProcessEnv> {
+export async function refreshShellEnv(cwd: string | null): Promise<NodeJS.ProcessEnv> {
   cachedPromise = null;
   notifiedFailureThisSession = false;
   // getShellEnv() swallows failures and resolves to process.env so callers always have something
   // usable. Track the success path explicitly so we don't show a "refreshed" toast on top of the
   // failure warning that maybeNotifyShellEnvFailure already surfaced.
   let succeeded = false;
-  cachedPromise = resolveShellEnv()
+  cachedPromise = resolveShellEnv(cwd)
     .then((env) => {
       succeeded = true;
       return env;
@@ -73,14 +76,13 @@ export async function refreshShellEnv(): Promise<NodeJS.ProcessEnv> {
  * Eagerly kicks off shell env resolution so the first task doesn't wait.
  * Call this from extension activate().
  */
-export function warmShellEnv(): void {
-  void getShellEnv();
+export function warmShellEnv(cwd: string | null): void {
+  void getShellEnv(cwd);
 }
 
-async function resolveShellEnv(): Promise<NodeJS.ProcessEnv> {
+async function resolveShellEnv(cwd: string | null): Promise<NodeJS.ProcessEnv> {
   const shell = getWorkspaceConfig("shellEnv.shell") || process.env.SHELL || "/bin/sh";
   const timeoutMs = getWorkspaceConfig("shellEnv.timeout") ?? DEFAULT_TIMEOUT_MS;
-  const cwd = getWorkspacePath();
 
   const uuid = crypto.randomUUID();
   const startMarker = `__SW_ENV_START_${uuid}__`;
@@ -95,7 +97,7 @@ async function resolveShellEnv(): Promise<NodeJS.ProcessEnv> {
 
   return await new Promise<NodeJS.ProcessEnv>((resolve, reject) => {
     const child = spawn(shell, args, {
-      cwd,
+      ...(cwd !== null && { cwd: cwd }),
       env: {
         ...process.env,
         // Suppress oh-my-zsh chatter that would otherwise print during rc
@@ -167,8 +169,8 @@ async function resolveShellEnv(): Promise<NodeJS.ProcessEnv> {
  * `process.env.DEVELOPER_DIR` naturally: the probe shell inherits the
  * host env, and `getShellEnv` resolves to `process.env` when probing fails.
  */
-export async function getShellDeveloperDir(): Promise<string | undefined> {
-  const env = await getShellEnv();
+export async function getShellDeveloperDir(cwd: string | null): Promise<string | undefined> {
+  const env = await getShellEnv(cwd);
   return env.DEVELOPER_DIR || undefined;
 }
 

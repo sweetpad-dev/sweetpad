@@ -165,6 +165,7 @@ describe("getBuildSettingsList", () => {
     mockBuildSettings.mockReturnValue([{ target: "App", settings: { PRODUCT_NAME: "App" } }]);
 
     const settings = await getBuildSettingsList({
+      workspaceRoot: "/test/workspace",
       scheme: "App",
       configuration: "Debug",
       sdk: undefined,
@@ -183,6 +184,7 @@ describe("getBuildSettingsList", () => {
     mockBuildSettings.mockReturnValue([{ target: "App", settings: {} }]);
 
     await getBuildSettingsList({
+      workspaceRoot: "/test/workspace",
       scheme: "App",
       configuration: "Debug",
       sdk: undefined,
@@ -199,6 +201,7 @@ describe("getBuildSettingsList", () => {
     mockBuildSettings.mockReturnValue([{ target: "App", settings: {} }]);
 
     await getBuildSettingsList({
+      workspaceRoot: "/test/workspace",
       scheme: "App",
       configuration: "Debug",
       sdk: undefined,
@@ -213,6 +216,7 @@ describe("getBuildSettingsList", () => {
     mockExec.mockResolvedValue(xcodebuildJson("App"));
 
     const settings = await getBuildSettingsList({
+      workspaceRoot: "/test/workspace",
       scheme: "App",
       configuration: "Debug",
       sdk: undefined,
@@ -234,6 +238,7 @@ describe("getBuildSettingsList", () => {
     mockExec.mockResolvedValue(xcodebuildJson("App"));
 
     await getBuildSettingsList({
+      workspaceRoot: "/test/workspace",
       scheme: "App",
       configuration: "Debug",
       sdk: undefined,
@@ -253,6 +258,7 @@ describe("getBuildSettingsList", () => {
 
     await expect(
       getBuildSettingsList({
+        workspaceRoot: "/test/workspace",
         scheme: "App",
         configuration: "Debug",
         sdk: undefined,
@@ -270,6 +276,7 @@ describe("getBuildSettingsList", () => {
     mockExec.mockResolvedValue(xcodebuildJson("App"));
 
     const settings = await getBuildSettingsList({
+      workspaceRoot: "/test/workspace",
       scheme: "App",
       configuration: "Debug",
       sdk: undefined,
@@ -285,6 +292,7 @@ describe("getBuildSettingsList", () => {
     mockExec.mockResolvedValue(xcodebuildJson("MyPackage"));
 
     const settings = await getBuildSettingsList({
+      workspaceRoot: "/test/workspace",
       scheme: "MyPackage",
       configuration: "Debug",
       sdk: undefined,

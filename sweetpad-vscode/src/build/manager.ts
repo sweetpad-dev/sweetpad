@@ -22,6 +22,7 @@ import { commonLogger } from "../common/logger";
 import { runTask } from "../common/tasks/run";
 import type { Command, TaskTerminal } from "../common/tasks/types";
 import { assertUnreachable } from "../common/types";
+import type { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import * as iosDeploy from "../common/xcode/ios-deploy";
 import type { DestinationsManager } from "../destination/manager";
@@ -58,7 +59,6 @@ import {
   notifyXBSMissing,
   getSchemeLaunchSettings,
   getSwiftPMDirectory,
-  getWorkspacePath,
   getXcodeBuildDestinationString,
   isAutoGenerateBuildServerConfigEnabled,
   isXcbeautifyEnabled,
@@ -67,6 +67,7 @@ import {
   refreshBuildServer,
   restartSwiftLSP,
   writeWatchMarkers,
+  getWorkspaceRoot,
 } from "./utils";
 
 // Stable category strings — exposed to CLI consumers, so keep the union narrow.
@@ -118,7 +119,10 @@ export class BuildManager {
   private runningSchemes: Set<string> = new Set();
   private cancellingSchemes: Set<string> = new Set();
 
+  private readonly workspaceContext: WorkspaceContextService;
+
   constructor(options: {
+    workspaceContext: WorkspaceContextService;
     workspaceState: WorkspaceStateService;
     progress: ProgressStatusBar;
     execution: ExecutionScopeService;
@@ -127,6 +131,7 @@ export class BuildManager {
     destinations: DestinationsManager;
     diagnostics: DiagnosticsManager;
   }) {
+    this.workspaceContext = options.workspaceContext;
     this.workspaceState = options.workspaceState;
     this.progress = options.progress;
     this.execution = options.execution;
@@ -185,7 +190,10 @@ export class BuildManager {
 
       this.emitter.emit("refreshSchemesStarted");
       try {
-        const xcworkspace = activateCurrentXcodeWorkspacePath(this.workspaceState);
+        const xcworkspace = activateCurrentXcodeWorkspacePath({
+          workspaceState: this.workspaceState,
+          workspaceContext: this.workspaceContext,
+        });
 
         const schemes = await getSchemes({ xcworkspace: xcworkspace });
 
@@ -288,7 +296,11 @@ export class BuildManager {
       return;
     }
 
-    const buildServerJsonPath = path.join(getWorkspacePath(), "buildServer.json");
+    // The precondition is about the folder SweetPad is on right now — read once, before the
+    // picker below can move it. The refresh further down targets the folder of the project the
+    // picker actually returned, which is a different question.
+    const activeRoot = this.workspaceContext.root;
+    const buildServerJsonPath = path.join(activeRoot, "buildServer.json");
     const isBuildServerJsonExists = await isFileExists(buildServerJsonPath);
     if (!isBuildServerJsonExists) {
       return;
@@ -300,8 +312,18 @@ export class BuildManager {
       return;
     }
 
-    const xcworkspace = await askXcodeWorkspacePath({ workspaceState: this.workspaceState, buildManager: this });
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.workspaceState,
+      workspaceContext: this.workspaceContext,
+      buildManager: this,
+    });
+    const workspaceRoot = getWorkspaceRoot({
+      xcworkspace: xcworkspace,
+      workspaceContext: this.workspaceContext,
+    });
+
     await refreshBuildServer({
+      workspaceRoot: workspaceRoot,
       xcworkspace: xcworkspace,
       scheme: options.scheme,
     });
@@ -343,6 +365,7 @@ export class BuildManager {
   async runSchemeTask(options: {
     name: string;
     scheme: string;
+    workspaceRoot: string;
     command: BuildSessionCommand;
     callback: (terminal: TaskTerminal) => Promise<void>;
   }): Promise<void> {
@@ -352,6 +375,7 @@ export class BuildManager {
     let status: BuildSessionEnded["status"] = "succeeded";
     try {
       await runTask(this.execution, {
+        workspaceRoot: options.workspaceRoot,
         name: options.name,
         lock: "sweetpad.build",
         terminateLocked: true,
@@ -374,7 +398,15 @@ export class BuildManager {
    */
   async buildCommand(item: BuildTreeItem | undefined, options: { debug: boolean }) {
     this.progress.updateText("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath({ workspaceState: this.workspaceState, buildManager: this });
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.workspaceState,
+      workspaceContext: this.workspaceContext,
+      buildManager: this,
+    });
+    const workspaceRoot = getWorkspaceRoot({
+      xcworkspace: xcworkspace,
+      workspaceContext: this.workspaceContext,
+    });
 
     this.progress.updateText("Searching for scheme");
     const scheme =
@@ -382,6 +414,7 @@ export class BuildManager {
       (await askSchemeForBuild(this.progress, this, { title: "Select scheme to build", xcworkspace: xcworkspace }));
 
     await generateBuildServerConfigOnBuild({
+      workspaceRoot: workspaceRoot,
       scheme: scheme,
       xcworkspace: xcworkspace,
       workspaceState: this.workspaceState,
@@ -392,6 +425,7 @@ export class BuildManager {
 
     this.progress.updateText("Searching for destination");
     const destination = await askDestinationToRunOn(this.progress, this.destinations, {
+      workspaceRoot: workspaceRoot,
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -404,9 +438,11 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Build",
       scheme: scheme,
+      workspaceRoot: workspaceRoot,
       command: "build",
       callback: async (terminal) => {
         await this.buildApp(terminal, {
+          workspaceRoot: workspaceRoot,
           scheme: scheme,
           sdk: sdk,
           configuration: configuration,
@@ -426,7 +462,15 @@ export class BuildManager {
    */
   async runCommand(item: BuildTreeItem | undefined, options: { debug: boolean }) {
     this.progress.updateText("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath({ workspaceState: this.workspaceState, buildManager: this });
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.workspaceState,
+      workspaceContext: this.workspaceContext,
+      buildManager: this,
+    });
+    const workspaceRoot = getWorkspaceRoot({
+      xcworkspace: xcworkspace,
+      workspaceContext: this.workspaceContext,
+    });
 
     this.progress.updateText("Searching for scheme");
     const scheme =
@@ -441,6 +485,7 @@ export class BuildManager {
 
     this.progress.updateText("Searching for destination");
     const destination = await askDestinationToRunOn(this.progress, this.destinations, {
+      workspaceRoot: workspaceRoot,
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -456,10 +501,12 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Run",
       scheme: scheme,
+      workspaceRoot: workspaceRoot,
       command: "run",
       callback: async (terminal) => {
         if (destination.type === "macOS") {
           await this.runOnMac(terminal, {
+            workspaceRoot: workspaceRoot,
             scheme: scheme,
             xcworkspace: xcworkspace,
             configuration: configuration,
@@ -474,6 +521,7 @@ export class BuildManager {
           destination.type === "tvOSSimulator"
         ) {
           await this.runOniOSSimulator(terminal, {
+            workspaceRoot: workspaceRoot,
             scheme: scheme,
             destination: destination,
             sdk: sdk,
@@ -491,6 +539,7 @@ export class BuildManager {
           destination.type === "visionOSDevice"
         ) {
           await this.runOniOSDevice(terminal, {
+            workspaceRoot: workspaceRoot,
             scheme: scheme,
             destination: destination,
             sdk: sdk,
@@ -513,7 +562,15 @@ export class BuildManager {
    */
   async launchCommand(item: BuildTreeItem | undefined, options: { debug: boolean }) {
     this.progress.updateText("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath({ workspaceState: this.workspaceState, buildManager: this });
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.workspaceState,
+      workspaceContext: this.workspaceContext,
+      buildManager: this,
+    });
+    const workspaceRoot = getWorkspaceRoot({
+      xcworkspace: xcworkspace,
+      workspaceContext: this.workspaceContext,
+    });
 
     this.progress.updateText("Searching for scheme");
     const scheme =
@@ -524,6 +581,7 @@ export class BuildManager {
       }));
 
     await generateBuildServerConfigOnBuild({
+      workspaceRoot: workspaceRoot,
       scheme: scheme,
       xcworkspace: xcworkspace,
       workspaceState: this.workspaceState,
@@ -534,6 +592,7 @@ export class BuildManager {
 
     this.progress.updateText("Searching for destination");
     const destination = await askDestinationToRunOn(this.progress, this.destinations, {
+      workspaceRoot: workspaceRoot,
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -551,9 +610,11 @@ export class BuildManager {
     await this.runSchemeTask({
       name: options.debug ? "Debug" : "Launch",
       scheme: scheme,
+      workspaceRoot: workspaceRoot,
       command: "launch",
       callback: async (terminal) => {
         await this.buildApp(terminal, {
+          workspaceRoot: workspaceRoot,
           scheme: scheme,
           sdk: sdk,
           configuration: configuration,
@@ -567,6 +628,7 @@ export class BuildManager {
 
         if (destination.type === "macOS") {
           await this.runOnMac(terminal, {
+            workspaceRoot: workspaceRoot,
             scheme: scheme,
             xcworkspace: xcworkspace,
             configuration: configuration,
@@ -581,6 +643,7 @@ export class BuildManager {
           destination.type === "visionOSSimulator"
         ) {
           await this.runOniOSSimulator(terminal, {
+            workspaceRoot: workspaceRoot,
             scheme: scheme,
             destination: destination,
             sdk: sdk,
@@ -598,6 +661,7 @@ export class BuildManager {
           destination.type === "visionOSDevice"
         ) {
           await this.runOniOSDevice(terminal, {
+            workspaceRoot: workspaceRoot,
             scheme: scheme,
             destination: destination,
             sdk: sdk,
@@ -618,6 +682,7 @@ export class BuildManager {
   async runOnMac(
     terminal: TaskTerminal,
     options: {
+      workspaceRoot: string;
       scheme: string;
       xcworkspace: string;
       configuration: string;
@@ -629,6 +694,7 @@ export class BuildManager {
     this.progress.updateText("Extracting build settings");
     const destinationRaw = buildDestinationString({ platform: "macOS" });
     const buildSettings = await getBuildSettingsToLaunch({
+      workspaceRoot: options.workspaceRoot,
       scheme: options.scheme,
       configuration: options.configuration,
       sdk: "macosx",
@@ -649,7 +715,13 @@ export class BuildManager {
 
     this.progress.updateText(`Running "${options.scheme}" on Mac`);
     await ensureInjectionAppRunning();
-    const launchEnv = await withHotReloadLaunchEnv(terminal, this.workspaceState, options.launchEnv, "macOS");
+    const launchEnv = await withHotReloadLaunchEnv({
+      terminal: terminal,
+      state: this.workspaceState,
+      launchEnv: options.launchEnv,
+      destinationType: "macOS",
+      workspaceRoot: options.workspaceRoot,
+    });
     await terminal.runGroup(async (group) => {
       const logSidecar = new MacOSLogSidecar(group, {
         bundleId: buildSettings.bundleIdentifier,
@@ -672,6 +744,7 @@ export class BuildManager {
   async runOniOSSimulator(
     terminal: TaskTerminal,
     options: {
+      workspaceRoot: string;
       scheme: string;
       destination: SimulatorDestination;
       sdk: string;
@@ -688,6 +761,7 @@ export class BuildManager {
     this.progress.updateText("Extracting build settings");
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
     const buildSettings = await getBuildSettingsToLaunch({
+      workspaceRoot: options.workspaceRoot,
       scheme: options.scheme,
       configuration: options.configuration,
       sdk: options.sdk,
@@ -757,12 +831,13 @@ export class BuildManager {
     // Run app
     this.progress.updateText(`Running "${options.scheme}" on "${simulator.name}"`);
     await ensureInjectionAppRunning();
-    const childEnv = await withHotReloadLaunchEnv(
-      terminal,
-      this.workspaceState,
-      options.launchEnv,
-      options.destination.type,
-    );
+    const childEnv = await withHotReloadLaunchEnv({
+      terminal: terminal,
+      state: this.workspaceState,
+      launchEnv: options.launchEnv,
+      destinationType: options.destination.type,
+      workspaceRoot: options.workspaceRoot,
+    });
     await terminal.runGroup(async (group) => {
       const logSidecar = new SimulatorLogSidecar(group, {
         simulatorUdid: simulator.udid,
@@ -785,6 +860,7 @@ export class BuildManager {
   async runOniOSDevice(
     terminal: TaskTerminal,
     option: {
+      workspaceRoot: string;
       scheme: string;
       configuration: string;
       destination: DeviceDestination;
@@ -802,6 +878,7 @@ export class BuildManager {
     this.progress.updateText("Extracting build settings");
     const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
     const buildSettings = await getBuildSettingsToLaunch({
+      workspaceRoot: option.workspaceRoot,
       scheme: scheme,
       configuration: configuration,
       sdk: option.sdk,
@@ -851,7 +928,9 @@ export class BuildManager {
       });
 
       this.progress.updateText("Extracting Xcode version");
-      const xcodeVersion = await getXcodeVersionInstalled();
+      const xcodeVersion = await getXcodeVersionInstalled({
+        workspaceRoot: option.workspaceRoot,
+      });
       const isConsoleOptionSupported = xcodeVersion.major >= 16;
 
       this.workspaceState.update("build.lastLaunchedApp", {
@@ -1089,6 +1168,7 @@ export class BuildManager {
   async buildApp(
     terminal: TaskTerminal,
     options: {
+      workspaceRoot: string;
       scheme: string;
       sdk: string;
       configuration: string;
@@ -1102,7 +1182,9 @@ export class BuildManager {
   ) {
     const useXcbeautify = isXcbeautifyEnabled() && (await getIsXcbeautifyInstalled());
     const bundlePath = await prepareBundleDir(this.vscodeContext, options.scheme);
-    const derivedDataPath = prepareDerivedDataPath();
+    const derivedDataPath = prepareDerivedDataPath({
+      workspaceRoot: options.workspaceRoot,
+    });
 
     const arch = getWorkspaceConfig("build.arch") || undefined;
     const allowProvisioningUpdates = getWorkspaceConfig("build.allowProvisioningUpdates") ?? true;
@@ -1189,6 +1271,7 @@ export class BuildManager {
     }
 
     await generateBuildServerConfigOnBuild({
+      workspaceRoot: options.workspaceRoot,
       scheme: options.scheme,
       xcworkspace: options.xcworkspace,
       workspaceState: this.workspaceState,
@@ -1198,7 +1281,7 @@ export class BuildManager {
     if (workspaceType === "spm") {
       cwd = getSwiftPMDirectory(options.xcworkspace);
     } else if (workspaceType === "xcode") {
-      cwd = getWorkspacePath();
+      cwd = options.workspaceRoot;
     } else {
       assertUnreachable(workspaceType);
     }
@@ -1226,7 +1309,15 @@ export class BuildManager {
 
   async cleanCommand(item: BuildTreeItem | undefined) {
     this.progress.updateText("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath({ workspaceState: this.workspaceState, buildManager: this });
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.workspaceState,
+      workspaceContext: this.workspaceContext,
+      buildManager: this,
+    });
+    const workspaceRoot = getWorkspaceRoot({
+      xcworkspace: xcworkspace,
+      workspaceContext: this.workspaceContext,
+    });
 
     this.progress.updateText("Searching for scheme");
     const scheme =
@@ -1238,6 +1329,7 @@ export class BuildManager {
 
     this.progress.updateText("Searching for destination");
     const destination = await askDestinationToRunOn(this.progress, this.destinations, {
+      workspaceRoot: workspaceRoot,
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -1250,9 +1342,11 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Clean",
       scheme: scheme,
+      workspaceRoot: workspaceRoot,
       command: "clean",
       callback: async (terminal) => {
         await this.buildApp(terminal, {
+          workspaceRoot: workspaceRoot,
           scheme: scheme,
           sdk: sdk,
           configuration: configuration,
@@ -1269,7 +1363,15 @@ export class BuildManager {
 
   async testCommand(item: BuildTreeItem | undefined) {
     this.progress.updateText("Searching for workspace");
-    const xcworkspace = await askXcodeWorkspacePath({ workspaceState: this.workspaceState, buildManager: this });
+    const xcworkspace = await askXcodeWorkspacePath({
+      workspaceState: this.workspaceState,
+      workspaceContext: this.workspaceContext,
+      buildManager: this,
+    });
+    const workspaceRoot = getWorkspaceRoot({
+      xcworkspace: xcworkspace,
+      workspaceContext: this.workspaceContext,
+    });
 
     this.progress.updateText("Searching for scheme");
     const scheme =
@@ -1281,6 +1383,7 @@ export class BuildManager {
 
     this.progress.updateText("Searching for destination");
     const destination = await askDestinationToRunOn(this.progress, this.destinations, {
+      workspaceRoot: workspaceRoot,
       scheme: scheme,
       configuration: configuration,
       sdk: undefined,
@@ -1293,9 +1396,11 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Test",
       scheme: scheme,
+      workspaceRoot: workspaceRoot,
       command: "test",
       callback: async (terminal) => {
         await this.buildApp(terminal, {
+          workspaceRoot: workspaceRoot,
           scheme: scheme,
           sdk: sdk,
           configuration: configuration,
@@ -1313,9 +1418,15 @@ export class BuildManager {
   async resolveDependenciesCommand(options: { scheme: string; xcworkspace: string }): Promise<void> {
     this.progress.updateText("Resolving dependencies");
 
+    const workspaceRoot = getWorkspaceRoot({
+      xcworkspace: options.xcworkspace,
+      workspaceContext: this.workspaceContext,
+    });
+
     await this.runSchemeTask({
       name: "Resolve Dependencies",
       scheme: options.scheme,
+      workspaceRoot: workspaceRoot,
       command: "resolve-deps",
       callback: async (terminal) => {
         const workspaceType = detectWorkspaceType(options.xcworkspace);

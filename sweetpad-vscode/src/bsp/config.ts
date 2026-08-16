@@ -4,6 +4,7 @@ import type { BuildManager } from "../build/manager";
 import { activateCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../build/utils";
 import { getDeveloperDir } from "../common/cli/scripts";
 import { getWorkspaceConfig } from "../common/config";
+import type { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import { getBspLogPath, getBspSocketPath } from "./paths";
 
@@ -36,10 +37,14 @@ export type BspResolvedConfig = {
  */
 export async function buildBspResolvedConfig(deps: {
   workspaceState: WorkspaceStateService;
+  workspaceContext: WorkspaceContextService;
   workspacePath: string;
   buildManager: BuildManager;
 }): Promise<BspResolvedConfig | null> {
-  const xcworkspace = activateCurrentXcodeWorkspacePath(deps.workspaceState);
+  const xcworkspace = activateCurrentXcodeWorkspacePath({
+    workspaceState: deps.workspaceState,
+    workspaceContext: deps.workspaceContext,
+  });
   if (!xcworkspace) {
     return null;
   }
@@ -50,11 +55,11 @@ export async function buildBspResolvedConfig(deps: {
   if (!path.isAbsolute(projectPath)) {
     projectPath = path.join(deps.workspacePath, projectPath);
   }
-  const derivedDataPath = prepareDerivedDataPath();
+  const derivedDataPath = prepareDerivedDataPath({ workspaceRoot: deps.workspacePath });
   return {
     workspacePath: deps.workspacePath,
     projectPath: projectPath,
-    developerDir: (await getDeveloperDir()) ?? null,
+    developerDir: (await getDeveloperDir({ workspaceRoot: deps.workspacePath })) ?? null,
     scheme: deps.buildManager.getDefaultSchemeForBuild() ?? null,
     configuration: deps.buildManager.getDefaultConfigurationForBuild() ?? "Debug",
     derivedDataPath: derivedDataPath ?? null,

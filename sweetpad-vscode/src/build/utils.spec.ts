@@ -10,18 +10,14 @@ import {
   getSweetpadCliPath,
 } from "../common/cli/scripts";
 import { isFileExists, readJsonFile } from "../common/files";
+import { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import {
   activateCurrentXcodeWorkspacePath,
   generateBuildServerConfigOnBuild,
   getCurrentXcodeWorkspacePath,
-  getWorkspacePath,
   launchActionToSettings,
-  onDidChangeActiveWorkspaceFolder,
   repairStaleBuildServerConfig,
-  resetActiveWorkspaceFolder,
-  setActiveWorkspaceFolder,
-  watchActiveWorkspaceFolder,
   workspaceFoldersContaining,
 } from "./utils";
 
@@ -173,6 +169,7 @@ describe("generateBuildServerConfigOnBuild (sweetpad provider)", () => {
 
   function run() {
     return generateBuildServerConfigOnBuild({
+      workspaceRoot: "/workspace",
       scheme: "App",
       xcworkspace: "/workspace/App.xcworkspace",
       workspaceState: { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService,
@@ -301,7 +298,7 @@ describe("repairStaleBuildServerConfig", () => {
     });
     mockIsFileExists.mockResolvedValue(false);
 
-    await repairStaleBuildServerConfig();
+    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace" });
 
     expect(mockRepair).toHaveBeenCalledTimes(1);
   });
@@ -312,7 +309,7 @@ describe("repairStaleBuildServerConfig", () => {
 
     // A path that exists is one somebody meant to point at, even where it isn't
     // the launcher this version ships. Only dangling ones are repaired.
-    await repairStaleBuildServerConfig();
+    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace" });
 
     expect(mockRepair).not.toHaveBeenCalled();
   });
@@ -321,7 +318,7 @@ describe("repairStaleBuildServerConfig", () => {
     mockReadJsonFile.mockResolvedValue({ name: "xcode build server", argv: ["/gone/xcode-build-server"] });
     mockIsFileExists.mockResolvedValue(false);
 
-    await repairStaleBuildServerConfig();
+    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace" });
 
     expect(mockRepair).not.toHaveBeenCalled();
   });
@@ -330,7 +327,7 @@ describe("repairStaleBuildServerConfig", () => {
     mockReadJsonFile.mockRejectedValue(new Error("ENOENT"));
 
     // Creating one from nothing belongs to the build, which knows the project.
-    await repairStaleBuildServerConfig();
+    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace" });
 
     expect(mockRepair).not.toHaveBeenCalled();
   });
@@ -338,6 +335,7 @@ describe("repairStaleBuildServerConfig", () => {
 
 describe("multi-root workspace path resolution", () => {
   const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
+  let workspaceContext: WorkspaceContextService;
   const mockExistsSync = existsSync as Mock;
 
   function setFolders(paths: string[]) {
@@ -346,8 +344,8 @@ describe("multi-root workspace path resolution", () => {
     }));
   }
 
-  // Invoke the listener `watchActiveWorkspaceFolder` handed to VS Code, standing in for the host
-  // firing onDidChangeWorkspaceFolders.
+  // Invoke the listener `WorkspaceContextService.start` handed to VS Code, standing in for the
+  // host firing onDidChangeWorkspaceFolders.
   function fireWorkspaceFoldersChanged() {
     const register = vscode.workspace.onDidChangeWorkspaceFolders as Mock;
     for (const [listener] of register.mock.calls) {
@@ -365,41 +363,41 @@ describe("multi-root workspace path resolution", () => {
     vi.clearAllMocks();
     mockConfig({});
     mockExistsSync.mockReturnValue(false);
-    // The active folder lives for the module's lifetime, so each case starts from no selection.
-    // Every case below reuses the same two folder names, which only holds if this reset works.
-    resetActiveWorkspaceFolder();
+    // A fresh context per case, so the selection cannot leak between them. Every case below
+    // reuses the same two folder names, which only holds because of this.
+    workspaceContext = new WorkspaceContextService();
   });
 
   it("defaults to the first workspace folder before any project is selected", () => {
     setFolders(["/root-1", "/root-2"]);
-    expect(getWorkspacePath()).toBe("/root-1");
+    expect(workspaceContext.root).toBe("/root-1");
   });
 
   it("follows the folder containing the selected xcworkspace", () => {
     setFolders(["/root-1", "/root-2"]);
-    setActiveWorkspaceFolder("/root-2/App/App.xcworkspace");
-    expect(getWorkspacePath()).toBe("/root-2");
+    workspaceContext.setActiveFolder("/root-2/App/App.xcworkspace");
+    expect(workspaceContext.root).toBe("/root-2");
   });
 
   it("picks the innermost folder when workspace folders nest", () => {
     setFolders(["/root-1", "/root-1/ios"]);
-    setActiveWorkspaceFolder("/root-1/ios/App.xcworkspace");
-    expect(getWorkspacePath()).toBe("/root-1/ios");
+    workspaceContext.setActiveFolder("/root-1/ios/App.xcworkspace");
+    expect(workspaceContext.root).toBe("/root-1/ios");
   });
 
   it("keeps the current folder when the xcworkspace is outside every workspace folder", () => {
     setFolders(["/root-1", "/root-2"]);
-    setActiveWorkspaceFolder("/root-2/App.xcworkspace");
+    workspaceContext.setActiveFolder("/root-2/App.xcworkspace");
     // e.g. a git worktree next to the repo
-    setActiveWorkspaceFolder("/elsewhere/App.xcworkspace");
-    expect(getWorkspacePath()).toBe("/root-2");
+    workspaceContext.setActiveFolder("/elsewhere/App.xcworkspace");
+    expect(workspaceContext.root).toBe("/root-2");
   });
 
   it("falls back to the first folder when the active folder leaves the workspace", () => {
     setFolders(["/root-1", "/root-2"]);
-    setActiveWorkspaceFolder("/root-2/App.xcworkspace");
+    workspaceContext.setActiveFolder("/root-2/App.xcworkspace");
     setFolders(["/root-3"]);
-    expect(getWorkspacePath()).toBe("/root-3");
+    expect(workspaceContext.root).toBe("/root-3");
   });
 
   it("activates the folder of a cached xcworkspace from workspace state", () => {
@@ -409,8 +407,10 @@ describe("multi-root workspace path resolution", () => {
       update: vi.fn(),
     } as unknown as WorkspaceStateService;
 
-    expect(activateCurrentXcodeWorkspacePath(state)).toBe("/root-2/App.xcworkspace");
-    expect(getWorkspacePath()).toBe("/root-2");
+    expect(activateCurrentXcodeWorkspacePath({ workspaceState: state, workspaceContext: workspaceContext })).toBe(
+      "/root-2/App.xcworkspace",
+    );
+    expect(workspaceContext.root).toBe("/root-2");
   });
 
   it("resolves a relative configured path against the folder where it exists", () => {
@@ -419,8 +419,10 @@ describe("multi-root workspace path resolution", () => {
     mockExistsSync.mockImplementation((p: string) => p === "/root-2/App.xcworkspace");
     const state = { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService;
 
-    expect(activateCurrentXcodeWorkspacePath(state)).toBe("/root-2/App.xcworkspace");
-    expect(getWorkspacePath()).toBe("/root-2");
+    expect(activateCurrentXcodeWorkspacePath({ workspaceState: state, workspaceContext: workspaceContext })).toBe(
+      "/root-2/App.xcworkspace",
+    );
+    expect(workspaceContext.root).toBe("/root-2");
   });
 
   // Reporting what is selected must not decide what is selected: `workspace detect`, the doctor and
@@ -432,24 +434,41 @@ describe("multi-root workspace path resolution", () => {
     const state = { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService;
 
     expect(getCurrentXcodeWorkspacePath(state)).toBe("/root-2/App.xcworkspace");
-    expect(getWorkspacePath()).toBe("/root-1");
+    expect(workspaceContext.root).toBe("/root-1");
     expect(state.update).not.toHaveBeenCalled();
   });
 
-  // A relative path both folders satisfy would otherwise resolve by folder order on every call,
-  // overriding an explicit pick each time anything looked it up.
-  it("keeps the selected folder when a relative path matches several folders", () => {
+  // `getWorkspaceRelativePath` anchors what it stores to the first folder, so a *bare* relative
+  // path names a project in that folder and nowhere else. Resolving it against the active folder
+  // instead would hand back the wrong one of two checkouts as soon as the active folder moved.
+  it("resolves a bare relative path against the first folder, not the active one", () => {
     setFolders(["/root-1", "/root-2"]);
     mockConfig({ "build.xcodeWorkspacePath": "App.xcworkspace" });
     mockExistsSync.mockImplementation(
       (p: string) => p === "/root-1/App.xcworkspace" || p === "/root-2/App.xcworkspace",
     );
     const state = { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService;
-    setActiveWorkspaceFolder("/root-2/App.xcworkspace");
+    workspaceContext.setActiveFolder("/root-2/App.xcworkspace");
 
-    expect(getCurrentXcodeWorkspacePath(state)).toBe("/root-2/App.xcworkspace");
-    expect(activateCurrentXcodeWorkspacePath(state)).toBe("/root-2/App.xcworkspace");
-    expect(getWorkspacePath()).toBe("/root-2");
+    expect(getCurrentXcodeWorkspacePath(state)).toBe("/root-1/App.xcworkspace");
+    expect(activateCurrentXcodeWorkspacePath({ workspaceState: state, workspaceContext: workspaceContext })).toBe(
+      "/root-1/App.xcworkspace",
+    );
+    expect(workspaceContext.root).toBe("/root-1");
+  });
+
+  // The other half of that contract: a project outside the first folder is stored with the
+  // "../root-2/" prefix precisely so the reader lands on exactly one file.
+  it("round-trips a path the writer anchored past the first folder", () => {
+    setFolders(["/root-1", "/root-2"]);
+    mockConfig({ "build.xcodeWorkspacePath": "../root-2/App.xcworkspace" });
+    mockExistsSync.mockImplementation((p: string) => p === "/root-2/App.xcworkspace");
+    const state = { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService;
+
+    expect(activateCurrentXcodeWorkspacePath({ workspaceState: state, workspaceContext: workspaceContext })).toBe(
+      "/root-2/App.xcworkspace",
+    );
+    expect(workspaceContext.root).toBe("/root-2");
   });
 
   it("activates the folder of an absolute configured path", () => {
@@ -457,32 +476,34 @@ describe("multi-root workspace path resolution", () => {
     mockConfig({ "build.xcodeWorkspacePath": "/root-2/App.xcworkspace" });
     const state = { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService;
 
-    expect(activateCurrentXcodeWorkspacePath(state)).toBe("/root-2/App.xcworkspace");
-    expect(getWorkspacePath()).toBe("/root-2");
+    expect(activateCurrentXcodeWorkspacePath({ workspaceState: state, workspaceContext: workspaceContext })).toBe(
+      "/root-2/App.xcworkspace",
+    );
+    expect(workspaceContext.root).toBe("/root-2");
   });
 
   // Long-lived state derived from the active folder — a BSP socket, a registry key — is only right
   // for the folder it was built from, so subscribers need to hear about every move exactly once.
-  describe("onDidChangeActiveWorkspaceFolder", () => {
+  describe("WorkspaceContextService.onDidChange", () => {
     it("fires with the new folder when the active project moves", () => {
       setFolders(["/root-1", "/root-2"]);
       const seen: string[] = [];
-      onDidChangeActiveWorkspaceFolder((folder) => seen.push(folder));
+      workspaceContext.onDidChange((folder) => seen.push(folder));
 
-      setActiveWorkspaceFolder("/root-2/App.xcworkspace");
+      workspaceContext.setActiveFolder("/root-2/App.xcworkspace");
 
       expect(seen).toEqual(["/root-2"]);
     });
 
     it("stays quiet when the folder does not actually change", () => {
       setFolders(["/root-1", "/root-2"]);
-      setActiveWorkspaceFolder("/root-2/App.xcworkspace");
+      workspaceContext.setActiveFolder("/root-2/App.xcworkspace");
       const seen: string[] = [];
-      onDidChangeActiveWorkspaceFolder((folder) => seen.push(folder));
+      workspaceContext.onDidChange((folder) => seen.push(folder));
 
       // A second project in the same folder, and one outside every folder, both leave it put.
-      setActiveWorkspaceFolder("/root-2/Other/Other.xcworkspace");
-      setActiveWorkspaceFolder("/elsewhere/App.xcworkspace");
+      workspaceContext.setActiveFolder("/root-2/Other/Other.xcworkspace");
+      workspaceContext.setActiveFolder("/elsewhere/App.xcworkspace");
 
       expect(seen).toEqual([]);
     });
@@ -492,41 +513,41 @@ describe("multi-root workspace path resolution", () => {
     // subscribers have to hear about.
     it("fires when the active folder leaves the workspace", () => {
       setFolders(["/root-1", "/root-2"]);
-      setActiveWorkspaceFolder("/root-2/App.xcworkspace");
-      const subscription = watchActiveWorkspaceFolder();
+      workspaceContext.setActiveFolder("/root-2/App.xcworkspace");
+      workspaceContext.start();
       const seen: string[] = [];
-      onDidChangeActiveWorkspaceFolder((folder) => seen.push(folder));
+      workspaceContext.onDidChange((folder) => seen.push(folder));
 
       setFolders(["/root-1"]);
       fireWorkspaceFoldersChanged();
 
       expect(seen).toEqual(["/root-1"]);
-      expect(getWorkspacePath()).toBe("/root-1");
-      subscription.dispose();
+      expect(workspaceContext.root).toBe("/root-1");
+      workspaceContext.dispose();
     });
 
     it("stays quiet when the folder list changes without moving the resolved root", () => {
       setFolders(["/root-1", "/root-2"]);
-      setActiveWorkspaceFolder("/root-2/App.xcworkspace");
-      const subscription = watchActiveWorkspaceFolder();
+      workspaceContext.setActiveFolder("/root-2/App.xcworkspace");
+      workspaceContext.start();
       const seen: string[] = [];
-      onDidChangeActiveWorkspaceFolder((folder) => seen.push(folder));
+      workspaceContext.onDidChange((folder) => seen.push(folder));
 
       // A third folder joins; the project's folder is untouched, so the root stays put.
       setFolders(["/root-1", "/root-2", "/root-3"]);
       fireWorkspaceFoldersChanged();
 
       expect(seen).toEqual([]);
-      subscription.dispose();
+      workspaceContext.dispose();
     });
 
     it("stops delivering once the subscription is disposed", () => {
       setFolders(["/root-1", "/root-2"]);
       const seen: string[] = [];
-      const subscription = onDidChangeActiveWorkspaceFolder((folder) => seen.push(folder));
+      const subscription = workspaceContext.onDidChange((folder) => seen.push(folder));
 
       subscription.dispose();
-      setActiveWorkspaceFolder("/root-2/App.xcworkspace");
+      workspaceContext.setActiveFolder("/root-2/App.xcworkspace");
 
       expect(seen).toEqual([]);
     });
@@ -575,7 +596,9 @@ describe("multi-root workspace path resolution", () => {
     );
     const state = { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService;
 
-    expect(activateCurrentXcodeWorkspacePath(state)).toBe("/root-2/App.xcworkspace");
-    expect(getWorkspacePath()).toBe("/root-2");
+    expect(activateCurrentXcodeWorkspacePath({ workspaceState: state, workspaceContext: workspaceContext })).toBe(
+      "/root-2/App.xcworkspace",
+    );
+    expect(workspaceContext.root).toBe("/root-2");
   });
 });

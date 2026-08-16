@@ -24,7 +24,7 @@ export class ToolsManager {
     const checks = await Promise.all(
       TOOLS.map(async (item) => {
         try {
-          await exec({ command: item.check.command, args: item.check.args });
+          await exec({ command: item.check.command, args: item.check.args, cwd: null });
           return true;
         } catch {
           return false;

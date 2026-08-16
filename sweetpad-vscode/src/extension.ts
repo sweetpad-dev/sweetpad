@@ -37,10 +37,8 @@ import { DefaultSchemeStatusBar } from "./build/status-bar.js";
 import { BuildTreeProvider } from "./build/tree.js";
 import {
   activateCurrentXcodeWorkspacePath,
-  getWorkspacePath,
   notifyCustomXcodebuildReadOnlyScope,
   repairStaleBuildServerConfig,
-  watchActiveWorkspaceFolder,
 } from "./build/utils.js";
 import { CliServerService } from "./cli-server/service.js";
 import { type AppDeps, registerCommand, registerTreeDataProvider } from "./common/commands.js";
@@ -48,6 +46,7 @@ import { errorReporting } from "./common/error-reporting.js";
 import { ExecutionScopeService } from "./common/execution-scope.js";
 import { Logger } from "./common/logger.js";
 import { warmShellEnv } from "./common/tasks/shell-env.js";
+import { WorkspaceContextService } from "./common/workspace-context.js";
 import { WorkspaceStateService } from "./common/workspace-state.js";
 import { getAppPathCommand } from "./debugger/commands.js";
 import { registerDebugConfigurationProvider } from "./debugger/provider.js";
@@ -145,13 +144,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Prime the active workspace folder from the previously selected xcworkspace, so that in
   // multi-root workspaces everything below resolves against the right folder from the start.
-  activateCurrentXcodeWorkspacePath(workspaceState);
-  const workspacePath = getWorkspacePath();
-  context.subscriptions.push(watchActiveWorkspaceFolder());
+  const workspaceContext = new WorkspaceContextService();
+  workspaceContext.start();
+  context.subscriptions.push(workspaceContext);
+  activateCurrentXcodeWorkspacePath({ workspaceState: workspaceState, workspaceContext: workspaceContext });
+  const workspacePath = workspaceContext.root;
 
   // The resolved shell environment is memoized for the session and probes the login shell in the
   // active workspace folder, so it has to be warmed once that folder is known.
-  warmShellEnv();
+  warmShellEnv(workspacePath);
 
   const execution = new ExecutionScopeService();
 
@@ -172,6 +173,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const lspDiagnostics = new LspDiagnosticsService(workspaceState);
   const diagnostics = new DiagnosticsManager();
   const buildManager = new BuildManager({
+    workspaceContext: workspaceContext,
     workspaceState: workspaceState,
     progress: progressStatusBar,
     execution: execution,
@@ -181,21 +183,23 @@ export async function activate(context: vscode.ExtensionContext) {
     diagnostics: diagnostics,
   });
   const toolsManager = new ToolsManager();
-  const serveSimManager = new ServeSimManager();
+  const serveSimManager = new ServeSimManager({ workspaceContext: workspaceContext });
   const previewsManager = new PreviewsManager();
   const previewHostManager = new PreviewHostManager({
+    workspaceContext: workspaceContext,
     destinationsManager: destinationsManager,
     serveSimManager: serveSimManager,
     workspaceState: workspaceState,
   });
   const testingManager = new TestingManager({
+    workspaceContext: workspaceContext,
     workspaceState: workspaceState,
     progress: progressStatusBar,
     execution: execution,
     buildManager: buildManager,
     destinations: destinationsManager,
   });
-  const formatter = new SwiftFormattingProvider();
+  const formatter = new SwiftFormattingProvider({ workspaceContext: workspaceContext });
 
   // Trees 🎄
   const buildTreeProvider = new BuildTreeProvider({
@@ -215,6 +219,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const schemeStatusBar = new DefaultSchemeStatusBar({ buildManager: buildManager });
   const destinationBar = new DestinationStatusBar({ destinationsManager: destinationsManager });
   const buildTaskProvider = new XcodeBuildTaskProvider({
+    workspaceContext: workspaceContext,
     buildManager: buildManager,
     destinationsManager: destinationsManager,
     workspaceState: workspaceState,
@@ -223,10 +228,11 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   // Watchers 👀
-  const schemeWatcher = new SchemeWatcher(buildManager);
-  const tuistWatcher = new TuistGenWatcher();
-  const xcodegenWatcher = new XcodeGenWatcher();
+  const schemeWatcher = new SchemeWatcher({ workspaceContext: workspaceContext, buildManager: buildManager });
+  const tuistWatcher = new TuistGenWatcher({ workspaceContext: workspaceContext });
+  const xcodegenWatcher = new XcodeGenWatcher({ workspaceContext: workspaceContext });
   const serverService = new CliServerService({
+    workspaceContext: workspaceContext,
     buildManager: buildManager,
     destinationsManager: destinationsManager,
     workspaceState: workspaceState,
@@ -235,6 +241,7 @@ export async function activate(context: vscode.ExtensionContext) {
     vscodeContext: context,
   });
   const bspService = new BspService({
+    workspaceContext: workspaceContext,
     buildManager: buildManager,
     workspaceState: workspaceState,
   });
@@ -272,10 +279,11 @@ export async function activate(context: vscode.ExtensionContext) {
   void bspService.start();
   // An extension update leaves buildServer.json pointing into the directory the
   // previous version lived in. Nothing else notices until the next build.
-  void repairStaleBuildServerConfig();
+  void repairStaleBuildServerConfig({ workspaceRoot: workspacePath });
 
   // Main dependency bag for commands 🌍
   const deps: AppDeps = {
+    workspaceContext: workspaceContext,
     destinationsManager: destinationsManager,
     buildManager: buildManager,
     toolsManager: toolsManager,
