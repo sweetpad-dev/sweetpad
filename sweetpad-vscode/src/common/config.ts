@@ -53,6 +53,7 @@ type Config = {
   "tuist.autogenerate": boolean;
   "tuist.generate.env": { [key: string]: string | null };
   "testing.configuration": string;
+  "testing.baseClasses": string[];
   "cliServer.enabled": boolean;
   "hotReload.enabled": boolean;
   "hotReload.dylibPath": string | null;

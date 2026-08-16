@@ -20,6 +20,20 @@ failure from the Problems list.
 
 The first run for a target builds the test bundle (this can take a moment). Subsequent runs reuse the build.
 
+## Tests that inherit from a custom base class
+
+SweetPad reads the inheritance clause to decide what's a test class, so `class FooTests: XCTestCase` is picked up on
+its own. If your tests inherit from a shared base instead — `class FooTests: BaseTestCase` — name that base class:
+
+```json title=".vscode/settings.json"
+{
+  "sweetpad.testing.baseClasses": ["BaseTestCase", "QuickSpec"]
+}
+```
+
+The names are matched as written rather than resolved, so a longer chain needs every level listed:
+`FooTests: UITestCase: BaseTestCase: XCTestCase` needs both `UITestCase` and `BaseTestCase`.
+
 ## Pick a different test target
 
 If your project has multiple test targets (for example one for the app and a separate one for an SPM module), pin the
