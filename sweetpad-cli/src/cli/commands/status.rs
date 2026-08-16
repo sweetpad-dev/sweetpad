@@ -188,6 +188,23 @@ pub fn run(ctx: &mut Context) -> CommandResult {
         });
     }
 
+    // A committed `[xcodebuild] args` shapes every build in this project from
+    // a file the person running the command may never have opened. Show it, or
+    // the difference it makes has no visible cause.
+    let pf_xcodebuild = ctx
+        .project_file(&resolved.container)
+        .xcodebuild
+        .args
+        .clone();
+    if !pf_xcodebuild.is_empty() {
+        rows.push(Row {
+            name: "xcodebuild",
+            value: Some(pf_xcodebuild.join(" ")),
+            source: "sweetpad.toml",
+            note: "added to every build",
+        });
+    }
+
     let detached_log = detached_log_for(st.last_launched_app.as_ref());
     Ok(Rendered::data(StatusReport {
         container: resolved.container.path().display().to_string(),

@@ -278,6 +278,7 @@ pub struct ProjectFile {
     pub testing: TestingDefaults,
     pub run: RunDefaults,
     pub format: FormatDefaults,
+    pub xcodebuild: XcodebuildDefaults,
 }
 
 /// `[run]` — `app run` defaults for this project.
@@ -301,6 +302,69 @@ pub struct RunDefaults {
 pub struct FormatDefaults {
     /// Default formatter: `swift-format` or `swiftlint`.
     pub tool: Option<String>,
+}
+
+/// `[xcodebuild]` — arguments every command in this project that spawns
+/// `xcodebuild` adds to the invocation, so a repo-wide flag is written down
+/// once instead of typed after `--` on each command.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct XcodebuildDefaults {
+    /// `xcodebuild` flags and/or `KEY=VALUE` build-setting overrides, in the
+    /// order they should appear.
+    pub args: Vec<String>,
+}
+
+/// The effective `xcodebuild` passthrough for one invocation: the committed
+/// `[xcodebuild] args` first, then the `--` tail typed on the command line, so
+/// a typed argument wins under `xcodebuild`'s last-one-wins.
+///
+/// The file's arguments are refused when they name something the CLI already
+/// owns — [`configured_arg_refusal`] explains each case. Refusing is an error
+/// rather than a warning because the alternative is handing `xcodebuild` two
+/// answers to one question and building whichever it picks.
+pub fn effective_xcodebuild_args(
+    configured: &[String],
+    tail: &[String],
+) -> Result<Vec<String>, String> {
+    if let Some((arg, fix)) = configured
+        .iter()
+        .find_map(|a| configured_arg_refusal(a).map(|fix| (a, fix)))
+    {
+        return Err(format!(
+            "sweetpad.toml: `{arg}` in [xcodebuild] args — {fix}"
+        ));
+    }
+    let mut merged = configured.to_vec();
+    merged.extend(tail.iter().cloned());
+    Ok(merged)
+}
+
+/// Why a given argument can't live in a committed `[xcodebuild] args`, if it
+/// can't. Three groups: the inputs the resolver settles and passes itself (a
+/// second copy makes the build depend on which `xcodebuild` honors), the
+/// result bundle the CLI writes and then reads back, and `-derivedDataPath` —
+/// whose relative value would resolve against the working directory while
+/// every other path in this file resolves against the file, so the same
+/// committed line would mean a different directory per caller.
+fn configured_arg_refusal(arg: &str) -> Option<&'static str> {
+    Some(match arg {
+        "-workspace" | "-project" => "name the container with the `workspace`/`project` key",
+        "-scheme" => "use the `scheme` key",
+        "-configuration" => "use the `configuration` key",
+        "-destination" => "use the `destination` key",
+        "-sdk" => "use the `sdk` key",
+        "-derivedDataPath" => {
+            "a relative value would resolve against the working directory rather than \
+             the file, so it would name a different place per caller; pass it per \
+             command instead"
+        }
+        "-resultBundlePath" => {
+            "sweetpad writes and reads back its own result bundle; pass it per command \
+             if you need a second one"
+        }
+        _ => return None,
+    })
 }
 
 impl ProjectFile {
@@ -425,7 +489,7 @@ impl RootFile {
 }
 
 /// The keys a `sweetpad.toml` accepts at the top level.
-const PROJECT_FILE_KEYS: [&str; 11] = [
+const PROJECT_FILE_KEYS: [&str; 12] = [
     "workspace",
     "project",
     "scheme",
@@ -437,6 +501,7 @@ const PROJECT_FILE_KEYS: [&str; 11] = [
     "testing",
     "run",
     "format",
+    "xcodebuild",
 ];
 
 /// Report every `sweetpad.toml` key serde would silently drop.
@@ -488,6 +553,17 @@ fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
                         if fkey != "tool" {
                             warnings
                                 .push(format!("sweetpad.toml: unknown key `{fkey}` in [format]"));
+                        }
+                    }
+                }
+            }
+            "xcodebuild" => {
+                if let Some(t) = value.as_table() {
+                    for xkey in t.keys() {
+                        if xkey != "args" {
+                            warnings.push(format!(
+                                "sweetpad.toml: unknown key `{xkey}` in [xcodebuild]"
+                            ));
                         }
                     }
                 }
@@ -644,6 +720,67 @@ mod tests {
         lint_project_file(&raw, &mut warnings);
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         assert!(warnings[0].contains("bogus"), "{warnings:?}");
+    }
+
+    #[test]
+    fn xcodebuild_args_parse_and_lint_clean() {
+        let pf: ProjectFile =
+            toml::from_str("[xcodebuild]\nargs = [\"-skipMacroValidation\", \"FOO=1\"]\n").unwrap();
+        assert_eq!(pf.xcodebuild.args, ["-skipMacroValidation", "FOO=1"]);
+
+        // An absent table is an empty list, not a parse error.
+        let pf: ProjectFile = toml::from_str("scheme = \"App\"\n").unwrap();
+        assert!(pf.xcodebuild.args.is_empty());
+
+        let raw: toml::Value =
+            toml::from_str("[xcodebuild]\nargs = [\"-x\"]\nbogus = 1\n").unwrap();
+        let mut warnings = Vec::new();
+        lint_project_file(&raw, &mut warnings);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(warnings[0].contains("bogus"), "{warnings:?}");
+    }
+
+    #[test]
+    fn the_file_supplies_arguments_before_the_typed_tail() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+
+        // Committed first, typed second — xcodebuild takes the last one, so a
+        // typed argument beats the file's.
+        assert_eq!(
+            effective_xcodebuild_args(&s(&["-skipMacroValidation"]), &s(&["FOO=1"])).unwrap(),
+            ["-skipMacroValidation", "FOO=1"]
+        );
+        // Either side alone.
+        assert_eq!(effective_xcodebuild_args(&s(&["-a"]), &[]).unwrap(), ["-a"]);
+        assert_eq!(effective_xcodebuild_args(&[], &s(&["-b"])).unwrap(), ["-b"]);
+        assert!(effective_xcodebuild_args(&[], &[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_file_cannot_carry_the_arguments_the_cli_settles_itself() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+
+        for (arg, hint) in [
+            ("-scheme", "`scheme` key"),
+            ("-configuration", "`configuration` key"),
+            ("-destination", "`destination` key"),
+            ("-sdk", "`sdk` key"),
+            ("-workspace", "`workspace`/`project` key"),
+            ("-project", "`workspace`/`project` key"),
+            ("-derivedDataPath", "per command"),
+            ("-resultBundlePath", "own result bundle"),
+        ] {
+            let err = effective_xcodebuild_args(&s(&[arg, "value"]), &[])
+                .expect_err("a refused argument must not merge");
+            assert!(err.contains(arg) && err.contains(hint), "{arg}: {err}");
+        }
+
+        // Typing one is still the caller's own business — only the committed
+        // file is policed, since everyone else inherits it unseen.
+        assert_eq!(
+            effective_xcodebuild_args(&[], &s(&["-derivedDataPath", "/tmp/dd"])).unwrap(),
+            ["-derivedDataPath", "/tmp/dd"]
+        );
     }
 
     #[test]

@@ -126,7 +126,9 @@ and the `app` verbs that spawn `xcodebuild` — `run`, `install`, `debug`,
 `-derivedDataPath` is read back out and handed to the in-process resolver, so
 the app the CLI installs is the one the build just wrote; the settings that
 relocate the product where the resolver cannot follow (`SYMROOT=`, `OBJROOT=`,
-`CONFIGURATION_BUILD_DIR=`) are refused before a build is spent on them.
+`CONFIGURATION_BUILD_DIR=`) are refused before a build is spent on them. A
+project that always needs the same argument writes it in `sweetpad.toml`'s
+`[xcodebuild] args` instead of typing it each time (§6).
 
 ## 3a. `project new` — scaffolding
 
@@ -395,7 +397,30 @@ hot_recompiler = "resolver"
 
 [format]
 tool = "swiftlint"
+
+[xcodebuild]
+args = ["-skipMacroValidation"]   # added to every command that builds
 ```
+
+- **`[xcodebuild] args`** is the committed form of the `-- XCODEBUILD_ARGS`
+  tail (§3): a list joined onto every `xcodebuild` this project spawns —
+  `build`, `test`, `archive`, and the builds inside `app
+  run`/`install`/`debug`/`diagnose`. A repo-wide `-skipMacroValidation` is a
+  property of the project, not a decision to re-make per command; this is where
+  it lives. The typed tail is appended *after* the file's arguments, so typing
+  one wins under xcodebuild's last-one-wins, and `status` prints the effective
+  list — a build shaped by a file the caller never opened must still say where
+  that came from.
+- The arguments the CLI settles itself are **refused** in the file, naming the
+  key to use instead: `-scheme`, `-configuration`, `-destination`, `-sdk`,
+  `-workspace`, `-project` (a second copy makes the build depend on which one
+  xcodebuild honors), `-resultBundlePath` (the CLI writes and reads back its
+  own), and `-derivedDataPath` — whose relative value would resolve against the
+  working directory while every other path in this file resolves against the
+  file, so one committed line would name a different directory per caller. A
+  refusal is an error rather than a warning: the alternative is handing
+  xcodebuild two answers to one question. Swift packages ignore the table
+  entirely — `swift build` knows none of these flags.
 
 - Unknown keys are warned about; a malformed file is warned about and ignored
   (a broken committed file must not brick every teammate's CLI). An absolute

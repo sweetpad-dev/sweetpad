@@ -727,6 +727,31 @@ impl Context {
             beside.file
         })
     }
+
+    /// The `xcodebuild` arguments for a command that builds: the project
+    /// file's `[xcodebuild] args`, then the `--` tail typed on this
+    /// invocation. Every verb that spawns `xcodebuild` resolves its
+    /// passthrough through here, so a committed argument reaches the builds
+    /// inside `app run`/`install`/`debug`/`diagnose` as well as
+    /// `build`/`test`/`archive`.
+    pub fn xcodebuild_args(&self, tail: &[String]) -> Result<Vec<String>, CliError> {
+        // Silent resolution: this runs *before* the command resolves for real,
+        // and `container` narrates its discovery ("using X (found below …)") —
+        // saying it twice per build would be the whole visible effect of a peek
+        // at a config table. No container found is not an error here either;
+        // resolution is about to fail on its own terms, and the typed tail is
+        // still the caller's.
+        let Some(container) = resolve::container_silently(self) else {
+            return Ok(tail.to_vec());
+        };
+        // `swift build`/`swift run` take the tail directly and know none of
+        // xcodebuild's flags, so a package's file contributes nothing here.
+        if matches!(container, resolve::Container::SwiftPackage(_)) {
+            return Ok(tail.to_vec());
+        }
+        let configured = self.project_file(&container).xcodebuild.args.clone();
+        config::effective_xcodebuild_args(&configured, tail).map_err(CliError::new)
+    }
 }
 
 /// Apply a project file's `developer_dir`, unless a flag or the ambient

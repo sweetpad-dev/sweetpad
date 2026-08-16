@@ -193,6 +193,9 @@ fn start(
     show_command: bool,
     passthrough: &[String],
 ) -> CommandResult {
+    // Both entry points (`build` and each `--watch` iteration) land here, so
+    // the project file's `[xcodebuild] args` join the tail once.
+    let passthrough = &ctx.xcodebuild_args(passthrough)?;
     let mut resolved = resolve::resolve(ctx)?;
 
     // Swift packages have no simulator destination; build them with the `swift`

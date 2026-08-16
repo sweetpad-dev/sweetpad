@@ -107,6 +107,7 @@ impl Render for ArchiveReport {
 
 pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     ctx.targeting = args.target.clone().into();
+    let passthrough = ctx.xcodebuild_args(&args.passthrough)?;
     let mut resolved = resolve::resolve(ctx)?;
     if matches!(resolved.container, Container::SwiftPackage(_)) {
         return Err(CliError::new(
@@ -145,7 +146,7 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
         archive_args.push(sdk.clone());
     }
     archive_args.extend(xcodebuild::container_args(&resolved.container));
-    archive_args.extend(args.passthrough.iter().cloned());
+    archive_args.extend(passthrough.iter().cloned());
 
     let cwd = xcodebuild::working_dir(&resolved.container);
     let export_dir = out_dir.join("export");

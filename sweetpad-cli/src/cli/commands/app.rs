@@ -568,8 +568,10 @@ impl Action {
 /// project default is simply ignored for `--device` runs rather than erroring
 /// on a committed file.
 fn hot_settings(ctx: &Context, args: &RunArgs) -> (bool, Mode) {
-    let run_defaults = resolve::container(ctx)
-        .ok()
+    // Silent, like every other pre-flight peek at the project file: `plan`
+    // resolves for real a moment later, and `container` narrates its discovery
+    // — twice would be this lookup's only visible effect.
+    let run_defaults = resolve::container_silently(ctx)
         .map(|c| ctx.project_file(&c).run.clone())
         .unwrap_or_default();
     let default_hot = run_defaults.hot.unwrap_or(false) && !args.device && args.device_id.is_none();
@@ -609,6 +611,7 @@ impl HotRecompiler {
     }
 }
 
+#[allow(clippy::too_many_lines)] // one arm per verb, each a flat hand-off
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Run(args) => {
@@ -618,6 +621,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
                 args.mac || args.device || args.device_id.is_some(),
             )?;
             let (hot, hot_mode) = hot_settings(ctx, args);
+            let passthrough = ctx.xcodebuild_args(&args.xcodebuild.passthrough)?;
             // The live build-and-run session streams its own output until you quit.
             run_app(
                 ctx,
@@ -634,7 +638,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
                     keep_sandbox: args.keep_sandbox,
                     hot_entitlements: args.hot_entitlements.as_deref(),
                     launch: &args.launch,
-                    passthrough: &args.xcodebuild.passthrough,
+                    passthrough: &passthrough,
                 },
             )
         }
@@ -645,12 +649,13 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
+            let passthrough = ctx.xcodebuild_args(&xcodebuild.passthrough)?;
             simple(
                 ctx,
                 Stage::Install,
                 &LaunchArgs::default(),
                 stage,
-                &xcodebuild.passthrough,
+                &passthrough,
             )
         }
         Action::Launch {
@@ -671,7 +676,8 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            debug(ctx, stage, launch, batch, &xcodebuild.passthrough)
+            let passthrough = ctx.xcodebuild_args(&xcodebuild.passthrough)?;
+            debug(ctx, stage, launch, batch, &passthrough)
         }
         Action::Diagnose {
             target,
@@ -682,7 +688,8 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            diagnose(ctx, stage, launch, *timeout, &xcodebuild.passthrough)
+            let passthrough = ctx.xcodebuild_args(&xcodebuild.passthrough)?;
+            diagnose(ctx, stage, launch, *timeout, &passthrough)
         }
         Action::Uninstall { target, stage } => {
             ctx.targeting = target.clone().into();

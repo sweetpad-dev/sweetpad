@@ -124,6 +124,7 @@ pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> Comma
         Some(Action::Output(opts)) => return output(ctx, args, opts),
         Some(Action::Run) | None => {}
     }
+    let passthrough = ctx.xcodebuild_args(&args.passthrough)?;
     let run_args = RunArgs {
         only_testing: &args.only_testing,
         skip_testing: &args.skip_testing,
@@ -133,7 +134,7 @@ pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> Comma
         retry_flaky: args.retry_flaky,
         coverage: args.coverage,
         show_command: args.show_command,
-        passthrough: &args.passthrough,
+        passthrough: &passthrough,
     };
     if args.watch {
         let resolved = resolve::resolve_testing(ctx)?;

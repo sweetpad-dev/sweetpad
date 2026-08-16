@@ -103,6 +103,45 @@ sweetpad app install -- SYMROOT=/tmp/out
 #        can't follow; use `-- -derivedDataPath <dir>` instead
 ```
 
+#### Writing them down for the whole repo
+
+An argument every build in a project needs belongs in `sweetpad.toml`, not in your shell history.
+The `[xcodebuild] args` list is added to every command that builds, so it reaches the builds inside
+`app run`/`install`/`debug`/`diagnose` as well as `build`, `test`, and `archive`:
+
+```toml
+# sweetpad.toml (committed)
+scheme = "MyApp"
+
+[xcodebuild]
+args = ["-skipMacroValidation", "-disablePackageRepositoryCache"]
+```
+
+A `--` tail is appended after the file's arguments, so typing one wins — `xcodebuild` takes the last
+value for a repeated flag or setting:
+
+```bash
+sweetpad build -- SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG   # beats the file's value
+```
+
+`sweetpad status` prints the effective list, so a build shaped by a file you didn't write still says
+where it came from.
+
+Arguments SweetPad settles itself are refused in the file, naming the key to use instead: `-scheme`,
+`-configuration`, `-destination`, `-sdk`, `-workspace`, `-project`, and `-resultBundlePath` (SweetPad
+writes and reads back its own). `-derivedDataPath` is refused too — a relative value in a committed
+file would resolve against the working directory rather than the file, meaning a different place
+depending on where the command ran. Pass it per command instead. Swift packages ignore the table
+entirely: they build with `swift build`, which knows none of `xcodebuild`'s flags.
+
+:::tip
+
+For `KEY=VALUE` build settings, an `.xcconfig` is usually the better committed home — Xcode honors it
+too, so ⌘B and `sweetpad build` stay in agreement. Put flags in `[xcodebuild] args`; put build
+settings in an xcconfig unless you specifically want them only when building through SweetPad.
+
+:::
+
 ### Simulators
 
 Alias: `sim`. Most take an optional target (name or UDID) and default to the booted simulator.
@@ -192,7 +231,7 @@ Three layers, from personal to shared:
   overrides. SweetPad never writes this file; it's yours.
 - **`sweetpad.toml`** next to the project — team defaults, meant to be committed. Same keys
   (`scheme`, `configuration`, `destination`, `sdk`), plus `developer_dir` and `[run]`, `[format]`,
-  and `[testing]` tables.
+  `[testing]`, and `[xcodebuild]` tables.
 - **Remembered state** — the answers you gave to interactive prompts, stored per project. Inspect and
   change it with `sweetpad context`, not by editing files.
 

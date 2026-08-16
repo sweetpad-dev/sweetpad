@@ -151,6 +151,20 @@ The commands that run a build take it — `build`, `test`, `archive`, `run`, `ap
 (`app launch`, `app stop`, `app logs`, `app uninstall`) build nothing, so they turn a `--` down
 rather than accept options that would go nowhere.
 
+If your project always needs the same option, write it down instead of typing it every time. An
+`[xcodebuild] args` list in `sweetpad.toml` is added to every command that builds, and it's
+committed, so your whole team gets it:
+
+```toml
+# sweetpad.toml
+[xcodebuild]
+args = ["-skipMacroValidation"]
+```
+
+A `--` you type is appended after the file's arguments, so it wins for anything they both set.
+`sweetpad status` shows the effective list — handy when a build behaves differently than you expect
+and the reason is in a file you didn't write.
+
 ## Live reload while you edit
 
 `sweetpad run --hot` keeps your app running and applies each Swift file you save without a full

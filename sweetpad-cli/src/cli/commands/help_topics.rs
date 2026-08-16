@@ -48,9 +48,24 @@ Resolution precedence, highest first:
 
 A committed 'sweetpad.toml' is the team-shared defaults layer
 (scheme/configuration/destination/sdk, 'developer_dir', '[run]', '[format]',
-'[testing]') — personal config beats it, remembered picks yield to it. It is
-found by walking up from the working directory to the git root, so one file
-serves the whole checkout.
+'[testing]', '[xcodebuild]') — personal config beats it, remembered picks
+yield to it. It is found by walking up from the working directory to the git
+root, so one file serves the whole checkout.
+
+'[xcodebuild] args' is the repo-wide version of the '--' tail — a list added
+to every command that builds, so a flag the project always needs is written
+down once instead of typed each time:
+
+  [xcodebuild]
+  args = [\"-skipMacroValidation\"]
+
+A typed '--' tail is appended after it, so it wins for anything both set
+(xcodebuild takes the last value). 'sweetpad status' prints the effective
+list. The arguments sweetpad settles itself are refused there, naming the key
+to use instead: -scheme, -configuration, -destination, -sdk, -workspace,
+-project, -resultBundlePath, and -derivedDataPath (a relative value would
+mean a different directory depending on where the command ran — pass that one
+per command). Swift packages ignore the table: they build with 'swift build'.
 
 When the project is not a sibling of that file, name it with 'workspace' or
 'project', relative to the file itself:
