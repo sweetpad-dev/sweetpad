@@ -24,7 +24,6 @@ use crate::cli::{
     CliError, CliResult, CommandResult, Context, ErrorContext, ErrorKind, Render, Rendered,
     buildlog, devicectl, oslog, process, pymobiledevice3, rawmode, simctl,
 };
-use sweetpad_core::build_settings::BuildSettingsOptions;
 
 /// The `app run` flags — also the top-level `sweetpad run`'s, so the flagship
 /// spelling and the resource-first one stay a single definition.
@@ -108,7 +107,18 @@ pub struct RunArgs {
     #[command(flatten)]
     pub launch: LaunchArgs,
 
-    /// Extra arguments passed to xcodebuild verbatim (after '--').
+    #[command(flatten)]
+    pub xcodebuild: XcodebuildArgs,
+}
+
+/// The `--` tail the `app` verbs that build accept, so the escape hatch is one
+/// definition and one spelling across `run`, `install`, `debug`, and
+/// `diagnose`. The verbs that only act on an installed app don't carry it:
+/// they spawn no xcodebuild, so the args would go nowhere.
+#[derive(Debug, Clone, Default, clap::Args)]
+pub struct XcodebuildArgs {
+    /// Extra arguments passed to xcodebuild verbatim (after '--'), e.g.
+    /// 'sweetpad app install -- -allowProvisioningUpdates KEY=VALUE'.
     #[arg(last = true, value_name = "XCODEBUILD_ARGS")]
     pub passthrough: Vec<String>,
 }
@@ -327,6 +337,8 @@ pub enum Action {
         target: crate::cli::BuildTargetArgs,
         #[command(flatten)]
         stage: StageTargetArgs,
+        #[command(flatten)]
+        xcodebuild: XcodebuildArgs,
     },
     /// Launch an already-installed app.
     Launch {
@@ -349,6 +361,8 @@ pub enum Action {
         launch: LaunchArgs,
         #[command(flatten)]
         batch: DebugBatchArgs,
+        #[command(flatten)]
+        xcodebuild: XcodebuildArgs,
     },
     /// Run the app under lldb, catch the first Objective-C exception or crash,
     /// print a structured report, and quit. Built for unattended/agent use:
@@ -365,6 +379,8 @@ pub enum Action {
         /// exits, killing it and reporting a timeout (0 disables). Default 30.
         #[arg(long, value_name = "SECS", default_value_t = 30)]
         timeout: u64,
+        #[command(flatten)]
+        xcodebuild: XcodebuildArgs,
     },
     /// Remove the app from a simulator or device.
     Uninstall {
@@ -618,14 +634,24 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
                     keep_sandbox: args.keep_sandbox,
                     hot_entitlements: args.hot_entitlements.as_deref(),
                     launch: &args.launch,
-                    passthrough: &args.passthrough,
+                    passthrough: &args.xcodebuild.passthrough,
                 },
             )
         }
-        Action::Install { target, stage } => {
+        Action::Install {
+            target,
+            stage,
+            xcodebuild,
+        } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            simple(ctx, Stage::Install, &LaunchArgs::default(), stage)
+            simple(
+                ctx,
+                Stage::Install,
+                &LaunchArgs::default(),
+                stage,
+                &xcodebuild.passthrough,
+            )
         }
         Action::Launch {
             target,
@@ -634,32 +660,34 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            simple(ctx, Stage::Launch, launch, stage)
+            simple(ctx, Stage::Launch, launch, stage, &[])
         }
         Action::Debug {
             target,
             stage,
             launch,
             batch,
+            xcodebuild,
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            debug(ctx, stage, launch, batch)
+            debug(ctx, stage, launch, batch, &xcodebuild.passthrough)
         }
         Action::Diagnose {
             target,
             stage,
             launch,
             timeout,
+            xcodebuild,
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            diagnose(ctx, stage, launch, *timeout)
+            diagnose(ctx, stage, launch, *timeout, &xcodebuild.passthrough)
         }
         Action::Uninstall { target, stage } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            simple(ctx, Stage::Uninstall, &LaunchArgs::default(), stage)
+            simple(ctx, Stage::Uninstall, &LaunchArgs::default(), stage, &[])
         }
         Action::Logs {
             target,
@@ -673,7 +701,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         Action::Stop { target, stage } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            simple(ctx, Stage::Stop, &LaunchArgs::default(), stage)
+            simple(ctx, Stage::Stop, &LaunchArgs::default(), stage, &[])
         }
         Action::OpenUrl { url, simulator } => open_url(ctx, url, simulator.as_deref()),
         Action::Screenshot(args) => {
@@ -817,74 +845,13 @@ impl RunPlan {
         }
     }
 
-    /// The `-derivedDataPath` the passthrough hands xcodebuild, if any — the
-    /// app locator must look where the build actually put the product.
-    /// Product-relocating build settings the locator can't model (`SYMROOT=`,
-    /// `OBJROOT=`, `CONFIGURATION_BUILD_DIR=`) are refused loudly: silently
-    /// looking in the default DerivedData would install whatever stale `.app`
-    /// a previous plain build left there.
-    fn passthrough_derived_data(&self) -> Result<Option<std::path::PathBuf>, CliError> {
-        let mut derived_data = None;
-        let mut iter = self.passthrough.iter().peekable();
-        while let Some(arg) = iter.next() {
-            if arg == "-derivedDataPath" {
-                derived_data = iter.peek().map(std::path::PathBuf::from);
-            } else if let Some((key, _)) = arg.split_once('=')
-                && matches!(key, "SYMROOT" | "OBJROOT" | "CONFIGURATION_BUILD_DIR")
-            {
-                return Err(CliError::new(format!(
-                    "`-- {key}=…` relocates the built product where the app locator can't \
-                     follow; use `-- -derivedDataPath <dir>` instead"
-                )));
-            }
-        }
-        Ok(derived_data)
-    }
-
-    /// Resolve every target's build settings via the in-process resolver (the
-    /// engine behind `settings show`), with no xcodebuild spawn — including a
-    /// passthrough `-derivedDataPath`. Swift packages never reach here — they
-    /// run via `swift run`, not a build/install/launch.
+    /// Resolve every target's build settings for this plan — the same
+    /// [`xcodebuild::resolved_settings`] the build side reports its product
+    /// from, so the two can't disagree about where the `.app` landed. Swift
+    /// packages never reach here: they run via `swift run`, not a
+    /// build/install/launch.
     fn resolved_settings(&self) -> Result<Vec<xcodebuild::TargetBuildSettings>, CliError> {
-        let (project, workspace) = match &self.resolved.container {
-            resolve::Container::Project(p) => (Some(p.clone()), None),
-            resolve::Container::Workspace(p) => (None, Some(p.clone())),
-            resolve::Container::SwiftPackage(_) => {
-                return Err(CliError::new("Swift packages have no .app bundle"));
-            }
-        };
-        let opts = BuildSettingsOptions {
-            project,
-            workspace,
-            scheme: Some(self.scheme.clone()),
-            target: None,
-            configuration: self.configuration.clone(),
-            // Must match the build's own -sdk (if any), or TARGET_BUILD_DIR
-            // points at a different products dir than the one just built.
-            sdk: self.resolved.sdk.clone().unwrap_or_default(),
-            arch: String::new(),
-            destination: sweetpad_lib::destination::parse_destination_arg(&self.destination),
-            xcconfig: None,
-            xcode: None,
-            xcspec_root: None,
-            sdksettings_root: None,
-            catalog_cache: None,
-            derived_data_path: self.passthrough_derived_data()?,
-            // We go on to install and launch what this resolves, so it has to
-            // name the bundle `xcodebuild` actually wrote — including when the
-            // user has moved Derived Data in Xcode (issue #306).
-            read_xcode_locations: true,
-            keys: None,
-        };
-        let resolved =
-            sweetpad_core::build_settings::resolve_build_settings(&opts).map_err(CliError::new)?;
-        Ok(resolved
-            .into_iter()
-            .map(|t| xcodebuild::TargetBuildSettings {
-                target: t.target,
-                settings: t.settings,
-            })
-            .collect())
+        xcodebuild::resolved_settings(&self.build_plan())
     }
 
     /// Locate the built `.app`: [`resolved_settings`](Self::resolved_settings)
@@ -1033,19 +1000,23 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
     result
 }
 
-/// The in-process resolver that locates the built .app can't see passthrough
-/// flags that move xcodebuild's output — installing a stale bundle from
-/// default DerivedData would silently run old code. Warn instead.
+/// The first passthrough flag that moves xcodebuild's output past where the
+/// in-process app locator looks, if any. `-derivedDataPath` is not one of
+/// them — [`xcodebuild::passthrough_derived_data`] follows it, and refuses the
+/// relocating build settings outright — so this is the pair the locator can
+/// neither follow nor recognize: a `TARGET_BUILD_DIR=` override, and an
+/// `-xcconfig` free to set any of them from a file.
+fn passthrough_moves_output(passthrough: &[String]) -> Option<&String> {
+    passthrough
+        .iter()
+        .find(|t| *t == "-xcconfig" || t.starts_with("TARGET_BUILD_DIR="))
+}
+
+/// Say so when the build's products land somewhere the install step won't
+/// look: installing a stale bundle from default DerivedData would silently
+/// run old code.
 fn warn_if_passthrough_moves_output(ctx: &Context, passthrough: &[String]) {
-    let moves_output = |t: &String| {
-        t == "-derivedDataPath"
-            || t == "-xcconfig"
-            || t.starts_with("SYMROOT=")
-            || t.starts_with("OBJROOT=")
-            || t.starts_with("CONFIGURATION_BUILD_DIR=")
-            || t.starts_with("TARGET_BUILD_DIR=")
-    };
-    if let Some(flag) = passthrough.iter().find(|t| moves_output(t)) {
+    if let Some(flag) = passthrough_moves_output(passthrough) {
         ctx.out.warn(&format!(
             "{flag} can move the build output, but the app is installed from the \
              default build location — the launched bundle may be stale or missing"
@@ -1173,7 +1144,7 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     };
     // A product-relocating passthrough the app locator can't follow fails
     // here, before a build is spent on it.
-    plan.passthrough_derived_data()?;
+    xcodebuild::passthrough_derived_data(&plan.passthrough)?;
     // A hot macOS build may need to sign with an ephemeral sandbox-stripped
     // entitlements file (§9d zero-config sandbox stripping) — settled here so
     // every session build (including `r` rebuilds) carries the override.
@@ -3539,6 +3510,7 @@ fn simple(
     stage: Stage,
     launch: &LaunchArgs,
     stage_target: &StageTargetArgs,
+    passthrough: &[String],
 ) -> CommandResult {
     let on_device = stage_target.device || stage_target.device_id.is_some();
     // `stop` acts on the *running* app: when a launch is recorded, use it
@@ -3569,7 +3541,7 @@ fn simple(
         keep_sandbox: false,
         hot_entitlements: None,
         launch,
-        passthrough: &[],
+        passthrough,
     };
     let plan = plan(ctx, &opts)?;
     let app = plan.app_bundle()?;
@@ -3784,7 +3756,11 @@ fn stop_mac(ctx: &Context, executable: &Path, bundle_id: &str) -> Result<AppStag
 
 /// The `RunOpts` shared by `app debug`/`app diagnose`: build + install and
 /// hand off to lldb, never a hot session, no log streaming.
-fn lldb_run_opts<'a>(stage_target: &'a StageTargetArgs, launch: &'a LaunchArgs) -> RunOpts<'a> {
+fn lldb_run_opts<'a>(
+    stage_target: &'a StageTargetArgs,
+    launch: &'a LaunchArgs,
+    passthrough: &'a [String],
+) -> RunOpts<'a> {
     RunOpts {
         device: stage_target.device || stage_target.device_id.is_some(),
         device_id: stage_target.device_id.as_deref(),
@@ -3798,7 +3774,7 @@ fn lldb_run_opts<'a>(stage_target: &'a StageTargetArgs, launch: &'a LaunchArgs) 
         keep_sandbox: false,
         hot_entitlements: None,
         launch,
-        passthrough: &[],
+        passthrough,
     }
 }
 
@@ -3841,6 +3817,7 @@ fn debug(
     stage_target: &StageTargetArgs,
     launch: &LaunchArgs,
     batch: &DebugBatchArgs,
+    passthrough: &[String],
 ) -> CommandResult {
     // `--batch` streams lldb's output live; like `app run` there's no coherent
     // one-shot JSON for it. Point at `app diagnose` for a structured report.
@@ -3850,7 +3827,7 @@ fn debug(
              `app diagnose -o json` for a structured exception/crash report",
         ));
     }
-    let opts = lldb_run_opts(stage_target, launch);
+    let opts = lldb_run_opts(stage_target, launch, passthrough);
     let plan = plan(ctx, &opts)?;
     match &plan.target {
         // A macOS app runs on this machine, so lldb can own the launch
@@ -4567,8 +4544,9 @@ fn diagnose(
     stage_target: &StageTargetArgs,
     launch: &LaunchArgs,
     timeout_secs: u64,
+    passthrough: &[String],
 ) -> CommandResult {
-    let opts = lldb_run_opts(stage_target, launch);
+    let opts = lldb_run_opts(stage_target, launch, passthrough);
     let plan = plan(ctx, &opts)?;
     match &plan.target {
         Target::Mac => diagnose_mac(ctx, &plan, timeout_secs),
@@ -5715,6 +5693,37 @@ mod tests {
         // Never worth failing a launch that already succeeded.
         assert_eq!(launched_pid(""), None);
         assert_eq!(launched_pid("com.example.App: not-a-pid"), None);
+    }
+
+    /// The warning covers what the locator can neither follow nor refuse.
+    /// Warning about the rest reads as "this may not work" over cases that
+    /// either work or fail loudly a few lines later.
+    #[test]
+    fn only_the_relocations_the_locator_misses_are_warned_about() {
+        let argv = |args: &[&str]| args.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+
+        // Followed: the resolver takes the same -derivedDataPath the build does.
+        assert!(passthrough_moves_output(&argv(&["-derivedDataPath", "/tmp/dd"])).is_none());
+        // Refused outright by `xcodebuild::passthrough_derived_data`.
+        for relocating in [
+            "SYMROOT=/tmp/s",
+            "OBJROOT=/tmp/o",
+            "CONFIGURATION_BUILD_DIR=/tmp/c",
+        ] {
+            assert!(
+                passthrough_moves_output(&argv(&[relocating])).is_none(),
+                "{relocating}"
+            );
+            assert!(
+                xcodebuild::passthrough_derived_data(&argv(&[relocating])).is_err(),
+                "{relocating}"
+            );
+        }
+        // Neither followed nor refused — the warning's whole remit.
+        assert!(passthrough_moves_output(&argv(&["-xcconfig", "Over.xcconfig"])).is_some());
+        assert!(passthrough_moves_output(&argv(&["TARGET_BUILD_DIR=/tmp/t"])).is_some());
+        // An ordinary flag says nothing about the products dir.
+        assert!(passthrough_moves_output(&argv(&["-allowProvisioningUpdates"])).is_none());
     }
 
     #[test]

@@ -63,6 +63,46 @@ The CLI describes itself, and that is the authority: `sweetpad --help` lists the
 | `sweetpad app screenshot` | Save a PNG of the running app — a macOS app's window, or the simulator it launched on. |
 | `sweetpad app ui`         | Read or drive a macOS app's UI through accessibility: `ui tree`, `ui click`, `ui type`. |
 
+### Extra xcodebuild arguments
+
+Anything after `--` goes to `xcodebuild` verbatim — its own flags, or `KEY=VALUE` build-setting
+overrides:
+
+```bash
+# xcodebuild flags
+sweetpad app install -- -allowProvisioningUpdates
+sweetpad build -- -parallelizeTargets
+sweetpad archive -- -allowProvisioningUpdates
+
+# build-setting overrides
+sweetpad build -- SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG STAGING"
+sweetpad app install --device -- DEVELOPMENT_TEAM=ABCDE12345
+
+# both at once, and combined with SweetPad's own flags
+sweetpad app install --on "iPhone 16 Pro" -- -derivedDataPath ./build ENABLE_TESTABILITY=YES
+```
+
+The commands that run a build accept it: `build`, `test`, `archive`, and `app run`, `app install`,
+`app debug`, `app diagnose`. The `app` commands that only act on an already-installed app —
+`launch`, `uninstall`, `logs`, `stop` — reject it rather than accept arguments that would reach no
+`xcodebuild`.
+
+A `-derivedDataPath` in the tail is honored when locating the built `.app`, so the bundle SweetPad
+installs is the one the build just wrote:
+
+```bash
+sweetpad app install -- -derivedDataPath /tmp/dd   # builds and installs from /tmp/dd
+```
+
+Overrides that move the product somewhere the locator can't follow are rejected up front, before a
+build is spent on them — use `-derivedDataPath` instead:
+
+```bash
+sweetpad app install -- SYMROOT=/tmp/out
+# error: `-- SYMROOT=…` relocates the built product where the app locator
+#        can't follow; use `-- -derivedDataPath <dir>` instead
+```
+
 ### Simulators
 
 Alias: `sim`. Most take an optional target (name or UDID) and default to the booted simulator.

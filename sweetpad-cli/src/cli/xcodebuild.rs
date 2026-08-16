@@ -1100,8 +1100,9 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
 /// Product-relocating build settings the locator can't model (`SYMROOT=`,
 /// `OBJROOT=`, `CONFIGURATION_BUILD_DIR=`) are refused loudly: looking in the
 /// default DerivedData would name whatever stale `.app` an earlier plain build
-/// left there.
-fn passthrough_derived_data(passthrough: &[String]) -> Result<Option<PathBuf>, CliError> {
+/// left there. Public so `app`'s run plan can spend the refusal before a build
+/// rather than after one.
+pub fn passthrough_derived_data(passthrough: &[String]) -> Result<Option<PathBuf>, CliError> {
     let mut derived_data = None;
     let mut iter = passthrough.iter().peekable();
     while let Some(arg) = iter.next() {
@@ -1125,9 +1126,9 @@ fn passthrough_derived_data(passthrough: &[String]) -> Result<Option<PathBuf>, C
 /// [`app_bundle`] to name the product a build of this plan writes. Swift
 /// packages build no `.app`, so they have nothing to resolve here.
 ///
-/// `app`'s `RunPlan` resolves the same way for its install/launch path; both
-/// locators must agree on the products dir or the CLI reports one bundle and
-/// installs another.
+/// `app`'s `RunPlan` locates its install/launch bundle through this same
+/// function: one locator, so the CLI cannot report one bundle and install
+/// another.
 pub fn resolved_settings(plan: &BuildPlan<'_>) -> Result<Vec<TargetBuildSettings>, CliError> {
     let (project, workspace) = match plan.container {
         Container::Project(p) => (Some(p.clone()), None),

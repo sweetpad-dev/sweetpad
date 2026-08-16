@@ -1655,6 +1655,36 @@ mod cli_definition_tests {
             );
         }
     }
+
+    /// The `-- XCODEBUILD_ARGS` tail follows the build: every `app` verb that
+    /// spawns xcodebuild takes it, and the verbs that only act on an installed
+    /// app refuse it rather than accept args that reach nothing.
+    #[test]
+    fn the_app_verbs_that_build_take_the_xcodebuild_passthrough() {
+        use crate::cli::commands::app;
+        use clap::Parser;
+
+        let parse = |verb: &str| {
+            super::Cli::try_parse_from(["sweetpad", "app", verb, "--", "-allowProvisioningUpdates"])
+        };
+        let tail = |verb: &str| match parse(verb).expect("`--` tail rejected").resource {
+            Some(super::Resource::App { action }) => match action.expect("no action parsed") {
+                app::Action::Install { xcodebuild, .. }
+                | app::Action::Debug { xcodebuild, .. }
+                | app::Action::Diagnose { xcodebuild, .. } => xcodebuild.passthrough,
+                app::Action::Run(args) => args.xcodebuild.passthrough,
+                other => panic!("`app {verb}` parsed as {other:?}"),
+            },
+            other => panic!("`app {verb}` parsed as {other:?}"),
+        };
+
+        for verb in ["run", "install", "debug", "diagnose"] {
+            assert_eq!(tail(verb), ["-allowProvisioningUpdates"], "app {verb}");
+        }
+        for verb in ["launch", "uninstall", "stop", "logs"] {
+            assert!(parse(verb).is_err(), "app {verb} accepted a `--` tail");
+        }
+    }
 }
 
 #[cfg(test)]

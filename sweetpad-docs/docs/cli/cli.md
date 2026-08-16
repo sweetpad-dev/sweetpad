@@ -131,6 +131,26 @@ sweetpad status
 To change or clear the remembered choices, use `sweetpad context`. For all the ways to describe a
 destination, run `sweetpad help destinations`.
 
+## Passing options straight to xcodebuild
+
+SweetPad has its own flags for the things you reach for daily, but it doesn't wrap all of
+`xcodebuild`. Anything you write after `--` is handed to `xcodebuild` untouched, so one unusual
+option doesn't send you back to the raw tool:
+
+```bash
+sweetpad app install -- -allowProvisioningUpdates      # let Xcode fix up signing
+sweetpad build -- SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG STAGING"
+sweetpad app install --device -- DEVELOPMENT_TEAM=ABCDE12345
+sweetpad run -- -derivedDataPath ./build               # build somewhere else
+```
+
+Both shapes work: `xcodebuild`'s own flags, and `KEY=VALUE` build-setting overrides.
+
+The commands that run a build take it — `build`, `test`, `archive`, `run`, `app install`,
+`app debug`, and `app diagnose`. The ones that only act on an app that's already installed
+(`app launch`, `app stop`, `app logs`, `app uninstall`) build nothing, so they turn a `--` down
+rather than accept options that would go nowhere.
+
 ## Live reload while you edit
 
 `sweetpad run --hot` keeps your app running and applies each Swift file you save without a full

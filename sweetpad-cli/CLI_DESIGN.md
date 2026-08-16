@@ -118,6 +118,16 @@ Destination selection is `--on <ref>` (fuzzy name / `booted` / `mac` /
 `--destination` as the raw escape hatch. `-o json|ndjson` is the machine
 surface (§4).
 
+The `-- XCODEBUILD_ARGS` tail follows the build. `build`, `test`, `archive`,
+and the `app` verbs that spawn `xcodebuild` — `run`, `install`, `debug`,
+`diagnose` — all take it; the verbs that only act on an already-installed app
+(`launch`, `uninstall`, `logs`, `stop`) refuse it, because args that reach no
+`xcodebuild` would be accepted and silently dropped. A passthrough
+`-derivedDataPath` is read back out and handed to the in-process resolver, so
+the app the CLI installs is the one the build just wrote; the settings that
+relocate the product where the resolver cannot follow (`SYMROOT=`, `OBJROOT=`,
+`CONFIGURATION_BUILD_DIR=`) are refused before a build is spent on them.
+
 ## 3a. `project new` — scaffolding
 
 `project new` creates a fresh, buildable **minimal SwiftUI iOS app** with no
@@ -1602,8 +1612,12 @@ passthrough as the escape hatch.
 
 ```
 sweetpad app diagnose [--mac|--device] [--arg A] [--env K=V] [--timeout SECS]
+                      [-- XCODEBUILD_ARGS]
 sweetpad app debug --batch [--cmd LLDB_CMD]… [--on-crash LLDB_CMD]… [--timeout SECS]
+                   [-- XCODEBUILD_ARGS]
 ```
+
+Both build before they hand off to lldb, so both take the `--` tail (§3).
 
 **`app diagnose`** is the agent-facing verb: build, launch under `lldb -b` with a
 breakpoint on `objc_exception_throw`, run bounded by `--timeout`, and on the
