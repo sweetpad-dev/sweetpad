@@ -2,9 +2,57 @@ import { themes as prismThemes } from 'prism-react-renderer';
 import type { Config } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
+/**
+ * Docs used to live at flat, product-less paths (`/docs/build`, `/docs/cli`).
+ * They now sit under `/docs/cli/…` and `/docs/vscode/…` so the URL says which
+ * product a page belongs to. Every old path redirects to its new home.
+ */
+const cliRedirects: Record<string, string> = {
+  '/docs/getting-started-cli': '/docs/cli/getting-started',
+  '/docs/cli': '/docs/cli/getting-started',
+  '/docs/cli-reference': '/docs/cli/reference',
+  '/docs/agent-cli': '/docs/cli/agent-cli',
+  '/docs/agent-skills': '/docs/cli/agent-skills',
+  '/docs/category/cli': '/docs/cli/getting-started',
+};
+
+const vscodeRedirects: Record<string, string> = {
+  '/docs/getting-started-vscode': '/docs/vscode/getting-started',
+  '/docs/build': '/docs/vscode/build',
+  '/docs/debug': '/docs/vscode/debug',
+  '/docs/hot-reload': '/docs/vscode/hot-reload',
+  '/docs/tests': '/docs/vscode/tests',
+  '/docs/format': '/docs/vscode/format',
+  '/docs/autocomplete': '/docs/vscode/autocomplete',
+  '/docs/destinations': '/docs/vscode/destinations',
+  '/docs/simulators': '/docs/vscode/simulators',
+  '/docs/watchos-simulators': '/docs/vscode/simulators#watchos-simulators',
+  '/docs/devices': '/docs/vscode/devices',
+  '/docs/tools': '/docs/vscode/tools',
+  '/docs/tuist': '/docs/vscode/tuist',
+  '/docs/xcodegen': '/docs/vscode/xcodegen',
+  '/docs/worktree': '/docs/vscode/worktree',
+  '/docs/settings': '/docs/vscode/settings',
+  '/docs/commands': '/docs/vscode/commands',
+  '/docs/troubleshooting': '/docs/vscode/troubleshooting',
+  '/docs/category/vscode-extension': '/docs/vscode/getting-started',
+};
+
+/** Pages that were folded into another page, keyed by the URL they used to own. */
+const foldedPages: Record<string, string> = {
+  '/docs/vscode/watchos-simulators': '/docs/vscode/simulators#watchos-simulators',
+};
+
+const redirects = Object.entries({
+  ...cliRedirects,
+  ...vscodeRedirects,
+  ...foldedPages,
+  '/docs/intro': '/docs',
+}).map(([from, to]) => ({ from, to }));
+
 const config: Config = {
   title: 'SweetPad',
-  tagline: 'iOS/Swift development using VSCode',
+  tagline: 'Build, run, and test Xcode apps from the terminal — or from VS Code',
   favicon: 'images/favicon.ico',
 
   // Set the production url of your site here
@@ -26,7 +74,28 @@ const config: Config = {
       onBrokenMarkdownLinks: 'warn',
     },
   },
-  themes: ['@docusaurus/theme-mermaid'],
+  themes: [
+    '@docusaurus/theme-mermaid',
+    [
+      // Offline search: the index is built at compile time and served as a
+      // static asset, so there's no crawler and no third-party service.
+      '@easyops-cn/docusaurus-search-local',
+      {
+        hashed: true,
+        indexDocs: true,
+        indexBlog: true,
+        indexPages: false,
+        docsRouteBasePath: '/docs',
+        language: ['en'],
+        highlightSearchTermsOnTargetPage: true,
+        // The two products have pages with the same names — Simulators,
+        // Destinations, Troubleshooting. Showing each hit's path is what tells
+        // a CLI result apart from a VS Code one.
+        explicitSearchResultPath: true,
+        searchResultLimits: 10,
+      },
+    ],
+  ],
 
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
@@ -45,6 +114,12 @@ const config: Config = {
         enableInDevelopment: true,
       },
     ],
+    [
+      "@docusaurus/plugin-client-redirects",
+      {
+        redirects,
+      },
+    ],
   ],
 
   presets: [
@@ -56,7 +131,7 @@ const config: Config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/sweetpad-dev/sweetpad-docs/edit/main/',
+            'https://github.com/sweetpad-dev/sweetpad/edit/main/sweetpad-docs/',
         },
         // blog: {
         //   showReadingTime: true,
@@ -92,19 +167,20 @@ const config: Config = {
       items: [
         {
           type: 'docSidebar',
-          sidebarId: 'tutorialSidebar',
+          sidebarId: 'cliSidebar',
           position: 'left',
-          label: 'Docs',
+          label: 'CLI',
         },
-        {to: '/blog', label: 'Blog', position: 'left'},
+        {
+          type: 'docSidebar',
+          sidebarId: 'vscodeSidebar',
+          position: 'left',
+          label: 'VS Code',
+        },
+        { to: '/blog', label: 'Blog', position: 'left' },
         {
           href: 'https://github.com/sweetpad-dev/sweetpad',
           label: 'GitHub',
-          position: 'right',
-        },
-        {
-          href: 'https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad',
-          label: 'VSCode Marketplace',
           position: 'right',
         },
       ],
@@ -113,17 +189,42 @@ const config: Config = {
       style: 'dark',
       links: [
         {
-          title: 'Docs',
+          title: 'SweetPad CLI',
           items: [
             {
-              label: 'Tutorial',
-              to: '/docs/intro',
+              label: 'Get started',
+              to: '/docs/cli/getting-started',
+            },
+            {
+              label: 'Command reference',
+              to: '/docs/cli/reference',
+            },
+            {
+              label: 'Agent skills',
+              to: '/docs/cli/agent-skills',
+            },
+          ],
+        },
+        {
+          title: 'VS Code extension',
+          items: [
+            {
+              label: 'Get started',
+              to: '/docs/vscode/getting-started',
+            },
+            {
+              label: 'VS Code Marketplace',
+              href: 'https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad',
             },
           ],
         },
         {
           title: 'More',
           items: [
+            {
+              label: 'Which one do I need?',
+              to: '/docs',
+            },
             {
               label: 'Blog',
               to: '/blog',

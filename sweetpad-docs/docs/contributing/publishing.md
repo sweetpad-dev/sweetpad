@@ -2,8 +2,8 @@
 
 SweetPad ships two artifacts, versioned and released independently:
 
-- the **VSCode extension** — `v*` tags → VS Marketplace / Open VSX
-- the **`sweetpad` CLI** — `cli-v*` tags → Homebrew
+- the **VSCode extension**: `v*` tags → VS Marketplace / Open VSX
+- the **`sweetpad` CLI**: `cli-v*` tags → Homebrew
 
 ## VSCode extension
 
@@ -42,7 +42,7 @@ The `sweetpad` CLI is distributed through the Homebrew tap
 ### Steps
 
 1. Bump the version in `sweetpad-lib/Cargo.toml` (`version = "X.Y.Z"`) and commit it.
-   This is what `sweetpad --version` reports and **must match the tag below** — the
+   This is what `sweetpad --version` reports and **must match the tag below**, because the
    formula's `brew test` asserts `sweetpad X.Y.Z`, so a mismatch fails the formula.
 
 2. Tag and push (the tag is the release version):
@@ -59,13 +59,13 @@ git push origin cli-vX.Y.Z
    - regenerates `Formula/sweetpad.rb` in the tap (from `.github/homebrew/sweetpad.rb.tmpl`) and pushes it via the `HOMEBREW_TAP_DEPLOY_KEY` deploy key.
 
 4. Verify:
-   - the release has the tarball — https://github.com/sweetpad-dev/sweetpad/releases
-   - the tap has the bumped formula — https://github.com/sweetpad-dev/homebrew-tap/blob/main/Formula/sweetpad.rb
+   - the release has the tarball: https://github.com/sweetpad-dev/sweetpad/releases
+   - the tap has the bumped formula: https://github.com/sweetpad-dev/homebrew-tap/blob/main/Formula/sweetpad.rb
    - `brew update && brew install sweetpad-dev/tap/sweetpad && sweetpad --version`
 
 ### Dry run
 
-To exercise build + sign + notarize without publishing (the release and tap-bump steps are gated on a tag), run the workflow manually — from the Actions tab or:
+To exercise build + sign + notarize without publishing (the release and tap-bump steps are gated on a tag), run the workflow manually, from the Actions tab or:
 
 ```shell
 gh workflow run cli-release.yaml --ref main
@@ -75,6 +75,6 @@ gh workflow run cli-release.yaml --ref main
 
 Already configured on the repo; listed for reference:
 
-- `MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD` — Developer ID Application certificate (`.p12`, base64) and its export password
-- `MACOS_NOTARY_KEY_P8`, `MACOS_NOTARY_KEY_ID`, `MACOS_NOTARY_ISSUER_ID` — App Store Connect API key for `notarytool`
-- `HOMEBREW_TAP_DEPLOY_KEY` — private SSH key of the `ci-formula-bump` write deploy key on the tap
+- `MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD`: Developer ID Application certificate (`.p12`, base64) and its export password
+- `MACOS_NOTARY_KEY_P8`, `MACOS_NOTARY_KEY_ID`, `MACOS_NOTARY_ISSUER_ID`: App Store Connect API key for `notarytool`
+- `HOMEBREW_TAP_DEPLOY_KEY`: private SSH key of the `ci-formula-bump` write deploy key on the tap

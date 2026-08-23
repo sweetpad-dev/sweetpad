@@ -1,17 +1,16 @@
 ---
 sidebar_position: 11
-slug: /devices
 ---
 
 # iOS Devices
 
 SweetPad runs and debugs your app on physical iPhones and iPads, with on-device log streaming and full LLDB
-debugging — the same flows you get for the Simulator.
+debugging, the same flows you get for the Simulator.
 
 ## What works today
 
 - 🚀 Build, install, and launch on a connected device.
-- 🐞 Debug with LLDB (breakpoints, step, watch, the lot — see [Debugging](./debug.md)).
+- 🐞 Debug with LLDB: breakpoints, step, watch, the lot. See [Debugging](./debug.md).
 - 📋 Stream `os_log` / `Logger` / `print` / `NSLog` output from the device into the SweetPad terminal.
 - 🔌 Wireless devices: as long as the device shows up in Xcode's **Devices and Simulators** window, SweetPad will use
   it.
@@ -30,7 +29,7 @@ debugging — the same flows you get for the Simulator.
    Xcode.
 2. In the **Destinations** panel (or the status bar destination picker), pick the device.
 3. Click ▶️ next to a scheme in the Build view, or press F5 to launch under the debugger.
-4. Unlock the device — iOS shows the install prompt during the first launch, then the app starts.
+4. Unlock the device. iOS shows the install prompt during the first launch, then the app starts.
 
    ![Devices Terminal](/images/devices-terminal.png)
 
@@ -51,7 +50,7 @@ Pairing only needs to happen once per device/Mac combination:
 ## Stream os_log and print output from the device
 
 By default, when you launch an app on a physical device, SweetPad streams the device's syslog into the build terminal
-and filters it down to your app — `os_log`, `Logger`, `print`, and `NSLog` output all surface there, alongside the
+and filters it down to your app, so `os_log`, `Logger`, `print`, and `NSLog` output all surface there, alongside the
 build output. This makes the device feel like the Simulator for everyday debugging.
 
 The stream uses [`pymobiledevice3`](https://github.com/doronz88/pymobiledevice3). Install it with the built-in
@@ -97,7 +96,7 @@ subsystems (`com.apple.*`). Adjust with subsystem allow/deny lists (Apple-style 
 
 :::note
 
-`sweetpad.build.logStreamPredicate` is **not** applied to the device stream — it controls Apple's `log stream` tool,
+`sweetpad.build.logStreamPredicate` is **not** applied to the device stream. It controls Apple's `log stream` tool,
 which only runs for simulators and macOS. See
 [Simulators → Customize the predicate](./simulators.md#customize-the-predicate) for that flow.
 
@@ -143,7 +142,7 @@ your password the first time. Leave it off if you prefer to manage `tunneld` you
 
 ## Debug on a device
 
-Debugging on a physical device works the same way as on the Simulator — `F5` with a `sweetpad-lldb` configuration in
+Debugging on a physical device works the same way as on the Simulator: `F5` with a `sweetpad-lldb` configuration in
 `launch.json`. There are a few device-specific knobs (LLDB command merging, "stop on attach") covered in
 [Debugging → Debugging on a physical device](./debug.md#debugging-on-a-physical-device).
 

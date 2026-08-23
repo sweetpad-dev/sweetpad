@@ -1,8 +1,8 @@
 # SweetPad (iOS/Swift development) <img valign="middle" alt="SweetPad logo" width="40" src="./images/logo.png" />
 
-📚 [Documentation](https://sweetpad.hyzyla.dev/) | 📦
+📚 [Documentation](https://sweetpad.hyzyla.dev/docs/vscode/getting-started) | 📦
 [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad) | 🐞
-[Github Issues](https://github.com/sweetpad-dev/sweetpad/issues) | 🏔️ [Roadmap](https://github.com/sweetpad-dev/sweetpad/blob/main/TODO.md)
+[Github Issues](https://github.com/sweetpad-dev/sweetpad/issues)
 
 <!-- [![Discord](https://img.shields.io/badge/SweetPad-Discord-blue?logo=discord&logoColor=white&link=https%3A%2F%2Fdiscord.gg%2FXZwRtQ5dew)](https://discord.gg/XZwRtQ5dew) -->
 
@@ -25,30 +25,37 @@ tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcod
 
 ## Feature
 
-- ✅ **[Autocomplete](https://sweetpad.hyzyla.dev/docs/autocomplete)** — autocomplete, jump-to-definition and hover
+- ✅ **[Autocomplete](https://sweetpad.hyzyla.dev/docs/vscode/autocomplete)** — autocomplete, jump-to-definition and hover
   docs via SourceKit-LSP, backed by SweetPad's built-in build server
   
-- 🛠️ **[Build & Run](https://sweetpad.hyzyla.dev/docs/build)** — build and run application using
+- 🛠️ **[Build & Run](https://sweetpad.hyzyla.dev/docs/vscode/build)** — build and run application using
   [xcodebuild](https://developer.apple.com/library/archive/technotes/tn2339/_index.html)
   
-- 💅🏼 **[Format](https://sweetpad.hyzyla.dev/docs/format)** — format files using
+- 💅🏼 **[Format](https://sweetpad.hyzyla.dev/docs/vscode/format)** — format files using
   [swift-format](https://github.com/apple/swift-format) or other formatter of your choice
   
-- 📱 **[Simulator](https://sweetpad.hyzyla.dev/docs/simulators)** — manage iOS simulators
+- 📱 **[Simulator](https://sweetpad.hyzyla.dev/docs/vscode/simulators)** — manage iOS simulators
   
-- 📱 **[Devices](https://sweetpad.hyzyla.dev/docs/devices)** — run iOS applications on iPhone or iPad
+- 📱 **[Devices](https://sweetpad.hyzyla.dev/docs/vscode/devices)** — run iOS applications on iPhone or iPad
  
-- 🛠️ **[Tools](https://sweetpad.hyzyla.dev/docs/tools)** — manage essential iOS development tools using
+- 🛠️ **[Tools](https://sweetpad.hyzyla.dev/docs/vscode/tools)** — manage essential iOS development tools using
   [Homebrew](https://brew.sh/)
   
-- 🪲 **[Debug](https://sweetpad.hyzyla.dev/docs/debug)** — debug iOS applications using
+- 🪲 **[Debug](https://sweetpad.hyzyla.dev/docs/vscode/debug)** — debug iOS applications using
   [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
   
-- ✅ **[Tests](https://sweetpad.hyzyla.dev/docs/tests)** — run tests on simulators and devices
+- ✅ **[Tests](https://sweetpad.hyzyla.dev/docs/vscode/tests)** — run tests on simulators and devices
   
 
 > 💡 If you have any ideas, please open an issue or start a discussion on the
 > [SweetPad](https://github.com/sweetpad-dev/sweetpad) GitHub repository.
+
+## Prefer the terminal?
+
+There is also a **[SweetPad CLI](https://sweetpad.hyzyla.dev/docs/cli/getting-started)** — a separate
+`sweetpad` binary that builds, runs, and tests the same projects from any terminal, with no editor
+involved. It is a different product with its own install (`brew install sweetpad-dev/tap/sweetpad`);
+this extension does not require it, and it does not require this extension.
 
 ## Requirements
 

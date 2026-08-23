@@ -1,12 +1,11 @@
 ---
 sidebar_position: 5
-slug: /tests
 ---
 
 # Tests
 
 SweetPad wires Swift test targets into VSCode's native Testing UI, so XCTest and Swift Testing tests behave like any
-other VSCode tests — click the gutter ▶️ next to a test, browse them in the **Testing** panel, or jump straight to a
+other VSCode tests. Click the gutter ▶️ next to a test, browse them in the **Testing** panel, or jump straight to a
 failure from the Problems list.
 
 ![Tests](/images/test-menu-run.png)
@@ -23,7 +22,7 @@ The first run for a target builds the test bundle (this can take a moment). Subs
 ## Tests that inherit from a custom base class
 
 SweetPad reads the inheritance clause to decide what's a test class, so `class FooTests: XCTestCase` is picked up on
-its own. If your tests inherit from a shared base instead — `class FooTests: BaseTestCase` — name that base class:
+its own. If your tests inherit from a shared base instead, as in `class FooTests: BaseTestCase`, name that base class:
 
 ```json title=".vscode/settings.json"
 {
@@ -45,11 +44,11 @@ That choice is remembered per-workspace.
 
 ## Pick a scheme for testing
 
-SweetPad keeps a separate scheme for testing from the one you build with — common in apps that split **`MyApp`**
+SweetPad keeps a separate scheme for testing from the one you build with, which is common in apps that split **`MyApp`**
 (build) from **`MyAppTests`** (test). The first time you run a test it asks which scheme to use and remembers your
 choice per-workspace.
 
-To change it later — or pin it up front so you're not prompted — run `> SweetPad.Testing: Set scheme for testing`
+To change it later, or pin it up front so you're not prompted, run `> SweetPad.Testing: Set scheme for testing`
 from the command palette.
 
 ## Use a different configuration for testing

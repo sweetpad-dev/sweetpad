@@ -38,7 +38,7 @@ export const TOOLS: Tool[] = [
       command: "brew",
       args: ["install", "sweetpad-dev/tap/sweetpad"],
     },
-    documentation: "https://sweetpad.hyzyla.dev/docs/getting-started-cli",
+    documentation: "https://sweetpad.hyzyla.dev/docs/cli/getting-started",
   },
   {
     id: "swift-format",

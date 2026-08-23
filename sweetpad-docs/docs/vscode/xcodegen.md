@@ -1,12 +1,11 @@
 ---
-sidebar_position: 14
-slug: /xcodegen
+sidebar_position: 13
 ---
 
 # XcodeGen
 
 [XcodeGen](https://github.com/yonaskolb/XcodeGen) generates your `.xcodeproj` from a YAML manifest
-(`project.yml`), so the project file never has to be edited — or merged — by hand. SweetPad works with
+(`project.yml`), so the project file never has to be edited, or merged, by hand. SweetPad works with
 XcodeGen projects out of the box: generate the project, and the schemes show up in the Build view like
 any other.
 
@@ -38,7 +37,16 @@ activates when a `project.yml` exists at the workspace root.
 
 :::tip
 
-Prefer [Tuist](./tuist.md)? SweetPad has the same integration for it — including the matching
+Prefer [Tuist](./tuist.md)? SweetPad has the same integration for it, including the matching
 `sweetpad.tuist.autogenerate` setting.
+
+:::
+
+:::note
+
+Working from a terminal too? The [SweetPad CLI](../cli/generated-projects.md) handles generated
+projects differently. It doesn't regenerate for you, but it warns when the spec is newer than the
+project and refuses edits that a regenerate would overwrite. It's a separate product with its own
+install.
 
 :::

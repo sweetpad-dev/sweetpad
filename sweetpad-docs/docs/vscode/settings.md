@@ -1,13 +1,12 @@
 ---
 sidebar_position: 16
-slug: /settings
 sidebar_label: Settings reference
 ---
 
 # Settings reference
 
 Every setting the SweetPad extension reads, in one place. Put them in `.vscode/settings.json` to keep
-them per-project (recommended — most of these describe the project, not you), or in your user settings
+them per-project (recommended, since most of these describe the project rather than you), or in your user settings
 to apply them everywhere.
 
 Each table lists the setting key, its default, and what it does. Settings that deserve a longer story
@@ -28,7 +27,7 @@ Covered in depth in [Build & Run](./build.md).
 | `sweetpad.build.launchArgs`              | `[]`    | Arguments passed to your app when it launches.                                                                      |
 | `sweetpad.build.launchEnv`               | `{}`    | Environment variables passed to your app when it launches.                                                          |
 | `sweetpad.build.derivedDataPath`         | —       | Custom DerivedData location, absolute or relative to the VSCode folder.                                             |
-| `sweetpad.build.xcodebuildCommand`       | —       | Alternative `xcodebuild` binary — e.g. Xcode-beta's copy. `${env:VAR}` expands.                                     |
+| `sweetpad.build.xcodebuildCommand`       | —       | Alternative `xcodebuild` binary, such as Xcode-beta's copy. `${env:VAR}` expands.                                     |
 | `sweetpad.build.swiftCommand`            | —       | Alternative `swift` binary, for Swift Package builds. `${env:VAR}` expands.                                          |
 | `sweetpad.build.arch`                    | —       | Force an architecture (`arm64` or `x86_64`). Useful for Rosetta builds on Apple Silicon.                             |
 | `sweetpad.build.rosettaDestination`      | `false` | Prefer the Rosetta variant of the target simulator.                                                                  |
@@ -42,7 +41,7 @@ Covered in depth in [Build & Run](./build.md).
 
 ## App logs
 
-How log streaming works — and which settings apply to which destination — is covered in
+How log streaming works, and which settings apply to which destination, is covered in
 [Simulators](./simulators.md#logs-from-the-simulator) and [Devices](./devices.md#stream-os_log-and-print-output-from-the-device).
 
 | Setting                                             | Default         | What it does                                                                             |
@@ -85,7 +84,7 @@ Covered in depth in [Format code](./format.md).
 
 | Setting                          | Default | What it does                                                                                             |
 | --------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------- |
-| `sweetpad.format.path`            | Xcode's bundled swift-format | Formatter executable — a command on `PATH` or an absolute path.                             |
+| `sweetpad.format.path`            | Xcode's bundled swift-format | Formatter executable: a command on `PATH` or an absolute path.                             |
 | `sweetpad.format.args`            | —       | Arguments for the formatter. `${file}` is replaced with the file path (as its own array item).             |
 | `sweetpad.format.selectionArgs`   | —       | Arguments for format-selection. Placeholders: `${file}`, `${startLine}`, `${endLine}`, `${startOffset}`, `${endOffset}`. Unset = whole file is formatted. |
 
@@ -118,7 +117,7 @@ Covered in depth in [Agent CLI & RPC server](../cli/agent-cli.md).
 
 ## System
 
-Most of these matter when something misbehaves — see [Troubleshooting](./troubleshooting.md).
+Most of these matter when something misbehaves. See [Troubleshooting](./troubleshooting.md).
 
 | Setting                                | Default | What it does                                                                             |
 | --------------------------------------- | ------- | ------------------------------------------------------------------------------------------ |

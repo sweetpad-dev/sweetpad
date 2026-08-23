@@ -1,27 +1,28 @@
 ---
-sidebar_position: 4
-slug: /agent-cli
+sidebar_position: 19
 ---
 
 # Agent CLI & RPC Server
 
 SweetPad ships a standalone `sweetpad` command-line tool plus an opt-in JSON-RPC server, so other
-processes — scripts, CI jobs, AI coding agents — can drive your Xcode project and your live VS Code
+processes (scripts, CI jobs, AI coding agents) can drive your Xcode project and your live VS Code
 session without screen-scraping the UI.
 
 The `sweetpad` binary has two halves:
 
-- **`sweetpad <command>`** — a standalone, headless CLI ("xcodebuild for humans"): inspect schemes
+- **`sweetpad <command>`**: a standalone, headless CLI ("xcodebuild for humans"): inspect schemes
   and destinations, build, run, manage simulators, resolve Swift Package dependencies, and more. It
-  needs nothing running. This half has its own page — [SweetPad CLI](./cli.md).
-- **`sweetpad vscode <method>`** — a JSON-RPC client that talks to a running VS Code window's SweetPad
+  needs nothing running. This half has its own page: [SweetPad CLI](./overview.md).
+- **`sweetpad vscode <method>`**: a JSON-RPC client that talks to a running VS Code window's SweetPad
   server (read state, trigger builds, drive simulators _inside_ your editor session). This page is
   about this half.
 
-:::tip
+:::note
 
-This page is for power users who want to script SweetPad or wire it into an AI agent. If you just want
-to build and run your app, use the SweetPad sidebar and skip this page.
+This page is about the second half only, and that half needs the
+[VS Code extension](../vscode/getting-started.md) installed and running, because it drives an editor session
+that already exists. If you just want to build and run your app from the terminal, everything you need
+is in [Get started with the CLI](./getting-started.md).
 
 :::
 
@@ -45,7 +46,7 @@ sweetpad --version
   on a Simulator without clicking around the VS Code window.
 - **Local scripts.** Trigger a build from a `git` hook, a Makefile, or a custom watcher; poll for the
   result.
-- **Multi-window workflows.** Drive several VS Code windows — each owning its own SweetPad server —
+- **Multi-window workflows.** Drive several VS Code windows, each owning its own SweetPad server,
   from a single shell.
 
 If you don't need scripted access into a live VS Code session, leave the server off and use the
@@ -64,9 +65,9 @@ The server is **off by default**. Turn it on:
 When enabled, SweetPad creates a per-window Unix socket and registers it for the workspace. Verify and
 manage it from the Command Palette:
 
-- **SweetPad: Show RPC server status** — prints the server name, socket path, and process info.
-- **SweetPad: Copy RPC server name** — copies the name to the clipboard.
-- **SweetPad: Restart RPC server** — restarts it (useful after changing settings or hitting a stuck state).
+- **SweetPad: Show RPC server status** prints the server name, socket path, and process info.
+- **SweetPad: Copy RPC server name** copies the name to the clipboard.
+- **SweetPad: Restart RPC server** restarts it, which helps after changing settings or hitting a stuck state.
 
 ## Which window the CLI talks to
 
@@ -79,13 +80,13 @@ cd ~/Developer/MyApp
 sweetpad vscode state.get
 ```
 
-If more than one window has the same folder open, the most recently registered one wins — no manual
+If more than one window has the same folder open, the most recently registered one wins, with no manual
 server switching needed.
 
 ## Common workflows
 
 Each method prints JSON (pretty by default; add `--raw` to minify). Arguments are passed as
-`--flags` whose names match the method's params — a bare `--flag` is `true`, and a `--flag value` is
+`--flags` whose names match the method's params. A bare `--flag` is `true`, and a `--flag value` is
 parsed as JSON with a string fallback. Run `meta.schema --method <name>` to see a method's params.
 
 ```bash
@@ -112,7 +113,7 @@ sweetpad vscode build.stop
 
 ## The method catalog
 
-The client itself has no built-in method list — `sweetpad vscode --help` is just a short pointer
+The client itself has no built-in method list. `sweetpad vscode --help` is just a short pointer
 here. Every RPC the server exposes is discoverable at runtime:
 
 ```bash
@@ -123,16 +124,16 @@ sweetpad vscode meta.schema --method build.start   # params for one method
 
 Broad strokes of what's available:
 
-- `meta.*` — server / extension version, workspace path, method catalog.
-- `scheme.*`, `destination.*`, `buildConfig.*` — read and set the active selection.
-- `state.get` — one-shot snapshot of the above plus the latest/active build.
-- `build.start / .stop / .wait / .status / .logs / .diagnostics / .list` — drive builds and inspect output.
-- `simulator.*` — list, boot, install, launch, screenshot Simulators.
-- `device.install / .launch / .terminate` — the same on physical devices.
-- `buildSettings.get`, `appPath.find`, `bundleId.get`, `target.list` — resolved build info.
-- `workspace.*` and `workspaceState.*` — workspace detection and persistent per-workspace KV storage.
-- `vscode.executeCommand`, `vscodeSettings.*` — fall through to the VS Code command / settings API.
-- `logs.tail` — stream the extension's logs.
+- `meta.*`: server and extension version, workspace path, method catalog.
+- `scheme.*`, `destination.*`, `buildConfig.*`: read and set the active selection.
+- `state.get`: one-shot snapshot of the above plus the latest or active build.
+- `build.start / .stop / .wait / .status / .logs / .diagnostics / .list`: drive builds and inspect output.
+- `simulator.*`: list, boot, install, launch, and screenshot simulators.
+- `device.install / .launch / .terminate`: the same on physical devices.
+- `buildSettings.get`, `appPath.find`, `bundleId.get`, `target.list`: resolved build info.
+- `workspace.*` and `workspaceState.*`: workspace detection and persistent per-workspace KV storage.
+- `vscode.executeCommand`, `vscodeSettings.*`: fall through to the VS Code command and settings API.
+- `logs.tail`: stream the extension's logs.
 
 ## Security model
 
@@ -140,5 +141,5 @@ The socket lives under `$XDG_STATE_HOME/sweetpad/sockets/` (defaulting to
 `~/.local/state/sweetpad/sockets/` on macOS) and is `chmod 0600`, so only your user can connect to it.
 The server is never exposed over the network.
 
-That said, anything with read access to your user account can drive the server while it's enabled — so
+That said, anything with read access to your user account can drive the server while it's enabled, so
 leave `sweetpad.cliServer.enabled` off unless you actually need scripted access.

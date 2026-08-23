@@ -27,7 +27,7 @@ Using Python fonttools via `uv`, the process:
 
 ### 3. Verification
 
-The verification step ensures:
+This step checks that:
 
 - All required font files exist
 - Package.json references the correct font paths

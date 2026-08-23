@@ -1,13 +1,12 @@
 ---
-sidebar_position: 15
-slug: /worktree
+sidebar_position: 14
 ---
 
 # Git Worktrees
 
 If you keep multiple branches of the same Xcode project checked out side by side via
-[`git worktree`](https://git-scm.com/docs/git-worktree) — one for the feature you're working on, another for the
-release branch you're stabilizing, a third for a hotfix — SweetPad can switch the build target between them without
+[`git worktree`](https://git-scm.com/docs/git-worktree) (one for the feature you're working on, another for the
+release branch you're stabilizing, a third for a hotfix) SweetPad can switch the build target between them without
 opening another VSCode window.
 
 ## Why use worktrees with SweetPad
@@ -16,8 +15,8 @@ A few situations where this saves real time:
 
 - You're debugging a flaky test on `main` while a feature branch is mid-build. With worktrees you keep both checked
   out; SweetPad's switcher flips between them.
-- You need to compare behavior between `release/1.4` and `main`. Switch the worktree, hit ▶️, repeat — no
-  `git checkout` dance, no DerivedData thrash from rewriting the same paths.
+- You need to compare behavior between `release/1.4` and `main`. Switch the worktree, hit ▶️, repeat, with no
+  `git checkout` dance and no DerivedData thrash from rewriting the same paths.
 - You're reviewing a PR locally. Add a worktree for the PR branch (`git worktree add ../myapp-pr-123 pr-branch`),
   point SweetPad at it, run the app, then drop the worktree when you're done.
 
@@ -51,11 +50,11 @@ A few situations where this saves real time:
   where you left off.
 
 Builds, runs, and tests after the switch use the new worktree. Nothing else (your open editor tabs, terminals, source
-control state) is touched — VSCode keeps the same window.
+control state) is touched, and VSCode keeps the same window.
 
 ## Limitations
 
-- Each worktree needs a working Xcode workspace inside it — a bare `git worktree add` of a branch that has no Xcode
+- Each worktree needs a working Xcode workspace inside it. A bare `git worktree add` of a branch that has no Xcode
   project will be skipped.
 - If two worktrees expose schemes with the same name, your scheme selection follows the workspace path, not the
   scheme name. After switching you may need to re-pick the scheme.

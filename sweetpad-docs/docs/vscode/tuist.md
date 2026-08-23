@@ -1,6 +1,5 @@
 ---
-sidebar_position: 13
-slug: /tuist
+sidebar_position: 12
 ---
 
 # Tuist
@@ -10,11 +9,11 @@ SweetPad surfaces the most common Tuist commands directly in the VSCode command 
 
 ## Commands
 
-- **SweetPad: Generate an Xcode project using Tuist** — runs `tuist generate` from the workspace root.
-- **SweetPad: Install Swift Package using Tuist** — runs `tuist install`.
-- **SweetPad: Clean Tuist project** — removes generated files.
-- **SweetPad: Edit Tuist project (Open project in Xcode)** — opens the manifest project in Xcode for editing.
-- **SweetPad: Test Generated project using Tuist** — runs `tuist test`, building and testing every target Tuist
+- **SweetPad: Generate an Xcode project using Tuist** runs `tuist generate` from the workspace root.
+- **SweetPad: Install Swift Package using Tuist** runs `tuist install`.
+- **SweetPad: Clean Tuist project** removes generated files.
+- **SweetPad: Edit Tuist project (Open project in Xcode)** opens the manifest project in Xcode for editing.
+- **SweetPad: Test Generated project using Tuist** runs `tuist test`, building and testing every target Tuist
   knows about. Useful as a one-shot "did I break anything" check without picking a scheme.
 
 ## Auto-regenerate on .swift file changes
@@ -47,3 +46,12 @@ to switch app name, bundle ID, or feature flags per environment, pass the variab
 
 Every call SweetPad makes to `tuist generate` (including the auto-regeneration above) receives these variables, so
 the project loaded into VSCode matches the variant Xcode would produce with the same env.
+
+:::note
+
+Working from a terminal too? The [SweetPad CLI](../cli/generated-projects.md) handles generated
+projects differently. It doesn't regenerate for you, but it warns when the spec is newer than the
+project and refuses edits that a regenerate would overwrite. It's a separate product with its own
+install.
+
+:::

@@ -6,7 +6,7 @@
     font-weight: bold;
     display: flex;
     flex-direction: column;
-    justify-content: center; 
+    justify-content: center;
     align-items: center;
 }
 
@@ -14,7 +14,7 @@
     display: flex;
     align-items: start;
     flex-direction: column;
-    gap: 4rem;
+    gap: 2rem;
 }
 
 .heroTextAndImage {
@@ -41,6 +41,47 @@
     color: white
 }
 
+.heroSubtext {
+    color: #c9d1d9;
+    font-size: 18px;
+    font-weight: normal;
+    text-align: left;
+    margin: -1rem 0 0;
+    max-width: 34em;
+}
+
+.heroSubtext > b {
+    color: white;
+    font-weight: 600;
+}
+
+/* Install/run snippet under the hero copy. Not a real terminal — just the two
+   commands a new reader needs, in a shape they recognize. */
+.terminal {
+    width: 100%;
+    background-color: #1b1f23;
+    border: 1px solid #3d444d;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    text-align: left;
+    font-family: var(--ifm-font-family-monospace);
+    font-size: 15px;
+    font-weight: normal;
+    color: #e6edf3;
+    overflow-x: auto;
+}
+
+.terminalLine {
+    white-space: nowrap;
+    line-height: 1.9;
+}
+
+.prompt {
+    color: var(--ifm-color-primary);
+    user-select: none;
+    margin-right: 0.6rem;
+}
+
 .heroButtons {
     display: flex;
     justify-content: left;
@@ -62,10 +103,6 @@
         width: 100%;
     }
 
-    .heroTextAndButtons {
-        gap: 2rem;
-    }
-
     .heroImage {
         width: 150px;
         height: 150px;
@@ -76,9 +113,19 @@
         width: 100%;
     }
 
+    .heroSubtext {
+        text-align: center;
+        margin-top: -0.5rem;
+    }
+
     .heroTextAndButtons {
         align-items: center;
         width: 100%;
+        gap: 1.5rem;
+    }
+
+    .terminal {
+        font-size: 13px;
     }
 
     .heroButtons {
@@ -106,6 +153,17 @@
     flex-wrap: wrap;
 }
 
+.sectionHeading {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.sectionNote {
+	margin: 1.5rem 0 0;
+	font-size: 0.95rem;
+	color: var(--ifm-color-emphasis-700);
+}
+
 .featureLink {
     font-size: 24px;
     font-weight: bold;
@@ -117,8 +175,358 @@
     text-decoration: none;
 }
 
+/* The VS Code band. Visually separated from the CLI content above so nobody
+   reads the extension as a step in setting up the CLI. */
+.band {
+    border-top: 1px solid var(--ifm-toc-border-color);
+    background-color: var(--ifm-background-color);
+    padding: 3.5rem 6rem;
+}
+
+.bandInner {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 3rem;
+    align-items: start;
+}
+
+.bandHeading {
+    font-size: 28px;
+    margin-bottom: 1rem;
+}
+
+.bandText {
+    max-width: 44em;
+    margin-bottom: 0.75rem;
+}
+
+.bandNote {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.bandLinks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.bandList {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+@media (max-width: 996px) {
+    .bandInner {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+}
+
 @media (max-width: 768px) {
     .features {
         padding: 2rem 1rem;
+    }
+
+    .band {
+        padding: 2.5rem 1rem;
+    }
+
+    .bandLinks > a {
+        width: 100%;
+        text-align: center;
+    }
+}
+
+/* Proof band. The pitch is the two transcripts, so they get the weight: a dark
+   step down from the hero, the noisy build clipped behind a fade, the readable
+   one whole with room to spare. Both are real captures of the same two-file app. */
+.proof {
+    background-color: #22272e;
+    padding: 4rem 2rem;
+}
+
+.proofInner {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.proofHeading {
+    margin-bottom: 0.75rem;
+    color: #ffffff;
+    font-size: 34px;
+    text-align: center;
+    text-wrap: balance;
+}
+
+.proofLead {
+    max-width: 46em;
+    margin: 0 auto 2rem;
+    color: #c9d1d9;
+    text-align: center;
+}
+
+.proofFoot {
+    margin: 2rem 0 0;
+    color: #8b949e;
+    font-size: 0.95rem;
+    text-align: center;
+    text-wrap: balance;
+}
+
+.proofGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: stretch;
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    background-color: #1b1f23;
+    border: 1px solid #3d444d;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.panelHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid #3d444d;
+    font-family: var(--ifm-font-family-monospace);
+    font-size: 13px;
+    color: #8b949e;
+}
+
+.panelBadge,
+.panelBadgeMuted {
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.panelBadge {
+    background-color: rgba(63, 185, 80, 0.15);
+    color: #3fb950;
+}
+
+.panelBadgeMuted {
+    background-color: rgba(139, 148, 158, 0.15);
+    color: #8b949e;
+}
+
+/* Fixed height so the two cards line up and the empty space under the short
+   transcript reads as part of the point. */
+.panelBodyWrap {
+    position: relative;
+    flex: 1;
+    height: 17rem;
+    overflow: hidden;
+}
+
+.panelBody {
+    padding: 1rem;
+    font-family: var(--ifm-font-family-monospace);
+    font-size: 13.5px;
+    color: #e6edf3;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+.panelBodyClipped {
+    white-space: pre-wrap;
+    overflow-x: hidden;
+    word-break: break-word;
+}
+
+.panelFade {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 6rem;
+    background: linear-gradient(rgba(27, 31, 35, 0), #1b1f23);
+    pointer-events: none;
+}
+
+.panelWide {
+    margin-top: -0.5rem;
+}
+
+.panelWide .panelBodyWrap {
+    height: auto;
+}
+
+.tLine {
+    line-height: 1.75;
+}
+
+.tOk {
+    color: #3fb950;
+}
+
+.tErr {
+    color: #f85149;
+}
+
+.tDim {
+    color: #8b949e;
+}
+
+@media (max-width: 996px) {
+    .proofGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .panelBodyWrap {
+        height: 14rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .proof {
+        padding: 2.5rem 1rem;
+    }
+
+    .proofHeading {
+        font-size: 26px;
+    }
+
+    .panelBody {
+        font-size: 12.5px;
+    }
+}
+
+/* Social-proof strip. A slim step down from the hero, so the numbers read as a
+   footnote to the pitch rather than a section of their own. */
+.stats {
+    background-color: #22272e;
+    padding: 1.75rem 2rem;
+}
+
+.statsInner {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 1.5rem 3.5rem;
+}
+
+.stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    max-width: 18em;
+    text-align: center;
+}
+
+a.stat:hover {
+    text-decoration: none;
+}
+
+a.stat:hover .statNumber {
+    color: var(--ifm-color-primary);
+}
+
+.statNumber {
+    color: #ffffff;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.statLabel {
+    color: #8b949e;
+    font-size: 0.9rem;
+    text-wrap: balance;
+}
+
+/* Closing ask. Same dark ground as the hero, so the page ends where it began. */
+.closer {
+    background-color: #2b3137;
+    padding: 4rem 2rem;
+}
+
+.closerInner {
+    max-width: 620px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    text-align: center;
+}
+
+.closerHeading {
+    margin: 0;
+    color: #ffffff;
+    font-size: 32px;
+    text-wrap: balance;
+}
+
+.closerText {
+    margin: 0;
+    color: #c9d1d9;
+    font-size: 18px;
+    text-wrap: balance;
+}
+
+.closerButtons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.closerNote {
+    margin: 0;
+    color: #8b949e;
+    font-size: 0.9rem;
+    text-wrap: balance;
+}
+
+@media (max-width: 768px) {
+    .stats {
+        padding: 1.5rem 1rem;
+    }
+
+    .statsInner {
+        gap: 1.25rem;
+    }
+
+    .statNumber {
+        font-size: 26px;
+    }
+
+    .closer {
+        padding: 2.5rem 1rem;
+    }
+
+    .closerHeading {
+        font-size: 26px;
+    }
+
+    .closerButtons {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .closerButtons > a {
+        width: 100%;
+        text-align: center;
     }
 }

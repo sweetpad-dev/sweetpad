@@ -1,6 +1,5 @@
 ---
 sidebar_position: 18
-slug: /troubleshooting
 ---
 
 # Troubleshooting
@@ -35,7 +34,7 @@ are the culprit.
 
 ## Refresh the shell environment
 
-SweetPad reads `$PATH` and other variables from your **login shell** when it activates — so tools installed by
+SweetPad reads `$PATH` and other variables from your **login shell** when it activates, so tools installed by
 [mise](https://mise.jdx.dev/), [asdf](https://asdf-vm.com/), [direnv](https://direnv.net/), Homebrew, etc. are
 visible to `xcodebuild`, `swift-format`, and other binaries it calls.
 
@@ -64,7 +63,7 @@ SweetPad runs `xcodebuild` (and other tasks) through a task executor. The defaul
 pseudoterminal (via `node-pty`), so build output has ANSI colors, TUI commands work, and the resolved login-shell
 environment is available to subprocesses.
 
-If you hit an issue specific to v3 (rare — usually flaky terminals or unusual shells), fall back to the older
+If you hit an issue specific to v3 (rare, and usually flaky terminals or unusual shells), fall back to the older
 implementation:
 
 ```json title=".vscode/settings.json"
@@ -73,7 +72,7 @@ implementation:
 }
 ```
 
-`v2` uses plain pipes — no PTY, no color, no TUI support — but a smaller surface for bugs.
+`v2` uses plain pipes, with no PTY, color, or TUI support, but a smaller surface for bugs.
 
 ## Install pymobiledevice3
 
@@ -127,6 +126,6 @@ context:
 
 If a fix isn't obvious, two commands open a pre-filled GitHub issue with the right context:
 
-- `> SweetPad: Create Issue on GitHub` — generic crash/bug report.
-- `> SweetPad: Create Issue on GitHub (No Schemes)` — specifically for "No Xcode scheme was found" errors; includes
+- `> SweetPad: Create Issue on GitHub`: generic crash or bug report.
+- `> SweetPad: Create Issue on GitHub (No Schemes)`: specifically for "No Xcode scheme was found" errors, and includes
   diagnostic output.

@@ -1,12 +1,11 @@
 ---
-sidebar_position: 3
-slug: /debug
+sidebar_position: 4
 ---
 
 # Debugging
 
 SweetPad integrates with the [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
-extension — powered by [LLDB](https://lldb.llvm.org/) — so you can debug your iOS app directly from VSCode.
+extension, powered by [LLDB](https://lldb.llvm.org/), so you can debug your iOS app directly from VSCode.
 
 ## Tutorial
 
@@ -42,7 +41,7 @@ extension — powered by [LLDB](https://lldb.llvm.org/) — so you can debug you
    }
    ```
 
-   That's the default path for a stock Xcode install — adjust it if your Xcode lives somewhere else.
+   That's the default path for a stock Xcode install. Adjust it if your Xcode lives somewhere else.
 
    Alternatively, run **LLDB: Use Alternate Backend** from the command palette and type "lldb" to let CodeLLDB locate
    the library for you.
@@ -53,7 +52,7 @@ extension — powered by [LLDB](https://lldb.llvm.org/) — so you can debug you
    ![Launch debugger](/images/debug-launch-debugger.png)
 
 4. **Set breakpoints and iterate.**  
-   Place breakpoints and debug as usual. On subsequent runs, just press **F5** again — SweetPad rebuilds, relaunches,
+   Place breakpoints and debug as usual. On subsequent runs, just press **F5** again. SweetPad rebuilds, relaunches,
    and reattaches.
 
    ![Breakpoints](/images/debug-breakpoints.png)
@@ -205,7 +204,7 @@ one.
 ![Update launch.json](/images/debug-old-update-launch-json.png)
 
 The `${command:sweetpad.debugger.getAppPath}` variable resolves at runtime to the path of the app most recently built
-by SweetPad — CodeLLDB needs it to attach to the simulator. See the
+by SweetPad, which CodeLLDB needs to attach to the simulator. See the
 [CodeLLDB manual](https://github.com/vadimcn/codelldb/blob/master/MANUAL.md) for the full set of options.
 
 3. **Launch the app.** Start the iOS Simulator and run **SweetPad › Launch** from the _Build_ panel.

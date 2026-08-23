@@ -1,6 +1,5 @@
 ---
-sidebar_position: 4
-slug: /hot-reload
+sidebar_position: 8
 ---
 
 # Hot reload
@@ -11,13 +10,21 @@ already shows your update.
 
 SweetPad wires up the open-source [InjectionNext](https://github.com/johnno1962/InjectionNext)
 project for you so you don't have to touch Xcode build settings or your
-AppDelegate — flip a setting, restart the app once, and you're set.
+AppDelegate. Flip a setting, restart the app once, and you're set.
+
+:::tip
+
+This page describes hot reload in the VS Code extension. The CLI has its own,
+independently: `sweetpad run --hot`, explained by `sweetpad help hot-reload`.
+You don't need the extension for it.
+
+:::
 
 :::info
 
 Hot reload only works on **iOS / tvOS / visionOS Simulators** and the **macOS**
 target. Physical devices cannot load the injection dylib because Apple's code
-signing strips the mechanism it uses. **watchOS is not supported** — InjectionNext
+signing strips the mechanism it uses. **watchOS is not supported**, because InjectionNext
 does not ship a watchOS injection library.
 
 :::
@@ -51,7 +58,7 @@ unzip -d /tmp /tmp/InjectionNext.zip
 mv /tmp/InjectionNext.app /Applications/
 ```
 
-InjectionNext is not available on Homebrew — the GitHub releases page is the
+InjectionNext is not available on Homebrew. The GitHub releases page is the
 only distribution channel.
 
 You don't need to launch the app yourself. SweetPad will start it when you run
@@ -99,7 +106,7 @@ Swift Package Manager:
 - **In Package.swift:** add it to the `dependencies` array and to your target's
   `dependencies`.
 
-UIKit apps don't need the Inject package — method bodies are swapped
+UIKit apps don't need the Inject package, because method bodies are swapped
 automatically.
 
 ### 4. Annotate your SwiftUI views
@@ -142,11 +149,11 @@ to your top-level view and to whichever subviews you're iterating on.
 
 ### Avoiding per-view boilerplate
 
-There's no truly global "turn on hot reload for every SwiftUI view" flag —
+There's no truly global "turn on hot reload for every SwiftUI view" flag.
 SwiftUI's `View` is a protocol on value types, so there's no place to subscribe
 everything at once the way you would in UIKit. Two practical shortcuts.
 
-#### Option A — Annotate only the root view
+#### Option A: annotate only the root view
 
 Put `@ObserveInjection` and `.enableInjection()` on a single top-level view.
 When injection fires, SwiftUI invalidates from the root down, so *any* edit
@@ -178,7 +185,7 @@ Trade-off: every save re-renders the entire tree, not just the changed view.
 Fine for most apps, noticeable in very large ones. Child views don't need
 anything.
 
-#### Option B — Let InjectionNext add the markers for you
+#### Option B: let InjectionNext add the markers for you
 
 The InjectionNext menu bar has a **Prepare SwiftUI** submenu with two items.
 **Last Injected** patches the most recently injected file. **Prepare Project**
@@ -196,7 +203,7 @@ you.
    The InjectionNext menu-bar icon should turn orange.
 3. Open `ContentView.swift` in VS Code.
 4. Change `"Hello, hot reload!"` to `"Hello, world!"` and save.
-5. Watch the console for `🔥 ✅ Hot reload complete - Rebound N symbols` — the
+5. Watch the console for `🔥 ✅ Hot reload complete - Rebound N symbols`. The
    simulator updates within a second.
 
 If nothing happens, jump to [Troubleshooting](#troubleshooting).
@@ -231,11 +238,11 @@ cause.
 **Is the InjectionNext app actually running?** The menu-bar icon should be
 visible and orange. Full state table:
 
-- **Blue** — idle (started, no client connected)
-- **Orange** — OK (client connected)
-- **Green** — busy (compiling)
-- **Yellow** — error (last compile failed)
-- **Purple** — Xcode launched via the app (you won't see this under SweetPad)
+- **Blue**: idle (started, no client connected)
+- **Orange**: OK (client connected)
+- **Green**: busy (compiling)
+- **Yellow**: error (last compile failed)
+- **Purple**: Xcode launched via the app (you won't see this under SweetPad)
 
 **Look at the InjectionNext log window.** Click the menu-bar icon → **Show
 Log**. If there are compile errors there, they explain why a particular save
@@ -282,8 +289,8 @@ and otherwise behaves as if hot reload were off.
 ## How it actually works
 
 The one-paragraph version at the top of this page is true but cartoonish. If
-you want to understand why the setup looks the way it does — and what's likely
-to break — this section walks the full pipeline.
+you want to understand why the setup looks the way it does, and what's likely
+to break, this section walks the full pipeline.
 
 ### The injection cycle
 
@@ -306,13 +313,13 @@ The six steps:
 
 #### 1. File watcher
 
-The InjectionNext app is watching the directory you pointed it at — via the
+The InjectionNext app is watching the directory you pointed it at, via the
 `INJECTION_PROJECT_ROOT` env var SweetPad sets, or its **…or Watch Project**
 menu item if you set it up by hand. It sees a Swift file was modified.
 
 InjectionNext is running in "file-watcher / log parsing" mode here. It has two
-other modes — supervising Xcode for SourceKit logs, and patching the
-swift-frontend binary directly — neither of which SweetPad uses.
+other modes, neither of which SweetPad uses: supervising Xcode for SourceKit
+logs, and patching the swift-frontend binary directly.
 
 #### 2. Recover the compile command
 
@@ -333,7 +340,7 @@ passing the recovered args plus a `-primary-file` for the one source you just
 saved and a fresh `-o` path. The result is a single dylib for just that file,
 instead of contributing to the main binary.
 
-This is the slow part of the cycle — typically 200ms to 2s, depending on file
+This is the slow part of the cycle, typically 200ms to 2s, depending on file
 complexity and module size.
 
 #### 4. Push to the running app
@@ -352,11 +359,11 @@ mechanisms work in concert:
 - For free functions and value-type methods, it uses a bundled copy of
   Facebook's fishhook to walk the Mach-O lazy and non-lazy symbol-pointer
   tables in every loaded image and rewrite the entries. This is the "interpose"
-  step — and the part that requires `-Xlinker -interposable`.
+  step, and the part that requires `-Xlinker -interposable`.
 - For non-final Swift class methods, it overwrites the vtable slots in the
   class metadata directly via memory writes. No linker flag needed; class
   metadata is mutable at runtime.
-- For `@objc` methods, it uses ObjC method swizzling — replacing entries in
+- For `@objc` methods, it uses ObjC method swizzling, replacing entries in
   the runtime's method table.
 
 #### 6. Notify subscribers
@@ -364,7 +371,7 @@ mechanisms work in concert:
 The runtime posts `INJECTION_BUNDLE_NOTIFICATION` on the default
 `NotificationCenter`.
 
-UIKit doesn't need this signal — the next view lifecycle call (`viewDidLoad`,
+UIKit doesn't need this signal, because the next view lifecycle call (`viewDidLoad`,
 a scroll handler, an action method) will land in the new code naturally.
 SwiftUI does need it, because of the caching behavior covered next.
 
@@ -372,7 +379,7 @@ SwiftUI does need it, because of the caching behavior covered next.
 
 By default, Swift function calls inside the same module are resolved at link
 time to direct addresses baked into the executable. Once linked, those calls
-cannot be redirected — there's no level of indirection to swap.
+cannot be redirected, because there's no level of indirection to swap.
 
 `-Xlinker -interposable` tells the linker to instead emit each Swift function
 as a lazily-bound symbol, the same way C library functions are called via the
@@ -382,8 +389,8 @@ and the next call goes through the new pointer.
 Without the flag, fishhook has nothing to rewrite. Two paths still work
 without it: non-final class methods, swapped by patching the Swift class
 metadata's vtable; and `@objc` methods, swapped via the Objective-C runtime's
-method table. Everything else — value types, free functions, final-class
-methods — becomes uninjectable. The InjectionNext README puts it the same way:
+method table. Everything else becomes uninjectable: value types, free functions, and
+final-class methods. The InjectionNext README puts it the same way:
 *"Otherwise, you will only be able to inject non-final class methods."*
 
 ### Why Inject is needed for SwiftUI
@@ -392,7 +399,7 @@ InjectionNext rebinds function symbols. That's enough for UIKit/AppKit: when
 iOS next calls a view-controller lifecycle method or an action handler, the new
 function body runs.
 
-SwiftUI is declarative. Calling `body` doesn't draw anything — it returns a
+SwiftUI is declarative. Calling `body` doesn't draw anything. It returns a
 value describing the view tree. SwiftUI then caches that tree and only rebuilds
 it when one of the view's observed inputs (`@State`, `@ObservedObject`,
 `@Binding`, an environment change) publishes a change. After InjectionNext
@@ -406,13 +413,13 @@ bound to a shared observer. The observer's published counter increments each
 time `INJECTION_BUNDLE_NOTIFICATION` fires. The `@ObservedObject` is what marks
 the view as depending on the observer.
 
-`.enableInjection()` ensures the injection runtime is loaded (idempotent — a
+`.enableInjection()` ensures the injection runtime is loaded (idempotent, and a
 no-op under SweetPad, since the dylib is already there) and wraps the view in
 `AnyView` so SwiftUI tolerates structural changes between the old and new
 `body`.
 
 When injection fires, the observer's counter changes, SwiftUI invalidates the
-view, calls `body` again — and *now* the new function body runs.
+view, calls `body` again, and *now* the new function body runs.
 
 ### Why DYLD_INSERT_LIBRARIES and not a code change
 
@@ -424,8 +431,8 @@ to get it there.
 Libraries" build phase. dyld then loads it at process startup. Requires
 modifying the Xcode project; pollutes Release builds unless you scope it.
 
-**Explicit runtime load:** call `Bundle(path: …).load()` early during startup —
-the Inject package does this internally the first time you touch its API,
+**Explicit runtime load:** call `Bundle(path: …).load()` early during startup.
+The Inject package does this internally the first time you touch its API,
 loading the appropriate injection bundle from
 `/Applications/InjectionNext.app`. Requires code changes; pollutes Release
 builds if you forget the `#if DEBUG`.
@@ -436,7 +443,7 @@ code changes, only affects the current launch, automatically off when run from
 Xcode or in Release.
 
 SweetPad uses the third path. The trade-off is that `DYLD_INSERT_LIBRARIES` is
-stripped from any codesigned process with the hardened runtime — which is why
+stripped from any codesigned process with the hardened runtime, which is why
 this mechanism is simulator-only.
 
 ### Why DYLD_FRAMEWORK_PATH and DYLD_LIBRARY_PATH are set
@@ -445,7 +452,7 @@ The injection dylib links transitively against several XCTest-related binaries
 shipped with Xcode. Those live in your active Xcode's platform directory,
 under Library/Frameworks, Library/PrivateFrameworks, and usr/lib.
 
-InjectionNext was built against `/Applications/Xcode.app/...` — the default
+InjectionNext was built against `/Applications/Xcode.app/...`, the default
 path. If your Xcode is anywhere else (a versioned copy, a renamed install, a
 location under your home folder), the dylib's `@rpath` entries can't resolve,
 and dyld crashes the app at launch.
@@ -479,7 +486,7 @@ required.
 
 ### What you cannot change live
 
-These all require a relaunch — InjectionNext will either silently no-op or
+These all require a relaunch. InjectionNext will either silently no-op or
 report a compile error.
 
 - **Add, remove, or rename a stored property** (`var x: Int`, `@State var
@@ -502,19 +509,19 @@ stale layout gets touched. The fix is always: rebuild and relaunch.
 
 ### Platform limits
 
-- **iOS Simulator, tvOS Simulator, visionOS Simulator, macOS** — fully
+- **iOS Simulator, tvOS Simulator, visionOS Simulator, macOS**: fully
   supported.
-- **Physical devices** — not supported via SweetPad. iOS/iPadOS/tvOS/watchOS/
+- **Physical devices**: not supported via SweetPad. iOS/iPadOS/tvOS/watchOS/
   visionOS hardware strips `DYLD_INSERT_LIBRARIES` from codesigned binaries.
   InjectionNext has an opt-in "Enable Devices" mode that opens a TCP port and
   ships the dylib over Wi-Fi, but SweetPad doesn't wire that up.
-- **watchOS Simulator** — not supported. InjectionNext doesn't ship a watchOS
+- **watchOS Simulator**: not supported. InjectionNext doesn't ship a watchOS
   injection library. SweetPad will launch the app without injection.
 
 ### Performance cost of -interposable
 
 Every Swift function call in your app goes through an extra pointer
-dereference in the stub table — the same cost as calling a C library function.
+dereference in the stub table, the same cost as calling a C library function.
 For normal UI code this is invisible. For hot inner loops (image processing,
 custom layout, real-time audio), it's measurable. Don't ship Release builds
 with the flag on.
@@ -525,7 +532,7 @@ flipping the setting off before a Release archive is enough.
 ### State preservation
 
 Injection doesn't reset `@State`, `@StateObject`, `@AppStorage`, or any other
-stored data. That's usually what you want — tweak a label, your scroll position
+stored data. That's usually what you want. Tweak a label and your scroll position
 is preserved.
 
 The corollary: if you change a stored property *type* and InjectionNext somehow
@@ -559,7 +566,7 @@ A mismatch here is the most common cause of the
 
 ## Going further
 
-InjectionNext has a lot more knobs than what's covered here — proxy mode,
+InjectionNext has a lot more knobs than what's covered here: proxy mode,
 on-device injection (with extra setup), per-file tracing, and more. See the
 [InjectionNext repo](https://github.com/johnno1962/InjectionNext) and the
 [Inject package repo](https://github.com/krzysztofzablocki/Inject) for the

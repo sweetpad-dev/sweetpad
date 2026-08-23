@@ -1,20 +1,19 @@
 ---
-sidebar_position: 5
-slug: /agent-skills
+sidebar_position: 18
 sidebar_label: Agent skills
 ---
 
 # Agent skills
 
-SweetPad ships a set of **agent skills** — short instruction files that teach an
+SweetPad ships a set of **agent skills**: short instruction files that teach an
 AI coding agent how to drive the `sweetpad` CLI on your behalf. With them
 installed, your agent already knows to build with the right destination, read
 diagnostics from a failed build without rebuilding, and inspect resolved build
-settings — instead of you spelling out the commands every session.
+settings, instead of you spelling out the commands every session.
 
 The skills are vendor-neutral. The same files install into any agent that reads
-the open skills format — Claude Code, Cursor, Codex, Copilot, Gemini, and
-others — through one installer. There is no Claude-specific step.
+the open skills format (Claude Code, Cursor, Codex, Copilot, Gemini, and
+others) through one installer. There is no Claude-specific step.
 
 :::tip
 
@@ -30,8 +29,8 @@ Your agent reads those descriptions up front, and when a request matches one, it
 loads the fuller instructions on demand. So the skills cost almost nothing until
 they're relevant, then they hand the agent a tested recipe rather than a guess.
 
-SweetPad's skills wrap the CLI's machine-readable surface — the `-o json`
-envelope and the specifier-based destination selection — so the agent reads
+SweetPad's skills wrap the CLI's machine-readable surface, the `-o json`
+envelope and the specifier-based destination selection, so the agent reads
 structured output instead of scraping human text.
 
 ## Prerequisites
@@ -43,7 +42,7 @@ on your `PATH` first:
 brew install sweetpad-dev/tap/sweetpad
 ```
 
-See [Get started with the CLI](./getting-started-cli.md) if you haven't set it
+See [Get started with the CLI](./getting-started.md) if you haven't set it
 up yet. You also need an AI coding agent that supports the open skills format.
 
 ## Install
@@ -66,7 +65,7 @@ npx -y skills add sweetpad-dev/sweetpad --skill '*' --yes
 
 ### Target a single agent
 
-Pass `--agent` to install into just one tool — for example, Claude Code:
+Pass `--agent` to install into just one tool, for example Claude Code:
 
 ```bash
 npx skills add sweetpad-dev/sweetpad --agent claude-code
@@ -77,7 +76,7 @@ Leave `--agent` off to install into every supported agent the installer finds.
 ## Using the skills
 
 Once installed, your agent selects a skill on its own when your request matches
-one — asking it to "build and run this on the booted simulator", "figure out why
+one. Asking it to "build and run this on the booted simulator", "figure out why
 the build failed", or "show the resolved build settings" is enough to trigger
 the matching skill. Most agents also let you invoke a skill by name from their
 own slash-command menu; check your agent's documentation for how it lists them.

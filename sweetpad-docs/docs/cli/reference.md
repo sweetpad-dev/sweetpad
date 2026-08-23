@@ -1,6 +1,5 @@
 ---
 sidebar_position: 3
-slug: /cli-reference
 sidebar_label: Reference
 ---
 
@@ -8,9 +7,9 @@ sidebar_label: Reference
 
 A map of the `sweetpad` command-line tool: the commands you'll reach for, the global flags, the
 configuration files, destination specifiers, and exit codes. For a guided tour, start with
-[Get started with the CLI](./getting-started-cli.md) or the [overview](./cli.md).
+[Get started with the CLI](./getting-started.md) or the [overview](./overview.md).
 
-Commands follow a resource-then-action grammar — `sweetpad scheme list`, `sweetpad simulator boot` —
+Commands follow a resource-then-action grammar (`sweetpad scheme list`, `sweetpad simulator boot`),
 and the everyday actions have top-level shortcuts (`sweetpad build`, `sweetpad test`, `sweetpad run`).
 The CLI describes itself, and that is the authority: `sweetpad --help` lists the full command tree,
 `sweetpad <command> --help` covers the flags and subcommands this page doesn't repeat, and
@@ -22,13 +21,13 @@ The CLI describes itself, and that is the authority: `sweetpad --help` lists the
 
 | Command            | What it does                                                                     |
 | ------------------- | ---------------------------------------------------------------------------------- |
-| `sweetpad run`      | Build, install, launch, and follow logs — the flagship loop. Press `r` to rebuild. |
+| `sweetpad run`      | The flagship loop: build, install, launch, and follow logs. Press `r` to rebuild. |
 | `sweetpad build`    | Compile the resolved scheme. `--watch` rebuilds on every Swift save; `--clean` first cleans. |
 | `sweetpad test`     | Run the tests. Supports `--only-testing`, `--skip-testing`, `--failed`, `--retry-flaky`, `--coverage`, `--junit`, `--watch`. |
 | `sweetpad clean`    | Clean build artifacts; `--purge` also deletes DerivedData.                        |
 | `sweetpad archive`  | Archive and export an `.ipa` (`--export-method`, `--output`).                     |
 | `sweetpad format`   | Format Swift sources (`--check` to verify only; `--tool swiftlint` to lint). Alias: `fmt`. |
-| `sweetpad devices`  | List everything runnable — macOS, simulators, connected devices — most-used first. |
+| `sweetpad devices`  | List everything runnable (macOS, simulators, connected devices), most-used first. |
 | `sweetpad status`   | Show the effective build context and where each value comes from.                 |
 | `sweetpad doctor`   | Diagnose the local Xcode/Swift toolchain.                                          |
 
@@ -54,18 +53,18 @@ The CLI describes itself, and that is the authority: `sweetpad --help` lists the
 | ------------------------- | ----------------------------------------------------------- |
 | `sweetpad app install`    | Build and install without launching.                       |
 | `sweetpad app launch`     | Launch an already-installed app.                           |
-| `sweetpad app debug`      | Run under lldb — attached to a suspended simulator launch, or owning the launch on macOS. `--batch` with `--cmd` drives lldb from a script. |
+| `sweetpad app debug`      | Run under lldb, attached to a suspended simulator launch, or owning the launch on macOS. `--batch` with `--cmd` drives lldb from a script. |
 | `sweetpad app diagnose`   | Run under lldb, catch the first crash or Objective-C exception, print a structured report, and quit. Bounded by `--timeout`; `-o json` for the machine-readable form. |
-| `sweetpad app logs`       | Follow the running app's logs — simulator, device, or macOS, where os_log and a detached launch's captured stdout arrive on one stream. `--last <dur>` prints history instead; `--until <text>` stops at a match. |
+| `sweetpad app logs`       | Follow the running app's logs on a simulator, device, or macOS, where os_log and a detached launch's captured stdout arrive on one stream. `--last <dur>` prints history instead; `--until <text>` stops at a match. |
 | `sweetpad app stop`       | Terminate the running app.                                 |
 | `sweetpad app uninstall`  | Remove the app from a simulator or device.                 |
-| `sweetpad app open-url`   | Open a URL on a simulator — deep links and universal links. |
-| `sweetpad app screenshot` | Save a PNG of the running app — a macOS app's window, or the simulator it launched on. |
+| `sweetpad app open-url`   | Open a URL on a simulator, including deep links and universal links. |
+| `sweetpad app screenshot` | Save a PNG of the running app: a macOS app's window, or the simulator it launched on. |
 | `sweetpad app ui`         | Read or drive a macOS app's UI through accessibility: `ui tree`, `ui click`, `ui type`. |
 
 ### Extra xcodebuild arguments
 
-Anything after `--` goes to `xcodebuild` verbatim — its own flags, or `KEY=VALUE` build-setting
+Anything after `--` goes to `xcodebuild` verbatim: its own flags, or `KEY=VALUE` build-setting
 overrides:
 
 ```bash
@@ -83,8 +82,8 @@ sweetpad app install --on "iPhone 16 Pro" -- -derivedDataPath ./build ENABLE_TES
 ```
 
 The commands that run a build accept it: `build`, `test`, `archive`, and `app run`, `app install`,
-`app debug`, `app diagnose`. The `app` commands that only act on an already-installed app —
-`launch`, `uninstall`, `logs`, `stop` — reject it rather than accept arguments that would reach no
+`app debug`, `app diagnose`. The `app` commands that only act on an already-installed app
+(`launch`, `uninstall`, `logs`, `stop`) reject it rather than accept arguments that would reach no
 `xcodebuild`.
 
 A `-derivedDataPath` in the tail is honored when locating the built `.app`, so the bundle SweetPad
@@ -95,7 +94,7 @@ sweetpad app install -- -derivedDataPath /tmp/dd   # builds and installs from /t
 ```
 
 Overrides that move the product somewhere the locator can't follow are rejected up front, before a
-build is spent on them — use `-derivedDataPath` instead:
+build is spent on them. Use `-derivedDataPath` instead:
 
 ```bash
 sweetpad app install -- SYMROOT=/tmp/out
@@ -117,7 +116,7 @@ scheme = "MyApp"
 args = ["-skipMacroValidation", "-disablePackageRepositoryCache"]
 ```
 
-A `--` tail is appended after the file's arguments, so typing one wins — `xcodebuild` takes the last
+A `--` tail is appended after the file's arguments, so typing one wins, because `xcodebuild` takes the last
 value for a repeated flag or setting:
 
 ```bash
@@ -129,14 +128,14 @@ where it came from.
 
 Arguments SweetPad settles itself are refused in the file, naming the key to use instead: `-scheme`,
 `-configuration`, `-destination`, `-sdk`, `-workspace`, `-project`, and `-resultBundlePath` (SweetPad
-writes and reads back its own). `-derivedDataPath` is refused too — a relative value in a committed
+writes and reads back its own). `-derivedDataPath` is refused too, because a relative value in a committed
 file would resolve against the working directory rather than the file, meaning a different place
 depending on where the command ran. Pass it per command instead. Swift packages ignore the table
 entirely: they build with `swift build`, which knows none of `xcodebuild`'s flags.
 
 :::tip
 
-For `KEY=VALUE` build settings, an `.xcconfig` is usually the better committed home — Xcode honors it
+For `KEY=VALUE` build settings, an `.xcconfig` is usually the better committed home, because Xcode honors it
 too, so ⌘B and `sweetpad build` stay in agreement. Put flags in `[xcodebuild] args`; put build
 settings in an xcconfig unless you specifically want them only when building through SweetPad.
 
@@ -153,7 +152,7 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | `sweetpad simulator shutdown`   | Shut down a simulator.                                         |
 | `sweetpad simulator open`       | Open the Simulator.app window.                                 |
 | `sweetpad simulator screenshot` | Save a PNG (`--clipboard` copies instead).                     |
-| `sweetpad simulator record`     | Record the screen to an mp4 — Ctrl-C stops and finalizes.      |
+| `sweetpad simulator record`     | Record the screen to an mp4. Ctrl-C stops and finalizes.       |
 | `sweetpad simulator appearance` | Switch light/dark appearance.                                  |
 | `sweetpad simulator status-bar` | Set a clean status bar for screenshots (9:41, full bars); `--clear` resets. |
 | `sweetpad simulator location`   | Set the simulated GPS location.                                |
@@ -163,7 +162,7 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | `sweetpad simulator create`     | Create a new simulator.                                        |
 | `sweetpad simulator clone`      | Clone a shut-down simulator under a new name.                  |
 | `sweetpad simulator erase`      | Erase contents and settings (simulator must be shut down).     |
-| `sweetpad simulator delete`     | Delete a simulator — no undo (`--yes` skips the prompt).       |
+| `sweetpad simulator delete`     | Delete a simulator. There is no undo (`--yes` skips the prompt).       |
 
 ### Context and configuration
 
@@ -171,7 +170,7 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | ---------------------------- | ---------------------------------------------------------------------------- |
 | `sweetpad context show`      | Show the remembered scheme, configuration, and destination.                 |
 | `sweetpad context select`    | Change a remembered value interactively (`--testing` for the test context). |
-| `sweetpad context set`       | Set a value without prompting — script- and CI-friendly.                    |
+| `sweetpad context set`       | Set a value without prompting, for scripts and CI.                          |
 | `sweetpad context remove`    | Clear one remembered value, or `--all` for the whole context.               |
 | `sweetpad context alias`     | Name a destination (`context alias work-phone <UDID>`), then use `--on work-phone` anywhere. |
 | `sweetpad open <what>`       | Open the project in `xcode`, the `sim` window, the `dd` (DerivedData) folder, or your `config` file. |
@@ -192,7 +191,7 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | `sweetpad completions <shell>`  | Generate completions for bash, zsh, fish, elvish, or PowerShell.      |
 | `sweetpad self-update`          | Update sweetpad (Homebrew installs run brew upgrade instead).         |
 | `sweetpad help [topic]`         | Built-in guides: `config`, `environment`, `exit-codes`, `destinations`, `hot-reload`. |
-| `sweetpad vscode <method>`      | Drive a running VSCode window — see [Agent CLI & RPC server](./agent-cli.md). |
+| `sweetpad vscode <method>`      | Drive a running VSCode window. See [Agent CLI & RPC server](./agent-cli.md). |
 
 ## Global flags
 
@@ -203,7 +202,7 @@ These work on every command:
 | `-C <dir>`            | Run as if started in that folder, like `git -C`.                                                  |
 | `-o, --output <mode>` | Output mode: `human` (default), `json`, `ndjson`, or `quiet`.                                     |
 | `--json`              | Shorthand for `-o json`.                                                                           |
-| `--non-interactive`   | Never prompt — missing choices become errors. Auto-enabled when `CI` is set.                       |
+| `--non-interactive`   | Never prompt; missing choices become errors. Auto-enabled when `CI` is set.                        |
 | `--gh-annotations`    | Emit GitHub Actions annotations for build/test errors. Not combinable with `-o json`/`ndjson`.     |
 | `--developer-dir <dir>` | Pin the Xcode to use (same as the `DEVELOPER_DIR` environment variable).                          |
 | `--no-color`          | Disable colored output (also honors `NO_COLOR`).                                                   |
@@ -211,7 +210,7 @@ These work on every command:
 | `-q, --quiet`         | Suppress progress chatter (wins over `--verbose`).                                                 |
 
 Commands that build or run also take targeting flags: `--workspace`, `--project`, `--scheme`,
-`--configuration`, `--sdk`, and the two ways to say where — `--destination` (a raw specifier) or
+`--configuration`, `--sdk`, and the two ways to say where: `--destination` (a raw specifier) or
 `--on` (a human-friendly reference; the two are mutually exclusive).
 
 ## Environment variables
@@ -226,13 +225,13 @@ turns prompts into errors. `NO_COLOR` and `CLICOLOR_FORCE` control color. Run
 
 Three layers, from personal to shared:
 
-- **`~/.config/sweetpad/config.toml`** — your personal defaults. A `[defaults]` table for global
+- **`~/.config/sweetpad/config.toml`**: your personal defaults. A `[defaults]` table for global
   values, plus `[projects."<path to .xcodeproj/.xcworkspace/Package.swift>"]` tables for per-project
   overrides. SweetPad never writes this file; it's yours.
-- **`sweetpad.toml`** next to the project — team defaults, meant to be committed. Same keys
+- **`sweetpad.toml`** next to the project: team defaults, meant to be committed. Same keys
   (`scheme`, `configuration`, `destination`, `sdk`), plus `developer_dir` and `[run]`, `[format]`,
   `[testing]`, and `[xcodebuild]` tables.
-- **Remembered state** — the answers you gave to interactive prompts, stored per project. Inspect and
+- **Remembered state**: the answers you gave to interactive prompts, stored per project. Inspect and
   change it with `sweetpad context`, not by editing files.
 
 When the same value is set in several places, the most explicit one wins:
@@ -241,7 +240,7 @@ When the same value is set in several places, the most explicit one wins:
 flag  >  environment variable  >  config.toml  >  sweetpad.toml  >  remembered answer  >  auto-detect
 ```
 
-Typos are never silently ignored — unknown keys produce a warning on every run. See
+Typos are never silently ignored: unknown keys produce a warning on every run. See
 `sweetpad help config` for every key.
 
 ## Destinations
@@ -258,8 +257,8 @@ Typos are never silently ignored — unknown keys produce a warning on every run
 | `--on work-phone`           | An alias you created with `sweetpad context alias`.  |
 | `--on <UDID>`               | That exact simulator or device.                      |
 
-`--destination` takes the raw, exact form instead — e.g.
-`platform=iOS Simulator,name=iPhone 16 Pro` or `platform=macOS` — which is handy in CI where fuzzy
+`--destination` takes the raw, exact form instead, such as
+`platform=iOS Simulator,name=iPhone 16 Pro` or `platform=macOS`. That is handy in CI, where fuzzy
 matching would be a liability. `sweetpad devices` prints a copy-paste-ready specifier for everything
 it lists.
 
@@ -269,21 +268,21 @@ it lists.
 | ---- | -------------------------------------------------------------------- |
 | 0    | Success.                                                             |
 | 1    | Generic failure.                                                     |
-| 2    | Usage error — bad flags or arguments.                                |
+| 2    | Usage error: bad flags or arguments.                                 |
 | 3    | The build or the tests failed.                                       |
-| 4    | Couldn't resolve a target — unknown scheme, destination, simulator…  |
+| 4    | Couldn't resolve a target: unknown scheme, destination, simulator…   |
 | 5    | A required tool is missing (xcodebuild, simctl, …).                  |
-| 6    | Cancelled by you — a declined prompt or Ctrl-C.                      |
+| 6    | Cancelled by you: a declined prompt or Ctrl-C.                       |
 
 With `-o json`, results arrive as a one-shot envelope `{"schema": 1, "ok": true, "data": …}`; errors
 go to stderr as `{"schema": 1, "ok": false, "error": {"code", "message"}}` where the code mirrors the
-exit-code taxonomy. `-o ndjson` streams one JSON event per line and ends with a result event — useful
+exit-code taxonomy. `-o ndjson` streams one JSON event per line and ends with a result event, which helps
 for long commands like builds where you want progress as it happens.
 
 :::tip
 
 `"ok": true` means "the command executed", not "the outcome was good". A red test suite exits with
-code 3 and reports its failures inside `data` — check the payload, not just the envelope.
+code 3 and reports its failures inside `data`, so check the payload rather than the envelope.
 
 :::
 

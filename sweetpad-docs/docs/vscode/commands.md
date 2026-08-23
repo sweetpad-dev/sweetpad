@@ -1,19 +1,18 @@
 ---
 sidebar_position: 17
-slug: /commands
 sidebar_label: Commands reference
 ---
 
 # Commands reference
 
 Everything SweetPad can do is exposed as a command. Open the command palette (`⌘⇧P`), type "sweetpad",
-and every command below shows up. Most are also reachable from the sidebar — buttons and right-click
+and every command below shows up. Most are also reachable from the sidebar, where buttons and right-click
 menus in the Build, Destinations, and Tools views run the same commands.
 
 :::tip
 
 To put a command on a keyboard shortcut, open **Keyboard Shortcuts** (`⌘K ⌘S`) and search for
-"sweetpad" — every command here can be bound to a key.
+"sweetpad". Every command here can be bound to a key.
 
 :::
 
@@ -66,7 +65,7 @@ To put a command on a keyboard shortcut, open **Keyboard Shortcuts** (`⌘K ⌘S
 
 | Command                                | What it does                                                        |
 | --------------------------------------- | --------------------------------------------------------------------- |
-| SweetPad: Select destination            | Pick where the app runs — simulator, device, or macOS.               |
+| SweetPad: Select destination            | Pick where the app runs: simulator, device, or macOS.                 |
 | SweetPad: Search destinations (Destinations view) | Filter the Destinations view by name.                       |
 | SweetPad: Remove recent destination     | Drop an entry from the Recent group.                                 |
 | SweetPad: Start simulator               | Boot a simulator.                                                     |
@@ -97,7 +96,7 @@ To put a command on a keyboard shortcut, open **Keyboard Shortcuts** (`⌘K ⌘S
 
 ## Debugging
 
-These back the `sweetpad-lldb` debug configuration — you rarely run them by hand. See
+These back the `sweetpad-lldb` debug configuration, and you rarely run them by hand. See
 [Debugging](./debug.md).
 
 | Command                              | What it does                                                       |

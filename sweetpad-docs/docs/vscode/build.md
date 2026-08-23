@@ -1,12 +1,11 @@
 ---
-sidebar_position: 2
-slug: /build
+sidebar_position: 3
 ---
 
 # Build & Run
 
 Build and run your iOS app on a simulator or device directly from the VSCode sidebar. SweetPad drives `xcodebuild`
-under the hood — the same tool Xcode uses.
+under the hood, the same tool Xcode uses.
 
 ![iOS build](/images/build-demo.gif)
 
@@ -27,11 +26,11 @@ integrates with.
 
 [![iOS build preview](/images/build-preview.png)](/images/build-preview.png)
 
-1. ▶️ **Build & Run** — click the play button next to the scheme name to build and run the app on the active
+1. ▶️ **Build & Run**: click the play button next to the scheme name to build and run the app on the active
    destination.
-2. ⚙️ **Build** — click the gear button next to the scheme name to build without running.
-3. **SweetPad: Clean** — right-click the scheme name to find this option. Cleans the build folder and derived data.
-4. **SweetPad: Resolve Dependencies** — right-click the scheme name and pick this to resolve Swift Package Manager
+2. ⚙️ **Build**: click the gear button next to the scheme name to build without running.
+3. **SweetPad: Clean**: right-click the scheme name to find this option. Cleans the build folder and derived data.
+4. **SweetPad: Resolve Dependencies**: right-click the scheme name and pick this to resolve Swift Package Manager
    dependencies.
 
    ![Context Menu](/images/build-context-menu.png)
@@ -39,20 +38,20 @@ integrates with.
 ## Stop a running build or app
 
 Long builds, runaway test runs, or apps that won't terminate on their own can all be cancelled in one click. While
-a scheme is running, a ⏹ stop icon appears inline next to it in the Build view — click it, or run
+a scheme is running, a ⏹ stop icon appears inline next to it in the Build view. Click it, or run
 **SweetPad: Stop build / running app** from the command palette. SweetPad kills the underlying `xcodebuild` or app
 process and frees up the terminal.
 
 :::tip
 
-If you closed the terminal panel and the play button still shows a spinner, the process is probably still alive — use
+If you closed the terminal panel and the play button still shows a spinner, the process is probably still alive. Use
 **Stop build / running app** to clean it up.
 
 :::
 
 ## Filter which schemes appear in the Build view
 
-Large Xcode workspaces often expose dozens of schemes — feature modules, test bundles, dynamic libraries, host apps —
+Large Xcode workspaces often expose dozens of schemes (feature modules, test bundles, dynamic libraries, host apps),
 most of which you never build by hand. You can hide the noise without touching the project file:
 
 ```json title=".vscode/settings.json"
@@ -62,18 +61,18 @@ most of which you never build by hand. You can hide the noise without touching t
 }
 ```
 
-- `include` — only schemes matching at least one pattern are shown. Empty means "show everything".
-- `exclude` — applied on top of `include`; matching schemes are hidden.
+- `include`: only schemes matching at least one pattern are shown. Empty means "show everything".
+- `exclude`: applied on top of `include`; matching schemes are hidden.
 - Patterns support `*` as a wildcard.
 
 When a filter is active, a pause/apply toggle appears in the Build view title bar so you can temporarily peek at
-every scheme without editing the settings — click it once to pause the filter (**SweetPad: Pause scheme filter**),
+every scheme without editing the settings. Click it once to pause the filter (**SweetPad: Pause scheme filter**),
 click again to re-apply it (**Apply scheme filter**). The magnifier 🔎 button next to it searches the visible
 schemes.
 
 ## Swift Package Manager (SPM) support
 
-SweetPad detects `Package.swift` at the workspace root and exposes the package's products as schemes — the same Build &
+SweetPad detects `Package.swift` at the workspace root and exposes the package's products as schemes, and the same Build &
 Run / Build / Test flow works without an Xcode project. Configurations default to `Debug` and `Release`. Tests
 declared with `XCTest` or Swift Testing show up in the Testing panel as usual.
 
@@ -145,7 +144,7 @@ If your repo contains multiple `.xcworkspace` / `.xcodeproj` files, pin the one 
 }
 ```
 
-For an interactive shortcut, run `> SweetPad: Select Xcode workspace` from the command palette — it picks the
+For an interactive shortcut, run `> SweetPad: Select Xcode workspace` from the command palette. It picks the
 workspace and writes it to your settings.
 
 If you don't configure a path, SweetPad asks the first time you build and remembers the choice in its cache. Clear
@@ -153,13 +152,13 @@ that cache with `> SweetPad: Reset Extension Cache` if you need to pick again.
 
 :::note
 
-If your project contains only one workspace, SweetPad finds it automatically — no configuration needed.
+If your project contains only one workspace, SweetPad finds it automatically, with no configuration needed.
 
 :::
 
 ## Set the scheme and destination
 
-Pin the scheme and run destination the same way you pin the workspace path — useful for agents, CI-like local
+Pin the scheme and run destination the same way you pin the workspace path, which helps for agents, CI-like local
 workflows, or skipping the QuickPick every time:
 
 ```json title=".vscode/settings.json"
@@ -172,11 +171,11 @@ workflows, or skipping the QuickPick every time:
 }
 ```
 
-- `scheme` — exact scheme name from the Xcode project. A name the project doesn't have gets a warning, and builds
+- `scheme`: exact scheme name from the Xcode project. A name the project doesn't have gets a warning, and builds
   fail until you fix or remove the setting.
-- `destination` — `id` and `type` are required. Easiest is `> SweetPad: Select destination` (or click a destination in
+- `destination`: `id` and `type` are required. Easiest is `> SweetPad: Select destination` (or click a destination in
   the sidebar) and choose to save it to settings. To write it by hand, paste the plain UDID from `xcrun simctl list`
-  or Xcode's device list — `type` already says what kind of thing it is:
+  or Xcode's device list, since `type` already says what kind of thing it is:
 
 ```json title=".vscode/settings.json"
 {
@@ -187,7 +186,7 @@ workflows, or skipping the QuickPick every time:
 }
 ```
 
-The setting holds identity only — no display name. SweetPad resolves the label from the destination itself, so once
+The setting holds identity only, with no display name. SweetPad resolves the label from the destination itself, so once
 it has listed destinations the status bar reads "iPhone 16" rather than a UDID, and follows along if you rename the
 simulator. Until then it shows the id you wrote.
 
@@ -207,17 +206,17 @@ doesn't always match the `type` spelling:
 | `macOS`             | `macos-<computer name>`    |
 
 Note the two that break the pattern: `visionOSSimulator` drops the `os`, and `macOS` uses your computer's name
-instead of a UDID — which is why pasting the bare value and letting `type` supply the prefix is the safer habit. An
+instead of a UDID, which is why pasting the bare value and letting `type` supply the prefix is the safer habit. An
 id SweetPad doesn't recognise isn't reported as an error; it just falls through to the picker on every build.
 
-Unset = SweetPad asks the first time and remembers the choice in its cache. Settings always win over that cache — so
+Unset = SweetPad asks the first time and remembers the choice in its cache. Settings always win over that cache, so
 `> SweetPad: Reset Extension Cache` clears the cache but leaves a pinned setting deciding the answer.
 
 :::note
 
 `sweetpad.build.destination` is machine-specific. Simulator UDIDs differ on every Mac and change when you delete and
 recreate a simulator, and the `macOS` id contains your computer's name. When the pinned destination isn't there,
-SweetPad asks you to pick again and rewrites the setting with your choice rather than re-prompting on every build —
+SweetPad asks you to pick again and rewrites the setting with your choice rather than re-prompting on every build,
 which means a committed `.vscode/settings.json` shows up as a local edit on each machine. For a shared project, pin
 the scheme and leave the destination to each developer.
 
@@ -268,8 +267,8 @@ Set a value to `null` to explicitly unset an inherited variable.
 
 ## Use a different xcodebuild (e.g. Xcode-beta)
 
-If you need a non-default `xcodebuild` — to build against Xcode-beta, to pin a specific toolchain, or to wrap
-`xcodebuild` with a logger — point SweetPad at the binary you want:
+If you need a non-default `xcodebuild`, to build against Xcode-beta, to pin a specific toolchain, or to wrap
+`xcodebuild` with a logger, point SweetPad at the binary you want:
 
 ```json title=".vscode/settings.json"
 {
@@ -326,7 +325,7 @@ You can also set them per-task in `.vscode/tasks.json`:
 
 If your scheme's **Run** action in Xcode already defines launch arguments, environment variables, an **App Language**,
 or an **App Region**, SweetPad applies them automatically when running the app. This means the same scheme behaves
-the same way whether it's launched from Xcode or from VSCode — no need to copy values into `settings.json`.
+the same way whether it's launched from Xcode or from VSCode, with no need to copy values into `settings.json`.
 
 The mapping:
 
@@ -343,8 +342,8 @@ scheme, so workspace overrides always win over scheme defaults.
 ## Keep the Simulator in the background on launch
 
 By default SweetPad brings the Simulator app to the foreground every time it launches your app. If you'd rather stay
-in VSCode — typical when you're driving the Simulator through a keyboard automation tool or running headless during
-hot-reload iterations — turn that off:
+in VSCode, which is typical when you're driving the Simulator through a keyboard automation tool or running headless
+during hot-reload iterations, turn that off:
 
 ```json title=".vscode/settings.json"
 {
@@ -354,7 +353,7 @@ hot-reload iterations — turn that off:
 
 ## Build for x86_64 on Apple Silicon (Rosetta)
 
-On M-series Macs, you may occasionally need to build for x86_64 — for example to reproduce a CI environment, debug an
+On M-series Macs, you may occasionally need to build for x86_64, for example to reproduce a CI environment, debug an
 Intel-only crash, or work with a framework that doesn't yet ship arm64 slices. Two settings cover this:
 
 ```json title=".vscode/settings.json"
@@ -370,7 +369,7 @@ target simulator. Leave both at their defaults for normal arm64 development.
 ## Auto-refresh schemes when project files change
 
 SweetPad watches `Package.swift`, `.xcodeproj`, and `.xcworkspace` files in the background and refreshes the scheme
-list whenever they change — useful right after a `tuist generate`, `xcodegen`, or a freshly-added SPM target. If the
+list whenever they change, which helps right after a `tuist generate`, `xcodegen`, or a freshly-added SPM target. If the
 refresh is noisy (very large repos, dozens of frequent writes), tune it:
 
 ```json title=".vscode/settings.json"

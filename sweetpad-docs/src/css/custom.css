@@ -59,3 +59,56 @@
 code {
   border: none;
 }
+
+/* Sidebar product heading. Each product gets its own sidebar, and this names
+   which one you're reading so a page is never mistaken for the other tool's. */
+.sidebarHeading {
+  padding: 0.5rem 0.75rem 0.75rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ifm-color-emphasis-600);
+  border-bottom: 1px solid var(--ifm-toc-border-color);
+}
+
+.sidebarDivider {
+  height: 1px;
+  margin: 0.75rem 0.75rem 0.5rem;
+  background-color: var(--ifm-toc-border-color);
+}
+
+/* Group label within a product sidebar. Quieter than the product heading above
+   it — no rule, and a little air to separate one group of pages from the next. */
+.sidebarGroup {
+  padding: 0.35rem 0.75rem 0.25rem;
+  margin-top: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ifm-color-emphasis-500);
+}
+
+/* Doc sidebar in normal page flow. Docusaurus pins the sidebar to the viewport
+   and hands it its own scroll region, so a long sidebar scrolls independently of
+   the page. These overrides let it take its full content height and move with
+   the page instead, making the doc one scrolling surface. The aside is a stretched
+   flex item either way, so its right border still runs the length of the page. */
+@media (min-width: 997px) {
+  .theme-doc-sidebar-container > div {
+    position: static;
+    height: auto;
+    max-height: none;
+  }
+
+  /* With no scrollbar to make room for, the sidebar pads evenly on both edges
+     instead of reserving a gutter on the right. */
+  @supports (scrollbar-gutter: stable) {
+    .theme-doc-sidebar-container .menu {
+      padding: 0.5rem;
+      scrollbar-gutter: auto;
+    }
+  }
+}

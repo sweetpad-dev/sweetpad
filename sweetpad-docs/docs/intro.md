@@ -1,63 +1,61 @@
 ---
 sidebar_position: 1
+slug: /
+sidebar_label: Which one do I need?
 ---
 
-# Introduction
+# CLI or VS Code extension?
 
-SweetPad helps you build, run, debug, and test your Xcode projects for iOS, macOS, tvOS, watchOS, and
-visionOS — without living inside Xcode. It works with Xcode workspaces and projects, [Tuist](./vscode/tuist.md),
-XcodeGen, and Swift Packages.
+SweetPad is two separate tools that solve the same problem from different places: building, running,
+debugging, and testing Xcode projects for iOS, macOS, tvOS, watchOS, and visionOS without living inside
+Xcode. Both work with Xcode workspaces and projects, Tuist, XcodeGen, and Swift Packages.
 
-SweetPad comes in two forms — pick whichever fits how you work:
+**You do not need both.** Pick the one that matches where you work.
 
-- **[VSCode extension](./vscode/getting-started-vscode.md)** — build, run, and debug from the editor sidebar,
-  with logs, tests, formatting, and autocomplete built in. This works in [Cursor](https://www.cursor.com/) too.
-- **[SweetPad CLI](./cli/getting-started-cli.md)** — the `sweetpad` command-line tool ("xcodebuild for
-  humans") that does the same from the terminal, no editor needed.
+## SweetPad CLI
+
+A single native binary named `sweetpad`, or "xcodebuild for humans". You install it with Homebrew and run
+it from any terminal:
+
+```bash
+brew install sweetpad-dev/tap/sweetpad
+```
+
+It does not need VS Code, and it does not care what editor you use. It works the same from a terminal
+in Xcode, Vim, Zed, a git hook, or a CI job.
+
+Start at [Get started with the CLI](./cli/getting-started.md).
+
+## VS Code extension
+
+An extension that puts the same builds, runs, and tests in the VS Code sidebar, with breakpoints, a
+Testing panel, format-on-save, and autocomplete. It installs from the VS Code Marketplace and works
+in [Cursor](https://www.cursor.com/) too.
+
+It does not need the CLI to build, run, debug, or test. Those run in the extension itself.
+
+Start at [Get started with the extension](./vscode/getting-started.md).
+
+## The one place they meet
+
+The extension's default autocomplete setup runs SweetPad's build server, and that server ships in the
+CLI binary. So if you want code intelligence in VS Code, install the CLI as well. The
+[Autocomplete](./vscode/autocomplete.md) page walks through it, and the Tools panel offers the install
+in one click.
+
+That is the only overlap. Nothing else in the extension shells out to the CLI, and nothing in the CLI
+looks for VS Code.
 
 :::info
 
-Both products drive Xcode's own command-line tools under the hood, so you still need Xcode installed on
-your Mac.
+Both tools drive Xcode's own command-line tools underneath, so you need Xcode installed on your Mac
+either way.
 
 :::
 
-## Get started
+## Still not sure?
 
-- New to the extension? Follow [Get started with the extension](./vscode/getting-started-vscode.md).
-- Prefer the terminal? Follow [Get started with the CLI](./cli/getting-started-cli.md).
-
-## What you get
-
-The VSCode extension gives you:
-
-- 🛠️ **[Build & Run](./vscode/build.md)** apps on simulators, macOS, and physical devices straight from the SweetPad sidebar
-  — with support for Xcode workspaces, Xcode projects, [Tuist](./vscode/tuist.md), XcodeGen, and Swift Package Manager
-  (`Package.swift`).
-- 🐞 **[Debug](./vscode/debug.md)** with breakpoints, step, watch, and the rest of LLDB via the CodeLLDB extension — on the
-  Simulator and on physical iOS devices.
-- 📋 **Logs from devices and simulators** stream `os_log` / `Logger` / `print` / `NSLog` into the build terminal so
-  you don't have to keep Console.app open.
-- 🧪 **[Tests](./vscode/tests.md)** show up in VSCode's native Testing panel with gutter ▶️ buttons; supports XCTest and
-  Swift Testing.
-- ✍️ **[Format on save](./vscode/format.md)** with `swift-format` (Xcode's bundled copy by default) or any other Swift
-  formatter you prefer.
-- 💡 **[Autocomplete](./vscode/autocomplete.md)** via SourceKit-LSP — backed by SweetPad's built-in build server —
-  including inline compiler diagnostics in the Problems panel.
-- 🌳 **[Git worktrees](./vscode/worktree.md)** — switch the active workspace between parallel checkouts of the same project
-  in one command.
-
-And the same building, running, and testing is available from the terminal:
-
-- 💻 **[SweetPad CLI](./cli/cli.md)** — the standalone `sweetpad` command-line tool to build, run, and test
-  your projects, and to script them into git hooks and CI.
-- 🤖 **[Agent CLI / RPC server](./cli/agent-cli.md)** — an opt-in server so scripts and AI coding agents can
-  drive your VSCode session from the outside.
-
-## Reference
-
-When you need the exact name of something:
-
-- [Settings reference](./vscode/settings.md) — every extension setting, grouped by area.
-- [Commands reference](./vscode/commands.md) — every command-palette command.
-- [CLI reference](./cli/reference.md) — every terminal command, flag, config key, and exit code.
+- You spend your day in a terminal, or you want builds in scripts, git hooks, and CI → **CLI**.
+- You want an editor that can build and debug your app like Xcode does → **extension**.
+- You use VS Code *and* want a terminal command → install both. They share nothing but a name and a
+  Rust core, so they will not fight.

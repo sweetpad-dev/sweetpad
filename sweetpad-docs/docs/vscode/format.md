@@ -1,11 +1,10 @@
 ---
 sidebar_position: 6
-slug: /format
 ---
 
 # Format code
 
-SweetPad formats Swift files in VSCode using [**swift-format**](https://github.com/apple/swift-format) by default —
+SweetPad formats Swift files in VSCode using [**swift-format**](https://github.com/apple/swift-format) by default,
 or any other Swift formatter you point it at. Enable **Format on Save** and Swift files reformat themselves on every
 save.
 
@@ -15,7 +14,7 @@ save.
 
 :::warning
 
-If you're on **Xcode 15 or earlier**, install **swift-format** manually first — see
+If you're on **Xcode 15 or earlier**, install **swift-format** manually first. See
 [Install swift-format](#install-swift-format) below.
 
 :::
