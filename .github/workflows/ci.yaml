@@ -86,10 +86,19 @@ jobs:
         working-directory: sweetpad-vscode
         # Drop the prepublish hook so vsce zips the signed out/ instead of rebuilding it,
         # then move the .vsix to the repo root for the upload/deploy steps.
+        #
+        # The base URLs rewrite README.md's relative links for the Marketplace,
+        # which renders the file outside the repository. vsce infers them from
+        # 'repository', landing on the repo root — but the extension lives in
+        # sweetpad-vscode/, so './images/logo.png' resolved to a path that does
+        # not exist and './LICENSE.md' to the workspace's licence instead of
+        # this package's. Both point at the subdirectory here.
         run: |
           set -euo pipefail
           npm pkg delete 'scripts.vscode:prepublish'
-          npx --yes @vscode/vsce package --no-dependencies
+          npx --yes @vscode/vsce package --no-dependencies \
+            --baseContentUrl https://github.com/sweetpad-dev/sweetpad/blob/HEAD/sweetpad-vscode \
+            --baseImagesUrl https://github.com/sweetpad-dev/sweetpad/raw/HEAD/sweetpad-vscode
           mv ./*.vsix ..
 
       - name: Upload VSIX
