@@ -573,6 +573,58 @@ export async function getIsXBSInstalled() {
   }
 }
 
+/**
+ * Run `swift package dump-package` in a package directory and parse the model.
+ * A manifest is Swift source, so the toolchain is the only thing that can say
+ * what a package declares — there is no file to read instead.
+ */
+async function dumpPackage(packageDir: string): Promise<any> {
+  const stdout = await exec({
+    command: getSwiftCommand(),
+    args: ["package", "dump-package"],
+    cwd: packageDir,
+  });
+  return JSON.parse(stdout);
+}
+
+/**
+ * Scheme names for a local package that belongs to an `.xcworkspace`: one per
+ * declared product, whatever its kind (a `.plugin` product gets a scheme too).
+ * Falls back to non-test target names for a package that declares no products.
+ *
+ * No `<name>-Package` aggregate: `xcodebuild -list` synthesizes that for a
+ * package opened on its own but not for one inside a workspace, so offering it
+ * here would name a scheme xcodebuild then rejects.
+ */
+function packageMemberSchemes(packageInfo: any): string[] {
+  const products: string[] = (packageInfo?.products ?? [])
+    .map((product: any) => product?.name)
+    .filter((name: unknown): name is string => typeof name === "string");
+  if (products.length > 0) {
+    return products;
+  }
+  return (packageInfo?.targets ?? [])
+    .filter((target: any) => !isTestTarget(target))
+    .map((target: any) => target?.name)
+    .filter((name: unknown): name is string => typeof name === "string");
+}
+
+/**
+ * Every target a package declares, tests included — a target list drives
+ * `-only-testing:`, where a test target is the whole point.
+ */
+function packageMemberTargets(packageInfo: any): string[] {
+  return (packageInfo?.targets ?? [])
+    .map((target: any) => target?.name)
+    .filter((name: unknown): name is string => typeof name === "string");
+}
+
+/** `dump-package` tags a test target as `{"test":{}}`; older dumps use `"test"`. */
+function isTestTarget(target: any): boolean {
+  const type = target?.type;
+  return typeof type === "string" ? type === "test" : Boolean(type?.test);
+}
+
 export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
   commonLogger.log("Getting schemes", { xcworkspace: options?.xcworkspace ?? "undefined" });
 
@@ -580,23 +632,9 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
   if (workspaceType === "spm") {
     try {
       const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
-      const stdout = await exec({
-        command: getSwiftCommand(),
-        args: ["package", "dump-package"],
-        cwd: packageDir,
-      });
-      const packageInfo = JSON.parse(stdout);
+      const packageInfo = await dumpPackage(packageDir);
 
-      const schemeNames = new Set<string>();
-
-      // Add all library/executable products
-      if (packageInfo.products) {
-        for (const product of packageInfo.products) {
-          if (product.type?.executable || product.type?.library) {
-            schemeNames.add(product.name);
-          }
-        }
-      }
+      const schemeNames = new Set<string>(packageMemberSchemes(packageInfo));
 
       // Add standalone executable targets not already covered
       if (packageInfo.targets) {
@@ -607,8 +645,8 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
         }
       }
 
-      // xcodebuild also synthesizes a `<name>-Package` aggregate scheme that
-      // builds the whole package; include it to match Xcode's scheme list.
+      // A package opened on its own also gets the `<name>-Package` aggregate
+      // scheme that builds everything; include it to match Xcode's list.
       if (packageInfo.name) {
         schemeNames.add(`${packageInfo.name}-Package`);
       }
@@ -627,7 +665,9 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
     if (!options.xcworkspace) {
       return [];
     }
-    return sweetpadLib.schemes(options.xcworkspace).map((name) => ({ name }));
+    // Already merged and sorted in Rust, member packages included. A promise
+    // because a workspace with local packages has to evaluate their manifests.
+    return (await sweetpadLib.schemes(options.xcworkspace)).map((name) => ({ name }));
   }
   assertUnreachable(workspaceType);
 }
@@ -637,23 +677,7 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   if (workspaceType === "spm") {
     try {
       const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
-      const stdout = await exec({
-        command: getSwiftCommand(),
-        args: ["package", "dump-package"],
-        cwd: packageDir,
-      });
-      const packageInfo = JSON.parse(stdout);
-
-      const targets: string[] = [];
-
-      // Add all targets
-      if (packageInfo.targets) {
-        for (const target of packageInfo.targets) {
-          targets.push(target.name);
-        }
-      }
-
-      return targets;
+      return packageMemberTargets(await dumpPackage(packageDir));
     } catch (error) {
       commonLogger.error("Failed to get SPM targets", {
         error: error,
@@ -664,7 +688,9 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   }
 
   if (workspaceType === "xcode") {
-    return sweetpadLib.targets(options.xcworkspace);
+    // Member projects first, then each local package's targets — merged in
+    // Rust, which is why this is a promise.
+    return await sweetpadLib.targets(options.xcworkspace);
   }
   assertUnreachable(workspaceType);
 }

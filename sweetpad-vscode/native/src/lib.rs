@@ -90,10 +90,15 @@ pub struct WorkspaceInfo {
     pub name: String,
     /// Absolute paths of every `.xcodeproj` the workspace declares, in order.
     pub projects: Vec<String>,
+    /// Absolute paths of every local SwiftPM package the workspace declares.
+    /// Their products are NOT in `schemes`: naming those needs a manifest
+    /// evaluation, which only the async [`schemes`] does.
+    pub packages: Vec<String>,
     pub schemes: Vec<String>,
 }
 
-/// List a `.xcworkspace`'s member projects and merged schemes.
+/// List a `.xcworkspace`'s member projects, member packages, and merged
+/// schemes.
 #[napi]
 pub fn list_workspace(path: String) -> napi::Result<WorkspaceInfo> {
     let ws = workspace::open(Path::new(&path)).map_err(to_napi_err)?;
@@ -102,10 +107,16 @@ pub fn list_workspace(path: String) -> napi::Result<WorkspaceInfo> {
         .iter()
         .map(|p| p.display().to_string())
         .collect();
+    let packages = ws
+        .package_refs
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect();
     let schemes = ws.merged_schemes();
     Ok(WorkspaceInfo {
         name: ws.name,
         projects,
+        packages,
         schemes,
     })
 }
@@ -114,35 +125,82 @@ fn is_workspace(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()) == Some("xcworkspace")
 }
 
-/// Scheme names for a `.xcodeproj` or `.xcworkspace` — shared and per-user
-/// scheme files, falling back to autocreated per-target schemes when none
-/// exist. For a workspace, merged across the bundle and its member projects
-/// (sorted, like `xcodebuild -list -workspace`).
-#[napi]
-pub fn schemes(path: String) -> napi::Result<Vec<String>> {
-    let p = Path::new(&path);
-    if is_workspace(p) {
-        Ok(workspace::open(p).map_err(to_napi_err)?.merged_schemes())
-    } else {
-        Ok(project::open(p).map_err(to_napi_err)?.schemes)
+/// Whether a container's names include what its local SwiftPM packages
+/// declare. Naming those means running `swift package dump-package`, which
+/// takes seconds on a cold manifest cache — so the calls that need it are
+/// promises, computed on a worker thread rather than on the event loop the
+/// whole editor shares.
+enum Names {
+    Schemes,
+    Targets,
+}
+
+/// Read `path`'s names, evaluating member package manifests when it is a
+/// workspace. Runs off the main thread (see [`NamesTask`]).
+fn read_names(path: &str, which: &Names) -> napi::Result<Vec<String>> {
+    let p = Path::new(path);
+    if !is_workspace(p) {
+        let project = project::open(p).map_err(to_napi_err)?;
+        return Ok(match which {
+            Names::Schemes => project.schemes,
+            Names::Targets => project.targets.into_iter().map(|t| t.name).collect(),
+        });
+    }
+    let ws = workspace::open(p).map_err(to_napi_err)?;
+    let members = sweetpad_core::package_members::resolve(&ws.package_refs, None);
+    Ok(match which {
+        Names::Schemes => {
+            ws.merged_schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(&members))
+        }
+        Names::Targets => {
+            ws.merged_targets_with_packages(&sweetpad_core::package_members::target_pairs(&members))
+        }
+    })
+}
+
+pub struct NamesTask {
+    path: String,
+    which: Names,
+}
+
+impl napi::Task for NamesTask {
+    type Output = Vec<String>;
+    type JsValue = Vec<String>;
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        read_names(&self.path, &self.which)
+    }
+
+    fn resolve(&mut self, _env: napi::Env, output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(output)
     }
 }
 
+/// Scheme names for a `.xcodeproj` or `.xcworkspace` — shared and per-user
+/// scheme files, falling back to autocreated per-target schemes when none
+/// exist. For a workspace, merged across the bundle, every member project, and
+/// every local SwiftPM package's products, sorted like
+/// `xcodebuild -list -workspace`.
+#[napi(ts_return_type = "Promise<Array<string>>")]
+#[must_use]
+pub fn schemes(path: String) -> napi::bindgen_prelude::AsyncTask<NamesTask> {
+    napi::bindgen_prelude::AsyncTask::new(NamesTask {
+        path,
+        which: Names::Schemes,
+    })
+}
+
 /// Target names for a `.xcodeproj` or `.xcworkspace`. For a workspace, the
-/// distinct targets across member projects in first-seen order.
-#[napi]
-pub fn targets(path: String) -> napi::Result<Vec<String>> {
-    let p = Path::new(&path);
-    if is_workspace(p) {
-        Ok(workspace::open(p).map_err(to_napi_err)?.merged_targets())
-    } else {
-        Ok(project::open(p)
-            .map_err(to_napi_err)?
-            .targets
-            .into_iter()
-            .map(|t| t.name)
-            .collect())
-    }
+/// distinct targets across member projects in first-seen order, then each
+/// local package's targets — test targets included, since a target list drives
+/// `-only-testing:`.
+#[napi(ts_return_type = "Promise<Array<string>>")]
+#[must_use]
+pub fn targets(path: String) -> napi::bindgen_prelude::AsyncTask<NamesTask> {
+    napi::bindgen_prelude::AsyncTask::new(NamesTask {
+        path,
+        which: Names::Targets,
+    })
 }
 
 /// Build-configuration names for a `.xcodeproj` or `.xcworkspace`. For a

@@ -1070,6 +1070,23 @@ git add src/catalog_embedded.bin
 
 (No need when only refreshing an *older* major.)
 
+### 10.7c Check whether the declarative manifest loader landed
+
+Reading a Swift package's products means running `swift package dump-package`,
+which compiles `Package.swift` and executes it (~0.4s warm, seconds cold). A
+swift-syntax loader that parses the manifest instead, falling back to execution
+when it meets a construct it can't read, is
+[in review upstream](https://forums.swift.org/t/improving-manifest-loading-performance-for-declarative-package-manifests/85994):
+~1.36ms against ~1.5s, covering ~87% of the Swift Package Index. Absent from
+Xcode 26.5. Probe the new toolchain:
+
+```
+swift package --experimental-manifest-processing-mode only-parsed dump-package
+```
+
+If the flag is accepted, the spawn in `sweetpad-core` that resolves a workspace
+member package's schemes (issue #327) can lean on it for the common case.
+
 ### 10.8 Green, docs, commit
 
 - `cargo test` (all versions green), `cargo fmt`, `cargo clippy --tests`.

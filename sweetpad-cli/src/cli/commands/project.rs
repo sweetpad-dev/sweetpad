@@ -503,13 +503,20 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             let ws = sweetpad_lib::workspace::open(p).map_err(|e| {
                 CliError::new(format!("failed to read workspace {}: {e}", p.display()))
             })?;
+            // `info` is an explicit enumeration, so it pays for the members'
+            // manifests rather than under-reporting what the workspace holds.
+            let members = sweetpad_core::package_members::resolve(&ws.package_refs, None);
             Ok(Info {
                 kind: "workspace",
                 name: ws.name.clone(),
                 path,
-                targets: ws.merged_targets(),
+                targets: ws.merged_targets_with_packages(
+                    &sweetpad_core::package_members::target_pairs(&members),
+                ),
                 configurations: ws.merged_configurations(),
-                schemes: ws.merged_schemes(),
+                schemes: ws.merged_schemes_with_packages(
+                    &sweetpad_core::package_members::scheme_pairs(&members),
+                ),
             })
         }
         Container::Project(p) => {

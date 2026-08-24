@@ -639,7 +639,12 @@ pub fn missing(what: &str) -> CliError {
 pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
     match container {
         Container::Workspace(p) => sweetpad_lib::workspace::open(p)
-            .map(|w| w.merged_schemes())
+            .map(|w| {
+                let members = sweetpad_core::package_members::resolve(&w.package_refs, None);
+                w.merged_schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(
+                    &members,
+                ))
+            })
             .map_err(|e| CliError::new(format!("failed to read workspace {}: {e}", p.display()))),
         Container::Project(p) => sweetpad_lib::project::open(p)
             .map(|proj| proj.schemes)
@@ -647,6 +652,23 @@ pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
         // Swift packages have no pbxproj; derive schemes from the manifest
         // (this drives SPM build/test/run) — no xcodebuild needed.
         Container::SwiftPackage(_) => crate::cli::swiftpm::schemes(container),
+    }
+}
+
+/// The scheme candidates readable from project files alone — everything
+/// [`schemes`] returns except the products of a workspace's local SwiftPM
+/// packages, which cost a `swift package dump-package` per package.
+///
+/// Only safe where a *shorter* list changes nothing: validating a name the
+/// caller already has. A name missing here may still be a package product, so
+/// a miss must escalate to [`schemes`] before it is reported as invalid — see
+/// [`build_target`].
+pub fn schemes_without_packages(container: &Container) -> Result<Vec<String>, CliError> {
+    match container {
+        Container::Workspace(p) => sweetpad_lib::workspace::open(p)
+            .map(|w| w.merged_schemes())
+            .map_err(|e| CliError::new(format!("failed to read workspace {}: {e}", p.display()))),
+        _ => schemes(container),
     }
 }
 
@@ -1041,7 +1063,21 @@ pub fn build_target(
     resolved: &mut Resolved,
     track: bool,
 ) -> Result<BuildTarget, CliError> {
-    let candidates = schemes(&resolved.container)?;
+    // Enumerating a workspace's local packages means evaluating each
+    // `Package.swift`, which is far slower than reading project files. A
+    // scheme already settled by flag/config/memory usually appears in the
+    // cheap list, so check that first and pay for the manifests only when the
+    // answer could still change: an unrecognized name (it may be a package
+    // product) or no name at all (the picker — and `choose`'s single-candidate
+    // auto-pick — need the complete list).
+    let mut candidates = schemes_without_packages(&resolved.container)?;
+    let settled_and_known = resolved
+        .scheme
+        .as_ref()
+        .is_some_and(|s| candidates.iter().any(|c| c == s));
+    if !settled_and_known {
+        candidates = schemes(&resolved.container)?;
+    }
     let scheme = settle_scheme(ctx, resolved, &candidates, track)?;
     let configuration = settle_configuration(ctx, resolved, track)?;
 

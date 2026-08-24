@@ -3,7 +3,8 @@
 //! Reads `contents.xcworkspacedata` (XML, same parser as `.xcscheme`) and
 //! the workspace-level schemes (shared `xcshareddata/xcschemes/` plus
 //! per-user `xcuserdata/<user>.xcuserdatad/xcschemes/`).
-//! Returns absolute paths to every referenced `.xcodeproj`.
+//! Returns absolute paths to every referenced `.xcodeproj` and every local
+//! SwiftPM package.
 //!
 //! What `contents.xcworkspacedata` looks like:
 //!
@@ -11,11 +12,16 @@
 //! <Workspace version="1.0">
 //!   <FileRef location="group:Foo.xcodeproj"/>
 //!   <FileRef location="group:Sub/Bar.xcodeproj"/>
+//!   <FileRef location="group:MyLib"/>
 //!   <Group location="container:..." name="Subgroup">
 //!     <FileRef location="group:Baz.xcodeproj"/>
 //!   </Group>
 //! </Workspace>
 //! ```
+//!
+//! Every member is a `<FileRef>`; only the path tells them apart. A local
+//! package (`MyLib` above) points at the directory holding its `Package.swift`
+//! and carries no extension at all.
 //!
 //! Location prefixes we handle: `container:` (workspace dir), `group:`
 //! (parent-group dir, falling back to workspace dir), `absolute:` (absolute
@@ -39,6 +45,13 @@ pub struct Workspace {
     /// Absolute paths to every `.xcodeproj` referenced by the workspace,
     /// in declaration order.
     pub project_refs: Vec<PathBuf>,
+    /// Absolute paths to every local SwiftPM package referenced by the
+    /// workspace (a `FileRef` at a directory holding a `Package.swift`), in
+    /// declaration order. A package's schemes are its manifest's products,
+    /// and a manifest is Swift source that only the toolchain can evaluate —
+    /// so this crate reports the membership and leaves naming to a caller
+    /// that can run `swift package dump-package`.
+    pub package_refs: Vec<PathBuf>,
     /// The workspace bundle's own scheme names (shared plus per-user files),
     /// sorted alphabetically. Member-project schemes are merged in by
     /// [`Workspace::merged_schemes`].
@@ -95,11 +108,14 @@ pub fn open(workspace_path: &Path) -> Result<Workspace, Error> {
         .parent()
         .map_or_else(|| workspace_path.to_path_buf(), Path::to_path_buf);
     let mut project_refs = Vec::new();
-    collect_project_refs(&root, &base, &base, &mut project_refs);
+    let mut package_refs = Vec::new();
+    collect_member_refs(&root, &base, &base, &mut project_refs, &mut package_refs);
     // A workspace can declare the same `.xcodeproj` more than once (e.g. via a
     // group alias); Xcode lists it once. Drop duplicates, keep first-seen order.
     let mut seen = std::collections::HashSet::new();
     project_refs.retain(|p| seen.insert(p.clone()));
+    let mut seen = std::collections::HashSet::new();
+    package_refs.retain(|p| seen.insert(p.clone()));
 
     let schemes = crate::scheme::container_schemes(workspace_path);
 
@@ -113,6 +129,7 @@ pub fn open(workspace_path: &Path) -> Result<Workspace, Error> {
         name,
         path: workspace_path.to_path_buf(),
         project_refs,
+        package_refs,
         schemes,
     })
 }
@@ -137,6 +154,36 @@ impl Workspace {
             }
             set.extend(crate::scheme::container_schemes(project_path));
         }
+        for package_path in &self.package_refs {
+            set.extend(crate::scheme::container_schemes(&package_scheme_root(
+                package_path,
+            )));
+        }
+        let mut out: Vec<String> = set.into_iter().collect();
+        crate::scheme::sort_like_xcodebuild(&mut out);
+        out
+    }
+
+    /// [`Workspace::merged_schemes`] plus the schemes a caller resolved from
+    /// each member package's manifest, keyed by package path. Names for a
+    /// package this workspace doesn't reference are ignored, so a stale cache
+    /// entry can't invent a scheme.
+    ///
+    /// The split exists because product names need `swift package
+    /// dump-package` — see [`Workspace::package_refs`]. A caller with no
+    /// resolved names gets exactly `merged_schemes`.
+    #[must_use]
+    pub fn merged_schemes_with_packages(
+        &self,
+        package_schemes: &[(PathBuf, Vec<String>)],
+    ) -> Vec<String> {
+        let mut set: std::collections::BTreeSet<String> =
+            self.merged_schemes().into_iter().collect();
+        for (path, names) in package_schemes {
+            if self.package_refs.iter().any(|p| p == path) {
+                set.extend(names.iter().cloned());
+            }
+        }
         let mut out: Vec<String> = set.into_iter().collect();
         crate::scheme::sort_like_xcodebuild(&mut out);
         out
@@ -151,11 +198,51 @@ impl Workspace {
         self.merged_from_projects(|proj| proj.targets.into_iter().map(|t| t.name))
     }
 
+    /// [`Workspace::merged_targets`] plus the targets a caller read from each
+    /// member package's manifest, keyed by package path — packages appended
+    /// after the projects, in declaration order. Names for a package this
+    /// workspace doesn't reference are ignored, so a stale cache entry can't
+    /// invent a target.
+    ///
+    /// Target names need `swift package dump-package`; see
+    /// [`Workspace::package_refs`]. A caller with nothing resolved gets
+    /// exactly `merged_targets`.
+    #[must_use]
+    pub fn merged_targets_with_packages(
+        &self,
+        package_targets: &[(PathBuf, Vec<String>)],
+    ) -> Vec<String> {
+        let mut out = self.merged_targets();
+        let mut seen: std::collections::HashSet<String> = out.iter().cloned().collect();
+        for package_path in &self.package_refs {
+            let Some((_, names)) = package_targets.iter().find(|(p, _)| p == package_path) else {
+                continue;
+            };
+            for name in names {
+                if seen.insert(name.clone()) {
+                    out.push(name.clone());
+                }
+            }
+        }
+        out
+    }
+
     /// Distinct build-configuration names across every member project, in
     /// first-seen order.
+    ///
+    /// A local package contributes nothing here: SwiftPM has no Xcode
+    /// configurations, and `xcodebuild` accepts any `-configuration` for a
+    /// package scheme rather than matching it against a list. A workspace made
+    /// only of packages therefore has no project to name one, so it falls back
+    /// to the Debug/Release pair SwiftPM maps onto — leaving the picker empty
+    /// would offer no way to build at all.
     #[must_use]
     pub fn merged_configurations(&self) -> Vec<String> {
-        self.merged_from_projects(|proj| proj.configurations)
+        let from_projects = self.merged_from_projects(|proj| proj.configurations);
+        if from_projects.is_empty() && !self.package_refs.is_empty() {
+            return vec!["Debug".to_string(), "Release".to_string()];
+        }
+        from_projects
     }
 
     /// Collect a per-project string list across every member project,
@@ -211,11 +298,21 @@ impl Workspace {
     }
 }
 
-fn collect_project_refs(
+/// The scheme container inside a SwiftPM package. Xcode keeps a package's
+/// schemes under `.swiftpm/xcode` rather than in the package directory
+/// itself, so [`crate::scheme::container_schemes`] has to be pointed at that
+/// subdirectory to find them.
+#[must_use]
+pub fn package_scheme_root(package_dir: &Path) -> PathBuf {
+    package_dir.join(".swiftpm/xcode")
+}
+
+fn collect_member_refs(
     element: &Element,
     group_base: &Path,
     container_base: &Path,
-    out: &mut Vec<PathBuf>,
+    projects: &mut Vec<PathBuf>,
+    packages: &mut Vec<PathBuf>,
 ) {
     for child in &element.children {
         match child.name.as_str() {
@@ -227,7 +324,12 @@ fn collect_project_refs(
                     continue;
                 };
                 if path.extension().and_then(OsStr::to_str) == Some("xcodeproj") {
-                    out.push(path);
+                    projects.push(path);
+                } else if path.join("Package.swift").is_file() {
+                    // A local SwiftPM package joins a workspace as a `FileRef`
+                    // at its directory, with no extension to recognize it by —
+                    // the manifest inside is what makes it a member.
+                    packages.push(path);
                 }
             }
             "Group" => {
@@ -240,7 +342,7 @@ fn collect_project_refs(
                     .attr("location")
                     .and_then(|loc| resolve_location(loc, group_base, container_base))
                     .unwrap_or_else(|| group_base.to_path_buf());
-                collect_project_refs(child, &child_base, container_base, out);
+                collect_member_refs(child, &child_base, container_base, projects, packages);
             }
             _ => {}
         }
@@ -433,6 +535,141 @@ mod tests {
         )
         .unwrap();
         (ws, proj)
+    }
+
+    /// Add a local SwiftPM package next to `ws_path`'s project and reference
+    /// it the way Xcode does: a `FileRef` at the package *directory*, with no
+    /// extension marking it as anything.
+    fn add_package(ws_path: &Path, name: &str) -> PathBuf {
+        let root = ws_path.parent().unwrap();
+        let pkg = root.join(name);
+        fs::create_dir_all(&pkg).unwrap();
+        fs::write(pkg.join("Package.swift"), b"// swift-tools-version: 5.9\n").unwrap();
+        fs::write(
+            ws_path.join("contents.xcworkspacedata"),
+            format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n  <FileRef location=\"group:Scratch.xcodeproj\"/>\n  <FileRef location=\"group:{name}\"/>\n</Workspace>\n"
+            ),
+        )
+        .unwrap();
+        pkg
+    }
+
+    #[test]
+    fn a_local_package_member_is_kept_apart_from_the_projects() {
+        let (ws_path, _proj) = scratch_workspace("pkg-refs");
+        let pkg = add_package(&ws_path, "MyLib");
+        let ws = open(&ws_path).unwrap();
+        assert_eq!(
+            ws.project_refs,
+            vec![ws_path.parent().unwrap().join("Scratch.xcodeproj")]
+        );
+        assert_eq!(ws.package_refs, vec![pkg]);
+        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_directory_without_a_manifest_is_not_a_package_member() {
+        let (ws_path, _proj) = scratch_workspace("pkg-nomanifest");
+        let pkg = add_package(&ws_path, "NotAPackage");
+        fs::remove_file(pkg.join("Package.swift")).unwrap();
+        let ws = open(&ws_path).unwrap();
+        // A `FileRef` at a plain folder (a group of loose files) is neither a
+        // project nor a package, and must not be reported as either.
+        assert!(ws.package_refs.is_empty());
+        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_packages_own_scheme_files_live_under_dot_swiftpm() {
+        let (ws_path, _proj) = scratch_workspace("pkg-schemefiles");
+        let pkg = add_package(&ws_path, "MyLib");
+        let shared = package_scheme_root(&pkg).join("xcshareddata/xcschemes");
+        fs::create_dir_all(&shared).unwrap();
+        fs::write(shared.join("CustomLib.xcscheme"), b"").unwrap();
+
+        let ws = open(&ws_path).unwrap();
+        // Read straight from the package with no manifest evaluation — a
+        // customized scheme is a file like any other.
+        assert_eq!(ws.merged_schemes(), vec!["CustomLib", "Scratch"]);
+        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
+    }
+
+    #[test]
+    fn resolved_package_schemes_merge_in_and_stale_paths_are_ignored() {
+        let (ws_path, _proj) = scratch_workspace("pkg-merge");
+        let pkg = add_package(&ws_path, "MyLib");
+        let ws = open(&ws_path).unwrap();
+
+        let resolved = vec![
+            (pkg, vec!["LibA".to_string(), "LibB".to_string()]),
+            // A cache entry for a package this workspace dropped must not
+            // resurrect its schemes.
+            (PathBuf::from("/gone/Old"), vec!["Ghost".to_string()]),
+        ];
+        assert_eq!(
+            ws.merged_schemes_with_packages(&resolved),
+            vec!["LibA", "LibB", "Scratch"]
+        );
+        // With nothing resolved it degrades to exactly `merged_schemes`.
+        assert_eq!(ws.merged_schemes_with_packages(&[]), ws.merged_schemes());
+        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
+    }
+
+    #[test]
+    fn resolved_package_targets_append_after_the_projects() {
+        let (ws_path, _proj) = scratch_workspace("pkg-targets");
+        let pkg = add_package(&ws_path, "MyLib");
+        let ws = open(&ws_path).unwrap();
+
+        let resolved = vec![
+            (
+                pkg,
+                vec![
+                    "LibA".to_string(),
+                    // A test target belongs in a target list even though it is
+                    // never a scheme.
+                    "LibATests".to_string(),
+                ],
+            ),
+            (PathBuf::from("/gone/Old"), vec!["Ghost".to_string()]),
+        ];
+        assert_eq!(
+            ws.merged_targets_with_packages(&resolved),
+            vec!["Scratch", "LibA", "LibATests"]
+        );
+        assert_eq!(ws.merged_targets_with_packages(&[]), ws.merged_targets());
+        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_package_only_workspace_falls_back_to_debug_and_release() {
+        let (ws_path, _proj) = scratch_workspace("pkg-only-configs");
+        add_package(&ws_path, "MyLib");
+        // Drop the project reference so packages are the only members.
+        fs::write(
+            ws_path.join("contents.xcworkspacedata"),
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n  <FileRef location=\"group:MyLib\"/>\n</Workspace>\n",
+        )
+        .unwrap();
+        let ws = open(&ws_path).unwrap();
+        assert!(ws.project_refs.is_empty());
+        assert_eq!(ws.merged_configurations(), vec!["Debug", "Release"]);
+        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_package_never_adds_to_a_projects_configurations() {
+        let (ws_path, _proj) = scratch_workspace("mixed-configs");
+        let without_package = open(&ws_path).unwrap().merged_configurations();
+        add_package(&ws_path, "MyLib");
+        let with_package = open(&ws_path).unwrap();
+
+        assert!(!with_package.package_refs.is_empty());
+        assert!(!without_package.is_empty());
+        // The fallback applies only when no project names a configuration.
+        assert_eq!(with_package.merged_configurations(), without_package);
+        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
     }
 
     #[test]
