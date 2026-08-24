@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.11] - 2026-08-24
+
+- Fix schemes and targets from a workspace's local Swift packages never reaching the Build and Testing panels: a package joins an `.xcworkspace` as a reference to its directory, and SweetPad read only the references ending in `.xcodeproj`, so a workspace holding an app project alongside a local package listed the project's schemes alone ([#327](https://github.com/sweetpad-dev/sweetpad/issues/327), thanks [@rssole](https://github.com/rssole))
+
 ## [0.2.10] - 2026-08-16
 
 - Add multi-root workspace support: SweetPad tracks which workspace folder you are working in instead of assuming the first one, so a window holding several projects builds, runs and tests the one you selected — the scheme and destination pickers, the XcodeGen and Tuist watchers, the BSP bridge and the CLI server all follow the active folder as it changes ([#314](https://github.com/sweetpad-dev/sweetpad/pull/314), thanks [@dvkellerman](https://github.com/dvkellerman))
