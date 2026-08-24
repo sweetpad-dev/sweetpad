@@ -279,7 +279,7 @@ export async function activate(context: vscode.ExtensionContext) {
   void bspService.start();
   // An extension update leaves buildServer.json pointing into the directory the
   // previous version lived in. Nothing else notices until the next build.
-  void repairStaleBuildServerConfig({ workspaceRoot: workspacePath });
+  void repairStaleBuildServerConfig({ workspaceRoot: workspacePath, workspaceState: workspaceState });
 
   // Main dependency bag for commands 🌍
   const deps: AppDeps = {

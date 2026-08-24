@@ -30,7 +30,12 @@ describe("generateBuildServerConfig — Swift package (sweetpad provider)", () =
     const writeFile = vi.spyOn(fs, "writeFile");
     mockIsFileExists.mockResolvedValue(false);
 
-    await generateBuildServerConfig({ xcworkspace: "/pkg/Package.swift", scheme: "MyLib", workspaceRoot: "/pkg" });
+    await generateBuildServerConfig({
+      xcworkspace: "/pkg/Package.swift",
+      scheme: "MyLib",
+      workspaceRoot: "/pkg",
+      configuration: undefined,
+    });
 
     expect(writeFile).not.toHaveBeenCalled();
     expect(mockLog).toHaveBeenCalled();
@@ -42,7 +47,12 @@ describe("generateBuildServerConfig — Swift package (sweetpad provider)", () =
     const writeFile = vi.spyOn(fs, "writeFile");
     mockIsFileExists.mockResolvedValue(true);
 
-    await generateBuildServerConfig({ xcworkspace: "/pkg/Package.swift", scheme: "MyLib", workspaceRoot: "/pkg" });
+    await generateBuildServerConfig({
+      xcworkspace: "/pkg/Package.swift",
+      scheme: "MyLib",
+      workspaceRoot: "/pkg",
+      configuration: undefined,
+    });
 
     expect(mockIsFileExists).toHaveBeenCalledWith("/pkg/buildServer.json");
     expect(mockWarn).toHaveBeenCalled();

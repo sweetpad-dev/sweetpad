@@ -1,10 +1,7 @@
-import { promises as fs } from "node:fs";
-
 import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
-import { ensureDir, getProjectStateDir } from "../cli-server/paths";
-import { registerBspConfig, unregisterBspConfig } from "../cli-server/registry";
+import { unregisterBspConfig } from "../cli-server/registry";
 import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceContextService } from "../common/workspace-context";
@@ -12,7 +9,8 @@ import type { WorkspaceStateService } from "../common/workspace-state";
 import { BSP_LOG_LEVELS, BspBridge, type BspLogLevel } from "./bridge";
 import { getBuildServerProvider, isSweetpadBuildServerActive } from "./commands";
 import { buildBspResolvedConfig } from "./config";
-import { getBspConfigFile, getBspSocketPath } from "./paths";
+import { getBspSocketPath } from "./paths";
+import { writeBspConfig } from "./write";
 
 export type BspStatusSnapshot = {
   bspConnected: boolean;
@@ -82,8 +80,11 @@ export class BspService implements vscode.Disposable {
    * Persist the resolved config to the per-project `bsp.json` (under the XDG
    * state home), only when SweetPad is the provider and buildServer.json exists
    * (otherwise sourcekit-lsp won't launch our server, so the file is moot).
-   * Best-effort — a write failure or a folder with no Xcode workspace is logged,
-   * not surfaced.
+   *
+   * That gate is why the first one is seeded by whoever writes
+   * `buildServer.json`: this owns the file's contents, but cannot create it.
+   * Best-effort — a write failure or a folder with no Xcode workspace is
+   * logged, not surfaced.
    */
   private async saveConfig(): Promise<void> {
     const workspacePath = this.workspaceContext.root;
@@ -102,13 +103,7 @@ export class BspService implements vscode.Disposable {
       if (!config) {
         return;
       }
-      await ensureDir(getProjectStateDir(workspacePath));
-      const configFile = getBspConfigFile(workspacePath);
-      await fs.writeFile(configFile, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-      // Advertise the config path so the BSP server can find it from its cwd when
-      // buildServer.json carries no explicit `--config` (an older or hand-written
-      // stub). Independent of the control server's index entry.
-      await registerBspConfig(workspacePath, configFile);
+      await writeBspConfig(config);
       this.registeredPaths.add(workspacePath);
     } catch (err) {
       commonLogger.debug("Failed to write bsp.json", { error: err });

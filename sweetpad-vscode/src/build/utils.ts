@@ -543,12 +543,14 @@ export async function refreshBuildServer(options: {
   xcworkspace: string;
   scheme: string;
   workspaceRoot: string;
+  configuration: string | undefined;
   forceRestartLSP?: boolean;
 }): Promise<void> {
   await generateBuildServerConfig({
     xcworkspace: options.xcworkspace,
     scheme: options.scheme,
     workspaceRoot: options.workspaceRoot,
+    configuration: options.configuration,
   });
   await restartSwiftLSP({ force: options.forceRestartLSP });
 }
@@ -568,39 +570,66 @@ export async function refreshBuildServer(options: {
  * launcher to be the current one: here only a launcher missing from disk is
  * rewritten. One that resolves is somebody aiming us at a server deliberately,
  * and it keeps working.
+ *
+ * Best-effort: activation calls this without waiting on it, so a failure is
+ * logged rather than raised.
  */
-export async function repairStaleBuildServerConfig(options: { workspaceRoot: string }): Promise<void> {
-  if (getBuildServerProvider() !== "sweetpad") {
-    return;
-  }
-
-  let config: { name?: string; argv?: string[] } | undefined;
+export async function repairStaleBuildServerConfig(options: {
+  workspaceRoot: string;
+  workspaceState: WorkspaceStateService;
+}): Promise<void> {
   try {
-    config = await readJsonFile<{ name?: string; argv?: string[] }>(
-      path.join(options.workspaceRoot, "buildServer.json"),
-    );
-  } catch {
-    // No workspace, or no readable config. Writing one from nothing is the
-    // build's job; a repair only fixes what is already here.
-    return;
-  }
+    if (getBuildServerProvider() !== "sweetpad") {
+      return;
+    }
 
-  const launcher = config?.argv?.[0];
-  if (!isExtensionManagedBuildServerConfig(config, options.workspaceRoot) || launcher === undefined) {
-    return;
-  }
-  if (await isFileExists(launcher)) {
-    return;
-  }
+    let config: { name?: string; argv?: string[] } | undefined;
+    try {
+      config = await readJsonFile<{ name?: string; argv?: string[] }>(
+        path.join(options.workspaceRoot, "buildServer.json"),
+      );
+    } catch {
+      // No workspace, or no readable config. Writing one from nothing is the
+      // build's job; a repair only fixes what is already here.
+      return;
+    }
 
-  // Nothing to rewrite it to. Silent here rather than warning: the build path
-  // says this once already, and activation is not where somebody is asking.
-  if ((await getSweetpadCliPath()) === undefined) {
-    return;
-  }
+    const launcher = config?.argv?.[0];
+    if (!isExtensionManagedBuildServerConfig(config, options.workspaceRoot) || launcher === undefined) {
+      return;
+    }
+    if (await isFileExists(launcher)) {
+      return;
+    }
 
-  await generateSweetpadBuildServerConfig({ workspaceRoot: options.workspaceRoot });
-  await restartSwiftLSP();
+    // Nothing to rewrite it to. Silent here rather than warning: the build path
+    // says this once already, and activation is not where somebody is asking.
+    if ((await getSweetpadCliPath()) === undefined) {
+      return;
+    }
+
+    // Names the project so a rewrite can also fill in a missing `bsp.json`.
+    // Read rather than activated: a repair should not move the active folder.
+    const selected = getCurrentXcodeWorkspacePath(options.workspaceState);
+
+    await generateSweetpadBuildServerConfig({
+      workspaceRoot: options.workspaceRoot,
+      // A Swift package holds no Xcode project for the BSP server to open —
+      // the build path hands those to sourcekit-lsp's own SwiftPM support — so
+      // there the repair rewrites the launcher and seeds nothing.
+      xcworkspace: selected && detectWorkspaceType(selected) === "spm" ? undefined : selected,
+      scheme: undefined,
+      configuration: options.workspaceState.get("build.xcodeConfiguration"),
+    });
+    await restartSwiftLSP();
+  } catch (error) {
+    // Same silence as a missing CLI: the build path repairs this too, and
+    // activation is not where somebody is asking.
+    commonLogger.warn("Failed to repair stale buildServer.json", {
+      workspaceRoot: options.workspaceRoot,
+      error: error,
+    });
+  }
 }
 
 /**
@@ -665,6 +694,7 @@ export async function generateBuildServerConfigOnBuild(options: {
         xcworkspace: options.xcworkspace,
         scheme: options.scheme,
         workspaceRoot: options.workspaceRoot,
+        configuration: options.workspaceState.get("build.xcodeConfiguration"),
       });
     }
     return;
@@ -701,6 +731,7 @@ export async function generateBuildServerConfigOnBuild(options: {
         xcworkspace: options.xcworkspace,
         scheme: options.scheme,
         workspaceRoot: options.workspaceRoot,
+        configuration: options.workspaceState.get("build.xcodeConfiguration"),
       });
     }
     return;

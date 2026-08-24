@@ -5,6 +5,7 @@ import * as sweetpadLib from "@sweetpad/native";
 
 import { getBuildServerProvider } from "../../bsp/commands";
 import { getBspConfigFile } from "../../bsp/paths";
+import { assembleBspConfig, hasBspConfig, writeBspConfig } from "../../bsp/write";
 import { detectWorkspaceType, getSwiftPMDirectory, prepareDerivedDataPath } from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { getWorkspaceConfig } from "../config";
@@ -716,6 +717,7 @@ export async function generateBuildServerConfig(options: {
   xcworkspace: string;
   scheme: string;
   workspaceRoot: string;
+  configuration: string | undefined;
 }) {
   const provider = getBuildServerProvider();
   if (provider === "sweetpad") {
@@ -727,7 +729,12 @@ export async function generateBuildServerConfig(options: {
       await handleSwiftPackageNativeLsp(options.xcworkspace);
       return;
     }
-    await generateSweetpadBuildServerConfig({ workspaceRoot: options.workspaceRoot });
+    await generateSweetpadBuildServerConfig({
+      workspaceRoot: options.workspaceRoot,
+      xcworkspace: options.xcworkspace,
+      scheme: options.scheme,
+      configuration: options.configuration,
+    });
     return;
   }
 
@@ -798,18 +805,31 @@ export async function getSweetpadCliPath(): Promise<string | undefined> {
  * Cursor, nvim, Zed.
  *
  * Project, Xcode, scheme, configuration, the log path and the telemetry socket
- * are all read from that `bsp.json`, which the extension writes.
+ * are all read from that `bsp.json`, which is seeded here when absent (see
+ * `seedBspConfig`) and kept current by `BspService`.
  *
  * The launcher is the installed CLI rather than anything inside this
  * extension's own directory, so it keeps resolving after an extension update
  * instead of pointing into a version that has been deleted.
  */
-export async function generateSweetpadBuildServerConfig(options: { workspaceRoot: string }): Promise<void> {
+export async function generateSweetpadBuildServerConfig(options: {
+  workspaceRoot: string;
+  xcworkspace: string | undefined;
+  scheme: string | undefined;
+  configuration: string | undefined;
+}): Promise<void> {
   const cwd = options.workspaceRoot;
   const cli = await getSweetpadCliPath();
   if (cli === undefined) {
     throw new ExtensionError(SWEETPAD_CLI_MISSING_MESSAGE);
   }
+
+  await seedBspConfig({
+    workspaceRoot: cwd,
+    xcworkspace: options.xcworkspace,
+    scheme: options.scheme,
+    configuration: options.configuration,
+  });
 
   // sourcekit-lsp requires all five fields (`name`, `version`, `bspVersion`,
   // `languages`, `argv`) or the decode throws and the server is silently skipped.
@@ -821,6 +841,51 @@ export async function generateSweetpadBuildServerConfig(options: { workspaceRoot
     argv: [cli, "bsp", "serve", "--config", getBspConfigFile(cwd)],
   };
   await fs.writeFile(path.join(cwd, "buildServer.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
+/**
+ * Put a `bsp.json` in place before `buildServer.json` names it.
+ *
+ * `BspService` writes that file only once `buildServer.json` is already here
+ * and points at it, so on a first setup neither can go first and the server
+ * launches against a `--config` path that does not exist. Seeding here settles
+ * the order: the pointer is written second, so it never dangles.
+ *
+ * Only fills a gap — an existing `bsp.json` holds the live selection.
+ *
+ * Best-effort, the way `BspService.saveConfig` is: a failure here is logged and
+ * the pointer still goes out. Without a `bsp.json` the server falls back to the
+ * next write; without a `buildServer.json` there is no setup at all.
+ */
+async function seedBspConfig(options: {
+  workspaceRoot: string;
+  xcworkspace: string | undefined;
+  scheme: string | undefined;
+  configuration: string | undefined;
+}): Promise<void> {
+  const { workspaceRoot, xcworkspace } = options;
+  if (!xcworkspace) {
+    return;
+  }
+  try {
+    if (await hasBspConfig(workspaceRoot)) {
+      return;
+    }
+    // A null scheme resolves to the project's default until BspService, which
+    // sees a buildServer.json of ours only after this call, rewrites it.
+    await writeBspConfig(
+      assembleBspConfig({
+        workspacePath: workspaceRoot,
+        xcworkspace: xcworkspace,
+        developerDir: (await getDeveloperDir({ workspaceRoot: workspaceRoot })) ?? null,
+        scheme: options.scheme ?? null,
+        configuration: options.configuration ?? "Debug",
+        derivedDataPath: prepareDerivedDataPath({ workspaceRoot: workspaceRoot }) ?? null,
+      }),
+    );
+  } catch (error) {
+    commonLogger.warn("Failed to seed bsp.json", { workspaceRoot: workspaceRoot, error: error });
+  }
 }
 
 /**

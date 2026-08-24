@@ -279,6 +279,12 @@ describe("repairStaleBuildServerConfig", () => {
   const mockRepair = generateSweetpadBuildServerConfig as Mock;
   const mockReadJsonFile = readJsonFile as Mock;
   const mockIsFileExists = isFileExists as Mock;
+  const state = { get: vi.fn(), update: vi.fn() } as unknown as WorkspaceStateService;
+  const stateRemembering = (xcworkspace: string) =>
+    ({
+      get: vi.fn((key: string) => (key === "build.xcodeWorkspacePath" ? xcworkspace : undefined)),
+      update: vi.fn(),
+    }) as unknown as WorkspaceStateService;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -298,7 +304,7 @@ describe("repairStaleBuildServerConfig", () => {
     });
     mockIsFileExists.mockResolvedValue(false);
 
-    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace" });
+    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace", workspaceState: state });
 
     expect(mockRepair).toHaveBeenCalledTimes(1);
   });
@@ -309,7 +315,7 @@ describe("repairStaleBuildServerConfig", () => {
 
     // A path that exists is one somebody meant to point at, even where it isn't
     // the launcher this version ships. Only dangling ones are repaired.
-    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace" });
+    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace", workspaceState: state });
 
     expect(mockRepair).not.toHaveBeenCalled();
   });
@@ -318,7 +324,7 @@ describe("repairStaleBuildServerConfig", () => {
     mockReadJsonFile.mockResolvedValue({ name: "xcode build server", argv: ["/gone/xcode-build-server"] });
     mockIsFileExists.mockResolvedValue(false);
 
-    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace" });
+    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace", workspaceState: state });
 
     expect(mockRepair).not.toHaveBeenCalled();
   });
@@ -327,9 +333,59 @@ describe("repairStaleBuildServerConfig", () => {
     mockReadJsonFile.mockRejectedValue(new Error("ENOENT"));
 
     // Creating one from nothing belongs to the build, which knows the project.
-    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace" });
+    await repairStaleBuildServerConfig({ workspaceRoot: "/workspace", workspaceState: state });
 
     expect(mockRepair).not.toHaveBeenCalled();
+  });
+
+  it("names the remembered project so a missing bsp.json is filled in", async () => {
+    mockReadJsonFile.mockResolvedValue({
+      name: "sweetpad",
+      argv: ["/old-ext/out/bsp-server.js", "--config", getBspConfigFile("/workspace")],
+    });
+    mockIsFileExists.mockResolvedValue(false);
+
+    await repairStaleBuildServerConfig({
+      workspaceRoot: "/workspace",
+      workspaceState: stateRemembering("/workspace/App.xcworkspace"),
+    });
+
+    expect(mockRepair).toHaveBeenCalledWith(
+      expect.objectContaining({ xcworkspace: "/workspace/App.xcworkspace" }),
+    );
+  });
+
+  it("names no project when the remembered one is a Swift package", async () => {
+    mockReadJsonFile.mockResolvedValue({
+      name: "sweetpad",
+      argv: ["/old-ext/out/bsp-server.js", "--config", getBspConfigFile("/workspace")],
+    });
+    mockIsFileExists.mockResolvedValue(false);
+
+    // Packages go to sourcekit-lsp's own SwiftPM support, so a bsp.json naming
+    // Package.swift points the BSP server at a project it cannot open. The
+    // launcher is still rewritten.
+    await repairStaleBuildServerConfig({
+      workspaceRoot: "/workspace",
+      workspaceState: stateRemembering("/workspace/Package.swift"),
+    });
+
+    expect(mockRepair).toHaveBeenCalledWith(expect.objectContaining({ xcworkspace: undefined }));
+  });
+
+  it("logs a failed rewrite instead of rejecting", async () => {
+    mockReadJsonFile.mockResolvedValue({
+      name: "sweetpad",
+      argv: ["/old-ext/out/bsp-server.js", "--config", getBspConfigFile("/workspace")],
+    });
+    mockIsFileExists.mockResolvedValue(false);
+    mockRepair.mockRejectedValueOnce(new Error("EROFS"));
+
+    // Activation fires this without awaiting it, so a rejection has nobody to
+    // catch it.
+    await expect(
+      repairStaleBuildServerConfig({ workspaceRoot: "/workspace", workspaceState: state }),
+    ).resolves.toBeUndefined();
   });
 });
 

@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.13] - 2026-08-24
+
+- Fix autocomplete failing on a first BSP setup because `buildServer.json` was written before the config file it names ([#326](https://github.com/sweetpad-dev/sweetpad/issues/326))
+
 ## [0.2.12] - 2026-08-24
 
 - Fix the screenshots and the changelog link on the Marketplace listing, which have been broken since the extension moved into a subdirectory of the repository in 0.2.6: the listing is rendered outside the repository, and the relative paths in the README were being resolved against the repository root

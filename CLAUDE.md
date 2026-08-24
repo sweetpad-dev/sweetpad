@@ -42,6 +42,24 @@ the paths the CLI ships from so unrelated monorepo work stays out. There is no
 CHANGELOG: commit titles *are* the release notes, which is the practical reason
 each one should be a single short self-contained sentence.
 
+## Options objects: `?` versus `| undefined`
+
+**Do not mark an options property optional when the call sites all hold the
+value.** Declare it `foo: T | undefined` instead, so a caller with nothing to
+pass has to say so.
+
+Both read the same at the use site. They differ for the next call somebody
+adds: `foo?: T` lets it compile while quietly taking the default, while
+`foo: T | undefined` is a type error until it is answered. `refreshBuildServer`
+carries `configuration` this way, which is what makes each of its six call
+sites name one instead of falling through to Debug, and
+`repairStaleBuildServerConfig` carries `workspaceState` the same way.
+
+Keep `?` for what a caller really can have no opinion on: a flag with a
+default, a rarely-used override. A spec that would otherwise need a stub is not
+one of those — write the stub. Loosening a signature to keep a test call short
+means the tests stop exercising the shape production actually uses.
+
 ## Writing the extension CHANGELOG
 
 `sweetpad-vscode/CHANGELOG.md` is what users read on the Marketplace, and

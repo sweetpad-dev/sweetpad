@@ -166,6 +166,7 @@ export async function generateBuildServerConfigCommand(deps: AppDeps, item?: Bui
     workspaceRoot: workspaceRoot,
     xcworkspace: xcworkspace,
     scheme: scheme,
+    configuration: deps.buildManager.getDefaultConfigurationForBuild(),
     forceRestartLSP: true,
   });
 
@@ -232,6 +233,7 @@ export async function enableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTre
     workspaceRoot: workspaceRoot,
     xcworkspace: xcworkspace,
     scheme: scheme,
+    configuration: deps.buildManager.getDefaultConfigurationForBuild(),
     forceRestartLSP: true,
   });
   // Env-var changes only take effect after a window reload — beat VS Code's
@@ -273,6 +275,7 @@ export async function disableLspDiagnosticsCommand(deps: AppDeps, item?: BuildTr
     workspaceRoot: workspaceRoot,
     xcworkspace: xcworkspace,
     scheme: scheme,
+    configuration: deps.buildManager.getDefaultConfigurationForBuild(),
     forceRestartLSP: true,
   });
   await vscode.commands.executeCommand("workbench.action.reloadWindow");

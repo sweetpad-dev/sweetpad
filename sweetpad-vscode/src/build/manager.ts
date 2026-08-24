@@ -326,6 +326,7 @@ export class BuildManager {
       workspaceRoot: workspaceRoot,
       xcworkspace: xcworkspace,
       scheme: options.scheme,
+      configuration: this.getDefaultConfigurationForBuild(),
     });
 
     const isShown = this.workspaceState.get("build.xbsAutogenreateInfoShown") ?? false;

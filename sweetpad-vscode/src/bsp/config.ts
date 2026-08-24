@@ -1,34 +1,11 @@
-import * as path from "node:path";
-
 import type { BuildManager } from "../build/manager";
 import { activateCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../build/utils";
 import { getDeveloperDir } from "../common/cli/scripts";
-import { getWorkspaceConfig } from "../common/config";
 import type { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
-import { getBspLogPath, getBspSocketPath } from "./paths";
+import { type BspResolvedConfig, assembleBspConfig } from "./write";
 
-/**
- * Everything the BSP server needs, written by the extension to the per-project
- * `bsp.json` under the XDG state home (the server reads it at startup — via the
- * `--config` path in `buildServer.json` — and watches it for changes), so
- * `buildServer.json` stays a minimal launch stub. The config lives outside the
- * project tree, so all paths are written absolute.
- */
-export type BspResolvedConfig = {
-  workspacePath: string;
-  /** The `.xcodeproj` the server parses (Xcode addresses a plain project through its embedded `project.xcworkspace`). */
-  projectPath: string;
-  /** Xcode developer dir for `DEVELOPER_DIR` / toolchain lookup, or null if undetectable. */
-  developerDir: string | null;
-  scheme: string | null;
-  configuration: string;
-  derivedDataPath: string | null;
-  /** Debug log file. Defaults to the per-project state dir (out of the project tree); overridable via `sweetpad.buildServer.logPath`. */
-  logPath: string;
-  /** Unix socket the BSP server binds for telemetry; the extension connects to it for live logs/status. */
-  socket: string;
-};
+export type { BspResolvedConfig } from "./write";
 
 /**
  * Resolve the BSP config from the current selection, or `null` when no Xcode
@@ -48,37 +25,12 @@ export async function buildBspResolvedConfig(deps: {
   if (!xcworkspace) {
     return null;
   }
-  let projectPath = xcworkspace;
-  if (path.basename(projectPath) === "project.xcworkspace") {
-    projectPath = path.dirname(projectPath);
-  }
-  if (!path.isAbsolute(projectPath)) {
-    projectPath = path.join(deps.workspacePath, projectPath);
-  }
-  const derivedDataPath = prepareDerivedDataPath({ workspaceRoot: deps.workspacePath });
-  return {
+  return assembleBspConfig({
     workspacePath: deps.workspacePath,
-    projectPath: projectPath,
+    xcworkspace: xcworkspace,
     developerDir: (await getDeveloperDir({ workspaceRoot: deps.workspacePath })) ?? null,
     scheme: deps.buildManager.getDefaultSchemeForBuild() ?? null,
     configuration: deps.buildManager.getDefaultConfigurationForBuild() ?? "Debug",
-    derivedDataPath: derivedDataPath ?? null,
-    logPath: resolveLogPath(deps.workspacePath),
-    socket: getBspSocketPath(deps.workspacePath),
-  };
-}
-
-/**
- * The BSP log path. Defaults to the per-project state dir (`getBspLogPath`) so
- * logs are always captured without cluttering the project tree;
- * `sweetpad.buildServer.logPath` overrides it (with `${workspaceFolder}`/relative
- * resolved absolute against the workspace folder).
- */
-function resolveLogPath(workspacePath: string): string {
-  const raw = getWorkspaceConfig("buildServer.logPath");
-  if (raw) {
-    const expanded = raw.split("${workspaceFolder}").join(workspacePath);
-    return path.isAbsolute(expanded) ? expanded : path.join(workspacePath, expanded);
-  }
-  return getBspLogPath(workspacePath);
+    derivedDataPath: prepareDerivedDataPath({ workspaceRoot: deps.workspacePath }) ?? null,
+  });
 }
