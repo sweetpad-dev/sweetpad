@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.12] - 2026-08-24
+
+- Fix the screenshots and the changelog link on the Marketplace listing, which have been broken since the extension moved into a subdirectory of the repository in 0.2.6: the listing is rendered outside the repository, and the relative paths in the README were being resolved against the repository root
+
 ## [0.2.11] - 2026-08-24
 
 - Fix schemes and targets from a workspace's local Swift packages never reaching the Build and Testing panels: a package joins an `.xcworkspace` as a reference to its directory, and SweetPad read only the references ending in `.xcodeproj`, so a workspace holding an app project alongside a local package listed the project's schemes alone ([#327](https://github.com/sweetpad-dev/sweetpad/issues/327), thanks [@rssole](https://github.com/rssole))
