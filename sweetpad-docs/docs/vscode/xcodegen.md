@@ -22,8 +22,8 @@ Run `> SweetPad: Generate an Xcode project using XcodeGen` from the command pale
 
 ## Auto-regenerate when Swift files change
 
-XcodeGen projects list their source files in the generated project, so every added or deleted `.swift`
-file needs a regeneration. Let SweetPad do that automatically:
+XcodeGen projects list their source files in the generated project by default, so every added or
+deleted `.swift` file needs a regeneration. Let SweetPad do that automatically:
 
 ```json title=".vscode/settings.json"
 {
@@ -34,6 +34,15 @@ file needs a regeneration. Let SweetPad do that automatically:
 Then restart VSCode to apply the change. SweetPad watches for new or removed Swift files and re-runs
 `xcodegen generate` in the background, so the project stays in sync while you work. The watcher only
 activates when a `project.yml` exists at the workspace root.
+
+:::tip
+
+XcodeGen 2.44 and newer can make this unnecessary. Give a source `type: syncedFolder`, or set
+`defaultSourceDirectoryType: syncedFolder` under `options`, and the generated project points at the
+folder instead of listing the files inside it. Xcode then picks up new and deleted files from disk on
+its own. Changes to `project.yml` itself still need a regenerate.
+
+:::
 
 :::tip
 
