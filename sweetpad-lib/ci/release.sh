@@ -87,7 +87,10 @@ echo
 echo "Ready to publish $TAG ($(git rev-parse --short HEAD))."
 echo "Pushing signs, notarizes, publishes a public release, and bumps the Homebrew tap."
 if [ "$ASSUME_YES" -ne 1 ]; then
-  read -r -p "Push to origin? [y/N] " reply
+  # Without a terminal (CI, a pipeline, an agent) 'read' fails on EOF, which
+  # under 'set -e' would abort here — after the commit and tag exist, and
+  # before the line saying how to undo them. Treat EOF as declining.
+  read -r -p "Push to origin? [y/N] " reply || reply=""
   case "$reply" in
     y|Y|yes) ;;
     *) echo "Stopped. Local commit and tag are in place; 'git tag -d $TAG' to undo."; exit 0 ;;
