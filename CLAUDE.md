@@ -41,3 +41,26 @@ Release notes are generated from commit subjects over the tag range, scoped to
 the paths the CLI ships from so unrelated monorepo work stays out. There is no
 CHANGELOG: commit titles *are* the release notes, which is the practical reason
 each one should be a single short self-contained sentence.
+
+## Writing the extension CHANGELOG
+
+`sweetpad-vscode/CHANGELOG.md` is what users read on the Marketplace, and
+`publish-patch.sh` refuses to cut a release without a `## [<version>]` entry for
+the version it is about to tag.
+
+**Keep each entry to one short sentence, about the length of a CLI release
+note.** The CLI's notes are commit subjects, so they stay terse by construction;
+the extension's are hand-written and have drifted into 60-word sentences that
+pack the symptom, the root cause and the mechanism into one breath, usually
+hinged on a colon. Say what changed from the user's side and stop. Anyone who
+wants the diagnosis has the linked issue.
+
+Attribution stays as it is: link the issue or PR, and thank the reporter.
+
+    - Fix schemes and targets from a workspace's local Swift packages not
+      appearing in the Build and Testing panels
+      ([#327](https://github.com/sweetpad-dev/sweetpad/issues/327),
+      thanks [@rssole](https://github.com/rssole))
+
+Entries are written one per user-visible change, newest version on top, and the
+version's own entries ordered features first, then fixes.
