@@ -783,7 +783,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
         type: "generic",
         contextValue: "destination-group-generic",
         collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
-        icon: "vm",
+        icon: "sweetpad-circle-letter-g",
       }),
     );
 

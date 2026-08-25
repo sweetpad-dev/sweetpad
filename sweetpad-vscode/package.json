@@ -1445,6 +1445,13 @@
           "fontCharacter": "\\f456"
         }
       },
+      "sweetpad-circle-letter-g": {
+        "description": "Circle Letter G",
+        "default": {
+          "fontPath": "images/icons/tabler-icons.woff",
+          "fontCharacter": "\\f447"
+        }
+      },
       "sweetpad-circle-letter-i": {
         "description": "Circle Letter I",
         "default": {
