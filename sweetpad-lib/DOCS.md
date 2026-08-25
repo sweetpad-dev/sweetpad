@@ -226,6 +226,7 @@ Hand-built fixtures cover paths no real corpus project exercises:
 | `_synthetic-rich` | Rich settings: UBSan (+ sub-checks), exceptions, hidden visibility, warnings, `SWIFT_STRICT_CONCURRENCY = complete` (`scripts/18_rich_settings.py`) |
 | `_synthetic-multimodule` | App + two framework targets with a real cross-module `import` — the BSP pilot fixture (`scripts/19_multimodule.py`) |
 | `_synthetic-objc-headers` | ObjC header search paths for the BSP loop (`scripts/20_objc_headers.py`) |
+| `_synthetic-headermaps` | The ObjC imports only Xcode's header maps and generated-sources dirs resolve — a sibling dir's header, a mixed target's `-Swift.h`, a framework target's public header, with no `HEADER_SEARCH_PATHS` anywhere (`scripts/23_header_maps.py`) |
 | `_synthetic-multiplatform` | One `SDKROOT = auto` target with `SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx` — the IceCubesApp shape that keeps the SDK-binding regression in CI |
 | `_synthetic-{coredata,assetsym,strcat,intents,cocoapods,macro,tests}` | BSP generated-source / CocoaPods / Swift-macro / XCTest coverage — each a forced `Probe*.swift` referencing a build-time-generated / Pod / macro-expanded symbol |
 | `_synthetic-spm`, `_synthetic-workspace` | SwiftPM package products (`-F …/PackageFrameworks`); multi-project `.xcworkspace` resolution |
@@ -253,7 +254,7 @@ Hand-built fixtures cover paths no real corpus project exercises:
 | `14_compare_versions.py` | Cross-version delta: diffs two versions' per-target settings, canonicalizing path drift and dropping version-echo keys, split into behavioural vs path-geometry buckets |
 | `15_custom_configuration.py` | `_synthetic-custom-config` |
 | `16_capture_compiler_args.py` | Compiler-args oracle capture (build stdout → per-tool argv JSON) |
-| `17_static_library.py` / `18_rich_settings.py` / `19_multimodule.py` / `20_objc_headers.py` | Synthetic fixtures above |
+| `17_static_library.py` / `18_rich_settings.py` / `19_multimodule.py` / `20_objc_headers.py` / `23_header_maps.py` | Synthetic fixtures above |
 | `21_mutation_audit.py` | Injects plausible resolver bugs and checks a fast net goes red — measures the coverage of the coverage (7/7 caught by the fast tier; `--e2e` proves the de-exoneration reclassifies the SDKROOT=auto class) |
 
 ### 4.5 Oracle data sources and the tests that consume them
@@ -563,13 +564,37 @@ the build server via `buildTarget/prepare` — *we* must produce the modules.
   `membershipExceptions`), target dependency edges, Swift-package products
   (`-F …/PackageFrameworks`), corpus soundness checks.
 - **v2 — seamless background indexing**: advertises `prepareProvider: true`;
-  `buildTarget/prepare` runs an incremental `xcodebuild` **by scheme** (a bare
-  `-target` build doesn't populate the products dir;
-  `project::scheme_for_target` maps target → scheme) on a serialized worker,
+  `buildTarget/prepare` runs an incremental `xcodebuild` **by scheme**
+  (`project::scheme_for_target` maps target → scheme) on a serialized worker,
   best-effort. This is where we surpass `xcode-build-server` (no prepare
   there). Validated from a clean DerivedData: real headless sourcekit-lsp
   resolves cross-module imports with 0 diagnostics. Caveat: Xcode has no fast
   declarations-only prepare, so prepare = a real incremental build.
+
+  Prepare is load-bearing rather than opportunistic since the clang search
+  paths became a function of build state (`compiler_args::header_map_paths`),
+  which is what the rest of its shape follows from:
+
+  - it pushes `buildTarget/didChange` for what it built, so a client that
+    pulled options against the cold tree comes back for the header maps the
+    build has now written — nothing else does, since the pbxproj watcher fires
+    on project edits and a build isn't one;
+  - a target **no scheme builds** is prepared by `-target` with `SYMROOT` /
+    `OBJROOT` named, which is what puts its output in the DerivedData the
+    editor arguments resolve against rather than the project's own `build/`;
+  - `build/initialized` queues a warm-up over every target, at the back of the
+    queue so a `buildTarget/prepare` — a file somebody has open, and a reply
+    sourcekit-lsp is blocked on — overtakes it;
+  - a repeat over unchanged project files is skipped (a failure is retried
+    after `PREPARE_RETRY_AFTER`), so asking per opened file doesn't serialize a
+    fresh `xcodebuild` behind each one;
+  - a failure is recorded and pushed as a `failed` status, which the
+    extension's Doctor reports. The reply is still sent — a missing one wedges
+    sourcekit-lsp's semantics for that target — so the failure needs a channel
+    of its own.
+
+  The `swiftc` fast path below produces no header maps, but needs none: it
+  requires the whole closure to be pure Swift.
 - **v3 — self-built prepare (Swift fast path)**: if the prepared target's
   transitive closure is `project::is_self_buildable` (pure Swift; no package
   products, C-family sources, script phases, or build rules), emit each
@@ -584,8 +609,13 @@ the build server via `buildTarget/prepare` — *we* must produce the modules.
 All layers are headless and self-labeling (no human in the iteration):
 
 - **Layer 0 — type-check oracle** (`tests/bsp_typecheck_oracle.rs`, opt-in
-  `BSP_ORACLE=1`): `swiftc -typecheck` with our generated args → 0
-  module-resolution errors, including cross-module imports.
+  `BSP_ORACLE=1`): `swiftc -typecheck` / `clang -fsyntax-only` with our
+  generated args → 0 module-resolution errors, including cross-module imports
+  and the header-map surface (`_synthetic-headermaps`). The same file carries
+  a **search-path coverage** check from the other side: every `-I`/`-iquote`
+  Xcode's own `CompileC` line passes, and that exists on disk, must have a
+  counterpart in ours — the net the arg-oracle comparator can't be, since it
+  scores header maps and `Intermediates.noindex` paths as geometry.
 - **Layer 1 — conformance** (`tests/bsp_conformance.rs`, fast/hermetic/
   ungated): scripted JSON-RPC pinning the full reply surface — capability set,
   item shapes, membership fallback, unowned-file and unknown-method edges,

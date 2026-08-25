@@ -5,84 +5,89 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 ## [0.2.13] - 2026-08-24
 
 - Add Xcode's "Any iOS Device" and the other build-only destinations ([#71](https://github.com/sweetpad-dev/sweetpad/issues/71), thanks [@NSExceptional](https://github.com/NSExceptional))
-- Fix autocomplete failing on a first BSP setup because `buildServer.json` was written before the config file it names ([#326](https://github.com/sweetpad-dev/sweetpad/issues/326))
+- Autocomplete now works in every target from the start
+- "SweetPad: Diagnose BSP" now reports the last background build's error
+- Fix Objective-C imports reporting `'Header.h' file not found` on code that builds ([#238](https://github.com/sweetpad-dev/sweetpad/issues/238))
+- Fix autocomplete coming up empty on a first BSP setup ([#326](https://github.com/sweetpad-dev/sweetpad/issues/326))
 
 ## [0.2.12] - 2026-08-24
 
-- Fix the screenshots and the changelog link on the Marketplace listing, which have been broken since the extension moved into a subdirectory of the repository in 0.2.6: the listing is rendered outside the repository, and the relative paths in the README were being resolved against the repository root
+- Fix the Marketplace listing's broken screenshots and changelog link
 
 ## [0.2.11] - 2026-08-24
 
-- Fix schemes and targets from a workspace's local Swift packages never reaching the Build and Testing panels: a package joins an `.xcworkspace` as a reference to its directory, and SweetPad read only the references ending in `.xcodeproj`, so a workspace holding an app project alongside a local package listed the project's schemes alone ([#327](https://github.com/sweetpad-dev/sweetpad/issues/327), thanks [@rssole](https://github.com/rssole))
+- Fix Swift package schemes missing from the Build and Testing panels ([#327](https://github.com/sweetpad-dev/sweetpad/issues/327), thanks [@rssole](https://github.com/rssole))
 
 ## [0.2.10] - 2026-08-16
 
-- Add multi-root workspace support: SweetPad tracks which workspace folder you are working in instead of assuming the first one, so a window holding several projects builds, runs and tests the one you selected — the scheme and destination pickers, the XcodeGen and Tuist watchers, the BSP bridge and the CLI server all follow the active folder as it changes ([#314](https://github.com/sweetpad-dev/sweetpad/pull/314), thanks [@dvkellerman](https://github.com/dvkellerman))
-- Swift autocomplete now works out of the box: SweetPad's built-in build server is the default provider, so there is no need to install `xcode-build-server` or run a build first. A workspace whose `buildServer.json` another tool wrote keeps that tool ([#317](https://github.com/sweetpad-dev/sweetpad/pull/317))
-- Run the build server through the `sweetpad` CLI instead of a Node shim inside the extension directory: `buildServer.json` now points at `sweetpad bsp serve`, which removes the node-on-PATH requirement and stops the launcher going stale on every extension update. The CLI joins the Tools panel so it installs in one click, and a workspace whose config an older extension wrote is migrated on the next build ([#319](https://github.com/sweetpad-dev/sweetpad/pull/319))
-- Add `sweetpad.testing.baseClasses` so test classes that inherit from a shared base class rather than `XCTestCase` directly appear in the Testing panel; the scanner also tolerates protocol conformances, generics and inheritance clauses wrapped across lines ([#324](https://github.com/sweetpad-dev/sweetpad/pull/324))
-- Fix build errors never reaching the Problems panel when clang word-wraps its message: a long enough workspace path pushed the message onto the next line, leaving a header the parser did not match ([#316](https://github.com/sweetpad-dev/sweetpad/pull/316))
-- Fix autocomplete returning nothing for `.h` headers and for files reached through a symlink or a `..` path segment ([#312](https://github.com/sweetpad-dev/sweetpad/pull/312))
-- "SweetPad: Diagnose BSP" now reports the `sweetpad` CLI's version and flags it when it is older than the extension needs; this release needs 0.1.6 or newer, so run `brew upgrade sweetpad-dev/tap/sweetpad` if autocomplete comes up empty ([#322](https://github.com/sweetpad-dev/sweetpad/pull/322))
+- Add multi-root workspace support ([#314](https://github.com/sweetpad-dev/sweetpad/pull/314), thanks [@dvkellerman](https://github.com/dvkellerman))
+- Swift autocomplete now works out of the box ([#317](https://github.com/sweetpad-dev/sweetpad/pull/317))
+- Run the build server through the `sweetpad` CLI ([#319](https://github.com/sweetpad-dev/sweetpad/pull/319))
+- Add `sweetpad.testing.baseClasses` for tests with a shared base class ([#324](https://github.com/sweetpad-dev/sweetpad/pull/324))
+- "SweetPad: Diagnose BSP" now warns when the `sweetpad` CLI is outdated ([#322](https://github.com/sweetpad-dev/sweetpad/pull/322))
+- Fix wrapped build errors missing from the Problems panel ([#316](https://github.com/sweetpad-dev/sweetpad/pull/316))
+- Fix autocomplete for `.h` headers and symlinked paths ([#312](https://github.com/sweetpad-dev/sweetpad/pull/312))
 
 ## [0.2.9] - 2026-07-28
 
-- Add debugging on physical devices running iOS 16 and below, which have no CoreDevice and so were never reachable through the `devicectl` path: SweetPad installs the app with `ios-deploy` and leaves a debugserver listening, and the debug session connects to it and launches the process itself, so breakpoints, stepping and the Debug Console work the same way they do on iOS 17+ ([#309](https://github.com/sweetpad-dev/sweetpad/issues/309), thanks [@zHElEARN](https://github.com/zHElEARN))
-- Stream the device's `os_log`/`Logger` output into the terminal when running or debugging on iOS 16 and below: `ios-deploy` relays only the app's stdout/stderr, so anything logged through `Logger` was previously invisible
+- Add debugging on physical devices running iOS 16 and below ([#309](https://github.com/sweetpad-dev/sweetpad/issues/309), thanks [@zHElEARN](https://github.com/zHElEARN))
+- Stream `Logger` output from devices running iOS 16 and below
 
 ## [0.2.8] - 2026-07-26
 
-- Add `sweetpad.build.scheme` and `sweetpad.build.destination` settings so a project can pin its scheme and run destination in `.vscode/settings.json` instead of picking them again in every new checkout or worktree; the destination takes its `type` plus a plain UDID, and the pickers offer to write both settings for you ([#307](https://github.com/sweetpad-dev/sweetpad/pull/307), thanks [@czuria1](https://github.com/czuria1))
-- Fix the built app not being found when Xcode is set to use a custom Derived Data location, either app-wide (Locations → Derived Data) or per-workspace (`WorkspaceSettings.xcsettings`): the bundled resolver now follows the same locations `xcodebuild` does instead of assuming the default DerivedData layout ([#306](https://github.com/sweetpad-dev/sweetpad/issues/306))
+- Add `sweetpad.build.scheme` and `sweetpad.build.destination` settings ([#307](https://github.com/sweetpad-dev/sweetpad/pull/307), thanks [@czuria1](https://github.com/czuria1))
+- Fix the built app not being found in custom Derived Data ([#306](https://github.com/sweetpad-dev/sweetpad/issues/306))
 
 ## [0.2.7] - 2026-07-05
 
-- Fix launching on a physical device (iOS 17+) failing when the scheme has "Arguments Passed On Launch" values that start with `-` (common `NSUserDefaults`-style flags): SweetPad now inserts a `--` separator before the forwarded arguments so `devicectl` treats them as app arguments instead of parsing them as its own options ([#296](https://github.com/sweetpad-dev/sweetpad/issues/296), thanks [@rodrigosoldi](https://github.com/rodrigosoldi))
+- Fix device launches failing on arguments that start with `-` ([#296](https://github.com/sweetpad-dev/sweetpad/issues/296), thanks [@rodrigosoldi](https://github.com/rodrigosoldi))
 
 ## [0.2.6] - 2026-06-22
 
-- The `sweetpad` CLI is now distributed via Homebrew (`brew install sweetpad-dev/tap/sweetpad`) instead of being bundled in the extension; the "Install CLI on PATH" command is removed
+- The `sweetpad` CLI now ships through Homebrew, not the extension
+- Remove the "Install CLI on PATH" command
 
 ## [0.2.5] - 2026-06-22
 
-- Sign and notarize the bundled native resolver and `sweetpad` CLI with a Developer ID, so macOS no longer blocks them from loading on Gatekeeper-restricted setups that rejected the previously ad-hoc-signed builds
+- Sign and notarize the native resolver and the `sweetpad` CLI
 
 ## [0.2.4] - 2026-06-19
 
-- Add Swift Package Manager support: build and run `Package.swift` packages by driving the Swift toolchain directly instead of `xcodebuild` ([#290](https://github.com/sweetpad-dev/sweetpad/pull/290))
-- Fix the built app not being found at launch when a project relocates its build products with a custom `SYMROOT` (e.g. `SYMROOT = $(SRCROOT)/../build/products` in an xcconfig): the bundled resolver now derives `BUILD_DIR`/`BUILD_ROOT` from `SYMROOT`, so `TARGET_BUILD_DIR` follows the custom location instead of assuming the default DerivedData layout ([#292](https://github.com/sweetpad-dev/sweetpad/issues/292), thanks [@foltri](https://github.com/foltri))
-- Fix the built app not being found when a bare `.xcodeproj` sits beside or below an unrelated `.xcworkspace` it isn't a member of: the DerivedData folder is now keyed by the project, matching Xcode, instead of the neighbouring workspace
-- Fix the built app not being found for projects whose path contains non-ASCII characters: the DerivedData hash now matches Xcode's NFD path normalization ([#288](https://github.com/sweetpad-dev/sweetpad/pull/288))
+- Add Swift Package Manager support ([#290](https://github.com/sweetpad-dev/sweetpad/pull/290))
+- Fix the built app not being found under a custom `SYMROOT` ([#292](https://github.com/sweetpad-dev/sweetpad/issues/292), thanks [@foltri](https://github.com/foltri))
+- Fix the built app not being found beside an unrelated `.xcworkspace`
+- Fix the built app not being found under a non-ASCII path ([#288](https://github.com/sweetpad-dev/sweetpad/pull/288))
 
 ## [0.2.3] - 2026-06-15
 
-- Fix the built app not being found when `sweetpad.build.xcodeWorkspacePath` points at the `project.xcworkspace` stub Xcode auto-generates inside an `.xcodeproj` bundle: the DerivedData folder is now keyed by the outer `.xcodeproj` (`CSUSTPlanet-…`), matching Xcode, instead of the stub (`project-…`) ([#285](https://github.com/sweetpad-dev/sweetpad/issues/285), thanks [@zHElEARN](https://github.com/zHElEARN))
+- Fix the built app not being found through the `project.xcworkspace` stub ([#285](https://github.com/sweetpad-dev/sweetpad/issues/285), thanks [@zHElEARN](https://github.com/zHElEARN))
 
 ## [0.2.2] - 2026-06-13
 
-- Fix the built app not being found after 0.2.1 when building from a workspace whose `.xcodeproj` lives in a different directory than the `.xcworkspace`: build settings (`BUILD_DIR`/`TARGET_BUILD_DIR`) are now keyed by the workspace's DerivedData folder, matching Xcode, instead of the member project's ([#265](https://github.com/sweetpad-dev/sweetpad/issues/265))
-- Fix native macOS targets that inherit an iOS-family Base SDK but explicitly set `SUPPORTS_MACCATALYST = NO` being misdetected as Mac Catalyst, which resolved `Debug-maccatalyst/…` build paths Xcode never writes ([#264](https://github.com/sweetpad-dev/sweetpad/pull/264), thanks [@zHElEARN](https://github.com/zHElEARN))
+- Fix the built app not being found in some workspaces since 0.2.1 ([#265](https://github.com/sweetpad-dev/sweetpad/issues/265))
+- Fix native macOS targets misdetected as Mac Catalyst ([#264](https://github.com/sweetpad-dev/sweetpad/pull/264), thanks [@zHElEARN](https://github.com/zHElEARN))
 
 ## [0.2.1] - 2026-06-11
 
-- Match `xcodebuild -list` exactly when listing schemes: autocreated per-target schemes now appear even when other scheme files exist, test bundles / WatchKit extensions / watch-app companion stubs / legacy Safari extensions are correctly excluded, and the list is sorted the way Xcode sorts it
-- Resolve build settings more accurately across Xcode 15/16/26 — Mac Catalyst (deployment-target floor, `SUPPORTED_PLATFORMS`, debug-info format), debug-dylib and hardened-runtime gating, mergeable libraries, and the Xcode 15.x reporting family now byte-match `xcodebuild -showBuildSettings` on the whole test corpus
-- Feed sourcekit-lsp more faithful linker arguments (Swift runtime rpath, debugger AST registration for linked frameworks and dylibs, XCTest support libraries, version-gated flag spellings)
-- Pass the login shell's `DEVELOPER_DIR` to the bundled resolver explicitly, so a `DEVELOPER_DIR` exported in `~/.zshrc`/`~/.zprofile` selects the same Xcode for scheme lists and build settings as it does for builds
-- "SweetPad: Refresh shell environment" now also re-detects the active Xcode, picking up `xcode-select --switch` without restarting VS Code
-- Route `-showBuildSettings` through a customized `sweetpad.build.xcodebuildCommand` again (a wrapper that injects env or selects a toolchain now sees the same queries it sees builds), and log a one-time warning that scheme/target/configuration lists always come from the bundled resolver
-- Add opt-in `sweetpad.system.xcodebuildFallback` to retry build-settings queries via `xcodebuild` when the bundled resolver fails on exotic or malformed projects
-- List Xcode's autocreated per-target schemes for projects/workspaces that have no `.xcscheme` files on disk (fresh or never-shared projects previously showed an empty scheme list)
-- Discover and resolve per-user schemes stored under `xcuserdata/<user>.xcuserdatad/xcschemes`, matching `xcodebuild -list` and `-showBuildSettings -scheme`
-- Resolve build settings for schemes stored in the workspace bundle's own `xcshareddata`/`xcuserdata` (they were listed but failed to launch), dispatching each buildable to the member project named by its `ReferencedContainer`
+- Match `xcodebuild -list` exactly when listing schemes
+- List autocreated schemes for projects with no `.xcscheme` files
+- Discover per-user schemes stored under `xcuserdata`
+- Resolve schemes stored in the workspace bundle itself
+- Resolve build settings more accurately across Xcode 15, 16 and 26
+- Feed sourcekit-lsp more faithful linker arguments
+- Honour a `DEVELOPER_DIR` exported from your shell profile
+- "SweetPad: Refresh shell environment" now re-detects the active Xcode
+- Route `-showBuildSettings` through `sweetpad.build.xcodebuildCommand` again
+- Add opt-in `sweetpad.system.xcodebuildFallback` for projects the resolver cannot read
 
 ## [0.2.0] - 2026-06-10
 
-- Add built-in Swift code intelligence powered by a bundled Build Server Protocol (BSP) server: SweetPad feeds sourcekit-lsp accurate per-file compiler arguments, builds dependency modules on demand, and refreshes live when you switch scheme or configuration — with `SweetPad: Setup BSP` and `SweetPad: Diagnose BSP` commands, a status-bar control, and a first-run prompt
+- Add built-in Swift code intelligence through a bundled BSP server
+- Route read-only Xcode operations through the bundled Rust resolver
+- Remove the opt-in `sweetpad.system.useSweetpadLib` flag
 - Rename the `sweetpad.server.*` settings and commands to `sweetpad.cliServer.*`
-- Fix a "path argument must be of type string" crash on older Node runtimes during workspace auto-detection ([#255](https://github.com/sweetpad-dev/sweetpad/issues/255))
-- Always route read-only Xcode operations (`-list`, `-showBuildSettings`, `-version`) through the bundled [sweetpad-lib](https://github.com/sweetpad-dev/sweetpad-lib) Rust resolver, and remove the opt-in `sweetpad.system.useSweetpadLib` flag
-- Remove the `scheme.write` agent RPC method — scheme files are now read-only over the agent API via `scheme.reveal`
+- Remove the `scheme.write` agent RPC method
+- Fix a crash during workspace auto-detection on older Node runtimes ([#255](https://github.com/sweetpad-dev/sweetpad/issues/255))
 
 ## [0.1.94] - 2026-05-24
 

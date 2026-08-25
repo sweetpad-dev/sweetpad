@@ -6,8 +6,14 @@ import type { Mock } from "vitest";
 
 import { getWorkspaceFolderPaths } from "../build/utils";
 import { getWorkspaceConfig, isWorkspaceConfigSetByUser } from "../common/config";
-import { getBuildServerProvider, isPreservingForeignBuildServer, isSweetpadBuildServerActive } from "./commands";
+import {
+  getBuildServerProvider,
+  isPreservingForeignBuildServer,
+  isSweetpadBuildServerActive,
+  preparedCheck,
+} from "./commands";
 import { getBspConfigFile } from "./paths";
+import type { BspStatusSnapshot } from "./service";
 
 /** argv for the config the extension maintains: project comes from bsp.json. */
 const managedArgv = () => ["/opt/homebrew/bin/sweetpad", "bsp", "serve", "--config", getBspConfigFile(workspace)];
@@ -212,5 +218,34 @@ describe("isSweetpadBuildServerActive", () => {
     // two. That server reads neither our bsp.json nor our socket, and calling
     // it active would have us write and report against something we don't run.
     await expect(isSweetpadBuildServerActive(workspace)).resolves.toBe(false);
+  });
+});
+
+const snapshot = (phase: string | null, phaseDetail: string | null = null): BspStatusSnapshot => ({
+  bspConnected: true,
+  scheme: "App",
+  configuration: "Debug",
+  logLevel: "info",
+  phase,
+  phaseDetail,
+});
+
+describe("preparedCheck", () => {
+  it("reports a failed prepare with the server's detail", () => {
+    const check = preparedCheck(snapshot("failed", "App: exit=65: clang: error: no such file"));
+    expect(check.ok).toBe(false);
+    expect(check.detail).toBe("App: exit=65: clang: error: no such file");
+    expect(check.hint).toBeDefined();
+  });
+
+  it("does not call a prepare that has not run a failure", () => {
+    const check = preparedCheck(snapshot(null));
+    expect(check.ok).toBe(true);
+    expect(check.detail).toBe("not run yet");
+  });
+
+  it("distinguishes a prepare still running from a finished one", () => {
+    expect(preparedCheck(snapshot("preparing")).detail).toBe("in progress");
+    expect(preparedCheck(snapshot("ready")).detail).toBe("ready");
   });
 });
