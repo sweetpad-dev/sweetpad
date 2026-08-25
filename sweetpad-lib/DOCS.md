@@ -740,6 +740,7 @@ unit tests rather than a corpus capture.
 | App-wide `IDECustomDerivedDataLocation` (Settings → Locations) — keeps `<Name>-<hash>` | ✅ | src/derived_data.rs (`stock_layout_when_nothing_is_configured`, `absolute_style_keeps_the_hash`) |
 | Per-container `DerivedDataLocationStyle = AbsolutePath` — keeps `<Name>-<hash>` | ✅ | src/derived_data.rs (`absolute_style_keeps_the_hash`) |
 | Per-container `= WorkspaceRelativePath` — bare `<Name>`, no hash | ✅ | src/derived_data.rs (`workspace_relative_style_drops_the_hash`) |
+| `<Name>-<hash>` collapses whitespace runs in the name to `_`; the bare `<Name>` keeps them | ✅ | src/derived_data.rs (`hashed_name_collapses_whitespace_runs_only`, `hashed_name_leaves_every_other_character_alone`, `stock_layout_collapses_whitespace_in_the_folder_name`, `workspace_relative_style_keeps_whitespace_verbatim`) |
 | `BuildLocationStyle = CustomLocation` × {Absolute, RelativeToDerivedData, RelativeToWorkspace} | ✅ | src/derived_data.rs (`custom_location_*`) |
 | Precedence: `CustomLocation` outranks `-derivedDataPath`, which outranks the container's DerivedData style | ✅ | src/derived_data.rs (`custom_location_outranks_the_derived_data_path_flag`) |
 | Ignored by xcodebuild: the `xcshareddata` copy, `DeterminedByTargets`, app-wide `IDEBuildLocationStyle` | ✅ | src/derived_data.rs (`ignores_the_shared_settings_copy`, `determined_by_targets_is_a_no_op`) |
