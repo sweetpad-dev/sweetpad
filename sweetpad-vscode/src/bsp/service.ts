@@ -17,6 +17,9 @@ export type BspStatusSnapshot = {
   scheme: string | null;
   configuration: string | null;
   logLevel: BspLogLevel;
+  /** The server's last reported phase, and its detail when that phase is "failed". */
+  phase: string | null;
+  phaseDetail: string | null;
 };
 
 /**
@@ -134,6 +137,8 @@ export class BspService implements vscode.Disposable {
       scheme: this.buildManager.getDefaultSchemeForBuild() ?? null,
       configuration: this.buildManager.getDefaultConfigurationForBuild() ?? null,
       logLevel: b.level,
+      phase: b.phase ?? null,
+      phaseDetail: b.detail ?? null,
     };
   }
 

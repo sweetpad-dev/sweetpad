@@ -8,8 +8,9 @@
 //! defaults a current Xcode always passes (`-enable-batch-mode`,
 //! `-explicit-module-build`, `-no-color-diagnostics`, …). It does **not** emit
 //! the per-build output/intermediate geometry (`-o`, `-output-file-map`,
-//! `-emit-module-path`, header maps, the module cache): those are validation-
-//! out-of-scope (see the oracle comparator) and have no consumer here.
+//! `-emit-module-path`, the module cache): those are validation-out-of-scope
+//! (see the oracle comparator) and have no consumer here. The clang header
+//! maps are the exception the editor forces — see [`header_map_paths`].
 //!
 //! Mappings are grounded against the captured oracle
 //! (`fixtures/<slug>/.../compiler-args/`). Where a flag is a fixed build-system
@@ -473,7 +474,7 @@ pub fn clang_arguments(
     // Header/framework search paths live in the core build-settings spec, not the
     // Clang tool spec, so the option loop below never emits them — the editor's
     // front end needs them to find project headers and framework modules.
-    emit_clang_search_paths(&mut a, settings);
+    emit_clang_search_paths(&mut a, settings, arch);
     // An option applies when its language, arch, and condition gates all pass. A
     // `FileTypes` is satisfied by a language the target compiles (or is empty, =
     // every C-family input; or `file_types` is empty = no info, gate nothing); an
@@ -522,46 +523,118 @@ pub fn clang_arguments(
 }
 
 /// Emit the clang header/framework search paths. The build system adds these
-/// from the core build settings (not the Clang xcspec): the products dir's
-/// generated-headers `include` subdir + `HEADER_SEARCH_PATHS` as `-I`, the
+/// from the core build settings (not the Clang xcspec): the target's generated
+/// header maps, the products dir's generated-headers `include` subdir +
+/// `HEADER_SEARCH_PATHS` as `-I`, the target's generated-sources dirs, the
 /// products dir + `FRAMEWORK_SEARCH_PATHS` as `-F`, and the user/system header
-/// paths as `-iquote`/`-isystem`. Each list is de-duplicated (a setting often
-/// re-inherits the products dir), as `emit_library_paths` does for `-L`.
-fn emit_clang_search_paths(a: &mut ArgBuilder, settings: &Settings) {
+/// paths as `-iquote`/`-isystem`. Each `flag`/path pair is emitted once (a
+/// setting often re-inherits the products dir), as `emit_library_paths` does
+/// for `-L`.
+fn emit_clang_search_paths(a: &mut ArgBuilder, settings: &Settings, arch: &str) {
     let get = |k: &str| settings.get(k).map(String::as_str);
     let products = get("BUILT_PRODUCTS_DIR");
+    let mut paths: Vec<(&str, String)> = header_map_paths(settings);
 
     // `-I`: the products generated-headers dir, then HEADER_SEARCH_PATHS. (Bare
     // `BUILT_PRODUCTS_DIR` is a Swift-module path, not a clang header path.)
-    let mut includes: Vec<String> = Vec::new();
     if let Some(p) = products {
-        includes.push(format!("{p}/include"));
+        paths.push(("-I", format!("{p}/include")));
     }
-    includes.extend(ws_unquoted(get("HEADER_SEARCH_PATHS")));
-    emit_unique_pairs(a, "-I", &includes);
+    paths.extend(
+        ws_unquoted(get("HEADER_SEARCH_PATHS"))
+            .into_iter()
+            .map(|p| ("-I", p)),
+    );
+
+    // The target's generated sources: the `<Product>-Swift.h` an ObjC file in a
+    // mixed target imports, the `_vers.c` stamp, Core Data / Intents classes.
+    // Per-variant and per-arch first, then the flat dir, as the build system
+    // orders them.
+    if let Some(dir) = get("DERIVED_FILE_DIR") {
+        let variant = get("CURRENT_VARIANT").unwrap_or("normal");
+        for derived in [
+            format!("{dir}-{variant}/{arch}"),
+            format!("{dir}/{arch}"),
+            dir.to_string(),
+        ] {
+            if Path::new(&derived).is_dir() {
+                paths.push(("-I", derived));
+            }
+        }
+    }
 
     // `-F`: the products dir, then FRAMEWORK_SEARCH_PATHS.
-    let mut frameworks: Vec<String> = products.map(str::to_string).into_iter().collect();
-    frameworks.extend(ws_unquoted(get("FRAMEWORK_SEARCH_PATHS")));
-    emit_unique_pairs(a, "-F", &frameworks);
-
-    for p in ws_unquoted(get("USER_HEADER_SEARCH_PATHS")) {
-        a.pair("-iquote", &p);
+    if let Some(p) = products {
+        paths.push(("-F", p.to_string()));
     }
-    for p in ws_unquoted(get("SYSTEM_HEADER_SEARCH_PATHS")) {
-        a.pair("-isystem", &p);
+    paths.extend(
+        ws_unquoted(get("FRAMEWORK_SEARCH_PATHS"))
+            .into_iter()
+            .map(|p| ("-F", p)),
+    );
+    paths.extend(
+        ws_unquoted(get("USER_HEADER_SEARCH_PATHS"))
+            .into_iter()
+            .map(|p| ("-iquote", p)),
+    );
+    paths.extend(
+        ws_unquoted(get("SYSTEM_HEADER_SEARCH_PATHS"))
+            .into_iter()
+            .map(|p| ("-isystem", p)),
+    );
+
+    let mut seen: BTreeSet<(&str, String)> = BTreeSet::new();
+    for (flag, path) in paths {
+        if seen.insert((flag, path.clone())) {
+            a.pair(flag, &path);
+        }
     }
 }
 
-/// Emit `flag value` for each path, skipping duplicates (order preserved).
-fn emit_unique_pairs(a: &mut ArgBuilder, flag: &str, paths: &[String]) {
-    let mut seen: Vec<&str> = Vec::new();
-    for p in paths {
-        if !seen.contains(&p.as_str()) {
-            a.pair(flag, p);
-            seen.push(p);
-        }
+/// The target's generated header maps, in the order the build system passes
+/// them. A header map indexes every header a target can see by the spelling
+/// that reaches it, which is what resolves `#import "Other.h"` for a header no
+/// `HEADER_SEARCH_PATHS` entry names — a sibling directory's header, another
+/// target's. Without them the editor reports `file not found`, and because a
+/// failed `#import` is fatal to clang, every declaration below it becomes an
+/// "undeclared identifier" too.
+///
+/// The basenames key off `PRODUCT_NAME` rather than the target name (a target
+/// that renames its product gets maps named after the product). Only maps that
+/// are on disk are named: a header map is written by the build, so pointing the
+/// editor at one from a cold tree would say nothing a re-query after
+/// `buildTarget/prepare` could act on.
+fn header_map_paths(settings: &Settings) -> Vec<(&'static str, String)> {
+    let get = |k: &str| settings.get(k).map(String::as_str);
+    if get("USE_HEADERMAP") == Some("NO") {
+        return Vec::new();
     }
+    let (Some(dir), Some(product)) = (get("TEMP_DIR"), get("PRODUCT_NAME")) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(&'static str, String)> = Vec::new();
+    let mut push = |flag: &'static str, suffix: &str| {
+        let path = format!("{dir}/{product}{suffix}");
+        if Path::new(&path).is_file() {
+            out.push((flag, path));
+        }
+    };
+    push("-iquote", "-generated-files.hmap");
+    push("-I", "-own-target-headers.hmap");
+    // A build writes both cross-target maps but puts only one on the command
+    // line: the framework-entry map where the frameworks are in the same
+    // project, the other where a VFS overlay carries those entries instead. We
+    // name both, since we emit no overlay (its path is a per-build hash) and
+    // the framework-entry map is what recovers what the overlay would have
+    // resolved. Naming the superset grants the editor nothing the build would
+    // refuse: its extra entries are framework-style spellings for headers the
+    // build installs.
+    push("-I", "-all-non-framework-target-headers.hmap");
+    push("-I", "-all-target-headers.hmap");
+    if get("HEADERMAP_INCLUDES_PROJECT_HEADERS") != Some("NO") {
+        push("-iquote", "-project-headers.hmap");
+    }
+    out
 }
 
 /// Emit one `-L` per unique library search path: the products dir (always —
@@ -1727,5 +1800,204 @@ mod tests {
         // Absent / unknown product types are assumed to link.
         assert!(links(None));
         assert!(links(Some("com.apple.product-type.future-unknown")));
+    }
+
+    /// A unique scratch dir standing in for a target's build tree — the header
+    /// maps and generated-sources dirs are only emitted when they exist, so
+    /// these tests have to put real files on disk.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "sweetpad-hmap-{}-{name}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    /// The `(flag, value)` pairs in an argv, for asserting on search paths.
+    fn pairs(args: &[String]) -> Vec<(String, String)> {
+        args.windows(2)
+            .map(|w| (w[0].clone(), w[1].clone()))
+            .collect()
+    }
+
+    /// Settings for a target whose build tree is `temp`, with the four header
+    /// maps optionally written out.
+    fn hmap_settings(temp: &Path, product: &str, written: bool) -> Settings {
+        if written {
+            for suffix in [
+                "-generated-files.hmap",
+                "-own-target-headers.hmap",
+                "-all-non-framework-target-headers.hmap",
+                "-project-headers.hmap",
+            ] {
+                std::fs::write(temp.join(format!("{product}{suffix}")), "").expect("write hmap");
+            }
+        }
+        let mut s = Settings::new();
+        s.insert("TEMP_DIR".into(), temp.to_string_lossy().into_owned());
+        s.insert("PRODUCT_NAME".into(), product.into());
+        s.insert(
+            "BUILT_PRODUCTS_DIR".into(),
+            "/dd/Build/Products/Debug".into(),
+        );
+        s
+    }
+
+    #[test]
+    fn header_maps_emit_once_the_build_has_written_them() {
+        let temp = scratch("written");
+        let s = hmap_settings(&temp, "Widget", true);
+        let mut a = ArgBuilder::default();
+        emit_clang_search_paths(&mut a, &s, "arm64");
+        let got = pairs(&a.into_vec());
+        let t = temp.to_string_lossy();
+        for (flag, suffix) in [
+            ("-iquote", "-generated-files.hmap"),
+            ("-I", "-own-target-headers.hmap"),
+            ("-I", "-all-non-framework-target-headers.hmap"),
+            ("-iquote", "-project-headers.hmap"),
+        ] {
+            let want = (flag.to_string(), format!("{t}/Widget{suffix}"));
+            assert!(got.contains(&want), "missing {want:?} in {got:?}");
+        }
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn header_maps_are_silent_before_the_build_writes_them() {
+        let temp = scratch("cold");
+        let s = hmap_settings(&temp, "Widget", false);
+        let mut a = ArgBuilder::default();
+        emit_clang_search_paths(&mut a, &s, "arm64");
+        let args = a.into_vec();
+        assert!(
+            !args.iter().any(|a| a.contains(".hmap")),
+            "named a header map that is not on disk: {args:?}"
+        );
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn header_map_basename_follows_the_product_not_the_target() {
+        let temp = scratch("product");
+        let mut s = hmap_settings(&temp, "DifferentProductName", true);
+        s.insert("TARGET_NAME".into(), "Widget".into());
+        let mut a = ArgBuilder::default();
+        emit_clang_search_paths(&mut a, &s, "arm64");
+        let args = a.into_vec();
+        assert!(
+            args.iter()
+                .any(|a| a.ends_with("/DifferentProductName-project-headers.hmap")),
+            "keyed the header maps off the target name: {args:?}"
+        );
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn header_map_gates_follow_xcodes() {
+        let temp = scratch("gates");
+        let mut off = hmap_settings(&temp, "Widget", true);
+        off.insert("USE_HEADERMAP".into(), "NO".into());
+        let mut a = ArgBuilder::default();
+        emit_clang_search_paths(&mut a, &off, "arm64");
+        let args = a.into_vec();
+        assert!(
+            !args.iter().any(|a| a.contains(".hmap")),
+            "USE_HEADERMAP = NO still emitted header maps: {args:?}"
+        );
+
+        let mut no_project = hmap_settings(&temp, "Widget", true);
+        no_project.insert("HEADERMAP_INCLUDES_PROJECT_HEADERS".into(), "NO".into());
+        let mut a = ArgBuilder::default();
+        emit_clang_search_paths(&mut a, &no_project, "arm64");
+        let args = a.into_vec();
+        assert!(
+            args.iter().any(|a| a.ends_with("-own-target-headers.hmap")),
+            "the other maps should survive the project-headers gate: {args:?}"
+        );
+        assert!(
+            !args.iter().any(|a| a.ends_with("-project-headers.hmap")),
+            "HEADERMAP_INCLUDES_PROJECT_HEADERS = NO still emitted it: {args:?}"
+        );
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn both_cross_target_maps_are_named_when_the_build_wrote_them() {
+        // Which of the two a build puts on the command line depends on whether a
+        // VFS overlay is carrying the framework-style entries; we emit no
+        // overlay, so we name both and let the one that is empty cost nothing.
+        let temp = scratch("cross-target");
+        let s = hmap_settings(&temp, "Widget", false);
+        std::fs::write(temp.join("Widget-all-target-headers.hmap"), "").expect("write hmap");
+        let mut a = ArgBuilder::default();
+        emit_clang_search_paths(&mut a, &s, "arm64");
+        let args = a.into_vec();
+        assert!(
+            args.iter()
+                .any(|a| a.ends_with("/Widget-all-target-headers.hmap"))
+        );
+
+        std::fs::write(
+            temp.join("Widget-all-non-framework-target-headers.hmap"),
+            "",
+        )
+        .expect("write hmap");
+        let mut a = ArgBuilder::default();
+        emit_clang_search_paths(&mut a, &s, "arm64");
+        let args = a.into_vec();
+        for suffix in [
+            "/Widget-all-non-framework-target-headers.hmap",
+            "/Widget-all-target-headers.hmap",
+        ] {
+            assert!(
+                args.iter().any(|a| a.ends_with(suffix)),
+                "missing {suffix} in {args:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn generated_sources_dirs_are_emitted_when_they_exist() {
+        // `<Product>-Swift.h` lands in one of these; which ones a build creates
+        // depends on whether it generates per-arch sources at all.
+        let temp = scratch("derived");
+        let derived = temp.join("DerivedSources");
+        std::fs::create_dir_all(derived.join("arm64")).expect("create derived dirs");
+        std::fs::create_dir_all(temp.join("DerivedSources-normal/arm64"))
+            .expect("create variant dir");
+        let mut s = hmap_settings(&temp, "Widget", false);
+        s.insert(
+            "DERIVED_FILE_DIR".into(),
+            derived.to_string_lossy().into_owned(),
+        );
+        let mut a = ArgBuilder::default();
+        emit_clang_search_paths(&mut a, &s, "arm64");
+        let got = pairs(&a.into_vec());
+        let d = derived.to_string_lossy();
+        for want in [
+            format!("{d}-normal/arm64"),
+            format!("{d}/arm64"),
+            d.to_string(),
+        ] {
+            assert!(
+                got.contains(&("-I".to_string(), want.clone())),
+                "missing -I {want} in {got:?}"
+            );
+        }
+
+        // A tree with only the flat dir names only the flat dir.
+        let _ = std::fs::remove_dir_all(derived.join("arm64"));
+        let _ = std::fs::remove_dir_all(temp.join("DerivedSources-normal"));
+        let mut a = ArgBuilder::default();
+        emit_clang_search_paths(&mut a, &s, "arm64");
+        let got = pairs(&a.into_vec());
+        assert!(got.contains(&("-I".to_string(), d.to_string())));
+        assert!(!got.contains(&("-I".to_string(), format!("{d}/arm64"))));
+        let _ = std::fs::remove_dir_all(&temp);
     }
 }

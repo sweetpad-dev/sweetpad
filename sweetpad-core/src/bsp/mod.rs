@@ -11,15 +11,14 @@
 
 mod control;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -100,11 +99,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
     // sourcekit-lsp blocks the requesting target's semantics until our response
     // arrives — so run it on a serialized worker and reply by id when the build
     // finishes, keeping the request loop responsive in the meantime.
-    let (prepare_tx, prepare_rx) = mpsc::channel::<PrepareJob>();
     {
         let server = Arc::clone(&server);
         std::thread::spawn(move || {
-            while let Ok(job) = prepare_rx.recv() {
+            while let Some(job) = server.prepare_queue.take() {
                 server.run_prepare(&job);
             }
         });
@@ -118,6 +116,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 // The frame boundary is lost; log why before dying so the
                 // failure is diagnosable instead of a silent exit.
                 server.trace(&format!("fatal framing error: {e}"));
+                server.prepare_queue.close();
                 server.kill_prepare();
                 server.shutdown_telemetry();
                 return Err(e);
@@ -150,6 +149,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 if !watching {
                     Arc::clone(&server).spawn_change_watcher();
                     watching = true;
+                    // Warm every target in the background. The cold window —
+                    // the stretch where a target's header maps and generated
+                    // sources don't exist yet, so its ObjC files can't resolve
+                    // their imports — otherwise opens afresh for each target
+                    // the first time somebody opens a file in it. Queued at the
+                    // back, so a target the client actually asks about still
+                    // goes first.
+                    server.prepare_queue.push_back(PrepareJob {
+                        id: None,
+                        targets: server.current_targets(),
+                    });
                 }
             }
             "workspace/buildTargets" => server.reply(id, server.build_targets())?,
@@ -163,9 +173,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 // prepare without an id (shouldn't happen) is simply dropped.
                 if let Some(id) = id {
                     let targets = server.requested_targets(params);
-                    if prepare_tx.send(PrepareJob { id, targets }).is_err() {
-                        break; // worker gone
-                    }
+                    // Ahead of the startup warm-up: this one is a file somebody
+                    // has open, and it is the request whose reply sourcekit-lsp
+                    // is blocked on.
+                    server.prepare_queue.push_front(PrepareJob {
+                        id: Some(id),
+                        targets,
+                    });
                 }
             }
             "workspace/waitForBuildSystemUpdates" => server.reply(id, json!({}))?,
@@ -185,6 +199,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
         }
     }
+    server.prepare_queue.close();
     server.kill_prepare();
     server.shutdown_telemetry();
     Ok(())
@@ -226,17 +241,112 @@ struct Server {
     /// orphan a minutes-long xcodebuild (reparented to init, still burning CPU
     /// after every editor restart). The prepare worker reaps it.
     prepare_child: Mutex<Option<std::process::Child>>,
+    /// Work waiting for the prepare worker (see [`PrepareQueue`]).
+    prepare_queue: PrepareQueue,
+    /// Per-target record of the last prepare, so repeats over unchanged project
+    /// files don't re-spawn `xcodebuild`.
+    prepared: Mutex<BTreeMap<String, PrepareRecord>>,
+    /// The last prepare failure, in the shape the extension's Doctor prints.
+    /// Prepare is best-effort by design, so without this a failure reaches only
+    /// the debug log — and a target that never prepares is a target whose ObjC
+    /// files never resolve their imports.
+    last_prepare_failure: Mutex<Option<String>>,
 }
 
 const TARGET_SCHEME: &str = "sweetpad://target/";
 const LANGUAGE_IDS: [&str; 5] = ["swift", "objective-c", "objective-cpp", "c", "cpp"];
 
-/// A queued `buildTarget/prepare`: the request `id` to answer once the build is
-/// done, and the target names to prepare.
+/// A queued `buildTarget/prepare`: the target names to prepare, and the request
+/// `id` to answer once the build is done — `None` for the startup warm-up,
+/// which nobody is waiting on.
 struct PrepareJob {
-    id: Value,
+    id: Option<Value>,
     targets: Vec<String>,
 }
+
+/// The prepare worker's inbox: a double-ended queue rather than a channel, because
+/// the two producers want opposite ends. A `buildTarget/prepare` is a file
+/// somebody just opened and a reply sourcekit-lsp is blocked on, so it goes to
+/// the front; the startup warm-up is speculative and goes to the back, where a
+/// real request can overtake whatever of it is left.
+#[derive(Default)]
+struct PrepareQueue {
+    state: Mutex<PrepareQueueState>,
+    ready: Condvar,
+}
+
+#[derive(Default)]
+struct PrepareQueueState {
+    jobs: VecDeque<PrepareJob>,
+    /// Set on shutdown: pushes are dropped and the worker is let go.
+    closed: bool,
+}
+
+impl PrepareQueue {
+    fn push_front(&self, job: PrepareJob) {
+        self.push(job, true);
+    }
+
+    fn push_back(&self, job: PrepareJob) {
+        self.push(job, false);
+    }
+
+    fn push(&self, job: PrepareJob, front: bool) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        if state.closed {
+            return;
+        }
+        if front {
+            state.jobs.push_front(job);
+        } else {
+            state.jobs.push_back(job);
+        }
+        self.ready.notify_one();
+    }
+
+    /// Block until a job is available, or return `None` once closed.
+    fn take(&self) -> Option<PrepareJob> {
+        let mut state = self.state.lock().ok()?;
+        loop {
+            if let Some(job) = state.jobs.pop_front() {
+                return Some(job);
+            }
+            if state.closed {
+                return None;
+            }
+            state = self.ready.wait(state).ok()?;
+        }
+    }
+
+    /// Stop accepting work, drop what's queued, and wake the worker so it can
+    /// exit. Whatever build is already running is killed separately, by
+    /// [`Server::kill_prepare`].
+    fn close(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            state.closed = true;
+            state.jobs.clear();
+        }
+        self.ready.notify_all();
+    }
+}
+
+/// What the last prepare of a target did, so a repeat over unchanged inputs can
+/// be skipped and a failure can be reported.
+struct PrepareRecord {
+    /// The project-file stamps it ran against — a change means the answer may
+    /// differ, so the skip no longer applies.
+    stamps: Vec<Option<(u64, SystemTime)>>,
+    ok: bool,
+    at: Instant,
+}
+
+/// How long a *failed* prepare stands in for the next attempt over unchanged
+/// project files. A success is cached until the project changes; a failure is
+/// retried after this, since what broke it (a missing tool, a half-written
+/// file, a source error) often isn't visible in the pbxproj at all.
+const PREPARE_RETRY_AFTER: Duration = Duration::from_secs(60);
 
 /// The portion of config that can change while the server runs — pushed live by
 /// the extension as `bsp/configChanged`. Everything else (project/xcode/derived
@@ -484,6 +594,9 @@ impl Server {
             config_path,
             log_level,
             prepare_child: Mutex::new(None),
+            prepare_queue: PrepareQueue::default(),
+            prepared: Mutex::new(BTreeMap::new()),
+            last_prepare_failure: Mutex::new(None),
         };
         server.bind_telemetry(config.socket.as_deref());
         server.log(&format!(
@@ -818,8 +931,13 @@ impl Server {
 
     /// Send `buildTarget/didChange` marking every current target changed.
     fn notify_targets_changed(&self) {
-        let changes: Vec<Value> = self
-            .current_targets()
+        self.notify_changed(&self.current_targets());
+    }
+
+    /// Send `buildTarget/didChange` for `targets` — the push that tells the
+    /// client to re-pull their options.
+    fn notify_changed(&self, targets: &[String]) {
+        let changes: Vec<Value> = targets
             .iter()
             .map(|t| json!({ "target": target_id(t), "kind": 2 }))
             .collect();
@@ -837,12 +955,60 @@ impl Server {
     /// response would wedge sourcekit-lsp's semantics for that target.
     fn run_prepare(&self, job: &PrepareJob) {
         self.push_status("preparing", Some(&job.targets.join(", ")));
+        let mut built = Vec::new();
+        let mut failure = None;
         for target in &job.targets {
-            self.prepare_target(target);
+            // A build that fails still writes the header maps — they come out of
+            // an early phase, not out of compiling — so an attempt counts as a
+            // change to re-read whether or not it succeeded.
+            let Some(ok) = self.prepare_target(target) else {
+                continue;
+            };
+            built.push(target.clone());
+            if !ok && failure.is_none() {
+                failure = self.last_prepare_failure();
+            }
         }
-        self.push_status("ready", None);
-        let resp = json!({ "jsonrpc": "2.0", "id": job.id, "result": {} });
-        let _ = self.send(&resp);
+        match &failure {
+            Some(detail) => self.push_status("failed", Some(detail)),
+            None => self.push_status("ready", None),
+        }
+        if let Some(id) = &job.id {
+            let resp = json!({ "jsonrpc": "2.0", "id": id, "result": {} });
+            let _ = self.send(&resp);
+        }
+        // The build is what puts a target's header maps and generated sources on
+        // disk, and the editor arguments name those only once they exist — so
+        // whatever the client resolved before this ran is missing them. Nothing
+        // else pushes that: the change watcher fires on project edits, and a
+        // build isn't one. Sent after the reply, so the client re-pulls a target
+        // it already considers prepared.
+        if !built.is_empty() {
+            self.notify_changed(&built);
+        }
+    }
+
+    /// Whether `target` was prepared recently enough, against project files that
+    /// haven't changed since, for another build to be pointless.
+    fn prepare_is_current(&self, target: &str, stamps: &[Option<(u64, SystemTime)>]) -> bool {
+        let Ok(prepared) = self.prepared.lock() else {
+            return false;
+        };
+        let Some(record) = prepared.get(target) else {
+            return false;
+        };
+        record.stamps == stamps && (record.ok || record.at.elapsed() < PREPARE_RETRY_AFTER)
+    }
+
+    /// The `(len, mtime)` of every file a prepare's result depends on: each
+    /// member project and the live config. Same stamps as the change watcher
+    /// polls, which is what makes "unchanged" mean the same thing to both.
+    fn prepare_stamps(&self) -> Vec<Option<(u64, SystemTime)>> {
+        self.projects
+            .iter()
+            .map(|p| file_stamp(&p.join("project.pbxproj")))
+            .chain(self.config_path.as_deref().map(file_stamp))
+            .collect()
     }
 
     /// Prepare `target` so its sources become semantically analyzable: build the
@@ -851,11 +1017,23 @@ impl Server {
     /// whole closure — the target and its transitive deps — is pure Swift;
     /// anything else (packages, C-family, code-gen) falls back to a real
     /// `xcodebuild`, as does a self-build that unexpectedly fails.
-    fn prepare_target(&self, target: &str) {
+    ///
+    /// `None` when the target was already current, else whether the build
+    /// succeeded — either way the client should re-read what's on disk.
+    fn prepare_target(&self, target: &str) -> Option<bool> {
+        let stamps = self.prepare_stamps();
+        if self.prepare_is_current(target, &stamps) {
+            self.log(&format!("prepare: {target} already current; skipping"));
+            return None;
+        }
         let proj = self.project_for_target(target);
         // The self-build fast path is single-project: a workspace target's deps
         // can live in another member, so let xcodebuild handle the closure.
         let deps = project::transitive_dependencies(&proj, target).unwrap_or_default();
+        // `is_self_buildable` is false for a target with any C-family source, so
+        // a closure that qualifies has no header maps or generated sources to
+        // produce — which is what makes it sound to skip the real build here
+        // even though "prepared" then doesn't mean "artifacts on disk".
         let closure_simple = !self.is_workspace()
             && std::iter::once(target)
                 .chain(deps.iter().map(String::as_str))
@@ -868,13 +1046,49 @@ impl Server {
                     "prepare: {target} self-built {} dependency module(s)",
                     deps.len()
                 ));
-                return;
+                self.record_prepare(target, stamps, true, None);
+                return Some(true);
             }
             self.log(&format!(
                 "prepare: {target} self-build failed; falling back to xcodebuild"
             ));
         }
-        self.xcodebuild_prepare(target);
+        Some(self.xcodebuild_prepare(target, stamps))
+    }
+
+    /// The last prepare failure's detail, for the terminal status and the Doctor.
+    fn last_prepare_failure(&self) -> Option<String> {
+        self.last_prepare_failure.lock().ok()?.clone()
+    }
+
+    /// Record how a prepare went, keeping a failure's detail for the terminal
+    /// status and the Doctor — the debug log alone reaches nobody who hasn't
+    /// already been told where it is.
+    fn record_prepare(
+        &self,
+        target: &str,
+        stamps: Vec<Option<(u64, SystemTime)>>,
+        ok: bool,
+        detail: Option<String>,
+    ) {
+        if let Ok(mut prepared) = self.prepared.lock() {
+            prepared.insert(
+                target.to_string(),
+                PrepareRecord {
+                    stamps,
+                    ok,
+                    at: Instant::now(),
+                },
+            );
+        }
+        if let Ok(mut slot) = self.last_prepare_failure.lock() {
+            *slot = (!ok).then(|| {
+                format!(
+                    "{target}: {}",
+                    detail.unwrap_or_else(|| "no detail".to_string())
+                )
+            });
+        }
     }
 
     /// Emit one dependency's `.swiftmodule` with `swiftc` straight into the
@@ -944,39 +1158,52 @@ impl Server {
         }
     }
 
-    /// Build `target` via `xcodebuild` so its dependency `.swiftmodule`s and
-    /// generated inputs land in the DerivedData our search paths point at —
-    /// the fallback for closures the `swiftc` fast path can't emit.
-    /// xcodebuild builds by **scheme** (a bare `-target` build doesn't populate
-    /// the products dir), so a scheme that builds the target is required.
-    fn xcodebuild_prepare(&self, target: &str) {
+    /// The `xcodebuild` invocation that prepares `target`, and a phrase naming
+    /// how, for the log.
+    fn prepare_command(&self, target: &str) -> (Command, String) {
         let owning = self.project_for_target(target);
-        let Some(scheme) = project::scheme_for_target(&owning, target) else {
-            self.log(&format!(
-                "prepare: no scheme builds target {target}; skipping"
-            ));
-            return;
-        };
-        let (sdk, _arch) = self.editor_platform(target);
-        let destination = format!("generic/platform={}", platform_name(&sdk));
+        let scheme = project::scheme_for_target(&owning, target);
+        let (sdk, arch) = self.editor_platform(target);
         let developer = self.developer_dir();
-        let xcodebuild = developer.as_ref().map_or_else(
+        let mut cmd = Command::new(developer.as_ref().map_or_else(
             || PathBuf::from("xcodebuild"),
             |dev| dev.join("usr/bin/xcodebuild"),
-        );
-        let mut cmd = Command::new(&xcodebuild);
+        ));
         if let Some(dev) = &developer {
             cmd.env("DEVELOPER_DIR", dev);
         }
         cmd.arg("build");
-        if self.is_workspace() {
+        // A `-target` build has no scheme to name the workspace's other members,
+        // so it always addresses the owning project directly.
+        if self.is_workspace() && scheme.is_some() {
             cmd.args(["-workspace".as_ref(), self.project_path.as_os_str()]);
         } else {
             cmd.args(["-project".as_ref(), owning.as_os_str()]);
         }
-        cmd.args(["-scheme", &scheme])
-            .args(["-configuration", &self.configuration()])
-            .args(["-destination", &destination])
+        let how = if let Some(scheme) = &scheme {
+            let destination = format!("generic/platform={}", platform_name(&sdk));
+            cmd.args(["-scheme", scheme])
+                .args(["-destination", &destination]);
+            if let Some(dd) = &self.derived_data_path {
+                // An explicit override needs `-derivedDataPath` (which xcodebuild
+                // only accepts with `-scheme`); without it the default
+                // DerivedData already matches our search paths.
+                cmd.args(["-derivedDataPath".as_ref(), dd.as_os_str()]);
+            }
+            format!("scheme {scheme} ({destination})")
+        } else {
+            cmd.args(["-target", target])
+                .args(["-sdk", &sdk])
+                .args(["-arch", &arch]);
+            // The two roots every output path hangs off. Named after the same
+            // DerivedData the arguments resolve against, so `BUILT_PRODUCTS_DIR`
+            // and `TEMP_DIR` land where the editor is already looking.
+            for (key, dir) in self.build_roots() {
+                cmd.arg(format!("{key}={}", dir.display()));
+            }
+            format!("target {target} (-sdk {sdk} -arch {arch})")
+        };
+        cmd.args(["-configuration", &self.configuration()])
             // Prepare only needs modules, not a signed/launchable product, and
             // must not stall on validation prompts in a headless run.
             .args([
@@ -984,15 +1211,24 @@ impl Server {
                 "-skipMacroValidation",
                 "-skipPackagePluginValidation",
             ]);
-        if let Some(dd) = &self.derived_data_path {
-            // An explicit override needs `-derivedDataPath` (which xcodebuild only
-            // accepts with `-scheme`); without it the default DerivedData already
-            // matches our search paths.
-            cmd.args(["-derivedDataPath".as_ref(), dd.as_os_str()]);
-        }
-        self.log(&format!(
-            "prepare: building scheme {scheme} ({destination}) for target {target}"
-        ));
+        (cmd, how)
+    }
+
+    /// Build `target` via `xcodebuild` so its dependency `.swiftmodule`s,
+    /// header maps and generated inputs land in the DerivedData our search paths
+    /// point at — the fallback for closures the `swiftc` fast path can't emit.
+    ///
+    /// By **scheme** where one builds the target, because a scheme build lays
+    /// the whole tree out for us. Where none does, by `-target` with `SYMROOT`
+    /// and `OBJROOT` named explicitly: a bare `-target` build otherwise writes
+    /// into the project's own `build/` directory rather than the DerivedData the
+    /// editor arguments point at, which is the reason this used to skip such a
+    /// target outright. Skipping is no longer an option — the header maps a
+    /// target's ObjC files need to resolve their imports exist only after a
+    /// build of that target.
+    fn xcodebuild_prepare(&self, target: &str, stamps: Vec<Option<(u64, SystemTime)>>) -> bool {
+        let (mut cmd, how) = self.prepare_command(target);
+        self.log(&format!("prepare: building {how} for target {target}"));
         // Spawn (rather than `output()`) so the child stays killable: the pipe
         // handles are taken first, then the child is parked in `prepare_child`
         // where shutdown can reach it while this thread drains the pipes.
@@ -1002,10 +1238,10 @@ impl Server {
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                self.log(&format!(
-                    "prepare: {target} failed to launch xcodebuild: {e}"
-                ));
-                return;
+                let detail = format!("could not launch xcodebuild: {e}");
+                self.log(&format!("prepare: {target} {detail}"));
+                self.record_prepare(target, stamps, false, Some(detail));
+                return false;
             }
         };
         let stdout_pipe = child.stdout.take();
@@ -1037,17 +1273,44 @@ impl Server {
             .and_then(|mut slot| slot.take())
             .and_then(|mut c| c.wait().ok());
         match status {
-            Some(st) if st.success() => self.log(&format!("prepare: {target} build ok")),
+            Some(st) if st.success() => {
+                self.log(&format!("prepare: {target} build ok"));
+                self.record_prepare(target, stamps, true, None);
+                true
+            }
             Some(st) => {
-                // Best-effort: log the tail and carry on (sourcekit-lsp uses
-                // whatever modules did build).
+                // Best-effort as far as the reply goes — sourcekit-lsp gets
+                // whatever modules did build — but recorded, because a target
+                // that never prepares is a target whose ObjC files never resolve
+                // their imports, and that used to be visible only in a log file
+                // nobody knows to read.
                 let code = st.code().unwrap_or(-1);
                 let stderr = String::from_utf8_lossy(&stderr_buf);
                 let tail: String = stderr.lines().rev().take(8).collect::<Vec<_>>().join(" | ");
                 self.log(&format!("prepare: {target} build exit={code}: {tail}"));
+                self.record_prepare(target, stamps, false, Some(format!("exit={code}: {tail}")));
+                false
             }
-            None => self.log(&format!("prepare: {target} xcodebuild status unavailable")),
+            None => {
+                let detail = "xcodebuild status unavailable".to_string();
+                self.log(&format!("prepare: {target} {detail}"));
+                self.record_prepare(target, stamps, false, Some(detail));
+                false
+            }
         }
+    }
+
+    /// `SYMROOT` / `OBJROOT` for a `-target` build: the products and
+    /// intermediates roots inside the DerivedData the editor arguments resolve
+    /// against. Empty when that directory can't be located, which leaves
+    /// xcodebuild its own defaults rather than a half-pinned tree.
+    fn build_roots(&self) -> Vec<(&'static str, PathBuf)> {
+        self.derived_data_dir().map_or_else(Vec::new, |dd| {
+            vec![
+                ("SYMROOT", dd.join("Build/Products")),
+                ("OBJROOT", dd.join("Build/Intermediates.noindex")),
+            ]
+        })
     }
 
     /// Kill the in-flight prepare build, if any (the prepare worker still owns

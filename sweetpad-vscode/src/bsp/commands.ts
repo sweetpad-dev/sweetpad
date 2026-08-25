@@ -18,8 +18,9 @@ import { isFileExists, readJsonFile } from "../common/files";
 import { assertUnreachable } from "../common/types";
 import { isVersionAtLeast } from "../common/version";
 import { getBspConfigFile } from "./paths";
+import type { BspStatusSnapshot } from "./service";
 
-type DoctorCheck = {
+export type DoctorCheck = {
   ok: boolean;
   label: string;
   detail?: string;
@@ -317,6 +318,31 @@ async function collectCliDrivenChecks(config: Record<string, unknown>, workspace
   ];
 }
 
+/**
+ * How the last `buildTarget/prepare` went.
+ *
+ * Preparing a target is what puts its header maps and generated sources on
+ * disk, and the editor arguments name those only once they exist — so a target
+ * that never prepares is a target whose ObjC files never resolve their imports.
+ * The server carries on regardless (a missing reply would wedge sourcekit-lsp),
+ * which is exactly why the failure needs somewhere to surface.
+ */
+export function preparedCheck(snap: BspStatusSnapshot): DoctorCheck {
+  if (snap.phase === "failed") {
+    return {
+      ok: false,
+      label: "Last prepare",
+      detail: snap.phaseDetail ?? "failed",
+      hint: "Run 'SweetPad: Show BSP logs' for the full output, or run the same build from the terminal to see the whole error.",
+    };
+  }
+  return {
+    ok: true,
+    label: "Last prepare",
+    detail: snap.phase === "preparing" ? "in progress" : (snap.phase ?? "not run yet"),
+  };
+}
+
 async function collectSweetpadChecks(deps: AppDeps): Promise<DoctorCheck[]> {
   const workspaceRoot = deps.workspaceContext.root;
   const config = await readBuildServerJson(workspaceRoot);
@@ -354,6 +380,8 @@ async function collectSweetpadChecks(deps: AppDeps): Promise<DoctorCheck[]> {
     detail: snap.scheme ?? undefined,
     hint: "Pick a scheme with 'SweetPad: Select scheme for build'.",
   });
+
+  checks.push(preparedCheck(snap));
 
   const developerDir = await getDeveloperDir({ workspaceRoot: deps.workspaceContext.root });
   checks.push({

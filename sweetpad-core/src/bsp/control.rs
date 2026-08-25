@@ -52,6 +52,11 @@ impl LogLevel {
 pub(crate) struct TelemetryServer {
     clients: Mutex<Vec<UnixStream>>,
     socket: PathBuf,
+    /// The last `bsp/status` frame, replayed to each new connection. A status is
+    /// a state, not an event: an extension that connects (or reconnects) after
+    /// the server pushed one would otherwise show nothing until the next change,
+    /// which for a failed prepare could be never.
+    last_status: Mutex<Option<String>>,
 }
 
 impl TelemetryServer {
@@ -76,6 +81,7 @@ impl TelemetryServer {
         let server = Arc::new(TelemetryServer {
             clients: Mutex::new(Vec::new()),
             socket: socket.to_path_buf(),
+            last_status: Mutex::new(None),
         });
         let accept = Arc::clone(&server);
         let on_set_level = Arc::new(on_set_level);
@@ -88,10 +94,15 @@ impl TelemetryServer {
                 // (suspended extension host, full socket buffer) would
                 // otherwise block a broadcast forever — wedging the whole
                 // server. A timed-out write fails and drops the client.
-                if let Ok(write_half) = stream.try_clone()
+                if let Ok(mut write_half) = stream.try_clone()
                     && let Ok(mut clients) = accept.clients.lock()
                 {
                     let _ = write_half.set_write_timeout(Some(Duration::from_secs(1)));
+                    if let Ok(last) = accept.last_status.lock()
+                        && let Some(body) = last.as_deref()
+                    {
+                        let _ = write_message(&mut write_half, body);
+                    }
                     clients.push(write_half);
                 }
                 let on_set_level = Arc::clone(&on_set_level);
@@ -121,6 +132,11 @@ impl TelemetryServer {
     #[allow(clippy::needless_pass_by_value)]
     pub(crate) fn broadcast(&self, method: &str, params: Value) {
         let body = json!({ "jsonrpc": "2.0", "method": method, "params": params }).to_string();
+        if method == "bsp/status"
+            && let Ok(mut last) = self.last_status.lock()
+        {
+            *last = Some(body.clone());
+        }
         if let Ok(mut clients) = self.clients.lock() {
             clients.retain_mut(|c| {
                 if write_message(c, &body).is_ok() {
