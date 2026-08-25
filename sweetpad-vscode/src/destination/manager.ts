@@ -379,7 +379,7 @@ export class DestinationsManager {
       const simulators = await this.getvisionOSSimulators();
       destination = simulators.find((simulator) => simulator.id === options.destinationId);
     }
-    if (!destination && types.includes("Generic")) {
+    if (!destination && types.includes("generic")) {
       destination = this.getGenericDestinations().find((generic) => generic.id === options.destinationId);
     }
     return destination;

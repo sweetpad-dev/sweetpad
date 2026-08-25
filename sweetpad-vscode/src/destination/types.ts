@@ -25,7 +25,7 @@ export type DestinationType =
   | "visionOSDevice"
   // A device-less "Any <platform> Device" destination (xcodebuild's
   // `generic/platform=…`). Build-only — it can't be run or debugged.
-  | "Generic";
+  | "generic";
 
 export type DestinationArch = "arm64" | "x86_64";
 
@@ -39,7 +39,7 @@ export const ALL_DESTINATION_TYPES: DestinationType[] = [
   "watchOSDevice",
   "tvOSDevice",
   "visionOSDevice",
-  "Generic",
+  "generic",
 ];
 
 /**
@@ -61,13 +61,21 @@ export const DESTINATION_ID_PREFIX: Record<DestinationType, string> = {
   watchOSDevice: "watchosdevice-",
   tvOSDevice: "tvosdevice-",
   visionOSDevice: "visionosdevice-",
-  Generic: "generic-",
+  generic: "generic-",
 };
 
 /**
  * Expand a "sweetpad.build.destination" id into the canonical form the destination
  * classes produce, so a hand-written setting can name just the udid.
  */
+/**
+ * The platform slug inside a generic id: lowercase, spaces hyphenated. "iOS Simulator"
+ * becomes "ios-simulator".
+ */
+function genericPlatformSlug(platformArg: string): string {
+  return platformArg.toLowerCase().replace(/\s+/g, "-");
+}
+
 export function normalizeDestinationId(id: string, type: DestinationType): string {
   // A hand-edited setting can name a type that doesn't exist, and there is no prefix to
   // apply for one. Leave the id alone so a fully qualified one still matches; the picker
@@ -76,7 +84,10 @@ export function normalizeDestinationId(id: string, type: DestinationType): strin
   if (!prefix) {
     return id;
   }
-  return id.startsWith(prefix) ? id : `${prefix}${id}`;
+  // A generic id names a platform rather than a udid, so a hand-written "iOS Simulator"
+  // is the same destination as "ios-simulator" and folds into the canonical slug.
+  const value = type === "generic" ? genericPlatformSlug(id) : id;
+  return value.startsWith(prefix) ? value : `${prefix}${value}`;
 }
 
 /**
@@ -131,7 +142,7 @@ export class macOSDestination implements IDestination {
  * These are synthetic (no I/O to enumerate), mirroring `macOSDestination`.
  */
 export class GenericDestination implements IDestination {
-  type = "Generic" as const;
+  type = "generic" as const;
   typeLabel = "Generic";
   icon = "vm";
 
@@ -147,7 +158,7 @@ export class GenericDestination implements IDestination {
   }
 
   get id(): string {
-    return `generic-${this.platformArg.toLowerCase().replace(/\s+/g, "-")}`;
+    return `generic-${genericPlatformSlug(this.platformArg)}`;
   }
 
   get label(): string {
@@ -168,7 +179,7 @@ export class GenericDestination implements IDestination {
  * The generic build-only destinations Xcode exposes as "Any … Device". Static, so
  * they're always offered (a scheme's supported platforms filter them in the picker).
  */
-export const GENERIC_DESTINATIONS: GenericDestination[] = [
+export const GENERIC_DESTINATIONS: readonly GenericDestination[] = [
   new GenericDestination({ name: "Any iOS Device", platform: "iphoneos", platformArg: "iOS" }),
   new GenericDestination({
     name: "Any iOS Simulator Device",

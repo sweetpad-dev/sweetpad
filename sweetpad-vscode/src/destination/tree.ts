@@ -494,12 +494,11 @@ export class visionOSDeviceDestinationTreeItem extends BaseDestinationTreeItem i
   }
 }
 
-// Tagged union type for destination tree item (second level)
 /**
  * Tree item representing a generic build-only destination ("Any … Device").
  */
 export class GenericDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
-  type = "Generic" as const;
+  type = "generic" as const;
   device: GenericDestination;
   provider: DestinationsTreeProvider;
   constructor(options: { device: GenericDestination; provider: DestinationsTreeProvider; isRecent?: boolean }) {
@@ -530,6 +529,7 @@ export class GenericDestinationTreeItem extends BaseDestinationTreeItem implemen
   }
 }
 
+// Tagged union type for destination tree item (second level)
 export type DestinationTreeItem =
   | iOSSimulatorDestinationTreeItem
   | watchOSSimulatorDestinationTreeItem
@@ -606,7 +606,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
       if (element.type === "visionOSDevice") {
         return this.getVisionOSDevices();
       }
-      if (element.type === "Generic") {
+      if (element.type === "generic") {
         return this.getGenericDestinations();
       }
       if (element.type === "Recent") {
@@ -685,7 +685,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
           isRecent: true,
         });
       }
-      if (destination.type === "Generic") {
+      if (destination.type === "generic") {
         return new GenericDestinationTreeItem({
           device: destination,
           provider: this,
@@ -780,7 +780,7 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
       }),
       new DestinationGroupTreeItem({
         label: "Generic (build-only)",
-        type: "Generic",
+        type: "generic",
         contextValue: "destination-group-generic",
         collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
         icon: "vm",

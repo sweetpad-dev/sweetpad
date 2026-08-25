@@ -1049,7 +1049,8 @@
                 "iOSDevice",
                 "watchOSDevice",
                 "tvOSDevice",
-                "visionOSDevice"
+                "visionOSDevice",
+                "generic"
               ],
               "description": "What kind of thing the id names. Also how SweetPad expands a plain UDID into a full id."
             }

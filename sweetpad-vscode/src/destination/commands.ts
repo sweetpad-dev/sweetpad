@@ -6,6 +6,7 @@ import type { AppDeps } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { selectDestinationForTesting } from "../testing/utils";
 import type { DestinationTreeItem } from "./tree";
+import { assertRunnableDestination } from "./utils";
 
 /**
  * Trigger VS Code's built-in tree find on the Destinations view. Workaround until
@@ -31,6 +32,7 @@ export async function selectDestinationForBuildCommand(deps: AppDeps, item?: Des
   const destination = await selectDestinationForBuild(deps.destinationsManager, {
     destinations: destinations,
     supportedPlatforms: undefined, // All platforms
+    action: "build",
   });
   if (getWorkspaceConfig("build.destination")) {
     return;
@@ -46,6 +48,7 @@ export async function selectDestinationForBuildCommand(deps: AppDeps, item?: Des
 
 export async function selectDestinationForTestingCommand(deps: AppDeps, item?: DestinationTreeItem) {
   if (item) {
+    assertRunnableDestination(item.destination, "test");
     deps.destinationsManager.setWorkspaceDestinationForTesting(item.destination);
     return;
   }

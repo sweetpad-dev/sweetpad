@@ -2,12 +2,9 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [0.2.14] - 2026-08-24
-
-- Add generic build-only destinations ("Any iOS Device", "Any iOS Simulator Device", and the macOS/watchOS/tvOS/visionOS equivalents) to the destination picker and tree, so you can build or archive for a platform without picking a specific simulator or device ([#71](https://github.com/sweetpad-dev/sweetpad/issues/71))
-
 ## [0.2.13] - 2026-08-24
 
+- Add Xcode's "Any iOS Device" and the other build-only destinations ([#71](https://github.com/sweetpad-dev/sweetpad/issues/71), thanks [@NSExceptional](https://github.com/NSExceptional))
 - Fix autocomplete failing on a first BSP setup because `buildServer.json` was written before the config file it names ([#326](https://github.com/sweetpad-dev/sweetpad/issues/326))
 
 ## [0.2.12] - 2026-08-24

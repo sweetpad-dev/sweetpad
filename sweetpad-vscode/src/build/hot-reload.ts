@@ -37,6 +37,7 @@ export function dylibNameFor(type: DestinationType): string | null {
     case "tvOSDevice":
     case "watchOSDevice":
     case "visionOSDevice":
+    case "generic":
       return null;
   }
 }

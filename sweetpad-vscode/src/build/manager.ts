@@ -27,6 +27,7 @@ import type { WorkspaceStateService } from "../common/workspace-state";
 import * as iosDeploy from "../common/xcode/ios-deploy";
 import type { DestinationsManager } from "../destination/manager";
 import type { DestinationType } from "../destination/types";
+import { assertRunnableDestination } from "../destination/utils";
 import type { TunnelManager } from "../devices/tunnel";
 import type { DeviceDestination } from "../devices/types";
 import { resolveDeviceRunMethod } from "../devices/utils";
@@ -431,6 +432,7 @@ export class BuildManager {
       configuration: configuration,
       sdk: undefined,
       xcworkspace: xcworkspace,
+      action: "build",
     });
     const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
@@ -491,14 +493,12 @@ export class BuildManager {
       configuration: configuration,
       sdk: undefined,
       xcworkspace: xcworkspace,
+      action: "run",
     });
 
-    // "Any … Device" is a device-less build-only destination — nothing to run on.
-    if (destination.type === "Generic") {
-      throw new ExtensionError(
-        `"${destination.name}" is a build-only destination — pick a simulator or device to run, or use the Build command.`,
-      );
-    }
+    // The lookup above already refused a build-only destination; restating it is what
+    // makes the per-device dispatch below exhaustive for the compiler.
+    assertRunnableDestination(destination, "run");
 
     const sdk = destination.platform;
 
@@ -605,14 +605,12 @@ export class BuildManager {
       configuration: configuration,
       sdk: undefined,
       xcworkspace: xcworkspace,
+      action: "launch",
     });
 
-    // "Any … Device" is a device-less build-only destination — nothing to run on.
-    if (destination.type === "Generic") {
-      throw new ExtensionError(
-        `"${destination.name}" is a build-only destination — pick a simulator or device to run, or use the Build command.`,
-      );
-    }
+    // The lookup above already refused a build-only destination; restating it is what
+    // makes the per-device dispatch below exhaustive for the compiler.
+    assertRunnableDestination(destination, "launch");
 
     const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
@@ -1349,6 +1347,7 @@ export class BuildManager {
       configuration: configuration,
       sdk: undefined,
       xcworkspace: xcworkspace,
+      action: "clean",
     });
     const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 
@@ -1403,6 +1402,7 @@ export class BuildManager {
       configuration: configuration,
       sdk: undefined,
       xcworkspace: xcworkspace,
+      action: "test",
     });
     const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 

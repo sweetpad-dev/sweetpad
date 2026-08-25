@@ -350,9 +350,7 @@ describe("repairStaleBuildServerConfig", () => {
       workspaceState: stateRemembering("/workspace/App.xcworkspace"),
     });
 
-    expect(mockRepair).toHaveBeenCalledWith(
-      expect.objectContaining({ xcworkspace: "/workspace/App.xcworkspace" }),
-    );
+    expect(mockRepair).toHaveBeenCalledWith(expect.objectContaining({ xcworkspace: "/workspace/App.xcworkspace" }));
   });
 
   it("names no project when the remembered one is a Swift package", async () => {
