@@ -2,7 +2,7 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [0.2.13] - 2026-08-24
+## [0.2.13] - 2026-08-26
 
 - Add Xcode's "Any iOS Device" and the other build-only destinations ([#71](https://github.com/sweetpad-dev/sweetpad/issues/71), thanks [@NSExceptional](https://github.com/NSExceptional))
 - Autocomplete now works in every target from the start
