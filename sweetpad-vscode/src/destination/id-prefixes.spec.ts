@@ -21,6 +21,7 @@ import {
   ALL_DESTINATION_TYPES,
   DESTINATION_ID_PREFIX,
   type Destination,
+  GenericDestination,
   macOSDestination,
   normalizeDestinationId,
 } from "./types";
@@ -77,6 +78,7 @@ const DESTINATIONS: Destination[] = [
   device(watchOSDeviceDestination),
   device(tvOSDeviceDestination),
   device(visionOSDeviceDestination),
+  new GenericDestination({ name: "Any iOS Device", platform: "iphoneos", platformArg: "iOS" }),
 ];
 
 describe("DESTINATION_ID_PREFIX", () => {

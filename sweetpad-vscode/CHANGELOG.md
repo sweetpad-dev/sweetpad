@@ -4,6 +4,7 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 ## [0.2.13] - 2026-08-24
 
+- Add Xcode's "Any iOS Device" and the other build-only destinations ([#71](https://github.com/sweetpad-dev/sweetpad/issues/71), thanks [@NSExceptional](https://github.com/NSExceptional))
 - Autocomplete now works in every target from the start
 - "SweetPad: Diagnose BSP" now reports the last background build's error
 - Fix Objective-C imports reporting `'Header.h' file not found` on code that builds ([#238](https://github.com/sweetpad-dev/sweetpad/issues/238))

@@ -37,7 +37,12 @@ import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationPlatform } from "../destination/constants";
 import type { DestinationsManager } from "../destination/manager";
 import type { Destination } from "../destination/types";
-import { splitSupportedDestinatinos } from "../destination/utils";
+import {
+  type DestinationAction,
+  assertDestinationSupportsAction,
+  filterDestinationsForAction,
+  splitSupportedDestinatinos,
+} from "../destination/utils";
 import type { SimulatorDestination } from "../simulators/types";
 import type { ProgressStatusBar } from "../system/status-bar";
 import { getToolById } from "../tools/constants";
@@ -102,6 +107,8 @@ export async function askDestinationToRunOn(
     configuration: string;
     sdk: string | undefined;
     xcworkspace: string;
+    /** What the caller is about to do with the destination. */
+    action: DestinationAction;
   },
 ): Promise<Destination> {
   progress.updateText("Searching for destinations");
@@ -116,6 +123,9 @@ export async function askDestinationToRunOn(
       (d) => d.id === preferredDestination.id && d.type === preferredDestination.type,
     );
     if (destination) {
+      // A pinned "Any … Device" answers a build, and is refused for anything else rather
+      // than quietly repointing the pin at whatever gets picked instead.
+      assertDestinationSupportsAction(destination, options.action);
       return destination;
     }
   }
@@ -136,6 +146,7 @@ export async function askDestinationToRunOn(
   return await selectDestinationForBuild(destinationsManager, {
     destinations: destinations,
     supportedPlatforms: supportedPlatforms,
+    action: options.action,
   });
 }
 
@@ -144,10 +155,11 @@ export async function selectDestinationForBuild(
   options: {
     destinations: Destination[];
     supportedPlatforms: DestinationPlatform[] | undefined;
+    action: DestinationAction;
   },
 ): Promise<Destination> {
   const { supported, unsupported } = splitSupportedDestinatinos({
-    destinations: options.destinations,
+    destinations: filterDestinationsForAction(options.destinations, options.action),
     supportedPlatforms: options.supportedPlatforms,
   });
 
@@ -1071,6 +1083,10 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   }
   if (destination.type === "visionOSDevice") {
     return buildDestinationString({ platform: "visionOS", id: destination.udid });
+  }
+  if (destination.type === "generic") {
+    // Device-less platform build, e.g. `generic/platform=iOS`. No id/arch.
+    return destination.xcodebuildDestination;
   }
   return assertUnreachable(destination);
 }

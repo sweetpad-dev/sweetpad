@@ -22,7 +22,10 @@ export type DestinationType =
   | "iOSDevice"
   | "watchOSDevice"
   | "tvOSDevice"
-  | "visionOSDevice";
+  | "visionOSDevice"
+  // A device-less "Any <platform> Device" destination (xcodebuild's
+  // `generic/platform=…`). Build-only — it can't be run or debugged.
+  | "generic";
 
 export type DestinationArch = "arm64" | "x86_64";
 
@@ -36,6 +39,7 @@ export const ALL_DESTINATION_TYPES: DestinationType[] = [
   "watchOSDevice",
   "tvOSDevice",
   "visionOSDevice",
+  "generic",
 ];
 
 /**
@@ -57,12 +61,21 @@ export const DESTINATION_ID_PREFIX: Record<DestinationType, string> = {
   watchOSDevice: "watchosdevice-",
   tvOSDevice: "tvosdevice-",
   visionOSDevice: "visionosdevice-",
+  generic: "generic-",
 };
 
 /**
  * Expand a "sweetpad.build.destination" id into the canonical form the destination
  * classes produce, so a hand-written setting can name just the udid.
  */
+/**
+ * The platform slug inside a generic id: lowercase, spaces hyphenated. "iOS Simulator"
+ * becomes "ios-simulator".
+ */
+function genericPlatformSlug(platformArg: string): string {
+  return platformArg.toLowerCase().replace(/\s+/g, "-");
+}
+
 export function normalizeDestinationId(id: string, type: DestinationType): string {
   // A hand-edited setting can name a type that doesn't exist, and there is no prefix to
   // apply for one. Leave the id alone so a fully qualified one still matches; the picker
@@ -71,7 +84,10 @@ export function normalizeDestinationId(id: string, type: DestinationType): strin
   if (!prefix) {
     return id;
   }
-  return id.startsWith(prefix) ? id : `${prefix}${id}`;
+  // A generic id names a platform rather than a udid, so a hand-written "iOS Simulator"
+  // is the same destination as "ios-simulator" and folds into the canonical slug.
+  const value = type === "generic" ? genericPlatformSlug(id) : id;
+  return value.startsWith(prefix) ? value : `${prefix}${value}`;
 }
 
 /**
@@ -119,6 +135,78 @@ export class macOSDestination implements IDestination {
   }
 }
 
+/**
+ * A device-less "Any <platform> Device" destination — xcodebuild's
+ * `generic/platform=…`. It binds no specific simulator or device, so it is
+ * **build-only**: building/archiving works, but running and debugging do not.
+ * These are synthetic (no I/O to enumerate), mirroring `macOSDestination`.
+ */
+export class GenericDestination implements IDestination {
+  type = "generic" as const;
+  typeLabel = "Generic";
+  icon = "vm";
+
+  readonly name: string;
+  readonly platform: DestinationPlatform;
+  /** The label after `generic/platform=`, e.g. "iOS" or "iOS Simulator". */
+  readonly platformArg: string;
+
+  constructor(options: { name: string; platform: DestinationPlatform; platformArg: string }) {
+    this.name = options.name;
+    this.platform = options.platform;
+    this.platformArg = options.platformArg;
+  }
+
+  get id(): string {
+    return `generic-${genericPlatformSlug(this.platformArg)}`;
+  }
+
+  get label(): string {
+    return this.name;
+  }
+
+  get quickPickDetails(): string {
+    return `Type: ${this.typeLabel} (build-only), Destination: ${this.xcodebuildDestination}`;
+  }
+
+  /** The value passed to `xcodebuild -destination` for a device-less platform build. */
+  get xcodebuildDestination(): string {
+    return `generic/platform=${this.platformArg}`;
+  }
+}
+
+/**
+ * The generic build-only destinations Xcode exposes as "Any … Device". Static, so
+ * they're always offered (a scheme's supported platforms filter them in the picker).
+ */
+export const GENERIC_DESTINATIONS: readonly GenericDestination[] = [
+  new GenericDestination({ name: "Any iOS Device", platform: "iphoneos", platformArg: "iOS" }),
+  new GenericDestination({
+    name: "Any iOS Simulator Device",
+    platform: "iphonesimulator",
+    platformArg: "iOS Simulator",
+  }),
+  new GenericDestination({ name: "Any Mac", platform: "macosx", platformArg: "macOS" }),
+  new GenericDestination({ name: "Any watchOS Device", platform: "watchos", platformArg: "watchOS" }),
+  new GenericDestination({
+    name: "Any watchOS Simulator Device",
+    platform: "watchsimulator",
+    platformArg: "watchOS Simulator",
+  }),
+  new GenericDestination({ name: "Any tvOS Device", platform: "appletvos", platformArg: "tvOS" }),
+  new GenericDestination({
+    name: "Any tvOS Simulator Device",
+    platform: "appletvsimulator",
+    platformArg: "tvOS Simulator",
+  }),
+  new GenericDestination({ name: "Any visionOS Device", platform: "xros", platformArg: "visionOS" }),
+  new GenericDestination({
+    name: "Any visionOS Simulator Device",
+    platform: "xrsimulator",
+    platformArg: "visionOS Simulator",
+  }),
+];
+
 export type Destination =
   | iOSSimulatorDestination
   | watchOSSimulatorDestination
@@ -128,7 +216,8 @@ export type Destination =
   | iOSDeviceDestination
   | watchOSDeviceDestination
   | tvOSDeviceDestination
-  | visionOSDeviceDestination;
+  | visionOSDeviceDestination
+  | GenericDestination;
 
 /**
  * Lightweight representation of a selected destination that can be stored in the workspace state (we can't

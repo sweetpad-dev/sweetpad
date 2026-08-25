@@ -27,7 +27,6 @@ export const SUPPORTED_DESTINATION_PLATFORMS: DestinationPlatform[] = [
   "appletvsimulator",
   "appletvos",
   "xros",
-  "xrsimulator",
 ];
 
 export const DESTINATION_TYPE_PRIORITY: DestinationType[] = [
@@ -40,6 +39,7 @@ export const DESTINATION_TYPE_PRIORITY: DestinationType[] = [
   "tvOSDevice",
   "visionOSSimulator",
   "visionOSDevice",
+  "generic",
 ];
 export const SIMULATOR_TYPE_PRIORITY: SimulatorType[] = [
   "iPhone",

@@ -14,7 +14,13 @@ import type {
   watchOSSimulatorDestination,
 } from "../simulators/types.js";
 import type { DestinationsManager } from "./manager.js";
-import type { Destination, DestinationType, SelectedDestination, macOSDestination } from "./types.js";
+import type {
+  Destination,
+  DestinationType,
+  GenericDestination,
+  SelectedDestination,
+  macOSDestination,
+} from "./types.js";
 
 function addSelectedMarks(options: {
   description: string;
@@ -488,6 +494,41 @@ export class visionOSDeviceDestinationTreeItem extends BaseDestinationTreeItem i
   }
 }
 
+/**
+ * Tree item representing a generic build-only destination ("Any … Device").
+ */
+export class GenericDestinationTreeItem extends BaseDestinationTreeItem implements IDestinationTreeItem {
+  type = "generic" as const;
+  device: GenericDestination;
+  provider: DestinationsTreeProvider;
+  constructor(options: { device: GenericDestination; provider: DestinationsTreeProvider; isRecent?: boolean }) {
+    super({
+      label: options.device.name,
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextPrefix: "destination-item-generic",
+    });
+    this.device = options.device;
+    this.provider = options.provider;
+
+    this.description = addSelectedMarks({
+      description: "build-only",
+      current: this.device,
+      selectedForBuild: this.provider.selectedDestinationForBuild,
+      selectedForTesting: this.provider.selectedDestinationForTesting,
+    });
+
+    this.iconPath = new vscode.ThemeIcon(this.device.icon, undefined);
+    if (options.isRecent) {
+      this.setContextState("recent", "true");
+    }
+    this.refreshContextValue();
+  }
+
+  get destination(): GenericDestination {
+    return this.device;
+  }
+}
+
 // Tagged union type for destination tree item (second level)
 export type DestinationTreeItem =
   | iOSSimulatorDestinationTreeItem
@@ -498,7 +539,8 @@ export type DestinationTreeItem =
   | iOSDeviceDestinationTreeItem
   | watchOSDeviceDestinationTreeItem
   | tvOSDeviceDestinationTreeItem
-  | visionOSDeviceDestinationTreeItem;
+  | visionOSDeviceDestinationTreeItem
+  | GenericDestinationTreeItem;
 
 export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   public manager: DestinationsManager;
@@ -563,6 +605,9 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
       }
       if (element.type === "visionOSDevice") {
         return this.getVisionOSDevices();
+      }
+      if (element.type === "generic") {
+        return this.getGenericDestinations();
       }
       if (element.type === "Recent") {
         return await this.getRecentDestinations();
@@ -635,6 +680,13 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
       }
       if (destination.type === "visionOSDevice") {
         return new visionOSDeviceDestinationTreeItem({
+          device: destination,
+          provider: this,
+          isRecent: true,
+        });
+      }
+      if (destination.type === "generic") {
+        return new GenericDestinationTreeItem({
           device: destination,
           provider: this,
           isRecent: true,
@@ -725,6 +777,13 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
         contextValue: "destination-group-device-visionos",
         collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
         icon: "sweetpad-circle-letter-v",
+      }),
+      new DestinationGroupTreeItem({
+        label: "Generic (build-only)",
+        type: "generic",
+        contextValue: "destination-group-generic",
+        collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+        icon: "vm",
       }),
     );
 
@@ -833,6 +892,15 @@ export class DestinationsTreeProvider implements vscode.TreeDataProvider<vscode.
 
     return devices.map((device) => {
       return new macOSDestinationTreeItem({
+        device: device,
+        provider: this,
+      });
+    });
+  }
+
+  getGenericDestinations(): DestinationTreeItem[] {
+    return this.manager.getGenericDestinations().map((device) => {
+      return new GenericDestinationTreeItem({
         device: device,
         provider: this,
       });

@@ -8,7 +8,11 @@ import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { DestinationPlatform } from "../destination/constants";
 import type { DestinationsManager } from "../destination/manager";
 import type { Destination } from "../destination/types";
-import { splitSupportedDestinatinos } from "../destination/utils";
+import {
+  assertRunnableDestination,
+  filterDestinationsForAction,
+  splitSupportedDestinatinos,
+} from "../destination/utils";
 import type { ProgressStatusBar } from "../system/status-bar";
 import type { TestingManager } from "./manager";
 
@@ -108,6 +112,7 @@ export async function askDestinationToTestOn(
   if (cachedDestination) {
     const destination = destinations.find((d) => d.id === cachedDestination.id && d.type === cachedDestination.type);
     if (destination) {
+      assertRunnableDestination(destination, "test");
       return destination;
     }
   }
@@ -126,7 +131,7 @@ export async function selectDestinationForTesting(
   },
 ): Promise<Destination> {
   const { supported, unsupported } = splitSupportedDestinatinos({
-    destinations: options.destinations,
+    destinations: filterDestinationsForAction(options.destinations, "test"),
     supportedPlatforms: options.supportedPlatforms,
   });
 

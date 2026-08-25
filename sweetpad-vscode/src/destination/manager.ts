@@ -29,6 +29,8 @@ import {
   ALL_DESTINATION_TYPES,
   type Destination,
   type DestinationType,
+  GENERIC_DESTINATIONS,
+  type GenericDestination,
   type SelectedDestination,
   macOSDestination,
   normalizeDestinationId,
@@ -212,6 +214,11 @@ export class DestinationsManager {
     return this.macOSDestinations();
   }
 
+  /** The static build-only "Any … Device" destinations. No I/O to enumerate. */
+  getGenericDestinations(): GenericDestination[] {
+    return [...GENERIC_DESTINATIONS];
+  }
+
   /** Describing the local Mac needs no I/O, so this stays available synchronously. */
   private macOSDestinations(): macOSDestination[] {
     const currentArch = getMacOSArchitecture() ?? "arm64";
@@ -299,6 +306,10 @@ export class DestinationsManager {
       }
     }
 
+    // Build-only "Any … Device" destinations. The picker filters them to the
+    // scheme's supported platforms, so e.g. an iOS project only sees the iOS ones.
+    destinations.push(...this.getGenericDestinations());
+
     // Most used destinations should be on top of the list
     if (options?.mostUsedSort) {
       const usageStats = this.workspaceState.get("build.xcodeDestinationsUsageStatistics") ?? {};
@@ -326,6 +337,7 @@ export class DestinationsManager {
         ...this.simulatorsManager.getCachedSimulators(),
         ...this.devicesManager.getCachedDevices(),
         ...this.macOSDestinations(),
+        ...this.getGenericDestinations(),
       ];
       this.destinationNames = new Map(scanned.map((destination) => [destination.id, destination.name]));
     }
@@ -366,6 +378,9 @@ export class DestinationsManager {
     if (!destination && types.includes("visionOSSimulator")) {
       const simulators = await this.getvisionOSSimulators();
       destination = simulators.find((simulator) => simulator.id === options.destinationId);
+    }
+    if (!destination && types.includes("generic")) {
+      destination = this.getGenericDestinations().find((generic) => generic.id === options.destinationId);
     }
     return destination;
   }

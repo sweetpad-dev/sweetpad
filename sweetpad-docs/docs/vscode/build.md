@@ -204,10 +204,12 @@ doesn't always match the `type` spelling:
 | `tvOSDevice`        | `tvosdevice-<udid>`        |
 | `visionOSDevice`    | `visionosdevice-<udid>`    |
 | `macOS`             | `macos-<computer name>`    |
+| `generic`           | `generic-<platform>`       |
 
-Note the two that break the pattern: `visionOSSimulator` drops the `os`, and `macOS` uses your computer's name
-instead of a UDID, which is why pasting the bare value and letting `type` supply the prefix is the safer habit. An
-id SweetPad doesn't recognise isn't reported as an error; it just falls through to the picker on every build.
+Three break the pattern: `visionOSSimulator` drops the `os`, `macOS` uses your computer's name instead of a UDID,
+and `generic` names a platform, since there is no device to name. That is why pasting the bare value and letting
+`type` supply the prefix is the safer habit. An id SweetPad doesn't recognise isn't reported as an error; it just
+falls through to the picker on every build.
 
 Unset = SweetPad asks the first time and remembers the choice in its cache. Settings always win over that cache, so
 `> SweetPad: Reset Extension Cache` clears the cache but leaves a pinned setting deciding the answer.
@@ -221,6 +223,42 @@ which means a committed `.vscode/settings.json` shows up as a local edit on each
 the scheme and leave the destination to each developer.
 
 :::
+
+### Build for a whole platform
+
+Xcode's device-less "Any iOS Device" and "Any iOS Simulator Device", plus the Mac, watchOS, tvOS and visionOS
+equivalents, live under **Generic (build-only)** in the Destinations view. They pin no simulator or device, so
+`xcodebuild` gets `-destination generic/platform=iOS` and you can build or archive for a platform with nothing
+attached and nothing booted.
+
+Nothing runs on them, so SweetPad leaves them out of the run, debug and testing pickers. If one is already pinned in
+your settings, Run and Test stop with a message telling you to pick a simulator or device, instead of failing inside
+`xcodebuild`.
+
+With `"type": "generic"` the bare platform works in any capitalisation, so `iOS Simulator`, `ios-simulator` and
+`generic-ios-simulator` all name the same destination:
+
+| Destination                   | `id`                         |
+| ----------------------------- | ---------------------------- |
+| Any iOS Device                | `generic-ios`                |
+| Any iOS Simulator Device      | `generic-ios-simulator`      |
+| Any Mac                       | `generic-macos`              |
+| Any watchOS Device            | `generic-watchos`            |
+| Any watchOS Simulator Device  | `generic-watchos-simulator`  |
+| Any tvOS Device               | `generic-tvos`               |
+| Any tvOS Simulator Device     | `generic-tvos-simulator`     |
+| Any visionOS Device           | `generic-visionos`           |
+| Any visionOS Simulator Device | `generic-visionos-simulator` |
+
+A task names one the same way, either by that id or by the `-destination` string itself:
+
+```json title=".vscode/tasks.json"
+{
+  "type": "sweetpad",
+  "action": "build",
+  "destination": "generic/platform=iOS"
+}
+```
 
 ## Set DerivedData path
 

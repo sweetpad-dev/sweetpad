@@ -15,6 +15,12 @@ import type { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import type { DestinationsManager } from "../destination/manager";
 import type { Destination } from "../destination/types";
+import {
+  type DestinationAction,
+  assertDestinationSupportsAction,
+  assertRunnableDestination,
+  findDestinationForTaskInput,
+} from "../destination/utils";
 import type { ProgressStatusBar } from "../system/status-bar";
 import { BUILD_TASK_PROBLEM_MATCHERS } from "./constants";
 import type { BuildManager } from "./manager";
@@ -99,39 +105,8 @@ class ActionDispatcher {
     destinationsManager: DestinationsManager,
     options: { definition: TaskDefinition },
   ): Promise<Destination | undefined> {
-    // For simulators and devices, we try to find destination by ID
-    // ex: "00000000-0000-0000-0000-000000000000"
-    // ex: "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000"
-    const udidRaw: string | undefined =
-      options.definition.destinationId ??
-      options.definition.simulator ??
-      options.definition.destination?.match(/id=(.+)/)?.[1];
-
-    const udidLower = udidRaw?.trim()?.toLowerCase();
-
-    // For macOS, we just check if the destination string contains "macos"
-    const isMacOS = options.definition.destination?.toLowerCase().includes("macos") ?? false;
-
     const destinations = await destinationsManager.getDestinations();
-    const destination = destinations.find((d) => {
-      switch (d.type) {
-        case "iOSSimulator":
-        case "watchOSSimulator":
-        case "visionOSSimulator":
-        case "tvOSSimulator":
-        case "iOSDevice":
-        case "watchOSDevice":
-        case "visionOSDevice":
-        case "tvOSDevice":
-          return d.udid.toLowerCase() === udidLower;
-        case "macOS":
-          return isMacOS;
-        default:
-          assertUnreachable(d);
-      }
-    });
-
-    return destination;
+    return findDestinationForTaskInput(destinations, options.definition);
   }
 
   private async getDestination(options: {
@@ -140,12 +115,16 @@ class ActionDispatcher {
     scheme: string;
     configuration: string;
     xcworkspace: string;
+    action: DestinationAction;
   }): Promise<Destination> {
     // If user has provided the ID of the destination, then use it directly
     const inputDestination = await this.getDestinationByUserInput(this.deps.destinationsManager, {
       definition: options.definition,
     });
     if (inputDestination) {
+      // A task is free to name a build-only destination; only the actions that need a
+      // device have to turn it down, and this says so instead of failing inside xcodebuild.
+      assertDestinationSupportsAction(inputDestination, options.action);
       return inputDestination;
     }
 
@@ -156,6 +135,7 @@ class ActionDispatcher {
       configuration: options.configuration,
       sdk: undefined,
       xcworkspace: options.xcworkspace,
+      action: options.action,
     });
     return destination;
   }
@@ -205,7 +185,12 @@ class ActionDispatcher {
       scheme: scheme,
       configuration: configuration,
       xcworkspace: xcworkspace,
+      action: "launch",
     });
+
+    // The lookup above already refused a build-only destination; restating it is what
+    // makes the per-device dispatch below exhaustive for the compiler.
+    assertRunnableDestination(destination, "launch");
 
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
@@ -322,6 +307,7 @@ class ActionDispatcher {
       scheme: scheme,
       configuration: configuration,
       xcworkspace: xcworkspace,
+      action: "build",
     });
 
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
@@ -386,7 +372,12 @@ class ActionDispatcher {
       scheme: scheme,
       configuration: configuration,
       xcworkspace: xcworkspace,
+      action: "run",
     });
+
+    // The lookup above already refused a build-only destination; restating it is what
+    // makes the per-device dispatch below exhaustive for the compiler.
+    assertRunnableDestination(destination, "run");
 
     const sdk = destination.platform;
 
@@ -477,6 +468,7 @@ class ActionDispatcher {
       scheme: scheme,
       configuration: configuration,
       xcworkspace: xcworkspace,
+      action: "clean",
     });
 
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
@@ -527,6 +519,7 @@ class ActionDispatcher {
       scheme: scheme,
       configuration: configuration,
       xcworkspace: xcworkspace,
+      action: "test",
     });
 
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
