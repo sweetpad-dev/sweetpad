@@ -4,7 +4,10 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 
 ## [0.2.13] - 2026-08-24
 
-- Fix autocomplete failing on a first BSP setup because `buildServer.json` was written before the config file it names ([#326](https://github.com/sweetpad-dev/sweetpad/issues/326))
+- Autocomplete now works in every target from the start
+- "SweetPad: Diagnose BSP" now reports the last background build's error
+- Fix Objective-C imports reporting `'Header.h' file not found` on code that builds ([#238](https://github.com/sweetpad-dev/sweetpad/issues/238))
+- Fix autocomplete coming up empty on a first BSP setup ([#326](https://github.com/sweetpad-dev/sweetpad/issues/326))
 
 ## [0.2.12] - 2026-08-24
 

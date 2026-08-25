@@ -9,8 +9,16 @@
 //! `clang -fsyntax-only`) on each target's sources with the args we generate
 //! (pointed at that same DerivedData). The headline metric is the count of
 //! **resolution errors** (`no such module`, `'foo.h' file not found`, …) → it
-//! must be zero, covering both the Swift cross-module import (multi-module
-//! fixture) and the ObjC header search path (objc-headers fixture).
+//! must be zero, covering the Swift cross-module import (multi-module fixture),
+//! the ObjC header search path (objc-headers fixture), and the imports that only
+//! Xcode's header maps and generated-sources dirs resolve — a sibling
+//! directory's header, a mixed target's `-Swift.h`, another target's public
+//! framework header (headermaps fixture, GitHub #238).
+//!
+//! A second test closes the loop from the other side: every search path Xcode
+//! itself passes and that exists on disk must have a counterpart in ours, so a
+//! path class we've never thought about shows up as a failure rather than as
+//! completion that quietly doesn't work.
 //!
 //! Opt-in: builds with `xcodebuild`, so it only runs when `BSP_ORACLE=1` (and
 //! Xcode 26.5 is installed). ⚠️ Pinned to Xcode 26.5 — expand later (DOCS.md §8).
@@ -137,7 +145,9 @@ fn resolve_target(project: &Path, target: &str, dd: &Path) -> TargetCompilerArgu
         .unwrap_or_else(|| panic!("no args for target {target}"))
 }
 
-fn build_fixture(project: &Path, scheme: &str, dd: &Path) {
+/// Build a fixture hermetically into `dd`, returning xcodebuild's transcript
+/// (which carries the `CompileC` lines the search-path check reads back).
+fn build_fixture(project: &Path, scheme: &str, dd: &Path) -> String {
     let build = Command::new("xcodebuild")
         .env("DEVELOPER_DIR", developer_dir())
         .args(["build", "-project"])
@@ -160,6 +170,7 @@ fn build_fixture(project: &Path, scheme: &str, dd: &Path) {
         "fixture build failed ({scheme}):\n{}",
         String::from_utf8_lossy(&build.stderr)
     );
+    String::from_utf8_lossy(&build.stdout).into_owned()
 }
 
 /// Run a front end on a target's sources, returning resolution errors.
@@ -222,7 +233,7 @@ fn bsp_typecheck_oracle() {
     // Swift cross-module: ModuleB imports ModuleA.
     let multimodule = fixture("_synthetic-multimodule", "MultiModule.xcodeproj");
     let dd1 = std::env::temp_dir().join(format!("sweetpad-bsp-mm-{}", std::process::id()));
-    build_fixture(&multimodule, "ModuleB", &dd1);
+    let _ = build_fixture(&multimodule, "ModuleB", &dd1);
     errors.extend(check_target(&multimodule, "ModuleA", &dd1, true));
     errors.extend(check_target(&multimodule, "ModuleB", &dd1, true));
     let _ = std::fs::remove_dir_all(&dd1);
@@ -230,7 +241,7 @@ fn bsp_typecheck_oracle() {
     // ObjC header search path: widget.m #imports include/widget.h via HEADER_SEARCH_PATHS.
     let objc = fixture("_synthetic-objc-headers", "ObjCHeaders.xcodeproj");
     let dd2 = std::env::temp_dir().join(format!("sweetpad-bsp-objc-{}", std::process::id()));
-    build_fixture(&objc, "ObjCHeaders", &dd2);
+    let _ = build_fixture(&objc, "ObjCHeaders", &dd2);
     errors.extend(check_target(&objc, "ObjCHeaders", &dd2, false));
     let _ = std::fs::remove_dir_all(&dd2);
 
@@ -238,12 +249,138 @@ fn bsp_typecheck_oracle() {
     // module Xcode builds into the products dir / PackageFrameworks.
     let spm = fixture("_synthetic-spm", "SpmApp.xcodeproj");
     let dd3 = std::env::temp_dir().join(format!("sweetpad-bsp-spm-{}", std::process::id()));
-    build_fixture(&spm, "SpmApp", &dd3);
+    let _ = build_fixture(&spm, "SpmApp", &dd3);
     errors.extend(check_target(&spm, "SpmApp", &dd3, true));
     let _ = std::fs::remove_dir_all(&dd3);
+
+    // Header maps + generated sources: none of Widget.m's imports is reachable
+    // through HEADER_SEARCH_PATHS, which the fixture doesn't set at all.
+    let hmaps = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
+    let dd4 = std::env::temp_dir().join(format!("sweetpad-bsp-hmap-{}", std::process::id()));
+    let _ = build_fixture(&hmaps, "HeaderMaps", &dd4);
+    errors.extend(check_target(&hmaps, "HeaderMapsCore", &dd4, false));
+    errors.extend(check_target(&hmaps, "HeaderMaps", &dd4, false));
+    let _ = std::fs::remove_dir_all(&dd4);
 
     assert!(
         errors.is_empty(),
         "module/header resolution failures: {errors:?}"
+    );
+}
+
+/// Split a build-log command line into tokens, expanding the `@file` response
+/// arguments Xcode 26 puts most of a `CompileC` invocation behind. Quoting is
+/// naive (fixture paths carry no spaces); only the search-path flags are read
+/// back, and those are never quoted.
+fn command_tokens(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for raw in line.split_whitespace() {
+        let token = raw.trim_matches('\'');
+        match token.strip_prefix('@') {
+            Some(resp) => match std::fs::read_to_string(resp) {
+                Ok(body) => out.extend(
+                    body.split_whitespace()
+                        .map(|t| t.trim_matches('\'').to_string()),
+                ),
+                Err(e) => panic!("read response file {resp}: {e}"),
+            },
+            None => out.push(token.to_string()),
+        }
+    }
+    out
+}
+
+/// The clang command line xcodebuild logged for the first `CompileC` in
+/// `target`. A `CompileC` header line names the target it belongs to; the
+/// invocation is the `…/clang` line inside the block that follows.
+fn xcode_clang_line(log: &str, target: &str) -> Vec<String> {
+    let mut in_block = false;
+    for line in log.lines() {
+        if line.starts_with("CompileC ") {
+            in_block = line.contains(&format!("(in target '{target}' from project"));
+        } else if in_block && line.trim_start().starts_with('/') && line.contains("/clang ") {
+            return command_tokens(line);
+        }
+    }
+    panic!("no CompileC invocation for target {target} in the build log");
+}
+
+/// The `-I` / `-iquote` values in an argv, in either spelling (`-I<path>` joined,
+/// as Xcode writes it, or `-I <path>` separated, as we do).
+fn search_paths(args: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        for flag in ["-I", "-iquote"] {
+            if a == flag {
+                if let Some(v) = args.get(i + 1) {
+                    out.push(v.clone());
+                }
+            } else if let Some(v) = a.strip_prefix(flag)
+                && !v.is_empty()
+            {
+                out.push(v.to_string());
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Every header search path Xcode passes **and that exists** must have a
+/// counterpart in ours.
+///
+/// The existence filter is the whole point of the comparison: Xcode names its
+/// generated-sources dirs whether or not a build created them, and we only name
+/// what's there, so an unqualified subset check would fail on paths that hold
+/// nothing. What it does catch is the #238 shape — a class of search path Xcode
+/// relies on and we've never emitted — which the arg-oracle comparator can't,
+/// since it scores header maps and `Intermediates.noindex` paths as geometry.
+#[test]
+fn bsp_clang_search_paths_cover_xcodes() {
+    if std::env::var("BSP_ORACLE").is_err() {
+        eprintln!("skipping: set BSP_ORACLE=1 to run the BSP search-path coverage check");
+        return;
+    }
+    if !Path::new(XCODE).exists() {
+        eprintln!("skipping: {XCODE} not installed");
+        return;
+    }
+
+    let project = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
+    let dd = std::env::temp_dir().join(format!("sweetpad-bsp-cover-{}", std::process::id()));
+    let log = build_fixture(&project, "HeaderMaps", &dd);
+
+    let mut missing = Vec::new();
+    for target in ["HeaderMapsCore", "HeaderMaps"] {
+        let ours = search_paths(
+            &resolve_target(&project, target, &dd)
+                .clang
+                .unwrap_or_else(|| panic!("{target} has no clang invocation"))
+                .arguments,
+        );
+        let theirs = search_paths(&xcode_clang_line(&log, target));
+        let live: Vec<&String> = theirs
+            .iter()
+            .filter(|p| Path::new(p).exists())
+            .filter(|p| !ours.contains(p))
+            .collect();
+        eprintln!(
+            "[{target}] xcode search paths={} (live) ours={} missing={}",
+            theirs.iter().filter(|p| Path::new(p).exists()).count(),
+            ours.len(),
+            live.len()
+        );
+        for p in &live {
+            eprintln!("    missing {p}");
+            missing.push(format!("{target}: {p}"));
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dd);
+
+    assert!(
+        missing.is_empty(),
+        "search paths xcode passes and we don't: {missing:?}"
     );
 }

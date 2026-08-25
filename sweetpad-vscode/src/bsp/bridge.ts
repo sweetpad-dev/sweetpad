@@ -14,6 +14,8 @@ export const BSP_LOG_LEVELS: readonly BspLogLevel[] = ["off", "error", "info", "
 
 export type BspSnapshot = {
   connected: boolean;
+  /** The server's last `bsp/status` phase: "ready", "preparing", "failed". */
+  phase?: string;
   detail?: string;
   level: BspLogLevel;
 };
@@ -30,6 +32,7 @@ const RECONNECT_DELAY_MS = 1000;
 export class BspBridge implements vscode.Disposable {
   private readonly output: vscode.OutputChannel;
   private level: BspLogLevel = "info";
+  private phase: string | undefined;
   private detail: string | undefined;
 
   private socketPath: string | undefined;
@@ -79,6 +82,14 @@ export class BspBridge implements vscode.Disposable {
         if (params?.message) {
           this.output.appendLine(`[${params.level ?? "info"}] ${params.message}`);
         }
+      });
+      // The server replays its last status on connect, so this reflects where
+      // things stand rather than only what has happened since we dialled in —
+      // which matters for "failed", a phase that may never be followed by
+      // another one.
+      connection.onNotification("bsp/status", (params: { phase?: string; detail?: string | null }) => {
+        this.phase = params?.phase;
+        this.detail = params?.detail ?? undefined;
       });
       connection.onClose(() => this.handleDrop());
       connection.onError(() => this.handleDrop());
@@ -141,6 +152,7 @@ export class BspBridge implements vscode.Disposable {
   snapshot(): BspSnapshot {
     return {
       connected: this.connection !== undefined,
+      phase: this.phase,
       detail: this.detail,
       level: this.level,
     };

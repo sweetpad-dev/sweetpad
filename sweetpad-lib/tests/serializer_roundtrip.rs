@@ -40,6 +40,14 @@ const NOT_BYTE_EXACT: &[(&str, &str)] = &[
         "hand-written: 4-space indentation instead of tabs",
     ),
     (
+        "_synthetic-headermaps/project/HeaderMaps.xcodeproj/project.pbxproj",
+        "hand-written: 4-space indentation instead of tabs",
+    ),
+    (
+        "_synthetic-headermaps/project/HeaderMaps.xcodeproj/xcshareddata/xcschemes/HeaderMaps.xcscheme",
+        "hand-written: attributes inline in the open tag",
+    ),
+    (
         "_synthetic-multimodule/project/MultiModule.xcodeproj/project.pbxproj",
         "hand-written: 4-space indentation instead of tabs",
     ),

@@ -66,17 +66,24 @@ means the tests stop exercising the shape production actually uses.
 `publish-patch.sh` refuses to cut a release without a `## [<version>]` entry for
 the version it is about to tag.
 
-**Keep each entry to one short sentence, about the length of a CLI release
-note.** The CLI's notes are commit subjects, so they stay terse by construction;
-the extension's are hand-written and have drifted into 60-word sentences that
-pack the symptom, the root cause and the mechanism into one breath, usually
-hinged on a colon. Say what changed from the user's side and stop. Anyone who
-wants the diagnosis has the linked issue.
+**Write each entry as a title, not a sentence.** Ten words is a good ceiling:
+one clause, no colon splicing two halves together, no subordinate clause
+explaining the mechanism. The CLI's notes are commit subjects, so they stay
+terse by construction; the extension's are hand-written, and the failure mode is
+a 60-word entry that packs the symptom, the root cause and the fix into one
+breath. Say what changed from the user's side and stop. Anyone who wants the
+diagnosis has the linked issue.
+
+    too long  - Fix schemes and targets from a workspace's local Swift packages
+                never reaching the Build and Testing panels: a package joins an
+                `.xcworkspace` as a reference to its directory, and SweetPad
+                read only the references ending in `.xcodeproj`
+    a title   - Fix Swift package schemes missing from the Build and Testing
+                panels
 
 Attribution stays as it is: link the issue or PR, and thank the reporter.
 
-    - Fix schemes and targets from a workspace's local Swift packages not
-      appearing in the Build and Testing panels
+    - Fix Swift package schemes missing from the Build and Testing panels
       ([#327](https://github.com/sweetpad-dev/sweetpad/issues/327),
       thanks [@rssole](https://github.com/rssole))
 
