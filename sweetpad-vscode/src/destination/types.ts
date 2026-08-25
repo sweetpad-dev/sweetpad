@@ -144,7 +144,6 @@ export class macOSDestination implements IDestination {
 export class GenericDestination implements IDestination {
   type = "generic" as const;
   typeLabel = "Generic";
-  icon = "vm";
 
   readonly name: string;
   readonly platform: DestinationPlatform;
@@ -167,6 +166,29 @@ export class GenericDestination implements IDestination {
 
   get quickPickDetails(): string {
     return `Type: ${this.typeLabel} (build-only), Destination: ${this.xcodebuildDestination}`;
+  }
+
+  /**
+   * The silhouette its concrete siblings use, so the group reads as a list of platforms
+   * rather than nine copies of one glyph. "build-only" is on the row and the group above.
+   */
+  get icon(): string {
+    switch (this.platform) {
+      case "iphoneos":
+      case "iphonesimulator":
+        return "sweetpad-device-mobile";
+      case "macosx":
+        return "sweetpad-device-laptop";
+      case "watchos":
+      case "watchsimulator":
+        return "sweetpad-device-watch";
+      case "appletvos":
+      case "appletvsimulator":
+        return "sweetpad-device-tv-old";
+      case "xros":
+      case "xrsimulator":
+        return "sweetpad-cardboards";
+    }
   }
 
   /** The value passed to `xcodebuild -destination` for a device-less platform build. */
