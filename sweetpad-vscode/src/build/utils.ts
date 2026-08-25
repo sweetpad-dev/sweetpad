@@ -1072,6 +1072,10 @@ export function getXcodeBuildDestinationString(options: { destination: Destinati
   if (destination.type === "visionOSDevice") {
     return buildDestinationString({ platform: "visionOS", id: destination.udid });
   }
+  if (destination.type === "Generic") {
+    // Device-less platform build, e.g. `generic/platform=iOS`. No id/arch.
+    return destination.xcodebuildDestination;
+  }
   return assertUnreachable(destination);
 }
 

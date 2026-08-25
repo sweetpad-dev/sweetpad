@@ -40,6 +40,7 @@ export const DESTINATION_TYPE_PRIORITY: DestinationType[] = [
   "tvOSDevice",
   "visionOSSimulator",
   "visionOSDevice",
+  "Generic",
 ];
 export const SIMULATOR_TYPE_PRIORITY: SimulatorType[] = [
   "iPhone",

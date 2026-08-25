@@ -493,6 +493,13 @@ export class BuildManager {
       xcworkspace: xcworkspace,
     });
 
+    // "Any … Device" is a device-less build-only destination — nothing to run on.
+    if (destination.type === "Generic") {
+      throw new ExtensionError(
+        `"${destination.name}" is a build-only destination — pick a simulator or device to run, or use the Build command.`,
+      );
+    }
+
     const sdk = destination.platform;
 
     const schemeSettings = await getSchemeLaunchSettings({ xcworkspace: xcworkspace, scheme: scheme });
@@ -599,6 +606,13 @@ export class BuildManager {
       sdk: undefined,
       xcworkspace: xcworkspace,
     });
+
+    // "Any … Device" is a device-less build-only destination — nothing to run on.
+    if (destination.type === "Generic") {
+      throw new ExtensionError(
+        `"${destination.name}" is a build-only destination — pick a simulator or device to run, or use the Build command.`,
+      );
+    }
 
     const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
 

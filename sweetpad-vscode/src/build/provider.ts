@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { TaskExecutionScope } from "../common/commands";
 import { getWorkspaceConfig } from "../common/config";
 import { errorReporting } from "../common/error-reporting";
+import { ExtensionError } from "../common/errors";
 import type { ExecutionScopeService } from "../common/execution-scope";
 import { setTaskPresentationOptions } from "../common/tasks/presentation";
 import { loadNodePty } from "../common/tasks/pty";
@@ -126,6 +127,9 @@ class ActionDispatcher {
           return d.udid.toLowerCase() === udidLower;
         case "macOS":
           return isMacOS;
+        case "Generic":
+          // Build-only; no udid — match only when a task names its id directly.
+          return d.id === udidLower;
         default:
           assertUnreachable(d);
       }
@@ -206,6 +210,13 @@ class ActionDispatcher {
       configuration: configuration,
       xcworkspace: xcworkspace,
     });
+
+    // "Any … Device" is a device-less build-only destination — there's nothing to launch.
+    if (destination.type === "Generic") {
+      throw new ExtensionError(
+        `"${destination.name}" is a build-only destination — use the Build task, or pick a simulator or device to launch.`,
+      );
+    }
 
     const destinationRaw = definition.destination ?? getXcodeBuildDestinationString({ destination: destination });
 
@@ -387,6 +398,13 @@ class ActionDispatcher {
       configuration: configuration,
       xcworkspace: xcworkspace,
     });
+
+    // "Any … Device" is a device-less build-only destination — there's nothing to run.
+    if (destination.type === "Generic") {
+      throw new ExtensionError(
+        `"${destination.name}" is a build-only destination — use the Build task, or pick a simulator or device to run.`,
+      );
+    }
 
     const sdk = destination.platform;
 
