@@ -13,8 +13,11 @@
 //! ignored for these. Xcode's own naming agrees — `IDEFoundation` spells them
 //! `IDEWorkspaceUserSettings_BuildLocationStyle` and friends.
 //!
-//! Two behaviours here are counter-intuitive and are pinned by tests:
+//! Three behaviours here are counter-intuitive and are pinned by tests:
 //!
+//! - The `<Name>` of a `<Name>-<hash>` folder is whitespace-collapsed (see
+//!   [`hashed_name`]); the bare `<Name>` a workspace-relative location writes
+//!   is not.
 //! - `BuildLocationStyle = CustomLocation` outranks `-derivedDataPath`. The
 //!   flag still moves DerivedData, but products and intermediates stay where
 //!   the container's custom location puts them.
@@ -109,11 +112,12 @@ fn apply(
     } else {
         match derived_data_override(settings, container) {
             // "Relative to workspace" keys the folder by bare name — the hash
-            // segment only exists to disambiguate a shared root.
+            // segment only exists to disambiguate a shared root. The name is
+            // spelled verbatim here, unlike the hash-keyed arms below.
             Some((base, false)) => (base.join(name), base),
-            Some((base, true)) => (base.join(format!("{name}-{hash}")), base),
+            Some((base, true)) => (base.join(hashed_folder(name, hash)), base),
             None => (
-                app_root.join(format!("{name}-{hash}")),
+                app_root.join(hashed_folder(name, hash)),
                 app_root.to_path_buf(),
             ),
         }
@@ -135,6 +139,45 @@ fn apply(
         intermediates: folder.join("Build/Intermediates.noindex"),
         derived_data_root: root,
     }
+}
+
+/// The `<Name>-<hash>` folder a hash-keyed DerivedData location writes.
+fn hashed_folder(name: &str, hash: &str) -> String {
+    format!("{}-{hash}", hashed_name(name))
+}
+
+/// Xcode's spelling of a container name inside a `<Name>-<hash>` DerivedData
+/// folder: every run of whitespace becomes a single `_`, so `ARTA NYC` keys
+/// `ARTA_NYC-<hash>` and `A  B` keys `A_B-<hash>`.
+///
+/// Whitespace is the only thing touched, and only these four characters count
+/// as whitespace: space, tab, LF, CR. `IDEFoundation` builds the folder name in
+/// `+[IDEWorkspaceArena nameForWorkspaceArenaWithBaseName:gristInput:]`, which
+/// calls `dvt_stringByReplacingWhitespaceRunsWithCharacter:'_' range:` — and
+/// that tests each UTF-16 unit against the bitmask `0x1_0000_2600` under a
+/// `c <= 0x20` guard. So vertical tab and form feed pass through, as does every
+/// Unicode space (U+00A0, U+2002, …) — this is not Foundation's
+/// `whitespaceAndNewlineCharacterSet`. Punctuation (`+ @ ( ) , & ' . - % ~ ! =
+/// # :`) and non-ASCII letters are untouched, there is no case folding, and
+/// there is no length cap: a name long enough to push the folder past 255 bytes
+/// fails the build outright rather than being truncated.
+///
+/// The hash itself is computed from the container's *unsanitized* path (see
+/// [`crate::xcode_hash`]), so only this one segment differs.
+#[must_use]
+pub fn hashed_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut in_run = false;
+    for c in name.chars() {
+        let is_whitespace = matches!(c, ' ' | '\t' | '\n' | '\r');
+        if !is_whitespace {
+            out.push(c);
+        } else if !in_run {
+            out.push('_');
+        }
+        in_run = is_whitespace;
+    }
+    out
 }
 
 /// The root every per-container folder sits in: the app-wide custom location
@@ -374,6 +417,123 @@ mod tests {
         assert_eq!(
             out.derived_data_root,
             PathBuf::from(format!("{HOME}/Library/Developer/Xcode/DerivedData"))
+        );
+    }
+
+    /// The whitespace rule, pinned against live `xcodebuild -showBuildSettings`
+    /// 26.5 and against the bitmask `dvt_stringByReplacingWhitespaceRunsWithCharacter:`
+    /// tests each character with.
+    #[test]
+    fn hashed_name_collapses_whitespace_runs_only() {
+        assert_eq!(hashed_name("ARTA NYC"), "ARTA_NYC");
+        assert_eq!(hashed_name("MyApp"), "MyApp");
+        // A run of any length — of mixed members, too — is one `_`.
+        assert_eq!(hashed_name("A  B"), "A_B");
+        assert_eq!(hashed_name("A   B"), "A_B");
+        assert_eq!(hashed_name("A B  C"), "A_B_C");
+        assert_eq!(hashed_name("A \t\r\nB"), "A_B");
+        // Tab, LF and CR each count; the edges are replaced, not trimmed.
+        assert_eq!(hashed_name("T\tS"), "T_S");
+        assert_eq!(hashed_name("T\nS"), "T_S");
+        assert_eq!(hashed_name("T\rS"), "T_S");
+        assert_eq!(hashed_name(" AB"), "_AB");
+        assert_eq!(hashed_name("AB "), "AB_");
+        assert_eq!(hashed_name("   "), "_");
+    }
+
+    /// Everything the bitmask's `c <= 0x20` guard lets through, which is
+    /// everything a "replace non-alphanumerics" reading would have mangled.
+    #[test]
+    fn hashed_name_leaves_every_other_character_alone() {
+        for name in [
+            "A+B",
+            "A@B",
+            "A(B)",
+            "A,B",
+            "A&B",
+            "A'B",
+            "A.B",
+            "A-B",
+            "A%B",
+            "A~B",
+            "A!B",
+            "A=B",
+            "A#B",
+            "A:B",
+            "Å",
+            "Kingfisher-Demo",
+        ] {
+            assert_eq!(hashed_name(name), name, "{name} should pass through");
+        }
+        // Vertical tab and form feed sit outside the mask despite being ASCII
+        // whitespace, so they are not Foundation's whitespace set.
+        assert_eq!(hashed_name("T\u{b}S"), "T\u{b}S");
+        assert_eq!(hashed_name("T\u{c}S"), "T\u{c}S");
+        // Nor is it `whitespaceAndNewlineCharacterSet`: Unicode spaces stay.
+        assert_eq!(hashed_name("T\u{a0}S"), "T\u{a0}S");
+        assert_eq!(hashed_name("T\u{2002}S"), "T\u{2002}S");
+    }
+
+    /// The whole of issue #329: a spaced container builds into `ARTA_NYC-…`,
+    /// so resolving `ARTA NYC-…` names a directory that never exists.
+    #[test]
+    fn stock_layout_collapses_whitespace_in_the_folder_name() {
+        let out = resolve(
+            Path::new("/src/ARTA NYC.xcworkspace"),
+            "ARTA NYC",
+            HASH,
+            HOME,
+            None,
+            /* consult_xcode */ false,
+        );
+        assert_eq!(
+            out.products,
+            PathBuf::from(format!(
+                "{HOME}/Library/Developer/Xcode/DerivedData/ARTA_NYC-{HASH}/Build/Products"
+            ))
+        );
+    }
+
+    #[test]
+    fn absolute_style_collapses_whitespace_in_the_folder_name() {
+        let out = apply(
+            &WorkspaceSettings {
+                derived_data_style: Some("AbsolutePath".into()),
+                derived_data_location: Some("/level2".into()),
+                ..WorkspaceSettings::default()
+            },
+            &container(),
+            "ARTA NYC",
+            HASH,
+            Path::new("/app-root"),
+            None,
+        );
+        assert_eq!(
+            out.products,
+            PathBuf::from(format!("/level2/ARTA_NYC-{HASH}/Build/Products"))
+        );
+    }
+
+    /// The bare-name style keeps the space. `IDEWorkspaceArena` only sanitizes
+    /// on the branch that appends the hash, and `xcodebuild` agrees: a
+    /// workspace-relative location writes `MyDD/ARTA NYC/Build/Products`.
+    #[test]
+    fn workspace_relative_style_keeps_whitespace_verbatim() {
+        let out = apply(
+            &WorkspaceSettings {
+                derived_data_style: Some("WorkspaceRelativePath".into()),
+                derived_data_location: Some("MyDD".into()),
+                ..WorkspaceSettings::default()
+            },
+            Path::new("/src/ARTA NYC.xcworkspace"),
+            "ARTA NYC",
+            HASH,
+            Path::new("/app-root"),
+            None,
+        );
+        assert_eq!(
+            out.products,
+            PathBuf::from("/src/MyDD/ARTA NYC/Build/Products")
         );
     }
 
