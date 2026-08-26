@@ -589,24 +589,13 @@ async function dumpPackage(packageDir: string): Promise<any> {
 }
 
 /**
- * Scheme names for a local package that belongs to an `.xcworkspace`: one per
- * declared product, whatever its kind (a `.plugin` product gets a scheme too).
- * Falls back to non-test target names for a package that declares no products.
- *
- * No `<name>-Package` aggregate: `xcodebuild -list` synthesizes that for a
- * package opened on its own but not for one inside a workspace, so offering it
- * here would name a scheme xcodebuild then rejects.
+ * Product names from a dumped manifest — `xcodebuild -list` gives each one a
+ * scheme, whatever its kind (a `.plugin` product gets one too). A target no
+ * product exposes gets no scheme of its own.
  */
-function packageMemberSchemes(packageInfo: any): string[] {
-  const products: string[] = (packageInfo?.products ?? [])
+function packageProducts(packageInfo: any): string[] {
+  return (packageInfo?.products ?? [])
     .map((product: any) => product?.name)
-    .filter((name: unknown): name is string => typeof name === "string");
-  if (products.length > 0) {
-    return products;
-  }
-  return (packageInfo?.targets ?? [])
-    .filter((target: any) => !isTestTarget(target))
-    .map((target: any) => target?.name)
     .filter((name: unknown): name is string => typeof name === "string");
 }
 
@@ -614,16 +603,10 @@ function packageMemberSchemes(packageInfo: any): string[] {
  * Every target a package declares, tests included — a target list drives
  * `-only-testing:`, where a test target is the whole point.
  */
-function packageMemberTargets(packageInfo: any): string[] {
+function packageTargets(packageInfo: any): string[] {
   return (packageInfo?.targets ?? [])
     .map((target: any) => target?.name)
     .filter((name: unknown): name is string => typeof name === "string");
-}
-
-/** `dump-package` tags a test target as `{"test":{}}`; older dumps use `"test"`. */
-function isTestTarget(target: any): boolean {
-  const type = target?.type;
-  return typeof type === "string" ? type === "test" : Boolean(type?.test);
 }
 
 export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
@@ -635,19 +618,11 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
       const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
       const packageInfo = await dumpPackage(packageDir);
 
-      const schemeNames = new Set<string>(packageMemberSchemes(packageInfo));
-
-      // Add standalone executable targets not already covered
-      if (packageInfo.targets) {
-        for (const target of packageInfo.targets) {
-          if (target.type === "executable" && !schemeNames.has(target.name)) {
-            schemeNames.add(target.name);
-          }
-        }
-      }
+      const schemeNames = new Set<string>(packageProducts(packageInfo));
 
       // A package opened on its own also gets the `<name>-Package` aggregate
-      // scheme that builds everything; include it to match Xcode's list.
+      // scheme that builds everything; include it to match Xcode's list. It is
+      // all a package with no products has to offer.
       if (packageInfo.name) {
         schemeNames.add(`${packageInfo.name}-Package`);
       }
@@ -678,7 +653,7 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   if (workspaceType === "spm") {
     try {
       const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
-      return packageMemberTargets(await dumpPackage(packageDir));
+      return packageTargets(await dumpPackage(packageDir));
     } catch (error) {
       commonLogger.error("Failed to get SPM targets", {
         error: error,

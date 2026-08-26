@@ -46,11 +46,16 @@ pub struct Workspace {
     /// in declaration order.
     pub project_refs: Vec<PathBuf>,
     /// Absolute paths to every local SwiftPM package referenced by the
-    /// workspace (a `FileRef` at a directory holding a `Package.swift`), in
-    /// declaration order. A package's schemes are its manifest's products,
-    /// and a manifest is Swift source that only the toolchain can evaluate —
-    /// so this crate reports the membership and leaves naming to a caller
-    /// that can run `swift package dump-package`.
+    /// workspace itself (a `FileRef` at a directory holding a
+    /// `Package.swift`), in declaration order. A package's schemes are its
+    /// manifest's products, and a manifest is Swift source that only the
+    /// toolchain can evaluate — so this crate reports the membership and
+    /// leaves naming to a caller that can run `swift package dump-package`.
+    ///
+    /// A member listed here is the workspace's own package, which is why it
+    /// also gets a scheme per *test* target; the packages a member project
+    /// declares ([`Workspace::project_package_refs`]) contribute products
+    /// only.
     pub package_refs: Vec<PathBuf>,
     /// The workspace bundle's own scheme names (shared plus per-user files),
     /// sorted alphabetically. Member-project schemes are merged in by
@@ -165,13 +170,18 @@ impl Workspace {
     }
 
     /// [`Workspace::merged_schemes`] plus the schemes a caller resolved from
-    /// each member package's manifest, keyed by package path. Names for a
-    /// package this workspace doesn't reference are ignored, so a stale cache
-    /// entry can't invent a scheme.
+    /// the workspace's local package graph, each entry paired with the package
+    /// directory it came from.
     ///
     /// The split exists because product names need `swift package
     /// dump-package` — see [`Workspace::package_refs`]. A caller with no
     /// resolved names gets exactly `merged_schemes`.
+    ///
+    /// The graph reaches past this workspace's own `FileRef` members — a
+    /// member project's packages and everything those pull in through
+    /// `.package(path:)` are in it too — and only a caller that evaluated the
+    /// manifests knows how far it went, so the names are merged as given
+    /// rather than filtered against [`Workspace::package_refs`].
     #[must_use]
     pub fn merged_schemes_with_packages(
         &self,
@@ -179,10 +189,8 @@ impl Workspace {
     ) -> Vec<String> {
         let mut set: std::collections::BTreeSet<String> =
             self.merged_schemes().into_iter().collect();
-        for (path, names) in package_schemes {
-            if self.package_refs.iter().any(|p| p == path) {
-                set.extend(names.iter().cloned());
-            }
+        for (_, names) in package_schemes {
+            set.extend(names.iter().cloned());
         }
         let mut out: Vec<String> = set.into_iter().collect();
         crate::scheme::sort_like_xcodebuild(&mut out);
@@ -198,15 +206,14 @@ impl Workspace {
         self.merged_from_projects(|proj| proj.targets.into_iter().map(|t| t.name))
     }
 
-    /// [`Workspace::merged_targets`] plus the targets a caller read from each
-    /// member package's manifest, keyed by package path — packages appended
-    /// after the projects, in declaration order. Names for a package this
-    /// workspace doesn't reference are ignored, so a stale cache entry can't
-    /// invent a target.
+    /// [`Workspace::merged_targets`] plus the targets a caller read from the
+    /// workspace's local package graph — packages appended after the projects,
+    /// in the order the caller resolved them.
     ///
     /// Target names need `swift package dump-package`; see
     /// [`Workspace::package_refs`]. A caller with nothing resolved gets
-    /// exactly `merged_targets`.
+    /// exactly `merged_targets`. The names are merged as given, for the reason
+    /// [`Workspace::merged_schemes_with_packages`] gives.
     #[must_use]
     pub fn merged_targets_with_packages(
         &self,
@@ -214,13 +221,38 @@ impl Workspace {
     ) -> Vec<String> {
         let mut out = self.merged_targets();
         let mut seen: std::collections::HashSet<String> = out.iter().cloned().collect();
-        for package_path in &self.package_refs {
-            let Some((_, names)) = package_targets.iter().find(|(p, _)| p == package_path) else {
-                continue;
-            };
+        for (_, names) in package_targets {
             for name in names {
                 if seen.insert(name.clone()) {
                     out.push(name.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// The local SwiftPM packages the member *projects* declare
+    /// (`XCLocalSwiftPackageReference`), in project order then declaration
+    /// order, with duplicates and this workspace's own `FileRef` members
+    /// dropped.
+    ///
+    /// `xcodebuild -list -workspace` gives these packages' products schemes
+    /// just like a `FileRef` member's, which is why they have to be resolved
+    /// too — a package dragged into an app project rather than into the
+    /// workspace is the common way to end up here. Projects that fail to open
+    /// are skipped.
+    #[must_use]
+    pub fn project_package_refs(&self) -> Vec<PathBuf> {
+        let mut seen: std::collections::HashSet<PathBuf> =
+            self.package_refs.iter().cloned().collect();
+        let mut out = Vec::new();
+        for project_path in &self.project_refs {
+            let Ok(proj) = project::open(project_path) else {
+                continue;
+            };
+            for dir in proj.package_refs {
+                if seen.insert(dir.clone()) {
+                    out.push(dir);
                 }
             }
         }
@@ -596,20 +628,24 @@ mod tests {
     }
 
     #[test]
-    fn resolved_package_schemes_merge_in_and_stale_paths_are_ignored() {
+    fn resolved_package_schemes_merge_in_from_across_the_graph() {
         let (ws_path, _proj) = scratch_workspace("pkg-merge");
         let pkg = add_package(&ws_path, "MyLib");
         let ws = open(&ws_path).unwrap();
 
         let resolved = vec![
             (pkg, vec!["LibA".to_string(), "LibB".to_string()]),
-            // A cache entry for a package this workspace dropped must not
-            // resurrect its schemes.
-            (PathBuf::from("/gone/Old"), vec!["Ghost".to_string()]),
+            // A package reached through a member's `.package(path:)` is no
+            // `FileRef` of this workspace, and its products are schemes all
+            // the same.
+            (
+                PathBuf::from("/elsewhere/Nested"),
+                vec!["NestedLib".to_string()],
+            ),
         ];
         assert_eq!(
             ws.merged_schemes_with_packages(&resolved),
-            vec!["LibA", "LibB", "Scratch"]
+            vec!["LibA", "LibB", "NestedLib", "Scratch"]
         );
         // With nothing resolved it degrades to exactly `merged_schemes`.
         assert_eq!(ws.merged_schemes_with_packages(&[]), ws.merged_schemes());
@@ -632,13 +668,77 @@ mod tests {
                     "LibATests".to_string(),
                 ],
             ),
-            (PathBuf::from("/gone/Old"), vec!["Ghost".to_string()]),
+            (
+                PathBuf::from("/elsewhere/Nested"),
+                vec!["NestedLib".to_string()],
+            ),
         ];
         assert_eq!(
             ws.merged_targets_with_packages(&resolved),
-            vec!["Scratch", "LibA", "LibATests"]
+            vec!["Scratch", "LibA", "LibATests", "NestedLib"]
         );
         assert_eq!(ws.merged_targets_with_packages(&[]), ws.merged_targets());
+        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
+    }
+
+    /// A workspace holding the `_synthetic-spm` fixture project, which
+    /// declares `XCLocalSwiftPackageReference "Dep"`. `absolute:` keeps the
+    /// scratch workspace from having to copy the fixture.
+    fn workspace_over_the_spm_fixture(tag: &str, also_reference_the_package: bool) -> PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let spm = fixtures_root().join("_synthetic-spm/project");
+        let root =
+            std::env::temp_dir().join(format!("sweetpad-ws-{tag}-{}-{n}", std::process::id()));
+        let ws_path = root.join("Test.xcworkspace");
+        fs::create_dir_all(&ws_path).unwrap();
+        let package_ref = if also_reference_the_package {
+            format!(
+                "  <FileRef location=\"absolute:{}\"/>\n",
+                spm.join("Dep").display()
+            )
+        } else {
+            String::new()
+        };
+        fs::write(
+            ws_path.join("contents.xcworkspacedata"),
+            format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n  <FileRef location=\"absolute:{}\"/>\n{package_ref}</Workspace>\n",
+                spm.join("SpmApp.xcodeproj").display()
+            ),
+        )
+        .unwrap();
+        ws_path
+    }
+
+    #[test]
+    fn a_member_projects_local_packages_are_reported_apart_from_the_workspaces_own() {
+        let ws_path = workspace_over_the_spm_fixture("project-pkg", false);
+        let ws = open(&ws_path).unwrap();
+
+        // The workspace declares no package itself; the project it holds does,
+        // and `xcodebuild -list` gives that package's products schemes too.
+        assert!(ws.package_refs.is_empty());
+        assert_eq!(
+            ws.project_package_refs(),
+            vec![fixtures_root().join("_synthetic-spm/project/Dep")]
+        );
+        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_package_the_workspace_already_names_is_not_reported_twice() {
+        let ws_path = workspace_over_the_spm_fixture("both-ways", true);
+        let ws = open(&ws_path).unwrap();
+
+        // Referenced by the workspace *and* by its project: the membership
+        // wins, since that is the role that also makes test targets schemes.
+        assert_eq!(
+            ws.package_refs,
+            vec![fixtures_root().join("_synthetic-spm/project/Dep")]
+        );
+        assert!(ws.project_package_refs().is_empty());
         let _ = fs::remove_dir_all(ws_path.parent().unwrap());
     }
 

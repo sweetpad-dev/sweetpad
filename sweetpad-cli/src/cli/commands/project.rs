@@ -503,9 +503,9 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             let ws = sweetpad_lib::workspace::open(p).map_err(|e| {
                 CliError::new(format!("failed to read workspace {}: {e}", p.display()))
             })?;
-            // `info` is an explicit enumeration, so it pays for the members'
+            // `info` is an explicit enumeration, so it pays for the packages'
             // manifests rather than under-reporting what the workspace holds.
-            let members = sweetpad_core::package_members::resolve(&ws.package_refs, None);
+            let members = sweetpad_core::package_members::resolve_workspace(&ws, None);
             Ok(Info {
                 kind: "workspace",
                 name: ws.name.clone(),
@@ -523,19 +523,23 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             let proj = sweetpad_lib::project::open(p).map_err(|e| {
                 CliError::new(format!("failed to read project {}: {e}", p.display()))
             })?;
+            let members = sweetpad_core::package_members::resolve_project(&proj, None);
             Ok(Info {
                 kind: "project",
                 name: proj.name.clone(),
                 path,
-                targets: proj.targets.iter().map(|t| t.name.clone()).collect(),
+                targets: proj
+                    .targets_with_packages(&sweetpad_core::package_members::target_pairs(&members)),
                 configurations: proj.configurations.clone(),
-                schemes: proj.schemes.clone(),
+                schemes: proj
+                    .schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(&members)),
             })
         }
         Container::SwiftPackage(_) => {
             // No pbxproj to read; evaluate the manifest instead. Targets are
             // every declared target; schemes mirror the synthesized set
-            // (products, or non-test targets). SwiftPM builds are debug/release.
+            // (products plus the package aggregate). SwiftPM builds are
+            // debug/release.
             let manifest = crate::cli::swiftpm::manifest(container)?;
             Ok(Info {
                 kind: "package",

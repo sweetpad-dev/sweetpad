@@ -54,21 +54,14 @@ pub struct DeclaredDep {
 
 impl Manifest {
     /// Scheme candidates for the package, matching `xcodebuild -list`: one
-    /// scheme per product, plus the `<name>-Package` aggregate scheme xcodebuild
-    /// synthesizes to build the whole package. Falls back to non-test target
-    /// names (still plus the aggregate) when a package declares no products, so
-    /// scheme selection always has candidates.
+    /// scheme per product, plus the `<name>-Package` aggregate scheme
+    /// xcodebuild synthesizes to build the whole package. A target no product
+    /// exposes gets no scheme of its own, so a package that declares no
+    /// products offers just the aggregate — which still builds and tests
+    /// everything in it.
     #[must_use]
     pub fn scheme_names(&self) -> Vec<String> {
-        let mut names: Vec<String> = if self.products.is_empty() {
-            self.targets
-                .iter()
-                .filter(|t| !t.is_test())
-                .map(|t| t.name.clone())
-                .collect()
-        } else {
-            self.products.iter().map(|p| p.name.clone()).collect()
-        };
+        let mut names: Vec<String> = self.products.iter().map(|p| p.name.clone()).collect();
         names.push(format!("{}-Package", self.name));
         names
     }
@@ -515,14 +508,14 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_to_non_test_targets_when_no_products() {
+    fn a_package_with_no_products_offers_just_the_aggregate() {
         let m = parse_manifest(
             r#"{ "name": "P", "products": [],
                  "targets": [ { "name": "Lib", "type": "regular" },
                               { "name": "LibTests", "type": "test" } ] }"#,
         )
         .unwrap();
-        assert_eq!(m.scheme_names(), vec!["Lib", "P-Package"]);
+        assert_eq!(m.scheme_names(), vec!["P-Package"]);
     }
 
     #[test]

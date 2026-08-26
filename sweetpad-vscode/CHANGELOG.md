@@ -2,6 +2,11 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.15] - 2026-08-26
+
+- Fix missing schemes from Swift packages a project references ([#327](https://github.com/sweetpad-dev/sweetpad/issues/327), thanks [@rssole](https://github.com/rssole))
+- Stop listing schemes Xcode doesn't offer for product-less packages
+
 ## [0.2.14] - 2026-08-26
 
 - Fix apps not launching when the workspace name has a space ([#329](https://github.com/sweetpad-dev/sweetpad/issues/329), thanks [@richardgroves](https://github.com/richardgroves))
