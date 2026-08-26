@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.14] - 2026-08-26
+
+- Fix apps not launching when the workspace name has a space ([#329](https://github.com/sweetpad-dev/sweetpad/issues/329), thanks [@richardgroves](https://github.com/richardgroves))
+
 ## [0.2.13] - 2026-08-26
 
 - Add Xcode's "Any iOS Device" and the other build-only destinations ([#71](https://github.com/sweetpad-dev/sweetpad/issues/71), thanks [@NSExceptional](https://github.com/NSExceptional))
@@ -9,7 +13,6 @@ New features, improvements and bug fixes for SweetPad are documented in this fil
 - "SweetPad: Diagnose BSP" now reports the last background build's error
 - Fix Objective-C imports reporting `'Header.h' file not found` on code that builds ([#238](https://github.com/sweetpad-dev/sweetpad/issues/238))
 - Fix autocomplete coming up empty on a first BSP setup ([#326](https://github.com/sweetpad-dev/sweetpad/issues/326))
-- Fix apps not launching when the workspace name has a space ([#329](https://github.com/sweetpad-dev/sweetpad/issues/329), thanks [@richardgroves](https://github.com/richardgroves))
 
 ## [0.2.12] - 2026-08-24
 
