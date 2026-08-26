@@ -230,6 +230,7 @@ Hand-built fixtures cover paths no real corpus project exercises:
 | `_synthetic-multiplatform` | One `SDKROOT = auto` target with `SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx` — the IceCubesApp shape that keeps the SDK-binding regression in CI |
 | `_synthetic-{coredata,assetsym,strcat,intents,cocoapods,macro,tests}` | BSP generated-source / CocoaPods / Swift-macro / XCTest coverage — each a forced `Probe*.swift` referencing a build-time-generated / Pod / macro-expanded symbol |
 | `_synthetic-spm`, `_synthetic-workspace` | SwiftPM package products (`-F …/PackageFrameworks`); multi-project `.xcworkspace` resolution |
+| `_synthetic-spm-graph` | One workspace reaching a local package six ways — its own `FileRef` member, the member project's declared package, both of their `.package(path:)` dependencies, and two under a `PBXFileSystemSynchronizedRootGroup` — plus a package carrying a `.swiftpm/xcode` scheme container and one whose only target is an `executableTarget` (`tests/spm_graph_oracle.rs` in sweetpad-core) |
 | `_global` | Per-SDK metadata (`sdks/<sdk>.json`), xcodebuild version banner |
 | `_tuist-src` | Generated tuist examples adding a command-line tool (`mh_execute`) and a standalone dynamic library (`mh_dylib`) to the compiler-args oracle |
 
@@ -434,10 +435,12 @@ the imported `examples_xcode_<dir>` spelling.
 
 Schemes `xcodebuild` synthesizes from Swift *package* manifests (41 across
 ice-cubes/netnewswire) are outside the pbxproj surface and are tallied by the
-discovery oracle, not failed. They are instead grounded directly against the
-toolchain by the SwiftPM CLI oracle (`tests/spm_oracle.rs`, roadmap D15 — done):
-sweetpad reads package schemes from `swift package dump-package` (products plus
-the `<name>-Package` aggregate) rather than the pbxproj resolver.
+discovery oracle, not failed. They are grounded against the toolchain instead,
+by two oracles that read `swift package dump-package` rather than the pbxproj
+resolver: `sweetpad-cli/tests/spm_oracle.rs` for a package opened on its own
+(the product-count rule in §9, roadmap D15 — done), and
+`sweetpad-core/tests/spm_graph_oracle.rs` for the local package graph around an
+Xcode container (§9's "Schemes from a local Swift package").
 
 ## 7. Compiler-argument resolution
 
@@ -702,9 +705,9 @@ Methods: `build/initialize`, `workspace/buildTargets`, `buildTarget/sources`,
 
 Tracks which Xcode build-system features have a real example in the corpus.
 Hand-maintained; re-verify against the generated `fixtures/FIXTURES.md`
-after each capture run. Current tally: **121 ✅ / 18 ❌**
+after each capture run. Current tally: **127 ✅ / 20 ❌**
 (reconciled 2026-05-30 against the captured corpus with concrete evidence per
-row; scheme-discovery rows updated 2026-06-10).
+row; scheme-discovery rows updated 2026-06-10, package-graph rows 2026-08-26).
 
 Legend: ✅ at least one fixture exercises it (rows marked *hermetic, not
 corpus* are covered by tests building the layout in temp dirs — covered, but
@@ -814,6 +817,72 @@ unit tests rather than a corpus capture.
 | Scheme with custom test plan (`.xctestplan`) | ✅ | fixtures/alamofire/.../Alamofire iOS.xcscheme |
 | Scheme using parallel testing config | ❌ | — (roadmap D18: hermetic) |
 | Scheme overriding `buildImplicitDependencies` | ✅ | fixtures/tuist-fixtures/.../examples_xcode_generated_app_with_custom_scheme |
+
+#### Schemes from a local Swift package
+
+`xcodebuild -list` resolves the whole *local* package graph in reach of the
+container and synthesizes schemes from every package in it: the
+`.xcworkspace`'s own `FileRef` members, the packages a member project declares
+(`XCLocalSwiftPackageReference`) or keeps in its group tree as a plain folder
+reference, and everything those pull in through `.package(path:)`. Naming any
+of it needs `swift package dump-package`, so the walk lives in
+`sweetpad-core/src/package_members.rs` (whose module docs carry the reasoning)
+rather than in this crate.
+
+What each package contributes, measured against Xcode 26.5:
+
+| Reached as | products | `.swiftpm/xcode` scheme files | test targets |
+|---|---|---|---|
+| `FileRef` in the `.xcworkspace` | ✅ | ✅ | ✅ |
+| package whose scheme container still resolves | ✅ | ✅ | ✅ |
+| any other local package | ✅ | ✅ | — |
+
+A target no product exposes is never a scheme. "Products" includes the ones
+SwiftPM synthesizes but the manifest never wrote: an `executableTarget` no
+declared product covers gets an implicit executable product of the same name,
+and `xcodebuild` schedules a scheme for it like any other. `swift package
+describe` reports those, but only after resolving the dependency graph, so
+`package_members.rs` reconstructs them from `dump-package`'s targets instead.
+
+A scheme container counts as resolving when one of its schemes names a
+buildable the manifest still declares — ice-cubes' `Env` ships an
+`Env.xcscheme` and gets `EnvTests` alongside it, while its `NetworkClient`
+ships only a `NetworkTests.xcscheme` left over from a rename and gets nothing
+autocreated.
+
+A package found under a `PBXFileSystemSynchronizedRootGroup` counts like any
+other. The folder lists no members in the pbxproj, so the walk scans the disk
+under it, at any depth and stopping at each package it finds — a
+`Package.swift` nested inside another package gets no schemes. NetNewsWire
+reaches all fourteen of its `Modules/*` this way and no other.
+
+**A package opened on its own is listed differently**, and how many products it
+has decides the shape:
+
+| products | schemes |
+|---|---|
+| none | `<name>-Package` alone |
+| one | `<name>` alone — the package's own name, whatever the product is called |
+| two or more | `<name>-Package` plus one scheme per product |
+
+The single-product collapse is easy to miss in both directions: a package with
+one library product answers to neither that product's name nor the aggregate,
+and one whose only product is an `executableTarget`'s implicit executable
+answers to the package name too. `Manifest::scheme_names` in
+`sweetpad-cli/src/cli/swiftpm.rs` and `packageSchemes` in the extension's
+`scripts.ts` both encode it; the two-product form is unchanged back to Xcode
+15.4 in the captures.
+
+| Test case | Status | Where |
+|---|---|---|
+| Package products as schemes, across the whole `.package(path:)` graph | ✅ | fixtures/_synthetic-spm-graph (sweetpad-core/tests/spm_graph_oracle.rs) |
+| A package a project declares or holds as a folder reference | ✅ | fixtures/_synthetic-spm-graph/project/SpmApp.xcodeproj (both spellings) |
+| A package's own scheme files, and the test targets a live container unlocks | ✅ | fixtures/_synthetic-spm-graph/project/Dep/.swiftpm |
+| A package under a synchronized folder, two levels down | ✅ | fixtures/_synthetic-spm-graph/project/Modules/Nest/Synced |
+| The implicit executable product behind a product-less `executableTarget` | ✅ | fixtures/_synthetic-spm-graph/project/Modules/Tool |
+| The product-count rule for a package opened on its own | ✅ | *hermetic, not corpus* — `Manifest::scheme_names` unit tests (sweetpad-cli/src/cli/swiftpm.rs) |
+| A *remote* package's scheme files | ❌ | ice-cubes' `RevenueCatUI` — they live in a `SourcePackages` checkout under DerivedData that only a resolved build knows the path to |
+| When a live scheme container does *not* unlock a test target | ❌ | NetNewsWire's `Articles` ships one `Articles.xcscheme` and `xcodebuild` lists no `ArticlesTests`, while ice-cubes' `Env` ships one `Env.xcscheme` and does get `EnvTests`; sweetpad follows the ice-cubes rule and offers that one extra scheme |
 
 ### SDKs / platforms
 
@@ -1115,8 +1184,9 @@ Xcode 26.5. Probe the new toolchain:
 swift package --experimental-manifest-processing-mode only-parsed dump-package
 ```
 
-If the flag is accepted, the spawn in `sweetpad-core` that resolves a workspace
-member package's schemes (issue #327) can lean on it for the common case.
+If the flag is accepted, the spawn in `sweetpad-core` that resolves the local
+package graph's schemes (issue #327) can lean on it for the common case —
+it is one spawn per package, so a graph pays the most.
 
 ### 10.8 Green, docs, commit
 

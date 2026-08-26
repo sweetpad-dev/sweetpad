@@ -35,6 +35,16 @@ pub struct Project {
     /// that `xcodebuild` additionally synthesizes from Swift *package*
     /// manifests are out of scope — they aren't derivable from the pbxproj.
     pub schemes: Vec<String>,
+    /// Absolute paths to the local SwiftPM packages the project declares
+    /// (`XCLocalSwiftPackageReference`), in `packageReferences` order, keeping
+    /// only directories that hold a `Package.swift`.
+    ///
+    /// `xcodebuild -list` gives each of their *products* a scheme, on top of
+    /// the project's own targets. Naming a product means evaluating a Swift
+    /// manifest, so this crate reports the membership and leaves the naming to
+    /// a caller that can run `swift package dump-package` — the same split as
+    /// [`crate::workspace::Workspace::package_refs`].
+    pub package_refs: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -169,7 +179,225 @@ pub fn open_from_value(value: &Value, xcodeproj_path: &Path) -> Result<Project, 
         configurations,
         default_configuration,
         schemes,
+        package_refs: local_package_refs(value, objects, project_obj, xcodeproj_path),
     })
+}
+
+impl Project {
+    /// [`Project::schemes`] plus the schemes a caller resolved from the
+    /// project's local package graph, sorted the way `xcodebuild -list
+    /// -project` prints them.
+    ///
+    /// Product names need `swift package dump-package` — see
+    /// [`Project::package_refs`] — so a caller with nothing resolved gets
+    /// exactly `schemes`.
+    #[must_use]
+    pub fn schemes_with_packages(&self, package_schemes: &[(PathBuf, Vec<String>)]) -> Vec<String> {
+        let mut set: BTreeSet<String> = self.schemes.iter().cloned().collect();
+        for (_, names) in package_schemes {
+            set.extend(names.iter().cloned());
+        }
+        let mut out: Vec<String> = set.into_iter().collect();
+        crate::scheme::sort_like_xcodebuild(&mut out);
+        out
+    }
+
+    /// The project's target names plus the targets a caller read from its
+    /// local package graph, packages appended after the project's own targets
+    /// in the order the caller resolved them.
+    #[must_use]
+    pub fn targets_with_packages(&self, package_targets: &[(PathBuf, Vec<String>)]) -> Vec<String> {
+        let mut out: Vec<String> = self.targets.iter().map(|t| t.name.clone()).collect();
+        let mut seen: std::collections::HashSet<String> = out.iter().cloned().collect();
+        for (_, names) in package_targets {
+            for name in names {
+                if seen.insert(name.clone()) {
+                    out.push(name.clone());
+                }
+            }
+        }
+        out
+    }
+}
+
+/// The local SwiftPM packages a pbxproj reaches, resolved to absolute
+/// directories: the ones it declares in `packageReferences`, then the ones
+/// sitting in its group tree.
+///
+/// Both spellings are in the wild. "Add Local…" writes an
+/// `XCLocalSwiftPackageReference` whose `relativePath` is anchored at the
+/// directory *containing* the `.xcodeproj` (`Dep` for a sibling, `../Dep` for
+/// one a level up, or an absolute path). Dragging a package folder into the
+/// navigator instead leaves a plain `PBXFileReference` at the directory, with
+/// nothing but the manifest inside to say it is a package — how ice-cubes
+/// references all thirteen of its `Packages/*`, every one of which
+/// `xcodebuild -list` gives a scheme.
+///
+/// Remote packages are skipped: they live in a checkout Xcode manages, and
+/// `xcodebuild` synthesizes no schemes from their manifests. A path with no
+/// `Package.swift` is dropped rather than reported, so a reference left behind
+/// by a moved package cannot invent a scheme.
+fn local_package_refs(
+    value: &Value,
+    objects: &Dict,
+    project_obj: &Value,
+    xcodeproj_path: &Path,
+) -> Vec<PathBuf> {
+    let project_dir = abs_project_dir(xcodeproj_path);
+    let declared = crate::spm_pbxproj::list_packages(value)
+        .into_iter()
+        .filter_map(|pkg| match pkg.kind {
+            crate::spm_pbxproj::PackageKind::Local { relative_path } => Some(relative_path),
+            crate::spm_pbxproj::PackageKind::Remote { .. } => None,
+        })
+        .map(|rel| {
+            let p = PathBuf::from(&rel);
+            if p.is_absolute() {
+                p
+            } else {
+                join_normalized(&project_dir, &rel)
+            }
+        });
+
+    let mut out: Vec<PathBuf> = Vec::new();
+    let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
+    for dir in declared.chain(group_tree_package_refs(objects, project_obj, &project_dir)) {
+        if dir.join("Package.swift").is_file() && seen.insert(dir.clone()) {
+            out.push(dir);
+        }
+    }
+    out
+}
+
+/// Package directories reachable from the project's `mainGroup`, in navigator
+/// order. Only leaves that could name a directory are stat'd — checking every
+/// leaf would mean one `stat` per file reference in the project — and a
+/// synchronized folder, which lists no members at all, is scanned on disk by
+/// [`packages_under_synchronized_folder`].
+fn group_tree_package_refs(
+    objects: &Dict,
+    project_obj: &Value,
+    project_dir: &Path,
+) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(main_group_id) = project_obj.get("mainGroup").and_then(Value::as_str) {
+        walk_for_packages(
+            objects,
+            main_group_id,
+            project_dir,
+            project_dir,
+            &mut out,
+            &mut BTreeSet::new(),
+            0,
+        );
+    }
+    out
+}
+
+fn walk_for_packages<'a>(
+    objects: &'a Dict,
+    node_id: &'a str,
+    parent_base: &Path,
+    project_dir: &Path,
+    out: &mut Vec<PathBuf>,
+    visited: &mut BTreeSet<&'a str>,
+    depth: usize,
+) {
+    let Some(node) = objects.get(node_id) else {
+        return;
+    };
+    let base = node_base(node, parent_base, project_dir);
+    match node.get("isa").and_then(Value::as_str).unwrap_or("") {
+        "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup" => {
+            if depth >= MAX_GROUP_DEPTH || !visited.insert(node_id) {
+                return;
+            }
+            if let Some(children) = node.get("children").and_then(Value::as_array) {
+                for child in children {
+                    if let Some(cid) = child.as_str() {
+                        walk_for_packages(
+                            objects,
+                            cid,
+                            &base,
+                            project_dir,
+                            out,
+                            visited,
+                            depth + 1,
+                        );
+                    }
+                }
+            }
+        }
+        // A folder reference (Xcode 16+): the pbxproj lists none of its
+        // members, so a package under it is found by looking at the disk.
+        "PBXFileSystemSynchronizedRootGroup" => {
+            if base.join("Package.swift").is_file() {
+                out.push(base);
+            } else {
+                packages_under_synchronized_folder(&base, out, 0);
+            }
+        }
+        _ => {
+            if names_a_directory(node) {
+                out.push(base);
+            }
+        }
+    }
+}
+
+/// Package directories physically under `dir`, a synchronized folder.
+///
+/// Everything below such a folder belongs to the project without the pbxproj
+/// naming it, and `xcodebuild` gives a package found there schemes at any
+/// depth — NetNewsWire reaches all fourteen of its `Modules/*` this way, and a
+/// package two levels down is listed just the same. Descent stops at a
+/// directory that is itself a package, since a package's subdirectories are
+/// its own sources: a `Package.swift` nested inside another package gets no
+/// schemes.
+///
+/// Names carrying a `.` are skipped — `.build`, `.git`, `Foo.xcassets`,
+/// `en.lproj`. A package directory never has one, and skipping them keeps the
+/// scan off the resource trees that are most of what a synchronized folder
+/// holds: NetNewsWire's eight folders cost 82 `read_dir` calls this way.
+fn packages_under_synchronized_folder(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
+    if depth >= MAX_GROUP_DEPTH {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    // `read_dir` order is the filesystem's, which would leave the target list
+    // this feeds in a different order run to run.
+    let mut children: Vec<PathBuf> = entries
+        .flatten()
+        // `file_type` does not follow symlinks, so a link pointing back up the
+        // tree ends the descent instead of looping.
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter(|e| !e.file_name().to_string_lossy().contains('.'))
+        .map(|e| e.path())
+        .collect();
+    children.sort();
+    for child in children {
+        if child.join("Package.swift").is_file() {
+            out.push(child);
+        } else {
+            packages_under_synchronized_folder(&child, out, depth + 1);
+        }
+    }
+}
+
+/// Whether a leaf node could be a directory: an explicit folder or wrapper
+/// type, or no declared type at all. Xcode spells a dragged-in package folder
+/// `wrapper` today and `folder` in projects old enough.
+fn names_a_directory(node: &Value) -> bool {
+    let kind = node
+        .get("lastKnownFileType")
+        .or_else(|| node.get("explicitFileType"))
+        .and_then(Value::as_str);
+    match kind {
+        None => true,
+        Some(k) => k == "folder" || k == "wrapper" || k.starts_with("folder."),
+    }
 }
 
 /// Whether Xcode's scheme autocreation materializes a scheme for `target`.
@@ -4771,6 +4999,66 @@ mod tests {
         // Synthetic project has no scheme files at all, so the autocreated
         // per-target schemes surface (matching `xcodebuild -list`).
         assert_eq!(project.schemes, vec!["Scratch"]);
+    }
+
+    #[test]
+    fn reads_the_local_packages_a_project_declares() {
+        let root = fixtures_root().join("_synthetic-spm/project");
+        let project = open(&root.join("SpmApp.xcodeproj")).unwrap();
+        // `XCLocalSwiftPackageReference "Dep"` — a relative path anchored at
+        // the directory holding the .xcodeproj.
+        assert_eq!(project.package_refs, vec![root.join("Dep")]);
+        // Their products are not in `schemes`: naming one needs the toolchain.
+        assert_eq!(project.schemes, vec!["SpmApp"]);
+    }
+
+    /// A synchronized folder names none of its members, so the packages under
+    /// it are found on disk. `xcodebuild -list` gives a package there schemes
+    /// at any depth (grounded on Xcode 26.5), a `Package.swift` nested inside
+    /// another package gets none, and dotted names are never packages.
+    #[test]
+    fn finds_packages_under_a_synchronized_folder() {
+        let root = std::env::temp_dir().join(format!("sweetpad-sync-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for rel in [
+            "Modules/Shallow",
+            "Modules/Nest/Deep",
+            "Modules/Shallow/Inner",
+            "Modules/Resources.xcassets/Nope",
+        ] {
+            fs::create_dir_all(root.join(rel)).unwrap();
+            fs::write(root.join(rel).join("Package.swift"), "// package").unwrap();
+        }
+        // Not a package, and not a parent of one either.
+        fs::create_dir_all(root.join("Modules/Plain/Sources")).unwrap();
+
+        let mut found = Vec::new();
+        packages_under_synchronized_folder(&root.join("Modules"), &mut found, 0);
+        assert_eq!(
+            found,
+            vec![root.join("Modules/Nest/Deep"), root.join("Modules/Shallow")]
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn package_names_merge_into_the_projects_own() {
+        let root = fixtures_root().join("_synthetic-spm/project");
+        let project = open(&root.join("SpmApp.xcodeproj")).unwrap();
+        let resolved = vec![(root.join("Dep"), vec!["Dep".to_string()])];
+        assert_eq!(
+            project.schemes_with_packages(&resolved),
+            vec!["Dep", "SpmApp"]
+        );
+        assert_eq!(
+            project.targets_with_packages(&[(
+                root.join("Dep"),
+                vec!["Dep".to_string(), "DepTests".to_string()],
+            )]),
+            vec!["SpmApp", "Dep", "DepTests"]
+        );
+        // Nothing resolved leaves both lists exactly as the pbxproj has them.
+        assert_eq!(project.schemes_with_packages(&[]), project.schemes);
     }
 
     #[test]

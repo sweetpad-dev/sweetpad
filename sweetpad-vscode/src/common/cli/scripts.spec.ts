@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { getShellDeveloperDir } from "../tasks/shell-env";
-import { getBuildSettingsList, getXcodeBuildCommand, parseCliJsonOutput } from "./scripts";
+import { getBuildSettingsList, getXcodeBuildCommand, packageSchemes, parseCliJsonOutput } from "./scripts";
 
 vi.mock("../exec", () => ({ exec: vi.fn() }));
 vi.mock("../tasks/shell-env", () => ({ getShellDeveloperDir: vi.fn() }));
@@ -302,5 +302,48 @@ describe("getBuildSettingsList", () => {
     expect(settings[0].target).toBe("MyPackage");
     expect(mockBuildSettings).not.toHaveBeenCalled();
     expect(mockExec).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/proj" }));
+  });
+});
+
+describe("packageSchemes", () => {
+  it("offers only the aggregate when the package has no products", () => {
+    expect(packageSchemes({ name: "P", products: [], targets: [{ name: "Lib", type: "regular" }] })).toEqual([
+      "P-Package",
+    ]);
+  });
+
+  // Grounded on `xcodebuild -list` (26.5): one product means one scheme, named
+  // after the package rather than the product, and no aggregate.
+  it("collapses a single product to the package's own name", () => {
+    expect(
+      packageSchemes({
+        name: "P",
+        products: [{ name: "Lib", type: { library: ["automatic"] }, targets: ["T"] }],
+        targets: [{ name: "T", type: "regular" }],
+      }),
+    ).toEqual(["P"]);
+  });
+
+  it("counts an uncovered executable target as a product of its own", () => {
+    expect(
+      packageSchemes({
+        name: "D",
+        products: [{ name: "LibA", type: { library: ["automatic"] }, targets: ["TA"] }],
+        targets: [
+          { name: "TA", type: "regular" },
+          { name: "TC", type: "executable" },
+        ],
+      }),
+    ).toEqual(["D-Package", "LibA", "TC"]);
+  });
+
+  it("gives an executable target already behind a product no second product", () => {
+    expect(
+      packageSchemes({
+        name: "E",
+        products: [{ name: "tool", type: { executable: null }, targets: ["e1"] }],
+        targets: [{ name: "e1", type: "executable" }],
+      }),
+    ).toEqual(["E"]);
   });
 });

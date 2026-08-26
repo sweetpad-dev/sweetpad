@@ -589,41 +589,61 @@ async function dumpPackage(packageDir: string): Promise<any> {
 }
 
 /**
- * Scheme names for a local package that belongs to an `.xcworkspace`: one per
- * declared product, whatever its kind (a `.plugin` product gets a scheme too).
- * Falls back to non-test target names for a package that declares no products.
+ * The package's products as SwiftPM sees them: the ones the manifest declares,
+ * whatever their kind (a `.plugin` product is one too), plus the implicit
+ * executable product SwiftPM synthesizes for each `executableTarget` no
+ * declared product already covers.
  *
- * No `<name>-Package` aggregate: `xcodebuild -list` synthesizes that for a
- * package opened on its own but not for one inside a workspace, so offering it
- * here would name a scheme xcodebuild then rejects.
+ * `dump-package` reports only what the manifest wrote — `swift package
+ * describe` is what shows the implicit ones, and it resolves the whole
+ * dependency graph to do it.
  */
-function packageMemberSchemes(packageInfo: any): string[] {
-  const products: string[] = (packageInfo?.products ?? [])
+function packageProducts(packageInfo: any): string[] {
+  const declared: string[] = (packageInfo?.products ?? [])
     .map((product: any) => product?.name)
     .filter((name: unknown): name is string => typeof name === "string");
-  if (products.length > 0) {
-    return products;
-  }
-  return (packageInfo?.targets ?? [])
-    .filter((target: any) => !isTestTarget(target))
+  const covered = new Set<string>(
+    (packageInfo?.products ?? []).flatMap((product: any) =>
+      (product?.targets ?? []).filter((name: unknown): name is string => typeof name === "string"),
+    ),
+  );
+  const implicit: string[] = (packageInfo?.targets ?? [])
+    .filter((target: any) => target?.type === "executable")
     .map((target: any) => target?.name)
-    .filter((name: unknown): name is string => typeof name === "string");
+    .filter((name: unknown): name is string => typeof name === "string" && !covered.has(name));
+  return [...declared, ...implicit];
+}
+
+/**
+ * Scheme names for a package opened on its own, matching what `xcodebuild
+ * -list` prints in a package directory. How many products the package has
+ * decides the shape (measured on Xcode 26.5):
+ *
+ * - none: the `<name>-Package` aggregate alone;
+ * - one: `<name>` alone — the package's own name, whatever the product is
+ *   called, and no aggregate;
+ * - two or more: the aggregate plus one scheme per product.
+ *
+ * Exported for its spec: the rule is subtle enough that this copy would drift
+ * from `Manifest::scheme_names` in the CLI without one.
+ */
+export function packageSchemes(packageInfo: any): string[] {
+  const name = typeof packageInfo?.name === "string" ? packageInfo.name : "";
+  const products = packageProducts(packageInfo);
+  if (products.length === 1 && name) {
+    return [name];
+  }
+  return name ? [`${name}-Package`, ...products] : products;
 }
 
 /**
  * Every target a package declares, tests included — a target list drives
  * `-only-testing:`, where a test target is the whole point.
  */
-function packageMemberTargets(packageInfo: any): string[] {
+function packageTargets(packageInfo: any): string[] {
   return (packageInfo?.targets ?? [])
     .map((target: any) => target?.name)
     .filter((name: unknown): name is string => typeof name === "string");
-}
-
-/** `dump-package` tags a test target as `{"test":{}}`; older dumps use `"test"`. */
-function isTestTarget(target: any): boolean {
-  const type = target?.type;
-  return typeof type === "string" ? type === "test" : Boolean(type?.test);
 }
 
 export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
@@ -635,23 +655,7 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
       const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
       const packageInfo = await dumpPackage(packageDir);
 
-      const schemeNames = new Set<string>(packageMemberSchemes(packageInfo));
-
-      // Add standalone executable targets not already covered
-      if (packageInfo.targets) {
-        for (const target of packageInfo.targets) {
-          if (target.type === "executable" && !schemeNames.has(target.name)) {
-            schemeNames.add(target.name);
-          }
-        }
-      }
-
-      // A package opened on its own also gets the `<name>-Package` aggregate
-      // scheme that builds everything; include it to match Xcode's list.
-      if (packageInfo.name) {
-        schemeNames.add(`${packageInfo.name}-Package`);
-      }
-
+      const schemeNames = new Set<string>(packageSchemes(packageInfo));
       return Array.from(schemeNames).map((name) => ({ name }));
     } catch (error) {
       commonLogger.error("Failed to get SPM package info", {
@@ -678,7 +682,7 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   if (workspaceType === "spm") {
     try {
       const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
-      return packageMemberTargets(await dumpPackage(packageDir));
+      return packageTargets(await dumpPackage(packageDir));
     } catch (error) {
       commonLogger.error("Failed to get SPM targets", {
         error: error,

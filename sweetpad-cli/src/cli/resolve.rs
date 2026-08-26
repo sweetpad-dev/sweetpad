@@ -640,14 +640,17 @@ pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
     match container {
         Container::Workspace(p) => sweetpad_lib::workspace::open(p)
             .map(|w| {
-                let members = sweetpad_core::package_members::resolve(&w.package_refs, None);
+                let members = sweetpad_core::package_members::resolve_workspace(&w, None);
                 w.merged_schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(
                     &members,
                 ))
             })
             .map_err(|e| CliError::new(format!("failed to read workspace {}: {e}", p.display()))),
         Container::Project(p) => sweetpad_lib::project::open(p)
-            .map(|proj| proj.schemes)
+            .map(|proj| {
+                let members = sweetpad_core::package_members::resolve_project(&proj, None);
+                proj.schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(&members))
+            })
             .map_err(|e| CliError::new(format!("failed to read project {}: {e}", p.display()))),
         // Swift packages have no pbxproj; derive schemes from the manifest
         // (this drives SPM build/test/run) — no xcodebuild needed.
@@ -656,7 +659,7 @@ pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
 }
 
 /// The scheme candidates readable from project files alone — everything
-/// [`schemes`] returns except the products of a workspace's local SwiftPM
+/// [`schemes`] returns except the products of the container's local SwiftPM
 /// packages, which cost a `swift package dump-package` per package.
 ///
 /// Only safe where a *shorter* list changes nothing: validating a name the
@@ -668,7 +671,10 @@ pub fn schemes_without_packages(container: &Container) -> Result<Vec<String>, Cl
         Container::Workspace(p) => sweetpad_lib::workspace::open(p)
             .map(|w| w.merged_schemes())
             .map_err(|e| CliError::new(format!("failed to read workspace {}: {e}", p.display()))),
-        _ => schemes(container),
+        Container::Project(p) => sweetpad_lib::project::open(p)
+            .map(|proj| proj.schemes)
+            .map_err(|e| CliError::new(format!("failed to read project {}: {e}", p.display()))),
+        Container::SwiftPackage(_) => schemes(container),
     }
 }
 

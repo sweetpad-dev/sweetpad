@@ -53,23 +53,55 @@ pub struct DeclaredDep {
 }
 
 impl Manifest {
-    /// Scheme candidates for the package, matching `xcodebuild -list`: one
-    /// scheme per product, plus the `<name>-Package` aggregate scheme xcodebuild
-    /// synthesizes to build the whole package. Falls back to non-test target
-    /// names (still plus the aggregate) when a package declares no products, so
-    /// scheme selection always has candidates.
+    /// Scheme candidates for a package opened on its own, matching what
+    /// `xcodebuild -list` prints in a package directory. How many products the
+    /// package has decides the shape (measured on Xcode 26.5; the two-product
+    /// form is the same back to 15.4 in the captures):
+    ///
+    /// | products | schemes |
+    /// |---|---|
+    /// | none | `<name>-Package` alone |
+    /// | one | `<name>` alone — the package's own name, whatever the product is called |
+    /// | two or more | `<name>-Package` plus one scheme per product |
+    ///
+    /// The single-product collapse is easy to get wrong in both directions: a
+    /// package with one library product answers to neither that product's name
+    /// nor the aggregate, and one whose only product is the implicit
+    /// executable behind an `executableTarget` answers to the package name
+    /// too.
     #[must_use]
     pub fn scheme_names(&self) -> Vec<String> {
-        let mut names: Vec<String> = if self.products.is_empty() {
+        let products = self.effective_products();
+        if products.len() == 1 {
+            return vec![self.name.clone()];
+        }
+        let mut names = vec![format!("{}-Package", self.name)];
+        names.extend(products);
+        names
+    }
+
+    /// The package's products as SwiftPM sees them: the declared ones, plus
+    /// the implicit executable product it synthesizes for each
+    /// `executableTarget` no declared product already covers.
+    ///
+    /// `dump-package` reports only what the manifest wrote — `swift package
+    /// describe` is what shows the implicit ones, and it resolves the whole
+    /// dependency graph to do it. Reconstructing them here keeps the read
+    /// offline.
+    #[must_use]
+    pub fn effective_products(&self) -> Vec<String> {
+        let covered: std::collections::HashSet<&str> = self
+            .products
+            .iter()
+            .flat_map(|p| p.targets.iter().map(String::as_str))
+            .collect();
+        let mut names: Vec<String> = self.products.iter().map(|p| p.name.clone()).collect();
+        names.extend(
             self.targets
                 .iter()
-                .filter(|t| !t.is_test())
-                .map(|t| t.name.clone())
-                .collect()
-        } else {
-            self.products.iter().map(|p| p.name.clone()).collect()
-        };
-        names.push(format!("{}-Package", self.name));
+                .filter(|t| t.is_executable() && !covered.contains(t.name.as_str()))
+                .map(|t| t.name.clone()),
+        );
         names
     }
 
@@ -168,6 +200,11 @@ pub struct Product {
     pub name: String,
     #[serde(rename = "type", default)]
     pub kind: serde_json::Value,
+    /// The targets this product exposes — what says whether an
+    /// `executableTarget` already has a product, in
+    /// [`Manifest::effective_products`].
+    #[serde(default)]
+    pub targets: Vec<String>,
 }
 
 impl Product {
@@ -192,6 +229,13 @@ impl Target {
     #[must_use]
     pub fn is_test(&self) -> bool {
         self.kind == "test"
+    }
+
+    /// Whether SwiftPM would synthesize an executable product for this target
+    /// when no declared product covers it.
+    #[must_use]
+    pub fn is_executable(&self) -> bool {
+        self.kind == "executable"
     }
 }
 
@@ -502,10 +546,65 @@ mod tests {
     }
 
     #[test]
-    fn schemes_are_products_plus_package_aggregate() {
+    fn two_products_get_the_aggregate_and_a_scheme_each() {
         let m = parse_manifest(DUMP).unwrap();
-        // Products, then xcodebuild's `<name>-Package` aggregate scheme.
-        assert_eq!(m.scheme_names(), vec!["DemoKit", "demo", "Demo-Package"]);
+        assert_eq!(m.scheme_names(), vec!["Demo-Package", "DemoKit", "demo"]);
+    }
+
+    /// Grounded on `xcodebuild -list` (26.5): a package whose only product is
+    /// a library answers to its own name, not the product's and not the
+    /// aggregate's.
+    #[test]
+    fn a_single_product_collapses_to_the_package_name() {
+        let m = parse_manifest(
+            r#"{ "name": "P", "products": [
+                     { "name": "Lib", "type": { "library": ["automatic"] }, "targets": ["T"] } ],
+                 "targets": [ { "name": "T", "type": "regular" } ] }"#,
+        )
+        .unwrap();
+        assert_eq!(m.scheme_names(), vec!["P"]);
+    }
+
+    /// The implicit executable product SwiftPM synthesizes counts toward that
+    /// collapse: `xcodebuild -list` on a package whose whole manifest is one
+    /// `executableTarget` prints the package name alone.
+    #[test]
+    fn an_executable_target_counts_as_a_product() {
+        let m = parse_manifest(
+            r#"{ "name": "MyTool", "products": [],
+                 "targets": [ { "name": "runner", "type": "executable" } ] }"#,
+        )
+        .unwrap();
+        assert_eq!(m.effective_products(), vec!["runner"]);
+        assert_eq!(m.scheme_names(), vec!["MyTool"]);
+    }
+
+    /// One declared product plus an `executableTarget` it does not cover is
+    /// two products, so the aggregate comes back and both are listed.
+    #[test]
+    fn an_uncovered_executable_target_is_a_product_of_its_own() {
+        let m = parse_manifest(
+            r#"{ "name": "D", "products": [
+                     { "name": "LibA", "type": { "library": ["automatic"] }, "targets": ["TA"] } ],
+                 "targets": [ { "name": "TA", "type": "regular" },
+                              { "name": "TC", "type": "executable" } ] }"#,
+        )
+        .unwrap();
+        assert_eq!(m.scheme_names(), vec!["D-Package", "LibA", "TC"]);
+    }
+
+    /// An `executableTarget` a declared product already exposes gets no
+    /// second, implicit product of its own.
+    #[test]
+    fn an_executable_target_behind_a_product_is_not_counted_twice() {
+        let m = parse_manifest(
+            r#"{ "name": "E", "products": [
+                     { "name": "tool", "type": { "executable": null }, "targets": ["e1"] } ],
+                 "targets": [ { "name": "e1", "type": "executable" } ] }"#,
+        )
+        .unwrap();
+        assert_eq!(m.effective_products(), vec!["tool"]);
+        assert_eq!(m.scheme_names(), vec!["E"]);
     }
 
     #[test]
@@ -515,14 +614,14 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_to_non_test_targets_when_no_products() {
+    fn a_package_with_no_products_offers_just_the_aggregate() {
         let m = parse_manifest(
             r#"{ "name": "P", "products": [],
                  "targets": [ { "name": "Lib", "type": "regular" },
                               { "name": "LibTests", "type": "test" } ] }"#,
         )
         .unwrap();
-        assert_eq!(m.scheme_names(), vec!["Lib", "P-Package"]);
+        assert_eq!(m.scheme_names(), vec!["P-Package"]);
     }
 
     #[test]

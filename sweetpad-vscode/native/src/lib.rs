@@ -125,29 +125,32 @@ fn is_workspace(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()) == Some("xcworkspace")
 }
 
-/// Whether a container's names include what its local SwiftPM packages
-/// declare. Naming those means running `swift package dump-package`, which
-/// takes seconds on a cold manifest cache — so the calls that need it are
-/// promises, computed on a worker thread rather than on the event loop the
+/// Which names to read. Both include what the container's local SwiftPM
+/// packages declare, and naming those means running `swift package
+/// dump-package`, which takes seconds on a cold manifest cache — so the calls
+/// are promises, computed on a worker thread rather than on the event loop the
 /// whole editor shares.
 enum Names {
     Schemes,
     Targets,
 }
 
-/// Read `path`'s names, evaluating member package manifests when it is a
-/// workspace. Runs off the main thread (see [`NamesTask`]).
+/// Read `path`'s names, evaluating the manifests of every local package the
+/// container reaches. Runs off the main thread (see [`NamesTask`]).
 fn read_names(path: &str, which: &Names) -> napi::Result<Vec<String>> {
     let p = Path::new(path);
     if !is_workspace(p) {
         let project = project::open(p).map_err(to_napi_err)?;
+        let members = sweetpad_core::package_members::resolve_project(&project, None);
         return Ok(match which {
-            Names::Schemes => project.schemes,
-            Names::Targets => project.targets.into_iter().map(|t| t.name).collect(),
+            Names::Schemes => project
+                .schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(&members)),
+            Names::Targets => project
+                .targets_with_packages(&sweetpad_core::package_members::target_pairs(&members)),
         });
     }
     let ws = workspace::open(p).map_err(to_napi_err)?;
-    let members = sweetpad_core::package_members::resolve(&ws.package_refs, None);
+    let members = sweetpad_core::package_members::resolve_workspace(&ws, None);
     Ok(match which {
         Names::Schemes => {
             ws.merged_schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(&members))
@@ -177,9 +180,9 @@ impl napi::Task for NamesTask {
 }
 
 /// Scheme names for a `.xcodeproj` or `.xcworkspace` — shared and per-user
-/// scheme files, falling back to autocreated per-target schemes when none
-/// exist. For a workspace, merged across the bundle, every member project, and
-/// every local SwiftPM package's products, sorted like
+/// scheme files, plus autocreated per-target schemes, plus the products of
+/// every local SwiftPM package the container reaches. For a workspace, merged
+/// across the bundle and every member project, sorted like
 /// `xcodebuild -list -workspace`.
 #[napi(ts_return_type = "Promise<Array<string>>")]
 #[must_use]
@@ -191,9 +194,9 @@ pub fn schemes(path: String) -> napi::bindgen_prelude::AsyncTask<NamesTask> {
 }
 
 /// Target names for a `.xcodeproj` or `.xcworkspace`. For a workspace, the
-/// distinct targets across member projects in first-seen order, then each
-/// local package's targets — test targets included, since a target list drives
-/// `-only-testing:`.
+/// distinct targets across member projects in first-seen order; then, for
+/// either, each local package's targets — test targets included, since a
+/// target list drives `-only-testing:`.
 #[napi(ts_return_type = "Promise<Array<string>>")]
 #[must_use]
 pub fn targets(path: String) -> napi::bindgen_prelude::AsyncTask<NamesTask> {

@@ -568,7 +568,11 @@ sweetpad completions <shell>          clap_complete-generated scripts
 with a ready `-destination` specifier. SPM containers are supported for
 `scheme`/`build`/`test`/`run`: schemes are read straight from the manifest via
 `swift package dump-package` (the product names xcodebuild would synthesize —
-no xcodebuild spawn, no pbxproj needed).
+no xcodebuild spawn, no pbxproj needed). A project or workspace container reads
+the same manifests for the local packages around it, walking `.package(path:)`
+from every package the container references; `sweetpad-lib/DOCS.md` §9 has the
+rules and `sweetpad-core/src/package_members.rs` the cache that keeps the
+spawns off the common path.
 
 Notes / heuristics:
 - `test run` exits non-zero on failures; the `--json` summary lands on stdout
