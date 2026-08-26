@@ -39,10 +39,14 @@
 //!
 //! A target that no product exposes never gets a scheme, so a package that
 //! declares no products contributes nothing but its test targets — and,
-//! without a container or a membership, nothing at all. The `<name>-Package`
-//! aggregate belongs to a package opened on its own; `xcodebuild` does not
-//! synthesize it for a package inside a container, so listing it here would
-//! offer a scheme `xcodebuild` then rejects.
+//! without a container or a membership, nothing at all. An `executableTarget`
+//! is exposed even when the manifest says nothing: SwiftPM synthesizes a
+//! product of the same name for it, and `xcodebuild` schedules a scheme for
+//! that product like any other.
+//!
+//! The `<name>-Package` aggregate belongs to a package opened on its own;
+//! `xcodebuild` does not synthesize it for a package inside a container, so
+//! listing it here would offer a scheme `xcodebuild` then rejects.
 //!
 //! Not modeled: a *remote* package's scheme files. `xcodebuild` lists those
 //! too (ice-cubes gets `RevenueCatUI` from the RevenueCat checkout's
@@ -101,6 +105,14 @@ pub struct PackageMember {
 /// `(len, mtime_nanos)` of a `Package.swift` — changed either way means the
 /// cached names are stale.
 type Stamp = (u64, u128);
+
+/// Which reading of the cached fields an entry holds. Bump it whenever a field
+/// starts meaning something different, so entries a build with the older
+/// reading wrote are a miss rather than trusted: the stamp catches an edited
+/// manifest, and only this catches an unedited one whose names this code
+/// derives differently — `products`, for one, counts implicit executables that
+/// a plain read of `dump-package` does not.
+const CACHE_SCHEMA: u64 = 1;
 
 /// What one manifest says, before a role turns it into schemes.
 #[derive(Debug, Clone)]
@@ -196,6 +208,9 @@ fn cached_manifest(
     current: Stamp,
 ) -> Option<ManifestNames> {
     let entry = entries.get(&path.to_string_lossy().into_owned())?;
+    if entry.get("schema").and_then(Value::as_u64) != Some(CACHE_SCHEMA) {
+        return None;
+    }
     let len = entry.get("len")?.as_u64()?;
     let mtime = entry.get("mtime")?.as_str()?.parse::<u128>().ok()?;
     if (len, mtime) != current {
@@ -215,6 +230,7 @@ fn cached_manifest(
 fn cache_entry(current: Stamp, names: &ManifestNames) -> Value {
     let (len, mtime) = current;
     serde_json::json!({
+        "schema": CACHE_SCHEMA,
         "len": len,
         // u128 exceeds JSON's safe integer range; keep it as a string so a
         // round-trip can't quietly lose precision.
@@ -451,11 +467,45 @@ fn dump_package(dir: &Path, developer_dir: Option<&Path>) -> Option<Value> {
 
 fn read_manifest(manifest: &Value) -> ManifestNames {
     ManifestNames {
-        products: names_in(manifest, "products", |_| true),
+        products: products_with_implicit_executables(manifest),
         test_targets: names_in(manifest, "targets", is_test_target),
         targets: names_in(manifest, "targets", |_| true),
         path_deps: path_dependencies(manifest),
     }
+}
+
+/// The products `xcodebuild` gives schemes to: the ones the manifest declares,
+/// plus the one SwiftPM synthesizes for each `executableTarget` that no
+/// declared product already covers.
+///
+/// The implicit ones are as real as the rest — a package whose whole manifest
+/// is `targets: [.executableTarget(name: "runner")]` contributes a `runner`
+/// scheme to the container that reaches it. `swift package describe` reports
+/// them, but it resolves the dependency graph to do so; `dump-package` only
+/// evaluates the manifest, and reports what the manifest wrote. Reconstructing
+/// them here keeps the walk offline.
+fn products_with_implicit_executables(manifest: &Value) -> Vec<String> {
+    let covered: HashSet<&str> = manifest
+        .get("products")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.get("targets")?.as_array())
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut out = names_in(manifest, "products", |_| true);
+    out.extend(
+        names_in(manifest, "targets", |target| {
+            target.get("type").and_then(Value::as_str) == Some("executable")
+        })
+        .into_iter()
+        .filter(|name| !covered.contains(name.as_str())),
+    );
+    out
 }
 
 fn names_in(manifest: &Value, key: &str, keep: impl Fn(&Value) -> bool) -> Vec<String> {
@@ -553,6 +603,40 @@ mod tests {
             .unwrap();
         }
         dir
+    }
+
+    /// An `executableTarget` no declared product covers is a product all the
+    /// same — `dump-package` does not write it, `xcodebuild -list` schedules a
+    /// scheme for it, so the walk reconstructs it.
+    #[test]
+    fn an_executable_target_no_product_covers_is_a_product() {
+        let names = read_manifest(&serde_json::json!({
+            "name": "Tool",
+            "products": [{"name": "tool", "targets": ["e1"]}],
+            "targets": [
+                {"name": "e1", "type": "executable"},
+                {"name": "e2", "type": "executable"},
+                {"name": "Core", "type": "regular"},
+            ],
+        }));
+        assert_eq!(names.products, vec!["tool", "e2"]);
+    }
+
+    /// A manifest whose whole body is one `executableTarget` still contributes
+    /// that target's scheme to the container that reached it.
+    #[test]
+    fn a_product_less_executable_package_still_has_a_scheme() {
+        let dir = package_dir("exec-only", None);
+        let names = read_manifest(&serde_json::json!({
+            "name": "Tool",
+            "products": [],
+            "targets": [{"name": "runner", "type": "executable"}],
+        }));
+        assert_eq!(
+            schemes_for(&dir, PackageRole::Dependency, &names),
+            vec!["runner"]
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

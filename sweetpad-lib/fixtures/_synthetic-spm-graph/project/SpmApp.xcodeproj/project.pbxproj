@@ -16,12 +16,17 @@
 		AFAD51C6F25DC44832F28AF4 /* libSpmApp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libSpmApp.a; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		AA00SYNCR00T0000000000AA /* Modules */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Modules; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXGroup section */
 		11D65D3A67DABC5F9EE22321 = {
 			isa = PBXGroup;
 			children = (
 				A3E8AC10F636350588E4601B /* AppSources */,
 				391B6A363762698F8672FF71 /* Packages */,
+				AA00SYNCR00T0000000000AA /* Modules */,
 				2694553E8E497C40D66E3785 /* Products */,
 			);
 			sourceTree = "<group>";

@@ -589,14 +589,51 @@ async function dumpPackage(packageDir: string): Promise<any> {
 }
 
 /**
- * Product names from a dumped manifest — `xcodebuild -list` gives each one a
- * scheme, whatever its kind (a `.plugin` product gets one too). A target no
- * product exposes gets no scheme of its own.
+ * The package's products as SwiftPM sees them: the ones the manifest declares,
+ * whatever their kind (a `.plugin` product is one too), plus the implicit
+ * executable product SwiftPM synthesizes for each `executableTarget` no
+ * declared product already covers.
+ *
+ * `dump-package` reports only what the manifest wrote — `swift package
+ * describe` is what shows the implicit ones, and it resolves the whole
+ * dependency graph to do it.
  */
 function packageProducts(packageInfo: any): string[] {
-  return (packageInfo?.products ?? [])
+  const declared: string[] = (packageInfo?.products ?? [])
     .map((product: any) => product?.name)
     .filter((name: unknown): name is string => typeof name === "string");
+  const covered = new Set<string>(
+    (packageInfo?.products ?? []).flatMap((product: any) =>
+      (product?.targets ?? []).filter((name: unknown): name is string => typeof name === "string"),
+    ),
+  );
+  const implicit: string[] = (packageInfo?.targets ?? [])
+    .filter((target: any) => target?.type === "executable")
+    .map((target: any) => target?.name)
+    .filter((name: unknown): name is string => typeof name === "string" && !covered.has(name));
+  return [...declared, ...implicit];
+}
+
+/**
+ * Scheme names for a package opened on its own, matching what `xcodebuild
+ * -list` prints in a package directory. How many products the package has
+ * decides the shape (measured on Xcode 26.5):
+ *
+ * - none: the `<name>-Package` aggregate alone;
+ * - one: `<name>` alone — the package's own name, whatever the product is
+ *   called, and no aggregate;
+ * - two or more: the aggregate plus one scheme per product.
+ *
+ * Exported for its spec: the rule is subtle enough that this copy would drift
+ * from `Manifest::scheme_names` in the CLI without one.
+ */
+export function packageSchemes(packageInfo: any): string[] {
+  const name = typeof packageInfo?.name === "string" ? packageInfo.name : "";
+  const products = packageProducts(packageInfo);
+  if (products.length === 1 && name) {
+    return [name];
+  }
+  return name ? [`${name}-Package`, ...products] : products;
 }
 
 /**
@@ -618,15 +655,7 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
       const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
       const packageInfo = await dumpPackage(packageDir);
 
-      const schemeNames = new Set<string>(packageProducts(packageInfo));
-
-      // A package opened on its own also gets the `<name>-Package` aggregate
-      // scheme that builds everything; include it to match Xcode's list. It is
-      // all a package with no products has to offer.
-      if (packageInfo.name) {
-        schemeNames.add(`${packageInfo.name}-Package`);
-      }
-
+      const schemeNames = new Set<string>(packageSchemes(packageInfo));
       return Array.from(schemeNames).map((name) => ({ name }));
     } catch (error) {
       commonLogger.error("Failed to get SPM package info", {

@@ -271,7 +271,9 @@ fn local_package_refs(
 
 /// Package directories reachable from the project's `mainGroup`, in navigator
 /// order. Only leaves that could name a directory are stat'd — checking every
-/// leaf would mean one `stat` per file reference in the project.
+/// leaf would mean one `stat` per file reference in the project — and a
+/// synchronized folder, which lists no members at all, is scanned on disk by
+/// [`packages_under_synchronized_folder`].
 fn group_tree_package_refs(
     objects: &Dict,
     project_obj: &Value,
@@ -326,10 +328,60 @@ fn walk_for_packages<'a>(
                 }
             }
         }
+        // A folder reference (Xcode 16+): the pbxproj lists none of its
+        // members, so a package under it is found by looking at the disk.
+        "PBXFileSystemSynchronizedRootGroup" => {
+            if base.join("Package.swift").is_file() {
+                out.push(base);
+            } else {
+                packages_under_synchronized_folder(&base, out, 0);
+            }
+        }
         _ => {
             if names_a_directory(node) {
                 out.push(base);
             }
+        }
+    }
+}
+
+/// Package directories physically under `dir`, a synchronized folder.
+///
+/// Everything below such a folder belongs to the project without the pbxproj
+/// naming it, and `xcodebuild` gives a package found there schemes at any
+/// depth — NetNewsWire reaches all fourteen of its `Modules/*` this way, and a
+/// package two levels down is listed just the same. Descent stops at a
+/// directory that is itself a package, since a package's subdirectories are
+/// its own sources: a `Package.swift` nested inside another package gets no
+/// schemes.
+///
+/// Names carrying a `.` are skipped — `.build`, `.git`, `Foo.xcassets`,
+/// `en.lproj`. A package directory never has one, and skipping them keeps the
+/// scan off the resource trees that are most of what a synchronized folder
+/// holds: NetNewsWire's eight folders cost 82 `read_dir` calls this way.
+fn packages_under_synchronized_folder(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
+    if depth >= MAX_GROUP_DEPTH {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    // `read_dir` order is the filesystem's, which would leave the target list
+    // this feeds in a different order run to run.
+    let mut children: Vec<PathBuf> = entries
+        .flatten()
+        // `file_type` does not follow symlinks, so a link pointing back up the
+        // tree ends the descent instead of looping.
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter(|e| !e.file_name().to_string_lossy().contains('.'))
+        .map(|e| e.path())
+        .collect();
+    children.sort();
+    for child in children {
+        if child.join("Package.swift").is_file() {
+            out.push(child);
+        } else {
+            packages_under_synchronized_folder(&child, out, depth + 1);
         }
     }
 }
@@ -4958,6 +5010,35 @@ mod tests {
         assert_eq!(project.package_refs, vec![root.join("Dep")]);
         // Their products are not in `schemes`: naming one needs the toolchain.
         assert_eq!(project.schemes, vec!["SpmApp"]);
+    }
+
+    /// A synchronized folder names none of its members, so the packages under
+    /// it are found on disk. `xcodebuild -list` gives a package there schemes
+    /// at any depth (grounded on Xcode 26.5), a `Package.swift` nested inside
+    /// another package gets none, and dotted names are never packages.
+    #[test]
+    fn finds_packages_under_a_synchronized_folder() {
+        let root = std::env::temp_dir().join(format!("sweetpad-sync-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for rel in [
+            "Modules/Shallow",
+            "Modules/Nest/Deep",
+            "Modules/Shallow/Inner",
+            "Modules/Resources.xcassets/Nope",
+        ] {
+            fs::create_dir_all(root.join(rel)).unwrap();
+            fs::write(root.join(rel).join("Package.swift"), "// package").unwrap();
+        }
+        // Not a package, and not a parent of one either.
+        fs::create_dir_all(root.join("Modules/Plain/Sources")).unwrap();
+
+        let mut found = Vec::new();
+        packages_under_synchronized_folder(&root.join("Modules"), &mut found, 0);
+        assert_eq!(
+            found,
+            vec![root.join("Modules/Nest/Deep"), root.join("Modules/Shallow")]
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

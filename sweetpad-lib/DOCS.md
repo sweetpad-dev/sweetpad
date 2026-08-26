@@ -230,7 +230,7 @@ Hand-built fixtures cover paths no real corpus project exercises:
 | `_synthetic-multiplatform` | One `SDKROOT = auto` target with `SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx` — the IceCubesApp shape that keeps the SDK-binding regression in CI |
 | `_synthetic-{coredata,assetsym,strcat,intents,cocoapods,macro,tests}` | BSP generated-source / CocoaPods / Swift-macro / XCTest coverage — each a forced `Probe*.swift` referencing a build-time-generated / Pod / macro-expanded symbol |
 | `_synthetic-spm`, `_synthetic-workspace` | SwiftPM package products (`-F …/PackageFrameworks`); multi-project `.xcworkspace` resolution |
-| `_synthetic-spm-graph` | One workspace reaching a local package four ways — its own `FileRef` member, the member project's declared package, and both of their `.package(path:)` dependencies — plus a package carrying a `.swiftpm/xcode` scheme container (`tests/spm_graph_oracle.rs` in sweetpad-core) |
+| `_synthetic-spm-graph` | One workspace reaching a local package six ways — its own `FileRef` member, the member project's declared package, both of their `.package(path:)` dependencies, and two under a `PBXFileSystemSynchronizedRootGroup` — plus a package carrying a `.swiftpm/xcode` scheme container and one whose only target is an `executableTarget` (`tests/spm_graph_oracle.rs` in sweetpad-core) |
 | `_global` | Per-SDK metadata (`sdks/<sdk>.json`), xcodebuild version banner |
 | `_tuist-src` | Generated tuist examples adding a command-line tool (`mh_execute`) and a standalone dynamic library (`mh_dylib`) to the compiler-args oracle |
 
@@ -438,7 +438,7 @@ ice-cubes/netnewswire) are outside the pbxproj surface and are tallied by the
 discovery oracle, not failed. They are grounded against the toolchain instead,
 by two oracles that read `swift package dump-package` rather than the pbxproj
 resolver: `sweetpad-cli/tests/spm_oracle.rs` for a package opened on its own
-(products plus the `<name>-Package` aggregate, roadmap D15 — done), and
+(the product-count rule in §9, roadmap D15 — done), and
 `sweetpad-core/tests/spm_graph_oracle.rs` for the local package graph around an
 Xcode container (§9's "Schemes from a local Swift package").
 
@@ -705,7 +705,7 @@ Methods: `build/initialize`, `workspace/buildTargets`, `buildTarget/sources`,
 
 Tracks which Xcode build-system features have a real example in the corpus.
 Hand-maintained; re-verify against the generated `fixtures/FIXTURES.md`
-after each capture run. Current tally: **124 ✅ / 19 ❌**
+after each capture run. Current tally: **127 ✅ / 20 ❌**
 (reconciled 2026-05-30 against the captured corpus with concrete evidence per
 row; scheme-discovery rows updated 2026-06-10, package-graph rows 2026-08-26).
 
@@ -837,19 +837,52 @@ What each package contributes, measured against Xcode 26.5:
 | package whose scheme container still resolves | ✅ | ✅ | ✅ |
 | any other local package | ✅ | ✅ | — |
 
-A target no product exposes is never a scheme, and the `<name>-Package`
-aggregate exists only for a package opened on its own. A scheme container
-counts as resolving when one of its schemes names a buildable the manifest
-still declares — ice-cubes' `Env` ships an `Env.xcscheme` and gets `EnvTests`
-alongside it, while its `NetworkClient` ships only a `NetworkTests.xcscheme`
-left over from a rename and gets nothing autocreated.
+A target no product exposes is never a scheme. "Products" includes the ones
+SwiftPM synthesizes but the manifest never wrote: an `executableTarget` no
+declared product covers gets an implicit executable product of the same name,
+and `xcodebuild` schedules a scheme for it like any other. `swift package
+describe` reports those, but only after resolving the dependency graph, so
+`package_members.rs` reconstructs them from `dump-package`'s targets instead.
+
+A scheme container counts as resolving when one of its schemes names a
+buildable the manifest still declares — ice-cubes' `Env` ships an
+`Env.xcscheme` and gets `EnvTests` alongside it, while its `NetworkClient`
+ships only a `NetworkTests.xcscheme` left over from a rename and gets nothing
+autocreated.
+
+A package found under a `PBXFileSystemSynchronizedRootGroup` counts like any
+other. The folder lists no members in the pbxproj, so the walk scans the disk
+under it, at any depth and stopping at each package it finds — a
+`Package.swift` nested inside another package gets no schemes. NetNewsWire
+reaches all fourteen of its `Modules/*` this way and no other.
+
+**A package opened on its own is listed differently**, and how many products it
+has decides the shape:
+
+| products | schemes |
+|---|---|
+| none | `<name>-Package` alone |
+| one | `<name>` alone — the package's own name, whatever the product is called |
+| two or more | `<name>-Package` plus one scheme per product |
+
+The single-product collapse is easy to miss in both directions: a package with
+one library product answers to neither that product's name nor the aggregate,
+and one whose only product is an `executableTarget`'s implicit executable
+answers to the package name too. `Manifest::scheme_names` in
+`sweetpad-cli/src/cli/swiftpm.rs` and `packageSchemes` in the extension's
+`scripts.ts` both encode it; the two-product form is unchanged back to Xcode
+15.4 in the captures.
 
 | Test case | Status | Where |
 |---|---|---|
 | Package products as schemes, across the whole `.package(path:)` graph | ✅ | fixtures/_synthetic-spm-graph (sweetpad-core/tests/spm_graph_oracle.rs) |
 | A package a project declares or holds as a folder reference | ✅ | fixtures/_synthetic-spm-graph/project/SpmApp.xcodeproj (both spellings) |
 | A package's own scheme files, and the test targets a live container unlocks | ✅ | fixtures/_synthetic-spm-graph/project/Dep/.swiftpm |
+| A package under a synchronized folder, two levels down | ✅ | fixtures/_synthetic-spm-graph/project/Modules/Nest/Synced |
+| The implicit executable product behind a product-less `executableTarget` | ✅ | fixtures/_synthetic-spm-graph/project/Modules/Tool |
+| The product-count rule for a package opened on its own | ✅ | *hermetic, not corpus* — `Manifest::scheme_names` unit tests (sweetpad-cli/src/cli/swiftpm.rs) |
 | A *remote* package's scheme files | ❌ | ice-cubes' `RevenueCatUI` — they live in a `SourcePackages` checkout under DerivedData that only a resolved build knows the path to |
+| When a live scheme container does *not* unlock a test target | ❌ | NetNewsWire's `Articles` ships one `Articles.xcscheme` and `xcodebuild` lists no `ArticlesTests`, while ice-cubes' `Env` ships one `Env.xcscheme` and does get `EnvTests`; sweetpad follows the ice-cubes rule and offers that one extra scheme |
 
 ### SDKs / platforms
 

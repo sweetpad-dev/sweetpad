@@ -17,6 +17,10 @@
 //!   `.swiftpm/xcode` scheme container — products, scheme files, test targets;
 //! - `NestedDep` and `DepChild`, reached only through `.package(path:)` —
 //!   products alone;
+//! - `project/Modules/Nest/Synced`, two levels under a synchronized folder the
+//!   pbxproj lists no members for — found by scanning the disk;
+//! - `project/Modules/Tool`, whose whole manifest is one `executableTarget` —
+//!   the implicit product SwiftPM synthesizes for it is a scheme;
 //! - `MultiLib`'s `TC`, a target no product exposes, and `NestedDep`'s
 //!   `NestedTests`, a test target in a package nobody opened — neither is a
 //!   scheme.
@@ -43,6 +47,8 @@ const WORKSPACE_SCHEMES: &[&str] = &[
     "LibA",
     "NestedLib",
     "SpmApp",
+    "SyncedLib",
+    "SyncedTool",
     "TATests",
 ];
 
@@ -57,6 +63,8 @@ const WORKSPACE_TARGETS: &[&str] = &[
     "TATests",
     "Dep",
     "DepTests",
+    "SA",
+    "SyncedTool",
     "Nested",
     "NestedTests",
     "DC",
@@ -65,10 +73,31 @@ const WORKSPACE_TARGETS: &[&str] = &[
 
 /// `xcodebuild -list -project SpmApp.xcodeproj` — the same graph minus the
 /// workspace's own member package.
-const PROJECT_SCHEMES: &[&str] = &["Dep", "DepChildLib", "DepTests", "SpmApp"];
+const PROJECT_SCHEMES: &[&str] = &[
+    "Dep",
+    "DepChildLib",
+    "DepTests",
+    "SpmApp",
+    "SyncedLib",
+    "SyncedTool",
+];
 
 fn fixture() -> PathBuf {
     common::fixtures_root().join("_synthetic-spm-graph")
+}
+
+/// The local packages the member project reaches: the one it declares, then
+/// the two under its synchronized folder, in the order the group-tree walk
+/// hands them back.
+fn project_packages() -> Vec<PathBuf> {
+    [
+        "project/Dep",
+        "project/Modules/Nest/Synced",
+        "project/Modules/Tool",
+    ]
+    .iter()
+    .map(|rel| fixture().join(rel))
+    .collect()
 }
 
 /// Manifests are Swift source, so every assertion here needs the toolchain.
@@ -87,10 +116,7 @@ fn a_workspace_lists_every_local_package_it_reaches() {
     }
     let ws = workspace::open(&fixture().join("Graph.xcworkspace")).unwrap();
     assert_eq!(ws.package_refs, vec![fixture().join("MultiLib")]);
-    assert_eq!(
-        ws.project_package_refs(),
-        vec![fixture().join("project/Dep")]
-    );
+    assert_eq!(ws.project_package_refs(), project_packages());
 
     let members = package_members::resolve_workspace(&ws, None);
     assert_eq!(
@@ -126,7 +152,7 @@ fn a_bare_project_lists_the_packages_it_declares() {
         return;
     }
     let proj = project::open(&fixture().join("project/SpmApp.xcodeproj")).unwrap();
-    assert_eq!(proj.package_refs, vec![fixture().join("project/Dep")]);
+    assert_eq!(proj.package_refs, project_packages());
 
     let members = package_members::resolve_project(&proj, None);
     assert_eq!(
