@@ -1,5 +1,5 @@
 //! `sweetpad open [xcode|sim|dd|config]` — open the things you otherwise
-//! Finder-hunt for: the container in Xcode, Simulator.app, the project's
+//! Finder-hunt for: the container in Xcode, the simulator window, the project's
 //! DerivedData folder, or the config file.
 
 use clap::ValueEnum;
@@ -12,7 +12,7 @@ use crate::cli::{CliError, CommandResult, Context, Render, Rendered, process, re
 pub enum What {
     /// The resolved workspace/project in Xcode.
     Xcode,
-    /// Simulator.app.
+    /// The simulator window.
     Sim,
     /// This project's DerivedData folder in Finder.
     Dd,
@@ -42,10 +42,7 @@ pub fn run(ctx: &mut Context, what: What) -> CommandResult {
             process::stream("open", &[&path], None)?;
             path
         }
-        What::Sim => {
-            simctl::open_app()?;
-            "Simulator.app".to_string()
-        }
+        What::Sim => simctl::open_app()?,
         What::Dd => {
             let paths = super::derived_data::project_paths(ctx)?;
             let Some(first) = paths.first() else {

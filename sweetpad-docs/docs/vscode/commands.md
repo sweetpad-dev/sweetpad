@@ -70,7 +70,7 @@ To put a command on a keyboard shortcut, open **Keyboard Shortcuts** (`⌘K ⌘S
 | SweetPad: Remove recent destination     | Drop an entry from the Recent group.                                 |
 | SweetPad: Start simulator               | Boot a simulator.                                                     |
 | SweetPad: Stop simulator                | Shut a simulator down.                                                |
-| SweetPad: Open simulator                | Open the Simulator.app window.                                        |
+| SweetPad: Open simulator                | Open the simulator window.                                            |
 | SweetPad: Remove simulator cache        | Clear the simulator cache (fixes some boot failures).                 |
 | SweetPad: Refresh simulators list       | Re-read installed simulators.                                         |
 | SweetPad: Refresh devices list          | Re-scan for connected devices.                                        |

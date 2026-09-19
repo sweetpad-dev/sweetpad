@@ -16,7 +16,7 @@ Xcode's **Devices and Simulators** window uses behind the scenes.
 
 - 🚀 **Boot**: click ▶️ next to a simulator to boot it.
 - 🛑 **Stop**: click ⏹ to shut it down.
-- 📱 **Open Simulator.app**: click 📱 at the top of the Simulators panel to open the Simulator window.
+- 📱 **Open the simulator**: click 📱 at the top of the Simulators panel to open the simulator window.
 - 🔄 **Refresh**: click ↻ to re-read the installed simulators list.
 - 🧹 **Remove simulator cache**: clears the simulator cache, which helps when boot starts to misbehave (see
   [Troubleshooting](#troubleshooting)).

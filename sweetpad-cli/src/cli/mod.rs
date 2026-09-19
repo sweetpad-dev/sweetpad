@@ -593,7 +593,7 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::derived_data::Action,
     },
-    /// Open the project in Xcode, Simulator.app, the DerivedData folder, or
+    /// Open the project in Xcode, the simulator, the DerivedData folder, or
     /// the config file.
     Open {
         #[command(flatten)]

@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.16] - 2026-09-19
+
+- Fix launching apps on the simulator with Xcode 27 ([#337](https://github.com/sweetpad-dev/sweetpad/issues/337), thanks [@richardgroves](https://github.com/richardgroves))
+
 ## [0.2.15] - 2026-08-26
 
 - Fix missing schemes from Swift packages a project references ([#327](https://github.com/sweetpad-dev/sweetpad/issues/327), thanks [@rssole](https://github.com/rssole))

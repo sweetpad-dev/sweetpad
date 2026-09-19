@@ -1,3 +1,7 @@
+import { promises as fs } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
 import * as sweetpadLib from "@sweetpad/native";
 import type { Mock } from "vitest";
 import * as vscode from "vscode";
@@ -5,7 +9,13 @@ import * as vscode from "vscode";
 import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { getShellDeveloperDir } from "../tasks/shell-env";
-import { getBuildSettingsList, getXcodeBuildCommand, packageSchemes, parseCliJsonOutput } from "./scripts";
+import {
+  getBuildSettingsList,
+  getSimulatorAppPath,
+  getXcodeBuildCommand,
+  packageSchemes,
+  parseCliJsonOutput,
+} from "./scripts";
 
 vi.mock("../exec", () => ({ exec: vi.fn() }));
 vi.mock("../tasks/shell-env", () => ({ getShellDeveloperDir: vi.fn() }));
@@ -345,5 +355,35 @@ describe("packageSchemes", () => {
         targets: [{ name: "e1", type: "executable" }],
       }),
     ).toEqual(["E"]);
+  });
+});
+
+describe("getSimulatorAppPath", () => {
+  let xcode: string;
+
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    xcode = await fs.mkdtemp(path.join(os.tmpdir(), "sweetpad-xcode-"));
+    mockGetShellDeveloperDir.mockResolvedValue(path.join(xcode, "Contents", "Developer"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(xcode, { recursive: true, force: true });
+  });
+
+  it("finds Simulator.app inside the developer dir (Xcode 26 and earlier)", async () => {
+    const app = path.join(xcode, "Contents", "Developer", "Applications", "Simulator.app");
+    await fs.mkdir(app, { recursive: true });
+    await expect(getSimulatorAppPath({ workspaceRoot: "/workspace" })).resolves.toBe(app);
+  });
+
+  it("finds DeviceHub.app beside the developer dir (Xcode 27)", async () => {
+    const app = path.join(xcode, "Contents", "Applications", "DeviceHub.app");
+    await fs.mkdir(app, { recursive: true });
+    await expect(getSimulatorAppPath({ workspaceRoot: "/workspace" })).resolves.toBe(app);
+  });
+
+  it("falls back to the bare name when the install matches neither layout", async () => {
+    await expect(getSimulatorAppPath({ workspaceRoot: "/workspace" })).resolves.toBe("Simulator");
   });
 });

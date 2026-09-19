@@ -431,9 +431,35 @@ pub fn set_appearance(udid: &str, appearance: &str) -> Result<(), CliError> {
     )
 }
 
-/// Open the Simulator.app GUI (no specific device required).
-pub fn open_app() -> Result<(), CliError> {
-    process::stream("open", &["-a", "Simulator"], None)
+/// Open the simulator window of the active Xcode (no specific device required).
+/// Returns the bundle name that was opened, so callers can name it.
+pub fn open_app() -> Result<String, CliError> {
+    let app = simulator_app();
+    let name = std::path::Path::new(&app)
+        .file_name()
+        .map_or_else(|| app.clone(), |n| n.to_string_lossy().into_owned());
+    process::stream("open", &["-a", &app], None)?;
+    Ok(name)
+}
+
+/// The simulator app bundle inside the active Xcode.
+fn simulator_app() -> String {
+    simulator_app_in(&sweetpad_lib::xcode::detect_developer_dir())
+}
+
+/// Xcode 27 renamed `Simulator.app` to `DeviceHub.app` and moved it up out of
+/// the developer dir, so both layouts are probed against the Xcode `simctl`
+/// itself will use. An install matching neither falls back to the bare name,
+/// which lets LaunchServices resolve it the way it always did.
+fn simulator_app_in(developer_dir: &std::path::Path) -> String {
+    let mut candidates = vec![developer_dir.join("Applications/Simulator.app")];
+    if let Some(contents) = developer_dir.parent() {
+        candidates.push(contents.join("Applications/DeviceHub.app"));
+    }
+    candidates
+        .into_iter()
+        .find(|p| p.is_dir())
+        .map_or_else(|| "Simulator".to_string(), |p| p.display().to_string())
 }
 
 /// Block until a booting simulator is fully up (`simctl bootstatus -b`).
@@ -775,5 +801,49 @@ mod tests {
         };
         assert_eq!(s.label(), "iPhone 15 (17.0)");
         assert!(s.is_booted());
+    }
+
+    fn fake_xcode(tag: &str, bundle: &str) -> std::path::PathBuf {
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let xcode = std::env::temp_dir().join(format!("sweetpad-test-{tag}-{n}/Xcode.app"));
+        std::fs::create_dir_all(xcode.join("Contents/Developer")).unwrap();
+        if !bundle.is_empty() {
+            std::fs::create_dir_all(xcode.join(bundle)).unwrap();
+        }
+        xcode
+    }
+
+    #[test]
+    fn simulator_app_finds_the_bundle_in_the_developer_dir() {
+        let xcode = fake_xcode("sim26", "Contents/Developer/Applications/Simulator.app");
+        let dev = xcode.join("Contents/Developer");
+        assert_eq!(
+            simulator_app_in(&dev),
+            dev.join("Applications/Simulator.app").display().to_string()
+        );
+    }
+
+    #[test]
+    fn simulator_app_finds_device_hub_beside_the_developer_dir() {
+        let xcode = fake_xcode("sim27", "Contents/Applications/DeviceHub.app");
+        assert_eq!(
+            simulator_app_in(&xcode.join("Contents/Developer")),
+            xcode
+                .join("Contents/Applications/DeviceHub.app")
+                .display()
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn simulator_app_falls_back_to_the_bare_name() {
+        let xcode = fake_xcode("simnone", "");
+        assert_eq!(
+            simulator_app_in(&xcode.join("Contents/Developer")),
+            "Simulator"
+        );
     }
 }

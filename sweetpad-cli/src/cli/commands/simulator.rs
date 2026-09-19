@@ -114,7 +114,7 @@ pub enum Action {
         /// Simulator name or UDID to erase.
         target: Option<String>,
     },
-    /// Open the Simulator.app GUI.
+    /// Open the simulator window.
     Open,
     /// Save a PNG screenshot of a booted simulator.
     Screenshot {
@@ -448,8 +448,8 @@ fn erase(ctx: &mut Context, target: Option<&str>) -> CommandResult {
 }
 
 fn open() -> CommandResult {
-    simctl::open_app()?;
-    Ok(Rendered::data(SimOpen))
+    let app = simctl::open_app()?;
+    Ok(Rendered::data(SimOpen { app }))
 }
 
 fn screenshot(
@@ -559,16 +559,19 @@ fn report(verb: &'static str, sim: &simctl::Simulator) -> SimAction {
     }
 }
 
-/// `simulator open`: opened the GUI. `{opened: true}` / "opened Simulator.app".
-struct SimOpen;
+/// `simulator open`: opened the GUI. `{opened: true, app}` / "opened
+/// DeviceHub.app" — the bundle name differs by Xcode version.
+struct SimOpen {
+    app: String,
+}
 
 impl Render for SimOpen {
     fn human(&self, out: &Output) {
-        out.note("opened Simulator.app");
+        out.note(&format!("opened {}", self.app));
     }
 
     fn json(&self) -> serde_json::Value {
-        serde_json::json!({ "opened": true })
+        serde_json::json!({ "opened": true, "app": self.app })
     }
 }
 

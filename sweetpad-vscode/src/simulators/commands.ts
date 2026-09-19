@@ -1,6 +1,9 @@
+import * as path from "node:path";
+
 import * as vscode from "vscode";
 
 import { askSimulator } from "../build/utils.js";
+import { getSimulatorAppPath } from "../common/cli/scripts.js";
 import type { AppDeps } from "../common/commands.js";
 import { runTask } from "../common/tasks/run.js";
 import type { DestinationTreeItem, iOSSimulatorDestinationTreeItem } from "../destination/tree.js";
@@ -101,7 +104,8 @@ export async function stopSimulatorCommand(deps: AppDeps, item?: iOSSimulatorDes
  * Command to delete simulator from top of the simulator tree view in the sidebar
  */
 export async function openSimulatorCommand(deps: AppDeps) {
-  deps.progressStatusBar.updateText("Opening Simulator.app");
+  const simulatorApp = await getSimulatorAppPath({ workspaceRoot: deps.workspaceContext.root });
+  deps.progressStatusBar.updateText(`Opening ${path.basename(simulatorApp)}`);
   await runTask(deps.execution, {
     workspaceRoot: deps.workspaceContext.root,
     name: "Open Simulator",
@@ -111,7 +115,7 @@ export async function openSimulatorCommand(deps: AppDeps) {
     callback: async (terminal) => {
       await terminal.execute({
         command: "open",
-        args: ["-a", "Simulator"],
+        args: ["-a", simulatorApp],
       });
 
       vscode.commands.executeCommand("sweetpad.simulators.refresh");
