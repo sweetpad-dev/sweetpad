@@ -962,6 +962,30 @@ export async function getDeveloperDir(options: { workspaceRoot: string }): Promi
 }
 
 /**
+ * The simulator GUI bundle of the active Xcode, as an `open -a` argument.
+ *
+ * Xcode 27 renamed `Simulator.app` to `DeviceHub.app` and moved it up out of
+ * the developer dir, so both layouts are probed against the Xcode `simctl`
+ * itself will use. An install matching neither falls back to the bare name,
+ * which lets LaunchServices resolve it the way it always did.
+ */
+export async function getSimulatorAppPath(options: { workspaceRoot: string }): Promise<string> {
+  const developerDir = await getDeveloperDir(options);
+  if (developerDir) {
+    const candidates = [
+      path.join(developerDir, "Applications", "Simulator.app"),
+      path.join(developerDir, "..", "Applications", "DeviceHub.app"),
+    ];
+    for (const candidate of candidates) {
+      if (await isFileExists(candidate)) {
+        return path.normalize(candidate);
+      }
+    }
+  }
+  return "Simulator";
+}
+
+/**
  * Bridge `sweetpad.xcodebuildserver.serverEnv` → the long-running XBS process.
  *
  * sourcekit-lsp reads buildServer.json on project open and execs whatever's in

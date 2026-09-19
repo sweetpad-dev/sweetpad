@@ -607,7 +607,7 @@ sweetpad derived-data purge [--all] [--yes]
                                      TTY unless --yes
 sweetpad simulator shutdown [NAME]   shut down a sim (defaults to the booted one)
 sweetpad simulator erase [NAME]      erase contents & settings (must be shut down)
-sweetpad simulator open              open the Simulator.app GUI
+sweetpad simulator open              open the simulator window
 sweetpad simulator screenshot [NAME] [--output-file PATH]
                                      PNG of a booted sim (timestamped by default)
 sweetpad simulator appearance <light|dark> [NAME]

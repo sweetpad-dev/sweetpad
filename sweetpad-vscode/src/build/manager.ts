@@ -10,6 +10,7 @@ import {
   getIsXcbeautifyInstalled,
   getIsXBSInstalled,
   getSchemes,
+  getSimulatorAppPath,
   getSwiftCommand,
   getXcodeBuildCommand,
   getXcodeVersionInstalled,
@@ -803,9 +804,10 @@ export class BuildManager {
     }
 
     // Open simulator
-    this.progress.updateText("Launching Simulator.app");
+    const simulatorApp = await getSimulatorAppPath({ workspaceRoot: options.workspaceRoot });
+    this.progress.updateText(`Launching ${path.basename(simulatorApp)}`);
     const bringToForeground = getWorkspaceConfig("build.bringSimulatorToForeground") ?? true;
-    const openArgs = bringToForeground ? ["-a", "Simulator"] : ["-g", "-a", "Simulator"];
+    const openArgs = bringToForeground ? ["-a", simulatorApp] : ["-g", "-a", simulatorApp];
     await terminal.execute({
       command: "open",
       args: openArgs,

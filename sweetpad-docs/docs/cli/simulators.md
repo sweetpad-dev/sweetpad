@@ -31,7 +31,7 @@ sweetpad sim boot                    # prompts if you don't say which
 sweetpad sim boot "iPhone 16 Pro"
 sweetpad sim boot "iPhone 16 Pro" --wait   # block until it's fully ready
 sweetpad sim shutdown
-sweetpad sim open                    # open the Simulator.app window
+sweetpad sim open                    # open the simulator window
 ```
 
 `--wait` is the one that matters in a script. Without it, `boot` returns as soon as the boot has

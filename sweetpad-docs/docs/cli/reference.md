@@ -150,7 +150,7 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | `sweetpad simulator list`       | List available simulators.                                     |
 | `sweetpad simulator boot`       | Boot a simulator (prompts when omitted; `--wait` blocks until ready). |
 | `sweetpad simulator shutdown`   | Shut down a simulator.                                         |
-| `sweetpad simulator open`       | Open the Simulator.app window.                                 |
+| `sweetpad simulator open`       | Open the simulator window.                                     |
 | `sweetpad simulator screenshot` | Save a PNG (`--clipboard` copies instead).                     |
 | `sweetpad simulator record`     | Record the screen to an mp4. Ctrl-C stops and finalizes.       |
 | `sweetpad simulator appearance` | Switch light/dark appearance.                                  |
