@@ -207,6 +207,42 @@ fn synchronized_folder_sources_are_walked() {
 /// does not name the folder in `fileSystemSynchronizedGroups`: those files are
 /// the target's whole share of it. NetNewsWire builds five extensions this
 /// way, each with an empty `PBXSourcesBuildPhase`.
+/// A package product can be linked without the target naming it: the frameworks
+/// phase's build file reaches the `XCSwiftPackageProductDependency` through
+/// `productRef` where an ordinary file would have a `fileRef`. Tuist writes
+/// projects this way.
+#[test]
+fn a_package_product_linked_only_through_a_product_ref_counts() {
+    let root = std::env::temp_dir().join(format!("sweetpad-productref-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let xcodeproj = root.join("App.xcodeproj");
+    fs::create_dir_all(&xcodeproj).unwrap();
+
+    let pbxproj = "\
+// !$*UTF8*$!
+{
+\tarchiveVersion = 1;
+\tobjects = {
+\t\tPROJ = { isa = PBXProject; mainGroup = MAIN; targets = (APP, BARE); };
+\t\tMAIN = { isa = PBXGroup; sourceTree = \"<group>\"; children = (); };
+\t\tPRODDEP = { isa = XCSwiftPackageProductDependency; productName = Alamofire; };
+\t\tBF = { isa = PBXBuildFile; productRef = PRODDEP; };
+\t\tFRAMEWORKS = { isa = PBXFrameworksBuildPhase; files = (BF); };
+\t\tEMPTY = { isa = PBXFrameworksBuildPhase; files = (); };
+\t\tAPP = { isa = PBXNativeTarget; name = App; buildPhases = (FRAMEWORKS); };
+\t\tBARE = { isa = PBXNativeTarget; name = Bare; buildPhases = (EMPTY); };
+\t};
+\trootObject = PROJ;
+}
+";
+    fs::write(xcodeproj.join("project.pbxproj"), pbxproj).unwrap();
+
+    assert!(target_has_package_products(&xcodeproj, "App").unwrap());
+    assert!(!target_has_package_products(&xcodeproj, "Bare").unwrap());
+
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[test]
 fn synchronized_folder_membership_exception_is_included_for_a_non_member() {
     let root = std::env::temp_dir().join(format!("sweetpad-sync-inc-{}", std::process::id()));

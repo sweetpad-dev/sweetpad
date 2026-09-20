@@ -747,10 +747,7 @@ pub fn build_settings_from_value(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let has_package_product_dependencies = target_obj
-        .get("packageProductDependencies")
-        .and_then(Value::as_array)
-        .is_some_and(|deps| !deps.is_empty());
+    let has_package_product_dependencies = links_package_product(objects, target_obj);
     let test_host_target = if is_test_bundle_product_type(product_type.as_deref()) {
         // Xcode records the authoritative host in the root PBXProject's
         // `attributes.TargetAttributes.<test-target-uuid>.TestTargetID`;
@@ -1164,10 +1161,9 @@ fn target_dependency_names(objects: &Dict, target_obj: &Value) -> Vec<String> {
     out
 }
 
-/// Whether a target links one or more Swift Package products (a non-empty
-/// `packageProductDependencies`). Such a target needs the package-products
-/// framework search path (`-F …/PackageFrameworks`) for its `import`s to
-/// resolve; targets without packages must not emit it.
+/// Whether a target links one or more Swift Package products. Such a target
+/// needs the package-products framework search path (`-F …/PackageFrameworks`)
+/// for its `import`s to resolve; targets without packages must not emit it.
 pub fn target_has_package_products(
     xcodeproj_path: &Path,
     target_name: &str,
@@ -1179,10 +1175,36 @@ pub fn target_has_package_products(
     let (objects, project_obj) = project_root(&value)?;
     let target = find_target(objects, project_obj, target_name)?
         .ok_or_else(|| Error::no_such_target(target_name))?;
-    Ok(target
+    Ok(links_package_product(objects, target))
+}
+
+/// Two spellings link a package product, and a project can carry either alone.
+/// The target's `packageProductDependencies` names the
+/// `XCSwiftPackageProductDependency` directly; a `PBXBuildFile` in the
+/// frameworks phase reaches the same object through `productRef` instead of
+/// the `fileRef` an ordinary file has. Tuist's
+/// `xcode_project_with_registry_and_alamofire` links Alamofire with only the
+/// second, and Xcode 27 converting that project records the product on the
+/// target, so the relation is one thing wearing two hats.
+fn links_package_product(objects: &Dict, target_obj: &Value) -> bool {
+    if target_obj
         .get("packageProductDependencies")
         .and_then(Value::as_array)
-        .is_some_and(|deps| !deps.is_empty()))
+        .is_some_and(|deps| !deps.is_empty())
+    {
+        return true;
+    }
+    let Some(phase_ids) = target_obj.get("buildPhases").and_then(Value::as_array) else {
+        return false;
+    };
+    phase_ids
+        .iter()
+        .filter_map(|id| id.as_str().and_then(|id| objects.get(id)))
+        .filter(|phase| phase.get("isa").and_then(Value::as_str) == Some("PBXFrameworksBuildPhase"))
+        .filter_map(|phase| phase.get("files").and_then(Value::as_array))
+        .flatten()
+        .filter_map(|id| id.as_str().and_then(|id| objects.get(id)))
+        .any(|build_file| build_file.get("productRef").is_some())
 }
 
 /// `target`'s transitive dependencies in build order — a dependency precedes

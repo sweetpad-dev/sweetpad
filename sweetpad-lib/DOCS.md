@@ -1629,12 +1629,12 @@ different list from the `{ kind: package }` dependency edge.
 
 **Measuring the graph queries turned up three bugs in the pbxproj path, not the
 new one.** Across 931 comparisons (seven queries × every target of all 61
-projects) 887 agree. 40 of the 44 differences are order only, the converter
+projects) 889 agree. 40 of the 42 differences are order only, the converter
 having replaced each phase's order with navigator order — information the
 document simply no longer carries, so each reader is faithful to its own file.
-The remaining four are two pairs:
+Two of the three bugs are fixed:
 
-- **Synchronized-folder inclusions were read as exclusions** (fixed).
+- **Synchronized-folder inclusions were read as exclusions.**
   `membershipExceptions` is one list whose sense depends on whether the target
   is in the folder's `fileSystemSynchronizedGroups`: files unchecked from a
   member, files checked into a non-member. We treated every entry as an
@@ -1643,17 +1643,20 @@ The remaining four are two pairs:
   all, `Subscribe to Feed` among them, though its exception set names four
   `.swift` files. The JSON format splits the two senses into separate keys,
   which is how this surfaced.
-- **A package product linked only through a build file's `productRef` is
-  missed.** `target_has_package_products` reads the target's
-  `packageProductDependencies`; Tuist's `xcode_project_with_registry_and_alamofire`
-  links Alamofire without one. Still open, and one of the two remaining pairs.
-- The `-Owholemodule` normalization above. Still open.
+- **A package product linked only through a build file's `productRef` was
+  missed.** Both spellings reach the same `XCSwiftPackageProductDependency`:
+  the target's `packageProductDependencies`, and a frameworks-phase
+  `PBXBuildFile` carrying `productRef` where an ordinary file has `fileRef`.
+  Tuist's `xcode_project_with_registry_and_alamofire` links Alamofire with only
+  the second. The oracle totals are unchanged by the fix, since no scored
+  capture reaches the `ALLOW_TARGET_PLATFORM_SPECIALIZATION` gate this way.
+- The `-Owholemodule` normalization above is still open.
 
-The other remaining pair is not a bug on either side: converting NetNewsWire
-puts `Tests/NetNewsWire-iOSTests/ActivityItemSourceTests.swift` in a "Recovered
-References" group with explicit membership, where the pbxproj excludes it from
-`NetNewsWireTests` and gives it to nothing. Each reader reports its own
-document.
+The two remaining set differences are not a bug on either side: converting
+NetNewsWire puts `Tests/NetNewsWire-iOSTests/ActivityItemSourceTests.swift` in
+a "Recovered References" group with explicit membership, where the pbxproj
+excludes it from `NetNewsWireTests` and gives it to nothing. Each reader
+reports its own document.
 
 **Still open: the editing verbs** — `membership`, `fileref`, `group` and
 `folder` write through `tree_pbxproj` and `membership_pbxproj`, which have no
