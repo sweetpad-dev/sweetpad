@@ -123,28 +123,79 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// A parsed project document, in whichever of the two formats the bundle
+/// holds: `project.pbxproj`, or the JSON `project.xcproj` that Xcode 27.2
+/// writes in its place.
+///
+/// Parsing dominates the cost of a query, so a caller with more than one
+/// question to ask parses once and asks the document — which is what makes
+/// [`open`] and [`build_settings`] the convenience wrappers rather than the
+/// primitives. Both arms hold a shared, mtime-validated cache entry, so the
+/// parse is reused across documents opened on the same bundle too.
+#[derive(Debug, Clone)]
+pub enum Document {
+    Pbxproj(Arc<Value>),
+    Xcproj(Arc<crate::xcproj::Value>),
+}
+
+impl Document {
+    /// Read and parse the document under an `.xcodeproj` directory.
+    ///
+    /// A bundle holding both is invalid — Xcode says so rather than preferring
+    /// one — so this reports it instead of guessing.
+    pub fn parse(xcodeproj_path: &Path) -> Result<Self, Error> {
+        let pbxproj = xcodeproj_path.join("project.pbxproj").exists();
+        let xcproj = xcodeproj_path.join(crate::xcproj::DOCUMENT_NAME).exists();
+        match (pbxproj, xcproj) {
+            (true, true) => Err(Error::BadProject(format!(
+                "{} has both project.pbxproj and {}; only one should exist",
+                xcodeproj_path.display(),
+                crate::xcproj::DOCUMENT_NAME
+            ))),
+            (false, true) => crate::project_xcproj::parse(xcodeproj_path).map(Document::Xcproj),
+            _ => parse_pbxproj(xcodeproj_path).map(Document::Pbxproj),
+        }
+    }
+
+    /// The project's high-level metadata: name, targets, project
+    /// configurations, and shared schemes.
+    pub fn open(&self, xcodeproj_path: &Path) -> Result<Project, Error> {
+        match self {
+            Document::Pbxproj(value) => open_from_value(value, xcodeproj_path),
+            Document::Xcproj(value) => {
+                crate::project_xcproj::open_from_value(value, xcodeproj_path)
+            }
+        }
+    }
+
+    /// The four user-authored build-settings layers for a target and
+    /// configuration, plus the target metadata xcspec lookups need. See
+    /// [`build_settings`].
+    pub fn build_settings(
+        &self,
+        xcodeproj_path: &Path,
+        target_name: &str,
+        config_name: &str,
+    ) -> Result<BuildSettingsContext, Error> {
+        match self {
+            Document::Pbxproj(value) => {
+                build_settings_from_value(value, xcodeproj_path, target_name, config_name)
+            }
+            Document::Xcproj(value) => crate::project_xcproj::build_settings_from_value(
+                value,
+                xcodeproj_path,
+                target_name,
+                config_name,
+            ),
+        }
+    }
+}
+
 /// Open an .xcodeproj directory and extract its high-level metadata: name,
 /// targets, project configurations, and shared schemes, in whichever of the
 /// two formats its bundle holds.
-///
-/// Xcode 27.2 writes the JSON `project.xcproj` in place of `project.pbxproj`.
-/// A bundle holding both is invalid — Xcode says so rather than preferring
-/// one — so this reports it instead of guessing.
 pub fn open(xcodeproj_path: &Path) -> Result<Project, Error> {
-    let pbxproj = xcodeproj_path.join("project.pbxproj").exists();
-    let xcproj = xcodeproj_path.join(crate::xcproj::DOCUMENT_NAME).exists();
-    match (pbxproj, xcproj) {
-        (true, true) => Err(Error::BadProject(format!(
-            "{} has both project.pbxproj and {}; only one should exist",
-            xcodeproj_path.display(),
-            crate::xcproj::DOCUMENT_NAME
-        ))),
-        (false, true) => crate::project_xcproj::open(xcodeproj_path),
-        _ => {
-            let value = parse_pbxproj(xcodeproj_path)?;
-            open_from_value(&value, xcodeproj_path)
-        }
-    }
+    Document::parse(xcodeproj_path)?.open(xcodeproj_path)
 }
 
 /// Like [`open`] but driven by an already-parsed pbxproj value. Use this when
@@ -693,16 +744,7 @@ pub fn build_settings(
     target_name: &str,
     config_name: &str,
 ) -> Result<BuildSettingsContext, Error> {
-    if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
-        return crate::project_xcproj::build_settings_from_value(
-            &value,
-            xcodeproj_path,
-            target_name,
-            config_name,
-        );
-    }
-    let value = parse_pbxproj(xcodeproj_path)?;
-    build_settings_from_value(&value, xcodeproj_path, target_name, config_name)
+    Document::parse(xcodeproj_path)?.build_settings(xcodeproj_path, target_name, config_name)
 }
 
 /// Like [`build_settings`] but driven by an already-parsed pbxproj value.

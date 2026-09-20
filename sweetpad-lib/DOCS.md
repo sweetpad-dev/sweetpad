@@ -1658,6 +1658,31 @@ a "Recovered References" group with explicit membership, where the pbxproj
 excludes it from `NetNewsWireTests` and gives it to nothing. Each reader
 reports its own document.
 
+**One parse, either format.** `project::Document` is the parsed document,
+`Pbxproj(Arc<pbxproj::Value>)` or `Xcproj(Arc<xcproj::Value>)`, and it answers
+`open` and `build_settings`. `BuildContext` holds one of those rather than a
+pbxproj tree, which is what carries the format past this library: `settings
+show`, `build`, `test`, `archive`, `app run` and the BSP server all resolve
+through that single cached parse, and a `project.xcproj` project builds.
+
+Resolving both formats of the same project is the measurement. Over the 61
+convertible projects — 270 target × configuration resolutions, 52,639 setting
+comparisons — the two agree on all but 76, and both groups of those are
+accounted for. 46 are the `_synthetic-spm-graph` copy sitting without the
+`Graph.xcworkspace` that names its DerivedData container; put the sibling back
+and that project agrees on all 372. The other 30 are the `-Owholemodule`
+rewrite above. Nothing left is attributable to either reader.
+`tests/xcproj_parity.rs` holds one project's worth of that in the suite: the
+fixture document is Xcode's conversion of `_synthetic-objectversion-110`, so
+the test copies that tree, swaps the document in, and compares the resolved
+settings and a scripted BSP session between the two.
+
+The measurement found one gap in this reader. A test bundle whose document
+does not name a `test-host-target` got no host at all, where the pbxproj path
+falls back to the application the bundle depends on, so `TEST_HOST` and
+`TARGET_BUILD_SUBPATH` went missing for a bundle Xcode's converter recorded no
+host for. Both paths now scan the dependencies.
+
 **Still open: the editing verbs** — `membership`, `fileref`, `group` and
 `folder` write through `tree_pbxproj` and `membership_pbxproj`, which have no
 `project.xcproj` counterpart yet. Reading is complete.
@@ -1774,3 +1799,13 @@ lives in the sections above and in the named commits.
   exclusions (five NetNewsWire targets with no sources at all), and a package
   product linked only through a build file's `productRef`. Both are §11.3's to
   fix on their own.
+
+- **2026-09-20 — building a `project.xcproj` project.** `project::Document`
+  replaced the pbxproj tree `BuildContext` cached, so every verb above the
+  library — `settings show`, `build`, `test`, `archive`, `app run`, BSP — reads
+  either format from one parse. Resolving both copies of all 61 convertible
+  projects agrees on 52,563 of 52,639 settings, with the remaining 76 split
+  between one fixture copied without the workspace that names its DerivedData
+  container and the `-Owholemodule` rewrite; the sweep also found this reader
+  giving a test bundle no host when the document names none, which the pbxproj
+  path had always inferred from the dependency edge.

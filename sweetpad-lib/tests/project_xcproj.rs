@@ -662,3 +662,45 @@ fn a_script_phase_blocks_self_building() {
     );
     assert!(!project::is_self_buildable(&scripted, "App").unwrap());
 }
+
+#[test]
+fn a_test_bundle_names_its_host_or_falls_back_to_the_app_it_depends_on() {
+    let dir = tempdir("test-host");
+    let xcodeproj = scratch(
+        &dir,
+        r#"{
+  "configurations": [ "Debug" ],
+  "targets": [
+    {
+      "name": "App",
+      "product-type": "application",
+    },
+    {
+      "name": "Declared",
+      "product-type": "bundle.unit-test",
+      "test-host-target": "App",
+    },
+    {
+      "name": "Inferred",
+      "product-type": "bundle.unit-test",
+      "dependencies": [ "App" ],
+    },
+    {
+      "name": "Standalone",
+      "product-type": "bundle.unit-test",
+    },
+  ],
+}
+"#,
+        &[],
+    );
+    let host = |target: &str| {
+        build_settings(&xcodeproj, target, "Debug")
+            .unwrap()
+            .test_host_target
+    };
+    assert_eq!(host("Declared").as_deref(), Some("App"));
+    assert_eq!(host("Inferred").as_deref(), Some("App"));
+    assert_eq!(host("Standalone"), None);
+    assert_eq!(host("App"), None);
+}

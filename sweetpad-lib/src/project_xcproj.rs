@@ -32,11 +32,6 @@ use crate::xcproj::{self, Value};
 /// The prefix Xcode drops from a product type it recognizes.
 const APPLE_PRODUCT_TYPE_PREFIX: &str = "com.apple.product-type.";
 
-pub(crate) fn open(xcodeproj_path: &Path) -> Result<Project, Error> {
-    let value = parse(xcodeproj_path)?;
-    open_from_value(&value, xcodeproj_path)
-}
-
 /// The bundle's parsed document, or `None` when it holds a pbxproj instead.
 ///
 /// Lets a pbxproj-shaped entry point take the other path without first
@@ -52,7 +47,7 @@ pub(crate) fn parse_if_present(
     parse(xcodeproj_path).map(Some)
 }
 
-fn parse(xcodeproj_path: &Path) -> Result<std::sync::Arc<Value>, Error> {
+pub(crate) fn parse(xcodeproj_path: &Path) -> Result<std::sync::Arc<Value>, Error> {
     let document_path = xcodeproj_path.join(xcproj::DOCUMENT_NAME);
     xcproj::parse_file_cached(&document_path).map_err(|e| match e {
         xcproj::Error::Io(e) => Error::Io(e),
@@ -346,12 +341,28 @@ pub(crate) fn build_settings_from_value(
         product_type: product_type(target),
         target_isa: isa_for(target).to_string(),
         has_package_product_dependencies: links_a_package_product(target),
-        // The pbxproj hid this in the root object's `TargetAttributes`; here
-        // the test bundle names its host itself.
-        test_host_target: target
-            .get("test-host-target")
-            .and_then(Value::as_str)
-            .map(str::to_string),
+        test_host_target: test_host_target(value, target),
+    })
+}
+
+/// A test bundle's host application: the `test-host-target` it names, else the
+/// first target it depends on that builds an application.
+///
+/// The pbxproj records the same fact in the root object's `TargetAttributes`
+/// and this format puts it on the bundle, but neither is guaranteed to be
+/// there — a test target added outside Xcode has no entry — so both paths fall
+/// back to the dependency edge.
+fn test_host_target(value: &Value, target: &Value) -> Option<String> {
+    if !crate::project::is_test_bundle_product_type(product_type(target).as_deref()) {
+        return None;
+    }
+    if let Some(named) = target.get("test-host-target").and_then(Value::as_str) {
+        return Some(named.to_string());
+    }
+    dependency_names(target).into_iter().find(|name| {
+        find_target(value, name)
+            .and_then(product_type)
+            .is_some_and(|pt| pt.starts_with("com.apple.product-type.application"))
     })
 }
 

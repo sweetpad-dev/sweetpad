@@ -900,22 +900,22 @@ impl Server {
             .ok()
             .and_then(|v| v.parse().ok())
             .map_or(Duration::from_millis(1500), Duration::from_millis);
-        let pbxprojs: Vec<PathBuf> = self
+        let documents: Vec<PathBuf> = self
             .projects
             .iter()
-            .map(|p| p.join("project.pbxproj"))
+            .flat_map(|p| document_paths(p))
             .collect();
         let config = self.config_path.clone();
         std::thread::spawn(move || {
             let stamp_all =
                 |paths: &[PathBuf]| paths.iter().map(|p| file_stamp(p)).collect::<Vec<_>>();
-            let mut last_pbx = stamp_all(&pbxprojs);
+            let mut last_doc = stamp_all(&documents);
             let mut last_cfg = config.as_deref().map(file_stamp);
             loop {
                 std::thread::sleep(interval);
-                let now_pbx = stamp_all(&pbxprojs);
-                if now_pbx != last_pbx {
-                    last_pbx = now_pbx;
+                let now_doc = stamp_all(&documents);
+                if now_doc != last_doc {
+                    last_doc = now_doc;
                     self.notify_targets_changed();
                 }
                 if let (Some(path), Some(prev)) = (config.as_deref(), last_cfg.as_mut()) {
@@ -1006,7 +1006,8 @@ impl Server {
     fn prepare_stamps(&self) -> Vec<Option<(u64, SystemTime)>> {
         self.projects
             .iter()
-            .map(|p| file_stamp(&p.join("project.pbxproj")))
+            .flat_map(|p| document_paths(p))
+            .map(|p| file_stamp(&p))
             .chain(self.config_path.as_deref().map(file_stamp))
             .collect()
     }
@@ -1785,6 +1786,17 @@ fn percent_decode(raw: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Both names an `.xcodeproj` can hold its document under. Stamping the pair
+/// rather than the one that exists right now keeps the fingerprint honest
+/// across a conversion between the two formats, where the file that carries
+/// the project changes name.
+fn document_paths(xcodeproj: &Path) -> [PathBuf; 2] {
+    [
+        xcodeproj.join("project.pbxproj"),
+        xcodeproj.join(sweetpad_lib::xcproj::DOCUMENT_NAME),
+    ]
 }
 
 /// A change fingerprint for a file — `(len, mtime)`, or `None` if it can't be

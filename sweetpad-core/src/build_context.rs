@@ -1,6 +1,6 @@
 //! One-shot input collection for the build-settings resolver.
 //!
-//! [`BuildContext::open`] parses the `project.pbxproj`, optionally accepts an
+//! [`BuildContext::open`] parses the project document, optionally accepts an
 //! xcspec catalog and an extra `.xcconfig`, and exposes [`BuildContext::resolve`]
 //! as the cheap repeated query. Same context, different `(target, config, sdk,
 //! arch, destination, overrides)` — re-resolution walks the cached parse
@@ -10,8 +10,8 @@
 //!
 //! 1. xcspec + SDKSettings defaults (when [`with_xcspec`] is set).
 //! 2. Computed built-in settings (`PROJECT_DIR`, `ARCHS`, `BUILD_DIR`, …).
-//! 3. The four user-authored layers from pbxproj (project xcconfig, project
-//!    inline buildSettings, target xcconfig, target inline buildSettings).
+//! 3. The four user-authored layers from the project document (project
+//!    xcconfig, project settings, target xcconfig, target settings).
 //! 4. The extra `.xcconfig` overlay (when [`with_extra_xcconfig`] is set).
 //! 5. Forced xcodebuild overrides (e.g. config-derived `ENABLE_PREVIEWS`).
 //! 6. SDKROOT in its absolute-path form when the catalog supplied one.
@@ -20,11 +20,9 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use sweetpad_lib::destination::RunDestination;
-use sweetpad_lib::pbxproj::Value;
-use sweetpad_lib::project::{self, Project};
+use sweetpad_lib::project::{self, Document, Project};
 use sweetpad_lib::resolver::{self, ResolveContext};
 use sweetpad_lib::scheme::{self, BuildableRef, Scheme};
 use sweetpad_lib::xcconfig::Assignment;
@@ -35,10 +33,11 @@ use sweetpad_lib::xcspec::Catalog;
 pub struct BuildContext {
     /// High-level project metadata (targets, configurations, schemes, path).
     pub project: Project,
-    /// Parsed pbxproj root — a shared, mtime-validated cache entry (see
-    /// [`project::parse_pbxproj`]) reused by each [`Self::resolve`] and shared
-    /// across every `BuildContext` opened on the same project.
-    pbxproj: Arc<Value>,
+    /// The parsed project document, in whichever format the bundle holds — a
+    /// shared, mtime-validated cache entry (see [`Document::parse`]) reused by
+    /// each [`Self::resolve`] and shared across every `BuildContext` opened on
+    /// the same project.
+    document: Document,
     /// xcspec + `SDKSettings.plist` defaults catalog. `None` skips the
     /// defaults layer — you'll get only the user-authored settings + built-ins.
     pub xcspec: Option<Catalog>,
@@ -102,7 +101,8 @@ pub struct ResolveQuery {
     /// Whether the driving scheme's `TestAction` has
     /// `codeCoverageEnabled="YES"`. When set, xcodebuild forces
     /// `CLANG_COVERAGE_MAPPING=YES` on every target it resolves for the
-    /// scheme — a scheme-level fact the per-target pbxproj can't carry.
+    /// scheme — a scheme-level fact the per-target project document can't
+    /// carry.
     pub code_coverage_enabled: bool,
     /// The driving scheme's `LaunchAction` sanitizer toggles
     /// (`enableAddressSanitizer` / `enableThreadSanitizer` /
@@ -110,8 +110,8 @@ pub struct ResolveQuery {
     /// `ENABLE_*_SANITIZER = YES` on every target it resolves for the scheme
     /// and suffixes the per-variant object dirs (Swift Build's
     /// `Settings.swift` appends `-asan` / `-tsan` / `-ubsan` to
-    /// `OBJECT_FILE_DIR_<variant>`). Another scheme-level fact the pbxproj
-    /// can't carry; defaults to all-off.
+    /// `OBJECT_FILE_DIR_<variant>`). Another scheme-level fact the project
+    /// document can't carry; defaults to all-off.
     pub scheme_sanitizers: scheme::SanitizerEnables,
 }
 
@@ -288,11 +288,11 @@ impl From<resolver::Error> for Error {
 impl BuildContext {
     /// Parse the `.xcodeproj` once and cache it.
     pub fn open(project_path: &Path) -> Result<Self, Error> {
-        let pbxproj = project::parse_pbxproj(project_path)?;
-        let project = project::open_from_value(&pbxproj, project_path)?;
+        let document = Document::parse(project_path)?;
+        let project = document.open(project_path)?;
         Ok(Self {
             project,
-            pbxproj,
+            document,
             xcspec: None,
             extra_xcconfig: Vec::new(),
             derived_data_container: None,
@@ -339,8 +339,7 @@ impl BuildContext {
     /// Resolve build settings for one `(target, config, sdk, arch, …)` tuple.
     /// Cheap to call repeatedly against the same context.
     pub fn resolve(&self, query: &ResolveQuery) -> Result<Resolved, Error> {
-        let bundle = project::build_settings_from_value(
-            &self.pbxproj,
+        let bundle = self.document.build_settings(
             &self.project.path,
             &query.target,
             &query.configuration,
