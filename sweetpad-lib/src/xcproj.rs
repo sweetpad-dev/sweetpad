@@ -119,6 +119,27 @@ impl Object {
         self.entries.insert(at, (key, value));
     }
 
+    /// Insert at `at`, shifting the rest right, or replace in place if the key
+    /// is already there. For the objects whose key order Xcode fixes by
+    /// position rather than alphabetically — see
+    /// [`crate::schema_xcproj::insert_node_key`].
+    ///
+    /// # Panics
+    /// Panics when `at` is past the end.
+    pub fn insert_at(&mut self, at: usize, key: String, value: Value) {
+        if let Some(&i) = self.index.get(&key) {
+            self.entries[i].1 = value;
+            return;
+        }
+        for pos in self.index.values_mut() {
+            if *pos >= at {
+                *pos += 1;
+            }
+        }
+        self.index.insert(key.clone(), at);
+        self.entries.insert(at, (key, value));
+    }
+
     /// Ask the printer to put this object on one line. Compactness is
     /// inherited, so everything nested inside prints on that line too.
     pub fn set_compact(&mut self, compact: bool) {
@@ -178,6 +199,14 @@ impl Array {
     /// Keep only the items `keep` accepts, in order.
     pub fn retain(&mut self, keep: impl FnMut(&Value) -> bool) {
         self.items.retain(keep);
+    }
+
+    /// Take the item at `index` out, shifting the rest left.
+    ///
+    /// # Panics
+    /// Panics when `index` is out of bounds.
+    pub fn remove(&mut self, index: usize) -> Value {
+        self.items.remove(index)
     }
 
     /// See [`Object::set_compact`].

@@ -1,26 +1,38 @@
-//! `sweetpad pbxproj group` — the `PBXGroup` tree on its own: the navigator
-//! structure, which says where a file *appears* in Xcode and nothing about
-//! what builds (CLI_DESIGN §9g). Membership is
-//! [`super::membership`]'s axis.
+//! `sweetpad pbxproj group` — the navigator tree on its own: where a file
+//! *appears* in Xcode, which says nothing about what builds it (CLI_DESIGN
+//! §9g). Membership is [`super::membership`]'s axis.
+//!
+//! `attach`/`detach` exist because a `PBXGroup`'s `children` is a list of
+//! references: the same object can be listed in two groups, and attaching it
+//! to one does not take it out of the other. A `project.xcproj` nests its
+//! nodes instead, so a node is in exactly one place and the operation is
+//! [`Action::Move`] — which works on both formats. The two verbs that have no
+//! meaning there say so rather than quietly doing something near enough.
 
 use clap::{Args, Subcommand};
 
 use crate::cli::output::Output;
-use crate::cli::pbxedit;
+use crate::cli::pbxedit::Editable;
 use crate::cli::{CliError, CommandResult, ContainerArgs, Context, Render, Rendered};
-use sweetpad_lib::tree_pbxproj::{self, AddGroupOutcome, LinkOutcome};
+use sweetpad_lib::tree::{AddGroupOutcome, GroupRow, MoveOutcome, RemoveOutcome};
+use sweetpad_lib::tree_pbxproj::{self, LinkOutcome};
+use sweetpad_lib::tree_xcproj;
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Show every group: id, resolved directory, and its children.
+    /// Show every group: how to name it, its resolved directory, and how many
+    /// children it holds.
     List(ListArgs),
     /// Create a group under a parent group.
     Add(AddArgs),
-    /// Delete an empty group by id.
+    /// Delete an empty group.
     Remove(RemoveArgs),
-    /// List an existing object in a group's children.
+    /// Move a node into another group, keeping the file it resolves to.
+    Move(MoveArgs),
+    /// List an existing object in a group's children (project.pbxproj only).
     Attach(LinkArgs),
-    /// Drop an object from a group's children, leaving the object itself.
+    /// Drop an object from a group's children, leaving the object itself
+    /// (project.pbxproj only).
     Detach(LinkArgs),
 }
 
@@ -40,10 +52,10 @@ pub struct AddArgs {
     #[command(flatten)]
     pub container: ContainerArgs,
 
-    /// Parent group to create it under, by id or by resolved directory
-    /// ('Sources/App'); 'pbxproj group list' shows both.
+    /// Group to create it under, named as 'pbxproj group list' prints it.
+    /// Defaults to the navigator root.
     #[arg(long)]
-    pub parent: String,
+    pub parent: Option<String>,
 
     /// Directory the group contributes to its children's paths. Omit it for a
     /// purely organizational group that adds no directory component.
@@ -68,16 +80,46 @@ pub struct AddArgs {
 /// Flags for `pbxproj group remove`.
 #[derive(Debug, Args)]
 pub struct RemoveArgs {
-    /// The group's object id.
-    pub id: String,
+    /// The group to delete, named as 'pbxproj group list' prints it: the
+    /// object id in a project.pbxproj, the navigator path ('Sources/App') in
+    /// a project.xcproj.
+    #[arg(value_name = "GROUP")]
+    pub address: String,
 
     #[command(flatten)]
     pub container: ContainerArgs,
 
     /// Delete even while the group still lists children, leaving them in the
-    /// project with nothing showing them. Emptying it is 'group detach'.
+    /// project with nothing showing them. A project.xcproj nests its children
+    /// inside the group rather than listing them, so there is nothing left to
+    /// orphan and this is refused — empty the group with 'group move' first.
     #[arg(long)]
     pub orphan_children: bool,
+
+    /// Build target to disambiguate which '.xcodeproj' in a workspace to edit.
+    #[arg(long)]
+    pub target: Option<String>,
+
+    /// Edit a generated project (XcodeGen/Tuist) anyway — the change is
+    /// deliberate and will be lost on the next regenerate.
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// Flags for `pbxproj group move`.
+#[derive(Debug, Args)]
+pub struct MoveArgs {
+    /// The node to move, named as 'pbxproj fileref list' or 'pbxproj group
+    /// list' prints it.
+    #[arg(value_name = "NODE")]
+    pub address: String,
+
+    #[command(flatten)]
+    pub container: ContainerArgs,
+
+    /// Group to move it into. Defaults to the navigator root.
+    #[arg(long)]
+    pub to: Option<String>,
 
     /// Build target to disambiguate which '.xcodeproj' in a workspace to edit.
     #[arg(long)]
@@ -118,6 +160,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         Action::List(args) => list(ctx, args),
         Action::Add(args) => add(ctx, args),
         Action::Remove(args) => remove(ctx, args),
+        Action::Move(args) => move_node(ctx, args),
         Action::Attach(args) => link(ctx, args, true),
         Action::Detach(args) => link(ctx, args, false),
     }
@@ -140,7 +183,7 @@ impl Render for GroupMutation {
 }
 
 struct ListResult {
-    groups: Vec<tree_pbxproj::GroupRow>,
+    groups: Vec<GroupRow>,
 }
 
 impl Render for ListResult {
@@ -150,15 +193,11 @@ impl Render for ListResult {
             return;
         }
         for g in &self.groups {
-            let dir = if g.resolved.is_empty() {
-                "(project root)"
-            } else {
-                &g.resolved
-            };
+            let dir = display_dir(&g.resolved);
             let title = g.name.as_deref().unwrap_or(dir);
             out.line(&format!(
                 "{}  {title}  [{dir}, {} child(ren)]",
-                g.guid,
+                g.address,
                 g.children.len()
             ));
         }
@@ -170,7 +209,8 @@ impl Render for ListResult {
             .iter()
             .map(|g| {
                 serde_json::json!({
-                    "id": g.guid,
+                    "address": g.address,
+                    "id": g.id,
                     "isa": g.isa,
                     "name": g.name,
                     "path": g.path,
@@ -186,48 +226,63 @@ impl Render for ListResult {
 }
 
 fn list(ctx: &mut Context, args: &ListArgs) -> CommandResult {
-    let (_, root) = super::open_project(ctx, &args.container, None)?;
-    let groups = tree_pbxproj::list_groups(&root).map_err(CliError::new)?;
+    let (_, document) = super::open_document(ctx, &args.container, None)?;
+    let groups = match &document {
+        Editable::Pbxproj(root) => tree_pbxproj::list_groups(root),
+        Editable::Xcproj(root) => tree_xcproj::list_groups(root),
+    }
+    .map_err(CliError::new)?;
     Ok(Rendered::data(ListResult { groups }))
 }
 
 fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
-    let (xcodeproj, mut root) =
-        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
-    let outcome = tree_pbxproj::add_group(
-        &mut root,
-        &args.name,
-        &args.parent,
-        args.path.as_deref(),
-        &args.source_tree,
-    )
+    let targets: Vec<String> = args.target.clone().into_iter().collect();
+    let (xcodeproj, mut document) =
+        super::open_document_mut(ctx, &args.container, &targets, args.force)?;
+    let outcome = match &mut document {
+        Editable::Pbxproj(root) => tree_pbxproj::add_group(
+            root,
+            &args.name,
+            args.parent.as_deref(),
+            args.path.as_deref(),
+            &args.source_tree,
+        ),
+        Editable::Xcproj(root) => tree_xcproj::add_group(
+            root,
+            &args.name,
+            args.parent.as_deref(),
+            args.path.as_deref(),
+            &args.source_tree,
+        ),
+    }
     .map_err(CliError::new)?;
 
+    let under = args.parent.as_deref().unwrap_or("the navigator root");
     let (line, changed, json) = match &outcome {
-        AddGroupOutcome::Created { guid, resolved } => (
-            format!("{guid}  {} under {}", display_dir(resolved), args.parent),
+        AddGroupOutcome::Created { address, resolved } => (
+            format!("{address}  {} under {under}", display_dir(resolved)),
             true,
             serde_json::json!({
                 "action": "add",
-                "id": guid,
+                "address": address,
                 "resolved": resolved,
                 "parent": args.parent,
                 "changed": true,
             }),
         ),
-        AddGroupOutcome::AlreadyExists { guid, resolved } => (
-            format!("{guid}  {} (already a group)", display_dir(resolved)),
+        AddGroupOutcome::AlreadyExists { address, resolved } => (
+            format!("{address}  {} (already a group)", display_dir(resolved)),
             false,
             serde_json::json!({
                 "action": "add",
-                "id": guid,
+                "address": address,
                 "resolved": resolved,
                 "changed": false,
             }),
         ),
     };
     if changed {
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        document.write(&xcodeproj)?;
     }
     Ok(Rendered::data(GroupMutation { line, json }))
 }
@@ -235,13 +290,21 @@ fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
 fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {
     use std::fmt::Write as _;
 
-    let (xcodeproj, mut root) =
-        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
-    let outcome = tree_pbxproj::remove_group(&mut root, &args.id, args.orphan_children)
-        .map_err(CliError::new)?;
-    pbxedit::write_pbxproj(&xcodeproj, &root)?;
+    let targets: Vec<String> = args.target.clone().into_iter().collect();
+    let (xcodeproj, mut document) =
+        super::open_document_mut(ctx, &args.container, &targets, args.force)?;
+    let outcome: RemoveOutcome = match &mut document {
+        Editable::Pbxproj(root) => {
+            tree_pbxproj::remove_group(root, &args.address, args.orphan_children)
+        }
+        Editable::Xcproj(root) => {
+            tree_xcproj::remove_group(root, &args.address, args.orphan_children)
+        }
+    }
+    .map_err(CliError::new)?;
+    document.write(&xcodeproj)?;
 
-    let mut line = format!("removed {}", outcome.guid);
+    let mut line = format!("removed {}", outcome.address);
     if let Some(parent) = &outcome.detached_from {
         let _ = write!(line, "; dropped from group {parent}");
     }
@@ -259,7 +322,7 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {
         line,
         json: serde_json::json!({
             "action": "remove",
-            "id": outcome.guid,
+            "address": outcome.address,
             "detachedFrom": outcome.detached_from,
             "orphaned": outcome.orphaned,
             "changed": true,
@@ -267,13 +330,73 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {
     }))
 }
 
+fn move_node(ctx: &mut Context, args: &MoveArgs) -> CommandResult {
+    let targets: Vec<String> = args.target.clone().into_iter().collect();
+    let (xcodeproj, mut document) =
+        super::open_document_mut(ctx, &args.container, &targets, args.force)?;
+    let outcome = match &mut document {
+        Editable::Pbxproj(root) => tree_pbxproj::move_node(root, &args.address, args.to.as_deref()),
+        Editable::Xcproj(root) => tree_xcproj::move_node(root, &args.address, args.to.as_deref()),
+    }
+    .map_err(CliError::new)?;
+
+    let (line, changed, json) = match &outcome {
+        MoveOutcome::Moved {
+            address,
+            from,
+            to,
+            resolved,
+        } => (
+            format!("{address} now under {} (still {resolved})", display_dir(to)),
+            true,
+            serde_json::json!({
+                "action": "move",
+                "address": address,
+                "from": from,
+                "to": to,
+                "resolved": resolved,
+                "changed": true,
+            }),
+        ),
+        MoveOutcome::AlreadyThere { address, group } => (
+            format!("{address} is already under {}", display_dir(group)),
+            false,
+            serde_json::json!({
+                "action": "move",
+                "address": address,
+                "to": group,
+                "changed": false,
+            }),
+        ),
+    };
+    if changed {
+        document.write(&xcodeproj)?;
+    }
+    Ok(Rendered::data(GroupMutation { line, json }))
+}
+
 fn link(ctx: &mut Context, args: &LinkArgs, attach: bool) -> CommandResult {
-    let (xcodeproj, mut root) =
-        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
+    let targets: Vec<String> = args.target.clone().into_iter().collect();
+    let (xcodeproj, mut document) =
+        super::open_document_mut(ctx, &args.container, &targets, args.force)?;
+    let root = match &mut document {
+        Editable::Pbxproj(root) => root,
+        // A node sits in exactly one place here, so there is no "list it here
+        // as well" to perform and no "unlist it" that leaves it anywhere.
+        Editable::Xcproj(_) => {
+            let verb = if attach { "attach" } else { "detach" };
+            return Err(CliError::new(format!(
+                "`group {verb}` has no meaning in the project.xcproj format: a group holds \
+                 its children rather than listing references to them, so a node is in one \
+                 place and cannot be in two. Move it with `pbxproj group move {} --to {}`",
+                args.id, args.group
+            )));
+        }
+    };
     let outcome = if attach {
-        tree_pbxproj::attach(&mut root, &args.id, &args.group)
+        tree_pbxproj::attach(root, &args.id, &args.group)
     } else {
-        tree_pbxproj::detach(&mut root, &args.id, &args.group)
+        tree_pbxproj::detach(root, &args.id, &args.group)
     }
     .map_err(CliError::new)?;
 
@@ -291,7 +414,7 @@ fn link(ctx: &mut Context, args: &LinkArgs, attach: bool) -> CommandResult {
         }
     };
     if changed {
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        document.write(&xcodeproj)?;
     }
     Ok(Rendered::data(GroupMutation {
         line,
@@ -304,8 +427,8 @@ fn link(ctx: &mut Context, args: &LinkArgs, attach: bool) -> CommandResult {
     }))
 }
 
-/// The mainGroup resolves to the project directory, which prints as an empty
-/// string; name it instead of showing nothing.
+/// The navigator root resolves to the project directory, which prints as an
+/// empty string; name it instead of showing nothing.
 fn display_dir(resolved: &str) -> &str {
     if resolved.is_empty() {
         "(project root)"

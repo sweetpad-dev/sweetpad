@@ -65,8 +65,8 @@ pub fn add_root(root: &mut Value, target: &str, dir: &str) -> Result<AddOutcome,
         }
         None => {
             let mut node = Object::new();
-            node.insert_sorted("kind".to_string(), Value::String("folder".to_string()));
-            node.insert_sorted("path".to_string(), Value::String(dir));
+            node.insert("kind".to_string(), Value::String("folder".to_string()));
+            node.insert("path".to_string(), Value::String(dir));
             let mut node = Value::Object(node);
             add_membership(&mut node, target)?;
             files_mut(root)?.push(node);
@@ -367,8 +367,9 @@ fn add_membership(node: &mut Value, target: &str) -> Result<(), String> {
         .as_object_mut()
         .ok_or_else(|| "folder is not an object".to_string())?;
     if node.get("target-membership").is_none() {
-        node.insert_sorted(
-            "target-membership".to_string(),
+        crate::schema_xcproj::insert_node_key(
+            node,
+            "target-membership",
             Value::Array(Vec::new().into()),
         );
     }
@@ -479,8 +480,9 @@ fn add_exclusion(folder: &mut Value, target: &str, relative: &str) -> Result<boo
         .as_object_mut()
         .ok_or_else(|| "folder is not an object".to_string())?;
     if folder.get("membership-exceptions").is_none() {
-        folder.insert_sorted(
-            "membership-exceptions".to_string(),
+        crate::schema_xcproj::insert_node_key(
+            folder,
+            "membership-exceptions",
             Value::Array(Vec::new().into()),
         );
     }
@@ -493,7 +495,7 @@ fn add_exclusion(folder: &mut Value, target: &str, relative: &str) -> Result<boo
         .any(|s| s.get("target").and_then(Value::as_str) == Some(target))
     {
         let mut set = Object::new();
-        set.insert_sorted("target".to_string(), Value::String(target.to_string()));
+        set.insert("target".to_string(), Value::String(target.to_string()));
         sets.push(Value::Object(set));
     }
     let set = sets
@@ -502,7 +504,11 @@ fn add_exclusion(folder: &mut Value, target: &str, relative: &str) -> Result<boo
         .and_then(Value::as_object_mut)
         .ok_or_else(|| "membership exception is not an object".to_string())?;
     if set.get("exclusions").is_none() {
-        set.insert_sorted("exclusions".to_string(), Value::Array(Vec::new().into()));
+        crate::schema_xcproj::insert_exception_key(
+            set,
+            "exclusions",
+            Value::Array(Vec::new().into()),
+        );
     }
     let exclusions = set
         .get_mut("exclusions")

@@ -24,6 +24,64 @@ use crate::xcproj::{Object, Value};
 
 pub use crate::stored_settings::{Scope, Setting};
 
+/// The order Xcode writes a navigator node's keys in. Unlike `build-settings`,
+/// which it keeps alphabetical, a node's keys are positional: `type` comes
+/// before `target-membership`, `children` comes last. Measured over the 1,903
+/// file nodes in 80 converted corpus documents — 25 distinct key shapes, all
+/// consistent with this one order except a single node that writes
+/// `target-membership` before `type` where 108 write it after.
+const NODE_KEYS: [&str; 12] = [
+    "kind",
+    "path",
+    "name",
+    "id",
+    "current-version",
+    "type",
+    "index",
+    "encoding",
+    "opaque-folders",
+    "target-membership",
+    "membership-exceptions",
+    "children",
+];
+
+/// The order Xcode writes a membership exception set's keys in: what the
+/// exception is for, then what it lists. All 44 sets in the corpus agree.
+const EXCEPTION_KEYS: [&str; 6] = [
+    "target",
+    "build-phase",
+    "exclusions",
+    "inclusions",
+    "platforms",
+    "attributes",
+];
+
+/// Insert `key` on a navigator node where Xcode would have written it.
+pub fn insert_node_key(node: &mut Object, key: &str, value: Value) {
+    insert_in_order(node, &NODE_KEYS, key, value);
+}
+
+/// Insert `key` on a membership exception set where Xcode would have written
+/// it.
+pub fn insert_exception_key(set: &mut Object, key: &str, value: Value) {
+    insert_in_order(set, &EXCEPTION_KEYS, key, value);
+}
+
+/// Place `key` before the first key that `order` puts after it. A key `order`
+/// has never seen goes last, since guessing a position for it would be worse
+/// than appending one.
+fn insert_in_order(object: &mut Object, order: &[&str], key: &str, value: Value) {
+    let Some(rank) = order.iter().position(|k| *k == key) else {
+        object.insert(key.to_string(), value);
+        return;
+    };
+    let at = object
+        .iter()
+        .position(|(k, _)| order.iter().position(|o| *o == k).is_some_and(|r| r > rank))
+        .unwrap_or(object.len());
+    object.insert_at(at, key.to_string(), value);
+}
+
 /// Read a stored value out of a document.
 pub(crate) fn setting_from_value(value: &Value) -> Result<Setting, String> {
     match value {

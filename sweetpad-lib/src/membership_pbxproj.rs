@@ -1020,7 +1020,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let crate::tree_pbxproj::AddRefOutcome::Created { guid, .. } = loose else {
+        let crate::tree_pbxproj::AddRefOutcome::Created { address: guid, .. } = loose else {
             panic!("expected a fresh reference");
         };
         let additions = add_membership_by_ids(

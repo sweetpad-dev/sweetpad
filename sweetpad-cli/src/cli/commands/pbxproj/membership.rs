@@ -357,7 +357,7 @@ fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
     if !args.filerefs.is_empty() && matches!(document, Editable::Xcproj(_)) {
         return Err(CliError::new(
             "--fileref names a project.pbxproj object; this project stores its files as \
-             navigator nodes, so name them by path",
+             navigator nodes, so name them by the path `pbxproj fileref list` prints",
         ));
     }
 

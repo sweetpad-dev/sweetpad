@@ -1745,11 +1745,59 @@ byte for byte. The same sweep found the pbxproj path leaving an emptied
 `fileSystemSynchronizedGroups = ( )` behind after a detach, where it already
 pruned the sibling `exceptions`; both are pruned now.
 
-**Still open: `fileref` and `group`.** They need a decision before they can
-cross: the pbxproj addresses both by guid, independent of where they are
-listed, while the JSON document is a true tree whose nodes mostly carry no id
-and are named by their path through it, and `group attach`/`detach` — one
-object listed under two groups — has no counterpart in a tree.
+**Editing the navigator, and how a node is named.** `tree` holds the rows and
+the outcomes; `tree_pbxproj` and `tree_xcproj` are the backends. Naming had to
+be settled first, because the formats disagree at the root. A pbxproj keeps
+every node in a flat `objects` dict under a 24-hex id, and a group's `children`
+is a list of references to those ids, so an id names a node wherever it is
+listed — and the same node can be listed twice. The JSON document has no such
+dict: `files` is a literal nested array, a node is its own entry, and nothing
+points at it. Across 80 converted corpus documents holding 1,903 file
+nodes, `files` carries 192 ids and every one of them sits on a `<PRODUCTS>/…`
+node — the product a target points at. Targets carry 193 more. Not one
+ordinary source file has an id to be named by.
+
+So a node is addressed by its **navigator path** — the display names from the
+root joined by `/`, `Sources/App/ContentView.swift`. That is the spelling
+`membership` and `folder` already take, and the one the document itself uses: a
+target's `product` reads `Products/App.app`, the navigator path of a node whose
+own `path` is `<PRODUCTS>/App.app`. Ids are not synthesized to keep the pbxproj
+argument shape working; the listings print the address their format wants back.
+A pbxproj group answers to its navigator path too, beside the id and the
+resolved directory it already took, so one spelling selects a group in either
+format — and it is the only one that separates two organizational groups, which
+all resolve to their parent's directory.
+The navigator path is not the disk path — a node stored as
+`<PROJECT>/Sources/Deep.swift` but listed at the root appears as `Deep.swift` —
+so every row carries both, and an address matching two siblings is an error
+naming them rather than a pick.
+
+Three things have no meaning in the JSON format, and each is refused naming
+what to use instead rather than silently doing nothing:
+
+| refused there | why | instead |
+| --- | --- | --- |
+| `group attach` / `detach` | a group holds its children rather than listing references to them, so a node is in one place | `group move <node> [--to G]`, new and working on both |
+| `group remove --orphan-children` | the children are nested inside the group, so deleting it deletes them | `group move` to empty the group first |
+| a `--source-tree` the format has no word for | `SOURCE_ROOT`/`BUILT_PRODUCTS_DIR`/`SDKROOT`/`DEVELOPER_DIR` map onto `<PROJECT>`/`<PRODUCTS>`/`<SDK>`/`<DEVELOPER>`; `<group>` and `<absolute>` stay | an error listing the anchors there are |
+
+`fileref remove --dangling` does carry, with the consequence stated per format:
+a pbxproj is left with build files pointing at nothing, while here the
+memberships live on the node and go with it. The guard is the same one either
+way — a delete that drops membership asks first.
+
+**`move` keeps the file, not the spelling.** A `<group>`-relative path names a
+different file under a different group, so moving a node rewrites it: the new
+group's directory comes off the front when it prefixes the resolved path, and
+the node is anchored at the project root (`<PROJECT>/…` here, `SOURCE_ROOT`
+there) when it does not. A relative path that descends is what Xcode writes
+where one reaches — at the navigator root it spells 30 of 32 multi-component
+paths that way, and 52 nested nodes carry one too. Where none reaches, Xcode
+has both spellings available (one corpus node climbs out with
+`../Alamofire.xcodeproj`) and this picks the anchor, which does not depend on
+how deep the group sits. Either way a move and its reverse leave the document
+byte for byte as it was, and each outcome reports the resolved path, so the
+preservation is checkable rather than promised.
 
 ## 12. Project history
 
@@ -1890,3 +1938,13 @@ lives in the sections above and in the named commits.
   a pbxproj reference and group do not. Checked by building a converted
   project after attaching a folder and after adding a file, and by
   round-tripping every reversible verb byte for byte.
+
+- **2026-09-20 — editing `project.xcproj`'s navigator.** `pbxproj fileref` and
+  `pbxproj group` cross, which needed the addressing question answered first:
+  the 192 ids in 80 converted documents all sit on products, so a node is named
+  by its navigator path and no id is invented to keep the old argument shape.
+  `group move` is the new verb `attach`/`detach` become where a node sits in
+  one place, and it keeps the file by rewriting the stored path. Measuring the
+  corpus also pinned the key order Xcode writes a node with, which is
+  positional rather than alphabetical; `target-membership` and a fresh
+  membership exception were landing in the wrong place before.

@@ -36,70 +36,9 @@ const GROUP_ISA: &str = "PBXGroup";
 /// list children exactly as a plain group does.
 const GROUP_ISAS: [&str; 3] = ["PBXGroup", "PBXVariantGroup", "XCVersionGroup"];
 
-/// One `PBXFileReference`, as `fileref list` reports it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileRefRow {
-    pub guid: String,
-    /// The stored `path`, verbatim.
-    pub path: String,
-    /// Where `path` is anchored (`<group>`, `SOURCE_ROOT`, `<absolute>`, …).
-    pub source_tree: String,
-    /// `lastKnownFileType`/`explicitFileType`, when the reference carries one.
-    pub file_type: Option<String>,
-    /// The group listing this reference, when one does.
-    pub parent: Option<String>,
-    /// `path` resolved through `source_tree` and the group chain.
-    pub resolved: String,
-    /// How many `PBXBuildFile` entries point at this reference.
-    pub build_files: usize,
-}
-
-/// One group node, as `group list` reports it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GroupRow {
-    pub guid: String,
-    pub isa: String,
-    /// `name` when set — a group can be titled independently of its directory.
-    pub name: Option<String>,
-    pub path: Option<String>,
-    pub source_tree: String,
-    pub parent: Option<String>,
-    pub children: Vec<String>,
-    /// The group's directory, resolved up the chain.
-    pub resolved: String,
-}
-
-/// What [`add_fileref`] did.
-#[derive(Debug, PartialEq, Eq)]
-pub enum AddRefOutcome {
-    /// A new reference, with the on-disk path it resolves to.
-    Created {
-        guid: String,
-        resolved: String,
-        attached_to: Option<String>,
-    },
-    /// A reference with this `path`/`sourceTree` pair already exists; nothing
-    /// was written.
-    AlreadyExists { guid: String, resolved: String },
-}
-
-/// What [`add_group`] did.
-#[derive(Debug, PartialEq, Eq)]
-pub enum AddGroupOutcome {
-    Created { guid: String, resolved: String },
-    AlreadyExists { guid: String, resolved: String },
-}
-
-/// What [`remove_fileref`] or [`remove_group`] did.
-#[derive(Debug, PartialEq, Eq)]
-pub struct RemoveOutcome {
-    pub guid: String,
-    /// The parent that stopped listing it, when it had one.
-    pub detached_from: Option<String>,
-    /// Children the removed group still listed (only non-empty under `force`);
-    /// they stay in `objects` as unreferenced nodes.
-    pub orphaned: Vec<String>,
-}
+pub use crate::tree::{
+    AddGroupOutcome, AddRefOutcome, FileRefRow, GroupRow, MoveOutcome, RemoveOutcome,
+};
 
 /// What [`attach`] or [`detach`] did.
 #[derive(Debug, PartialEq, Eq)]
@@ -123,7 +62,8 @@ pub fn list_filerefs(root: &Value) -> Result<Vec<FileRefRow>, String> {
         .map(|(guid, o)| {
             let source_tree = str_field(o, "sourceTree").unwrap_or("<group>").to_string();
             FileRefRow {
-                guid: guid.clone(),
+                address: guid.clone(),
+                id: Some(guid.clone()),
                 path: str_field(o, "path").unwrap_or_default().to_string(),
                 file_type: str_field(o, "lastKnownFileType")
                     .or_else(|| str_field(o, "explicitFileType"))
@@ -135,7 +75,7 @@ pub fn list_filerefs(root: &Value) -> Result<Vec<FileRefRow>, String> {
             }
         })
         .collect();
-    rows.sort_by(|a, b| a.resolved.cmp(&b.resolved).then(a.guid.cmp(&b.guid)));
+    rows.sort_by(|a, b| a.resolved.cmp(&b.resolved).then(a.address.cmp(&b.address)));
     Ok(rows)
 }
 
@@ -150,7 +90,8 @@ pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
         .iter()
         .filter(|(_, o)| GROUP_ISAS.contains(&isa(o)))
         .map(|(guid, o)| GroupRow {
-            guid: guid.clone(),
+            address: guid.clone(),
+            id: Some(guid.clone()),
             isa: isa(o).to_string(),
             name: str_field(o, "name").map(str::to_string),
             path: str_field(o, "path").map(str::to_string),
@@ -160,7 +101,7 @@ pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
             resolved: display(&crate::project::group_dir(objects, guid, project_dir, 0)),
         })
         .collect();
-    rows.sort_by(|a, b| a.resolved.cmp(&b.resolved).then(a.guid.cmp(&b.guid)));
+    rows.sort_by(|a, b| a.resolved.cmp(&b.resolved).then(a.address.cmp(&b.address)));
     Ok(rows)
 }
 
@@ -203,7 +144,7 @@ pub fn add_fileref(
     }) {
         let resolved = display(&resolve_node(objects_ref, &existing, Path::new("")));
         return Ok(AddRefOutcome::AlreadyExists {
-            guid: existing,
+            address: existing,
             resolved,
         });
     }
@@ -227,7 +168,7 @@ pub fn add_fileref(
     }
     let resolved = display(&resolve_node(objects, &guid, Path::new("")));
     Ok(AddRefOutcome::Created {
-        guid,
+        address: guid,
         resolved,
         attached_to: group.map(str::to_string),
     })
@@ -246,7 +187,7 @@ pub fn add_fileref(
 pub fn add_group(
     root: &mut Value,
     name: &str,
-    parent: &str,
+    parent: Option<&str>,
     path: Option<&str>,
     source_tree: &str,
 ) -> Result<AddGroupOutcome, String> {
@@ -254,7 +195,7 @@ pub fn add_group(
         return Err("the group name must not be empty".to_string());
     }
     let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
-    let parent = &resolve_group(objects_ref, parent)?;
+    let parent = &settle_group(objects_ref, parent)?;
     if let Some(existing) = children_of(objects_ref, parent).into_iter().find(|child| {
         objects_ref.get(child).is_some_and(|o| {
             GROUP_ISAS.contains(&isa(o))
@@ -268,7 +209,7 @@ pub fn add_group(
             0,
         ));
         return Ok(AddGroupOutcome::AlreadyExists {
-            guid: existing,
+            address: existing,
             resolved,
         });
     }
@@ -290,7 +231,10 @@ pub fn add_group(
     push_child(objects, parent, &guid);
 
     let resolved = display(&crate::project::group_dir(objects, &guid, Path::new(""), 0));
-    Ok(AddGroupOutcome::Created { guid, resolved })
+    Ok(AddGroupOutcome::Created {
+        address: guid,
+        resolved,
+    })
 }
 
 /// Delete a `PBXFileReference`.
@@ -327,7 +271,7 @@ pub fn remove_fileref(root: &mut Value, guid: &str, force: bool) -> Result<Remov
     }
     objects.remove(guid);
     Ok(RemoveOutcome {
-        guid: guid.to_string(),
+        address: guid.to_string(),
         detached_from: parent,
         orphaned: Vec::new(),
     })
@@ -366,7 +310,7 @@ pub fn remove_group(root: &mut Value, guid: &str, force: bool) -> Result<RemoveO
     }
     objects.remove(guid);
     Ok(RemoveOutcome {
-        guid: guid.to_string(),
+        address: guid.to_string(),
         detached_from: parent,
         orphaned: children,
     })
@@ -421,6 +365,115 @@ pub fn detach(root: &mut Value, child: &str, group: &str) -> Result<LinkOutcome,
     })
 }
 
+/// Move a node from whichever group lists it into `group`, keeping the file it
+/// resolves to.
+///
+/// This is the one verb whose meaning carries over to a `project.xcproj`, where
+/// a node sits in exactly one place and [`attach`]/[`detach`] have no
+/// counterpart. The node's stored `path` is rewritten when it has to be: a
+/// `<group>`-anchored path means something different under a different group,
+/// so the new group's directory is stripped off the resolved path when it
+/// prefixes it, and the reference is re-anchored to `SOURCE_ROOT` when it does
+/// not. Any other `sourceTree` already ignores the group chain and is left
+/// alone. The outcome carries the resolved path so the preservation is
+/// checkable rather than promised.
+///
+/// # Errors
+/// Returns a message when the tree is malformed, `child` does not exist, or
+/// `group` names no group (or more than one).
+pub fn move_node(
+    root: &mut Value,
+    child: &str,
+    group: Option<&str>,
+) -> Result<MoveOutcome, String> {
+    let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
+    let group = settle_group(objects_ref, group)?;
+    let node = objects_ref
+        .get(child)
+        .ok_or_else(|| format!("no object with id {child}"))?;
+    if child == group {
+        return Err(format!("{child} cannot hold itself"));
+    }
+    if GROUP_ISAS.contains(&isa(node)) && is_ancestor(objects_ref, child, &group) {
+        return Err(format!(
+            "{group} is inside {child}; moving a group into its own descendant would \
+             detach the whole subtree"
+        ));
+    }
+    let from = crate::project::parent_group_of(objects_ref, child);
+    if from.as_deref() == Some(group.as_str()) {
+        return Ok(MoveOutcome::AlreadyThere {
+            address: child.to_string(),
+            group,
+        });
+    }
+    let resolved = if GROUP_ISAS.contains(&isa(node)) {
+        display(&crate::project::group_dir(
+            objects_ref,
+            child,
+            Path::new(""),
+            0,
+        ))
+    } else {
+        display(&resolve_node(objects_ref, child, Path::new("")))
+    };
+    let anchored = str_field(node, "sourceTree").unwrap_or("<group>") == "<group>";
+    let group_dir = display(&crate::project::group_dir(
+        objects_ref,
+        &group,
+        Path::new(""),
+        0,
+    ));
+
+    let objects = objects_mut(root)?;
+    if let Some(from) = &from {
+        remove_child(objects, from, child);
+    }
+    push_child(objects, &group, child);
+    if anchored {
+        let (path, source_tree) = reanchor(&resolved, &group_dir);
+        if let Some(node) = objects.get_mut(child).and_then(Value::as_dict_mut) {
+            if path.is_empty() {
+                node.remove("path");
+            } else {
+                node.insert("path".into(), vstr(&path));
+            }
+            node.insert("sourceTree".into(), vstr(source_tree));
+        }
+    }
+    Ok(MoveOutcome::Moved {
+        address: child.to_string(),
+        from,
+        to: group,
+        resolved,
+    })
+}
+
+/// How to spell `resolved` from inside a group at `group_dir`: relative when
+/// the directory contains it, anchored at the project root when it does not.
+fn reanchor(resolved: &str, group_dir: &str) -> (String, &'static str) {
+    if group_dir.is_empty() {
+        return (resolved.to_string(), "<group>");
+    }
+    match resolved.strip_prefix(&format!("{group_dir}/")) {
+        Some(rest) => (rest.to_string(), "<group>"),
+        None => (resolved.to_string(), "SOURCE_ROOT"),
+    }
+}
+
+/// Whether `descendant` is reachable from `ancestor` through `children`.
+fn is_ancestor(objects: &Dict, ancestor: &str, descendant: &str) -> bool {
+    fn walk(objects: &Dict, at: &str, wanted: &str, depth: usize) -> bool {
+        if depth >= crate::project::MAX_GROUP_DEPTH {
+            return false;
+        }
+        children_of(objects, at)
+            .iter()
+            .any(|child| child == wanted || walk(objects, child, wanted, depth + 1))
+    }
+    walk(objects, ancestor, descendant, 0)
+}
+
 /// The reference whose resolved path is `path`, for callers that work in file
 /// paths rather than ids. `None` when nothing matches; `Err` when more than one
 /// does (ambiguity is the caller's to resolve, with an id).
@@ -447,14 +500,32 @@ pub fn fileref_for_path(root: &Value, path: &str) -> Result<Option<String>, Stri
     }
 }
 
-/// Settle a group argument that is either an object id or the group's resolved
-/// directory (`Sources/App`).
+/// Settle a group argument: an object id, the group's navigator path
+/// (`Sources/App`, the display names from the mainGroup down), or its resolved
+/// directory.
 ///
-/// An id is unambiguous by construction, so it wins outright; a path is matched
-/// against every group's resolved directory and must hit exactly one. Naming no
-/// group, or two, is an error rather than a pick — organizational groups (a
-/// `name` with no `path`) resolve to their parent's directory, so collisions are
-/// normal and the caller is the one who knows which it meant.
+/// An id is unambiguous by construction, so it wins outright. A path is matched
+/// against both the navigator path and the resolved directory, which is what
+/// lets one spelling address a group in either document format —
+/// [`crate::tree_xcproj`] has only the navigator path, and an organizational
+/// group (a `name` with no `path`) has a navigator path but resolves to its
+/// parent's directory. Naming no group, or two, is an error rather than a pick.
+fn settle_group(objects: &Dict, spec: Option<&str>) -> Result<String, String> {
+    match spec {
+        Some(spec) => resolve_group(objects, spec),
+        None => main_group(objects).ok_or_else(|| "the project has no mainGroup".to_string()),
+    }
+}
+
+/// The navigator root: the group `PBXProject` points at.
+fn main_group(objects: &Dict) -> Option<String> {
+    objects
+        .iter()
+        .find(|(_, o)| isa(o) == "PBXProject")
+        .and_then(|(_, o)| str_field(o, "mainGroup"))
+        .map(str::to_string)
+}
+
 fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
     if let Some(node) = objects.get(spec) {
         return if GROUP_ISAS.contains(&isa(node)) {
@@ -464,24 +535,81 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
         };
     }
     let wanted = normalize(spec);
-    let hits: Vec<String> = objects
+    let mut hits: Vec<String> = navigator_paths(objects)
+        .into_iter()
+        .filter(|(_, path)| *path == wanted)
+        .map(|(guid, _)| guid)
+        .collect();
+    for (guid, _) in objects
         .iter()
         .filter(|(_, o)| GROUP_ISAS.contains(&isa(o)))
         .filter(|(guid, _)| {
             display(&crate::project::group_dir(objects, guid, Path::new(""), 0)) == wanted
         })
-        .map(|(guid, _)| guid.clone())
-        .collect();
+    {
+        if !hits.contains(guid) {
+            hits.push(guid.clone());
+        }
+    }
     match hits.len() {
         1 => Ok(hits.into_iter().next().unwrap_or_default()),
         0 => Err(format!(
-            "no group with id or directory {spec}; `pbxproj group list` shows both"
+            "no group with id, navigator path, or directory {spec}; `pbxproj group list` \
+             shows all three"
         )),
         n => Err(format!(
-            "{wanted} is the directory of {n} groups ({}); pass the id you mean",
+            "{wanted} names {n} groups ({}); pass the id you mean",
             hits.join(", ")
         )),
     }
+}
+
+/// Every group's navigator path — the display names from the mainGroup down,
+/// joined by `/`, which is how a `project.xcproj` addresses its nodes and the
+/// only spelling that tells two organizational groups apart.
+fn navigator_paths(objects: &Dict) -> Vec<(String, String)> {
+    fn walk(objects: &Dict, guid: &str, base: &str, depth: usize, out: &mut Vec<(String, String)>) {
+        if depth >= crate::project::MAX_GROUP_DEPTH {
+            return;
+        }
+        for child in children_of(objects, guid) {
+            let Some(node) = objects.get(&child) else {
+                continue;
+            };
+            if !GROUP_ISAS.contains(&isa(node)) {
+                continue;
+            }
+            let Some(name) = display_name(node) else {
+                continue;
+            };
+            let path = if base.is_empty() {
+                name.to_string()
+            } else {
+                format!("{base}/{name}")
+            };
+            walk(objects, &child, &path, depth + 1, out);
+            out.push((child.clone(), path));
+        }
+    }
+    let mut out = Vec::new();
+    if let Some(root) = main_group(objects) {
+        walk(objects, &root, "", 0, &mut out);
+    }
+    out
+}
+
+/// What Xcode shows a node as: its `name`, else the last component of its
+/// `path`.
+fn display_name(node: &Value) -> Option<&str> {
+    str_field(node, "name")
+        .or_else(|| {
+            str_field(node, "path").map(|p| {
+                p.trim_end_matches('/')
+                    .rsplit_once('/')
+                    .map_or(p, |(_, name)| name)
+            })
+        })
+        .filter(|name| !name.is_empty())
 }
 
 fn children_of(objects: &Dict, guid: &str) -> Vec<String> {
@@ -668,7 +796,7 @@ mod tests {
         )
         .unwrap();
         let AddRefOutcome::Created {
-            guid,
+            address: guid,
             resolved,
             attached_to,
         } = outcome
@@ -695,7 +823,7 @@ mod tests {
         let mut root = parsed();
         let outcome = add_fileref(&mut root, "Loose.swift", None, "SOURCE_ROOT", None).unwrap();
         let AddRefOutcome::Created {
-            guid,
+            address: guid,
             resolved,
             attached_to,
         } = outcome
@@ -732,7 +860,7 @@ mod tests {
         assert_eq!(
             outcome,
             AddRefOutcome::AlreadyExists {
-                guid: "FR1".into(),
+                address: "FR1".into(),
                 resolved: "App/Main.swift".into()
             }
         );
@@ -828,8 +956,12 @@ mod tests {
     #[test]
     fn a_new_group_resolves_under_its_parent() {
         let mut root = parsed();
-        let outcome = add_group(&mut root, "Views", "G1", Some("Views"), "<group>").unwrap();
-        let AddGroupOutcome::Created { guid, resolved } = outcome else {
+        let outcome = add_group(&mut root, "Views", Some("G1"), Some("Views"), "<group>").unwrap();
+        let AddGroupOutcome::Created {
+            address: guid,
+            resolved,
+        } = outcome
+        else {
             panic!("expected a fresh group");
         };
         assert_eq!(resolved, "App/Views");
@@ -896,9 +1028,30 @@ mod tests {
 
         let err = add_fileref(&mut root, "X.swift", None, "<group>", Some("App/Nope")).unwrap_err();
         assert!(
-            err.contains("no group with id or directory App/Nope"),
+            err.contains("no group with id, navigator path, or directory App/Nope"),
             "{err}"
         );
+    }
+
+    /// The navigator path is what a `project.xcproj` addresses nodes by, so it
+    /// has to name a group here too — and it is the only spelling that tells
+    /// apart two groups sharing a directory.
+    #[test]
+    fn a_group_answers_to_its_navigator_path() {
+        let mut root = parsed();
+        add_group(&mut root, "Other", Some("MG"), Some("App"), "<group>").unwrap();
+
+        let outcome = add_fileref(&mut root, "X.swift", None, "<group>", Some("Other")).unwrap();
+        let AddRefOutcome::Created {
+            attached_to,
+            resolved,
+            ..
+        } = outcome
+        else {
+            panic!("expected a fresh reference");
+        };
+        assert!(attached_to.is_some());
+        assert_eq!(resolved, "App/X.swift", "it still resolves under App");
     }
 
     #[test]
@@ -906,10 +1059,10 @@ mod tests {
         let mut root = parsed();
         // A second group whose directory is also `App` — legal, and exactly the
         // case where only the caller knows which one it meant.
-        add_group(&mut root, "Other", "MG", Some("App"), "<group>").unwrap();
+        add_group(&mut root, "Other", Some("MG"), Some("App"), "<group>").unwrap();
 
         let err = add_fileref(&mut root, "X.swift", None, "<group>", Some("App")).unwrap_err();
-        assert!(err.contains("is the directory of 2 groups"), "{err}");
+        assert!(err.contains("App names 2 groups"), "{err}");
         assert!(err.contains("pass the id you mean"), "{err}");
 
         // The id still names one of them outright.
@@ -934,6 +1087,87 @@ mod tests {
                 child: "FR1".to_string(),
                 group: "G2".to_string(),
             }
+        );
+    }
+
+    /// `move` is what `attach`/`detach` become where a node sits in exactly one
+    /// place, so it has to keep working on the format that has both.
+    #[test]
+    fn moving_a_reference_rewrites_its_path_to_keep_the_same_file() {
+        let mut root = parsed();
+        // Out of App into the mainGroup, where a `<group>`-relative path is
+        // read from the project directory: `App/Main.swift` still reaches it.
+        let outcome = move_node(&mut root, "FR1", Some("MG")).unwrap();
+        assert_eq!(
+            outcome,
+            MoveOutcome::Moved {
+                address: "FR1".into(),
+                from: Some("G1".into()),
+                to: "MG".into(),
+                resolved: "App/Main.swift".into(),
+            }
+        );
+        let text = round_trips(&root);
+        assert!(text.contains("path = App/Main.swift"), "{text}");
+        assert_eq!(
+            list_filerefs(&root).unwrap()[0].resolved,
+            "App/Main.swift",
+            "the file it names did not move"
+        );
+
+        // Back under App, whose directory contains it: the prefix comes off.
+        move_node(&mut root, "FR1", Some("App")).unwrap();
+        let text = round_trips(&root);
+        assert!(text.contains("path = Main.swift"), "{text}");
+        assert!(text.contains("sourceTree = \"<group>\""), "{text}");
+
+        assert_eq!(
+            move_node(&mut root, "FR1", Some("App")).unwrap(),
+            MoveOutcome::AlreadyThere {
+                address: "FR1".into(),
+                group: "G1".into(),
+            }
+        );
+    }
+
+    /// A group whose directory cannot reach the file leaves no relative
+    /// spelling, so the reference is anchored at the project root instead.
+    #[test]
+    fn a_move_that_relative_spelling_cannot_follow_anchors_the_path() {
+        let mut root = parsed();
+        move_node(&mut root, "FR1", Some("G2")).unwrap();
+        let text = round_trips(&root);
+        assert!(text.contains("path = App/Main.swift"), "{text}");
+        assert!(text.contains("sourceTree = SOURCE_ROOT"), "{text}");
+        assert_eq!(list_filerefs(&root).unwrap()[0].resolved, "App/Main.swift");
+    }
+
+    #[test]
+    fn a_group_cannot_be_moved_into_its_own_descendant() {
+        let mut root = parsed();
+        let err = move_node(&mut root, "G1", Some("G2")).unwrap_err();
+        assert!(err.contains("is inside G1"), "{err}");
+    }
+
+    /// Without a group the navigator root is meant, which is the `mainGroup`
+    /// here and the top of `files` in a `project.xcproj` — one spelling for
+    /// both formats.
+    #[test]
+    fn no_group_named_means_the_navigator_root() {
+        let mut root = parsed();
+        move_node(&mut root, "FR1", None).unwrap();
+        assert_eq!(
+            crate::project::parent_group_of(objects(&root).unwrap(), "FR1").as_deref(),
+            Some("MG")
+        );
+        let AddGroupOutcome::Created { address, .. } =
+            add_group(&mut root, "Shared", None, Some("Shared"), "<group>").unwrap()
+        else {
+            panic!("expected a new group");
+        };
+        assert_eq!(
+            crate::project::parent_group_of(objects(&root).unwrap(), &address).as_deref(),
+            Some("MG")
         );
     }
 }

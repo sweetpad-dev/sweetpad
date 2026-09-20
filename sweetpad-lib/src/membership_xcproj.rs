@@ -346,8 +346,9 @@ fn insert_membership(node: &mut Value, spelling: &str) -> Result<(), String> {
         .as_object_mut()
         .ok_or_else(|| "file node is not an object".to_string())?;
     if node.get("target-membership").is_none() {
-        node.insert_sorted(
-            "target-membership".to_string(),
+        crate::schema_xcproj::insert_node_key(
+            node,
+            "target-membership",
             Value::Array(Vec::new().into()),
         );
     }

@@ -1242,15 +1242,16 @@ sweetpad pbxproj membership remove <path>… --target T     classic build-file e
 sweetpad pbxproj membership exclude <path> --target T     sync-folder exception
 sweetpad pbxproj membership include <path> --target T     drop the exception
 
-sweetpad pbxproj fileref list [--under PREFIX]      the reference objects
-sweetpad pbxproj fileref add <path>… [--type T] [--source-tree ST] [--group ID|DIR]
-sweetpad pbxproj fileref remove <id> [--dangling]
+sweetpad pbxproj fileref list [--under PREFIX]      the files in the project
+sweetpad pbxproj fileref add <path>… [--type T] [--source-tree ST] [--group G]
+sweetpad pbxproj fileref remove <file> [--dangling]
 
 sweetpad pbxproj group list                         the navigator tree
-sweetpad pbxproj group add <name> --parent ID|DIR [--path P] [--source-tree ST]
-sweetpad pbxproj group remove <id> [--orphan-children]
-sweetpad pbxproj group attach <id> --group ID|DIR   list a child
-sweetpad pbxproj group detach <id> --group ID|DIR   unlist a child
+sweetpad pbxproj group add <name> [--parent G] [--path P] [--source-tree ST]
+sweetpad pbxproj group remove <group> [--orphan-children]
+sweetpad pbxproj group move <node> [--to G]         re-home a node
+sweetpad pbxproj group attach <id> --group ID|DIR   list a child (pbxproj only)
+sweetpad pbxproj group detach <id> --group ID|DIR   unlist a child (pbxproj only)
 ```
 
 - **`settings` splits by layer, not by flag.** Top-level `sweetpad settings
@@ -1314,15 +1315,17 @@ sweetpad pbxproj group detach <id> --group ID|DIR   unlist a child
 two commands is naming the same file twice. Three rules keep that from being
 friction, without collapsing the axes:
 
-- **A group is named by id *or* by its resolved directory** (`--group
-  Sources/App`), everywhere a group is selected: `fileref add --group`,
-  `group add --parent`, `group attach/detach --group`. Ids are unambiguous by
-  construction, so an id that exists wins outright; otherwise the directory
-  must match exactly one group. Naming none, or two, is an error that lists
-  the candidates — organizational groups (a `name` with no `path`) resolve to
-  their parent's directory, so collisions are normal and only the caller knows
-  which it meant. This removes the `group list` lookup that otherwise preceded
-  every add; it is a rule that errors, not a guess that picks.
+- **A group is named by id, by its navigator path, *or* by its resolved
+  directory** (`--group Sources/App`), everywhere a group is selected:
+  `fileref add --group`, `group add --parent`, `group move --to`,
+  `group attach/detach --group`. Ids are unambiguous by construction, so an id
+  that exists wins outright; otherwise the path must match exactly one group by
+  either spelling. Naming none, or two, is an error that lists the candidates.
+  The navigator path is the one that tells apart organizational groups (a
+  `name` with no `path`), which all resolve to their parent's directory, and it
+  is the spelling a `project.xcproj` has — see the addressing amendment below.
+  This removes the `group list` lookup that otherwise preceded every add; it is
+  a rule that errors, not a guess that picks.
 - **`fileref add` is batched**, like every other mutating verb here.
   `--type`/`--source-tree`/`--group` apply to the whole batch, which is the
   case that actually recurs (a directory of new sources); files that disagree
@@ -1441,12 +1444,63 @@ a reference and a group exist to be pointed at, while in the JSON document
 they are the navigator entry itself — which is exactly what Xcode writes for a
 file or folder added for reference only.
 
-`fileref` and `group` still name the format and stop. They need a decision
-first: a pbxproj addresses a file reference and a group by guid, independent of
-where they are listed, while the JSON document is a true tree whose nodes
-mostly have no id at all and are named by their path through it. The two
-spellings cannot be the same, and `group attach`/`detach` — listing one object
-under two groups — has no counterpart in a tree.
+**Amendment: `fileref` and `group` cross too, and a node is named by its
+navigator path.** This was the one decision the two formats could not be given
+the same answer to. A pbxproj keeps every node in a flat `objects` dict under a
+24-hex id, and a group's `children` is a list of references to those ids, so an
+id names a node wherever it is listed. The JSON document has no such dict: a
+node is its own entry in a nested array, and the only ids in the corpus sit on
+targets and on the products those targets point at. So a node is addressed by
+its **navigator path** — `Sources/App/ContentView.swift`, the display names
+from the root — which is the spelling `membership` and `folder` already take,
+the one the document itself uses for a target's `product`, and the one a person
+would type. Ids are not invented to keep the old argument shape: `fileref list`
+and `group list` print the address each format wants back, and every verb takes
+it.
+
+The navigator path is not the on-disk path. A node stored as
+`<PROJECT>/Sources/Deep.swift` but listed at the root appears as `Deep.swift`,
+so the listings carry both and `--under` still filters on the disk one.
+
+**What cannot cross says so.** The rule is that a flag with no meaning in the
+format in front of it is an error naming what to use instead — never a silent
+no-op, and never quietly redefined into the nearest thing:
+
+- **`group attach`/`detach`** exist only because a pbxproj group lists
+  references, so attaching does not move anything and the same object can be
+  listed twice. In a tree a node is in exactly one place and the operation is a
+  move. On a `project.xcproj` they are refused, naming **`group move <node>
+  [--to G]`**, which is new and works on both formats.
+- **`group remove --orphan-children`** has nothing to orphan on a
+  `project.xcproj`: the children are nested inside the group rather than listed
+  by it, so deleting it would delete them. Refused, naming `group move` to
+  empty the group first. The guard itself is unchanged — a group with children
+  is never deleted out from under them.
+- **`--source-tree`** takes either vocabulary: `SOURCE_ROOT`,
+  `BUILT_PRODUCTS_DIR`, `SDKROOT` and `DEVELOPER_DIR` map onto `<PROJECT>`,
+  `<PRODUCTS>`, `<SDK>` and `<DEVELOPER>`, `<group>` and `<absolute>` stay
+  themselves, and an anchor with no spelling in the format is an error listing
+  the ones there are.
+
+`fileref remove --dangling` does carry, with the consequence stated per format:
+a pbxproj is left with build files pointing at nothing, while here the
+memberships live on the node and go with it. The guard is the same either way —
+a delete that would drop membership asks first.
+
+**`--parent` and `--to` default to the navigator root**, which is the
+`mainGroup` in one format and the top of `files` in the other. That relaxes
+`group add`'s previously required `--parent` rather than adding a second
+spelling for the same place. A `project.pbxproj` group also answers to its
+navigator path now, alongside the id and the resolved directory it already
+took, so the one spelling selects a group in either format — and it is the only
+spelling that separates two organizational groups.
+
+**`move` keeps the file, not the spelling.** A `<group>`-relative path names a
+different file under a different group, so a move rewrites it: the new group's
+directory comes off the front when it prefixes the resolved path, and the node
+is anchored at the project root when it does not. Each outcome reports the
+resolved path, so the preservation is checkable rather than promised, and a
+move and its reverse leave the document byte for byte as it was.
 
 ## 9h. v8 — `app screenshot` for native macOS apps
 
