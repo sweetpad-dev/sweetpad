@@ -798,6 +798,9 @@ pub fn target_source_files(
     xcodeproj_path: &Path,
     target_name: &str,
 ) -> Result<Vec<PathBuf>, Error> {
+    if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
+        return crate::project_xcproj::target_source_files(&value, xcodeproj_path, target_name);
+    }
     let value = parse_pbxproj(xcodeproj_path)?;
     target_source_files_from_value(&value, xcodeproj_path, target_name)
 }
@@ -927,12 +930,17 @@ fn synchronized_membership_exclusions(
 /// the `.swift` and C-family files that would otherwise be listed in a
 /// `PBXSourcesBuildPhase`. Headers, resources, and asset catalogs are excluded
 /// (they are not compiler inputs). `.C` is the C++ convention, distinct from `.c`.
-const SYNCHRONIZED_SOURCE_EXTS: &[&str] = &["swift", "c", "m", "mm", "cc", "cpp", "cxx", "C"];
+pub(crate) const SYNCHRONIZED_SOURCE_EXTS: &[&str] =
+    &["swift", "c", "m", "mm", "cc", "cpp", "cxx", "C"];
 
 /// Append every compilable source under `dir` (recursively) to `out`, sorted for
 /// determinism, skipping files already present or excluded from the target. A
 /// missing directory yields nothing.
-fn collect_synchronized_sources(dir: &Path, excluded: &[PathBuf], out: &mut Vec<PathBuf>) {
+pub(crate) fn collect_synchronized_sources(
+    dir: &Path,
+    excluded: &[PathBuf],
+    out: &mut Vec<PathBuf>,
+) {
     let mut found = Vec::new();
     walk_source_tree(dir, &mut found);
     found.sort();
@@ -976,6 +984,9 @@ pub fn target_linked_frameworks(
     xcodeproj_path: &Path,
     target_name: &str,
 ) -> Result<Vec<String>, Error> {
+    if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
+        return crate::project_xcproj::target_linked_frameworks(&value, target_name);
+    }
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
     let target = find_target(objects, project_obj, target_name)?
@@ -1026,6 +1037,9 @@ pub fn target_linked_libraries(
     xcodeproj_path: &Path,
     target_name: &str,
 ) -> Result<Vec<String>, Error> {
+    if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
+        return crate::project_xcproj::target_linked_libraries(&value, target_name);
+    }
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
     let target = find_target(objects, project_obj, target_name)?
@@ -1078,6 +1092,9 @@ pub fn target_linked_libraries(
 /// modules to prepare. Same-project dependencies only; a cross-project
 /// `targetProxy` whose `target` doesn't resolve in this project is skipped.
 pub fn target_dependencies(xcodeproj_path: &Path, target_name: &str) -> Result<Vec<String>, Error> {
+    if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
+        return crate::project_xcproj::target_dependencies(&value, target_name);
+    }
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
     let target = find_target(objects, project_obj, target_name)?
@@ -1112,6 +1129,9 @@ pub fn target_has_package_products(
     xcodeproj_path: &Path,
     target_name: &str,
 ) -> Result<bool, Error> {
+    if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
+        return crate::project_xcproj::target_has_package_products(&value, target_name);
+    }
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
     let target = find_target(objects, project_obj, target_name)?
@@ -1130,6 +1150,12 @@ pub fn transitive_dependencies(
     xcodeproj_path: &Path,
     target_name: &str,
 ) -> Result<Vec<String>, Error> {
+    if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
+        return Ok(crate::project_xcproj::transitive_dependencies(
+            &value,
+            target_name,
+        ));
+    }
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
     let mut order = Vec::new();
@@ -1168,6 +1194,14 @@ pub fn is_self_buildable(xcodeproj_path: &Path, target_name: &str) -> Result<boo
     if target_has_package_products(xcodeproj_path, target_name)? {
         return Ok(false);
     }
+    if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
+        if crate::project_xcproj::has_script_or_rule_phase(&value, target_name) {
+            return Ok(false);
+        }
+        let sources =
+            crate::project_xcproj::target_source_files(&value, xcodeproj_path, target_name)?;
+        return Ok(all_swift(&sources));
+    }
     let value = parse_pbxproj(xcodeproj_path)?;
     let (objects, project_obj) = project_root(&value)?;
     let target = find_target(objects, project_obj, target_name)?
@@ -1176,8 +1210,13 @@ pub fn is_self_buildable(xcodeproj_path: &Path, target_name: &str) -> Result<boo
         return Ok(false);
     }
     let sources = target_source_files_from_value(&value, xcodeproj_path, target_name)?;
-    let is_swift = |p: &Path| p.extension().and_then(OsStr::to_str) == Some("swift");
-    Ok(sources.iter().any(|p| is_swift(p)) && sources.iter().all(|p| is_swift(p)))
+    Ok(all_swift(&sources))
+}
+
+/// A non-empty source list with nothing but `.swift` in it.
+fn all_swift(sources: &[PathBuf]) -> bool {
+    let is_swift = |p: &PathBuf| p.extension().and_then(OsStr::to_str) == Some("swift");
+    !sources.is_empty() && sources.iter().all(is_swift)
 }
 
 /// Whether a target has a `PBXShellScriptBuildPhase` or any build rule — either

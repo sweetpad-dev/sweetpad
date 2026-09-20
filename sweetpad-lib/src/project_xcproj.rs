@@ -345,9 +345,7 @@ pub(crate) fn build_settings_from_value(
         ],
         product_type: product_type(target),
         target_isa: isa_for(target).to_string(),
-        has_package_product_dependencies: dependencies(target)
-            .iter()
-            .any(|d| d.get("kind").and_then(Value::as_str) == Some("package")),
+        has_package_product_dependencies: links_a_package_product(target),
         // The pbxproj hid this in the root object's `TargetAttributes`; here
         // the test bundle names its host itself.
         test_host_target: target
@@ -557,4 +555,363 @@ fn display_name(node: &Value) -> Option<&str> {
     }
     let path = node.get("path").and_then(Value::as_str)?;
     Some(path.rsplit('/').next().unwrap_or(path))
+}
+
+/// Membership is recorded on the file, not in the phase: a node carries
+/// `target-membership`, whose entries name `<target>/<phase>`. This is the
+/// pbxproj relation inverted, where a `PBXSourcesBuildPhase` listed its files.
+///
+/// An entry is a bare string, or an object under `build-phase` when the
+/// membership carries attributes (`header-role`, `code-sign-on-copy`). A
+/// synchronized folder names the target alone, with no phase: everything under
+/// it belongs, sorted by what the file is.
+fn member_of(node: &Value, target: &str, phase: &str) -> bool {
+    let wanted = format!("{target}/{phase}");
+    memberships(node).any(|m| m == wanted)
+}
+
+fn memberships(node: &Value) -> impl Iterator<Item = &str> {
+    node.get("target-membership")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|m| {
+            m.as_str()
+                .or_else(|| m.get("build-phase").and_then(Value::as_str))
+        })
+}
+
+/// The document's two top-level file lists: its own tree, and the products it
+/// imports from other projects, which carry phase membership just the same.
+fn file_roots(root: &Value) -> impl Iterator<Item = &Value> {
+    ["imported-products", "files"]
+        .into_iter()
+        .flat_map(move |key| {
+            root.get(key)
+                .and_then(Value::as_array)
+                .unwrap_or_default()
+                .iter()
+        })
+}
+
+/// Absolute paths of the files a target's phase holds, in document order —
+/// which is the order the pbxproj's phase listed them, since that is what the
+/// converter walks.
+fn phase_members(root: &Value, project_dir: &Path, target: &str, phase: &str) -> Vec<PathBuf> {
+    fn walk(
+        nodes: &[Value],
+        parent_base: &Path,
+        project_dir: &Path,
+        target: &str,
+        phase: &str,
+        out: &mut Vec<PathBuf>,
+        depth: usize,
+    ) {
+        if depth >= crate::project::MAX_GROUP_DEPTH {
+            return;
+        }
+        for node in nodes {
+            let Some(base) = node_base(node, parent_base, project_dir) else {
+                continue;
+            };
+            if let Some(children) = node.get("children").and_then(Value::as_array) {
+                // A variant or version group is a member in its own right and
+                // its children are the localizations or versions behind it.
+                if member_of(node, target, phase) {
+                    out.push(base.clone());
+                }
+                walk(children, &base, project_dir, target, phase, out, depth + 1);
+            } else if member_of(node, target, phase) {
+                out.push(base);
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(
+        root.get("files")
+            .and_then(Value::as_array)
+            .unwrap_or_default(),
+        project_dir,
+        project_dir,
+        target,
+        phase,
+        &mut out,
+        0,
+    );
+    out
+}
+
+/// The display names of a phase's members. A linked binary is anchored at
+/// `<PRODUCTS>` or `<SDK>`, neither of which is a place in the source tree, so
+/// the name is all there is to read.
+fn phase_member_names(root: &Value, target: &str, phase: &str) -> Vec<String> {
+    fn walk(nodes: &[Value], target: &str, phase: &str, out: &mut Vec<String>, depth: usize) {
+        if depth >= crate::project::MAX_GROUP_DEPTH {
+            return;
+        }
+        for node in nodes {
+            if member_of(node, target, phase)
+                && let Some(name) = display_name(node)
+            {
+                out.push(name.to_string());
+            }
+            if let Some(children) = node.get("children").and_then(Value::as_array) {
+                walk(children, target, phase, out, depth + 1);
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    for node in file_roots(root) {
+        walk(std::slice::from_ref(node), target, phase, &mut out, 0);
+    }
+    out
+}
+
+/// The compilable sources a target's synchronized folders contribute.
+///
+/// A folder names its default members as bare target names, and its
+/// `membership-exceptions` adjust that per target: `exclusions` drop files from
+/// a default member, `inclusions` hand named files to a target that is not one.
+/// The pbxproj kept both in a single `membershipExceptions` list whose sense
+/// depended on the target's presence in `fileSystemSynchronizedGroups`.
+fn synchronized_sources(root: &Value, project_dir: &Path, target: &str) -> Vec<PathBuf> {
+    fn walk(
+        nodes: &[Value],
+        parent_base: &Path,
+        project_dir: &Path,
+        target: &str,
+        out: &mut Vec<PathBuf>,
+        depth: usize,
+    ) {
+        if depth >= crate::project::MAX_GROUP_DEPTH {
+            return;
+        }
+        for node in nodes {
+            let Some(base) = node_base(node, parent_base, project_dir) else {
+                continue;
+            };
+            if let Some(children) = node.get("children").and_then(Value::as_array) {
+                walk(children, &base, project_dir, target, out, depth + 1);
+                continue;
+            }
+            if node.get("kind").and_then(Value::as_str) != Some("folder") {
+                continue;
+            }
+            let (exclusions, inclusions) = folder_exceptions(node, target, &base, project_dir);
+            if memberships(node).any(|m| m == target) {
+                crate::project::collect_synchronized_sources(&base, &exclusions, out);
+            } else {
+                out.extend(inclusions.into_iter().filter(|p| is_compilable(p)));
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(
+        root.get("files")
+            .and_then(Value::as_array)
+            .unwrap_or_default(),
+        project_dir,
+        project_dir,
+        target,
+        &mut out,
+        0,
+    );
+    out
+}
+
+/// Whether a path names a file the compiler takes, by extension — the same set
+/// a synchronized folder scan keeps.
+fn is_compilable(path: &Path) -> bool {
+    path.extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .is_some_and(|ext| crate::project::SYNCHRONIZED_SOURCE_EXTS.contains(&ext))
+}
+
+/// A folder's exception paths for one target, as (exclusions, inclusions).
+///
+/// Xcode is inconsistent about whether a relative path is anchored at the
+/// folder or at the project root. An exclusion is matched against a scan, so
+/// both anchorings go in and either one hides the file; an inclusion is added
+/// to the result, so it takes the anchoring that exists on disk.
+fn folder_exceptions(
+    folder: &Value,
+    target: &str,
+    folder_dir: &Path,
+    project_dir: &Path,
+) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let (mut exclusions, mut inclusions) = (Vec::new(), Vec::new());
+    for set in folder
+        .get("membership-exceptions")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+    {
+        if set.get("target").and_then(Value::as_str) != Some(target) {
+            continue;
+        }
+        let relatives = |key: &str| {
+            set.get(key)
+                .and_then(Value::as_array)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        };
+        for rel in relatives("exclusions") {
+            exclusions.push(crate::project::join_normalized(folder_dir, &rel));
+            exclusions.push(crate::project::join_normalized(project_dir, &rel));
+        }
+        for rel in relatives("inclusions") {
+            let under_folder = crate::project::join_normalized(folder_dir, &rel);
+            if under_folder.is_file() {
+                inclusions.push(under_folder);
+            } else {
+                let under_project = crate::project::join_normalized(project_dir, &rel);
+                if under_project.is_file() {
+                    inclusions.push(under_project);
+                }
+            }
+        }
+    }
+    (exclusions, inclusions)
+}
+
+pub(crate) fn target_source_files(
+    value: &Value,
+    xcodeproj_path: &Path,
+    target_name: &str,
+) -> Result<Vec<PathBuf>, Error> {
+    find_target(value, target_name).ok_or_else(|| Error::no_such_target(target_name))?;
+    let project_dir = crate::project::abs_project_dir(xcodeproj_path);
+    let mut out = phase_members(value, &project_dir, target_name, "compile-sources");
+    out.extend(synchronized_sources(value, &project_dir, target_name));
+    Ok(out)
+}
+
+/// Base names of the frameworks a target links explicitly, in document order.
+pub(crate) fn target_linked_frameworks(
+    value: &Value,
+    target_name: &str,
+) -> Result<Vec<String>, Error> {
+    Ok(linked(value, target_name)?
+        .filter_map(|name| name.strip_suffix(".framework").map(str::to_string))
+        .collect())
+}
+
+/// Base names of the dylibs a target links explicitly, `lib` prefix stripped.
+pub(crate) fn target_linked_libraries(
+    value: &Value,
+    target_name: &str,
+) -> Result<Vec<String>, Error> {
+    Ok(linked(value, target_name)?
+        .filter_map(|name| {
+            // Strip `lib` once: repeated stripping would turn `liblibtls` into
+            // `tls` and the caller would emit the wrong `-l` flag.
+            let stem = name.strip_suffix(".dylib")?;
+            Some(stem.strip_prefix("lib").unwrap_or(stem).to_string())
+        })
+        .collect())
+}
+
+fn linked(value: &Value, target_name: &str) -> Result<impl Iterator<Item = String>, Error> {
+    find_target(value, target_name).ok_or_else(|| Error::no_such_target(target_name))?;
+    Ok(phase_member_names(value, target_name, "frameworks").into_iter())
+}
+
+/// The same-project targets a target depends on, in document order. A
+/// dependency is a bare target name, or an object carrying a platform filter;
+/// a package product and a cross-project `remoteTarget` are not targets of this
+/// project and are left out, as on the pbxproj path.
+pub(crate) fn target_dependencies(value: &Value, target_name: &str) -> Result<Vec<String>, Error> {
+    let target =
+        find_target(value, target_name).ok_or_else(|| Error::no_such_target(target_name))?;
+    Ok(dependency_names(target))
+}
+
+fn dependency_names(target: &Value) -> Vec<String> {
+    dependencies(target)
+        .iter()
+        .filter(|d| d.get("kind").is_none())
+        .filter_map(|d| {
+            d.as_str()
+                .or_else(|| d.get("target").and_then(Value::as_str))
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+/// Whether a target links a Swift package product. These sit in
+/// `package-product-members`, the target's own list of products it consumes;
+/// a `{ kind: package }` entry under `dependencies` is the separate
+/// build-order edge.
+pub(crate) fn target_has_package_products(value: &Value, target_name: &str) -> Result<bool, Error> {
+    let target =
+        find_target(value, target_name).ok_or_else(|| Error::no_such_target(target_name))?;
+    Ok(links_a_package_product(target))
+}
+
+/// Both spellings count: `package-product-members` for a product the target
+/// links, and a `{ kind: package }` dependency for one it only depends on. The
+/// pbxproj held both in `packageProductDependencies`.
+fn links_a_package_product(target: &Value) -> bool {
+    target
+        .get("package-product-members")
+        .and_then(Value::as_array)
+        .is_some_and(|members| !members.is_empty())
+        || dependencies(target)
+            .iter()
+            .any(|d| d.get("kind").and_then(Value::as_str) == Some("package"))
+}
+
+pub(crate) fn transitive_dependencies(value: &Value, target_name: &str) -> Vec<String> {
+    fn visit(
+        value: &Value,
+        target_name: &str,
+        visited: &mut std::collections::BTreeSet<String>,
+        order: &mut Vec<String>,
+    ) {
+        if !visited.insert(target_name.to_string()) {
+            return;
+        }
+        if let Some(target) = find_target(value, target_name) {
+            for dep in dependency_names(target) {
+                visit(value, &dep, visited, order);
+            }
+        }
+        order.push(target_name.to_string());
+    }
+
+    let mut order = Vec::new();
+    visit(
+        value,
+        target_name,
+        &mut std::collections::BTreeSet::new(),
+        &mut order,
+    );
+    order.retain(|t| t != target_name);
+    order
+}
+
+/// Whether a target has a script phase or a build rule — either can synthesize
+/// sources, so the module is not a plain `swiftc` emit.
+pub(crate) fn has_script_or_rule_phase(value: &Value, target_name: &str) -> bool {
+    let Some(target) = find_target(value, target_name) else {
+        return false;
+    };
+    if target
+        .get("build-rules")
+        .and_then(Value::as_array)
+        .is_some_and(|r| !r.is_empty())
+    {
+        return true;
+    }
+    target
+        .get("build-phases")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .any(|p| p.get("kind").and_then(Value::as_str) == Some("script"))
 }

@@ -1614,12 +1614,44 @@ should be the project directory" and 6 with "A copy build phase is missing a
 required value for destination path". Both are Xcode refusing to save, not a
 limit of this reader.
 
-**Still open: the file-tree view** — references, `target-membership` in its two
-forms, and `membership-exceptions`. Until it lands, `target_source_files`,
-`target_dependencies`, `target_has_package_products` and the linking queries
-read only the pbxproj and answer a bundle in the other format with an error
-naming it. That also gates the `membership` / `fileref` / `group` / `folder`
-editing verbs.
+**The file tree inverts the pbxproj's relation.** Membership is recorded on the
+file, not in the phase: a node carries `target-membership`, whose entries name
+`<target>/<phase>` — `compile-sources`, `resources`, `frameworks`, `headers`,
+or `copy/<name>` — as a bare string, or as an object under `build-phase` when
+the membership has attributes (`header-role`, `code-sign-on-copy`). A
+synchronized folder names the target alone, with no phase, and its
+`membership-exceptions` adjust that per target: `exclusions` drop a file from a
+default member, `inclusions` hand named files to a target that is not one. A
+product imported from another project lives in a top-level `imported-products`
+list rather than in `files`, and carries membership just the same. A linked
+package product is on the target under `package-product-members`, which is a
+different list from the `{ kind: package }` dependency edge.
+
+**Measuring the graph queries turned up three bugs in the pbxproj path, not the
+new one.** Across 931 comparisons (seven queries × every target of all 61
+projects) 875 agree. 39 of the 56 differences are order only, the converter
+having replaced each phase's order with navigator order — information the
+document simply no longer carries, so each reader is faithful to its own file.
+Every one of the remaining 17 is the pbxproj path under-reporting:
+
+- **Synchronized-folder inclusions are read as exclusions.** `membershipExceptions`
+  is one list whose sense depends on whether the target is in the folder's
+  `fileSystemSynchronizedGroups`; we treat every entry as an exclusion and never
+  scan a folder for a target that is not a default member. Five NetNewsWire
+  extension targets come back with no sources at all, `Subscribe to Feed` among
+  them, though its exception set names four `.swift` files. The JSON format
+  splits the two senses into separate keys, which is how this surfaced.
+- **A package product linked only through a build file's `productRef` is
+  missed.** `target_has_package_products` reads the target's
+  `packageProductDependencies`; Tuist's `xcode_project_with_registry_and_alamofire`
+  links Alamofire without one.
+- The `-Owholemodule` normalization above.
+
+Fixing these changes an oracle-scored path, so they are their own commits.
+
+**Still open: the editing verbs** — `membership`, `fileref`, `group` and
+`folder` write through `tree_pbxproj` and `membership_pbxproj`, which have no
+`project.xcproj` counterpart yet. Reading is complete.
 
 ## 12. Project history
 
@@ -1722,3 +1754,14 @@ lives in the sections above and in the named commits.
   settings on 255 of 270 target × configuration pairs, with every remaining
   difference traced to a rewrite Xcode's own converter performs. §11.3 has the
   format notes, the measurement, and what is still pbxproj-only.
+
+- **2026-09-20 — the `project.xcproj` file-tree view.** Membership, synchronized
+  folders and imported products, which completes the read surface:
+  `target_source_files`, the dependency and package queries, and the linking
+  queries all answer either format. Comparing the two readers over 931 queries
+  across the corpus put 875 in agreement, left 39 differing only in the order
+  Xcode's converter rewrote, and showed every one of the remaining 17 to be the
+  pbxproj reader under-reporting — synchronized-folder inclusions read as
+  exclusions (five NetNewsWire targets with no sources at all), and a package
+  product linked only through a build file's `productRef`. Both are §11.3's to
+  fix on their own.

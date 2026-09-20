@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 
 use sweetpad_lib::project::{self, build_settings, open};
 
+const MANIFEST: &str = "// swift-tools-version:5.9\nimport PackageDescription\n";
+
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures/_xcproj")
@@ -29,6 +31,23 @@ fn scratch(dir: &Path, document: &str, files: &[(&str, &str)]) -> PathBuf {
         fs::write(path, contents).unwrap();
     }
     xcodeproj
+}
+
+/// Paths relative to the project directory, so an assertion reads as the
+/// document spells them.
+fn relative(paths: &[PathBuf], dir: &Path) -> Vec<String> {
+    // Paths come back resolved, and the temporary directory is behind a
+    // symlink on macOS (`/var` → `/private/var`).
+    let dir = fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    paths
+        .iter()
+        .map(|p| {
+            p.strip_prefix(&dir)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
 }
 
 fn tempdir(tag: &str) -> PathBuf {
@@ -305,7 +324,6 @@ fn a_missing_xcconfig_is_an_empty_layer() {
 #[test]
 fn local_packages_come_from_both_the_list_and_the_tree() {
     let dir = tempdir("packages");
-    let manifest = "// swift-tools-version:5.9\nimport PackageDescription\n";
     let xcodeproj = scratch(
         &dir,
         r#"{
@@ -322,8 +340,8 @@ fn local_packages_come_from_both_the_list_and_the_tree() {
 }
 "#,
         &[
-            ("Declared/Package.swift", manifest),
-            ("Modules/Synced/Package.swift", manifest),
+            ("Declared/Package.swift", MANIFEST),
+            ("Modules/Synced/Package.swift", MANIFEST),
             ("NotAPackage/README.md", "no manifest here\n"),
         ],
     );
@@ -380,11 +398,11 @@ fn a_bundle_holding_both_documents_is_an_error() {
     );
 }
 
-/// The queries that still read only the pbxproj say which format they found,
-/// rather than reporting the pbxproj as a missing file.
+/// A caller that reaches for the pbxproj itself is told which format it found,
+/// rather than that the pbxproj is a missing file.
 #[test]
-fn a_pbxproj_only_query_names_the_format() {
-    let error = project::target_source_files(&fixture("SweetpadCIApp.xcodeproj"), "SweetpadCIApp")
+fn asking_for_the_pbxproj_names_the_format() {
+    let error = project::parse_pbxproj(&fixture("SweetpadCIApp.xcodeproj"))
         .unwrap_err()
         .to_string();
     assert!(error.contains("project.xcproj format"), "{error}");
@@ -396,4 +414,251 @@ fn a_missing_target_is_named() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("Nope"), "{error}");
+}
+
+/// Membership lives on the file, not in the phase: a node names
+/// `<target>/<phase>`, in a bare string or under `build-phase` when the
+/// membership carries attributes.
+#[test]
+fn sources_come_from_per_file_membership() {
+    let dir = tempdir("sources");
+    let xcodeproj = scratch(
+        &dir,
+        r#"{
+  "configurations": [ "Debug" ],
+  "files": [
+    { "path": "App.swift", "target-membership": [ "App/compile-sources" ] },
+    {
+      "kind": "group",
+      "path": "Sources",
+      "children": [
+        { "path": "Model.swift", "target-membership": [ "App/compile-sources" ] },
+        { "path": "Other.swift", "target-membership": [ "Helper/compile-sources" ] },
+        { "path": "Readme.md" },
+        {
+          "path": "Attributed.swift",
+          "target-membership": [ { "build-phase": "App/compile-sources" } ],
+        },
+      ],
+    },
+  ],
+  "targets": [
+    { "name": "App", "product-type": "application" },
+    { "name": "Helper", "product-type": "tool" },
+  ],
+}
+"#,
+        &[],
+    );
+    assert_eq!(
+        relative(
+            &project::target_source_files(&xcodeproj, "App").unwrap(),
+            &dir
+        ),
+        [
+            "App.swift",
+            "Sources/Model.swift",
+            "Sources/Attributed.swift"
+        ]
+    );
+    assert_eq!(
+        relative(
+            &project::target_source_files(&xcodeproj, "Helper").unwrap(),
+            &dir
+        ),
+        ["Sources/Other.swift"]
+    );
+}
+
+/// A synchronized folder lists no members. Its `target-membership` names the
+/// targets that take everything under it, and `membership-exceptions` adjusts
+/// that per target: `exclusions` drop a file from a default member,
+/// `inclusions` hand named files to a target that is not one.
+#[test]
+fn a_synchronized_folder_honours_both_kinds_of_exception() {
+    let dir = tempdir("synchronized");
+    let xcodeproj = scratch(
+        &dir,
+        r#"{
+  "configurations": [ "Debug" ],
+  "files": [
+    {
+      "kind": "folder",
+      "path": "Shared",
+      "target-membership": [ "App" ],
+      "membership-exceptions": [
+        { "target": "App", "exclusions": [ "MacOnly.swift" ] },
+        { "target": "Extension", "inclusions": [ "Common.swift", "Icon.png" ] },
+      ],
+    },
+  ],
+  "targets": [
+    { "name": "App", "product-type": "application" },
+    { "name": "Extension", "product-type": "app-extension" },
+  ],
+}
+"#,
+        &[
+            ("Shared/Common.swift", "// common\n"),
+            ("Shared/MacOnly.swift", "// mac\n"),
+            ("Shared/Icon.png", "not really a png\n"),
+        ],
+    );
+    assert_eq!(
+        relative(
+            &project::target_source_files(&xcodeproj, "App").unwrap(),
+            &dir
+        ),
+        ["Shared/Common.swift"]
+    );
+    // The extension takes only what the exception set names it, and only the
+    // compilable part of that.
+    assert_eq!(
+        relative(
+            &project::target_source_files(&xcodeproj, "Extension").unwrap(),
+            &dir
+        ),
+        ["Shared/Common.swift"]
+    );
+}
+
+/// A linked binary sits under `<PRODUCTS>` or `<SDK>`, so its name is all there
+/// is to read, and one imported from another project is in
+/// `imported-products` rather than the file tree.
+#[test]
+fn linked_binaries_are_read_by_name() {
+    let dir = tempdir("linking");
+    let xcodeproj = scratch(
+        &dir,
+        r#"{
+  "configurations": [ "Debug" ],
+  "imported-products": [
+    {
+      "name": "Alamofire.framework",
+      "project": "Alamofire.xcodeproj",
+      "target": "Alamofire iOS",
+      "target-membership": [ "App/frameworks" ],
+    },
+  ],
+  "files": [
+    {
+      "kind": "group",
+      "name": "Frameworks",
+      "children": [
+        { "path": "<SDK>/System/Library/Frameworks/Foundation.framework", "target-membership": [ "App/frameworks" ] },
+        { "path": "<SDK>/usr/lib/libsqlite3.dylib", "target-membership": [ "App/frameworks" ] },
+      ],
+    },
+  ],
+  "targets": [ { "name": "App", "product-type": "application" } ],
+}
+"#,
+        &[],
+    );
+    assert_eq!(
+        project::target_linked_frameworks(&xcodeproj, "App").unwrap(),
+        ["Alamofire", "Foundation"]
+    );
+    assert_eq!(
+        project::target_linked_libraries(&xcodeproj, "App").unwrap(),
+        ["sqlite3"]
+    );
+}
+
+/// A dependency is a bare target name, or an object carrying a platform
+/// filter. A package product and a cross-project target are not targets of
+/// this project, so neither is a dependency edge here.
+#[test]
+fn dependencies_keep_only_same_project_targets() {
+    let dir = tempdir("deps");
+    let xcodeproj = scratch(
+        &dir,
+        r#"{
+  "configurations": [ "Debug" ],
+  "targets": [
+    {
+      "name": "App",
+      "product-type": "application",
+      "dependencies": [
+        "Lib",
+        { "target": "Filtered", "platforms": [ "ios" ] },
+        { "kind": "package", "product-name": "Alamofire" },
+        { "kind": "remoteTarget", "project": "Other.xcodeproj", "target": "Elsewhere" },
+      ],
+    },
+    { "name": "Lib", "product-type": "library.static", "dependencies": [ "Core" ] },
+    { "name": "Filtered", "product-type": "library.static" },
+    { "name": "Core", "product-type": "library.static" },
+  ],
+}
+"#,
+        &[],
+    );
+    assert_eq!(
+        project::target_dependencies(&xcodeproj, "App").unwrap(),
+        ["Lib", "Filtered"]
+    );
+    // Post-order: a dependency precedes everything that depends on it.
+    assert_eq!(
+        project::transitive_dependencies(&xcodeproj, "App").unwrap(),
+        ["Core", "Lib", "Filtered"]
+    );
+    assert!(project::target_has_package_products(&xcodeproj, "App").unwrap());
+    assert!(!project::target_has_package_products(&xcodeproj, "Lib").unwrap());
+}
+
+/// A linked package product is recorded on the target under
+/// `package-product-members`, which is a different list from the `{ kind:
+/// package }` dependency edge. Either one counts.
+#[test]
+fn a_linked_package_product_counts_as_a_package() {
+    let dir = tempdir("package-members");
+    let xcodeproj = scratch(
+        &dir,
+        r#"{
+  "configurations": [ "Debug" ],
+  "targets": [
+    {
+      "name": "App",
+      "product-type": "application",
+      "package-product-members": [
+        { "package": "Alamofire", "product-name": "Alamofire", "build-phase": { "build-phase": "frameworks" } },
+      ],
+    },
+  ],
+}
+"#,
+        &[],
+    );
+    assert!(project::target_has_package_products(&xcodeproj, "App").unwrap());
+}
+
+/// A script phase can synthesize sources, so the module is not a plain
+/// `swiftc` emit.
+#[test]
+fn a_script_phase_blocks_self_building() {
+    let dir = tempdir("self-buildable");
+    let document = r#"{
+  "configurations": [ "Debug" ],
+  "files": [
+    { "path": "App.swift", "target-membership": [ "App/compile-sources" ] },
+  ],
+  "targets": [
+    { "name": "App", "product-type": "application", "build-phases": [ "compile-sources"PHASES ] },
+  ],
+}
+"#;
+    let plain = scratch(&dir.join("plain"), &document.replace("PHASES", ""), &[]);
+    assert!(project::is_self_buildable(&plain, "App").unwrap());
+
+    let scripted = scratch(
+        &dir.join("scripted"),
+        &document.replace(
+            "PHASES",
+            r#", { "kind": "script", "name": "Generate", "shell": "/bin/sh", "script": "true
+" }"#,
+        ),
+        &[],
+    );
+    assert!(!project::is_self_buildable(&scripted, "App").unwrap());
 }
