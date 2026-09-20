@@ -18,7 +18,10 @@ import type {
 import { getRunningProcesses } from "../common/xcode/devicectl";
 import { registerDebugConfigurationProvider } from "./provider";
 
-vi.mock("../common/xcode/devicectl", () => ({
+// Only the spawning entry point is replaced; the pure accessors the merge layer
+// calls stay real, or they come back undefined.
+vi.mock("../common/xcode/devicectl", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../common/xcode/devicectl")>()),
   getRunningProcesses: vi.fn(),
 }));
 

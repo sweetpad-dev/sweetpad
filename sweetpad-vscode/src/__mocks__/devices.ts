@@ -9,9 +9,17 @@ import type { DeviceCtlDevice } from "../common/xcode/devicectl";
 import type { XcdeviceDevice } from "../common/xcode/xcdevice";
 
 /**
+ * A device in devicectl's "jsonVersion" 4 shape, where the three deprecated
+ * property bags are always present. Spelled out so specs can reach into them
+ * without a null check; "createMockDeviceV5" covers the shape that replaces it.
+ */
+export type MockLegacyDevice = DeviceCtlDevice &
+  Required<Pick<DeviceCtlDevice, "connectionProperties" | "deviceProperties" | "hardwareProperties">>;
+
+/**
  * Create a mock DeviceCtlDevice object with optional overrides
  */
-export function createMockDevice(overrides: Partial<DeviceCtlDevice> = {}): DeviceCtlDevice {
+export function createMockDevice(overrides: Partial<DeviceCtlDevice> = {}): MockLegacyDevice {
   return {
     capabilities: [],
     connectionProperties: {
@@ -28,6 +36,40 @@ export function createMockDevice(overrides: Partial<DeviceCtlDevice> = {}): Devi
       productType: "iPhone15,2",
       udid: "00008110-001234567890001E",
       platform: "iOS",
+    },
+    identifier: "urn:x-ios-devicectl:device-CS4567890-1234567890123456",
+    visibilityClass: "default",
+    ...overrides,
+  };
+}
+
+/**
+ * The same device as "createMockDevice", in devicectl's "jsonVersion" 5 shape:
+ * one "properties" dictionary and none of the deprecated bags.
+ */
+export function createMockDeviceV5(overrides: Partial<DeviceCtlDevice> = {}): DeviceCtlDevice {
+  return {
+    capabilities: [],
+    properties: {
+      connection: {
+        pairingState: "paired",
+        state: "connected",
+        transportType: "wired",
+      },
+      hardware: {
+        deviceType: "iPhone",
+        marketingName: "iPhone 14 Pro",
+        platform: "iOS",
+        productType: "iPhone15,2",
+        udid: "00008110-001234567890001E",
+      },
+      software: {
+        osVersionNumber: { components: [17, 0, 0, 0, 0], stringValue: "17.0" },
+      },
+      state: {
+        bootState: "booted",
+        name: "iPhone 14 Pro",
+      },
     },
     identifier: "urn:x-ios-devicectl:device-CS4567890-1234567890123456",
     visibilityClass: "default",
@@ -128,7 +170,7 @@ export function createMockTerminal(): MockTaskTerminal {
 /**
  * Helper to create a mock device with specific OS version
  */
-export function createMockDeviceWithOS(osVersion: string): DeviceCtlDevice {
+export function createMockDeviceWithOS(osVersion: string): MockLegacyDevice {
   return createMockDevice({
     deviceProperties: {
       name: "iPhone Test Device",
@@ -142,7 +184,7 @@ export function createMockDeviceWithOS(osVersion: string): DeviceCtlDevice {
  */
 export function createMockDeviceOfType(
   deviceType: "iPhone" | "iPad" | "appleWatch" | "appleTV" | "appleVision",
-): DeviceCtlDevice {
+): MockLegacyDevice {
   const hardwareProps: Record<string, any> = {
     iPhone: {
       deviceType: "iPhone",
@@ -182,7 +224,7 @@ export function createMockDeviceOfType(
 /**
  * Create a mock device without OS version (for testing fallback behavior)
  */
-export function createMockDeviceWithoutOS(): DeviceCtlDevice {
+export function createMockDeviceWithoutOS(): MockLegacyDevice {
   return createMockDevice({
     deviceProperties: {
       name: "iPhone Unknown",
@@ -197,7 +239,7 @@ export function createMockDeviceWithoutOS(): DeviceCtlDevice {
 /**
  * Create a mock device without UDID (for testing fallback behavior)
  */
-export function createMockDeviceWithoutUDID(): DeviceCtlDevice {
+export function createMockDeviceWithoutUDID(): MockLegacyDevice {
   return createMockDevice({
     hardwareProperties: {
       ...createMockDevice().hardwareProperties,
@@ -209,7 +251,7 @@ export function createMockDeviceWithoutUDID(): DeviceCtlDevice {
 /**
  * Create a mock device with missing name (for testing fallback behavior)
  */
-export function createMockDeviceWithoutName(): DeviceCtlDevice {
+export function createMockDeviceWithoutName(): MockLegacyDevice {
   return createMockDevice({
     deviceProperties: {
       osVersionNumber: "17.0",

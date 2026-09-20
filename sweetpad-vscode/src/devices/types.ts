@@ -1,4 +1,14 @@
-import type { DeviceCtlDevice, DeviceCtlDeviceType } from "../common/xcode/devicectl";
+import {
+  type DeviceCtlDevice,
+  type DeviceCtlDeviceType,
+  deviceLastConnectionDate,
+  deviceMarketingName,
+  deviceName,
+  deviceOsVersion,
+  deviceProductType,
+  deviceTunnelState,
+  deviceUdid,
+} from "../common/xcode/devicectl";
 import type { XcdeviceDevice } from "../common/xcode/xcdevice";
 import type { IDestination } from "../destination/types";
 import { resolveDeviceType } from "./merge";
@@ -99,7 +109,7 @@ export abstract class DeviceDestinationBase {
   get udid(): string {
     const dc = this.raw.devicectl;
     const xc = this.raw.xcdevice;
-    return dc?.hardwareProperties?.udid ?? xc?.identifier ?? dc?.identifier ?? "unknown";
+    return (dc ? deviceUdid(dc) : undefined) ?? xc?.identifier ?? dc?.identifier ?? "unknown";
   }
 
   /**
@@ -119,8 +129,8 @@ export abstract class DeviceDestinationBase {
   get name(): string {
     const dc = this.raw.devicectl;
     const xc = this.raw.xcdevice;
-    const dcName = dc?.deviceProperties?.name;
-    const marketing = dc?.hardwareProperties?.marketingName;
+    const dcName = dc ? deviceName(dc) : undefined;
+    const marketing = dc ? deviceMarketingName(dc) : undefined;
 
     // devicectl sometimes returns the marketing name as the device name for iOS <17 —
     // in that case prefer xcdevice's customized name.
@@ -145,7 +155,7 @@ export abstract class DeviceDestinationBase {
     }
 
     // Last-resort fallback: raw model code like "iPhone14,2".
-    const modelCode = dc?.hardwareProperties?.productType ?? xc?.modelCode;
+    const modelCode = (dc ? deviceProductType(dc) : undefined) ?? xc?.modelCode;
     return modelCode ?? "Unknown Device";
   }
 
@@ -162,7 +172,8 @@ export abstract class DeviceDestinationBase {
    * Returns "Unknown" when neither source reports a version.
    */
   get osVersion(): string {
-    const dcVersion = this.raw.devicectl?.deviceProperties?.osVersionNumber;
+    const dc = this.raw.devicectl;
+    const dcVersion = dc ? deviceOsVersion(dc) : undefined;
     if (dcVersion) {
       return dcVersion;
     }
@@ -197,16 +208,20 @@ export abstract class DeviceDestinationBase {
    * Connection/availability state used by "isConnected" and the icon variant.
    *
    * - "connected"    → device reachable; deploys will succeed.
-   * - "disconnected" → devicectl tunnelState=disconnected (cable pulled, etc.).
-   * - "unavailable"  → devicectl tunnelState=unavailable, OR xcdevice says
+   * - "disconnected" → devicectl reports disconnected (cable pulled, etc.).
+   * - "unavailable"  → devicectl reports unavailable, OR xcdevice says
    *                    available=false / returned an error (not paired, locked,
    *                    developer mode off).
+   *
+   * xcdevice also answers when devicectl knows the device but omits its
+   * connection state.
    */
   get state(): DeviceState {
-    // e.g. devicectl.connectionProperties.tunnelState="connected" → "connected"
+    // e.g. devicectl properties.connection.state="connected" → "connected"
     const dc = this.raw.devicectl;
-    if (dc) {
-      return dc.connectionProperties.tunnelState;
+    const tunnel = dc ? deviceTunnelState(dc) : undefined;
+    if (tunnel) {
+      return tunnel;
     }
     const xc = this.raw.xcdevice;
     if (!xc) {
@@ -236,12 +251,8 @@ export abstract class DeviceDestinationBase {
    * field. Invalid date strings also yield null so callers can treat "unknown" as oldest.
    */
   get lastConnectionDate(): Date | null {
-    const raw = this.raw.devicectl?.connectionProperties?.lastConnectionDate;
-    if (!raw) {
-      return null;
-    }
-    const date = new Date(raw);
-    return Number.isNaN(date.getTime()) ? null : date;
+    const dc = this.raw.devicectl;
+    return dc ? deviceLastConnectionDate(dc) : null;
   }
 }
 

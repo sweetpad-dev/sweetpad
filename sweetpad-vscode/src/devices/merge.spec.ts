@@ -30,6 +30,19 @@ function makeDevicectl(overrides: Partial<DeviceCtlDevice> = {}): DeviceCtlDevic
   };
 }
 
+/** The same device in devicectl's jsonVersion 5 shape. */
+function makeDevicectlV5(): DeviceCtlDevice {
+  return {
+    capabilities: [],
+    properties: {
+      connection: { state: "connected" },
+      hardware: { deviceType: "iPhone", marketingName: "iPhone 18 Pro", udid: "00008110-000DC0001" },
+    },
+    identifier: "urn:x-ios-devicectl:device-DC1",
+    visibilityClass: "default",
+  };
+}
+
 function makeXcdevice(overrides: Partial<XcdeviceDevice> = {}): XcdeviceDevice {
   return {
     identifier: "00008110-000XC0001",
@@ -163,5 +176,19 @@ describe("mergeDeviceSources", () => {
     const xc = makeXcdevice({ identifier: "00008110-DIFFERENT" });
     const result = mergeDeviceSources([dc], [xc]);
     expect(result).toHaveLength(2);
+  });
+});
+
+describe("devicectl jsonVersion 5 records", () => {
+  it("classifies from the properties dictionary", () => {
+    expect(resolveDeviceType({ devicectl: makeDevicectlV5() })).toBe("iPhone");
+  });
+
+  it("pairs with xcdevice on the udid the properties dictionary carries", () => {
+    const merged = mergeDeviceSources([makeDevicectlV5()], [makeXcdevice({ identifier: "00008110-000DC0001" })]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].devicectl).toBeDefined();
+    expect(merged[0].xcdevice).toBeDefined();
   });
 });

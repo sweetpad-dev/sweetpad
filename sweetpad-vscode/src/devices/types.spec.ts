@@ -5,6 +5,7 @@
 import {
   createMockDevice,
   createMockDeviceOfType,
+  createMockDeviceV5,
   createMockDeviceWithOS,
   createMockDeviceWithoutName,
   createMockDeviceWithoutOS,
@@ -560,5 +561,38 @@ describe("Common device destination behavior", () => {
       expect(tvOSDest.label).toBe("Test Device");
       expect(visionOSDest.label).toBe("Test Device");
     });
+  });
+});
+
+describe("devicectl jsonVersion 5 records", () => {
+  it("drives every unified getter from the properties dictionary", () => {
+    const destination = new iOSDeviceDestination({ devicectl: createMockDeviceV5() });
+
+    expect(destination.udid).toBe("00008110-001234567890001E");
+    expect(destination.name).toBe("iPhone 14 Pro");
+    expect(destination.osVersion).toBe("17.0");
+    expect(destination.deviceType).toBe("iPhone");
+    expect(destination.state).toBe("connected");
+    expect(destination.isConnected).toBe(true);
+    expect(destination.supportsDevicectl).toBe(true);
+  });
+
+  it("reports the state the properties dictionary carries", () => {
+    const device = createMockDeviceV5({
+      properties: { connection: { state: "disconnected" }, hardware: { deviceType: "iPhone" } },
+    });
+    const destination = new iOSDeviceDestination({ devicectl: device });
+
+    expect(destination.state).toBe("disconnected");
+    expect(destination.isConnected).toBe(false);
+  });
+
+  it("dates the last connection from Core Foundation absolute time", () => {
+    const device = createMockDeviceV5({
+      properties: { connection: { lastConnectionDate: 811_549_316 } },
+    });
+    const destination = new iOSDeviceDestination({ devicectl: device });
+
+    expect(destination.lastConnectionDate?.toISOString()).toBe("2026-09-19T22:21:56.000Z");
   });
 });

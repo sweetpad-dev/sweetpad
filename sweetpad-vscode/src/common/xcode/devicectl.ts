@@ -10,13 +10,68 @@ type DeviceCtlListCommandOutput = {
   };
 };
 
+/**
+ * A device as devicectl reports it, in either of the two shapes it emits.
+ *
+ * Through "jsonVersion" 4 a device carried "hardwareProperties" /
+ * "deviceProperties" / "connectionProperties". Version 5 (Xcode 27) adds
+ * "properties", which supersedes all three; devicectl also attaches a
+ * "_deprecationNotice" saying the old trio will be removed in a future release.
+ * Xcode 27 still fills in both, so the trio is optional rather than gone, and
+ * the accessors below read "properties" first.
+ *
+ * Reach for the accessors rather than these fields — "deviceUdid", "deviceName",
+ * "deviceOsVersion" and friends are the only places that know which shape is in
+ * front of them.
+ */
 export type DeviceCtlDevice = {
   capabilities: DeviceCtlDeviceCapability[];
-  connectionProperties: DeviceCtlConnectionProperties;
-  deviceProperties: DeviceCtlDeviceProperties;
-  hardwareProperties: DeviceCtlHardwareProperties;
+  connectionProperties?: DeviceCtlConnectionProperties;
+  deviceProperties?: DeviceCtlDeviceProperties;
+  hardwareProperties?: DeviceCtlHardwareProperties;
+  properties?: DeviceCtlProperties;
   identifier: string;
   visibilityClass: "default";
+};
+
+export type DeviceCtlTunnelState = "disconnected" | "connected" | "unavailable";
+
+/** The "jsonVersion" 5 dictionary that replaces the three deprecated ones. */
+type DeviceCtlProperties = {
+  connection?: DeviceCtlConnectionSection;
+  hardware?: DeviceCtlHardwareSection;
+  software?: DeviceCtlSoftwareSection;
+  state?: DeviceCtlStateSection;
+};
+
+type DeviceCtlConnectionSection = {
+  authenticationType?: string;
+  /** Core Foundation absolute time — seconds since 2001-01-01, not an ISO string. */
+  lastConnectionDate?: number;
+  pairingState?: "paired" | "unsupported";
+  /** Version 5's spelling of "connectionProperties.tunnelState". */
+  state?: DeviceCtlTunnelState;
+  transportType?: "localNetwork" | "wired" | "sameMachine";
+};
+
+type DeviceCtlHardwareSection = {
+  deviceType?: DeviceCtlDeviceType;
+  marketingName?: string;
+  platform?: "iOS";
+  productType?: string;
+  reality?: "physical" | "simulated";
+  udid?: string;
+};
+
+type DeviceCtlSoftwareSection = {
+  /** An object here, where the deprecated "osVersionNumber" was the string itself. */
+  osVersionNumber?: { components?: number[]; stringValue?: string };
+};
+
+type DeviceCtlStateSection = {
+  bootState?: string;
+  name?: string;
+  visibilityClass?: string;
 };
 
 type DeviceCtlConnectionProperties = {
@@ -26,7 +81,7 @@ type DeviceCtlConnectionProperties = {
   pairingState: "paired" | "unsupported";
   potentialHostnames?: string[];
   transportType?: "localNetwork" | "wired";
-  tunnelState: "disconnected" | "connected" | "unavailable";
+  tunnelState?: DeviceCtlTunnelState;
   tunnelTransportProtocol?: "tcp";
 };
 
@@ -77,6 +132,62 @@ type DeviceCtlDeviceCapability = {
   name: string;
   featureIdentifier: string;
 };
+
+/**
+ * Seconds between the Unix epoch and Core Foundation's 2001-01-01 reference date.
+ */
+const CF_EPOCH_OFFSET_SECONDS = 978_307_200;
+
+/** Hex UDID, e.g. "00008110-001234567890001E". */
+export function deviceUdid(device: DeviceCtlDevice): string | undefined {
+  return device.properties?.hardware?.udid ?? device.hardwareProperties?.udid;
+}
+
+/** The user-facing name, e.g. "John's iPhone". */
+export function deviceName(device: DeviceCtlDevice): string | undefined {
+  return device.properties?.state?.name ?? device.deviceProperties?.name;
+}
+
+/** The product's marketing name, e.g. "iPhone 15 Pro". */
+export function deviceMarketingName(device: DeviceCtlDevice): string | undefined {
+  return device.properties?.hardware?.marketingName ?? device.hardwareProperties?.marketingName;
+}
+
+/** The model code, e.g. "iPhone15,2". */
+export function deviceProductType(device: DeviceCtlDevice): string | undefined {
+  return device.properties?.hardware?.productType ?? device.hardwareProperties?.productType;
+}
+
+export function deviceType(device: DeviceCtlDevice): DeviceCtlDeviceType | undefined {
+  return device.properties?.hardware?.deviceType ?? device.hardwareProperties?.deviceType;
+}
+
+/** Plain version string, e.g. "17.0". */
+export function deviceOsVersion(device: DeviceCtlDevice): string | undefined {
+  return device.properties?.software?.osVersionNumber?.stringValue ?? device.deviceProperties?.osVersionNumber;
+}
+
+/** Reachability, e.g. "connected". */
+export function deviceTunnelState(device: DeviceCtlDevice): DeviceCtlTunnelState | undefined {
+  return device.properties?.connection?.state ?? device.connectionProperties?.tunnelState;
+}
+
+/**
+ * When the device was last seen. Null when devicectl omits it and when the value
+ * doesn't parse, so callers can sort "unknown" as oldest.
+ */
+export function deviceLastConnectionDate(device: DeviceCtlDevice): Date | null {
+  const referenceSeconds = device.properties?.connection?.lastConnectionDate;
+  if (typeof referenceSeconds === "number" && Number.isFinite(referenceSeconds)) {
+    return new Date((referenceSeconds + CF_EPOCH_OFFSET_SECONDS) * 1000);
+  }
+  const iso = device.connectionProperties?.lastConnectionDate;
+  if (!iso) {
+    return null;
+  }
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 export async function listDevices(vscodeContext: vscode.ExtensionContext): Promise<DeviceCtlListCommandOutput> {
   await using tmpPath = await tempFilePath(vscodeContext, {

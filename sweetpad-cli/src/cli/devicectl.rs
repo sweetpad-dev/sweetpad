@@ -2,6 +2,12 @@
 //! Shared by the `device` command and the `app … --device` path. `devicectl`
 //! writes its listing to a `--json-output` file rather than stdout, so [`list`]
 //! routes through a temp file.
+//!
+//! The listing comes in two shapes. Through `jsonVersion` 4 a device carried
+//! `hardwareProperties` / `deviceProperties` / `connectionProperties`; version 5
+//! (Xcode 27) adds a `properties` dictionary that supersedes all three and
+//! carries a `_deprecationNotice` saying the old trio will be removed. Both are
+//! read, `properties` first — see [`RawDevice`].
 
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,9 +27,14 @@ struct ListResult {
     devices: Vec<RawDevice>,
 }
 
-#[derive(Debug, Deserialize)]
+/// One device as `devicectl` reports it, in either JSON shape. Every field is
+/// defaulted, so a listing that has dropped the deprecated trio still
+/// deserializes and answers from `properties` alone.
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RawDevice {
+    #[serde(default)]
+    properties: Properties,
     #[serde(default)]
     connection_properties: ConnectionProperties,
     #[serde(default)]
@@ -32,6 +43,112 @@ struct RawDevice {
     hardware_properties: HardwareProperties,
     #[serde(default)]
     identifier: String,
+}
+
+impl RawDevice {
+    fn udid(&self) -> &str {
+        pick(
+            &self.properties.hardware.udid,
+            &self.hardware_properties.udid,
+        )
+    }
+
+    fn name(&self) -> &str {
+        pick(&self.properties.state.name, &self.device_properties.name)
+    }
+
+    fn model(&self) -> &str {
+        pick(
+            &self.properties.hardware.marketing_name,
+            &self.hardware_properties.marketing_name,
+        )
+    }
+
+    fn platform(&self) -> &str {
+        pick(
+            &self.properties.hardware.platform,
+            &self.hardware_properties.platform,
+        )
+    }
+
+    fn os_version(&self) -> &str {
+        pick(
+            &self.properties.software.os_version_number.string_value,
+            &self.device_properties.os_version_number,
+        )
+    }
+
+    /// Reachability. `properties.connection.state` is version 5's spelling of
+    /// what `connectionProperties.tunnelState` said, and both report the same
+    /// vocabulary (`connected` / `disconnected` / `unavailable`).
+    fn connection(&self) -> &str {
+        pick(
+            &self.properties.connection.state,
+            &self.connection_properties.tunnel_state,
+        )
+    }
+}
+
+/// The version-5 value, falling back to the deprecated one when the listing
+/// predates it (or leaves it blank).
+fn pick<'a>(current: &'a str, deprecated: &'a str) -> &'a str {
+    if current.is_empty() {
+        deprecated
+    } else {
+        current
+    }
+}
+
+/// `jsonVersion` 5's unified dictionary.
+#[derive(Debug, Default, Deserialize)]
+struct Properties {
+    #[serde(default)]
+    connection: ConnectionSection,
+    #[serde(default)]
+    hardware: HardwareSection,
+    #[serde(default)]
+    software: SoftwareSection,
+    #[serde(default)]
+    state: StateSection,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ConnectionSection {
+    #[serde(default)]
+    state: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HardwareSection {
+    #[serde(default)]
+    udid: String,
+    #[serde(default)]
+    marketing_name: String,
+    #[serde(default)]
+    platform: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SoftwareSection {
+    #[serde(default)]
+    os_version_number: OsVersionNumber,
+}
+
+/// Where the deprecated `osVersionNumber` was the string itself, version 5
+/// wraps it alongside the parsed components.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OsVersionNumber {
+    #[serde(default)]
+    string_value: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct StateSection {
+    #[serde(default)]
+    name: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -122,7 +239,7 @@ pub fn list() -> Result<Vec<Device>, CliError> {
 
 /// Parse `devicectl list devices` JSON into sorted devices. Split out from
 /// [`list`] so it's testable without `devicectl`. Devices missing a UDID
-/// (devicectl returns empty hardwareProperties for some USB iOS ≤16 devices)
+/// (devicectl returns an empty hardware section for some USB iOS ≤16 devices)
 /// fall back to their `identifier`, and are dropped only if both are empty.
 fn parse_devices(raw: &str) -> Result<Vec<Device>, CliError> {
     let parsed: ListOutput = serde_json::from_str(raw)
@@ -131,27 +248,24 @@ fn parse_devices(raw: &str) -> Result<Vec<Device>, CliError> {
     let mut devices: Vec<Device> = parsed
         .result
         .devices
-        .into_iter()
+        .iter()
         .filter_map(|d| {
-            let udid = if d.hardware_properties.udid.is_empty() {
-                d.identifier
-            } else {
-                d.hardware_properties.udid
-            };
+            let udid = pick(d.udid(), &d.identifier);
             if udid.is_empty() {
                 return None;
             }
+            let platform = if d.platform().is_empty() {
+                "iOS"
+            } else {
+                d.platform()
+            };
             Some(Device {
-                udid,
-                name: d.device_properties.name,
-                model: d.hardware_properties.marketing_name,
-                platform: if d.hardware_properties.platform.is_empty() {
-                    "iOS".to_string()
-                } else {
-                    d.hardware_properties.platform
-                },
-                os_version: d.device_properties.os_version_number,
-                connection: d.connection_properties.tunnel_state,
+                udid: udid.to_string(),
+                name: d.name().to_string(),
+                model: d.model().to_string(),
+                platform: platform.to_string(),
+                os_version: d.os_version().to_string(),
+                connection: d.connection().to_string(),
             })
         })
         .collect();
@@ -431,6 +545,84 @@ mod tests {
         assert_eq!(iphone.model, "iPhone 15 Pro");
         assert_eq!(iphone.connection, "connected");
         assert_eq!(iphone.label(), "My iPhone (iPhone 15 Pro, iOS 17.0)");
+    }
+
+    /// `jsonVersion` 5 with the deprecated trio already gone — the shape a
+    /// future devicectl is expected to emit. Trimmed from a real listing.
+    const SAMPLE_V5: &str = r#"{
+      "result": {
+        "devices": [
+          {
+            "identifier": "ID-1",
+            "properties": {
+              "connection": {"pairingState": "paired", "state": "connected", "transportType": "wired"},
+              "hardware": {
+                "deviceType": "iPhone",
+                "marketingName": "iPhone 18 Pro",
+                "platform": "iOS",
+                "productType": "iPhone19,1",
+                "udid": "UDID-1"
+              },
+              "software": {
+                "osVersionNumber": {"components": [27, 0, 0, 0, 0], "stringValue": "27.0"}
+              },
+              "state": {"bootState": "booted", "name": "My iPhone"}
+            }
+          },
+          {
+            "identifier": "ID-2",
+            "properties": {"state": {"name": "Alpha iPad"}}
+          }
+        ]
+      }
+    }"#;
+
+    #[test]
+    fn parses_the_version_5_properties_shape() {
+        let devices = parse_devices(SAMPLE_V5).unwrap();
+        assert_eq!(devices.len(), 2);
+
+        // Empty hardware section → udid falls back to identifier, platform to iOS.
+        assert_eq!(devices[0].name, "Alpha iPad");
+        assert_eq!(devices[0].udid, "ID-2");
+        assert_eq!(devices[0].platform, "iOS");
+
+        let iphone = &devices[1];
+        assert_eq!(iphone.udid, "UDID-1");
+        assert_eq!(iphone.model, "iPhone 18 Pro");
+        assert_eq!(iphone.connection, "connected");
+        // The version-5 osVersionNumber is an object, not the string itself.
+        assert_eq!(iphone.os_version, "27.0");
+        assert_eq!(iphone.label(), "My iPhone (iPhone 18 Pro, iOS 27.0)");
+    }
+
+    /// Xcode 27's devicectl populates both shapes at once. They agree in
+    /// practice; this pins which one is believed if they ever don't.
+    #[test]
+    fn properties_outrank_the_deprecated_trio() {
+        let raw = r#"{
+          "result": {
+            "devices": [
+              {
+                "identifier": "ID-1",
+                "connectionProperties": {"tunnelState": "disconnected"},
+                "deviceProperties": {"name": "Stale Name", "osVersionNumber": "26.5"},
+                "hardwareProperties": {"udid": "UDID-1", "marketingName": "Stale Model", "platform": "iOS"},
+                "properties": {
+                  "connection": {"state": "connected"},
+                  "hardware": {"udid": "UDID-1", "marketingName": "iPhone 18 Pro", "platform": "iOS"},
+                  "software": {"osVersionNumber": {"stringValue": "27.0"}},
+                  "state": {"name": "My iPhone"}
+                }
+              }
+            ]
+          }
+        }"#;
+        let devices = parse_devices(raw).unwrap();
+        assert_eq!(devices[0].name, "My iPhone");
+        assert_eq!(devices[0].model, "iPhone 18 Pro");
+        assert_eq!(devices[0].os_version, "27.0");
+        assert_eq!(devices[0].connection, "connected");
     }
 
     #[test]
