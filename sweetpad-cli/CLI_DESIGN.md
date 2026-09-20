@@ -1420,6 +1420,24 @@ capability, and refusing to infer removes the objection entirely. `folder add`
 remains the forward-looking answer for a project that can adopt synchronized
 folders; `fileref`/`group`/`membership add` are for the ones that cannot.
 
+**Amendment: `settings` reads and writes `project.xcproj` too.** Xcode 27.2
+writes a JSON project document in place of `project.pbxproj`, and the
+namespace keeps its name and its spelling across both — a caller does not
+learn which one the bundle holds. The grammar is unchanged because the
+request is: a key, a scope, a set of configurations. Only the storage differs,
+and the CLI states the picture it wants rather than the bytes:
+`--configuration Debug` on a project whose key is stored once for everything
+splits that key per configuration, and giving every configuration the same
+value collapses it back, which is how Xcode writes the format.
+
+The other resources — `folder`, `membership`, `fileref`, `group` — still name
+the format and stop. `fileref` and `group` need a decision first: a pbxproj
+addresses a file reference and a group by guid, independent of where they are
+listed, while the JSON document is a true tree whose nodes mostly have no id
+at all and are named by their path through it. The two spellings cannot be the
+same, and `group attach`/`detach` — listing one object under two groups — has
+no counterpart in a tree.
+
 ## 9h. v8 — `app screenshot` for native macOS apps
 
 `simulator screenshot` covers simulators; nothing covered a **running macOS

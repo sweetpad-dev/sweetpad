@@ -112,6 +112,36 @@ pub(super) fn open_project_mut(
     Ok((xcodeproj, root))
 }
 
+/// [`open_project`] for a verb that reads either document format.
+pub(super) fn open_document(
+    ctx: &mut Context,
+    container_args: &ContainerArgs,
+    target: Option<&String>,
+) -> Result<(PathBuf, pbxedit::Editable), CliError> {
+    ctx.targeting = container_args.clone().into();
+    let container = resolve::container(ctx)?;
+    let targets: Vec<String> = target.cloned().into_iter().collect();
+    let xcodeproj = pbxedit::mutation_xcodeproj(ctx, &container, &targets)?;
+    let document = pbxedit::Editable::parse(&xcodeproj)?;
+    Ok((xcodeproj, document))
+}
+
+/// [`open_document`] for the *mutation* verbs: additionally refuses to edit a
+/// generated project without `--force`, before any disk side effect happens.
+pub(super) fn open_document_mut(
+    ctx: &mut Context,
+    container_args: &ContainerArgs,
+    targets: &[String],
+    force: bool,
+) -> Result<(PathBuf, pbxedit::Editable), CliError> {
+    ctx.targeting = container_args.clone().into();
+    let container = resolve::container(ctx)?;
+    let xcodeproj = pbxedit::mutation_xcodeproj(ctx, &container, targets)?;
+    pbxedit::guard_generated(ctx.project_file(&container), &xcodeproj, force)?;
+    let document = pbxedit::Editable::parse(&xcodeproj)?;
+    Ok((xcodeproj, document))
+}
+
 /// The target to act on: the `--target` flag, or the project's only target.
 /// Multiple targets without a flag is ambiguity — a hard error naming them.
 pub(super) fn settle_target(root: &Value, flag: Option<&String>) -> Result<String, CliError> {

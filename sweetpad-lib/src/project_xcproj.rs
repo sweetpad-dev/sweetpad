@@ -410,20 +410,51 @@ fn dependencies(target: &Value) -> &[Value] {
 /// key follows the plain one and wins, which is how xcodebuild reads them.
 fn settings_layer(value: &Value, scope: &Scope, config: &str) -> Result<Vec<Assignment>, Error> {
     let entries = schema::raw(value, scope).map_err(Error::BadProject)?;
-    let mut out = Vec::with_capacity(entries.len());
+    let mut narrowed = Vec::with_capacity(entries.len());
     for entry in entries {
-        let (key, conditions) = crate::project::split_conditional_key(&entry.key());
+        let stored = entry.key();
+        let (key, conditions) = crate::project::split_conditional_key(&stored);
+        let conditional = conditions
+            .iter()
+            .any(|c| matches!(c.key.as_str(), "config" | "configuration"));
         let Some(conditions) = without_matching_config(conditions, config) else {
             continue;
         };
-        out.push(Assignment {
-            key,
-            conditions,
-            value: entry.value.display(),
-            condition: None,
-        });
+        narrowed.push((
+            conditional,
+            Assignment {
+                key,
+                conditions,
+                value: entry.value.display(),
+                condition: None,
+            },
+        ));
     }
-    Ok(out)
+    // A key written without a `config=` clause shadows every `[config=…]`
+    // spelling of itself, whichever comes first in the map — measured against
+    // `xcodebuild -showBuildSettings` on Xcode 27, and the one place the
+    // format departs from xcconfig's more-specific-wins rule.
+    let unconditional: std::collections::BTreeSet<String> = narrowed
+        .iter()
+        .filter(|(conditional, _)| !conditional)
+        .map(|(_, a)| narrowed_key(a))
+        .collect();
+    Ok(narrowed
+        .into_iter()
+        .filter(|(conditional, a)| !conditional || !unconditional.contains(&narrowed_key(a)))
+        .map(|(_, a)| a)
+        .collect())
+}
+
+/// An assignment's key with the conditions that survived narrowing, as one
+/// string — what decides whether two stored spellings are the same setting.
+fn narrowed_key(assignment: &Assignment) -> String {
+    use std::fmt::Write;
+    let mut out = assignment.key.clone();
+    for condition in &assignment.conditions {
+        let _ = write!(out, "[{}={}]", condition.key, condition.value);
+    }
+    out
 }
 
 /// The conditions minus every `[config=…]` clause, or `None` when one of them

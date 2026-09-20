@@ -167,6 +167,14 @@ impl Array {
         self.items.push(value);
     }
 
+    /// Insert at `index`, shifting the rest right.
+    ///
+    /// # Panics
+    /// Panics when `index` is past the end.
+    pub fn insert(&mut self, index: usize, value: Value) {
+        self.items.insert(index, value);
+    }
+
     /// See [`Object::set_compact`].
     pub fn set_compact(&mut self, compact: bool) {
         self.compact = compact;
@@ -287,6 +295,14 @@ impl Value {
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.as_object().and_then(|o| o.get(key))
+    }
+
+    #[must_use]
+    pub fn as_array_mut(&mut self) -> Option<&mut Array> {
+        match self {
+            Value::Array(a) => Some(a),
+            _ => None,
+        }
     }
 
     #[must_use]

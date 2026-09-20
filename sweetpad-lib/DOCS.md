@@ -1683,9 +1683,43 @@ falls back to the application the bundle depends on, so `TEST_HOST` and
 `TARGET_BUILD_SUBPATH` went missing for a bundle Xcode's converter recorded no
 host for. Both paths now scan the dependencies.
 
-**Still open: the editing verbs** — `membership`, `fileref`, `group` and
-`folder` write through `tree_pbxproj` and `membership_pbxproj`, which have no
-`project.xcproj` counterpart yet. Reading is complete.
+**Editing the stored settings layer, and what `[config=…]` really means.**
+`stored_settings` holds the request and the report — scope, assignment,
+change — and `settings_pbxproj` and `settings_xcproj` are the two backends;
+`synchronized` and `sync_pbxproj`/`sync_xcproj` split the same way for
+membership exceptions. Writing the JSON document needed the format's
+conditional rule pinned down, so `xcodebuild -showBuildSettings` was asked
+directly, on Xcode 27, one probe per shape:
+
+| stored in one `build-settings` map | Debug | Release |
+| --- | --- | --- |
+| `KEY[config=Debug]` | the value | absent |
+| `KEY[config=Debug]` + `KEY[config=Release]` | Debug's | Release's |
+| `KEY` + `KEY[config=Debug]`, either order | **`KEY`** | `KEY` |
+| `KEY` + `KEY[sdk=macosx*]` | the sdk one | the sdk one |
+| `KEY[config=Debug]` + `KEY[sdk=macosx*]` | the sdk one | the sdk one |
+| `KEY[sdk=macosx*][config=Debug]`, either order | the value | absent |
+
+So a key written without a `config=` clause **shadows** every `[config=…]`
+spelling of itself — the one place the format departs from xcconfig's
+more-specific-wins rule — while any other clause stays an ordinary conditional
+and combines with `config=` in either order. Two things follow. The reader
+drops a conditional entry when the plain one is present, which it previously
+let win; no corpus document is affected, because Xcode never writes both forms
+(0 of the 161 converted `build-settings` maps do). And an edit states the
+picture it wants rather than adding a key: it computes the value each
+configuration should end up with, deletes every stored form of the key, and
+writes one plain key when they agree or one `[config=…]` key each when they
+don't. Naming a single configuration therefore splits a plain key, and
+agreeing on a split key collapses it — each a one-line diff, which
+`xcodebuild` then reads back as intended.
+
+**Still open: the tree verbs** — `membership`, `fileref`, `group` and `folder`
+write through `tree_pbxproj` and `membership_pbxproj`, and name the format
+rather than guessing. `fileref` and `group` need a decision before they can
+cross: the pbxproj addresses both by guid, independent of where they are
+listed, while the JSON document is a true tree whose nodes mostly carry no id
+and are named by their path through it.
 
 ## 12. Project history
 
@@ -1809,3 +1843,11 @@ lives in the sections above and in the named commits.
   container and the `-Owholemodule` rewrite; the sweep also found this reader
   giving a test bundle no host when the document names none, which the pbxproj
   path had always inferred from the dependency edge.
+
+- **2026-09-20 — editing `project.xcproj`'s stored settings.** `pbxproj
+  settings show/set/unset` reads and writes both formats through a shared
+  vocabulary (`stored_settings`) and two backends. Six `-showBuildSettings`
+  probes settled how `[config=…]` resolves, which corrected the reader (a
+  plain key shadows its conditional spellings) and fixed the shape an edit
+  writes; a custom `INFOPLIST_FILE` inside a synchronized folder records its
+  membership exception on this format too.

@@ -22,82 +22,38 @@
 
 use crate::xcproj::{Object, Value};
 
-/// Which scope's settings to read or edit: the project's, inherited by every
-/// target, or a single target's.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Scope {
-    Project,
-    Target(String),
-}
+pub use crate::stored_settings::{Scope, Setting};
 
-impl Scope {
-    #[must_use]
-    pub fn target(&self) -> Option<&str> {
-        match self {
-            Scope::Project => None,
-            Scope::Target(name) => Some(name),
-        }
+/// Read a stored value out of a document.
+pub(crate) fn setting_from_value(value: &Value) -> Result<Setting, String> {
+    match value {
+        Value::String(s) => Ok(Setting::String(s.clone())),
+        Value::Array(items) => items
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| "array setting has a non-string element".to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Setting::List),
+        other => Err(format!("build setting is {}", shape_of(other))),
     }
 }
 
-/// A stored setting: a plain string or an array of strings, the only two shapes
-/// the format allows.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Setting {
-    String(String),
-    List(Vec<String>),
-}
-
-impl Setting {
-    /// The value as its element list — arrays as they stand, strings
-    /// whitespace-split, which is how xcodebuild consumes list-typed settings.
-    #[must_use]
-    pub fn elements(&self) -> Vec<String> {
-        match self {
-            Setting::String(s) => s.split_whitespace().map(str::to_string).collect(),
-            Setting::List(items) => items.clone(),
-        }
-    }
-
-    /// Human rendering: the string itself, or elements joined with a space.
-    #[must_use]
-    pub fn display(&self) -> String {
-        match self {
-            Setting::String(s) => s.clone(),
-            Setting::List(items) => items.join(" "),
-        }
-    }
-
-    fn from_value(value: &Value) -> Result<Setting, String> {
-        match value {
-            Value::String(s) => Ok(Setting::String(s.clone())),
-            Value::Array(items) => items
+/// The stored form Xcode writes: a plain string for one element, an array for
+/// more.
+pub(crate) fn setting_to_value(setting: &Setting) -> Value {
+    match setting {
+        Setting::String(s) => Value::String(s.clone()),
+        Setting::List(items) => Value::Array(
+            items
                 .iter()
-                .map(|v| {
-                    v.as_str()
-                        .map(str::to_string)
-                        .ok_or_else(|| "array setting has a non-string element".to_string())
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .map(Setting::List),
-            other => Err(format!("build setting is {}", shape_of(other))),
-        }
-    }
-
-    /// The stored form Xcode writes: a plain string for one element, an array
-    /// for more.
-    fn to_value(&self) -> Value {
-        match self {
-            Setting::String(s) => Value::String(s.clone()),
-            Setting::List(items) => Value::Array(
-                items
-                    .iter()
-                    .cloned()
-                    .map(Value::String)
-                    .collect::<Vec<_>>()
-                    .into(),
-            ),
-        }
+                .cloned()
+                .map(Value::String)
+                .collect::<Vec<_>>()
+                .into(),
+        ),
     }
 }
 
@@ -204,18 +160,21 @@ pub fn raw(root: &Value, scope: &Scope) -> Result<Vec<Entry>, String> {
             Ok(Entry {
                 name: name.to_string(),
                 condition: condition.map(str::to_string),
-                value: Setting::from_value(value).map_err(|e| format!("{key}: {e}"))?,
+                value: setting_from_value(value).map_err(|e| format!("{key}: {e}"))?,
             })
         })
         .collect()
 }
 
-fn settings_object<'a>(root: &'a Value, scope: &Scope) -> Result<Option<&'a Object>, String> {
+pub(crate) fn settings_object<'a>(
+    root: &'a Value,
+    scope: &Scope,
+) -> Result<Option<&'a Object>, String> {
     let owner = scope_object(root, scope)?;
     Ok(owner.get("build-settings").and_then(Value::as_object))
 }
 
-fn scope_object<'a>(root: &'a Value, scope: &Scope) -> Result<&'a Value, String> {
+pub(crate) fn scope_object<'a>(root: &'a Value, scope: &Scope) -> Result<&'a Value, String> {
     match scope {
         Scope::Project => Ok(root),
         Scope::Target(name) => targets(root)
@@ -267,7 +226,7 @@ pub fn set(
         Some(c) => format!("{name}{c}"),
         None => name.to_string(),
     };
-    let stored = value.to_value();
+    let stored = setting_to_value(value);
     let owner = scope_object_mut(root, scope)?;
     let owner = owner
         .as_object_mut()
@@ -311,7 +270,10 @@ pub fn unset(
     Ok(removed)
 }
 
-fn scope_object_mut<'a>(root: &'a mut Value, scope: &Scope) -> Result<&'a mut Value, String> {
+pub(crate) fn scope_object_mut<'a>(
+    root: &'a mut Value,
+    scope: &Scope,
+) -> Result<&'a mut Value, String> {
     match scope {
         Scope::Project => Ok(root),
         Scope::Target(name) => match root.get_mut("targets") {

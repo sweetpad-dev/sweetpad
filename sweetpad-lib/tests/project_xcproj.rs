@@ -151,8 +151,8 @@ fn settings_are_narrowed_to_the_configuration() {
       "name": "App",
       "product-type": "application",
       "build-settings": {
+        "GCC_OPTIMIZATION_LEVEL": "s",
         "OTHER_SWIFT_FLAGS[sdk=iphoneos*]": "-DPHONE",
-        "SWIFT_OPTIMIZATION_LEVEL": "-O",
         "SWIFT_OPTIMIZATION_LEVEL[config=Debug]": "-Onone",
       },
     },
@@ -176,20 +176,20 @@ fn settings_are_narrowed_to_the_configuration() {
             })
             .collect::<Vec<_>>()
     };
-    // Settings are stored byte-sorted, so the conditional key follows the
-    // plain one and wins within the layer — how xcodebuild reads them.
+    // The matching `config=` clause comes off the key; a clause of any other
+    // kind stays on it for the resolver to evaluate.
     assert_eq!(
         inline("Debug"),
         [
             (
+                "GCC_OPTIMIZATION_LEVEL".to_string(),
+                "s".to_string(),
+                vec![]
+            ),
+            (
                 "OTHER_SWIFT_FLAGS".to_string(),
                 "-DPHONE".to_string(),
                 vec!["sdk=iphoneos*".to_string()]
-            ),
-            (
-                "SWIFT_OPTIMIZATION_LEVEL".to_string(),
-                "-O".to_string(),
-                vec![]
             ),
             (
                 "SWIFT_OPTIMIZATION_LEVEL".to_string(),
@@ -703,4 +703,42 @@ fn a_test_bundle_names_its_host_or_falls_back_to_the_app_it_depends_on() {
     assert_eq!(host("Inferred").as_deref(), Some("App"));
     assert_eq!(host("Standalone"), None);
     assert_eq!(host("App"), None);
+}
+
+/// Measured against `xcodebuild -showBuildSettings` on Xcode 27: a key with no
+/// `config=` clause shadows every `[config=…]` spelling of itself, whichever
+/// comes first, while another clause stays an ordinary conditional.
+#[test]
+fn a_plain_key_shadows_its_configuration_variants() {
+    let dir = tempdir("shadowing");
+    let xcodeproj = scratch(
+        &dir,
+        r#"{
+  "configurations": [ "Debug", "Release" ],
+  "targets": [
+    {
+      "name": "App",
+      "product-type": "application",
+      "build-settings": {
+        "SHADOWED": "plain",
+        "SHADOWED[config=Debug]": "conditional",
+        "SPLIT[config=Debug]": "debug",
+        "SPLIT[config=Release]": "release",
+      },
+    },
+  ],
+}
+"#,
+        &[],
+    );
+    let inline = |config: &str, key: &str| {
+        build_settings(&xcodeproj, "App", config).unwrap().layers[3]
+            .iter()
+            .find(|a| a.key == key)
+            .map(|a| a.value.clone())
+    };
+    assert_eq!(inline("Debug", "SHADOWED").as_deref(), Some("plain"));
+    assert_eq!(inline("Release", "SHADOWED").as_deref(), Some("plain"));
+    assert_eq!(inline("Debug", "SPLIT").as_deref(), Some("debug"));
+    assert_eq!(inline("Release", "SPLIT").as_deref(), Some("release"));
 }

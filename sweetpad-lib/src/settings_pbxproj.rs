@@ -14,121 +14,31 @@
 
 use crate::pbxproj::{Dict, Value};
 
-/// Which configurations to operate on: the project-level ones (inherited by
-/// every target) or a single target's.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Scope {
-    Project,
-    Target(String),
-}
+pub use crate::stored_settings::{Assignment, Change, ConfigSettings, Op, Scope, Setting};
 
-impl Scope {
-    /// The target name, when target-scoped.
-    #[must_use]
-    pub fn target(&self) -> Option<&str> {
-        match self {
-            Scope::Project => None,
-            Scope::Target(name) => Some(name),
-        }
+/// Read a stored value out of a pbxproj tree.
+fn setting_from_value(value: &Value) -> Result<Setting, String> {
+    match value {
+        Value::String(s) => Ok(Setting::String(s.clone())),
+        Value::Array(items) => items
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| "array setting has a non-string element".to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Setting::List),
+        Value::Dict(_) => Err("dictionary-valued build setting".to_string()),
     }
 }
 
-/// A raw setting value as stored in `buildSettings`: a plain string or an
-/// array of strings. Xcode treats a whitespace-separated string and an array
-/// as the same list at resolve time; the stored shape is preserved here so
-/// reports show exactly what the file says.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Setting {
-    String(String),
-    List(Vec<String>),
-}
-
-impl Setting {
-    /// The value as its element list — arrays as-is, strings whitespace-split
-    /// (how xcodebuild consumes list-typed settings). `KEY += v` appends to
-    /// this normalized form.
-    #[must_use]
-    pub fn elements(&self) -> Vec<String> {
-        match self {
-            Setting::String(s) => s.split_whitespace().map(str::to_string).collect(),
-            Setting::List(items) => items.clone(),
-        }
+/// The value to store for a setting.
+fn setting_to_value(setting: &Setting) -> Value {
+    match setting {
+        Setting::String(s) => Value::String(s.clone()),
+        Setting::List(items) => Value::Array(items.iter().cloned().map(Value::String).collect()),
     }
-
-    /// Human rendering: the string itself, or elements joined with a space.
-    #[must_use]
-    pub fn display(&self) -> String {
-        match self {
-            Setting::String(s) => s.clone(),
-            Setting::List(items) => items.join(" "),
-        }
-    }
-
-    fn from_value(value: &Value) -> Result<Setting, String> {
-        match value {
-            Value::String(s) => Ok(Setting::String(s.clone())),
-            Value::Array(items) => items
-                .iter()
-                .map(|v| {
-                    v.as_str()
-                        .map(str::to_string)
-                        .ok_or_else(|| "array setting has a non-string element".to_string())
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .map(Setting::List),
-            Value::Dict(_) => Err("dictionary-valued build setting".to_string()),
-        }
-    }
-
-    /// The canonical stored form: a plain string for zero or one element, an
-    /// array for more (the shape Xcode itself writes for multi-value settings).
-    fn canonical(elements: &[String]) -> (Setting, Value) {
-        match elements {
-            [] => (Setting::String(String::new()), Value::String(String::new())),
-            [one] => (Setting::String(one.clone()), Value::String(one.clone())),
-            many => (
-                Setting::List(many.to_vec()),
-                Value::Array(many.iter().cloned().map(Value::String).collect()),
-            ),
-        }
-    }
-}
-
-/// How one key changes. `Assign` replaces the value outright (its `Vec` is the
-/// element list — a repeated `KEY=` on the command line builds it up);
-/// `Append` extends the existing value's normalized element list.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Op {
-    Assign(Vec<String>),
-    Append(Vec<String>),
-}
-
-/// One folded `KEY=…`/`KEY+=…` request. The key is the exact `buildSettings`
-/// key, conditional suffix included (`CODE_SIGN_IDENTITY[sdk=iphoneos*]`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Assignment {
-    pub key: String,
-    pub op: Op,
-}
-
-/// One applied (or attempted) edit, for the report: what `key` was in
-/// `configuration` before and after. `new: None` records an unset; an unset of
-/// an absent key yields `old: None, new: None` (the no-op case callers note).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Change {
-    /// `None` for project scope, the target name otherwise.
-    pub target: Option<String>,
-    pub configuration: String,
-    pub key: String,
-    pub old: Option<Setting>,
-    pub new: Option<Setting>,
-}
-
-/// The stored settings of one configuration, in file order.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConfigSettings {
-    pub configuration: String,
-    pub settings: Vec<(String, Setting)>,
 }
 
 /// Every target name declared in the project, in file order.
@@ -174,7 +84,7 @@ pub fn set(
         for assignment in assignments {
             let settings = build_settings_mut(root, config_guid)?;
             let old = match settings.get(&assignment.key) {
-                Some(v) => Some(Setting::from_value(v).map_err(|e| {
+                Some(v) => Some(setting_from_value(v).map_err(|e| {
                     format!("{}: existing value of {}: {e}", config_name, assignment.key)
                 })?),
                 None => None,
@@ -187,8 +97,8 @@ pub fn set(
                     merged
                 }
             };
-            let (new, value) = Setting::canonical(&elements);
-            insert_sorted(settings, &assignment.key, value);
+            let new = Setting::canonical(&elements);
+            insert_sorted(settings, &assignment.key, setting_to_value(&new));
             changes.push(Change {
                 target: scope.target().map(str::to_string),
                 configuration: config_name.clone(),
@@ -223,7 +133,7 @@ pub fn unset(
             let settings = build_settings_mut(root, config_guid)?;
             let old = settings
                 .remove(key)
-                .map(|v| Setting::from_value(&v))
+                .map(|v| setting_from_value(&v))
                 .transpose()
                 .map_err(|e| format!("{config_name}: existing value of {key}: {e}"))?;
             changes.push(Change {
@@ -256,7 +166,7 @@ pub fn raw(root: &Value, scope: &Scope) -> Result<Vec<ConfigSettings>, String> {
             .and_then(Value::as_dict)
         {
             for (key, value) in dict {
-                let setting = Setting::from_value(value)
+                let setting = setting_from_value(value)
                     .map_err(|e| format!("{configuration}: value of {key}: {e}"))?;
                 settings.push((key.clone(), setting));
             }

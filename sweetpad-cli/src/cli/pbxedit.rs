@@ -1,4 +1,4 @@
-//! Shared plumbing for commands that mutate a `project.pbxproj` — parse,
+//! Shared plumbing for commands that mutate a project document — parse,
 //! atomic write, and the strict workspace→member-project mapping the §9f
 //! mutation commands (`settings set/unset`, `source …`) share.
 //!
@@ -10,6 +10,7 @@
 use std::path::{Path, PathBuf};
 
 use sweetpad_lib::pbxproj::Value;
+use sweetpad_lib::xcproj;
 
 use crate::cli::config::ProjectFile;
 use crate::cli::resolve::Container;
@@ -95,8 +96,8 @@ fn spec_path(xcodeproj: &Path) -> Option<PathBuf> {
 /// A file added to or removed from the spec is invisible to the build until
 /// the project is regenerated, and the build then fails with an ordinary
 /// `cannot find 'X' in scope` — a compile error that names a symbol when the
-/// real cause is a stale project. Comparing `project.pbxproj` rather than the
-/// `.xcodeproj` directory is what makes this trustworthy: Xcode writes
+/// real cause is a stale project. Comparing the project document rather than
+/// the `.xcodeproj` directory is what makes this trustworthy: Xcode writes
 /// `xcuserdata` and workspace state inside the bundle constantly, and any of
 /// that would otherwise read as "freshly generated".
 #[must_use]
@@ -104,10 +105,7 @@ pub fn stale_generated(project_file: &ProjectFile, xcodeproj: &Path) -> Option<S
     let generator = generator_for(project_file, xcodeproj)?;
     let spec = spec_path(xcodeproj)?;
     let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
-    let (spec_at, project_at) = (
-        modified(&spec)?,
-        modified(&xcodeproj.join("project.pbxproj"))?,
-    );
+    let (spec_at, project_at) = (modified(&spec)?, modified(&document_path(xcodeproj))?);
     if spec_at <= project_at {
         return None;
     }
@@ -150,10 +148,78 @@ pub fn guard_generated(project_file: &ProjectFile, xcodeproj: &Path, force: bool
 }
 
 /// Parse a `.xcodeproj`'s `project.pbxproj` into an owned tree for mutation.
+///
+/// For a verb that has no `project.xcproj` counterpart yet, so the format is
+/// named rather than surfacing as a missing file.
 pub fn parse_owned(xcodeproj: &Path) -> Result<Value, CliError> {
     let path = xcodeproj.join("project.pbxproj");
+    if !path.exists() && xcodeproj.join(xcproj::DOCUMENT_NAME).exists() {
+        return Err(CliError::new(format!(
+            "{} is in the {} format, which this command does not support yet",
+            xcodeproj.display(),
+            xcproj::DOCUMENT_NAME
+        )));
+    }
     sweetpad_lib::pbxproj::parse_file(&path)
         .map_err(|e| CliError::new(format!("failed to parse {}: {e}", path.display())))
+}
+
+/// A project document opened for editing, in whichever of the two formats the
+/// bundle holds. The parse → mutate → serialize pipeline is the same for both;
+/// only the reader, the writer, and the file's name differ.
+pub enum Editable {
+    Pbxproj(Value),
+    Xcproj(xcproj::Value),
+}
+
+impl Editable {
+    /// Read the document under an `.xcodeproj`. A bundle holding both formats
+    /// is invalid — Xcode says so rather than preferring one.
+    pub fn parse(xcodeproj: &Path) -> Result<Self, CliError> {
+        let pbxproj = xcodeproj.join("project.pbxproj");
+        let document = xcodeproj.join(xcproj::DOCUMENT_NAME);
+        if pbxproj.exists() && document.exists() {
+            return Err(CliError::new(format!(
+                "{} has both project.pbxproj and {}; only one should exist",
+                xcodeproj.display(),
+                xcproj::DOCUMENT_NAME
+            )));
+        }
+        if document.exists() {
+            return xcproj::parse_file(&document)
+                .map(Editable::Xcproj)
+                .map_err(|e| {
+                    CliError::new(format!("failed to parse {}: {e}", document.display()))
+                });
+        }
+        parse_owned(xcodeproj).map(Editable::Pbxproj)
+    }
+
+    /// The document's file inside the bundle — what a report names.
+    #[must_use]
+    pub fn path(&self, xcodeproj: &Path) -> PathBuf {
+        match self {
+            Editable::Pbxproj(_) => xcodeproj.join("project.pbxproj"),
+            Editable::Xcproj(_) => xcodeproj.join(xcproj::DOCUMENT_NAME),
+        }
+    }
+
+    /// Every target the document declares, in file order.
+    #[must_use]
+    pub fn target_names(&self) -> Vec<String> {
+        match self {
+            Editable::Pbxproj(root) => sweetpad_lib::settings_pbxproj::target_names(root),
+            Editable::Xcproj(root) => sweetpad_lib::settings_xcproj::target_names(root),
+        }
+    }
+
+    /// Serialize back into the bundle, atomically.
+    pub fn write(&self, xcodeproj: &Path) -> CliResult {
+        match self {
+            Editable::Pbxproj(root) => write_pbxproj(xcodeproj, root),
+            Editable::Xcproj(root) => write_atomic(&self.path(xcodeproj), &xcproj::serialize(root)),
+        }
+    }
 }
 
 /// Write `text` to `path` atomically (same-directory temp + rename), so a
@@ -275,13 +341,20 @@ pub fn mutation_xcodeproj(
 }
 
 fn member_has_target(xcodeproj: &Path, target: &str) -> bool {
-    sweetpad_lib::project::parse_pbxproj(xcodeproj)
+    sweetpad_lib::project::open(xcodeproj)
         .ok()
-        .is_some_and(|root| {
-            sweetpad_lib::settings_pbxproj::target_names(&root)
-                .iter()
-                .any(|t| t == target)
-        })
+        .is_some_and(|project| project.targets.iter().any(|t| t.name == target))
+}
+
+/// The document file inside an `.xcodeproj`: the JSON one when the bundle
+/// holds it, `project.pbxproj` otherwise.
+fn document_path(xcodeproj: &Path) -> PathBuf {
+    let document = xcodeproj.join(xcproj::DOCUMENT_NAME);
+    if document.exists() {
+        document
+    } else {
+        xcodeproj.join("project.pbxproj")
+    }
 }
 
 fn member_list(members: &[PathBuf]) -> String {

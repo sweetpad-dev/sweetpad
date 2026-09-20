@@ -59,26 +59,7 @@ pub enum RemoveOutcome {
     NotAttached,
 }
 
-/// The result of adding a membership exception.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExcludeOutcome {
-    /// `exception` is the root-relative path now excepted under `root_dir`.
-    Added {
-        root_dir: String,
-        exception: String,
-    },
-    AlreadyExcluded {
-        root_dir: String,
-        exception: String,
-    },
-}
-
-/// The result of dropping a membership exception.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IncludeOutcome {
-    Removed { root_dir: String, exception: String },
-    NotExcluded,
-}
+pub use crate::synchronized::{ExcludeOutcome, IncludeOutcome};
 
 /// Synchronized roots and exceptions per target, in file order — targets with
 /// no roots included (empty `roots`), so a report can show "none".
