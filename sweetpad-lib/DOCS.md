@@ -1617,3 +1617,21 @@ lives in the sections above and in the named commits.
   floors cost the corpus projects their compiler-args cells (§5.4), so
   `_synthetic-rich` became multi-platform and now supplies a cell for all six
   platforms instead.
+- **2026-09-20 — the pbxproj serializer learned Xcode's second annotation
+  dialect.** Xcode changed how it spells `/* … */` annotations, and a project's
+  `objectVersion` is the only durable signal of which spelling a file uses. From
+  format 90 (Xcode 16.3; 100 is 26.3, 110 is 27.0) a build configuration names
+  the target it configures, a synchronized folder's exception set names the
+  folder and the target, a reference with no `name` carries its whole `path`
+  rather than the last component, and every line of a `shellScript` array is
+  quoted however plain it is. Measured by converting all 60 projects in
+  `corpus/`, `fixtures/` and the extension's examples through
+  `xcodebuild -convert-project` at each of the five formats Xcode 27 offers, then
+  re-serializing; before the fix, one `pbxproj settings set` on a converted
+  project rewrote 451 lines. A newer Xcode saving into an older format writes the
+  newer spellings into it and nothing in the file records that, so the threshold
+  takes the older reading — what every ≤77 project in the corpus has. Two
+  annotation bugs unrelated to the dialect came out of the same sweep: a package
+  product's `plugin:` prefix and a repository URL's `#fragment` are both dropped
+  from the annotation. Pinned by `fixtures/_synthetic-objectversion-110`, an
+  Xcode 27-converted project carrying all four constructs.

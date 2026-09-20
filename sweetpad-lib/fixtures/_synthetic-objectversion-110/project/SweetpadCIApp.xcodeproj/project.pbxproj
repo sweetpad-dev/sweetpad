@@ -1,0 +1,505 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2B2096E1305493204B09B19A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BB78F9ECC9184F5BA8114B /* ContentView.swift */; };
+		97D2072DE260339EE46C3A44 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BB78F9ECC9184F5BA8114B /* ContentView.swift */; };
+		9B0D03A8E1F8B9933608B819 /* AppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C98254B16ED421F9D4E9B25 /* AppTests.swift */; };
+		A949F8CC85170F495CAC49A0 /* SweetpadCIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B28FF39E3239372B295EE3 /* SweetpadCIApp.swift */; };
+		D825EC7093AA1EF1EF7CAA9D /* SweetpadCIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B28FF39E3239372B295EE3 /* SweetpadCIApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		90891CBD0E96625E2A15C07C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 683169CE97E70E5AE046570B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4B1F1EF54FC29508679E7C48;
+			remoteInfo = SweetpadCIApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0C98254B16ED421F9D4E9B25 /* AppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTests.swift; sourceTree = "<group>"; };
+		14E1F3DFC2D42279478A092D /* SweetpadCIAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SweetpadCIAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		261A31EEE63D45BF81E1DA5B /* SweetpadCIMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SweetpadCIMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		50B28FF39E3239372B295EE3 /* SweetpadCIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweetpadCIApp.swift; sourceTree = "<group>"; };
+		85BB78F9ECC9184F5BA8114B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		958E16DD736EB85C16C05DE6 /* SweetpadCIApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SweetpadCIApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AAAA0000000000000000AA02 /* Sources/Deep/Nested/Deep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Deep/Nested/Deep.swift; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AAAA0000000000000000AA05 /* Exceptions for "Shared" folder in "SweetpadCIApp" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				MacOnly.swift,
+			);
+			target = 4B1F1EF54FC29508679E7C48 /* SweetpadCIApp */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		AAAA0000000000000000AA04 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AAAA0000000000000000AA05 /* Exceptions for "Shared" folder in "SweetpadCIApp" target */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXGroup section */
+		2EB79799EB980C9382F9E6B0 = {
+			isa = PBXGroup;
+			children = (
+				AAAA0000000000000000AA02 /* Sources/Deep/Nested/Deep.swift */,
+				670938FBEBAD9090CCFDAD2B /* Sources */,
+				332FC8123319F42DF32CDE6C /* Tests */,
+				3A17D5C03FC38AB470526F78 /* Products */,
+				BCD3F34330601BEC003C7AE7 /* Recovered References */,
+			);
+			sourceTree = "<group>";
+		};
+		332FC8123319F42DF32CDE6C /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				BF2C8AF284BD18D7074A16F8 /* AppTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		3A17D5C03FC38AB470526F78 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				958E16DD736EB85C16C05DE6 /* SweetpadCIApp.app */,
+				14E1F3DFC2D42279478A092D /* SweetpadCIAppTests.xctest */,
+				261A31EEE63D45BF81E1DA5B /* SweetpadCIMac.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		670938FBEBAD9090CCFDAD2B /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				71376D09ABE451C1E73CAAE7 /* App */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		71376D09ABE451C1E73CAAE7 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				85BB78F9ECC9184F5BA8114B /* ContentView.swift */,
+				50B28FF39E3239372B295EE3 /* SweetpadCIApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		BCD3F34330601BEC003C7AE7 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				AAAA0000000000000000AA04 /* Shared */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+		BF2C8AF284BD18D7074A16F8 /* AppTests */ = {
+			isa = PBXGroup;
+			children = (
+				0C98254B16ED421F9D4E9B25 /* AppTests.swift */,
+			);
+			path = AppTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4B1F1EF54FC29508679E7C48 /* SweetpadCIApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1921729E714EFDBDD4FF4234 /* Build configuration list for PBXNativeTarget "SweetpadCIApp" */;
+			buildPhases = (
+				AAAA0000000000000000AA06 /* Stamp Build */,
+				07BA0E40F9DA40BA1D8F6347 /* Sources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				AAAA0000000000000000AA04 /* Shared */,
+			);
+			name = SweetpadCIApp;
+			productName = SweetpadCIApp;
+			productReference = 958E16DD736EB85C16C05DE6 /* SweetpadCIApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A5D608792A20AFAB1974887E /* SweetpadCIAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5B85E924B84DE933A02308F9 /* Build configuration list for PBXNativeTarget "SweetpadCIAppTests" */;
+			buildPhases = (
+				B1738A5888597C0E1F60288D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				27378658EA3D889FA553AF43 /* PBXTargetDependency */,
+			);
+			name = SweetpadCIAppTests;
+			productName = SweetpadCIAppTests;
+			productReference = 14E1F3DFC2D42279478A092D /* SweetpadCIAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		D36C0615FD11E0D26828FB06 /* SweetpadCIMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DD8E83AB8CBC91DED2F565C2 /* Build configuration list for PBXNativeTarget "SweetpadCIMac" */;
+			buildPhases = (
+				5E0AF5798AF34FE016DD8A7E /* Sources */,
+			);
+			buildRules = (
+			);
+			name = SweetpadCIMac;
+			productName = SweetpadCIMac;
+			productReference = 261A31EEE63D45BF81E1DA5B /* SweetpadCIMac.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		683169CE97E70E5AE046570B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+			};
+			buildConfigurationList = 54E50C2762E35C75DEDFE0A0 /* Build configuration list for PBXProject "SweetpadCIApp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 2EB79799EB980C9382F9E6B0;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 110;
+			productRefGroup = 3A17D5C03FC38AB470526F78 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4B1F1EF54FC29508679E7C48 /* SweetpadCIApp */,
+				A5D608792A20AFAB1974887E /* SweetpadCIAppTests */,
+				D36C0615FD11E0D26828FB06 /* SweetpadCIMac */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		AAAA0000000000000000AA06 /* Stamp Build */ = {
+			isa = PBXShellScriptBuildPhase;
+			name = "Stamp Build";
+			shellPath = /bin/sh;
+			shellScript = (
+				"if [ -n \"${CONFIGURATION}\" ]; then",
+				"echo stamped",
+				"fi",
+				"",
+			);
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		07BA0E40F9DA40BA1D8F6347 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				97D2072DE260339EE46C3A44 /* ContentView.swift in Sources */,
+				A949F8CC85170F495CAC49A0 /* SweetpadCIApp.swift in Sources */,
+			);
+		};
+		5E0AF5798AF34FE016DD8A7E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				2B2096E1305493204B09B19A /* ContentView.swift in Sources */,
+				D825EC7093AA1EF1EF7CAA9D /* SweetpadCIApp.swift in Sources */,
+			);
+		};
+		B1738A5888597C0E1F60288D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				9B0D03A8E1F8B9933608B819 /* AppTests.swift in Sources */,
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		27378658EA3D889FA553AF43 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4B1F1EF54FC29508679E7C48 /* SweetpadCIApp */;
+			targetProxy = 90891CBD0E96625E2A15C07C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		3903C071E7B62D6C2787ABE6 /* Release configuration for PBXNativeTarget "SweetpadCIMac" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.ci.mac;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		52E3C3190DA6B9709B6C0546 /* Debug configuration for PBXNativeTarget "SweetpadCIApp" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.ci.app;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		56C6F9EEBBB08E1C4BB04412 /* Debug configuration for PBXNativeTarget "SweetpadCIMac" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.ci.mac;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		8DB607291F1376030E7D922F /* Debug configuration for PBXProject "SweetpadCIApp" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				COMPILER_INDEX_STORE_ENABLE = NO;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A5041E00201F0C1D84A412D2 /* Release configuration for PBXProject "SweetpadCIApp" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				COMPILER_INDEX_STORE_ENABLE = NO;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A90F7A5931D7106C0BDBB621 /* Release configuration for PBXNativeTarget "SweetpadCIApp" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.ci.app;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		D87F0D209D4A8C1DFF5E54AF /* Release configuration for PBXNativeTarget "SweetpadCIAppTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.ci.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SweetpadCIApp.app/SweetpadCIApp";
+			};
+			name = Release;
+		};
+		F0CFDC4BF2D7DA79AA96D598 /* Debug configuration for PBXNativeTarget "SweetpadCIAppTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.ci.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SweetpadCIApp.app/SweetpadCIApp";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1921729E714EFDBDD4FF4234 /* Build configuration list for PBXNativeTarget "SweetpadCIApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52E3C3190DA6B9709B6C0546 /* Debug configuration for PBXNativeTarget "SweetpadCIApp" */,
+				A90F7A5931D7106C0BDBB621 /* Release configuration for PBXNativeTarget "SweetpadCIApp" */,
+			);
+			defaultConfigurationName = Debug;
+		};
+		54E50C2762E35C75DEDFE0A0 /* Build configuration list for PBXProject "SweetpadCIApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8DB607291F1376030E7D922F /* Debug configuration for PBXProject "SweetpadCIApp" */,
+				A5041E00201F0C1D84A412D2 /* Release configuration for PBXProject "SweetpadCIApp" */,
+			);
+			defaultConfigurationName = Debug;
+		};
+		5B85E924B84DE933A02308F9 /* Build configuration list for PBXNativeTarget "SweetpadCIAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F0CFDC4BF2D7DA79AA96D598 /* Debug configuration for PBXNativeTarget "SweetpadCIAppTests" */,
+				D87F0D209D4A8C1DFF5E54AF /* Release configuration for PBXNativeTarget "SweetpadCIAppTests" */,
+			);
+			defaultConfigurationName = Debug;
+		};
+		DD8E83AB8CBC91DED2F565C2 /* Build configuration list for PBXNativeTarget "SweetpadCIMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				56C6F9EEBBB08E1C4BB04412 /* Debug configuration for PBXNativeTarget "SweetpadCIMac" */,
+				3903C071E7B62D6C2787ABE6 /* Release configuration for PBXNativeTarget "SweetpadCIMac" */,
+			);
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 683169CE97E70E5AE046570B /* Project object */;
+}
