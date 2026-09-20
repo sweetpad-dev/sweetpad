@@ -1,0 +1,741 @@
+{
+  "organization": "Ranchero Software",
+  "build-independent-targets-in-parallel": false,
+  "default-configuration": "Release",
+  "configurations": [
+    { "name": "Debug", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_project_debug.xcconfig" } },
+    { "name": "Release", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_project_release.xcconfig" } },
+  ],
+  "localizations": {
+    "development": "en",
+    "supported": [
+      "Base",
+    ],
+  },
+  "packages": [
+    {
+      "kind": "remote",
+      "repository": "https://github.com/Ranchero-Software/Sparkle-Binary.git",
+      "version": {
+        "up-to-next-major-version": "2.0.0",
+      },
+    }, {
+      "kind": "remote",
+      "repository": "https://github.com/microsoft/plcrashreporter.git",
+      "version": {
+        "up-to-next-major-version": "1.8.1",
+      },
+    }, {
+      "kind": "remote",
+      "repository": "https://github.com/marmelroy/Zip.git",
+      "version": {
+        "revision": "059e7346082d02de16220cd79df7db18ddeba8c3",
+      },
+    },
+  ],
+  "files": [
+    { "path": "README.md" },
+    { "path": "CONTRIBUTING.md" },
+    { "path": "CODE_OF_CONDUCT.md" },
+    { "path": "CLAUDE.md" },
+    { "path": "NetNewsWire-CI.xctestplan" },
+    { "path": "NetNewsWire.xctestplan" },
+    { "path": "NetNewsWire-iOS.xctestplan" },
+    { "kind": "folder", "path": "Technotes" },
+    {
+      "kind": "folder",
+      "path": "Mac",
+      "target-membership": [
+        "NetNewsWire",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "NetNewsWire Share Extension",
+          "inclusions": [
+            "AppDefaults.swift",
+          ],
+        },
+      ],
+    }, {
+      "kind": "folder",
+      "path": "iOS",
+      "target-membership": [
+        "NetNewsWire-iOS",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "NetNewsWire iOS Share Extension",
+          "inclusions": [
+            "AppDefaults.swift",
+          ],
+        },
+      ],
+    }, {
+      "kind": "group",
+      "path": "Intents",
+      "children": [
+        {
+          "kind": "variant-group",
+          "name": "Intents.intentdefinition",
+          "target-membership": [
+            "NetNewsWire iOS Intents Extension/compile-sources",
+          ],
+          "children": [
+            {
+              "path": "Base.lproj/Intents.intentdefinition",
+            }, {
+              "path": "en.lproj/Intents.strings",
+            },
+          ],
+        },
+        { "path": "AddWebFeedIntentHandler.swift", "target-membership": [ "NetNewsWire iOS Intents Extension/compile-sources" ] },
+      ],
+    }, {
+      "kind": "folder",
+      "path": "Widget",
+      "target-membership": [
+        "NetNewsWire iOS Widget Extension",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "NetNewsWire iOS Widget Extension",
+          "exclusions": [
+            "Info.plist",
+          ],
+        },
+      ],
+    }, {
+      "kind": "folder",
+      "path": "Shared",
+      "target-membership": [
+        "NetNewsWire",
+        "NetNewsWire-iOS",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "NetNewsWire iOS Share Extension",
+          "inclusions": [
+            "ArticleSpecifier.swift",
+            "Assets.swift",
+            "UserInfoKey.swift",
+          ],
+        },
+      ],
+    },
+    { "kind": "folder", "path": "Tests", "target-membership": [ "NetNewsWireTests" ] },
+    {
+      "kind": "folder",
+      "path": "xcconfig",
+      "membership-exceptions": [
+        {
+          "target": "NetNewsWire-iOS",
+          "inclusions": [
+            "NetNewsWire_iOSwidgetextension_target.xcconfig",
+          ],
+        },
+      ],
+    }, {
+      "kind": "group",
+      "name": "Products",
+      "children": [
+        { "path": "<PRODUCTS>/.app", "id": "849C64601ED37A5D003D8FC0", "type": "wrapper.application", "index": false },
+        { "path": "<PRODUCTS>/.xctest", "id": "849C64711ED37A5D003D8FC0", "type": "wrapper.cfbundle", "index": false },
+        { "path": "<PRODUCTS>/.app", "id": "840D617C2029031C009BC708", "type": "wrapper.application", "index": false },
+        { "path": "<PRODUCTS>/.appex", "id": "6581C73320CED60000F4AD34", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "NetNewsWire/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
+        { "path": "<PRODUCTS>/.appex", "id": "513C5CE6232571C2003D4054", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "NetNewsWire-iOS/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
+        { "path": "<PRODUCTS>/NetNewsWire-iOSTests.xctest", "id": "518B2ED22351B3DD00400001", "type": "wrapper.cfbundle", "index": false },
+        { "path": "<PRODUCTS>/.appex", "id": "51314637235A7BBE00387FDC", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "NetNewsWire-iOS/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
+        { "path": "<PRODUCTS>/.appex", "id": "510C415C24E5CDE3008226FD", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "NetNewsWire/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
+        { "path": "<PRODUCTS>/.appex", "id": "176813F32564BB2C00D98635", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "NetNewsWire-iOS/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
+      ],
+    },
+    { "kind": "folder", "path": "Modules" },
+    {
+      "kind": "group",
+      "name": "Recovered References",
+      "children": [
+        { "path": "<PROJECT>/Tests/NetNewsWire-iOSTests/ActivityItemSourceTests.swift", "target-membership": [ "NetNewsWire-iOSTests/compile-sources" ] },
+      ],
+    },
+  ],
+  "targets": [
+    {
+      "name": "NetNewsWire",
+      "id": "849C645F1ED37A5D003D8FC0",
+      "product": "id:849C64601ED37A5D003D8FC0",
+      "product-type": "application",
+      "last-swift-migration": "16.2",
+      "legacy-provisioning-style": "automatic",
+      "legacy-team-id": "SHJK2V3AJG",
+      "specialized-configurations": [
+        { "name": "Debug", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_macapp_target.xcconfig" } },
+        { "name": "Release", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_macapp_target.xcconfig" } },
+      ],
+      "dependencies": [
+        "Subscribe to Feed",
+        "NetNewsWire Share Extension",
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        {
+          "kind": "copy",
+          "name": "Embed XPC Services",
+          "bundle-base-path": "build-products-directory",
+          "relative-path": "$(CONTENTS_FOLDER_PATH)/XPCServices",
+        },
+        "resources",
+        {
+          "kind": "script",
+          "name": "Run Script: Automated build numbers",
+          "log-environment-variables": true,
+          "run-on-every-build": true,
+          "shell": "/bin/sh",
+          "script": [
+            "# See https://blog.curtisherbert.com/automated-build-numbers/",
+            "",
+            "# WARNING: If automated build numbers are restored then take ",
+            "# care to ensure any app extensions are versioned the same as the app.",
+            "# ask Daniel (jalkut@red-sweater.com) if in doubt about this. ",
+            "#git=`sh /etc/profile; which git`",
+            "#branch_name=`$git symbolic-ref HEAD | sed -e 's,.*/\\\\(.*\\\\),\\\\1,'`",
+            "#git_count=`$git rev-list $branch_name |wc -l | sed 's/^ *//;s/ *$//'`",
+            "#simple_branch_name=`$git rev-parse --abbrev-ref HEAD`",
+            "",
+            "#build_number=\"$git_count\"",
+            "#if [ $CONFIGURATION != \"Release\" ]; then",
+            "#build_number+=\"-$simple_branch_name\"",
+            "#fi",
+            "",
+            "#plist=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"",
+            "#dsym_plist=\"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist\"",
+            "",
+            "#/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $build_number\" \"$plist\"",
+            "#if [ -f \"$DSYM_INFO_PLIST\" ] ; then",
+            "#/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $build_number\" \"$dsym_plist\"",
+            "#fi",
+            "",
+          ],
+        }, {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory",
+        }, {
+          "kind": "copy",
+          "name": "Embed Foundation Extensions",
+          "bundle-base-path": "plugins-directory",
+        }, {
+          "kind": "script",
+          "name": "Run Script: Delete Unnecessary Frameworks For Share Extension",
+          "log-environment-variables": true,
+          "run-on-every-build": true,
+          "shell": "/bin/sh",
+          "script": [
+            "if [ \"${CONFIGURATION}\" = \"Release\" ]; then",
+            "# Delete the framework that Xcode should have never included",
+            "# https://forums.swift.org/t/is-this-an-xcode-bug-or-somehow-related-to-spm/33987",
+            "rm -rf \"${TARGET_BUILD_DIR}/${PLUGINS_FOLDER_PATH}/NetNewsWire Share Extension.appex/Contents/Frameworks\"",
+            "",
+            "# Re-sign to update the expected files in the signature",
+            "codesign --verbose --force -o runtime --preserve-metadata=entitlements --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${TARGET_BUILD_DIR}/${PLUGINS_FOLDER_PATH}/NetNewsWire Share Extension.appex\"",
+            "fi",
+            "",
+          ],
+        }, {
+          "kind": "script",
+          "name": "Run Script: Verify No Build Settings",
+          "log-environment-variables": true,
+          "run-on-every-build": true,
+          "shell": "/bin/sh",
+          "script": "xcrun -sdk macosx swift buildscripts/VerifyNoBS.swift  --xcode  \"${PROJECT_DIR}/${PROJECT_NAME}.xcodeproj/project.pbxproj\"\n",
+        }, {
+          "kind": "script",
+          "name": "Run Script: Code Sign Sparkle",
+          "log-environment-variables": true,
+          "run-on-every-build": true,
+          "shell": "/bin/sh",
+          "script": [
+            "if [ \"${CONFIGURATION}\" = \"Release\" ]; then",
+            "# Remove unused Sparkle components",
+            "SPARKLE_DIR=\"${CODESIGNING_FOLDER_PATH}/Contents/Frameworks/Sparkle.framework\"",
+            "find \"${SPARKLE_DIR}\" -name Updater.app -execdir rm -rf {} \\;",
+            "find \"${SPARKLE_DIR}\" -name Autoupdate -execdir rm -rf {} \\;",
+            "",
+            "PLUGINS_DIR=\"${CODESIGNING_FOLDER_PATH}/Contents/PlugIns\"",
+            "XPC_DIR=\"${CODESIGNING_FOLDER_PATH}/Contents/XPCServices\"",
+            "find \"${PLUGINS_DIR}\" -name Sparkle* -execdir rm -rf {} \\;",
+            "find \"${XPC_DIR}\" -name Sparkle* -execdir rm -rf {} \\;",
+            "",
+            "# Re-sign Sparkle after removing components",
+            "codesign --verbose --force -o runtime --preserve-metadata=entitlements --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${CODESIGNING_FOLDER_PATH}/Contents/Frameworks/Sparkle.framework\"",
+            "",
+            "# Sign XPC Helpers and their internal binaries",
+            "codesign --verbose --force -o runtime --preserve-metadata=entitlements --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${CODESIGNING_FOLDER_PATH}/Contents/XPCServices/org.sparkle-project.InstallerLauncher.xpc/Contents/MacOS/Updater.app\"",
+            "codesign --verbose --force -o runtime --preserve-metadata=entitlements --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${CODESIGNING_FOLDER_PATH}/Contents/XPCServices/org.sparkle-project.InstallerLauncher.xpc/Contents/MacOS/Autoupdate\"",
+            "codesign --verbose --entitlements \"${PROJECT_DIR}/submodules/Sparkle/Downloader/org.sparkle-project.Downloader.entitlements\" --force -o runtime --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${CODESIGNING_FOLDER_PATH}/Contents/XPCServices/org.sparkle-project.Downloader.xpc\"",
+            "codesign --verbose --force -o runtime --preserve-metadata=entitlements --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${CODESIGNING_FOLDER_PATH}/Contents/XPCServices/org.sparkle-project.InstallerLauncher.xpc\"",
+            "codesign --verbose --force -o runtime --preserve-metadata=entitlements --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${CODESIGNING_FOLDER_PATH}/Contents/XPCServices/org.sparkle-project.InstallerConnection.xpc\"",
+            "codesign --verbose --force -o runtime --preserve-metadata=entitlements --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${CODESIGNING_FOLDER_PATH}/Contents/XPCServices/org.sparkle-project.InstallerStatus.xpc\"",
+            "fi",
+            "",
+          ],
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "Account",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "Account",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "Articles",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "Articles",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "ArticlesDatabase",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "ArticlesDatabase",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "ErrorLog",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "ErrorLog",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSCore",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSCore",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSCoreResources",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSDatabase",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSDatabase",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSParser",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSParser",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSTree",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSTree",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSWeb",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSWeb",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "Secrets",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "Secrets",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "SyncDatabase",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "SyncDatabase",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "Sparkle-Binary",
+          "product-name": "RSSparkle",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "Zip",
+          "product-name": "Zip",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "plcrashreporter",
+          "product-name": "CrashReporter",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+    }, {
+      "name": "NetNewsWireTests",
+      "id": "849C64701ED37A5D003D8FC0",
+      "product": "Products/.xctest",
+      "product-type": "bundle.unit-test",
+      "legacy-provisioning-style": "automatic",
+      "legacy-team-id": "SHJK2V3AJG",
+      "test-host-target": "NetNewsWire",
+      "specialized-configurations": [
+        { "name": "Debug", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWireTests_target.xcconfig" } },
+        { "name": "Release", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWireTests_target.xcconfig" } },
+      ],
+      "dependencies": [
+        "NetNewsWire",
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+        {
+          "kind": "copy",
+          "name": "Copy Files",
+          "bundle-base-path": "resources-directory",
+          "relative-path": "TestScripts",
+        }, {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory",
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "Articles",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "Articles",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSCore",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSCore",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSParser",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+    }, {
+      "name": "NetNewsWire-iOS",
+      "id": "840D617B2029031C009BC708",
+      "product": "id:840D617C2029031C009BC708",
+      "product-type": "application",
+      "last-swift-migration": "12.5",
+      "legacy-provisioning-style": "automatic",
+      "legacy-team-id": "SHJK2V3AJG",
+      "specialized-configurations": [
+        { "name": "Debug", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_iOSapp_target.xcconfig" } },
+        { "name": "Release", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_iOSapp_target.xcconfig" } },
+      ],
+      "dependencies": [
+        "NetNewsWire iOS Share Extension",
+        "NetNewsWire iOS Intents Extension",
+        "NetNewsWire iOS Widget Extension",
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+        {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory",
+        }, {
+          "kind": "copy",
+          "name": "Embed Foundation Extensions",
+          "bundle-base-path": "plugins-directory",
+        }, {
+          "kind": "script",
+          "name": "Run Script: Verify No Build Settings",
+          "log-environment-variables": true,
+          "run-on-every-build": true,
+          "scope": "install",
+          "shell": "/bin/sh",
+          "script": [
+            "#xcrun -sdk macosx swiftc -target x86_64-macosx10.11  buildscripts/VerifyNoBuildSettings.swift -o $CONFIGURATION_TEMP_DIR/VerifyNoBS",
+            "#$CONFIGURATION_TEMP_DIR/VerifyNoBS ${PROJECT_NAME}.xcodeproj/project.pbxproj",
+            "",
+            "",
+            "#if [ $? -ne 0 ]",
+            "#then",
+            "#   echo \"error: Build Setting were found in the project.pbxproj file.  Most likely you didn't intend to change this file and should revert it.\"",
+            "#   exit 1",
+            "#fi",
+            "",
+          ],
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "Account",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "Account",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "Articles",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "Articles",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "ArticlesDatabase",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "ArticlesDatabase",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "ErrorLog",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "ErrorLog",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSCore",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSCore",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSDatabase",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSDatabase",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSParser",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSParser",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSTree",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSTree",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSWeb",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "RSWeb",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "Secrets",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "Secrets",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "SyncDatabase",
+          "build-phase": { "build-phase": "copy/Embed Frameworks", "code-sign-on-copy": true },
+        }, {
+          "product-name": "SyncDatabase",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "Zip",
+          "product-name": "Zip",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+    }, {
+      "name": "Subscribe to Feed",
+      "id": "6581C73220CED60000F4AD34",
+      "product": "id:6581C73320CED60000F4AD34",
+      "product-type": "app-extension",
+      "legacy-provisioning-style": "automatic",
+      "legacy-team-id": "SHJK2V3AJG",
+      "specialized-configurations": [
+        { "name": "Debug", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_safariextension_target.xcconfig" } },
+        { "name": "Release", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_safariextension_target.xcconfig" } },
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+      ],
+    }, {
+      "name": "NetNewsWire iOS Share Extension",
+      "id": "513C5CE5232571C2003D4054",
+      "product": "id:513C5CE6232571C2003D4054",
+      "product-type": "app-extension",
+      "legacy-provisioning-style": "automatic",
+      "legacy-team-id": "SHJK2V3AJG",
+      "specialized-configurations": [
+        { "name": "Debug", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_iOSshareextension_target.xcconfig" } },
+        { "name": "Release", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_iOSshareextension_target.xcconfig" } },
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+        {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory",
+        }, {
+          "kind": "script",
+          "name": "Delete Unnecessary Frameworks",
+          "log-environment-variables": true,
+          "run-on-every-build": true,
+          "shell": "/bin/sh",
+          "script": [
+            "if [ \"${CONFIGURATION}\" = \"Release\" ]; then",
+            "# Delete the framework that Xcode should have never included",
+            "# https://forums.swift.org/t/is-this-an-xcode-bug-or-somehow-related-to-spm/33987",
+            "rm -rf \"${TARGET_BUILD_DIR}/NetNewsWire iOS Share Extension.appex/Frameworks\"",
+            "fi",
+            "",
+          ],
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "Account",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSCore",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSTree",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+    }, {
+      "name": "NetNewsWire iOS Intents Extension",
+      "id": "51314636235A7BBE00387FDC",
+      "product": "id:51314637235A7BBE00387FDC",
+      "product-type": "app-extension",
+      "last-swift-migration": "11.2",
+      "legacy-provisioning-style": "automatic",
+      "legacy-team-id": "SHJK2V3AJG",
+      "specialized-configurations": [
+        { "name": "Debug", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_iOSintentextension_target.xcconfig" } },
+        { "name": "Release", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_iOSintentextension_target.xcconfig" } },
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+        {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory",
+        }, {
+          "kind": "script",
+          "name": "Delete Unnecessary Frameworks",
+          "log-environment-variables": true,
+          "run-on-every-build": true,
+          "shell": "/bin/sh",
+          "script": [
+            "if [ \"${CONFIGURATION}\" = \"Release\" ]; then",
+            "# Delete the framework that Xcode should have never included",
+            "# https://forums.swift.org/t/is-this-an-xcode-bug-or-somehow-related-to-spm/33987",
+            "rm -rf \"${TARGET_BUILD_DIR}/NetNewsWire iOS Intents Extension.appex/Frameworks\"",
+            "fi",
+            "",
+          ],
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "Account",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSCore",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSTree",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+    }, {
+      "name": "NetNewsWire iOS Widget Extension",
+      "id": "176813F22564BB2C00D98635",
+      "product": "id:176813F32564BB2C00D98635",
+      "product-type": "app-extension",
+      "specialized-configurations": [
+        { "name": "Debug", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_iOSwidgetextension_target.xcconfig" } },
+        { "name": "Release", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_iOSwidgetextension_target.xcconfig" } },
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+        {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory",
+        }, {
+          "kind": "script",
+          "name": "Delete Unnecessary Frameworks",
+          "log-environment-variables": true,
+          "run-on-every-build": true,
+          "shell": "/bin/sh",
+          "script": [
+            "if [ \"${CONFIGURATION}\" = \"Release\" ]; then",
+            "# Delete the framework that Xcode should have never included",
+            "# https://forums.swift.org/t/is-this-an-xcode-bug-or-somehow-related-to-spm/33987",
+            "rm -rf \"${TARGET_BUILD_DIR}/NetNewsWire iOS Widget Extension.appex/Frameworks\"",
+            "fi",
+            "",
+          ],
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "RSWeb",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+    }, {
+      "name": "NetNewsWire-iOSTests",
+      "id": "518B2ED12351B3DD00400001",
+      "product": "Products/NetNewsWire-iOSTests.xctest",
+      "product-type": "bundle.unit-test",
+      "legacy-provisioning-style": "automatic",
+      "legacy-team-id": "SHJK2V3AJG",
+      "test-host-target": "NetNewsWire-iOS",
+      "specialized-configurations": [
+        { "name": "Debug", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_iOSTests_target.xcconfig" } },
+        { "name": "Release", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_iOSTests_target.xcconfig" } },
+      ],
+      "dependencies": [
+        "NetNewsWire-iOS",
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+      ],
+    }, {
+      "name": "NetNewsWire Share Extension",
+      "id": "510C415B24E5CDE3008226FD",
+      "product": "id:510C415C24E5CDE3008226FD",
+      "product-type": "app-extension",
+      "specialized-configurations": [
+        { "name": "Debug", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_shareextension_target.xcconfig" } },
+        { "name": "Release", "file": { "anchor": "xcconfig", "relative-path": "NetNewsWire_shareextension_target.xcconfig" } },
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+        {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory",
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "Account",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "RSCore",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+    },
+  ],
+  "last-upgrade": "26.4",
+  "last-swift-update": "12.4",
+}

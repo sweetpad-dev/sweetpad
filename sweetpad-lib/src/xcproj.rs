@@ -34,6 +34,7 @@ use crate::file_cache::ParseCache;
 pub struct Object {
     entries: Vec<(String, Value)>,
     index: HashMap<String, usize>,
+    compact: bool,
 }
 
 impl Object {
@@ -76,6 +77,17 @@ impl Object {
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Value)> {
         self.entries.iter().map(|(k, v)| (k.as_str(), v))
     }
+
+    /// Ask the printer to put this object on one line. Compactness is
+    /// inherited, so everything nested inside prints on that line too.
+    pub fn set_compact(&mut self, compact: bool) {
+        self.compact = compact;
+    }
+
+    #[must_use]
+    pub fn is_compact(&self) -> bool {
+        self.compact
+    }
 }
 
 impl<'a> IntoIterator for &'a Object {
@@ -97,6 +109,58 @@ impl PartialEq for Object {
     }
 }
 
+/// A sequence, with the layout hint the printer replays.
+#[derive(Debug, Clone, Default)]
+pub struct Array {
+    items: Vec<Value>,
+    compact: bool,
+}
+
+impl Array {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push(&mut self, value: Value) {
+        self.items.push(value);
+    }
+
+    /// See [`Object::set_compact`].
+    pub fn set_compact(&mut self, compact: bool) {
+        self.compact = compact;
+    }
+
+    #[must_use]
+    pub fn is_compact(&self) -> bool {
+        self.compact
+    }
+}
+
+impl std::ops::Deref for Array {
+    type Target = [Value];
+
+    fn deref(&self) -> &[Value] {
+        &self.items
+    }
+}
+
+impl From<Vec<Value>> for Array {
+    fn from(items: Vec<Value>) -> Self {
+        Self {
+            items,
+            compact: false,
+        }
+    }
+}
+
+/// Layout is formatting, not data.
+impl PartialEq for Array {
+    fn eq(&self, other: &Self) -> bool {
+        self.items == other.items
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Null,
@@ -104,7 +168,7 @@ pub enum Value {
     /// The number's source lexeme, e.g. `"110"` or `"1.5e3"`.
     Number(String),
     String(String),
-    Array(Vec<Value>),
+    Array(Array),
     Object(Object),
 }
 
@@ -147,6 +211,21 @@ impl Value {
             Value::Array(a) => Some(a),
             _ => None,
         }
+    }
+
+    /// Whether this container's source rendering sat on one line.
+    #[must_use]
+    fn is_compact(&self) -> bool {
+        match self {
+            Value::Array(a) => a.compact,
+            Value::Object(o) => o.compact,
+            _ => false,
+        }
+    }
+
+    #[must_use]
+    fn is_container(&self) -> bool {
+        matches!(self, Value::Array(_) | Value::Object(_))
     }
 
     #[must_use]
@@ -239,6 +318,140 @@ static CACHE: LazyLock<ParseCache<Value>> = LazyLock::new(ParseCache::new);
 /// Like [`parse_file`] but served from an in-memory, mtime-validated cache.
 pub fn parse_file_cached(path: &Path) -> Result<Arc<Value>, Error> {
     CACHE.get_or_parse(path, parse_file)
+}
+
+/// Serialize a document the way Xcode's own printer does, byte for byte.
+///
+/// Xcode 27.2's `xcprojformatter` and `xcodebuild -convert-project "Xcode
+/// Project"` produce identical bytes, so that printing is the target: two-space
+/// indentation, a trailing comma after every member of an expanded container,
+/// and a container on one line when it is marked compact.
+///
+/// Comments are not carried in the tree, so a document that had them comes back
+/// without them. Xcode writes none, and its own printer drops the ones it reads.
+#[must_use]
+pub fn serialize(root: &Value) -> String {
+    let mut out = String::with_capacity(1 << 16);
+    write_value(&mut out, root, 0, false);
+    out.push('\n');
+    out
+}
+
+/// `compact` is inherited: once a container prints on one line, so does
+/// everything inside it, whatever its own hint says.
+fn write_value(out: &mut String, value: &Value, depth: usize, compact: bool) {
+    let compact = compact || value.is_compact();
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(true) => out.push_str("true"),
+        Value::Bool(false) => out.push_str("false"),
+        Value::Number(n) => out.push_str(n),
+        Value::String(s) => write_string(out, s),
+        Value::Array(items) => write_array(out, items, depth, compact),
+        Value::Object(object) => write_object(out, object, depth, compact),
+    }
+}
+
+fn write_array(out: &mut String, items: &[Value], depth: usize, compact: bool) {
+    if compact {
+        if items.is_empty() {
+            out.push_str("[]");
+            return;
+        }
+        out.push_str("[ ");
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                out.push_str(", ");
+            }
+            write_value(out, item, depth, true);
+        }
+        out.push_str(" ]");
+        return;
+    }
+
+    out.push_str("[\n");
+    for (i, item) in items.iter().enumerate() {
+        indent(out, depth + 1);
+        write_value(out, item, depth + 1, false);
+        // Two expanded containers side by side share the line at their braces,
+        // which is what gives a list of objects its `}, {` seam.
+        let next_runs_on = items
+            .get(i + 1)
+            .is_some_and(|next| expanded_container(next) && expanded_container(item));
+        out.push_str(if next_runs_on { ", " } else { ",\n" });
+    }
+    indent(out, depth);
+    out.push(']');
+}
+
+fn expanded_container(value: &Value) -> bool {
+    value.is_container() && !value.is_compact()
+}
+
+fn write_object(out: &mut String, object: &Object, depth: usize, compact: bool) {
+    if compact {
+        if object.is_empty() {
+            out.push_str("{}");
+            return;
+        }
+        out.push_str("{ ");
+        for (i, (key, value)) in object.iter().enumerate() {
+            if i > 0 {
+                out.push_str(", ");
+            }
+            write_string(out, key);
+            out.push_str(": ");
+            write_value(out, value, depth, true);
+        }
+        out.push_str(" }");
+        return;
+    }
+
+    out.push_str("{\n");
+    for (key, value) in object.iter() {
+        indent(out, depth + 1);
+        write_string(out, key);
+        out.push_str(": ");
+        write_value(out, value, depth + 1, false);
+        out.push_str(",\n");
+    }
+    indent(out, depth);
+    out.push('}');
+}
+
+/// Indent only when a line has just begun. After the `}, {` seam the next
+/// element continues the current line, so it takes no indentation.
+fn indent(out: &mut String, depth: usize) {
+    if !(out.is_empty() || out.ends_with('\n')) {
+        return;
+    }
+    for _ in 0..depth {
+        out.push_str("  ");
+    }
+}
+
+/// JSON string escaping as Xcode emits it: the short escapes for the five
+/// control characters that have one, `\u00xx` in lowercase hex for the rest of
+/// C0, and everything else — `/`, DEL, all non-ASCII — written through as is.
+fn write_string(out: &mut String, s: &str) {
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{8}' => out.push_str("\\b"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\u{c}' => out.push_str("\\f"),
+            '\r' => out.push_str("\\r"),
+            c if (c as u32) < 0x20 => {
+                use std::fmt::Write;
+                let _ = write!(out, "\\u{:04x}", c as u32);
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
 }
 
 /// Recursion guard for nested arrays and objects. A project's file tree is the
@@ -462,6 +675,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_array(&mut self, depth: usize) -> Result<Value, ParseError> {
+        let open = self.pos;
         self.pos += 1; // `[`
         let mut items = Vec::new();
         loop {
@@ -471,7 +685,7 @@ impl<'a> Parser<'a> {
             match self.peek() {
                 Some(b']') => {
                     self.pos += 1;
-                    return Ok(Value::Array(items));
+                    return Ok(self.finish_array(items, open));
                 }
                 None => return Err(self.error("unterminated array")),
                 _ => {}
@@ -482,14 +696,30 @@ impl<'a> Parser<'a> {
                 Some(b',') => self.pos += 1,
                 Some(b']') => {
                     self.pos += 1;
-                    return Ok(Value::Array(items));
+                    return Ok(self.finish_array(items, open));
                 }
                 _ => return Err(self.error("expected `,` or `]` in array")),
             }
         }
     }
 
+    fn finish_array(&self, items: Vec<Value>, open: usize) -> Value {
+        Value::Array(Array {
+            items,
+            compact: self.was_on_one_line(open),
+        })
+    }
+
+    /// Whether the container that started at `open` and ended at the current
+    /// position was written on a single line. Compactness is not derivable
+    /// from the content — Xcode's printer takes it from the schema — so the
+    /// parser records what the source did and the printer replays it.
+    fn was_on_one_line(&self, open: usize) -> bool {
+        !self.input[open..self.pos].contains(&b'\n')
+    }
+
     fn parse_object(&mut self, depth: usize) -> Result<Value, ParseError> {
+        let open = self.pos;
         self.pos += 1; // `{`
         let mut object = Object::new();
         loop {
@@ -497,6 +727,7 @@ impl<'a> Parser<'a> {
             match self.peek() {
                 Some(b'}') => {
                     self.pos += 1;
+                    object.compact = self.was_on_one_line(open);
                     return Ok(Value::Object(object));
                 }
                 Some(b'"') => {}
@@ -517,6 +748,7 @@ impl<'a> Parser<'a> {
                 Some(b',') => self.pos += 1,
                 Some(b'}') => {
                     self.pos += 1;
+                    object.compact = self.was_on_one_line(open);
                     return Ok(Value::Object(object));
                 }
                 _ => return Err(self.error("expected `,` or `}` in object")),
@@ -660,6 +892,84 @@ mod tests {
     }
 
     #[test]
+    fn a_canonical_document_reprints_unchanged() {
+        assert_eq!(serialize(&parse(CANONICAL).unwrap()), CANONICAL);
+    }
+
+    /// Two expanded containers next to each other in an array share the line at
+    /// their braces; anything else gets its own line.
+    #[test]
+    fn adjacent_expanded_containers_share_the_seam() {
+        let src = "[\n  {\n    \"a\": 1,\n  }, {\n    \"b\": 2,\n  },\n]\n";
+        assert_eq!(serialize(&parse(src).unwrap()), src);
+
+        // A compact neighbour breaks the seam.
+        let mixed = "[\n  {\n    \"a\": 1,\n  },\n  { \"b\": 2 },\n]\n";
+        assert_eq!(serialize(&parse(mixed).unwrap()), mixed);
+
+        // So does a scalar.
+        let scalar = "[\n  {\n    \"a\": 1,\n  },\n  2,\n]\n";
+        assert_eq!(serialize(&parse(scalar).unwrap()), scalar);
+    }
+
+    #[test]
+    fn compactness_is_inherited() {
+        let src = "{ \"a\": [ 1, { \"b\": 2 } ] }";
+        assert_eq!(serialize(&parse(src).unwrap()), format!("{src}\n"));
+    }
+
+    #[test]
+    fn an_expanded_container_ends_every_member_with_a_comma() {
+        let src = "{\n  \"a\": [\n    1,\n    2,\n  ],\n}\n";
+        assert_eq!(serialize(&parse(src).unwrap()), src);
+    }
+
+    #[test]
+    fn empty_containers_print_without_a_gap() {
+        let mut object = Object::new();
+        object.set_compact(true);
+        let mut inner = Object::new();
+        inner.set_compact(true);
+        let mut array = Array::new();
+        array.set_compact(true);
+        object.insert("o".into(), Value::Object(inner));
+        object.insert("a".into(), Value::Array(array));
+        assert_eq!(
+            serialize(&Value::Object(object)),
+            "{ \"o\": {}, \"a\": [] }\n"
+        );
+    }
+
+    /// The five control characters with a short escape, `\u00xx` in lowercase
+    /// for the rest of C0, and `/`, DEL and non-ASCII written through as is —
+    /// measured against `xcprojformatter`.
+    #[test]
+    fn strings_escape_the_way_xcode_writes_them() {
+        let mut out = String::new();
+        write_string(&mut out, "q\"b\\s/f\u{8}\t\n\u{c}\r\u{1b}\u{7f}é😀");
+        assert_eq!(out, "\"q\\\"b\\\\s/f\\b\\t\\n\\f\\r\\u001b\u{7f}é😀\"");
+    }
+
+    #[test]
+    fn a_value_built_from_scratch_prints_expanded() {
+        let mut object = Object::new();
+        object.insert("b".into(), Value::Number("2".into()));
+        object.insert("a".into(), Value::Array(vec![Value::Bool(true)].into()));
+        assert_eq!(
+            serialize(&Value::Object(object)),
+            "{\n  \"b\": 2,\n  \"a\": [\n    true,\n  ],\n}\n"
+        );
+    }
+
+    #[test]
+    fn layout_is_formatting_rather_than_data() {
+        let compact = parse("{ \"a\": [ 1 ] }").unwrap();
+        let expanded = parse("{\n  \"a\": [\n    1,\n  ],\n}").unwrap();
+        assert_eq!(compact, expanded);
+        assert_ne!(serialize(&compact), serialize(&expanded));
+    }
+
+    #[test]
     fn object_key_order_is_the_source_order() {
         let doc = parse(r#"{ "z": 1, "a": 2, "m": 3 }"#).unwrap();
         let keys: Vec<&str> = doc.as_object().unwrap().iter().map(|(k, _)| k).collect();
@@ -691,7 +1001,7 @@ mod tests {
 
     #[test]
     fn empty_and_trailing_comma_containers_parse() {
-        assert_eq!(parse("[]").unwrap(), Value::Array(vec![]));
+        assert_eq!(parse("[]").unwrap(), Value::Array(Array::new()));
         assert_eq!(parse("{}").unwrap(), Value::Object(Object::new()));
         assert_eq!(parse("[1,]").unwrap().as_array().unwrap().len(), 1);
         assert_eq!(parse(r#"{"a":1,}"#).unwrap().as_object().unwrap().len(), 1);

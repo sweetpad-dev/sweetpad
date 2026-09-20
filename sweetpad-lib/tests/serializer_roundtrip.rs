@@ -1,6 +1,7 @@
 //! Round-trip verification for the serializers: parse every fixture file
-//! (`project.pbxproj`, `*.xcscheme`, `contents.xcworkspacedata`,
-//! `*.xcconfig`), re-serialize it, and compare against the raw bytes.
+//! (`project.pbxproj`, `project.xcproj`, `*.xcscheme`,
+//! `contents.xcworkspacedata`, `*.xcconfig`), re-serialize it, and compare
+//! against the raw bytes.
 //!
 //! Two tiers:
 //!
@@ -22,7 +23,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use sweetpad_lib::pbxproj::{self, Value};
-use sweetpad_lib::{pbxproj_writer, xcconfig, xcscheme};
+use sweetpad_lib::{pbxproj_writer, xcconfig, xcproj, xcscheme};
 
 /// Fixture files whose source formatting is not Xcode-canonical (hand-written
 /// synthetic projects), with the reason they can't be byte-exact.
@@ -263,6 +264,28 @@ fn pbxproj_round_trips() {
             "serialized {} parses to different data",
             rel(f)
         );
+    }
+}
+
+/// Xcode 27.2 is the first release that writes `project.xcproj`, and its
+/// output matches `xcrun xcprojformatter`'s byte for byte, so the printer is
+/// held to that exact shape — two-space indentation, a trailing comma after
+/// every member of an expanded container, and the `}, {` seam between adjacent
+/// expanded containers in an array.
+#[test]
+fn xcproj_round_trips() {
+    let files = collect_files(&|p| p.extension() == Some(OsStr::new("xcproj")));
+    assert!(!files.is_empty(), "expected xcproj fixtures");
+    assert_byte_exact(&files, &|f, raw| {
+        let parsed = xcproj::parse(raw).unwrap_or_else(|e| panic!("parse {}: {e}", f.display()));
+        xcproj::serialize(&parsed)
+    });
+    for f in &files {
+        let raw = fs::read_to_string(f).unwrap();
+        let parsed = xcproj::parse(&raw).unwrap();
+        let reparsed = xcproj::parse(&xcproj::serialize(&parsed))
+            .unwrap_or_else(|e| panic!("reparse of serialized {}: {e}", rel(f)));
+        assert_eq!(parsed, reparsed, "serialized {} parses differently", rel(f));
     }
 }
 

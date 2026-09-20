@@ -35,7 +35,13 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
             continue;
         }
         if p.extension() == Some(OsStr::new("xcodeproj")) {
-            out.push(p);
+            // `open` reads `project.pbxproj`. A bundle holding the JSON
+            // `project.xcproj` instead is skipped until it learns the second
+            // format; the printer for it is covered by
+            // `tests/serializer_roundtrip.rs`.
+            if p.join("project.pbxproj").exists() {
+                out.push(p);
+            }
         } else {
             walk(&p, out);
         }
