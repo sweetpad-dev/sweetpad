@@ -615,11 +615,10 @@ fn phase_members(root: &Value, project_dir: &Path, target: &str, phase: &str) ->
                 continue;
             };
             if let Some(children) = node.get("children").and_then(Value::as_array) {
-                // A variant or version group is a member in its own right and
-                // its children are the localizations or versions behind it.
-                if member_of(node, target, phase) {
-                    out.push(base.clone());
-                }
+                // A variant or version group holds the membership for the
+                // localizations or model versions beneath it. The group is a
+                // directory, not a compiler input, so only its children count
+                // — `Model.xcdatamodeld` is built by a rule, not compiled.
                 walk(children, &base, project_dir, target, phase, out, depth + 1);
             } else if member_of(node, target, phase) {
                 out.push(base);

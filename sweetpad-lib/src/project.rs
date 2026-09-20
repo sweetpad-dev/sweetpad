@@ -866,6 +866,7 @@ pub fn target_source_files_from_value(
     // names a root folder whose compilable files are implicit target members —
     // they never appear in a `PBXSourcesBuildPhase`. Walk each for sources, minus
     // any file the group's exception sets exclude from this target.
+    let mut default_groups: BTreeSet<&str> = BTreeSet::new();
     if let Some(group_ids) = target
         .get("fileSystemSynchronizedGroups")
         .and_then(Value::as_array)
@@ -874,34 +875,79 @@ pub fn target_source_files_from_value(
             let Some(group_id) = group_ref.as_str() else {
                 continue;
             };
+            default_groups.insert(group_id);
             let Some(dir) = sync_dirs.get(group_id) else {
                 continue;
             };
-            let excluded = objects.get(group_id).map_or_else(Vec::new, |group| {
-                synchronized_membership_exclusions(objects, group, target_name, dir, &project_dir)
-            });
+            let excluded: Vec<PathBuf> = objects
+                .get(group_id)
+                .map(|group| membership_exceptions(objects, group, target_name))
+                .unwrap_or_default()
+                .iter()
+                // Xcode is inconsistent about whether a relative path is
+                // anchored at the folder or the project root, so both
+                // anchorings go in and either one hides the file.
+                .flat_map(|rel| {
+                    [
+                        join_normalized(dir, rel),
+                        join_normalized(&project_dir, rel),
+                    ]
+                })
+                .collect();
             collect_synchronized_sources(dir, &excluded, &mut out);
+        }
+    }
+
+    // The same `membershipExceptions` list cuts the other way for a target the
+    // folder does not already belong to: those files are the target's whole
+    // share of the folder. NetNewsWire builds five of its extensions this way,
+    // each with an empty `PBXSourcesBuildPhase` — Xcode 27's format spells the
+    // two senses as separate `inclusions` / `exclusions` keys, which is what
+    // made the distinction legible.
+    for (group_id, dir) in &sync_dirs {
+        if default_groups.contains(group_id.as_str()) {
+            continue;
+        }
+        let Some(group) = objects.get(group_id.as_str()) else {
+            continue;
+        };
+        for rel in membership_exceptions(objects, group, target_name) {
+            let candidates = [
+                join_normalized(dir, rel),
+                join_normalized(&project_dir, rel),
+            ];
+            let Some(path) = candidates.into_iter().find(|p| p.is_file()) else {
+                continue;
+            };
+            let compilable = path
+                .extension()
+                .and_then(OsStr::to_str)
+                .is_some_and(|ext| SYNCHRONIZED_SOURCE_EXTS.contains(&ext));
+            if compilable && !out.contains(&path) {
+                out.push(path);
+            }
         }
     }
     Ok(out)
 }
 
-/// The absolute paths a synchronized root group's exception sets exclude from
+/// The relative paths a synchronized root group's exception sets name for
 /// `target_name` — the `membershipExceptions` of each
-/// `PBXFileSystemSynchronizedBuildFileExceptionSet` that targets it (a file
-/// unchecked from the target's membership). Xcode is inconsistent about whether
-/// these relative paths are anchored at the group folder or the project root, so
-/// both anchorings are returned and either match excludes the file.
-fn synchronized_membership_exclusions(
-    objects: &Dict,
-    group: &Value,
+/// `PBXFileSystemSynchronizedBuildFileExceptionSet` that targets it.
+///
+/// One list, two meanings. For a target the folder already belongs to these
+/// are files unchecked from its membership; for any other target they are the
+/// files checked *into* it. Which applies is the caller's to decide, since
+/// only it knows whether the target names the group in
+/// `fileSystemSynchronizedGroups`.
+fn membership_exceptions<'a>(
+    objects: &'a Dict,
+    group: &'a Value,
     target_name: &str,
-    group_dir: &Path,
-    project_dir: &Path,
-) -> Vec<PathBuf> {
-    let mut excluded = Vec::new();
+) -> Vec<&'a str> {
+    let mut named = Vec::new();
     let Some(set_ids) = group.get("exceptions").and_then(Value::as_array) else {
-        return excluded;
+        return named;
     };
     for set_ref in set_ids {
         let Some(set) = set_ref.as_str().and_then(|id| objects.get(id)) else {
@@ -917,13 +963,10 @@ fn synchronized_membership_exclusions(
             continue;
         }
         if let Some(members) = set.get("membershipExceptions").and_then(Value::as_array) {
-            for rel in members.iter().filter_map(Value::as_str) {
-                excluded.push(join_normalized(group_dir, rel));
-                excluded.push(join_normalized(project_dir, rel));
-            }
+            named.extend(members.iter().filter_map(Value::as_str));
         }
     }
-    excluded
+    named
 }
 
 /// Compilable source extensions a synchronized folder contributes to a target —

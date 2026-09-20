@@ -1629,25 +1629,31 @@ different list from the `{ kind: package }` dependency edge.
 
 **Measuring the graph queries turned up three bugs in the pbxproj path, not the
 new one.** Across 931 comparisons (seven queries × every target of all 61
-projects) 875 agree. 39 of the 56 differences are order only, the converter
+projects) 887 agree. 40 of the 44 differences are order only, the converter
 having replaced each phase's order with navigator order — information the
 document simply no longer carries, so each reader is faithful to its own file.
-Every one of the remaining 17 is the pbxproj path under-reporting:
+The remaining four are two pairs:
 
-- **Synchronized-folder inclusions are read as exclusions.** `membershipExceptions`
-  is one list whose sense depends on whether the target is in the folder's
-  `fileSystemSynchronizedGroups`; we treat every entry as an exclusion and never
-  scan a folder for a target that is not a default member. Five NetNewsWire
-  extension targets come back with no sources at all, `Subscribe to Feed` among
-  them, though its exception set names four `.swift` files. The JSON format
-  splits the two senses into separate keys, which is how this surfaced.
+- **Synchronized-folder inclusions were read as exclusions** (fixed).
+  `membershipExceptions` is one list whose sense depends on whether the target
+  is in the folder's `fileSystemSynchronizedGroups`: files unchecked from a
+  member, files checked into a non-member. We treated every entry as an
+  exclusion and never scanned a folder for a target that was not a default
+  member, so five NetNewsWire extension targets came back with no sources at
+  all, `Subscribe to Feed` among them, though its exception set names four
+  `.swift` files. The JSON format splits the two senses into separate keys,
+  which is how this surfaced.
 - **A package product linked only through a build file's `productRef` is
   missed.** `target_has_package_products` reads the target's
   `packageProductDependencies`; Tuist's `xcode_project_with_registry_and_alamofire`
-  links Alamofire without one.
-- The `-Owholemodule` normalization above.
+  links Alamofire without one. Still open, and one of the two remaining pairs.
+- The `-Owholemodule` normalization above. Still open.
 
-Fixing these changes an oracle-scored path, so they are their own commits.
+The other remaining pair is not a bug on either side: converting NetNewsWire
+puts `Tests/NetNewsWire-iOSTests/ActivityItemSourceTests.swift` in a "Recovered
+References" group with explicit membership, where the pbxproj excludes it from
+`NetNewsWireTests` and gives it to nothing. Each reader reports its own
+document.
 
 **Still open: the editing verbs** — `membership`, `fileref`, `group` and
 `folder` write through `tree_pbxproj` and `membership_pbxproj`, which have no

@@ -203,6 +203,59 @@ fn synchronized_folder_sources_are_walked() {
 /// A file unchecked from a target's membership appears in the synchronized
 /// folder's `PBXFileSystemSynchronizedBuildFileExceptionSet.membershipExceptions`
 /// and must be dropped from that target's sources.
+/// The same `membershipExceptions` list cuts the other way for a target that
+/// does not name the folder in `fileSystemSynchronizedGroups`: those files are
+/// the target's whole share of it. NetNewsWire builds five extensions this
+/// way, each with an empty `PBXSourcesBuildPhase`.
+#[test]
+fn synchronized_folder_membership_exception_is_included_for_a_non_member() {
+    let root = std::env::temp_dir().join(format!("sweetpad-sync-inc-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let xcodeproj = root.join("App.xcodeproj");
+    let sources = root.join("App/Sources");
+    fs::create_dir_all(&xcodeproj).unwrap();
+    fs::create_dir_all(&sources).unwrap();
+    fs::write(sources.join("Shared.swift"), "let a = 1\n").unwrap();
+    fs::write(sources.join("AppOnly.swift"), "let b = 2\n").unwrap();
+    fs::write(sources.join("Icon.png"), "not a png\n").unwrap();
+
+    // `App` owns the folder; `Ext` does not, and its exception set names the
+    // two files it takes from it. The resource among them is not a source.
+    let pbxproj = "\
+// !$*UTF8*$!
+{
+\tarchiveVersion = 1;
+\tobjects = {
+\t\tPROJ = { isa = PBXProject; mainGroup = MAIN; targets = (APP, EXT); };
+\t\tMAIN = { isa = PBXGroup; sourceTree = \"<group>\"; children = (APPGRP); };
+\t\tAPPGRP = { isa = PBXGroup; path = App; sourceTree = \"<group>\"; children = (SYNC); };
+\t\tSYNC = { isa = PBXFileSystemSynchronizedRootGroup; path = Sources; sourceTree = \"<group>\"; exceptions = (EXC); };
+\t\tEXC = { isa = PBXFileSystemSynchronizedBuildFileExceptionSet; target = EXT; membershipExceptions = (\"Shared.swift\", \"Icon.png\"); };
+\t\tAPP = { isa = PBXNativeTarget; name = App; buildPhases = (); fileSystemSynchronizedGroups = (SYNC); };
+\t\tEXT = { isa = PBXNativeTarget; name = Ext; buildPhases = (); };
+\t};
+\trootObject = PROJ;
+}
+";
+    fs::write(xcodeproj.join("project.pbxproj"), pbxproj).unwrap();
+
+    let names = |target: &str| {
+        let mut n: Vec<String> = target_source_files(&xcodeproj, target)
+            .unwrap()
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        n.sort();
+        n
+    };
+    // The folder's owner keeps everything: an exception set for another target
+    // takes nothing away from it.
+    assert_eq!(names("App"), ["AppOnly.swift", "Shared.swift"]);
+    assert_eq!(names("Ext"), ["Shared.swift"]);
+
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[test]
 fn synchronized_folder_membership_exception_is_excluded() {
     let root = std::env::temp_dir().join(format!("sweetpad-sync-exc-{}", std::process::id()));
