@@ -1714,12 +1714,42 @@ don't. Naming a single configuration therefore splits a plain key, and
 agreeing on a split key collapses it — each a one-line diff, which
 `xcodebuild` then reads back as intended.
 
-**Still open: the tree verbs** — `membership`, `fileref`, `group` and `folder`
-write through `tree_pbxproj` and `membership_pbxproj`, and name the format
-rather than guessing. `fileref` and `group` need a decision before they can
+**Editing membership.** `membership` holds the vocabulary — phase, entry,
+removal, folder report — and `membership_pbxproj`/`membership_xcproj` and
+`sync_pbxproj`/`sync_xcproj` are the four backends. The per-file details map
+one for one, which a conversion of a project carrying each of them settled:
+
+| `PBXBuildFile` | node |
+| --- | --- |
+| `settings.COMPILER_FLAGS` | `arguments` |
+| `settings.ATTRIBUTES` `Public` / `Private` | `header-role` |
+| `settings.ATTRIBUTES` `RemoveHeadersOnCopy` | `header-preservation` |
+| `settings.ATTRIBUTES` `CodeSignOnCopy` | `code-sign-on-copy` |
+| `platformFilters` | `platforms` |
+
+Two behaviours cannot be the same on both, because the formats disagree about
+what a file is. A pbxproj file reference exists to be pointed at, so removing
+the last membership deletes it and prunes the groups that empties; a
+`project.xcproj` node *is* the navigator entry, and stays listed exactly as
+Xcode leaves a file nothing builds. The same goes for a folder: detaching the
+last target deletes the pbxproj group object, and leaves the JSON node as a
+folder that builds for nothing, which is what Xcode writes for one added for
+reference only. `membership add` also has nothing to create first here, and
+nothing to invent: a path the navigator does not hold is an error rather than a
+new reference, so `--fileref` — a pbxproj object id — is refused.
+
+Verified end to end on a converted project: `folder add` then a build compiles
+the new folder's sources, `membership add` then a build compiles the named
+file, and `exclude`/`include` and `folder add`/`remove` round-trip the document
+byte for byte. The same sweep found the pbxproj path leaving an emptied
+`fileSystemSynchronizedGroups = ( )` behind after a detach, where it already
+pruned the sibling `exceptions`; both are pruned now.
+
+**Still open: `fileref` and `group`.** They need a decision before they can
 cross: the pbxproj addresses both by guid, independent of where they are
 listed, while the JSON document is a true tree whose nodes mostly carry no id
-and are named by their path through it.
+and are named by their path through it, and `group attach`/`detach` — one
+object listed under two groups — has no counterpart in a tree.
 
 ## 12. Project history
 
@@ -1851,3 +1881,12 @@ lives in the sections above and in the named commits.
   plain key shadows its conditional spellings) and fixed the shape an edit
   writes; a custom `INFOPLIST_FILE` inside a synchronized folder records its
   membership exception on this format too.
+
+- **2026-09-20 — editing `project.xcproj` membership.** `pbxproj folder` and
+  `pbxproj membership` read and write both formats, over a shared vocabulary
+  and four backends; a conversion probe settled how the per-file details are
+  spelled. Where the formats genuinely differ they now say so rather than
+  pretending: a node and a folder survive losing their last membership, which
+  a pbxproj reference and group do not. Checked by building a converted
+  project after attaching a folder and after adding a file, and by
+  round-tripping every reversible verb byte for byte.

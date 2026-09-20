@@ -31,8 +31,8 @@ use crate::cli::output::Output;
 use crate::cli::pbxedit::Editable;
 use crate::cli::{CliError, CommandResult, ContainerArgs, Context, Render, Rendered};
 use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_build_settings};
+use sweetpad_lib::membership::ExcludeOutcome;
 use sweetpad_lib::stored_settings::{Assignment, Change, ConfigSettings, Op, Scope, Setting};
-use sweetpad_lib::synchronized::ExcludeOutcome;
 use sweetpad_lib::{settings_pbxproj, settings_xcproj, sync_pbxproj, sync_xcproj};
 
 #[derive(Debug, Subcommand)]

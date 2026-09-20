@@ -144,12 +144,14 @@ pub(super) fn open_document_mut(
 
 /// The target to act on: the `--target` flag, or the project's only target.
 /// Multiple targets without a flag is ambiguity — a hard error naming them.
-pub(super) fn settle_target(root: &Value, flag: Option<&String>) -> Result<String, CliError> {
+pub(super) fn settle_target(
+    document: &pbxedit::Editable,
+    flag: Option<&String>,
+) -> Result<String, CliError> {
     if let Some(target) = flag {
         return Ok(target.clone());
     }
-    let names = sweetpad_lib::settings_pbxproj::target_names(root);
-    match names.as_slice() {
+    match document.target_names().as_slice() {
         [] => Err(CliError::new("the project declares no targets")),
         [only] => Ok(only.clone()),
         many => Err(CliError::new(format!(

@@ -1430,13 +1430,23 @@ and the CLI states the picture it wants rather than the bytes:
 splits that key per configuration, and giving every configuration the same
 value collapses it back, which is how Xcode writes the format.
 
-The other resources — `folder`, `membership`, `fileref`, `group` — still name
-the format and stop. `fileref` and `group` need a decision first: a pbxproj
-addresses a file reference and a group by guid, independent of where they are
-listed, while the JSON document is a true tree whose nodes mostly have no id
-at all and are named by their path through it. The two spellings cannot be the
-same, and `group attach`/`detach` — listing one object under two groups — has
-no counterpart in a tree.
+`folder` and `membership` cross too, with the same grammar and two honest
+differences in what they leave behind. `membership add` has nothing to create
+first on a `project.xcproj` — the navigator node *is* the file — so it invents
+nothing either: a path the tree does not hold is an error, and `--fileref`,
+which names a pbxproj object, is refused. And `membership remove` there takes
+the membership only, leaving the file listed; `folder remove` likewise leaves
+the folder listed, building for nothing. A pbxproj deletes both, because there
+a reference and a group exist to be pointed at, while in the JSON document
+they are the navigator entry itself — which is exactly what Xcode writes for a
+file or folder added for reference only.
+
+`fileref` and `group` still name the format and stop. They need a decision
+first: a pbxproj addresses a file reference and a group by guid, independent of
+where they are listed, while the JSON document is a true tree whose nodes
+mostly have no id at all and are named by their path through it. The two
+spellings cannot be the same, and `group attach`/`detach` — listing one object
+under two groups — has no counterpart in a tree.
 
 ## 9h. v8 — `app screenshot` for native macOS apps
 

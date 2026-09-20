@@ -4,17 +4,25 @@
 //! A synchronized folder makes target membership implicit: every file under
 //! it belongs to the target. Attaching/detaching folders lives here;
 //! per-file opt-outs are `pbxproj membership exclude/include`. All mutation
-//! goes through [`sweetpad_lib::sync_pbxproj`] (parse → mutate → serialize,
-//! byte-for-byte) and never guesses: a workspace needs an unambiguous member
-//! project, and `--target` may be omitted only when the project has exactly
-//! one target.
+//! goes through [`sweetpad_lib::sync_pbxproj`] or
+//! [`sweetpad_lib::sync_xcproj`], whichever format the bundle holds (parse →
+//! mutate → serialize, byte-for-byte), and never guesses: a workspace needs an
+//! unambiguous member project, and `--target` may be omitted only when the
+//! project has exactly one target.
+//!
+//! The two formats part company on what detaching leaves behind. A pbxproj
+//! group object exists to be referenced, so the last target to let go takes it
+//! with them; a `project.xcproj` folder node is the navigator entry itself, and
+//! stays on as a folder that builds for nothing — which is what Xcode writes
+//! for a folder added for reference only.
 
 use clap::{Args, Subcommand};
 
 use crate::cli::output::Output;
-use crate::cli::pbxedit;
+use crate::cli::pbxedit::Editable;
 use crate::cli::{CliError, CommandResult, ContainerArgs, Context, Render, Rendered};
-use sweetpad_lib::sync_pbxproj::{self, AddOutcome, RemoveOutcome};
+use sweetpad_lib::membership::{AddOutcome, RemoveOutcome, TargetRoots};
+use sweetpad_lib::{sync_pbxproj, sync_xcproj};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -87,13 +95,17 @@ impl Render for FolderMutation {
 }
 
 fn add(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
-    let (xcodeproj, mut root) =
-        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
-    let target = super::settle_target(&root, args.target.as_ref())?;
-    let outcome = sync_pbxproj::add_root(&mut root, &target, &args.dir).map_err(CliError::new)?;
+    let (xcodeproj, mut document) =
+        super::open_document_mut(ctx, &args.container, args.target.as_slice(), args.force)?;
+    let target = super::settle_target(&document, args.target.as_ref())?;
+    let outcome = match &mut document {
+        Editable::Pbxproj(root) => sync_pbxproj::add_root(root, &target, &args.dir),
+        Editable::Xcproj(root) => sync_xcproj::add_root(root, &target, &args.dir),
+    }
+    .map_err(CliError::new)?;
 
     let (line, changed, created) = match &outcome {
-        AddOutcome::Created(_) => (
+        AddOutcome::Created => (
             format!(
                 "attached {} to target {target} as a synchronized folder",
                 args.dir
@@ -101,7 +113,7 @@ fn add(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
             true,
             true,
         ),
-        AddOutcome::AttachedExisting(_) => (
+        AddOutcome::AttachedExisting => (
             format!(
                 "attached the existing synchronized folder {} to target {target}",
                 args.dir
@@ -109,7 +121,7 @@ fn add(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
             true,
             false,
         ),
-        AddOutcome::AlreadyAttached(_) => (
+        AddOutcome::AlreadyAttached => (
             format!(
                 "{} is already a synchronized folder of target {target}",
                 args.dir
@@ -119,7 +131,7 @@ fn add(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
         ),
     };
     if changed {
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        document.write(&xcodeproj)?;
     }
 
     // A brand-new root may point at a folder that doesn't exist yet — create
@@ -150,11 +162,14 @@ fn add(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
 }
 
 fn remove(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
-    let (xcodeproj, mut root) =
-        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
-    let target = super::settle_target(&root, args.target.as_ref())?;
-    let outcome =
-        sync_pbxproj::remove_root(&mut root, &target, &args.dir).map_err(CliError::new)?;
+    let (xcodeproj, mut document) =
+        super::open_document_mut(ctx, &args.container, args.target.as_slice(), args.force)?;
+    let target = super::settle_target(&document, args.target.as_ref())?;
+    let outcome = match &mut document {
+        Editable::Pbxproj(root) => sync_pbxproj::remove_root(root, &target, &args.dir),
+        Editable::Xcproj(root) => sync_xcproj::remove_root(root, &target, &args.dir),
+    }
+    .map_err(CliError::new)?;
 
     let (line, changed, deleted) = match &outcome {
         RemoveOutcome::Detached { deleted_object, .. } => (
@@ -172,7 +187,7 @@ fn remove(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
         ),
     };
     if changed {
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        document.write(&xcodeproj)?;
     }
     let note = deleted.then(|| {
         format!(
@@ -198,7 +213,7 @@ fn remove(ctx: &mut Context, args: &FolderArgs) -> CommandResult {
 /// The `pbxproj folder list` payload: per target, its synchronized folders
 /// and each folder's membership exceptions.
 struct ListResult {
-    targets: Vec<sync_pbxproj::TargetRoots>,
+    targets: Vec<TargetRoots>,
 }
 
 impl Render for ListResult {
@@ -244,8 +259,12 @@ impl Render for ListResult {
 }
 
 fn list(ctx: &mut Context, args: &ListArgs) -> CommandResult {
-    let (_, root) = super::open_project(ctx, &args.container, args.target.as_ref())?;
-    let mut targets = sync_pbxproj::list(&root).map_err(CliError::new)?;
+    let (_, document) = super::open_document(ctx, &args.container, args.target.as_ref())?;
+    let mut targets = match &document {
+        Editable::Pbxproj(root) => sync_pbxproj::list(root),
+        Editable::Xcproj(root) => sync_xcproj::list(root),
+    }
+    .map_err(CliError::new)?;
     if let Some(filter) = &args.target {
         targets.retain(|t| &t.target == filter);
         if targets.is_empty() {

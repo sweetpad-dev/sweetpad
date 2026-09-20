@@ -8,20 +8,29 @@
 //! its exceptions *is* the membership statement; `ls` expands it.
 //!
 //! The mutation verbs are mechanism-specific and cross-hint: `remove` edits
-//! classic build-file entries ([`sweetpad_lib::membership_pbxproj`]) and
-//! errors toward `exclude` for files built via a synchronized folder;
-//! `exclude`/`include` edit folder exception sets
-//! ([`sweetpad_lib::sync_pbxproj`]) and error toward `remove` for files with
-//! classic entries. The wrong verb never silently does the other thing.
+//! classic per-file entries and errors toward `exclude` for files built via a
+//! synchronized folder; `exclude`/`include` edit folder exceptions and error
+//! toward `remove` for files with classic entries. The wrong verb never
+//! silently does the other thing.
+//!
+//! Both document formats are edited, through the `membership_*` and `sync_*`
+//! module pairs. Two differences show through. A `project.xcproj` records
+//! membership on the file's own node, so `add` has nothing to create first —
+//! and nothing to invent either: a path the navigator does not hold is an
+//! error rather than a new reference. And `remove` there takes the membership
+//! only; the node stays listed, where a pbxproj deletes a reference no target
+//! builds anymore. `--fileref` addresses a pbxproj object and has no
+//! counterpart, so it is refused on the other format.
 
 use clap::{Args, Subcommand};
 
 use crate::cli::output::Output;
-use crate::cli::pbxedit;
+use crate::cli::pbxedit::Editable;
 use crate::cli::{CliError, CommandResult, ContainerArgs, Context, Render, Rendered};
-use sweetpad_lib::membership_pbxproj::{self, FileEntry, Removal};
-use sweetpad_lib::pbxproj::Value;
-use sweetpad_lib::sync_pbxproj::{self, ExcludeOutcome, IncludeOutcome};
+use sweetpad_lib::membership::{
+    Addition, ExcludeOutcome, FileEntry, IncludeOutcome, Phase, Removal, RootReport,
+};
+use sweetpad_lib::{membership_pbxproj, membership_xcproj, sync_pbxproj, sync_xcproj};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -137,11 +146,28 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     }
 }
 
-/// Whether `path` has a classic build-file entry for `target`.
-fn has_classic_entry(root: &Value, target: &str, path: &str) -> bool {
-    membership_pbxproj::classic_members(root, target)
-        .map(|entries| entries.iter().any(|e| e.path == path.trim_end_matches('/')))
-        .unwrap_or(false)
+/// Whether `path` has a classic per-file entry for `target`.
+fn has_classic_entry(document: &Editable, target: &str, path: &str) -> bool {
+    match document {
+        Editable::Pbxproj(root) => membership_pbxproj::classic_members(root, target)
+            .map(|entries| entries.iter().any(|e| e.path == path.trim_end_matches('/')))
+            .unwrap_or(false),
+        Editable::Xcproj(root) => membership_xcproj::has_entry(root, target, path),
+    }
+}
+
+/// The synchronized folder of `target` that builds `path`, if any.
+fn containing_folder(
+    document: &Editable,
+    target: &str,
+    path: &str,
+) -> Result<Option<String>, CliError> {
+    match document {
+        Editable::Pbxproj(root) => {
+            sync_pbxproj::containing_folder(root, target, path).map_err(CliError::new)
+        }
+        Editable::Xcproj(root) => Ok(sync_xcproj::folder_of(root, target, path)),
+    }
 }
 
 // --- list ---
@@ -150,7 +176,7 @@ fn has_classic_entry(root: &Value, target: &str, path: &str) -> bool {
 struct TargetMembership {
     target: String,
     explicit: Vec<FileEntry>,
-    folders: Vec<sync_pbxproj::RootReport>,
+    folders: Vec<RootReport>,
 }
 
 /// The `pbxproj membership list` payload.
@@ -204,9 +230,7 @@ impl Render for ListResult {
                             "path": e.path,
                             "phase": e.phase.kind(),
                             "phaseName": match &e.phase {
-                                membership_pbxproj::Phase::Copy(name) => {
-                                    Some(name.as_str())
-                                }
+                                Phase::Copy(name) => Some(name.as_str()),
                                 _ => None,
                             },
                             "kind": e.kind.as_str(),
@@ -238,15 +262,23 @@ impl Render for ListResult {
 }
 
 fn list(ctx: &mut Context, args: &ListArgs) -> CommandResult {
-    let (_, root) = super::open_project(ctx, &args.container, args.target.as_ref())?;
+    let (_, document) = super::open_document(ctx, &args.container, args.target.as_ref())?;
     let names = match &args.target {
         Some(t) => vec![t.clone()],
-        None => sweetpad_lib::settings_pbxproj::target_names(&root),
+        None => document.target_names(),
     };
-    let folder_reports = sync_pbxproj::list(&root).map_err(CliError::new)?;
+    let folder_reports = match &document {
+        Editable::Pbxproj(root) => sync_pbxproj::list(root),
+        Editable::Xcproj(root) => sync_xcproj::list(root),
+    }
+    .map_err(CliError::new)?;
     let mut targets = Vec::new();
     for name in names {
-        let explicit = membership_pbxproj::classic_members(&root, &name).map_err(CliError::new)?;
+        let explicit = match &document {
+            Editable::Pbxproj(root) => membership_pbxproj::classic_members(root, &name),
+            Editable::Xcproj(root) => membership_xcproj::classic_members(root, &name),
+        }
+        .map_err(CliError::new)?;
         let folders = folder_reports
             .iter()
             .find(|t| t.target == name)
@@ -317,24 +349,30 @@ fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
             "name at least one file, by path or by `--fileref <ID>`",
         ));
     }
-    let (xcodeproj, mut root) =
-        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
-    let target = super::settle_target(&root, args.target.as_ref())?;
-    let phase = membership_pbxproj::Phase::parse(&args.phase)
+    let (xcodeproj, mut document) =
+        super::open_document_mut(ctx, &args.container, args.target.as_slice(), args.force)?;
+    let target = super::settle_target(&document, args.target.as_ref())?;
+    let phase = Phase::parse(&args.phase)
         .ok_or_else(|| CliError::new(format!("unknown build phase `{}`", args.phase)))?;
+    if !args.filerefs.is_empty() && matches!(document, Editable::Xcproj(_)) {
+        return Err(CliError::new(
+            "--fileref names a project.pbxproj object; this project stores its files as \
+             navigator nodes, so name them by path",
+        ));
+    }
 
     // Cross-hint, mirroring `remove`: a file a synchronized folder already
     // builds needs no classic entry, and adding one builds it twice. Ids are
     // resolved to their paths first, so naming a file either way gets the same
     // check.
     let mut named = args.paths.clone();
-    for id in &args.filerefs {
-        named.push(membership_pbxproj::ref_path(&root, id).map_err(CliError::new)?);
+    if let Editable::Pbxproj(root) = &document {
+        for id in &args.filerefs {
+            named.push(membership_pbxproj::ref_path(root, id).map_err(CliError::new)?);
+        }
     }
     for path in &named {
-        if let Some(folder) =
-            sync_pbxproj::containing_folder(&root, &target, path).map_err(CliError::new)?
-        {
+        if let Some(folder) = containing_folder(&document, &target, path)? {
             return Err(CliError::new(format!(
                 "{path} sits in the synchronized folder {folder}, which is already the \
                  membership for target {target} — a classic entry would build it twice. \
@@ -343,21 +381,41 @@ fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
         }
     }
 
-    let mut additions = membership_pbxproj::add_membership(&mut root, &target, &args.paths, &phase)
-        .map_err(CliError::new)?;
-    additions.extend(
-        membership_pbxproj::add_membership_by_ids(&mut root, &target, &args.filerefs, &phase)
-            .map_err(CliError::new)?,
-    );
+    let additions = add_entries(&mut document, &target, &args.paths, &args.filerefs, &phase)?;
     if additions.iter().any(|a| !a.already_member) {
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        document.write(&xcodeproj)?;
     }
     Ok(Rendered::data(AddResult {
-        file: xcodeproj.join("project.pbxproj").display().to_string(),
+        file: document.path(&xcodeproj).display().to_string(),
         target,
         phase: args.phase.clone(),
         additions,
     }))
+}
+
+/// Give the named files a membership, in whichever format the document is in.
+/// Ids are pbxproj-only and are refused earlier on the other format.
+fn add_entries(
+    document: &mut Editable,
+    target: &str,
+    paths: &[String],
+    filerefs: &[String],
+    phase: &Phase,
+) -> Result<Vec<Addition>, CliError> {
+    match document {
+        Editable::Pbxproj(root) => {
+            let mut additions = membership_pbxproj::add_membership(root, target, paths, phase)
+                .map_err(CliError::new)?;
+            additions.extend(
+                membership_pbxproj::add_membership_by_ids(root, target, filerefs, phase)
+                    .map_err(CliError::new)?,
+            );
+            Ok(additions)
+        }
+        Editable::Xcproj(root) => {
+            membership_xcproj::add_membership(root, target, paths, phase).map_err(CliError::new)
+        }
+    }
 }
 
 struct RemoveResult {
@@ -421,16 +479,15 @@ impl Render for RemoveResult {
 }
 
 fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {
-    let (xcodeproj, mut root) =
-        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
-    let target = super::settle_target(&root, args.target.as_ref())?;
+    let (xcodeproj, mut document) =
+        super::open_document_mut(ctx, &args.container, args.target.as_slice(), args.force)?;
+    let target = super::settle_target(&document, args.target.as_ref())?;
 
     // Cross-hint: a file built via a synchronized folder has no classic entry
-    // to remove — the folder's exception set is the membership mechanism.
+    // to remove — the folder's exceptions are the membership mechanism.
     for path in &args.paths {
-        if !has_classic_entry(&root, &target, path)
-            && let Some(folder) =
-                sync_pbxproj::containing_folder(&root, &target, path).map_err(CliError::new)?
+        if !has_classic_entry(&document, &target, path)
+            && let Some(folder) = containing_folder(&document, &target, path)?
         {
             return Err(CliError::new(format!(
                 "{path} is built via the synchronized folder {folder} — use \
@@ -439,13 +496,18 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {
         }
     }
 
-    let removals = membership_pbxproj::remove_membership(&mut root, &target, &args.paths)
-        .map_err(CliError::new)?;
+    let removals = match &mut document {
+        Editable::Pbxproj(root) => {
+            membership_pbxproj::remove_membership(root, &target, &args.paths)
+        }
+        Editable::Xcproj(root) => membership_xcproj::remove_membership(root, &target, &args.paths),
+    }
+    .map_err(CliError::new)?;
     if removals.iter().any(|r| !r.removed_phases.is_empty()) {
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        document.write(&xcodeproj)?;
     }
     Ok(Rendered::data(RemoveResult {
-        file: xcodeproj.join("project.pbxproj").display().to_string(),
+        file: document.path(&xcodeproj).display().to_string(),
         target,
         removals,
     }))
@@ -470,13 +532,13 @@ impl Render for ExceptionMutation {
 }
 
 fn exclude(ctx: &mut Context, args: &PathArgs) -> CommandResult {
-    let (xcodeproj, mut root) =
-        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
-    let target = super::settle_target(&root, args.target.as_ref())?;
+    let (xcodeproj, mut document) =
+        super::open_document_mut(ctx, &args.container, args.target.as_slice(), args.force)?;
+    let target = super::settle_target(&document, args.target.as_ref())?;
 
-    // Cross-hint: a classic build-file entry isn't silenced by an exception —
+    // Cross-hint: a classic per-file entry isn't silenced by an exception —
     // it has to be removed.
-    if has_classic_entry(&root, &target, &args.path) {
+    if has_classic_entry(&document, &target, &args.path) {
         return Err(CliError::new(format!(
             "{} is built via an explicit build-file entry, not a synchronized \
              folder — use `pbxproj membership remove {} --target {target}`",
@@ -484,7 +546,11 @@ fn exclude(ctx: &mut Context, args: &PathArgs) -> CommandResult {
         )));
     }
 
-    let outcome = sync_pbxproj::exclude(&mut root, &target, &args.path).map_err(CliError::new)?;
+    let outcome = match &mut document {
+        Editable::Pbxproj(root) => sync_pbxproj::exclude(root, &target, &args.path),
+        Editable::Xcproj(root) => sync_xcproj::exclude(root, &target, &args.path),
+    }
+    .map_err(CliError::new)?;
     let (line, changed, root_dir, exception) = match outcome {
         ExcludeOutcome::Added {
             root_dir,
@@ -509,7 +575,7 @@ fn exclude(ctx: &mut Context, args: &PathArgs) -> CommandResult {
         ),
     };
     if changed {
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        document.write(&xcodeproj)?;
     }
     Ok(Rendered::data(ExceptionMutation {
         line,
@@ -524,10 +590,14 @@ fn exclude(ctx: &mut Context, args: &PathArgs) -> CommandResult {
 }
 
 fn include(ctx: &mut Context, args: &PathArgs) -> CommandResult {
-    let (xcodeproj, mut root) =
-        super::open_project_mut(ctx, &args.container, args.target.as_ref(), args.force)?;
-    let target = super::settle_target(&root, args.target.as_ref())?;
-    let outcome = sync_pbxproj::include(&mut root, &target, &args.path).map_err(CliError::new)?;
+    let (xcodeproj, mut document) =
+        super::open_document_mut(ctx, &args.container, args.target.as_slice(), args.force)?;
+    let target = super::settle_target(&document, args.target.as_ref())?;
+    let outcome = match &mut document {
+        Editable::Pbxproj(root) => sync_pbxproj::include(root, &target, &args.path),
+        Editable::Xcproj(root) => sync_xcproj::include(root, &target, &args.path),
+    }
+    .map_err(CliError::new)?;
 
     let (line, changed) = match &outcome {
         IncludeOutcome::Removed {
@@ -546,7 +616,7 @@ fn include(ctx: &mut Context, args: &PathArgs) -> CommandResult {
         ),
     };
     if changed {
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        document.write(&xcodeproj)?;
     }
     Ok(Rendered::data(ExceptionMutation {
         line,

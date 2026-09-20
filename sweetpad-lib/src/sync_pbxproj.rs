@@ -24,42 +24,9 @@ use crate::spm_pbxproj::fresh_guid;
 const ROOT_ISA: &str = "PBXFileSystemSynchronizedRootGroup";
 const EXCEPTION_ISA: &str = "PBXFileSystemSynchronizedBuildFileExceptionSet";
 
-/// One synchronized root as seen by one target: where the folder lives and
-/// which of its files that target opts out of.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RootReport {
-    pub guid: String,
-    /// Project-dir-relative folder path (group-tree walk, like `SRCROOT`).
-    pub dir: String,
-    /// The target's `membershipExceptions`, root-relative, in file order.
-    pub exceptions: Vec<String>,
-}
-
-/// A target's synchronized roots, for `source list`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TargetRoots {
-    pub target: String,
-    pub roots: Vec<RootReport>,
-}
-
-/// The result of attaching a root: a brand-new object, an existing root (used
-/// by another target) newly attached, or nothing to do.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AddOutcome {
-    Created(String),
-    AttachedExisting(String),
-    AlreadyAttached(String),
-}
-
-/// The result of detaching a root. `deleted_object` is set when no other
-/// target still references it, so the group object itself was removed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RemoveOutcome {
-    Detached { guid: String, deleted_object: bool },
-    NotAttached,
-}
-
-pub use crate::synchronized::{ExcludeOutcome, IncludeOutcome};
+pub use crate::membership::{
+    AddOutcome, ExcludeOutcome, IncludeOutcome, RemoveOutcome, RootReport, TargetRoots,
+};
 
 /// Synchronized roots and exceptions per target, in file order — targets with
 /// no roots included (empty `roots`), so a report can show "none".
@@ -81,7 +48,6 @@ pub fn list(root: &Value) -> Result<Vec<TargetRoots>, String> {
             roots.push(RootReport {
                 dir: root_dir(objects, &root_guid),
                 exceptions: exceptions_of(objects, &root_guid, target_guid),
-                guid: root_guid,
             });
         }
         out.push(TargetRoots {
@@ -111,11 +77,11 @@ pub fn add_root(root: &mut Value, target: &str, dir: &str) -> Result<AddOutcome,
 
     if let Some(existing) = root_guid_for_dir(objects_ref, &dir) {
         if attached_roots(objects_ref, &target_guid).contains(&existing) {
-            return Ok(AddOutcome::AlreadyAttached(existing));
+            return Ok(AddOutcome::AlreadyAttached);
         }
         let objects = objects_mut(root)?;
         attach_to_target(objects, &target_guid, &existing);
-        return Ok(AddOutcome::AttachedExisting(existing));
+        return Ok(AddOutcome::AttachedExisting);
     }
 
     let objects = objects_mut(root)?;
@@ -130,7 +96,7 @@ pub fn add_root(root: &mut Value, target: &str, dir: &str) -> Result<AddOutcome,
 
     attach_to_target(objects, &target_guid, &guid);
     insert_child(objects, &main_group, products_group.as_deref(), &guid);
-    Ok(AddOutcome::Created(guid))
+    Ok(AddOutcome::Created)
 }
 
 /// Detach the root at `dir` from `target`, dropping the target's exception
@@ -152,6 +118,7 @@ pub fn remove_root(root: &mut Value, target: &str, dir: &str) -> Result<RemoveOu
 
     let objects = objects_mut(root)?;
     remove_from_array(objects, &target_guid, "fileSystemSynchronizedGroups", &guid);
+    drop_key_if_empty_array(objects, &target_guid, "fileSystemSynchronizedGroups");
     if let Some(set_guid) = exception_set_of(objects, &guid, &target_guid) {
         remove_from_array(objects, &guid, "exceptions", &set_guid);
         drop_key_if_empty_array(objects, &guid, "exceptions");
@@ -191,7 +158,6 @@ pub fn remove_root(root: &mut Value, target: &str, dir: &str) -> Result<RemoveOu
         objects.remove(&guid);
     }
     Ok(RemoveOutcome::Detached {
-        guid,
         deleted_object: !still_referenced,
     })
 }
@@ -763,9 +729,7 @@ mod tests {
     fn add_root_creates_attaches_and_reuses() {
         let mut root = parsed();
         let outcome = add_root(&mut root, "Widget", "WidgetSources").unwrap();
-        let AddOutcome::Created(guid) = outcome else {
-            panic!("expected Created, got {outcome:?}");
-        };
+        assert_eq!(outcome, AddOutcome::Created);
         // In the tree before Products, attached to the target, single-line.
         let text = round_trips(&root);
         assert!(text.contains("WidgetSources"));
@@ -776,12 +740,12 @@ mod tests {
         // The same folder attaches to another target by reusing the object.
         assert_eq!(
             add_root(&mut root, "App", "WidgetSources").unwrap(),
-            AddOutcome::AttachedExisting(guid.clone())
+            AddOutcome::AttachedExisting
         );
         // Attaching twice is a no-op.
         assert_eq!(
             add_root(&mut root, "App", "WidgetSources").unwrap(),
-            AddOutcome::AlreadyAttached(guid)
+            AddOutcome::AlreadyAttached
         );
     }
 
@@ -813,7 +777,6 @@ mod tests {
         assert_eq!(
             outcome,
             RemoveOutcome::Detached {
-                guid: "SR1".into(),
                 deleted_object: false
             }
         );
@@ -826,7 +789,6 @@ mod tests {
         assert_eq!(
             outcome,
             RemoveOutcome::Detached {
-                guid: "SR1".into(),
                 deleted_object: true
             }
         );
@@ -844,7 +806,7 @@ mod tests {
         let mut root = parsed();
         assert_eq!(
             add_root(&mut root, "App", "./App/").unwrap(),
-            AddOutcome::AlreadyAttached("SR1".into())
+            AddOutcome::AlreadyAttached
         );
         let outcome = exclude(&mut root, "App", "./App/Info.plist").unwrap();
         assert_eq!(

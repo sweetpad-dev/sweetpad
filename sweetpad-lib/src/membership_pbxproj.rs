@@ -28,135 +28,34 @@ use crate::pbxproj::{Dict, Value};
 /// in for a file the way a plain reference does.
 const REF_ISAS: [&str; 3] = ["PBXFileReference", "PBXVariantGroup", "XCVersionGroup"];
 
-/// The build phase a classic entry belongs to.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Phase {
-    Sources,
-    Resources,
-    Headers,
-    Frameworks,
-    /// A `PBXCopyFilesBuildPhase`, with its display name (e.g.
-    /// `Embed XPC Services`).
-    Copy(String),
-}
+pub use crate::membership::{Addition, FileEntry, Phase, RefKind, Removal};
 
-impl Phase {
-    /// The stable machine name (`sources`, `resources`, `headers`,
-    /// `frameworks`, `copy`).
-    #[must_use]
-    pub fn kind(&self) -> &'static str {
-        match self {
-            Phase::Sources => "sources",
-            Phase::Resources => "resources",
-            Phase::Headers => "headers",
-            Phase::Frameworks => "frameworks",
-            Phase::Copy(_) => "copy",
+/// The phase a build-phase object is, or `None` for one with no file
+/// membership to speak of (a script phase).
+fn phase_of(isa: &str, phase: &Value) -> Option<Phase> {
+    match isa {
+        "PBXSourcesBuildPhase" => Some(Phase::Sources),
+        "PBXResourcesBuildPhase" => Some(Phase::Resources),
+        "PBXHeadersBuildPhase" => Some(Phase::Headers),
+        "PBXFrameworksBuildPhase" => Some(Phase::Frameworks),
+        "PBXCopyFilesBuildPhase" => {
+            let name = phase
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("Copy Files");
+            Some(Phase::Copy(name.to_string()))
         }
-    }
-
-    /// The phase a `--phase` flag names. Copy phases are absent on purpose: a
-    /// target can carry several and they are told apart by name, so a kind
-    /// alone does not address one.
-    #[must_use]
-    pub fn parse(kind: &str) -> Option<Phase> {
-        match kind {
-            "sources" => Some(Phase::Sources),
-            "resources" => Some(Phase::Resources),
-            "headers" => Some(Phase::Headers),
-            "frameworks" => Some(Phase::Frameworks),
-            _ => None,
-        }
-    }
-
-    /// Human rendering: the kind, plus the copy phase's name.
-    #[must_use]
-    pub fn display(&self) -> String {
-        match self {
-            Phase::Copy(name) => format!("copy ({name})"),
-            other => other.kind().to_string(),
-        }
-    }
-
-    fn of(isa: &str, phase: &Value) -> Option<Phase> {
-        match isa {
-            "PBXSourcesBuildPhase" => Some(Phase::Sources),
-            "PBXResourcesBuildPhase" => Some(Phase::Resources),
-            "PBXHeadersBuildPhase" => Some(Phase::Headers),
-            "PBXFrameworksBuildPhase" => Some(Phase::Frameworks),
-            "PBXCopyFilesBuildPhase" => {
-                let name = phase
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or("Copy Files");
-                Some(Phase::Copy(name.to_string()))
-            }
-            // Script phases have no file membership to speak of.
-            _ => None,
-        }
+        _ => None,
     }
 }
 
-/// What kind of node the build file references — files convert to folders;
-/// variant/version groups are the constructs a script leaves classic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RefKind {
-    File,
-    VariantGroup,
-    VersionGroup,
-    Other,
-}
-
-impl RefKind {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            RefKind::File => "file",
-            RefKind::VariantGroup => "variantGroup",
-            RefKind::VersionGroup => "versionGroup",
-            RefKind::Other => "other",
-        }
+fn ref_kind_of(isa: &str) -> RefKind {
+    match isa {
+        "PBXFileReference" => RefKind::File,
+        "PBXVariantGroup" => RefKind::VariantGroup,
+        "XCVersionGroup" => RefKind::VersionGroup,
+        _ => RefKind::Other,
     }
-
-    fn of(isa: &str) -> RefKind {
-        match isa {
-            "PBXFileReference" => RefKind::File,
-            "PBXVariantGroup" => RefKind::VariantGroup,
-            "XCVersionGroup" => RefKind::VersionGroup,
-            _ => RefKind::Other,
-        }
-    }
-}
-
-/// One classic membership entry: a file (or variant/version group) a target
-/// builds, with the per-file details its `PBXBuildFile` carries.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileEntry {
-    /// Project-dir-relative resolved path (group-tree walk).
-    pub path: String,
-    pub phase: Phase,
-    pub kind: RefKind,
-    /// `settings.COMPILER_FLAGS` — per-file compiler flags.
-    pub compiler_flags: Option<String>,
-    /// `settings.ATTRIBUTES` — e.g. `Public`/`Private` header visibility,
-    /// `RemoveHeadersOnCopy`, `CodeSignOnCopy`.
-    pub attributes: Vec<String>,
-    /// `platformFilters` (or the older singular `platformFilter`).
-    pub platform_filters: Vec<String>,
-}
-
-/// The outcome of removing one path's membership from one target. Empty
-/// `removed_phases` records the no-op (the path wasn't a member), so re-run
-/// scripts stay green.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Removal {
-    pub path: String,
-    /// Display names of the phases entries were removed from.
-    pub removed_phases: Vec<String>,
-    /// Set when no build file (of any target) references the file anymore,
-    /// so the reference itself was deleted from the project.
-    pub deleted_reference: bool,
-    /// Ancestor groups deleted because the reference removal emptied them.
-    pub pruned_groups: usize,
 }
 
 /// A target's classic membership entries, in build-phase order.
@@ -176,7 +75,7 @@ pub fn classic_members(root: &Value, target: &str) -> Result<Vec<FileEntry>, Str
             let Some(file_ref) = str_field(build_file, "fileRef") else {
                 continue;
             };
-            let kind = RefKind::of(objects.get(file_ref).map_or("", isa));
+            let kind = ref_kind_of(objects.get(file_ref).map_or("", isa));
             entries.push(FileEntry {
                 path: node_path(objects, file_ref),
                 phase: phase.clone(),
@@ -279,18 +178,6 @@ pub fn remove_membership(
         });
     }
     Ok(removals)
-}
-
-/// The outcome of adding one path to one target's phase. `already_member`
-/// records the no-op, so re-run scripts stay green.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Addition {
-    pub path: String,
-    /// Display name of the phase the entry joined.
-    pub phase: String,
-    /// The `PBXBuildFile` created, or the existing one on a no-op.
-    pub build_file: String,
-    pub already_member: bool,
 }
 
 /// Give `target` a classic build-file entry for each path, in `phase`.
@@ -441,7 +328,7 @@ fn add_resolved(
             additions.push(Addition {
                 path,
                 phase: phase.display(),
-                build_file: existing,
+                build_file: Some(existing),
                 already_member: true,
             });
             continue;
@@ -472,7 +359,7 @@ fn add_resolved(
         additions.push(Addition {
             path,
             phase: phase.display(),
-            build_file: bf_guid,
+            build_file: Some(bf_guid),
             already_member: false,
         });
     }
@@ -491,7 +378,7 @@ fn phase_guid_of(objects: &Dict, target_guid: &str, want: &Phase) -> Option<Stri
     phase_guids.into_iter().find(|guid| {
         objects
             .get(guid)
-            .and_then(|obj| Phase::of(isa(obj), obj))
+            .and_then(|obj| phase_of(isa(obj), obj))
             .is_some_and(|found| &found == want)
     })
 }
@@ -528,7 +415,7 @@ fn phases_of(objects: &Dict, target_guid: &str) -> Vec<(Phase, Vec<String>)> {
         let Some(phase_obj) = objects.get(guid) else {
             continue;
         };
-        let Some(phase) = Phase::of(isa(phase_obj), phase_obj) else {
+        let Some(phase) = phase_of(isa(phase_obj), phase_obj) else {
             continue;
         };
         let files = phase_obj
@@ -919,7 +806,10 @@ mod tests {
 
         let text = round_trips(&root);
         let bf = &added[0].build_file;
-        assert!(text.contains(bf), "the build file exists");
+        assert!(
+            text.contains(bf.as_deref().unwrap()),
+            "the build file exists"
+        );
         // It joined the sources phase, and the resources entry it already had
         // is untouched.
         let members = classic_members(&root, "App").unwrap();
@@ -947,7 +837,8 @@ mod tests {
         .unwrap();
         assert!(added[0].already_member);
         assert_eq!(
-            added[0].build_file, "BF1",
+            added[0].build_file.as_deref(),
+            Some("BF1"),
             "it reports the entry that exists"
         );
         let after = crate::pbxproj_writer::serialize(&root, "Fix");
@@ -1157,7 +1048,7 @@ mod tests {
         let additions =
             add_membership_by_ids(&mut root, "App", &["FR1".into()], &Phase::Sources).unwrap();
         assert!(additions[0].already_member);
-        assert_eq!(additions[0].build_file, "BF1");
+        assert_eq!(additions[0].build_file.as_deref(), Some("BF1"));
         assert_eq!(
             before,
             crate::pbxproj_writer::serialize(&root, "Fix"),

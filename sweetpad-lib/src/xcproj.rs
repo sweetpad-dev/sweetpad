@@ -175,6 +175,11 @@ impl Array {
         self.items.insert(index, value);
     }
 
+    /// Keep only the items `keep` accepts, in order.
+    pub fn retain(&mut self, keep: impl FnMut(&Value) -> bool) {
+        self.items.retain(keep);
+    }
+
     /// See [`Object::set_compact`].
     pub fn set_compact(&mut self, compact: bool) {
         self.compact = compact;
