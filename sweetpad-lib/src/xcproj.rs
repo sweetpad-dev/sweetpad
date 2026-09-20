@@ -78,6 +78,47 @@ impl Object {
         self.entries.iter().map(|(k, v)| (k.as_str(), v))
     }
 
+    /// Mutable lookup by key.
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        let i = *self.index.get(key)?;
+        Some(&mut self.entries[i].1)
+    }
+
+    /// Remove an entry, returning its value, and re-index what followed it.
+    pub fn remove(&mut self, key: &str) -> Option<Value> {
+        let i = self.index.remove(key)?;
+        let (_, value) = self.entries.remove(i);
+        for pos in self.index.values_mut() {
+            if *pos > i {
+                *pos -= 1;
+            }
+        }
+        Some(value)
+    }
+
+    /// Insert at the key's byte-wise alphabetical position, or replace in place
+    /// if the key is already there. Xcode keeps `build-settings` sorted — all
+    /// 199 maps in the corpus are — so a new entry lands where Xcode would have
+    /// put it and the diff stays one line.
+    pub fn insert_sorted(&mut self, key: String, value: Value) {
+        if let Some(&i) = self.index.get(&key) {
+            self.entries[i].1 = value;
+            return;
+        }
+        let at = self
+            .entries
+            .iter()
+            .position(|(k, _)| k.as_str() > key.as_str())
+            .unwrap_or(self.entries.len());
+        for pos in self.index.values_mut() {
+            if *pos >= at {
+                *pos += 1;
+            }
+        }
+        self.index.insert(key.clone(), at);
+        self.entries.insert(at, (key, value));
+    }
+
     /// Ask the printer to put this object on one line. Compactness is
     /// inherited, so everything nested inside prints on that line too.
     pub fn set_compact(&mut self, compact: bool) {
@@ -142,6 +183,12 @@ impl std::ops::Deref for Array {
 
     fn deref(&self) -> &[Value] {
         &self.items
+    }
+}
+
+impl std::ops::DerefMut for Array {
+    fn deref_mut(&mut self) -> &mut [Value] {
+        &mut self.items
     }
 }
 
@@ -240,6 +287,19 @@ impl Value {
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.as_object().and_then(|o| o.get(key))
+    }
+
+    #[must_use]
+    pub fn as_object_mut(&mut self) -> Option<&mut Object> {
+        match self {
+            Value::Object(o) => Some(o),
+            _ => None,
+        }
+    }
+
+    /// Mutable lookup of a key when this value is an object.
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        self.as_object_mut().and_then(|o| o.get_mut(key))
     }
 }
 
