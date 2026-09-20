@@ -33,5 +33,6 @@ pub mod workspace;
 pub mod xcconfig;
 pub mod xcode;
 pub mod xcode_hash;
+pub mod xcproj;
 pub mod xcscheme;
 pub mod xcspec;
