@@ -1,0 +1,203 @@
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of the Swift open source project
+//
+// Copyright (c) 2025 Apple Inc. and the Swift project authors
+// Licensed under Apache License v2.0 with Runtime Library Exception
+//
+// See http://swift.org/LICENSE.txt for license information
+// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+//
+//===----------------------------------------------------------------------===//
+
+(
+    {
+        Domain = windows;
+        Identifier = "com.apple.compilers.llvm.clang.1_0";
+        Type = Compiler;
+        BasedOn = "default:com.apple.compilers.llvm.clang.1_0";
+        EnvironmentVariables = {
+            "TEMP" = "$(OBJROOT)";
+            "TMP" = "$(OBJROOT)";
+        };
+        Name = "Apple LLVM Windows";
+        Description = "Apple LLVM Windows compiler";
+        IsAbstract = Yes;
+        ShowInCompilerSelectionPopup = No;
+        OptionConditionFlavors = (
+            arch,
+            sdk,
+        );
+        // Don't know why these are necessary, but without it, errors aren't reported
+        CommandOutputParser = (
+            ("^([^:]*):([0-9]*):[0-9]*: [^:]*error: (.*)$", "emit-error"),
+            ("^([^:]*):([0-9]*):[0-9]*: [^:]*warning: (.*)$", "emit-warning"),
+            ("^()().* error: (.*)$", "emit-error"),
+            ("^()().* warning: (.*)$", "emit-warning"),
+        );
+        SupportsMacOSXDeploymentTarget = No;
+        SupportsMacOSXMinVersionFlag = No;
+        SupportsIsysroot = No;
+        Options = (
+            {
+                Name = "ENABLE_BLOCKS";
+                Type = Boolean;
+                DefaultValue = YES;
+                CommandLineArgs = {
+                    YES = ("-fblocks");
+                    NO = ();
+                };
+                Category = CodeGeneration;
+            },
+        );
+    },
+    {
+        Domain = windows;
+        Identifier = "com.apple.compilers.llvm.clang.1_0.compiler";
+        Type = Compiler;
+        BasedOn = "com.apple.compilers.llvm.clang.1_0";
+        Name = "Apple Clang (Windows)";
+        Description = "Apple Clang compiler (Windows)";
+        IsAbstract = YES;
+        ShowInCompilerSelectionPopup = NO;
+        Options = (
+            {
+                Name = "GCC_DEBUG_INFORMATION_FORMAT";
+                Type = Enumeration;
+                Values = (
+                    dwarf,
+                    "dwarf-with-dsym",
+                    "codeview",
+                );
+                CommandLineArgs = {
+                    dwarf = (
+                        "-gdwarf",
+                    );
+                    "dwarf-with-dsym" = (
+                        "-gdwarf",
+                    );
+                    "codeview" = (
+                        "-gcodeview",
+                    );
+                    "<<otherwise>>" = ();
+                };
+                DefaultValue = "$(DEBUG_INFORMATION_FORMAT)";
+                Condition = "$(GCC_GENERATE_DEBUGGING_SYMBOLS)";
+            },
+            {
+                Name = "GCC_WINDOWS_LIBC_RUNTIME";
+                Type = Enumeration;
+                Values = (
+                    "MDd",
+                    "MD",
+                    "MTd",
+                    "MT",
+                );
+                CommandLineArgs = {
+                    MDd = (
+                        "-D_DEBUG", "-D_MT", "-D_DLL",
+                        "-Xclang", "--dependent-lib=msvcrtd"
+                    );
+                    MD = (
+                        "-D_MT", "-D_DLL",
+                        "-Xclang", "--dependent-lib=msvcrt"
+                    );
+                    MTd = (
+                        "-D_DEBUG", "-D_MT",
+                        "-Xclang", "--dependent-lib=libcmtd"
+                    );
+                    MT = (
+                        "-D_MT",
+                        "-Xclang", "--dependent-lib=libcmt"
+                    );
+                };
+                DefaultValue = "$(DEFAULT_USE_RUNTIME)";
+            },
+        );
+    },
+    {
+        Domain = windows;
+        Identifier = "com.apple.compilers.llvm.clang.1_0.astbuilder";
+        Type = Compiler;
+        BasedOn = "default:com.apple.compilers.llvm.clang.1_0.astbuilder";
+        Options = (
+            {
+                Name = SDKROOT;
+                Type = Path;
+                CommandLineFlag = "--sysroot";
+            },
+        );
+        IsAbstract = YES;
+        ShowInCompilerSelectionPopup = NO;
+    },
+    {
+        Domain = windows;
+        Identifier = "com.apple.compilers.llvm.clang.1_0.analyzer";
+        Type = Compiler;
+        BasedOn = "default:com.apple.compilers.llvm.clang.1_0.analyzer";
+        Options = (
+            {
+                Name = SDKROOT;
+                Type = Path;
+                CommandLineFlag = "--sysroot";
+            },
+        );
+    },
+    {
+        Domain = windows;
+        Identifier = "com.apple.xcode.tools.swift.compiler";
+        Type = Compiler;
+        BasedOn = "default:com.apple.xcode.tools.swift.compiler";
+        Options = (
+            {
+                Name = SWIFT_COMPILE_FOR_STATIC_LINKING;
+                Type = Bool;
+                DefaultValue = NO;
+                CommandLineArgs = {
+                    YES = ("-static");
+                    NO = ();
+                };
+            },
+            {
+                Name = "SWIFT_DEBUG_INFORMATION_FORMAT";
+                Type = Enumeration;
+                Values = (
+                    dwarf,
+                    "dwarf-with-dsym",
+                    "codeview",
+                );
+                CommandLineArgs = {
+                    dwarf = (
+                        "-g", "-debug-info-format=dwarf",
+                    );
+                    "dwarf-with-dsym" = (
+                        "-g", "-debug-info-format=dwarf",
+                    );
+                    "codeview" = (
+                        "-g", "-debug-info-format=codeview",
+                    );
+                    "<<otherwise>>" = ();
+                };
+                DefaultValue = "$(DEBUG_INFORMATION_FORMAT)";
+                Condition = "$(GCC_GENERATE_DEBUGGING_SYMBOLS)";
+            },
+            {
+                Name = "SWIFT_WINDOWS_LIBC_RUNTIME";
+                Type = Enumeration;
+                Values = (
+                    "MDd",
+                    "MD",
+                    "MTd",
+                    "MT",
+                );
+                CommandLineArgs = {
+                    MDd = ("-libc", "$(value)");
+                    MD = ("-libc", "$(value)");
+                    MTd = ("-libc", "$(value)");
+                    MT = ("-libc", "$(value)");
+                };
+                DefaultValue = "$(DEFAULT_USE_RUNTIME)";
+            },
+        );
+    },
+)

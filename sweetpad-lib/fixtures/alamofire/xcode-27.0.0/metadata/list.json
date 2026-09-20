@@ -1,0 +1,14 @@
+{
+  "workspace": {
+    "name": "Alamofire",
+    "schemes": [
+      "Alamofire iOS",
+      "Alamofire macOS",
+      "Alamofire tvOS",
+      "Alamofire visionOS",
+      "Alamofire watchOS",
+      "iOS Example",
+      "watchOS Example WatchKit App"
+    ]
+  }
+}

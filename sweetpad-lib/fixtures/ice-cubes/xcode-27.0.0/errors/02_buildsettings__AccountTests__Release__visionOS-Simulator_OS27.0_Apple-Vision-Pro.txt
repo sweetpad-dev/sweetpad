@@ -1,0 +1,5 @@
+2026-09-20 00:35:37.572 xcodebuild[56825:6420215] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-20 00:35:37.573 xcodebuild[56825:6420215] Writing error result bundle to /var/folders/wq/kkdk740d68qcqvttr995x13w0000gq/T/ResultBundle_2026-20-09_00-35-0037.xcresult
+xcodebuild: error: Could not configure request to show build settings: Unable to find a destination matching the provided destination specifier:
+		{ platform:visionOS Simulator, id:1D09DF49-C00E-42A6-90D7-6D1997FFEA6D }
+

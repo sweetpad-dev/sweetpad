@@ -150,6 +150,10 @@ fn per_target_oracle_coverage() {
 #[allow(clippy::match_same_arms)]
 fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     match version {
+        // exact/canon sit ~3pt under 26.5 because 27 emits more
+        // geometry-bearing keys (SYSROOT and friends), which the test geometry
+        // caps; structural is level with the other majors.
+        "27.0.0" => Some((84, 87, 99)),
         "26.5.0" => Some((88, 89, 100)),
         "16.4.0" => Some((87, 89, 100)),
         // The 15.x host/arch reporting family (NATIVE_ARCH/HOST_ARCH=arm64e,

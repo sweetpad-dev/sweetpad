@@ -1,0 +1,11 @@
+{
+  "configuration": "Debug",
+  "description": "Modifier syntax ${VAR:lower}/${VAR:default=...} in xcconfig",
+  "destination": "platform=macOS",
+  "name": "modifier-syntax",
+  "ok_with": true,
+  "ok_without": true,
+  "project": "project/Scratch.xcodeproj",
+  "target": "Scratch",
+  "xcconfig": "xcconfigs/modifier-syntax.xcconfig"
+}

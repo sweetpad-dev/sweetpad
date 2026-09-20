@@ -1,0 +1,42 @@
+{
+  "canonicalName": "appletvos27.0",
+  "platform_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode.app/Contents/Developer/Platforms/AppleTVOS.platform"
+  },
+  "platform_version": {
+    "rc": 0,
+    "stdout": "27.0"
+  },
+  "sdk_build_version": {
+    "rc": 0,
+    "stdout": "24J360"
+  },
+  "sdk_path": {
+    "rc": 0,
+    "stdout": "/Applications/Xcode.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS27.0.sdk"
+  },
+  "sdk_version": {
+    "rc": 0,
+    "stdout": "27.0"
+  },
+  "showsdks_entry": {
+    "buildID": "CA572AB2-A1E9-11F1-897C-5D64769D1288",
+    "canonicalName": "appletvos27.0",
+    "displayName": "tvOS 27.0",
+    "isBaseSdk": true,
+    "platform": "appletvos",
+    "platformPath": "/Applications/Xcode.app/Contents/Developer/Platforms/AppleTVOS.platform",
+    "platformVersion": "27.0",
+    "productBuildVersion": "24J360",
+    "productCopyright": "1983-2026 Apple Inc.",
+    "productName": "Apple TVOS",
+    "productVersion": "27.0",
+    "sdkPath": "/Applications/Xcode.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS27.0.sdk",
+    "sdkVersion": "27.0"
+  },
+  "xcodebuild_version_sdk": {
+    "rc": 0,
+    "stdout": "AppleTVOS27.0.sdk - tvOS 27.0 (appletvos27.0)\nSDKVersion: 27.0\nPath: /Applications/Xcode.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS27.0.sdk\nPlatformVersion: 27.0\nPlatformPath: /Applications/Xcode.app/Contents/Developer/Platforms/AppleTVOS.platform\nBuildID: CA572AB2-A1E9-11F1-897C-5D64769D1288\nProductBuildVersion: 24J360\nProductCopyright: 1983-2026 Apple Inc.\nProductName: Apple TVOS\nProductVersion: 27.0\n\n"
+  }
+}

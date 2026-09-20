@@ -1,0 +1,7 @@
+{
+  "configuration": "Debug",
+  "destination": "platform=macOS",
+  "project": "NetNewsWire.xcodeproj",
+  "scheme": "NetNewsWire",
+  "xcconfig": "xcconfig/NetNewsWire_iOSintentextension_target.xcconfig"
+}

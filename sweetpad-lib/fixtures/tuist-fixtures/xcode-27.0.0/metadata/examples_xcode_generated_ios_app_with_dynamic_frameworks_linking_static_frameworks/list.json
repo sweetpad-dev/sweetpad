@@ -1,0 +1,11 @@
+{
+  "workspace": {
+    "name": "App",
+    "schemes": [
+      "App",
+      "App-Workspace",
+      "DynamicFrameworkA",
+      "DynamicFrameworkB"
+    ]
+  }
+}

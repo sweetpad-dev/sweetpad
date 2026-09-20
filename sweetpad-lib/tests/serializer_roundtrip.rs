@@ -40,6 +40,10 @@ const NOT_BYTE_EXACT: &[(&str, &str)] = &[
         "hand-written: 4-space indentation instead of tabs",
     ),
     (
+        "_synthetic-custom-config/xcode-27.0.0/project/Scratch.xcodeproj/project.pbxproj",
+        "hand-written: 4-space indentation instead of tabs",
+    ),
+    (
         "_synthetic-headermaps/project/HeaderMaps.xcodeproj/project.pbxproj",
         "hand-written: 4-space indentation instead of tabs",
     ),
@@ -68,7 +72,15 @@ const NOT_BYTE_EXACT: &[(&str, &str)] = &[
         "hand-written: 4-space indentation instead of tabs",
     ),
     (
+        "_synthetic-rich/xcode-27.0.0/raw/Scratch.xcodeproj/project.pbxproj",
+        "hand-written: 4-space indentation instead of tabs",
+    ),
+    (
         "_synthetic-rich/xcode-26.5.0/raw/Scratch.xcodeproj/xcshareddata/xcschemes/Scratch.xcscheme",
+        "hand-written: attributes inline in the open tag",
+    ),
+    (
+        "_synthetic-rich/xcode-27.0.0/raw/Scratch.xcodeproj/xcshareddata/xcschemes/Scratch.xcscheme",
         "hand-written: attributes inline in the open tag",
     ),
     (
@@ -76,7 +88,15 @@ const NOT_BYTE_EXACT: &[(&str, &str)] = &[
         "hand-written: 4-space indentation instead of tabs",
     ),
     (
+        "_synthetic-staticlib/xcode-27.0.0/raw/Scratch.xcodeproj/project.pbxproj",
+        "hand-written: 4-space indentation instead of tabs",
+    ),
+    (
         "_synthetic-staticlib/xcode-26.5.0/raw/Scratch.xcodeproj/xcshareddata/xcschemes/Scratch.xcscheme",
+        "hand-written: attributes inline in the open tag",
+    ),
+    (
+        "_synthetic-staticlib/xcode-27.0.0/raw/Scratch.xcodeproj/xcshareddata/xcschemes/Scratch.xcscheme",
         "hand-written: attributes inline in the open tag",
     ),
     (
@@ -89,6 +109,10 @@ const NOT_BYTE_EXACT: &[(&str, &str)] = &[
     ),
     (
         "_synthetic-xcconfigs/xcode-26.5.0/project/Scratch.xcodeproj/project.pbxproj",
+        "hand-written: 4-space indentation instead of tabs",
+    ),
+    (
+        "_synthetic-xcconfigs/xcode-27.0.0/project/Scratch.xcodeproj/project.pbxproj",
         "hand-written: 4-space indentation instead of tabs",
     ),
 ];

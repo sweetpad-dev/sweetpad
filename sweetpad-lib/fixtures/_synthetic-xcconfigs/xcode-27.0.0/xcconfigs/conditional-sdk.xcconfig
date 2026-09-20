@@ -1,0 +1,5 @@
+// Tests [sdk=...] conditional resolution.
+FOO = base
+FOO[sdk=iphoneos*] = ios_device
+FOO[sdk=iphonesimulator*] = ios_sim
+FOO[sdk=macosx*] = macos

@@ -136,6 +136,8 @@ fn run_capture(
 #[allow(clippy::match_same_arms)]
 fn version_floor(version: &str, in_place: bool) -> Option<(u64, u64, u64)> {
     match (version, in_place) {
+        ("27.0.0", true) => Some((82, 84, 99)),
+        ("27.0.0", false) => Some((82, 84, 99)),
         ("26.5.0", true) => Some((85, 85, 98)),
         ("26.5.0", false) => Some((85, 86, 100)),
         ("16.4.0", true) => Some((84, 85, 98)),

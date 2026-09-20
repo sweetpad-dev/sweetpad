@@ -1,0 +1,33 @@
+[
+  {
+    "id": "dvtdevice-DVTiOSDevicePlaceholder-watchos:placeholder",
+    "name": "Any watchOS Device",
+    "platform": "watchOS"
+  },
+  {
+    "id": "dvtdevice-DVTiOSDeviceSimulatorPlaceholder-watchsimulator:placeholder",
+    "name": "Any watchOS Simulator Device",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "arch": "arm64e",
+    "error": "My Mac\u2019s macOS platform doesn\u2019t match WatchApp.app\u2019s supported platforms. You can change WatchApp.app\u2019s Base SDK or Supported Platforms to support My Mac.",
+    "id": "00006030-0018296E1A28001C",
+    "name": "My Mac",
+    "platform": "macOS"
+  },
+  {
+    "arch": "arm64e",
+    "error": "Iphone 13\u2019s iOS platform doesn\u2019t match WatchApp.app\u2019s supported platforms. You can change WatchApp.app\u2019s Base SDK or Supported Platforms to support Iphone 13.",
+    "id": "00008110-000559182E90401E",
+    "name": "Iphone 13",
+    "platform": "iOS"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "C25725CE-4886-4E68-B032-55EB2918FF60",
+    "name": "iPhone 18 Pro",
+    "platform": "iOS Simulator"
+  }
+]

@@ -65,7 +65,7 @@ suites); `cargo fmt --check` clean. Settings-resolution scores
 mismatch corpus-wide is `CLANG_COVERAGE_MAPPING` ×2 — a capture gap, not a
 resolver bug (see [§11](#11-roadmap--open-work)). The June 2026 audit's P0/P1
 findings were fixed in `51bb938`, except the extension-side packaging item
-P0.3 (see [§11.2](#112-audit-follow-ups-june-2026)).
+P0.3 (see [§11.2b](#112b-audit-follow-ups-june-2026)).
 
 ## 2. Repository layout
 
@@ -223,7 +223,7 @@ Hand-built fixtures cover paths no real corpus project exercises:
 | `_synthetic-custom-config` | A third configuration `Profile`: config-name-driven selection + a `[config=Profile]` xcconfig override (`scripts/15_custom_configuration.py`) |
 | `metadata/_synthetic/<override>` (under alamofire) | `KEY=VALUE` xcodebuild overrides for flags no real project enables: library evolution, LTO, arm64e, Swift 6, mergeable libraries… (`scripts/07_synthetic_overrides.py`) |
 | `_synthetic-staticlib` | `libtool -static` link + ObjC++ (`.mm`) language gate (`scripts/17_static_library.py`) |
-| `_synthetic-rich` | Rich settings: UBSan (+ sub-checks), exceptions, hidden visibility, warnings, `SWIFT_STRICT_CONCURRENCY = complete` (`scripts/18_rich_settings.py`) |
+| `_synthetic-rich` | Rich settings: UBSan (+ sub-checks), exceptions, hidden visibility, warnings, `SWIFT_STRICT_CONCURRENCY = complete` (`scripts/18_rich_settings.py`). Built for all six platforms (`--platform`), which is where the compiler-args oracle's per-`(version, sdk)` cells come from |
 | `_synthetic-multimodule` | App + two framework targets with a real cross-module `import` — the BSP pilot fixture (`scripts/19_multimodule.py`) |
 | `_synthetic-objc-headers` | ObjC header search paths for the BSP loop (`scripts/20_objc_headers.py`) |
 | `_synthetic-headermaps` | The ObjC imports only Xcode's header maps and generated-sources dirs resolve — a sibling dir's header, a mixed target's `-Swift.h`, a framework target's public header, with no `HEADER_SEARCH_PATHS` anywhere (`scripts/23_header_maps.py`) |
@@ -232,7 +232,7 @@ Hand-built fixtures cover paths no real corpus project exercises:
 | `_synthetic-spm`, `_synthetic-workspace` | SwiftPM package products (`-F …/PackageFrameworks`); multi-project `.xcworkspace` resolution |
 | `_synthetic-spm-graph` | One workspace reaching a local package six ways — its own `FileRef` member, the member project's declared package, both of their `.package(path:)` dependencies, and two under a `PBXFileSystemSynchronizedRootGroup` — plus a package carrying a `.swiftpm/xcode` scheme container and one whose only target is an `executableTarget` (`tests/spm_graph_oracle.rs` in sweetpad-core) |
 | `_global` | Per-SDK metadata (`sdks/<sdk>.json`), xcodebuild version banner |
-| `_tuist-src` | Generated tuist examples adding a command-line tool (`mh_execute`) and a standalone dynamic library (`mh_dylib`) to the compiler-args oracle |
+| `_tuist-src` | Generated tuist examples adding a command-line tool (`mh_execute`) and a standalone dynamic library (`mh_dylib`) to the compiler-args oracle. `16_capture_compiler_args.py --slug _tuist-src` resolves `corpus/_tuist-src`, which is a symlink to `corpus/tuist-fixtures/examples/xcode/generated_command_line_tool_with_dynamic_library`; 16 does not copy `raw/`, so a new version needs the `.xcodeproj` copied in by hand |
 
 ### 4.4 Capture scripts index
 
@@ -304,7 +304,10 @@ bundled-SDK bump, which the canonicalizer strips), so the newest released minor
 is the single best representative of a major; per-minor sweeps are explicitly
 not done. A refresh = capture the new minor, then drop the old one entirely
 ([§10](#10-runbook-updating-xcode-versions)). Apple jumped 16 → 26 (no 17–25);
-on macOS 26 the realistically capturable majors are 26, 16, 15.
+on macOS 27 the realistically capturable majors are 27, 26, 16, 15. Adding a
+major is cheaper than refreshing one: nothing is dropped, so none of §10.7's
+repointing applies — only the *additive* hardcodes need a new arm (the seven
+floor tables and `tests/serializer_roundtrip.rs`'s per-version allowlist).
 
 Capturing a **new major is the highest-ROI coverage move**: version-conditional
 keystone bugs (e.g. `XCODE_VERSION_MAJOR` nested expansion, the `DEVELOPER_DIR`
@@ -322,6 +325,7 @@ without reinstalling the Xcode.
 
 | Xcode | Captured | Notes |
 |---|---|---|
+| `27.0.0` | Full corpus (all 5 projects) | Newest major — 1036 captures; per-target + project-defaults + scheme build-settings across iOS/tvOS/watchOS/visionOS simulators + macOS + synthetic + xcconfig, all at parity with 26.5. Compiler-args cover all six platforms via the synthetic fixtures; the corpus projects' own cells are lost to the new deployment-target floors ([§5.4](#54-the-corpus-wall-older-majors)). Behaviour deltas modelled ([§11.2](#112-xcode-27-behaviour-deltas-modelled)) |
 | `26.5.0` | Full corpus (all 5 projects) | Latest non-beta 26.x — refreshed from 26.0.1 (dropped); per-target + project-defaults + 568 scheme captures across iOS/tvOS/watchOS/visionOS simulators + macOS + synthetic + xcconfig; all oracle sources |
 | `16.4.0` | alamofire, kingfisher (per-target + project-defaults + macOS scheme) | Second major; ice-cubes incompatible (Swift-tools 6.2 manifests); iOS scheme captures need the user-gated `xcodebuild -downloadPlatform iOS` |
 | `15.4.0` | kingfisher, tuist-fixtures (per-target + project-defaults + macOS scheme) | Third major; exposed two undomained-xcspec parser bugs (`PACKAGE_TYPE`/`BUNDLE_FORMAT` clobber, fixed) and a family of 16+-calibrated built-in rules now version-gated (see `tests/version_and_optimization_gates.rs` and the `legacy_xcode15` gates in `src/project.rs`); alamofire/netnewswire/ice-cubes walled off (objectVersion 76/77, Swift-tools 6.2) |
@@ -360,6 +364,30 @@ tuist-generated projects (55) open in 15.4. Capturing an older major therefore
 needs **era-appropriate refs** — pin each corpus project to a tag whose
 pbxproj objectVersion / Swift-tools the target Xcode supports. The shared
 single-clone model breaks here; older majors may need per-version checkouts.
+
+The same wall blocks the **newest** major, and there it stops builds rather
+than parsing. Xcode 27 raised the minimum deployment targets and the pinned
+refs sit under the new floors — Alamofire declares macOS 10.12 (floor 12.0),
+iOS and tvOS 10.0 (floor 15.0), watchOS 3.0 (floor 9.0); Kingfisher declares macOS
+10.15 and its demo app 11.0. All of them built on 26.5. `-showBuildSettings`
+does not care, so every settings oracle captures normally; only the
+compiler-args oracle ([§7.2](#72-the-oracle-capture-and-scoring)), which needs a
+real build, loses those cells.
+
+The synthetic fixtures are the way out, and they are why the wall costs nothing
+on 27. `_synthetic-rich` is authored with `SDKROOT = auto`, a
+`SUPPORTED_PLATFORMS` list, and deployment targets above every floor, so
+`scripts/18_rich_settings.py --platform <slug>` builds the same scratch project
+for macOS, iOS, iOS-sim, tvOS, watchOS and visionOS. That gives the oracle a
+cell per `(version, sdk)` without depending on what a pinned OSS project happens
+to declare. Prefer this to the two alternatives: bumping the pins costs the
+shared-sources property that makes `scripts/14_compare_versions.py` meaningful
+and forces a full recapture, and capturing under deployment-target overrides
+means teaching the resolver the same overrides to keep the comparison honest.
+
+A corpus project is still the better witness for *shape* — real framework and
+app targets, workspaces, extensions — so the corpus cells remain worth having
+whenever the pins allow them.
 
 ## 6. Settings resolution
 
@@ -1188,6 +1216,10 @@ If the flag is accepted, the spawn in `sweetpad-core` that resolves the local
 package graph's schemes (issue #327) can lean on it for the common case —
 it is one spawn per package, so a graph pays the most.
 
+**Still absent in Xcode 27** (Swift 6.4): the probe returns `error: Unknown
+option '--experimental-manifest-processing-mode'`. The spawn stays as it is;
+re-probe on the next major.
+
 ### 10.8 Green, docs, commit
 
 - `cargo test` (all versions green), `cargo fmt`, `cargo clippy --tests`.
@@ -1218,6 +1250,27 @@ Keep the new Xcode app + the other majors' apps if still capturing.
 - **07 doesn't self-set `DEVELOPER_DIR`** — export it when running directly.
 - **`--no-runtime`** only skips the builds; 02 still captures simulator
   destinations if runtimes are installed.
+
+Four more the Xcode 27 capture hit, all fixed in the repo:
+
+- **An Xcode installed as `/Applications/Xcode.app`** is invisible to
+  `discover_installed_xcodes()`, which matches `Xcode-<ver>.app` only. A
+  symlink beside it is enough and needs no sudo, but then `xcodebuild` reports
+  paths through the *real* app name while the resolver uses the symlinked one;
+  `canon_path_token` now splits a `-L`/`-I`/`-F`/`-isystem` prefix off a token
+  before canonicalizing, which is what made `OTHER_LDFLAGS` agree.
+- **`01_clone_corpus.py` re-resolves `latest-release`** whenever a clone is
+  missing, so re-materialising the corpus for a new version silently moves the
+  pins. Use **`--from-manifest`** to clone each project at its recorded SHA.
+- **A fresh clone skips `tuist generate`**, because the manifest still records
+  `generated: true` from the previous host. The check now also requires the
+  `.xcodeproj` to be on disk. Worth watching: `tuist-fixtures` is ~76% of all
+  corpus keys, so this failure is near-silent and very expensive.
+- **The preflight demanded `xcodes`** even when every requested version was
+  already installed and the acquire step is a no-op; it is now gated on
+  actually needing an install. The validate step likewise still ran
+  `cargo test --test <oracle>` from `sweetpad-lib`, where those targets stopped
+  living at the crate split — it now passes `-p sweetpad-core` / `-p sweetpad-cli`.
 
 ## 11. Roadmap & open work
 
@@ -1333,7 +1386,37 @@ Mac-host capture steps
 (A1, A3, D16, D17) need a macOS machine with the corpus Xcodes; everything
 else runs anywhere against committed fixtures.
 
-### 11.2 Audit follow-ups (June 2026)
+### 11.2 Xcode 27 behaviour deltas (modelled)
+
+Capturing 27 surfaced seven settings the resolver got wrong on that major and
+only that major; all are modelled now and 27's systematic-mismatch tally is
+back to zero, level with every other version. Each was grounded in the 27
+corpus and unanimous across the targets it touches. Kept here because the
+*shape* recurs: this is what a new major's first tally looks like.
+
+| Key | Misses | Ours | Xcode 27 | Where it comes from |
+|---|---|---|---|---|
+| `SYSROOT` | 154 | `""` | the SDK path (`= SDKROOT`) | New in 27's `Swift.xcspec`/`Ld.xcspec` as a `Path` option with **no `DefaultValue`**, gated on `$(SWIFTC_PASS_SYSROOT)`. 26.5 never emitted the key at all, so it was never a shared key |
+| `SWIFTC_PASS_SYSROOT` | 154 | `YES` | `NO` | New in 27's `CoreBuildSystem.xcspec` with a bare `DefaultValue = YES` and no `Condition`, yet xcodebuild reports `NO` on every target. Nothing in the spec tree or any `SDKSettings.plist` says `NO` — the build system overrides its own declared default |
+| `VALID_ARCHS` | 144 | no `arm64e.x1` | adds `arm64e.x1` | A new arch in 27, on `iphoneos` (102 targets), `macosx` (24) and `watchos` (18) |
+| `SWIFT_ENABLE_TESTABILITY` | 77 | `NO` | `YES` | Also newly emitted in 27 (absent from every 26.5 capture): `YES` on all 74 Debug targets, plus the 4 Release targets that set it explicitly |
+| `ARCHS` / `ARCHS_BASE` / `ARCHS_STANDARD` | 56 | the full pair | the 64-bit slice alone | Each platform has one legacy secondary slice that 27 drops once the deployment target passes the release that stopped needing it: `x86_64` on macOS, `arm64_32` on watchOS. `ARCHS_STANDARD_64_BIT` and `ARCHS_STANDARD_INCLUDING_64_BIT` keep the full pair. An unauthored deployment target takes the SDK default, which on 27 is past the cutoff |
+| `ARCHS` (watchOS `armv7k`) | 6 | keeps `armv7k` | drops it | 27 retires `armv7k` from resolved `ARCHS` at *every* watchOS deployment target, including the 3.0/6.0 that still carried it on 26.5 — but `ARCHS_STANDARD` still reports it, the same split 15.4 has |
+| `SWIFT_SYSTEM_INCLUDE_PATHS` | 44 | `""` | the platform's `Developer/usr/lib` | New in 27 on test bundles only (44 captures, all unit-test or ui-testing), by the same `$(inherited) $(TEST_LIBRARY_SEARCH_PATHS)` recipe whose expansion gives the double leading space |
+
+Four of the seven are keys 26.5 simply did not report, which is why they cost
+nothing until now: a key the oracle omits is never scored. A new major's first
+tally has this shape most of the time, so read it as a list of settings that
+just became visible before reading it as a list of regressions.
+
+Two lessons worth keeping. The `SWIFTC_PASS_SYSROOT` case says a spec
+`DefaultValue` is a claim, not a measurement — the corpus outranks it, which is
+the grounding order in [§3.3](#33-grounding-rules-investigating-how-a-build-setting-behaves)
+working as intended. And the arch drops only became legible once macOS and
+watchOS were read together: one platform alone looks like a special case, the
+pair shows one rule with a per-platform slice.
+
+### 11.2b Audit follow-ups (June 2026)
 
 A full library audit (line references against `54c40a1`) landed with commit
 `51bb938`, which **fixed all P0 and P1 findings except P0.3**:
@@ -1520,4 +1603,17 @@ lives in the sections above and in the named commits.
   splitting, geometry closures (CCHROOT, sanitizer object dirs, tuist capture
   roots). Corpus oracle now 89–88 exact / 97–100 canonical / 99–100 structural
   per version with a single remaining systematic mismatch (§6.3). Open items
-  consolidated into §11.2.
+  consolidated into §11.2b.
+- **2026-09-20 — Xcode 27 added as a fourth major.** Full corpus captured
+  against 27.0.0 (1036 captures) alongside 26.5/16.4/15.4, at parity with 26.5
+  on every settings oracle source — per-target 156, project-defaults 84,
+  synthetic overrides 26, xcconfig resolution 48. Adding rather than refreshing,
+  so nothing was dropped and §10.7's repointing did not apply. Four capture-script
+  bugs fixed on the way (pin re-resolution, skipped `tuist generate`, the
+  unconditional `xcodes` preflight, the post-crate-split `cargo test` target) plus
+  a canonicalizer gap on `-L`-prefixed paths. Seven 27-only behaviour deltas
+  found and modelled (§11.2), returning 27's systematic-mismatch tally to zero;
+  floors ratcheted to the post-fix run. Xcode 27's raised deployment-target
+  floors cost the corpus projects their compiler-args cells (§5.4), so
+  `_synthetic-rich` became multi-platform and now supplies a cell for all six
+  platforms instead.

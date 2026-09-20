@@ -73,9 +73,20 @@ NSString *scratchDescribe(int n) {
 # build. `PRODUCT_NAME` is set per target (a `$(...)` value must be quoted).
 PROJECT_SETTINGS = {
     "ALWAYS_SEARCH_USER_PATHS": "NO",
+    # `SDKROOT = auto` + SUPPORTED_PLATFORMS lets one scratch project be built
+    # for every platform, so the compiler-args oracle gets a cell per
+    # (version, sdk) without a per-platform project. Deployment targets are
+    # authored above every Xcode's floor — a corpus project pinned below one
+    # stops building on a new major (DOCS.md §5.4), and a synthetic fixture is
+    # exactly the place to not inherit that problem.
     "MACOSX_DEPLOYMENT_TARGET": "12.0",
+    "IPHONEOS_DEPLOYMENT_TARGET": "15.0",
+    "TVOS_DEPLOYMENT_TARGET": "15.0",
+    "WATCHOS_DEPLOYMENT_TARGET": "9.0",
+    "XROS_DEPLOYMENT_TARGET": "1.0",
     "ONLY_ACTIVE_ARCH": "YES",
-    "SDKROOT": "macosx",
+    "SDKROOT": "auto",
+    "SUPPORTED_PLATFORMS": '"macosx iphoneos iphonesimulator appletvos appletvsimulator watchos watchsimulator xros xrsimulator"',
     "SWIFT_OPTIMIZATION_LEVEL": '"-Onone"',
     "SWIFT_VERSION": "5.0",
     # Sanitizer: parent on + the two gated sub-checks on.
@@ -257,29 +268,48 @@ def materialize(root: Path) -> Path:
     return xcodeproj
 
 
-def process(xcode: common.XcodeInstall, *, force: bool) -> int:
+# (slug, `xcodebuild -destination`) per platform. The slug is the filename
+# component the compiler-args oracle keys its (version, sdk) cell from.
+PLATFORMS: dict[str, str] = {
+    "macOS": "platform=macOS",
+    "iOS": "generic/platform=iOS",
+    "iOS-sim": "generic/platform=iOS Simulator",
+    "tvOS": "generic/platform=tvOS",
+    "watchOS": "generic/platform=watchOS",
+    "visionOS": "generic/platform=visionOS",
+}
+
+
+def process(xcode: common.XcodeInstall, *, force: bool,
+            platforms: list[str]) -> int:
     build_root = common.CORPUS_DIR / SLUG
     xcodeproj = materialize(build_root)
 
-    out_path = (
-        common.fixture_dir(SLUG, xcode.version)
-        / "compiler-args"
-        / f"{common.slug(SCHEME)}__{common.slug(CONFIG)}__macOS.json"
-    )
-    if out_path.exists() and not force:
-        common.log(f"  exists, skip (use --force): {out_path}")
-    else:
+    failed: list[str] = []
+    for dest_slug in platforms:
+        destination = PLATFORMS[dest_slug]
+        out_path = (
+            common.fixture_dir(SLUG, xcode.version)
+            / "compiler-args"
+            / f"{common.slug(SCHEME)}__{common.slug(CONFIG)}__{dest_slug}.json"
+        )
+        if out_path.exists() and not force:
+            common.log(f"  exists, skip (use --force): {out_path}")
+            continue
+        common.log(f"  === {dest_slug} ({destination}) ===")
         cmd = [
             sys.executable, str(Path(__file__).resolve().parent / "16_capture_compiler_args.py"),
             "--slug", SLUG, "--xcode", xcode.version, "--scheme", SCHEME,
-            "--config", CONFIG, "--destination", "platform=macOS", "--dest-slug", "macOS",
+            "--config", CONFIG, "--destination", destination, "--dest-slug", dest_slug,
             "--project", "Scratch.xcodeproj",
         ]
         cp = subprocess.run(cmd, capture_output=True, text=True)
         sys.stdout.write(cp.stdout)
         sys.stderr.write(cp.stderr)
+        # One platform refusing a toggle must not cost the others their cell;
+        # the failure is reported at the end instead.
         if cp.returncode != 0:
-            return cp.returncode
+            failed.append(dest_slug)
 
     raw = common.fixture_dir(SLUG, xcode.version) / "raw" / "Scratch.xcodeproj"
     if raw.exists():
@@ -287,6 +317,9 @@ def process(xcode: common.XcodeInstall, *, force: bool) -> int:
     raw.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(xcodeproj, raw)
     common.log(f"  copied project -> {raw}")
+    if failed:
+        common.log(f"  FAILED platforms: {', '.join(failed)}")
+        return 1
     return 0
 
 
@@ -294,12 +327,15 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--xcode", help="restrict to one Xcode (version or slot)")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--platform", action="append", choices=sorted(PLATFORMS),
+                    help="capture only this platform (repeatable; default: all)")
     args = ap.parse_args()
+    platforms = args.platform or list(PLATFORMS)
 
     installs = common.discover_installed_xcodes()
     for x in common.selected_xcodes(installs, args.xcode):
         common.log(f"\n========= {SLUG} :: xcode {x.version} =========")
-        rc = process(x, force=args.force)
+        rc = process(x, force=args.force, platforms=platforms)
         if rc != 0:
             return rc
     return 0

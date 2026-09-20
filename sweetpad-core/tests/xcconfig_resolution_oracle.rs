@@ -191,6 +191,7 @@ fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     // Only 26.0.1 has real-xcconfig captures today (netnewswire wasn't captured
     // for 16.4); a future version with no entry gets the structural safety guard.
     match version {
+        "27.0.0" => Some((85, 97, 98)),
         "26.5.0" => Some((89, 100, 100)),
         _ => None,
     }

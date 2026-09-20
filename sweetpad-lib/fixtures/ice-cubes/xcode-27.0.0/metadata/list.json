@@ -1,0 +1,45 @@
+{
+  "project": {
+    "configurations": [
+      "Debug",
+      "Release"
+    ],
+    "name": "IceCubesApp",
+    "schemes": [
+      "Account",
+      "AccountTests",
+      "AppAccount",
+      "Conversations",
+      "DesignSystem",
+      "Env",
+      "EnvTests",
+      "Explore",
+      "IceCubesActionExtension",
+      "IceCubesApp",
+      "IceCubesAppWidgetsExtensionExtension",
+      "IceCubesNotifications",
+      "IceCubesShareExtension",
+      "Lists",
+      "MediaUI",
+      "Models",
+      "ModelsTests",
+      "NetworkClient",
+      "NetworkTests",
+      "Notifications",
+      "RevenueCatUI",
+      "RevenueCatUITests",
+      "StatusKit",
+      "StatusKit-Package",
+      "StatusKitTests",
+      "Timeline",
+      "TimelineTests"
+    ],
+    "targets": [
+      "IceCubesApp",
+      "IceCubesActionExtension",
+      "IceCubesNotifications",
+      "IceCubesShareExtension",
+      "IceCubesAppWidgetsExtensionExtension"
+    ]
+  }
+}

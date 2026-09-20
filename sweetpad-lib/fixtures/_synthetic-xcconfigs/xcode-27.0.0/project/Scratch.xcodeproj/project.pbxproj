@@ -1,0 +1,115 @@
+// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    classes = {};
+    objectVersion = 60;
+    objects = {
+        FB2093FED2FE5C3C8C29F77D = {isa = PBXBuildFile; fileRef = ADFABAB60BDD5DAB92F2F869; };
+        ADFABAB60BDD5DAB92F2F869 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+        09740E144DB85CC7AAADA273 = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = Scratch; sourceTree = BUILT_PRODUCTS_DIR; };
+        320CAA9C3FE75D77900CBDC2 = {
+            isa = PBXGroup;
+            children = (
+                ADFABAB60BDD5DAB92F2F869,
+                5C8D684153755EA7B9416A81,
+            );
+            sourceTree = "<group>";
+        };
+        5C8D684153755EA7B9416A81 = {
+            isa = PBXGroup;
+            children = (
+                09740E144DB85CC7AAADA273,
+            );
+            name = Products;
+            sourceTree = "<group>";
+        };
+        14A71A1C6762522AADB33EF1 = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = 9AE2C16708AB565DAA47C919;
+            buildPhases = (
+                D6EB07F58AB45F428C1C2347,
+            );
+            buildRules = ();
+            dependencies = ();
+            name = Scratch;
+            productName = Scratch;
+            productReference = 09740E144DB85CC7AAADA273;
+            productType = "com.apple.product-type.tool";
+        };
+        0A52AE3BE22F553B8CF30131 = {
+            isa = PBXProject;
+            attributes = {
+                LastUpgradeCheck = 1500;
+            };
+            buildConfigurationList = C5034E5362C3567DB8ED5F35;
+            compatibilityVersion = "Xcode 14.0";
+            developmentRegion = en;
+            hasScannedForEncodings = 0;
+            knownRegions = (en, Base);
+            mainGroup = 320CAA9C3FE75D77900CBDC2;
+            productRefGroup = 5C8D684153755EA7B9416A81;
+            projectDirPath = "";
+            projectRoot = "";
+            targets = (14A71A1C6762522AADB33EF1);
+        };
+        D6EB07F58AB45F428C1C2347 = {
+            isa = PBXSourcesBuildPhase;
+            buildActionMask = 2147483647;
+            files = (FB2093FED2FE5C3C8C29F77D);
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+        9D45771675EE5736A477EF39 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                MACOSX_DEPLOYMENT_TARGET = 12.0;
+                SDKROOT = macosx;
+                SWIFT_VERSION = 5.0;
+            };
+            name = Debug;
+        };
+        3DE340FC199456999A7C7F0C = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                MACOSX_DEPLOYMENT_TARGET = 12.0;
+                SDKROOT = macosx;
+                SWIFT_VERSION = 5.0;
+            };
+            name = Release;
+        };
+        F08EA8A9D109525AA300CBE6 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                PRODUCT_NAME = Scratch;
+            };
+            name = Debug;
+        };
+        AFF77E57163753998F7ABC70 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                PRODUCT_NAME = Scratch;
+            };
+            name = Release;
+        };
+        C5034E5362C3567DB8ED5F35 = {
+            isa = XCConfigurationList;
+            buildConfigurations = (
+                9D45771675EE5736A477EF39,
+                3DE340FC199456999A7C7F0C,
+            );
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
+        9AE2C16708AB565DAA47C919 = {
+            isa = XCConfigurationList;
+            buildConfigurations = (
+                F08EA8A9D109525AA300CBE6,
+                AFF77E57163753998F7ABC70,
+            );
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
+    };
+    rootObject = 0A52AE3BE22F553B8CF30131;
+}

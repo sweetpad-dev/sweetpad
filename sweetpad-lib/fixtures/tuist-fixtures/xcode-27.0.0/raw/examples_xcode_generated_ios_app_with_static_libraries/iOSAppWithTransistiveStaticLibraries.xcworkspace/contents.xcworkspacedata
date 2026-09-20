@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:iOSAppWithTransistiveStaticLibraries.xcodeproj">
+   </FileRef>
+   <Group
+      location = "group:Modules"
+      name = "Modules">
+      <FileRef
+         location = "group:A/A.xcodeproj">
+      </FileRef>
+      <FileRef
+         location = "group:B/B.xcodeproj">
+      </FileRef>
+   </Group>
+</Workspace>

@@ -1,0 +1,7 @@
+{
+  "configuration": "Debug",
+  "destination": "platform=macOS",
+  "project": "NetNewsWire.xcodeproj",
+  "scheme": "NetNewsWire",
+  "xcconfig": "xcconfig/NetNewsWireTests_target.xcconfig"
+}

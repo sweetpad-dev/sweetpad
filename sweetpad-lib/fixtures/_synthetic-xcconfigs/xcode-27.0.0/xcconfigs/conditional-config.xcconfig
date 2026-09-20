@@ -1,0 +1,4 @@
+// Tests [config=...] conditional resolution.
+BAZ = base
+BAZ[config=Debug] = debug_val
+BAZ[config=Release] = release_val

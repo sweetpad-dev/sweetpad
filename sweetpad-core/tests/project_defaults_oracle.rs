@@ -163,6 +163,7 @@ fn project_defaults_oracle_coverage() {
 #[allow(clippy::match_same_arms)]
 fn version_floor(version: &str) -> Option<(u64, u64, u64)> {
     match version {
+        "27.0.0" => Some((84, 87, 98)),
         "26.5.0" => Some((88, 89, 100)),
         "16.4.0" => Some((88, 89, 100)),
         // The 15.x host/arch reporting family is modelled as version-gated

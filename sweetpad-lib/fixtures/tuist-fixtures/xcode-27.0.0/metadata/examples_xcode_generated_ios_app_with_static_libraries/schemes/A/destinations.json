@@ -1,0 +1,173 @@
+[
+  {
+    "arch": "arm64",
+    "id": "00006030-0018296E1A28001C",
+    "name": "My Mac",
+    "platform": "macOS",
+    "variant": "Designed for [iPad"
+  },
+  {
+    "arch": "arm64",
+    "id": "00008110-000559182E90401E",
+    "name": "Iphone 13",
+    "platform": "iOS"
+  },
+  {
+    "id": "dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder",
+    "name": "Any iOS Device",
+    "platform": "iOS"
+  },
+  {
+    "id": "dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder",
+    "name": "Any iOS Simulator Device",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "4AE61DB4-3A25-4AE9-83B8-B243F69C2EC3",
+    "name": "iPad (A16)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "E6ABEE4B-FE59-47A1-8A11-B1D110264855",
+    "name": "iPad Air 11-inch (M4)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "F3A7EBB8-FEF7-4C68-A359-14FAB7E84A6A",
+    "name": "iPad Air 13-inch (M4)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "AFB1EE88-70BF-4C5E-B39F-3377DDCB702D",
+    "name": "iPad Pro 11-inch (M5)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "39198EC1-3C78-4F11-8F6E-8D17F513AA9A",
+    "name": "iPad Pro 13-inch (M5)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "B33E7A37-64C7-420F-82BF-3CB155D9BBFE",
+    "name": "iPad mini (A17 Pro)",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "F13C004A-0824-4870-B4F2-29AAEE36636E",
+    "name": "iPhone 17",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "CADAD60E-4B01-407E-826E-341CB233BA58",
+    "name": "iPhone 17e",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "C25725CE-4886-4E68-B032-55EB2918FF60",
+    "name": "iPhone 18 Pro",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "90B952B9-1B73-42CD-A968-65F49E230F60",
+    "name": "iPhone 18 Pro Max",
+    "platform": "iOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "id": "D879E433-BF63-466C-B4DE-F63F2A52613F",
+    "name": "iPhone Air",
+    "platform": "iOS Simulator"
+  },
+  {
+    "arch": "arm64e",
+    "error": "My Mac\u2019s macOS platform doesn\u2019t match libA.a\u2019s supported platforms. You can change libA.a\u2019s Base SDK or Supported Platforms to support My Mac.",
+    "id": "00006030-0018296E1A28001C",
+    "name": "My Mac",
+    "platform": "macOS"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "error": "Apple TV 4K (3rd generation)\u2019s tvOS Simulator platform doesn\u2019t match libA.a\u2019s supported platforms. You can change libA.a\u2019s Base SDK or Supported Platforms to support Apple TV 4K (3rd generation).",
+    "id": "2CD2A3F5-8763-46B5-B7FC-F04117966B44",
+    "name": "Apple TV 4K (3rd generation)",
+    "platform": "tvOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "error": "Apple TV 4K (3rd generation) (at 1080p)\u2019s tvOS Simulator platform doesn\u2019t match libA.a\u2019s supported platforms. You can change libA.a\u2019s Base SDK or Supported Platforms to support Apple TV 4K (3rd generation) (at 1080p).",
+    "id": "1AF64747-9FC7-4EB9-8674-30388A82F0C6",
+    "name": "Apple TV 4K (3rd generation) (at 1080p)",
+    "platform": "tvOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "error": "Apple Vision Pro\u2019s visionOS Simulator platform doesn\u2019t match libA.a\u2019s supported platforms. You can change libA.a\u2019s Base SDK or Supported Platforms to support Apple Vision Pro.",
+    "id": "1D09DF49-C00E-42A6-90D7-6D1997FFEA6D",
+    "name": "Apple Vision Pro",
+    "platform": "visionOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "error": "Apple Watch SE 3 (40mm)\u2019s watchOS Simulator platform doesn\u2019t match libA.a\u2019s supported platforms. You can change libA.a\u2019s Base SDK or Supported Platforms to support Apple Watch SE 3 (40mm).",
+    "id": "37E48A13-B5C8-4271-AF0F-99D979E4DF49",
+    "name": "Apple Watch SE 3 (40mm)",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "error": "Apple Watch SE 3 (44mm)\u2019s watchOS Simulator platform doesn\u2019t match libA.a\u2019s supported platforms. You can change libA.a\u2019s Base SDK or Supported Platforms to support Apple Watch SE 3 (44mm).",
+    "id": "4693D63C-B607-42E0-949E-5143BBC0FD5D",
+    "name": "Apple Watch SE 3 (44mm)",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "error": "Apple Watch Series 12 (42mm)\u2019s watchOS Simulator platform doesn\u2019t match libA.a\u2019s supported platforms. You can change libA.a\u2019s Base SDK or Supported Platforms to support Apple Watch Series 12 (42mm).",
+    "id": "1944F72F-B343-4B09-8B94-EDA23F12A1A7",
+    "name": "Apple Watch Series 12 (42mm)",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "error": "Apple Watch Series 12 (46mm)\u2019s watchOS Simulator platform doesn\u2019t match libA.a\u2019s supported platforms. You can change libA.a\u2019s Base SDK or Supported Platforms to support Apple Watch Series 12 (46mm).",
+    "id": "ABD4EBF9-910F-4A29-89D7-9B40DB2D7D18",
+    "name": "Apple Watch Series 12 (46mm)",
+    "platform": "watchOS Simulator"
+  },
+  {
+    "OS": "27.0",
+    "arch": "arm64",
+    "error": "Apple Watch Ultra 4 (49mm)\u2019s watchOS Simulator platform doesn\u2019t match libA.a\u2019s supported platforms. You can change libA.a\u2019s Base SDK or Supported Platforms to support Apple Watch Ultra 4 (49mm).",
+    "id": "AF9B3707-9DCB-41EC-8B04-2D0F9CFF97CB",
+    "name": "Apple Watch Ultra 4 (49mm)",
+    "platform": "watchOS Simulator"
+  }
+]

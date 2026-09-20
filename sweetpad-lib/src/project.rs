@@ -1625,6 +1625,10 @@ pub fn built_in_settings(
     // ordering, the no-destination full-ARCHS view). An unknown version
     // (no catalog, no Xcode) is treated as modern.
     let legacy_xcode15 = matches!(xcode_major(&xcode_short), Some(major) if major < 16);
+    // Xcode 27 adds settings and arch-list entries no earlier major reports.
+    // An unknown version (no catalog, no Xcode) is treated as pre-27, so a
+    // catalog-less resolve keeps the shape every captured major agrees on.
+    let xcode27plus = matches!(xcode_major(&xcode_short), Some(major) if major >= 27);
     // Whether this (target, config) resolves an unoptimized build —
     // `GCC_OPTIMIZATION_LEVEL = 0`. xcodebuild keys its "debug build" output
     // flips (STRIP_INSTALLED_PRODUCT, GCC_SYMBOLS_PRIVATE_EXTERN,
@@ -1664,6 +1668,40 @@ pub fn built_in_settings(
     //     captured oracles keep it only when WATCHOS_DEPLOYMENT_TARGET < 9
     //     (3.0/6.0 include it, 10.0/26.0 drop it). The fixtures bracket the
     //     cutoff at (6, 10]; we pin it to Apple's documented watchOS 9 drop.
+    // Each platform carries one legacy secondary slice that Xcode 27 drops
+    // once the deployment target reaches a release with no hardware needing
+    // it: x86_64 on macOS (the end of the Intel transition) and arm64_32 on
+    // watchOS (32-bit-pointer watches). 26.5 reported both at every captured
+    // deployment target, including 26.5 and 26.0 themselves, so the drop is
+    // Xcode-27-gated rather than SDK-gated. The fixtures bracket the cutoff at
+    // (15, 27] for macOS and (10, 27] for watchOS; both pin to 26. It applies
+    // to ARCHS / ARCHS_STANDARD / ARCHS_BASE but NOT to ARCHS_STANDARD_64_BIT,
+    // which keeps reporting the full pair — hence `archs_64` below reads the
+    // unfiltered list.
+    let legacy_secondary_arch = match sdk_base.as_str() {
+        "macosx" => Some(("x86_64", "MACOSX_DEPLOYMENT_TARGET")),
+        "watchos" => Some(("arm64_32", "WATCHOS_DEPLOYMENT_TARGET")),
+        _ => None,
+    };
+    let archs_before_27_drop = archs;
+    let archs: Vec<&'static str> = match legacy_secondary_arch {
+        Some((slice, target_key)) if xcode27plus => {
+            // An unauthored deployment target takes the SDK's own default,
+            // which on 27 is past the cutoff: tuist's fixtures author none and
+            // drop the slice, Alamofire authors 3.0/6.0/10.12 and keeps it.
+            let keeps = authored
+                .get(target_key)
+                .and_then(|v| v.split('.').next())
+                .and_then(|major| major.trim().parse::<u32>().ok())
+                .is_some_and(|major| major < 26);
+            if keeps {
+                archs.to_vec()
+            } else {
+                archs.iter().copied().filter(|a| *a != slice).collect()
+            }
+        }
+        _ => archs.to_vec(),
+    };
     let archs: Vec<&'static str> = if destination.is_none()
         && sdk_base == "watchos"
         && watchos_keeps_armv7k(
@@ -1673,9 +1711,13 @@ pub fn built_in_settings(
         ) {
         vec!["arm64", "armv7k", "arm64_32"]
     } else {
-        archs.to_vec()
+        archs.clone()
     };
-    let archs_64: Vec<&str> = archs.iter().copied().filter(|a| is_64bit(a)).collect();
+    let archs_64: Vec<&str> = archs_before_27_drop
+        .iter()
+        .copied()
+        .filter(|a| is_64bit(a))
+        .collect();
     let arch_list = archs.join(" ");
     let native_32: String = match host.as_str() {
         "arm64" | "arm64e" => "arm".into(),
@@ -2129,6 +2171,17 @@ pub fn built_in_settings(
         .unwrap_or(host.as_str());
     let archs_value = if pinned_to_device && only_active_arch_yes {
         active_arch.to_string()
+    } else if xcode27plus && sdk_base == "watchos" {
+        // Xcode 27 retires armv7k from the resolved ARCHS at every watchOS
+        // deployment target, including the 3.0/6.0 targets that still carried
+        // it on 26.5 — but ARCHS_STANDARD keeps reporting it, the same split
+        // Xcode 15.4 has below.
+        archs
+            .iter()
+            .copied()
+            .filter(|a| *a != "armv7k")
+            .collect::<Vec<_>>()
+            .join(" ")
     } else if legacy_xcode15 {
         // Xcode 15.4's build view drops the retired 32-bit `armv7k` from
         // ARCHS even when ARCHS_STANDARD still reports it (Kingfisher's
@@ -2169,7 +2222,12 @@ pub fn built_in_settings(
         "ARCHS_STANDARD_32_BIT",
         archs_standard_32_bit_for(&sdk_base).into(),
     );
-    push("ARCHS_STANDARD_INCLUDING_64_BIT", arch_list);
+    // Like ARCHS_STANDARD_64_BIT, this one keeps the full pair through the
+    // 27 drop — only the plain ARCHS/ARCHS_STANDARD/ARCHS_BASE trio narrows.
+    push(
+        "ARCHS_STANDARD_INCLUDING_64_BIT",
+        archs_before_27_drop.join(" "),
+    );
     push(
         "ARCHS_STANDARD_32_64_BIT",
         archs_standard_32_64_bit_for(&sdk_base).into(),
@@ -2183,6 +2241,13 @@ pub fn built_in_settings(
         (true, "macosx") => "x86_64 x86_64h arm64 arm64e",
         (true, "iphoneos" | "appletvos") => "arm64e arm64",
         (true, "watchos") => "arm64 arm64e arm64_32",
+        // Xcode 27's SDKSettings adds the `arm64e.x1` slice to macOS, iOS and
+        // watchOS (`SupportedTargets.<platform>.Archs`), and VALID_ARCHS
+        // carries it in sorted position. tvOS and visionOS do not advertise it
+        // and their lists are unchanged.
+        (false, "macosx") if xcode27plus => "arm64 arm64e arm64e.x1 i386 x86_64",
+        (false, "iphoneos") if xcode27plus => "arm64 arm64e arm64e.x1 armv7 armv7s",
+        (false, "watchos") if xcode27plus => "arm64 arm64_32 arm64e arm64e.x1 armv7k",
         _ => valid_archs_for(&sdk_base),
     };
     push("VALID_ARCHS", valid_archs.into());
@@ -2191,6 +2256,21 @@ pub fn built_in_settings(
         if is_catalyst { "YES" } else { "NO" }.into(),
     );
     push("INLINE_PRIVATE_FRAMEWORKS", "NO".into());
+    if xcode27plus {
+        // New in 27's CoreBuildSystem.xcspec with a bare `DefaultValue = YES`
+        // and no Condition, yet every one of the 154 per-target captures
+        // reports NO, and nothing in the spec tree or any SDKSettings.plist
+        // says otherwise — the build system overrides its own declared
+        // default, so the xcspec value cannot be taken at face value here.
+        push("SWIFTC_PASS_SYSROOT", "NO".into());
+        // Also new in 27, and it tracks ENABLE_TESTABILITY exactly: across the
+        // corpus, YES against YES on all 78 captures, and where
+        // ENABLE_TESTABILITY is NO the key is absent rather than NO — hence
+        // emitting nothing instead of pushing NO.
+        if authored.get("ENABLE_TESTABILITY").map(String::as_str) == Some("YES") {
+            push("SWIFT_ENABLE_TESTABILITY", "YES".into());
+        }
+    }
     // STRIP_INSTALLED_PRODUCT: the xcspec default is YES; on Xcode 16+
     // xcodebuild flips it to NO for *unoptimized* builds (keyed on the
     // resolved `GCC_OPTIMIZATION_LEVEL = 0`, not the configuration name —
@@ -2485,6 +2565,20 @@ pub fn built_in_settings(
         push(
             "SYSTEM_FRAMEWORK_SEARCH_PATHS",
             "$(inherited) $(TEST_FRAMEWORK_SEARCH_PATHS)".into(),
+        );
+    }
+
+    // Xcode 27 reports the platform's bundled library dir to the Swift
+    // importer as well, on test bundles only and by the same recipe — the
+    // resolved value carries the identical double leading space. 26.5 and
+    // older never emitted the key. Every 27 capture that has it is a
+    // unit-test or ui-testing bundle (44 of them across macOS, iOS, tvOS,
+    // watchOS and visionOS); no Catalyst test bundle is captured, so this
+    // mirrors the sibling's guard rather than claiming evidence for it.
+    if xcode27plus && !is_catalyst && is_test_bundle_product_type(product_type) {
+        push(
+            "SWIFT_SYSTEM_INCLUDE_PATHS",
+            "$(inherited) $(TEST_LIBRARY_SEARCH_PATHS)".into(),
         );
     }
 

@@ -1,0 +1,7 @@
+{
+  "configuration": "Debug",
+  "destination": "platform=macOS",
+  "project": "IceCubesApp.xcodeproj",
+  "scheme": "IceCubesActionExtension",
+  "xcconfig": "IceCubesApp-release.xcconfig"
+}

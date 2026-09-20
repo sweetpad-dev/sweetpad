@@ -20,7 +20,7 @@ use sweetpad_lib::catalog_cache;
 use sweetpad_lib::xcspec;
 
 /// The version baked in by default — keep pointed at the newest captured major.
-const DEFAULT_VERSION: &str = "26.5.0";
+const DEFAULT_VERSION: &str = "27.0.0";
 
 fn main() {
     let version = std::env::args()

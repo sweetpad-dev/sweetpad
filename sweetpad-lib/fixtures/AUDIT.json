@@ -12,13 +12,25 @@
           "info": "present in 3 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "present in 14 target \u00d7 config \u00d7 dest combos",
@@ -62,13 +74,25 @@
           "info": "present in 3 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "present in 14 target \u00d7 config \u00d7 dest combos",
@@ -112,13 +136,25 @@
           "info": "present in 3 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "present in 14 target \u00d7 config \u00d7 dest combos",
@@ -162,13 +198,25 @@
           "info": "present in 3 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "present in 14 target \u00d7 config \u00d7 dest combos",
@@ -212,13 +260,25 @@
           "info": "present in 3 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "present in 14 target \u00d7 config \u00d7 dest combos",
@@ -262,13 +322,25 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
@@ -312,11 +384,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -341,7 +425,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "xcconfig matched: raw/xcconfig/NetNewsWire_iOSTests_target.xcconfig (+9)",
+          "info": "xcconfig matched: raw/.github/macos-ci-no-signing.xcconfig (+9)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -362,11 +446,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -391,7 +487,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "xcconfig matched: raw/xcconfig/NetNewsWire_iOSshareextension_target.xcconfig (+8)",
+          "info": "xcconfig matched: raw/xcconfig/NetNewsWire_safariextension_target.xcconfig (+8)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -412,11 +508,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -462,11 +570,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -512,11 +632,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -562,11 +694,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -612,11 +756,23 @@
           "info": "xcconfig matched: project/Shared.xcconfig (+0)",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -662,11 +818,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -712,11 +880,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -762,11 +942,23 @@
           "info": "pbxproj matched: project/Scratch.xcodeproj/project.pbxproj (+0)",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -812,11 +1004,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -841,7 +1045,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "xcconfig matched: raw/xcconfig/NetNewsWire_iOSTests_target.xcconfig (+17)",
+          "info": "xcconfig matched: raw/xcconfig/NetNewsWire_project_debug.xcconfig (+17)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -862,11 +1066,23 @@
           "info": "CONFIGURATION='Profile' (1 hits)",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -912,13 +1128,25 @@
           "info": "present in 3 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "present in 14 target \u00d7 config \u00d7 dest combos",
@@ -962,13 +1190,25 @@
           "info": "present in 3 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "present in 14 target \u00d7 config \u00d7 dest combos",
@@ -1012,11 +1252,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1062,13 +1314,25 @@
           "info": "ARCHS='arm64 x86_64' (3 hits)",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "ARCHS='arm64 x86_64' (1 hits)",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "ARCHS='arm64 x86_64' (1 hits)",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "ARCHS='arm64 x86_64' (14 hits)",
@@ -1112,11 +1376,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1162,11 +1438,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1212,11 +1500,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1262,13 +1562,25 @@
           "info": "MACH_O_TYPE='mh_execute' (3 hits)",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "MACH_O_TYPE='mh_execute' (1 hits)",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "MACH_O_TYPE='mh_execute' (1 hits)",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "MACH_O_TYPE='mh_execute' (14 hits)",
@@ -1312,11 +1624,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1362,13 +1686,25 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
@@ -1412,11 +1748,23 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
@@ -1462,11 +1810,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1512,11 +1872,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1562,11 +1934,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1612,11 +1996,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1662,11 +2058,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1712,13 +2120,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (1 hits)",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "SDKROOT='/Applications/Xcode-26.5.0.app/Contents/Developer/Platforms/iPhoneSimulator.plat' (1 hits)",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "",
@@ -1762,11 +2182,23 @@
           "info": "SDKROOT='/Applications/Xcode-15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Deve' (3 hits)",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1812,11 +2244,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1862,11 +2306,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1912,11 +2368,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -1962,11 +2430,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -2012,11 +2492,23 @@
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
@@ -2062,11 +2554,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -2075,33 +2579,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "ice-cubes": {
           "info": "corpus/ has 1 .xcstrings files (e.g. Localizable.xcstrings)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "netnewswire": {
           "info": "corpus/ has 2 .xcstrings files (e.g. Localizable.xcstrings)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 1 .xcstrings files (e.g. Localizable.xcstrings)",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -2117,11 +2616,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -2130,33 +2641,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "ice-cubes": {
           "info": "corpus/ has 12 .strings files (e.g. InfoPlist.strings)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "netnewswire": {
           "info": "corpus/ has 31 .strings files (e.g. Sparkle.strings)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 12 .strings files (e.g. Greetings.strings)",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -2172,11 +2678,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -2185,33 +2703,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "corpus/ has 3 .storyboard files (e.g. LaunchScreen.storyboard)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "kingfisher": {
           "info": "corpus/ has 5 .storyboard files (e.g. Interface.storyboard)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "netnewswire": {
           "info": "corpus/ has 12 .storyboard files (e.g. MainInterface.storyboard)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 14 .storyboard files (e.g. LaunchScreen.storyboard)",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -2227,11 +2740,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -2240,33 +2765,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "ice-cubes": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "kingfisher": {
           "info": "corpus/ has 1 .xib files (e.g. Cell.xib)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "netnewswire": {
           "info": "corpus/ has 24 .xib files (e.g. ShareFolderPickerAccountCell.xib)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 4 .xib files (e.g. AView.xib)",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -2282,11 +2802,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -2295,33 +2827,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "corpus/ has 16 Contents.json files",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "ice-cubes": {
           "info": "corpus/ has 88 Contents.json files",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "kingfisher": {
           "info": "corpus/ has 21 Contents.json files",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "netnewswire": {
           "info": "corpus/ has 103 Contents.json files",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 277 Contents.json files",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -2337,11 +2864,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -2350,33 +2889,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "ice-cubes": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "kingfisher": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "netnewswire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "tuist-fixtures": {
           "info": "corpus/ has 5 .xcdatamodeld bundle dirs (e.g. Users.xcdatamodeld)",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -2392,11 +2926,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -2405,33 +2951,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "ice-cubes": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "kingfisher": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "netnewswire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "tuist-fixtures": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         }
       }
     },
@@ -2447,11 +2988,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -2460,33 +3013,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "ice-cubes": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "kingfisher": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "netnewswire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "tuist-fixtures": {
           "info": "corpus/ has 2 .metal files (e.g. Metal.metal)",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -2502,11 +3050,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -2515,33 +3075,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "corpus/ has 1 .xcprivacy files (e.g. PrivacyInfo.xcprivacy)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "kingfisher": {
           "info": "corpus/ has 1 .xcprivacy files (e.g. PrivacyInfo.xcprivacy)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "netnewswire": {
           "info": "corpus/ has 1 .xcprivacy files (e.g. PrivacyInfo.xcprivacy)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "tuist-fixtures": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         }
       }
     },
@@ -2557,11 +3112,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -2578,7 +3145,7 @@
           "ok": false
         },
         "ice-cubes": {
-          "info": "raw/ has 6 .entitlements files (e.g. IceCubesNotifications.entitlements)",
+          "info": "raw/ has 6 .entitlements files (e.g. IceCubesApp-release.entitlements)",
           "ok": true
         },
         "kingfisher": {
@@ -2586,7 +3153,7 @@
           "ok": true
         },
         "netnewswire": {
-          "info": "raw/ has 9 .entitlements files (e.g. Subscribe_to_Feed.entitlements)",
+          "info": "raw/ has 9 .entitlements files (e.g. NetNewsWire_iOS_WidgetExtension.entitlements)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -2607,11 +3174,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -2628,7 +3207,7 @@
           "ok": false
         },
         "ice-cubes": {
-          "info": ".entitlements matched: IceCubesNotifications.entitlements",
+          "info": ".entitlements matched: IceCubesApp-release.entitlements",
           "ok": true
         },
         "kingfisher": {
@@ -2636,7 +3215,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": ".entitlements matched: Subscribe_to_Feed.entitlements",
+          "info": ".entitlements matched: NetNewsWire_iOS_WidgetExtension.entitlements",
           "ok": true
         },
         "tuist-fixtures": {
@@ -2657,11 +3236,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -2678,7 +3269,7 @@
           "ok": false
         },
         "ice-cubes": {
-          "info": ".entitlements matched: IceCubesApp.entitlements",
+          "info": ".entitlements matched: IceCubesApp-release.entitlements",
           "ok": true
         },
         "kingfisher": {
@@ -2707,11 +3298,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -2728,7 +3331,7 @@
           "ok": false
         },
         "ice-cubes": {
-          "info": ".entitlements matched: IceCubesApp.entitlements",
+          "info": ".entitlements matched: IceCubesApp-release.entitlements",
           "ok": true
         },
         "kingfisher": {
@@ -2757,11 +3360,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -2807,11 +3422,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -2828,15 +3455,15 @@
           "ok": true
         },
         "ice-cubes": {
-          "info": "INFOPLIST_FILE='IceCubesNotifications/Info.plist' (54 hits)",
+          "info": "INFOPLIST_FILE='IceCubesApp/Info.plist' (54 hits)",
           "ok": true
         },
         "kingfisher": {
-          "info": "INFOPLIST_FILE='Demo/Kingfisher-Demo/Info.plist' (6 hits)",
+          "info": "INFOPLIST_FILE='Demo/Kingfisher-macOS-Demo/Info.plist' (6 hits)",
           "ok": true
         },
         "netnewswire": {
-          "info": "INFOPLIST_FILE='Mac/Resources/Info.plist' (20 hits)",
+          "info": "INFOPLIST_FILE='Mac/ShareExtension/Info.plist' (20 hits)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -2857,13 +3484,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "GENERATE_INFOPLIST_FILE='YES' (1 hits)",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "GENERATE_INFOPLIST_FILE='YES' (1 hits)",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "",
@@ -2907,11 +3546,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -2928,7 +3579,7 @@
           "ok": false
         },
         "ice-cubes": {
-          "info": "CODE_SIGN_ENTITLEMENTS='IceCubesNotifications/IceCubesNotifications.entitlements' (54 hits)",
+          "info": "CODE_SIGN_ENTITLEMENTS='IceCubesApp/App/IceCubesApp-release.entitlements' (54 hits)",
           "ok": true
         },
         "kingfisher": {
@@ -2936,7 +3587,7 @@
           "ok": true
         },
         "netnewswire": {
-          "info": "CODE_SIGN_ENTITLEMENTS='Mac/Resources/NetNewsWire.entitlements' (20 hits)",
+          "info": "CODE_SIGN_ENTITLEMENTS='Mac/ShareExtension/ShareExtension.entitlements' (20 hits)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -2957,13 +3608,25 @@
           "info": "present in 3 target \u00d7 config \u00d7 dest combos",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "present in 0 target \u00d7 config \u00d7 dest combos",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "present in 0 target \u00d7 config \u00d7 dest combos",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "present in 1 target \u00d7 config \u00d7 dest combos",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "present in 14 target \u00d7 config \u00d7 dest combos",
@@ -3007,11 +3670,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3057,11 +3732,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3107,11 +3794,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3157,11 +3856,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3190,7 +3901,7 @@
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "OTHER_SWIFT_FLAGS=' -Xcc -fmodule-map-file=/Users/hyzyla_home/Developer/sweetpad-lib/corpus/tuist-f' (172 hits)",
+          "info": "OTHER_SWIFT_FLAGS='-DRELEASE_MARCO' (172 hits)",
           "ok": true
         }
       }
@@ -3207,11 +3918,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3257,11 +3980,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -3270,33 +4005,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "corpus/ has 1 Package.swift files",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "ice-cubes": {
           "info": "corpus/ has 13 Package.swift files",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "kingfisher": {
           "info": "corpus/ has 1 Package.swift files",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "netnewswire": {
           "info": "corpus/ has 14 Package.swift files",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 77 Package.swift files",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -3312,11 +4042,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -3325,33 +4067,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "ice-cubes": {
           "info": "corpus/ has 1 Package.resolved files",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "kingfisher": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "netnewswire": {
           "info": "corpus/ has 2 Package.resolved files",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 47 Package.resolved files",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -3367,11 +4104,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3417,11 +4166,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3467,11 +4228,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3517,11 +4290,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3567,11 +4352,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3600,7 +4397,7 @@
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/App.xcodeproj/project.pbxproj (+20)",
+          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcodeproj/project.pbxproj (+20)",
           "ok": true
         }
       }
@@ -3617,11 +4414,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3650,7 +4459,7 @@
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/App.xcodeproj/project.pbxproj (+20)",
+          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcodeproj/project.pbxproj (+20)",
           "ok": true
         }
       }
@@ -3667,11 +4476,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3700,7 +4521,7 @@
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/App.xcodeproj/project.pbxproj (+14)",
+          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcodeproj/project.pbxproj (+14)",
           "ok": true
         }
       }
@@ -3717,11 +4538,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3750,7 +4583,7 @@
           "ok": true
         },
         "tuist-fixtures": {
-          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_dynamic_frameworks_linking_static_frameworks/App.xcodeproj/project.pbxproj (+14)",
+          "info": "pbxproj matched: raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcodeproj/project.pbxproj (+14)",
           "ok": true
         }
       }
@@ -3767,11 +4600,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -3817,13 +4662,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "CLANG_ENABLE_OBJC_ARC='YES' (1 hits)",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "CLANG_ENABLE_OBJC_ARC='YES' (1 hits)",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "",
@@ -3867,13 +4724,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "CLANG_ENABLE_OBJC_WEAK='YES' (1 hits)",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "CLANG_ENABLE_OBJC_WEAK='YES' (1 hits)",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "",
@@ -3917,11 +4786,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -3930,33 +4811,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "ice-cubes": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "kingfisher": {
           "info": "corpus/ has 25 .m files (e.g. LSNocilla.m)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "netnewswire": {
           "info": "corpus/ has 10 .m files (e.g. SFSafariViewController+Extras.m)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 14 .m files (e.g. MyPublicClass.m)",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -3972,11 +4848,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "corpus/ has 1 .mm files (e.g. util.mm)",
+          "ok": true
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "corpus/ has 1 .mm files (e.g. util.mm)",
+          "ok": true
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -3985,33 +4873,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "ice-cubes": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "kingfisher": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "netnewswire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "tuist-fixtures": {
           "info": "corpus/ has 2 .mm files (e.g. MyObjcppClass.mm)",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -4027,11 +4910,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -4040,33 +4935,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "ice-cubes": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "kingfisher": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "netnewswire": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "tuist-fixtures": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         }
       }
     },
@@ -4082,11 +4972,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4111,7 +5013,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "xcscheme matched: raw/NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire.xcscheme (+1)",
+          "info": "xcscheme matched: raw/NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire-iOS.xcscheme (+1)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -4132,11 +5034,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4182,11 +5096,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4232,11 +5158,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4265,7 +5203,7 @@
           "ok": false
         },
         "tuist-fixtures": {
-          "info": "xcscheme matched: raw/examples_xcode_generated_ios_app_with_static_libraries/iOSAppWithTransistiveStaticLibraries.xcworkspace/xcshareddata/xcschemes/Generate Project.xcscheme (+9)",
+          "info": "xcscheme matched: raw/examples_xcode_generated_ios_app_with_watchapp2/App.xcworkspace/xcshareddata/xcschemes/Generate Project.xcscheme (+9)",
           "ok": true
         }
       }
@@ -4282,11 +5220,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4311,7 +5261,7 @@
           "ok": false
         },
         "netnewswire": {
-          "info": "xcscheme matched: raw/NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire.xcscheme (+1)",
+          "info": "xcscheme matched: raw/NetNewsWire.xcodeproj/xcshareddata/xcschemes/NetNewsWire-iOS.xcscheme (+1)",
           "ok": true
         },
         "tuist-fixtures": {
@@ -4332,11 +5282,23 @@
           "info": "corpus clone absent",
           "ok": null
         },
+        "_synthetic-foreign-workspace": {
+          "info": "corpus clone absent",
+          "ok": null
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "corpus clone absent",
           "ok": null
         },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "corpus clone absent",
           "ok": null
         },
@@ -4345,33 +5307,28 @@
           "ok": null
         },
         "_tuist-src": {
-          "info": "corpus clone absent",
-          "ok": null
+          "info": "",
+          "ok": false
         },
         "alamofire": {
           "info": "corpus/ has 5 .xctestplan files (e.g. watchOS.xctestplan)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "ice-cubes": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "kingfisher": {
           "info": "",
-          "ok": false,
-          "stale": true
+          "ok": false
         },
         "netnewswire": {
           "info": "corpus/ has 3 .xctestplan files (e.g. NetNewsWire.xctestplan)",
-          "ok": true,
-          "stale": true
+          "ok": true
         },
         "tuist-fixtures": {
           "info": "corpus/ has 7 .xctestplan files (e.g. App.xctestplan)",
-          "ok": true,
-          "stale": true
+          "ok": true
         }
       }
     },
@@ -4387,13 +5344,25 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "PRODUCT_TYPE='com.apple.product-type.application' (1 hits)",
+          "ok": true
+        },
         "_synthetic-rich": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-spm-cli": {
           "info": "",
           "ok": false
         },
         "_synthetic-staticlib": {
           "info": "",
           "ok": false
+        },
+        "_synthetic-symroot-override": {
+          "info": "PRODUCT_TYPE='com.apple.product-type.application' (1 hits)",
+          "ok": true
         },
         "_synthetic-xcconfigs": {
           "info": "",
@@ -4437,11 +5406,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4487,11 +5468,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4537,11 +5530,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4587,11 +5592,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4637,11 +5654,23 @@
           "info": "PRODUCT_TYPE='com.apple.product-type.tool' (3 hits)",
           "ok": true
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4687,11 +5716,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4737,11 +5778,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4787,11 +5840,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4837,11 +5902,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4887,11 +5964,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4937,11 +6026,23 @@
           "info": "",
           "ok": false
         },
+        "_synthetic-foreign-workspace": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-rich": {
           "info": "",
           "ok": false
         },
+        "_synthetic-spm-cli": {
+          "info": "",
+          "ok": false
+        },
         "_synthetic-staticlib": {
+          "info": "",
+          "ok": false
+        },
+        "_synthetic-symroot-override": {
           "info": "",
           "ok": false
         },
@@ -4979,8 +6080,11 @@
   "slugs": [
     "_global",
     "_synthetic-custom-config",
+    "_synthetic-foreign-workspace",
     "_synthetic-rich",
+    "_synthetic-spm-cli",
     "_synthetic-staticlib",
+    "_synthetic-symroot-override",
     "_synthetic-xcconfigs",
     "_tuist-src",
     "alamofire",

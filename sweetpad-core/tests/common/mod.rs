@@ -1217,6 +1217,18 @@ fn canon_path_token(tok: &str) -> String {
     if let Some(inner) = tok.strip_prefix('"').and_then(|t| t.strip_suffix('"')) {
         return format!("\"{}\"", canon_path_token(inner));
     }
+    // A search-path flag carries the path in the same whitespace token, e.g.
+    // `-L/Applications/Xcode.app/Contents/Developer/Toolchains/...` in
+    // OTHER_LDFLAGS. Split the flag off, canonicalize the path, put it back —
+    // otherwise the Xcode-app-dir root never collapses and two hosts that
+    // install Xcode under different app names never agree.
+    for flag in ["-L", "-I", "-F", "-isystem"] {
+        if let Some(rest) = tok.strip_prefix(flag)
+            && rest.starts_with('/')
+        {
+            return format!("{flag}{}", canon_path_token(rest));
+        }
+    }
     // Only rewrite tokens that look like absolute paths (or already-
     // canonicalised `<HOME>/...`) and reach a known anchor segment.
     if !tok.starts_with('/') && !tok.starts_with("<HOME>") && !tok.starts_with("<DARWIN_CACHE>") {
@@ -1403,6 +1415,16 @@ mod canon_tests {
                 "/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain"
             ),
             "<XCODE_DEV>/Toolchains/XcodeDefault.xctoolchain"
+        );
+        // A search-path flag glued to the path still collapses, so two hosts
+        // whose Xcode lives under different app names agree.
+        assert_eq!(
+            canonicalize_value(
+                "-L/Applications/Xcode-27.0.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos"
+            ),
+            canonicalize_value(
+                "-L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos"
+            )
         );
         // The fixture-resident xcspec-cache path also normalises so the
         // corpus test's resolver output lines up with oracle paths.

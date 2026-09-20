@@ -1,0 +1,32 @@
+[
+  {
+    "arch": "arm64",
+    "id": "00006030-0018296E1A28001C",
+    "name": "My Mac",
+    "platform": "macOS",
+    "variant": "Designed for [iPad"
+  },
+  {
+    "arch": "arm64",
+    "id": "00008110-000559182E90401E",
+    "name": "Iphone 13",
+    "platform": "iOS"
+  },
+  {
+    "id": "dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder",
+    "name": "Any iOS Device",
+    "platform": "iOS"
+  },
+  {
+    "id": "dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder",
+    "name": "Any iOS Simulator Device",
+    "platform": "iOS Simulator"
+  },
+  {
+    "arch": "arm64e",
+    "error": "My Mac\u2019s macOS platform doesn\u2019t match App.app\u2019s supported platforms. You can change App.app\u2019s Base SDK or Supported Platforms to support My Mac.",
+    "id": "00006030-0018296E1A28001C",
+    "name": "My Mac",
+    "platform": "macOS"
+  }
+]

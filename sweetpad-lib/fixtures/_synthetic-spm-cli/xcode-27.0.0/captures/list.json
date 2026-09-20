@@ -1,0 +1,10 @@
+{
+  "workspace": {
+    "name": "SweetpadSpmDemo",
+    "schemes": [
+      "demo",
+      "DemoKit",
+      "SweetpadSpmDemo-Package"
+    ]
+  }
+}

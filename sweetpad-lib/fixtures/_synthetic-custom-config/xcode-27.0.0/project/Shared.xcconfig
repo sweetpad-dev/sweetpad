@@ -1,0 +1,4 @@
+// baseConfigurationReference for every configuration. The [config=Profile] arm
+// only resolves when the custom `Profile` configuration is selected.
+XCCONFIG_MARKER = base
+XCCONFIG_MARKER[config=Profile] = profile

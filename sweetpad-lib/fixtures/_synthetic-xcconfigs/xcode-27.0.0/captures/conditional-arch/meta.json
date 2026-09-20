@@ -1,0 +1,11 @@
+{
+  "configuration": "Debug",
+  "description": "Conditional [arch=...] in xcconfig",
+  "destination": "platform=macOS",
+  "name": "conditional-arch",
+  "ok_with": true,
+  "ok_without": true,
+  "project": "project/Scratch.xcodeproj",
+  "target": "Scratch",
+  "xcconfig": "xcconfigs/conditional-arch.xcconfig"
+}

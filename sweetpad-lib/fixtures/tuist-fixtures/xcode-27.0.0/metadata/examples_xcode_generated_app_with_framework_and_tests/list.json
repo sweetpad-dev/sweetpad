@@ -1,0 +1,13 @@
+{
+  "workspace": {
+    "name": "App",
+    "schemes": [
+      "App",
+      "App-Workspace",
+      "AppCustomScheme",
+      "AppExtension",
+      "Framework",
+      "Generate Project"
+    ]
+  }
+}

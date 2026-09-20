@@ -1,0 +1,5 @@
+2026-09-20 00:41:15.405 xcodebuild[58896:6437593] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-20 00:41:15.406 xcodebuild[58896:6437593] Writing error result bundle to /var/folders/wq/kkdk740d68qcqvttr995x13w0000gq/T/ResultBundle_2026-20-09_00-41-0015.xcresult
+xcodebuild: error: Could not configure request to show build settings: Unable to find a destination matching the provided destination specifier:
+		{ platform:macOS }
+

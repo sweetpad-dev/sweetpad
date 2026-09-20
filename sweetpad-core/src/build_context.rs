@@ -753,12 +753,32 @@ impl BuildContext {
         if let Some(p) = resolved_sdkroot
             && !auto_no_destination
         {
-            layers.push(vec![Assignment {
+            let mut sdk_layer = vec![Assignment {
                 key: "SDKROOT".into(),
                 conditions: Vec::new(),
-                value: p,
+                value: p.clone(),
                 condition: None,
-            }]);
+            }];
+            // Xcode 27 reports SYSROOT alongside SDKROOT and always equal to
+            // it (154/154 per-target captures; the two exceptions are the
+            // `SDKROOT = auto` targets, where 27 omits SYSROOT too, which is
+            // why this sits under the same guard). 26.5 and older never
+            // emitted the key. Its `Swift.xcspec` entry is a `Path` option
+            // with no `DefaultValue`, so the spec alone resolves it empty.
+            if project::effective_xcode_major(
+                self.xcspec
+                    .as_ref()
+                    .and_then(|c| c.xcode_version.as_deref()),
+            ) >= 27
+            {
+                sdk_layer.push(Assignment {
+                    key: "SYSROOT".into(),
+                    conditions: Vec::new(),
+                    value: p,
+                    condition: None,
+                });
+            }
+            layers.push(sdk_layer);
         }
 
         if !query.overrides.is_empty() {

@@ -441,10 +441,18 @@ def capture_settings_steps(version: str, subset: list[str], *, force: bool, dry:
 
 def validate(version: str, *, dry: bool) -> None:
     """Run the version-aware oracle tests (they score every captured version)."""
+    # The settings oracles live in `sweetpad-core` and the SPM one in
+    # `sweetpad-cli`, so each needs its own `-p`: a bare `--test` resolves
+    # against this crate and fails with "no test target named ...".
     run_cmd(
-        ["cargo", "test", "--test", "corpus_oracle", "--test", "per_target_oracle",
+        ["cargo", "test", "-p", "sweetpad-core",
+         "--test", "corpus_oracle", "--test", "per_target_oracle",
          "--test", "project_defaults_oracle", "--test", "synthetic_override_oracle",
-         "--test", "xcconfig_resolution_oracle", "--test", "spm_oracle"],
+         "--test", "xcconfig_resolution_oracle"],
+        dry=dry, cwd=common.REPO_ROOT, allow_fail=True,
+    )
+    run_cmd(
+        ["cargo", "test", "-p", "sweetpad-cli", "--test", "spm_oracle"],
         dry=dry, cwd=common.REPO_ROOT, allow_fail=True,
     )
 
@@ -565,8 +573,23 @@ def main() -> int:
     baseline_dev = common.xcode_select_current()
     common.log(f"baseline xcode-select: {baseline_dev}")
 
+    # `xcodes` is only a prerequisite for the versions this run has to install.
+    # Every requested version already sitting in /Applications makes the whole
+    # acquire step a no-op, and demanding the installer then blocks a capture
+    # that needs nothing from it.
+    xcodes_dir = Path(args.xcodes_dir)
+    present = installed_versions(xcodes_dir)
+    want_install = any(
+        not any(v == t or v.startswith(t) for v in present) for t in args.versions
+    )
+    if not want_install:
+        common.log(
+            f"all requested versions already installed ({', '.join(sorted(present))})"
+            " — skipping the xcodes prerequisite"
+        )
+
     if not dry:
-        rc = check_auth(want_install=True, want_runtime=not args.no_runtime)
+        rc = check_auth(want_install=want_install, want_runtime=not args.no_runtime)
         if rc != 0:
             return rc
 
@@ -579,7 +602,7 @@ def main() -> int:
                     token,
                     subset=subset,
                     baseline_dev=baseline_dev,
-                    xcodes_dir=Path(args.xcodes_dir),
+                    xcodes_dir=xcodes_dir,
                     keep=args.keep,
                     force=args.force,
                     no_runtime=args.no_runtime,

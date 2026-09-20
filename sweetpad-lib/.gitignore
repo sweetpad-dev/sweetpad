@@ -1,5 +1,7 @@
 # Corpus clones — recreated by scripts/01_clone_corpus.py
 corpus/*/
+# `_tuist-src` is a symlink, so `corpus/*/` (directories only) misses it.
+corpus/_tuist-src
 !corpus/manifest.json
 
 # Build / IDE state

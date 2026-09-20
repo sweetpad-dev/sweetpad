@@ -1,0 +1,19 @@
+{
+  "captured": [
+    "Debug",
+    "Release",
+    "Profile"
+  ],
+  "configs": [
+    "Debug",
+    "Release",
+    "Profile"
+  ],
+  "description": "Custom-configuration resolution (Debug/Release/Profile)",
+  "markers": {
+    "PBXPROJ_MARKER": "per-config pbxproj target setting",
+    "XCCONFIG_MARKER": "[config=Profile] entry in Shared.xcconfig"
+  },
+  "project": "project/Scratch.xcodeproj",
+  "target": "Scratch"
+}

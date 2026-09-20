@@ -1,0 +1,146 @@
+// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    classes = {};
+    objectVersion = 60;
+    objects = {
+        EE3E20D9F945514D8C016DB5 = {isa = PBXBuildFile; fileRef = 1AE0D1D7A0145E77889EEB86; };
+        1AE0D1D7A0145E77889EEB86 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+        01FEDEFF85DE564CB6DEB45C = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
+        A4466188D9D9599781FA3F20 = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = Scratch; sourceTree = BUILT_PRODUCTS_DIR; };
+        FBF661A3369E5C888ED9B792 = {
+            isa = PBXGroup;
+            children = (
+                1AE0D1D7A0145E77889EEB86,
+                01FEDEFF85DE564CB6DEB45C,
+                863D667A048C5BFFA19BD96F,
+            );
+            sourceTree = "<group>";
+        };
+        863D667A048C5BFFA19BD96F = {
+            isa = PBXGroup;
+            children = (
+                A4466188D9D9599781FA3F20,
+            );
+            name = Products;
+            sourceTree = "<group>";
+        };
+        FEE88E53FC3D578A99555027 = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = 6190A55DEC2C5BA28BA9622C;
+            buildPhases = (
+                6E3A56BF21115DF8A5CC7397,
+            );
+            buildRules = ();
+            dependencies = ();
+            name = Scratch;
+            productName = Scratch;
+            productReference = A4466188D9D9599781FA3F20;
+            productType = "com.apple.product-type.tool";
+        };
+        19D4BE76ADB2595B9CB2DAF5 = {
+            isa = PBXProject;
+            attributes = {
+                LastUpgradeCheck = 1500;
+            };
+            buildConfigurationList = 2C6C74A00C315DC0B79BCD5C;
+            compatibilityVersion = "Xcode 14.0";
+            developmentRegion = en;
+            hasScannedForEncodings = 0;
+            knownRegions = (en, Base);
+            mainGroup = FBF661A3369E5C888ED9B792;
+            productRefGroup = 863D667A048C5BFFA19BD96F;
+            projectDirPath = "";
+            projectRoot = "";
+            targets = (FEE88E53FC3D578A99555027);
+        };
+        6E3A56BF21115DF8A5CC7397 = {
+            isa = PBXSourcesBuildPhase;
+            buildActionMask = 2147483647;
+            files = (EE3E20D9F945514D8C016DB5);
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+        CB41CDF17F6856F0B4AE91FB = {
+            isa = XCBuildConfiguration;
+            baseConfigurationReference = 01FEDEFF85DE564CB6DEB45C;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                MACOSX_DEPLOYMENT_TARGET = 12.0;
+                SDKROOT = macosx;
+                SWIFT_VERSION = 5.0;
+            };
+            name = Debug;
+        };
+        2475CC82C300552EA6341011 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                PBXPROJ_MARKER = debug;
+                PRODUCT_NAME = Scratch;
+                SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+            };
+            name = Debug;
+        };
+        BD51B770F1315569B42FABA0 = {
+            isa = XCBuildConfiguration;
+            baseConfigurationReference = 01FEDEFF85DE564CB6DEB45C;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                MACOSX_DEPLOYMENT_TARGET = 12.0;
+                SDKROOT = macosx;
+                SWIFT_VERSION = 5.0;
+            };
+            name = Release;
+        };
+        B59906A16EBA531382E3D31F = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                PBXPROJ_MARKER = release;
+                PRODUCT_NAME = Scratch;
+                SWIFT_OPTIMIZATION_LEVEL = "-O";
+            };
+            name = Release;
+        };
+        2D359B04F32A55F0887D3D8A = {
+            isa = XCBuildConfiguration;
+            baseConfigurationReference = 01FEDEFF85DE564CB6DEB45C;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                MACOSX_DEPLOYMENT_TARGET = 12.0;
+                SDKROOT = macosx;
+                SWIFT_VERSION = 5.0;
+            };
+            name = Profile;
+        };
+        D02205EA6CC85B4C8EB021F5 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                PBXPROJ_MARKER = profile;
+                PRODUCT_NAME = Scratch;
+                SWIFT_OPTIMIZATION_LEVEL = "-O";
+                SWIFT_COMPILATION_MODE = wholemodule;
+            };
+            name = Profile;
+        };
+        2C6C74A00C315DC0B79BCD5C = {
+            isa = XCConfigurationList;
+            buildConfigurations = (
+            CB41CDF17F6856F0B4AE91FB,
+            BD51B770F1315569B42FABA0,
+            2D359B04F32A55F0887D3D8A,
+            );
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
+        6190A55DEC2C5BA28BA9622C = {
+            isa = XCConfigurationList;
+            buildConfigurations = (
+            2475CC82C300552EA6341011,
+            B59906A16EBA531382E3D31F,
+            D02205EA6CC85B4C8EB021F5,
+            );
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
+    };
+    rootObject = 19D4BE76ADB2595B9CB2DAF5;
+}

@@ -1,0 +1,11 @@
+{
+  "configuration": "Debug",
+  "description": "$(inherited) used in xcconfig",
+  "destination": "platform=macOS",
+  "name": "inherited",
+  "ok_with": true,
+  "ok_without": true,
+  "project": "project/Scratch.xcodeproj",
+  "target": "Scratch",
+  "xcconfig": "xcconfigs/inherited.xcconfig"
+}

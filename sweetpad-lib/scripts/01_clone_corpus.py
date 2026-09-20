@@ -21,6 +21,11 @@ Flags:
   --force             re-clone even if the directory exists at the right SHA
   --skip-tuist        skip the Tuist-fixtures generate step (useful when
                       iterating)
+  --from-manifest     clone each project at the SHA already recorded in
+                      corpus/manifest.json instead of re-resolving the pin.
+                      Use this when re-materialising the clones for a new
+                      Xcode version, so every version is captured against the
+                      same sources.
 """
 
 from __future__ import annotations
@@ -236,6 +241,7 @@ def process_project(
     *,
     force: bool,
     skip_tuist: bool,
+    from_manifest: bool,
 ) -> dict:
     """Returns the manifest entry for this project."""
     dest = common.CORPUS_DIR / project.slug
@@ -243,7 +249,16 @@ def process_project(
     entry: dict = dict(manifest.get("projects", {}).get(project.slug, {}))
 
     # Determine target ref
-    if project.pin == "latest-release":
+    if from_manifest:
+        pinned = entry.get("sha")
+        if not pinned:
+            raise RuntimeError(
+                f"{project.slug}: --from-manifest but corpus/manifest.json "
+                f"records no sha"
+            )
+        common.log(f"{project.slug}: manifest sha = {pinned}")
+        target_ref = pinned
+    elif project.pin == "latest-release":
         tags = ls_remote_tags(project.repo)
         chosen = pick_latest_release(tags)
         if chosen is None:
@@ -283,7 +298,7 @@ def process_project(
             "slug": project.slug,
             "repo": project.repo,
             "pin_strategy": project.pin,
-            "ref": target_ref,
+            "ref": entry.get("ref", target_ref) if from_manifest else target_ref,
             "sha": sha,
             "captured_at": now_iso(),
         })
@@ -296,9 +311,12 @@ def process_project(
 
     # Per-project setup. Re-runs even when the clone was skipped — that way
     # editing the fixture-pick patterns doesn't require a re-download.
+    # A manifest entry only counts as generated when the .xcodeproj it claims
+    # is on disk: a fresh clone wipes the generated projects while the manifest
+    # still records the previous host's success.
     already_generated = {
         fx["path"]: fx for fx in entry.get("fixtures_selected", [])
-        if fx.get("generated")
+        if fx.get("generated") and any((dest / fx["path"]).glob("*.xcodeproj"))
     } if project.slug == "tuist-fixtures" else {}
     if project.slug == "tuist-fixtures" and not skip_tuist:
         picks = pick_tuist_fixtures(dest)
@@ -336,6 +354,9 @@ def main() -> int:
                     help="re-clone even if up-to-date")
     ap.add_argument("--skip-tuist", action="store_true",
                     help="don't run `tuist install/generate` for tuist-fixtures")
+    ap.add_argument("--from-manifest", action="store_true",
+                    help="clone at the SHA recorded in corpus/manifest.json "
+                         "instead of re-resolving the pin")
     args = ap.parse_args()
 
     common.ensure_dir(common.CORPUS_DIR)
@@ -352,6 +373,7 @@ def main() -> int:
             entry = process_project(
                 project, manifest,
                 force=args.force, skip_tuist=args.skip_tuist,
+                from_manifest=args.from_manifest,
             )
             manifest["projects"][project.slug] = entry
             common.save_manifest(manifest)

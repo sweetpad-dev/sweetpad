@@ -357,6 +357,17 @@ fn version_floor(version: &str, sdk: &str) -> (u64, u64, u64) {
         ("26.5.0", "appletvos") => (97, 92, 98),
         ("26.5.0", "watchos") => (97, 90, 98),
         ("26.5.0", "xros") => (92, 90, 90),
+        // 27.0.0's swift cells sit below the other majors because the
+        // new-in-27 Swift driver flags are not modelled yet. Its per-platform
+        // coverage comes from the `_synthetic-rich` fixture, which authors
+        // deployment targets above every floor and so builds everywhere the
+        // corpus projects no longer can (§5.4).
+        ("27.0.0", "macosx") => (84, 95, 93),
+        ("27.0.0", "iphoneos") => (84, 96, 98),
+        ("27.0.0", "iphonesimulator") => (84, 95, 83),
+        ("27.0.0", "appletvos") => (84, 96, 98),
+        ("27.0.0", "watchos") => (84, 96, 83),
+        ("27.0.0", "xros") => (81, 93, 86),
         // Other (version, platform) cells: calibrated once captured.
         _ => (90, 85, 55),
     }
@@ -379,6 +390,12 @@ fn precision_floor(version: &str, sdk: &str) -> (u64, u64, u64) {
         ("26.5.0", "appletvos") => (97, 97, 97),
         ("26.5.0", "watchos") => (97, 95, 97),
         ("26.5.0", "xros") => (97, 97, 97),
+        ("27.0.0", "macosx") => (92, 96, 95),
+        ("27.0.0", "iphoneos") => (90, 96, 98),
+        ("27.0.0", "iphonesimulator") => (90, 98, 83),
+        ("27.0.0", "appletvos") => (90, 96, 98),
+        ("27.0.0", "watchos") => (90, 96, 83),
+        ("27.0.0", "xros") => (90, 96, 96),
         _ => (88, 88, 78),
     }
 }
