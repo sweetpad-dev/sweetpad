@@ -90,7 +90,7 @@ impl Error {
     }
 
     /// The canonical "no target named X" lookup-miss error.
-    fn no_such_target(target_name: &str) -> Self {
+    pub(crate) fn no_such_target(target_name: &str) -> Self {
         Error::NoSuchTarget(target_name.to_string())
     }
 }
@@ -124,10 +124,27 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 /// Open an .xcodeproj directory and extract its high-level metadata: name,
-/// targets, project configurations, and shared schemes.
+/// targets, project configurations, and shared schemes, in whichever of the
+/// two formats its bundle holds.
+///
+/// Xcode 27.2 writes the JSON `project.xcproj` in place of `project.pbxproj`.
+/// A bundle holding both is invalid — Xcode says so rather than preferring
+/// one — so this reports it instead of guessing.
 pub fn open(xcodeproj_path: &Path) -> Result<Project, Error> {
-    let value = parse_pbxproj(xcodeproj_path)?;
-    open_from_value(&value, xcodeproj_path)
+    let pbxproj = xcodeproj_path.join("project.pbxproj").exists();
+    let xcproj = xcodeproj_path.join(crate::xcproj::DOCUMENT_NAME).exists();
+    match (pbxproj, xcproj) {
+        (true, true) => Err(Error::BadProject(format!(
+            "{} has both project.pbxproj and {}; only one should exist",
+            xcodeproj_path.display(),
+            crate::xcproj::DOCUMENT_NAME
+        ))),
+        (false, true) => crate::project_xcproj::open(xcodeproj_path),
+        _ => {
+            let value = parse_pbxproj(xcodeproj_path)?;
+            open_from_value(&value, xcodeproj_path)
+        }
+    }
 }
 
 /// Like [`open`] but driven by an already-parsed pbxproj value. Use this when
@@ -359,7 +376,7 @@ fn walk_for_packages<'a>(
 /// `en.lproj`. A package directory never has one, and skipping them keeps the
 /// scan off the resource trees that are most of what a synchronized folder
 /// holds: NetNewsWire's eight folders cost 82 `read_dir` calls this way.
-fn packages_under_synchronized_folder(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
+pub(crate) fn packages_under_synchronized_folder(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
     if depth >= MAX_GROUP_DEPTH {
         return;
     }
@@ -476,7 +493,7 @@ fn is_safari_extension_target(
 
 /// Recursive search for a `<key>NSExtensionPointIdentifier</key>` followed by
 /// `<string>com.apple.Safari.extension</string>` anywhere in an XML plist.
-fn element_has_safari_extension_point(el: &crate::xcscheme::Element) -> bool {
+pub(crate) fn element_has_safari_extension_point(el: &crate::xcscheme::Element) -> bool {
     let mut children = el.children.iter().peekable();
     while let Some(child) = children.next() {
         if child.name == "key"
@@ -515,6 +532,13 @@ fn default_configuration_name(objects: &Dict, container: &Value) -> Option<Strin
 /// [`build_settings_from_value`].
 pub fn parse_pbxproj(xcodeproj_path: &Path) -> Result<Arc<Value>, Error> {
     let pbxproj_path = xcodeproj_path.join("project.pbxproj");
+    if !pbxproj_path.exists() && xcodeproj_path.join(crate::xcproj::DOCUMENT_NAME).exists() {
+        return Err(Error::BadProject(format!(
+            "{} is in the {} format, which this command cannot read yet",
+            xcodeproj_path.display(),
+            crate::xcproj::DOCUMENT_NAME
+        )));
+    }
     pbxproj::parse_file_cached(&pbxproj_path).map_err(|e| match e {
         pbxproj::Error::Io(e) => Error::Io(e),
         pbxproj::Error::Parse(e) => Error::Parse(e),
@@ -669,6 +693,14 @@ pub fn build_settings(
     target_name: &str,
     config_name: &str,
 ) -> Result<BuildSettingsContext, Error> {
+    if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
+        return crate::project_xcproj::build_settings_from_value(
+            &value,
+            xcodeproj_path,
+            target_name,
+            config_name,
+        );
+    }
     let value = parse_pbxproj(xcodeproj_path)?;
     build_settings_from_value(&value, xcodeproj_path, target_name, config_name)
 }
@@ -1172,7 +1204,7 @@ fn target_has_script_or_rule_phase(objects: &Dict, target_obj: &Value) -> bool {
 /// The absolute directory containing the `.xcodeproj` — the anchor for
 /// `<group>` / `SOURCE_ROOT` source trees. Canonicalized when it exists (so the
 /// paths match xcodebuild's absolute output), falling back to the input.
-fn abs_project_dir(xcodeproj_path: &Path) -> PathBuf {
+pub(crate) fn abs_project_dir(xcodeproj_path: &Path) -> PathBuf {
     let abs = fs::canonicalize(xcodeproj_path).unwrap_or_else(|_| xcodeproj_path.to_path_buf());
     abs.parent().map_or_else(PathBuf::new, Path::to_path_buf)
 }
@@ -1181,7 +1213,7 @@ fn abs_project_dir(xcodeproj_path: &Path) -> PathBuf {
 /// are tens of levels at most — and since groups are objects referenced by
 /// id, their depth is NOT bounded by the pbxproj parser's nesting cap, so a
 /// corrupt chain of groups could otherwise overflow the stack.
-const MAX_GROUP_DEPTH: usize = 256;
+pub(crate) const MAX_GROUP_DEPTH: usize = 256;
 
 /// DFS the group tree, recording `file_id → absolute path` for every leaf. A
 /// group node contributes its own directory to its children; a leaf records its
@@ -1327,7 +1359,7 @@ pub fn standardize(path: &Path) -> PathBuf {
 
 /// Join `rel` onto `base`, collapsing `.` / `..` lexically (without touching the
 /// filesystem) so a group path like `../Shared` resolves cleanly.
-fn join_normalized(base: &Path, rel: &str) -> PathBuf {
+pub(crate) fn join_normalized(base: &Path, rel: &str) -> PathBuf {
     let mut p = base.to_path_buf();
     for comp in Path::new(rel).components() {
         match comp {
@@ -4183,7 +4215,7 @@ fn extract_inline_settings(config: &Value) -> Vec<Assignment> {
     out
 }
 
-fn split_conditional_key(s: &str) -> (String, Vec<Condition>) {
+pub(crate) fn split_conditional_key(s: &str) -> (String, Vec<Condition>) {
     let Some(idx) = s.find('[') else {
         return (s.to_string(), Vec::new());
     };

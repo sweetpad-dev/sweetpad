@@ -43,7 +43,7 @@ impl ResolveContext {
 /// character-class syntax. Iterative two-pointer matching with backtracking
 /// to the most recent star; byte-wise comparison is exact for UTF-8 since
 /// `*` is ASCII.
-fn glob_match(pattern: &str, s: &str) -> bool {
+pub(crate) fn glob_match(pattern: &str, s: &str) -> bool {
     let p = pattern.as_bytes();
     let t = s.as_bytes();
     let (mut pi, mut ti) = (0usize, 0usize);

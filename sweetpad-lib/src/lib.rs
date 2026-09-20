@@ -22,6 +22,7 @@ pub mod pbxproj;
 pub mod pbxproj_merge;
 pub mod pbxproj_writer;
 pub mod project;
+mod project_xcproj;
 pub mod resolver;
 pub mod schema_xcproj;
 pub mod scheme;

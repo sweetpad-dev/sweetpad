@@ -35,13 +35,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
             continue;
         }
         if p.extension() == Some(OsStr::new("xcodeproj")) {
-            // `open` reads `project.pbxproj`. A bundle holding the JSON
-            // `project.xcproj` instead is skipped until it learns the second
-            // format; the printer for it is covered by
-            // `tests/serializer_roundtrip.rs`.
-            if p.join("project.pbxproj").exists() {
-                out.push(p);
-            }
+            out.push(p);
         } else {
             walk(&p, out);
         }
@@ -288,6 +282,12 @@ fn corpus_dependency_graphs_are_sound() {
     let projects = xcodeproj_dirs(&fixtures_root());
     let mut checked = 0;
     for path in &projects {
+        // The graph queries read the pbxproj's group tree and build phases.
+        // Their `project.xcproj` counterparts arrive with the file-tree view;
+        // until then those bundles answer with an error naming the format.
+        if !path.join("project.pbxproj").exists() {
+            continue;
+        }
         let Ok(project) = open(path) else {
             continue; // open() failures are covered by opens_every_xcodeproj_in_corpus
         };

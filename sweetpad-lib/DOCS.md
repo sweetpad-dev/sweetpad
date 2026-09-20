@@ -1545,6 +1545,82 @@ A full library audit (line references against `54c40a1`) landed with commit
 structs (best before more corpus-derived rules accrete; protected by the green
 oracle) → P4/P5 as independently shippable background tasks.
 
+### 11.3 The JSON project format (`project.xcproj`)
+
+Xcode 27 reads a second project definition: `project.xcproj`, a JSON-shaped
+document that replaces `project.pbxproj` inside the same `.xcodeproj` bundle.
+27.0 and 27.1 only read it; **27.2 is the first release that writes one**, via
+
+    xcodebuild -project <project>.xcodeproj -convert-project "Xcode Project"
+
+or `xcrun xcprojformatter`, which lives in `Contents/Developer/usr/bin` rather
+than `/usr/bin`. Xcode's output, the formatter's, and Apple's published
+`apple/xcode-project-format` 0.1.0 agree byte for byte on all 61 corpus
+projects that convert, so any of the three can regenerate a fixture.
+
+Despite the name, it is not JSON: real documents carry trailing commas and
+comments, and `serde_json` rejects them. `src/xcproj.rs` holds the parser and a
+printer that reproduces Xcode's layout byte for byte. Density is not derivable
+from content — whether a container prints on one line is a property of the
+document — so the parser records it and the printer replays it, the same trick
+`pbxproj::Dict::single_line` uses. `src/schema_xcproj.rs` is the typed view over
+that tree, and `src/project_xcproj.rs` builds the ordinary `project::Project`
+from it. `project::open` and `project::build_settings` pick the reader from
+which definition file the bundle holds; a bundle holding both is an error,
+which is what Xcode itself says.
+
+**Where the same information moved.** A configuration is a name in the
+project's `configurations` list, not an `XCBuildConfiguration` per target, and
+there is one `build-settings` map per scope. One map per configuration became a
+condition on the key, `SWIFT_OPTIMIZATION_LEVEL[config=Debug]`, the spelling
+`.xcconfig` has always used and one the resolver already matches. A target's
+`kind` carries what `isa` did, and its `product-type` is stored with
+`com.apple.product-type.` dropped (`full-product-type` holds anything else
+whole). A file's `sourceTree` became a token inside its path: `<PROJECT>`,
+`<PRODUCTS>`, `<SDK>`, `<DEVELOPER>`, or nothing for the parent group's
+directory.
+
+**A configuration's `file` is a navigator path, not a disk path.** Its segments
+are display names, which is why CocoaPods' xcconfig reads
+`Pods/Pods-App.debug.xcconfig` for a file that lives at
+`Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig`. Resolving it
+means walking the `files` tree and rebuilding each node's navigator path; a
+group's own name can hold a `/`, so the input cannot simply be split. An
+xcconfig inside a synchronized folder has no node at all, and takes the
+`{ anchor, relative-path }` form instead, the anchor being the folder's
+navigator path.
+
+**Measured against the pbxproj path.** Converting the whole corpus in place and
+reading both copies gives the same targets, configurations and schemes on all
+61 projects. Four differ in configuration *order* only, and there the converted
+document is what `xcodebuild -list` reports for it: Xcode's converter sorts
+`Debug, Release, Profile` into `Debug, Profile, Release`. Resolved settings
+match on 255 of 270 target × configuration pairs. The other 15 are all one
+rewrite the converter performs, `SWIFT_OPTIMIZATION_LEVEL = -Owholemodule`
+becoming `-O` plus `SWIFT_COMPILATION_MODE = wholemodule`; `-showBuildSettings`
+reports the split pair for **both** copies, so the pbxproj path is the one that
+drifts from the oracle there, and the resolver should normalize the deprecated
+value.
+
+Copy whole project directories for this measurement, not the `.xcodeproj`
+bundles. A bare bundle silently loses every local Swift package and nested
+sub-project, and the missing targets look exactly like reader bugs: the first
+run of this comparison reported 24 differences that way, and all but three were
+the copy.
+
+18 of the 79 corpus projects cannot be converted at all, every one of them
+Tuist output. 12 fail with "The project has an unsupported root group path, it
+should be the project directory" and 6 with "A copy build phase is missing a
+required value for destination path". Both are Xcode refusing to save, not a
+limit of this reader.
+
+**Still open: the file-tree view** — references, `target-membership` in its two
+forms, and `membership-exceptions`. Until it lands, `target_source_files`,
+`target_dependencies`, `target_has_package_products` and the linking queries
+read only the pbxproj and answer a bundle in the other format with an error
+naming it. That also gates the `membership` / `fileref` / `group` / `folder`
+editing verbs.
+
 ## 12. Project history
 
 Condensed log of how the library got here; each entry's full technical detail
@@ -1635,3 +1711,14 @@ lives in the sections above and in the named commits.
   product's `plugin:` prefix and a repository URL's `#fragment` are both dropped
   from the annotation. Pinned by `fixtures/_synthetic-objectversion-110`, an
   Xcode 27-converted project carrying all four constructs.
+
+- **2026-09-20 — reading Xcode 27.2's `project.xcproj`.** The JSON-shaped
+  project definition gained a parser, a byte-exact printer, a typed settings
+  view, and a reader that builds the same `project::Project` a pbxproj does, so
+  `project info`, `scheme list` and the settings layers work on either format
+  and callers never learn which one the bundle held. Verified by converting the
+  corpus in place with Xcode 27.2 and reading both copies: identical targets,
+  configurations and schemes on all 61 projects, and identical resolved
+  settings on 255 of 270 target × configuration pairs, with every remaining
+  difference traced to a rewrite Xcode's own converter performs. §11.3 has the
+  format notes, the measurement, and what is still pbxproj-only.
