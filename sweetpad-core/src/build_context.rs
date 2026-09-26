@@ -1275,9 +1275,8 @@ mod tests {
             .unwrap();
         let build_dir = get(&resolved, "BUILD_DIR");
 
-        let project_hash =
-            sweetpad_lib::xcode_hash::derived_data_hash(&xcodeproj.display().to_string());
-        let stub_hash = sweetpad_lib::xcode_hash::derived_data_hash(&stub.display().to_string());
+        let project_hash = sweetpad_lib::derived_data::container_hash(&xcodeproj);
+        let stub_hash = sweetpad_lib::derived_data::container_hash(&stub);
         assert!(
             build_dir.contains(&format!("Scratch-{project_hash}")),
             "BUILD_DIR must use the outer .xcodeproj name + hash: {build_dir}"

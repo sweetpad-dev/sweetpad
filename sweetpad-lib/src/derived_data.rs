@@ -143,10 +143,25 @@ fn apply(
 
 /// The `<Name>-<hash>` folder a hash-keyed DerivedData location writes for a
 /// container named `name` whose path hashes to `hash` (see
-/// [`crate::xcode_hash`]).
+/// [`container_hash`]).
 #[must_use]
 pub fn hashed_folder(name: &str, hash: &str) -> String {
     format!("{}-{hash}", hashed_name(name))
+}
+
+/// The 28-char hash `xcodebuild` keys `container`'s DerivedData folder by: the
+/// [`crate::xcode_hash`] of the container's standardized path (see
+/// [`crate::project::standardize`]). Hashing any other spelling names a folder
+/// `xcodebuild` never writes when the container is reached through a symlink
+/// or spelled `/private/tmp/…`.
+///
+/// `container` is the `.xcodeproj` or `.xcworkspace` the build opened, or a
+/// Swift package's directory.
+#[must_use]
+pub fn container_hash(container: &Path) -> String {
+    crate::xcode_hash::derived_data_hash(
+        &crate::project::standardize(container).display().to_string(),
+    )
 }
 
 /// Xcode's spelling of a container name inside a `<Name>-<hash>` DerivedData

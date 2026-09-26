@@ -332,12 +332,9 @@ fn keyed_path(container: &Container) -> PathBuf {
 /// the hash of `keyed`, or when the `info.plist` Xcode records in it names
 /// `keyed` as the workspace it was written for.
 fn classify(root: &Path, base: &str, keyed: &Path) -> Scope {
-    use sweetpad_lib::derived_data::{hashed_folder, hashed_name, workspace_path};
+    use sweetpad_lib::derived_data::{container_hash, hashed_folder, hashed_name, workspace_path};
 
-    let own_name = hashed_folder(
-        base,
-        &sweetpad_lib::xcode_hash::derived_data_hash(&keyed.display().to_string()),
-    );
+    let own_name = hashed_folder(base, &container_hash(keyed));
     let mut own = Vec::new();
     let mut others = Vec::new();
     if let Ok(entries) = std::fs::read_dir(root) {
@@ -520,7 +517,7 @@ mod tests {
     fn folder_for(name: &str, keyed: &Path) -> String {
         sweetpad_lib::derived_data::hashed_folder(
             name,
-            &sweetpad_lib::xcode_hash::derived_data_hash(&keyed.display().to_string()),
+            &sweetpad_lib::derived_data::container_hash(keyed),
         )
     }
 

@@ -10,7 +10,6 @@ use crate::destination::RunDestination;
 use crate::pbxproj::{self, Dict, Value};
 use crate::resolver;
 use crate::xcconfig::{Assignment, Condition};
-use crate::xcode_hash::derived_data_hash;
 
 #[derive(Debug, Clone)]
 pub struct Project {
@@ -1773,7 +1772,7 @@ pub fn built_in_settings(
         .and_then(OsStr::to_str)
         .unwrap_or("")
         .to_string();
-    let derived_hash = derived_data_hash(&standardize(&derived_container).display().to_string());
+    let derived_hash = crate::derived_data::container_hash(&derived_container);
     // The stock "Unique" build location (`<Name>-<hash>`) is only one of the
     // layouts a user can end up with: Xcode's Locations pref and a container's
     // per-user workspace settings both move build output, and `xcodebuild`
@@ -5955,8 +5954,8 @@ mod tests {
         let without = absolutize(Path::new("/root/Foo.xcodeproj"));
         assert_eq!(with, without, "trailing slash must normalize away");
         assert_eq!(
-            derived_data_hash(&with.display().to_string()),
-            derived_data_hash(&without.display().to_string()),
+            crate::derived_data::container_hash(Path::new("/root/Foo.xcodeproj/")),
+            crate::derived_data::container_hash(Path::new("/root/Foo.xcodeproj")),
         );
     }
 }

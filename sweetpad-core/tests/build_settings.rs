@@ -652,10 +652,9 @@ fn workspace_keys_derived_data_by_the_workspace_not_a_nested_member() {
     let s = resolve_one(opts);
     let build_dir = s.get("BUILD_DIR").expect("BUILD_DIR present");
 
-    // Xcode hashes the container path *as opened* — absolute, symlinks intact —
-    // which is exactly what `absolutize` preserves.
-    let ws_abs = sweetpad_lib::project::absolutize(&ws);
-    let hash = sweetpad_lib::xcode_hash::derived_data_hash(&ws_abs.display().to_string());
+    // Keyed the way xcodebuild keys it: by the hash of the container's
+    // standardized path.
+    let hash = sweetpad_lib::derived_data::container_hash(&ws);
     let expected = format!("/DerivedData/Apps-{hash}/Build/Products");
     assert!(
         build_dir.ends_with(&expected),
@@ -712,10 +711,9 @@ fn bare_project_under_foreign_workspace_keys_derived_data_by_itself() {
     let s = resolve_one(opts);
     let build_dir = s.get("BUILD_DIR").expect("BUILD_DIR present");
 
-    // Keyed by the project itself (its absolutized path), exactly as xcodebuild
-    // keys a bare `-project` build.
-    let proj_abs = sweetpad_lib::project::absolutize(&proj);
-    let hash = sweetpad_lib::xcode_hash::derived_data_hash(&proj_abs.display().to_string());
+    // Keyed by the project itself (the hash of its standardized path), exactly
+    // as xcodebuild keys a bare `-project` build.
+    let hash = sweetpad_lib::derived_data::container_hash(&proj);
     let expected = format!("/DerivedData/Scratch-{hash}/Build/Products");
     assert!(
         build_dir.ends_with(&expected),

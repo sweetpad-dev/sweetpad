@@ -62,6 +62,17 @@ fn run_session(messages: &[Value], project: &str) -> Vec<Value> {
 /// As [`run_session`], with extra CLI flags after `--project` (e.g.
 /// `--derived-data-path`) so a test can exercise the flag-driven config.
 fn run_session_args(messages: &[Value], project: &str, extra: &[&str]) -> Vec<Value> {
+    run_session_env(messages, project, extra, &[])
+}
+
+/// As [`run_session_args`], with extra environment for the server (a fake
+/// `HOME`, say).
+fn run_session_env(
+    messages: &[Value],
+    project: &str,
+    extra: &[&str],
+    env: &[(&str, &std::path::Path)],
+) -> Vec<Value> {
     let mut input = Vec::new();
     for m in messages {
         input.extend(frame(m));
@@ -69,6 +80,7 @@ fn run_session_args(messages: &[Value], project: &str, extra: &[&str]) -> Vec<Va
     let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--project", project])
         .args(extra)
+        .envs(env.iter().copied())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -482,6 +494,60 @@ fn bsp_initialize_advertises_index_store() {
         format!("{dd}/Index.noindex/IndexDatabase"),
         "indexDatabasePath"
     );
+}
+
+/// Without a `--derived-data-path`, the index store sits in the folder
+/// `xcodebuild` writes, which it names by the container's standardized path.
+/// A root reached through a symlink therefore shares its real path's folder:
+/// building `ci/fixture-app` through a symlinked directory wrote
+/// `SweetpadCIApp-<hash of the real path>`, never a folder hashed from the
+/// symlink spelling.
+#[test]
+fn bsp_index_store_of_a_symlinked_root_is_the_real_paths_folder() {
+    use sweetpad_lib::derived_data::{container_hash, hashed_folder};
+
+    let scratch = sweetpad_core::scratch::ScratchDir::new("sweetpad-bsp-symlink").unwrap();
+    let real_dir = std::path::Path::new(&project())
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let link = scratch.join("link");
+    std::os::unix::fs::symlink(&real_dir, &link).unwrap();
+    let home = scratch.join("home");
+    std::fs::create_dir_all(&home).unwrap();
+
+    let through_link = link.join("MultiModule.xcodeproj");
+    let real = std::fs::canonicalize(&through_link).unwrap();
+    let messages = vec![
+        json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
+        json!({"jsonrpc":"2.0","method":"build/exit"}),
+    ];
+    let frames = run_session_env(
+        &messages,
+        &through_link.display().to_string(),
+        &[],
+        &[("HOME", home.as_path())],
+    );
+    let store = result_for(&frames, 1)
+        .and_then(|init| init.pointer("/data/indexStorePath"))
+        .and_then(Value::as_str)
+        .expect("indexStorePath")
+        .to_string();
+
+    let folder = hashed_folder("MultiModule", &container_hash(&real));
+    assert_eq!(
+        store,
+        home.join("Library/Developer/Xcode/DerivedData")
+            .join(&folder)
+            .join("Index.noindex/DataStore")
+            .display()
+            .to_string()
+    );
+    // The symlink spelling hashes to a folder of its own, which is the one
+    // nothing writes.
+    let as_spelled =
+        sweetpad_lib::xcode_hash::derived_data_hash(&through_link.display().to_string());
+    assert!(!store.contains(&as_spelled), "{store}");
 }
 
 /// Every `workspace/buildTargets` entry carries the fields sourcekit-lsp needs:

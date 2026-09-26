@@ -591,6 +591,10 @@ the build server via `buildTarget/prepare` — *we* must produce the modules.
   (`build_settings::resolve_file_arguments`; Swift = the module's swiftc
   invocation, clang = gated to the file's language), editor mode (strips
   `-explicit-module-build`/emit/`-c`, advertises the build's index store).
+  The index store is in the DerivedData folder `xcodebuild` writes, which is
+  named by the hash of the container's standardized path
+  (`derived_data::container_hash`), so a root opened through a symlink or
+  spelled `/private/tmp/…` points at that folder too.
   Server: `bsp-server bsp` — `build/initialize`, `workspace/buildTargets`,
   `buildTarget/sources` (+ `inverseSources`), `textDocument/sourceKitOptions`,
   `buildTarget/didChange` with a poll-based pbxproj watcher, shutdown/exit;

@@ -29,8 +29,7 @@ fn store(home: &Path) -> PathBuf {
 /// `store` with a file in it, so a purge has something to delete.
 fn folder_for(store: &Path, container: &Path) -> PathBuf {
     let name = container.file_stem().unwrap().to_string_lossy();
-    let keyed = sweetpad_lib::project::standardize(container);
-    let hash = sweetpad_lib::xcode_hash::derived_data_hash(&keyed.display().to_string());
+    let hash = sweetpad_lib::derived_data::container_hash(container);
     let folder = store.join(sweetpad_lib::derived_data::hashed_folder(&name, &hash));
     std::fs::create_dir_all(folder.join("Build")).unwrap();
     std::fs::write(folder.join("Build/built.txt"), "x").unwrap();

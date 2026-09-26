@@ -26,7 +26,7 @@ use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
 use crate::framing::{read_message, write_message};
 use control::{LogLevel, TelemetryServer};
-use sweetpad_lib::{compiler_args, project};
+use sweetpad_lib::{compiler_args, derived_data, project};
 
 /// Write a `buildServer.json` so `sourcekit-lsp` discovers and launches this
 /// server. Its `argv` is the current executable followed by
@@ -816,23 +816,25 @@ impl Server {
 
     /// The build's DerivedData directory: the `--derived-data-path` override, else
     /// Xcode's default `~/Library/Developer/Xcode/DerivedData/<name>-<hash>`.
+    ///
+    /// The folder is named the way `xcodebuild` names the one it writes
+    /// ([`derived_data::container_hash`]): a root reached through a symlink, or
+    /// spelled `/private/tmp/…`, shares the folder of its standardized path.
     fn derived_data_dir(&self) -> Option<PathBuf> {
         if let Some(dd) = &self.derived_data_path {
             return Some(dd.clone());
         }
-        // Hash the container path *as opened* (absolute, symlinks intact):
-        // Xcode keys DerivedData by the path it was launched on, so a project
-        // under a symlinked root (`/tmp` → `/private/tmp`) must hash the
-        // symlink spelling — `fs::canonicalize` here would compute a
-        // different DerivedData dir than the one Xcode/xcodebuild populate.
-        let abs = sweetpad_lib::project::absolutize(&self.project_path);
-        let name = abs.file_stem()?.to_string_lossy().into_owned();
-        let hash = sweetpad_lib::xcode_hash::derived_data_hash(&abs.to_string_lossy());
+        let name = self
+            .project_path
+            .file_stem()?
+            .to_string_lossy()
+            .into_owned();
+        let hash = derived_data::container_hash(&self.project_path);
         let home = std::env::var_os("HOME")?;
         Some(
             PathBuf::from(home)
                 .join("Library/Developer/Xcode/DerivedData")
-                .join(format!("{name}-{hash}")),
+                .join(derived_data::hashed_folder(&name, &hash)),
         )
     }
 
