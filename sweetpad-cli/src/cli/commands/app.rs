@@ -1856,11 +1856,9 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                     break;
                 }
                 SessionKey::Screenshot => session_screenshot(ctx, plan),
-                SessionKey::Foreground => {
-                    let _ = simctl::open_app();
-                }
+                SessionKey::Foreground => session_foreground(ctx, plan, running.as_mut()),
                 SessionKey::Clear => ctx.out.line("\x1b[2J\x1b[H"),
-                SessionKey::Help => session_keys_help(ctx, filterable),
+                SessionKey::Help => session_keys_help(ctx, &plan.target, filterable),
                 // Inert unless an os_log stream is actually being filtered (see
                 // `filterable`).
                 SessionKey::Filter(level) => {
@@ -2513,9 +2511,7 @@ impl HotApp<'_> {
             HotApp::Sim { .. } => {
                 let _ = simctl::open_app();
             }
-            HotApp::Mac { .. } => {
-                let _ = process::run("open", &[&app.path.display().to_string()], None, true);
-            }
+            HotApp::Mac { .. } => focus_mac_app(&app.path),
         }
     }
 
@@ -3134,7 +3130,7 @@ enum SessionKey {
     Detach,
     /// Save a simulator screenshot into ./sweetpad-shots/.
     Screenshot,
-    /// Bring Simulator.app to the foreground.
+    /// Bring the app forward: the Simulator window, or the macOS app.
     Foreground,
     /// Clear the terminal.
     Clear,
@@ -3148,8 +3144,8 @@ enum SessionKey {
 }
 
 /// Map a keystroke to a session action (the flutter-run keymap): `r`/`R`
-/// rebuild; `d` detaches (app keeps running); `s` screenshot; `o` foregrounds
-/// the simulator; `c` clears; `h` lists keys; `q`, Ctrl-C, and Ctrl-D quit;
+/// rebuild; `d` detaches (app keeps running); `s` screenshot; `o` brings the
+/// app forward; `c` clears; `h` lists keys; `q`, Ctrl-C, and Ctrl-D quit;
 /// `1`–`4` set the log filter (debug/info/error/off); everything else is
 /// ignored. The key is first folded to the Latin letter on its physical position
 /// ([`map_key_to_latin`]), so the shortcuts work on non-Latin layouts (Cyrillic
@@ -3248,15 +3244,66 @@ fn session_hint(ctx: &Context, _filterable: bool) {
 
 /// The full keymap, on `h`. The log-level keys are shown only when there's an
 /// os_log stream to filter (the simulator or a macOS app).
-fn session_keys_help(ctx: &Context, filterable: bool) {
-    ctx.out.note(
-        "r rebuild+relaunch · s screenshot · o focus simulator · c clear · \
-         d detach (leave the app running) · q quit (terminate the app)",
-    );
+fn session_keys_help(ctx: &Context, target: &Target, filterable: bool) {
+    ctx.out.note(&session_keys(target));
     if filterable {
         ctx.out
             .note("log level: 1 debug · 2 info · 3 error · 4 off");
     }
+}
+
+/// The plain session's key list for `target`. `s` and `o` are listed only
+/// where there is a window to capture or bring forward: a simulator, or a
+/// macOS app.
+fn session_keys(target: &Target) -> String {
+    let window = match target {
+        Target::Simulator(_) => " · s screenshot · o focus simulator",
+        Target::Mac => " · s screenshot · o focus app",
+        Target::Device(_) | Target::SpmRun(_) => "",
+    };
+    format!(
+        "r rebuild+relaunch{window} · c clear · d detach (leave the app running) · \
+         q quit (terminate the app)"
+    )
+}
+
+/// The `o` key: bring the Simulator window forward, or the running macOS app.
+/// A device's screen isn't on this Mac, so there it only says so.
+fn session_foreground(ctx: &Context, plan: &RunPlan, running: Option<&mut Running>) {
+    match &plan.target {
+        Target::Simulator(_) => {
+            let _ = simctl::open_app();
+        }
+        Target::Mac => {
+            // `open` on a bundle that isn't running launches it, outside the
+            // session and without its launch arguments, so only a live app is
+            // brought forward.
+            let live = running.is_some_and(|r| {
+                check_exit(ctx, r);
+                !r.reported_exit
+            });
+            if !live {
+                ctx.out
+                    .note("the app isn't running; press 'r' to rebuild and launch it");
+                return;
+            }
+            match plan.app_bundle() {
+                Ok(app) => focus_mac_app(&app.path),
+                Err(e) => ctx.out.error(&e),
+            }
+        }
+        Target::Device(_) | Target::SpmRun(_) => {
+            ctx.out.note(
+                "'o' brings a simulator or macOS app forward; a device has no window on this Mac",
+            );
+        }
+    }
+}
+
+/// Bring a running macOS app forward. `open` on its bundle activates the
+/// running instance rather than starting another.
+fn focus_mac_app(app: &Path) {
+    let _ = process::run("open", &[&app.display().to_string()], None, true);
 }
 
 /// The `s` key: screenshot a simulator or macOS target into ./sweetpad-shots/.
@@ -7106,6 +7153,24 @@ mod tests {
         // Anything else is ignored — the session keeps streaming output.
         assert_eq!(classify_key('x'), SessionKey::Ignore);
         assert_eq!(classify_key('\n'), SessionKey::Ignore);
+    }
+
+    /// `h` lists `s` and `o` only where they act, and names what `o` brings
+    /// forward: the Simulator window, or the macOS app itself.
+    #[test]
+    fn the_key_list_matches_the_target() {
+        let sim = session_keys(&Target::Simulator("UDID".into()));
+        assert!(sim.contains("s screenshot · o focus simulator"), "{sim}");
+        let mac = session_keys(&Target::Mac);
+        assert!(mac.contains("s screenshot · o focus app"), "{mac}");
+        assert!(!mac.contains("simulator"), "{mac}");
+        let device = session_keys(&Target::Device("UDID".into()));
+        assert!(!device.contains("o focus"), "{device}");
+        assert!(!device.contains("screenshot"), "{device}");
+        for keys in [sim, mac, device] {
+            assert!(keys.starts_with("r rebuild+relaunch"), "{keys}");
+            assert!(keys.ends_with("q quit (terminate the app)"), "{keys}");
+        }
     }
 
     #[test]

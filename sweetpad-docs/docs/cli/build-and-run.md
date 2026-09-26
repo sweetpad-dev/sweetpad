@@ -30,10 +30,14 @@ Launched dev.sweetpad.ci.app → dev.sweetpad.ci.app: 35549
 The header line names the three things that decide what gets built: the scheme, the configuration,
 and where it's going. If any of them is wrong, that line tells you before the build spends any time.
 
-While the app is running and the logs are following, two keys work:
+While the app is running and the logs are following, two keys matter most:
 
 - **`r`** rebuilds and relaunches, the same loop again, without leaving the command.
 - **`q`** quits.
+
+**`h`** lists the rest for the target you're running on. On a simulator or a Mac, `s` takes a
+screenshot and `o` brings the app forward: the Simulator window, or the macOS app itself. A device
+has no window on your Mac, so its list leaves both out.
 
 A build that fails keeps the session open, so you can fix the error and press `r`. If the app never
 launched and you quit after a failed build, `run` exits with code `3`, the same code a failed

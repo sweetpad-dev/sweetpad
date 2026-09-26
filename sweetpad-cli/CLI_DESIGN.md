@@ -600,7 +600,12 @@ sweetpad completions <shell>          clap_complete-generated scripts
   the loop under the developer's control instead of auto-watching files: the app's
   output streams from a background child (sim `log stream`, device `--console`, or
   the macOS executable itself) while a single-key reader sits in front. **`r`**
-  rebuilds + relaunches on demand; **`q`**, Ctrl-C, or Ctrl-D quit. On each `r`
+  rebuilds + relaunches on demand; **`q`**, Ctrl-C, or Ctrl-D quit; **`h`** lists
+  the other keys for the target. `s` (screenshot) and `o` (bring the app forward:
+  the Simulator window, or the running macOS app itself) are offered only where
+  there is a window to act on, so a device's list leaves them out and `o` there
+  says why. `o` on macOS activates only an app that is still running, since
+  `open` on a stopped bundle would launch it outside the session. On each `r`
   the running app is **terminated first** (`simctl`/`devicectl terminate`, or
   killing the macOS process) so the relaunch is always a fresh process picking up
   the new binary — `simctl launch` alone would just foreground the stale one — and
