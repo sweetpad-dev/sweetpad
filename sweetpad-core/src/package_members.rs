@@ -803,8 +803,11 @@ mod tests {
 
     #[test]
     fn a_dump_writes_nothing_into_the_package() {
+        // The driver leaves a temp dir in $TMPDIR on every run.
+        let tmp = ScratchDir::new("sweetpad-swift-probe").unwrap();
         let have_swift = Command::new("swift")
             .arg("--version")
+            .env("TMPDIR", tmp.as_os_str())
             .output()
             .is_ok_and(|out| out.status.success());
         if !have_swift {

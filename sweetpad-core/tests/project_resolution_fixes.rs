@@ -6,6 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use sweetpad_core::scratch::ScratchDir;
 use sweetpad_lib::project::{
     build_settings, is_test_bundle_product_type, is_unit_test_bundle_product_type, open,
     scheme_for_target,
@@ -17,15 +18,13 @@ fn fixtures_root() -> PathBuf {
 }
 
 /// A fresh scratch `.xcodeproj` under the temp dir, holding `pbxproj` as its
-/// `project.pbxproj`. Each test passes a unique `tag` so parallel tests don't
-/// collide.
-fn scratch_xcodeproj(tag: &str, pbxproj: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!("sweetpad-fixes-{tag}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+/// `project.pbxproj`, in a directory that goes when the returned guard drops.
+fn scratch_xcodeproj(tag: &str, pbxproj: &str) -> (ScratchDir, PathBuf) {
+    let root = ScratchDir::new(&format!("sweetpad-fixes-{tag}")).unwrap();
     let xcodeproj = root.join("App.xcodeproj");
     fs::create_dir_all(&xcodeproj).unwrap();
     fs::write(xcodeproj.join("project.pbxproj"), pbxproj).unwrap();
-    xcodeproj
+    (root, xcodeproj)
 }
 
 fn value_of<'a>(layer: &'a [Assignment], key: &str) -> Option<&'a str> {
@@ -63,7 +62,7 @@ const TWO_CONFIG_PBXPROJ: &str = "\
 /// `defaultConfigurationName` (Release here, not Debug).
 #[test]
 fn unknown_configuration_falls_back_to_default() {
-    let proj = scratch_xcodeproj("cfg-fallback", TWO_CONFIG_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("cfg-fallback", TWO_CONFIG_PBXPROJ);
     let ctx = build_settings(&proj, "App", "Bogus")
         .expect("an unknown configuration must fall back to the list defaults, not error");
     assert_eq!(
@@ -82,7 +81,7 @@ fn unknown_configuration_falls_back_to_default() {
 /// so it takes the same default-config fallback (matching xcodebuild).
 #[test]
 fn configuration_match_is_case_sensitive() {
-    let proj = scratch_xcodeproj("cfg-case", TWO_CONFIG_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("cfg-case", TWO_CONFIG_PBXPROJ);
     let ctx = build_settings(&proj, "App", "debug").unwrap();
     assert_eq!(
         value_of(&ctx.layers[1], "SWIFT_VERSION"),
@@ -95,7 +94,7 @@ fn configuration_match_is_case_sensitive() {
 /// layers — xcodebuild resolves it with project-level settings only.
 #[test]
 fn target_without_configuration_list_resolves_with_project_settings() {
-    let proj = scratch_xcodeproj("cfg-no-target-list", TWO_CONFIG_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("cfg-no-target-list", TWO_CONFIG_PBXPROJ);
     let ctx = build_settings(&proj, "Tool", "Debug")
         .expect("a target without a buildConfigurationList must still resolve");
     assert_eq!(value_of(&ctx.layers[1], "SWIFT_VERSION"), Some("5.0"));
@@ -132,7 +131,7 @@ fn missing_base_configuration_reference_is_not_fatal() {
             "9D45771675EE5736A477EF39 = {",
             "AAA0000000000000000000AA = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Missing.xcconfig; sourceTree = \"<group>\"; };\n        9D45771675EE5736A477EF39 = {",
         );
-    let proj = scratch_xcodeproj("missing-xcconfig", &pbxproj);
+    let (_root, proj) = scratch_xcodeproj("missing-xcconfig", &pbxproj);
     let ctx = build_settings(&proj, "Scratch", "Debug")
         .expect("a missing base xcconfig must resolve as if none were attached");
     assert!(
@@ -170,7 +169,7 @@ fn anchored_xcconfig_honors_parent_group_chain() {
 \trootObject = PROJ;
 }
 ";
-    let proj = scratch_xcodeproj("anchor-nested", pbxproj);
+    let (_root, proj) = scratch_xcodeproj("anchor-nested", pbxproj);
     // The anchor's folder lives under the `path = App` group:
     // <root>/App/Config/Base.xcconfig, NOT <root>/Config/Base.xcconfig.
     let config_dir = proj.parent().unwrap().join("App/Config");
@@ -207,7 +206,7 @@ fn anchored_xcconfig_honors_source_root_tree() {
 \trootObject = PROJ;
 }
 ";
-    let proj = scratch_xcodeproj("anchor-srcroot", pbxproj);
+    let (_root, proj) = scratch_xcodeproj("anchor-srcroot", pbxproj);
     // SOURCE_ROOT ignores the nested `App` group: <root>/Rooted/Base.xcconfig.
     let config_dir = proj.parent().unwrap().join("Rooted");
     fs::create_dir_all(&config_dir).unwrap();
@@ -240,7 +239,7 @@ fn test_host_prefers_test_target_id_attribute() {
 \trootObject = PROJ;
 }
 ";
-    let proj = scratch_xcodeproj("test-target-id", pbxproj);
+    let (_root, proj) = scratch_xcodeproj("test-target-id", pbxproj);
     let ctx = build_settings(&proj, "Tests", "Debug").unwrap();
     assert_eq!(
         ctx.test_host_target.as_deref(),
@@ -271,7 +270,7 @@ fn test_host_falls_back_to_first_app_dependency() {
 \trootObject = PROJ;
 }
 ";
-    let proj = scratch_xcodeproj("test-host-fallback", pbxproj);
+    let (_root, proj) = scratch_xcodeproj("test-host-fallback", pbxproj);
     let ctx = build_settings(&proj, "Tests", "Debug").unwrap();
     assert_eq!(ctx.test_host_target.as_deref(), Some("Helper"));
 }
@@ -296,7 +295,7 @@ fn open_tolerates_dangling_configuration_references() {
 \trootObject = PROJ;
 }
 ";
-    let proj = scratch_xcodeproj("dangling-refs", pbxproj);
+    let (_root, proj) = scratch_xcodeproj("dangling-refs", pbxproj);
     let project = open(&proj).expect("dangling configuration references must not fail open()");
     assert_eq!(
         project.configurations,
@@ -342,7 +341,7 @@ fn write_scheme(dir: &Path, name: &str, blueprint: &str) {
 /// old implementation only consulted `xcshareddata/xcschemes`.
 #[test]
 fn scheme_for_target_finds_per_user_scheme_by_name() {
-    let proj = scratch_xcodeproj("scheme-user-name", TWO_CONFIG_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("scheme-user-name", TWO_CONFIG_PBXPROJ);
     write_scheme(&user_schemes_dir(&proj), "App", "App");
     assert_eq!(scheme_for_target(&proj, "App").as_deref(), Some("App"));
 }
@@ -351,7 +350,7 @@ fn scheme_for_target_finds_per_user_scheme_by_name() {
 /// BuildAction's blueprint reference.
 #[test]
 fn scheme_for_target_finds_per_user_scheme_by_build_action() {
-    let proj = scratch_xcodeproj("scheme-user-build", TWO_CONFIG_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("scheme-user-build", TWO_CONFIG_PBXPROJ);
     write_scheme(&user_schemes_dir(&proj), "Main", "App");
     assert_eq!(scheme_for_target(&proj, "App").as_deref(), Some("Main"));
 }
@@ -360,7 +359,7 @@ fn scheme_for_target_finds_per_user_scheme_by_build_action() {
 /// reference the target.
 #[test]
 fn scheme_for_target_prefers_shared_over_user() {
-    let proj = scratch_xcodeproj("scheme-shared-first", TWO_CONFIG_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("scheme-shared-first", TWO_CONFIG_PBXPROJ);
     write_scheme(&proj.join("xcshareddata/xcschemes"), "SharedOne", "App");
     write_scheme(&user_schemes_dir(&proj), "AUserOne", "App");
     assert_eq!(
@@ -374,7 +373,7 @@ fn scheme_for_target_prefers_shared_over_user() {
 /// the target's own name is a valid autocreated scheme for xcodebuild.
 #[test]
 fn scheme_for_target_autocreates_when_no_scheme_files() {
-    let proj = scratch_xcodeproj("scheme-autocreate", TWO_CONFIG_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("scheme-autocreate", TWO_CONFIG_PBXPROJ);
     assert_eq!(scheme_for_target(&proj, "App").as_deref(), Some("App"));
 }
 
@@ -400,7 +399,7 @@ fn disable_autocreation(xcodeproj: &Path) {
 /// xcodebuild would accept — `None`.
 #[test]
 fn scheme_for_target_respects_disabled_autocreation() {
-    let proj = scratch_xcodeproj("scheme-no-autocreate", TWO_CONFIG_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("scheme-no-autocreate", TWO_CONFIG_PBXPROJ);
     disable_autocreation(&proj);
     assert_eq!(scheme_for_target(&proj, "App"), None);
 }
@@ -410,7 +409,7 @@ fn scheme_for_target_respects_disabled_autocreation() {
 /// XcodeGen/Tuist project that writes the flag and shares no schemes.
 #[test]
 fn open_does_not_autocreate_schemes_when_disabled() {
-    let proj = scratch_xcodeproj("open-no-autocreate", TWO_CONFIG_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("open-no-autocreate", TWO_CONFIG_PBXPROJ);
     disable_autocreation(&proj);
     let project = open(&proj).unwrap();
     assert!(
@@ -424,7 +423,7 @@ fn open_does_not_autocreate_schemes_when_disabled() {
 /// schemes for a project with no scheme files.
 #[test]
 fn open_autocreates_schemes_by_default() {
-    let proj = scratch_xcodeproj("open-autocreate", TWO_CONFIG_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("open-autocreate", TWO_CONFIG_PBXPROJ);
     let project = open(&proj).unwrap();
     assert_eq!(project.schemes, vec!["App", "Tool"]);
 }
@@ -485,7 +484,7 @@ fn supported_sdk_request_on_auto_sdkroot_binds_the_platform_consistently() {
 \trootObject = PROJ;
 }
 ";
-    let proj = scratch_xcodeproj("auto-supported-sdk", AUTO_PBXPROJ);
+    let (_root, proj) = scratch_xcodeproj("auto-supported-sdk", AUTO_PBXPROJ);
     let ctx = BuildContext::open(&proj).unwrap();
 
     // A supported SDK request resolves the platform (xcodebuild

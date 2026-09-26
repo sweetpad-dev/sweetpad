@@ -40,8 +40,28 @@ pub enum SandboxPlan {
 /// `user_file` is `--hot-entitlements`; `keep` is `--keep-sandbox` or the
 /// project's `auto_unsandbox = false`. Errors are complete sentences for the
 /// session log; the caller treats them as "no override" (the preflight keeps
-/// the last word).
+/// the last word). A stripped copy goes under the hot-reload cache.
 pub fn plan(
+    entitlements: Option<&Path>,
+    user_file: Option<&Path>,
+    keep: bool,
+    project_key: &str,
+    configuration: &str,
+) -> Result<SandboxPlan, String> {
+    plan_in(
+        super::client::cache_root().as_deref(),
+        entitlements,
+        user_file,
+        keep,
+        project_key,
+        configuration,
+    )
+}
+
+/// [`plan`] against the hot-reload cache at `cache_root` (`None` when there is
+/// no home directory to put one in).
+fn plan_in(
+    cache_root: Option<&Path>,
     entitlements: Option<&Path>,
     user_file: Option<&Path>,
     keep: bool,
@@ -66,7 +86,8 @@ pub fn plan(
     if !sandboxed(source)? {
         return Ok(SandboxPlan::Unneeded);
     }
-    strip(source, project_key, configuration).map(SandboxPlan::Override)
+    let cache_root = cache_root.ok_or("no home directory for the hot-reload cache")?;
+    strip(source, cache_root, project_key, configuration).map(SandboxPlan::Override)
 }
 
 /// Whether the plist asserts `com.apple.security.app-sandbox` = true.
@@ -110,12 +131,16 @@ fn sandboxed(plist: &Path) -> Result<bool, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim() == "true")
 }
 
-/// Write the sandbox-stripped copy of `source` into the hot-reload cache and
-/// return its path. Regenerated from the real plist on every hot run, so
-/// edits to the project's entitlements propagate.
-fn strip(source: &Path, project_key: &str, configuration: &str) -> Result<PathBuf, String> {
-    let dir = super::client::cache_root()
-        .ok_or("no home directory for the hot-reload cache")?
+/// Write the sandbox-stripped copy of `source` into the hot-reload cache at
+/// `cache_root` and return its path. Regenerated from the real plist on every
+/// hot run, so edits to the project's entitlements propagate.
+fn strip(
+    source: &Path,
+    cache_root: &Path,
+    project_key: &str,
+    configuration: &str,
+) -> Result<PathBuf, String> {
+    let dir = cache_root
         .join("entitlements")
         .join(super::client::fnv1a_hex(project_key.as_bytes()));
     std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
@@ -191,8 +216,10 @@ mod tests {
     #[test]
     fn strip_removes_the_sandbox_and_adds_get_task_allow() {
         let dir = TempDir::new("sweetpad-sandbox");
+        let cache = dir.join("cache");
         let source = temp_plist(&dir, "strip-src.entitlements", SANDBOXED);
-        let dest = strip(&source, "/work/App.xcodeproj#test-strip", "Debug").unwrap();
+        let dest = strip(&source, &cache, "/work/App.xcodeproj#test-strip", "Debug").unwrap();
+        assert!(dest.starts_with(cache.join("entitlements")), "{dest:?}");
         assert!(dest.ends_with("Debug-nosandbox.entitlements"), "{dest:?}");
         let text = std::fs::read_to_string(&dest).unwrap();
         assert!(!text.contains("app-sandbox"), "{text}");
@@ -201,58 +228,59 @@ mod tests {
         assert!(text.contains("com.apple.security.get-task-allow"), "{text}");
         assert!(!sandboxed(&dest).unwrap());
         // Regeneration is idempotent (Delete-then-Add of get-task-allow).
-        let again = strip(&source, "/work/App.xcodeproj#test-strip", "Debug").unwrap();
+        let again = strip(&source, &cache, "/work/App.xcodeproj#test-strip", "Debug").unwrap();
         assert_eq!(dest, again);
     }
 
     #[test]
     fn plan_matrix() {
         let dir = TempDir::new("sweetpad-sandbox");
+        let cache = dir.join("cache");
+        let plan = |entitlements, user_file, keep, project_key| {
+            plan_in(
+                Some(&cache),
+                entitlements,
+                user_file,
+                keep,
+                project_key,
+                "Debug",
+            )
+        };
         let sandboxed_file = temp_plist(&dir, "plan-sandboxed.entitlements", SANDBOXED);
         let plain_file = temp_plist(&dir, "plan-plain.entitlements", UNSANDBOXED);
 
         // No explicit entitlements → the build settings suffice.
         assert_eq!(
-            plan(None, None, false, "/k", "Debug").unwrap(),
+            plan(None, None, false, "/k").unwrap(),
             SandboxPlan::Unneeded
         );
         // Explicit but un-sandboxed → nothing to strip.
         assert_eq!(
-            plan(Some(&plain_file), None, false, "/k", "Debug").unwrap(),
+            plan(Some(&plain_file), None, false, "/k").unwrap(),
             SandboxPlan::Unneeded
         );
         // Sandboxed → ephemeral override.
         let SandboxPlan::Override(path) =
-            plan(Some(&sandboxed_file), None, false, "/k#plan", "Debug").unwrap()
+            plan(Some(&sandboxed_file), None, false, "/k#plan").unwrap()
         else {
             panic!("expected an override");
         };
+        assert!(path.starts_with(&cache), "{path:?}");
         assert!(path.ends_with("Debug-nosandbox.entitlements"));
         // Opted out → sandbox kept even though the file is sandboxed.
         assert_eq!(
-            plan(Some(&sandboxed_file), None, true, "/k", "Debug").unwrap(),
+            plan(Some(&sandboxed_file), None, true, "/k").unwrap(),
             SandboxPlan::KeptSandbox
         );
         // A user-supplied file wins over everything (and must exist).
         assert_eq!(
-            plan(
-                Some(&sandboxed_file),
-                Some(&plain_file),
-                false,
-                "/k",
-                "Debug"
-            )
-            .unwrap(),
+            plan(Some(&sandboxed_file), Some(&plain_file), false, "/k").unwrap(),
             SandboxPlan::Override(plain_file.clone())
         );
-        let err = plan(
-            None,
-            Some(Path::new("/nonexistent.plist")),
-            false,
-            "/k",
-            "Debug",
-        )
-        .unwrap_err();
+        let err = plan(None, Some(Path::new("/nonexistent.plist")), false, "/k").unwrap_err();
         assert!(err.contains("does not exist"), "{err}");
+        // With no home for the cache, a sandboxed file can't be stripped.
+        let err = plan_in(None, Some(&sandboxed_file), None, false, "/k", "Debug").unwrap_err();
+        assert!(err.contains("hot-reload cache"), "{err}");
     }
 }

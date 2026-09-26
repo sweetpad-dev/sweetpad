@@ -527,6 +527,7 @@ fn parse_yes(v: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testdir::TempDir;
     use std::path::PathBuf;
 
     fn fixtures_root() -> PathBuf {
@@ -631,17 +632,13 @@ mod tests {
         assert!(format!("{err}").contains("expected root element"));
     }
 
-    /// A unique scratch container dir under the OS temp dir.
-    fn scratch_container(tag: &str) -> PathBuf {
-        use std::sync::atomic::{AtomicU32, Ordering};
-        static N: AtomicU32 = AtomicU32::new(0);
-        let n = N.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "sweetpad-scheme-{tag}-{}-{n}.xcodeproj",
-            std::process::id()
-        ));
+    /// A scratch container in a directory of its own under the OS temp dir,
+    /// which goes when the returned guard drops.
+    fn scratch_container(tag: &str) -> (TempDir, PathBuf) {
+        let root = TempDir::new(&format!("sweetpad-scheme-{tag}"));
+        let dir = root.join("App.xcodeproj");
         std::fs::create_dir_all(&dir).unwrap();
-        dir
+        (root, dir)
     }
 
     fn touch(path: &Path) {
@@ -651,7 +648,7 @@ mod tests {
 
     #[test]
     fn container_schemes_merges_shared_and_user_schemes() {
-        let dir = scratch_container("merge");
+        let (_root, dir) = scratch_container("merge");
         let user = visible_user();
         touch(&dir.join("xcshareddata/xcschemes/Shared.xcscheme"));
         touch(&dir.join(format!(
@@ -666,13 +663,13 @@ mod tests {
 
     #[test]
     fn container_schemes_empty_without_scheme_files() {
-        let dir = scratch_container("empty");
+        let (_root, dir) = scratch_container("empty");
         assert!(container_schemes(&dir).is_empty());
     }
 
     #[test]
     fn scheme_dirs_scope_to_the_known_user() {
-        let dir = scratch_container("user-scope");
+        let (_root, dir) = scratch_container("user-scope");
         touch(&dir.join("xcshareddata/xcschemes/Shared.xcscheme"));
         touch(&dir.join("xcuserdata/alice.xcuserdatad/xcschemes/Mine.xcscheme"));
         touch(&dir.join("xcuserdata/bob.xcuserdatad/xcschemes/Foreign.xcscheme"));
@@ -695,7 +692,7 @@ mod tests {
     #[test]
     fn autocreation_allowed_honors_workspace_settings() {
         // Default: no settings file → enabled.
-        let dir = scratch_container("autocreate-default");
+        let (_root, dir) = scratch_container("autocreate-default");
         assert!(autocreation_allowed(&dir));
 
         // Workspace-style container with the key set to false → disabled.
@@ -704,14 +701,14 @@ mod tests {
             <plist version=\"1.0\">\n<dict>\n\
             \t<key>IDEWorkspaceSharedSettings_AutocreateContextsIfNeeded</key>\n\
             \t<false/>\n</dict>\n</plist>\n";
-        let ws = scratch_container("autocreate-off");
+        let (_ws_root, ws) = scratch_container("autocreate-off");
         std::fs::create_dir_all(ws.join("xcshareddata")).unwrap();
         std::fs::write(ws.join("xcshareddata/WorkspaceSettings.xcsettings"), plist).unwrap();
         assert!(!autocreation_allowed(&ws));
 
         // Project-style container (settings inside the embedded workspace),
         // key explicitly true → enabled.
-        let proj = scratch_container("autocreate-on");
+        let (_proj_root, proj) = scratch_container("autocreate-on");
         let inner = proj.join("project.xcworkspace/xcshareddata");
         std::fs::create_dir_all(&inner).unwrap();
         std::fs::write(
@@ -744,7 +741,7 @@ mod tests {
 
     #[test]
     fn find_scheme_file_prefers_shared_over_user() {
-        let dir = scratch_container("find");
+        let (_root, dir) = scratch_container("find");
         let user = visible_user();
         let shared = dir.join("xcshareddata/xcschemes/App.xcscheme");
         touch(&shared);

@@ -7,9 +7,12 @@
 //! xcconfig, a package directory — is written out in a temporary directory
 //! instead.
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use common::TempDir;
 use sweetpad_lib::project::{self, build_settings, open};
 
 const MANIFEST: &str = "// swift-tools-version:5.9\nimport PackageDescription\n";
@@ -50,15 +53,8 @@ fn relative(paths: &[PathBuf], dir: &Path) -> Vec<String> {
         .collect()
 }
 
-fn tempdir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "sweetpad-xcproj-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+fn tempdir(tag: &str) -> TempDir {
+    TempDir::new(&format!("sweetpad-xcproj-{tag}"))
 }
 
 #[test]

@@ -37,6 +37,8 @@ pub mod spm_xcproj;
 pub mod stored_settings;
 pub mod sync_pbxproj;
 pub mod sync_xcproj;
+#[cfg(test)]
+pub(crate) mod testdir;
 pub mod tree;
 pub mod tree_pbxproj;
 pub mod tree_xcproj;

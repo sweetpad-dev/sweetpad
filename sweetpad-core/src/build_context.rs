@@ -952,6 +952,7 @@ fn target_graph_layer(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::ScratchDir;
     use std::path::PathBuf;
 
     fn scratch_path() -> PathBuf {
@@ -1034,13 +1035,13 @@ mod tests {
         assert!(err.is_lookup_miss(), "a missing target is a lookup miss");
     }
 
-    /// A unique scratch dir holding `content` as an extra `.xcconfig`.
-    fn scratch_xcconfig(tag: &str, content: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("sweetpad-bc-{tag}-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+    /// A unique scratch dir holding `content` as an extra `.xcconfig`, which
+    /// goes when the returned guard drops.
+    fn scratch_xcconfig(tag: &str, content: &str) -> (ScratchDir, PathBuf) {
+        let dir = ScratchDir::new(&format!("sweetpad-bc-{tag}")).unwrap();
         let path = dir.join("overlay.xcconfig");
         std::fs::write(&path, content).unwrap();
-        path
+        (dir, path)
     }
 
     fn get(resolved: &Resolved, key: &str) -> String {
@@ -1079,7 +1080,7 @@ mod tests {
     /// source-derived order.)
     #[test]
     fn orthogonal_sanitizers_concatenate_object_dir_suffix_in_order() {
-        let xcconfig = scratch_xcconfig(
+        let (_dir, xcconfig) = scratch_xcconfig(
             "sanitizers",
             "ENABLE_ADDRESS_SANITIZER = YES\nENABLE_UNDEFINED_BEHAVIOR_SANITIZER = YES\n",
         );
@@ -1105,7 +1106,7 @@ mod tests {
     /// an optimized build.
     #[test]
     fn extra_xcconfig_flips_the_optimization_gates() {
-        let xcconfig = scratch_xcconfig(
+        let (_dir, xcconfig) = scratch_xcconfig(
             "opt-gate",
             "MY_LEVEL = 0\nGCC_OPTIMIZATION_LEVEL[config=Debug] = $(MY_LEVEL)\n",
         );
@@ -1147,7 +1148,7 @@ mod tests {
     /// matches the query's SDK binding.
     #[test]
     fn conditional_supports_maccatalyst_reaches_the_catalyst_gate() {
-        let xcconfig =
+        let (_dir, xcconfig) =
             scratch_xcconfig("catalyst-gate", "SUPPORTS_MACCATALYST[sdk=macosx*] = YES\n");
         let plain = BuildContext::open(&scratch_path()).unwrap();
         let overlaid = BuildContext::open(&scratch_path())

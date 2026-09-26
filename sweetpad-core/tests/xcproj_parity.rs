@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use sweetpad_core::build_context::{BuildContext, ResolveQuery};
+use sweetpad_core::scratch::ScratchDir;
 
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("SWEETPAD_LIB_DIR")).join("fixtures")
@@ -26,30 +27,26 @@ fn pbxproj_project() -> PathBuf {
 }
 
 /// A copy of the pbxproj project with its document replaced by the converted
-/// one. Built once per run — the tests here share a process and would
-/// otherwise race each other laying the tree down.
-fn xcproj_project() -> &'static Path {
-    static PROJECT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-    PROJECT.get_or_init(|| {
-        let root =
-            std::env::temp_dir().join(format!("sweetpad-xcproj-parity-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        copy_tree(
-            &fixtures().join("_synthetic-objectversion-110/project"),
-            &root.join("project"),
-        );
-        let project = root.join("project/SweetpadCIApp.xcodeproj");
-        std::fs::remove_file(project.join("project.pbxproj")).unwrap();
-        std::fs::copy(
-            fixtures().join("_xcproj/SweetpadCIApp.xcodeproj/project.xcproj"),
-            project.join("project.xcproj"),
-        )
-        .unwrap();
-        // `/var` is a symlink to `/private/var`, and a resolved setting holds
-        // the real path; comparing against the link would report every one of
-        // them as a difference.
-        project.canonicalize().unwrap()
-    })
+/// one. Each test lays down a copy of its own, which goes when the returned
+/// guard drops.
+fn xcproj_project() -> (ScratchDir, PathBuf) {
+    let root = ScratchDir::new("sweetpad-xcproj-parity").unwrap();
+    copy_tree(
+        &fixtures().join("_synthetic-objectversion-110/project"),
+        &root.join("project"),
+    );
+    let project = root.join("project/SweetpadCIApp.xcodeproj");
+    std::fs::remove_file(project.join("project.pbxproj")).unwrap();
+    std::fs::copy(
+        fixtures().join("_xcproj/SweetpadCIApp.xcodeproj/project.xcproj"),
+        project.join("project.xcproj"),
+    )
+    .unwrap();
+    // `/var` is a symlink to `/private/var`, and a resolved setting holds the
+    // real path; comparing against the link would report every one of them
+    // as a difference.
+    let project = project.canonicalize().unwrap();
+    (root, project)
 }
 
 fn copy_tree(from: &Path, to: &Path) {
@@ -100,8 +97,9 @@ fn mask_hash(value: &str) -> String {
 
 #[test]
 fn both_formats_describe_the_same_project() {
+    let (_dir, xc) = xcproj_project();
     let a = BuildContext::open(&pbxproj_project()).unwrap();
-    let b = BuildContext::open(xcproj_project()).unwrap();
+    let b = BuildContext::open(&xc).unwrap();
 
     let names = |ctx: &BuildContext| -> Vec<String> {
         ctx.project.targets.iter().map(|t| t.name.clone()).collect()
@@ -114,9 +112,10 @@ fn both_formats_describe_the_same_project() {
 
 #[test]
 fn both_formats_resolve_the_same_settings() {
-    let (pbx, xc) = (pbxproj_project(), xcproj_project());
+    let (_dir, xc) = xcproj_project();
+    let pbx = pbxproj_project();
     let a = BuildContext::open(&pbx).unwrap();
-    let b = BuildContext::open(xc).unwrap();
+    let b = BuildContext::open(&xc).unwrap();
 
     for target in a.project.targets.iter().map(|t| &t.name) {
         for configuration in &a.project.configurations {
@@ -127,7 +126,7 @@ fn both_formats_resolve_the_same_settings() {
                 ra.product_type, rb.product_type,
                 "{target}/{configuration} product type"
             );
-            let (na, nb) = (normalize(&ra.settings, &pbx), normalize(&rb.settings, xc));
+            let (na, nb) = (normalize(&ra.settings, &pbx), normalize(&rb.settings, &xc));
             let mut keys: Vec<&String> = na.keys().chain(nb.keys()).collect();
             keys.sort_unstable();
             keys.dedup();
@@ -151,7 +150,8 @@ fn both_formats_resolve_the_same_settings() {
 /// fall back to the application the bundle depends on.
 #[test]
 fn a_test_bundle_builds_into_its_host() {
-    for project in [pbxproj_project().as_path(), xcproj_project()] {
+    let (_dir, xc) = xcproj_project();
+    for project in [pbxproj_project().as_path(), xc.as_path()] {
         let ctx = BuildContext::open(project).unwrap();
         let resolved = ctx
             .resolve(&ResolveQuery::new(
@@ -178,8 +178,8 @@ fn a_test_bundle_builds_into_its_host() {
 /// in English.
 #[test]
 fn the_development_region_names_the_development_language() {
-    let root = std::env::temp_dir().join(format!("sweetpad-region-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = ScratchDir::new("sweetpad-region").unwrap();
+    let (_xc_dir, xc) = xcproj_project();
     let mut projects = Vec::new();
     for (tag, from, document, before, after) in [
         (
@@ -191,7 +191,7 @@ fn the_development_region_names_the_development_language() {
         ),
         (
             "xcproj",
-            xcproj_project().to_path_buf(),
+            xc.clone(),
             "project.xcproj",
             r#""development": "en""#,
             r#""development": "zh_CN""#,
@@ -224,7 +224,6 @@ fn the_development_region_names_the_development_language() {
             project.display()
         );
     }
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 /// The BSP server answers the same way for both formats.
@@ -235,8 +234,9 @@ fn the_development_region_names_the_development_language() {
 /// an editor, not just the resolver.
 #[test]
 fn the_bsp_server_answers_the_same_for_both_formats() {
+    let (_dir, xc_project) = xcproj_project();
     let pbx = bsp_session(&pbxproj_project());
-    let xc = bsp_session(xcproj_project());
+    let xc = bsp_session(&xc_project);
     assert_eq!(pbx.0, xc.0, "targets");
     assert!(!pbx.1.is_empty(), "no compiler arguments for the pbxproj");
     assert_eq!(pbx.1, xc.1, "compiler arguments");

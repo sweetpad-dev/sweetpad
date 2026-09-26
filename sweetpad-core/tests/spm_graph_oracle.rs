@@ -36,6 +36,7 @@ use std::process::Command;
 
 use common::{JsonValue, parse_json};
 use sweetpad_core::package_members::{self, PackageRole};
+use sweetpad_core::scratch::ScratchDir;
 use sweetpad_lib::{project, workspace};
 
 /// `xcodebuild -list -workspace Graph.xcworkspace`, in its own order.
@@ -101,9 +102,13 @@ fn project_packages() -> Vec<PathBuf> {
 }
 
 /// Manifests are Swift source, so every assertion here needs the toolchain.
+/// The probe gets a `TMPDIR` of its own: the driver leaves a temp dir there on
+/// every run.
 fn have_swift() -> bool {
+    let tmp = ScratchDir::new("sweetpad-swift-probe").unwrap();
     Command::new("swift")
         .arg("--version")
+        .env("TMPDIR", tmp.as_os_str())
         .output()
         .is_ok_and(|out| out.status.success())
 }

@@ -375,6 +375,7 @@ fn xml_plist_strings(root: &crate::xcscheme::Element) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testdir::TempDir;
 
     const NAME: &str = "MyApp";
     const HASH: &str = "hflzcfrhwsudrtecqhfwedxhnshc";
@@ -698,13 +699,13 @@ mod tests {
     }
 
     /// A container skeleton under a directory unique to this test, so the
-    /// mtime-keyed caches can't serve one case's parse to another.
-    fn scratch_container(case: &str, kind: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("sweetpad-dd-{}-{case}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+    /// mtime-keyed caches can't serve one case's parse to another. The
+    /// directory goes when the returned guard drops.
+    fn scratch_container(case: &str, kind: &str) -> (TempDir, PathBuf) {
+        let root = TempDir::new(&format!("sweetpad-dd-{case}"));
         let container = root.join(format!("MyApp.{kind}"));
         std::fs::create_dir_all(&container).expect("create container");
-        container
+        (root, container)
     }
 
     fn write_settings(dir: &Path, body: &str) {
@@ -726,7 +727,7 @@ mod tests {
 
     #[test]
     fn reads_a_workspace_containers_user_settings() {
-        let container = scratch_container("ws-user", "xcworkspace");
+        let (_root, container) = scratch_container("ws-user", "xcworkspace");
         write_settings(
             &container.join("xcuserdata/someone.xcuserdatad"),
             ABSOLUTE_DD,
@@ -738,7 +739,7 @@ mod tests {
 
     #[test]
     fn reads_a_project_containers_settings_through_its_inner_workspace() {
-        let container = scratch_container("proj-user", "xcodeproj");
+        let (_root, container) = scratch_container("proj-user", "xcodeproj");
         write_settings(
             &container.join("project.xcworkspace/xcuserdata/someone.xcuserdatad"),
             ABSOLUTE_DD,
@@ -751,7 +752,7 @@ mod tests {
     fn ignores_the_shared_settings_copy() {
         // xcodebuild honours these keys only in `xcuserdata`; the shared file
         // carries scheme-autocreation settings and nothing we act on.
-        let container = scratch_container("shared", "xcworkspace");
+        let (_root, container) = scratch_container("shared", "xcworkspace");
         write_settings(&container.join("xcshareddata"), ABSOLUTE_DD);
         assert_eq!(
             read_workspace_settings(&container),
@@ -761,7 +762,7 @@ mod tests {
 
     #[test]
     fn a_container_without_settings_reads_as_stock() {
-        let container = scratch_container("bare", "xcworkspace");
+        let (_root, container) = scratch_container("bare", "xcworkspace");
         assert_eq!(
             read_workspace_settings(&container),
             WorkspaceSettings::default()
@@ -770,7 +771,7 @@ mod tests {
 
     #[test]
     fn a_malformed_settings_file_reads_as_stock() {
-        let container = scratch_container("malformed", "xcworkspace");
+        let (_root, container) = scratch_container("malformed", "xcworkspace");
         let dir = container.join("xcuserdata/someone.xcuserdatad");
         std::fs::create_dir_all(&dir).expect("create settings dir");
         std::fs::write(dir.join("WorkspaceSettings.xcsettings"), "not a plist")

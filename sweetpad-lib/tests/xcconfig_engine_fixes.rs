@@ -4,10 +4,12 @@
 //! error scoping, `$$` escaping, full glob conditions, and
 //! NSString.boolValue condition coercion.
 
+mod common;
+
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
 
+use common::TempDir;
 use sweetpad_lib::condition;
 use sweetpad_lib::resolver::{ResolveContext, expand_one, flatten_xcconfig, resolve};
 use sweetpad_lib::xcconfig::{Assignment, Entry, parse};
@@ -46,11 +48,8 @@ fn conditional(key: &str, conds: &[(&str, &str)], value: &str) -> Assignment {
 }
 
 /// Fresh per-test scratch dir under the system temp dir.
-fn scratch(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sweetpad-xcc-{tag}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+fn scratch(tag: &str) -> TempDir {
+    TempDir::new(&format!("sweetpad-xcc-{tag}"))
 }
 
 fn lookup(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
