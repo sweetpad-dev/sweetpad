@@ -90,6 +90,11 @@ be the reason, and the JSON failure gets a `note` with the same text:
       no crash report was found; macOS may have reached its limit of crash reports for this app
 ```
 
+If SweetPad can't find the exit at all, the line under the failure says so and gives the
+`sweetpad app logs --exits` command for the simulator or Mac the tests ran on, which lists the
+app's recent exits.
+The JSON failure's `note` has the same text.
+
 ## Compiling the tests without running them
 
 `sweetpad test build` compiles the test targets and stops, the way `sweetpad build` does for the app.

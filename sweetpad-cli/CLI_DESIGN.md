@@ -2460,6 +2460,20 @@ simulator's log, as `simctl diagnose` does, stretched the usual 1.5s query to
 extra query. A green run, or a red one with no failure of that kind, never
 queries at all.
 
+**No exit found says where to look.** When both queries come back without the
+exit (they failed or ran out of time, or the exit landed outside the window),
+the failure says only that the app is gone. It then gets a line, and a `note` in
+JSON, naming the `app logs --exits` command for the run's destination:
+
+```
+      couldn't find launchd's exit record; try 'sweetpad app logs --exits --on F13C004A-…'
+```
+
+The command carries `--on <udid>` for a simulator or `--mac`, plus whichever
+project and target flags the run was given (`--project`, `--scheme`, …), so it
+reads the same log for the same app. A device destination has no exit log to
+read and gets no line.
+
 **A crash without its report says why.** The fault's detail (`EXC_BREAKPOINT`,
 the address) comes from the crash report, and a suite that crashes its app all
 day stops getting reports. osanalyticshelper counts the reports it saves for an

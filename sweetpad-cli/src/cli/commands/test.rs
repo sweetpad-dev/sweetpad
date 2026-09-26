@@ -320,6 +320,11 @@ struct TestReport {
     /// What ended the app or the test runner, per failure (same order as
     /// `summary.test_failures`), for the failures that say one vanished.
     terminations: Vec<Option<Termination>>,
+    /// The 'app logs --exits' command for the run's destination, which a
+    /// failure that says something vanished points at when no exit was
+    /// found for it. `None` when no failure says so, or the destination keeps
+    /// no exit log to read.
+    exits_command: Option<String>,
     coverage: Option<f64>,
     result_bundle: String,
 }
@@ -345,11 +350,21 @@ impl Termination {
 
 impl TestReport {
     /// What the report says about failure `i` beyond its exit: that a crash
-    /// has no crash report, and why that can be.
+    /// has no crash report, and why that can be, or, for a failure that says
+    /// something vanished and has no exit, where else to look for one.
     fn note(&self, i: usize) -> Option<String> {
-        let termination = self.terminations.get(i)?.as_ref()?;
-        (termination.exit.is_crash() && termination.crash_report.is_none())
-            .then(|| format!("no crash report was found; {}", exits::REPORT_LIMIT))
+        match self.terminations.get(i).and_then(Option::as_ref) {
+            Some(t) if t.exit.is_crash() && t.crash_report.is_none() => Some(format!(
+                "no crash report was found; {}",
+                exits::REPORT_LIMIT
+            )),
+            Some(_) => None,
+            None => {
+                let exits = self.exits_command.as_deref()?;
+                vanishing(self.summary.test_failures.get(i)?)?;
+                Some(format!("couldn't find launchd's exit record; try {exits}"))
+            }
+        }
     }
 
     /// One `✗` line per failed test, naming it and its first failure, with
@@ -631,8 +646,8 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         .then(|| xcodebuild::coverage_percent(&bundle))
         .flatten();
 
-    let terminations = if passed {
-        Vec::new()
+    let (terminations, exit_log) = if passed {
+        (Vec::new(), None)
     } else {
         let run = RunContext {
             resolved: &resolved,
@@ -643,10 +658,13 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         };
         terminations(&run, &summary.test_failures)
     };
+    let exits_command =
+        exit_log.map(|log| super::app::follow_up(ctx, "app logs", &log.exits_args()));
     let report = TestReport {
         passed,
         summary,
         terminations,
+        exits_command,
         coverage,
         result_bundle: bundle.display().to_string(),
     };
@@ -782,18 +800,19 @@ const MAX_TIMED_FAILURES: usize = 20;
 /// vanished, the exit launchd logged for it: the last exit of that process
 /// between the test's start and just after that message was recorded. Best
 /// effort and bounded: an unreadable log, an unsupported destination, or a
-/// failure with no activity log leaves that failure without one.
+/// failure with no activity log leaves that failure without one. Also the log
+/// that was searched, when there was a failure to search it for.
 fn terminations(
     run: &RunContext,
     failures: &[xcodebuild::TestFailure],
-) -> Vec<Option<Termination>> {
+) -> (Vec<Option<Termination>>, Option<ExitLog>) {
     let none = || failures.iter().map(|_| None).collect();
     let causes: Vec<Option<(Vanished, &str)>> = failures.iter().map(vanishing).collect();
     if causes.iter().all(Option::is_none) {
-        return none();
+        return (none(), None);
     }
     let Some(log) = ExitLog::of(&run.target.destination) else {
-        return none();
+        return (none(), None);
     };
     let run_start = epoch_seconds(run.started) - EXIT_QUERY_LEAD;
     let mut budget = MAX_TIMED_FAILURES;
@@ -815,7 +834,7 @@ fn terminations(
     // Resolved on first need: only a failure that names no bundle id needs it.
     let mut app_id: Option<Option<String>> = None;
     let mut app_id = || app_id.get_or_insert_with(|| app_bundle_id(run)).clone();
-    find_exits(
+    let terminations = find_exits(
         &windows,
         &mut || exits_during(run, &log),
         &mut || std::thread::sleep(EXIT_RETRY_WAIT),
@@ -830,7 +849,8 @@ fn terminations(
             .flatten();
         Some(Termination { exit, crash_report })
     })
-    .collect()
+    .collect();
+    (terminations, Some(log))
 }
 
 /// Where to look for the exit behind one failure: whose it is, and the part
@@ -948,6 +968,14 @@ impl ExitLog {
         match self {
             Self::Mac => exits::Source::Mac,
             Self::Simulator(udid) => exits::Source::Simulator(udid),
+        }
+    }
+
+    /// The 'app logs --exits' flags that read this log.
+    fn exits_args(&self) -> Vec<&str> {
+        match self {
+            Self::Mac => vec!["--exits", "--mac"],
+            Self::Simulator(udid) => vec!["--exits", "--on", udid],
         }
     }
 }
@@ -2700,9 +2728,42 @@ mod tests {
                 ..Default::default()
             },
             terminations,
+            exits_command: None,
             coverage: None,
             result_bundle: "/tmp/ExitProbe.xcresult".into(),
         }
+    }
+
+    #[test]
+    fn a_vanished_app_with_no_exit_found_says_where_to_look() {
+        // Both lookups came back without the exit, so the failure would say
+        // only that the app is gone.
+        let mut report = failed_report(vec![None, None]);
+        report.exits_command = Some("'sweetpad app logs --exits --on F13C004A'".into());
+        let note =
+            "couldn't find launchd's exit record; try 'sweetpad app logs --exits --on F13C004A'";
+        assert_eq!(report.failure_lines()[1], format!("      {note}"));
+        let json = report.json();
+        assert_eq!(json["failures"][0]["note"], note);
+        assert!(json["failures"][0].get("terminationReason").is_none());
+        // An ordinary failure has no exit to look for.
+        assert!(json["failures"][1].get("note").is_none());
+        assert_eq!(report.failure_lines().len(), 3);
+
+        // A destination with no exit log to read (a device) has nowhere to
+        // point.
+        let device = failed_report(vec![None, None]);
+        assert_eq!(device.failure_lines().len(), 2);
+        assert!(device.json()["failures"][0].get("note").is_none());
+    }
+
+    #[test]
+    fn the_exit_hint_reads_the_log_the_run_searched() {
+        assert_eq!(
+            ExitLog::Simulator("F13C004A".into()).exits_args(),
+            ["--exits", "--on", "F13C004A"]
+        );
+        assert_eq!(ExitLog::Mac.exits_args(), ["--exits", "--mac"]);
     }
 
     #[test]

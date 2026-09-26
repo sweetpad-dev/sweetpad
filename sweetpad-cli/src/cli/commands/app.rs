@@ -5265,7 +5265,7 @@ impl Render for DiagnoseReport {
 /// is not remembered, so a hint that drops it can stop at "no scheme
 /// specified". `--on`/`--destination` are left out because `rest` replaces
 /// them.
-fn follow_up(ctx: &Context, verb: &str, rest: &[&str]) -> String {
+pub(crate) fn follow_up(ctx: &Context, verb: &str, rest: &[&str]) -> String {
     let t = &ctx.targeting;
     let path = |p: &Option<std::path::PathBuf>| p.as_ref().map(|p| p.display().to_string());
     let mut words = vec!["sweetpad".to_string()];

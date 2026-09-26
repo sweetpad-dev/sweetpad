@@ -215,7 +215,8 @@ running`, `… crashed`, `Test crashed with signal …`), read that failure's
 `terminationReason`: launchd's record of how the app or test runner ended,
 including kills that leave no crash report. A crash with no crash report also
 gets a `note`: macOS stops saving an app's reports past a limit, so the
-`exception` detail can be missing.
+`exception` detail can be missing. When no exit was found at all, the `note`
+names the `sweetpad app logs --exits` command to run instead.
 
 ## Inspect resolved build settings
 
