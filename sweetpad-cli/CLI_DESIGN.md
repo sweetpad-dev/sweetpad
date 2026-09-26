@@ -273,11 +273,24 @@ builds it with real `xcodebuild`.
 1  generic failure                 scheme, destination, simulator, …)
 2  usage error                  5  required tool missing (xcodebuild, …)
 3  build or test failure        6  cancelled by the user (a declined or
-                                   Esc'd prompt, Ctrl-C in a session)
+                                   Esc'd prompt, Ctrl-C while a run
+                                   session builds)
 ```
 
 A SIGINT/SIGTERM that kills the process exits `128 + signo` (130/143), after
 the handler restores the terminal and reaps children.
+
+A run session (`app run` at a terminal, plain or `--hot`) exits by how it
+ended, not by the last thing that happened in it. Ctrl-C while one of its
+builds runs cancels the session: 6, whether or not the app ran earlier, since
+it interrupted work in hand. Every other ending is a quit: `q`, Ctrl-C or
+Ctrl-D at the prompt (raw mode turns Ctrl-C into a key, and at the prompt it
+means what `q` means), `d`, or stdin closing. A quit exits 0 once the app has
+run in the session, however the last rebuild went. A session that never got
+the app running exits with its last build's code instead, 3 if it failed or 1
+if it built but didn't launch, so a wrapper still sees that nothing ran. A
+`--hot` session whose first build or launch fails ends there with the same
+codes. `session_result` in `commands/app.rs` holds the rule for both.
 
 Exit 2 has two sources. clap reports what it can't parse, in its own text
 even under `--json`. The command reports what it parses but refuses: a flag
@@ -610,10 +623,9 @@ sweetpad completions <shell>          clap_complete-generated scripts
   killing the macOS process) so the relaunch is always a fresh process picking up
   the new binary — `simctl launch` alone would just foreground the stale one — and
   the app is likewise terminated on quit. A failed rebuild keeps the session alive;
-  fix and press `r` again. A session that never had the app running still exits
-  non-zero, and the code follows its last build: 3 if it failed (the code
-  `build` uses), 6 if Ctrl-C cancelled it, and 1 if it succeeded but the launch
-  failed.
+  fix and press `r` again. The exit code follows how the session ended (§4):
+  Ctrl-C during any of its builds is 6, and a quit is 0 once the app has run,
+  else the last build's code (3 failed, 1 built but not launched).
 
   The reader uses a hand-rolled raw mode (`libc`, unix-only) that flips only
   stdin's line discipline (`ICANON`/`ECHO`/`ISIG`/`IEXTEN`), leaving the terminal's

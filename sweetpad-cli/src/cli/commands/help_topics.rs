@@ -138,10 +138,16 @@ EXIT CODES
   4   target resolution failed (unknown/missing scheme, destination,
       simulator, device, …)
   5   a required tool is missing (xcodebuild, simctl, …)
-  6   cancelled by the user (a declined prompt, Ctrl-C in a session)
+  6   cancelled by the user (a declined prompt, or Ctrl-C while a run session
+      builds)
 
 A SIGINT/SIGTERM that kills the process exits 128+signo (130/143) after the
-handler restores the terminal and reaps children. Under --json, errors are
+handler restores the terminal and reaps children.
+
+A run session ('sweetpad run' at a terminal) exits 6 when Ctrl-C stops one
+of its builds, even if the app ran before. Quitting ('q', or Ctrl-C or Ctrl-D
+at the prompt) exits 0 once the app has run. If it never ran, the exit is 3
+when the last build failed, or 1 when the app built but didn't launch. Under --json, errors are
 '{\"schema\":1,\"ok\":false,\"error\":{code,message}}' on stderr, where 'code'
 is the same taxonomy: generic, usage_error, build_failure, target_resolution,
 tool_missing, user_cancel. A flag clap can't parse is reported in clap's own

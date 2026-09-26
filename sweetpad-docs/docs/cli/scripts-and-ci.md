@@ -23,7 +23,7 @@ did:
 | 3    | The build or the tests failed.                                             |
 | 4    | Couldn't resolve a target: unknown scheme, destination, simulator, device. |
 | 5    | A required tool is missing (xcodebuild, simctl, …).                        |
-| 6    | Cancelled: a declined prompt, or Ctrl-C.                                   |
+| 6    | Cancelled: a declined prompt, or Ctrl-C while `sweetpad run` is building.  |
 
 The distinction that matters most in CI is **3 versus 4**. Code 3 means your code is broken; code 4
 means the job is misconfigured and never got as far as compiling anything. Treating them the same is

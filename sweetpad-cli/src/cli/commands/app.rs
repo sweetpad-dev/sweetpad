@@ -1844,13 +1844,13 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
             let _ = boot.wait();
             None
         }
-        // Ctrl-C during the initial build cancels the whole run before anything
-        // launched — exit as a user cancel (6), not success. The background
-        // `simctl boot` is joined first, or its child outlives the CLI and
-        // boots the simulator the user just cancelled.
+        // Ctrl-C during the initial build cancels the whole run (see
+        // [`session_result`]). The background `simctl boot` is joined first,
+        // or its child outlives the CLI and boots the simulator the user just
+        // cancelled.
         BuildOutcome::Aborted => {
             let _ = boot.wait();
-            return Err(CliError::new("cancelled").kind(ErrorKind::UserCancel));
+            return session_result(false, LastBuild::Cancelled);
         }
     };
     // The log stream is session-scoped: started once and kept across rebuilds (its
@@ -1873,10 +1873,10 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                         ever_launched |= launched;
                         session_hint(ctx, filterable);
                     }
-                    // Ctrl-C during the rebuild cancels the whole run; fall
-                    // through to the shared teardown so a session that never
-                    // launched anything still exits non-zero.
-                    RebuildOutcome::Quit => {
+                    // Ctrl-C during the rebuild cancels the whole run, whether
+                    // or not the app ran before it; fall through to the shared
+                    // teardown.
+                    RebuildOutcome::Cancelled => {
                         last_build = LastBuild::Cancelled;
                         break;
                     }
@@ -1942,21 +1942,25 @@ enum LastBuild {
     Cancelled,
 }
 
-/// The session's exit. One that never had the app running exits non-zero, so a
-/// script or wrapper around `app run` sees the failure even though the session
-/// stayed open for a retry. The code follows the last build: 3 if it failed
-/// (the code `build` uses), 6 if Ctrl-C cancelled it, and 1 if it succeeded
-/// but the launch failed.
+/// The session's exit, plain or `--hot`. Ctrl-C while a build runs cancels
+/// the session: exit 6, whether or not the app ran earlier. Every other ending
+/// (`q`, Ctrl-C or Ctrl-D at the prompt, `d`, stdin closing) is a quit: 0 once
+/// the app has run, and otherwise non-zero, so a script or wrapper around
+/// `app run` sees the failure even though the session stayed open for a
+/// retry. That code follows the last build: 3 if it failed (the code `build`
+/// uses), 1 if it succeeded but the launch failed.
 fn session_result(ever_launched: bool, last_build: LastBuild) -> CliResult {
-    if ever_launched {
-        return Ok(());
+    match (last_build, ever_launched) {
+        (LastBuild::Cancelled, _) => Err(CliError::new("cancelled").kind(ErrorKind::UserCancel)),
+        (_, true) => Ok(()),
+        (LastBuild::Failed, false) => Err(CliError::new(
+            "the last build failed, so nothing was launched",
+        )
+        .kind(ErrorKind::BuildFailure)),
+        (LastBuild::Succeeded, false) => {
+            Err(CliError::new("the app was built but failed to launch"))
+        }
     }
-    Err(match last_build {
-        LastBuild::Failed => CliError::new("the last build failed, so nothing was launched")
-            .kind(ErrorKind::BuildFailure),
-        LastBuild::Cancelled => CliError::new("cancelled").kind(ErrorKind::UserCancel),
-        LastBuild::Succeeded => CliError::new("the app was built but failed to launch"),
-    })
 }
 
 /// `app run --hot` — the built-in hot-reload session (iOS Simulator and native
@@ -2063,12 +2067,12 @@ fn run_hot_session(
     match build(plan, &ctx.out, Some(&build_log)) {
         BuildOutcome::Ok => {}
         BuildOutcome::Failed(e) => return Err(e),
-        // Ctrl-C during the build cancels the hot session before it starts —
-        // a user cancel (exit 6), not a success. Join the background boot
-        // first so its `simctl boot` child doesn't outlive the cancel.
+        // Ctrl-C during the build cancels the hot session before it starts
+        // (see [`session_result`]). Join the background boot first so its
+        // `simctl boot` child doesn't outlive the cancel.
         BuildOutcome::Aborted => {
             let _ = boot.wait();
-            return Err(CliError::new("cancelled").kind(ErrorKind::UserCancel));
+            return session_result(false, LastBuild::Cancelled);
         }
     }
     let app = plan.app_bundle()?;
@@ -2167,11 +2171,11 @@ fn run_hot_session(
 
     // CI self-check: edit a file once, assert `.injected`, exit. Otherwise the
     // interactive key loop (`r`/`q`), or — non-TTY — follow logs until Ctrl-C.
-    let mut terminate_on_exit = true;
+    let mut end = HotLoopEnd::Quit;
     let outcome = if let Some(file) = selfcheck {
         hot_selfcheck(ctx, &server, file, &plan.target)
     } else if ctx.out.is_interactive() {
-        terminate_on_exit = hot_key_loop(
+        end = hot_key_loop(
             ctx,
             plan,
             &mut hot_app,
@@ -2180,7 +2184,14 @@ fn run_hot_session(
             &mut logs,
             &build_log,
         );
-        Ok(())
+        // The app launched above, so only a cancelled rebuild fails the
+        // session.
+        let last_build = if end == HotLoopEnd::Cancelled {
+            LastBuild::Cancelled
+        } else {
+            LastBuild::Succeeded
+        };
+        session_result(true, last_build)
     } else {
         ctx.out
             .note("hot reload: watching for Swift changes (Ctrl-C to stop)");
@@ -2195,10 +2206,10 @@ fn run_hot_session(
     session_done.store(true, Ordering::Relaxed);
     session.shutdown();
     server.shutdown();
-    if terminate_on_exit {
-        hot_app.terminate(&app);
-    } else {
+    if end == HotLoopEnd::Detach {
         hot_app.detach();
+    } else {
+        hot_app.terminate(&app);
     }
     drop(logs);
     outcome
@@ -2562,11 +2573,23 @@ impl HotApp<'_> {
     }
 }
 
+/// How the `--hot` key loop ended, which decides what teardown does with the
+/// app and how the session exits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HotLoopEnd {
+    /// `q`, Ctrl-C or Ctrl-D at the prompt, or stdin closing: the app is
+    /// terminated.
+    Quit,
+    /// `d`: the app keeps running.
+    Detach,
+    /// Ctrl-C during an `r` rebuild.
+    Cancelled,
+}
+
 /// The `--hot` keypress loop: `r` full rebuild+relaunch (the client
 /// reconnects), `s`/`o`/`c`/`h` as in the plain session, `d` detaches (the app
 /// keeps running), `q`/Ctrl-C/Ctrl-D quit. Injection happens out-of-band via
-/// the watcher. Returns whether the app should be terminated on teardown
-/// (false after a detach).
+/// the watcher.
 fn hot_key_loop(
     ctx: &Context,
     plan: &RunPlan,
@@ -2575,13 +2598,13 @@ fn hot_key_loop(
     env: &[(String, String)],
     logs: &mut Option<LogStream>,
     build_log: &Path,
-) -> bool {
+) -> HotLoopEnd {
     let Ok(_raw) = rawmode::RawMode::enable() else {
         // No TTY for raw mode — just follow the log stream until Ctrl-C.
         if let Some(logs) = logs.as_mut() {
             logs.wait();
         }
-        return true;
+        return HotLoopEnd::Quit;
     };
     ctx.out
         .note("hot reload ready · edit a Swift file to inject · r rebuilds · d detaches · q quits");
@@ -2609,14 +2632,14 @@ fn hot_key_loop(
                             }
                         }
                         BuildOutcome::Failed(e) => ctx.out.error(&e),
-                        // Ctrl-C during the rebuild quits the hot session.
-                        BuildOutcome::Aborted => break,
+                        // Ctrl-C during the rebuild cancels the hot session.
+                        BuildOutcome::Aborted => return HotLoopEnd::Cancelled,
                     }
                 }
                 SessionKey::Quit => break,
                 SessionKey::Detach => {
                     ctx.out.note(hot_app.detach_note());
-                    return false;
+                    return HotLoopEnd::Detach;
                 }
                 SessionKey::Screenshot => session_screenshot(ctx, plan),
                 SessionKey::Foreground => hot_app.foreground(app),
@@ -2633,7 +2656,7 @@ fn hot_key_loop(
             rawmode::Input::Closed => break,
         }
     }
-    true
+    HotLoopEnd::Quit
 }
 
 /// What sweetpad needs to record how a macOS app process it spawned ended.
@@ -3428,12 +3451,12 @@ enum RebuildOutcome {
     /// running).
     Continue { build: LastBuild, launched: bool },
     /// Ctrl-C during the rebuild: cancel the whole session.
-    Quit,
+    Cancelled,
 }
 
 /// Stop the running app, rebuild, and relaunch (the `r` key). The session log
 /// stream is left running; it follows the relaunched app by process name. Ctrl-C
-/// during the rebuild returns [`RebuildOutcome::Quit`] so the session ends.
+/// during the rebuild returns [`RebuildOutcome::Cancelled`] so the session ends.
 fn do_rebuild(
     ctx: &Context,
     plan: &RunPlan,
@@ -3471,7 +3494,7 @@ fn do_rebuild(
                 launched: false,
             }
         }
-        BuildOutcome::Aborted => RebuildOutcome::Quit,
+        BuildOutcome::Aborted => RebuildOutcome::Cancelled,
     }
 }
 
@@ -7145,25 +7168,22 @@ mod tests {
         assert!(boot.wait().is_ok());
     }
 
-    /// A session that never had the app running exits with the code its last
-    /// build earned; one that did exits 0 however its last build went.
+    /// Ctrl-C during a build exits 6 however the session went before it. A
+    /// quit exits 0 once the app has run, and otherwise with the code the
+    /// last build earned.
     #[test]
-    fn a_session_that_launched_nothing_exits_with_its_last_builds_code() {
+    fn a_session_exits_by_how_it_ended() {
         let code = |launched, last| {
             session_result(launched, last)
                 .err()
                 .map(|e| e.error_kind().exit_code())
         };
-        assert_eq!(code(false, LastBuild::Failed), Some(3));
         assert_eq!(code(false, LastBuild::Cancelled), Some(6));
+        assert_eq!(code(true, LastBuild::Cancelled), Some(6));
+        assert_eq!(code(false, LastBuild::Failed), Some(3));
         assert_eq!(code(false, LastBuild::Succeeded), Some(1));
-        for last in [
-            LastBuild::Succeeded,
-            LastBuild::Failed,
-            LastBuild::Cancelled,
-        ] {
-            assert_eq!(code(true, last), None, "{last:?}");
-        }
+        assert_eq!(code(true, LastBuild::Failed), None);
+        assert_eq!(code(true, LastBuild::Succeeded), None);
     }
 
     #[test]

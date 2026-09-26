@@ -507,10 +507,15 @@ fn pty() -> (std::fs::File, OwnedFd) {
     }
 }
 
-/// Run `cmd` on a pty for its stdin, stdout and stderr, typing `keys` once
-/// `prompt` shows. Returns the exit status and everything the child wrote.
-/// CI's own variables are dropped, since they make every run non-interactive.
-fn on_pty(mut cmd: Command, prompt: &str, keys: &[u8]) -> (ExitStatus, String) {
+/// What to type on a pty: each `(prompt, keys)` pair's keys once its prompt
+/// shows.
+type Steps<'a> = [(&'a str, &'a str)];
+
+/// Run `cmd` on a pty for its stdin, stdout and stderr, typing each step's
+/// keys once its prompt shows in what the child wrote after the previous
+/// step's keys. Returns the exit status and everything the child wrote. CI's
+/// own variables are dropped, since they make every run non-interactive.
+fn on_pty(mut cmd: Command, steps: &Steps) -> (ExitStatus, String) {
     use std::io::{Read, Write};
     use std::process::Stdio;
     use std::sync::{Arc, Mutex};
@@ -540,7 +545,9 @@ fn on_pty(mut cmd: Command, prompt: &str, keys: &[u8]) -> (ExitStatus, String) {
     let shown = || String::from_utf8_lossy(&transcript.lock().unwrap()).into_owned();
 
     let deadline = Instant::now() + Duration::from_secs(60);
-    let mut typed = false;
+    let mut steps = steps.iter();
+    let mut next = steps.next();
+    let mut seen = 0;
     let status = loop {
         if let Some(status) = child.try_wait().unwrap() {
             break status;
@@ -549,9 +556,13 @@ fn on_pty(mut cmd: Command, prompt: &str, keys: &[u8]) -> (ExitStatus, String) {
             let _ = child.kill();
             panic!("still running after a minute:\n{}", shown());
         }
-        if !typed && shown().contains(prompt) {
-            master.write_all(keys).unwrap();
-            typed = true;
+        if let Some((prompt, keys)) = next {
+            let so_far = shown();
+            if so_far[seen..].contains(prompt) {
+                master.write_all(keys.as_bytes()).unwrap();
+                seen = so_far.len();
+                next = steps.next();
+            }
         }
         std::thread::sleep(Duration::from_millis(50));
     };
@@ -581,7 +592,7 @@ fn quitting_a_session_whose_build_failed_exits_as_a_failed_build() {
             "Debug",
         ],
     );
-    let (status, shown) = on_pty(session, "q quit", b"q");
+    let (status, shown) = on_pty(session, &[("q quit", "q")]);
     assert_eq!(status.code(), Some(3), "{shown}");
     assert!(
         shown.contains("the last build failed, so nothing was launched"),
@@ -592,7 +603,88 @@ fn quitting_a_session_whose_build_failed_exits_as_a_failed_build() {
 
     let (mut help, _help_home, _help_cwd) = stub_command("quit-help", "", 0, &["help"]);
     help.env("XDG_STATE_HOME", &*home);
-    let (status, shown) = on_pty(help, "", b"");
+    let (status, shown) = on_pty(help, &[]);
     assert!(status.success(), "{shown}");
     assert!(shown.contains(tip), "{shown}");
+}
+
+/// An `app run --mac` session against a stub xcodebuild whose builds from the
+/// `slow_from`th on compile until interrupted, while earlier ones succeed at
+/// once and leave a product that stays up: a script standing in for the app,
+/// in the DerivedData the session is pointed at.
+fn launchable_session(tag: &str, slow_from: u32) -> (Command, [TempDir; 3]) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let project = project();
+    let derived = tmp(&format!("{tag}-dd"));
+    let (session, home, cwd) = stub_command(
+        tag,
+        "",
+        0,
+        &[
+            "app",
+            "run",
+            "--mac",
+            "--project",
+            project.to_str().unwrap(),
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+            "--",
+            "-derivedDataPath",
+            derived.to_str().unwrap(),
+        ],
+    );
+    let executable = |path: &Path, body: &str| {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, body).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    executable(
+        &cwd.join("bin/xcodebuild"),
+        &format!(
+            "#!/bin/sh\n\
+             n=$(( $(cat \"$0.builds\" 2>/dev/null || echo 0) + 1 ))\n\
+             echo $n > \"$0.builds\"\n\
+             if [ $n -ge {slow_from} ]; then\n\
+             echo \"CompileSwift normal arm64 /src/App/ContentView.swift (in target 'SweetpadCIMac' from project 'SweetpadCIApp')\"\n\
+             exec sleep 30\n\
+             fi\n\
+             echo '** BUILD SUCCEEDED **'\n"
+        ),
+    );
+    executable(
+        &derived.join("Build/Products/Debug/SweetpadCIMac.app/Contents/MacOS/SweetpadCIMac"),
+        "#!/bin/sh\nexec sleep 60\n",
+    );
+    (session, [home, cwd, derived])
+}
+
+/// A session exits by how it ends. Ctrl-C while a build runs cancels it,
+/// exit 6, whether or not the app ran before; a quit at the prompt, by 'q'
+/// or by Ctrl-C, exits 0 once the app has run.
+#[test]
+fn a_session_exits_by_how_it_ended() {
+    let endings: [(&str, u32, &Steps, i32); 4] = [
+        ("end-q", 2, &[("h keys", "q")], 0),
+        ("end-ctrl-c", 2, &[("h keys", "\u{3}")], 0),
+        (
+            "end-rebuild",
+            2,
+            &[("h keys", "r"), ("Compiling", "\u{3}")],
+            6,
+        ),
+        ("end-first-build", 1, &[("Compiling", "\u{3}")], 6),
+    ];
+    for (tag, slow_from, steps, code) in endings {
+        let (session, _dirs) = launchable_session(tag, slow_from);
+        let (status, shown) = on_pty(session, steps);
+        assert_eq!(status.code(), Some(code), "{tag}: {shown}");
+        if code == 6 {
+            assert!(shown.contains("Build cancelled"), "{tag}: {shown}");
+        } else {
+            assert!(shown.contains("Launched in"), "{tag}: {shown}");
+        }
+    }
 }

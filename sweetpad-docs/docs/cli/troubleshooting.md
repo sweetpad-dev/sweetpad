@@ -170,7 +170,7 @@ disk rather than repeating the work.
 | 3    | The build or the tests failed.                                             |
 | 4    | Couldn't resolve a target: unknown scheme, destination, simulator, device. |
 | 5    | A required tool is missing.                                                |
-| 6    | Cancelled: a declined prompt, or Ctrl-C.                                   |
+| 6    | Cancelled: a declined prompt, or Ctrl-C while `sweetpad run` is building.  |
 
 The pair worth learning is 3 and 4: code 3 means your code is broken, code 4 means the invocation is.
 [Scripts and CI](./scripts-and-ci.md#exit-codes) has the rest.

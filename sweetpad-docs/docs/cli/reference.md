@@ -296,7 +296,7 @@ it lists.
 | 3    | The build or the tests failed.                                       |
 | 4    | Couldn't resolve a target: unknown scheme, destination, simulator…   |
 | 5    | A required tool is missing (xcodebuild, simctl, …).                  |
-| 6    | Cancelled by you: a declined prompt or Ctrl-C.                       |
+| 6    | Cancelled by you: a declined prompt, or Ctrl-C during a run's build. |
 
 With `-o json`, results arrive as a one-shot envelope `{"schema": 1, "ok": true, "data": …}`; errors
 go to stderr as `{"schema": 1, "ok": false, "error": {"code", "message"}}` where the code mirrors the
