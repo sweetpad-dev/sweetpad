@@ -60,14 +60,10 @@ pub fn resolve_dylib(opts: &ClientOptions, notify: &dyn Fn(&str)) -> Result<Path
         if p.exists() {
             return Ok(p.clone());
         }
-        return Err(format!(
-            "hot-reload dylib override does not exist: {}",
-            p.display()
-        ));
+        return Err(missing_override(p));
     }
 
-    let name = dylib_name_for(&opts.sdk)
-        .ok_or_else(|| format!("hot reload is not supported for the {} SDK", opts.sdk))?;
+    let name = client_name(&opts.sdk)?;
 
     // The client bundled into this binary for this SDK. XCTest-free, so it
     // needs no clone, no per-Xcode build, and works offline.
@@ -83,18 +79,69 @@ pub fn resolve_dylib(opts: &ClientOptions, notify: &dyn Fn(&str)) -> Result<Path
 
     // Fallback: an installed InjectionNext.app (covers the SDKs without a
     // bundled client, and the rare case where it can't be written to the cache).
-    let app_dylib = Path::new(INJECTIONNEXT_APP)
-        .join("Contents/Resources")
-        .join(name);
+    let app_dylib = injectionnext_client(name);
     if app_dylib.exists() {
         return Ok(app_dylib);
     }
+    Err(no_client(&opts.sdk))
+}
 
-    Err(format!(
-        "no injection client available for the {} SDK. Install InjectionNext.app \
-         (https://github.com/johnno1962/InjectionNext) or set SWEETPAD_HOTRELOAD_DYLIB.",
-        opts.sdk
-    ))
+/// Check that [`resolve_dylib`] has a client to find for `sdk`, without
+/// writing anything, so a hot session can stop before it spends a build on an
+/// app it has nothing to inject into. The error says how to get a client.
+pub fn check_available(sdk: &str, override_path: Option<&Path>) -> Result<(), String> {
+    if let Some(p) = override_path {
+        return if p.exists() {
+            Ok(())
+        } else {
+            Err(missing_override(p))
+        };
+    }
+    let name = client_name(sdk)?;
+    if bundled_client_for(sdk).is_empty() && !injectionnext_client(name).exists() {
+        return Err(no_client(sdk));
+    }
+    Ok(())
+}
+
+/// The InjectionNext dylib name for `sdk`, or why hot reload can't target it.
+fn client_name(sdk: &str) -> Result<&'static str, String> {
+    dylib_name_for(sdk).ok_or_else(|| format!("hot reload is not supported for the {sdk} SDK"))
+}
+
+/// Where an installed `InjectionNext.app` keeps its client for `name`.
+fn injectionnext_client(name: &str) -> PathBuf {
+    Path::new(INJECTIONNEXT_APP)
+        .join("Contents/Resources")
+        .join(name)
+}
+
+fn missing_override(path: &Path) -> String {
+    format!(
+        "SWEETPAD_HOTRELOAD_DYLIB points at {}, which doesn't exist",
+        path.display()
+    )
+}
+
+/// Why no client was found for `sdk`, and how to get one. Release builds
+/// bundle a client for the SDKs `build.sh` builds, so there a build from
+/// source is what lacks it; the other SDKs rely on InjectionNext.app.
+fn no_client(sdk: &str) -> String {
+    if matches!(sdk, "iphonesimulator" | "macosx") {
+        format!(
+            "this sweetpad build has no injection client for the {sdk} SDK; release \
+             builds bundle one. To hot reload with a build from source, run \
+             'sweetpad-cli/vendor/injection-client/build.sh' and rebuild sweetpad, or set \
+             SWEETPAD_HOTRELOAD_DYLIB to a client dylib"
+        )
+    } else {
+        format!(
+            "no injection client for the {sdk} SDK: sweetpad bundles clients for the iOS \
+             Simulator and macOS only. Install InjectionNext.app \
+             (https://github.com/johnno1962/InjectionNext) or set SWEETPAD_HOTRELOAD_DYLIB \
+             to a client dylib"
+        )
+    }
 }
 
 /// The env that injects `dylib` into the launched app and points its client at
@@ -339,6 +386,42 @@ mod tests {
             Some(PathBuf::from("/no/such/client.dylib")),
         );
         assert!(resolve_dylib(&o, &|_: &str| {}).is_err());
+    }
+
+    /// The check before a hot build takes the override as `resolve_dylib`
+    /// does: an existing file is enough, and a missing one is named.
+    #[test]
+    fn the_check_before_a_build_follows_the_override() {
+        let tmp = std::env::temp_dir().join(format!("sweetpad-check-{}.dylib", std::process::id()));
+        std::fs::write(&tmp, b"x").unwrap();
+        assert_eq!(check_available("macosx", Some(&tmp)), Ok(()));
+        std::fs::remove_file(&tmp).ok();
+        let err = check_available("macosx", Some(&tmp)).unwrap_err();
+        assert!(
+            err.starts_with("SWEETPAD_HOTRELOAD_DYLIB points at"),
+            "{err}"
+        );
+        assert!(err.contains(&tmp.display().to_string()), "{err}");
+        let err = check_available("iphoneos", None).unwrap_err();
+        assert!(err.contains("not supported"), "{err}");
+    }
+
+    /// A build from source lacks only the clients a release bundles, so the
+    /// build script is the fix there; the other SDKs need InjectionNext.app.
+    #[test]
+    fn a_missing_client_names_the_way_to_get_one() {
+        for sdk in ["iphonesimulator", "macosx"] {
+            let msg = no_client(sdk);
+            assert!(msg.contains("release builds bundle one"), "{msg}");
+            assert!(
+                msg.contains("'sweetpad-cli/vendor/injection-client/build.sh'"),
+                "{msg}"
+            );
+            assert!(msg.contains("SWEETPAD_HOTRELOAD_DYLIB"), "{msg}");
+        }
+        let msg = no_client("appletvsimulator");
+        assert!(msg.contains("InjectionNext.app"), "{msg}");
+        assert!(!msg.contains("build.sh"), "{msg}");
     }
 
     #[test]

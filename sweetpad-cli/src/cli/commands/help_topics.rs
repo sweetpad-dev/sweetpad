@@ -190,6 +190,13 @@ How it works: the app is built with -Xlinker -interposable, launched with the
 injection client dylib, and a watcher recompiles saved files and streams the
 result into the process. 'r' still does a full rebuild+relaunch; 'q' quits.
 
+The injection client: release builds of sweetpad (Homebrew) bundle one for
+the iOS Simulator and macOS. A sweetpad built from source has one only if
+'sweetpad-cli/vendor/injection-client/build.sh' ran before 'cargo build'.
+Without a client, '--hot' stops before building and says so. Pointing
+SWEETPAD_HOTRELOAD_DYLIB at a client dylib also works, as does an installed
+InjectionNext.app.
+
 macOS: the hot build also passes ENABLE_HARDENED_RUNTIME=NO and
 ENABLE_APP_SANDBOX=NO so the Debug product is injectable (dyld honors the
 insert; ad-hoc recompiled dylibs load). An App Sandbox set in an explicit

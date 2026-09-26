@@ -1061,6 +1061,12 @@ dropped along with XCTest; the promoted feature is app UI/code reload (SwiftUI/U
   release CLI scripts (`build:cli` / `build:cli:universal`) run `build.sh` before
   the cargo build, and `build.rs` embeds whatever is present. Builds without it
   compile fine (empty embed) and fall back to `InjectionNext.app` at runtime.
+  `app run` looks for a client before it builds (`inject::client::check_available`:
+  the override, the bundled client, then `InjectionNext.app`, writing nothing),
+  so a typed `--hot` with none fails at once, exit 5 (`tool_missing`), naming
+  `build.sh` or `SWEETPAD_HOTRELOAD_DYLIB` for the SDKs a release bundles and
+  `InjectionNext.app` for the rest. A `[run] hot = true` default yields with a
+  warning instead, as it does to a busy `:8887`.
 - **Drop-in UX preserved** — no project edit, no `InjectionNext.app` required. The
   SwiftUI `@ObserveInjection`/`.enableInjection()` annotations remain the user's to
   add (UIKit reloads without them).

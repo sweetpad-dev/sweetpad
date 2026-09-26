@@ -352,10 +352,23 @@ fn a_destination_error_off_a_device_gets_no_tip() {
 /// `app run`'s session build against a stub xcodebuild. The session builds
 /// through its own runner rather than `build`'s, and `--hot --mac` reaches that
 /// runner without a terminal, since the hot session builds before it launches
-/// anything.
+/// anything. It checks for an injection client before that build, and a
+/// sweetpad built from source may bundle none, so a stand-in file serves as
+/// the client.
 fn session_with_stub(tag: &str, transcript: &str, status: i32) -> Output {
+    let (mut cmd, _home, cwd) = hot_session_command(tag, transcript, status);
+    let client = cwd.join("client.dylib");
+    std::fs::write(&client, b"").unwrap();
+    cmd.env("SWEETPAD_HOTRELOAD_DYLIB", &client)
+        .output()
+        .expect("failed to run the sweetpad binary")
+}
+
+/// The `app run --hot --mac` command [`session_with_stub`] runs, with its
+/// directories as [`stub_command`] returns them.
+fn hot_session_command(tag: &str, transcript: &str, status: i32) -> (Command, TempDir, TempDir) {
     let project = project();
-    sweetpad_with_stub(
+    stub_command(
         tag,
         transcript,
         status,
@@ -373,6 +386,31 @@ fn session_with_stub(tag: &str, transcript: &str, status: i32) -> Output {
             "--non-interactive",
         ],
     )
+}
+
+/// `--hot` looks for its injection client before it builds, so a run with
+/// none fails at once, exits as a missing tool, and says where it looked.
+#[test]
+fn a_hot_run_with_no_injection_client_fails_before_building() {
+    let (mut cmd, _home, cwd) = hot_session_command("no-client", BROKEN, 65);
+    let missing = cwd.join("no-such-client.dylib");
+    let out = cmd
+        .env("SWEETPAD_HOTRELOAD_DYLIB", &missing)
+        .output()
+        .expect("failed to run the sweetpad binary");
+    assert_eq!(out.status.code(), Some(5), "{out:?}");
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(!stdout.contains("Compiling"), "{stdout}");
+    assert!(!stdout.contains("Build failed"), "{stdout}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        stderr.contains(&format!(
+            "SWEETPAD_HOTRELOAD_DYLIB points at {}, which doesn't exist",
+            missing.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("building"), "{stderr}");
 }
 
 /// The session's build closes on the same banner as `build`'s, whether

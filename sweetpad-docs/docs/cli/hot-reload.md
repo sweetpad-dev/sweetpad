@@ -29,6 +29,10 @@ There's nothing to install. The injection client ships inside the `sweetpad` bin
 on a fresh machine with only Homebrew and Xcode. (If you happen to have InjectionNext installed,
 SweetPad falls back to its client when the bundled one can't be used.)
 
+A `sweetpad` you built from source has the client only if
+`sweetpad-cli/vendor/injection-client/build.sh` ran before `cargo build`. Without one, `--hot` stops
+before building and tells you so. You can also point `SWEETPAD_HOTRELOAD_DYLIB` at a client dylib.
+
 ## Setting up SwiftUI
 
 UIKit and AppKit apps need no changes at all. Method bodies are swapped in the running process and

@@ -1057,6 +1057,20 @@ fn session_hot(hot: bool, explicit: bool, target: &Target) -> bool {
     hot && (explicit || matches!(target, Target::Simulator(_)))
 }
 
+/// Why a hot session of `plan` would have no injection client, found without
+/// building. `None` when there is one, or when the destination isn't one hot
+/// reload injects into ([`run_hot_session`] refuses those itself).
+fn missing_hot_client(plan: &RunPlan) -> Option<String> {
+    let sdk = inject::sdk_for_destination(&plan.destination)?;
+    inject::client::check_available(sdk, hot_dylib_override().as_deref()).err()
+}
+
+/// `SWEETPAD_HOTRELOAD_DYLIB`: the injection client to use in place of the
+/// bundled one.
+fn hot_dylib_override() -> Option<std::path::PathBuf> {
+    std::env::var_os("SWEETPAD_HOTRELOAD_DYLIB").map(std::path::PathBuf::from)
+}
+
 /// Whether machine-readable output was asked for, and this invocation streams —
 /// so there is no coherent one-shot payload to emit. `--no-logs` and `--detach`
 /// deploy and return, so they *do* have one; the session forms print logs until
@@ -1102,6 +1116,18 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
         ));
         hot = false;
     }
+    // And to a sweetpad with no injection client, such as a build from source
+    // that never ran the client's build script.
+    if hot
+        && !opts.hot_explicit
+        && let Some(why) = missing_hot_client(&plan)
+    {
+        ctx.out.warn(&format!(
+            "hot reload off for this run: {why}. The '[run] hot = true' default yields; \
+             type '--hot' to fail instead"
+        ));
+        hot = false;
+    }
     plan.hot = hot;
     let plan = plan;
 
@@ -1144,6 +1170,12 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
         streaming_under_machine_output(&ctx.out, hot || matches!(plan.target, Target::SpmRun(_)))
     {
         return Err(e);
+    }
+
+    // A typed `--hot` with no client to inject fails here, before a build
+    // is spent on an app the session couldn't hot reload.
+    if hot && let Some(why) = missing_hot_client(&plan) {
+        return Err(CliError::new(why).kind(ErrorKind::ToolMissing));
     }
 
     print_summary(ctx, &plan);
@@ -2050,17 +2082,18 @@ fn run_hot_session(
 
     // Resolve the injection client dylib + the launch env: SIMCTL_CHILD_-
     // prefixed for a simctl launch (stripped as it's forwarded into the
-    // simulated process), raw for the direct mac spawn.
+    // simulated process), raw for the direct mac spawn. `run_app` checked
+    // before the build that there is a client to find.
     // `SWEETPAD_HOTRELOAD_DYLIB` overrides the lookup (used by CI to point at a
     // downloaded client matching the active Xcode).
     let client_opts = inject::client::ClientOptions {
         developer_dir: developer_dir.clone(),
         sdk: sdk.to_string(),
         project_root: project_root.clone(),
-        override_path: std::env::var_os("SWEETPAD_HOTRELOAD_DYLIB").map(std::path::PathBuf::from),
+        override_path: hot_dylib_override(),
     };
     let dylib = inject::client::resolve_dylib(&client_opts, &|msg| ctx.out.note(msg))
-        .map_err(CliError::new)?;
+        .map_err(|e| CliError::new(e).kind(ErrorKind::ToolMissing))?;
     let env_prefix = match &plan.target {
         Target::Simulator(_) => "SIMCTL_CHILD_",
         _ => "",
