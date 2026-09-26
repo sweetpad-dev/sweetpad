@@ -2,7 +2,8 @@
 #
 # End-to-end coverage for the standalone `sweetpad` CLI, exercising every command
 # against a real Xcode app (ci/fixture-app) and a real Swift package
-# (ci/fixture-spm) on a macOS runner with Xcode. Run by .github/workflows/cli-smoke.yaml.
+# (ci/fixture-spm) on a macOS runner with Xcode. Run by .github/workflows/cli-smoke.yaml
+# and xcode-tests.yaml.
 #
 # Requires: SWEETPAD_BIN pointing at the built binary; the app fixture already
 # generated with `xcodegen generate`.
@@ -286,7 +287,7 @@ assert_json "$out" "len([r for r in d['refs'] if r['resolved']=='Sources/App/Con
 ok "pbxproj fileref list (references resolve to real paths)"
 
 GROUP=$("$BIN" pbxproj group list --project "$TREE_PROJ" --json \
-  | python3 -c "import json,sys; print(next(g['id'] for g in json.load(sys.stdin)['data']['groups'] if g['resolved']=='Sources/App'))")
+  | python3 -c "import json,sys; print(next(g['address'] for g in json.load(sys.stdin)['data']['groups'] if g['resolved']=='Sources/App'))")
 
 # The gap this closes: a new file on disk becomes a compiled file in explicit
 # steps, with no generator in the loop.
@@ -303,8 +304,8 @@ out=$("$BIN" pbxproj fileref add Added.swift Batched.swift --type sourcecode.swi
 assert_json "$out" "[r['resolved'] for r in d['refs']]" \
   "['Sources/App/Added.swift', 'Sources/App/Batched.swift']"
 assert_json "$out" "sorted({r['group'] for r in d['refs']})" "['$GROUP']"
-REF=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['refs'][0]['id'])")
-BATCHED=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['refs'][1]['id'])")
+REF=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['refs'][0]['address'])")
+BATCHED=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['refs'][1]['address'])")
 ok "pbxproj fileref add (batched, and a directory names the group)"
 
 # A directory that names no group, or two, is an error rather than a pick.
@@ -352,11 +353,11 @@ ok "membership remove reports the reference its cascade deleted"
 
 # detach/attach move only the child entry; the object itself survives both.
 CV=$("$BIN" pbxproj fileref list --project "$TREE_PROJ" --json \
-  | python3 -c "import json,sys; print(next(r['id'] for r in json.load(sys.stdin)['data']['refs'] if r['resolved']=='Sources/App/ContentView.swift'))")
+  | python3 -c "import json,sys; print(next(r['address'] for r in json.load(sys.stdin)['data']['refs'] if r['resolved']=='Sources/App/ContentView.swift'))")
 out=$("$BIN" pbxproj group detach "$CV" --group "$GROUP" --project "$TREE_PROJ" --json)
 assert_json "$out" "d['changed']" "True"
 out=$("$BIN" pbxproj fileref list --project "$TREE_PROJ" --json)
-assert_json "$out" "[r['group'] for r in d['refs'] if r['id']=='$CV']" "[None]"
+assert_json "$out" "[r['group'] for r in d['refs'] if r['address']=='$CV']" "[None]"
 out=$("$BIN" pbxproj group attach "$CV" --group "$GROUP" --project "$TREE_PROJ" --json)
 assert_json "$out" "d['changed']" "True"
 ok "pbxproj group attach/detach (child entry only, the object survives)"
