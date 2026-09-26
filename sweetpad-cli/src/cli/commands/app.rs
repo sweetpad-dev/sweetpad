@@ -2821,11 +2821,18 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
     );
     match status {
         Ok(s) if s.success() => BuildOutcome::Ok,
-        Ok(_) => BuildOutcome::Failed(
-            CliError::new("xcodebuild exited with a non-zero status")
+        Ok(_) => {
+            // The stream above already closed on `✗ Build failed` under the
+            // errors that caused it, as `BuildPlan::run`'s does.
+            let err = CliError::new("xcodebuild exited with a non-zero status")
                 .context("building the app")
-                .kind(ErrorKind::BuildFailure),
-        ),
+                .kind(ErrorKind::BuildFailure);
+            BuildOutcome::Failed(if xcodebuild::streamed_an_error(true, &diagnostics) {
+                err.shown()
+            } else {
+                err
+            })
+        }
         Err(e) => BuildOutcome::Failed(
             CliError::new(format!("failed to wait for xcodebuild: {e}"))
                 .context("building the app"),

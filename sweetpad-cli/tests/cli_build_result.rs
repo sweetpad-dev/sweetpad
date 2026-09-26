@@ -30,6 +30,26 @@ fn project() -> PathBuf {
 /// `sweetpad build` in `mode` against a stub xcodebuild that prints
 /// `transcript` and exits with `status`.
 fn build_with_stub(tag: &str, transcript: &str, status: i32, mode: &[&str]) -> Output {
+    let project = project();
+    let mut args = vec![
+        "build",
+        "--project",
+        project.to_str().unwrap(),
+        "--scheme",
+        "SweetpadCIMac",
+        "--configuration",
+        "Debug",
+        "--destination",
+        "platform=macOS",
+        "--non-interactive",
+    ];
+    args.extend_from_slice(mode);
+    sweetpad_with_stub(tag, transcript, status, &args)
+}
+
+/// `sweetpad <args>` against a stub xcodebuild that prints `transcript` and
+/// exits with `status`.
+fn sweetpad_with_stub(tag: &str, transcript: &str, status: i32, args: &[&str]) -> Output {
     use std::os::unix::fs::PermissionsExt;
 
     let home = tmp(&format!("{tag}-home"));
@@ -50,22 +70,8 @@ fn build_with_stub(tag: &str, transcript: &str, status: i32, mode: &[&str]) -> O
     let developer_dir = cwd.join("Developer");
     std::fs::create_dir_all(&developer_dir).unwrap();
 
-    let project = project();
-    let mut args = vec![
-        "build",
-        "--project",
-        project.to_str().unwrap(),
-        "--scheme",
-        "SweetpadCIMac",
-        "--configuration",
-        "Debug",
-        "--destination",
-        "platform=macOS",
-        "--non-interactive",
-    ];
-    args.extend_from_slice(mode);
     Command::new(env!("CARGO_BIN_EXE_sweetpad"))
-        .args(&args)
+        .args(args)
         .current_dir(&cwd)
         .env("HOME", &home)
         .env("XDG_STATE_HOME", &home)
@@ -185,4 +191,35 @@ fn a_streamed_compile_error_still_reaches_the_machine_modes() {
             "{mode:?}"
         );
     }
+}
+
+/// `app run`'s session builds through its own runner rather than `build`'s,
+/// and closes on the same banner. `--hot --mac` reaches that runner without a
+/// terminal, since the hot session builds before it launches anything.
+#[test]
+fn the_run_sessions_build_ends_on_the_banner_too() {
+    let project = project();
+    let out = sweetpad_with_stub(
+        "session",
+        BROKEN,
+        65,
+        &[
+            "app",
+            "run",
+            "--hot",
+            "--mac",
+            "--project",
+            project.to_str().unwrap(),
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+            "--non-interactive",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(3), "{out:?}");
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert_eq!(stdout.lines().last(), Some("✗ Build failed"), "{stdout}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(!stderr.contains("error:"), "{stderr}");
 }

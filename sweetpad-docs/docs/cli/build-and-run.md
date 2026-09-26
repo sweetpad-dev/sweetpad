@@ -72,8 +72,6 @@ building SweetpadCIApp (Debug) for platform=iOS Simulator,id=F92801F8-…
   Compiling ContentView.swift
 error: /path/to/Sources/App/ContentView.swift:12:14: cannot find 'greeting' in scope
 ✗ Build failed
-error: building the project
-  xcodebuild exited with a non-zero status
 ```
 
 A failed build exits with code `3`, which is how a script tells "the build broke" apart from "the
