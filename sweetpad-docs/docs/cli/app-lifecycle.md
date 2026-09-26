@@ -220,6 +220,19 @@ It's bounded by `--timeout`, 30 seconds by default, and reports a timeout if the
 nor exits in that window. The result is the report, not the exit code, so read the output (or the JSON
 payload) rather than branching on `$?`. Simulator and macOS only.
 
+lldb reports most crashes as the Mach exception the CPU raised, such as
+`EXC_BAD_ACCESS (code=1, address=0x10)`, before the system turns it into a signal. The report gives the
+signal the app dies of and says what happened:
+
+```text
+com.example.MyApp: crashed with SIGSEGV: a bad memory access at 0x10 (EXC_BAD_ACCESS)
+```
+
+In `-o json`, that line is `verdict`, the signal is `signal`, and lldb's own wording stays in
+`stopReason`. A bad access at an unmapped address is `SIGSEGV` and any other bad access is `SIGBUS`.
+`EXC_BREAKPOINT` is `SIGTRAP`, which is how a failed Swift check or `fatalError` stops the app.
+`EXC_BAD_INSTRUCTION` is `SIGILL`, and `EXC_ARITHMETIC` is `SIGFPE`.
+
 ## The app's files
 
 `sweetpad app container` prints where the app keeps its files, for a script that seeds a fixture

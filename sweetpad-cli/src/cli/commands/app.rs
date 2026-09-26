@@ -4946,7 +4946,11 @@ struct DiagnoseOutcome {
     /// The debuggee's pid, from lldb's own `Process <pid> launched|stopped|…`.
     pid: Option<u32>,
     stop_reason: Option<String>,
+    /// The signal lldb stopped on (`signal SIGABRT`), or the one the Mach
+    /// exception it stopped on turns into (see [`mach_fault`]).
     signal: Option<String>,
+    /// A Mach exception stop, read into plain words.
+    fault: Option<MachFault>,
     exit_status: Option<i32>,
     exception_name: Option<String>,
     exception_reason: Option<String>,
@@ -4983,10 +4987,14 @@ fn parse_diagnose(transcript: &str) -> DiagnoseOutcome {
     let is_objc = stop_reason
         .as_deref()
         .is_some_and(|r| r.contains("Objective-C exception"));
-    let signal = stop_reason.as_deref().and_then(|r| {
-        r.strip_prefix("signal ")
-            .map(|s| s.split_whitespace().next().unwrap_or(s).to_string())
-    });
+    let fault = stop_reason.as_deref().and_then(mach_fault);
+    let signal = stop_reason
+        .as_deref()
+        .and_then(|r| {
+            r.strip_prefix("signal ")
+                .map(|s| s.split_whitespace().next().unwrap_or(s).to_string())
+        })
+        .or_else(|| fault.as_ref().and_then(|f| f.signal).map(str::to_string));
     // A clean exit only counts when nothing stopped us first.
     let exit_status = if stop_reason.is_none() {
         transcript
@@ -5033,11 +5041,79 @@ fn parse_diagnose(transcript: &str) -> DiagnoseOutcome {
         pid,
         stop_reason,
         signal,
+        fault,
         exit_status,
         exception_name,
         exception_reason,
         backtrace,
     }
+}
+
+/// A Mach exception lldb stopped on, read into the signal the kernel
+/// delivers for it and a phrase for the verdict.
+#[derive(Debug, PartialEq, Eq)]
+struct MachFault {
+    /// The exception's name, e.g. `EXC_BAD_ACCESS`.
+    exception: String,
+    /// What the kernel turns it into when nothing handles it, as XNU's
+    /// `ux_exception` maps it: a bad access at an unmapped address (code 1,
+    /// `KERN_INVALID_ADDRESS`, or an Intel general protection fault) is
+    /// `SIGSEGV` and any other bad access `SIGBUS`; a trap instruction is
+    /// `SIGTRAP`, an illegal instruction `SIGILL`, an arithmetic fault
+    /// `SIGFPE`.
+    signal: Option<&'static str>,
+    /// What happened, in plain words.
+    what: String,
+}
+
+/// Read an lldb stop reason that names a Mach exception, as lldb's
+/// `StopInfoMachException` words it: `EXC_BAD_ACCESS (code=1, address=0x10)`,
+/// `EXC_BREAKPOINT (code=1, subcode=0x100000538)`. A code lldb has a CPU name
+/// for is printed as that name (`code=EXC_I386_GPFLT`). `None` for any other
+/// stop, and for the exceptions with no settled signal or reading
+/// (`EXC_GUARD`, `EXC_RESOURCE`, …), which keep their raw text.
+fn mach_fault(reason: &str) -> Option<MachFault> {
+    let (exception, rest) = reason.split_once(' ').unwrap_or((reason, ""));
+    let fields: Vec<(&str, &str)> = rest
+        .trim()
+        .strip_prefix('(')
+        .and_then(|r| r.split(')').next())
+        .map(|inner| {
+            inner
+                .split(',')
+                .filter_map(|kv| kv.trim().split_once('='))
+                .collect()
+        })
+        .unwrap_or_default();
+    let field = |name: &str| fields.iter().find(|(k, _)| *k == name).map(|(_, v)| *v);
+    let (signal, what) = match exception {
+        "EXC_BAD_ACCESS" => (
+            field("code").map(|code| match code {
+                "1" | "EXC_I386_GPFLT" => "SIGSEGV",
+                _ => "SIGBUS",
+            }),
+            field("address").map_or_else(
+                || "a bad memory access".to_string(),
+                |address| format!("a bad memory access at {address}"),
+            ),
+        ),
+        "EXC_BREAKPOINT" => (
+            Some("SIGTRAP"),
+            "a trap instruction, the way a failed Swift check or fatalError stops the app"
+                .to_string(),
+        ),
+        "EXC_BAD_INSTRUCTION" => (Some("SIGILL"), "an illegal instruction".to_string()),
+        "EXC_ARITHMETIC" => (
+            Some("SIGFPE"),
+            "an arithmetic error, such as an integer division by zero".to_string(),
+        ),
+        _ => return None,
+    };
+    Some(MachFault {
+        exception: exception.to_string(),
+        signal,
+        what,
+    })
 }
 
 /// A `--timeout <secs>` value as a `Duration`; `0` means unbounded.
@@ -5259,49 +5335,50 @@ struct DiagnoseReport {
     transcript: String,
 }
 
-impl Render for DiagnoseReport {
-    fn human(&self, out: &Output) {
+impl DiagnoseReport {
+    /// What the run came to, in one line without the bundle id: the human
+    /// verdict, and `verdict` in JSON beside the raw fields it is read from.
+    fn verdict(&self) -> String {
         if self.timed_out {
-            out.note(&format!(
-                "{}: no exception or crash within {}s — the app was still running and has been \
+            return format!(
+                "no exception or crash within {}s — the app was still running and has been \
                  killed",
-                self.bundle_id, self.timeout_secs
-            ));
-            return;
+                self.timeout_secs
+            );
         }
+        let outcome = &self.outcome;
         match (
-            &self.outcome.exception_name,
-            &self.outcome.signal,
-            self.outcome.exit_status,
+            &outcome.exception_name,
+            &outcome.signal,
+            outcome.exit_status,
         ) {
             (Some(name), _, _) => {
-                let reason = self
-                    .outcome
-                    .exception_reason
-                    .as_deref()
-                    .unwrap_or("<no reason>");
-                out.note(&format!(
-                    "{}: caught Objective-C exception {name}: {reason}",
-                    self.bundle_id
-                ));
+                let reason = outcome.exception_reason.as_deref().unwrap_or("<no reason>");
+                format!("caught Objective-C exception {name}: {reason}")
             }
-            (None, Some(sig), _) => {
-                out.note(&format!("{}: crashed with {sig}", self.bundle_id));
-            }
+            (None, Some(sig), _) => match &outcome.fault {
+                Some(fault) => format!("crashed with {sig}: {} ({})", fault.what, fault.exception),
+                None => format!("crashed with {sig}"),
+            },
             (None, None, Some(status)) => {
-                out.note(&format!(
-                    "{}: exited cleanly (status {status}) — no exception or crash observed",
-                    self.bundle_id
-                ));
+                format!("exited cleanly (status {status}) — no exception or crash observed")
             }
-            _ => out.note(&format!(
-                "{}: {}",
-                self.bundle_id,
-                self.outcome
+            _ => match &outcome.fault {
+                Some(fault) => format!("crashed: {} ({})", fault.what, fault.exception),
+                None => outcome
                     .stop_reason
-                    .as_deref()
-                    .unwrap_or("no stop observed")
-            )),
+                    .clone()
+                    .unwrap_or_else(|| "no stop observed".to_string()),
+            },
+        }
+    }
+}
+
+impl Render for DiagnoseReport {
+    fn human(&self, out: &Output) {
+        out.note(&format!("{}: {}", self.bundle_id, self.verdict()));
+        if self.timed_out {
+            return;
         }
         if !self.outcome.backtrace.is_empty() {
             out.line("");
@@ -5322,6 +5399,7 @@ impl Render for DiagnoseReport {
             "stopReason": self.outcome.stop_reason,
             "signal": self.outcome.signal,
             "exitStatus": self.outcome.exit_status,
+            "verdict": self.verdict(),
             "exception": self.outcome.exception_name.as_ref().map(|name| serde_json::json!({
                 "name": name,
                 "reason": self.outcome.exception_reason,
@@ -7665,6 +7743,103 @@ Process Instance Registry, error: Error Domain=NSCocoaErrorDomain Code=4097\r\n"
         assert_eq!(o.signal.as_deref(), Some("SIGABRT"));
         assert_eq!(o.exception_name, None); // not an ObjC exception → no $arg1
         assert_eq!(o.backtrace.len(), 1);
+    }
+
+    /// The head of a transcript `app diagnose`'s lldb chain printed for a C
+    /// program on arm64 that stops with `stop_line`, captured verbatim but
+    /// for the program's path.
+    fn mach_stop_transcript(stop_line: &str) -> String {
+        format!(
+            "Current executable set to '/tmp/crash' (arm64).\n\
+Breakpoint 1: no locations (pending).\n\
+WARNING:  Unable to resolve breakpoint to any actual locations.\n\
+1 location added to breakpoint 1\n\
+Process 43073 launched: '/tmp/crash' (arm64)\n\
+Process 43073 stopped\n\
+* thread #1, queue = 'com.apple.main-thread', stop reason = {stop_line}\n      \
+frame #0: 0x00000001000004d0 crash`main(argc=2, argv=0x000000016fdfea20) at crash.c:11:56\n\
+Target 0: (crash) stopped.\n"
+        )
+    }
+
+    fn diagnose_report(outcome: DiagnoseOutcome, transcript: &str) -> DiagnoseReport {
+        DiagnoseReport {
+            target: "macos",
+            bundle_id: "com.example.App".into(),
+            pid: outcome.pid,
+            timed_out: false,
+            timeout_secs: 30,
+            outcome,
+            transcript: transcript.into(),
+        }
+    }
+
+    /// lldb reports a crash on Apple platforms as the Mach exception, before
+    /// the kernel turns it into a signal, so the stop reads `EXC_BAD_ACCESS
+    /// (code=1, address=0x10)` rather than `signal SIGSEGV`. The report names
+    /// the signal the app dies of and says what happened in words, and the
+    /// raw stop reason stays beside them.
+    #[test]
+    fn a_mach_exception_stop_reads_as_its_signal() {
+        // Captured with `*(volatile int *)0x10 = 1`, a write to read-only
+        // memory, `__builtin_trap()`, and `.inst 0x00000000`.
+        let cases = [
+            (
+                "EXC_BAD_ACCESS (code=1, address=0x10)",
+                "SIGSEGV",
+                "crashed with SIGSEGV: a bad memory access at 0x10 (EXC_BAD_ACCESS)",
+            ),
+            (
+                "EXC_BAD_ACCESS (code=2, address=0x10001c000)",
+                "SIGBUS",
+                "crashed with SIGBUS: a bad memory access at 0x10001c000 (EXC_BAD_ACCESS)",
+            ),
+            (
+                "EXC_BREAKPOINT (code=1, subcode=0x100000538)",
+                "SIGTRAP",
+                "crashed with SIGTRAP: a trap instruction, the way a failed Swift check or \
+                 fatalError stops the app (EXC_BREAKPOINT)",
+            ),
+            (
+                "EXC_BAD_INSTRUCTION (code=1, subcode=0x0)",
+                "SIGILL",
+                "crashed with SIGILL: an illegal instruction (EXC_BAD_INSTRUCTION)",
+            ),
+        ];
+        for (stop, signal, verdict) in cases {
+            let t = mach_stop_transcript(stop);
+            let o = parse_diagnose(&t);
+            assert_eq!(o.pid, Some(43073), "{stop}");
+            assert!(o.stopped(), "{stop}");
+            assert_eq!(o.stop_reason.as_deref(), Some(stop));
+            assert_eq!(o.signal.as_deref(), Some(signal), "{stop}");
+            assert_eq!(o.exception_name, None, "{stop}");
+            let json = diagnose_report(o, &t).json();
+            assert_eq!(json["signal"], signal, "{stop}");
+            assert_eq!(json["verdict"], verdict, "{stop}");
+            assert_eq!(json["stopReason"], stop, "{stop}");
+            assert_eq!(json["transcript"], t.as_str(), "{stop}");
+        }
+
+        // Intel names its codes: a general protection fault is SIGSEGV, and
+        // a divide error is SIGFPE.
+        let gp = mach_fault("EXC_BAD_ACCESS (code=EXC_I386_GPFLT)").unwrap();
+        assert_eq!(gp.signal, Some("SIGSEGV"));
+        assert_eq!(gp.what, "a bad memory access");
+        let div = mach_fault("EXC_ARITHMETIC (code=EXC_I386_DIV, subcode=0x0)").unwrap();
+        assert_eq!(div.signal, Some("SIGFPE"));
+
+        // A signal lldb stopped on is not a Mach exception, and an exception
+        // with no settled reading keeps its raw text as the verdict.
+        assert_eq!(mach_fault("signal SIGABRT"), None);
+        assert_eq!(mach_fault("hit Objective-C exception"), None);
+        let t = mach_stop_transcript("EXC_GUARD (code=0x1, subcode=0x2)");
+        let o = parse_diagnose(&t);
+        assert_eq!(o.signal, None);
+        assert_eq!(
+            diagnose_report(o, &t).verdict(),
+            "EXC_GUARD (code=0x1, subcode=0x2)"
+        );
     }
 
     // `codesign -d --entitlements - --xml` on a `project new --platform macos`

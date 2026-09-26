@@ -180,7 +180,11 @@ launch captured; `--source oslog|stdout` narrows it to one of the two.
 
 To catch a crash or Objective-C exception without a terminal, `sweetpad app
 diagnose` runs the app under lldb, prints a structured report, and quits —
-bounded by `--timeout` (default 30s).
+bounded by `--timeout` (default 30s). With `-o json`, read `verdict` for what
+happened and `signal` for the signal the app died of: lldb reports a crash as
+its Mach exception (`EXC_BAD_ACCESS`, `EXC_BREAKPOINT`), and the report maps it
+to `SIGSEGV`/`SIGBUS`, `SIGTRAP`, and so on, keeping lldb's text in
+`stopReason`.
 
 When the app is running but seems stuck, `sweetpad app sample -o json` samples
 it for 3 seconds (`--seconds` to change) and reports what the main thread was

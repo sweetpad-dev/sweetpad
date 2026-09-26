@@ -1927,8 +1927,8 @@ Both build before they hand off to lldb, so both take the `--` tail (§3).
 **`app diagnose`** is the agent-facing verb: build, launch under `lldb -b` with a
 breakpoint on `objc_exception_throw`, run bounded by `--timeout`, and on the
 first stop print a structured report — `pid`, `stopReason`, `signal`,
-`exitStatus`, `exception { name, reason }`, `backtrace`, and the full lldb
-`transcript` — then kill the app and quit. On a simulator the pid is the one
+`exitStatus`, `exception { name, reason }`, `verdict`, `backtrace`, and the
+full lldb `transcript` — then kill the app and quit. On a simulator the pid is the one
 `simctl` launched; on macOS lldb owns the launch, so it is read from lldb's
 `Process <pid> launched|stopped|exited` line, and a run that times out while
 lldb's `run` still blocks (so no such line has printed) takes it from the
@@ -1941,6 +1941,23 @@ arm64 and x86_64 sims. The chain prints `script print('@@…@@')` sentinels betw
 sections and runs under `-Q` (no command echo), so a captured transcript splits
 cleanly even though lldb interleaves prompts, app `os_log` lines, and its own
 diagnostics.
+
+**A crash reads as its signal.** On Apple platforms lldb stops on the Mach
+exception, before the kernel turns it into a signal, so a crash's stop reason
+is `EXC_BAD_ACCESS (code=1, address=0x10)` rather than `signal SIGSEGV`
+(captured on arm64 for a bad write, a write to read-only memory,
+`__builtin_trap()` and an undefined instruction). `signal` carries the signal
+XNU's `ux_exception` maps the exception to, and `verdict` says what happened
+in words with the exception named after it: `crashed with SIGSEGV: a bad
+memory access at 0x10 (EXC_BAD_ACCESS)`. The mapping covers the four
+exceptions with one settled meaning: `EXC_BAD_ACCESS` is `SIGSEGV` for code 1
+(`KERN_INVALID_ADDRESS`) or an Intel general protection fault and `SIGBUS`
+for any other code, `EXC_BREAKPOINT` is `SIGTRAP` (how Swift's runtime checks
+and `fatalError` stop on arm64), `EXC_BAD_INSTRUCTION` is `SIGILL`, and
+`EXC_ARITHMETIC` is `SIGFPE`. Any other exception (`EXC_GUARD`,
+`EXC_RESOURCE`, …) leaves `signal` null and the raw stop reason as the
+verdict. `stopReason` is always lldb's text as printed. The human line is
+`<bundle id>: <verdict>`.
 
 **`app debug --batch`** is the raw escape hatch: `--cmd` forwards to lldb's
 `-o/--one-line` verbatim (sweetpad's own `-o` already selects the output format,
