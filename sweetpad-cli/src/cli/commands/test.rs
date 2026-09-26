@@ -1169,7 +1169,8 @@ struct ExportedFile {
     path: PathBuf,
     /// A failure's evidence: its test failed, or xcresulttool marks the file as
     /// recorded against a failure. Xcode 27 leaves the mark off what a failed
-    /// test attached itself, and off a failed UI test's crash log too.
+    /// test attached itself, and off an iOS simulator UI test's crash log too,
+    /// though it sets it on the crash log of a macOS test whose host crashed.
     failure: bool,
     timestamp: f64,
 }
@@ -1285,8 +1286,9 @@ fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> Co
     let attached_any = !exported.is_empty();
     if opts.only_failures {
         // A failed test's files, and any file xcresulttool marks as recorded
-        // against a failure. The mark alone would keep nothing on Xcode 27,
-        // which sets it on no file, a crash log included.
+        // against a failure. On Xcode 27 the mark alone would keep nothing
+        // from an iOS simulator UI test, crash log included, and only the
+        // crash log from a macOS test whose host crashed.
         exported.retain(|a| a.failure || a.failed_test);
     }
     let found_any = !exported.is_empty();
@@ -2662,9 +2664,9 @@ mod tests {
     #[test]
     fn a_failed_tests_attachments_are_marked_as_failure_evidence() {
         // Xcode 27 leaves xcresulttool's mark off what a failed test attached
-        // itself, and off a crashed UI test's crash log too, so the mark alone
-        // would leave '(failure)' off them. The test tree's verdict decides,
-        // and a mark still counts on its own.
+        // itself, and off an iOS simulator UI test's crash log too, so the
+        // mark alone would leave '(failure)' off them. The test tree's verdict
+        // decides, and a mark still counts on its own.
         let root = std::env::temp_dir().join(format!("sweetpad-marked-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let staging = root.join(".sweetpad-export");

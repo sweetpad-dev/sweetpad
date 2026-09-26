@@ -202,7 +202,10 @@ export. Each test gets its own directory, and the listing names tests in the sam
 `Target/Class/method` form as the failure lines, so `--only-testing` takes any of them.
 
 `--only-failures` keeps everything a failed test attached, including the crash log and screen
-recording Xcode adds to a UI test whose app crashed. When nothing is left, the note says whether
+recording Xcode adds to a UI test whose app crashed, and the crash log it adds on macOS when a test
+crashes its host app. Xcode's own marking can't be relied on for this: on an iOS simulator it marks
+none of a UI test's files as belonging to a failure, not even the crash log, so SweetPad goes by
+which tests failed. When nothing is left, the note says whether
 the run had no failures or its failing tests attached nothing. The listing marks a failed test's
 files with `(failure)`, and `-o json` sets `failure` to `true` for them.
 

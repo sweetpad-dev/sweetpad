@@ -2265,9 +2265,12 @@ in the payload as well as on stderr, since a `note` is muted under `-o json`.
 
 **`--only-failures` keeps the failed tests' files.** xcresulttool has a flag of
 the same name, which keeps only the files it marks `isAssociatedWithFailure`.
-Xcode 27 marks none of them, the crash log and screen recording of a UI test
-whose app crashed included, so the flag exported nothing from a run with five
-failures. The export is therefore always whole, and the filter keeps every file
+For iOS simulator UI tests, Xcode 27 marks none of them, the crash log and
+screen recording of a test whose app crashed included, so the flag exported
+nothing from a run with five failures. On macOS it does mark the crash log of a
+test whose host crashed, but not what a failed test attached itself. Either
+way the mark leaves out files a failed test recorded, so the export is always
+whole, and the filter keeps every file
 of a test the test tree lists as failed, plus any file that is marked. The tree
 is already read to put each test under its target, so the filter costs no extra
 call. The same tree words an empty result: the run had no failing tests, or its

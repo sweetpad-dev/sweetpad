@@ -1318,8 +1318,9 @@ pub struct ExportedAttachment {
     pub file: PathBuf,
     pub suggested_name: String,
     /// Recorded against a test failure rather than a passing step, as
-    /// xcresulttool marks it. Xcode 27 marks nothing this way, not even the
-    /// crash log of a failed UI test.
+    /// xcresulttool marks it. Xcode 27 marks the crash log of a macOS test
+    /// whose host crashed, but nothing an iOS simulator UI test recorded, its
+    /// crash log included, and nothing a failed test attached itself.
     pub failure: bool,
     /// The test that recorded it failed, as the test tree says.
     pub failed_test: bool,
@@ -1374,8 +1375,10 @@ impl Default for ManifestAttachment {
 /// rather than replacing what is there.
 ///
 /// xcresulttool's own `--only-failures` is never passed. It keeps only the
-/// files it marks as recorded against a failure, and on Xcode 27 that is none
-/// of them, so it exports nothing even from a red run. Each file says instead
+/// files it marks as recorded against a failure. On Xcode 27 that is at most
+/// the crash log of a macOS test whose host crashed: an iOS simulator UI
+/// test's files go unmarked, its crash log and screen recording included, so
+/// the flag exports nothing from a red run of UI tests. Each file says instead
 /// whether its test failed, for the caller to pick by.
 pub fn export_attachments(bundle: &Path, staging: &Path) -> Result<AttachmentExport, CliError> {
     let bundle_arg = bundle.to_string_lossy();
@@ -3254,9 +3257,10 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
 
     #[test]
     fn a_failed_tests_attachments_say_so_whatever_the_manifest_marks() {
-        // Xcode 27 marks no attachment as recorded against a failure, not even
-        // the crash log and screen recording of a UI test whose app crashed.
-        // The tree is what says the test failed. Trimmed from that run.
+        // On an iOS simulator, Xcode 27 marks no attachment as recorded
+        // against a failure, not even the crash log and screen recording of a
+        // UI test whose app crashed. The tree is what says the test failed.
+        // Trimmed from that run.
         let manifest = r#"[
           { "testIdentifier": "AppUITests/testLaunchShowsNothing()",
             "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppUITests/AppUITests/testLaunchShowsNothing",
