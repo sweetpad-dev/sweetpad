@@ -338,6 +338,9 @@ pub struct BuildProgress {
     verbose: bool,
     quiet: bool,
     gh_annotations: bool,
+    /// The last line rendered was an error announcing a list of details, so
+    /// the indented lines that follow belong to it (see [`opens_a_list`]).
+    continues: bool,
 }
 
 impl BuildProgress {
@@ -357,6 +360,7 @@ impl BuildProgress {
             verbose: out.is_verbose(),
             quiet: out.is_quiet(),
             gh_annotations: out.gh_annotations(),
+            continues: false,
         }
     }
 
@@ -366,8 +370,15 @@ impl BuildProgress {
     /// `--gh-annotations`, a diagnostic also carries its `::error`/`::warning`
     /// workflow-command line.
     pub fn line(&mut self, raw: &str) -> Option<String> {
+        if self.continues {
+            if raw.starts_with(char::is_whitespace) && !raw.trim().is_empty() {
+                return Some(Colors::new(self.color).red(&format!("  {}", raw.trim())));
+            }
+            self.continues = false;
+        }
         let event = parse_line(raw);
         let mut rendered = render(&event, self.color, self.verbose, self.quiet)?;
+        self.continues = opens_a_list(&event);
         // First line through — hand the terminal over from the spinner to the
         // streamed output (dropping the spinner erases its line).
         self.spinner = None;
@@ -384,6 +395,22 @@ impl BuildProgress {
             self.color,
         ))
     }
+}
+
+/// Whether an error announces details on the lines after it. `xcodebuild:
+/// error: Could not resolve package dependencies:` puts the actual reason on
+/// the indented lines that follow, which parse as unrecognized output and would
+/// otherwise be hidden. Only a location-less error ending in a colon counts, so
+/// the indented source excerpt under a compiler error is left alone.
+fn opens_a_list(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::Diagnostic {
+            kind: DiagKind::Error,
+            location: None,
+            message,
+        } if message.ends_with(':')
+    )
 }
 
 /// Whether a diagnostic prefix names a source location (`file[:line[:col]]`)
@@ -827,6 +854,64 @@ The following build commands failed:
         assert!(blocker_from_transcript(other).is_none());
     }
     use super::*;
+
+    fn plain_progress() -> BuildProgress {
+        BuildProgress {
+            spinner: None,
+            start: Instant::now(),
+            color: false,
+            verbose: false,
+            quiet: false,
+            gh_annotations: false,
+            continues: false,
+        }
+    }
+
+    /// `xcodebuild -resolvePackageDependencies` prints why it failed on the
+    /// indented lines under its header. Those lines are shown with it, and the
+    /// first line that is not indented ends them.
+    #[test]
+    fn the_reason_under_an_xcodebuild_error_is_shown_with_it() {
+        let mut progress = plain_progress();
+        let shown: Vec<String> = [
+            "Resolve Package Graph",
+            "xcodebuild: error: Could not resolve package dependencies:",
+            "  Disabled default traits on package 'swift-collections' that declares no traits.",
+            "  fatalError",
+            "Writing error result bundle",
+            "  still hidden",
+        ]
+        .iter()
+        .filter_map(|line| progress.line(line))
+        .collect();
+        assert_eq!(
+            shown,
+            [
+                "error: xcodebuild: Could not resolve package dependencies:",
+                "  Disabled default traits on package 'swift-collections' that declares no traits.",
+                "  fatalError",
+            ]
+        );
+    }
+
+    /// The indented source excerpt under a compiler error stays hidden: the
+    /// error has a location and does not announce a list.
+    #[test]
+    fn a_compiler_errors_source_excerpt_is_not_a_continuation() {
+        let mut progress = plain_progress();
+        let shown: Vec<String> = [
+            "/src/Foo.swift:12:5: error: cannot find 'x' in scope",
+            "    let y = x",
+            "            ^",
+        ]
+        .iter()
+        .filter_map(|line| progress.line(line))
+        .collect();
+        assert_eq!(
+            shown,
+            ["error: /src/Foo.swift:12:5: cannot find 'x' in scope"]
+        );
+    }
 
     #[test]
     fn gh_annotations_carry_location_and_escapes() {
