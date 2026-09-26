@@ -384,27 +384,35 @@ impl BuildProgress {
     /// `--gh-annotations`, a diagnostic also carries its `::error`/`::warning`
     /// workflow-command line.
     pub fn line(&mut self, raw: &str) -> Option<String> {
+        self.parsed(&Parsed {
+            raw: raw.to_string(),
+            event: parse_line(raw),
+        })
+    }
+
+    /// [`line`](Self::line) for a line [`LogParser`] has already parsed.
+    pub fn parsed(&mut self, parsed: &Parsed) -> Option<String> {
+        let Parsed { raw, event } = parsed;
         if self.continues {
             if raw.starts_with(char::is_whitespace) && !raw.trim().is_empty() {
                 return Some(Colors::new(self.color).red(&format!("  {}", raw.trim())));
             }
             self.continues = false;
         }
-        let event = parse_line(raw);
-        let mut rendered = render(&event, self.color, self.verbose, self.quiet)?;
-        self.continues = opens_a_list(&event);
+        let mut rendered = render(event, self.color, self.verbose, self.quiet)?;
+        self.continues = opens_a_list(event);
         // First line through — hand the terminal over from the spinner to the
         // streamed output (dropping the spinner erases its line).
         self.spinner = None;
         if self.gh_annotations
-            && let Some(annotation) = gh_annotation(&event)
+            && let Some(annotation) = gh_annotation(event)
         {
             rendered.push('\n');
             rendered.push_str(&annotation);
         }
         Some(stamp_time(
             rendered,
-            &event,
+            event,
             self.start.elapsed(),
             self.color,
         ))
@@ -425,6 +433,233 @@ fn opens_a_list(event: &Event) -> bool {
             message,
         } if message.ends_with(':')
     )
+}
+
+/// One line of output and the event it parsed to.
+#[derive(Debug)]
+pub struct Parsed {
+    pub raw: String,
+    pub event: Event,
+}
+
+/// xcodebuild's output as events, one per line, except where an error owns the
+/// lines printed under it.
+///
+/// A destination xcodebuild cannot use fails with one line (`Timed out waiting
+/// for all destinations matching the provided destination specifier to become
+/// available`, `Unable to find a device matching the provided destination
+/// specifier:`), and the reason comes after a blank line, in xcodebuild's own
+/// listing of the destinations it considered. A locked phone or one without
+/// Developer Mode is named only there. So the error is held until the listing
+/// ends and carries the part of it that explains the failure
+/// ([`DestinationListing`]), and every consumer (human, `-o json`,
+/// `-o ndjson`) gets the same diagnostic.
+#[derive(Debug, Default)]
+pub struct LogParser {
+    held: Option<(String, DestinationListing)>,
+}
+
+impl LogParser {
+    /// Parse one raw line and return what it completes: usually just that
+    /// line; nothing while a destination error is still reading its listing;
+    /// and the error followed by this line once a line at column 0 ends the
+    /// listing.
+    pub fn push(&mut self, line: &str) -> Vec<Parsed> {
+        let mut done = Vec::new();
+        if let Some((_, listing)) = &mut self.held {
+            if line.trim().is_empty() || line.starts_with(char::is_whitespace) {
+                listing.line(line.trim());
+                return done;
+            }
+            done.extend(self.finish());
+        }
+        let event = parse_line(line);
+        match &event {
+            Event::Diagnostic {
+                kind: DiagKind::Error,
+                location: None,
+                message,
+            } if message.contains("provided destination specifier") => {
+                self.held = Some((line.to_string(), DestinationListing::new(message)));
+            }
+            _ => done.push(Parsed {
+                raw: line.to_string(),
+                event,
+            }),
+        }
+        done
+    }
+
+    /// The destination error still waiting when the output ends — xcodebuild
+    /// exits right after printing the listing, so this is where it usually
+    /// comes out.
+    pub fn finish(&mut self) -> Option<Parsed> {
+        let (raw, listing) = self.held.take()?;
+        Some(Parsed {
+            raw,
+            event: Event::Diagnostic {
+                kind: DiagKind::Error,
+                location: None,
+                message: listing.message(),
+            },
+        })
+    }
+}
+
+/// How many listed destinations a destination error carries at most.
+const MAX_LISTED: usize = 8;
+
+/// The listing xcodebuild prints under a destination error, cut down to the
+/// part that explains it.
+///
+/// xcodebuild lists every destination the scheme can use and every one it
+/// cannot, which on a machine with the usual simulators is dozens of lines,
+/// nearly all beside the point. Kept: the specifier xcodebuild echoes as the
+/// requested destination and the entries for it, every usable destination
+/// with an `error:` (the locked phone, Developer Mode off), and the prose
+/// between sections. The rest are counted. Only the "Unable to find" error
+/// echoes a specifier; under a timeout, the `error:` entries are what explain
+/// it.
+#[derive(Debug)]
+struct DestinationListing {
+    lines: Vec<String>,
+    requested: Option<Vec<(String, String)>>,
+    section: Option<Section>,
+    kept: usize,
+    omitted: usize,
+}
+
+/// One `Destinations compatible with the "App" scheme:` block of the listing.
+#[derive(Debug)]
+struct Section {
+    header: String,
+    /// The "compatible" (older Xcode: "available") side, as opposed to
+    /// "incompatible" / "ineligible", whose every entry has an `error:` saying
+    /// its platform does not match.
+    usable: bool,
+    /// The header is written once, ahead of the first entry kept under it.
+    written: bool,
+}
+
+impl DestinationListing {
+    fn new(message: &str) -> Self {
+        Self {
+            lines: vec![message.to_string()],
+            requested: None,
+            section: None,
+            kept: 0,
+            omitted: 0,
+        }
+    }
+
+    /// Take one trimmed line of the listing.
+    fn line(&mut self, t: &str) {
+        if t.is_empty() {
+            return;
+        }
+        if t.starts_with('{') && t.ends_with('}') {
+            let fields = listing_fields(t);
+            let Some(section) = &mut self.section else {
+                // An entry ahead of any section is the specifier echoed back.
+                self.lines.push(format!("  {t}"));
+                self.requested.get_or_insert(fields);
+                return;
+            };
+            let requested = self
+                .requested
+                .as_deref()
+                .is_some_and(|r| is_requested(r, &fields));
+            let explains = section.usable && field(&fields, "error").is_some();
+            if (requested || explains) && self.kept < MAX_LISTED {
+                if !section.written {
+                    self.lines.push(format!("  {}", section.header));
+                    section.written = true;
+                }
+                self.lines.push(format!("    {t}"));
+                self.kept += 1;
+            } else {
+                self.omitted += 1;
+            }
+        } else if t.ends_with(':') && t.to_ascii_lowercase().contains("destinations") {
+            let lower = t.to_ascii_lowercase();
+            let usable = !(lower.contains("incompatible") || lower.contains("ineligible"));
+            self.section = Some(Section {
+                header: t.to_string(),
+                usable,
+                written: false,
+            });
+        } else {
+            self.lines.push(format!("  {t}"));
+        }
+    }
+
+    /// The error's message with the kept lines under it.
+    fn message(&self) -> String {
+        let mut lines = self.lines.clone();
+        match self.omitted {
+            0 => {}
+            1 => lines.push("  (1 other destination omitted)".to_string()),
+            n => lines.push(format!("  ({n} other destinations omitted)")),
+        }
+        lines.join("\n")
+    }
+}
+
+/// The `key:value` fields of one `{ platform:iOS, id:…, name:…, error:… }`
+/// listing entry. `error:` comes last and is free text that can hold ", " of
+/// its own, so it is split off whole first; a piece of the rest without a
+/// `key:` of its own belongs to the value before it (a name with a comma).
+fn listing_fields(entry: &str) -> Vec<(String, String)> {
+    let inner = entry.trim_start_matches('{').trim_end_matches('}').trim();
+    let (head, error) = match inner.strip_prefix("error:") {
+        Some(error) => ("", Some(error)),
+        None => inner
+            .split_once(", error:")
+            .map_or((inner, None), |(head, error)| (head, Some(error))),
+    };
+    let mut fields: Vec<(String, String)> = Vec::new();
+    for piece in head.split(", ").filter(|p| !p.is_empty()) {
+        match piece.split_once(':') {
+            Some((key, value)) if !key.is_empty() && key.chars().all(char::is_alphanumeric) => {
+                fields.push((key.to_string(), value.to_string()));
+            }
+            _ => {
+                if let Some((_, value)) = fields.last_mut() {
+                    value.push_str(", ");
+                    value.push_str(piece);
+                }
+            }
+        }
+    }
+    if let Some(error) = error {
+        fields.push(("error".to_string(), error.trim().to_string()));
+    }
+    fields
+}
+
+/// Whether a listing entry is the destination xcodebuild echoed as requested:
+/// the same id, else the same name (on the same platform, when one was
+/// given), else, for a bare platform such as `generic/platform=iOS`, that
+/// platform's placeholder ("Any iOS Device").
+fn is_requested(requested: &[(String, String)], entry: &[(String, String)]) -> bool {
+    if let Some(id) = field(requested, "id") {
+        return field(entry, "id").is_some_and(|e| e.eq_ignore_ascii_case(id));
+    }
+    let platform = field(requested, "platform");
+    let same_platform = platform.is_none() || field(entry, "platform") == platform;
+    if let Some(name) = field(requested, "name") {
+        return same_platform && field(entry, "name") == Some(name);
+    }
+    platform.is_some()
+        && same_platform
+        && field(entry, "id").is_some_and(|id| id.ends_with(":placeholder"))
+}
+
+fn field<'a>(fields: &'a [(String, String)], key: &str) -> Option<&'a str> {
+    fields
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.as_str())
 }
 
 /// Whether a diagnostic prefix names a source location (`file[:line[:col]]`)
@@ -556,17 +791,22 @@ pub fn run_collecting(
     let mut progress = BuildProgress::start(out, label);
     let mut diagnostics = Vec::new();
     let mut watch = BlockerWatch::default();
-    let ok = process::stream_lines(program, args, cwd, |line| {
-        watch.line(line);
-        if let Event::Diagnostic { .. } = parse_line(line)
-            && let Some(json) = event_json(&parse_line(line))
+    let mut parser = LogParser::default();
+    let mut show = |parsed: &Parsed| {
+        if let Event::Diagnostic { .. } = parsed.event
+            && let Some(json) = event_json(&parsed.event)
         {
             diagnostics.push(json);
         }
-        if let Some(rendered) = progress.line(line) {
+        if let Some(rendered) = progress.parsed(parsed) {
             out.line(&rendered);
         }
+    };
+    let ok = process::stream_lines(program, args, cwd, |line| {
+        watch.line(line);
+        parser.push(line).iter().for_each(&mut show);
     })?;
+    parser.finish().iter().for_each(&mut show);
     Ok((ok, diagnostics, watch.hint()))
 }
 
@@ -638,13 +878,13 @@ pub fn blocker_from_transcript(text: &str) -> Option<String> {
 /// Diagnostics parsed out of a full captured transcript (the `--json` path).
 #[must_use]
 pub fn diagnostics_from_transcript(text: &str) -> Vec<serde_json::Value> {
-    text.lines()
-        .filter_map(|line| {
-            let event = parse_line(line);
-            matches!(event, Event::Diagnostic { .. })
-                .then(|| event_json(&event))
-                .flatten()
-        })
+    let mut parser = LogParser::default();
+    let mut parsed: Vec<Parsed> = text.lines().flat_map(|line| parser.push(line)).collect();
+    parsed.extend(parser.finish());
+    parsed
+        .iter()
+        .filter(|p| matches!(p.event, Event::Diagnostic { .. }))
+        .filter_map(|p| event_json(&p.event))
         .collect()
 }
 
@@ -725,16 +965,20 @@ pub fn run_ndjson(
 ) -> Result<(bool, Vec<serde_json::Value>, Option<String>), CliError> {
     let mut diagnostics = Vec::new();
     let mut watch = BlockerWatch::default();
-    let ok = process::stream_lines(program, args, cwd, |line| {
-        watch.line(line);
-        let event = parse_line(line);
-        if let Some(json) = event_json(&event) {
-            if matches!(event, Event::Diagnostic { .. }) {
+    let mut parser = LogParser::default();
+    let mut emit = |parsed: &Parsed| {
+        if let Some(json) = event_json(&parsed.event) {
+            if matches!(parsed.event, Event::Diagnostic { .. }) {
                 diagnostics.push(json.clone());
             }
             out.ndjson_event(&json);
         }
+    };
+    let ok = process::stream_lines(program, args, cwd, |line| {
+        watch.line(line);
+        parser.push(line).iter().for_each(&mut emit);
     })?;
+    parser.finish().iter().for_each(&mut emit);
     Ok((ok, diagnostics, watch.hint()))
 }
 
@@ -988,6 +1232,207 @@ The following build commands failed:
             shown,
             ["error: /src/Foo.swift:12:5: cannot find 'x' in scope"]
         );
+    }
+
+    /// Xcode 27 building for a paired iPhone that is locked: the timeout line,
+    /// two blank lines, then the listing with the reason. Captured from
+    /// `sweetpad build --on <udid> -v` on the CI fixture app.
+    const DESTINATION_TIMEOUT_27: &str = "\
+Writing result bundle at path:
+\t/Users/me/.local/state/sweetpad/results/SweetpadCIApp-07bf27757d6d516c-build.xcresult
+
+xcodebuild: error: Timed out waiting for all destinations matching the provided destination specifier to become available
+
+
+\tDestinations compatible with the \"SweetpadCIApp\" scheme:
+\t\t{ platform:iOS, arch:arm64, id:00008110-000559182E90401E, name:Iphone 13, error:Iphone 13 needs to be unlocked to enable development services Please unlock the device. }
+";
+
+    /// Xcode 27 with a destination id that matches nothing, from the same
+    /// fixture with `--destination id=00000000-0000000000000000`. Captured
+    /// verbatim except that the listing is cut to a few entries per section
+    /// (the machine listed 16 compatible and 10 incompatible).
+    const DESTINATION_NOT_FOUND_27: &str = "\
+xcodebuild: error: Unable to find a device matching the provided destination specifier:
+\t\t{ id:00000000-0000000000000000 }
+
+\tThe requested device could not be found because no available devices matched the request.
+
+\tDestinations compatible with the \"SweetpadCIApp\" scheme:
+\t\t{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00006030-0018296E1A28001C, name:My Mac }
+\t\t{ platform:iOS, arch:arm64, id:00008110-000559182E90401E, name:Iphone 13 }
+\t\t{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }
+\t\t{ platform:iOS Simulator, arch:arm64, id:F13C004A-0824-4870-B4F2-29AAEE36636E, OS:27.0, name:iPhone 17 }
+
+\tDestinations incompatible with the \"SweetpadCIApp\" scheme:
+\t\t{ platform:macOS, arch:arm64e, id:00006030-0018296E1A28001C, name:My Mac, error:My Mac\u{2019}s macOS platform doesn\u{2019}t match SweetpadCIApp.app\u{2019}s supported platforms. You can change SweetpadCIApp.app\u{2019}s Base SDK or Supported Platforms to support My Mac. }
+\t\t{ platform:tvOS Simulator, arch:arm64, id:2CD2A3F5-8763-46B5-B7FC-F04117966B44, OS:27.0, name:Apple TV 4K (3rd generation), error:Apple TV 4K (3rd generation)\u{2019}s tvOS Simulator platform doesn\u{2019}t match SweetpadCIApp.app\u{2019}s supported platforms. You can change SweetpadCIApp.app\u{2019}s Base SDK or Supported Platforms to support Apple TV 4K (3rd generation). }
+";
+
+    fn only_message(transcript: &str) -> String {
+        let diagnostics = diagnostics_from_transcript(transcript);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0]["severity"], "error");
+        assert!(diagnostics[0]["location"].is_null());
+        diagnostics[0]["message"].as_str().unwrap().to_string()
+    }
+
+    /// The reason a device timed out is in the listing after the blank lines,
+    /// so the timeout diagnostic carries it.
+    #[test]
+    fn a_destination_timeout_carries_the_reason_from_the_listing() {
+        assert_eq!(
+            only_message(DESTINATION_TIMEOUT_27),
+            "xcodebuild: Timed out waiting for all destinations matching the provided \
+             destination specifier to become available\n  \
+             Destinations compatible with the \"SweetpadCIApp\" scheme:\n    \
+             { platform:iOS, arch:arm64, id:00008110-000559182E90401E, name:Iphone 13, \
+             error:Iphone 13 needs to be unlocked to enable development services Please \
+             unlock the device. }"
+        );
+    }
+
+    /// Nothing listed is the requested id, and no usable destination reports
+    /// an error: the echo and the explanation stay, every entry is counted.
+    /// The incompatible side's errors are only platform mismatches.
+    #[test]
+    fn a_destination_not_found_keeps_the_echo_and_counts_the_listing() {
+        assert_eq!(
+            only_message(DESTINATION_NOT_FOUND_27),
+            "xcodebuild: Unable to find a device matching the provided destination specifier:\n  \
+             { id:00000000-0000000000000000 }\n  \
+             The requested device could not be found because no available devices matched \
+             the request.\n  \
+             (6 other destinations omitted)"
+        );
+    }
+
+    /// The older headers ("Available" / "Ineligible destinations for …"), in
+    /// the shape the feedback log quotes from a timed out wireless iPhone.
+    /// The simulators around it are the noise the listing drops.
+    #[test]
+    fn the_older_listing_headers_are_read_the_same_way() {
+        let transcript = "\
+xcodebuild: error: Timed out waiting for all destinations matching the provided destination specifier to become available
+
+\tAvailable destinations for the \"Reflow\" scheme:
+\t\t{ platform:iOS, arch:arm64, id:00008110-000559182E90401E, name:Iphone 13, error:Browsing on the local area network for Iphone 13, which has previously reported preparation errors. The device must be opted into Developer Mode to connect wirelessly. }
+\t\t{ platform:iOS Simulator, arch:arm64, id:F13C004A-0824-4870-B4F2-29AAEE36636E, OS:18.0, name:iPhone 16 }
+\t\t{ platform:iOS Simulator, arch:arm64, id:C25725CE-4886-4E68-B032-55EB2918FF60, OS:18.0, name:iPhone 16 Pro }
+
+\tIneligible destinations for the \"Reflow\" scheme:
+\t\t{ platform:watchOS Simulator, id:ABD4EBF9-910F-4A29-89D7-9B40DB2D7D18, OS:11.0, name:Apple Watch Series 10, error:watchOS doesn't match Reflow's supported platforms. }
+";
+        let message = only_message(transcript);
+        assert!(
+            message.contains("\n  Available destinations for the \"Reflow\" scheme:\n    "),
+            "{message}"
+        );
+        assert!(
+            message.contains("must be opted into Developer Mode to connect wirelessly"),
+            "{message}"
+        );
+        assert!(!message.contains("iPhone 16"), "{message}");
+        assert!(!message.contains("Ineligible"), "{message}");
+        assert!(
+            message.ends_with("(3 other destinations omitted)"),
+            "{message}"
+        );
+    }
+
+    /// A requested destination that is listed as unusable is the cause, so it
+    /// is kept even from the incompatible side; the others there are not.
+    #[test]
+    fn the_requested_destination_is_kept_from_either_side() {
+        let transcript = "\
+xcodebuild: error: Unable to find a destination matching the provided destination specifier:
+\t\t{ generic:1, platform:iOS }
+
+\tIneligible destinations for the \"App\" scheme:
+\t\t{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device, error:iOS 27.0 is not installed. Please download and install the platform from Xcode > Settings > Components. }
+\t\t{ platform:tvOS, id:dvtdevice-DVTiOSDevicePlaceholder-appletvos:placeholder, name:Any tvOS Device, error:tvOS 27.0 is not installed. }
+";
+        let message = only_message(transcript);
+        assert!(message.contains("name:Any iOS Device"), "{message}");
+        assert!(!message.contains("Any tvOS Device"), "{message}");
+        assert!(
+            message.ends_with("(1 other destination omitted)"),
+            "{message}"
+        );
+
+        let by_id = [("id".to_string(), "abc".to_string())];
+        let by_name = [
+            ("platform".to_string(), "iOS Simulator".to_string()),
+            ("name".to_string(), "iPhone 17".to_string()),
+        ];
+        let entry = listing_fields(
+            "{ platform:iOS Simulator, arch:arm64, id:ABC, OS:27.0, name:iPhone 17 }",
+        );
+        assert!(is_requested(&by_id, &entry));
+        assert!(is_requested(&by_name, &entry));
+        assert!(!is_requested(
+            &[("name".to_string(), "iPhone 17 Pro".to_string())],
+            &entry
+        ));
+    }
+
+    /// `error:` is free text with commas of its own, and a device name can
+    /// hold one too.
+    #[test]
+    fn listing_fields_keep_commas_inside_values() {
+        let fields = listing_fields(
+            "{ platform:iOS, id:X, name:Bob, Work, error:Browsing for Bob, which failed. }",
+        );
+        assert_eq!(field(&fields, "name"), Some("Bob, Work"));
+        assert_eq!(
+            field(&fields, "error"),
+            Some("Browsing for Bob, which failed.")
+        );
+        assert_eq!(
+            field(
+                &listing_fields("{ platform:macOS, variant:Designed for [iPad,iPhone], id:Y }"),
+                "variant"
+            ),
+            Some("Designed for [iPad,iPhone]")
+        );
+    }
+
+    /// The live paths see the same diagnostic as the transcript: held while
+    /// the listing prints, rendered once it ends (here by the end of output),
+    /// with a line at column 0 ending the listing early.
+    #[test]
+    fn the_stream_holds_a_destination_error_until_its_listing_ends() {
+        let mut parser = LogParser::default();
+        let mut progress = plain_progress();
+        let mut shown: Vec<String> = Vec::new();
+        for line in DESTINATION_TIMEOUT_27.lines() {
+            for parsed in parser.push(line) {
+                shown.extend(progress.parsed(&parsed));
+            }
+        }
+        assert!(shown.is_empty(), "{shown:?}");
+        let last = parser.finish().expect("the error is held");
+        let rendered = progress.parsed(&last).unwrap();
+        assert!(
+            rendered.starts_with("error: xcodebuild: Timed out"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("needs to be unlocked"), "{rendered}");
+
+        let mut parser = LogParser::default();
+        let mut events: Vec<Event> = Vec::new();
+        for line in [
+            "xcodebuild: error: Unable to find a device matching the provided destination specifier:",
+            "\t\t{ id:00000000-0000000000000000 }",
+            "",
+            "** BUILD FAILED **",
+        ] {
+            events.extend(parser.push(line).into_iter().map(|p| p.event));
+        }
+        assert!(parser.finish().is_none());
+        assert!(matches!(&events[0], Event::Diagnostic { message, .. }
+            if message.ends_with("{ id:00000000-0000000000000000 }")));
+        assert_eq!(events[1], Event::Result(ResultKind::BuildFailed));
     }
 
     #[test]

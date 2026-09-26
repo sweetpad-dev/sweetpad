@@ -2071,6 +2071,36 @@ positional for the `simulator` verbs, `--simulator <name|udid>` for `app
 open-url`. One shared resolver cannot know which, and guessing wrong sends the
 reader after nothing.
 
+### A destination error whose reason comes after it
+
+A device xcodebuild cannot use fails the build with one line: `Timed out
+waiting for all destinations matching the provided destination specifier to
+become available`, or `Unable to find a device matching …`. The reason comes
+after a blank line, in xcodebuild's own listing of the destinations it
+considered. The listing is the only place the locked phone or the missing
+Developer Mode shows up (`error:Iphone 13 needs to be unlocked to enable
+development services`). The indented lines shown under a failed package
+resolve (§9e) never reached it, because the timeout line does not end in a
+colon and a blank line separates the two. So every mode reported the timeout
+and dropped the cause.
+
+`buildlog::LogParser` holds a destination error until its listing ends (at the
+next line that starts in column 0, or at the end of the output) and folds the
+listing into the error's message. Human, `-o json` and `-o ndjson` output then
+carry the same diagnostic. A full listing is dozens of simulators, so only what bears on the
+failure is kept:
+
+- the specifier xcodebuild echoes back as the requested one, and the listing's
+  entry for it, from either side;
+- every usable ("compatible", older Xcode "available") destination with an
+  `error:`;
+- the prose between sections.
+
+Everything else is counted: `(26 other destinations omitted)`. The
+incompatible side's errors are left out on purpose. Every entry there has one,
+and it says the platform does not match the scheme, which is true of all of
+them and explains nothing.
+
 ## 9n. Direction — the run session as a server
 
 `app run`'s only door is a tty. The session owns everything an iterating loop

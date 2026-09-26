@@ -2728,20 +2728,24 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
     // one bad byte from a run-script must not end the stream and SIGPIPE a
     // still-writing xcodebuild.
     let mut diagnostics: Vec<serde_json::Value> = Vec::new();
+    let mut parser = buildlog::LogParser::default();
+    let mut show = |parsed: &buildlog::Parsed| {
+        if matches!(parsed.event, buildlog::Event::Diagnostic { .. })
+            && let Some(json) = buildlog::event_json(&parsed.event)
+        {
+            diagnostics.push(json);
+        }
+        if let Some(rendered) = progress.parsed(parsed) {
+            out.line(rendered.as_str());
+        }
+    };
     process::read_lines_lossy(reader, &mut |line: &str| {
         if let Some(file) = capture_file.as_mut() {
             let _ = writeln!(file, "{line}");
         }
-        let event = buildlog::parse_line(line);
-        if matches!(event, buildlog::Event::Diagnostic { .. })
-            && let Some(json) = buildlog::event_json(&event)
-        {
-            diagnostics.push(json);
-        }
-        if let Some(rendered) = progress.line(line) {
-            out.line(rendered.as_str());
-        }
+        parser.push(line).iter().for_each(&mut show);
     });
+    parser.finish().iter().for_each(&mut show);
     // Erase the spinner before the post-build notes in case nothing ever
     // rendered (e.g. Ctrl-C during the silent prelude).
     drop(progress);
