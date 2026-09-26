@@ -487,14 +487,29 @@ args = ["-skipMacroValidation"]   # added to every command that builds
   key to use instead: `-scheme`, `-configuration`, `-destination`, `-sdk`,
   `-workspace`, `-project` (a second copy makes the build depend on which one
   xcodebuild honors), `-resultBundlePath` (the CLI writes and reads back its
-  own), and `-derivedDataPath` — whose relative value would resolve against the
-  working directory while every other path in this file resolves against the
-  file, so one committed line would name a different directory per caller.
+  own), and `-derivedDataPath`. A refusal is an error rather than a warning:
+  the alternative is handing xcodebuild two answers to one question. Swift
+  packages ignore the table entirely, since `swift build` knows none of these
+  flags.
+- **`-derivedDataPath` stays refused (decided).** The file could carry it
+  only if every consumer of DerivedData resolved a committed value to the
+  same place, and they don't:
+  - The two that read the file agree with each other. sweetpad runs
+    xcodebuild from the directory holding the container, and the locator
+    joins a relative value onto that same directory (§9s). But that is not
+    the file's directory when `project` names a container below it, and
+    every other path in the file resolves against the file, so `dd` would
+    read as `App/dd` and land in `App/Sources/dd`.
+  - The rest never see the file. `clean` spawns its `xcodebuild clean`
+    without `[xcodebuild] args`, `derived-data` and `clean --purge` look in
+    the default store, and the BSP index takes its location from the
+    `buildServer.json` the extension writes. A committed location would move
+    every teammate's build away from all of them.
+
   It is passed per command instead: a build's `--` tail, and
-  `--derived-data-path` for `app launch` (§9s). A
-  refusal is an error rather than a warning: the alternative is handing
-  xcodebuild two answers to one question. Swift packages ignore the table
-  entirely — `swift build` knows none of these flags.
+  `--derived-data-path` for `app launch` (§9s). Lifting the refusal would
+  take a value resolved against the file, and `clean`, `derived-data` and
+  `bsp` reading it too.
 
 - Unknown keys are warned about; a malformed file is warned about and ignored
   (a broken committed file must not brick every teammate's CLI). An absolute

@@ -343,10 +343,12 @@ pub fn effective_xcodebuild_args(
 /// Why a given argument can't live in a committed `[xcodebuild] args`, if it
 /// can't. Three groups: the inputs the resolver settles and passes itself (a
 /// second copy makes the build depend on which `xcodebuild` honors), the
-/// result bundle the CLI writes and then reads back, and `-derivedDataPath` —
-/// whose relative value would resolve against the working directory while
-/// every other path in this file resolves against the file, so the same
-/// committed line would mean a different directory per caller.
+/// result bundle the CLI writes and then reads back, and `-derivedDataPath`.
+/// Only the builds and the app locator read this file, so a committed
+/// location would split them from `clean`, `derived-data` and the BSP index,
+/// which keep the default one. A relative value would also resolve against
+/// the directory holding the project, where `xcodebuild` runs, while the
+/// file's `workspace`/`project` keys resolve against the file.
 fn configured_arg_refusal(arg: &str) -> Option<&'static str> {
     Some(match arg {
         "-workspace" | "-project" => "name the container with the 'workspace'/'project' key",
@@ -355,9 +357,9 @@ fn configured_arg_refusal(arg: &str) -> Option<&'static str> {
         "-destination" => "use the 'destination' key",
         "-sdk" => "use the 'sdk' key",
         "-derivedDataPath" => {
-            "a relative value would resolve against the working directory rather than \
-             the file, so it would name a different place per caller; pass it per \
-             command instead"
+            "'clean', 'derived-data' and the editor index would keep using the default \
+             location, and a relative value resolves against the project's directory, \
+             not this file's; pass it per command instead"
         }
         "-resultBundlePath" => {
             "sweetpad writes and reads back its own result bundle; pass it per command \
@@ -774,6 +776,17 @@ mod tests {
                 .expect_err("a refused argument must not merge");
             assert!(err.contains(arg) && err.contains(hint), "{arg}: {err}");
         }
+
+        // The reason has to hold: xcodebuild runs from the project's directory,
+        // so a relative value never meant the caller's working directory. What
+        // a committed one would break is every command that doesn't read it.
+        let err = effective_xcodebuild_args(&s(&["-derivedDataPath", "dd"]), &[]).unwrap_err();
+        assert!(!err.contains("working directory"), "{err}");
+        assert!(err.contains("project's directory"), "{err}");
+        assert!(
+            err.contains("'clean'") && err.contains("'derived-data'"),
+            "{err}"
+        );
 
         // Typing one is still the caller's own business — only the committed
         // file is policed, since everyone else inherits it unseen.

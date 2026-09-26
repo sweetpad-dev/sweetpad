@@ -145,10 +145,10 @@ where it came from.
 
 Arguments SweetPad settles itself are refused in the file, naming the key to use instead: `-scheme`,
 `-configuration`, `-destination`, `-sdk`, `-workspace`, `-project`, and `-resultBundlePath` (SweetPad
-writes and reads back its own). `-derivedDataPath` is refused too, because a relative value in a committed
-file would resolve against the working directory rather than the file, meaning a different place
-depending on where the command ran. Pass it per command instead. Swift packages ignore the table
-entirely: they build with `swift build`, which knows none of `xcodebuild`'s flags.
+writes and reads back its own). `-derivedDataPath` is refused too: `clean`, `derived-data`, and the
+editor's index would keep using the default DerivedData, and a relative value would resolve against
+the project's directory rather than the file. Pass it per command instead. Swift packages ignore the
+table entirely: they build with `swift build`, which knows none of `xcodebuild`'s flags.
 
 :::tip
 
