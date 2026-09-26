@@ -409,11 +409,11 @@ const SINGLE_USE_FLAGS: [&str; 34] = [
 /// can't. Three groups: the inputs the resolver settles and passes itself (a
 /// second copy makes the build depend on which `xcodebuild` honors), the
 /// result bundle the CLI writes and then reads back, and `-derivedDataPath`.
-/// Only the builds and the app locator read this file, so a committed
-/// location would split them from `clean`, `derived-data` and the BSP index,
-/// which keep the default one. A relative value would also resolve against
-/// the directory holding the project, where `xcodebuild` runs, while the
-/// file's `workspace`/`project` keys resolve against the file.
+/// Only the builds, `clean` and the app locator read this file, so a
+/// committed location would split them from `clean --purge`, `derived-data`
+/// and the BSP index, which keep the default one. A relative value would also
+/// resolve against the directory holding the project, where `xcodebuild`
+/// runs, while the file's `workspace`/`project` keys resolve against the file.
 fn configured_arg_refusal(arg: &str) -> Option<&'static str> {
     Some(match arg {
         "-workspace" | "-project" => "name the container with the 'workspace'/'project' key",
@@ -422,9 +422,9 @@ fn configured_arg_refusal(arg: &str) -> Option<&'static str> {
         "-destination" => "use the 'destination' key",
         "-sdk" => "use the 'sdk' key",
         "-derivedDataPath" => {
-            "'clean', 'derived-data' and the editor index would keep using the DerivedData \
-             location Xcode's settings name, and a relative value resolves against the \
-             project's directory, not this file's; pass it per command instead"
+            "'clean --purge', 'derived-data' and the editor index would keep using the \
+             DerivedData location Xcode's settings name, and a relative value resolves against \
+             the project's directory, not this file's; pass it per command instead"
         }
         "-resultBundlePath" => {
             "sweetpad writes and reads back its own result bundle; pass it per command \
@@ -896,7 +896,7 @@ mod tests {
         assert!(!err.contains("working directory"), "{err}");
         assert!(err.contains("project's directory"), "{err}");
         assert!(
-            err.contains("'clean'") && err.contains("'derived-data'"),
+            err.contains("'clean --purge'") && err.contains("'derived-data'"),
             "{err}"
         );
 

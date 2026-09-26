@@ -107,9 +107,9 @@ guessing, and this is how you settle it.
 `[xcodebuild] args` refuses the arguments SweetPad settles itself, naming the key to use instead:
 `-scheme`, `-configuration`, `-destination`, `-sdk`, `-workspace`, `-project`, and `-resultBundlePath`.
 
-`-derivedDataPath` is refused too. Only the builds and the `app` commands would follow it, while
-`sweetpad clean`, `sweetpad derived-data`, and the editor's index would keep using the DerivedData
-location Xcode's settings name. A relative value would also resolve against the project's directory, where SweetPad runs
+`-derivedDataPath` is refused too. Only the builds, `sweetpad clean`, and the `app` commands would
+follow it, while `sweetpad clean --purge`, `sweetpad derived-data`, and the editor's index would keep
+using the DerivedData location Xcode's settings name. A relative value would also resolve against the project's directory, where SweetPad runs
 `xcodebuild`, and not against this file the way `project` does. Pass that one per command, after
 `--` on the build and as `--derived-data-path` on `app launch`.
 

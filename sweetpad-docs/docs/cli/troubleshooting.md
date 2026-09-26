@@ -59,6 +59,10 @@ sweetpad clean            # xcodebuild clean
 sweetpad clean --purge    # and delete this project's DerivedData
 ```
 
+`sweetpad clean` passes `sweetpad.toml`'s `[xcodebuild] args` to `xcodebuild clean`, so a `SYMROOT=` or
+an `-xcconfig` there sends the clean to where the build wrote. It leaves out the flags that
+`xcodebuild clean` refuses, such as `-enableCodeCoverage` and `-testPlan`.
+
 `--purge` is scoped to the current project and doesn't prompt; the flag itself is the consent. The
 scope is this copy of the project. Another clone or worktree writes its own DerivedData folder with the
 same name prefix, and `--purge` leaves that folder alone and says how many it kept. For the whole store

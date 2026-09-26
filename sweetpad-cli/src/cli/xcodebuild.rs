@@ -1765,7 +1765,9 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
     {
         return None;
     }
-    let build_dir = Path::new(build_dir);
+    // `xcodebuild` normalizes a relocated build directory: `SYMROOT=../x`
+    // builds into `<parent>/x/Debug`, not `<project>/../x/Debug`.
+    let build_dir = lexically_normal(Path::new(build_dir));
     let executable = t
         .settings
         .get("EXECUTABLE_PATH")
@@ -1775,6 +1777,62 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
         bundle_id: bundle_id.clone(),
         executable,
     })
+}
+
+/// The part of a passthrough `xcodebuild clean` takes: all of it but
+/// [`NOT_FOR_CLEAN`] and their values. The settings, the `-xcconfig` and the
+/// package flags stay, so the clean resolves the products where the build put
+/// them.
+#[must_use]
+pub fn clean_passthrough(passthrough: &[String]) -> Vec<String> {
+    let mut kept = Vec::with_capacity(passthrough.len());
+    let mut iter = passthrough.iter();
+    while let Some(arg) = iter.next() {
+        if NOT_FOR_CLEAN.contains(&arg.as_str()) {
+            iter.next();
+        } else {
+            kept.push(arg.clone());
+        }
+    }
+    kept
+}
+
+/// The flags a build or test takes and `xcodebuild clean` fails on, each of
+/// which takes a value, as Xcode 27 refuses them: the testing ones ("The flag
+/// -enableCodeCoverage is only supported when testing"), `-resultStreamPath`,
+/// which needs the `-resultBundlePath` sweetpad passes only to a build, and
+/// `-exportOptionsPlist`, which needs `-exportArchive`.
+const NOT_FOR_CLEAN: [&str; 7] = [
+    "-enableCodeCoverage",
+    "-testPlan",
+    "-testLanguage",
+    "-testRegion",
+    "-test-repetition-relaunch-enabled",
+    "-resultStreamPath",
+    "-exportOptionsPlist",
+];
+
+/// `path` with its `.` components dropped and each `..` folded into the
+/// component before it, without reading the filesystem: `/a/b/../c` is
+/// `/a/c` whether or not `b` is a symlink, as `xcodebuild` spells a build
+/// directory. A `..` with nothing before it to fold stays.
+fn lexically_normal(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut normal = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => match normal.components().next_back() {
+                Some(Component::Normal(_)) => {
+                    normal.pop();
+                }
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                _ => normal.push(".."),
+            },
+            other => normal.push(other),
+        }
+    }
+    normal
 }
 
 /// The value after the last `flag` in a passthrough, as a path, joined onto
@@ -2868,6 +2926,75 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         assert_eq!(overridden.bundle_id, "com.example.override");
         assert_eq!(overridden.path.file_name().unwrap(), "Renamed.app");
         assert_eq!(overridden.path.parent(), plain.path.parent());
+    }
+
+    /// Xcode 27 builds `SYMROOT=../x/sym2` into `<parent>/x/sym2/Debug`, and
+    /// `-showBuildSettings` spells `TARGET_BUILD_DIR` that way too, where the
+    /// resolver's chain keeps `<project>/../x/sym2/Debug`.
+    #[test]
+    fn a_relocated_product_path_has_no_dot_dot() {
+        let container = fixture_app();
+        let project_dir = working_dir(&container).unwrap();
+        let app = located(&container, &["SYMROOT=../x/sym2".to_string()]);
+        let parent = project_dir.parent().unwrap();
+        assert_eq!(
+            app.path,
+            parent.join("x/sym2/Debug/SweetpadCIMac.app"),
+            "{}",
+            app.path.display()
+        );
+        assert_eq!(
+            app.executable,
+            app.path.join("Contents/MacOS/SweetpadCIMac")
+        );
+    }
+
+    #[test]
+    fn a_path_is_normalized_without_the_filesystem() {
+        for (path, normal) in [
+            ("/work/App/../x/sym2/Debug", "/work/x/sym2/Debug"),
+            ("/work/./App/./Debug", "/work/App/Debug"),
+            ("/a/b/../../c", "/c"),
+            ("/tmp/../tmp/obj", "/tmp/obj"),
+            ("/../a", "/a"),
+            ("a/../../b", "../b"),
+            ("/work/App", "/work/App"),
+        ] {
+            assert_eq!(
+                lexically_normal(Path::new(path)),
+                PathBuf::from(normal),
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_clean_takes_the_passthrough_but_the_flags_it_fails_on() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            clean_passthrough(&s(&[
+                "SYMROOT=build",
+                "-enableCodeCoverage",
+                "YES",
+                "-xcconfig",
+                "ci.xcconfig",
+                "-testPlan",
+                "Smoke",
+                "-skipMacroValidation",
+                "-resultStreamPath",
+                "stream.json",
+                "-clonedSourcePackagesDirPath",
+                "pkgs",
+            ])),
+            [
+                "SYMROOT=build",
+                "-xcconfig",
+                "ci.xcconfig",
+                "-skipMacroValidation",
+                "-clonedSourcePackagesDirPath",
+                "pkgs",
+            ]
+        );
     }
 
     #[test]

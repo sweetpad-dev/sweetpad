@@ -601,6 +601,8 @@ pub enum Resource {
     /// Archive the app and export an .ipa (xcodebuild archive + -exportArchive).
     Archive(commands::archive::ArchiveArgs),
     /// Clean build artifacts (xcodebuild clean; --purge adds DerivedData).
+    /// Takes sweetpad.toml's '[xcodebuild] args', so it cleans where the
+    /// build wrote.
     Clean(commands::clean::CleanArgs),
     /// Run, install, and manage the built app's lifecycle ('app' alone runs
     /// 'app run').

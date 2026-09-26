@@ -1,7 +1,8 @@
 //! `sweetpad clean` — remove build artifacts: `xcodebuild clean` for the
-//! resolved scheme (or `swift package clean` for a package), with `--purge`
-//! also deleting the project's DerivedData folder(s). The standalone
-//! counterpart of `build --clean`, so a clean no longer requires a rebuild.
+//! resolved scheme with the project's `[xcodebuild] args` (or `swift package
+//! clean` for a package), with `--purge` also deleting the project's
+//! DerivedData folder(s). The standalone counterpart of `build --clean`, so a
+//! clean needs no rebuild.
 
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Container};
@@ -59,6 +60,27 @@ impl Render for CleanReport {
     }
 }
 
+/// The `xcodebuild clean` argv for a scheme and configuration. The project's
+/// `[xcodebuild] args` place the products (a `SYMROOT=`, an `-xcconfig`), so
+/// the clean takes them to reach where the build wrote.
+fn xcodebuild_clean_args(
+    ctx: &Context,
+    container: &Container,
+    scheme: String,
+    configuration: String,
+) -> Result<Vec<String>, CliError> {
+    let mut args: Vec<String> = vec![
+        "clean".into(),
+        "-scheme".into(),
+        scheme,
+        "-configuration".into(),
+        configuration,
+    ];
+    args.extend(xcodebuild::container_args(container));
+    args.extend(xcodebuild::clean_passthrough(&ctx.xcodebuild_args(&[])?));
+    Ok(args)
+}
+
 pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
     let mut resolved = resolve::resolve(ctx)?;
 
@@ -102,15 +124,7 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
             let schemes = resolve::schemes(&resolved.container)?;
             let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, true)?;
             let configuration = resolve::settle_configuration(ctx, &mut resolved, true)?;
-
-            let mut args: Vec<String> = vec![
-                "clean".into(),
-                "-scheme".into(),
-                scheme,
-                "-configuration".into(),
-                configuration,
-            ];
-            args.extend(xcodebuild::container_args(&resolved.container));
+            let args = xcodebuild_clean_args(ctx, &resolved.container, scheme, configuration)?;
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
             let cwd = xcodebuild::working_dir(&resolved.container);
             let ok = if ctx.out.is_json() || ctx.out.is_ndjson() {

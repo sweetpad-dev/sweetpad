@@ -494,7 +494,12 @@ args = ["-skipMacroValidation"]   # added to every command that builds
 - **`[xcodebuild] args`** is the committed form of the `-- XCODEBUILD_ARGS`
   tail (§3): a list joined onto every `xcodebuild` this project spawns —
   `build`, `test`, `archive`, and the builds inside `app
-  run`/`install`/`debug`/`diagnose`. A repo-wide `-skipMacroValidation` is a
+  run`/`install`/`debug`/`diagnose`. `clean` takes it too, so a `SYMROOT=`
+  or an `-xcconfig` that moves the products sends `xcodebuild clean` where
+  the build wrote; it leaves out the flags `xcodebuild clean` fails on (the
+  testing ones such as `-enableCodeCoverage` and `-testPlan`, and
+  `-resultStreamPath`, which needs the `-resultBundlePath` only a build
+  gets). A repo-wide `-skipMacroValidation` is a
   property of the project, not a decision to re-make per command; this is where
   it lives. The typed tail is appended *after* the file's arguments, so typing
   one wins under xcodebuild's last-one-wins, and `status` prints the effective
@@ -528,16 +533,16 @@ args = ["-skipMacroValidation"]   # added to every command that builds
     the file's directory when `project` names a container below it, and
     every other path in the file resolves against the file, so `dd` would
     read as `App/dd` and land in `App/Sources/dd`.
-  - The rest never see the file. `clean` spawns its `xcodebuild clean`
-    without `[xcodebuild] args`, `derived-data` and `clean --purge` look
-    where Xcode's own settings put DerivedData, and the BSP index takes its
-    location from the `buildServer.json` the extension writes. A committed
-    location would move every teammate's build away from all of them.
+  - `clean` passes `[xcodebuild] args` to its `xcodebuild clean`, but the
+    rest never see the file: `derived-data` and `clean --purge` look where
+    Xcode's own settings put DerivedData, and the BSP index takes its location
+    from the `buildServer.json` the extension writes. A committed location
+    would move every teammate's build away from all of them.
 
   It is passed per command instead: a build's `--` tail, and
   `--derived-data-path` for `app launch` (§9s). Lifting the refusal would
-  take a value resolved against the file, and `clean`, `derived-data` and
-  `bsp` reading it too.
+  take a value resolved against the file, and `clean --purge`,
+  `derived-data` and `bsp` reading it too.
 
 - Unknown keys are warned about; a malformed file is warned about and ignored
   (a broken committed file must not brick every teammate's CLI). An absolute
@@ -3151,8 +3156,14 @@ check: `build -o json -- SYMROOT=relsym` on macOS names
 `app launch --mac` with the setting in `sweetpad.toml` starts that bundle. On
 the iPhone 17 simulator `app install` and `app launch` with an absolute
 `CONFIGURATION_BUILD_DIR` and `OBJROOT` in the file install and start the
-relocated build. A relative value with `..` resolves unnormalized
-(`<project>/../x/sym2/Debug/…`), which names the same directory.
+relocated build. `xcodebuild` normalizes a relocated `SYMROOT`, `OBJROOT`
+or `CONFIGURATION_BUILD_DIR` lexically, `..` and `.` folded without
+resolving a symlink (`SYMROOT=../x/sym2` is `<parent>/x/sym2`, and
+`/tmp/../tmp/obj` is `/tmp/obj`), and leaves any other path setting as
+spelled. The resolver's chain keeps `<project>/../x/sym2/Debug/…`, so the
+locator normalizes the product's directory the same way, and `productPath`
+and the launched executable name the bundle as `xcodebuild` does; `settings
+show` still prints those keys unnormalized.
 
 ## 10. Testing
 

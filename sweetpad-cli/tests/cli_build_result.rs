@@ -1249,6 +1249,45 @@ fn a_typed_xcconfig_replaces_the_one_in_sweetpad_toml() {
     );
 }
 
+/// `clean` takes the file's arguments, which can move the products, and
+/// leaves out a flag `xcodebuild clean` fails on ("The flag
+/// -enableCodeCoverage is only supported when testing").
+#[test]
+fn clean_takes_the_arguments_in_sweetpad_toml() {
+    let project = RecordingProject::new(
+        "clean-args",
+        "[xcodebuild]\nargs = [\"SYMROOT=build\", \"-enableCodeCoverage\", \"YES\", \
+         \"-xcconfig\", \"ci.xcconfig\"]\n",
+    );
+    let out = project.run(&[
+        "clean",
+        "--scheme",
+        "SweetpadCIMac",
+        "--configuration",
+        "Debug",
+        "--non-interactive",
+        "--json",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let passed = project.argv();
+    assert_eq!(passed[0], "clean", "{passed:?}");
+    assert!(passed.iter().any(|a| a == "SYMROOT=build"), "{passed:?}");
+    assert!(
+        passed.windows(2).any(|w| w == ["-xcconfig", "ci.xcconfig"]),
+        "{passed:?}"
+    );
+    assert!(
+        !passed
+            .iter()
+            .any(|a| a == "-enableCodeCoverage" || a == "YES"),
+        "{passed:?}"
+    );
+}
+
 /// A session exits by how it ends. Ctrl-C while a build runs cancels it,
 /// exit 6, whether or not the app ran before; a quit at the prompt, by 'q'
 /// or by Ctrl-C, exits 0 once the app has run.
