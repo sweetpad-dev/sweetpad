@@ -55,6 +55,11 @@ first, the remembered one marked.
 sweetpad devices -o json
 ```
 
+A physical device's entry also has devicectl's `connection`, `transport`
+(`wired` or `localNetwork`) and `pairing`. An idle device always shows
+`connection: "disconnected"`, because xcodebuild connects when it needs to, so
+don't read that as a fault.
+
 Target one with `--on <ref>`: a fuzzy name (`"iPhone 16 Pro"`), `booted`, `mac`,
 `device`, a platform word (`ios`, `watchos`, …), a UDID, or a saved context
 alias. `--destination "<raw>"` is the escape hatch for an exact xcodebuild

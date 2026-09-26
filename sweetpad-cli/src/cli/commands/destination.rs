@@ -33,6 +33,8 @@ struct Dest {
     booted: Option<bool>,
     udid: Option<String>,
     specifier: String,
+    /// The physical device behind a `device` entry, for its connection facts.
+    device: Option<devicectl::Device>,
 }
 
 impl Dest {
@@ -69,8 +71,14 @@ impl Render for DestList {
                         .as_deref()
                         .is_some_and(|u| self.selected.as_deref().unwrap_or_default().contains(u)));
             let marker = if selected { "* " } else { "" };
+            let link = d
+                .device
+                .as_ref()
+                .and_then(devicectl::Device::link_hint)
+                .map(|h| format!(" [{h}]"))
+                .unwrap_or_default();
             out.line(&format!(
-                "{marker}{} · {} ({}){booted}",
+                "{marker}{} · {} ({}){booted}{link}",
                 d.kind,
                 d.name,
                 d.os_label()
@@ -79,11 +87,15 @@ impl Render for DestList {
         }
     }
 
+    /// A device entry also carries devicectl's `connection`, `transport` and
+    /// `pairing`, the same fields `device list` reports; they are null on the
+    /// other kinds.
     fn json(&self) -> serde_json::Value {
         let items: Vec<serde_json::Value> = self
             .dests
             .iter()
             .map(|d| {
+                let device = d.device.as_ref();
                 serde_json::json!({
                     "kind": d.kind,
                     "name": d.name,
@@ -92,6 +104,9 @@ impl Render for DestList {
                     "udid": d.udid,
                     "booted": d.booted,
                     "destination": d.specifier,
+                    "connection": device.map(|d| &d.connection),
+                    "transport": device.map(|d| &d.transport),
+                    "pairing": device.map(|d| &d.pairing),
                 })
             })
             .collect();
@@ -144,6 +159,7 @@ fn gather() -> Result<Vec<Dest>, crate::cli::CliError> {
         booted: None,
         udid: None,
         specifier: "platform=macOS".to_string(),
+        device: None,
     }];
 
     // Simulators are the common case; surface failure to enumerate them.
@@ -156,20 +172,22 @@ fn gather() -> Result<Vec<Dest>, crate::cli::CliError> {
             booted: Some(s.is_booted()),
             specifier: s.destination(),
             udid: Some(s.udid),
+            device: None,
         });
     }
 
     // Devices are best-effort: no devices (or no devicectl) just means none.
     for d in devicectl::list().unwrap_or_default() {
-        let platform = simctl_platform(&d.platform);
+        let platform = simctl_platform(&d.platform).to_string();
         dests.push(Dest {
             kind: "device",
             name: d.name.clone(),
-            os: platform.to_string(),
+            os: platform.clone(),
             os_version: d.os_version.clone(),
             booted: None,
             specifier: format!("platform={platform},id={}", d.udid),
-            udid: Some(d.udid),
+            udid: Some(d.udid.clone()),
+            device: Some(d),
         });
     }
     Ok(dests)
@@ -180,5 +198,58 @@ fn simctl_platform(platform: &str) -> &str {
     match platform {
         "" | "iOS" => "iOS",
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A device entry carries the listing's connection facts under the names
+    /// `device list` uses; the other kinds carry nulls in their place.
+    #[test]
+    fn a_device_entry_carries_its_connection_facts() {
+        let phone = devicectl::Device {
+            udid: "00008110-000559182E90401E".to_string(),
+            name: "Iphone 13".to_string(),
+            model: "iPhone14,5".to_string(),
+            platform: "iOS".to_string(),
+            os_version: "27.0".to_string(),
+            connection: "disconnected".to_string(),
+            transport: "localNetwork".to_string(),
+            pairing: "paired".to_string(),
+        };
+        let list = DestList {
+            dests: vec![
+                Dest {
+                    kind: "macOS",
+                    name: "My Mac".to_string(),
+                    os: "macOS".to_string(),
+                    os_version: String::new(),
+                    booted: None,
+                    udid: None,
+                    specifier: "platform=macOS".to_string(),
+                    device: None,
+                },
+                Dest {
+                    kind: "device",
+                    name: phone.name.clone(),
+                    os: "iOS".to_string(),
+                    os_version: phone.os_version.clone(),
+                    booted: None,
+                    udid: Some(phone.udid.clone()),
+                    specifier: format!("platform=iOS,id={}", phone.udid),
+                    device: Some(phone),
+                },
+            ],
+            selected: None,
+        };
+        let json = list.json();
+        let mac = &json["destinations"][0];
+        assert!(mac["connection"].is_null() && mac["transport"].is_null());
+        let device = &json["destinations"][1];
+        assert_eq!(device["connection"], "disconnected");
+        assert_eq!(device["transport"], "localNetwork");
+        assert_eq!(device["pairing"], "paired");
     }
 }

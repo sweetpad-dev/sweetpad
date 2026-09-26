@@ -2228,6 +2228,31 @@ by name, not dropped.
 `--watch` is `build --watch`'s loop unchanged. A Swift package runs `swift build
 --build-tests`.
 
+## 9q. v8 — physical devices: how they connect
+
+A physical device in `sweetpad devices` read the same whether it was plugged
+in, unlocked and in Developer Mode, or none of those. An agent picked a listed
+iPhone and the build spent a minute timing out (§9m has the other half of
+that report).
+
+`devices` and `device list` carry what `devicectl list devices` knows about the
+link: `connection` (`properties.connection.state`, or `tunnelState` before
+jsonVersion 5), `transport` (`wired` / `localNetwork`) and `pairing`
+(`paired`). The fields are flat, under the name `device list` already used for
+`connection`, and null on simulator and macOS entries. Human output shows only
+a hint: `[usb]`, `[wifi]`, `[wifi, not paired]`.
+
+**`connection` is not a readiness signal.** An idle device reads
+`disconnected` even when it works, because xcodebuild and devicectl open the
+tunnel on demand. Human output never shows it, and nothing refuses a build on
+it.
+
+On Xcode 27 the same listing also returns simulators (`reality: "simulated"`,
+`transportType: "sameMachine"`). As devices they got a `platform=iOS,id=<sim>`
+specifier that cannot build for them, and they made `--on device` ambiguous
+whenever the listing held one. They are dropped when the listing is parsed,
+since `simctl` already reports them.
+
 ## 10. Testing
 
 The CLI modules carry inline `#[cfg(test)]` units that need no Xcode, so the

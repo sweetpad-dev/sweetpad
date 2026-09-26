@@ -18,8 +18,8 @@ pub fn run(_ctx: &mut Context, action: &Action) -> CommandResult {
     }
 }
 
-/// The device list: human lines (label + udid) with a note when empty, or the
-/// `data` of the JSON envelope as `{devices: […]}`.
+/// The device list: human lines (label, link hint, udid) with a note when
+/// empty, or the `data` of the JSON envelope as `{devices: […]}`.
 struct DeviceList {
     devices: Vec<devicectl::Device>,
 }
@@ -31,12 +31,11 @@ impl Render for DeviceList {
             return;
         }
         for d in &self.devices {
-            let conn = if d.connection.is_empty() {
-                String::new()
-            } else {
-                format!("  [{}]", d.connection)
-            };
-            out.line(&format!("{}{conn}", d.label()));
+            let hint = d
+                .link_hint()
+                .map(|h| format!("  [{h}]"))
+                .unwrap_or_default();
+            out.line(&format!("{}{hint}", d.label()));
             out.line(&format!("    {}", d.udid));
         }
     }
@@ -53,6 +52,8 @@ impl Render for DeviceList {
                     "platform": d.platform,
                     "osVersion": d.os_version,
                     "connection": d.connection,
+                    "transport": d.transport,
+                    "pairing": d.pairing,
                 })
             })
             .collect();

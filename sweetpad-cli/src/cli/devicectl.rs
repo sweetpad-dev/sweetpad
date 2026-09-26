@@ -57,10 +57,28 @@ impl RawDevice {
         pick(&self.properties.state.name, &self.device_properties.name)
     }
 
+    /// The marketing name, else the product type (`iPhone14,5`): the listing
+    /// leaves the marketing name out for some wireless devices.
     fn model(&self) -> &str {
-        pick(
+        let marketing = pick(
             &self.properties.hardware.marketing_name,
             &self.hardware_properties.marketing_name,
+        );
+        pick(
+            marketing,
+            pick(
+                &self.properties.hardware.product_type,
+                &self.hardware_properties.product_type,
+            ),
+        )
+    }
+
+    /// `simulated` for the simulators Xcode 27's devicectl lists alongside the
+    /// physical devices, `physical` for the rest.
+    fn reality(&self) -> &str {
+        pick(
+            &self.properties.hardware.reality,
+            &self.hardware_properties.reality,
         )
     }
 
@@ -85,6 +103,22 @@ impl RawDevice {
         pick(
             &self.properties.connection.state,
             &self.connection_properties.tunnel_state,
+        )
+    }
+
+    /// `wired` or `localNetwork`.
+    fn transport(&self) -> &str {
+        pick(
+            &self.properties.connection.transport_type,
+            &self.connection_properties.transport_type,
+        )
+    }
+
+    /// `paired` once the device trusts this Mac.
+    fn pairing(&self) -> &str {
+        pick(
+            &self.properties.connection.pairing_state,
+            &self.connection_properties.pairing_state,
         )
     }
 }
@@ -113,9 +147,14 @@ struct Properties {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ConnectionSection {
     #[serde(default)]
     state: String,
+    #[serde(default)]
+    transport_type: String,
+    #[serde(default)]
+    pairing_state: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -126,7 +165,11 @@ struct HardwareSection {
     #[serde(default)]
     marketing_name: String,
     #[serde(default)]
+    product_type: String,
+    #[serde(default)]
     platform: String,
+    #[serde(default)]
+    reality: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -156,6 +199,10 @@ struct StateSection {
 struct ConnectionProperties {
     #[serde(default)]
     tunnel_state: String,
+    #[serde(default)]
+    transport_type: String,
+    #[serde(default)]
+    pairing_state: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -175,10 +222,14 @@ struct HardwareProperties {
     #[serde(default)]
     marketing_name: String,
     #[serde(default)]
+    product_type: String,
+    #[serde(default)]
     platform: String,
+    #[serde(default)]
+    reality: String,
 }
 
-/// A connected physical device.
+/// A physical device paired with this Mac.
 #[derive(Debug, Clone)]
 pub struct Device {
     pub udid: String,
@@ -186,7 +237,14 @@ pub struct Device {
     pub model: String,
     pub platform: String,
     pub os_version: String,
+    /// devicectl's connection state. An idle device reads `disconnected`:
+    /// xcodebuild and devicectl connect on demand, so it says nothing about
+    /// whether the device can be built to.
     pub connection: String,
+    /// devicectl's `transportType`: `wired` or `localNetwork`.
+    pub transport: String,
+    /// devicectl's `pairingState`: `paired` once the device trusts this Mac.
+    pub pairing: String,
 }
 
 impl Device {
@@ -198,9 +256,28 @@ impl Device {
             self.name, self.model, self.platform, self.os_version
         )
     }
+
+    /// How the device reaches this Mac, in a word or two for a listing: `usb`
+    /// or `wifi`, plus `not paired` when it has not trusted this Mac. The
+    /// connection state is left out, since an idle device always reads
+    /// `disconnected`.
+    #[must_use]
+    pub fn link_hint(&self) -> Option<String> {
+        let mut parts: Vec<&str> = Vec::new();
+        match self.transport.as_str() {
+            "" => {}
+            "wired" => parts.push("usb"),
+            "localNetwork" => parts.push("wifi"),
+            other => parts.push(other),
+        }
+        if !self.pairing.is_empty() && self.pairing != "paired" {
+            parts.push("not paired");
+        }
+        (!parts.is_empty()).then(|| parts.join(", "))
+    }
 }
 
-/// Enumerate connected physical devices.
+/// Enumerate the physical devices paired with this Mac.
 pub fn list() -> Result<Vec<Device>, CliError> {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -241,6 +318,9 @@ pub fn list() -> Result<Vec<Device>, CliError> {
 /// [`list`] so it's testable without `devicectl`. Devices missing a UDID
 /// (devicectl returns an empty hardware section for some USB iOS ≤16 devices)
 /// fall back to their `identifier`, and are dropped only if both are empty.
+/// The simulators Xcode 27 lists here are dropped as well: `simctl` already
+/// reports them, and as devices they would get a `platform=iOS` specifier that
+/// cannot build for them.
 fn parse_devices(raw: &str) -> Result<Vec<Device>, CliError> {
     let parsed: ListOutput = serde_json::from_str(raw)
         .map_err(|e| CliError::new(format!("parsing devicectl output: {e}")))?;
@@ -251,7 +331,7 @@ fn parse_devices(raw: &str) -> Result<Vec<Device>, CliError> {
         .iter()
         .filter_map(|d| {
             let udid = pick(d.udid(), &d.identifier);
-            if udid.is_empty() {
+            if udid.is_empty() || d.reality() == "simulated" {
                 return None;
             }
             let platform = if d.platform().is_empty() {
@@ -266,6 +346,8 @@ fn parse_devices(raw: &str) -> Result<Vec<Device>, CliError> {
                 platform: platform.to_string(),
                 os_version: d.os_version().to_string(),
                 connection: d.connection().to_string(),
+                transport: d.transport().to_string(),
+                pairing: d.pairing().to_string(),
             })
         })
         .collect();
@@ -594,6 +676,8 @@ mod tests {
         // The version-5 osVersionNumber is an object, not the string itself.
         assert_eq!(iphone.os_version, "27.0");
         assert_eq!(iphone.label(), "My iPhone (iPhone 18 Pro, iOS 27.0)");
+        assert_eq!(iphone.transport, "wired");
+        assert_eq!(iphone.pairing, "paired");
     }
 
     /// Xcode 27's devicectl populates both shapes at once. They agree in
@@ -629,6 +713,94 @@ mod tests {
     fn drops_devices_without_any_id() {
         let raw = r#"{"result":{"devices":[{"identifier":"","hardwareProperties":{}}]}}"#;
         assert!(parse_devices(raw).unwrap().is_empty());
+    }
+
+    /// Xcode 27's listing with an idle wireless iPhone and one of the
+    /// simulators devicectl lists beside it. Trimmed from a real `devicectl
+    /// list devices` (jsonVersion 5), deprecated trio included.
+    const SAMPLE_XCODE_27: &str = r#"{
+      "result": {
+        "devices": [
+          {
+            "connectionProperties": {"pairingState": "paired", "transportType": "localNetwork", "tunnelState": "disconnected"},
+            "deviceProperties": {"bootState": "booted", "ddiServicesAvailable": false, "name": "Iphone 13", "osVersionNumber": "27.0"},
+            "hardwareProperties": {"deviceType": "iPhone", "platform": "iOS", "productType": "iPhone14,5", "udid": "00008110-000559182E90401E"},
+            "identifier": "8648BE6E-199F-55FE-B508-5B42071FEE92",
+            "properties": {
+              "connection": {"authenticationType": "manualPairing", "pairingState": "paired", "state": "disconnected", "transportType": "localNetwork", "tunnelTransportProtocol": "tcp"},
+              "hardware": {"deviceType": "iPhone", "platform": "iOS", "productType": "iPhone14,5", "udid": "00008110-000559182E90401E"},
+              "software": {"osVersionNumber": {"components": [27, 0, 0, 0, 0], "stringValue": "27.0"}},
+              "state": {"bootState": "booted", "name": "Iphone 13"}
+            }
+          },
+          {
+            "connectionProperties": {"pairingState": "paired", "transportType": "sameMachine", "tunnelState": "connected"},
+            "deviceProperties": {"name": "iPhone 17", "osVersionNumber": "27.0", "provider": "com.apple.CoreSimulator.SimulatorCoreDevicePlugin"},
+            "hardwareProperties": {"marketingName": "iPhone 17", "platform": "iOS", "reality": "simulated", "udid": "F13C004A-0824-4870-B4F2-29AAEE36636E"},
+            "identifier": "F13C004A-0824-4870-B4F2-29AAEE36636E",
+            "properties": {
+              "connection": {"pairingState": "paired", "state": "connected", "transportType": "sameMachine"},
+              "hardware": {"marketingName": "iPhone 17", "platform": "iOS", "reality": "simulated", "udid": "F13C004A-0824-4870-B4F2-29AAEE36636E"},
+              "state": {"bootState": "booted", "name": "iPhone 17", "visibilityClass": "simulators"}
+            },
+            "visibilityClass": "simulators"
+          }
+        ]
+      }
+    }"#;
+
+    /// The simulator is `simctl`'s to list; as a device it would resolve
+    /// `--on device` to it, or make it ambiguous.
+    #[test]
+    fn the_simulators_in_the_listing_are_not_devices() {
+        let devices = parse_devices(SAMPLE_XCODE_27).unwrap();
+        assert_eq!(devices.len(), 1, "{devices:?}");
+        let phone = &devices[0];
+        assert_eq!(phone.udid, "00008110-000559182E90401E");
+        // No marketing name in this listing: the product type stands in.
+        assert_eq!(phone.label(), "Iphone 13 (iPhone14,5, iOS 27.0)");
+        assert_eq!(phone.connection, "disconnected");
+        assert_eq!(phone.transport, "localNetwork");
+        assert_eq!(phone.pairing, "paired");
+    }
+
+    #[test]
+    fn the_link_hint_names_the_transport_and_never_the_idle_state() {
+        let device = |transport: &str, pairing: &str| Device {
+            udid: "U".to_string(),
+            name: "Phone".to_string(),
+            model: String::new(),
+            platform: "iOS".to_string(),
+            os_version: String::new(),
+            connection: "disconnected".to_string(),
+            transport: transport.to_string(),
+            pairing: pairing.to_string(),
+        };
+        assert_eq!(
+            device("localNetwork", "paired").link_hint().as_deref(),
+            Some("wifi")
+        );
+        assert_eq!(
+            device("wired", "paired").link_hint().as_deref(),
+            Some("usb")
+        );
+        assert_eq!(
+            device("wired", "unpaired").link_hint().as_deref(),
+            Some("usb, not paired")
+        );
+        assert_eq!(device("", "").link_hint(), None);
+
+        // A listing older than version 5 carries the same facts in the
+        // deprecated trio.
+        let raw = r#"{"result":{"devices":[{
+          "connectionProperties": {"pairingState": "paired", "transportType": "wired", "tunnelState": "disconnected"},
+          "deviceProperties": {"name": "My iPhone"},
+          "hardwareProperties": {"udid": "UDID-1", "platform": "iOS"}
+        }]}}"#;
+        let devices = parse_devices(raw).unwrap();
+        assert_eq!(devices[0].transport, "wired");
+        assert_eq!(devices[0].pairing, "paired");
+        assert_eq!(devices[0].link_hint().as_deref(), Some("usb"));
     }
 
     #[test]

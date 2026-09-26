@@ -32,7 +32,7 @@ Each pool has its own narrower list when that's what you want:
 
 ```bash
 sweetpad simulator list   # simulators only, with UDIDs
-sweetpad device list      # connected physical devices, with their connection state
+sweetpad device list      # paired physical devices, with how each one connects
 ```
 
 [Simulators](./simulators.md) covers the rest of that group: booting, screenshots, push payloads,
@@ -139,14 +139,18 @@ sweetpad context alias work-phone --remove
 
 ## Physical devices
 
-A connected iPhone or iPad shows up in `sweetpad devices` and in `sweetpad device list`, which also
-reports whether it's currently reachable:
+A paired iPhone or iPad shows up in `sweetpad devices` and in `sweetpad device list`. Both show how
+it connects to your Mac: `usb` or `wifi`, and `not paired` if it hasn't trusted this Mac yet.
 
 ```console
 $ sweetpad device list
-Iphone 13 (iPhone 13, iOS 26.6)  [disconnected]
+Iphone 13 (iPhone 13, iOS 26.6)  [wifi]
     00008110-000559182E90401E
 ```
+
+In JSON, a device entry also has devicectl's own `connection`, `transport`, and `pairing` values. An
+idle device reads `connection: "disconnected"` even when it works fine, because xcodebuild opens the
+connection when it needs one.
 
 Target it by name, by UDID, or with the `device` shorthand when there's only one:
 

@@ -130,11 +130,11 @@ error: xcodebuild: Timed out waiting for all destinations matching the provided 
     { platform:iOS, arch:arm64, id:00008110-000559182E90401E, name:Iphone 13, error:Iphone 13 needs to be unlocked to enable development services Please unlock the device. }
 ```
 
-`sweetpad device list` reports the connection state:
+`sweetpad device list` shows whether the device is paired, and whether it's on USB or Wi-Fi:
 
 ```console
 $ sweetpad device list
-Iphone 13 (iPhone 13, iOS 26.6)  [disconnected]
+Iphone 13 (iPhone 13, iOS 26.6)  [wifi]
     00008110-000559182E90401E
 ```
 
