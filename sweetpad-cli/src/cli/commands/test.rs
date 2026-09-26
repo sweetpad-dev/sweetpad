@@ -230,21 +230,27 @@ impl Termination {
 }
 
 impl TestReport {
-    /// One `✗` line per failed test, naming it and its failure, with what
-    /// the report adds about it indented below.
+    /// One `✗` line per failed test, naming it and its first failure, with
+    /// its other failures and what the report adds about it indented below.
     fn failure_lines(&self) -> Vec<String> {
+        // A Swift Testing expectation continues with one line per operand
+        // (`n → 2`). They sit under the message they belong to, deeper than
+        // the lines that start a message.
+        fn push_message(lines: &mut Vec<String>, head: &str, message: &str) {
+            let mut message = message.lines();
+            lines.push(format!("{head}{}", message.next().unwrap_or_default()));
+            lines.extend(message.map(|line| format!("        {line}")));
+        }
         let mut lines = Vec::new();
         for (i, f) in self.summary.test_failures.iter().enumerate() {
-            let mut message = f.failure_text.lines();
-            lines.push(format!(
-                "  ✗ {}: {}",
-                f.selector(),
-                message.next().unwrap_or_default()
-            ));
-            // A Swift Testing expectation continues with one line per operand
-            // (`n → 2`). They sit under the message they belong to, deeper
-            // than the lines about the failure as a whole.
-            lines.extend(message.map(|line| format!("        {line}")));
+            push_message(
+                &mut lines,
+                &format!("  ✗ {}: ", f.selector()),
+                &f.failure_text,
+            );
+            for other in &f.other_messages {
+                push_message(&mut lines, "      ", other);
+            }
             if let Some(Some(termination)) = self.terminations.get(i) {
                 lines.push(format!("      {}", termination.line()));
             }
@@ -283,6 +289,7 @@ impl Render for TestReport {
                     "target": f.target_name,
                     "identifier": f.selector(),
                     "message": f.failure_text,
+                    "messages": f.messages().collect::<Vec<_>>(),
                 });
                 if let Some(Some(t)) = self.terminations.get(i) {
                     failure["terminationReason"] = t.exit.json(t.crash_report.as_deref());
@@ -591,6 +598,15 @@ fn vanished(message: &str) -> Option<Vanished> {
     runner.then_some(Vanished::Runner)
 }
 
+/// The first of a failure's messages that says something vanished, and what.
+/// It need not be the message the summary gave: an assertion that failed
+/// before the app crashed is recorded first.
+fn vanishing(failure: &xcodebuild::TestFailure) -> Option<(Vanished, &str)> {
+    failure
+        .messages()
+        .find_map(|message| vanished(message).map(|cause| (cause, message)))
+}
+
 /// The run [`terminations`] searches: what was tested, where the result bundle
 /// is, and when xcodebuild started.
 struct RunContext<'a> {
@@ -620,17 +636,16 @@ const EXIT_QUERY_TIMEOUT: Duration = Duration::from_secs(15);
 /// read of the test's activity log.
 const MAX_TIMED_FAILURES: usize = 20;
 
-/// For each failure whose message says the app or the test runner vanished,
-/// the exit launchd logged for it: the last exit of that process between the
-/// test's start and just after the failure was recorded. Best effort and
-/// bounded: an unreadable log, an unsupported destination, or a failure with
-/// no activity log leaves that failure without one.
+/// For each failure with a message that says the app or the test runner
+/// vanished, the exit launchd logged for it: the last exit of that process
+/// between the test's start and just after that message was recorded. Best
+/// effort and bounded: an unreadable log, an unsupported destination, or a
+/// failure with no activity log leaves that failure without one.
 fn terminations(
     run: &RunContext,
     failures: &[xcodebuild::TestFailure],
 ) -> Vec<Option<Termination>> {
-    let causes: Vec<Option<Vanished>> =
-        failures.iter().map(|f| vanished(&f.failure_text)).collect();
+    let causes: Vec<Option<(Vanished, &str)>> = failures.iter().map(vanishing).collect();
     let mut found = Vec::new();
     if causes.iter().any(Option::is_some) {
         found = exits_during(run).unwrap_or_default();
@@ -647,13 +662,10 @@ fn terminations(
         .into_iter()
         .zip(failures)
         .map(|(cause, failure)| {
-            let cause = cause?;
+            let (cause, message) = cause?;
             budget = budget.checked_sub(1)?;
-            let times = xcodebuild::failure_times(
-                run.bundle,
-                &failure.test_identifier_string,
-                &failure.failure_text,
-            )?;
+            let times =
+                xcodebuild::failure_times(run.bundle, &failure.test_identifier_string, message)?;
             let from = times.started.map_or(run_start, |t| t - 1.0);
             let until = times.failed + EXIT_AFTER_FAILURE;
             let last_of = |matches: &dyn Fn(&exits::Exit) -> bool| {
@@ -2094,6 +2106,33 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_crash_recorded_after_another_failure_still_gets_its_exit() {
+        // The summary gives the test's first message, and the crash can come
+        // after it. The exit is timed by the message that names the app.
+        let failure = xcodebuild::TestFailure {
+            failure_text: "XCTAssertEqual failed".into(),
+            other_messages: vec![
+                "dev.sweetpad.ci.app crashed".into(),
+                "XCTAssertTrue failed".into(),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(
+            vanishing(&failure),
+            Some((
+                Vanished::Named("dev.sweetpad.ci.app".into()),
+                "dev.sweetpad.ci.app crashed"
+            ))
+        );
+        let plain = xcodebuild::TestFailure {
+            failure_text: "XCTAssertEqual failed".into(),
+            other_messages: vec!["XCTAssertTrue failed".into()],
+            ..Default::default()
+        };
+        assert_eq!(vanishing(&plain), None);
+    }
+
     fn failed_report(terminations: Vec<Option<Termination>>) -> TestReport {
         TestReport {
             passed: false,
@@ -2182,6 +2221,7 @@ mod tests {
             test_identifier_url: "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/\
                                   GreetingSuite/suiteGreeting()"
                 .into(),
+            ..Default::default()
         };
         assert_eq!(
             report.failure_lines(),
@@ -2191,6 +2231,42 @@ mod tests {
                 "  ✗ SweetpadCIAppTests/GreetingSuite/suiteGreeting(): Expectation failed: n == 1",
                 "        n → 2",
             ]
+        );
+    }
+
+    #[test]
+    fn every_failure_a_test_recorded_is_listed_under_it() {
+        // The first message stays on the `✗` line; the rest follow it one
+        // per line, each with its own continuation lines deeper still.
+        let mut report = failed_report(Vec::new());
+        report.summary.test_failures[1].other_messages = vec![
+            "XCTAssertTrue failed - second failure".into(),
+            "Expectation failed: m == 3\nm → 4".into(),
+        ];
+        assert_eq!(
+            report.failure_lines()[1..],
+            [
+                "  ✗ ExitProbeTests/ProbeTests/testPasses: XCTAssertEqual failed",
+                "      XCTAssertTrue failed - second failure",
+                "      Expectation failed: m == 3",
+                "        m → 4",
+            ]
+        );
+        // JSON lists them all under `messages`, the first being `message`.
+        let json = report.json();
+        assert_eq!(json["failures"][1]["message"], "XCTAssertEqual failed");
+        assert_eq!(
+            json["failures"][1]["messages"],
+            serde_json::json!([
+                "XCTAssertEqual failed",
+                "XCTAssertTrue failed - second failure",
+                "Expectation failed: m == 3\nm → 4",
+            ])
+        );
+        // A test with one failure lists just that one.
+        assert_eq!(
+            json["failures"][0]["messages"],
+            serde_json::json!(["Failed to application dev.sweetpad.exitprobe.app is not running"])
         );
     }
 

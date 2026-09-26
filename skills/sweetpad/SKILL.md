@@ -197,10 +197,11 @@ sweetpad test build -q                                  # compile the tests, run
 `--retry-flaky <N>` retries each failing test up to N times before calling it
 failed.
 
-When a failure says the app vanished (`… is not running`, `… crashed`, `Test
-crashed with signal …`), read that failure's `terminationReason`: launchd's
-record of how the app or test runner ended, including kills that leave no crash
-report.
+Each failure's `messages` lists every failure the test recorded, in order;
+`message` is only the first. When one of them says the app vanished (`… is not
+running`, `… crashed`, `Test crashed with signal …`), read that failure's
+`terminationReason`: launchd's record of how the app or test runner ended,
+including kills that leave no crash report.
 
 ## Inspect resolved build settings
 

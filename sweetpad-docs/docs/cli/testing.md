@@ -40,6 +40,20 @@ error: /path/to/Tests/AppTests/AppTests.swift:10: -[SweetpadCIAppTests.AppTests 
   ✗ SweetpadCIAppTests/AppTests/testGreeting: XCTAssertEqual failed: ("Hello, SweetPad") is not equal to ("Hello, Sweetpad")
 ```
 
+When a test records more than one failure, each one after the first gets a line of its own. A
+message that runs over several lines, like the `n → 2` a failed Swift Testing expectation adds, has
+its extra lines indented deeper under it:
+
+```console
+  ✗ SweetpadCIAppTests/AppTests/testGreeting: XCTAssertEqual failed: ("hello") is not equal to ("world")
+      XCTAssertTrue failed - second failure in the same test
+  ✗ SweetpadCIAppTests/GreetingSuite/suiteGreeting(): Expectation failed: n == 1
+        n → 2
+```
+
+With `-o json`, each failure has `message`, the first of them, and `messages`, which lists all of
+them in the order the test recorded them.
+
 Red tests exit with code `3`, the same code a failed build uses, since both mean "the work ran and
 the answer was no". A missing scheme or an unresolvable destination is code `4` instead, so a CI
 script can tell a genuine test failure apart from a broken invocation.
@@ -56,6 +70,7 @@ record of how the process ended and prints it under the failure:
 
 ```console
   ✗ ExitProbeUITests/ProbeUITests/testAppAbortsMidTest: dev.sweetpad.exitprobe.app crashed
+      Failed to application dev.sweetpad.exitprobe.app is not running
       app terminated: crashed with SIGABRT (sent by ExitProbe[96265])
 ```
 

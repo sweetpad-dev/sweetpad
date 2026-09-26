@@ -658,6 +658,11 @@ pub struct TestFailure {
     /// (see [`test_selector`]).
     #[serde(rename = "testIdentifierURL")]
     pub test_identifier_url: String,
+    /// The test's failure messages after `failure_text`, in the order it
+    /// recorded them. The summary keeps one per test, so these come from the
+    /// test tree ([`test_summary`]).
+    #[serde(skip)]
+    pub other_messages: Vec<String>,
 }
 
 /// When a failing test started and when one of its failures was recorded, in
@@ -754,6 +759,12 @@ impl TestFailure {
             Some(self.test_identifier_url.as_str()).filter(|u| !u.is_empty()),
         )
     }
+
+    /// Every failure message the test recorded: `failure_text`, then the rest.
+    pub fn messages(&self) -> impl Iterator<Item = &str> {
+        std::iter::once(self.failure_text.as_str())
+            .chain(self.other_messages.iter().map(String::as_str))
+    }
 }
 
 /// A test's `-only-testing:` identifier: its test target, then the test as the
@@ -786,6 +797,8 @@ struct TreeCase<'a> {
     identifier: &'a str,
     url: Option<&'a str>,
     failed: bool,
+    /// Each distinct failure message recorded under the case, in tree order.
+    messages: Vec<&'a str>,
 }
 
 /// Walk the xcresulttool test tree (`testNodes`/`children`) for its test
@@ -800,11 +813,14 @@ fn tree_cases<'a>(
         Some("Unit test bundle" | "UI test bundle") => field("name").or(target),
         Some("Test Case") => {
             if let Some(identifier) = field("nodeIdentifier") {
+                let mut messages = Vec::new();
+                failure_messages(node, &mut messages);
                 out.push(TreeCase {
                     target,
                     identifier,
                     url: field("nodeIdentifierURL"),
                     failed: field("result").is_some_and(|r| r.eq_ignore_ascii_case("failed")),
+                    messages,
                 });
             }
             target
@@ -816,6 +832,52 @@ fn tree_cases<'a>(
             for n in nodes {
                 tree_cases(n, target, out);
             }
+        }
+    }
+}
+
+/// The `Failure Message` nodes under `node`, whether a test case holds them
+/// itself or through the runs below it (a parameterized test's `Arguments`, a
+/// retried test's `Repetition`). A retry records the same message again, so
+/// each is kept once.
+fn failure_messages<'a>(node: &'a serde_json::Value, out: &mut Vec<&'a str>) {
+    let children = node.get("children").and_then(serde_json::Value::as_array);
+    for child in children.into_iter().flatten() {
+        if child.get("nodeType").and_then(serde_json::Value::as_str) == Some("Failure Message") {
+            if let Some(message) = child.get("name").and_then(serde_json::Value::as_str)
+                && !out.contains(&message)
+            {
+                out.push(message);
+            }
+        } else {
+            failure_messages(child, out);
+        }
+    }
+}
+
+/// Give each failure in `summary` the rest of its test's failure messages
+/// from the tree, found by the test's URL or else by its target and
+/// identifier.
+fn add_other_messages(summary: &mut TestSummary, root: &serde_json::Value) {
+    let mut cases = Vec::new();
+    tree_cases(root, None, &mut cases);
+    for failure in &mut summary.test_failures {
+        let case = cases
+            .iter()
+            .find(|c| c.url.is_some_and(|u| u == failure.test_identifier_url))
+            .or_else(|| {
+                cases.iter().find(|c| {
+                    c.identifier == failure.test_identifier_string
+                        && c.target == Some(failure.target_name.as_str())
+                })
+            });
+        if let Some(case) = case {
+            failure.other_messages = case
+                .messages
+                .iter()
+                .filter(|m| **m != failure.failure_text)
+                .map(|m| (*m).to_string())
+                .collect();
         }
     }
 }
@@ -956,6 +1018,11 @@ pub fn coverage_percent(bundle: &Path) -> Option<f64> {
 }
 
 /// Read a test summary from a `.xcresult` bundle via `xcresulttool` (Xcode 16+).
+///
+/// The summary gives one failure message per test, where a test can record
+/// several: an app that crashed mid-wait fails the wait as well. So a run with
+/// failures also reads the test tree for the rest; when the tree can't be
+/// read, each failure keeps the one message the summary gave it.
 pub fn test_summary(bundle: &Path) -> Result<TestSummary, CliError> {
     let out = process::capture(
         "xcrun",
@@ -970,7 +1037,13 @@ pub fn test_summary(bundle: &Path) -> Result<TestSummary, CliError> {
         None,
     )
     .context("reading the test results")?;
-    parse_summary(&out)
+    let mut summary = parse_summary(&out)?;
+    if !summary.test_failures.is_empty()
+        && let Ok(root) = test_tree(bundle)
+    {
+        add_other_messages(&mut summary, &root);
+    }
+    Ok(summary)
 }
 
 /// Parse the `xcresulttool` summary JSON (skipping any leading non-JSON).
@@ -2264,6 +2337,70 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             .collect();
         printed.sort();
         assert_eq!(printed, failed_selectors(&tree()));
+    }
+
+    #[test]
+    fn a_failure_carries_every_message_its_test_recorded() {
+        // Trimmed from Xcode 27 runs of the fixture: an XCTest case with two
+        // failed assertions, retried once, and a UI test whose app crashed
+        // mid-wait. The summary gives each of them its first message only.
+        let url = "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/AppTests/testGreeting";
+        let equal = "XCTAssertEqual failed: (\"hello\") is not equal to (\"world\")";
+        let second = "XCTAssertTrue failed - second failure in the same test";
+        let run = |name: &str| {
+            serde_json::json!({ "name": name, "nodeIdentifierURL": url, "nodeType": "Repetition",
+                "result": "Failed", "children": [
+                    { "name": equal, "nodeType": "Failure Message" },
+                    { "name": second, "nodeType": "Failure Message" } ] })
+        };
+        let recorded = serde_json::json!({ "testNodes": [
+            { "name": "SweetpadCIAppTests", "nodeType": "Unit test bundle", "children": [
+                { "name": "AppTests", "nodeType": "Test Suite", "children": [
+                    { "name": "testGreeting()", "nodeIdentifier": "AppTests/testGreeting()",
+                      "nodeIdentifierURL": url, "nodeType": "Test Case", "result": "Failed",
+                      "children": [ run("First Run"), run("Retry 1") ] } ] } ] },
+            { "name": "SweetpadCIAppUITests", "nodeType": "UI test bundle", "children": [
+                { "name": "AppUITests", "nodeType": "Test Suite", "children": [
+                    { "name": "testAppCrashesMidTest()",
+                      "nodeIdentifier": "AppUITests/testAppCrashesMidTest()",
+                      "nodeType": "Test Case", "result": "Failed", "children": [
+                        { "name": "dev.sweetpad.ci.app crashed", "nodeType": "Failure Message" },
+                        { "name": "XCTAssertTrue failed", "nodeType": "Failure Message" } ] } ] } ] }
+        ] });
+        let mut summary = parse_summary(
+            &serde_json::json!({ "testFailures": [
+            { "failureText": equal, "targetName": "SweetpadCIAppTests",
+              "testIdentifierString": "AppTests/testGreeting()", "testIdentifierURL": url,
+              "testName": "testGreeting()" },
+            { "failureText": "dev.sweetpad.ci.app crashed", "targetName": "SweetpadCIAppUITests",
+              "testIdentifierString": "AppUITests/testAppCrashesMidTest()",
+              "testName": "testAppCrashesMidTest()" }
+        ] })
+            .to_string(),
+        )
+        .unwrap();
+        add_other_messages(&mut summary, &recorded);
+        // The retry recorded both messages again; each is listed once.
+        assert_eq!(summary.test_failures[0].other_messages, [second]);
+        assert_eq!(
+            summary.test_failures[0].messages().collect::<Vec<_>>(),
+            [equal, second]
+        );
+        // With no URL, the test is found by its target and identifier.
+        assert_eq!(
+            summary.test_failures[1].messages().collect::<Vec<_>>(),
+            ["dev.sweetpad.ci.app crashed", "XCTAssertTrue failed"]
+        );
+
+        // A test that recorded one failure, parameterized or not, adds none.
+        let mut summary = parse_summary(SUMMARY).unwrap();
+        add_other_messages(&mut summary, &tree());
+        assert!(
+            summary
+                .test_failures
+                .iter()
+                .all(|f| f.other_messages.is_empty())
+        );
     }
 
     #[test]

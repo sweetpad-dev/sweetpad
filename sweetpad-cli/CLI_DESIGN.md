@@ -2083,6 +2083,30 @@ the classname as the suite; the GitHub reporter actions key a test on the pair.
 The report has one `<testsuite>`, named after the scheme, so the target has to
 ride in `classname` for two targets' same-named classes to stay apart.
 
+### Every failure a test recorded
+
+The summary gives one failure message per test, its first. A test can record
+several: two assertions, or a UI test whose app crashed during a wait, which
+fails the wait too (`… crashed`, then `XCTAssertTrue failed`). The rest are in
+the test tree, as `Failure Message` nodes under the test case or under its
+`Arguments` and `Repetition` runs, so a run with failures reads the tree as
+well. A retry records the same message again, and each is kept once.
+
+The first message stays on the `✗` line and each other one gets a line of its
+own below it. A message's own continuation lines (Swift Testing prints each
+operand of a failed expectation on one: `n → 2`) are indented deeper still, so
+where one message ends and the next begins stays visible:
+
+```
+  ✗ SweetpadCIAppTests/AppTests/testGreeting: XCTAssertEqual failed: ("hello") is not equal to ("world")
+      XCTAssertTrue failed - second failure in the same test
+  ✗ SweetpadCIAppTests/GreetingSuite/suiteGreeting(): Expectation failed: n == 1
+        n → 2
+```
+
+JSON adds `messages`, every message in order, beside `message`, which stays
+the first. When the tree can't be read, `messages` holds just that one.
+
 **The target comes from the test tree.** The bundle's own identifiers start at
 the class (`AppTests/testGreeting()`), and xcodebuild rejects a selector built
 from them: the target "isn't a member of the specified test plan or scheme". The
@@ -2213,12 +2237,14 @@ name the app. `Test crashed with signal kill.` (the UI test runner killed) and
 running the tests, as do `Lost connection to the test runner` and `… test
 runner exited …`. A UI test's runner is its `.xctrunner` app; a unit test's is
 the host app, whose bundle id comes from the in-process build-settings
-resolver. Any other failure is left alone, so an ordinary red suite pays
-nothing.
+resolver. Every message a test recorded is checked (§9l), and the first with
+one of these wordings decides, since an assertion that failed before the crash
+is recorded ahead of it. Any other failure is left alone, so an ordinary red
+suite pays nothing.
 
 **Which exit.** One `log show` covers every app job's exits over the run. Per
 failure, the test's activity log gives two times: the test's start and the
-moment the failure was recorded. The exit is that process's last one between
+moment that message was recorded. The exit is that process's last one between
 them, plus half a second. launchd can log the reap just after XCTest notices,
 but the margin cannot be wider: XCTest restarts a crashed unit-test host, and
 the restart exited cleanly 1.5s after the failure it caused.
