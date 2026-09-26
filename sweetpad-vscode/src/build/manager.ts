@@ -70,6 +70,7 @@ import {
   restartSwiftLSP,
   writeWatchMarkers,
   getWorkspaceRoot,
+  xcodeContainerArgs,
 } from "./utils";
 
 // Stable category strings — exposed to CLI consumers, so keep the union narrow.
@@ -1257,7 +1258,7 @@ export class BuildManager {
 
     // Add workspace parameter only for Xcode projects
     if (workspaceType === "xcode") {
-      command.addParameters("-workspace", options.xcworkspace);
+      command.addParameters(...xcodeContainerArgs(options.xcworkspace));
     }
 
     if (options.shouldClean) {
@@ -1457,7 +1458,12 @@ export class BuildManager {
         } else if (workspaceType === "xcode") {
           await terminal.execute({
             command: getXcodeBuildCommand(),
-            args: ["-resolvePackageDependencies", "-scheme", options.scheme, "-workspace", options.xcworkspace],
+            args: [
+              "-resolvePackageDependencies",
+              "-scheme",
+              options.scheme,
+              ...xcodeContainerArgs(options.xcworkspace),
+            ],
             closeStdin: true,
           });
         } else {

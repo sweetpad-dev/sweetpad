@@ -6,7 +6,12 @@ import * as sweetpadLib from "@sweetpad/native";
 import { getBuildServerProvider } from "../../bsp/commands";
 import { getBspConfigFile } from "../../bsp/paths";
 import { assembleBspConfig, hasBspConfig, writeBspConfig } from "../../bsp/write";
-import { detectWorkspaceType, getSwiftPMDirectory, prepareDerivedDataPath } from "../../build/utils";
+import {
+  detectWorkspaceType,
+  getSwiftPMDirectory,
+  prepareDerivedDataPath,
+  xcodeContainerArgs,
+} from "../../build/utils";
 import type { DestinationPlatform } from "../../destination/constants";
 import { getWorkspaceConfig } from "../config";
 import { ExtensionError } from "../errors";
@@ -375,11 +380,7 @@ async function getBuildSettingsViaXcodebuild(options: {
   if (options.workspaceType === "spm") {
     cwd = getSwiftPMDirectory(options.xcworkspace);
   } else if (options.workspaceType === "xcode") {
-    if (options.xcworkspace.endsWith(".xcworkspace")) {
-      args.push("-workspace", options.xcworkspace);
-    } else {
-      args.push("-project", options.xcworkspace);
-    }
+    args.push(...xcodeContainerArgs(options.xcworkspace));
   } else {
     assertUnreachable(options.workspaceType);
   }
@@ -930,7 +931,7 @@ async function generateXBSBuildServerConfig(options: {
     args = ["config", "-scheme", options.scheme];
   } else if (workspaceType === "xcode") {
     cwd = options.workspaceRoot;
-    args = ["config", "-workspace", options.xcworkspace, "-scheme", options.scheme];
+    args = ["config", ...xcodeContainerArgs(options.xcworkspace), "-scheme", options.scheme];
   } else {
     assertUnreachable(workspaceType);
   }

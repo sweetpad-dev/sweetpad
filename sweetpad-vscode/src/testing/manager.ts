@@ -9,6 +9,7 @@ import {
   getSwiftPMDirectory,
   getWorkspaceRoot,
   getXcodeBuildDestinationString,
+  xcodeContainerArgs,
 } from "../build/utils.js";
 import { getBuildSettingsToAskDestination, getXcodeBuildCommand } from "../common/cli/scripts.js";
 import { getWorkspaceConfig } from "../common/config.js";
@@ -500,7 +501,7 @@ export class TestingManager {
           cwd = getSwiftPMDirectory(options.xcworkspace);
         } else if (workspaceType === "xcode") {
           cwd = options.workspaceRoot;
-          args.push("-workspace", options.xcworkspace);
+          args.push(...xcodeContainerArgs(options.xcworkspace));
         } else {
           assertUnreachable(workspaceType);
         }
@@ -928,7 +929,7 @@ export class TestingManager {
             cwd = getSwiftPMDirectory(options.xcworkspace);
           } else if (workspaceType === "xcode") {
             cwd = options.workspaceRoot;
-            args.push("-workspace", options.xcworkspace);
+            args.push(...xcodeContainerArgs(options.xcworkspace));
           } else {
             assertUnreachable(workspaceType);
           }
@@ -1029,7 +1030,7 @@ export class TestingManager {
             cwd = getSwiftPMDirectory(options.xcworkspace);
           } else if (workspaceType === "xcode") {
             cwd = options.workspaceRoot;
-            args.push("-workspace", options.xcworkspace);
+            args.push(...xcodeContainerArgs(options.xcworkspace));
           } else {
             assertUnreachable(workspaceType);
           }

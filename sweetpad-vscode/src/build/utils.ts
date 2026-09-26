@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { type Dirent, existsSync } from "node:fs";
 import path from "node:path";
 
 import * as sweetpadLib from "@sweetpad/native";
@@ -752,6 +752,37 @@ export async function generateBuildServerConfigOnBuild(options: {
 }
 
 /**
+ * xcodebuild's arguments naming an Xcode container: `-project` for a bare `.xcodeproj`, `-workspace`
+ * for a workspace, a project's embedded workspace among them.
+ */
+export function xcodeContainerArgs(xcworkspace: string): ["-project" | "-workspace", string] {
+  return xcworkspace.endsWith(".xcodeproj") ? ["-project", xcworkspace] : ["-workspace", xcworkspace];
+}
+
+/** A directory entry that is an Xcode workspace, an Xcode project or a Swift package manifest. */
+function isContainerEntry(file: Dirent): boolean {
+  return file.name.endsWith(".xcworkspace") || file.name.endsWith(".xcodeproj") || file.name === "Package.swift";
+}
+
+/**
+ * The paths SweetPad addresses discovered containers by, each once. A project goes through its
+ * embedded `project.xcworkspace`, and stands for itself only when it has none: Xcode writes that
+ * workspace on first open, so a checkout that ignores it holds the bare `.xcodeproj` (issue #339).
+ */
+async function containerPaths(found: string[]): Promise<string[]> {
+  const paths: string[] = [];
+  for (const foundPath of found) {
+    const embedded = path.join(foundPath, "project.xcworkspace");
+    if (foundPath.endsWith(".xcodeproj") && (await isFileExists(embedded))) {
+      paths.push(embedded);
+    } else {
+      paths.push(foundPath);
+    }
+  }
+  return [...new Set(paths)];
+}
+
+/**
  * Detect xcode workspaces in all VS Code workspace folders
  */
 export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
@@ -760,21 +791,19 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
     throw new ExtensionError("No workspace folder found");
   }
 
-  // Get all files that end with .xcworkspace or Package.swift (4 depth) in every folder
+  // Get every workspace, project and Package.swift (4 depth) in every folder
   const results = await Promise.all(
     folders.map((folder) =>
       findFilesRecursive({
         directory: folder,
         depth: 4,
-        matcher: (file) => {
-          return file.name.endsWith(".xcworkspace") || file.name === "Package.swift";
-        },
+        matcher: isContainerEntry,
       }),
     ),
   );
   // Workspace folders may nest (both "/repo" and "/repo/ios" can be added), in which case the same
   // project is found by more than one scan. Collapse those so each project is offered once.
-  return [...new Set(results.flat())];
+  return await containerPaths(results.flat());
 }
 
 /**
@@ -841,7 +870,7 @@ export async function selectXcodeWorkspace(options: {
         const parentDir = path.dirname(relativePath);
 
         const isInRootDir = parentDir === ".";
-        const isCocoaPods = isInRootDir && cocoaPodsRoots.has(rootDir);
+        const isCocoaPods = isInRootDir && cocoaPodsRoots.has(rootDir) && xwPath.endsWith(".xcworkspace");
         const isSPMPackage = detectWorkspaceType(xwPath) === "spm";
 
         let projectType: string | undefined;
@@ -849,7 +878,7 @@ export async function selectXcodeWorkspace(options: {
           projectType = "Swift Package Manager";
         } else if (isCocoaPods && isInRootDir) {
           projectType = "CocoaPods (recommended)";
-        } else if (!isInRootDir && parentDir.endsWith(".xcodeproj")) {
+        } else if ((!isInRootDir && parentDir.endsWith(".xcodeproj")) || xwPath.endsWith(".xcodeproj")) {
           projectType = "Xcode";
         }
         // todo: add workspace with multiple projects
@@ -1234,7 +1263,8 @@ export async function detectGitWorktrees(options: { workspaceRoot: string }): Pr
 
 /**
  * Find Xcode workspace/project or SPM package files inside a given directory (up to 4 levels).
- * Returns the first .xcworkspace or Package.swift path found, or undefined.
+ * Returns the first one found, addressed the way `detectXcodeWorkspacesPaths` addresses it, or
+ * undefined.
  */
 export async function findXcodeWorkspaceInDirectory(directory: string): Promise<string | undefined> {
   const paths = await findFilesRecursive({
@@ -1242,9 +1272,9 @@ export async function findXcodeWorkspaceInDirectory(directory: string): Promise<
     depth: 4,
     ignore: ["Pods", "DerivedData", ".build", "node_modules"],
     maxResults: 1,
-    matcher: (file) => file.name.endsWith(".xcworkspace") || file.name === "Package.swift",
+    matcher: isContainerEntry,
   });
-  return paths.length > 0 ? paths[0] : undefined;
+  return (await containerPaths(paths))[0];
 }
 
 /** The subset of a parsed scheme that drives launch argv/env. */

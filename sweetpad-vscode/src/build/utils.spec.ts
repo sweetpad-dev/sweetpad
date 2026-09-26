@@ -9,16 +9,18 @@ import {
   generateSweetpadBuildServerConfig,
   getSweetpadCliPath,
 } from "../common/cli/scripts";
-import { isFileExists, readJsonFile } from "../common/files";
+import { findFilesRecursive, isFileExists, readJsonFile } from "../common/files";
 import { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import {
   activateCurrentXcodeWorkspacePath,
+  detectXcodeWorkspacesPaths,
   generateBuildServerConfigOnBuild,
   getCurrentXcodeWorkspacePath,
   launchActionToSettings,
   repairStaleBuildServerConfig,
   workspaceFoldersContaining,
+  xcodeContainerArgs,
 } from "./utils";
 
 // `./utils` imports the native `@sweetpad/native` addon at module level; stub it so
@@ -33,6 +35,7 @@ vi.mock("../common/cli/scripts", () => ({
 }));
 
 vi.mock("../common/files", () => ({
+  findFilesRecursive: vi.fn(),
   isFileExists: vi.fn(),
   readJsonFile: vi.fn(),
 }));
@@ -133,6 +136,47 @@ describe("launchActionToSettings", () => {
     expect(args.filter((a) => a === "-AppleLocale")).toHaveLength(2);
     expect(args).toContain("(he)");
     expect(args).toContain("he_IL");
+  });
+});
+
+describe("Xcode container discovery", () => {
+  const mockFind = findFilesRecursive as Mock;
+  const mockExists = isFileExists as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (vscode.workspace as { workspaceFolders?: unknown }).workspaceFolders = [{ uri: { fsPath: "/repo" } }];
+  });
+
+  it("addresses a project through its embedded workspace, and a bare one by itself (issue #339)", async () => {
+    mockFind.mockResolvedValue([
+      "/repo/App.xcodeproj",
+      "/repo/App.xcodeproj/project.xcworkspace",
+      "/repo/Tool/Tool.xcodeproj",
+      "/repo/Pkg/Package.swift",
+    ]);
+    mockExists.mockImplementation(async (p: string) => p === "/repo/App.xcodeproj/project.xcworkspace");
+
+    expect(await detectXcodeWorkspacesPaths()).toEqual([
+      "/repo/App.xcodeproj/project.xcworkspace",
+      "/repo/Tool/Tool.xcodeproj",
+      "/repo/Pkg/Package.swift",
+    ]);
+    const { matcher } = mockFind.mock.calls[0][0] as { matcher: (f: { name: string }) => boolean };
+    expect(["A.xcworkspace", "A.xcodeproj", "Package.swift", "A.swift"].filter((name) => matcher({ name }))).toEqual([
+      "A.xcworkspace",
+      "A.xcodeproj",
+      "Package.swift",
+    ]);
+  });
+
+  it("passes a bare project to xcodebuild as a project", () => {
+    expect(xcodeContainerArgs("/repo/Tool.xcodeproj")).toEqual(["-project", "/repo/Tool.xcodeproj"]);
+    expect(xcodeContainerArgs("/repo/App.xcodeproj/project.xcworkspace")).toEqual([
+      "-workspace",
+      "/repo/App.xcodeproj/project.xcworkspace",
+    ]);
+    expect(xcodeContainerArgs("/repo/App.xcworkspace")).toEqual(["-workspace", "/repo/App.xcworkspace"]);
   });
 });
 
