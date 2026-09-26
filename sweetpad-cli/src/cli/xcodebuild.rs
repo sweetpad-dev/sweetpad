@@ -203,7 +203,7 @@ impl BuildPlan<'_> {
             ok
         };
         if parsed {
-            record_build_diagnostics(self.container, ok, &diagnostics);
+            record_build(self.container, Some(self.scheme), ok, &diagnostics);
         }
         if ok {
             // One tally for every parsing mode, so the `-o json` envelope and
@@ -549,6 +549,18 @@ pub(crate) fn record_build_diagnostics(
     ok: bool,
     diagnostics: &[serde_json::Value],
 ) {
+    record_build(container, None, ok, diagnostics);
+}
+
+/// [`record_build_diagnostics`], naming the scheme the build ran, so a later
+/// command that has none can say which one it was (a typed `--scheme` is not
+/// remembered).
+fn record_build(
+    container: &Container,
+    scheme: Option<&str>,
+    ok: bool,
+    diagnostics: &[serde_json::Value],
+) {
     let path = project_artifact(container, "-build.json");
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -563,6 +575,7 @@ pub(crate) fn record_build_diagnostics(
         .count();
     let record = serde_json::json!({
         "ok": ok,
+        "scheme": scheme,
         "errors": errors,
         "warnings": warnings,
         "diagnostics": diagnostics,
@@ -666,6 +679,15 @@ pub(crate) fn streamed_an_error(streamed: bool, diagnostics: &[serde_json::Value
 pub fn last_build_diagnostics(container: &Container) -> Option<serde_json::Value> {
     let text = std::fs::read_to_string(project_artifact(container, "-build.json")).ok()?;
     serde_json::from_str(&text).ok()
+}
+
+/// The scheme the project's last recorded build ran, if the record names one.
+#[must_use]
+pub fn last_build_scheme(container: &Container) -> Option<String> {
+    last_build_diagnostics(container)?
+        .get("scheme")?
+        .as_str()
+        .map(str::to_string)
 }
 
 /// The `--show-command` payload: the exact invocation that would run, shown

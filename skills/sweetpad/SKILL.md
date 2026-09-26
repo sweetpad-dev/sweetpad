@@ -221,8 +221,9 @@ The fully resolved settings for the active scheme/target — the thing
 ## See and set what would build
 
 `sweetpad status` shows the resolved scheme, configuration, and destination, and
-where each value came from (flag / env / config / remembered / default). The
-remembered selection lives in the project's context:
+where each value came from (flag / env / config / remembered / default). A
+`--scheme` you pass isn't remembered, so repeat it on each command or set it
+once in the project's context, where the remembered selection lives:
 
 ```bash
 sweetpad status -o json

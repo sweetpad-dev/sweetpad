@@ -99,6 +99,10 @@ One-off destinations aren't remembered. A `--destination` you typed, and the `--
 shortcuts, apply to that command only, so a quick check on your Mac doesn't quietly become the
 default for the next week.
 
+A `--scheme` you type isn't remembered either. When the next command has no scheme and can't ask,
+its error names the scheme your last build used, or lists the project's schemes, so you can pass
+`--scheme` again or keep one with `sweetpad context set scheme`.
+
 :::
 
 ## Changing what's remembered

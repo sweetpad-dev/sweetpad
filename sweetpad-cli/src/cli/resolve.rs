@@ -1151,7 +1151,51 @@ pub(crate) fn settle_scheme(
             validate_choice("scheme", higher, candidates)?;
         }
     }
+    if resolved.scheme.is_none() && candidates.len() > 1 && !ctx.out.is_interactive() {
+        let last = crate::cli::xcodebuild::last_build_scheme(&resolved.container);
+        return Err(missing_scheme(last.as_deref(), candidates));
+    }
     choose(ctx, "scheme", resolved.scheme.clone(), candidates)
+}
+
+/// The strict error for a scheme nobody named when several fit. A typed
+/// `--scheme` is not remembered (§5), so the command after a `build --scheme X`
+/// is where this bites: when the last build's scheme is one of `candidates`,
+/// the error names it; otherwise it lists them. Either way it names the two
+/// ways to supply one.
+fn missing_scheme(last_build: Option<&str>, candidates: &[String]) -> CliError {
+    const SHOWN: usize = 5;
+    let quote = |s: &str| {
+        if s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.+".contains(c))
+        {
+            s.to_string()
+        } else {
+            format!("\"{}\"", s.replace('"', "\\\""))
+        }
+    };
+    let hint = if let Some(scheme) = last_build.filter(|s| candidates.iter().any(|c| c == s)) {
+        let scheme = quote(scheme);
+        format!(
+            "the last build used '--scheme {scheme}': pass it again, or run \
+             'sweetpad context set scheme {scheme}' to remember it"
+        )
+    } else {
+        let listed: Vec<String> = candidates.iter().take(SHOWN).map(|s| quote(s)).collect();
+        let more = match candidates.len().saturating_sub(SHOWN) {
+            0 => String::new(),
+            n => format!(" and {n} more"),
+        };
+        format!(
+            "pass --scheme with one of {}{more}, or run 'sweetpad context set scheme <name>' \
+             to remember one",
+            listed.join(", ")
+        )
+    };
+    CliError::new(format!(
+        "no scheme specified and the terminal is not interactive; {hint}"
+    ))
+    .kind(ErrorKind::TargetResolution)
 }
 
 /// Settle the build configuration: an explicit/remembered value is validated
@@ -2230,6 +2274,41 @@ mod tests {
     fn choose_errors_when_empty() {
         let c = ctx();
         assert!(choose(&c, "scheme", None, &[]).is_err());
+    }
+
+    #[test]
+    fn a_missing_scheme_names_the_last_builds_or_the_candidates() {
+        let schemes: Vec<String> = ["SweetpadCIApp", "SweetpadCIMac"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        assert_eq!(
+            missing_scheme(Some("SweetpadCIApp"), &schemes).message,
+            "no scheme specified and the terminal is not interactive; the last build used \
+             '--scheme SweetpadCIApp': pass it again, or run 'sweetpad context set scheme \
+             SweetpadCIApp' to remember it"
+        );
+        // A last build of a scheme this project no longer has names nothing.
+        for last in [None, Some("Gone")] {
+            assert_eq!(
+                missing_scheme(last, &schemes).message,
+                "no scheme specified and the terminal is not interactive; pass --scheme with \
+                 one of SweetpadCIApp, SweetpadCIMac, or run 'sweetpad context set scheme \
+                 <name>' to remember one"
+            );
+        }
+        let many: Vec<String> = ["A", "B", "C", "D", "My App", "F", "G"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        let err = missing_scheme(None, &many);
+        assert!(
+            err.message
+                .contains("one of A, B, C, D, \"My App\" and 2 more,"),
+            "{}",
+            err.message
+        );
+        assert!(matches!(err.kind, ErrorKind::TargetResolution));
     }
 
     #[test]

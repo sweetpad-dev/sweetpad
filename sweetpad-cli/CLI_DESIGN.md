@@ -342,7 +342,12 @@ explicit flag  >  env var  >  config file  >  remembered state  >  auto-discover
   layer just above auto-discovery so the daily loop doesn't re-prompt (§6).
   Only picker-settled values are remembered — a one-off flag/env/config
   override never rewrites the stored context, and `app run --mac`/`--device`
-  destinations are never remembered.
+  destinations are never remembered. The cost shows up as `no scheme
+  specified` on the command after a `build --scheme X`, so that error names
+  the scheme the project's last recorded build ran when it is still one of
+  the project's (the build record carries it), and otherwise lists the
+  schemes; both forms name `--scheme` and `context set scheme`. It names
+  rather than uses: the record is a fact about a build, not a selection.
 - **Interactive fallback:** when something is ambiguous/unset **and the
   terminal is interactive** (stderr is a TTY, no `--json`, no
   `--non-interactive`/`SWEETPAD_NONINTERACTIVE`), drop to a fuzzy picker
