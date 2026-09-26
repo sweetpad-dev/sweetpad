@@ -224,10 +224,13 @@ failure's `app terminated:` line in its `<failure>` body;
 failed.
 
 Each failure's `messages` lists every failure the test recorded, in order;
-`message` is only the first. When one of them says the app vanished (`… is not
-running`, `… crashed`, `Test crashed with signal …`), read that failure's
-`terminationReason`: launchd's record of how the app or test runner ended,
-including kills that leave no crash report. A crash with no crash report also
+`message` is only the first. When one of them is Xcode's report that the app
+or the test runner went away (`<bundle id> crashed`, `… application <bundle id>
+is not running`, `Crash: <App> at …`, `The test runner exited with code …`,
+`Test crashed with signal …`), read that failure's `terminationReason`:
+launchd's record of how the app or test runner ended, including kills that
+leave no crash report. An assertion that only mentions a crash in its own text
+gets none. A crash with no crash report also
 gets a `note`: macOS stops saving an app's reports past a limit, so the
 `exception` detail can be missing. When no exit was found at all, the `note`
 names the `sweetpad app logs --exits` command to run instead.

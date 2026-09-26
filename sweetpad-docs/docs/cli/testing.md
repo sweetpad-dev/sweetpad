@@ -65,8 +65,10 @@ ends as soon as the tests do. To get the report, pass `-- -collect-test-diagnost
 ### When the app goes away mid-test
 
 If the app under test crashes or is killed during a test, XCTest only reports that it's gone, with
-a message like "is not running" or "crashed". For those failures, SweetPad looks up the system's
-record of how the process ended and prints it under the failure:
+a message like "Failed to application … is not running" or "… crashed". A unit test's host app that
+crashes or calls `exit` gets "Crash: MyApp at …" or "The test runner exited with code 3 …". For
+those failures, SweetPad looks up the system's record of how the process ended and prints it under
+the failure:
 
 ```console
   ✗ ExitProbeUITests/ProbeUITests/testAppAbortsMidTest: dev.sweetpad.exitprobe.app crashed
@@ -77,7 +79,8 @@ record of how the process ended and prints it under the failure:
 This also covers kills that leave no crash report, such as the simulator host ending the app. With
 `-o json`, the same failure carries a `terminationReason` object with the raw reason, code, and
 explanation, plus the crash report's path and the fault it names (`exception`) when there is one.
-Other failures get no such field.
+Other failures get no such field, including an assertion whose own text mentions a crash, such as
+`XCTFail("the helper crashed")`.
 `sweetpad app logs --exits` shows the same records outside a test run.
 
 A crash doesn't always come with a crash report. macOS saves only so many for one app (25 on

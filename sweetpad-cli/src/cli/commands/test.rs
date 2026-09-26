@@ -740,17 +740,47 @@ fn build_step_failure(
 /// uses for it.
 #[derive(Debug, PartialEq, Eq)]
 enum Vanished {
-    /// The app it names: `<bundle id> crashed`, `Failed to application <bundle
-    /// id> is not running`.
+    /// The app it names: `<bundle id> crashed`, `<bundle id> crashed in
+    /// <symbol>`, `Failed to application <bundle id> is not running`.
     Named(String),
-    /// The app under test, when an `… is not running` names no bundle id.
+    /// The app under test, when an `Application … is not running` names no
+    /// bundle id.
     App,
-    /// The process running the tests: `Test crashed with signal kill.` (a UI
-    /// test runner), `Crash: <App> at <frame>` (a unit test's host app), `Lost
-    /// connection to the test runner`, `… test runner exited …`.
+    /// The process running the tests: a UI test's `.xctrunner`, or the host
+    /// app a unit test runs in (see [`RUNNER_VANISHED`]).
     Runner,
 }
 
+/// How XCTest's harness words the process running the tests going away, each
+/// as the start of the message. A unit test's host app is that process, so a
+/// host that crashes reads `Crash: <App> at <frame>. <library>: <reason>`, or
+/// `The test runner crashed while preparing to run tests: …` when it was the
+/// first test to run, and one that calls `exit` reads `The test runner exited
+/// with code 3 before finishing running tests. …`. A Swift Testing test runs
+/// in the same host and vanishes in the same words. A UI test's runner killed
+/// outright reads `Test crashed with signal kill.` Those were each seen in a
+/// run on Xcode 27; the others are read from the strings in its XCTest
+/// harness.
+const RUNNER_VANISHED: [&str; 7] = [
+    "Crash: ",
+    "Test crashed with signal ",
+    "The test runner crashed before establishing connection: ",
+    "The test runner crashed while preparing to run tests: ",
+    "The test runner exited with code ",
+    "Lost connection to the test runner",
+    "Lost connection to test process",
+];
+
+/// The same, where the harness writes the whole message and nothing follows.
+const RUNNER_VANISHED_EXACTLY: [&str; 3] = [
+    "Test crashed",
+    "Test runner crashed.",
+    "The test runner exited",
+];
+
+/// What `message` says vanished, when it is one of the ways Xcode words that.
+/// An assertion that merely mentions a crash (`XCTFail("the helper
+/// crashed")`, recorded as `failed - the helper crashed`) is not one of them.
 fn vanished(message: &str) -> Option<Vanished> {
     let bundle_id = |token: &str| {
         (token.contains('.')
@@ -759,18 +789,37 @@ fn vanished(message: &str) -> Option<Vanished> {
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_')))
         .then(|| token.to_string())
     };
-    if let Some(named) = message.strip_suffix(" crashed").and_then(bundle_id) {
+    // XCTest gives up on a host that keeps crashing, and says why in the
+    // host's own words: `Exceeded max restart count of 2. (Underlying Error:
+    // Crash: <App> at <frame>. …)`.
+    if let Some(underlying) = message
+        .strip_prefix("Exceeded max restart count ")
+        .and_then(|rest| rest.split_once("(Underlying Error: "))
+        .map(|(_, cause)| cause.strip_suffix(')').unwrap_or(cause))
+    {
+        return vanished(underlying);
+    }
+    let crashed = message
+        .strip_suffix(" crashed")
+        .or_else(|| message.split_once(" crashed in ").map(|(head, _)| head));
+    if let Some(named) = crashed.and_then(bundle_id) {
         return Some(Vanished::Named(named));
     }
+    // `Application <id> is not running`, `Application for <id> is not
+    // running.`, or `Failed to application <id> is not running`.
     if let Some((head, _)) = message.split_once(" is not running") {
-        let named = head.rsplit(' ').next().and_then(bundle_id);
-        return Some(named.map_or(Vanished::App, Vanished::Named));
+        let mut words = head.rsplit(' ');
+        let named = words.next().and_then(bundle_id);
+        let mut before = words.next();
+        if before == Some("for") {
+            before = words.next();
+        }
+        if before.is_some_and(|w| w.eq_ignore_ascii_case("application")) {
+            return Some(named.map_or(Vanished::App, Vanished::Named));
+        }
     }
-    let lower = message.to_lowercase();
-    let runner = message.starts_with("Crash: ")
-        || lower.contains("crashed")
-        || lower.contains("lost connection to the test runner")
-        || lower.contains("test runner exited");
+    let runner = RUNNER_VANISHED.iter().any(|p| message.starts_with(p))
+        || RUNNER_VANISHED_EXACTLY.contains(&message);
     runner.then_some(Vanished::Runner)
 }
 
@@ -797,11 +846,11 @@ struct RunContext<'a> {
 /// launchd's clock and ours cannot cut off an early exit.
 const EXIT_QUERY_LEAD: f64 = 2.0;
 
-/// How long after a failure the exit behind it may be logged. launchd writes
-/// the line when it reaps the process, which can trail the moment the test
-/// noticed. XCTest restarts a crashed unit-test host, and in a measured run the
-/// restart's clean exit landed 1.5s after the failure, so the margin stays well
-/// under that.
+/// How long after a failure on a simulator the exit behind it may be logged.
+/// launchd writes the line when it reaps the process, which can trail the
+/// moment the test noticed. XCTest restarts a crashed unit-test host, and in a
+/// measured run the restart's clean exit landed 1.5s after the failure, so the
+/// margin stays well under that. A Mac gets none (see [`ExitLog::after_failure`]).
 const EXIT_AFTER_FAILURE: f64 = 0.5;
 
 /// The longest the exit query may take before the report goes out without
@@ -821,7 +870,8 @@ const MAX_TIMED_FAILURES: usize = 20;
 
 /// For each failure with a message that says the app or the test runner
 /// vanished, the exit launchd logged for it: the last exit of that process
-/// between the test's start and just after that message was recorded. Best
+/// between the test's start and the moment that message was recorded (just
+/// after it, on a simulator: [`ExitLog::after_failure`]). Best
 /// effort and bounded: an unreadable log, an unsupported destination, or a
 /// failure with no activity log leaves that failure without one. Also the log
 /// that was searched, when there was a failure to search it for.
@@ -850,7 +900,7 @@ fn terminations(
             Some(ExitWindow {
                 cause,
                 from: times.started.map_or(run_start, |t| t - 1.0),
-                until: times.failed + EXIT_AFTER_FAILURE,
+                until: times.failed + log.after_failure(),
             })
         })
         .collect();
@@ -991,6 +1041,20 @@ impl ExitLog {
         match self {
             Self::Mac => exits::Source::Mac,
             Self::Simulator(udid) => exits::Source::Simulator(udid),
+        }
+    }
+
+    /// How long after a failure the exit behind it may land: a simulator's
+    /// [`EXIT_AFTER_FAILURE`], and nothing on a Mac. There XCTest records a
+    /// failure only after the exit behind it, 0.3s after a host's `exit` and
+    /// 2s to 6.3s after a crash (it waits for the crash report), and the host
+    /// it restarts to finish the run exited 0.4s to 0.8s after the failure. A
+    /// simulator's margin would take the restarted host's exit for the crash,
+    /// and no margin is needed.
+    fn after_failure(&self) -> f64 {
+        match self {
+            Self::Mac => 0.0,
+            Self::Simulator(_) => EXIT_AFTER_FAILURE,
         }
     }
 
@@ -2813,6 +2877,55 @@ mod tests {
     }
 
     #[test]
+    fn a_macos_host_that_vanished_is_the_runner() {
+        // Xcode 27 on macOS 27, a hosted unit test: the host crashed as the
+        // first test ran, as a later one, as a Swift Testing test, or called
+        // `exit`, and XCTest gave up on a host that crashed again each time.
+        for message in [
+            "The test runner crashed while preparing to run tests: SweetpadB5Mac at \
+             +[XCTFailableInvocation invokeStandardConventionInvocation:completion:]. \
+             libsystem_c.dylib: abort() called",
+            "Crash: SweetpadB5Mac at +[XCTFailableInvocation \
+             invokeStandardConventionInvocation:completion:]. libsystem_c.dylib: abort() called",
+            "Crash: SweetpadB5Mac at specialized static \
+             Runner._applyScopingTraits(for:testCase:_:). libsystem_c.dylib: abort() called",
+            "The test runner exited with code 3 before finishing running tests. This may be \
+             due to your code calling 'exit', consider adding a symbolic breakpoint on 'exit' \
+             to debug.",
+            "Exceeded max restart count of 2. (Underlying Error: Crash: SweetpadB5Mac at \
+             specialized static Runner._applyScopingTraits(for:testCase:_:). \
+             libsystem_c.dylib: abort() called)",
+            "Lost connection to the test runner",
+        ] {
+            assert_eq!(vanished(message), Some(Vanished::Runner), "{message}");
+        }
+        assert_eq!(
+            vanished("dev.sweetpad.exitprobe.app crashed in -[ProbeView boom]"),
+            Some(Vanished::Named("dev.sweetpad.exitprobe.app".into()))
+        );
+    }
+
+    #[test]
+    fn a_failure_that_only_mentions_a_crash_is_not_one() {
+        // An XCTFail and a Swift Testing issue whose text says "crashed", as
+        // Xcode 27 recorded them, and other messages that share a word with
+        // Xcode's but not its wording.
+        for message in [
+            "failed - simulated: the helper crashed",
+            "Issue recorded: simulated: the helper crashed",
+            "Expectation failed: worker.crashed == false",
+            "failed - the server is not running",
+            "Critical process com.apple.backboardd crashed in main",
+            "Exceeded max restart count of 2. (Underlying Error: the helper crashed)",
+            "Lost connection to testmanagerd",
+            "Warning: The test runner exited with code 1 while the state machine was in state \
+             Finished.",
+        ] {
+            assert_eq!(vanished(message), None, "{message}");
+        }
+    }
+
+    #[test]
     fn a_crash_recorded_after_another_failure_still_gets_its_exit() {
         // The summary gives the test's first message, and the crash can come
         // after it. The exit is timed by the message that names the app.
@@ -3093,6 +3206,63 @@ mod tests {
             ..window
         };
         assert!(runner.exit_in(&found, &mut || None).is_none());
+    }
+
+    #[test]
+    fn a_macos_failure_window_closes_at_the_failure() {
+        // Two hosted unit-test runs on macOS 27. The host crashed, or called
+        // `exit(3)`, and XCTest recorded the failure 4.5s or 0.3s later, then
+        // restarted the host to run the next test, which passed; that host
+        // exited cleanly just under half a second after the failure.
+        const HOST: &str = "dev.sweetpad.b5.mac";
+        for (exit, restarted, failed) in [
+            (
+                exit_at(
+                    HOST,
+                    34271,
+                    "2026-09-27 00:01:43.425430+0200",
+                    "exited due to SIGABRT | sent by SweetpadB5Mac[34271], ran for 542ms",
+                ),
+                exit_at(
+                    HOST,
+                    34334,
+                    "2026-09-27 00:01:48.356533+0200",
+                    "exited due to exit(0), ran for 415ms",
+                ),
+                1_790_460_107.891,
+            ),
+            (
+                exit_at(
+                    HOST,
+                    35018,
+                    "2026-09-27 00:02:40.512247+0200",
+                    "exited due to exit(3), ran for 505ms",
+                ),
+                exit_at(
+                    HOST,
+                    35032,
+                    "2026-09-27 00:02:41.246614+0200",
+                    "exited due to exit(0), ran for 460ms",
+                ),
+                1_790_460_160.794,
+            ),
+        ] {
+            let found = vec![exit.clone(), restarted.clone()];
+            // The host is the runner. A unit test records no start, so the
+            // window opens at the run's.
+            let window = |after: f64| ExitWindow {
+                cause: Vanished::Runner,
+                from: failed - 30.0,
+                until: failed + after,
+            };
+            let host = &mut || Some(HOST.to_string());
+            let got = window(ExitLog::Mac.after_failure()).exit_in(&found, host);
+            assert_eq!(got.and_then(|e| e.pid), exit.pid);
+            // A simulator's margin would reach the restarted host's exit.
+            let simulator = ExitLog::Simulator("U".into()).after_failure();
+            let got = window(simulator).exit_in(&found, host);
+            assert_eq!(got.and_then(|e| e.pid), restarted.pid);
+        }
     }
 
     #[test]

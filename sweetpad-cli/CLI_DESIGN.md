@@ -2535,24 +2535,49 @@ Under `-o json` and ndjson the failure gains `terminationReason`, the same
 object `app logs --exits` reports per exit: `namespace`, `code`, `reason`,
 `label`, `explanation`, `exception`, and the rest. The field is additive, so `schema` stays.
 
-**Which failures, in Xcode's words.** Each wording was reproduced against a
-scratch app on Xcode 27. `<id> crashed` and `… application <id> is not running`
-name the app. `Test crashed with signal kill.` (the UI test runner killed) and
-`Crash: <App> at <frame>` (a unit test's host app crashed) point at the process
-running the tests, as do `Lost connection to the test runner` and `… test
-runner exited …`. A UI test's runner is its `.xctrunner` app; a unit test's is
-the host app, whose bundle id comes from the in-process build-settings
-resolver. Every message a test recorded is checked (§9l), and the first with
-one of these wordings decides, since an assertion that failed before the crash
-is recorded ahead of it. Any other failure is left alone, so an ordinary red
-suite pays nothing.
+**Which failures, in Xcode's words.** Each wording below was reproduced against
+a scratch app on Xcode 27, unless it is marked as read from XCTest's own
+strings. `<id> crashed`, `<id> crashed in <symbol>` (strings) and `…
+application <id> is not running` name the app. `Test crashed with signal kill.`
+(the UI test runner killed) points at the process running the tests. So does
+what a unit test's host app gets when it crashes: `Crash: <App> at <frame>.
+<library>: <reason>`, or `The test runner crashed while preparing to run tests:
+…` when it was the first test to run. A host that calls `exit` gets `The test
+runner exited with code 3 before finishing running tests. …`. A Swift Testing
+test crashes its host in the same words. From the strings come `Lost connection
+to the test runner`, `Lost connection to test process`, `The test runner
+crashed before establishing connection: …` and `Test runner crashed.` When the
+host crashed on every restart, XCTest writes `Exceeded max restart count of 2.
+(Underlying Error: …)`, which counts when its underlying error does. A UI
+test's runner is its `.xctrunner` app; a unit test's is the host app, whose
+bundle id comes from the in-process build-settings resolver. Every message a
+test recorded is checked (§9l), and the first with one of these wordings
+decides, since an assertion that failed before the crash is recorded ahead of
+it.
+
+**A wording, not a word.** Matching "crashed" anywhere in a message took an
+assertion's own text for a crash: `XCTFail("the helper crashed")`, recorded as
+`failed - the helper crashed`, or a Swift Testing `Issue recorded: …`. That
+test then got whichever exit of the host fell in its window, a later test's
+crash or the host's `exited with status 1` at teardown. So each wording is
+matched where Xcode writes it: the runner's at the start of the message, an
+app's `crashed` right after its bundle id, and `is not running` only after
+`application <id>`. Any other failure is left alone, so an ordinary red suite
+pays nothing.
 
 **Which exit.** One `log show` covers every app job's exits over the run. Per
 failure, the test's activity log gives two times: the test's start and the
-moment that message was recorded. The exit is that process's last one between
-them, plus half a second. launchd can log the reap just after XCTest notices,
-but the margin cannot be wider: XCTest restarts a crashed unit-test host, and
-the restart exited cleanly 1.5s after the failure it caused.
+moment that message was recorded. A unit test records no start, so its window
+opens with the run. The exit is that process's last one between them. On a
+simulator the window runs half a second past the failure. launchd can log the
+reap just after XCTest notices, but the margin cannot be wider: XCTest restarts
+a crashed unit-test host, and the restart exited cleanly 1.5s after the failure
+it caused. On a Mac the window closes at the failure. There XCTest records a
+failure only after the exit behind it: 0.3s after a host's `exit`, and 2s to
+6.3s after a crash, while it waits for the crash report. The host it restarts
+to finish the run exited 0.4s to 0.8s after the failure, so with the
+simulator's margin two runs out of four gave the test whose host went away the
+restarted host's `exited normally`.
 
 **Best effort, bounded.** The query gives up after 15s, and at most 20 failures
 are timed (each costs an `xcresulttool` read). A failed query, a device
