@@ -495,6 +495,14 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
         ));
     }
 
+    // Validate the requirement (remote only) before anything else, so a bad
+    // requirement is reported ahead of the prompt/mutation.
+    let requirement = if remote {
+        Some(swift_flags_for(&requirement_spec(&args.requirement)?))
+    } else {
+        None
+    };
+
     // Fail before mutating anything if we can neither be told nor prompt for
     // the products/targets to link — the same guard as the xcodeproj path, so a
     // non-interactive add never leaves a dangling manifest edit behind a
@@ -519,18 +527,18 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
     let pristine_lockfile = read_lockfile(container);
     let backup = MutationBackup::create(&manifest_path, &pristine)?;
 
-    // 1. Add the dependency to the manifest.
-    let requirement = if remote {
-        swift_flags_for(&requirement_spec(&args.requirement)?)
-    } else {
-        Vec::new()
+    // 1. Add the dependency to the manifest. SwiftPM resolves a local path
+    //    against the package root, so it is written relative to that.
+    let quiet = ctx.out.is_json() || ctx.out.is_ndjson();
+    let added = match &requirement {
+        Some(flags) => swiftpm::add_dependency(container, &args.url, Some(flags), quiet),
+        None => local_relative_path(&manifest_path, &args.url)
+            .and_then(|rel| swiftpm::add_dependency(container, &rel, None, quiet)),
     };
-    swiftpm::add_dependency(
-        container,
-        &args.url,
-        &requirement,
-        ctx.out.is_json() || ctx.out.is_ndjson(),
-    )?;
+    if let Err(e) = added {
+        backup.commit();
+        return Err(e);
+    }
     ctx.out.note(&format!("added package {}", args.url));
 
     let linked = (|| -> Result<(Vec<String>, Vec<String>), CliError> {
@@ -1465,9 +1473,10 @@ fn heal_interrupted_mutation(target: &Path, out: &Output) {
     }
 }
 
-/// Path to the local package directory, relative to the project directory — how
-/// either document format records a local package.
-fn local_relative_path(xcodeproj: &Path, url: &str) -> Result<String, CliError> {
+/// Path to the local package directory, relative to the directory holding
+/// `document` (an `.xcodeproj` or a `Package.swift`) — how both project
+/// document formats and SwiftPM record a local package.
+fn local_relative_path(document: &Path, url: &str) -> Result<String, CliError> {
     let target = PathBuf::from(url);
     if !target.exists() {
         return Err(CliError::new(format!(
@@ -1477,7 +1486,7 @@ fn local_relative_path(xcodeproj: &Path, url: &str) -> Result<String, CliError> 
     // A bare `--project App.xcodeproj` has parent `Some("")`, not `None` —
     // and canonicalizing "" fails, which would write an absolute (machine-
     // specific) relativePath into the project.
-    let proj_dir = match xcodeproj.parent() {
+    let proj_dir = match document.parent() {
         Some(p) if !p.as_os_str().is_empty() => p,
         _ => Path::new("."),
     };

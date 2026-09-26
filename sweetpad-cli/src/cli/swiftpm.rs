@@ -273,19 +273,20 @@ pub fn manifest_at(package_path: &Path) -> Result<Manifest, CliError> {
     parse_manifest(&stdout)
 }
 
-/// `swift package add-dependency <url> <requirement…>` (Swift 6+). `requirement`
-/// is the already-assembled SwiftPM flag list (e.g. `["--from", "1.2.3"]`).
-/// Streams output to the terminal; `quiet` discards stdout (machine modes own
-/// stdout — Swift 6 prints progress lines).
+/// `swift package add-dependency <dependency> …` (Swift 6+). `requirement` is
+/// the already-assembled SwiftPM flag list for a remote URL (e.g. `["--from",
+/// "1.2.3"]`); `None` adds `dependency` as a local path, which SwiftPM writes
+/// into the manifest verbatim and resolves against the package root. Streams
+/// output to the terminal; `quiet` discards stdout (machine modes own stdout —
+/// Swift 6 prints progress lines).
 pub fn add_dependency(
     container: &Container,
-    url: &str,
-    requirement: &[String],
+    dependency: &str,
+    requirement: Option<&[String]>,
     quiet: bool,
 ) -> Result<(), CliError> {
     let cwd = package_dir(container);
-    let mut args: Vec<&str> = vec!["package", "add-dependency", url];
-    args.extend(requirement.iter().map(String::as_str));
+    let args = add_dependency_args(dependency, requirement);
     if process::run("swift", &args, cwd.as_deref(), quiet)? {
         Ok(())
     } else {
@@ -294,6 +295,18 @@ pub fn add_dependency(
                 .context("adding the package dependency"),
         )
     }
+}
+
+/// The argv for [`add_dependency`]. A local dependency names its type: SwiftPM
+/// reads any other argument as a URL and refuses it without a version
+/// requirement.
+fn add_dependency_args<'a>(dependency: &'a str, requirement: Option<&'a [String]>) -> Vec<&'a str> {
+    let mut args = vec!["package", "add-dependency", dependency];
+    match requirement {
+        Some(flags) => args.extend(flags.iter().map(String::as_str)),
+        None => args.extend(["--type", "path"]),
+    }
+    args
 }
 
 /// `swift package add-target-dependency <product> <target> --package <name>`
@@ -652,6 +665,25 @@ mod tests {
             Some(5)
         );
         assert_eq!(parse_swift_major("garbage"), None);
+    }
+
+    #[test]
+    fn a_local_dependency_is_added_as_a_path() {
+        assert_eq!(
+            add_dependency_args("../Dep", None),
+            ["package", "add-dependency", "../Dep", "--type", "path"]
+        );
+        let from = ["--from".to_string(), "1.2.3".to_string()];
+        assert_eq!(
+            add_dependency_args("https://example.com/dep.git", Some(&from)),
+            [
+                "package",
+                "add-dependency",
+                "https://example.com/dep.git",
+                "--from",
+                "1.2.3"
+            ]
+        );
     }
 
     #[test]
