@@ -198,9 +198,11 @@ displays test results with:
 sweetpad test --junit ./reports/tests.xml
 ```
 
-Each failing test's `classname` is `Target.Class` and its `name` is the method, as in
+The report has a `<testcase>` for every test, including the ones that passed or were skipped, with
+the time each took. A test's `classname` is `Target.Class` and its `name` is the method, as in
 `classname="SweetpadCIAppTests.AppTests" name="testGreeting"`, so report viewers group the tests by
-target and then by class.
+target and then by class. A failure's `message` is the first line of its first message, and the
+`<failure>` element's text has every message the test recorded, in full.
 
 **Inline annotations on GitHub.** `--gh-annotations` emits GitHub Actions annotations, so failures
 show up on the diff instead of only in the log:

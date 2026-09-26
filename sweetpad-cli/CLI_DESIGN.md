@@ -2244,6 +2244,24 @@ selects nothing and Swift Testing reports a pass. The test's `test://` URL in th
 bundle keeps the parentheses only where they belong, so the URL decides. With no
 URL, a test gets the XCTest spelling.
 
+### A JUnit report of every test
+
+`--junit` writes a `<testcase>` for every test the run recorded: passed, failed,
+or skipped (`<skipped message="…"/>`), each with its `time` when the tree has
+one. GitLab counts the cases and ignores the suite's `tests`/`failures`
+attributes, so a report of failures alone showed 5 tests for a run of 6. The
+summary lists only failures, so the passed and skipped tests come from the test
+tree, which a red run reads anyway. A green run reads it only for `--junit`,
+about 50 ms on the fixture. With no tree the report falls back to the failures
+under the summary's totals, and `test` warns that it did.
+
+A failure's `message` attribute is the first line of its first message. An XML
+parser reads a raw line break inside an attribute as a space, so a Swift Testing
+expectation's `n → 2` ran into its headline. The `<failure>` body holds every
+message the test recorded (`messages` in JSON), in full, with a blank line
+between two. Text is escaped for XML 1.0, and the control characters it cannot
+carry at all, such as an ANSI escape's ESC, become U+FFFD.
+
 ## 9m. v8 — failures that name their own fix
 
 Six more from §9k's family, all found by agents losing time rather than by

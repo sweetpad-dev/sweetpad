@@ -200,7 +200,8 @@ sweetpad test --only-testing MyAppTests/LoginTests -o json
 sweetpad test build -q                                  # compile the tests, run none
 ```
 
-`--coverage` adds a coverage summary; `--junit <path>` writes a CI report;
+`--coverage` adds a coverage summary; `--junit <path>` writes a JUnit report
+with a test case for every test, passed and skipped ones included;
 `--retry-flaky <N>` retries each failing test up to N times before calling it
 failed.
 

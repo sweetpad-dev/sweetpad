@@ -743,6 +743,44 @@ pub struct TestSummary {
     pub failed_tests: u32,
     pub skipped_tests: u32,
     pub test_failures: Vec<TestFailure>,
+    /// Every test case the run recorded, passed ones included, in tree order.
+    /// The summary lists only failures, so these come from the test tree, and
+    /// only when [`test_summary`] is asked for them and the tree can be read.
+    #[serde(skip)]
+    pub test_cases: Option<Vec<TestCase>>,
+}
+
+/// How a test case ended, as the test tree records it. An expected failure
+/// counts as passed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaseOutcome {
+    Passed,
+    Failed,
+    Skipped,
+}
+
+impl CaseOutcome {
+    fn from_result(result: Option<&str>) -> Self {
+        match result {
+            Some(r) if r.eq_ignore_ascii_case("failed") => Self::Failed,
+            Some(r) if r.eq_ignore_ascii_case("skipped") => Self::Skipped,
+            _ => Self::Passed,
+        }
+    }
+}
+
+/// One test case of a run, from its test tree.
+#[derive(Debug)]
+pub struct TestCase {
+    /// As `-only-testing:` takes it (`Target/Class/method`).
+    pub identifier: String,
+    pub outcome: CaseOutcome,
+    /// How long it ran, in seconds, when the tree says.
+    pub duration: Option<f64>,
+    /// Each distinct failure message it recorded, in order.
+    pub messages: Vec<String>,
+    /// Why it was skipped, when it was and the tree says why.
+    pub skip_message: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -897,9 +935,12 @@ struct TreeCase<'a> {
     target: Option<&'a str>,
     identifier: &'a str,
     url: Option<&'a str>,
-    failed: bool,
+    outcome: CaseOutcome,
+    duration: Option<f64>,
     /// Each distinct failure message recorded under the case, in tree order.
     messages: Vec<&'a str>,
+    /// The first `Skip Message` recorded under the case.
+    skip_message: Option<&'a str>,
 }
 
 /// Walk the xcresulttool test tree (`testNodes`/`children`) for its test
@@ -915,13 +956,19 @@ fn tree_cases<'a>(
         Some("Test Case") => {
             if let Some(identifier) = field("nodeIdentifier") {
                 let mut messages = Vec::new();
-                failure_messages(node, &mut messages);
+                messages_under(node, "Failure Message", &mut messages);
+                let mut skipped = Vec::new();
+                messages_under(node, "Skip Message", &mut skipped);
                 out.push(TreeCase {
                     target,
                     identifier,
                     url: field("nodeIdentifierURL"),
-                    failed: field("result").is_some_and(|r| r.eq_ignore_ascii_case("failed")),
+                    outcome: CaseOutcome::from_result(field("result")),
+                    duration: node
+                        .get("durationInSeconds")
+                        .and_then(serde_json::Value::as_f64),
                     messages,
+                    skip_message: skipped.first().copied(),
                 });
             }
             target
@@ -937,21 +984,21 @@ fn tree_cases<'a>(
     }
 }
 
-/// The `Failure Message` nodes under `node`, whether a test case holds them
-/// itself or through the runs below it (a parameterized test's `Arguments`, a
-/// retried test's `Repetition`). A retry records the same message again, so
-/// each is kept once.
-fn failure_messages<'a>(node: &'a serde_json::Value, out: &mut Vec<&'a str>) {
+/// The messages of the `kind` nodes (`Failure Message`, `Skip Message`) under
+/// `node`, whether a test case holds them itself or through the runs below it
+/// (a parameterized test's `Arguments`, a retried test's `Repetition`). A
+/// retry records the same message again, so each is kept once.
+fn messages_under<'a>(node: &'a serde_json::Value, kind: &str, out: &mut Vec<&'a str>) {
     let children = node.get("children").and_then(serde_json::Value::as_array);
     for child in children.into_iter().flatten() {
-        if child.get("nodeType").and_then(serde_json::Value::as_str) == Some("Failure Message") {
+        if child.get("nodeType").and_then(serde_json::Value::as_str) == Some(kind) {
             if let Some(message) = child.get("name").and_then(serde_json::Value::as_str)
                 && !out.contains(&message)
             {
                 out.push(message);
             }
         } else {
-            failure_messages(child, out);
+            messages_under(child, kind, out);
         }
     }
 }
@@ -1021,7 +1068,7 @@ fn failed_selectors(root: &serde_json::Value) -> Vec<String> {
     tree_cases(root, None, &mut cases);
     let mut selectors: Vec<String> = cases
         .iter()
-        .filter(|c| c.failed)
+        .filter(|c| c.outcome == CaseOutcome::Failed)
         .map(|c| test_selector(c.target, c.identifier, c.url))
         .collect();
     selectors.sort();
@@ -1052,7 +1099,7 @@ impl TestTargets {
         let mut by_url = BTreeMap::new();
         let mut failed = BTreeSet::new();
         for case in cases {
-            if case.failed {
+            if case.outcome == CaseOutcome::Failed {
                 let selector = test_selector(case.target, case.identifier, case.url);
                 failed.insert(selector.trim_end_matches("()").to_string());
             }
@@ -1142,7 +1189,10 @@ pub fn coverage_percent(bundle: &Path) -> Option<f64> {
 /// several: an app that crashed mid-wait fails the wait as well. So a run with
 /// failures also reads the test tree for the rest; when the tree can't be
 /// read, each failure keeps the one message the summary gave it.
-pub fn test_summary(bundle: &Path) -> Result<TestSummary, CliError> {
+///
+/// `every_case` asks for [`TestSummary::test_cases`] as well, which costs a
+/// green run the tree read it otherwise skips.
+pub fn test_summary(bundle: &Path, every_case: bool) -> Result<TestSummary, CliError> {
     let out = process::capture(
         "xcrun",
         &[
@@ -1157,12 +1207,32 @@ pub fn test_summary(bundle: &Path) -> Result<TestSummary, CliError> {
     )
     .context("reading the test results")?;
     let mut summary = parse_summary(&out)?;
-    if !summary.test_failures.is_empty()
+    if (every_case || !summary.test_failures.is_empty())
         && let Ok(root) = test_tree(bundle)
     {
         add_other_messages(&mut summary, &root);
+        if every_case {
+            summary.test_cases = Some(test_cases(&root));
+        }
     }
     Ok(summary)
+}
+
+/// Every test case in a test tree, in tree order, named as `-only-testing:`
+/// takes it.
+fn test_cases(root: &serde_json::Value) -> Vec<TestCase> {
+    let mut cases = Vec::new();
+    tree_cases(root, None, &mut cases);
+    cases
+        .into_iter()
+        .map(|c| TestCase {
+            identifier: test_selector(c.target, c.identifier, c.url),
+            outcome: c.outcome,
+            duration: c.duration,
+            messages: c.messages.into_iter().map(str::to_string).collect(),
+            skip_message: c.skip_message.map(str::to_string),
+        })
+        .collect()
 }
 
 /// Parse the `xcresulttool` summary JSON (skipping any leading non-JSON).
@@ -2827,6 +2897,87 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
                 .iter()
                 .all(|f| f.other_messages.is_empty())
         );
+    }
+
+    #[test]
+    fn every_test_case_is_listed_with_its_outcome_and_time() {
+        // Trimmed from an Xcode 27 run of the fixture: a pass, a skip, a
+        // failure with two messages, and a Swift Testing failure.
+        let recorded = serde_json::json!({ "testNodes": [
+            { "name": "SweetpadCIApp", "nodeType": "Test Plan", "children": [
+                { "name": "SweetpadCIAppTests", "nodeType": "Unit test bundle", "children": [
+                    { "name": "AppTests", "nodeType": "Test Suite", "children": [
+                        { "name": "testArithmetic()", "nodeIdentifier": "AppTests/testArithmetic()",
+                          "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/AppTests/testArithmetic",
+                          "nodeType": "Test Case", "result": "Passed",
+                          "duration": "0,0033s", "durationInSeconds": 0.003_320_097_923_278_808_6 },
+                        { "name": "testSkipped()", "nodeIdentifier": "AppTests/testSkipped()",
+                          "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/AppTests/testSkipped",
+                          "nodeType": "Test Case", "result": "Skipped", "durationInSeconds": 0.006_891,
+                          "children": [ { "name": "Test skipped - not on this simulator", "nodeType": "Skip Message" } ] },
+                        { "name": "testTwoFailures()", "nodeIdentifier": "AppTests/testTwoFailures()",
+                          "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/AppTests/testTwoFailures",
+                          "nodeType": "Test Case", "result": "Failed", "durationInSeconds": 0.038_118,
+                          "children": [
+                            { "name": "XCTAssertEqual failed: (\"hello\") is not equal to (\"world\")", "nodeType": "Failure Message" },
+                            { "name": "XCTAssertTrue failed - second failure\nwith a second line", "nodeType": "Failure Message" } ] } ] },
+                    { "name": "GreetingSuite", "nodeType": "Test Suite", "children": [
+                        { "name": "suiteGreeting()", "nodeIdentifier": "GreetingSuite/suiteGreeting()",
+                          "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/suiteGreeting()",
+                          "nodeType": "Test Case", "result": "Failed", "durationInSeconds": 0.005_311,
+                          "children": [ { "name": "Expectation failed: n == 1\nn → 2", "nodeType": "Failure Message" } ] },
+                        { "name": "expected()", "nodeIdentifier": "GreetingSuite/expected()",
+                          "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/expected()",
+                          "nodeType": "Test Case", "result": "Expected Failure" } ] } ] } ] }
+        ] });
+        let cases = test_cases(&recorded);
+        let listed: Vec<(&str, CaseOutcome, Option<f64>)> = cases
+            .iter()
+            .map(|c| (c.identifier.as_str(), c.outcome, c.duration))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                (
+                    "SweetpadCIAppTests/AppTests/testArithmetic",
+                    CaseOutcome::Passed,
+                    Some(0.003_320_097_923_278_808_6)
+                ),
+                (
+                    "SweetpadCIAppTests/AppTests/testSkipped",
+                    CaseOutcome::Skipped,
+                    Some(0.006_891)
+                ),
+                (
+                    "SweetpadCIAppTests/AppTests/testTwoFailures",
+                    CaseOutcome::Failed,
+                    Some(0.038_118)
+                ),
+                (
+                    "SweetpadCIAppTests/GreetingSuite/suiteGreeting()",
+                    CaseOutcome::Failed,
+                    Some(0.005_311)
+                ),
+                // An expected failure is a pass, and a case may carry no time.
+                (
+                    "SweetpadCIAppTests/GreetingSuite/expected()",
+                    CaseOutcome::Passed,
+                    None
+                ),
+            ]
+        );
+        assert_eq!(
+            cases[1].skip_message.as_deref(),
+            Some("Test skipped - not on this simulator")
+        );
+        assert_eq!(
+            cases[2].messages,
+            [
+                "XCTAssertEqual failed: (\"hello\") is not equal to (\"world\")",
+                "XCTAssertTrue failed - second failure\nwith a second line",
+            ]
+        );
+        assert!(cases[0].messages.is_empty() && cases[0].skip_message.is_none());
     }
 
     #[test]

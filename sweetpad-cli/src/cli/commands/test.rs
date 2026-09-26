@@ -545,7 +545,9 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // enveloped summary the dispatcher renders from the returned payload.
     let outcome = plan.run(&ctx.out)?;
     let summary = if run_bundle.exists() {
-        match xcodebuild::test_summary(&run_bundle) {
+        // A JUnit report lists every test, and only the test tree has the
+        // passed ones, so `--junit` pays for reading it on a green run too.
+        match xcodebuild::test_summary(&run_bundle, args.junit.is_some()) {
             Ok(s) => Some(s),
             // The bundle exists but can't be read (xcresulttool format drift,
             // a transient xcrun failure). For a green run that is *not* "no
@@ -594,7 +596,8 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     } else {
         run_bundle
     };
-    if summary.is_none() {
+    let read_summary = summary.is_some();
+    if !read_summary {
         ctx.out
             .warn("could not read the result bundle's summary; counts show as 0");
     }
@@ -603,6 +606,12 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
 
     if let Some(junit) = args.junit {
         write_junit(junit, &target.scheme, &summary)?;
+        if read_summary && summary.test_cases.is_none() {
+            ctx.out.warn(
+                "could not read the result bundle's test tree, so the JUnit report lists only \
+                 the failed tests",
+            );
+        }
         ctx.out.note(&format!("junit report: {}", junit.display()));
     }
 
@@ -1552,46 +1561,142 @@ fn age_phrase(stamp: f64) -> Option<String> {
     ))
 }
 
-/// Write a minimal JUnit XML report from the parsed summary: totals on the
-/// suite, one `<testcase>` per recorded failure (the summary carries failures
-/// individually and the rest as counts).
+/// Write the run's JUnit XML report to `path` (see [`junit_xml`]).
 fn write_junit(
     path: &Path,
     scheme: &str,
     summary: &xcodebuild::TestSummary,
 ) -> Result<(), CliError> {
-    use std::fmt::Write as _;
-    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    let _ = writeln!(
-        xml,
-        "<testsuites tests=\"{}\" failures=\"{}\" skipped=\"{}\">",
-        summary.total_test_count, summary.failed_tests, summary.skipped_tests
-    );
-    let _ = writeln!(
-        xml,
-        "  <testsuite name=\"{}\" tests=\"{}\" failures=\"{}\" skipped=\"{}\">",
-        xml_escape(scheme),
-        summary.total_test_count,
-        summary.failed_tests,
-        summary.skipped_tests
-    );
-    for f in &summary.test_failures {
-        let selector = f.selector();
-        let (classname, name) = junit_names(&selector, scheme);
-        let _ = writeln!(
-            xml,
-            "    <testcase classname=\"{}\" name=\"{}\">\n      <failure message=\"{}\"/>\n    </testcase>",
-            xml_escape(&classname),
-            xml_escape(name),
-            xml_escape(&f.failure_text)
-        );
-    }
-    xml.push_str("  </testsuite>\n</testsuites>\n");
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    std::fs::write(path, xml)
+    std::fs::write(path, junit_xml(scheme, summary))
         .map_err(|e| CliError::new(format!("failed to write {}: {e}", path.display())))
+}
+
+/// One `<testcase>` of a JUnit report.
+struct JunitCase<'a> {
+    /// As `-only-testing` takes it, which [`junit_names`] splits.
+    selector: String,
+    outcome: xcodebuild::CaseOutcome,
+    duration: Option<f64>,
+    /// Every failure message of a failed test, or why a skipped one skipped.
+    messages: Vec<&'a str>,
+}
+
+/// The report's test cases: every case in the test tree, a failed one with
+/// its messages as the summary gives them, then any failure the tree does not
+/// list. With no tree to read, only the summary's failures.
+fn junit_cases(summary: &xcodebuild::TestSummary) -> Vec<JunitCase<'_>> {
+    use xcodebuild::CaseOutcome;
+    let same = |a: &str, b: &str| a.trim_end_matches("()") == b.trim_end_matches("()");
+    let failures: Vec<(String, &xcodebuild::TestFailure)> = summary
+        .test_failures
+        .iter()
+        .map(|f| (f.selector(), f))
+        .collect();
+    let mut cases: Vec<JunitCase> = summary
+        .test_cases
+        .iter()
+        .flatten()
+        .map(|case| {
+            let failure = failures.iter().find(|(s, _)| same(s, &case.identifier));
+            let (outcome, messages) = match (failure, case.outcome) {
+                (Some((_, f)), _) => (CaseOutcome::Failed, f.messages().collect()),
+                (None, CaseOutcome::Failed) => (
+                    CaseOutcome::Failed,
+                    case.messages.iter().map(String::as_str).collect(),
+                ),
+                (None, CaseOutcome::Skipped) => (
+                    CaseOutcome::Skipped,
+                    case.skip_message.iter().map(String::as_str).collect(),
+                ),
+                (None, CaseOutcome::Passed) => (CaseOutcome::Passed, Vec::new()),
+            };
+            JunitCase {
+                selector: case.identifier.clone(),
+                outcome,
+                duration: case.duration,
+                messages,
+            }
+        })
+        .collect();
+    for (selector, f) in failures {
+        if !cases.iter().any(|c| same(&c.selector, &selector)) {
+            cases.push(JunitCase {
+                selector,
+                outcome: CaseOutcome::Failed,
+                duration: None,
+                messages: f.messages().collect(),
+            });
+        }
+    }
+    cases
+}
+
+/// A JUnit XML report of the run: one `<testcase>` per test, passed and
+/// skipped ones included, since GitLab counts the cases and ignores the
+/// suite's totals. A failure's `message` is the first line of its first
+/// message, and the element's body holds every message in full, a blank line
+/// between two; an attribute can't carry a line break the way text can. With
+/// no test tree only the failures are listed, under the summary's totals.
+fn junit_xml(scheme: &str, summary: &xcodebuild::TestSummary) -> String {
+    use std::fmt::Write as _;
+    use xcodebuild::CaseOutcome;
+    let cases = junit_cases(summary);
+    let count = |outcome| cases.iter().filter(|c| c.outcome == outcome).count();
+    let widen = |n: u32| usize::try_from(n).unwrap_or(usize::MAX);
+    let (tests, failures, skipped) = if summary.test_cases.is_some() {
+        (
+            cases.len(),
+            count(CaseOutcome::Failed),
+            count(CaseOutcome::Skipped),
+        )
+    } else {
+        (
+            widen(summary.total_test_count),
+            widen(summary.failed_tests),
+            widen(summary.skipped_tests),
+        )
+    };
+    let totals = format!("tests=\"{tests}\" failures=\"{failures}\" skipped=\"{skipped}\"");
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    let _ = writeln!(xml, "<testsuites {totals}>");
+    let _ = writeln!(xml, "  <testsuite name=\"{}\" {totals}>", xml_attr(scheme));
+    for case in &cases {
+        let (classname, name) = junit_names(&case.selector, scheme);
+        let time = case
+            .duration
+            .map_or_else(String::new, |secs| format!(" time=\"{secs:.3}\""));
+        let _ = write!(
+            xml,
+            "    <testcase classname=\"{}\" name=\"{}\"{time}",
+            xml_attr(&classname),
+            xml_attr(name)
+        );
+        match (case.outcome, case.messages.first()) {
+            (CaseOutcome::Passed, _) => xml.push_str("/>\n"),
+            (CaseOutcome::Skipped, None) => xml.push_str(">\n      <skipped/>\n    </testcase>\n"),
+            (CaseOutcome::Skipped, Some(reason)) => {
+                let _ = writeln!(
+                    xml,
+                    ">\n      <skipped message=\"{}\"/>\n    </testcase>",
+                    xml_attr(reason)
+                );
+            }
+            (CaseOutcome::Failed, first) => {
+                let headline = first.and_then(|m| m.lines().next()).unwrap_or_default();
+                let _ = writeln!(
+                    xml,
+                    ">\n      <failure message=\"{}\">{}</failure>\n    </testcase>",
+                    xml_attr(headline),
+                    xml_text(&case.messages.join("\n\n"))
+                );
+            }
+        }
+    }
+    xml.push_str("  </testsuite>\n</testsuites>\n");
+    xml
 }
 
 /// A test's JUnit `classname` and `name`, cut from its `-only-testing`
@@ -1607,11 +1712,33 @@ fn junit_names<'a>(selector: &'a str, scheme: &str) -> (String, &'a str) {
     }
 }
 
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+/// `s` as XML character data: markup characters escaped, and each control
+/// character XML 1.0 cannot carry at all (an ANSI escape's ESC, say) replaced
+/// by U+FFFD.
+fn xml_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '\t' | '\n' | '\r' => out.push(c),
+            c if c < ' ' || matches!(c, '\u{FFFE}' | '\u{FFFF}') => out.push('\u{FFFD}'),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// `s` as a double-quoted XML attribute value: [`xml_text`], with quotes
+/// escaped and line breaks and tabs as character references, since a parser
+/// reads a literal one inside an attribute as a space.
+fn xml_attr(s: &str) -> String {
+    xml_text(s)
         .replace('"', "&quot;")
+        .replace('\n', "&#10;")
+        .replace('\r', "&#13;")
+        .replace('\t', "&#9;")
 }
 
 /// Run a Swift package's tests via `swift test`. Unlike xcodebuild there's no
@@ -2595,6 +2722,8 @@ mod tests {
 
     #[test]
     fn junit_report_escapes_and_counts() {
+        // With no test tree to read, the failures are all there is to list,
+        // and the suite keeps the summary's totals.
         let dir = std::env::temp_dir().join(format!("sweetpad-junit-{}", std::process::id()));
         let path = dir.join("r.xml");
         let summary = xcodebuild::TestSummary {
@@ -2610,6 +2739,7 @@ mod tests {
                 test_identifier_string: "Suite/testA<>()".into(),
                 ..xcodebuild::TestFailure::default()
             }],
+            test_cases: None,
         };
         write_junit(&path, "App", &summary).unwrap();
         let xml = std::fs::read_to_string(&path).unwrap();
@@ -2618,7 +2748,182 @@ mod tests {
             xml.contains("<testcase classname=\"AppTests.Suite\" name=\"testA&lt;&gt;\">"),
             "{xml}"
         );
-        assert!(xml.contains("x &amp; y &quot;broke&quot;"));
+        assert!(
+            xml.contains(
+                "<failure message=\"x &amp; y &quot;broke&quot;\">x &amp; y \"broke\"</failure>"
+            ),
+            "{xml}"
+        );
+        assert_eq!(xml.matches("<testcase ").count(), 1, "{xml}");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The fixture's run as the summary and the test tree give it: a pass, a
+    /// skip, two failures, one of them with a second message, both multi-line.
+    fn junit_summary() -> xcodebuild::TestSummary {
+        use xcodebuild::{CaseOutcome, TestCase};
+        let case = |identifier: &str, outcome, duration, messages: &[&str]| TestCase {
+            identifier: identifier.into(),
+            outcome,
+            duration,
+            messages: messages.iter().map(|m| (*m).to_string()).collect(),
+            skip_message: (outcome == CaseOutcome::Skipped)
+                .then(|| "Test skipped - not on this simulator".to_string()),
+        };
+        let two = [
+            "XCTAssertEqual failed: (\"hello\") is not equal to (\"world\") - first <failure> & \
+             \"quoted\"",
+            "XCTAssertTrue failed - second failure\nwith a second line",
+        ];
+        xcodebuild::TestSummary {
+            result: "Failed".into(),
+            total_test_count: 4,
+            passed_tests: 1,
+            failed_tests: 2,
+            skipped_tests: 1,
+            test_failures: vec![
+                xcodebuild::TestFailure {
+                    test_name: "testTwoFailures()".into(),
+                    target_name: "SweetpadCIAppTests".into(),
+                    failure_text: two[0].into(),
+                    test_identifier_string: "AppTests/testTwoFailures()".into(),
+                    test_identifier_url: "test://com.apple.xcode/SweetpadCIApp/\
+                                          SweetpadCIAppTests/AppTests/testTwoFailures"
+                        .into(),
+                    other_messages: vec![two[1].into()],
+                },
+                xcodebuild::TestFailure {
+                    test_name: "suiteGreeting()".into(),
+                    target_name: "SweetpadCIAppTests".into(),
+                    failure_text: "Expectation failed: n == 1\nn → 2".into(),
+                    test_identifier_string: "GreetingSuite/suiteGreeting()".into(),
+                    test_identifier_url: "test://com.apple.xcode/SweetpadCIApp/\
+                                          SweetpadCIAppTests/GreetingSuite/suiteGreeting()"
+                        .into(),
+                    ..Default::default()
+                },
+            ],
+            test_cases: Some(vec![
+                case(
+                    "SweetpadCIAppTests/AppTests/testArithmetic",
+                    CaseOutcome::Passed,
+                    Some(0.003_32),
+                    &[],
+                ),
+                case(
+                    "SweetpadCIAppTests/AppTests/testSkipped",
+                    CaseOutcome::Skipped,
+                    Some(0.006_89),
+                    &[],
+                ),
+                case(
+                    "SweetpadCIAppTests/AppTests/testTwoFailures",
+                    CaseOutcome::Failed,
+                    Some(0.038_12),
+                    &two,
+                ),
+                case(
+                    "SweetpadCIAppTests/GreetingSuite/suiteGreeting()",
+                    CaseOutcome::Failed,
+                    None,
+                    &["Expectation failed: n == 1\nn → 2"],
+                ),
+            ]),
+        }
+    }
+
+    #[test]
+    fn junit_lists_every_test_the_run_recorded() {
+        // GitLab counts the <testcase> elements and ignores the suite's
+        // totals, so a report of failures alone reads as a smaller run.
+        let xml = junit_xml("SweetpadCIApp", &junit_summary());
+        assert_eq!(xml.matches("<testcase ").count(), 4, "{xml}");
+        assert!(xml.contains("<testsuites tests=\"4\" failures=\"2\" skipped=\"1\">"));
+        assert!(
+            xml.contains(
+                "    <testcase classname=\"SweetpadCIAppTests.AppTests\" name=\"testArithmetic\" \
+                 time=\"0.003\"/>\n"
+            ),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(
+                "    <testcase classname=\"SweetpadCIAppTests.AppTests\" name=\"testSkipped\" \
+                 time=\"0.007\">\n      <skipped message=\"Test skipped - not on this \
+                 simulator\"/>\n    </testcase>\n"
+            ),
+            "{xml}"
+        );
+        // A case the tree gives no time goes without the attribute.
+        assert!(
+            xml.contains(
+                "<testcase classname=\"SweetpadCIAppTests.GreetingSuite\" name=\"suiteGreeting()\">"
+            ),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_junit_failure_carries_every_message_in_its_body() {
+        // An XML parser turns a raw line break inside an attribute into a
+        // space, so `message` holds the first line and the body holds the text.
+        let xml = junit_xml("SweetpadCIApp", &junit_summary());
+        assert!(
+            xml.contains(
+                "<testcase classname=\"SweetpadCIAppTests.AppTests\" name=\"testTwoFailures\" \
+                 time=\"0.038\">\n      <failure message=\"XCTAssertEqual failed: \
+                 (&quot;hello&quot;) is not equal to (&quot;world&quot;) - first \
+                 &lt;failure&gt; &amp; &quot;quoted&quot;\">XCTAssertEqual failed: (\"hello\") \
+                 is not equal to (\"world\") - first &lt;failure&gt; &amp; \"quoted\"\n\n\
+                 XCTAssertTrue failed - second failure\nwith a second line</failure>\n    \
+                 </testcase>\n"
+            ),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(
+                "<failure message=\"Expectation failed: n == 1\">Expectation failed: n == 1\nn → \
+                 2</failure>"
+            ),
+            "{xml}"
+        );
+        // No `message` spans a line.
+        for attribute in xml.split("message=\"").skip(1) {
+            let value = attribute.split('"').next().unwrap_or_default();
+            assert!(!value.contains('\n'), "{value}");
+        }
+    }
+
+    #[test]
+    fn a_failure_the_tree_does_not_list_still_reaches_the_report() {
+        let mut summary = junit_summary();
+        summary.test_failures.push(xcodebuild::TestFailure {
+            test_name: "testGone()".into(),
+            target_name: "SweetpadCIAppUITests".into(),
+            failure_text: "Lost connection to the test runner".into(),
+            test_identifier_string: "AppUITests/testGone()".into(),
+            ..Default::default()
+        });
+        let xml = junit_xml("SweetpadCIApp", &summary);
+        assert!(xml.contains("<testsuites tests=\"5\" failures=\"3\" skipped=\"1\">"));
+        assert!(
+            xml.contains(
+                "<testcase classname=\"SweetpadCIAppUITests.AppUITests\" name=\"testGone\">\n      \
+                 <failure message=\"Lost connection to the test runner\">"
+            ),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn xml_escaping_keeps_what_a_parser_would_lose() {
+        assert_eq!(xml_text("a < b && c > d"), "a &lt; b &amp;&amp; c &gt; d");
+        // XML 1.0 has no way to write most control characters, escaped or not.
+        assert_eq!(xml_text("\u{1b}[31mred\u{0}"), "\u{FFFD}[31mred\u{FFFD}");
+        assert_eq!(xml_text("tab\there\nline"), "tab\there\nline");
+        assert_eq!(
+            xml_attr("say \"hi\"\n\tthen go"),
+            "say &quot;hi&quot;&#10;&#9;then go"
+        );
     }
 }
