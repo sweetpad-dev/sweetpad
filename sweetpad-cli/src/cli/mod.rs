@@ -654,18 +654,15 @@ pub struct Context {
 }
 
 impl Context {
-    /// Warn when this project is generated from a spec that has been edited
-    /// since — see [`pbxedit::stale_generated`] for why that is worth saying
-    /// out loud. Fires at most once per process; a `.xcworkspace` or Swift
-    /// package has no single generated `.xcodeproj` to compare against.
+    /// Warn when this project, or a workspace member, is generated from a spec
+    /// that has been edited since — see [`pbxedit::stale_generated`] for why
+    /// that is worth saying out loud. Runs at most once per process, so a
+    /// workspace is read once however often the command re-resolves.
     pub fn warn_if_project_stale(&self, container: &resolve::Container) {
-        let resolve::Container::Project(xcodeproj) = container else {
-            return;
-        };
         if self.stale_checked.set(()).is_err() {
             return;
         }
-        if let Some(warning) = pbxedit::stale_generated(self.project_file(container), xcodeproj) {
+        for warning in pbxedit::stale_generated_projects(self.project_file(container), container) {
             self.out.warn(&warning);
         }
     }

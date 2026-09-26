@@ -124,6 +124,30 @@ pub fn stale_generated(project_file: &ProjectFile, xcodeproj: &Path) -> Option<S
     ))
 }
 
+/// [`stale_generated`] for every project `container` builds: the project
+/// itself, or each member `.xcodeproj` of a workspace, checked against the
+/// spec beside that member. Tuist always opens its projects through a
+/// workspace, and an XcodeGen project can sit beside one. A member the
+/// workspace references more than once warns once, and an embedded
+/// `project.xcworkspace` checks the project around it. A Swift package has no
+/// generated project.
+#[must_use]
+pub fn stale_generated_projects(project_file: &ProjectFile, container: &Container) -> Vec<String> {
+    let projects = match container {
+        Container::Project(xcodeproj) => vec![xcodeproj.clone()],
+        Container::Workspace(workspace) => sweetpad_lib::workspace::open(workspace)
+            .map(|ws| ws.project_refs)
+            .unwrap_or_default(),
+        Container::SwiftPackage(_) => return Vec::new(),
+    };
+    let mut seen = std::collections::HashSet::new();
+    projects
+        .into_iter()
+        .filter(|p| seen.insert(std::fs::canonicalize(p).unwrap_or_else(|_| p.clone())))
+        .filter_map(|p| stale_generated(project_file, &p))
+        .collect()
+}
+
 /// Refuse to mutate a generated project without `--force` (CLI_DESIGN §9g):
 /// an edit to the `.xcodeproj` would be silently overwritten by the next
 /// regenerate, so the default is a hard error naming the spec to edit
@@ -360,9 +384,12 @@ fn member_list(members: &[PathBuf]) -> String {
 mod tests {
     use super::*;
 
+    fn temp_dir(marker: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("sweetpad-genguard-{}-{marker}", std::process::id()))
+    }
+
     fn temp_project(marker: &str, spec: Option<&str>) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("sweetpad-genguard-{}-{marker}", std::process::id()));
+        let dir = temp_dir(marker);
         let xcodeproj = dir.join("App.xcodeproj");
         std::fs::create_dir_all(&xcodeproj).unwrap();
         if let Some(name) = spec {
@@ -371,11 +398,18 @@ mod tests {
         xcodeproj
     }
 
-    /// Write `project.pbxproj`, then the spec, in that order — so the spec is
-    /// unambiguously the newer of the two even on a coarse-grained filesystem
-    /// (mtimes only a syscall apart can otherwise compare equal).
     fn generated_project(marker: &str, spec: &str, spec_is_newer: bool) -> PathBuf {
         let xcodeproj = temp_project(marker, None);
+        generate(&xcodeproj, spec, spec_is_newer);
+        xcodeproj
+    }
+
+    /// Write `project.pbxproj`, then the spec beside the bundle, in that order
+    /// — so the spec is unambiguously the newer of the two even on a
+    /// coarse-grained filesystem (mtimes only a syscall apart can otherwise
+    /// compare equal).
+    fn generate(xcodeproj: &Path, spec: &str, spec_is_newer: bool) {
+        std::fs::create_dir_all(xcodeproj).unwrap();
         let dir = xcodeproj.parent().unwrap().to_path_buf();
         let (first, second) = (dir.join(spec), xcodeproj.join("project.pbxproj"));
         let (first, second) = if spec_is_newer {
@@ -386,7 +420,17 @@ mod tests {
         std::fs::write(&first, "one").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
         std::fs::write(&second, "two").unwrap();
-        xcodeproj
+    }
+
+    /// A workspace at `path` whose `<Workspace>` element holds `members`.
+    fn workspace(path: &Path, members: &str) -> Container {
+        std::fs::create_dir_all(path).unwrap();
+        let contents = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+             <Workspace version = \"1.0\">{members}</Workspace>\n"
+        );
+        std::fs::write(path.join("contents.xcworkspacedata"), contents).unwrap();
+        Container::Workspace(path.to_path_buf())
     }
 
     #[test]
@@ -431,6 +475,72 @@ mod tests {
         let stale = generated_project("declared", "project.yaml", true);
         let warning = stale_generated(&pf, &stale).expect("expected a staleness warning");
         assert!(warning.contains("project.yaml is newer"), "{warning}");
+    }
+
+    #[test]
+    fn a_stale_workspace_member_warns_once_however_often_it_is_referenced() {
+        // An XcodeGen project opened through a workspace beside it, listed a
+        // second time through a group that spells the path differently.
+        let pf = ProjectFile::default();
+        let xcodeproj = generated_project("ws-member", "project.yml", true);
+        let dir = xcodeproj.parent().unwrap();
+        std::fs::create_dir_all(dir.join("Sub")).unwrap();
+        let container = workspace(
+            &dir.join("App.xcworkspace"),
+            "<FileRef location = \"group:App.xcodeproj\"></FileRef>\
+             <Group location = \"group:Sub\">\
+             <FileRef location = \"group:../App.xcodeproj\"></FileRef></Group>",
+        );
+        let warnings = stale_generated_projects(&pf, &container);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0].contains("project.yml is newer than App.xcodeproj"),
+            "{warnings:?}"
+        );
+        // The same wording as opening the project directly.
+        assert_eq!(
+            stale_generated_projects(&pf, &Container::Project(xcodeproj)),
+            warnings
+        );
+    }
+
+    #[test]
+    fn a_tuist_workspace_checks_each_member_against_its_own_manifest() {
+        // `tuist generate` writes one workspace over every project, each
+        // `.xcodeproj` beside the Project.swift that declares it.
+        let pf = ProjectFile::default();
+        let dir = temp_dir("ws-tuist");
+        let (app, core) = ("Projects/App/App.xcodeproj", "Projects/Core/Core.xcodeproj");
+        generate(&dir.join(app), "Project.swift", true);
+        generate(&dir.join(core), "Project.swift", false);
+        let container = workspace(
+            &dir.join("App.xcworkspace"),
+            "<FileRef location = \"group:Projects/App/App.xcodeproj\"></FileRef>\
+             <FileRef location = \"group:Projects/Core/Core.xcodeproj\"></FileRef>",
+        );
+        let warnings = stale_generated_projects(&pf, &container);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0].contains("Project.swift is newer than App.xcodeproj"),
+            "{warnings:?}"
+        );
+        assert!(warnings[0].contains("'tuist generate'"), "{warnings:?}");
+    }
+
+    #[test]
+    fn an_embedded_workspace_checks_the_project_around_it() {
+        let pf = ProjectFile::default();
+        let xcodeproj = generated_project("ws-embedded", "project.yml", true);
+        let container = workspace(
+            &xcodeproj.join("project.xcworkspace"),
+            "<FileRef location = \"self:\"></FileRef>",
+        );
+        let warnings = stale_generated_projects(&pf, &container);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0].contains("project.yml is newer than App.xcodeproj"),
+            "{warnings:?}"
+        );
     }
 
     #[test]
